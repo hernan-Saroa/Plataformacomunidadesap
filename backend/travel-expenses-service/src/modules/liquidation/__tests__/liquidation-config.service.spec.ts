@@ -4,7 +4,7 @@ import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { EscalaViaticoEntity } from '../../../entities/liquidation/escala-viatico.entity';
 import { TarifaInvestigadorEntity } from '../../../entities/liquidation/tarifa-investigador.entity';
-import { TarifaRegionalExcepcionEntity } from '../../../entities/liquidation/tarifa-regional-excepcion.entity';
+import { TarifaTransporteTerminalEntity } from '../../../entities/liquidation/tarifa-transporte-terminal.entity';
 import { LiquidationParamEntity } from '../../../entities/liquidation/liquidation-param.entity';
 import { LiquidationService } from '../liquidation.service';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
@@ -24,7 +24,7 @@ describe('LiquidationConfigService', () => {
     create: jest.fn(),
     save: jest.fn(),
   };
-  const mockRegionalRepo = {
+  const mockTerminalRepo = {
     find: jest.fn(),
     findOne: jest.fn(),
     create: jest.fn(),
@@ -41,6 +41,7 @@ describe('LiquidationConfigService', () => {
   };
   const mockLiquidationService = {
     recargarParametros: jest.fn(),
+    invalidarCache: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -59,8 +60,8 @@ describe('LiquidationConfigService', () => {
           useValue: mockInvestigadorRepo,
         },
         {
-          provide: getRepositoryToken(TarifaRegionalExcepcionEntity),
-          useValue: mockRegionalRepo,
+          provide: getRepositoryToken(TarifaTransporteTerminalEntity),
+          useValue: mockTerminalRepo,
         },
         {
           provide: getRepositoryToken(LiquidationParamEntity),
@@ -224,47 +225,47 @@ describe('LiquidationConfigService', () => {
     });
   });
 
-  describe('obtenerExcepcionesRegionales', () => {
-    it('debe retornar excepciones activas', async () => {
-      const mockExcepciones = [
-        { id: 1, departamento: 'Amazonas', tarifaDiaria: 380000, activo: true },
+  describe('obtenerTarifasTransporteTerminal', () => {
+    it('debe retornar tarifas de terminales activas', async () => {
+      const mockTarifas = [
+        { id: 1, departamento: 'ANTIOQUIA', ciudadAeropuerto: 'ANTIOQUIA (Rionegro)', valorMaximoTrayecto: 162634, activo: true },
       ];
-      mockRegionalRepo.find.mockResolvedValue(mockExcepciones);
+      mockTerminalRepo.find.mockResolvedValue(mockTarifas);
 
-      const result = await service.obtenerExcepcionesRegionales();
-      expect(result).toEqual(mockExcepciones);
+      const result = await service.obtenerTarifasTransporteTerminal();
+      expect(result).toEqual(mockTarifas);
     });
   });
 
-  describe('crearExcepcionRegional', () => {
-    it('debe crear una excepción exitosamente', async () => {
+  describe('crearTarifaTransporteTerminal', () => {
+    it('debe crear una tarifa de terminal exitosamente', async () => {
       const dto = {
-        departamento: 'Amazonas',
-        esNuevoDepartamento: true,
-        tarifaDiaria: 380000,
-        decretoReferencia: 'Decreto 314',
+        ciudad: 'ANTIOQUIA',
+        ciudadAeropuerto: 'ANTIOQUIA (Rionegro)',
+        valorMaximoTrayecto: 162634,
       };
-      mockRegionalRepo.findOne.mockResolvedValue(null);
+      mockTerminalRepo.findOne.mockResolvedValue(null);
       const savedEntity = { id: 1, ...dto, activo: true };
-      mockRegionalRepo.create.mockReturnValue(savedEntity);
-      mockRegionalRepo.save.mockResolvedValue(savedEntity);
+      mockTerminalRepo.create.mockReturnValue(savedEntity);
+      mockTerminalRepo.save.mockResolvedValue(savedEntity);
 
-      const result = await service.crearExcepcionRegional(dto);
+      const result = await service.crearTarifaTransporteTerminal(dto);
       expect(result).toEqual(savedEntity);
     });
 
-    it('debe lanzar BadRequestException si ya existe excepción para el departamento', async () => {
+    it('debe lanzar BadRequestException si ya existe tarifa para el departamento y ciudad', async () => {
       const dto = {
-        departamento: 'Amazonas',
-        esNuevoDepartamento: true,
-        tarifaDiaria: 380000,
+        ciudad: 'ANTIOQUIA',
+        ciudadAeropuerto: 'ANTIOQUIA (Rionegro)',
+        valorMaximoTrayecto: 162634,
       };
-      mockRegionalRepo.findOne.mockResolvedValue({
+      mockTerminalRepo.findOne.mockResolvedValue({
         id: 1,
-        departamento: 'Amazonas',
+        ciudad: 'ANTIOQUIA',
+        ciudadAeropuerto: 'ANTIOQUIA (Rionegro)',
       });
 
-      await expect(service.crearExcepcionRegional(dto)).rejects.toThrow(
+      await expect(service.crearTarifaTransporteTerminal(dto)).rejects.toThrow(
         BadRequestException,
       );
     });

@@ -3,13 +3,16 @@ import { Check, Gavel } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EstadoCausalProceso } from '../../types';
+import { EstadoCausalProceso, EvidenciaFirmaOtp } from '../../types';
 import { Aviso, Ayuda, Boton, Marco, Titulo, campo } from '../shared/PiezasPanel';
+import { useFirma } from '../shared/useFirma';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '3.6';
 
 /**
  * Actividad 3.6 · Causal de contratación (3.5.1 de la matriz, RF-EST-04).
@@ -29,6 +32,7 @@ interface Props {
  * pantalla es la forma más fácil de acabar ofreciendo una causal ajena.
  */
 export function PanelCausal({ procesoId, onCambio }: Props) {
+  const firma = useFirma(NUMERAL, 'Registrar la causal de contratación');
   const [estado, setEstado] = useState<EstadoCausalProceso | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,13 +56,14 @@ export function PanelCausal({ procesoId, onCambio }: Props) {
       .finally(() => setCargando(false));
   }, [procesoId]);
 
-  const guardar = async () => {
+  const guardar = async (firmaOtp?: EvidenciaFirmaOtp) => {
     setGuardando(true);
     try {
       const r = await contratacionService.elegirCausal(
         procesoId,
         elegida,
         sustento.trim() || undefined,
+        firmaOtp,
       );
       setEstado(r);
       setElegida(r.causal?.codigo ?? '');
@@ -220,7 +225,7 @@ export function PanelCausal({ procesoId, onCambio }: Props) {
             <Boton
               icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
               disabled={!elegida || guardando}
-              onClick={guardar}
+              onClick={() => firma.conFirma(guardar)}
             >
               Registrar la causal
             </Boton>
@@ -260,6 +265,7 @@ export function PanelCausal({ procesoId, onCambio }: Props) {
           Catálogo pendiente de ratificación por la Dirección de Contratación.
         </p>
       )}
+      {firma.modal}
     </Marco>
   );
 }

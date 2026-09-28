@@ -1661,6 +1661,7 @@ export class CertificatesService {
       : requestContext;
     if (cert.is_corrected) {
       cert.request.certificate_dependency = undefined;
+      cert.request.certificate_group = undefined;
       cert.request.certificate_organization = undefined;
     }
 
@@ -2573,6 +2574,10 @@ export class CertificatesService {
     if (certificate.status !== 'VALID') {
       throw new BadRequestException('Solo se pueden solicitar correcciones de certificados vigentes.');
     }
+    // El snapshot que se guarda aqui es el "antes" de la correccion, y tiene
+    // que ser lo que imprime el certificado: sin hidratar, la dependencia y el
+    // grupo saldrian de la fila del encargo y no de la vinculacion normal.
+    await this.hydrateCertificatesRequestContext([certificate]);
 
     const existing = await this.correctionRequestRepo.findOne({
       where: {
@@ -2730,6 +2735,10 @@ export class CertificatesService {
       .take(limit)
       .getManyAndCount();
 
+    await this.hydrateCertificatesRequestContext(
+      items.map((item) => item.certificate).filter(Boolean),
+    );
+
     return {
       // `data` is intentionally avoided here: the shared frontend ApiClient
       // unwraps that key and would discard the pagination metadata.
@@ -2774,6 +2783,11 @@ export class CertificatesService {
       relations: ['certificate', 'certificate.request'],
     });
     if (!request) throw new NotFoundException('Solicitud de corrección no encontrada.');
+    // Sin hidratar, `certificate_dependency` y `certificate_group` llegan
+    // vacios y [DEPENDENCIA] y [GRUPO] se resolverian con la fila del encargo
+    // en vez de la vinculacion normal vigente: el formulario precargaria un
+    // valor y el certificado imprimiria otro.
+    await this.hydrateCertificatesRequestContext([request.certificate]);
     await this.ensureTemplateSnapshotForCertificate(request.certificate);
     // `correctionResponse` ya expone la dependencia y el grupo efectivos (sin
     // tocar la entidad ni la BD) para que el formulario precargue los mismos
@@ -2790,6 +2804,11 @@ export class CertificatesService {
       relations: ['certificate', 'certificate.request'],
     });
     if (!request) throw new NotFoundException('Solicitud de corrección no encontrada.');
+    // Sin hidratar, `certificate_dependency` y `certificate_group` llegan
+    // vacios y [DEPENDENCIA] y [GRUPO] se resolverian con la fila del encargo
+    // en vez de la vinculacion normal vigente: el formulario precargaria un
+    // valor y el certificado imprimiria otro.
+    await this.hydrateCertificatesRequestContext([request.certificate]);
     await this.ensureTemplateSnapshotForCertificate(request.certificate);
     const patch = this.normalizeCorrectedCertificateData(request.certificate, input || {});
     const previewCertificate = Object.assign(
@@ -3137,6 +3156,11 @@ export class CertificatesService {
     };
     const patch = this.normalizeCorrectedCertificateData(request.certificate, input || {});
     Object.assign(request.certificate, patch);
+    // Sin hidratar, `certificate_dependency` y `certificate_group` llegan
+    // vacios y [DEPENDENCIA] y [GRUPO] se resolverian con la fila del encargo
+    // en vez de la vinculacion normal vigente: el formulario precargaria un
+    // valor y el certificado imprimiria otro.
+    await this.hydrateCertificatesRequestContext([request.certificate]);
     await this.ensureTemplateSnapshotForCertificate(request.certificate);
     const correctedSnapshot = this.certificateCorrectionSnapshot(request.certificate);
     request.resolution_evidence = this.correctionEvidenceFromFiles(files);
@@ -3246,6 +3270,11 @@ export class CertificatesService {
       );
     }
 
+    // Sin hidratar, `certificate_dependency` y `certificate_group` llegan
+    // vacios y [DEPENDENCIA] y [GRUPO] se resolverian con la fila del encargo
+    // en vez de la vinculacion normal vigente: el formulario precargaria un
+    // valor y el certificado imprimiria otro.
+    await this.hydrateCertificatesRequestContext([request.certificate]);
     await this.ensureTemplateSnapshotForCertificate(request.certificate);
     const approvedData = request.corrected_data ||
       this.certificateCorrectionSnapshot(request.certificate);
@@ -3795,12 +3824,15 @@ export class CertificatesService {
 
     const request = await this.correctionRequestRepo.findOne({
       where: { id },
-      relations: ['certificate'],
+      relations: ['certificate', 'certificate.request'],
     });
     if (!request) throw new NotFoundException('Solicitud de corrección no encontrada.');
     if (!['PENDING', 'IN_REVIEW'].includes(request.status)) {
       throw new ConflictException('Esta solicitud ya fue resuelta.');
     }
+    // Mismo contexto que en el resto del flujo: la respuesta del rechazo
+    // tambien expone la dependencia y el grupo efectivos.
+    await this.hydrateCertificatesRequestContext([request.certificate]);
 
     if (!request.review_started_at) {
       request.review_started_at = new Date();
@@ -5681,6 +5713,7 @@ export class CertificatesService {
     // Buscar el certificado
     const certificado = await this.certificateRepo.findOne({
       where: { id: certificadoId },
+      relations: ['request'],
     });
 
     if (!certificado) {
@@ -5688,6 +5721,8 @@ export class CertificatesService {
         `Certificado con ID ${certificadoId} no encontrado`,
       );
     }
+
+    await this.hydrateCertificatesRequestContext([certificado]);
 
     const normalizarFecha = (valor: Date | string) => {
       if (!valor) return null;
@@ -5754,7 +5789,12 @@ export class CertificatesService {
       tipoVinculacion: certificado.career_category,
       fechaVinculacion: fechaVinculacion,
       categoria: certificado.position_category,
-      ubicacion: certificado.department || 'Bogota D.C.',
+      // La dependencia efectiva, no la columna cruda: en las filas de Oracle
+      // `department` guarda el CENTROCOSTO (el grupo).
+      ubicacion:
+        this.resolveEffectiveCertificateDependency(certificado) ||
+        certificado.department ||
+        'Bogota D.C.',
       salarioNumero: salarioNumero,
       salarioTexto: salarioTexto,
       fechaExpedicion: fechaExpedicion,

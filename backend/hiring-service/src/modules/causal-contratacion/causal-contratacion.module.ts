@@ -11,6 +11,7 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { ParticipacionModule } from '../participacion/participacion.module';
 import { CdpModule } from '../cdp/cdp.module';
+import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { CdpModule } from '../cdp/cdp.module';
     // Elegirla cierra la actividad, y en menor cuantía eso cierra la etapa 3:
     // la solicitud de CDP nace en ese momento.
     CdpModule,
+    CierreActividadModule,
   ],
   controllers: [CausalContratacionController],
   providers: [CausalContratacionService],

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { LiquidacionResponse, CalcularLiquidacionRequest } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
-import { formatearMoneda } from '../utils/viaticosUtils';
+import { formatearMoneda, formatearDiasComision } from '../utils/viaticosUtils';
 
 interface LiquidacionPanelProps {
   fechaInicio: string;
@@ -19,10 +19,19 @@ interface LiquidacionPanelProps {
   tipoComisionado: string;
   destinoCiudad?: string;
   destinoDepartamento?: string;
-  aplicaExcepcionRegional?: boolean;
   categoriaInvestigador?: string;
   asignacionesBasicas?: number[];
-  onAplicarValor?: (montoViaticos: number, diasComision: number) => void;
+  incluyeTransporteAereo?: boolean;
+  montoTransporteTerrestre?: number;
+  itinerario?: Array<{
+    origenCiudad?: string;
+    origenDepartamento?: string;
+    destinoCiudad?: string;
+    destinoDepartamento?: string;
+    tipoTransporte?: string;
+    tipoTrayecto?: string;
+  }>;
+  onAplicarValor?: (montoViaticos: number, diasComision: number, montoGastosDesplazamiento?: number) => void;
 }
 
 export default function LiquidacionPanel({
@@ -31,9 +40,11 @@ export default function LiquidacionPanel({
   tipoComisionado,
   destinoCiudad,
   destinoDepartamento,
-  aplicaExcepcionRegional,
   categoriaInvestigador,
   asignacionesBasicas,
+  incluyeTransporteAereo,
+  montoTransporteTerrestre,
+  itinerario,
   onAplicarValor,
 }: LiquidacionPanelProps) {
   const [expandido, setExpandido] = useState(false);
@@ -70,9 +81,11 @@ export default function LiquidacionPanel({
           pernocta: fechaInicio !== fechaFin,
           destinoCiudad,
           destinoDepartamento,
-          aplicaExcepcionRegional,
           categoriaInvestigador: categoriaInvestigador as any,
           asignacionesBasicas,
+          incluyeTransporteAereo,
+          montoTransporteTerrestre,
+          itinerario,
         };
         const res = await viaticosService.calcularLiquidacion(payload);
         setResultado(res);
@@ -87,17 +100,32 @@ export default function LiquidacionPanel({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [fechaInicio, fechaFin, tipoComisionado, destinoCiudad, destinoDepartamento, aplicaExcepcionRegional, categoriaInvestigador, asignacionesBasicas, puedeCalcular]);
+  }, [
+    fechaInicio,
+    fechaFin,
+    tipoComisionado,
+    destinoCiudad,
+    destinoDepartamento,
+    categoriaInvestigador,
+    asignacionesBasicas,
+    incluyeTransporteAereo,
+    montoTransporteTerrestre,
+    itinerario,
+    puedeCalcular,
+  ]);
 
   // Aplicación AUTOMÁTICA del resultado: en cuanto el Autoliquidador recalcula,
-  // el total de viáticos y los días se aplican solos al expediente (el campo
-  // "Viáticos" es de solo lectura). RF-LIQ-004.
+  // el total de viáticos, los días y gastos de desplazamiento se aplican solos al expediente.
   useEffect(() => {
     if (!resultado?.data || !onAplicarValor) return;
-    const clave = `${resultado.data.valorTotalViaticos}|${resultado.data.numeroDiasNoches}`;
+    const clave = `${resultado.data.valorTotalViaticos}|${resultado.data.numeroDiasNoches}|${resultado.data.totalGastosDesplazamiento || 0}`;
     if (autoRef.current === clave) return;
     autoRef.current = clave;
-    onAplicarValor(resultado.data.valorTotalViaticos, resultado.data.numeroDiasNoches);
+    onAplicarValor(
+      resultado.data.valorTotalViaticos,
+      resultado.data.numeroDiasNoches,
+      resultado.data.totalGastosDesplazamiento,
+    );
   }, [resultado, onAplicarValor]);
 
   const esSinPernocta = resultado?.data?.factorPernocta === 0.5;
@@ -234,9 +262,15 @@ export default function LiquidacionPanel({
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div>
-                    <p className="text-[11px] font-bold text-blue-600 uppercase tracking-wider">Total Proyectado SIIF Nación</p>
                     <p className="text-xl font-black text-blue-900">{formatearMoneda(resultado.data.valorTotalViaticos)}</p>
-                    <p className="text-[11px] text-blue-600">{resultado.data.numeroDiasNoches} día(s) a liquidar</p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-100 text-blue-800">
+                        {formatearDiasComision(resultado.data.numeroDiasNoches)}
+                      </span>
+                      <span className="text-[11px] text-blue-600/90 font-medium">
+                        ({resultado.data.numeroDiasNoches} {resultado.data.numeroDiasNoches === 1 ? 'día' : 'días'}) a liquidar
+                      </span>
+                    </div>
                   </div>
                   {onAplicarValor && (
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-200">
@@ -247,15 +281,133 @@ export default function LiquidacionPanel({
                 </div>
               </div>
 
+              {/* Sección 3 Oficial GF-FO-023: Liquidación de la Autorización de Desplazamiento */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
+                <div className="px-3 py-2 bg-slate-100/80 border-b border-slate-200 flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    3. Liquidación de la Autorización de Desplazamiento
+                  </span>
+                  <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                    {resultado.data.decretoAplicado || 'Decreto 314 de 2026'}
+                  </span>
+                </div>
+                <div className="divide-y divide-slate-200 text-xs">
+                  <div className="grid grid-cols-4 px-3 py-1.5 font-bold text-slate-500 text-[10px] uppercase">
+                    <span>Descripción del día</span>
+                    <span className="text-center">No. Días</span>
+                    <span className="text-right">Viático Diario</span>
+                    <span className="text-right">Total</span>
+                  </div>
+                  {/* Fila Pernoctados */}
+                  <div className="grid grid-cols-4 px-3 py-2 items-center bg-white text-slate-800">
+                    <span className="font-semibold text-slate-700">Pernoctados</span>
+                    <span className="text-center font-bold text-slate-600">
+                      {resultado.data.diasPernoctados ?? (esSinPernocta ? 0 : Math.floor(resultado.data.numeroDiasNoches))}
+                    </span>
+                    <span className="text-right font-medium text-slate-600">
+                      {formatearMoneda(resultado.data.tarifaDiaPernoctado ?? Math.round(resultado.data.tarifaDiariaBase * resultado.data.factorComisionado))}
+                    </span>
+                    <span className="text-right font-bold text-slate-800">
+                      {formatearMoneda(resultado.data.totalPernoctados ?? ((esSinPernocta ? 0 : Math.floor(resultado.data.numeroDiasNoches)) * Math.round(resultado.data.tarifaDiariaBase * resultado.data.factorComisionado)))}
+                    </span>
+                  </div>
+                  {/* Fila No Pernoctados */}
+                  <div className="grid grid-cols-4 px-3 py-2 items-center bg-white text-slate-800">
+                    <span className="font-semibold text-slate-700">No Pernoctados</span>
+                    <span className="text-center font-bold text-slate-600">
+                      {resultado.data.diasNoPernoctados ?? 1}
+                    </span>
+                    <span className="text-right font-medium text-slate-600">
+                      {formatearMoneda(resultado.data.tarifaDiaNoPernoctado ?? Math.round(resultado.data.tarifaDiariaBase * resultado.data.factorComisionado * 0.5))}
+                    </span>
+                    <span className="text-right font-bold text-slate-800">
+                      {formatearMoneda(resultado.data.totalNoPernoctados ?? Math.round(resultado.data.tarifaDiariaBase * resultado.data.factorComisionado * 0.5))}
+                    </span>
+                  </div>
+                  {/* Fila Total Viáticos */}
+                  <div className="grid grid-cols-4 px-3 py-2 items-center bg-blue-50/70 font-bold text-blue-900 border-t border-blue-100">
+                    <span className="col-span-3">Total Viáticos</span>
+                    <span className="text-right text-sm font-black text-blue-950">
+                      {formatearMoneda(resultado.data.valorTotalViaticos)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sección 4 Oficial GF-FO-023: Liquidación de los Gastos de Desplazamiento */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
+                <div className="px-3 py-2 bg-slate-100/80 border-b border-slate-200 flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                    4. Liquidación de los Gastos de Desplazamiento
+                  </span>
+                  <span className="text-[10px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
+                    Resolución de Viáticos
+                  </span>
+                </div>
+                <div className="divide-y divide-slate-200 text-xs">
+                  <div className="grid grid-cols-3 px-3 py-1.5 font-bold text-slate-500 text-[10px] uppercase">
+                    <span className="col-span-2">Descripción</span>
+                    <span className="text-right">Total</span>
+                  </div>
+                  {/* Fila Terminales Aéreos */}
+                  <div className="grid grid-cols-3 px-3 py-2 items-center bg-white text-slate-800">
+                    <div className="col-span-2 min-w-0 pr-2">
+                      <span className="font-semibold text-slate-700 block">
+                        Total Transporte y desplazamientos terminales aéreos
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        {incluyeTransporteAereo
+                          ? 'Tarifa regulada por resolución para desplazamientos aeropuerto-ciudad'
+                          : 'Aplica cuando la comisión incluye rutas aéreas'}
+                      </span>
+                    </div>
+                    <span className="text-right font-bold text-slate-800">
+                      {formatearMoneda(resultado.data.transporteTerminalesAereos ?? 0)}
+                    </span>
+                  </div>
+                  {/* Fila Transporte Terrestre */}
+                  <div className="grid grid-cols-3 px-3 py-2 items-center bg-white text-slate-800">
+                    <div className="col-span-2 min-w-0 pr-2">
+                      <span className="font-semibold text-slate-700 block">
+                        Transporte y desplazamiento por vía terrestre, marítimo, fluvial y/o ferroviario
+                      </span>
+                    </div>
+                    <span className="text-right font-bold text-slate-800">
+                      {formatearMoneda(resultado.data.transporteTerrestreFluvial ?? 0)}
+                    </span>
+                  </div>
+                  {/* Total Viáticos y Desplazamientos */}
+                  <div className="grid grid-cols-3 px-3 py-2.5 items-center bg-emerald-50/80 font-bold text-emerald-950 border-t border-emerald-200">
+                    <span className="col-span-2 text-xs font-black uppercase text-emerald-900">
+                      TOTAL VIÁTICOS, TRANSPORTES Y DESPLAZAMIENTOS*
+                    </span>
+                    <span className="text-right text-base font-black text-emerald-900">
+                      {formatearMoneda(
+                        resultado.data.totalViaticosYDesplazamientos ??
+                          ((resultado.data.valorTotalViaticos || 0) + (resultado.data.totalGastosDesplazamiento || 0)),
+                      )}
+                    </span>
+                  </div>
+                </div>
+                <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-200 text-[10px] text-slate-500 italic">
+                  *NOTA: Para la liquidación de gastos de transporte se aplicará lo referido en la Resolución de viáticos vigente.
+                </div>
+              </div>
+
               <details className="text-xs">
                 <summary className="cursor-pointer text-slate-600 font-semibold hover:text-slate-800">
-                  Ver desglose diario
+                  Ver desglose día por día
                 </summary>
                 <div className="mt-2 space-y-1">
                   {resultado.data.desgloseCalculo.map((dia) => (
                     <div key={dia.dia} className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-100">
                       <span className="text-slate-600 min-w-0">
-                        Día {dia.dia} · {dia.fecha} {dia.pernocta ? '· Pernocta' : '· Sin pernocta'}
+                        Día {dia.dia} · {dia.fecha}{' '}
+                        {dia.pernocta
+                          ? '· Con pernocta (100%)'
+                          : resultado.data.desgloseCalculo.length > 1
+                            ? '· Retorno / Medio día (50%)'
+                            : '· Sin pernocta (50%)'}
                       </span>
                       <span className="font-bold text-slate-800">{formatearMoneda(dia.valor)}</span>
                     </div>

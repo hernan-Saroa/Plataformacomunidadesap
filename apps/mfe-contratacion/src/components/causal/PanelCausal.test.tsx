@@ -128,6 +128,7 @@ describe('PanelCausal · elegir la causal', () => {
       'p-1',
       'DIRECTA_SERVICIOS_PROFESIONALES',
       'Apoyo jurídico especializado',
+      undefined,
     );
   });
 
@@ -146,7 +147,7 @@ describe('PanelCausal · elegir la causal', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: /Registrar la causal/ }));
 
-    expect(elegir).toHaveBeenCalledWith('p-1', 'DIRECTA_SIN_PLURALIDAD', undefined);
+    expect(elegir).toHaveBeenCalledWith('p-1', 'DIRECTA_SIN_PLURALIDAD', undefined, undefined);
   });
 
   it('con una elegida ofrece rectificarla, no elegirla otra vez', async () => {

@@ -27,6 +27,17 @@ export class SolicitudPtaEntity {
   @Column({ name: 'componentes', type: 'jsonb', nullable: true })
   componentes: string[] | null;
 
+  /** Decisión independiente por cada componente funcional solicitado. */
+  @Column({ name: 'decisionesComponentes', type: 'jsonb', nullable: true })
+  decisionesComponentes: Record<string, {
+    estado: 'pendiente' | 'aprobado' | 'denegado';
+    resueltoPorId?: string | null;
+    resueltoPor?: string | null;
+    resueltoPorRol?: string | null;
+    motivo?: string | null;
+    fecha?: string | null;
+  }> | null;
+
   /** Estado consolidado que tenía el PTA antes de autorizar su reapertura. */
   @Column({ name: 'estadoPtaAnterior', type: 'text', nullable: true })
   estadoPtaAnterior: string | null;

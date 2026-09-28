@@ -1,4 +1,4 @@
-import { documentosDeModalidad } from './documentos.service';
+import { aplicaAlProceso } from '../documentos-actividad/requisitos';
 
 /**
  * Los dos criterios de aceptación de EFDS-1149 se reducen a esta función: qué
@@ -21,9 +21,11 @@ const CATALOGO = [
 ];
 
 const codigos = (modalidad: string | null) =>
-  documentosDeModalidad(CATALOGO, modalidad).map((d) => d.codigo);
+  CATALOGO.filter((d) => aplicaAlProceso({ ...d, tipologias: [] }, modalidad, null)).map(
+    (d) => d.codigo,
+  );
 
-describe('documentosDeModalidad', () => {
+describe('documentos de la 5.1 según la modalidad', () => {
   it('en una modalidad con pliego pide el aviso y el proyecto de pliego', () => {
     // Criterio 1: "el sistema produce el aviso de convocatoria y el proyecto de
     // pliego de condiciones".
@@ -50,9 +52,11 @@ describe('documentosDeModalidad', () => {
     const conComun = [...CATALOGO, { codigo: 'ANEXO_TECNICO', modalidades: [] }];
 
     for (const modalidad of ['LICITACION_PUBLICA', 'CONTRATACION_DIRECTA']) {
-      expect(documentosDeModalidad(conComun, modalidad).map((d) => d.codigo)).toContain(
-        'ANEXO_TECNICO',
-      );
+      expect(
+        conComun
+          .filter((d) => aplicaAlProceso({ ...d, tipologias: [] }, modalidad, null))
+          .map((d) => d.codigo),
+      ).toContain('ANEXO_TECNICO');
     }
   });
 

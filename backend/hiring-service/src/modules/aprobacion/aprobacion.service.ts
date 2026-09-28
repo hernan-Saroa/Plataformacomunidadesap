@@ -8,15 +8,15 @@ import {
 import { DataSource, EntityManager, IsNull } from 'typeorm';
 
 import { HiringAccess } from '../../auth/hiring-access';
-import { Documento } from '../../entities/documento.entity';
-import { Expediente } from '../../entities/expediente.entity';
-import { Plantilla } from '../../entities/plantilla.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
 import { Revision } from '../../entities/revision.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { CdpService } from '../cdp/cdp.service';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { DocumentosActividadService } from '../documentos-actividad/documentos-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Quién puede aprobar una actividad, tal como se configuró. */
 export interface Aprobadores {
@@ -47,6 +47,10 @@ export class AprobacionService {
      * el proceso de la bandeja—, y los tres tienen que preguntarlo.
      */
     private readonly cdp: CdpService,
+    /** Si la actividad exige firmar con el token institucional al aprobarla (EFDS-2070). */
+    private readonly cierre: CierreActividadService,
+    /** Qué documentos le faltan a la actividad, del catálogo único (EFDS-2066). */
+    private readonly catalogo: DocumentosActividadService,
   ) {}
 
   // ------------------------------------------------------ la configuración --
@@ -198,39 +202,17 @@ export class AprobacionService {
   }
 
   /**
-   * Los formatos que la actividad pide y que nadie ha entregado todavía.
+   * Los documentos obligatorios que la actividad pide y nadie ha entregado.
    *
-   * Devuelve sus códigos y no un número: «falta cargar BS-FO-101» le dice a
-   * quien aprueba qué pedir, y «falta 1 documento» no.
+   * Devuelve sus nombres y no un número: «falta cargar el memorando de
+   * solicitud» le dice a quien aprueba qué pedir, y «falta 1 documento» no.
    */
-  private async formatosPendientes(
+  private async documentosPendientes(
     em: EntityManager,
     procesoId: string,
     numeral: string,
-    modalidad: string | null,
   ): Promise<string[]> {
-    const formatos = await em.getRepository(Plantilla).find({
-      where: { numeral, activo: true },
-      order: { codigo: 'ASC' },
-    });
-
-    // Alcance vacío significa todas; es el mismo criterio con el que se listan.
-    const aplicables = formatos.filter(
-      (f) =>
-        f.modalidades.length === 0 || (modalidad !== null && f.modalidades.includes(modalidad)),
-    );
-    if (!aplicables.length) return [];
-
-    const expediente = await em.getRepository(Expediente).findOne({ where: { procesoId } });
-    if (!expediente) return aplicables.map((f) => f.codigo);
-
-    const entregados = await em.getRepository(Documento).find({
-      where: { expedienteId: expediente.id, numeral, tipo: 'ADJUNTO' },
-    });
-
-    return aplicables
-      .filter((f) => !entregados.some((d) => d.plantillaId === f.id))
-      .map((f) => f.codigo);
+    return (await this.catalogo.faltantes(procesoId, numeral, em)).map((r) => r.nombre);
   }
 
   /**
@@ -355,14 +337,21 @@ export class AprobacionService {
     });
   }
 
-  /** Aprueba la actividad. Las observaciones son opcionales. */
+  /**
+   * Aprueba la actividad. Las observaciones son opcionales.
+   *
+   * Quien envía y quien aprueba son dos personas y dos acciones distintas:
+   * cada una firma la suya. `firma` es la evidencia de quien aprueba, y solo
+   * se exige si la actividad quedó configurada con `EXIGE_FIRMA` (EFDS-2070).
+   */
   async aprobar(
     procesoId: string,
     numeral: string,
     observaciones: string | undefined,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
-    return this.decidir(procesoId, numeral, 'APROBADO', observaciones, acceso);
+    return this.decidir(procesoId, numeral, 'APROBADO', observaciones, acceso, firma);
   }
 
   /**
@@ -391,6 +380,7 @@ export class AprobacionService {
     decision: 'APROBADO' | 'DEVUELTO',
     observaciones: string | undefined,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     return this.dataSource.transaction(async (em) => {
       const { actividad, proceso } = await this.exigirActividad(em, procesoId, numeral);
@@ -432,26 +422,36 @@ export class AprobacionService {
        */
 
       /*
-       * No se aprueba con formatos sin entregar.
+       * No se aprueba con documentos obligatorios sin entregar.
        *
        * La pantalla ya deshabilita el botón, pero eso solo protege a quien lo
-       * mira: el servicio aceptaba la aprobación de una actividad cuyo formato
-       * seguía en blanco, y el expediente quedaba dado por bueno sin el
-       * documento que lo respalda. Devolver sí sigue permitido con formatos
+       * mira: el servicio aceptaba la aprobación de una actividad cuyo
+       * documento seguía en blanco, y el expediente quedaba dado por bueno sin
+       * lo que lo respalda. Devolver sí sigue permitido con documentos
        * pendientes, porque es exactamente el caso para el que sirve devolver.
+       * Los opcionales no traban: se ofrecen, pero no se exigen.
        */
       if (decision === 'APROBADO') {
-        const faltan = await this.formatosPendientes(em, procesoId, numeral, proceso.modalidad);
+        const faltan = await this.documentosPendientes(em, procesoId, numeral);
         if (faltan.length) {
           throw new ConflictException(
             `Falta cargar ${faltan.join(', ')}: la actividad no puede aprobarse sin su soporte`,
           );
+        }
+
+        // La firma es de quien aprueba, no de quien envió: cada uno firma su
+        // propia acción (EFDS-2070).
+        if (await this.cierre.exigeFirma(em, numeral)) {
+          this.cierre.exigirFirmaValida(firma);
         }
       }
 
       actividad.estado = decision;
       actividad.revisadoPor = acceso.userName;
       (actividad as any).revisadoPorId = acceso.userId;
+      if (decision === 'APROBADO' && firma) {
+        actividad.datos = { ...(actividad.datos ?? {}), firmaAprobacion: firma };
+      }
       await em.save(actividad);
 
       // La versión revisada queda atada a la decisión: editar el documento

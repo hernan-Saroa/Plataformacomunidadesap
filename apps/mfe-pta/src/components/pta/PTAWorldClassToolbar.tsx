@@ -19,6 +19,8 @@ interface PTAWorldClassToolbarProps {
   filtroEstado: string;
   setFiltroEstado: (v: string) => void;
   ptas: any[];
+  /** Pestañas de trabajo calculadas por el padre según los permisos efectivos. */
+  workflowTabs?: Array<{ id: string; label: string; color: string; count?: number }>;
 
   // Search & filters
   searchQuery: string;
@@ -36,6 +38,8 @@ interface PTAWorldClassToolbarProps {
 
   // Actions
   exportAction?: React.ReactNode;
+  /** Filtros contextuales en una franja responsive independiente. */
+  secondaryFilters?: React.ReactNode;
   /** Extra tool buttons (columns, grouping, activity, refresh) to embed in the toolbar row */
   additionalTools?: React.ReactNode;
 }
@@ -137,7 +141,9 @@ export function PTAWorldClassToolbar({
   vistaActual,
   setVistaActual,
   exportAction,
+  secondaryFilters,
   additionalTools,
+  workflowTabs,
 }: PTAWorldClassToolbarProps) {
 
   // Count PTAs per stage
@@ -193,7 +199,7 @@ export function PTAWorldClassToolbar({
       paddingBottom: 12,
     }}>
       {/* Row 1: Workflow Tabs & Actions - Responsive with scroll */}
-      <div style={{
+      <div className="pta-world-toolbar-primary" style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -202,7 +208,7 @@ export function PTAWorldClassToolbar({
         gap: 8,
       }}>
         {/* Workflow Tabs — horizontal scroll on overflow */}
-        <div style={{
+        <div className="pta-world-toolbar-tabs" style={{
           display: 'flex',
           alignItems: 'center',
           gap: 4,
@@ -212,8 +218,8 @@ export function PTAWorldClassToolbar({
           scrollbarWidth: 'none',       /* Firefox */
           msOverflowStyle: 'none',      /* IE */
         }}>
-          {WORKFLOW_TABS.map(tab => {
-            const count = stageCounts[tab.id] || 0;
+          {(workflowTabs || WORKFLOW_TABS).map(tab => {
+            const count = tab.count ?? stageCounts[tab.id] ?? 0;
             const isActive = filtroEstado === tab.id;
 
             return (
@@ -272,7 +278,7 @@ export function PTAWorldClassToolbar({
         </div>
 
         {/* View switcher, Tools & Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        <div className="pta-world-toolbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
           {additionalTools && (
             <>
               {additionalTools}
@@ -287,8 +293,14 @@ export function PTAWorldClassToolbar({
         </div>
       </div>
 
+      {secondaryFilters && (
+        <div className="pta-world-toolbar-secondary">
+          {secondaryFilters}
+        </div>
+      )}
+
       {/* Row 2: Search & Filters — wraps to next line on narrow screens */}
-      <div style={{
+      <div className="pta-world-toolbar-search" style={{
         display: 'flex',
         alignItems: 'center',
         flexWrap: 'wrap',

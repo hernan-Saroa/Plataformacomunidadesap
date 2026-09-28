@@ -21,6 +21,8 @@ vi.mock('../services/api/viaticosService', () => ({
     obtenerChecklistDocumentos: vi.fn().mockResolvedValue({ obligatorios: [], opcionales: [] }),
     finalizarSolicitud: vi.fn().mockResolvedValue({ id: 'sol-nueva', estadoSolicitud: 'RADICADA' }),
     obtenerDependencias: vi.fn().mockResolvedValue([]),
+    obtenerSaldosTiquetes: vi.fn().mockResolvedValue([]),
+    resolverNombreDependencia: vi.fn((s: any) => s?.dependencia || 'Sede Central'),
   },
 }));
 
@@ -103,6 +105,8 @@ describe('ViaticosModulePremium', () => {
             { idGeopolitica: 21, codGeopolitica: '5', codDepartamento: 5, nomDivGeopolitica: 'Rionegro', tipDivision: 'CIUDAD', idPadre: 1 },
           ],
     );
+    viaticosService.obtenerSaldosTiquetes = vi.fn().mockResolvedValue([]);
+    viaticosService.resolverNombreDependencia = vi.fn((s: any) => s?.dependencia || 'Sede Central');
   });
 
   const abrirModalNueva = async () => {
@@ -120,7 +124,7 @@ describe('ViaticosModulePremium', () => {
 
   const irAlPaso2 = async () => {
     await consultarComisionadoAutorizado();
-    fireEvent.click(screen.getByText(/Siguiente/i));
+    fireEvent.click(screen.getByText(/Guardar y continuar/i));
     await screen.findByText(/Objeto y Destino de la Comisión/i);
   };
 
@@ -161,7 +165,7 @@ describe('ViaticosModulePremium', () => {
   const irAlConfirmacion = async () => {
     await llenarPaso2();
     await guardarYBContinuar();
-    fireEvent.click(screen.getByText(/Siguiente/i));
+    fireEvent.click(screen.getByText(/Guardar y continuar/i));
     await screen.findByText(/4\. Confirmación de la Solicitud/i);
   };
 
@@ -347,7 +351,7 @@ describe('ViaticosModulePremium', () => {
       expect(screen.queryByText(/Autorización de Tratamiento de Datos/i)).not.toBeInTheDocument();
     });
 
-    const siguienteBtn = screen.getByText(/Siguiente/i);
+    const siguienteBtn = screen.getByText(/Guardar y continuar/i);
     expect(siguienteBtn).toBeEnabled();
     fireEvent.click(siguienteBtn);
 
@@ -372,7 +376,7 @@ describe('ViaticosModulePremium', () => {
       expect(screen.getByText(/Carlos Eduardo/i)).toBeInTheDocument();
     });
 
-    const siguienteBtn = screen.getByText(/Siguiente/i);
+    const siguienteBtn = screen.getByText(/Guardar y continuar/i);
     fireEvent.click(siguienteBtn);
 
     expect(screen.getByText(/Paso 2 de 4/i)).toBeInTheDocument();
@@ -640,7 +644,7 @@ describe('ViaticosModulePremium', () => {
     fireEvent.change(screen.getByLabelText(/Fecha Fin/i), { target: { value: finISO } });
 
     await guardarYBContinuar();
-    fireEvent.click(screen.getByText(/Siguiente/i));
+    fireEvent.click(screen.getByText(/Guardar y continuar/i));
 
     await screen.findByText(/Comisión Extemporánea/i);
   });
@@ -739,7 +743,7 @@ describe('ViaticosModulePremium', () => {
       'application/pdf',
     );
 
-    fireEvent.click(screen.getByText(/Siguiente/i));
+    fireEvent.click(screen.getByText(/Guardar y continuar/i));
     await screen.findByText(/4\. Confirmación de la Solicitud/i);
 
     const finalizarBtn = screen.getByText(/Finalizar y Radicar/i);

@@ -11,7 +11,12 @@ import {
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EstadoEvaluacion, ResultadoEvaluacion, RolEvaluador } from '../../types';
+import {
+  EstadoEvaluacion,
+  EvidenciaFirmaOtp,
+  ResultadoEvaluacion,
+  RolEvaluador,
+} from '../../types';
 import {
   Aviso,
   Ayuda,
@@ -23,11 +28,15 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { momentoConHora } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '6.3';
 
 const ETIQUETA_DIMENSION: Record<RolEvaluador, string> = {
   JURIDICO: 'jurídica',
@@ -65,6 +74,8 @@ const aNumero = (texto: string): number | undefined => {
  * evaluador designado en otro proceso entra a mirar y nada más.
  */
 export function PanelEvaluacion({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
+  const firma = useFirma(NUMERAL, 'Registrar el resultado de la evaluación');
   const [estado, setEstado] = useState<EstadoEvaluacion | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +117,7 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
     setRegistrando(false);
   };
 
-  const registrar = async () => {
+  const registrar = async (firmaOtp?: EvidenciaFirmaOtp) => {
     if (!ganadora || !informe || !justificacion.trim()) return;
 
     setGuardando(true);
@@ -120,6 +131,7 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
             puntajeMaximo: aNumero(puntajeMaximo),
             valorEvaluado: aNumero(valorEvaluado),
             justificacion: justificacion.trim(),
+            firma: firmaOtp,
           },
           informe,
         ),
@@ -135,7 +147,13 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
   };
 
   const rectificar = async () => {
-    const motivo = window.prompt('¿Por qué se rectifica el resultado registrado?')?.trim();
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Rectificar el resultado',
+      descripcion: 'El resultado anterior se conserva: rectificar añade uno nuevo, no borra el que había.',
+      etiqueta: 'Motivo de la rectificación',
+      placeholder: 'La subsanación aceptada cambia la habilitación del oferente…',
+      confirmar: 'Rectificar el resultado',
+    });
     if (!motivo) return;
 
     setGuardando(true);
@@ -535,7 +553,7 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
             <Boton
               icono={<Award className="w-3.5 h-3.5" />}
               disabled={guardando || !ganadora || !informe || !justificacion.trim()}
-              onClick={registrar}
+              onClick={() => firma.conFirma(registrar)}
             >
               {guardando ? 'Registrando…' : 'Registrar resultado'}
             </Boton>
@@ -568,6 +586,8 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
           en este proceso, que es el que responde por él.
         </p>
       )}
+      {firma.modal}
+      {dialogo.elemento}
     </Marco>
   );
 }

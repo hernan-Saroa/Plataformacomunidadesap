@@ -16,6 +16,7 @@ import { SolicitudComisionEntity } from '../../entities/solicitud-comision.entit
 import { DocumentoSoporteEntity } from '../../entities/documento-soporte.entity';
 import { SolicitudHistorialEstadoEntity } from '../../entities/solicitud-historial-estado.entity';
 import { FestivoColombiaEntity } from '../../entities/festivo-colombia.entity';
+import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
 import {
   EstadoSolicitud,
   ESTADOS_SOLO_LECTURA,
@@ -53,9 +54,16 @@ import {
 import { getClientIp } from '../../common/ip.util';
 import { getUploadRootDir } from '../../common/storage.util';
 import { ConfigService } from '../config/config.service';
-import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
-import { NotificationClientService } from '../../common/notification-client.service';
+import {
+  NotificationClientService,
+  buildTravelExpenseEmailHtml,
+} from '../../common/notification-client.service';
+import {
+  HumanResourcesClientService,
+  HumanResourcesSuggestedPerson,
+} from '../../common/human-resources-client.service';
 import { LiquidationService } from '../liquidation/liquidation.service';
+
 import {
   TipoComisionadoLiquidacion,
   CategoriaInvestigador,
@@ -79,6 +87,7 @@ interface AuthPersonaRow {
   dir_email: string | null;
   tel_celular: string | null;
   id_dependencia: string | number | null;
+  nom_dependencia: string | null;
 }
 
 function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
@@ -91,6 +100,18 @@ function contarDiasHabilesEntre(fechaInicio: Date, fechaFin: Date): number {
     fecha.setDate(fecha.getDate() + 1);
   }
   return count;
+}
+
+function calcularDiasEntreFechas(fechaInicio: Date, fechaFin: Date): number {
+  const diff = Math.round((fechaFin.getTime() - fechaInicio.getTime()) / 86_400_000);
+  return diff <= 0 ? 1 : diff;
+}
+
+function formatoISO(fecha: Date): string {
+  const y = fecha.getFullYear();
+  const m = String(fecha.getMonth() + 1).padStart(2, '0');
+  const d = String(fecha.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 /**
@@ -132,12 +153,121 @@ export class TravelExpensesService {
     private readonly configService: ConfigService,
     private readonly notificationClient: NotificationClientService,
     @Optional()
+    private readonly humanResourcesClient?: HumanResourcesClientService,
+    @Optional()
     private readonly liquidationService?: LiquidationService,
     @Optional()
     private readonly ticketsService?: TicketsService,
     @Optional()
     private readonly eventEmitter?: EventEmitter2,
   ) {}
+
+  private sincronizarItinerario(dto: {
+    itinerario?: any[];
+    fechaInicio?: string;
+    fechaFin?: string;
+    diasComision?: number;
+    destinoCiudad?: string;
+    destinoDepartamento?: string;
+  }): {
+    itinerario: any[];
+    fechaInicio: string;
+    fechaFin: string;
+    diasComision: number;
+    origenCiudad: string;
+    destinoCiudad: string;
+    destinoDepartamento: string;
+  } {
+    const rutas = Array.isArray(dto.itinerario) ? dto.itinerario : [];
+
+    if (rutas.length === 0) {
+      return {
+        itinerario: [],
+        fechaInicio: dto.fechaInicio || '',
+        fechaFin: dto.fechaFin || '',
+        diasComision: dto.diasComision ?? 1,
+        origenCiudad: '',
+        destinoCiudad: dto.destinoCiudad || '',
+        destinoDepartamento: dto.destinoDepartamento || '',
+      };
+    }
+
+    const fechasSalida = rutas
+      .map((r) => new Date(r.fechaSalida))
+      .filter((d) => !Number.isNaN(d.getTime()));
+    const fechasLlegada = rutas
+      .map((r) => new Date(r.fechaLlegada))
+      .filter((d) => !Number.isNaN(d.getTime()));
+
+    const fechaInicio = fechasSalida.length > 0
+      ? new Date(Math.min(...fechasSalida.map((d) => d.getTime())))
+      : new Date(dto.fechaInicio || new Date());
+    const fechaFin = fechasLlegada.length > 0
+      ? new Date(Math.max(...fechasLlegada.map((d) => d.getTime())))
+      : new Date(dto.fechaFin || new Date());
+
+    let diasComision = 0;
+    for (const ruta of rutas) {
+      if (ruta.diasRuta && Number.isFinite(ruta.diasRuta) && ruta.diasRuta > 0) {
+        diasComision += ruta.diasRuta;
+      }
+    }
+    if (diasComision === 0) {
+      diasComision = calcularDiasEntreFechas(fechaInicio, fechaFin);
+    }
+
+    const primerTramo = rutas[0];
+    const ultimoTramo = rutas[rutas.length - 1];
+
+    // ── Detección de viaje de ida y vuelta ───────────────────────────────────
+    // Si hay más de un tramo y el destino del último coincide con el origen del
+    // primero, el comisionado ya regresó al punto de partida. En ese caso el
+    // "destino" real de la comisión es el origen del último tramo (el punto más
+    // alejado antes del regreso). Esto replica la misma lógica del frontend
+    // (viaticosUtils.ts#sincronizarItinerarioFormulario).
+    const normalizarCiudad = (txt?: string) =>
+      (txt || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .trim();
+
+    const esViajeIdaVuelta =
+      rutas.length > 1 &&
+      normalizarCiudad(ultimoTramo.destinoCiudad) ===
+        normalizarCiudad(primerTramo.origenCiudad) &&
+      (ultimoTramo.destinoCiudad || '') !== '';
+
+    const destinoCiudadFinal = esViajeIdaVuelta
+      ? ultimoTramo.origenCiudad || ''
+      : ultimoTramo.destinoCiudad || dto.destinoCiudad || '';
+    const destinoDepartamentoFinal = esViajeIdaVuelta
+      ? ultimoTramo.origenDepartamento || ''
+      : ultimoTramo.destinoDepartamento || dto.destinoDepartamento || '';
+
+    // Normalizar horas de salida y llegada en cada tramo del itinerario
+    const rutasNormalizadas = rutas.map((r) => {
+      const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || r.horaSalida || '';
+      const horaLlegada = r.horaEstimadaLlegada || r.horaLlegada || '';
+      return {
+        ...r,
+        horaEstimadaSalida: horaSalida,
+        horarioEstimadoMilitar: horaSalida || r.horarioEstimadoMilitar,
+        horaEstimadaLlegada: horaLlegada,
+      };
+    });
+
+    return {
+      itinerario: rutasNormalizadas,
+      fechaInicio: formatoISO(fechaInicio),
+      fechaFin: formatoISO(fechaFin),
+      diasComision,
+      origenCiudad: primerTramo.origenCiudad || '',
+      destinoCiudad: destinoCiudadFinal,
+      destinoDepartamento: destinoDepartamentoFinal,
+    };
+  }
+
 
   /**
    * Emite el evento asíncrono 'commission.disbursement_ready' para que el listener
@@ -328,6 +458,8 @@ export class TravelExpensesService {
       objetoComision: s.objetoComision,
       prioridad: s.prioridad,
       rubroPresupuestal: s.rubroPresupuestal,
+      numeroCdp: s.numeroCdp ?? null,
+      fechaCdp: s.fechaCdp ?? null,
       requiereTiquetes: s.requiereTiquetes,
       montoViaticos: Number(s.montoViaticos || 0),
       montoGastosViaje: Number(s.montoGastosViaje || 0),
@@ -368,6 +500,7 @@ export class TravelExpensesService {
       observacionesPago: (s as any).observacionesPago ?? null,
       pagadoPorId: (s as any).pagadoPorId ?? null,
       fechaRegistroPago: (s as any).fechaRegistroPago?.toISOString?.() ?? (s as any).fechaRegistroPago ?? null,
+      camposAdicionales: (s as any).camposAdicionales ?? {},
       esCreadoPorMi: isSuperAdmin
         ? s.creadoPorUsuarioId === usuarioId
         : undefined,
@@ -484,6 +617,8 @@ export class TravelExpensesService {
       objetoComision: s.objetoComision,
       prioridad: s.prioridad,
       rubroPresupuestal: s.rubroPresupuestal,
+      numeroCdp: s.numeroCdp ?? null,
+      fechaCdp: s.fechaCdp ?? null,
       requiereTiquetes: s.requiereTiquetes,
       montoViaticos: Number(s.montoViaticos || 0),
       montoGastosViaje: Number(s.montoGastosViaje || 0),
@@ -497,6 +632,7 @@ export class TravelExpensesService {
       actualizadoEn: s.actualizadoEn.toISOString(),
       creadoPorUsuarioId: s.creadoPorUsuarioId,
       analistaAsignadoId: s.analistaAsignadoId,
+      camposAdicionales: (s as any).camposAdicionales ?? {},
       };
     });
 
@@ -601,25 +737,51 @@ export class TravelExpensesService {
       );
 
     if (solicitud.creadoPorUsuarioId) {
-      this.notificationClient
-        .send({
-          id_usuario_destinatario: solicitud.creadoPorUsuarioId,
-          tipo_notificacion: 'VIATICOS_DEVOLUCION',
-          titulo: `Solicitud devuelta: ${solicitud.consecutivoUnico}`,
-          mensaje: `Su solicitud ${solicitud.consecutivoUnico} fue devuelta por el Grupo de Viáticos. Motivo: ${motivo}`,
-          descripcion_corta: `Devolución · ${solicitud.consecutivoUnico}`,
-          icono: 'AlertTriangle',
-          color: '#DC2626',
-          prioridad: 'Alta',
-          categoria: 'VIATICOS',
-          tiene_accion: true,
-          texto_boton_accion: 'Ver solicitud',
-          url_accion: '/viaticos',
-          datos_adicionales: {
-            solicitudId: solicitud.id,
-            consecutivoUnico: solicitud.consecutivoUnico,
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const destino = `${solicitud.destinoCiudad || ''}${solicitud.destinoDepartamento ? ` (${solicitud.destinoDepartamento})` : ''}`.trim();
+      const fechaIni = solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().split('T')[0] : '';
+      const fechaFn = solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().split('T')[0] : '';
+      const fechasStr = fechaIni && fechaFn ? `${fechaIni} al ${fechaFn}` : fechaIni || fechaFn || 'Por definir';
+
+      void this.notificationClient
+        .notifyUser(
+          solicitud.creadoPorUsuarioId,
+          {
+            tipo_notificacion: 'VIATICOS_DEVOLUCION',
+            titulo: `Solicitud devuelta: ${consecutivo}`,
+            mensaje: `Su solicitud ${consecutivo} fue devuelta por el Grupo de Viáticos. Motivo: ${motivo}`,
+            descripcion_corta: `Devolución · ${consecutivo}`,
+            icono: 'AlertTriangle',
+            color: '#DC2626',
+            prioridad: 'Alta',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver solicitud',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: solicitud.id,
+              consecutivoUnico: consecutivo,
+              motivo,
+            },
           },
-        })
+          {
+            subject: `[Viáticos ESAP] Solicitud Devuelta para Corrección: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: 'Enlace de Dependencia',
+              tituloHeader: 'ESAP — Grupo de Viáticos',
+              subtituloHeader: 'Notificación de Devolución de Expediente',
+              mensajePrincipal: `Le informamos que la solicitud de comisión <strong>${consecutivo}</strong> ha sido devuelta por la Secretaría del Grupo de Viáticos para la subsanación de inconsistencias o documentos faltantes:`,
+              consecutivo,
+              destino,
+              fechas: fechasStr,
+              nuevoEstado: 'DEVUELTA',
+              motivoUObservaciones: motivo,
+              tipoNovedad: 'DANGER',
+              textoBoton: 'Subsanar Solicitud',
+            }),
+            text: `Su solicitud ${consecutivo} fue devuelta por el Grupo de Viáticos. Motivo: ${motivo}`,
+          },
+        )
         .catch((err) =>
           this.logger.warn(
             `[notify] No se pudo notificar devolución a usuario ${solicitud.creadoPorUsuarioId}: ${err?.message}`,
@@ -646,7 +808,91 @@ export class TravelExpensesService {
       return existente;
     }
 
-    // 2) Búsqueda secundaria: auth.personas (origen único ESAP).
+    // 2) Búsqueda secundaria: Talento Humano / Nómina (Oracle FNC - VW_INTEGRACIONFNC).
+    //    Se consulta vía certification-service (fuente oficial en línea de talento humano).
+    if (this.humanResourcesClient) {
+      try {
+        const funcionarioFnc =
+          await this.humanResourcesClient.consultarFuncionarioPorDocumento(doc);
+
+        if (funcionarioFnc && funcionarioFnc.id_number) {
+          const rawName = (funcionarioFnc.full_name || '').trim();
+          const partes = rawName.split(/\s+/).filter(Boolean);
+          let primerNombre = 'SIN NOMBRE';
+          let segundoNombre: string | null = null;
+          let primerApellido = 'SIN APELLIDO';
+          let segundoApellido: string | null = null;
+
+          if (partes.length === 1) {
+            primerNombre = partes[0];
+          } else if (partes.length === 2) {
+            primerNombre = partes[0];
+            primerApellido = partes[1];
+          } else if (partes.length === 3) {
+            primerNombre = partes[0];
+            primerApellido = partes[1];
+            segundoApellido = partes[2];
+          } else if (partes.length >= 4) {
+            primerNombre = partes[0];
+            segundoNombre = partes[1];
+            primerApellido = partes[2];
+            segundoApellido = partes.slice(3).join(' ');
+          }
+
+          // Resolver ID de dependencia en auth.dependencias si el nombre de dependencia viene informado
+          let idDependenciaFnc: number | null = null;
+          const depNombre = (
+            funcionarioFnc.organization_department ||
+            funcionarioFnc.cost_center ||
+            ''
+          ).trim();
+          if (depNombre) {
+            try {
+              const depMatch = await this.dataSource.query(
+                `SELECT id_dependencia
+                   FROM auth.dependencias
+                  WHERE UPPER(nom_dependencia) = UPPER($1)
+                     OR UPPER(cod_dependencia) = UPPER($1)
+                  LIMIT 1`,
+                [depNombre],
+              );
+              if (depMatch?.[0]?.id_dependencia != null) {
+                idDependenciaFnc = Number(depMatch[0].id_dependencia);
+              }
+            } catch (err: any) {
+              this.logger.debug?.(
+                `[consultarComisionado] No se pudo mapear id_dependencia para ${depNombre}: ${err?.message}`,
+              );
+            }
+          }
+
+          const nuevoDesdeFnc = this.comisionadoRepo.create({
+            numeroDocumento: doc,
+            primerNombre,
+            segundoNombre,
+            primerApellido,
+            segundoApellido,
+            email:
+              funcionarioFnc.email ||
+              funcionarioFnc.personal_email ||
+              'sin-correo@esap.edu.co',
+            telefonoContacto: funcionarioFnc.phone || '0000000000',
+            tipoComisionado: 'FUNCIONARIO',
+            origenDatos: 'HUMANO',
+            autorizacionHabeasData: false,
+            idDependencia: idDependenciaFnc,
+          } as Partial<ComisionadoEntity>);
+
+          return await this.comisionadoRepo.save(nuevoDesdeFnc);
+        }
+      } catch (err: any) {
+        this.logger.warn(
+          `[travel-expenses] Error consultando talento humano / Oracle FNC: ${err?.message || err}`,
+        );
+      }
+    }
+
+    // 3) Búsqueda terciaria (fallback): auth.personas (origen único ESAP).
     //    Ambos microservicios comparten la misma base de datos
     //    (`esap_db`), por lo que se consulta directamente vía DataSource
     //    para evitar un round-trip HTTP y mantener la latencia baja.
@@ -674,15 +920,15 @@ export class TravelExpensesService {
       });
 
     if (!persona) {
-      // 3) No existe ni en comisionados ni en auth.personas:
+      // 4) No existe ni en comisionados, ni en talento humano (Oracle FNC), ni en auth.personas:
       //    bloqueamos el flujo porque no hay un funcionario válido
       //    para asociar a la solicitud de viáticos.
       throw new NotFoundException(
-        `No se encontró un comisionado con documento ${doc} en ESAP. Verifique el número o contacte al administrador del módulo de autenticación.`,
+        `No se encontró un comisionado con documento ${doc} ni en la base de datos de talento humano ni en ESAP. Verifique el número o contacte al administrador.`,
       );
     }
 
-    // 4) Persistimos la "foto" de la persona de ESAP en
+    // 5) Persistimos la "foto" de la persona de ESAP en
     //    travel_expenses.comisionados para que las siguientes consultas
     //    queden cacheadas localmente. El origen queda marcado como 'ESAP'.
     const nombres = (persona.nom_tercero || '').trim().split(/\s+/);
@@ -712,6 +958,115 @@ export class TravelExpensesService {
 
     return this.comisionadoRepo.save(nuevo);
   }
+
+  /**
+   * Consulta general o específica de talento humano.
+   * Se consulta exclusivamente a través de HumanResourcesClientService (Oracle FNC / VW_INTEGRACIONFNC
+   * vía certification-service / nómina y financieros humanos) como fuente oficial única de talento humano.
+   * Si no se encuentra, arroja NotFoundException indicando que la persona no existe.
+   */
+  async buscarTalentoHumano(
+    query?: string,
+    documento?: string,
+    limit = 20,
+  ) {
+    const doc = String(documento || '').trim();
+    if (doc) {
+      this.logger.log(
+        `[buscarTalentoHumano] Consulta por documento: ${doc}`,
+      );
+
+      if (!this.humanResourcesClient) {
+        throw new NotFoundException(
+          `El servicio de talento humano no está disponible para consultar el documento ${doc}.`,
+        );
+      }
+
+      let funcionarioFnc: HumanResourcesSuggestedPerson | null = null;
+      try {
+        funcionarioFnc =
+          await this.humanResourcesClient.consultarFuncionarioPorDocumento(doc);
+      } catch (fncErr: any) {
+        this.logger.error(
+          `[buscarTalentoHumano] Error consultando talento humano para documento ${doc}: ${fncErr?.message || fncErr}`,
+        );
+        throw fncErr;
+      }
+
+      if (!funcionarioFnc || !funcionarioFnc.id_number) {
+        this.logger.warn(
+          `[buscarTalentoHumano] NO se encontró funcionario con documento ${doc} en Talento Humano / Nómina`,
+        );
+        throw new NotFoundException(
+          `No se encontró ningún funcionario con documento ${doc} en Talento Humano.`,
+        );
+      }
+
+      this.logger.log(
+        `[buscarTalentoHumano] Encontrado en talento humano: ${funcionarioFnc.full_name} (${funcionarioFnc.id_number})`,
+      );
+      return {
+        ok: true,
+        source: 'talento_humano_oracle',
+        query: doc,
+        total: 1,
+        data: [funcionarioFnc],
+      };
+    }
+
+    const term = String(query || '').trim();
+    if (!term || term.length < 3) {
+      throw new BadRequestException(
+        'El término de búsqueda debe tener al menos 3 caracteres.',
+      );
+    }
+
+    this.logger.log(
+      `[buscarTalentoHumano] Búsqueda por término: "${term}", limit: ${limit}`,
+    );
+
+    if (!this.humanResourcesClient) {
+      throw new NotFoundException(
+        `El servicio de talento humano no está disponible para buscar el término "${term}".`,
+      );
+    }
+
+    let funcionariosFnc: HumanResourcesSuggestedPerson[] = [];
+    try {
+      funcionariosFnc =
+        await this.humanResourcesClient.buscarFuncionariosPorTermino(
+          term,
+          limit,
+        );
+    } catch (fncErr: any) {
+      this.logger.error(
+        `[buscarTalentoHumano] Error buscando en talento humano con término "${term}": ${fncErr?.message || fncErr}`,
+      );
+      throw fncErr;
+    }
+
+    if (!Array.isArray(funcionariosFnc) || funcionariosFnc.length === 0) {
+      this.logger.warn(
+        `[buscarTalentoHumano] NO se encontraron funcionarios para el término "${term}" en Talento Humano / Nómina`,
+      );
+      throw new NotFoundException(
+        `No se encontraron funcionarios coincidentes con "${term}" en Talento Humano.`,
+      );
+    }
+
+    this.logger.log(
+      `[buscarTalentoHumano] Encontrados ${funcionariosFnc.length} funcionarios en talento humano para "${term}"`,
+    );
+
+    return {
+      ok: true,
+      source: 'talento_humano_oracle',
+      query: term,
+      total: funcionariosFnc.length,
+      data: funcionariosFnc,
+    };
+  }
+
 
   async obtenerSolicitudCompleta(
     solicitudId: string,
@@ -1077,6 +1432,7 @@ export class TravelExpensesService {
       montoViaticos: dto.montoViaticos,
       montoGastosViaje: dto.montoGastosViaje,
       diasComision: dto.diasComision,
+      ...(dto.camposAdicionales || {}),
     };
 
     const { camposFaltantes } = await this.validarCamposObligatorios(
@@ -1116,6 +1472,8 @@ export class TravelExpensesService {
         'La fecha fin no puede ser anterior a la fecha inicio.',
       );
     }
+
+    const sincronizacion = this.sincronizarItinerario(dto);
 
     const hoy = new Date();
     const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(
@@ -1184,17 +1542,19 @@ export class TravelExpensesService {
       consecutivoUnico,
       comisionadoId: dto.comisionadoId,
       idDependencia: dto.idDependencia ?? null,
-      destinoCiudad: dto.destinoCiudad ?? '',
-      destinoDepartamento: dto.destinoDepartamento ?? '',
-      fechaInicio,
-      fechaFin,
+      destinoCiudad: sincronizacion.destinoCiudad,
+      destinoDepartamento: sincronizacion.destinoDepartamento,
+      fechaInicio: sincronizacion.fechaInicio,
+      fechaFin: sincronizacion.fechaFin,
       objetoComision: objetoSanitizado,
       prioridad: dto.prioridad ?? 'BAJA',
       rubroPresupuestal: dto.rubroPresupuestal ?? '',
+      numeroCdp: dto.numeroCdp ?? null,
+      fechaCdp: dto.fechaCdp ?? null,
       requiereTiquetes: dto.requiereTiquetes ?? false,
       montoViaticos: dto.montoViaticos ?? 0,
       montoGastosViaje: dto.montoGastosViaje ?? 0,
-      diasComision: dto.diasComision ?? 1,
+      diasComision: sincronizacion.diasComision,
       salarioBasico: dto.salarioBasico ?? 0,
       costoEstimadoTiquete: dto.costoEstimadoTiquete ?? 0,
       estadoSolicitud,
@@ -1205,6 +1565,23 @@ export class TravelExpensesService {
         ? 'INTERNACIONAL'
         : (dto.tipoComision ?? 'TERRESTRE'),
       creadoPorUsuarioId: dto.creadoPorUsuarioId,
+      camposAdicionales: dto.camposAdicionales ?? {},
+      itinerario: sincronizacion.itinerario,
+      // ========== Autoliquidación GF-FO-023 ==========
+      diasPernoctados: dto.diasPernoctados ?? null,
+      tarifaDiaPernoctado: dto.tarifaDiaPernoctado ?? null,
+      totalPernoctados: dto.totalPernoctados ?? null,
+      diasNoPernoctados: dto.diasNoPernoctados ?? null,
+      tarifaDiaNoPernoctado: dto.tarifaDiaNoPernoctado ?? null,
+      totalNoPernoctados: dto.totalNoPernoctados ?? null,
+      factorComisionado: dto.factorComisionado ?? null,
+      factorPernocta: dto.factorPernocta ?? null,
+      tarifaDiariaBase: dto.tarifaDiariaBase ?? null,
+      tarifaFinalAplicadaDia: dto.tarifaFinalAplicadaDia ?? null,
+      salarioBaseAplicado: dto.salarioBaseAplicado ?? null,
+      decretoAplicado: dto.decretoAplicado ?? null,
+      desgloseCalculo: dto.desgloseCalculo ?? null,
+      alertasLiquidacion: dto.alertasLiquidacion ?? null,
     });
 
     const saved = await this.solicitudRepo.save(solicitud);
@@ -1291,6 +1668,12 @@ export class TravelExpensesService {
     if (dto.rubroPresupuestal !== undefined) {
       solicitud.rubroPresupuestal = dto.rubroPresupuestal ?? '';
     }
+    if (dto.numeroCdp !== undefined) {
+      solicitud.numeroCdp = dto.numeroCdp ?? null;
+    }
+    if (dto.fechaCdp !== undefined) {
+      solicitud.fechaCdp = dto.fechaCdp ?? null;
+    }
     if (dto.prioridad !== undefined) {
       solicitud.prioridad = dto.prioridad ?? 'MEDIA';
     }
@@ -1309,7 +1692,7 @@ export class TravelExpensesService {
     if (dto.salarioBasico !== undefined) {
       solicitud.salarioBasico = dto.salarioBasico;
     }
-    if (dto.costoEstimadoTiquete !== undefined) {
+if (dto.costoEstimadoTiquete !== undefined) {
       solicitud.costoEstimadoTiquete = dto.costoEstimadoTiquete;
     }
     if (dto.tipoComision !== undefined) {
@@ -1317,6 +1700,66 @@ export class TravelExpensesService {
     }
     if (dto.esInternacional !== undefined) {
       solicitud.esInternacional = dto.esInternacional;
+    }
+
+    // ========== Persistencia de Autoliquidación GF-FO-023 ==========
+    if (dto.diasPernoctados !== undefined) {
+      solicitud.diasPernoctados = dto.diasPernoctados;
+    }
+    if (dto.tarifaDiaPernoctado !== undefined) {
+      solicitud.tarifaDiaPernoctado = dto.tarifaDiaPernoctado;
+    }
+    if (dto.totalPernoctados !== undefined) {
+      solicitud.totalPernoctados = dto.totalPernoctados;
+    }
+    if (dto.diasNoPernoctados !== undefined) {
+      solicitud.diasNoPernoctados = dto.diasNoPernoctados;
+    }
+    if (dto.tarifaDiaNoPernoctado !== undefined) {
+      solicitud.tarifaDiaNoPernoctado = dto.tarifaDiaNoPernoctado;
+    }
+    if (dto.totalNoPernoctados !== undefined) {
+      solicitud.totalNoPernoctados = dto.totalNoPernoctados;
+    }
+    if (dto.factorComisionado !== undefined) {
+      solicitud.factorComisionado = dto.factorComisionado;
+    }
+    if (dto.factorPernocta !== undefined) {
+      solicitud.factorPernocta = dto.factorPernocta;
+    }
+    if (dto.tarifaDiariaBase !== undefined) {
+      solicitud.tarifaDiariaBase = dto.tarifaDiariaBase;
+    }
+    if (dto.tarifaFinalAplicadaDia !== undefined) {
+      solicitud.tarifaFinalAplicadaDia = dto.tarifaFinalAplicadaDia;
+    }
+    if (dto.salarioBaseAplicado !== undefined) {
+      solicitud.salarioBaseAplicado = dto.salarioBaseAplicado;
+    }
+    if (dto.decretoAplicado !== undefined) {
+      solicitud.decretoAplicado = dto.decretoAplicado;
+    }
+    if (dto.desgloseCalculo !== undefined) {
+      solicitud.desgloseCalculo = dto.desgloseCalculo;
+    }
+    if (dto.alertasLiquidacion !== undefined) {
+      solicitud.alertasLiquidacion = dto.alertasLiquidacion;
+    }
+
+    if (dto.camposAdicionales !== undefined) {
+      solicitud.camposAdicionales = {
+        ...(solicitud.camposAdicionales || {}),
+        ...dto.camposAdicionales,
+      };
+    }
+    if (dto.itinerario !== undefined) {
+      const sincronizacion = this.sincronizarItinerario(dto);
+      solicitud.itinerario = sincronizacion.itinerario;
+      solicitud.fechaInicio = new Date(sincronizacion.fechaInicio);
+      solicitud.fechaFin = new Date(sincronizacion.fechaFin);
+      solicitud.diasComision = sincronizacion.diasComision;
+      solicitud.destinoCiudad = sincronizacion.destinoCiudad;
+      solicitud.destinoDepartamento = sincronizacion.destinoDepartamento;
     }
 
     return this.solicitudRepo.save(solicitud);
@@ -1889,21 +2332,30 @@ export class TravelExpensesService {
       };
 
       const drawTitle = () => {
-        doc.fillColor('#003DA5').fontSize(14).font('Helvetica-Bold');
-        doc.text('FORMATO 023 — SOLICITUD DE COMISIÓN DE VIÁTICOS', {
+        doc.fillColor('#003DA5').fontSize(11).font('Helvetica-Bold');
+        doc.text(
+          'FORMATO DE AUTORIZACIÓN SOLICITUD DE TRÁMITE Y LIQUIDACIÓN DE COMISIÓN DE SERVICIOS, GASTOS DE TRANSPORTE, GASTOS DE DESPLAZAMIENTO Y AUXILIO ECONÓMICO DE DESPLAZAMIENTO',
+          {
+            align: 'center',
+          },
+        );
+        doc.moveDown(0.3);
+        doc.fontSize(9).font('Helvetica-Bold');
+        doc.fillColor('#333333');
+        doc.text('CÓDIGO: GF-FO-023  |  VERSIÓN: 07  |  FECHA: 26/03/2026', {
           align: 'center',
         });
-        doc.fontSize(10).font('Helvetica');
-        doc.fillColor('#666666');
-        doc.text('Código: EM-FO-023 · Versión: 1 · Fecha: 01/Ene/2026', {
-          align: 'center',
-        });
-        doc.moveDown(1);
+        doc.fontSize(8).font('Helvetica-Oblique').fillColor('#666666');
+        doc.text(
+          'Diligencie o seleccione únicamente y a completitud los campos requeridos',
+          { align: 'center' },
+        );
+        doc.moveDown(0.8);
       };
 
       const drawSectionTitle = (title: string) => {
-        doc.moveDown(0.5);
-        doc.fillColor('#003DA5').fontSize(11).font('Helvetica-Bold');
+        doc.moveDown(0.4);
+        doc.fillColor('#003DA5').fontSize(10).font('Helvetica-Bold');
         doc.text(title);
         doc
           .strokeColor('#CCCCCC')
@@ -1911,26 +2363,26 @@ export class TravelExpensesService {
           .moveTo(50, doc.y)
           .lineTo(562, doc.y)
           .stroke();
-        doc.moveDown(0.5);
+        doc.moveDown(0.4);
       };
 
       const drawField = (label: string, value: string) => {
-        doc.fillColor('#333333').fontSize(9).font('Helvetica-Bold');
+        doc.fillColor('#333333').fontSize(8.5).font('Helvetica-Bold');
         doc.text(`${label}: `, { continued: true });
         doc.font('Helvetica').fillColor('#000000');
         doc.text(this.sanitizarTextoPdf(value) || 'N/A');
       };
 
       const drawMultiLineField = (label: string, value: string) => {
-        doc.fillColor('#333333').fontSize(9).font('Helvetica-Bold');
+        doc.fillColor('#333333').fontSize(8.5).font('Helvetica-Bold');
         doc.text(`${label}:`);
-        doc.moveDown(0.3);
+        doc.moveDown(0.2);
         doc.font('Helvetica').fillColor('#000000');
         doc.text(this.sanitizarTextoPdf(value) || 'N/A', {
           width: 512,
           align: 'justify',
         });
-        doc.moveDown(0.3);
+        doc.moveDown(0.2);
       };
 
       const formatDate = (
@@ -1962,86 +2414,136 @@ export class TravelExpensesService {
         : 'Terrestre';
       const prioridad = solicitud.prioridad || 'MEDIA';
       const estado = solicitud.estadoSolicitud || 'RADICADA';
+      const salarioContrato = Number(solicitud.salarioBasico || 0);
+
+      // Usar valores de autoliquidación almacenados (GF-FO-023)
+      const diasPernoctados = Number(solicitud.diasPernoctados || 0);
+      const valorDiaPernoctado = Number(solicitud.tarifaDiaPernoctado || 0);
+      const subtotalPernoctados = Number(solicitud.totalPernoctados || 0);
+      const diasNoPernoctados = Number(solicitud.diasNoPernoctados || 0);
+      const valorDiaNoPernoctado = Number(solicitud.tarifaDiaNoPernoctado || 0);
+      const subtotalNoPernoctados = Number(solicitud.totalNoPernoctados || 0);
+      const montoViaticos = Number(solicitud.montoViaticos || 0);
+      const montoGastosViaje = Number(solicitud.montoGastosViaje || 0);
+      const montoTotalGeneral = montoViaticos + montoGastosViaje;
+      const decretoAplicado = solicitud.decretoAplicado || 'Decreto 314 de 2026';
+
+      // Duración total en días (pernoctados + no pernoctados * 0.5)
+      const diasTotales = diasPernoctados + (diasNoPernoctados * 0.5);
+
+      // Tarifa diaria base almacenada
+      const tarifaDiariaBase = Number(solicitud.tarifaDiariaBase || 0);
 
       drawHeader();
       drawTitle();
 
-      drawSectionTitle('1. INFORMACIÓN DE LA SOLICITUD');
-      drawField('No. Radicado', solicitud.consecutivoUnico);
-      drawField('Fecha de Radicación', formatDate(solicitud.creadoEn));
-      drawField('Estado de la Solicitud', estado);
-      drawField('Prioridad', prioridad);
-      drawField('Extemporánea', solicitud.extemporanea ? 'SÍ' : 'NO');
-      drawField(
-        'Radicado Fuera de Jornada',
-        solicitud.radicadoFueraJornada ? 'SÍ' : 'NO',
-      );
-      doc.moveDown(0.3);
+      // Dependencia solicitante y fecha de autoliquidación
+      doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#333333');
+      doc.text(`Dependencia Solicitante: `, 50, doc.y, { continued: true });
+      doc.font('Helvetica').text(`ID ${solicitud.idDependencia || comisionado?.idDependencia || 'N/A'}`);
+      doc.font('Helvetica-Bold').text(`Fecha de Autoliquidación: `, { continued: true });
+      doc.font('Helvetica').text(formatDate(solicitud.creadoEn));
+      doc.font('Helvetica-Bold').text(`No. Radicado: `, { continued: true });
+      doc.font('Helvetica').text(`${solicitud.consecutivoUnico || 'S/N'} (${estado})`);
+      doc.moveDown(0.4);
 
-      drawSectionTitle('2. DATOS DEL COMISIONADO');
+      drawSectionTitle('1. DATOS DEL COMISIONADO / CONTRATISTA');
       drawField('Nombre Completo', nombreCompleto);
       drawField('No. Documento', comisionado?.numeroDocumento || 'N/A');
       drawField('Tipo de Comisionado', comisionado?.tipoComisionado || 'N/A');
       drawField('Correo Electrónico', comisionado?.email || 'N/A');
       drawField('Teléfono de Contacto', comisionado?.telefonoContacto || 'N/A');
-      drawField('Origen de Datos', comisionado?.origenDatos || 'N/A');
-      drawField(
-        'Autorización Hábeas Data',
-        comisionado?.autorizacionHabeasData ? 'SÍ' : 'NO',
-      );
+      if (salarioContrato > 0) {
+        drawField(
+          (comisionado?.tipoComisionado || '').toUpperCase() === 'CONTRATISTA'
+            ? 'Valor Honorarios'
+            : 'Asignación Básica Mensual',
+          formatCurrency(salarioContrato),
+        );
+      }
       doc.moveDown(0.3);
 
-      drawSectionTitle('3. DATOS DE LA COMISIÓN');
-      drawField('Ciudad Destino', solicitud.destinoCiudad);
-      drawField('Departamento Destino', solicitud.destinoDepartamento);
+      drawSectionTitle('2. DATOS AUTORIZACIÓN DE DESPLAZAMIENTO Y GASTOS DE DESPLAZAMIENTO');
+      drawField('Duración (en días)', `${diasTotales} ${diasTotales === 1 ? 'día' : 'días'}`);
       drawField('Fecha de Inicio', formatDate(solicitud.fechaInicio));
       drawField('Fecha de Finalización', formatDate(solicitud.fechaFin));
-      drawField('Días de Comisión', String(solicitud.diasComision));
+      drawField('Ciudad de Origen', 'Bogotá D.C. (Sede)');
+      drawField('Destino / Ciudad y Departamento', `${solicitud.destinoCiudad || 'N/A'} (${solicitud.destinoDepartamento || 'N/A'})`);
       drawField('Tipo de Transporte', tipoTransporte);
-      drawField('Requiere Tiquetes', solicitud.requiereTiquetes ? 'SÍ' : 'NO');
+      drawField('Requiere Tiquetes Aéreos', solicitud.requiereTiquetes ? 'SÍ' : 'NO');
+      drawField('Viáticos diarios según decreto (Base)', formatCurrency(tarifaDiariaBase));
       doc.moveDown(0.3);
 
-      drawSectionTitle('4. OBJETO DE LA COMISIÓN');
-      drawMultiLineField('Objeto / Justificación', solicitud.objetoComision);
-      doc.moveDown(0.3);
+      drawMultiLineField('Objeto de la Comisión', solicitud.objetoComision);
 
-      drawSectionTitle('5. INFORMACIÓN PRESUPUESTAL');
-      drawField('Rubro Presupuestal', solicitud.rubroPresupuestal || 'N/A');
-      drawField(
-        'Monto Viáticos',
-        formatCurrency(Number(solicitud.montoViaticos)),
-      );
-      drawField(
-        'Monto Gastos de Viaje',
-        formatCurrency(Number(solicitud.montoGastosViaje)),
-      );
-      drawField(
-        'Monto Total',
-        formatCurrency(
-          Number(solicitud.montoViaticos) + Number(solicitud.montoGastosViaje),
-        ),
-      );
-      doc.moveDown(0.3);
-
-      drawSectionTitle('6. DOCUMENTOS DE SOPORTE');
-      if (
-        solicitud.documentosSoporte &&
-        solicitud.documentosSoporte.length > 0
-      ) {
-        solicitud.documentosSoporte.forEach((documento, index) => {
-          const fileUrl = documento.urlRepositorio?.startsWith('http')
-            ? documento.urlRepositorio
-            : `${req?.protocol || 'http'}://${req?.get('host') || 'localhost:3010'}${documento.urlRepositorio}`;
-          const encodedUrl = encodeURI(fileUrl);
-          const displayText = `  ${index + 1}. ${documento.tipoDocumento} — ${documento.nombreArchivoOriginal || 'N/A'} (Abrir)`;
-          doc.font('Helvetica-Bold').fillColor('#003DA5');
-          doc.text(displayText, { link: encodedUrl });
+      // Itinerario detallado si existe
+      if (solicitud.itinerario && solicitud.itinerario.length > 0) {
+        doc.moveDown(0.2);
+        doc.fontSize(8.5).font('Helvetica-Bold').fillColor('#003DA5').text('Itinerario Detallado de Rutas:');
+        solicitud.itinerario.forEach((tramo, idx) => {
+          doc.fontSize(8).font('Helvetica').fillColor('#333333');
+          const horaSalida = tramo.horaEstimadaSalida || tramo.horarioEstimadoMilitar;
+          const horaLlegada = tramo.horaEstimadaLlegada;
+          const horarioStr = horaSalida && horaLlegada
+            ? `${horaSalida} → ${horaLlegada}`
+            : (horaSalida || horaLlegada || 'N/A');
+          doc.text(
+            `  • Tramo ${idx + 1}: ${tramo.origenCiudad} → ${tramo.destinoCiudad} | Salida: ${tramo.fechaSalida} Llegada: ${tramo.fechaLlegada} | Horario: ${horarioStr} | ${tramo.tipoTrayecto} (${tramo.diasRuta} d)`,
+          );
         });
-      } else {
-        doc.font('Helvetica').fillColor('#666666');
-        doc.text('  No se han adjuntado documentos de soporte.');
+        doc.moveDown(0.3);
       }
-      doc.moveDown(0.5);
+
+      drawSectionTitle(`3. LIQUIDACIÓN DE LA AUTORIZACIÓN DE DESPLAZAMIENTO (${decretoAplicado})`);
+      // Tabla pernoctados / no pernoctados tal como el formato GF-FO-023
+      const tableY = doc.y;
+      doc.fontSize(8).font('Helvetica-Bold').fillColor('#003DA5');
+      doc.text('Descripción del Día', 55, tableY);
+      doc.text('No. Días', 220, tableY);
+      doc.text('Viáticos Diario', 310, tableY);
+      doc.text('Total Subtotal', 450, tableY);
+
+      doc.strokeColor('#CCCCCC').lineWidth(0.5).moveTo(50, tableY + 12).lineTo(562, tableY + 12).stroke();
+
+      let rowY = tableY + 16;
+      doc.fontSize(8).font('Helvetica').fillColor('#333333');
+      // Fila Pernoctados
+      doc.text('Pernoctados', 55, rowY);
+      doc.text(String(diasPernoctados), 220, rowY);
+      doc.text(formatCurrency(valorDiaPernoctado), 310, rowY);
+      doc.text(formatCurrency(subtotalPernoctados), 450, rowY);
+
+      rowY += 14;
+      // Fila No Pernoctados
+      doc.text('No Pernoctados', 55, rowY);
+      doc.text(String(diasNoPernoctados), 220, rowY);
+      doc.text(formatCurrency(valorDiaNoPernoctado), 310, rowY);
+      doc.text(formatCurrency(subtotalNoPernoctados), 450, rowY);
+
+      rowY += 14;
+      doc.strokeColor('#CCCCCC').lineWidth(0.5).moveTo(50, rowY).lineTo(562, rowY).stroke();
+      rowY += 4;
+      doc.font('Helvetica-Bold').fillColor('#003DA5');
+      doc.text('Total Viáticos', 55, rowY);
+      doc.text(formatCurrency(montoViaticos), 450, rowY);
+
+      doc.y = rowY + 14;
+
+      drawSectionTitle('4. LIQUIDACIÓN DE LOS GASTOS DE DESPLAZAMIENTO');
+      drawField('Total Transporte y desplazamientos terminales / aéreos', formatCurrency(montoGastosViaje));
+      drawField('Transporte terrestre, marítimo, fluvial o complementario', '$ 0');
+      drawField('TOTAL VIÁTICOS, TRANSPORTES Y DESPLAZAMIENTOS', formatCurrency(montoTotalGeneral));
+      doc.fontSize(7.5).font('Helvetica-Oblique').fillColor('#666666');
+      doc.text('* NOTA: Para la liquidación de gastos de transporte se aplicará lo referido en la Resolución de viáticos vigente.');
+      doc.moveDown(0.3);
+
+      drawSectionTitle('5. INFORMACIÓN FINANCIERA Y FIRMAS');
+      doc.fontSize(8).font('Helvetica').fillColor('#333333');
+      doc.text(
+        `El pago de la presente comisión de servicios / autorización de desplazamiento se hará con cargo a la Dependencia solicitante, del Rubro Presupuestal ${solicitud.rubroPresupuestal || 'asignado'}, según Certificado de Disponibilidad Presupuestal No. ${solicitud.numeroCdp || 'En trámite'}${solicitud.fechaCdp ? ` del ${solicitud.fechaCdp}` : ''}, y Registro Presupuestal No. ${solicitud.numeroRp || 'En trámite'}.`,
+        { width: 512, align: 'justify' },
+      );
+      doc.moveDown(0.4);
 
       // Verificamos si queda espacio suficiente para las firmas (~180pt). Si no, nueva página con header limpio.
       if (doc.y > 510) {
@@ -2049,7 +2551,12 @@ export class TravelExpensesService {
         drawHeader();
       }
 
-      drawSectionTitle('7. FIRMAS Y APROBACIONES');
+      // Ley 1581 de 2012 - Protección de Datos Personales
+      doc.fontSize(7).font('Helvetica-Oblique').fillColor('#666666');
+      doc.text(
+        'La información recolectada en este documento es tratada bajo la política de Datos Personales de la ESAP en cumplimiento a la Ley 1581 de 2012.',
+        { align: 'center' },
+      );
       doc.moveDown(0.5);
 
       // Estados de avance del flujo para activar los sellos visuales de aprobación
@@ -2357,7 +2864,7 @@ export class TravelExpensesService {
       throw new BadRequestException('solicitudId es obligatorio.');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const solicitud = await manager
         .getRepository(SolicitudComisionEntity)
         .createQueryBuilder('s')
@@ -2439,6 +2946,61 @@ export class TravelExpensesService {
 
       return saved;
     });
+
+    // Notificación in-app y correo institucional al Control de Viáticos (Segunda Revisión)
+    try {
+      const consecutivo = result.consecutivoUnico || result.id;
+      const destino = `${result.destinoCiudad || ''}${result.destinoDepartamento ? ` (${result.destinoDepartamento})` : ''}`.trim();
+      const fechaIni = result.fechaInicio ? new Date(result.fechaInicio).toISOString().split('T')[0] : '';
+      const fechaFn = result.fechaFin ? new Date(result.fechaFin).toISOString().split('T')[0] : '';
+      const fechasStr = fechaIni && fechaFn ? `${fechaIni} al ${fechaFn}` : fechaIni || fechaFn || 'Por definir';
+
+      void this.notificationClient
+        .notifyByPermission(
+          'travel_expenses.general.es_control_viaticos',
+          {
+            tipo_notificacion: 'VIATICOS_PENDIENTE_SEGUNDA_REVISION',
+            titulo: `Comisión verificada para control: ${consecutivo}`,
+            mensaje: `El analista ha verificado la comisión ${consecutivo} hacia ${destino}. Se encuentra lista para segunda revisión técnica (Control Cruzado).`,
+            descripcion_corta: `Segunda Revisión · ${consecutivo}`,
+            icono: 'CheckSquare',
+            color: '#2563EB',
+            prioridad: 'Media',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Revisar comisión',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: result.id,
+              consecutivoUnico: consecutivo,
+            },
+          },
+          {
+            subject: `[Viáticos ESAP] Comisión Verificada para Control Técnico: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: 'Revisor de Control de Viáticos',
+              tituloHeader: 'ESAP — Grupo de Viáticos',
+              subtituloHeader: 'Segunda Revisión Técnica (Control Cruzado)',
+              mensajePrincipal: `La comisión de servicios <strong>${consecutivo}</strong> ha completado la verificación por analista y está pendiente de su segunda revisión técnica:`,
+              consecutivo,
+              destino,
+              fechas: fechasStr,
+              nuevoEstado: 'VERIFICADA',
+              tipoNovedad: 'INFO',
+              textoBoton: 'Ver en Bandeja de Control',
+            }),
+            text: `La comisión ${consecutivo} ha sido verificada por el analista y está pendiente de segunda revisión técnica.`,
+          },
+          'CONTROL_VIATICOS',
+        )
+        .catch((err) => {
+          this.logger.warn(`[notify] Error notificando a Control de Viáticos: ${err?.message}`);
+        });
+    } catch (err: any) {
+      this.logger.warn(`[notify] Error en bloque de notificación de verificación: ${err?.message}`);
+    }
+
+    return result;
   }
 
   /**
@@ -2458,7 +3020,7 @@ export class TravelExpensesService {
       throw new BadRequestException('El motivo de devolucion es obligatorio.');
     }
 
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const solicitud = await manager
         .getRepository(SolicitudComisionEntity)
         .createQueryBuilder('s')
@@ -2514,6 +3076,60 @@ export class TravelExpensesService {
 
       return saved;
     });
+
+    // Notificación in-app y correo electrónico al Enlace creador
+    if (result.creadoPorUsuarioId) {
+      const consecutivo = result.consecutivoUnico || result.id;
+      const destino = `${result.destinoCiudad || ''}${result.destinoDepartamento ? ` (${result.destinoDepartamento})` : ''}`.trim();
+      const fechaIni = result.fechaInicio ? new Date(result.fechaInicio).toISOString().split('T')[0] : '';
+      const fechaFn = result.fechaFin ? new Date(result.fechaFin).toISOString().split('T')[0] : '';
+      const fechasStr = fechaIni && fechaFn ? `${fechaIni} al ${fechaFn}` : fechaIni || fechaFn || 'Por definir';
+
+      void this.notificationClient
+        .notifyUser(
+          result.creadoPorUsuarioId,
+          {
+            tipo_notificacion: 'VIATICOS_DEVOLUCION_ANALISTA',
+            titulo: `Solicitud devuelta por el analista: ${consecutivo}`,
+            mensaje: `El analista ha devuelto su solicitud ${consecutivo} para subsanación. Observaciones: ${motivo}`,
+            descripcion_corta: `Devolución analista · ${consecutivo}`,
+            icono: 'AlertTriangle',
+            color: '#DC2626',
+            prioridad: 'Alta',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Subsanar solicitud',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: result.id,
+              consecutivoUnico: consecutivo,
+              motivo,
+            },
+          },
+          {
+            subject: `[Viáticos ESAP] Solicitud Devuelta por Analista para Subsanación: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: 'Enlace de Dependencia',
+              tituloHeader: 'ESAP — Grupo de Viáticos',
+              subtituloHeader: 'Devolución de Expediente en Verificación Técnica',
+              mensajePrincipal: `El analista de viáticos ha devuelto la comisión <strong>${consecutivo}</strong> solicitando correcciones o soportes adicionales:`,
+              consecutivo,
+              destino,
+              fechas: fechasStr,
+              nuevoEstado: 'DEVUELTA',
+              motivoUObservaciones: motivo,
+              tipoNovedad: 'DANGER',
+              textoBoton: 'Subsanar Expediente',
+            }),
+            text: `Su solicitud ${consecutivo} fue devuelta por el analista. Motivo: ${motivo}`,
+          },
+        )
+        .catch((err) => {
+          this.logger.warn(`[notify] Error notificando devolución de analista a enlace: ${err?.message}`);
+        });
+    }
+
+    return result;
   }
 
   /**
@@ -2636,7 +3252,7 @@ export class TravelExpensesService {
       const tipoComision = (solicitud.tipoComision || 'TERRESTRE').toUpperCase().trim();
       const fechaInicioStr = sanitizeFechaPlano(solicitud.fechaInicio);
       const fechaFinStr = sanitizeFechaPlano(solicitud.fechaFin);
-      const diasComision = String(Math.max(1, Number(solicitud.diasComision || 1)));
+      const diasComision = String(Math.max(0.5, Number(solicitud.diasComision || 1)));
       const rubroSanitizado = sanitizeTextoPlano(solicitud.rubroPresupuestal || '', 100);
       const montoViaticos = sanitizeMontoPlano(solicitud.montoViaticos);
       const montoGastosViaje = sanitizeMontoPlano(solicitud.montoGastosViaje);
@@ -2993,6 +3609,8 @@ export class TravelExpensesService {
       objetoComision: s.objetoComision,
       prioridad: s.prioridad,
       rubroPresupuestal: s.rubroPresupuestal,
+      numeroCdp: s.numeroCdp ?? null,
+      fechaCdp: s.fechaCdp ?? null,
       requiereTiquetes: s.requiereTiquetes,
       montoViaticos: Number(s.montoViaticos || 0),
       montoGastosViaje: Number(s.montoGastosViaje || 0),
@@ -3140,29 +3758,99 @@ export class TravelExpensesService {
         `[RF-REV-002] Solicitud ${solicitud.consecutivoUnico} verificada en segunda revisión por usuario ${usuarioId} (estadoNuevo: ${solicitud.estadoSolicitud})`,
       );
 
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const destino = `${solicitud.destinoCiudad || ''}${solicitud.destinoDepartamento ? ` (${solicitud.destinoDepartamento})` : ''}`.trim();
+      const fechaIni = solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().split('T')[0] : '';
+      const fechaFn = solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().split('T')[0] : '';
+      const fechasStr = fechaIni && fechaFn ? `${fechaIni} al ${fechaFn}` : fechaIni || fechaFn || 'Por definir';
+
       if (esExtemporanea) {
         void this.notificationClient
-          .notifyByRole('DIRECCION_NACIONAL', {
-            tipo_notificacion: 'VIATICOS_COMISION_EXTEMPORANEA_PENDIENTE',
-            titulo: `Nueva comisión extemporánea para autorización: ${solicitud.consecutivoUnico || solicitud.id}`,
-            mensaje: `La comisión ${solicitud.consecutivoUnico || solicitud.id} no cumplió los 14 días hábiles y requiere su autorización excepcional en bandeja (RF-AUT-002).`,
-            descripcion_corta: `Extemporánea pendiente · ${solicitud.consecutivoUnico || solicitud.id}`,
-            icono: 'Award',
-            color: '#7C3AED',
-            prioridad: 'Alta',
-            categoria: 'VIATICOS',
-            tiene_accion: true,
-            texto_boton_accion: 'Revisar comisión',
-            url_accion: '/viaticos',
-            datos_adicionales: {
-              solicitudId: solicitud.id,
-              consecutivoUnico: solicitud.consecutivoUnico,
-              extemporanea: true,
+          .notifyByPermission(
+            'travel_expenses.general.es_direccion_nacional',
+            {
+              tipo_notificacion: 'VIATICOS_COMISION_EXTEMPORANEA_PENDIENTE',
+              titulo: `Nueva comisión extemporánea para autorización: ${consecutivo}`,
+              mensaje: `La comisión ${consecutivo} no cumplió los 14 días hábiles y requiere su autorización excepcional en bandeja (RF-AUT-002).`,
+              descripcion_corta: `Extemporánea pendiente · ${consecutivo}`,
+              icono: 'Award',
+              color: '#7C3AED',
+              prioridad: 'Alta',
+              categoria: 'VIATICOS',
+              tiene_accion: true,
+              texto_boton_accion: 'Revisar comisión',
+              url_accion: '/viaticos',
+              datos_adicionales: {
+                solicitudId: solicitud.id,
+                consecutivoUnico: consecutivo,
+                extemporanea: true,
+              },
             },
-          })
+            {
+              subject: `[Viáticos ESAP] Comisión Extemporánea para Autorización: ${consecutivo}`,
+              html: buildTravelExpenseEmailHtml({
+                destinatarioNombre: 'Dirección Nacional',
+                tituloHeader: 'ESAP — Dirección Nacional',
+                subtituloHeader: 'Autorización Excepcional de Comisión Extemporánea',
+                mensajePrincipal: `La comisión de servicios <strong>${consecutivo}</strong> ha sido verificada en control técnico y requiere su autorización excepcional por radicación extemporánea:`,
+                consecutivo,
+                destino,
+                fechas: fechasStr,
+                nuevoEstado: 'AUTORIZACIÓN DIRECCIÓN',
+                tipoNovedad: 'WARNING',
+                textoBoton: 'Revisar Comisión',
+              }),
+              text: `La comisión ${consecutivo} requiere su autorización excepcional en la plataforma de viáticos.`,
+            },
+            'DIRECCION_NACIONAL',
+          )
           .catch((err) => {
             this.logger.warn(
               `Error notificando a Dirección Nacional sobre comisión extemporánea: ${err?.message}`,
+            );
+          });
+      } else {
+        void this.notificationClient
+          .notifyByPermission(
+            'travel_expenses.general.es_subdireccion_corporativa',
+            {
+              tipo_notificacion: 'VIATICOS_COMISION_EN_AUTORIZACION',
+              titulo: `Comisión avalada para autorización: ${consecutivo}`,
+              mensaje: `La comisión ${consecutivo} hacia ${destino} fue avalada en segunda revisión técnica y se encuentra en su bandeja para autorización corporativa.`,
+              descripcion_corta: `En Autorización · ${consecutivo}`,
+              icono: 'FileCheck',
+              color: '#003DA5',
+              prioridad: 'Alta',
+              categoria: 'VIATICOS',
+              tiene_accion: true,
+              texto_boton_accion: 'Autorizar comisión',
+              url_accion: '/viaticos',
+              datos_adicionales: {
+                solicitudId: solicitud.id,
+                consecutivoUnico: consecutivo,
+              },
+            },
+            {
+              subject: `[Viáticos ESAP] Comisión Lista para Autorización Corporativa: ${consecutivo}`,
+              html: buildTravelExpenseEmailHtml({
+                destinatarioNombre: 'Subdirección de Gestión Corporativa (Ordenador)',
+                tituloHeader: 'ESAP — Ordenación del Gasto',
+                subtituloHeader: 'Comisión Avalada en Control Técnico',
+                mensajePrincipal: `La comisión de servicios <strong>${consecutivo}</strong> ha superado la segunda revisión técnica (Control Cruzado) y está lista para su firma y autorización:`,
+                consecutivo,
+                destino,
+                fechas: fechasStr,
+                nuevoEstado: 'VERIFICADA / EN AUTORIZACIÓN',
+                tipoNovedad: 'INFO',
+                textoBoton: 'Autorizar Expediente',
+              }),
+              text: `La comisión ${consecutivo} está lista para su autorización corporativa en la plataforma de viáticos.`,
+            },
+            'SUBDIRECCION_GESTION_CORPORATIVA',
+          )
+          .catch((err) => {
+            this.logger.warn(
+              `Error notificando a Subdirección Corporativa sobre comisión avalada: ${err?.message}`,
             );
           });
       }
@@ -3651,6 +4339,8 @@ export class TravelExpensesService {
         objetoComision: s.objetoComision,
         prioridad: s.prioridad,
         rubroPresupuestal: s.rubroPresupuestal,
+        numeroCdp: s.numeroCdp ?? null,
+        fechaCdp: s.fechaCdp ?? null,
         requiereTiquetes: s.requiereTiquetes,
         costoEstimadoTiquete: s.costoEstimadoTiquete,
         montoViaticos: s.montoViaticos,
@@ -3876,29 +4566,50 @@ export class TravelExpensesService {
       const consecutivo = solicitud.consecutivoUnico;
       const destino = `${solicitud.destinoCiudad}, ${solicitud.destinoDepartamento}`;
 
-      // 1. Notificación al Responsable de Tiquetes
-      try {
-        await this.notificationClient.notifyByRole('RESPONSABLE_TIQUETES', {
-          tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_TIQUETES',
-          titulo: `Comisión autorizada para tiquetes: ${consecutivo}`,
-          mensaje: `La comisión ${consecutivo} con destino a ${destino} fue AUTORIZADA corporativamente. Requiere tiquetes: ${solicitud.requiereTiquetes ? 'SÍ' : 'NO'}. Proceder con la emisión y reserva.`,
-          descripcion_corta: `Autorizada · ${consecutivo}`,
-          icono: 'Plane',
-          color: '#0284C7',
-          prioridad: 'Alta',
-          categoria: 'VIATICOS',
-          tiene_accion: true,
-          texto_boton_accion: 'Gestionar tiquete',
-          url_accion: '/viaticos',
-          datos_adicionales: {
-            solicitudId: solicitud.id,
-            consecutivoUnico: consecutivo,
-            requiereTiquetes: solicitud.requiereTiquetes,
-            destinoCiudad: solicitud.destinoCiudad,
-          },
-        });
-      } catch (err: any) {
-        this.logger.warn(`[notify] Error notificando a RESPONSABLE_TIQUETES: ${err?.message}`);
+      // 1. Notificación al Responsable de Tiquetes (si requiere tiquetes o como rol)
+      if (solicitud.requiereTiquetes) {
+        try {
+          await this.notificationClient.notifyByPermission(
+            'travel_expenses.general.es_responsable_tiquetes',
+            {
+              tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_TIQUETES',
+              titulo: `Comisión autorizada para tiquetes: ${consecutivo}`,
+              mensaje: `La comisión ${consecutivo} con destino a ${destino} fue AUTORIZADA corporativamente. Requiere tiquetes. Proceder con emisión y reserva.`,
+              descripcion_corta: `Autorizada · ${consecutivo}`,
+              icono: 'Plane',
+              color: '#0284C7',
+              prioridad: 'Alta',
+              categoria: 'VIATICOS',
+              tiene_accion: true,
+              texto_boton_accion: 'Gestionar tiquete',
+              url_accion: '/viaticos',
+              datos_adicionales: {
+                solicitudId: solicitud.id,
+                consecutivoUnico: consecutivo,
+                requiereTiquetes: solicitud.requiereTiquetes,
+                destinoCiudad: solicitud.destinoCiudad,
+              },
+            },
+            {
+              subject: `[Viáticos ESAP] Comisión Autorizada Requiere Emisión de Tiquetes: ${consecutivo}`,
+              html: buildTravelExpenseEmailHtml({
+                destinatarioNombre: 'Responsable de Tiquetes',
+                tituloHeader: 'ESAP — Gestión de Tiquetes',
+                subtituloHeader: 'Emisión y Reserva de Tiquetes para Comisión Autorizada',
+                mensajePrincipal: `La comisión <strong>${consecutivo}</strong> ha sido autorizada corporativamente y requiere gestión de tiquetes aéreos o terrestres:`,
+                consecutivo,
+                destino,
+                nuevoEstado: 'AUTORIZADA',
+                tipoNovedad: 'INFO',
+                textoBoton: 'Gestionar Tiquetes',
+              }),
+              text: `La comisión ${consecutivo} fue autorizada y requiere emisión de tiquetes.`,
+            },
+            'RESPONSABLE_TIQUETES',
+          );
+        } catch (err: any) {
+          this.logger.warn(`[notify] Error notificando a RESPONSABLE_TIQUETES: ${err?.message}`);
+        }
       }
 
       // 2. Notificación al Comisionado (Pasajero)
@@ -3915,95 +4626,90 @@ export class TravelExpensesService {
 
       if (solicitud.comisionadoId) {
         try {
-          await this.notificationClient.send({
-            id_usuario_destinatario: solicitud.comisionadoId,
-            tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_PASAJERO',
-            titulo: `¡Comisión autorizada!: ${consecutivo}`,
-            mensaje: `Estimado(a) ${nombrePasajero || 'pasajero'}, su comisión de servicios hacia ${destino} ha sido AUTORIZADA por la Subdirección de Gestión Corporativa. Su itinerario y tiquete están confirmados.`,
-            descripcion_corta: `Comisión autorizada · ${consecutivo}`,
-            icono: 'CheckCircle2',
-            color: '#10B981',
-            prioridad: 'Alta',
-            categoria: 'VIATICOS',
-            tiene_accion: true,
-            texto_boton_accion: 'Ver itinerario y tiquete',
-            url_accion: '/viaticos',
-            datos_adicionales: {
-              solicitudId: solicitud.id,
-              consecutivoUnico: consecutivo,
+          await this.notificationClient.notifyUser(
+            solicitud.comisionadoId,
+            {
+              tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_PASAJERO',
+              titulo: `¡Comisión autorizada!: ${consecutivo}`,
+              mensaje: `Estimado(a) ${nombrePasajero || 'pasajero'}, su comisión de servicios hacia ${destino} ha sido AUTORIZADA por la Subdirección de Gestión Corporativa. Su itinerario y tiquete están confirmados.`,
+              descripcion_corta: `Comisión autorizada · ${consecutivo}`,
+              icono: 'CheckCircle2',
+              color: '#10B981',
+              prioridad: 'Alta',
+              categoria: 'VIATICOS',
+              tiene_accion: true,
+              texto_boton_accion: 'Ver itinerario y tiquete',
+              url_accion: '/viaticos',
+              datos_adicionales: {
+                solicitudId: solicitud.id,
+                consecutivoUnico: consecutivo,
+              },
             },
-          });
+            correoPasajero
+              ? {
+                  subject: `[ESAP Viáticos] Comisión autorizada y confirmación de itinerario: ${consecutivo}`,
+                  html: buildTravelExpenseEmailHtml({
+                    destinatarioNombre: nombrePasajero || 'Comisionado(a)',
+                    tituloHeader: 'ESAP — Módulo de Viáticos',
+                    subtituloHeader: 'Autorización Corporativa de Gasto e Itinerario',
+                    mensajePrincipal: `Nos complace informarle que su comisión de servicios <strong>${consecutivo}</strong> ha sido <strong>AUTORIZADA</strong> por la Subdirección de Gestión Corporativa:`,
+                    consecutivo,
+                    comisionadoNombre: nombrePasajero,
+                    destino,
+                    nuevoEstado: 'AUTORIZADA',
+                    tipoNovedad: 'SUCCESS',
+                    textoBoton: 'Acceder a la Plataforma',
+                  }),
+                  text: `Comisión ${consecutivo} autorizada con éxito hacia ${destino}.`,
+                }
+              : undefined,
+          );
         } catch (err: any) {
-          this.logger.warn(`[notify] In-app comisionado: ${err?.message}`);
+          this.logger.warn(`[notify] Error notificando al comisionado: ${err?.message}`);
         }
       }
 
-      if (correoPasajero) {
-        const subject = `[ESAP Viáticos] Comisión autorizada y confirmación de itinerario: ${consecutivo}`;
-        const html = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
-            <div style="background-color: #003DA5; color: #ffffff; padding: 20px; text-align: center;">
-              <h2 style="margin: 0; font-size: 20px;">ESAP — Módulo de Viáticos</h2>
-              <p style="margin: 5px 0 0 0; font-size: 13px; opacity: 0.9;">Autorización Corporativa de Gasto e Itinerario de Viaje</p>
-            </div>
-            <div style="padding: 24px; color: #1e293b; font-size: 14px; line-height: 1.6;">
-              <p>Estimado(a) <strong>${nombrePasajero || 'Comisionado(a)'}</strong>,</p>
-              <p>Nos complace informarle que la comisión de servicios <strong>${consecutivo}</strong> ha sido <strong>AUTORIZADA</strong> por la Subdirección de Gestión Corporativa.</p>
-              
-              <div style="background-color: #f0fdf4; border-left: 4px solid #16a34a; padding: 14px 16px; border-radius: 6px; margin: 20px 0;">
-                <strong style="color: #15803d; font-size: 14px;">ESTADO: COMISIÓN AUTORIZADA</strong>
-                <p style="margin: 4px 0 0 0; color: #166534; font-size: 13px;">
-                  Destino: <strong>${destino}</strong><br>
-                  Fecha: Del <strong>${new Date(solicitud.fechaInicio).toLocaleDateString()}</strong> al <strong>${new Date(solicitud.fechaFin).toLocaleDateString()}</strong> (${solicitud.diasComision} día(s))<br>
-                  Transporte: <strong>${solicitud.requiereTiquetes ? 'Aéreo con gestión de tiquetes' : 'Terrestre'}</strong>
-                </p>
-              </div>
-
-              <p>Puede consultar y descargar su constancia de itinerario y tiquete en la plataforma institucional:</p>
-
-              <div style="margin-top: 25px; text-align: center;">
-                <a href="${process.env.APP_BASE_URL || 'http://localhost:3000'}/viaticos" 
-                   style="background-color: #003DA5; color: #ffffff; text-decoration: none; padding: 10px 22px; border-radius: 8px; font-weight: bold; font-size: 13px; display: inline-block;">
-                  Acceder a la Plataforma de Viáticos
-                </a>
-              </div>
-            </div>
-            <div style="background-color: #f8fafc; padding: 12px 20px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0;">
-              Mensaje institucional generado automáticamente por la Escuela Superior de Administración Pública - ESAP.
-            </div>
-          </div>
-        `;
-        void this.notificationClient.sendEmail({
-          to: correoPasajero,
-          subject,
-          text: `Comisión ${consecutivo} autorizada con éxito hacia ${destino}.`,
-          html,
-        });
-      }
-
-      // 3. Notificación al Enlace (Creador)
+      // 3. Notificación al Enlace Creador
       if (solicitud.creadoPorUsuarioId && solicitud.creadoPorUsuarioId !== solicitud.comisionadoId) {
         try {
-          await this.notificationClient.send({
-            id_usuario_destinatario: solicitud.creadoPorUsuarioId,
-            tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_ENLACE',
-            titulo: `Comisión autorizada por Subdirección: ${consecutivo}`,
-            mensaje: `La solicitud de comisión ${consecutivo} para ${nombrePasajero || 'el pasajero'} fue autorizada por Subdirección de Gestión Corporativa.`,
-            descripcion_corta: `Autorizada · ${consecutivo}`,
-            icono: 'CheckCircle2',
-            color: '#10B981',
-            prioridad: 'Media',
-            categoria: 'VIATICOS',
-            tiene_accion: true,
-            texto_boton_accion: 'Ver comisión',
-            url_accion: '/viaticos',
-            datos_adicionales: {
-              solicitudId: solicitud.id,
-              consecutivoUnico: consecutivo,
+          await this.notificationClient.notifyUser(
+            solicitud.creadoPorUsuarioId,
+            {
+              tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_ENLACE',
+              titulo: `Comisión autorizada por Subdirección: ${consecutivo}`,
+              mensaje: `La solicitud de comisión ${consecutivo} para ${nombrePasajero || 'el comisionado'} fue autorizada formalmente por la Subdirección de Gestión Corporativa.`,
+              descripcion_corta: `Autorizada · ${consecutivo}`,
+              icono: 'CheckCircle2',
+              color: '#10B981',
+              prioridad: 'Media',
+              categoria: 'VIATICOS',
+              tiene_accion: true,
+              texto_boton_accion: 'Ver comisión',
+              url_accion: '/viaticos',
+              datos_adicionales: {
+                solicitudId: solicitud.id,
+                consecutivoUnico: consecutivo,
+              },
             },
-          });
+            {
+              subject: `[Viáticos ESAP] Comisión de Servicios Autorizada: ${consecutivo}`,
+              html: buildTravelExpenseEmailHtml({
+                destinatarioNombre: 'Enlace de Dependencia',
+                tituloHeader: 'ESAP — Grupo de Viáticos',
+                subtituloHeader: 'Autorización Formal Emitida',
+                mensajePrincipal: `La solicitud de comisión <strong>${consecutivo}</strong> ha sido autorizada formalmente por la Subdirección y continuará su trámite ante Presupuesto para expedición de RP:`,
+                consecutivo,
+                comisionadoNombre: nombrePasajero,
+                destino,
+                nuevoEstado: 'AUTORIZADA',
+                tipoNovedad: 'SUCCESS',
+                textoBoton: 'Ver Expediente',
+              }),
+              text: `La comisión ${consecutivo} fue autorizada formalmente por la Subdirección.`,
+            },
+          );
         } catch (err: any) {
-          this.logger.warn(`[notify] In-app enlace: ${err?.message}`);
+          this.logger.warn(`[notify] Error notificando al enlace: ${err?.message}`);
         }
       }
     } catch (err: any) {
@@ -4012,37 +4718,58 @@ export class TravelExpensesService {
   }
 
   /**
-   * Notifica la devolución efectuada por la Subdirección al analista y al enlace.
+   * Notifica la devolución efectuada por la Subdirección al analista y al enlace (in-app y correo).
    */
   private async despacharNotificacionesDevolucionAutorizacion(
     solicitud: SolicitudComisionEntity,
     observaciones: string,
   ): Promise<void> {
     try {
-      const destinatario = solicitud.analistaAsignadoId || solicitud.creadoPorUsuarioId;
-      if (destinatario) {
-        await this.notificationClient.send({
-          id_usuario_destinatario: destinatario,
-          tipo_notificacion: 'VIATICOS_DEVOLUCION_SUBDIRECCION',
-          titulo: `Comisión devuelta por Subdirección: ${solicitud.consecutivoUnico}`,
-          mensaje: `La Subdirección de Gestión Corporativa devolvió la comisión ${solicitud.consecutivoUnico}. Reparos: ${observaciones}`,
-          descripcion_corta: `Devuelta Subdirección · ${solicitud.consecutivoUnico}`,
-          icono: 'AlertTriangle',
-          color: '#DC2626',
-          prioridad: 'Alta',
-          categoria: 'VIATICOS',
-          tiene_accion: true,
-          texto_boton_accion: 'Subsanar expediente',
-          url_accion: '/viaticos',
-          datos_adicionales: {
-            solicitudId: solicitud.id,
-            consecutivoUnico: solicitud.consecutivoUnico,
-            observaciones,
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const destino = `${solicitud.destinoCiudad || ''}${solicitud.destinoDepartamento ? ` (${solicitud.destinoDepartamento})` : ''}`.trim();
+      const destinatarios = [solicitud.analistaAsignadoId, solicitud.creadoPorUsuarioId].filter(Boolean) as string[];
+
+      for (const destId of Array.from(new Set(destinatarios))) {
+        await this.notificationClient.notifyUser(
+          destId,
+          {
+            tipo_notificacion: 'VIATICOS_DEVOLUCION_SUBDIRECCION',
+            titulo: `Comisión devuelta por Subdirección: ${consecutivo}`,
+            mensaje: `La Subdirección de Gestión Corporativa devolvió la comisión ${consecutivo}. Reparos: ${observaciones}`,
+            descripcion_corta: `Devuelta Subdirección · ${consecutivo}`,
+            icono: 'AlertTriangle',
+            color: '#DC2626',
+            prioridad: 'Alta',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Subsanar expediente',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: solicitud.id,
+              consecutivoUnico: consecutivo,
+              observaciones,
+            },
           },
-        });
+          {
+            subject: `[Viáticos ESAP] Comisión Devuelta por Subdirección Corporativa: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: destId === solicitud.analistaAsignadoId ? 'Analista de Viáticos' : 'Enlace de Dependencia',
+              tituloHeader: 'ESAP — Gestión Corporativa',
+              subtituloHeader: 'Devolución de Expediente en Fase de Autorización',
+              mensajePrincipal: `La comisión <strong>${consecutivo}</strong> ha sido devuelta por el Ordenador del Gasto con los siguientes reparos u observaciones:`,
+              consecutivo,
+              destino,
+              nuevoEstado: 'EN VERIFICACIÓN',
+              motivoUObservaciones: observaciones,
+              tipoNovedad: 'DANGER',
+              textoBoton: 'Revisar Observaciones',
+            }),
+            text: `La Subdirección devolvió la comisión ${consecutivo}. Motivo: ${observaciones}`,
+          },
+        );
       }
     } catch (err: any) {
-      this.logger.warn(`[notify] Error enviando notificación de devolución: ${err?.message}`);
+      this.logger.warn(`[notify] Error enviando notificación de devolución de autorización: ${err?.message}`);
     }
   }
 
@@ -4221,6 +4948,8 @@ export class TravelExpensesService {
         objetoComision: s.objetoComision,
         prioridad: s.prioridad,
         rubroPresupuestal: s.rubroPresupuestal,
+        numeroCdp: s.numeroCdp ?? null,
+        fechaCdp: s.fechaCdp ?? null,
         requiereTiquetes: s.requiereTiquetes,
         costoEstimadoTiquete: s.costoEstimadoTiquete,
         montoViaticos: s.montoViaticos,
@@ -4427,6 +5156,18 @@ export class TravelExpensesService {
   }
 
   /**
+   * Helper para obtener el nombre completo legible del comisionado.
+   */
+  private getComisionadoNombre(c?: ComisionadoEntity | null): string {
+    if (!c) return 'Servidor Comisionado';
+    return (
+      [c.primerNombre, c.segundoNombre, c.primerApellido, c.segundoApellido]
+        .filter(Boolean)
+        .join(' ') || 'Servidor Comisionado'
+    );
+  }
+
+  /**
    * Notificaciones cuando la Dirección Nacional autoriza la extemporaneidad y pasa a Subdirección.
    */
   private async despacharNotificacionesAutorizacionDireccion(
@@ -4437,18 +5178,21 @@ export class TravelExpensesService {
     try {
       const consecutivo = solicitud.consecutivoUnico || solicitud.id;
       const rolFirmante = esDelegado ? 'Delegado(a) de la Dirección Nacional' : 'Dirección Nacional';
+      const comisionadoNombre = this.getComisionadoNombre(solicitud.comisionado);
+      const destino = `${solicitud.destinoCiudad || ''}, ${solicitud.destinoDepartamento || ''}`.trim();
+      const fechaInicio = solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().split('T')[0] : undefined;
+      const fechaFin = solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().split('T')[0] : undefined;
 
-      // 1. Notificación al Enlace Creador
+      // 1. Notificación al Enlace Creador (In-app + Correo)
       if (solicitud.creadoPorUsuarioId) {
-        await this.notificationClient.send({
-          id_usuario_destinatario: solicitud.creadoPorUsuarioId,
+        const notifEnlace = {
           tipo_notificacion: 'VIATICOS_EXTEMPORANEA_AUTORIZADA',
           titulo: `Comisión extemporánea avalada: ${consecutivo}`,
           mensaje: `La solicitud ${consecutivo} fue autorizada de manera excepcional por ${rolFirmante}. Continúa a la Subdirección para autorización corporativa.`,
           descripcion_corta: `Aval Dirección · ${consecutivo}`,
           icono: 'Award',
           color: '#7C3AED',
-          prioridad: 'Media',
+          prioridad: 'Media' as const,
           categoria: 'VIATICOS',
           tiene_accion: true,
           texto_boton_accion: 'Ver estado',
@@ -4458,18 +5202,37 @@ export class TravelExpensesService {
             consecutivoUnico: consecutivo,
             justificacion,
           },
-        });
+        };
+
+        const emailEnlace = {
+          asunto: `Comisión extemporánea avalada por Dirección: ${consecutivo}`,
+          html: buildTravelExpenseEmailHtml({
+            consecutivo,
+            comisionadoNombre,
+            destino,
+            fechaInicio,
+            fechaFin,
+            estadoBadge: 'AVAL EXCEPCIONAL DIRECCIÓN',
+            badgeColor: '#7C3AED',
+            mensajePrincipal: `La solicitud <strong>${consecutivo}</strong> ha sido avalada excepcionalmente por <strong>${rolFirmante}</strong> y continúa su trámite hacia la Subdirección de Gestión Corporativa.`,
+            observaciones: `Justificación del aval: ${justificacion}`,
+            botonTexto: 'Consultar Expediente',
+            botonUrl: '/viaticos',
+          }),
+        };
+
+        await this.notificationClient.notifyUser(solicitud.creadoPorUsuarioId, notifEnlace, emailEnlace);
       }
 
-      // 2. Notificación in-app a la bandeja de Subdirección de Gestión Corporativa
-      await this.notificationClient.notifyByRole('SUBDIRECCION_GESTION_CORPORATIVA', {
+      // 2. Notificación a la bandeja de Subdirección de Gestión Corporativa (In-app + Correo por permiso inmutable)
+      const notifSub = {
         tipo_notificacion: 'VIATICOS_EXTEMPORANEA_EN_SUBDIRECCION',
         titulo: `Nueva comisión extemporánea para visto bueno: ${consecutivo}`,
         mensaje: `La comisión ${consecutivo} cuenta con aval excepcional de ${rolFirmante} y se encuentra en su bandeja para visto bueno de gasto e itinerario.`,
         descripcion_corta: `Extemporánea en bandeja · ${consecutivo}`,
         icono: 'FileCheck',
         color: '#4F46E5',
-        prioridad: 'Alta',
+        prioridad: 'Alta' as const,
         categoria: 'VIATICOS',
         tiene_accion: true,
         texto_boton_accion: 'Revisar comisión',
@@ -4479,7 +5242,31 @@ export class TravelExpensesService {
           consecutivoUnico: consecutivo,
           autorizadoPorDireccion: true,
         },
-      });
+      };
+
+      const emailSub = {
+        asunto: `Nueva comisión extemporánea para visto bueno: ${consecutivo}`,
+        html: buildTravelExpenseEmailHtml({
+          consecutivo,
+          comisionadoNombre,
+          destino,
+          fechaInicio,
+          fechaFin,
+          estadoBadge: 'EN BANDEJA SUBDIRECCIÓN',
+          badgeColor: '#4F46E5',
+          mensajePrincipal: `La comisión <strong>${consecutivo}</strong> cuenta con aval excepcional de la Dirección Nacional y requiere su visto bueno corporativo de gasto e itinerario.`,
+          observaciones: `Justificación Dirección: ${justificacion}`,
+          botonTexto: 'Revisar en Plataforma',
+          botonUrl: '/viaticos',
+        }),
+      };
+
+      await this.notificationClient.notifyByPermission(
+        'travel_expenses.general.es_subdireccion_corporativa',
+        notifSub,
+        emailSub,
+        'SUBDIRECCION_GESTION_CORPORATIVA',
+      );
     } catch (err: any) {
       this.logger.warn(`[notify] Error en despacharNotificacionesAutorizacionDireccion: ${err?.message}`);
     }
@@ -4496,27 +5283,59 @@ export class TravelExpensesService {
     try {
       const consecutivo = solicitud.consecutivoUnico || solicitud.id;
       const rolFirmante = esDelegado ? 'Delegado(a) de la Dirección Nacional' : 'Dirección Nacional';
+      const comisionadoNombre = this.getComisionadoNombre(solicitud.comisionado);
+      const destino = `${solicitud.destinoCiudad || ''}, ${solicitud.destinoDepartamento || ''}`.trim();
+      const fechaInicio = solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().split('T')[0] : undefined;
+      const fechaFin = solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().split('T')[0] : undefined;
 
-      // Notificación al Enlace Creador
+      const notifRechazo = {
+        tipo_notificacion: 'VIATICOS_EXTEMPORANEA_RECHAZADA',
+        titulo: `Comisión extemporánea rechazada: ${consecutivo}`,
+        mensaje: `La solicitud ${consecutivo} fue rechazada por ${rolFirmante}. Motivo: ${justificacion}`,
+        descripcion_corta: `Rechazada Dirección · ${consecutivo}`,
+        icono: 'AlertTriangle',
+        color: '#DC2626',
+        prioridad: 'Alta' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver solicitud',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+          motivo: justificacion,
+        },
+      };
+
+      const emailRechazo = {
+        asunto: `Comisión extemporánea rechazada por Dirección: ${consecutivo}`,
+        html: buildTravelExpenseEmailHtml({
+          consecutivo,
+          comisionadoNombre,
+          destino,
+          fechaInicio,
+          fechaFin,
+          estadoBadge: 'RECHAZADA',
+          badgeColor: '#DC2626',
+          mensajePrincipal: `La solicitud <strong>${consecutivo}</strong> ha sido rechazada por <strong>${rolFirmante}</strong> y no continuará su trámite.`,
+          observaciones: `Motivo del rechazo: ${justificacion}`,
+          botonTexto: 'Ver Expediente',
+          botonUrl: '/viaticos',
+        }),
+      };
+
+      // 1. Notificación al Enlace Creador
       if (solicitud.creadoPorUsuarioId) {
-        await this.notificationClient.send({
-          id_usuario_destinatario: solicitud.creadoPorUsuarioId,
-          tipo_notificacion: 'VIATICOS_EXTEMPORANEA_RECHAZADA',
-          titulo: `Comisión extemporánea rechazada: ${consecutivo}`,
-          mensaje: `La solicitud ${consecutivo} fue rechazada por ${rolFirmante}. Motivo: ${justificacion}`,
-          descripcion_corta: `Rechazada Dirección · ${consecutivo}`,
-          icono: 'AlertTriangle',
-          color: '#DC2626',
-          prioridad: 'Alta',
-          categoria: 'VIATICOS',
-          tiene_accion: true,
-          texto_boton_accion: 'Ver solicitud',
-          url_accion: '/viaticos',
-          datos_adicionales: {
-            solicitudId: solicitud.id,
-            consecutivoUnico: consecutivo,
-            motivo: justificacion,
-          },
+        await this.notificationClient.notifyUser(solicitud.creadoPorUsuarioId, notifRechazo, emailRechazo);
+      }
+
+      // 2. Correo directo al Comisionado si tiene email configurado
+      if (solicitud.comisionado?.email && solicitud.comisionado.email.includes('@')) {
+        await this.notificationClient.sendEmail({
+          to: solicitud.comisionado.email,
+          subject: emailRechazo.asunto,
+          html: emailRechazo.html,
+          text: notifRechazo.mensaje,
         });
       }
     } catch (err: any) {
@@ -4678,29 +5497,61 @@ export class TravelExpensesService {
   ): Promise<void> {
     try {
       const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const comisionadoNombre = this.getComisionadoNombre(solicitud.comisionado);
+      const destino = `${solicitud.destinoCiudad || ''}, ${solicitud.destinoDepartamento || ''}`.trim();
+      const fechaInicio = solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().split('T')[0] : undefined;
+      const fechaFin = solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().split('T')[0] : undefined;
+
+      const notifCancelacion = {
+        tipo_notificacion: 'VIATICOS_COMISION_CANCELADA',
+        titulo: `Comisión cancelada: ${consecutivo}`,
+        mensaje: `La comisión ${consecutivo} ha sido cancelada por ${responsable}. Motivo: ${motivo}`,
+        descripcion_corta: `Cancelada · ${consecutivo}`,
+        icono: 'XCircle',
+        color: '#DC2626',
+        prioridad: 'Alta' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver expediente',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+          motivo,
+          responsable,
+          pendienteReintegro,
+        },
+      };
+
+      const emailCancelacion = {
+        asunto: `Comisión de servicios cancelada: ${consecutivo}`,
+        html: buildTravelExpenseEmailHtml({
+          consecutivo,
+          comisionadoNombre,
+          destino,
+          fechaInicio,
+          fechaFin,
+          estadoBadge: 'CANCELADA',
+          badgeColor: '#DC2626',
+          mensajePrincipal: `La comisión de servicios <strong>${consecutivo}</strong> ha sido cancelada en plataforma por <strong>${responsable}</strong>.`,
+          observaciones: `Motivo: ${motivo}${pendienteReintegro ? ' (Se activa novedad de reintegro y anulación RP)' : ''}`,
+          botonTexto: 'Consultar Expediente',
+          botonUrl: '/viaticos',
+        }),
+      };
 
       // 1. Notificación al usuario que radicó la solicitud
       if (solicitud.creadoPorUsuarioId) {
-        await this.notificationClient.send({
-          id_usuario_destinatario: solicitud.creadoPorUsuarioId,
-          tipo_notificacion: 'VIATICOS_COMISION_CANCELADA',
-          titulo: `Comisión cancelada: ${consecutivo}`,
-          mensaje: `La comisión ${consecutivo} ha sido cancelada por ${responsable}. Motivo: ${motivo}`,
-          descripcion_corta: `Cancelada · ${consecutivo}`,
-          icono: 'XCircle',
-          color: '#DC2626',
-          prioridad: 'Alta',
-          categoria: 'VIATICOS',
-          tiene_accion: true,
-          texto_boton_accion: 'Ver expediente',
-          url_accion: '/viaticos',
-          datos_adicionales: {
-            solicitudId: solicitud.id,
-            consecutivoUnico: consecutivo,
-            motivo,
-            responsable,
-            pendienteReintegro,
-          },
+        await this.notificationClient.notifyUser(solicitud.creadoPorUsuarioId, notifCancelacion, emailCancelacion);
+      }
+
+      // Notificación directa por correo al comisionado si tiene email registrado
+      if (solicitud.comisionado?.email && solicitud.comisionado.email.includes('@')) {
+        await this.notificationClient.sendEmail({
+          to: solicitud.comisionado.email,
+          subject: emailCancelacion.asunto,
+          html: emailCancelacion.html,
+          text: notifCancelacion.mensaje,
         });
       }
 
@@ -4731,11 +5582,48 @@ export class TravelExpensesService {
           },
         };
 
-        // Notificaciones directas a Tesorería, Presupuesto y Control de Viáticos
-        await this.notificationClient.notifyByRole('TESORERIA', notifNovedad);
-        await this.notificationClient.notifyByRole('PRESUPUESTO', notifNovedad);
-        await this.notificationClient.notifyByRole('CONTROL_VIATICOS', notifNovedad);
-        await this.notificationClient.notifyByRole('SUBDIRECCION_GESTION_CORPORATIVA', notifNovedad);
+        const emailNovedad = {
+          asunto: `[SIIF Novedad] Reintegro y anulación RP: ${consecutivo}`,
+          html: buildTravelExpenseEmailHtml({
+            consecutivo,
+            comisionadoNombre,
+            destino,
+            fechaInicio,
+            fechaFin,
+            estadoBadge: 'REINTEGRO Y LIBERACIÓN SIIF',
+            badgeColor: '#D97706',
+            mensajePrincipal: `La comisión <strong>${consecutivo}</strong> fue cancelada con recursos comprometidos o desembolsados. Se requiere gestionar reintegro de viáticos y/o liberación de RP en SIIF Nación.`,
+            observaciones: `Motivo: ${motivo} | Responsable cancelación: ${responsable}`,
+            botonTexto: 'Gestionar en Plataforma',
+            botonUrl: '/viaticos',
+          }),
+        };
+
+        // Notificaciones directas a Tesorería, Presupuesto, Control de Viáticos y Subdirección mediante permisos inmutables
+        await this.notificationClient.notifyByPermission(
+          'travel_expenses.general.es_tesoreria',
+          notifNovedad,
+          emailNovedad,
+          'TESORERIA',
+        );
+        await this.notificationClient.notifyByPermission(
+          'travel_expenses.general.es_presupuesto',
+          notifNovedad,
+          emailNovedad,
+          'PRESUPUESTO',
+        );
+        await this.notificationClient.notifyByPermission(
+          'travel_expenses.general.es_control_viaticos',
+          notifNovedad,
+          emailNovedad,
+          'CONTROL_VIATICOS',
+        );
+        await this.notificationClient.notifyByPermission(
+          'travel_expenses.general.es_subdireccion_corporativa',
+          notifNovedad,
+          emailNovedad,
+          'SUBDIRECCION_GESTION_CORPORATIVA',
+        );
       }
     } catch (err: any) {
       this.logger.warn(`[notify] Error en despacharNotificacionesCancelacion: ${err?.message}`);
@@ -4904,10 +5792,34 @@ export class TravelExpensesService {
       drawField('Duración de la Comisión', `${solicitud.diasComision} día(s)`);
       drawField('Modalidad de Transporte', solicitud.requiereTiquetes ? 'Aéreo / Terrestre' : 'Terrestre');
       drawField('Requiere Pasajes / Tiquetes', solicitud.requiereTiquetes ? 'SÍ' : 'NO');
+
+      if (Array.isArray(solicitud.itinerario) && solicitud.itinerario.length > 0) {
+        doc.moveDown(0.3);
+        doc.font('Helvetica-Bold').fontSize(9).fillColor('#003DA5').text('Desglose de Rutas y Horarios Militares Estimados:');
+        doc.moveDown(0.2);
+        solicitud.itinerario.forEach((tramo: any, idx: number) => {
+          const trayectoStr = tramo.tipoTrayecto === 'IDA_Y_VUELTA' ? 'Ida y Vuelta' : 'Solo Ida';
+          const horaSalida = tramo.horaEstimadaSalida || tramo.horarioEstimadoMilitar;
+          const horaLlegada = tramo.horaEstimadaLlegada;
+          const horarioStr = horaSalida && horaLlegada
+            ? ` · Horario: ${horaSalida} → ${horaLlegada}`
+            : (horaSalida ? ` · Salida: ${horaSalida}` : (horaLlegada ? ` · Llegada: ${horaLlegada}` : ''));
+          const diasStr = tramo.diasRuta ? ` (${tramo.diasRuta} d)` : '';
+          const transporteStr = tramo.tipoTransporte ? ` [${tramo.tipoTransporte}]` : '';
+          doc
+            .font('Helvetica')
+            .fontSize(8.5)
+            .fillColor('#334155')
+            .text(
+              `  Tramo ${idx + 1}: ${tramo.origenCiudad || 'Origen'} -> ${tramo.destinoCiudad || 'Destino'} (${trayectoStr}) | Del ${tramo.fechaSalida || 'N/A'} al ${tramo.fechaLlegada || 'N/A'}${diasStr}${horarioStr}${transporteStr}`,
+            );
+        });
+      }
       doc.moveDown(0.5);
 
       drawSectionTitle('3. LIQUIDACIÓN DEL GASTO AUTORIZADO');
       drawField('Rubro Presupuestal', solicitud.rubroPresupuestal || 'N/A');
+      drawField('Certificado de Disponibilidad Presupuestal (CDP)', solicitud.numeroCdp || 'N/A');
       drawField('Monto Viáticos', formatCurrency(Number(solicitud.montoViaticos)));
       drawField('Monto Gastos de Viaje', formatCurrency(Number(solicitud.montoGastosViaje)));
       if (solicitud.requiereTiquetes) {
@@ -5225,18 +6137,22 @@ export class TravelExpensesService {
       motivo: `[RF-PRE-001] Paquete de comisión remitido al Grupo de Presupuesto para expedición de RP en SIIF Nación.${dto?.observaciones ? ` Observaciones: ${dto.observaciones.trim()}` : ''}`,
     });
 
-    // Notificar al rol PRESUPUESTO
+    // Notificar al rol PRESUPUESTO mediante permiso inmutable (In-app + Correo)
     try {
       const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const comisionadoNombre = this.getComisionadoNombre(solicitud.comisionado);
       const destino = `${solicitud.destinoCiudad || ''}, ${solicitud.destinoDepartamento || ''}`.trim();
-      await this.notificationClient.notifyByRole('PRESUPUESTO', {
+      const fechaInicio = solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().split('T')[0] : undefined;
+      const fechaFin = solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().split('T')[0] : undefined;
+
+      const notifPresupuesto = {
         tipo_notificacion: 'VIATICOS_COMISION_EN_PRESUPUESTO',
         titulo: `Nueva comisión para expedición de RP: ${consecutivo}`,
         mensaje: `La comisión ${consecutivo} con destino a ${destino} fue enviada a Presupuesto para expedición de Registro Presupuestal en SIIF Nación.`,
         descripcion_corta: `En Presupuesto · ${consecutivo}`,
         icono: 'Receipt',
         color: '#059669',
-        prioridad: 'Media',
+        prioridad: 'Media' as const,
         categoria: 'VIATICOS',
         tiene_accion: true,
         texto_boton_accion: 'Expedir RP',
@@ -5245,7 +6161,31 @@ export class TravelExpensesService {
           solicitudId: solicitud.id,
           consecutivoUnico: consecutivo,
         },
-      });
+      };
+
+      const emailPresupuesto = {
+        asunto: `Nueva comisión para expedición de RP en SIIF: ${consecutivo}`,
+        html: buildTravelExpenseEmailHtml({
+          consecutivo,
+          comisionadoNombre,
+          destino,
+          fechaInicio,
+          fechaFin,
+          estadoBadge: 'EN PRESUPUESTO',
+          badgeColor: '#059669',
+          mensajePrincipal: `La comisión <strong>${consecutivo}</strong> con destino a <strong>${destino}</strong> ha sido remitida al Grupo de Presupuesto para expedición de Registro Presupuestal (RP) en SIIF Nación.`,
+          observaciones: dto?.observaciones ? `Observaciones: ${dto.observaciones}` : undefined,
+          botonTexto: 'Expedir RP en Plataforma',
+          botonUrl: '/viaticos',
+        }),
+      };
+
+      await this.notificationClient.notifyByPermission(
+        'travel_expenses.general.es_presupuesto',
+        notifPresupuesto,
+        emailPresupuesto,
+        'PRESUPUESTO',
+      );
     } catch (err: any) {
       this.logger.warn(`[notify] Error notificando a Presupuesto: ${err?.message}`);
     }
@@ -5497,31 +6437,67 @@ export class TravelExpensesService {
 
     const guardada = await this.registrarRP(solicitudId, issueDto, usuarioId);
 
-    // Notificaciones al comisionado / enlace / analista
+    // Notificaciones al comisionado / enlace / analista (In-app + Correo)
     try {
       const consecutivo = guardada.consecutivoUnico || guardada.id;
-      const destinatarios = [guardada.creadoPorUsuarioId, guardada.analistaAsignadoId].filter(Boolean);
+      const comisionadoNombre = this.getComisionadoNombre(guardada.comisionado);
+      const destino = `${guardada.destinoCiudad || ''}, ${guardada.destinoDepartamento || ''}`.trim();
+      const fechaInicio = guardada.fechaInicio ? new Date(guardada.fechaInicio).toISOString().split('T')[0] : undefined;
+      const fechaFin = guardada.fechaFin ? new Date(guardada.fechaFin).toISOString().split('T')[0] : undefined;
+
+      const notifRp = {
+        tipo_notificacion: 'VIATICOS_RP_EXPEDIDO',
+        titulo: `RP Expedido en SIIF Nación: ${consecutivo}`,
+        mensaje: `Se ha expedido el RP ${guardada.codigoRp} para la comisión ${consecutivo}. Estado: COMPROMETIDA. Recursos comprometidos: $${Number(guardada.valorComprometido).toLocaleString('es-CO')}.`,
+        descripcion_corta: `RP Expedido · ${consecutivo}`,
+        icono: 'CheckCircle2',
+        color: '#059669',
+        prioridad: 'Media' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver comisión',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: guardada.id,
+          consecutivoUnico: consecutivo,
+          codigoRp: guardada.codigoRp,
+          valorComprometido: guardada.valorComprometido,
+        },
+      };
+
+      const emailRp = {
+        asunto: `Registro Presupuestal (RP) expedido en SIIF: ${consecutivo}`,
+        html: buildTravelExpenseEmailHtml({
+          consecutivo,
+          comisionadoNombre,
+          destino,
+          fechaInicio,
+          fechaFin,
+          estadoBadge: 'COMPROMETIDA',
+          badgeColor: '#059669',
+          mensajePrincipal: `Se ha expedido el <strong>Registro Presupuestal ${guardada.codigoRp}</strong> para la comisión <strong>${consecutivo}</strong> en SIIF Nación por valor comprometido de <strong>$${Number(guardada.valorComprometido).toLocaleString('es-CO')}</strong>. La comisión se encuentra en estado <strong>COMPROMETIDA</strong>.`,
+          observaciones: guardada.observacionesRp ? `Observaciones RP: ${guardada.observacionesRp}` : undefined,
+          botonTexto: 'Consultar Comisión',
+          botonUrl: '/viaticos',
+        }),
+      };
+
+      const destinatarios = Array.from(new Set([
+        guardada.creadoPorUsuarioId,
+        guardada.analistaAsignadoId,
+      ].filter(Boolean) as string[]));
 
       for (const destId of destinatarios) {
-        await this.notificationClient.send({
-          id_usuario_destinatario: destId!,
-          tipo_notificacion: 'VIATICOS_RP_EXPEDIDO',
-          titulo: `RP Expedido en SIIF Nación: ${consecutivo}`,
-          mensaje: `Se ha expedido el RP ${guardada.codigoRp} para la comisión ${consecutivo}. Estado: COMPROMETIDA. Recursos comprometidos: $${Number(guardada.valorComprometido).toLocaleString('es-CO')}.`,
-          descripcion_corta: `RP Expedido · ${consecutivo}`,
-          icono: 'CheckCircle2',
-          color: '#059669',
-          prioridad: 'Media',
-          categoria: 'VIATICOS',
-          tiene_accion: true,
-          texto_boton_accion: 'Ver comisión',
-          url_accion: '/viaticos',
-          datos_adicionales: {
-            solicitudId: guardada.id,
-            consecutivoUnico: consecutivo,
-            codigoRp: guardada.codigoRp,
-            valorComprometido: guardada.valorComprometido,
-          },
+        await this.notificationClient.notifyUser(destId, notifRp, emailRp);
+      }
+
+      // Notificación directa por email al comisionado si tiene correo registrado
+      if (guardada.comisionado?.email && guardada.comisionado.email.includes('@')) {
+        await this.notificationClient.sendEmail({
+          to: guardada.comisionado.email,
+          subject: emailRp.asunto,
+          html: emailRp.html,
+          text: notifRp.mensaje,
         });
       }
     } catch (err: any) {
@@ -5835,23 +6811,109 @@ export class TravelExpensesService {
         comentarios: `[RF-PAG-001] Obligación registrada en SIIF Nación: ${dto.numeroObligacion.trim()}. Modalidad: ${modalidadFinal}. RP: ${codigoRp}. Valor obligado: $${valorObligacionFinal.toLocaleString('es-CO')}. Comisión lista para desembolso de Tesorería.`.slice(0, 255),
       });
 
-      if (this.notificationClient?.send) {
+      if (this.notificationClient) {
         try {
-          const destinatarios = [guardada.creadoPorUsuarioId, guardada.analistaAsignadoId].filter(Boolean) as string[];
+          const comisionadoNombre = this.getComisionadoNombre(guardada.comisionado);
+          const destino = `${guardada.destinoCiudad || ''}, ${guardada.destinoDepartamento || ''}`.trim();
+          const fechaInicio = guardada.fechaInicio ? new Date(guardada.fechaInicio).toISOString().split('T')[0] : undefined;
+          const fechaFin = guardada.fechaFin ? new Date(guardada.fechaFin).toISOString().split('T')[0] : undefined;
+
+          const notifObligacion = {
+            tipo_notificacion: 'OBLIGACION_SIIF_REGISTRADA',
+            titulo: `Obligación creada en SIIF: ${consecutivo}`,
+            mensaje: `Se ha creado la obligación ${dto.numeroObligacion.trim()} para la comisión ${consecutivo} (Modalidad: ${modalidadFinal}). La comisión está lista para desembolso por Tesorería.`,
+            descripcion_corta: `Obligación SIIF · ${consecutivo}`,
+            icono: 'CheckCircle2',
+            color: '#059669',
+            prioridad: 'Media' as const,
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver comisión',
+            url_accion: '/viaticos',
+          };
+
+          const emailObligacion = {
+            asunto: `Obligación presupuestal creada en SIIF: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              consecutivo,
+              comisionadoNombre,
+              destino,
+              fechaInicio,
+              fechaFin,
+              estadoBadge: 'OBLIGADA',
+              badgeColor: '#059669',
+              mensajePrincipal: `Se ha registrado la obligación <strong>${dto.numeroObligacion.trim()}</strong> para la comisión <strong>${consecutivo}</strong> (Modalidad: ${modalidadFinal}) por valor de <strong>$${valorObligacionFinal.toLocaleString('es-CO')}</strong>. La comisión queda en estado <strong>OBLIGADA</strong> y pasa a trámite de desembolso en Tesorería.`,
+              observaciones: dto.observacionesObligacion ? `Observaciones: ${dto.observacionesObligacion}` : undefined,
+              botonTexto: 'Consultar Expediente',
+              botonUrl: '/viaticos',
+            }),
+          };
+
+          const destinatarios = Array.from(new Set([
+            guardada.creadoPorUsuarioId,
+            guardada.analistaAsignadoId,
+          ].filter(Boolean) as string[]));
+
           for (const destId of destinatarios) {
-            await this.notificationClient.send({
-              id_usuario_destinatario: destId,
-              tipo_notificacion: 'OBLIGACION_SIIF_REGISTRADA',
-              titulo: `Obligación creada en SIIF: ${consecutivo}`,
-              mensaje: `Se ha creado la obligación ${dto.numeroObligacion.trim()} para la comisión ${consecutivo} (Modalidad: ${modalidadFinal}). La comisión está lista para desembolso por Tesorería.`,
-              descripcion_corta: `Obligación SIIF · ${consecutivo}`,
-              icono: 'CheckCircle2',
-              color: '#059669',
-              prioridad: 'Media',
-              categoria: 'VIATICOS',
-              tiene_accion: false,
+            await this.notificationClient.notifyUser(destId, notifObligacion, emailObligacion);
+          }
+
+          // Notificación directa por email al comisionado si tiene correo registrado
+          if (guardada.comisionado?.email && guardada.comisionado.email.includes('@')) {
+            await this.notificationClient.sendEmail({
+              to: guardada.comisionado.email,
+              subject: emailObligacion.asunto,
+              html: emailObligacion.html,
+              text: notifObligacion.mensaje,
             });
           }
+
+          // Notificación al rol de Tesorería por permiso inmutable
+          const notifTesoreria = {
+            tipo_notificacion: 'VIATICOS_COMISION_LISTA_PAGO',
+            titulo: `Comisión lista para desembolso: ${consecutivo}`,
+            mensaje: `La comisión ${consecutivo} tiene la obligación ${dto.numeroObligacion.trim()} registrada y se encuentra en su bandeja para proceso de pago.`,
+            descripcion_corta: `Para desembolso · ${consecutivo}`,
+            icono: 'DollarSign',
+            color: '#059669',
+            prioridad: 'Alta' as const,
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Procesar pago',
+            url_accion: '/viaticos',
+          };
+
+          const emailTesoreria = {
+            asunto: `Comisión lista para desembolso en Tesorería: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              consecutivo,
+              comisionadoNombre,
+              destino,
+              fechaInicio,
+              fechaFin,
+              estadoBadge: 'LISTA PARA PAGO',
+              badgeColor: '#059669',
+              mensajePrincipal: `La comisión <strong>${consecutivo}</strong> cuenta con la obligación SIIF <strong>${dto.numeroObligacion.trim()}</strong> debidamente registrada y requiere trámite de desembolso por Tesorería.`,
+              observaciones: `Valor a desembolsar: $${valorObligacionFinal.toLocaleString('es-CO')} · Modalidad: ${modalidadFinal}`,
+              botonTexto: 'Procesar Pago en Plataforma',
+              botonUrl: '/viaticos',
+            }),
+          };
+
+          await this.notificationClient.notifyByPermission(
+            'travel_expenses.general.es_tesoreria',
+            notifTesoreria,
+            emailTesoreria,
+            'TESORERIA',
+          );
+
+          // Notificación informativa a SST
+          await this.notificationClient.notifyByPermission(
+            'travel_expenses.general.es_sst',
+            notifObligacion,
+            emailObligacion,
+            'SST',
+          );
         } catch (notifErr: any) {
           this.logger.warn(`[RF-PAG-001] No se pudo enviar notificación de obligación: ${notifErr?.message}`);
         }
@@ -5958,21 +7020,66 @@ export class TravelExpensesService {
         comentarios: comentariosTrazabilidad.slice(0, 255),
       });
 
-      if (this.notificationClient?.send) {
+      if (this.notificationClient) {
         try {
-          const destinatarios = [guardada.creadoPorUsuarioId, guardada.analistaAsignadoId].filter(Boolean) as string[];
+          const comisionadoNombre = this.getComisionadoNombre(guardada.comisionado);
+          const destino = `${guardada.destinoCiudad || ''}, ${guardada.destinoDepartamento || ''}`.trim();
+          const fechaInicio = guardada.fechaInicio ? new Date(guardada.fechaInicio).toISOString().split('T')[0] : undefined;
+          const fechaFin = guardada.fechaFin ? new Date(guardada.fechaFin).toISOString().split('T')[0] : undefined;
+
+          const notifPago = {
+            tipo_notificacion: 'COMISION_PAGADA',
+            titulo: `Comisión Pagada: ${consecutivo}`,
+            mensaje: `Tesorería ha desembolsado el pago de la comisión ${consecutivo} por un valor de $${valorPagadoFinal.toLocaleString('es-CO')} (Modalidad: ${modalidadFinal}). La comisión se encuentra PAGADA.`,
+            descripcion_corta: `Desembolso Tesorería · ${consecutivo}`,
+            icono: 'BadgeDollarSign',
+            color: '#059669',
+            prioridad: 'Alta' as const,
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver comprobante',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: guardada.id,
+              consecutivoUnico: consecutivo,
+              valorPagado: valorPagadoFinal,
+              modalidad: modalidadFinal,
+            },
+          };
+
+          const emailPago = {
+            asunto: `Comisión Pagada / Desembolsada: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              consecutivo,
+              comisionadoNombre,
+              destino,
+              fechaInicio,
+              fechaFin,
+              estadoBadge: 'PAGADA',
+              badgeColor: '#059669',
+              mensajePrincipal: `Tesorería ha desembolsado el pago de la comisión <strong>${consecutivo}</strong> por un valor de <strong>$${valorPagadoFinal.toLocaleString('es-CO')}</strong> (Modalidad: ${modalidadFinal}). La comisión se encuentra en estado <strong>PAGADA</strong>.`,
+              observaciones: `${numObligacion ? `Obligación SIIF: ${numObligacion} · ` : ''}${ordenPagoFinal ? `Orden de Pago: ${ordenPagoFinal}` : ''}`,
+              botonTexto: 'Consultar Expediente',
+              botonUrl: '/viaticos',
+            }),
+          };
+
+          const destinatarios = Array.from(new Set([
+            guardada.creadoPorUsuarioId,
+            guardada.analistaAsignadoId,
+          ].filter(Boolean) as string[]));
+
           for (const destId of destinatarios) {
-            await this.notificationClient.send({
-              id_usuario_destinatario: destId,
-              tipo_notificacion: 'COMISION_PAGADA',
-              titulo: `Comisión Pagada: ${consecutivo}`,
-              mensaje: `Tesorería ha desembolsado el pago de la comisión ${consecutivo} por un valor de $${valorPagadoFinal.toLocaleString('es-CO')} (Modalidad: ${modalidadFinal}). La comisión se encuentra PAGADA.`,
-              descripcion_corta: `Desembolso Tesorería · ${consecutivo}`,
-              icono: 'BadgeDollarSign',
-              color: '#059669',
-              prioridad: 'Alta',
-              categoria: 'VIATICOS',
-              tiene_accion: false,
+            await this.notificationClient.notifyUser(destId, notifPago, emailPago);
+          }
+
+          // Notificación directa por email al comisionado si tiene correo registrado
+          if (guardada.comisionado?.email && guardada.comisionado.email.includes('@')) {
+            await this.notificationClient.sendEmail({
+              to: guardada.comisionado.email,
+              subject: emailPago.asunto,
+              html: emailPago.html,
+              text: notifPago.mensaje,
             });
           }
         } catch (notifErr: any) {

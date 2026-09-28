@@ -10,15 +10,14 @@
  * crear un rol nuevo desde la plataforma y darle la facultad de adjudicar, pero
  * el endpoint seguía preguntando por `ORDENADOR_GASTO` y le negaba el paso.
  *
- * Ahora los endpoints exigen permisos —`contratacion.adjudicacion.decidir`— y
- * quién los tiene se resuelve contra `auth.role_permissions`, que es lo que la
- * entidad administra. Es el mismo patrón de control interno y control
- * disciplinario.
+ * Ahora los endpoints exigen una acción en un lugar —`@Puede('decidir', '7.4')`
+ * para adjudicar— y quién la tiene se resuelve contra `auth.role_permissions` y
+ * `hiring.alcances_permiso`, que es lo que la entidad administra (migración
+ * 083).
  *
  * El razonamiento que vivía en los comentarios de esas listas —quién no puede
  * aprobar lo que él mismo pidió, por qué el supervisor no liquida lo que
- * vigiló— no se perdió: está en la migración `060`, que es donde ahora se
- * decide qué rol recibe cada permiso.
+ * vigiló— no se perdió: está en la siembra de la 083, fila por fila.
  *
  * Queda aquí lo único que no era una regla de autorización: leer del request
  * quién es el usuario.
@@ -48,7 +47,6 @@ export interface HiringAccess {
   userName: string;
   userEmail?: string;
   roles: string[];
-  puedeEditar: boolean;
 }
 
 /** Extrae del request el usuario autenticado en la forma que usan los services. */
@@ -61,18 +59,5 @@ export function getHiringAccess(req: any): HiringAccess {
     userName: user.username ?? user.email ?? user.userId ?? 'Sistema',
     userEmail: user.email,
     roles,
-    // Se conserva el campo porque lo leen varios services y la pantalla lo usa
-    // para no ofrecer acciones que la API va a rechazar. Se resuelve por
-    // permiso, no por rol: `permisosDelUsuario` traduce los roles del token.
-    puedeEditar: tienePermisoDeEdicion(roles),
   };
-}
-
-/**
- * Import diferido para no crear un ciclo: `permisos.ts` importa `normalizeRoles`
- * de este archivo, así que no puede importarse aquí en la cabecera.
- */
-function tienePermisoDeEdicion(roles: string[]): boolean {
-  const { permisosDelUsuario, PERMISO_ACTIVIDAD_EDITAR } = require('./permisos');
-  return permisosDelUsuario({ roles }).includes(PERMISO_ACTIVIDAD_EDITAR);
 }

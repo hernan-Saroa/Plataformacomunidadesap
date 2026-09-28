@@ -10,7 +10,7 @@ import {
   PlanMejoramiento,
   PlanMejoramientoEstado,
 } from './entities/plan-mejoramiento.entity';
-import type { TareaSeguimientoPlan } from '../universo-auditorias/evaluacion-rol4-tarea-sync.service';
+import type { TareaSeguimientoPlan } from '../plan-anual-5-roles/programa-anual-rol4-tarea-sync.service';
 
 export const ORIGEN_TAREA_PLAN_MEJORAMIENTO = 'plan_mejoramiento';
 

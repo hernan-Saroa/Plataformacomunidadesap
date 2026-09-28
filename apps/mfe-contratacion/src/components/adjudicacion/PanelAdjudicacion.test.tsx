@@ -32,6 +32,7 @@ vi.mock('../../services/contratacionService', () => ({
     publicarDeclaratoriaDesierta: vi.fn(),
     revocarDeclaratoriaDesierta: vi.fn(),
     urlDescarga: (url: string) => `https://gateway${url}`,
+    firmaDeActividad: vi.fn().mockResolvedValue({ requiereFirma: false }),
   },
 }));
 
@@ -331,6 +332,7 @@ describe('PanelAdjudicacion · etapa 7', () => {
           numeroActo: 'RES-2026-114',
           fechaActo: '2026-09-05',
           valorAdjudicado: 48_000_000,
+          correoContratista: null,
           acto: { id: 'd-3', nombre: 'resolucion.pdf', archivoUrl: '/documentos/d-3' },
           evidencia: null,
           notificadoAt: null,

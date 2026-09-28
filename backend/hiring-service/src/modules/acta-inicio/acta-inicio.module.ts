@@ -6,18 +6,23 @@ import { ActaInicioController } from './acta-inicio.controller';
 
 import { Contrato } from '../../entities/contrato.entity';
 import { ActaInicio } from '../../entities/acta-inicio.entity';
+import { SuscripcionActaInicio } from '../../entities/suscripcion-acta-inicio.entity';
+import { ActividadExcluida } from '../../entities/actividad.entity';
 import { SupervisionContrato } from '../../entities/supervision-contrato.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
+import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       Contrato,
       ActaInicio,
+      SuscripcionActaInicio,
+      ActividadExcluida,
       SupervisionContrato,
       Proceso,
       ProcesoActividad,
@@ -25,6 +30,7 @@ import { Expediente } from '../../entities/expediente.entity';
       Documento,
       Expediente,
     ]),
+    CierreActividadModule,
   ],
   controllers: [ActaInicioController],
   providers: [ActaInicioService],

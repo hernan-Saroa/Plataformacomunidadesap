@@ -31,8 +31,9 @@ export interface PtaAuthContext {
   isSuperUser: boolean;
   /**
    * Aprobador integral: puede aprobar todos los componentes (superusuario del
-   * sistema, o rol con el permiso pta.approve.all). Es quien puede hacer
-   * aprobación masiva / de todo el PTA.
+   * sistema, o rol con el permiso pta.approve.all). No es un permiso exclusivo
+   * para operar en lote: un aprobador granular también puede procesar masivamente
+   * los componentes incluidos en `allowedComponents`.
    */
   approvesAll: boolean;
   /** Permisos PTA efectivos del usuario (pta.approve.* y pta.backoffice.*). */

@@ -22,6 +22,7 @@ import {
   EstadoAudienciaAdjudicacion,
   EstadoDeclaratoriaDesierta,
   EstadoInformeDefinitivoProceso,
+  EvidenciaFirmaOtp,
   InformeDefinitivo,
   TipoPiezaAudiencia,
 } from '../../types';
@@ -37,11 +38,18 @@ import {
 } from '../shared/PiezasPanel';
 import { fechaLarga, momentoConHora } from '../shared/fechas';
 import { PanelDesierta } from './PanelDesierta';
+import { useFirma } from '../shared/useFirma';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL_AUDIENCIA = '7.1';
+const NUMERAL_SOBRE = '7.2';
+const NUMERAL_INFORME_DEFINITIVO = '7.3';
+const NUMERAL_ACTO = '7.4';
 
 const pesos = (valor: number | null) =>
   valor == null
@@ -59,6 +67,9 @@ const ETIQUETA_PIEZA: Record<TipoPiezaAudiencia, string> = {
 };
 
 /** Vacío es "no viene", no cero. */
+/** Basta con que tenga arroba y dominio: el servidor valida el resto. */
+const correoValido = (texto: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(texto.trim());
+
 const aNumero = (texto: string): number | undefined => {
   const limpio = texto.trim();
   if (!limpio) return undefined;
@@ -79,6 +90,14 @@ const aNumero = (texto: string): number | undefined => {
  * aparta del informe, eso se ve.
  */
 export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
+  const firmaAudiencia = useFirma(NUMERAL_AUDIENCIA, 'Registrar la audiencia de adjudicación');
+  const firmaSobre = useFirma(NUMERAL_SOBRE, 'Abrir el sobre económico');
+  const firmaInformeDefinitivo = useFirma(
+    NUMERAL_INFORME_DEFINITIVO,
+    'Publicar el informe definitivo',
+  );
+  const firmaActo = useFirma(NUMERAL_ACTO, 'Adjudicar el proceso');
   const [audiencia, setAudiencia] = useState<EstadoAudienciaAdjudicacion | null>(null);
   const [definitivo, setDefinitivo] = useState<EstadoInformeDefinitivoProceso | null>(null);
   const [acto, setActo] = useState<EstadoAdjudicacion | null>(null);
@@ -111,6 +130,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
   const [numeroActo, setNumeroActo] = useState('');
   const [fechaActo, setFechaActo] = useState('');
   const [valorAdjudicado, setValorAdjudicado] = useState('');
+  const [correoContratista, setCorreoContratista] = useState('');
   const [justificacion, setJustificacion] = useState('');
   const [actoArchivo, setActoArchivo] = useState<File | null>(null);
   const [medioActo, setMedioActo] = useState('');
@@ -152,11 +172,16 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
     }
   };
 
-  const celebrar = () =>
+  const celebrar = (firmaOtp?: EvidenciaFirmaOtp) =>
     conGuardado(async () => {
       await contratacionService.celebrarAudiencia(
         procesoId,
-        { celebradaAt: new Date(celebradaAt).toISOString(), presididaPor: presididaPor.trim(), resumen },
+        {
+          celebradaAt: new Date(celebradaAt).toISOString(),
+          presididaPor: presididaPor.trim(),
+          resumen,
+          firma: firmaOtp,
+        },
         actaArchivo as File,
       );
       setCelebrando(false);
@@ -166,11 +191,15 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
       setActaArchivo(null);
     }, 'Audiencia registrada');
 
-  const abrirSobre = () =>
+  const abrirSobre = (firmaOtp?: EvidenciaFirmaOtp) =>
     conGuardado(async () => {
       await contratacionService.abrirSobreEconomico(
         procesoId,
-        { oferenteId: sobreOferta, valorOfertado: aNumero(sobreValor) as number },
+        {
+          oferenteId: sobreOferta,
+          valorOfertado: aNumero(sobreValor) as number,
+          firma: firmaOtp,
+        },
         sobreEvidencia,
       );
       setAbriendoSobre(false);
@@ -185,18 +214,19 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
       setDocumentoDefinitivo(null);
     }, 'Informe definitivo generado');
 
-  const publicarDefinitivo = () =>
+  const publicarDefinitivo = (firmaOtp?: EvidenciaFirmaOtp) =>
     conGuardado(async () => {
       await contratacionService.publicarInformeDefinitivo(
         procesoId,
         medioDefinitivo.trim(),
         evidenciaDefinitivo as File,
+        firmaOtp,
       );
       setMedioDefinitivo('');
       setEvidenciaDefinitivo(null);
     }, 'Informe definitivo publicado');
 
-  const adjudicar = () =>
+  const adjudicar = (firmaOtp?: EvidenciaFirmaOtp) =>
     conGuardado(async () => {
       await contratacionService.adjudicar(
         procesoId,
@@ -205,7 +235,9 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
           numeroActo: numeroActo.trim(),
           fechaActo,
           valorAdjudicado: aNumero(valorAdjudicado) as number,
+          correoContratista: correoContratista.trim() || undefined,
           justificacion: justificacion.trim() || undefined,
+          firma: firmaOtp,
         },
         actoArchivo as File,
       );
@@ -214,6 +246,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
       setNumeroActo('');
       setFechaActo('');
       setValorAdjudicado('');
+      setCorreoContratista('');
       setJustificacion('');
       setActoArchivo(null);
     }, 'Proceso adjudicado');
@@ -230,7 +263,13 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
     }, 'Acto notificado y publicado');
 
   const revocar = async () => {
-    const motivo = window.prompt('¿Por qué se revoca el acto de adjudicación?')?.trim();
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Revocar el acto de adjudicación',
+      descripcion: 'Revocar deja el proceso sin adjudicatario. El acto revocado queda en el expediente.',
+      etiqueta: 'Motivo de la revocatoria',
+      confirmar: 'Revocar el acto',
+      tono: 'peligro',
+    });
     if (!motivo) return;
     await conGuardado(
       () => contratacionService.revocarActoAdjudicacion(procesoId, motivo).then(() => undefined),
@@ -239,7 +278,12 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
   };
 
   const anularAudiencia = async () => {
-    const motivo = window.prompt('¿Por qué se anula la audiencia?')?.trim();
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Anular la audiencia de adjudicación',
+      etiqueta: 'Motivo de la anulación',
+      confirmar: 'Anular la audiencia',
+      tono: 'peligro',
+    });
     if (!motivo) return;
     await conGuardado(
       () => contratacionService.anularAudiencia(procesoId, motivo).then(() => undefined),
@@ -364,7 +408,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
                 <div className="flex gap-2">
                   <Boton
                     icono={<Gavel className="w-3.5 h-3.5" />}
-                    onClick={celebrar}
+                    onClick={() => firmaAudiencia.conFirma(celebrar)}
                     disabled={guardando || !celebradaAt || !presididaPor.trim() || !actaArchivo}
                   >
                     Registrar audiencia
@@ -433,7 +477,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
                   <div className="flex gap-2">
                     <Boton
                       icono={<Plus className="w-3.5 h-3.5" />}
-                      onClick={abrirSobre}
+                      onClick={() => firmaSobre.conFirma(abrirSobre)}
                       disabled={guardando || !sobreOferta || aNumero(sobreValor) == null}
                     >
                       Abrir sobre
@@ -531,7 +575,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
             </label>
             <Boton
               icono={<Megaphone className="w-3.5 h-3.5" />}
-              onClick={publicarDefinitivo}
+              onClick={() => firmaInformeDefinitivo.conFirma(publicarDefinitivo)}
               disabled={guardando || !evidenciaDefinitivo || medioDefinitivo.trim().length < 10}
             >
               Publicar informe definitivo
@@ -600,6 +644,21 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
                 value={valorAdjudicado}
                 onChange={(e) => setValorAdjudicado(e.target.value)}
               />
+              {/* El contratista es externo y su registro vive en Click: esto es lo
+                  único suyo que se pide, para poder avisarle desde aquí. */}
+              <label className="block">
+                <span className="text-[11.5px] text-slate-600">Correo del contratista</span>
+                <input
+                  type="email"
+                  className={campo}
+                  placeholder="Para enviarle las notificaciones del proceso"
+                  value={correoContratista}
+                  onChange={(e) => setCorreoContratista(e.target.value)}
+                />
+                {correoContratista.trim() && !correoValido(correoContratista) && (
+                  <span className="text-[11px] text-red-600">No parece un correo válido</span>
+                )}
+              </label>
 
               {seApartaDelInforme && (
                 <Aviso tono="aviso" titulo="El acto se aparta del informe definitivo">
@@ -630,7 +689,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
               <div className="flex gap-2">
                 <Boton
                   icono={<Award className="w-3.5 h-3.5" />}
-                  onClick={adjudicar}
+                  onClick={() => firmaActo.conFirma(adjudicar)}
                   disabled={
                     guardando ||
                     !adjudicatario ||
@@ -638,6 +697,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
                     !fechaActo ||
                     aNumero(valorAdjudicado) == null ||
                     !actoArchivo ||
+                    (correoContratista.trim() !== '' && !correoValido(correoContratista)) ||
                     (seApartaDelInforme && justificacion.trim().length === 0)
                   }
                 >
@@ -708,6 +768,11 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
         )}
       </div>
       <PanelDesierta procesoId={procesoId} estado={desierta} onCambio={leer} />
+      {firmaAudiencia.modal}
+      {firmaSobre.modal}
+      {firmaInformeDefinitivo.modal}
+      {firmaActo.modal}
+      {dialogo.elemento}
     </Marco>
   );
 }
@@ -859,6 +924,11 @@ function ResumenActo({ acto }: { acto: ActoAdjudicacion }) {
       <p className="text-[12px] text-slate-600 m-0">
         Resolución {acto.numeroActo} del {fechaLarga(acto.fechaActo)} ·{' '}
         {pesos(acto.valorAdjudicado)}
+      </p>
+      <p className="text-[11.5px] text-slate-500 m-0">
+        {acto.correoContratista
+          ? `Las notificaciones al contratista van a ${acto.correoContratista}.`
+          : 'Sin correo del contratista: los avisos dirigidos a él no tienen a dónde llegar.'}
       </p>
       {acto.publicadoAt ? (
         <p className="text-[11.5px] text-slate-500 m-0">

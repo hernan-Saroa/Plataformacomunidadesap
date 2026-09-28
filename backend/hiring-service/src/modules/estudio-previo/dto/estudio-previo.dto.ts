@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsInt,
   IsNotEmpty,
@@ -8,7 +9,10 @@ import {
   IsString,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
+
+import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 export class CrearProcesoDto {
   @ApiProperty({ description: 'Objeto a contratar', example: 'Adquisición de 50 equipos de cómputo' })
@@ -67,6 +71,27 @@ export class RevisarDto {
   @IsString()
   @MaxLength(4000)
   observaciones?: string;
+
+  /**
+   * Solo al aprobar y solo si la 3.4 quedó configurada con `EXIGE_FIRMA`
+   * (EFDS-2070). Es la firma de quien aprueba, distinta de la de quien envió
+   * la 3.1.
+   */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
+}
+
+/** Lo que acompaña el envío del estudio previo a revisión. */
+export class EnviarEstudioPrevioDto {
+  /** Solo si la 3.1 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }
 
 /**

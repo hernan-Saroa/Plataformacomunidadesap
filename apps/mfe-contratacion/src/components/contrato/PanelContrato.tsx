@@ -7,6 +7,7 @@ import {
   DatosContrato,
   DatosFirma,
   EstadoContratoProceso,
+  EvidenciaFirmaOtp,
   ParteFirmante,
   TipoPersonaContratista,
 } from '../../types';
@@ -22,11 +23,15 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '8.1';
 
 const pesos = new Intl.NumberFormat('es-CO', {
   style: 'currency',
@@ -69,6 +74,12 @@ const VACIO = {
  * el proponente lo acepta, que es lo que formaliza el vínculo.
  */
 export function PanelContrato({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
+  /*
+   * No se llama `firma`: ese nombre ya lo usa el estado de la firma física del
+   * contrato (ordenador/contratista), un concepto distinto (EFDS-2070).
+   */
+  const firmaOtp = useFirma(NUMERAL, 'Registrar la aceptación del contrato');
   const [estado, setEstado] = useState<EstadoContratoProceso | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -134,7 +145,7 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
     }
   };
 
-  const aceptar = async () => {
+  const aceptar = async (firmaOtpEvidencia?: EvidenciaFirmaOtp) => {
     const nombre = aceptante.trim();
     if (!nombre) {
       toast.error('Escribe quién acepta en nombre del proponente');
@@ -143,7 +154,14 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
 
     setGuardando(true);
     try {
-      setEstado(await contratacionService.aceptarContrato(procesoId, nombre));
+      setEstado(
+        await contratacionService.aceptarContrato(
+          procesoId,
+          nombre,
+          undefined,
+          firmaOtpEvidencia,
+        ),
+      );
       setAceptante('');
       toast.success('Aceptación registrada; el contrato queda formalizado');
       onCambio?.();
@@ -191,11 +209,30 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
   };
 
   const rechazar = async () => {
-    const quien = window.prompt('¿Quién rechaza en nombre del proponente?')?.trim();
-    if (!quien) return;
-
-    const motivo = window.prompt('¿Por qué no acepta la minuta?')?.trim();
-    if (!motivo) return;
+    // Los dos datos en un solo diálogo y no encadenados: con dos `prompt`
+    // seguidos, cancelar el segundo tiraba a la basura lo escrito en el
+    // primero sin decirlo.
+    const datos = await dialogo.pedirDatos({
+      titulo: 'Registrar el rechazo de la minuta',
+      descripcion: 'El proponente no acepta la minuta. Queda registrado y se puede generar una nueva.',
+      confirmar: 'Registrar el rechazo',
+      tono: 'peligro',
+      campos: [
+        {
+          nombre: 'quien',
+          etiqueta: 'Quién rechaza, en nombre del proponente',
+          multilinea: false,
+          placeholder: 'Nombre y calidad en que actúa',
+        },
+        {
+          nombre: 'motivo',
+          etiqueta: 'Por qué no acepta la minuta',
+          placeholder: 'La cláusula de pago no corresponde a lo ofertado…',
+        },
+      ],
+    });
+    if (!datos) return;
+    const { quien, motivo } = datos;
 
     setGuardando(true);
     try {
@@ -376,7 +413,7 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
                 <Boton
                   icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
                   disabled={guardando || !aceptante.trim()}
-                  onClick={aceptar}
+                  onClick={() => firmaOtp.conFirma(aceptar)}
                 >
                   Registrar la aceptación
                 </Boton>
@@ -727,6 +764,8 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : null}
+      {firmaOtp.modal}
+      {dialogo.elemento}
     </Marco>
   );
 }

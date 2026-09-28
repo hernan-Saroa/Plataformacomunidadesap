@@ -19,6 +19,8 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { DesignarComiteDto, RevocarComiteDto } from './dto/comite.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 6.2 de la matriz: la designación del comité evaluador. */
 export const NUMERAL_COMITE = '6.2';
@@ -32,7 +34,10 @@ interface ArchivoCargado {
 
 @Injectable()
 export class ComiteService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -144,6 +149,10 @@ export class ComiteService {
       this.validarFecha(dto.fechaDesignacion);
       this.validarMiembros(dto);
 
+      if (await this.cierre.exigeFirma(em, NUMERAL_COMITE)) {
+        this.cierre.exigirFirmaValida(dto.firma);
+      }
+
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
 
@@ -177,7 +186,7 @@ export class ComiteService {
         ),
       );
 
-      await this.marcarActividad(em, procesoId, acceso);
+      await this.marcarActividad(em, procesoId, acceso, dto.firma);
 
       await this.traza(em, procesoId, comite.id, 'DESIGNAR', acceso, {
         actividad: NUMERAL_COMITE,
@@ -375,31 +384,45 @@ export class ComiteService {
    * Al revocar vuelve a quedar en curso: el proceso se queda sin quién evalúe
    * hasta que se designe otro, y el riel tiene que decirlo.
    */
-  private async marcarActividad(em: EntityManager, procesoId: string, acceso: HiringAccess) {
+  private async marcarActividad(
+    em: EntityManager,
+    procesoId: string,
+    acceso: HiringAccess,
+    firma?: FirmaOtpDto,
+  ) {
     const aprobado = !!(await this.comiteVigente(procesoId, em));
-    const estado = aprobado ? 'APROBADO' : 'BORRADOR';
 
-    const actividad = await em.getRepository(ProcesoActividad).findOne({
-      where: { procesoId, numeral: NUMERAL_COMITE },
-    });
-
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_COMITE,
-          estado: estado as any,
-          datos: {},
-          ...(aprobado ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!aprobado) {
+      const actividad = await em.getRepository(ProcesoActividad).findOne({
+        where: { procesoId, numeral: NUMERAL_COMITE },
+      });
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_COMITE,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = aprobado ? acceso.userName : null;
-    actividad.revisadoAt = aprobado ? new Date() : null;
-    await em.save(actividad);
+    const proceso = await this.exigirProceso(em, procesoId);
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      NUMERAL_COMITE,
+      proceso.modalidad,
+      acceso,
+      firma,
+    );
   }
 
   private guardarDocumento(

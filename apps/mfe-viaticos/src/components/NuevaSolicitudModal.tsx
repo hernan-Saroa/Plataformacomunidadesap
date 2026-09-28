@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
@@ -14,11 +14,19 @@ import {
   Plane,
   PlaneTakeoff,
   Plus,
+  Route,
   Search,
   Send,
   ShieldCheck,
   Trash2,
+  Clock,
   User,
+  Building2,
+  BadgeCheck,
+  IdCard,
+  Briefcase,
+  Mail,
+  Phone,
   Wallet,
   X,
 } from 'lucide-react';
@@ -31,11 +39,13 @@ import {
   FormNuevaSolicitud,
   Geopolitica,
   ResultadoConsolidacion,
+  RutaItinerario,
+  SaldoTiquete,
   SolicitudComisionResponse,
   TicketValidationResult,
   TipoTransporteTiquete,
 } from '../types/viaticos';
-import { ConfigTipoComisionado } from '../types/parametrizacion';
+import { ConfigTipoComisionado, CampoFormulario } from '../types/parametrizacion';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
 import SearchableSelect, { SearchableSelectOption } from './SearchableSelect';
@@ -43,13 +53,16 @@ import VisorDocumentosFlotante, { useVisorDocumentos } from './VisorDocumentosFl
 import LiquidacionPanel from './LiquidacionPanel';
 import TicketBudgetWidget from './TicketBudgetWidget';
 import ConsolidacionExpediente from './ConsolidacionExpediente';
+import ItinerarioBuilder from './ItinerarioBuilder';
 import { useFestivos } from '../hooks/useFestivos';
 import {
   AYUDA_OBJETO_SIIF,
   calcularDiasComision,
+  construirRutaGeneral,
   contarDiasHabilesEntre,
   esDiaHabil,
   esPdfMime,
+  formatearDiasComision,
   formatearMoneda,
   formatearNombreComisionado,
   hoyISO,
@@ -58,8 +71,11 @@ import {
   mapearARequestCreacion,
   sanitizeObjetoComision,
   soloNumeros,
+  sincronizarItinerarioFormulario,
   validarAnticipacionRadicacion,
   validarFechasSolicitud,
+  validarSecuenciaItinerario,
+  siguienteDiaISO,
 } from '../utils/viaticosUtils';
 
 interface Props {
@@ -90,6 +106,27 @@ interface UsuarioContexto {
 }
 
 const PASOS = ['Comisionado', 'Objeto y Destino', 'Documentos', 'Confirmación'];
+
+const camposEstandar = new Set([
+  'documentoComisionado',
+  'objetoComision',
+  'destinoCiudad',
+  'destinoDepartamento',
+  'fechaInicio',
+  'fechaFin',
+  'prioridad',
+  'rubroPresupuestal',
+  'numeroCdp',
+  'fechaCdp',
+  'requiereTiquetes',
+  'montoViaticos',
+  'montoGastosViaje',
+  'diasComision',
+  'salarioBasico',
+  'costoEstimadoTiquete',
+  'tipoComision',
+  'esInternacional',
+]);
 
 /**
  * Detecta por rol si el usuario es SUPER_ADMIN (o variantes normalizadas
@@ -147,6 +184,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [esSuperAdminViaticos, setEsSuperAdminViaticos] = useState(false);
   const [cargandoUsuario, setCargandoUsuario] = useState(false);
   const [parametrizacion, setParametrizacion] = useState<ConfigTipoComisionado | null>(null);
+  const [camposCatalogo, setCamposCatalogo] = useState<CampoFormulario[]>([]);
   const [cargandoParametrizacion, setCargandoParametrizacion] = useState(false);
   const [documentosFaltantes, setDocumentosFaltantes] = useState<string[]>([]);
   const [solicitudBorrador, setSolicitudBorrador] = useState<SolicitudComisionResponse | null>(null);
@@ -163,7 +201,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   } = useVisorDocumentos();
   const [finalizando, setFinalizando] = useState(false);
   const [categoriaInvestigador, setCategoriaInvestigador] = useState<string>('ASOCIADO');
-  const [aplicaExcepcionRegional, setAplicaExcepcionRegional] = useState(false);
   const [asignacionesBasicasText, setAsignacionesBasicasText] = useState('');
   const [asignacionesBasicas, setAsignacionesBasicas] = useState<number[]>([]);
   const refTokenCiudades = useRef(0);
@@ -171,10 +208,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   // ========== Estado RF-LIQ-003 / RF-LIQ-004 (tiquetes y presupuesto) ==========
   const [tipoTransporte, setTipoTransporte] = useState<TipoTransporteTiquete>('AEREO');
   const [montoEstimadoTiquete, setMontoEstimadoTiquete] = useState<number>(0);
-  const [origenCiudad, setOrigenCiudad] = useState<string>('Bogotá D.C.');
-  // Catálogo completo de ciudades de geopolítica para el selector de origen.
-  const [todasCiudades, setTodasCiudades] = useState<Geopolitica[]>([]);
-  const [cargandoTodasCiudades, setCargandoTodasCiudades] = useState(false);
   const [dependenciaId, setDependenciaId] = useState<string>('');
   const [validacionTiquete, setValidacionTiquete] = useState<TicketValidationResult | null>(null);
   const [validandoTiquete, setValidandoTiquete] = useState(false);
@@ -187,6 +220,25 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [subiendoExcepcion, setSubiendoExcepcion] = useState(false);
   const [errorExcepcion, setErrorExcepcion] = useState<string | null>(null);
   const refTokenValidacionTiquete = useRef(0);
+
+  // ========== Estado RF-LIQ-005 (Saldo Presupuestal por Dependencia - Informativo) ==========
+  const [saldosPresupuesto, setSaldosPresupuesto] = useState<SaldoTiquete[]>([]);
+  const [cargandoSaldosPresupuesto, setCargandoSaldosPresupuesto] = useState(false);
+
+  const cargarSaldosPresupuesto = async () => {
+    setCargandoSaldosPresupuesto(true);
+    try {
+      if (typeof viaticosService.obtenerSaldosTiquetes === 'function') {
+        const data = await viaticosService.obtenerSaldosTiquetes();
+        setSaldosPresupuesto(data || []);
+      }
+    } catch (e) {
+      console.error('Error cargando saldos presupuestales:', e);
+      setSaldosPresupuesto([]);
+    } finally {
+      setCargandoSaldosPresupuesto(false);
+    }
+  };
 
   const cargarDepartamentos = async () => {
     setCargandoDepartamentos(true);
@@ -310,9 +362,14 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setCargandoParametrizacion(true);
     try {
       const data = await viaticosService.obtenerParametrizacionFormulario();
-      if (data && comisionado?.tipoComisionado) {
-        const config = data.configuraciones?.[comisionado.tipoComisionado];
-        setParametrizacion(config ?? data.configuraciones?.DEFAULT ?? null);
+      if (data) {
+        if (data.campos) {
+          setCamposCatalogo(data.campos);
+        }
+        if (comisionado?.tipoComisionado) {
+          const config = data.configuraciones?.[comisionado.tipoComisionado];
+          setParametrizacion(config ?? data.configuraciones?.DEFAULT ?? null);
+        }
       }
     } catch (e) {
       console.error('Error cargando parametrización:', e);
@@ -361,11 +418,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       documentoComisionado: solicitud.comisionado?.numeroDocumento || '',
       comisionadoId: solicitud.comisionadoId || solicitud.comisionado?.id || '',
       objetoComision: solicitud.objetoComision || '',
+      origenCiudad: solicitud.origenCiudad || solicitud.ciudadOrigen || solicitud.sedeOrigen || '',
+      origenDepartamento: '',
       destinoCiudad: solicitud.destinoCiudad || '',
       destinoDepartamento: solicitud.destinoDepartamento || '',
       fechaInicio: solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().slice(0, 10) : '',
       fechaFin: solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().slice(0, 10) : '',
       rubroPresupuestal: solicitud.rubroPresupuestal || '',
+      numeroCdp: (solicitud as any).numeroCdp || '',
+      fechaCdp: (solicitud as any).fechaCdp || '',
       prioridad: (solicitud.prioridad as any) || 'MEDIA',
       requiereTiquetes: Boolean(solicitud.requiereTiquetes),
       montoViaticos: Number(solicitud.montoViaticos || 0),
@@ -384,6 +445,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         urlRepositorio: d.urlRepositorio,
         tipoMime: d.tipoMime,
       })),
+      camposAdicionales: (solicitud as any).camposAdicionales || {},
+      itinerario: solicitud.itinerario || [],
     });
     if (solicitud.comisionado) {
       setComisionado(solicitud.comisionado);
@@ -421,14 +484,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       cerrarTodosVisores();
       setFinalizando(false);
       setCategoriaInvestigador('ASOCIADO');
-      setAplicaExcepcionRegional(false);
       setAsignacionesBasicasText('');
       setAsignacionesBasicas([]);
       setTipoTransporte('AEREO');
       setMontoEstimadoTiquete(0);
-      setOrigenCiudad('Bogotá D.C.');
-      setTodasCiudades([]);
-      setCargandoTodasCiudades(false);
       setDependenciaId('');
       setValidacionTiquete(null);
       setValidandoTiquete(false);
@@ -436,6 +495,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setSoporteExcepcionPdf(null);
       setErrorExcepcion(null);
       void cargarDepartamentos();
+      void cargarParametrizacion();
+      void cargarSaldosPresupuesto();
       // La carga de dependencias depende del rol: primero resolvemos el
       // usuario y su dependencia asociada. El usuario elevado —superadmin
       // según el backend de viáticos (el mismo flag que usa
@@ -472,21 +533,42 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
   if (!abierta) return null;
 
-  const actualizar = (campo: keyof FormNuevaSolicitud, valor: string | boolean | number) => {
+  const actualizar = (campo: keyof FormNuevaSolicitud, valor: string | boolean | number | RutaItinerario[]) => {
     setForm((prev) => ({ ...prev, [campo]: valor }));
   };
 
+  const actualizarCampoAdicional = (clave: string, valor: any) => {
+    setForm((prev) => ({
+      ...prev,
+      camposAdicionales: {
+        ...(prev.camposAdicionales || {}),
+        [clave]: valor,
+      },
+    }));
+  };
+
+  const esCampoActivo = (clave: string): boolean => {
+    const definido = camposCatalogo.find((c) => c.clave === clave);
+    if (definido && definido.activo === false) {
+      return false;
+    }
+    return true;
+  };
+
   const esCampoObligatorio = (clave: string): boolean => {
+    if (!esCampoActivo(clave)) return false;
     if (!parametrizacion) return true;
     return parametrizacion.camposObligatorios.includes(clave);
   };
 
   const esCampoOpcional = (clave: string): boolean => {
+    if (!esCampoActivo(clave)) return false;
     if (!parametrizacion) return false;
     return parametrizacion.camposOpcionales.includes(clave);
   };
 
   const esCampoOculto = (clave: string): boolean => {
+    if (!esCampoActivo(clave)) return true;
     if (!parametrizacion) return false;
     return parametrizacion.camposOcultos.includes(clave);
   };
@@ -655,6 +737,42 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     }
   }, [form.fechaInicio, form.fechaFin]);
 
+  // RF-ITIN — Sincronizar fechas y destino globales del formulario
+  // cuando el itinerario cambia y tiene tramos guardados (Guardar Tramo).
+  useEffect(() => {
+    if (form.itinerario && form.itinerario.length > 0) {
+      const rutasGuardadas = form.itinerario.filter(
+        (r) =>
+          r.guardada &&
+          Boolean(r.fechaSalida && r.fechaLlegada && r.origenCiudad && r.destinoCiudad),
+      );
+
+      if (rutasGuardadas.length > 0) {
+        const sync = sincronizarItinerarioFormulario(rutasGuardadas);
+        const tieneAereo = rutasGuardadas.some((r) => r.tipoTransporte === 'AEREO');
+        const algunRequiereTiquete = rutasGuardadas.some(
+          (r) => r.requiereTiquete || r.tipoTransporte === 'AEREO',
+        );
+        const nuevoTipoTransporte: TipoTransporteTiquete = tieneAereo ? 'AEREO' : 'TERRESTRE';
+
+        setTipoTransporte(nuevoTipoTransporte);
+
+        setForm((prev) => ({
+          ...prev,
+          origenCiudad: sync.origenCiudad,
+          origenDepartamento: sync.origenDepartamento,
+          destinoCiudad: sync.destinoCiudad,
+          destinoDepartamento: sync.destinoDepartamento,
+          fechaInicio: sync.fechaInicio,
+          fechaFin: sync.fechaFin,
+          diasComision: sync.diasComision,
+          requiereTiquetes: algunRequiereTiquete || prev.requiereTiquetes,
+          tipoComision: prev.esInternacional ? 'INTERNACIONAL' : (prev.tipoComision === 'ACTO_ADMINISTRATIVO' ? 'ACTO_ADMINISTRATIVO' : 'TERRESTRE'),
+        }));
+      }
+    }
+  }, [form.itinerario]);
+
   useEffect(() => {
     setForm((prev) => ({ ...prev, costoEstimadoTiquete: montoEstimadoTiquete }));
   }, [montoEstimadoTiquete]);
@@ -679,11 +797,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setValidacionTiquete(null);
       return;
     }
-    if (!form.destinoCiudad || !origenCiudad || !dependenciaId) {
-      return;
-    }
-    if (!Number.isFinite(montoEstimadoTiquete) || montoEstimadoTiquete <= 0) {
-      // Sin monto estimado no podemos calcular la reserva con holgura.
+    const { origenCiudad: origenItinerario, destinoCiudad: destinoItinerario } = obtenerOrigenDestinoItinerario();
+    if (!destinoItinerario || !origenItinerario || !dependenciaId) {
       return;
     }
     const token = ++refTokenValidacionTiquete.current;
@@ -691,10 +806,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     void viaticosService
       .validarTiquete({
         dependenciaId,
-        origenCiudad,
-        destinoCiudad: form.destinoCiudad,
+        origenCiudad: origenItinerario,
+        destinoCiudad: destinoItinerario,
         tipoTransporte,
-        montoEstimadoTiquete,
+        montoEstimadoTiquete: montoEstimadoTiquete || 0,
       })
       .then((res) => {
         if (token === refTokenValidacionTiquete.current) {
@@ -715,46 +830,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     form.requiereTiquetes,
-    form.destinoCiudad,
-    origenCiudad,
+    form.itinerario,
     dependenciaId,
     tipoTransporte,
-    montoEstimadoTiquete,
   ]);
-
-  // Carga el catálogo de ciudades de geopolítica para el selector de
-  // "Ciudad de origen" cuando la comisión requiere tiquetes. Por defecto el
-  // origen es la sede (Bogotá D.C.).
-  useEffect(() => {
-    if (!form.requiereTiquetes || todasCiudades.length > 0) return;
-    let activo = true;
-    setCargandoTodasCiudades(true);
-    void viaticosService
-      .obtenerTodasCiudades()
-      .then((lista) => {
-        if (!activo) return;
-        setTodasCiudades(lista || []);
-        const bogota = (lista || []).find((c) =>
-          /^bogota/i.test(String(c.nomDivGeopolitica || '').trim()),
-        );
-        if (bogota?.nomDivGeopolitica) {
-          setOrigenCiudad(bogota.nomDivGeopolitica.trim());
-        }
-      })
-      .catch((e) => {
-        if (activo) {
-          console.error('Error cargando ciudades de origen:', e);
-          setTodasCiudades([]);
-        }
-      })
-      .finally(() => {
-        if (activo) setCargandoTodasCiudades(false);
-      });
-    return () => {
-      activo = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.requiereTiquetes, todasCiudades.length]);
 
 
   const documentosObligatoriosActuales = (): string[] => {
@@ -777,26 +856,78 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const checklistCompleto = (): boolean =>
     documentosFaltantesActuales().length === 0 && documentosNoPdf().length === 0;
 
+  // Obtiene fechas desde el itinerario (fuente única de verdad)
+  const obtenerFechasItinerario = (): { fechaInicio: string; fechaFin: string } => {
+    if (!form.itinerario || form.itinerario.length === 0) {
+      return { fechaInicio: hoyISO(), fechaFin: siguienteDiaISO() };
+    }
+    const sync = sincronizarItinerarioFormulario(form.itinerario);
+    return { fechaInicio: sync.fechaInicio, fechaFin: sync.fechaFin };
+  };
+
+  // Obtiene origen/destino desde el itinerario
+  const obtenerOrigenDestinoItinerario = (): { origenCiudad: string; origenDepartamento: string; destinoCiudad: string; destinoDepartamento: string } => {
+    if (!form.itinerario || form.itinerario.length === 0) {
+      return { origenCiudad: '', origenDepartamento: '', destinoCiudad: '', destinoDepartamento: '' };
+    }
+    const sync = sincronizarItinerarioFormulario(form.itinerario);
+    return { origenCiudad: sync.origenCiudad, origenDepartamento: sync.origenDepartamento, destinoCiudad: sync.destinoCiudad, destinoDepartamento: sync.destinoDepartamento };
+  };
+
+  const validarCamposDinamicosObligatorios = (): string | null => {
+    const obligatorios = camposCatalogo.filter(
+      (c) => c.activo && !camposEstandar.has(c.clave) && !esCampoOculto(c.clave) && esCampoObligatorio(c.clave),
+    );
+    for (const campo of obligatorios) {
+      const val = form.camposAdicionales?.[campo.clave];
+      if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+        return `Por favor complete el campo obligatorio: "${campo.etiqueta}".`;
+      }
+    }
+    return null;
+  };
+
   const irPaso = (siguiente: number) => {
     if (siguiente === 2 && !tieneComisionadoAutorizado) return;
     if (siguiente === 3) {
-      const error = validarFechasSolicitud(form.fechaInicio, form.fechaFin);
+      if (!form.itinerario || form.itinerario.length === 0) {
+        setErrorValidacion('Debe configurar al menos un tramo en el itinerario.');
+        return;
+      }
+      const tramosSinGuardar = form.itinerario.some((r) => !r.guardada);
+      if (tramosSinGuardar) {
+        setErrorValidacion(
+          'Por favor guarde todos los tramos del itinerario haciendo clic en "Guardar Tramo" antes de continuar.',
+        );
+        return;
+      }
+      const valSecuencia = validarSecuenciaItinerario(form.itinerario);
+      if (!valSecuencia.valida) {
+        setErrorValidacion(valSecuencia.error || 'Secuencia del itinerario no válida.');
+        return;
+      }
+      const { fechaInicio, fechaFin } = obtenerFechasItinerario();
+      const error = validarFechasSolicitud(fechaInicio, fechaFin);
       if (error) {
         setErrorValidacion(error);
         return;
       }
-      // RF-LIQ-003/004 — Bloquea avance si requiere excepción y no se
-      // aportó el PDF firmado por Dirección Nacional o Sindicato.
-      if (
-        form.requiereTiquetes &&
-        validacionTiquete &&
-        (validacionTiquete.requires_route_exception ||
-          validacionTiquete.requires_budget_exception) &&
-        (!numeroActoExcepcion.trim() || !soporteExcepcionPdf)
-      ) {
-        setErrorValidacion(
-          'Debe registrar el número de acto de excepción y adjuntar el PDF firmado por Dirección Nacional o Sindicato antes de continuar.',
-        );
+      // ── Validación: origen ≠ destino ──────────────────────────────────────
+      {
+        const { origenCiudad: oc, destinoCiudad: dc } = obtenerOrigenDestinoItinerario();
+        const normalizar = (s: string) =>
+          s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+        if (oc && dc && normalizar(oc) === normalizar(dc)) {
+          setErrorValidacion(
+            `La ciudad de destino ("${dc}") no puede ser la misma que la de origen ("${oc}"). ` +
+            'Si el itinerario tiene un tramo de regreso, el destino se calculará como el punto más alejado antes del retorno.',
+          );
+          return;
+        }
+      }
+      const errCamposDinamicos = validarCamposDinamicosObligatorios();
+      if (errCamposDinamicos) {
+        setErrorValidacion(errCamposDinamicos);
         return;
       }
       if (comisionado && parametrizacion) {
@@ -816,7 +947,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const guardarYBorrador = async () => {
-    const error = validarFechasSolicitud(form.fechaInicio, form.fechaFin);
+    if (!form.itinerario || form.itinerario.length === 0) {
+      setErrorValidacion('Debe registrar al menos un tramo en el itinerario.');
+      return;
+    }
+    const valSecuencia = validarSecuenciaItinerario(form.itinerario);
+    if (!valSecuencia.valida) {
+      setErrorValidacion(valSecuencia.error || 'Secuencia del itinerario no válida.');
+      return;
+    }
+    const { fechaInicio, fechaFin } = obtenerFechasItinerario();
+    const error = validarFechasSolicitud(fechaInicio, fechaFin);
     if (error) {
       setErrorValidacion(error);
       return;
@@ -825,11 +966,36 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setErrorValidacion('Debe consultar el comisionado antes de guardar.');
       return;
     }
+    // ── Validación: origen ≠ destino ────────────────────────────────────────
+    // La sincronización del itinerario ya aplica la lógica de ida-vuelta, pero
+    // se agrega esta guarda adicional para detectar casos donde la ciudad de
+    // destino calculada termina siendo igual a la de origen (p.ej. itinerarios
+    // incompletos o con rutas de retorno sin tramo intermedio registrado).
+    {
+      const { origenCiudad: oc, destinoCiudad: dc } = obtenerOrigenDestinoItinerario();
+      const normalizar = (s: string) =>
+        s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+      if (oc && dc && normalizar(oc) === normalizar(dc)) {
+        setErrorValidacion(
+          `La ciudad de destino ("${dc}") no puede ser la misma que la ciudad de origen ("${oc}"). ` +
+          'Verifique el itinerario: si hay un tramo de regreso, el destino se calculará como el punto más alejado antes del retorno.',
+        );
+        return;
+      }
+    }
+    const errCamposDinamicos = validarCamposDinamicosObligatorios();
+    if (errCamposDinamicos) {
+      setErrorValidacion(errCamposDinamicos);
+      return;
+    }
+
     setEnviando(true);
     setErrorValidacion(null);
     try {
+      const { fechaInicio, fechaFin, diasComision } = sincronizarItinerarioFormulario(form.itinerario || []);
+      const { origenCiudad, origenDepartamento, destinoCiudad, destinoDepartamento } = obtenerOrigenDestinoItinerario();
       const payload = mapearARequestCreacion(
-        form,
+        { ...form, fechaInicio, fechaFin, diasComision, origenCiudad, origenDepartamento, destinoCiudad, destinoDepartamento },
         comisionado,
         usuarioActual?.userId || '',
         true,
@@ -842,20 +1008,48 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           solicitudBorrador.id,
           {
             objetoComision: form.objetoComision,
-            destinoCiudad: form.destinoCiudad,
-            destinoDepartamento: form.destinoDepartamento,
-            fechaInicio: form.fechaInicio,
-            fechaFin: form.fechaFin,
+            destinoCiudad,
+            destinoDepartamento,
+            fechaInicio,
+            fechaFin,
             rubroPresupuestal: form.rubroPresupuestal,
+            numeroCdp: form.numeroCdp?.trim() || undefined,
+            fechaCdp: form.fechaCdp?.trim() || undefined,
             prioridad: form.prioridad,
             requiereTiquetes: form.requiereTiquetes,
             montoViaticos: form.montoViaticos,
             montoGastosViaje: form.montoGastosViaje,
-            diasComision: form.diasComision,
+            diasComision,
             salarioBasico: form.salarioBasico,
             costoEstimadoTiquete: form.costoEstimadoTiquete,
-            tipoComision: form.esInternacional ? 'INTERNACIONAL' : (form.tipoComision || 'TERRESTRE'),
+            tipoComision: (() => {
+                if (form.esInternacional) return 'INTERNACIONAL';
+                const tramos = form.itinerario || [];
+                const tieneAereo = tramos.some((r) => r.tipoTransporte === 'AEREO');
+                const tieneTerrestre = tramos.some((r) => r.tipoTransporte === 'TERRESTRE');
+                if (tieneAereo && tieneTerrestre) return 'MIXTO';
+                if (tieneAereo) return 'AEREO';
+                return 'TERRESTRE';
+              })(),
             esInternacional: Boolean(form.esInternacional),
+            camposAdicionales: form.camposAdicionales ?? {},
+            itinerario: (form.itinerario || []).map((r) => {
+              const {
+                guardada,
+                origenDepartamentoId,
+                destinoDepartamentoId,
+                tarifaTerminalAereo,
+                ...cleanRuta
+              } = r;
+              const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
+              const horaLlegada = r.horaEstimadaLlegada || '';
+              return {
+                ...cleanRuta,
+                horaEstimadaSalida: horaSalida,
+                horarioEstimadoMilitar: horaSalida || r.horarioEstimadoMilitar,
+                horaEstimadaLlegada: horaLlegada,
+              };
+            }),
           },
         );
         setSolicitudBorrador({
@@ -875,9 +1069,16 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       const tipoChecklist = form.esInternacional ? 'INTERNACIONAL' : comisionado.tipoComisionado;
       await cargarChecklist(tipoChecklist);
       setPaso(3);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error guardando borrador:', e);
-      setErrorValidacion('No fue posible guardar el borrador. Verifique e intente nuevamente.');
+      const msg = e?.response?.data?.message || e?.message;
+      setErrorValidacion(
+        Array.isArray(msg)
+          ? msg.join(', ')
+          : typeof msg === 'string' && msg.length > 0
+            ? msg
+            : 'No fue posible guardar el borrador. Verifique e intente nuevamente.',
+      );
     } finally {
       setEnviando(false);
     }
@@ -994,7 +1195,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const finalizarSolicitud = async () => {
-    const error = validarFechasSolicitud(form.fechaInicio, form.fechaFin);
+    const valSecuencia = validarSecuenciaItinerario(form.itinerario || []);
+    if (!valSecuencia.valida) {
+      setErrorValidacion(valSecuencia.error || 'Secuencia del itinerario no válida.');
+      return;
+    }
+    const { fechaInicio, fechaFin } = obtenerFechasItinerario();
+    const error = validarFechasSolicitud(fechaInicio, fechaFin);
     if (error) {
       setErrorValidacion(error);
       return;
@@ -1013,40 +1220,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       );
       return;
     }
-    if (
-      form.requiereTiquetes &&
-      validacionTiquete &&
-      (validacionTiquete.requires_route_exception ||
-        validacionTiquete.requires_budget_exception) &&
-      (!numeroActoExcepcion.trim() || !soporteExcepcionPdf)
-    ) {
-      setErrorValidacion(
-        'Debe registrar el número de acto de excepción y adjuntar el PDF firmado por Dirección Nacional o Sindicato antes de radicar.',
-      );
-      return;
-    }
     setFinalizando(true);
     setErrorValidacion(null);
     try {
-      // RF-LIQ-003/004 — Registra la excepción firmada antes de radicar
-      // para que la trazabilidad quede asociada a la solicitud.
-      if (
-        form.requiereTiquetes &&
-        validacionTiquete &&
-        (validacionTiquete.requires_route_exception ||
-          validacionTiquete.requires_budget_exception)
-      ) {
-        await viaticosService.registrarExcepcionTiquete({
-          solicitudId: solicitudBorrador.id,
-          tipoExcepcion: validacionTiquete.requires_route_exception
-            ? 'RUTA_CORTA'
-            : 'PRESUPUESTO_AGOTADO',
-          autorizadoPor: 'DIRECTOR_NACIONAL',
-          numeroDocumentoSoporte: numeroActoExcepcion.trim(),
-          documentoSoporteUrl: soporteExcepcionPdf?.base64,
-          comentarios: `Generada automáticamente al radicar la solicitud ${solicitudBorrador.consecutivoUnico}`,
-        });
-      }
       const radicada = await viaticosService.finalizarSolicitud(solicitudBorrador.id);
       onSolicitudCreada(radicada as unknown as SolicitudComisionResponse);
       onCerrar();
@@ -1070,8 +1246,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const inputCls =
-    'w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white';
-  const labelCls = 'text-xs font-bold text-slate-700 block mb-1';
+    'w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm sm:text-base text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#003DA5] focus:border-[#003DA5] focus:bg-white transition-all shadow-xs';
+  const labelCls = 'text-sm font-bold text-slate-700 block mb-1.5';
 
   const renderLabel = (clave: string, etiquetaBase: string) => {
     const obligatorio = esCampoObligatorio(clave);
@@ -1100,6 +1276,107 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   // de creación sino la vista de consolidación que permite revisar el
   // expediente completo y enviarlo a revisión del Grupo de Viáticos.
   // ========================================================================
+    // ========================================================================
+  // Información consolidada y detallada de Comisionado y Dependencia
+  // ========================================================================
+  const infoComisionadoCompleta = useMemo(() => {
+    const nombre = comisionado
+      ? formatearNombreComisionado(comisionado)
+      : (form.nombreComisionado || 'Funcionario en Comisión');
+    const cedula = comisionado?.numeroDocumento || form.documentoComisionado || '—';
+    const tipo = comisionado?.tipoComisionado || form.tipoComisionado || 'FUNCIONARIO';
+    const telefono =
+      comisionado?.telefonoContacto ||
+      (comisionado as any)?.telefono ||
+      (comisionado as any)?.celular ||
+      'No registrado';
+    const correo =
+      comisionado?.email ||
+      (comisionado as any)?.correo ||
+      'No registrado';
+    const cargo =
+      (comisionado as any)?.cargo ||
+      (comisionado as any)?.cargoComisionado ||
+      (form as any)?.cargoComisionado ||
+      'Funcionario Público';
+    const origen = comisionado?.origenDatos || 'ESAP';
+    const esFacturador = comisionado?.esFacturadorElectronico;
+    const habeasAutorizado = Boolean(
+      comisionado?.autorizacionHabeasData || form.aceptaHabeasData
+    );
+
+    // Búsqueda de dependencia
+    const depMatch =
+      dependencias.find(
+        (d) =>
+          (dependenciaId &&
+            (d.codDependencia === dependenciaId ||
+              String(d.idDependencia) === String(dependenciaId))) ||
+          (comisionado?.idDependencia &&
+            String(d.idDependencia) === String(comisionado.idDependencia))
+      ) ||
+      (usuarioActual?.dependencia
+        ? {
+            codDependencia: usuarioActual.dependencia.codDependencia,
+            nomDependencia: usuarioActual.dependencia.nomDependencia,
+            idDependencia: usuarioActual.dependencia.idDependencia,
+            dirDependencia: null,
+            dirEmail: null,
+          }
+        : null);
+
+    const depNombre =
+      depMatch?.nomDependencia ||
+      (comisionado as any)?.dependencia ||
+      (comisionado as any)?.nomDependencia ||
+      (typeof viaticosService?.resolverNombreDependencia === 'function'
+        ? viaticosService.resolverNombreDependencia(comisionado)
+        : '') ||
+      'Sede Central';
+    const depCodigo =
+      depMatch?.codDependencia ||
+      (dependenciaId
+        ? String(dependenciaId)
+        : comisionado?.idDependencia
+        ? String(comisionado.idDependencia)
+        : '');
+    const depUbicacion = (depMatch as any)?.dirDependencia || null;
+    const depEmail = (depMatch as any)?.dirEmail || null;
+
+    return {
+      nombre,
+      cedula,
+      tipo,
+      telefono,
+      correo,
+      cargo,
+      origen,
+      esFacturador,
+      habeasAutorizado,
+      depNombre,
+      depCodigo,
+      depUbicacion,
+      depEmail,
+    };
+  }, [comisionado, form, dependencias, dependenciaId, usuarioActual]);
+
+  const saldoDependenciaComisionado = useMemo(() => {
+    if (!saldosPresupuesto || saldosPresupuesto.length === 0) return null;
+    const depCod = (infoComisionadoCompleta.depCodigo || dependenciaId || '').toLowerCase().trim();
+    const depNom = (infoComisionadoCompleta.depNombre || '').toLowerCase().trim();
+
+    return (
+      saldosPresupuesto.find((s) => {
+        const sId = String(s.dependenciaId || '').toLowerCase().trim();
+        const sNom = (s.nombreDependencia || '').toLowerCase().trim();
+        return (
+          (depCod && sId === depCod) ||
+          (depNom && sNom && (sNom === depNom || sNom.includes(depNom) || depNom.includes(sNom)))
+        );
+      }) || null
+    );
+  }, [saldosPresupuesto, infoComisionadoCompleta.depCodigo, infoComisionadoCompleta.depNombre, dependenciaId]);
+
   const esModoConsolidacion = Boolean(
     solicitudAResumir &&
       (ESTADOS_CONSOLIDABLES as readonly string[]).includes(
@@ -1110,7 +1387,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   if (esModoConsolidacion && solicitudAResumir) {
     return (
       <div className="min-h-full flex items-center justify-center p-3 sm:p-4">
-        <div className="bg-white rounded-2xl max-w-3xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto scrollbar-thin">
+        <div className="bg-white rounded-3xl max-w-5xl w-full p-5 sm:p-7 md:p-9 shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto scrollbar-thin">
           <ConsolidacionExpediente
             solicitud={solicitudAResumir}
             onConsolidada={(resultado) => onSolicitudConsolidada?.(resultado)}
@@ -1123,16 +1400,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
   return (
     <div className="min-h-full flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-white rounded-2xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-3xl max-w-5xl lg:max-w-6xl w-full p-5 sm:p-7 md:p-9 shadow-2xl border border-slate-200/90 max-h-[92vh] overflow-y-auto transition-all">
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-blue-50 text-[#003DA5] rounded-xl">
               <Plane className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-black text-slate-900">Nueva Solicitud de Comisión de Servicios</h3>
-                <p className="text-xs text-slate-400">
-                   Paso {paso} de {PASOS.length}
+              <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Nueva Solicitud de Comisión de Servicios</h3>
+                <p className="text-xs sm:text-sm text-slate-500 font-medium">Paso {paso} de {PASOS.length}
                 {comisionado && (
                   <span className="ml-2 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
                     {comisionado.tipoComisionado}
@@ -1159,7 +1435,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
             return (
               <div key={nombre} className="flex items-center gap-2 flex-1">
                 <div
-                  className={`w-6 h-6 rounded-full text-[10px] font-black flex items-center justify-center shrink-0 ${
+                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full text-xs font-black flex items-center justify-center shrink-0 ${
                     activo
                       ? 'bg-[#003DA5] text-white'
                       : completado
@@ -1169,7 +1445,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 >
                   {completado ? '✓' : n}
                 </div>
-                <span className={`text-[10px] font-bold hidden sm:block ${activo ? 'text-slate-800' : 'text-slate-400'}`}>
+                <span className={`text-xs sm:text-sm font-bold hidden sm:block ${activo ? 'text-slate-900' : 'text-slate-400'}`}>
                   {nombre}
                 </span>
                 {idx < PASOS.length - 1 && <div className="flex-1 h-px bg-slate-200" />}
@@ -1210,7 +1486,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     type="button"
                     onClick={consultarComisionado}
                     disabled={consultando}
-                    className="px-4 py-2 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold inline-flex items-center gap-1 shrink-0 transition-colors disabled:opacity-50"
+                    className="px-5 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-sm font-bold inline-flex items-center gap-1.5 shrink-0 transition-all shadow-xs disabled:opacity-50"
                   >
                     <Search className="w-3.5 h-3.5" />
                     {consultando ? 'Consultando...' : 'Consultar'}
@@ -1224,28 +1500,123 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
               </div>
 
               {comisionado && !habeasPendiente && (
-                <div className="border border-emerald-200 bg-emerald-50/60 rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                      <User className="w-4 h-4" />
+                <div className="border border-emerald-200 bg-emerald-50/70 rounded-2xl p-5 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-emerald-100">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black shadow-xs shrink-0">
+                        <User className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-black text-slate-900 text-base truncate">
+                          {infoComisionadoCompleta.nombre}
+                        </p>
+                        <p className="text-xs text-slate-600 font-medium">
+                          {infoComisionadoCompleta.cargo} · <span className="font-bold text-emerald-800">{infoComisionadoCompleta.tipo}</span>
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-bold text-slate-800 text-sm">{formatearNombreComisionado(comisionado)}</p>
-                      <p className="text-[11px] text-slate-500">
-                        {comisionado.tipoComisionado} · {comisionado.email}
-                      </p>
+                    {infoComisionadoCompleta.origen && (
+                      <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+                        <BadgeCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        Verificado {infoComisionadoCompleta.origen === 'HUMANO' ? 'Talento Humano' : infoComisionadoCompleta.origen}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs sm:text-sm">
+                    <div className="bg-white/90 p-2.5 rounded-xl border border-emerald-100">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Documento / Cédula</span>
+                      <span className="font-bold text-slate-800">{infoComisionadoCompleta.cedula}</span>
+                    </div>
+                    <div className="bg-white/90 p-2.5 rounded-xl border border-emerald-100">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Celular / Teléfono</span>
+                      <span className="font-bold text-slate-800">{infoComisionadoCompleta.telefono}</span>
+                    </div>
+                    <div className="bg-white/90 p-2.5 rounded-xl border border-emerald-100">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Correo Electrónico</span>
+                      <span className="font-bold text-slate-800 truncate block" title={infoComisionadoCompleta.correo}>{infoComisionadoCompleta.correo}</span>
+                    </div>
+                    <div className="sm:col-span-2 lg:col-span-3 bg-white/90 p-2.5 rounded-xl border border-emerald-100 flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Dependencia Asignada</span>
+                        <span className="font-black text-slate-900">{infoComisionadoCompleta.depNombre}</span>
+                      </div>
+                      {infoComisionadoCompleta.depCodigo && (
+                        <span className="text-xs font-mono font-bold px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded">
+                          Cód. {infoComisionadoCompleta.depCodigo}
+                        </span>
+                      )}
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600">
-                    <div>
-                      <span className="text-slate-400 font-bold block">Documento</span>
-                      {comisionado.numeroDocumento}
+                </div>
+              )}
+
+              {/* Saldo presupuestal por dependencia (Informativo - Paso 1) */}
+              {comisionado && !habeasPendiente && (
+                <div className="border border-blue-200 bg-gradient-to-br from-blue-50/70 to-indigo-50/50 rounded-2xl p-4 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-blue-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-[#003DA5] text-white flex items-center justify-center font-bold shadow-xs">
+                        <Wallet className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h5 className="font-bold text-slate-800 text-xs sm:text-sm">
+                          Saldo Presupuestal por Dependencia
+                        </h5>
+                        <p className="text-[11px] text-slate-500">
+                          {infoComisionadoCompleta.depNombre}
+                          {infoComisionadoCompleta.depCodigo && ` · Cód. ${infoComisionadoCompleta.depCodigo}`}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-slate-400 font-bold block">Teléfono</span>
-                      {comisionado.telefonoContacto}
-                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 border border-blue-200 inline-flex items-center gap-1">
+                      Informativo
+                    </span>
                   </div>
+
+                  {cargandoSaldosPresupuesto ? (
+                    <div className="py-2 text-xs text-slate-500 flex items-center gap-2">
+                      <span className="w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                      Consultando saldo presupuestal institucional...
+                    </div>
+                  ) : saldoDependenciaComisionado ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="bg-white/90 p-3 rounded-xl border border-blue-100 shadow-2xs">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Presupuesto Techo / Asignado
+                        </span>
+                        <span className="text-sm font-black text-slate-800">
+                          {formatearMoneda(saldoDependenciaComisionado.presupuestoInicial)}
+                        </span>
+                      </div>
+                      <div className="bg-white/90 p-3 rounded-xl border border-blue-100 shadow-2xs">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Presupuesto Reservado
+                        </span>
+                        <span className="text-sm font-black text-amber-700">
+                          {formatearMoneda(saldoDependenciaComisionado.presupuestoReservado)}
+                        </span>
+                      </div>
+                      <div className="bg-white/90 p-3 rounded-xl border border-blue-100 shadow-2xs">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                          Saldo Disponible
+                        </span>
+                        <span
+                          className={`text-sm font-black ${
+                            saldoDependenciaComisionado.presupuestoDisponible > 0
+                              ? 'text-emerald-700'
+                              : 'text-red-600'
+                          }`}
+                        >
+                          {formatearMoneda(saldoDependenciaComisionado.presupuestoDisponible)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-white/80 p-3 rounded-xl border border-blue-100 text-xs text-slate-600">
+                      No se registra cuota o techo presupuestal individual configurado para esta dependencia. La comisión podrá tramitarse conforme a la disponibilidad institucional global.
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1254,608 +1625,661 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   type="button"
                   onClick={() => irPaso(2)}
                   disabled={!tieneComisionadoAutorizado}
-                  className="px-4 py-2 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold flex items-center gap-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="px-5 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-sm font-bold flex items-center gap-1.5 transition-all shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  Siguiente <ChevronRight className="w-4 h-4" />
+                  Guardar y Continuar <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
           )}
 
           {paso === 2 && (
-            <div className="space-y-4">
-              <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
-                2. Objeto y Destino de la Comisión
-              </h4>
-              {!esCampoOculto('objetoComision') && (
+            <div className="space-y-5">
+              {/* Encabezado del Paso 2 */}
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 flex-wrap gap-2">
                 <div>
-                  <label className={labelCls} htmlFor="objetoComision">
-                    {renderLabel('objetoComision', 'Objeto / Justificación de la comisión')}
-                  </label>
-                  <textarea
-                    id="objetoComision"
-                    required={esCampoObligatorio('objetoComision')}
-                    rows={3}
-                    placeholder="Describa el objetivo institucional de la comisión..."
-                    value={form.objetoComision}
-                    onChange={(e) => actualizar('objetoComision', sanitizeObjetoComision(e.target.value))}
-                    className={inputCls}
-                  />
-                  <p className="text-[11px] text-amber-600 font-medium mt-1 flex items-start gap-1">
-                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                    {AYUDA_OBJETO_SIIF}
+                  <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-[#003DA5]">
+                    2. Objeto y Destino de la Comisión, Itinerario y Autoliquidación
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Registre los datos requeridos, configure el itinerario multiruta y aplique el autoliquidador.
                   </p>
                 </div>
-              )}
+              </div>
 
-              {!esCampoOculto('destinoDepartamento') && !esCampoOculto('destinoCiudad') && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelCls} htmlFor="destinoDepartamento">
-                      {renderLabel('destinoDepartamento', 'Departamento')}
-                    </label>
-                    <SearchableSelect
-                      id="destinoDepartamento"
-                      options={departamentos.map((d) => ({ value: d.nomDivGeopolitica, label: d.nomDivGeopolitica }))}
-                      value={form.destinoDepartamento}
-                      onChange={(nombre) => manejarCambioDepartamento(nombre)}
-                      placeholder="Seleccione un departamento..."
-                      disabled={cargandoDepartamentos}
-                      loading={cargandoDepartamentos}
-                      emptyText="No hay departamentos"
-                    />
-                    {cargandoDepartamentos && (
-                      <p className="text-[11px] text-slate-400 mt-1">Cargando departamentos...</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className={labelCls} htmlFor="destinoCiudad">
-                      {renderLabel('destinoCiudad', 'Ciudad')}
-                    </label>
-                    <SearchableSelect
-                      id="destinoCiudad"
-                      options={ciudades.map((c) => ({ value: c.nomDivGeopolitica, label: c.nomDivGeopolitica }))}
-                      value={form.destinoCiudad}
-                      onChange={(nombre) => actualizar('destinoCiudad', nombre)}
-                      placeholder="Seleccione una ciudad..."
-                      disabled={!form.destinoDepartamento || cargandoCiudades}
-                      loading={cargandoCiudades}
-                      emptyText="Primero seleccione un departamento"
-                    />
-                    {cargandoCiudades && (
-                      <p className="text-[11px] text-slate-400 mt-1">Cargando ciudades...</p>
-                    )}
-                  </div>
-                  {form.requiereTiquetes && (
-                    <div>
-                      <label className={labelCls} htmlFor="origenCiudad">
-                        {renderLabel('requiereTiquetes', 'Ciudad de origen (sede)')}
-                      </label>
-                      <SearchableSelect
-                        id="origenCiudad"
-                        options={todasCiudades.map((c) => ({
-                          value: c.nomDivGeopolitica,
-                          label: c.nomDivGeopolitica,
-                        }))}
-                        value={origenCiudad}
-                        onChange={(nombre) => setOrigenCiudad(nombre)}
-                        placeholder="Seleccione la ciudad de origen..."
-                        disabled={cargandoTodasCiudades}
-                        loading={cargandoTodasCiudades}
-                        emptyText="No hay ciudades de origen"
-                      />
-                      <p className="text-[10px] text-slate-400 mt-1">
-                        Ciudad desde donde inicia el viaje (sede). Por defecto Bogotá D.C.
+              {/* ========== BANNER DE INFORMACIÓN AUTOMÁTICA (COMISIONADO Y DEPENDENCIA COMPLETA) ========== */}
+              <div className="bg-gradient-to-br from-blue-50/70 via-slate-50 to-indigo-50/50 border border-blue-200/90 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
+                {/* Fila superior: Avatar, Nombre comisionado, badges */}
+                <div className="flex items-start sm:items-center justify-between flex-wrap gap-3 pb-3.5 border-b border-blue-100">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-[#003DA5] to-blue-600 text-white flex items-center justify-center font-black text-sm sm:text-base shadow-sm shrink-0">
+                      <User className="w-5 h-5 sm:w-6 sm:h-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-base sm:text-lg font-black text-slate-900 tracking-tight truncate">
+                          {infoComisionadoCompleta.nombre}
+                        </h4>
+                        <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-blue-100 text-[#003DA5] border border-blue-200 uppercase tracking-wide">
+                          {infoComisionadoCompleta.tipo}
+                        </span>
+                      </div>
+                      <p className="text-xs sm:text-sm text-slate-600 font-medium flex items-center gap-1.5 mt-0.5">
+                        <Briefcase className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span>{infoComisionadoCompleta.cargo}</span>
                       </p>
                     </div>
-                  )}
-                </div>
-              )}
-
-              {!esCampoOculto('fechaInicio') && !esCampoOculto('fechaFin') && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelCls} htmlFor="fechaInicio">
-                      {renderLabel('fechaInicio', 'Fecha Inicio')}
-                    </label>
-                    <input
-                      id="fechaInicio"
-                      type="date"
-                      required={esCampoObligatorio('fechaInicio')}
-                      min={hoyISO()}
-                      value={form.fechaInicio}
-                      onChange={(e) => actualizar('fechaInicio', e.target.value)}
-                      className={inputCls}
-                    />
                   </div>
-                  <div>
-                    <label className={labelCls} htmlFor="fechaFin">
-                      {renderLabel('fechaFin', 'Fecha Fin')}
-                    </label>
-                    <input
-                      id="fechaFin"
-                      type="date"
-                      required={esCampoObligatorio('fechaFin')}
-                      value={form.fechaFin}
-                      onChange={(e) => actualizar('fechaFin', e.target.value)}
-                      className={inputCls}
-                    />
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {infoComisionadoCompleta.origen && (
+                      <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1 shadow-2xs">
+                        <BadgeCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        Verificado {infoComisionadoCompleta.origen === 'HUMANO' ? 'Talento Humano (FNC)' : infoComisionadoCompleta.origen}
+                      </span>
+                    )}
+                    <span className="text-[11px] font-black uppercase tracking-wider bg-white text-[#003DA5] px-2.5 py-1 rounded-lg border border-blue-200 shadow-2xs">
+                      Datos Precargados
+                    </span>
                   </div>
                 </div>
-              )}
 
-              {!esCampoOculto('rubroPresupuestal') && (
-                <div>
-                  <label className={labelCls} htmlFor="rubroPresupuestal">
-                    {renderLabel('rubroPresupuestal', 'Rubro Presupuestal')}
-                  </label>
-                  <input
-                    id="rubroPresupuestal"
-                    type="text"
-                    required={esCampoObligatorio('rubroPresupuestal')}
-                    placeholder="Ej. Rubro 01"
-                    value={form.rubroPresupuestal}
-                    onChange={(e) => actualizar('rubroPresupuestal', e.target.value)}
-                    className={inputCls}
-                  />
-                </div>
-              )}
-
-              {!esCampoOculto('prioridad') && (
-                <div>
-                  <label className={labelCls} htmlFor="prioridad">
-                    {renderLabel('prioridad', 'Prioridad')}
-                  </label>
-                  <SearchableSelect
-                    id="prioridad"
-                    options={[
-                      { value: 'ALTA', label: 'Alta' },
-                      { value: 'MEDIA', label: 'Media' },
-                      { value: 'BAJA', label: 'Baja' },
-                    ]}
-                    value={form.prioridad}
-                    onChange={(valor) => actualizar('prioridad', valor)}
-                    placeholder="Seleccione prioridad"
-                  />
-                </div>
-              )}
-
-              {(!esCampoOculto('montoViaticos') || !esCampoOculto('montoGastosViaje') || !esCampoOculto('diasComision')) && (
-                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-4">
-                  <div className="flex items-center gap-2">
-                    <DollarSign className="w-4 h-4 text-slate-500" />
-                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                      Valores de la Comisión
+                {/* Cuadrícula detallada con todos los datos requeridos */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                  {/* 1. Cédula / Documento */}
+                  <div className="bg-white/85 backdrop-blur-xs p-3.5 rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
+                    <div className="flex items-center gap-1.5 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                      <IdCard className="w-3.5 h-3.5 text-[#003DA5]" />
+                      <span>Documento de Identidad</span>
+                    </div>
+                    <p className="text-sm sm:text-base font-bold text-slate-800 pl-5">
+                      {infoComisionadoCompleta.cedula}
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {!esCampoOculto('montoViaticos') && (
-                      <div>
-                        <label className={labelCls} htmlFor="montoViaticos">
-                          {renderLabel('montoViaticos', 'Viáticos')}
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
-                          <input
-                            id="montoViaticos"
-                            type="text"
-                            inputMode="numeric"
-                            required={esCampoObligatorio('montoViaticos')}
-                            value={formatearMoneda(form.montoViaticos)}
-                            readOnly
-                            aria-readonly="true"
-                            title="Calculado automáticamente por el Autoliquidador (no editable)"
-                            onChange={(e) => actualizar('montoViaticos', Number(soloNumeros(e.target.value)) || 0)}
-                            className={`${inputCls} pl-7 text-right font-bold bg-slate-100 cursor-not-allowed`}
-                          />
-                        </div>
-                        <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
-                          <Calculator className="w-3 h-3" /> Automático (Autoliquidador)
+                  {/* 2. Celular / Teléfono */}
+                  <div className="bg-white/85 backdrop-blur-xs p-3.5 rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
+                    <div className="flex items-center gap-1.5 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                      <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Celular / Teléfono</span>
+                    </div>
+                    <p className="text-sm sm:text-base font-bold text-slate-800 pl-5">
+                      {infoComisionadoCompleta.telefono}
+                    </p>
+                  </div>
+
+                  {/* 3. Correo Electrónico */}
+                  <div className="bg-white/85 backdrop-blur-xs p-3.5 rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
+                    <div className="flex items-center gap-1.5 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                      <Mail className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Correo Electrónico</span>
+                    </div>
+                    <p className="text-sm sm:text-base font-bold text-slate-800 pl-5 truncate" title={infoComisionadoCompleta.correo}>
+                      {infoComisionadoCompleta.correo}
+                    </p>
+                  </div>
+
+                  {/* 4. Dependencia Asignada Completa */}
+                  <div className="sm:col-span-2 lg:col-span-2 bg-white/85 backdrop-blur-xs p-3.5 rounded-xl border border-blue-200/80 shadow-2xs space-y-1.5">
+                    <div className="flex items-center justify-between flex-wrap gap-1">
+                      <div className="flex items-center gap-1.5 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                        <Building2 className="w-3.5 h-3.5 text-[#003DA5]" />
+                        <span>Dependencia Asignada</span>
+                      </div>
+                      {infoComisionadoCompleta.depCodigo && (
+                        <span className="text-[11px] font-mono font-bold px-2 py-0.5 bg-blue-50 text-[#003DA5] border border-blue-200 rounded-md">
+                          Cód. {infoComisionadoCompleta.depCodigo}
                         </span>
-                        <p className="text-[10px] text-slate-400 mt-1">
-                          Calculado automáticamente por el Autoliquidador (no editable).
+                      )}
+                    </div>
+                    <p className="text-sm sm:text-base font-black text-slate-900 pl-5 leading-snug">
+                      {infoComisionadoCompleta.depNombre}
+                    </p>
+                    {(infoComisionadoCompleta.depUbicacion || infoComisionadoCompleta.depEmail) && (
+                      <p className="text-xs text-slate-500 pl-5 flex items-center gap-3 flex-wrap">
+                        {infoComisionadoCompleta.depUbicacion && <span>📍 {infoComisionadoCompleta.depUbicacion}</span>}
+                        {infoComisionadoCompleta.depEmail && <span>✉️ {infoComisionadoCompleta.depEmail}</span>}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 5. Facturación / DIAN */}
+                  <div className="bg-white/85 backdrop-blur-xs p-3.5 rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
+                    <div className="flex items-center gap-1.5 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
+                      <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
+                      <span>RUT / Facturación</span>
+                    </div>
+                    <p className="text-sm sm:text-base font-bold text-slate-800 pl-5">
+                      {infoComisionadoCompleta.esFacturador ? 'Facturador Electrónico' : 'Régimen Ordinario / RUT'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* ========== BLOQUE 1: DATOS REQUERIDOS DE LA COMISIÓN Y SALARIO ========== */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4 shadow-2xs">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <FileText className="w-4 h-4 text-[#003DA5]" />
+                  <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Datos Requeridos de la Comisión y Salario
+                  </h5>
+                </div>
+
+                {!esCampoOculto('objetoComision') && (
+                  <div>
+                    <label className={labelCls} htmlFor="objetoComision">
+                      {renderLabel('objetoComision', 'Objeto / Justificación de la comisión')}
+                    </label>
+                    <textarea
+                      id="objetoComision"
+                      required={esCampoObligatorio('objetoComision')}
+                      rows={3}
+                      placeholder="Describa el objetivo institucional de la comisión..."
+                      value={form.objetoComision}
+                      onChange={(e) => actualizar('objetoComision', sanitizeObjetoComision(e.target.value))}
+                      className={inputCls}
+                    />
+                    <p className="text-[11px] text-amber-600 font-medium mt-1 flex items-start gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      {AYUDA_OBJETO_SIIF}
+                    </p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {!esCampoOculto('rubroPresupuestal') && (
+                    <div>
+                      <label className={labelCls} htmlFor="rubroPresupuestal">
+                        {renderLabel('rubroPresupuestal', 'Rubro Presupuestal')}
+                      </label>
+                      <input
+                        id="rubroPresupuestal"
+                        type="text"
+                        required={esCampoObligatorio('rubroPresupuestal')}
+                        placeholder="Ej. Rubro 01"
+                        value={form.rubroPresupuestal}
+                        onChange={(e) => actualizar('rubroPresupuestal', e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                  )}
+                  {!esCampoOculto('numeroCdp') && (
+                    <div>
+                      <label className={labelCls} htmlFor="numeroCdp">
+                        {renderLabel('numeroCdp', 'Número de CDP')}
+                      </label>
+                      <input
+                        id="numeroCdp"
+                        type="text"
+                        required={esCampoObligatorio('numeroCdp')}
+                        placeholder="Ej. CDP-2026-00123"
+                        value={form.numeroCdp || ''}
+                        onChange={(e) => actualizar('numeroCdp', e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                  )}
+                  {!esCampoOculto('fechaCdp') && (
+                    <div>
+                      <label className={labelCls} htmlFor="fechaCdp">
+                        {renderLabel('fechaCdp', 'Fecha de CDP')}
+                      </label>
+                      <input
+                        id="fechaCdp"
+                        type="date"
+                        required={esCampoObligatorio('fechaCdp')}
+                        value={form.fechaCdp || ''}
+                        onChange={(e) => actualizar('fechaCdp', e.target.value)}
+                        className={inputCls}
+                      />
+                    </div>
+                  )}
+                  {!esCampoOculto('prioridad') && (
+                    <div>
+                      <label className={labelCls} htmlFor="prioridad">
+                        {renderLabel('prioridad', 'Prioridad')}
+                      </label>
+                      <SearchableSelect
+                        id="prioridad"
+                        options={[
+                          { value: 'ALTA', label: 'Alta' },
+                          { value: 'MEDIA', label: 'Media' },
+                          { value: 'BAJA', label: 'Baja' },
+                        ]}
+                        value={form.prioridad}
+                        onChange={(valor) => actualizar('prioridad', valor)}
+                        placeholder="Seleccione prioridad"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Asignaciones básicas y salario comisionado */}
+                {comisionado?.tipoComisionado && !esCampoOculto('montoViaticos') && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Wallet className="w-4 h-4 text-slate-500" />
+                      <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                        Asignaciones Básicas Mensuales (Salario)
+                      </p>
+                    </div>
+                    <p className="text-[11px] text-slate-500 mb-3">
+                      Ingrese el salario básico del comisionado. Para doble rol, agregue ambos salarios (se usará el mayor para la autoliquidación).
+                    </p>
+
+                    <div className="space-y-2">
+                      {(asignacionesBasicas.length === 0 ? [0] : asignacionesBasicas).map((valor, idx) => (
+                        <div key={idx} className="w-full sm:max-w-xs">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                            {asignacionesBasicas.length > 1
+                              ? idx === 0
+                                ? 'Salario básico mensual'
+                                : `Salario ${idx + 1} (doble rol)`
+                              : 'Salario básico mensual'}
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="0"
+                              value={valor ? formatearMoneda(valor) : ''}
+                              onChange={(e) => {
+                                const val = Number(soloNumeros(e.target.value)) || 0;
+                                actualizarAsignacionBasica(idx, val);
+                              }}
+                              className={`${inputCls} pl-7 pr-8 text-right font-bold`}
+                            />
+                            {asignacionesBasicas.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => eliminarAsignacionBasica(idx)}
+                                className="absolute right-2 top-2 text-slate-400 hover:text-red-500"
+                                title="Eliminar salario"
+                                aria-label="Eliminar salario"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      <div className="flex items-center gap-2 pt-1 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={agregarAsignacionBasica}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 rounded-lg text-[11px] font-bold transition-colors"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          Agregar salario (doble rol)
+                        </button>
+
+                        {obtenerAsignacionesBasicasValidas().length > 1 && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-slate-600 bg-white rounded-lg px-2.5 py-1.5 border border-slate-200">
+                            <Calculator className="w-3.5 h-3.5 text-slate-400" />
+                            <span>
+                              Mayor salario: <strong>{formatearMoneda(Math.max(...obtenerAsignacionesBasicasValidas()))}</strong>
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Categoría investigador y excepción regional si aplica */}
+                {comisionado?.tipoComisionado === 'INVESTIGADOR' && (
+                  <div>
+                    <label className={labelCls} htmlFor="categoriaInvestigador">
+                      Categoría de Investigador
+                    </label>
+                    <SearchableSelect
+                      id="categoriaInvestigador"
+                      options={[
+                        { value: 'JUNIOR', label: 'Junior' },
+                        { value: 'ASOCIADO', label: 'Asociado' },
+                        { value: 'SENIOR', label: 'Senior' },
+                      ]}
+                      value={categoriaInvestigador}
+                      onChange={(valor) => setCategoriaInvestigador(valor)}
+                      placeholder="Seleccione categoría"
+                    />
+                  </div>
+                )}
+
+                {/* Campos adicionales dinámicos */}
+                {(() => {
+                  const camposAdicionalesConfigurados = camposCatalogo
+                    .filter((c) => c.activo && !camposEstandar.has(c.clave) && !esCampoOculto(c.clave))
+                    .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+
+                  if (camposAdicionalesConfigurados.length === 0) return null;
+
+                  return (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-slate-500" />
+                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                          Información Adicional de la Comisión
                         </p>
                       </div>
-                    )}
-                    {!esCampoOculto('montoGastosViaje') && (
-                      <div>
-                        <label className={labelCls} htmlFor="montoGastosViaje">
-                          {renderLabel('montoGastosViaje', 'Gastos de viaje')}
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
-                          <input
-                            id="montoGastosViaje"
-                            type="text"
-                            inputMode="numeric"
-                            required={esCampoObligatorio('montoGastosViaje')}
-                            value={formatearMoneda(form.montoGastosViaje)}
-                            onChange={(e) => actualizar('montoGastosViaje', Number(soloNumeros(e.target.value)) || 0)}
-                            className={`${inputCls} pl-7 text-right font-bold`}
-                          />
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-1">Tiquetes, alojamiento, alimentación, etc.</p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {camposAdicionalesConfigurados.map((campo) => {
+                          const valorActual = form.camposAdicionales?.[campo.clave] ?? '';
+                          const obligatorio = esCampoObligatorio(campo.clave);
+
+                          if (campo.tipoCampo === 'TEXTAREA') {
+                            return (
+                              <div key={campo.clave} className="col-span-1 sm:col-span-2">
+                                <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
+                                  {renderLabel(campo.clave, campo.etiqueta)}
+                                </label>
+                                <textarea
+                                  id={`campo_${campo.clave}`}
+                                  required={obligatorio}
+                                  rows={2}
+                                  placeholder={campo.placeholder || (campo as any).ayuda || ''}
+                                  value={String(valorActual)}
+                                  onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.value)}
+                                  className={inputCls}
+                                />
+                              </div>
+                            );
+                          }
+
+                          if (campo.tipoCampo === 'CHECKBOX') {
+                            return (
+                              <div key={campo.clave} className="col-span-1 sm:col-span-2 flex items-center pt-2">
+                                <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    id={`campo_${campo.clave}`}
+                                    checked={Boolean(valorActual)}
+                                    onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.checked)}
+                                    className="w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5]"
+                                  />
+                                  <span>{renderLabel(campo.clave, campo.etiqueta)}</span>
+                                </label>
+                              </div>
+                            );
+                          }
+
+                          if (campo.tipoCampo === 'SELECT') {
+                            return (
+                              <div key={campo.clave}>
+                                <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
+                                  {renderLabel(campo.clave, campo.etiqueta)}
+                                </label>
+                                <SearchableSelect
+                                  id={`campo_${campo.clave}`}
+                                  options={(campo.opciones || []).map((o) => ({ value: o.value, label: o.label }))}
+                                  value={String(valorActual)}
+                                  onChange={(v) => actualizarCampoAdicional(campo.clave, v)}
+                                  placeholder="Seleccione..."
+                                />
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div key={campo.clave}>
+                              <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
+                                {renderLabel(campo.clave, campo.etiqueta)}
+                              </label>
+                              <input
+                                id={`campo_${campo.clave}`}
+                                type={campo.tipoCampo === 'DATE' ? 'date' : 'text'}
+                                required={obligatorio}
+                                placeholder={campo.placeholder || (campo as any).ayuda || ''}
+                                value={campo.tipoCampo === 'CURRENCY' && typeof valorActual === 'number' ? formatearMoneda(valorActual) : String(valorActual)}
+                                onChange={(e) => {
+                                  const val = campo.tipoCampo === 'CURRENCY' ? Number(soloNumeros(e.target.value)) || 0 : e.target.value;
+                                  actualizarCampoAdicional(campo.clave, val);
+                                }}
+                                className={inputCls}
+                              />
+                            </div>
+                          );
+                        })}
                       </div>
-                    )}
-                  </div>
-
-                  {!esCampoOculto('diasComision') && (
-                    <div className="w-full sm:max-w-[200px]">
-                      <label className={labelCls} htmlFor="diasComision">
-                        {renderLabel('diasComision', 'Días de comisión')}
-                      </label>
-                      <div className="relative">
-                        <Calendar className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
-                        <input
-                          id="diasComision"
-                          type="text"
-                          inputMode="numeric"
-                          required={esCampoObligatorio('diasComision')}
-                          value={form.diasComision || calcularDiasComision(form.fechaInicio, form.fechaFin)}
-                          onChange={(e) => actualizar('diasComision', Number(soloNumeros(e.target.value)) || 0)}
-                          className={`${inputCls} pl-9 text-right font-bold`}
-                        />
-                      </div>
-                      <p className="text-[10px] text-slate-400 mt-1">Se calcula automáticamente desde las fechas</p>
                     </div>
-                  )}
+                  );
+                })()}
 
-                  {(form.montoViaticos > 0 || form.montoGastosViaje > 0) && (
-                    <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-slate-200">
-                      <span className="text-xs font-bold text-slate-600">Total estimado</span>
-                      <span className="text-sm font-black text-slate-800">
-                        {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {comisionado?.tipoComisionado === 'INVESTIGADOR' && (
-                <div>
-                  <label className={labelCls} htmlFor="categoriaInvestigador">
-                    Categoría de Investigador
-                  </label>
-                  <SearchableSelect
-                    id="categoriaInvestigador"
-                    options={[
-                      { value: 'JUNIOR', label: 'Junior' },
-                      { value: 'ASOCIADO', label: 'Asociado' },
-                      { value: 'SENIOR', label: 'Senior' },
-                    ]}
-                    value={categoriaInvestigador}
-                    onChange={(valor) => setCategoriaInvestigador(valor)}
-                    placeholder="Seleccione categoría"
-                  />
-                </div>
-              )}
-
-              {comisionado?.tipoComisionado && !esCampoOculto('destinoDepartamento') && (
-                <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
+                <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer pt-1">
                   <input
                     type="checkbox"
-                    checked={aplicaExcepcionRegional}
-                    onChange={(e) => setAplicaExcepcionRegional(e.target.checked)}
+                    checked={Boolean(form.esInternacional)}
+                    onChange={(e) => {
+                      const internacional = e.target.checked;
+                      actualizar('esInternacional', internacional);
+                      actualizar('tipoComision', internacional ? 'INTERNACIONAL' : 'TERRESTRE');
+                    }}
                     className="w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5]"
                   />
-                  Aplica excepción regional (Art. 5 Decreto 314 de 2026)
+                  <span>
+                    Comisión internacional / acto administrativo{' '}
+                    <span className="text-slate-400 font-normal">(exige pasaporte, carta de invitación y resolución)</span>
+                  </span>
                 </label>
-              )}
+              </div>
 
-              {comisionado?.tipoComisionado && !esCampoOculto('montoViaticos') && (
-                <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Wallet className="w-4 h-4 text-slate-500" />
-                    <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                      Asignaciones Básicas Mensuales
-                    </p>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mb-3">
-                    Ingrese los salarios del comisionado. Para liquidación de doble rol, agregue ambos salarios. Se usará el mayor para el cálculo.
-                  </p>
+              {/* ========== BLOQUE 2: ITINERARIO DE LA COMISIÓN (MULTIRUTA) ========== */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4 shadow-2xs">
+                <ItinerarioBuilder
+                  itinerario={form.itinerario || []}
+                  onChange={(itinerario) => {
+                    const sync = sincronizarItinerarioFormulario(itinerario.filter((r) => r.guardada));
+                    setForm((prev) => ({
+                      ...prev,
+                      itinerario,
+                      fechaInicio: sync.fechaInicio || prev.fechaInicio,
+                      fechaFin: sync.fechaFin || prev.fechaFin,
+                      diasComision: sync.diasComision || prev.diasComision,
+                      origenCiudad: sync.origenCiudad || prev.origenCiudad,
+                      origenDepartamento: sync.origenDepartamento || prev.origenDepartamento,
+                      destinoCiudad: sync.destinoCiudad || prev.destinoCiudad,
+                      destinoDepartamento: sync.destinoDepartamento || prev.destinoDepartamento,
+                      ...(sync.transporteTerminalesAereos > 0
+                        ? { montoGastosViaje: sync.transporteTerminalesAereos }
+                        : {}),
+                    }));
+                  }}
+                  departamentos={departamentos}
+                />
+              </div>
 
-                  <div className="space-y-2">
-                    {/* Input de salario UNIFICADO: siempre se renderiza el mismo
-                        campo (idx 0) para no perder el foco al escribir el primer
-                        dígito. El "doble rol" agrega más campos. */}
-                    {(asignacionesBasicas.length === 0 ? [0] : asignacionesBasicas).map((valor, idx) => (
-                      <div key={idx} className="w-full sm:max-w-xs">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">
-                          {asignacionesBasicas.length > 1
-                            ? idx === 0
-                              ? 'Salario básico mensual'
-                              : `Salario ${idx + 1} (doble rol)`
-                            : 'Salario básico mensual'}
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="0"
-                            value={valor ? formatearMoneda(valor) : ''}
-                            onChange={(e) => {
-                              const val = Number(soloNumeros(e.target.value)) || 0;
-                              actualizarAsignacionBasica(idx, val);
-                            }}
-                            className={`${inputCls} pl-7 pr-8 text-right font-bold`}
-                          />
-                          {asignacionesBasicas.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => eliminarAsignacionBasica(idx)}
-                              className="absolute right-2 top-2 text-slate-400 hover:text-red-500"
-                              title="Eliminar salario"
-                              aria-label="Eliminar salario"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+              {/* ========== BLOQUE 3: AUTOLIQUIDADOR Y VALORES DE LA COMISIÓN ========== */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4 shadow-2xs">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <Calculator className="w-4 h-4 text-[#003DA5]" />
+                  <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                    Liquidación y Valores de la Comisión
+                  </h5>
+                </div>
 
+                <LiquidacionPanel
+                  fechaInicio={form.fechaInicio}
+                  fechaFin={form.fechaFin}
+                  tipoComisionado={comisionado?.tipoComisionado || ''}
+                  destinoCiudad={form.destinoCiudad}
+                  destinoDepartamento={form.destinoDepartamento}
+                  categoriaInvestigador={categoriaInvestigador}
+                  asignacionesBasicas={obtenerAsignacionesBasicasValidas()}
+                  incluyeTransporteAereo={form.itinerario?.some((r) => r.tipoTransporte === 'AEREO')}
+                  montoTransporteTerrestre={0}
+                  itinerario={form.itinerario}
+                  onAplicarValor={(montoViaticos, dias, montoGastosDesplazamiento) => {
+                    actualizar('montoViaticos', montoViaticos);
+                    actualizar('diasComision', dias);
+                    if (montoGastosDesplazamiento !== undefined && montoGastosDesplazamiento > 0) {
+                      actualizar('montoGastosViaje', montoGastosDesplazamiento);
+                    }
+                  }}
+                />
+
+                {(!esCampoOculto('montoViaticos') || !esCampoOculto('montoGastosViaje') || !esCampoOculto('diasComision')) && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-4">
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={agregarAsignacionBasica}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 rounded-lg text-[11px] font-bold transition-colors"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        Agregar salario (doble rol)
-                      </button>
+                      <DollarSign className="w-4 h-4 text-slate-500" />
+                      <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                        Valores Consolidados de la Comisión
+                      </p>
+                    </div>
 
-                      {obtenerAsignacionesBasicasValidas().length > 1 && (
-                        <div className="flex items-center gap-1.5 text-[11px] text-slate-600 bg-white rounded-lg px-2.5 py-1.5 border border-slate-200">
-                          <Calculator className="w-3.5 h-3.5 text-slate-400" />
-                          <span>
-                            Mayor salario: <strong>{formatearMoneda(Math.max(...obtenerAsignacionesBasicasValidas()))}</strong>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {!esCampoOculto('montoViaticos') && (
+                        <div>
+                          <label className={labelCls} htmlFor="montoViaticos">
+                            {renderLabel('montoViaticos', 'Viáticos')}
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                            <input
+                              id="montoViaticos"
+                              type="text"
+                              inputMode="numeric"
+                              required={esCampoObligatorio('montoViaticos')}
+                              value={formatearMoneda(form.montoViaticos)}
+                              readOnly
+                              aria-readonly="true"
+                              title="Calculado automáticamente por el Autoliquidador (no editable)"
+                              className={`${inputCls} pl-7 text-right font-bold bg-slate-100 cursor-not-allowed`}
+                            />
+                          </div>
+                          <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
+                            <Calculator className="w-3 h-3" /> Automático (Autoliquidador)
                           </span>
                         </div>
                       )}
+                      {!esCampoOculto('montoGastosViaje') && (() => {
+                          const tarifasAereas = (form.itinerario || []).reduce((acc, r) => acc + (r.tarifaTerminalAereo || 0), 0);
+                          const terrestreActual = Math.max(0, (form.montoGastosViaje || 0) - tarifasAereas);
+                          return (
+                            <div className="space-y-3">
+                              <p className={labelCls}>
+                                {renderLabel('montoGastosViaje', '4. Gastos de Desplazamiento y Transporte')}
+                              </p>
+                              {/* Desglose visual */}
+                              <div className="rounded-xl border border-slate-200 bg-slate-50/50 divide-y divide-slate-100 overflow-hidden">
+                                {/* Fila: Terminales Aéreos */}
+                                <div className="grid grid-cols-2 items-center px-3 py-2.5 gap-2">
+                                  <div>
+                                    <p className="text-[11px] font-bold text-slate-700">
+                                      Transporte a terminales aéreos
+                                    </p>
+                                    <p className="text-[10px] text-slate-400">
+                                      {form.itinerario?.some((r) => r.tipoTransporte === 'AEREO')
+                                        ? 'Calculado por tarifa regulada (itinerario aéreo)'
+                                        : 'Sin rutas aéreas en el itinerario'}
+                                    </p>
+                                  </div>
+                                  <div className="relative">
+                                    <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                                    <input
+                                      id="montoGastosViaje_aereo"
+                                      type="text"
+                                      readOnly
+                                      aria-readonly="true"
+                                      value={formatearMoneda(tarifasAereas)}
+                                      title="Calculado automáticamente desde el itinerario aéreo"
+                                      className={`${inputCls} pl-7 text-right font-bold bg-slate-100 cursor-not-allowed`}
+                                    />
+                                    {tarifasAereas > 0 && (
+                                      <span className="flex items-center gap-1 mt-1 text-[9px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded w-fit ml-auto">
+                                        <Plane className="w-2.5 h-2.5" /> Automático
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                {/* Fila: Transporte Terrestre / Otros */}
+                                <div className="grid grid-cols-2 items-center px-3 py-2.5 gap-2">
+                                  <div>
+                                    <p className="text-[11px] font-bold text-slate-700">
+                                      Transporte terrestre / fluvial / ferroviario / otros
+                                    </p>
+                                    <p className="text-[10px] text-slate-400">Ingrese el costo de transporte adicional</p>
+                                  </div>
+                                  <div className="relative">
+                                    <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                                    <input
+                                      id="montoGastosViaje_terrestre"
+                                      type="text"
+                                      inputMode="numeric"
+                                      placeholder="0"
+                                      value={formatearMoneda(terrestreActual || 0)}
+                                      onChange={(e) => {
+                                        const terrestre = Number(soloNumeros(e.target.value)) || 0;
+                                        actualizar('montoGastosViaje', tarifasAereas + terrestre);
+                                      }}
+                                      className={`${inputCls} pl-7 text-right font-bold`}
+                                    />
+                                  </div>
+                                </div>
+                                {/* Total desplazamiento */}
+                                <div className="grid grid-cols-2 items-center px-3 py-2.5 gap-2 bg-blue-50/70 border-t border-blue-100">
+                                  <span className="text-[11px] font-black text-blue-900 uppercase tracking-wide">
+                                    Total Gastos de Desplazamiento
+                                  </span>
+                                  <span className="text-right text-sm font-black text-blue-900">
+                                    {formatearMoneda(form.montoGastosViaje || 0)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                     </div>
+
+                    {!esCampoOculto('diasComision') && (
+                      <div className="w-full sm:max-w-[260px]">
+                        <label className={labelCls} htmlFor="diasComision">
+                          {renderLabel('diasComision', 'Días de comisión')}
+                        </label>
+                        <div className="relative">
+                          <Calendar className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                          <input
+                            id="diasComision"
+                            type="text"
+                            readOnly
+                            aria-readonly="true"
+                            title="Calculado automáticamente desde el itinerario (no editable)"
+                            required={esCampoObligatorio('diasComision')}
+                            value={formatearDiasComision(Number(form.diasComision))}
+                            className={`${inputCls} pl-9 pr-14 font-bold bg-slate-100 text-slate-800 cursor-not-allowed`}
+                          />
+                          <span className="absolute right-2.5 top-2 text-[10px] font-bold text-slate-400">
+                            ({Number(form.diasComision)} d)
+                          </span>
+                        </div>
+                        <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
+                          <Calculator className="w-3 h-3" /> Automático (Itinerario)
+                        </span>
+                      </div>
+                    )}
+
+                    {(form.montoViaticos > 0 || form.montoGastosViaje > 0) && (
+                      <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-slate-200">
+                        <span className="text-xs font-bold text-slate-600">Total estimado</span>
+                        <span className="text-sm font-black text-slate-800">
+                          {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
-              <LiquidacionPanel
-                fechaInicio={form.fechaInicio}
-                fechaFin={form.fechaFin}
-                tipoComisionado={comisionado?.tipoComisionado || ''}
-                destinoCiudad={form.destinoCiudad}
-                destinoDepartamento={form.destinoDepartamento}
-                aplicaExcepcionRegional={aplicaExcepcionRegional}
-                categoriaInvestigador={categoriaInvestigador}
-                asignacionesBasicas={obtenerAsignacionesBasicasValidas()}
-                onAplicarValor={(monto, dias) => {
-                  actualizar('montoViaticos', monto);
-                  actualizar('diasComision', dias);
-                }}
-              />
-
-               {!esCampoOculto('requiereTiquetes') && (
-                 <div className="space-y-3">
-                   <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
-                     <input
-                       type="checkbox"
-                       checked={form.requiereTiquetes}
-                       onChange={(e) => actualizar('requiereTiquetes', e.target.checked)}
-                       className="w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5]"
-                     />
-                     {esCampoObligatorio('requiereTiquetes') ? 'La comisión requiere tiquetes aéreos / pasajes *' : 'La comisión requiere tiquetes aéreos / pasajes'}
-                   </label>
-
-                   {form.requiereTiquetes && (
-                     <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
-                       <div className="flex items-center gap-2">
-                         <PlaneTakeoff className="w-4 h-4 text-slate-500" />
-                         <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                           Tiquetes y disponibilidad presupuestal (RF-LIQ-003/004)
-                         </p>
-                       </div>
-
-                       <div className="rounded-lg bg-white border border-slate-200 px-3 py-2 text-[11px] text-slate-600 flex flex-wrap items-center gap-1.5 mb-3">
-                         <Plane className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                         <span className="text-slate-400 font-semibold">Itinerario:</span>
-                         <span className="font-bold text-slate-700">{origenCiudad || '—'}</span>
-                         <span className="text-slate-400">→</span>
-                         <span className="font-bold text-slate-700">{form.destinoCiudad || 'Ciudad de destino'}</span>
-                       </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                           {puedeElegirDependencia() ? (
-                             <div>
-                               <label className={labelCls} htmlFor="dependenciaId">
-                                 Dependencia solicitante
-                               </label>
-                               <SearchableSelect
-                                 id="dependenciaId"
-                                 options={dependencias.map((dep) => ({
-                                   value: dep.codDependencia,
-                                   label: `${dep.codDependencia} — ${dep.nomDependencia}`,
-                                 }))}
-                                 value={dependenciaId}
-                                 onChange={(valor) => setDependenciaId(valor)}
-                                 placeholder="Seleccione dependencia..."
-                                 disabled={cargandoDependencias}
-                                 loading={cargandoDependencias}
-                                 emptyText={cargandoDependencias ? 'Cargando...' : 'No hay dependencias disponibles'}
-                               />
-                               {cargandoDependencias && (
-                                 <p className="text-[11px] text-slate-400 mt-1">Cargando dependencias...</p>
-                               )}
-                             </div>
-                            ) : (usuarioActual?.dependencia?.codDependencia || dependenciaId) ? (
-                             <div>
-                               <label className={labelCls} htmlFor="dependenciaId">
-                                 Dependencia solicitante
-                               </label>
-                               <div
-                                 id="dependenciaId"
-                                 className={`${inputCls} bg-slate-50 cursor-not-allowed flex items-center justify-between`}
-                                 aria-readonly="true"
-                               >
-                                 <span className="truncate">
-                                   {dependenciaId
-                                     ? `${dependenciaId}${usuarioActual?.dependencia?.nomDependencia ? ` — ${usuarioActual.dependencia.nomDependencia}` : ''}`
-                                     : 'Sin dependencia asignada a su usuario'}
-                                 </span>
-                                 <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold ml-2">
-                                   Automática
-                                 </span>
-                               </div>
-                               <p className="text-[11px] text-slate-500 mt-1">
-                                 Su dependencia se asigna automáticamente desde su perfil y no puede modificarse.
-                               </p>
-                             </div>
-                           ) : null}
-                         <div>
-                           <label className={labelCls} htmlFor="tipoTransporte">
-                             Tipo de transporte
-                           </label>
-                           <SearchableSelect
-                             id="tipoTransporte"
-                             options={[
-                               { value: 'AEREO', label: 'Aéreo' },
-                               { value: 'TERRESTRE', label: 'Terrestre' },
-                             ]}
-                             value={tipoTransporte}
-                             onChange={(valor) => setTipoTransporte(valor as TipoTransporteTiquete)}
-                             placeholder="Seleccione transporte"
-                           />
-                           {validacionTiquete?.force_land_transport && (
-                             <p className="text-[10px] text-red-600 font-semibold mt-1 flex items-start gap-1">
-                               <AlertCircle className="w-3 h-3 mt-0.5 shrink-0" />
-                               Transporte aéreo bloqueado: el saldo de la dependencia está en cero. Aporte excepción firmada por Dirección Nacional para reactivar la opción aérea.
-                             </p>
-                           )}
-                         </div>
-                         <div>
-                           <label className={labelCls} htmlFor="montoEstimadoTiquete">
-                             Costo estimado del tiquete (COP)
-                           </label>
-                           <div className="relative">
-                             <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
-                             <input
-                               id="montoEstimadoTiquete"
-                               type="text"
-                               inputMode="numeric"
-                               placeholder="450000"
-                               value={montoEstimadoTiquete ? formatearMoneda(montoEstimadoTiquete) : ''}
-                               onChange={(e) =>
-                                 setMontoEstimadoTiquete(Number(soloNumeros(e.target.value)) || 0)
-                               }
-                               className={`${inputCls} pl-7 text-right font-bold`}
-                             />
-                           </div>
-                         </div>
-                       </div>
-
-                       <TicketBudgetWidget
-                         validacion={validacionTiquete}
-                         cargando={validandoTiquete}
-                         montoEstimadoDisplay={formatearMoneda(montoEstimadoTiquete)}
-                       />
-
-                       {(validacionTiquete?.requires_route_exception ||
-                         validacionTiquete?.requires_budget_exception) && (
-                         <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 space-y-2">
-                           <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">
-                             Soporte de excepción requerido
-                           </p>
-                           <p className="text-[11px] text-amber-800 leading-relaxed">
-                             {validacionTiquete.requires_route_exception
-                               ? 'La ruta seleccionada es restringida. Adjunte el PDF de excepción firmado por Dirección Nacional o Sindicato.'
-                               : 'El saldo de la dependencia no alcanza para cubrir el tiquete con la holgura de mercado. Adjunte el PDF de excepción firmado por Dirección Nacional.'}
-                           </p>
-                           <div>
-                             <label className={labelCls} htmlFor="numeroActoExcepcion">
-                               Número de acto / resolución de excepción *
-                             </label>
-                             <input
-                               id="numeroActoExcepcion"
-                               type="text"
-                               required
-                               value={numeroActoExcepcion}
-                               onChange={(e) => setNumeroActoExcepcion(e.target.value.toUpperCase())}
-                               placeholder="Resolución 023-2026"
-                               className={inputCls}
-                             />
-                           </div>
-                           <div>
-                             <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                               PDF de soporte firmado por Dirección Nacional o Sindicato *
-                             </label>
-                             {soporteExcepcionPdf ? (
-                               <div className="flex items-center justify-between bg-white border border-emerald-200 rounded-lg px-3 py-2">
-                                 <div className="min-w-0">
-                                   <p className="text-xs font-bold text-emerald-700 truncate">
-                                     {soporteExcepcionPdf.nombre}
-                                   </p>
-                                   <p className="text-[10px] text-slate-500">
-                                     {(soporteExcepcionPdf.tamano / 1024).toFixed(1)} KB · PDF
-                                   </p>
-                                 </div>
-                                 <button
-                                   type="button"
-                                   onClick={() => setSoporteExcepcionPdf(null)}
-                                   className="text-red-500 hover:text-red-700"
-                                   title="Quitar soporte"
-                                 >
-                                   <Trash2 className="w-3.5 h-3.5" />
-                                 </button>
-                               </div>
-                             ) : (
-                               <label className="px-3 py-1.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors">
-                                 <input
-                                   type="file"
-                                   accept="application/pdf"
-                                   hidden
-                                   onChange={(e) => {
-                                     const file = e.target.files?.[0];
-                                     if (file) void cargarSoporteExcepcion(file);
-                                   }}
-                                 />
-                                 {subiendoExcepcion ? 'Cargando…' : 'Adjuntar PDF'}
-                               </label>
-                             )}
-                           </div>
-                           {errorExcepcion && (
-                             <p className="text-[11px] text-red-700 font-semibold bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">
-                               {errorExcepcion}
-                             </p>
-                           )}
-                         </div>
-                       )}
-                     </div>
-                   )}
-                 </div>
-               )}
-
-               <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
-                 <input
-                   type="checkbox"
-                   checked={Boolean(form.esInternacional)}
-                   onChange={(e) => {
-                     const internacional = e.target.checked;
-                     actualizar('esInternacional', internacional);
-                     actualizar('tipoComision', internacional ? 'INTERNACIONAL' : 'TERRESTRE');
-                   }}
-                   className="w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5]"
-                 />
-                 <span>
-                   Comisión internacional / acto administrativo{' '}
-                   <span className="text-slate-400 font-normal">(exige pasaporte, carta de invitación y resolución)</span>
-                 </span>
-               </label>
-
-               {errorValidacion && (
+              {errorValidacion && (
                 <p className="text-xs text-red-600 font-semibold bg-red-50 border border-red-200 rounded-lg px-3 py-2" role="alert">
                   {errorValidacion}
                 </p>
               )}
 
+              {/* Botones de navegación del Paso 2 */}
               <div className="pt-2 flex justify-between items-center">
                 <button
                   type="button"
@@ -1868,9 +2292,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   type="button"
                   disabled={enviando}
                   onClick={() => void guardarYBorrador()}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 transition-colors disabled:opacity-50"
+                  className="px-5 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 shadow-xs"
                 >
-                  <ShieldCheck className="w-4 h-4" /> {enviando ? 'Guardando...' : 'Guardar y continuar'}
+                  {enviando && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  Guardar y Continuar <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -2049,9 +2474,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 <button
                   type="button"
                   onClick={() => irPaso(4)}
-                  className="px-4 py-2 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold flex items-center gap-1 transition-colors"
+                  className="px-5 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs"
                 >
-                  Siguiente <ChevronRight className="w-4 h-4" />
+                  Guardar y Continuar <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -2086,7 +2511,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     <span className="text-slate-400 font-bold">Fechas</span>
                     <span className="font-semibold text-slate-800">
                       {form.fechaInicio} al {form.fechaFin} ·{' '}
-                      {form.diasComision || calcularDiasComision(form.fechaInicio, form.fechaFin)} días
+                      {formatearDiasComision(Number(form.diasComision || calcularDiasComision(form.fechaInicio, form.fechaFin)))}
                     </span>
                   </div>
                 )}
@@ -2094,6 +2519,18 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   <div className="flex justify-between px-4 py-2.5">
                     <span className="text-slate-400 font-bold">Rubro</span>
                     <span className="font-semibold text-slate-800">{form.rubroPresupuestal}</span>
+                  </div>
+                )}
+                {!esCampoOculto('numeroCdp') && form.numeroCdp && (
+                  <div className="flex justify-between px-4 py-2.5">
+                    <span className="text-slate-400 font-bold">Número de CDP</span>
+                    <span className="font-semibold text-slate-800 font-mono">{form.numeroCdp}</span>
+                  </div>
+                )}
+                {!esCampoOculto('fechaCdp') && form.fechaCdp && (
+                  <div className="flex justify-between px-4 py-2.5">
+                    <span className="text-slate-400 font-bold">Fecha de CDP</span>
+                    <span className="font-semibold text-slate-800">{form.fechaCdp}</span>
                   </div>
                 )}
                 {!esCampoOculto('prioridad') && (
@@ -2114,30 +2551,39 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     <span className="font-semibold text-slate-800">{formatearMoneda(form.montoGastosViaje)}</span>
                   </div>
                 )}
-                {form.salarioBasico > 0 && (
+                {(form.salarioBasico ?? 0) > 0 && (
                   <div className="flex justify-between px-4 py-2.5">
                     <span className="text-slate-400 font-bold">Salario básico mensual</span>
-                    <span className="font-semibold text-slate-800">{formatearMoneda(form.salarioBasico)}</span>
+                    <span className="font-semibold text-slate-800">{formatearMoneda(form.salarioBasico ?? 0)}</span>
                   </div>
                 )}
-                {form.costoEstimadoTiquete > 0 && (
+                
+                {dependenciaId && (
                   <div className="flex justify-between px-4 py-2.5">
-                    <span className="text-slate-400 font-bold">Costo estimado del tiquete</span>
-                    <span className="font-semibold text-slate-800">{formatearMoneda(form.costoEstimadoTiquete)}</span>
-                  </div>
-                )}
-                {!esCampoOculto('montoViaticos') && !esCampoOculto('montoGastosViaje') && (
-                  <div className="flex justify-between px-4 py-2.5">
-                    <span className="text-slate-400 font-bold">Total estimado</span>
+                    <span className="text-slate-400 font-bold">Dependencia solicitante</span>
                     <span className="font-semibold text-slate-800">
-                      {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
+                      {dependencias.find((d) => d.codDependencia === dependenciaId)?.nomDependencia || dependenciaId}
                     </span>
                   </div>
                 )}
-                {!esCampoOculto('requiereTiquetes') && (
+                {!esCampoOculto('montoViaticos') && (
                   <div className="flex justify-between px-4 py-2.5">
-                    <span className="text-slate-400 font-bold">Requiere tiquetes</span>
-                    <span className="font-semibold text-slate-800">{form.requiereTiquetes ? 'Sí' : 'No'}</span>
+                    <span className="text-slate-400 font-bold">Total Viáticos (Sec. 3)</span>
+                    <span className="font-semibold text-slate-800">{formatearMoneda(form.montoViaticos)}</span>
+                  </div>
+                )}
+                {!esCampoOculto('montoGastosViaje') && (
+                  <div className="flex justify-between px-4 py-2.5">
+                    <span className="text-slate-400 font-bold">Gastos Desplazamiento / Transporte (Sec. 4)</span>
+                    <span className="font-semibold text-slate-800">{formatearMoneda(form.montoGastosViaje)}</span>
+                  </div>
+                )}
+                {!esCampoOculto('montoViaticos') && !esCampoOculto('montoGastosViaje') && (
+                  <div className="flex justify-between px-4 py-2.5 bg-slate-50 font-bold">
+                    <span className="text-slate-700">TOTAL VIÁTICOS, TRANSPORTES Y DESPLAZAMIENTOS*</span>
+                    <span className="font-black text-slate-900 text-sm">
+                      {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
+                    </span>
                   </div>
                 )}
                 {!esCampoOculto('objetoComision') && (
@@ -2146,6 +2592,83 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     <p className="bg-slate-50 rounded-lg p-2.5 text-slate-700 leading-relaxed">{form.objetoComision}</p>
                   </div>
                 )}
+                {/* Campos adicionales configurados */}
+                {camposCatalogo
+                  .filter((c) => c.activo && !camposEstandar.has(c.clave) && !esCampoOculto(c.clave))
+                  .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0))
+                  .map((campo) => {
+                    const val = form.camposAdicionales?.[campo.clave];
+                    if (val === undefined || val === null || val === '') return null;
+                    let displayVal = String(val);
+                    if (typeof val === 'boolean') {
+                      displayVal = val ? 'Sí' : 'No';
+                    } else if (campo.tipoCampo === 'CURRENCY' && typeof val === 'number') {
+                      displayVal = formatearMoneda(val);
+                    } else if (campo.tipoCampo === 'SELECT' && campo.opciones) {
+                      const matched = campo.opciones.find((o) => o.value === String(val));
+                      if (matched) displayVal = matched.label;
+                    }
+
+                    return (
+                      <div key={campo.clave} className="flex justify-between px-4 py-2.5">
+                        <span className="text-slate-400 font-bold">{campo.etiqueta}</span>
+                        <span className="font-semibold text-slate-800">{displayVal}</span>
+                      </div>
+                    );
+                  })}
+                {form.itinerario && form.itinerario.length > 0 && (() => {
+                  const sync = sincronizarItinerarioFormulario(form.itinerario);
+                  return (
+                    <div className="px-4 py-3 bg-gradient-to-r from-blue-50/70 to-indigo-50/40 border-y border-blue-100">
+                      <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-[#003DA5] bg-blue-100/80 px-2 py-0.5 rounded">
+                          Ruta General Consolidada
+                        </span>
+                        {sync.horaEstimadaGeneral && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-900 bg-white border border-blue-200 px-2 py-0.5 rounded shadow-xs">
+                            <Clock className="w-3 h-3 text-[#003DA5]" /> Tiempo estimado completo: <strong>{sync.horaEstimadaGeneral}</strong>
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm font-bold text-slate-800 mb-1">
+                        {sync.rutaGeneral || `${sync.origenCiudad || '—'} → ${sync.destinoCiudad || '—'}`}
+                      </div>
+                      <div className="text-xs text-slate-600 mb-3">
+                        {sync.fechaInicio} al {sync.fechaFin} · {formatearDiasComision(sync.diasComision)} ({sync.diasComision} días)
+                      </div>
+
+                      <span className="text-slate-400 font-bold block mb-2 text-[11px] uppercase tracking-wider">
+                        Desglose de tramos ({form.itinerario.length})
+                      </span>
+                      <div className="space-y-1.5">
+                        {form.itinerario.map((ruta, idx) => (
+                          <div key={ruta.id} className="flex flex-wrap items-center gap-1.5 text-[10px] bg-white border border-blue-100/80 rounded-lg px-2.5 py-1.5 shadow-xs">
+                            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[#003DA5] text-white text-[8px] font-black">{idx + 1}</span>
+                            <span className="font-bold text-slate-700">{ruta.origenCiudad || 'Origen'}</span>
+                            <span className="text-slate-400">→</span>
+                            <span className="font-bold text-slate-700">{ruta.destinoCiudad || 'Destino'}</span>
+                            <span className="text-slate-400">·</span>
+                            <span className="text-slate-600">{ruta.fechaSalida} al {ruta.fechaLlegada}</span>
+                            <span className="text-slate-400">·</span>
+                            <span className="inline-flex items-center gap-0.5 text-slate-700 font-semibold">
+                              <Clock className="w-2.5 h-2.5 text-blue-600" /> Horario: {ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '—'} → {ruta.horaEstimadaLlegada || '—'}
+                            </span>
+                            <span className="text-slate-400">·</span>
+                            <span className="text-slate-600">{ruta.diasRuta} d</span>
+                            <span className="inline-flex items-center px-1 py-0 rounded text-[8px] font-bold bg-slate-200 text-slate-600">
+                              {ruta.tipoTrayecto === 'SOLO_IDA' ? 'IDA' : 'ID/VUELTA'}
+                            </span>
+                            {ruta.tipoTransporte && (
+                              <span className="inline-flex items-center px-1 py-0 rounded text-[8px] font-bold bg-blue-100 text-blue-700">
+                                {ruta.tipoTransporte}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div className="px-4 py-2.5">
                   <span className="text-slate-400 font-bold block mb-1">Soportes obligatorios</span>
                   <div className="flex flex-wrap gap-1.5">

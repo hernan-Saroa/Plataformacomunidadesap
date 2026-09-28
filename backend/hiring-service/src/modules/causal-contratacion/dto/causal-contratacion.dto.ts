@@ -1,5 +1,8 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { IsNotEmpty, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
+
+import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 /**
  * La causal que el abogado elige para el proceso — actividad 3.6.
@@ -10,7 +13,7 @@ import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
  * del expediente.
  */
 export class ElegirCausalDto {
-  @ApiProperty({ description: 'Codigo de la causal, del catalogo de la modalidad' })
+  @ApiProperty({ description: 'Código de la causal, del catálogo de la modalidad' })
   @IsString()
   @IsNotEmpty({ message: 'Elige la causal que habilita contratar por esta modalidad' })
   @MaxLength(60)
@@ -28,9 +31,15 @@ export class ElegirCausalDto {
    * sin el sustento lo borra. La pantalla reenvia el que ya habia, asi que
    * rectificar la causal no se lleva por delante la motivacion escrita.
    */
-  @ApiProperty({ required: false, description: 'Por que el objeto encaja en esa causal' })
+  @ApiProperty({ required: false, description: 'Por qué el objeto encaja en esa causal' })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
   sustento?: string;
+
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }

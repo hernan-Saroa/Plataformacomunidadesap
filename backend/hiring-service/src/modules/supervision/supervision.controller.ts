@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -22,12 +21,10 @@ import {
   ReasignarSupervisorDto,
   RelevarSupervisorDto,
 } from './dto/supervision.dto';
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PERMISO_SUPERVISION_REASIGNAR } from '../../auth/permisos';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 
@@ -44,8 +41,7 @@ export class SupervisionController {
   constructor(private readonly service: SupervisionService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', '8.2')
   @ApiOperation({
     summary: 'Supervisor del contrato',
     description:
@@ -56,8 +52,7 @@ export class SupervisionController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.designacion.ordenar')
+  @Puede('decidir', '8.2')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -99,8 +94,7 @@ export class SupervisionController {
   }
 
   @Post('relevar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.designacion.ordenar')
+  @Puede('decidir', '8.2')
   @ApiOperation({
     summary: 'Relevar al supervisor vigente',
     description:
@@ -122,8 +116,7 @@ export class SupervisionController {
    * configuración que puede cambiar mañana.
    */
   @Post('reasignar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_SUPERVISION_REASIGNAR)
+  @Puede('decidir', '9.3')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -164,8 +157,7 @@ export class SupervisionController {
   }
 
   @Post('aviso')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.designacion.ordenar')
+  @Puede('decidir', '8.2')
   @ApiOperation({
     summary: 'Dejar constancia de que se le avisó al supervisor',
     description:

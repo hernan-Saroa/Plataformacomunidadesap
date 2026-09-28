@@ -22,6 +22,7 @@ import {
   NUMERAL_RECEPCION,
 } from './adjudicacion.base';
 import { DeclararDesiertoDto, PublicarDesiertaDto, RevocarDesiertaDto } from './dto/desierta.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 
 /**
  * Declaratoria desierta — etapa 7 (EFDS-1160, RF-ADJ-02).
@@ -40,8 +41,8 @@ import { DeclararDesiertoDto, PublicarDesiertaDto, RevocarDesiertaDto } from './
  */
 @Injectable()
 export class DeclaratoriaDesiertaService extends AdjudicacionBase {
-  constructor(dataSource: DataSource) {
-    super(dataSource);
+  constructor(dataSource: DataSource, cierre: CierreActividadService) {
+    super(dataSource, cierre);
   }
 
   // ------------------------------------------------------------- consulta --

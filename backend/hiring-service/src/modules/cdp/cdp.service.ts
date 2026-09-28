@@ -17,17 +17,15 @@ import { Documento } from '../../entities/documento.entity';
 import { DocumentoProceso } from '../../entities/documento-proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import {
-  PERMISO_ACTIVIDAD_EDITAR,
-  PERMISO_PRESUPUESTO_GESTIONAR,
-  tienePermiso,
-} from '../../auth/permisos';
+import { AlcanceService } from '../../auth/alcance.service';
 import {
   ExpedirCdpDto,
   RechazarCdpDto,
   SolicitarCdpDto,
   VerificarCdpDto,
 } from './dto/cdp.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 /**
  * Días que una solicitud de CDP puede estar sin que nadie la atienda.
  *
@@ -283,7 +281,12 @@ export function laEtapaCerro(estados: (EstadoActividad | undefined)[]): boolean 
 
 @Injectable()
 export class CdpService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cierre: CierreActividadService,
+    /** Qué puede hacer quien consulta en la etapa 4 (migración 083). */
+    private readonly alcance: AlcanceService,
+  ) {}
 
   /**
    * Si la modalidad del proceso pasa por el CDP.
@@ -433,8 +436,8 @@ export class CdpService {
     // token. Si la pantalla lo dedujera por su cuenta, ofrecería botones que la
     // API rechaza con un 403 cuando ya es tarde.
     const permisos = {
-      puedeSolicitar: tienePermiso(acceso, PERMISO_ACTIVIDAD_EDITAR),
-      puedeGestionar: tienePermiso(acceso, PERMISO_PRESUPUESTO_GESTIONAR),
+      puedeSolicitar: await this.alcance.puedeEn(acceso, 'editar', '4.1'),
+      puedeGestionar: await this.alcance.puedeEn(acceso, 'editar', '4.2'),
     };
 
     const aplica = await this.aplicaCdp(proceso.modalidad, em);
@@ -536,7 +539,7 @@ export class CdpService {
         }),
       );
 
-      await this.cerrarActividad(em, procesoId, '4.1', acceso);
+      await this.cerrarActividad(em, procesoId, '4.1', proceso.modalidad ?? null, acceso, dto.firma);
       await this.traza(em, procesoId, cdp.id, 'SOLICITAR', acceso, {
         rubro: dto.rubro,
         valor: dto.valor,
@@ -574,7 +577,7 @@ export class CdpService {
       cdp.rubro = rubro;
       await em.save(cdp);
 
-      await this.cerrarActividad(em, procesoId, '4.2', acceso);
+      await this.cerrarActividad(em, procesoId, '4.2', proceso.modalidad ?? null, acceso, dto.firma);
       await this.traza(em, procesoId, cdp.id, 'VERIFICAR', acceso, { rubro });
 
       return this.conAdvertencia(cdp, proceso);
@@ -612,7 +615,7 @@ export class CdpService {
       cdp.expedidoPor = acceso.userName;
       await em.save(cdp);
 
-      await this.cerrarActividad(em, procesoId, '4.3', acceso);
+      await this.cerrarActividad(em, procesoId, '4.3', proceso.modalidad ?? null, acceso, dto.firma);
       await this.traza(em, procesoId, cdp.id, 'EXPEDIR', acceso, {
         numero: dto.numero,
         valor: dto.valor,
@@ -653,6 +656,7 @@ export class CdpService {
     archivo: { filename: string; originalname: string; mimetype: string; size: number },
     hash: string,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     return this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
@@ -688,7 +692,14 @@ export class CdpService {
       cdp.updatedAt = new Date();
       await em.save(cdp);
 
-      await this.cerrarActividad(em, procesoId, NUMERAL_ADJUNTO_CDP, acceso);
+      await this.cerrarActividad(
+        em,
+        procesoId,
+        NUMERAL_ADJUNTO_CDP,
+        proceso.modalidad ?? null,
+        acceso,
+        firma,
+      );
       await this.traza(em, procesoId, cdp.id, 'ADJUNTAR', acceso, {
         documento: documento.id,
         nombre: archivo.originalname,
@@ -930,7 +941,12 @@ export class CdpService {
     // La 4.1 queda cumplida por la propia solicitud, y sellada como del
     // sistema: nadie la radicó, así que atribuírsela a quien cerró la etapa 3
     // pondría en el expediente una actuación que esa persona no hizo.
-    await this.cerrarActividad(em, procesoId, '4.1', {
+    // Sin pasar por `cerrarActividad`: la firma la pone quien trabaja la
+    // actividad, y aquí no hay quien la ponga. Exigirla bloquearía para
+    // siempre la solicitud automática de una modalidad que la tuviera
+    // configurada. La aprobación sí puede aplicar —queda en revisión de quien
+    // corresponda—, así que se resuelve igual que en el camino manual.
+    await this.cierre.resolverCierre(em, procesoId, '4.1', proceso.modalidad ?? null, {
       ...acceso,
       userName: AUTOR_AUTOMATICO,
     });
@@ -987,20 +1003,26 @@ export class CdpService {
     return laEtapaCerro(aplicables.map((numeral) => estadoDe.get(numeral)));
   }
 
+  /**
+   * Cierra la actividad propia del CDP —o la deja en revisión, o exige firma
+   * primero—, según lo que la matriz haya configurado (EFDS-1183, EFDS-2070).
+   *
+   * Antes cerraba siempre en APROBADO, sin preguntar: el área podía marcar
+   * «esta actividad exige aprobación» o «exige firma» desde Configuración y
+   * el ciclo del CDP la cerraba igual, como si nada se hubiera configurado.
+   */
   private async cerrarActividad(
     em: EntityManager,
     procesoId: string,
     numeral: string,
+    modalidad: string | null,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
-    const actividad = await em.getRepository(ProcesoActividad).findOne({
-      where: { procesoId, numeral },
-    });
-    if (!actividad) return;
-    actividad.estado = 'APROBADO';
-    actividad.revisadoPor = acceso.userName;
-    actividad.revisadoAt = new Date();
-    await em.save(actividad);
+    if (await this.cierre.exigeFirma(em, numeral)) {
+      this.cierre.exigirFirmaValida(firma);
+    }
+    await this.cierre.resolverCierre(em, procesoId, numeral, modalidad, acceso, firma);
   }
 
   /**

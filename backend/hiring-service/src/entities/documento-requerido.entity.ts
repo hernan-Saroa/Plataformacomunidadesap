@@ -1,4 +1,11 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+  Unique,
+  UpdateDateColumn,
+} from 'typeorm';
 
 /**
  * Qué documentos exige una actividad, y a qué modalidades les exige cada uno.
@@ -32,6 +39,25 @@ export class DocumentoRequerido {
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
   modalidades: string[];
 
+  /**
+   * Tipologías contractuales a las que aplica; vacío = todas.
+   *
+   * Son los valores de `tipologia_contractual` de la 3.1, en texto, porque es
+   * como el proceso la guarda (migración 085).
+   */
+  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
+  tipologias: string[];
+
+  /**
+   * Código del formato de la biblioteca que se descarga para diligenciarlo.
+   *
+   * Por código y no por id: la biblioteca versiona por (codigo, version), y el
+   * requisito tiene que ofrecer la versión vigente sin reconfigurarse cada vez
+   * que el SIG publica una nueva.
+   */
+  @Column({ name: 'plantilla_codigo', type: 'varchar', length: 40, nullable: true })
+  plantillaCodigo: string | null;
+
   @Column({ default: true })
   obligatorio: boolean;
 
@@ -58,4 +84,7 @@ export class DocumentoRequerido {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt: Date;
 }

@@ -12,7 +12,7 @@ import { SubsanacionesService } from './subsanaciones.service';
  * si lo acepta es la entidad.
  */
 function servicio() {
-  return new SubsanacionesService({ manager: {} } as any);
+  return new SubsanacionesService({ manager: {} } as any, {} as any);
 }
 
 const informe = (venceEl: string | null) => ({ venceEl }) as any;

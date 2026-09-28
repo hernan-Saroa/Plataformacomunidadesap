@@ -90,6 +90,12 @@ export class UpdateAuditoriaDto {
   @IsOptional()
   fechaFin?: string; // Fin de Comunicación (fin de auditoría) = fechaFinComunicacion
 
+  // Lunes (YYYY-MM-DD) de las semanas que el usuario sacó del cronograma (EFDS-2132)
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  semanasExcluidas?: string[];
+
   @IsInt()
   @Min(0)
   @Max(100)

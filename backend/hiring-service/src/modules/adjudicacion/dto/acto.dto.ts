@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsEmail,
   IsISO8601,
   IsNotEmpty,
   IsNumber,
@@ -10,7 +11,10 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+
+import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 /**
  * Los números llegan como texto dentro del multipart —la petición trae también
@@ -50,6 +54,19 @@ export class AdjudicarDto {
   valorAdjudicado: number;
 
   /**
+   * Correo del adjudicatario, para notificarle desde la plataforma.
+   *
+   * Es externo y no tiene cuenta: sin esto, los avisos que la Dirección dirija
+   * «al contratista» no tienen a dónde llegar.
+   */
+  @ApiPropertyOptional({ description: 'Correo del contratista adjudicatario' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsEmail({}, { message: 'El correo del contratista no es una dirección válida' })
+  @MaxLength(200)
+  correoContratista?: string;
+
+  /**
    * Por qué se adjudica a una oferta distinta de la que ganó la evaluación.
    *
    * Obligatoria solo en ese caso, y el servicio la exige ahí. Lo normal es que
@@ -62,6 +79,14 @@ export class AdjudicarDto {
   @IsString()
   @MaxLength(2000)
   justificacion?: string;
+
+  /** Solo si la 7.4 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }
 
 export class PublicarActoDto {

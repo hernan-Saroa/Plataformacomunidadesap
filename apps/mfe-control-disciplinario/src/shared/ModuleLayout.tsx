@@ -41,6 +41,7 @@ interface ModuleLayoutProps {
   
   // Opciones
   initialSidebarCollapsed?: boolean;
+  showNotifications?: boolean; // Para ocultar la campana de notificaciones (ej: cuando está en shell)
 }
 
 export function ModuleLayout({
@@ -52,7 +53,8 @@ export function ModuleLayout({
   activeSection,
   onSectionChange,
   children,
-  initialSidebarCollapsed = false
+  initialSidebarCollapsed = false,
+  showNotifications = true
 }: ModuleLayoutProps) {
   // Detectar tamaño de pantalla
   const [windowWidth, setWindowWidth] = useState(
@@ -402,7 +404,7 @@ export function ModuleLayout({
       {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 flex flex-col w-full overflow-y-auto">
         {/* Header Desktop con campana de notificaciones */}
-        {!isMobile && (
+        {!isMobile && showNotifications && (
           <div className="hidden md:flex items-center justify-end p-3 border-b" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
             <div className="relative">
               <Button
@@ -426,7 +428,7 @@ export function ModuleLayout({
           </div>
         )}
 
-        {/* Header CON BOTÓN HAMBURGUESA MOBILE Y NOTIFICACIONES */}
+        {/* Header Mobile - SIEMPRE muestra hamburguesa, notificaciones condicional */}
         {isMobile && (
           <div className="p-3 border-b-2 flex items-center justify-between" style={{ background: '#FFFFFF', borderColor: '#E5E7EB' }}>
             <Button
@@ -439,26 +441,28 @@ export function ModuleLayout({
               <Menu className="w-6 h-6" />
             </Button>
 
-            <div className="relative">
-              <Button
-                onClick={() => setNotificationsOpen(!notificationsOpen)}
-                variant="ghost"
-                size="sm"
-                className="flex-shrink-0"
-                style={{ color: moduleColor }}
-              >
-                <Bell className="w-5 h-5" />
-              </Button>
-              {unreadNotificationCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                  {unreadNotificationCount}
-                </span>
-              )}
-              <NotificacionesDropdown
-                isOpen={notificationsOpen}
-                onClose={() => setNotificationsOpen(false)}
-              />
-            </div>
+            {showNotifications && (
+              <div className="relative">
+                <Button
+                  onClick={() => setNotificationsOpen(!notificationsOpen)}
+                  variant="ghost"
+                  size="sm"
+                  className="flex-shrink-0"
+                  style={{ color: moduleColor }}
+                >
+                  <Bell className="w-5 h-5" />
+                </Button>
+                {unreadNotificationCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                    {unreadNotificationCount}
+                  </span>
+                )}
+                <NotificacionesDropdown
+                  isOpen={notificationsOpen}
+                  onClose={() => setNotificationsOpen(false)}
+                />
+              </div>
+            )}
           </div>
         )}
 

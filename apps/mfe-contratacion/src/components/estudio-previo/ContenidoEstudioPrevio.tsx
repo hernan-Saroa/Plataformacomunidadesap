@@ -1,13 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Check,
-  Paperclip,
   Save,
   Send,
   Lock,
   Undo2,
   FileText,
-  Download,
   RotateCcw,
   CircleCheck,
   MessageSquare,
@@ -17,21 +15,20 @@ import {
 
 import { useEstudioPrevio } from '../../hooks/useEstudioPrevio';
 import { contratacionService } from '../../services/contratacionService';
-import { CampoFormulario, DocumentoExpediente, RevisionEstudioPrevio } from '../../types';
+import { CampoFormulario, RevisionEstudioPrevio } from '../../types';
 import { CampoDinamico } from './CampoDinamico';
 import { AlertaCamposFaltantes } from './AlertaCamposFaltantes';
 import { Modal } from '../shared/Modal';
-import { BloqueDocumento } from './BloqueDocumento';
-import { ListaChequeoRadicacion } from './ListaChequeoRadicacion';
-import { FormatosDeLaActividad } from '../shared/FormatosDeLaActividad';
+import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
+import { RadicadoGestionDocumental } from './RadicadoGestionDocumental';
 import { usarAprobacion } from '../shared/usarAprobacion';
+import { useFirma } from '../shared/useFirma';
+import { EvidenciaFirmaOtp } from '../../types';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
-
-const MIME_ACEPTADOS = '.pdf,.doc,.docx,.xls,.xlsx';
 
 /**
  * Contenido de la actividad 3.1 dentro de su desplegable.
@@ -62,59 +59,51 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
     documentosDeLaLista,
   } = useEstudioPrevio(procesoId);
 
-  const [documentos, setDocumentos] = useState<DocumentoExpediente[]>([]);
   const [revisiones, setRevisiones] = useState<RevisionEstudioPrevio[]>([]);
-  const [seccion, setSeccion] = useState<
-    'campos' | 'documentos' | 'radicacion' | 'historial'
-  >('campos');
+  const [seccion, setSeccion] = useState<'campos' | 'documentos' | 'historial'>('campos');
   /**
-   * Cuántos documentos de la lista de chequeo faltan.
+   * Cuántos obligatorios de la lista faltan, estudio previo firmado incluido.
    *
-   * Lo cuenta el panel de la radicación y lo sube hasta aquí para que la
-   * pestaña lo avise: si el número viviera solo dentro del panel, el área se
-   * enteraría de que le falta el paquete al intentar enviar, que es tarde.
+   * Lo cuenta la lista y lo sube hasta aquí para que la pestaña lo avise: si
+   * el número viviera solo dentro de ella, el área se enteraría de que le
+   * falta el paquete al intentar enviar, que es tarde.
    */
   const [faltanDeLaLista, setFaltanDeLaLista] = useState(0);
+  /** Para que la lista se relea cuando el formulario guarda o se decide. */
+  const [tokenLista, setTokenLista] = useState(0);
   const [accion, setAccion] = useState<'aprobar' | 'devolver' | 'negar' | null>(null);
   const [observaciones, setObservaciones] = useState('');
   const [procesando, setProcesando] = useState(false);
-  const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   // Si alguien revisa esta actividad, para no llamar «aprobado» a lo que se
   // cerró sin que nadie decidiera.
   const revision = usarAprobacion(procesoId, NUMERAL);
 
+  /*
+   * Quien envía y quien aprueba firman por separado (EFDS-2070): la 3.1 es de
+   * quien radica, la 3.4 de quien decide, y cada acción pide su propio token
+   * solo si esa actividad quedó configurada para exigirlo.
+   */
+  const firmaEnvio = useFirma('3.1', 'Enviar el estudio previo a revisión');
+  const firmaAprobacion = useFirma('3.4', 'Aprobar el estudio previo');
+
   const cargarAnexos = () =>
-    Promise.all([
-      contratacionService.obtenerExpediente(procesoId),
-      contratacionService.revisiones(procesoId),
-    ])
-      .then(([exp, revs]) => {
-        // Sin `!d.requisito`, los documentos de la lista de chequeo saldrían
-        // aquí: llevan el mismo numeral porque son de esta actividad, pero el
-        // entregable de la pestaña es el estudio previo firmado. Cada uno tiene
-        // su sitio, y mezclarlos haría parecer que hay cuatro estudios previos.
-        setDocumentos(exp.documentos.filter((d) => d.numeral === '3.1' && !d.requisito));
-        setRevisiones(revs);
-      })
+    contratacionService
+      .revisiones(procesoId)
+      .then(setRevisiones)
       .catch(() => undefined);
 
   /**
    * Cuántos documentos de la lista faltan, antes de que nadie abra la pestaña.
    *
-   * Si el número viviera solo dentro del panel de la radicación, el aviso no
-   * aparecería hasta que alguien entrara a mirarlo, y el área se enteraría de
-   * que le falta el paquete al intentar enviar.
-   *
-   * Aparte del `Promise.all` de los anexos y no dentro: sumarle una promesa
-   * retrasa un tick la llegada del expediente y del historial, que es lo que
-   * la pantalla pinta primero.
+   * Si el número viviera solo dentro de la lista, el aviso no aparecería hasta
+   * que alguien entrara a mirarla, y el área se enteraría de que le falta el
+   * paquete al intentar enviar.
    */
   const contarLoQueFaltaDeLaLista = () =>
     contratacionService
-      .listaChequeo(procesoId)
+      .documentosDeActividad(procesoId, NUMERAL)
       .then((l) => setFaltanDeLaLista(l.faltantes.length))
       .catch(() => undefined);
 
@@ -124,17 +113,12 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
   }, [procesoId]);
 
   /*
-   * Al bloquearse el envío, se abre la pestaña de lo que falta: el mensaje
-   * solo no basta si el usuario está viendo el formulario.
-   *
-   * El estudio previo manda sobre la lista cuando faltan los dos. Es el
-   * entregable de la actividad y lo que el área ya sabe que tiene que
-   * adjuntar; la lista de chequeo es el paso siguiente, y llevarle allí
-   * primero le escondería lo principal.
+   * Al bloquearse el envío por un documento, se abre la pestaña de la lista:
+   * el mensaje solo no basta si el usuario está viendo el formulario. Desde
+   * EFDS-2066 el estudio previo firmado y el paquete son una sola lista.
    */
   useEffect(() => {
-    if (documentoFaltante) setSeccion('documentos');
-    else if (documentosDeLaLista.length > 0) setSeccion('radicacion');
+    if (documentoFaltante || documentosDeLaLista.length > 0) setSeccion('documentos');
   }, [documentoFaltante, documentosDeLaLista.length]);
 
   /** Campos agrupados por sección, en el orden de la configuración. */
@@ -189,33 +173,38 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
   const refrescar = async () => {
     await cargar();
     await cargarAnexos();
+    setTokenLista((t) => t + 1);
     onCambio?.();
   };
 
-  const adjuntar = async (archivo: File) => {
-    setSubiendo(true);
-    setError(null);
-    try {
-      await contratacionService.adjuntarDocumento(procesoId, archivo);
-      // Se relee todo, no solo los anexos: el formulario conserva la version
-      // que leyo al abrirse, y guardar despues con una version vieja provoca
-      // un conflicto contra un cambio del propio usuario.
-      await refrescar();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setSubiendo(false);
-      if (inputRef.current) inputRef.current.value = '';
-    }
+  /**
+   * Tras cargar o sustituir un documento de la lista.
+   *
+   * Se relee el formulario, no solo los anexos: conserva la versión que leyó
+   * al abrirse, y guardar después con una versión vieja provocaría un
+   * conflicto contra un cambio del propio usuario. La lista ya se releyó sola.
+   */
+  const trasCambiarDocumentos = async () => {
+    await cargar();
+    onCambio?.();
   };
 
-  const decidir = async () => {
+  /** Por qué la lista no se puede tocar, dicho para quien la mira. */
+  const motivoBloqueo = negado
+    ? 'El proceso fue negado, así que no hay documentos por radicar'
+    : aprobado
+      ? 'El estudio previo ya fue aprobado y sus documentos no se pueden cambiar'
+      : enRevision
+        ? 'El estudio previo está en revisión. Si te lo devuelven, podrás cambiar los documentos'
+        : null;
+
+  const decidir = async (firma?: EvidenciaFirmaOtp) => {
     if (!accion) return;
     setProcesando(true);
     setError(null);
     try {
       if (accion === 'aprobar') {
-        await contratacionService.aprobar(procesoId, observaciones.trim() || undefined);
+        await contratacionService.aprobar(procesoId, observaciones.trim() || undefined, firma);
       } else if (accion === 'negar') {
         await contratacionService.negar(procesoId, observaciones.trim());
       } else {
@@ -279,10 +268,9 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
         {(
           [
             { id: 'campos' as const, label: 'Formulario', icono: FileText },
-            { id: 'documentos' as const, label: 'Documento', icono: Paperclip, n: documentos.length },
             {
-              id: 'radicacion' as const,
-              label: 'Lista de chequeo',
+              id: 'documentos' as const,
+              label: 'Documentos',
               icono: ClipboardCheck,
               n: faltanDeLaLista,
               alerta: faltanDeLaLista > 0,
@@ -353,41 +341,31 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
           </section>
         ))}
 
-      {/* El estudio previo firmado: entregable real de esta actividad */}
+      {/* Una sola lista (EFDS-2066): el estudio previo firmado —la fila de su
+          formato, que el catálogo filtra por la modalidad del proceso— y lo
+          que lo acompaña para radicar en la Dirección de Contratación. Qué
+          lleva la lista lo decide Configuración, no esta pantalla. */}
       {seccion === 'documentos' && (
         <div className="space-y-3">
-          {/* Filtrado por la modalidad del proceso: la 3.1 tiene un formato por
-              tipo de contratación —BS-FO-046 para prestación de servicios, 047
-              para las competitivas, 048 para directa con persona natural, 061
-              para TVEC— y solo uno le sirve al gestor. Antes se listaban los
-              cuatro porque la modalidad se daba por indefinida hasta la 3.5,
-              pero el proceso nace con ella: se elige al crearlo, y la 3.5 la
-              ratifica. Ofrecer los cuatro obliga a elegir entre tres formatos
-              que no aplican. */}
-          <FormatosDeLaActividad
-            numeral={NUMERAL}
-            modalidad={datos.proceso.modalidad}
-            instruccion="Descarga el formato oficial del SIG, diligéncialo, fírmalo y adjúntalo aquí."
-            sinFormatos="El estudio previo se diligencia en el formato institucional. Cuando Contratación suba los formatos a la biblioteca de plantillas, podrás descargarlos desde aquí."
-          />
-
-          <BloqueDocumento
+          <ListaDeDocumentos
             procesoId={procesoId}
-            documentos={documentos}
-            bloqueado={bloqueado}
-            onAdjuntado={refrescar}
+            numeral={NUMERAL}
+            recargarToken={tokenLista}
+            titulo="Documentos para radicar"
+            ayuda={
+              <>
+                Carga el estudio previo firmado y los documentos que la modalidad exige enviar con
+                él. Para enviar el proceso a la Dirección de Contratación, todos los obligatorios
+                deben estar cargados.
+              </>
+            }
+            bloqueo={motivoBloqueo}
+            onFaltantes={setFaltanDeLaLista}
+            onCambio={trasCambiarDocumentos}
           />
-        </div>
-      )}
 
-      {/* Lo que se remite con el estudio previo para radicar en la Dirección */}
-      {seccion === 'radicacion' && (
-        <ListaChequeoRadicacion
-          procesoId={procesoId}
-          bloqueado={bloqueado}
-          onResumen={setFaltanDeLaLista}
-          onCambio={refrescar}
-        />
+          <RadicadoGestionDocumental procesoId={procesoId} bloqueado={bloqueado} />
+        </div>
       )}
 
       {/* Historial de revisión */}
@@ -526,24 +504,6 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
           </>
         ) : (
           <>
-            <input
-              ref={inputRef}
-              type="file"
-              className="hidden"
-              accept={MIME_ACEPTADOS}
-              onChange={(e) => e.target.files?.[0] && adjuntar(e.target.files[0])}
-            />
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              disabled={subiendo}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold
-                rounded-md bg-white text-slate-700 border border-slate-300
-                hover:border-[#003DA5] hover:text-[#003DA5] disabled:opacity-50 transition-all"
-            >
-              <Paperclip className="w-3.5 h-3.5" />
-              {subiendo ? 'Subiendo…' : 'Adjuntar'}
-            </button>
             <button
               type="button"
               onClick={guardar}
@@ -570,11 +530,14 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
 
             <button
               type="button"
-              onClick={async () => {
-                await enviar();
-                await cargarAnexos();
-                onCambio?.();
-              }}
+              onClick={() =>
+                firmaEnvio.conFirma(async (firma) => {
+                  await enviar(firma);
+                  await cargarAnexos();
+                  setTokenLista((t) => t + 1);
+                  onCambio?.();
+                })
+              }
               disabled={guardando || enviando}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[11.5px] font-extrabold
                 rounded-md text-white bg-[#003DA5] hover:bg-[#002e7d] shadow-sm
@@ -621,7 +584,9 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
           <>
             <button
               type="button"
-              onClick={decidir}
+              onClick={() =>
+                accion === 'aprobar' ? firmaAprobacion.conFirma(decidir) : decidir()
+              }
               disabled={procesando || (accion !== 'aprobar' && !observaciones.trim())}
               className={`px-3.5 py-2 text-xs font-extrabold rounded-lg text-white shadow-sm
                 active:scale-95 disabled:opacity-50 transition-all ${
@@ -680,6 +645,9 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
           </p>
         )}
       </Modal>
+
+      {firmaEnvio.modal}
+      {firmaAprobacion.modal}
     </div>
   );
 }

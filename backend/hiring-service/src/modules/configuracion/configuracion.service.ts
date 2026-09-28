@@ -10,6 +10,7 @@ import {
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
 import { CampoFormulario, TipoCampo } from '../../entities/campo-formulario.entity';
 import { Plantilla } from '../../entities/plantilla.entity';
+import { DocumentoRequerido } from '../../entities/documento-requerido.entity';
 import { TipologiaContrato } from '../../entities/tipologia-contrato.entity';
 import { Documento } from '../../entities/documento.entity';
 import {
@@ -22,6 +23,7 @@ import {
   AplicabilidadDto,
   GuardarReglaDto,
   GuardarAprobacionDto,
+  GuardarFirmaDto,
   ActualizarCampoDto,
   CrearCampoDto,
   EstadoPlantillaDto,
@@ -567,6 +569,9 @@ export class ConfiguracionService {
         etapa: a.etapa,
         nombre: a.nombre,
         descripcion: a.descripcion,
+        // El plazo se configura en la ficha: la matriz lo lleva para abrirla con él.
+        plazoDias: a.plazoDias ?? null,
+        alertaDiasAntes: a.alertaDiasAntes ?? null,
         campos,
         celdas: (modalidades as any[]).map((m) => {
           const llave = `${a.numeral}::${m.codigo}`;
@@ -836,6 +841,64 @@ export class ConfiguracionService {
     });
   }
 
+  // ---------------------------------------------------- firma de la actividad ---
+
+  /**
+   * Si la actividad exige que quien la trabaja la firme con el token
+   * institucional antes de darse por terminada.
+   *
+   * Regla propia y no un campo junto a `requiereAprobacion`: la firma no
+   * tiene a quién elegir —la pone quien registra, no un tercero— así que no
+   * comparte forma con la aprobación, y separarla evita que una consulta a
+   * la aprobación traiga una firma que nadie pidió, o al revés.
+   */
+  async firmaDe(numeral: string) {
+    const regla = await this.dataSource.getRepository(ReglaActividad).findOne({
+      where: { numeral, tipo: 'EXIGE_FIRMA', vigenteHasta: IsNull() },
+    });
+
+    return { requiereFirma: regla !== null };
+  }
+
+  /**
+   * Fija si la actividad exige firma, o retira la exigencia.
+   *
+   * Misma derogación que la aprobación: la regla anterior se cierra con
+   * `vigenteHasta` en vez de borrarse, para que un proceso ya cerrado siga
+   * auditándose con la regla que tenía vigente entonces.
+   */
+  async guardarFirma(numeral: string, dto: GuardarFirmaDto) {
+    return this.dataSource.transaction(async (em) => {
+      const repo = em.getRepository(ReglaActividad);
+
+      const vigente = await repo.findOne({
+        where: { numeral, tipo: 'EXIGE_FIRMA', vigenteHasta: IsNull() },
+      });
+
+      if (vigente) {
+        vigente.vigenteHasta = new Date();
+        await repo.save(vigente);
+      }
+
+      if (!dto.requiereFirma) {
+        return { requiereFirma: false };
+      }
+
+      await repo.save(
+        repo.create({
+          numeral,
+          modalidad: null,
+          tipo: 'EXIGE_FIRMA',
+          config: {},
+          mensaje: 'Esta actividad requiere firma con el token institucional antes de darse por terminada',
+          orden: 100,
+        } as Partial<ReglaActividad>),
+      );
+
+      return { requiereFirma: true };
+    });
+  }
+
   /**
    * Roles que pueden aparecer como aprobadores.
    *
@@ -847,6 +910,23 @@ export class ConfiguracionService {
   rolesDelModulo(): Promise<{ code: string; name: string }[]> {
     return this.dataSource.query(
       `SELECT code, name FROM hiring.roles_del_modulo ORDER BY name`,
+    );
+  }
+
+  /**
+   * Las dependencias de la ESAP, del catálogo transversal de la plataforma.
+   *
+   * `auth.dependencias` es la tabla maestra —la misma que usan viáticos y
+   * estructura organizacional (EFDS-2065)—, y se consulta directamente en
+   * vez de duplicarla: una copia local se desactualiza en cuanto alguien crea,
+   * renombra o inactiva una dependencia desde el módulo que sí la administra.
+   */
+  dependenciasDelModulo(): Promise<{ id: string; nombre: string }[]> {
+    return this.dataSource.query(
+      `SELECT id_dependencia::text AS id, nom_dependencia AS nombre
+       FROM auth.dependencias
+       WHERE activo = true
+       ORDER BY nom_dependencia`,
     );
   }
 
@@ -896,46 +976,38 @@ export class ConfiguracionService {
   // formatos aprobados en el SIG que se diligencian en Word y se firman. Aqui
   // se administra cual corresponde a cada actividad y modalidad.
 
-  /** Formatos de una actividad, o toda la biblioteca si no se indica numeral. */
+  /**
+   * Formatos de una actividad, o toda la biblioteca si no se indica numeral.
+   *
+   * Cada uno dice en qué actividades se pide (`usadaEn`): desde EFDS-2066 un
+   * formato no pertenece a una actividad, lo citan los documentos requeridos
+   * de las que lo usen, y sin esto no se sabría qué deja sin plantilla
+   * retirarlo.
+   */
   async plantillas(numeral?: string) {
     const repo = this.dataSource.getRepository(Plantilla);
-    return repo.find({
+    const plantillas = await repo.find({
       where: numeral ? { numeral } : {},
       order: { numeral: 'ASC', codigo: 'ASC', version: 'DESC' },
     });
-  }
 
-  /**
-   * Mueve un formato de la biblioteca a otra actividad.
-   *
-   * Se sube una vez y se asigna donde corresponda: obligar a subir el mismo
-   * archivo en cada actividad multiplicaria copias del mismo documento y las
-   * dejaria desincronizadas cuando el SIG publique una version nueva.
-   *
-   * `numeral` vacio lo devuelve a la biblioteca sin actividad asignada.
-   */
-  async asignarPlantilla(
-    id: string,
-    numeral: string | null,
-    modalidades?: string[],
-  ) {
-    const repo = this.dataSource.getRepository(Plantilla);
-    const plantilla = await repo.findOne({ where: { id } });
-    if (!plantilla) throw new NotFoundException('El formato no existe');
-
-    if (numeral) {
-      const actividad = await this.dataSource.getRepository(Actividad).findOne({
-        where: { numeral },
-      });
-      if (!actividad) throw new NotFoundException(`La actividad ${numeral} no existe`);
+    const requisitos = await this.dataSource.getRepository(DocumentoRequerido).find({
+      where: { activo: true },
+      select: ['numeral', 'plantillaCodigo'],
+    });
+    const usos = new Map<string, Set<string>>();
+    for (const r of requisitos) {
+      if (!r.plantillaCodigo) continue;
+      if (!usos.has(r.plantillaCodigo)) usos.set(r.plantillaCodigo, new Set());
+      usos.get(r.plantillaCodigo)!.add(r.numeral);
     }
 
-    plantilla.numeral = numeral ?? '';
-    // Solo se tocan si vienen: asignar actividad y cambiar el alcance son dos
-    // gestos distintos, y mover un formato de actividad no debe borrar en
-    // silencio las modalidades que ya tenia marcadas.
-    if (modalidades) plantilla.modalidades = modalidades;
-    return repo.save(plantilla);
+    return plantillas.map((p) => ({
+      ...p,
+      usadaEn: [...(usos.get(p.codigo) ?? [])].sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true }),
+      ),
+    }));
   }
 
   /**

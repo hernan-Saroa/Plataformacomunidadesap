@@ -7,17 +7,25 @@ const aNumero = {
 };
 
 /**
- * Qué decidió el comité, con los tres desenlaces de la matriz.
+ * Qué decidió el comité.
  *
  * «Va o No / observa o no / aprueba o no». El «va o no» no es una decisión del
  * comité sino la condición que lo convoca —la matriz por modalidad y el umbral
  * de cuantía—, así que no vive aquí: una sesión que no se celebró no tiene
  * decisión que registrar.
  *
- * Y no hay «no aprueba» a secas: un comité que no aprueba dice qué falta, y eso
- * es observar. Si lo que procede es no contratar, eso se niega en la 3.4.
+ * Los dos «no» son distintos y por eso son dos desenlaces. `OBSERVADO` dice
+ * qué falta y el proceso vuelve corregido; `RECHAZADO` dice que el proceso no
+ * debe salir al mercado, y ahí no hay corrección que traer. Antes solo existía
+ * el primero, con el argumento de que no contratar se negaba en la 3.4: eso
+ * obligaba a que otro firmara lo que el comité ya había decidido en su sesión
+ * y con su acta.
  */
-export type DecisionComite = 'APROBADO' | 'APROBADO_CON_CONDICIONES' | 'OBSERVADO';
+export type DecisionComite =
+  | 'APROBADO'
+  | 'APROBADO_CON_CONDICIONES'
+  | 'OBSERVADO'
+  | 'RECHAZADO';
 
 /**
  * Condición de cuantía para pasar por el comité de contratación.

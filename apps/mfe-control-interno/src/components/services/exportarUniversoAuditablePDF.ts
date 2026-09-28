@@ -20,7 +20,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 // ✅ Importar logo ESAP dinámicamente (Vite lo maneja automáticamente)
-import logoESAP from '@/assets/cropped-favicon-32x32.png';
+import { LOGO_CERTIFICACIONES_ESAP_B64 as logoESAP } from './logoCertificacionesESAP';
 
 // Cache del logo en base64 para reutilización
 let _logoCache: string | null = null;
@@ -239,10 +239,12 @@ function crearEncabezadoFormulario(doc: jsPDF, vigencia: number, logoBase64?: st
   // ✅ DIBUJAR LOGO ESAP
   try {
     if (logoBase64) {
-      const logoSize = 18;
-      const logoCenterX = margen + (logoWidth / 2) - (logoSize / 2);
-      const logoCenterY = margen + (headerHeight / 2) - (logoSize / 2);
-      doc.addImage(logoBase64, 'PNG', logoCenterX, logoCenterY, logoSize, logoSize);
+      // El logo institucional es apaisado (450x171): se respeta su proporción
+      const logoAncho = Math.min(logoWidth - 4, 30);
+      const logoAlto = logoAncho * (171 / 450);
+      const logoCenterX = margen + (logoWidth / 2) - (logoAncho / 2);
+      const logoCenterY = margen + (headerHeight / 2) - (logoAlto / 2);
+      doc.addImage(logoBase64, 'PNG', logoCenterX, logoCenterY, logoAncho, logoAlto);
     } else {
       // Fallback: texto si no hay logo
       throw new Error('No logo provided');

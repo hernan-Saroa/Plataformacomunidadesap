@@ -165,6 +165,8 @@ describe('ConsolidacionService', () => {
       configService = configServiceMock('FUNCIONARIO'),
       notificationClient = {
         notifyByRole: jest.fn().mockResolvedValue(undefined),
+        notifyByPermission: jest.fn().mockResolvedValue(undefined),
+        notifyUser: jest.fn().mockResolvedValue(undefined),
       },
     } = overrides;
 

@@ -13,7 +13,7 @@ import { TrasladoService } from './traslado.service';
  * Servicio con la base de datos fuera del camino, igual que en `publicacion`.
  */
 function servicio() {
-  return new TrasladoService({ manager: {} } as any);
+  return new TrasladoService({ manager: {} } as any, {} as any);
 }
 
 const proceso = { id: 'p1', modalidad: 'ABREVIADA_MENOR_CUANTIA' } as any;

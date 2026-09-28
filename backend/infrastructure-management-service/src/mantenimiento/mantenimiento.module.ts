@@ -6,10 +6,21 @@ import { MantenimientoController } from './mantenimiento.controller.js';
 import { Sede } from '../sedes/sede.entity.js';
 import { CatalogoItem } from './catalogo-item.entity.js';
 import { SolicitudEvidencia } from './solicitud-evidencia.entity.js';
+import { SolicitudValoracion } from './solicitud-valoracion.entity.js';
+import { SolicitudValoracionInsumo } from './solicitud-valoracion-insumo.entity.js';
 import { StorageService } from './storage.service.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SolicitudMantenimiento, Sede, CatalogoItem, SolicitudEvidencia])],
+  imports: [
+    TypeOrmModule.forFeature([
+      SolicitudMantenimiento,
+      Sede,
+      CatalogoItem,
+      SolicitudEvidencia,
+      SolicitudValoracion,
+      SolicitudValoracionInsumo,
+    ]),
+  ],
   controllers: [MantenimientoController],
   providers: [MantenimientoService, StorageService],
   exports: [MantenimientoService, StorageService, TypeOrmModule],

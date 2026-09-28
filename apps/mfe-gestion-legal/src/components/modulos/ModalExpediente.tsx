@@ -57,6 +57,7 @@ import { TabNotasExpediente } from '../core/TabNotasExpediente';
 import { TabDocumentosExpediente } from '../core/TabDocumentosExpediente';
 import { TabTrazabilidadExpediente } from '../core/TabTrazabilidadExpediente';
 import { VisorDocumentoModal } from './VisorDocumentoModal';
+import { buscarEtapaConfigurada, etapaRequiereAprobacion, usuarioPuedeAprobarEtapa } from '../core/aprobacionEtapa';
 
 const normalizeString = (str: string) => {
   return str
@@ -1012,29 +1013,13 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
 
   const etapaActual = expediente?.etapa || '';
   const etapaActualNorm = normalizeString(etapaActual);
-  const colActual = (columnasTablero || []).find((e: any) => 
-    normalizeString(e.id) === etapaActualNorm || 
-    normalizeString(e.nombre) === etapaActualNorm
-  );
-  const requiereAprobacion = !!(colActual && colActual.aprobacionTipo && colActual.aprobacionTipo !== 'ninguno');
+  const colActual = buscarEtapaConfigurada(columnasTablero as any[], etapaActual);
+  const requiereAprobacion = etapaRequiereAprobacion(colActual);
 
   // Solo el rol/usuario configurado como aprobador de la etapa actual (o un super admin)
-  // puede ver los botones de "Aprobar Etapa" / "Devolver Etapa". Misma lógica que el
-  // botón "Firmar" de los documentos (isUserAuthorizedToApprove en TabActuacionesExpediente).
-  const puedeAprobarEtapa = (() => {
-    if (!requiereAprobacion || !colActual) return false;
-    if (authService.isSuperAdmin()) return true;
-    const { aprobacionTipo, aprobacionRol, aprobacionUsuario } = colActual;
-    if (aprobacionTipo === 'rol' && aprobacionRol) {
-      return authService.hasRole(aprobacionRol);
-    }
-    if (aprobacionTipo === 'usuario' && aprobacionUsuario) {
-      const currentUser = authService.getCurrentUser() as any;
-      const currentUserId = currentUser?.id || currentUser?.id_user || currentUser?.user?.id || currentUser?.user?.id_user || currentUser?.person?.id;
-      return String(currentUserId) === String(aprobacionUsuario);
-    }
-    return false;
-  })();
+  // puede ver los botones de "Aprobar Etapa" / "Devolver Etapa". Misma regla parametrizable
+  // que el botón "Firmar" de los documentos (core/aprobacionEtapa.ts).
+  const puedeAprobarEtapa = usuarioPuedeAprobarEtapa(colActual);
 
   const currentIndex = (columnasTablero || []).findIndex((e: any) =>
     normalizeString(e.id) === etapaActualNorm || 
@@ -3395,8 +3380,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 }
               }
 
-              // FIX: Ensure it always has .pdf extension since the signed file is a PDF
-              if (!nuevoNombre.toLowerCase().endsWith('.pdf')) {
+              // El nombre sólo pasa a .pdf cuando realmente se generó el PDF estampado; si el
+              // estampado falló, el archivo sigue siendo el original y renombrarlo rompía la
+              // previsualización (se intentaba abrir un DOCX como PDF).
+              if (pdfFile && !nuevoNombre.toLowerCase().endsWith('.pdf')) {
                 nuevoNombre = nuevoNombre.replace(/\.[^/.]+$/, "") + ".pdf";
               }
 
@@ -3409,7 +3396,10 @@ export function ModalExpediente({ isOpen, onClose, expediente, onUpdate }: Modal
                 firmante: signedData.firmante,
                 cargo: signedData.cargo,
                 certificadoId: signedData.certificado_id,
-                scale: signedData.scale
+                scale: signedData.scale,
+                // Marca si el sello quedó dentro del archivo: el visor usa esto para no
+                // superponer una segunda firma sobre la que ya trae el PDF.
+                estampadoEnArchivo: !!pdfFile
               });
 
               toast.loading('✍️ Guardando firma en el documento...', { id: 'firma-documento' });

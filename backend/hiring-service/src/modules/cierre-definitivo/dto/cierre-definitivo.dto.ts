@@ -28,11 +28,11 @@ export class CerrarDefinitivamenteDto {
 
 /** Reversion del cierre definitivo vigente. */
 export class RevertirCierreDefinitivoDto {
-  @ApiProperty({ description: 'Por que se revierte el cierre definitivo' })
+  @ApiProperty({ description: 'Por qué se revierte el cierre definitivo' })
   @IsString()
-  @IsNotEmpty({ message: 'Explica por que se revierte el cierre definitivo' })
+  @IsNotEmpty({ message: 'Explica por qué se revierte el cierre definitivo' })
   @MinLength(10, {
-    message: 'El contrato se declaro cerrado en firme: sustenta por que se reabre',
+    message: 'El contrato se declaró cerrado en firme: sustenta por qué se reabre',
   })
   @MaxLength(1000)
   motivo: string;

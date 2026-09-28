@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsISO8601,
@@ -7,7 +7,10 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  ValidateNested,
 } from 'class-validator';
+
+import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 /**
  * Los campos llegan por multipart junto con el soporte, así que todo entra como
@@ -67,4 +70,20 @@ export class ResponderObservacionDto {
   @aBooleano()
   @IsBoolean({ message: 'Indica si la observación modificó el pliego' })
   modificoPliego: boolean;
+
+  /** Solo si la 5.3 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
+}
+
+/** Solo si la 5.3 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+export class CerrarSinObservacionesDto {
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }

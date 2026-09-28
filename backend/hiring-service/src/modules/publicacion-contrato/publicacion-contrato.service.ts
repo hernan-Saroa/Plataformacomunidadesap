@@ -27,6 +27,8 @@ import {
 } from '../publicacion/dias-habiles';
 import { festivosEntre } from '../publicacion/festivos-colombia';
 import { PublicarContratoDto } from './dto/publicacion-contrato.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 8.8 de la matriz: la publicación del contrato. */
 export const NUMERAL_PUBLICACION_CONTRATO = '8.8';
@@ -75,7 +77,10 @@ interface ArchivoCargado {
  */
 @Injectable()
 export class PublicacionContratoService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -165,6 +170,16 @@ export class PublicacionContratoService {
 
       this.validarFecha(dto.fechaPublicacion);
 
+      // Solo SECOP II cierra la actividad: la de la página web queda
+      // registrada pero no la da por cumplida, y exigir la firma ahí sería
+      // pedirla por algo que no cierra nada.
+      if (
+        dto.destino === 'SECOP_II' &&
+        (await this.cierre.exigeFirma(em, NUMERAL_PUBLICACION_CONTRATO))
+      ) {
+        this.cierre.exigirFirmaValida(dto.firma);
+      }
+
       const plazo = await this.plazoConfigurado();
       const festivos = await this.festivos();
 
@@ -203,7 +218,13 @@ export class PublicacionContratoService {
         } as Partial<PublicacionContrato>),
       );
 
-      await this.marcarActividad(em, procesoId, contrato.id, acceso);
+      await this.marcarActividad(
+        em,
+        procesoId,
+        contrato.id,
+        acceso,
+        dto.destino === 'SECOP_II' ? dto.firma : undefined,
+      );
 
       await this.traza(em, procesoId, publicacion.id, 'PUBLICAR', acceso, {
         actividad: NUMERAL_PUBLICACION_CONTRATO,
@@ -273,35 +294,43 @@ export class PublicacionContratoService {
     procesoId: string,
     contratoId: string,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const secop = await em
       .getRepository(PublicacionContrato)
       .findOne({ where: { contratoId, destino: 'SECOP_II' } });
 
-    const aprobado = !!secop;
-    const estado = aprobado ? 'APROBADO' : 'BORRADOR';
-
-    const actividad = await em
-      .getRepository(ProcesoActividad)
-      .findOne({ where: { procesoId, numeral: NUMERAL_PUBLICACION_CONTRATO } });
-
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_PUBLICACION_CONTRATO,
-          estado: estado as any,
-          datos: {},
-          ...(aprobado ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!secop) {
+      const actividad = await em
+        .getRepository(ProcesoActividad)
+        .findOne({ where: { procesoId, numeral: NUMERAL_PUBLICACION_CONTRATO } });
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_PUBLICACION_CONTRATO,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = aprobado ? acceso.userName : null;
-    actividad.revisadoAt = aprobado ? new Date() : null;
-    await em.save(actividad);
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      NUMERAL_PUBLICACION_CONTRATO,
+      proceso?.modalidad ?? null,
+      acceso,
+      firma,
+    );
   }
 
   private async contratoDelProceso(em: EntityManager, procesoId: string, bloquear = false) {

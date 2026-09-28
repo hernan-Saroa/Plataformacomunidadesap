@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -18,6 +17,7 @@ import { unlink } from 'fs/promises';
 
 import { LegalizacionService } from './legalizacion.service';
 import {
+  AprobarGarantiaDto,
   CargarGarantiaDto,
   RechazarGarantiaDto,
   RegistrarArlDto,
@@ -25,10 +25,9 @@ import {
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Pólizas, garantías y ARL — actividades 8.4 y 8.5 (EFDS-1164).
@@ -43,8 +42,7 @@ export class LegalizacionController {
   constructor(private readonly service: LegalizacionService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', '8.4')
   @ApiOperation({
     summary: 'Legalización del contrato',
     description:
@@ -55,8 +53,7 @@ export class LegalizacionController {
   }
 
   @Post('garantias')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '8.4')
   @UseInterceptors(
     FileInterceptor('file', opcionesDeCarga(MIME_DOCUMENTOS, 'La póliza se carga en PDF, Word o Excel')),
   )
@@ -94,8 +91,7 @@ export class LegalizacionController {
   }
 
   @Post('garantias/:garantiaId/aprobar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.approve')
+  @Puede('aprobar', '8.4')
   @ApiOperation({
     summary: 'Aprobar una póliza',
     description:
@@ -104,14 +100,14 @@ export class LegalizacionController {
   aprobar(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @Param('garantiaId', ParseUUIDPipe) garantiaId: string,
+    @Body() dto: AprobarGarantiaDto,
     @Req() req: any,
   ) {
-    return this.service.aprobarGarantia(procesoId, garantiaId, getHiringAccess(req));
+    return this.service.aprobarGarantia(procesoId, garantiaId, getHiringAccess(req), dto.firma);
   }
 
   @Post('garantias/:garantiaId/rechazar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.approve')
+  @Puede('aprobar', '8.4')
   @ApiOperation({
     summary: 'Devolver una póliza con su motivo',
     description: 'La póliza devuelta se conserva en el expediente; después se carga la corregida.',
@@ -126,8 +122,7 @@ export class LegalizacionController {
   }
 
   @Post('arl')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '8.5')
   @UseInterceptors(
     FileInterceptor('file', opcionesDeCarga(MIME_DOCUMENTOS, 'El soporte se carga en PDF, Word o Excel')),
   )

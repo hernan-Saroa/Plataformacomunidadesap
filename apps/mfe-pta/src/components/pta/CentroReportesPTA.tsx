@@ -39,7 +39,7 @@ import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
 import {
   getAllPTAs, getDismissedAlerts, saveDismissedAlerts,
   getReportSchedules, saveReportSchedule, deleteReportSchedule, toggleReportSchedule,
-  executeScheduler, executeSingleSchedule, getSchedulerHistory, clearSchedulerHistory,
+  executeScheduler, executeSingleSchedule, getSchedulerHistory, clearSchedulerHistory, getBancoDocentes,
 } from '../../services/api/ptaApi';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -49,6 +49,7 @@ import {
 } from 'recharts';
 import { ReporteIndividualPTA } from './ReporteIndividualPTA';
 import { formatHierarchySelectionText } from './shared/extensionSelection';
+import { formatPtaDedicacion, ptaNumero } from '../../utils/ptaInstitutionalDisplay';
 
 // ═══ Tipos ═══
 interface ReporteConfig {
@@ -96,6 +97,41 @@ const CATEGORIES = [
   { id: 'especial', label: 'Especializados', icon: FlaskConical },
 ];
 
+function periodoDeDatos(ptas: any[]): string {
+  const periodos = [...new Set(ptas.map(p => String(p?.periodo || '').trim()).filter(Boolean))].sort();
+  return periodos.length === 1 ? periodos[0] : (periodos[periodos.length - 1] || 'SIN-PERIODO');
+}
+
+function fechaReporte(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const date = new Date(String(value));
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString('es-CO') : '—';
+}
+
+function fechaIso(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '';
+  const date = new Date(String(value));
+  return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : '';
+}
+
+function diasDesde(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const timestamp = new Date(String(value)).getTime();
+  const elapsed = Date.now() - timestamp;
+  return Number.isFinite(timestamp) && elapsed >= 0 ? Math.floor(elapsed / 86400000) : null;
+}
+
+function numeroExportable(value: unknown): number | '' {
+  return ptaNumero(value) ?? '';
+}
+
+function sumarSiCompleto(items: any[], selector: (item: any) => unknown): number | '' {
+  const values = items.map(item => ptaNumero(selector(item)));
+  return values.every((value): value is number => value !== null)
+    ? values.reduce((sum, value) => sum + value, 0)
+    : '';
+}
+
 // ═══ Generadores ═══
 
 function generarR02(ptas: any[]): ReporteGenerado {
@@ -105,18 +141,18 @@ function generarR02(ptas: any[]): ReporteGenerado {
     // horas_complementarias ya incluye la sección académico-administrativa (AADM).
     const hExt = pta.horas_extension || 0, hComp = pta.horas_complementarias || 0;
     const total = pta.total_horas_programadas || (hDoc + hInv + hExt + hComp);
-    const pct = hBase > 0 ? ((total / hBase) * 100).toFixed(1) : '0.0';
-    const cumple = hInv <= hBase * 0.5 && hExt <= hBase * 0.25;
+    const pct = hBase > 0 ? `${((total / hBase) * 100).toFixed(1)}%` : '—';
+    const cumple = hBase > 0 ? (hInv <= hBase * 0.5 && hExt <= hBase * 0.25) : null;
     return {
-      documento: pta.cedula || pta.numero_documento || '-', nombre: pta.docente_nombre || 'N/A',
-      territorial: pta.territorial || pta.sede || '-', dedicacion: pta.dedicacion || '-',
+      documento: pta.cedula || pta.numero_documento || 'No registrado', nombre: pta.docente_nombre || 'No registrado',
+      territorial: pta.territorial || 'No registrado', dedicacion: formatPtaDedicacion(pta.dedicacion) || 'No registrado',
       h_docencia: hDoc, h_investigacion: hInv, h_extension: hExt, h_complementarias: hComp,
-      total, pct: `${pct}%`, estado: pta.estado || 'Borrador', cumple: cumple ? 'SI' : 'NO',
+      total, pct, estado: pta.estado || 'Sin estado', cumple: cumple === null ? 'NO DETERMINADO' : (cumple ? 'SI' : 'NO'),
     };
   });
   return {
     titulo: 'R-02: Tablero de Control Docente',
-    subtitulo: `Consolidado nacional — ${ptas.length} docentes — ${new Date().toLocaleDateString('es-CO')}`,
+    subtitulo: `Consolidado nacional — ${ptas.length} registros PTA — Corte: ${new Date().toLocaleDateString('es-CO')}`,
     columnas: [
       { key: 'documento', label: 'Documento' }, { key: 'nombre', label: 'Docente' },
       { key: 'territorial', label: 'Territorial' }, { key: 'dedicacion', label: 'Ded.' },
@@ -135,37 +171,39 @@ function generarR02(ptas: any[]): ReporteGenerado {
 }
 
 function generarR03(ptas: any[]): ReporteGenerado {
-  const terMap = new Map<string, { total: number; aprobados: number; pendientes: number; borradores: number; totalHoras: number }>();
+  const terMap = new Map<string, { total: number; aprobados: number; pendientes: number; borradores: number; otros: number; totalHoras: number }>();
   ptas.forEach(pta => {
-    const ter = pta.territorial || pta.sede || 'SIN TERRITORIAL';
-    if (!terMap.has(ter)) terMap.set(ter, { total: 0, aprobados: 0, pendientes: 0, borradores: 0, totalHoras: 0 });
+    const ter = pta.territorial || 'SIN TERRITORIAL';
+    if (!terMap.has(ter)) terMap.set(ter, { total: 0, aprobados: 0, pendientes: 0, borradores: 0, otros: 0, totalHoras: 0 });
     const t = terMap.get(ter)!; t.total++;
     if (pta.estado === 'Aprobado') t.aprobados++;
     else if (pta.estado?.includes('Pendiente')) t.pendientes++;
-    else t.borradores++;
+    else if (!pta.estado || pta.estado === 'Borrador') t.borradores++;
+    else t.otros++;
     t.totalHoras += pta.total_horas_programadas || 0;
   });
   const filas = Array.from(terMap.entries()).map(([ter, d]) => ({
     territorial: ter, total_docentes: d.total, aprobados: d.aprobados,
-    pendientes: d.pendientes, borradores: d.borradores,
+    pendientes: d.pendientes, borradores: d.borradores, otros: d.otros,
     pct_cumplimiento: d.total > 0 ? `${((d.aprobados / d.total) * 100).toFixed(1)}%` : '0%',
     promedio_horas: d.total > 0 ? Math.round(d.totalHoras / d.total) : 0,
     _pctNum: d.total > 0 ? (d.aprobados / d.total) * 100 : 0,
   })).sort((a, b) => b._pctNum - a._pctNum);
   return {
     titulo: 'R-03: Cumplimiento por Territorial',
-    subtitulo: `${terMap.size} territoriales — ${new Date().toLocaleDateString('es-CO')}`,
+    subtitulo: `${terMap.size} territoriales — Corte: ${new Date().toLocaleDateString('es-CO')}`,
     columnas: [
       { key: 'territorial', label: 'Territorial' }, { key: 'total_docentes', label: 'Total', align: 'center' },
       { key: 'aprobados', label: 'Aprob.', align: 'center' }, { key: 'pendientes', label: 'Pend.', align: 'center' },
-      { key: 'borradores', label: 'Borr.', align: 'center' }, { key: 'pct_cumplimiento', label: '% Cumpl.', align: 'center' },
+      { key: 'borradores', label: 'Borr.', align: 'center' }, { key: 'otros', label: 'Otros', align: 'center' },
+      { key: 'pct_cumplimiento', label: '% Cumpl.', align: 'center' },
       { key: 'promedio_horas', label: 'Prom.H', align: 'center' },
     ],
     filas,
     alertas: filas.filter(f => f._pctNum < 50).map(f => `${f.territorial}: cumplimiento ${f.pct_cumplimiento} (bajo 50%)`),
     chartData: filas.map(f => ({
       name: f.territorial.length > 14 ? f.territorial.slice(0, 14) + '..' : f.territorial,
-      Aprobados: f.aprobados, Pendientes: f.pendientes, Borradores: f.borradores,
+      Aprobados: f.aprobados, Pendientes: f.pendientes, Borradores: f.borradores, Otros: f.otros,
     })),
     chartType: 'bar',
   };
@@ -178,13 +216,13 @@ function generarR04(ptas: any[]): ReporteGenerado {
   const tExt = p.reduce((s, x) => s + (x.horas_extension || 0), 0);
   // horas_complementarias ya incluye la sección académico-administrativa (AADM).
   const tCom = p.reduce((s, x) => s + (x.horas_complementarias || 0), 0);
-  const tot = tDoc + tInv + tExt + tCom; const n = p.length || 1;
-  const pf = (v: number) => tot > 0 ? `${((v / tot) * 100).toFixed(1)}%` : '0%';
+  const tot = tDoc + tInv + tExt + tCom; const n = p.length;
+  const pf = (v: number) => tot > 0 ? `${((v / tot) * 100).toFixed(1)}%` : '—';
   const filas = [
-    { componente: 'Docencia', total_horas: tDoc, porcentaje: pf(tDoc), promedio: Math.round(tDoc / n), maximo: 'Sin limite' },
-    { componente: 'Investigacion', total_horas: tInv, porcentaje: pf(tInv), promedio: Math.round(tInv / n), maximo: '50%' },
-    { componente: 'Extension', total_horas: tExt, porcentaje: pf(tExt), promedio: Math.round(tExt / n), maximo: '25%' },
-    { componente: 'Complementarias', total_horas: tCom, porcentaje: pf(tCom), promedio: Math.round(tCom / n), maximo: '25%' },
+    { componente: 'Docencia', total_horas: tDoc, porcentaje: pf(tDoc), promedio: n > 0 ? Math.round(tDoc / n) : '—', maximo: 'Sin limite' },
+    { componente: 'Investigacion', total_horas: tInv, porcentaje: pf(tInv), promedio: n > 0 ? Math.round(tInv / n) : '—', maximo: '50%' },
+    { componente: 'Extension', total_horas: tExt, porcentaje: pf(tExt), promedio: n > 0 ? Math.round(tExt / n) : '—', maximo: '25%' },
+    { componente: 'Complementarias', total_horas: tCom, porcentaje: pf(tCom), promedio: n > 0 ? Math.round(tCom / n) : '—', maximo: '25%' },
   ];
   return {
     titulo: 'R-04: Distribucion de Horas por Componente',
@@ -195,7 +233,7 @@ function generarR04(ptas: any[]): ReporteGenerado {
       { key: 'maximo', label: 'Max.Norm.', align: 'center' },
     ],
     filas,
-    totales: { total_horas: tot, porcentaje: '100%', promedio: Math.round(tot / n) },
+    totales: { total_horas: tot, porcentaje: tot > 0 ? '100%' : '—', promedio: n > 0 ? Math.round(tot / n) : '—' },
     chartData: [
       { name: 'Docencia', value: tDoc }, { name: 'Investigacion', value: tInv },
       { name: 'Extension', value: tExt }, { name: 'Complementarias', value: tCom },
@@ -205,72 +243,51 @@ function generarR04(ptas: any[]): ReporteGenerado {
 }
 
 function generarR05(ptas: any[]): ReporteGenerado {
-  const detalle = ptas.map(p => ({
-    documento: p.cedula || p.numero_documento || '-', nombre: p.docente_nombre || 'N/A',
-    territorial: p.territorial || '-', estado: p.estado || 'Borrador',
-    fecha_ultima: p.updated_at ? new Date(p.updated_at).toLocaleDateString('es-CO') : '-',
-    dias_en_estado: p.updated_at ? Math.floor((Date.now() - new Date(p.updated_at).getTime()) / 86400000) : 0,
-  }));
-
-  // Generate weekly evolution timeline (last 8 weeks)
-  const now = Date.now();
-  const weekLabels: string[] = [];
-  const chartData: any[] = [];
-  for (let w = 7; w >= 0; w--) {
-    const weekDate = new Date(now - w * 7 * 86400000);
-    const label = `S${8 - w} (${weekDate.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' })})`;
-    weekLabels.push(label);
-    // Simulate cumulative progression based on actual PTA dates
-    const cutoff = weekDate.getTime();
-    let aprobados = 0, pendientes = 0, borradores = 0, rechazados = 0;
-    ptas.forEach(p => {
-      const created = p.created_at ? new Date(p.created_at).getTime() : now - 60 * 86400000;
-      const updated = p.updated_at ? new Date(p.updated_at).getTime() : created;
-      if (created <= cutoff) {
-        if (p.estado === 'Aprobado' && updated <= cutoff) aprobados++;
-        else if (p.estado?.includes('Pendiente') && updated <= cutoff) pendientes++;
-        else if (p.estado === 'Rechazado' && updated <= cutoff) rechazados++;
-        else borradores++;
-      }
-    });
-    chartData.push({ semana: label, Aprobados: aprobados, Pendientes: pendientes, Borradores: borradores, Rechazados: rechazados });
-  }
+  const detalle = ptas.map(p => {
+    const actualizacion = p.updated_at ?? p.updatedAt;
+    const dias = diasDesde(actualizacion);
+    return {
+      documento: p.cedula || p.numero_documento || 'No registrado', nombre: p.docente_nombre || 'No registrado',
+      territorial: p.territorial || 'No registrado', estado: p.estado || 'Sin estado registrado',
+      fecha_ultima: fechaReporte(actualizacion),
+      dias_desde_actualizacion: dias ?? '—',
+    };
+  });
 
   return {
     titulo: 'R-05: Seguimiento de Aprobaciones',
-    subtitulo: `${ptas.length} PTAs — Evolucion ultimas 8 semanas — ${new Date().toLocaleDateString('es-CO')}`,
+    subtitulo: `${ptas.length} PTAs — Estado actual al ${new Date().toLocaleDateString('es-CO')}`,
     columnas: [
       { key: 'documento', label: 'Documento' }, { key: 'nombre', label: 'Docente' },
       { key: 'territorial', label: 'Territorial' }, { key: 'estado', label: 'Estado' },
-      { key: 'fecha_ultima', label: 'Ult. Actualiz.' }, { key: 'dias_en_estado', label: 'Dias', align: 'center' },
+      { key: 'fecha_ultima', label: 'Últ. actualización' }, { key: 'dias_desde_actualizacion', label: 'Días sin act.', align: 'center' },
     ],
     filas: detalle,
-    alertas: detalle.filter(d => d.dias_en_estado > 5).map(d => `${d.nombre}: ${d.dias_en_estado} dias en "${d.estado}"`),
-    chartData,
-    chartType: 'line',
+    alertas: detalle.filter(d => typeof d.dias_desde_actualizacion === 'number' && d.dias_desde_actualizacion > 5)
+      .map(d => `${d.nombre}: ${d.dias_desde_actualizacion} días sin actualización; estado actual "${d.estado}"`),
   };
 }
 
 function generarR06(ptas: any[]): ReporteGenerado {
-  const pendientes = ptas.filter(p => ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestion Profesoral', 'PENDIENTE_APROBACION'].includes(p.estado));
+  const pendientes = ptas.filter(p => ['Pendiente Jefatura', 'Pendiente Decanatura', 'Pendiente Gestión Profesoral', 'Pendiente Gestion Profesoral', 'PENDIENTE_APROBACION'].includes(p.estado));
   const filas = pendientes.map(p => {
-    const dias = p.updated_at ? Math.floor((Date.now() - new Date(p.updated_at).getTime()) / 86400000) : 0;
+    const dias = diasDesde(p.updated_at ?? p.updatedAt);
     return {
-      documento: p.cedula || p.numero_documento || '-', nombre: p.docente_nombre || 'N/A',
-      territorial: p.territorial || '-',
+      documento: p.cedula || p.numero_documento || 'No registrado', nombre: p.docente_nombre || 'No registrado',
+      territorial: p.territorial || 'No registrado',
       nivel: p.estado === 'Pendiente Jefatura' ? 'N1' : p.estado === 'Pendiente Decanatura' ? 'N2' : p.estado === 'PENDIENTE_APROBACION' ? 'Componentes' : 'N3',
-      dias, urgencia: dias > 7 ? 'CRITICA' : dias > 3 ? 'ALTA' : 'Normal',
+      dias: dias ?? '—', urgencia: dias === null ? 'NO DETERMINADA' : dias > 7 ? 'CRITICA' : dias > 3 ? 'ALTA' : 'Normal',
     };
-  }).sort((a, b) => b.dias - a.dias);
+  }).sort((a, b) => (typeof b.dias === 'number' ? b.dias : -1) - (typeof a.dias === 'number' ? a.dias : -1));
   return {
     titulo: 'R-06: PTAs Pendientes', subtitulo: `${pendientes.length} PTAs requieren accion`,
     columnas: [
       { key: 'documento', label: 'Documento' }, { key: 'nombre', label: 'Docente' },
       { key: 'territorial', label: 'Territorial' }, { key: 'nivel', label: 'Nivel' },
-      { key: 'dias', label: 'Dias', align: 'center' }, { key: 'urgencia', label: 'Urgencia' },
+      { key: 'dias', label: 'Días sin act.', align: 'center' }, { key: 'urgencia', label: 'Urgencia' },
     ],
     filas,
-    alertas: filas.filter(f => f.urgencia === 'CRITICA').map(f => `CRITICA: ${f.nombre} — ${f.dias} dias en ${f.nivel}`),
+    alertas: filas.filter(f => f.urgencia === 'CRITICA').map(f => `CRÍTICA: ${f.nombre} — ${f.dias} días sin actualización en ${f.nivel}`),
   };
 }
 
@@ -283,19 +300,19 @@ function generarR07(ptas: any[]): ReporteGenerado {
     if (asigs.length > 0) {
       asigs.forEach((a: any) => {
         filas.push({
-          docente: p.docente_nombre || 'N/A', documento: p.cedula || p.numero_documento || '-',
-          territorial: p.territorial || '-', asignatura: formatPtaAssignmentName(a) || '-',
-          programa: a.programa_nombre_completo || a.programa_nombre || a.programa || '-',
-          pensum: formatPtaPensum(a.pensum), creditos: a.creditos || 0, grupos: a.num_grupos || 1,
-          horas: a.total_horas_calculadas || a.horas || 0,
+          docente: p.docente_nombre || 'No registrado', documento: p.cedula || p.numero_documento || 'No registrado',
+          territorial: p.territorial || 'No registrado', asignatura: formatPtaAssignmentName(a) || 'No registrado',
+          programa: a.programa_nombre_completo || a.programa_nombre || a.programa || 'No registrado',
+          pensum: formatPtaPensum(a.pensum), creditos: a.creditos ?? '—', grupos: a.num_grupos ?? '—',
+          horas: ptaNumero(a.total_horas_calculadas ?? a.total_horas ?? a.horas) ?? '—',
           desglose: formatHierarchySelectionText(a) || '—',
         });
       });
     } else if (p.horas_docencia > 0) {
       filas.push({
-        docente: p.docente_nombre || 'N/A', documento: p.cedula || p.numero_documento || '-',
-        territorial: p.territorial || '-', asignatura: '(Asignaturas no detalladas)',
-        programa: '-', pensum: '—', creditos: '-', grupos: '-', horas: p.horas_docencia || 0, desglose: '—',
+        docente: p.docente_nombre || 'No registrado', documento: p.cedula || p.numero_documento || 'No registrado',
+        territorial: p.territorial || 'No registrado', asignatura: '(Asignaturas no detalladas)',
+        programa: '—', pensum: '—', creditos: '—', grupos: '—', horas: p.horas_docencia, desglose: '—',
       });
     }
   });
@@ -321,13 +338,13 @@ function generarR08(ptas: any[]): ReporteGenerado {
   const aprobados = ptas.filter(p => p.estado === 'Aprobado');
   const filas = aprobados.map(p => {
     const hDoc = p.horas_docencia || 0;
-    const nAsig = (p.asignaturas || []).length;
+    const nAsig = Array.isArray(p.asignaturas) ? p.asignaturas.length : '—';
     return {
-      documento: p.cedula || p.numero_documento || '-', nombre: p.docente_nombre || 'N/A',
-      territorial: p.territorial || '-', dedicacion: p.dedicacion || '-',
+      documento: p.cedula || p.numero_documento || 'No registrado', nombre: p.docente_nombre || 'No registrado',
+      territorial: p.territorial || 'No registrado', dedicacion: formatPtaDedicacion(p.dedicacion) || 'No registrado',
       n_asignaturas: nAsig, horas_docencia: hDoc,
       estado_pta: 'Aprobado',
-      fecha_aprobacion: p.updated_at ? new Date(p.updated_at).toLocaleDateString('es-CO') : '-',
+      fecha_aprobacion: fechaReporte(p.fecha_aprobacion ?? p.fechaAprobacion),
     };
   });
   return {
@@ -495,10 +512,17 @@ function generarR11(ptas: any[]): ReporteGenerado {
   const devueltos = ptas.filter(p => p.estado === 'Devuelto').length;
   const enConcertacion = ptas.filter(p => p.estado === 'EN_CONCERTACION').length;
   const pctAprobacion = total > 0 ? ((aprobados / total) * 100).toFixed(1) : '0';
-  const totalHoras = ptas.reduce((s, p) => s + (p.total_horas_programadas || 0), 0);
-  const totalBase = ptas.reduce((s, p) => s + (p.horas_asignables ?? p.horas_a_programar ?? 0), 0);
-  const pctProgramacion = totalBase > 0 ? ((totalHoras / totalBase) * 100).toFixed(1) : '0';
-  const territoriales = new Set(ptas.map(p => p.territorial)).size;
+  const horasRegistradas = ptas.map(p => ptaNumero(p.total_horas_programadas));
+  const basesRegistradas = ptas.map(p => ptaNumero(p.horas_asignables ?? p.horas_a_programar));
+  const horasCompletas = horasRegistradas.every((value): value is number => value !== null);
+  const basesCompletas = basesRegistradas.every((value): value is number => value !== null && value > 0);
+  const totalHoras = horasRegistradas.reduce<number>((s, value) => s + (value ?? 0), 0);
+  const totalBase = basesRegistradas.reduce<number>((s, value) => s + (value ?? 0), 0);
+  const programacionDeterminada = horasCompletas && basesCompletas && totalBase > 0;
+  const pctProgramacion = programacionDeterminada ? ((totalHoras / totalBase) * 100).toFixed(1) : null;
+  const territoriales = new Set(ptas.map(p => p.territorial).filter(Boolean)).size;
+  const periodos = [...new Set(ptas.map(p => String(p.periodo || '').trim()).filter(Boolean))];
+  const periodoReporte = periodos.length === 1 ? periodos[0] : (periodos.length > 1 ? 'Varios períodos' : 'Sin período');
   const tiempoPromedio = ptas.filter(p => p.estado === 'Aprobado' && p.created_at && p.updated_at)
     .map(p => (new Date(p.updated_at).getTime() - new Date(p.created_at).getTime()) / 86400000)
     .reduce((s, d, _, arr) => s + d / arr.length, 0);
@@ -510,13 +534,19 @@ function generarR11(ptas: any[]): ReporteGenerado {
     { kpi: 'PTAs en Borrador', valor: borradores, meta: 0, cumplimiento: `${borradores} sin enviar`, semaforo: borradores <= 3 ? 'VERDE' : borradores <= 10 ? 'AMARILLO' : 'ROJO' },
     { kpi: 'PTAs Devueltos', valor: devueltos, meta: 0, cumplimiento: devueltos === 0 ? 'Optimo' : `${devueltos} requieren revision`, semaforo: devueltos === 0 ? 'VERDE' : devueltos <= 3 ? 'AMARILLO' : 'ROJO' },
     { kpi: 'PTAs en Concertacion', valor: enConcertacion, meta: 0, cumplimiento: enConcertacion === 0 ? 'Sin conflictos' : `${enConcertacion} en mesa`, semaforo: enConcertacion === 0 ? 'VERDE' : 'AMARILLO' },
-    { kpi: 'Total Horas Programadas', valor: totalHoras.toLocaleString(), meta: totalBase.toLocaleString(), cumplimiento: `${pctProgramacion}%`, semaforo: parseFloat(pctProgramacion) >= 90 ? 'VERDE' : parseFloat(pctProgramacion) >= 70 ? 'AMARILLO' : 'ROJO' },
+    {
+      kpi: 'Total Horas Programadas',
+      valor: horasCompletas ? totalHoras.toLocaleString() : 'No determinado',
+      meta: basesCompletas ? totalBase.toLocaleString() : 'No determinado',
+      cumplimiento: pctProgramacion !== null ? `${pctProgramacion}%` : 'No determinado',
+      semaforo: pctProgramacion === null ? 'INFO' : parseFloat(pctProgramacion) >= 90 ? 'VERDE' : parseFloat(pctProgramacion) >= 70 ? 'AMARILLO' : 'ROJO',
+    },
     { kpi: 'Territoriales Activas', valor: territoriales, meta: '-', cumplimiento: '-', semaforo: 'INFO' },
-    { kpi: 'Tiempo Promedio Aprobacion (dias)', valor: tiempoPromedio > 0 ? Math.round(tiempoPromedio) : '-', meta: '15', cumplimiento: tiempoPromedio > 0 ? (tiempoPromedio <= 15 ? 'En meta' : 'Fuera de meta') : 'N/A', semaforo: tiempoPromedio <= 15 ? 'VERDE' : tiempoPromedio <= 30 ? 'AMARILLO' : 'ROJO' },
+    { kpi: 'Tiempo Promedio Aprobacion (dias)', valor: tiempoPromedio > 0 ? Math.round(tiempoPromedio) : '-', meta: '15', cumplimiento: tiempoPromedio > 0 ? (tiempoPromedio <= 15 ? 'En meta' : 'Fuera de meta') : 'No determinado', semaforo: tiempoPromedio > 0 ? (tiempoPromedio <= 15 ? 'VERDE' : tiempoPromedio <= 30 ? 'AMARILLO' : 'ROJO') : 'INFO' },
   ];
   return {
     titulo: 'R-11: Informe Ejecutivo — Direccion Nacional',
-    subtitulo: `Periodo 2026-1 — Corte: ${new Date().toLocaleDateString('es-CO')} — ${total} docentes`,
+    subtitulo: `Periodo ${periodoReporte} — Corte: ${new Date().toLocaleDateString('es-CO')} — ${total} docentes`,
     columnas: [
       { key: 'kpi', label: 'Indicador (KPI)' }, { key: 'valor', label: 'Valor Actual', align: 'center' },
       { key: 'meta', label: 'Meta', align: 'center' }, { key: 'cumplimiento', label: 'Cumplimiento', align: 'center' },
@@ -538,13 +568,15 @@ function generarR11(ptas: any[]): ReporteGenerado {
 // ═══ R-12: Actividades Complementarias ═══
 
 function generarR12(ptas: any[]): ReporteGenerado {
+  const docentesConActividad = new Set<string>();
   const tipoMap = new Map<string, {
     docentes: Set<string>;
     horas: number;
     territoriales: Set<string>;
     desgloses: Set<string>;
   }>();
-  ptas.forEach(p => {
+  ptas.forEach((p, ptaIndex) => {
+    const docenteKey = String(p.docente_id || p.cedula || p.numero_documento || p.id || `registro-${ptaIndex}`);
     const current = Array.isArray(p.complementarias) ? p.complementarias : [];
     const legacyAadm = (Array.isArray(p.academico_admin) ? p.academico_admin : [])
       .filter((legacy: any) => !current.some((activity: any) =>
@@ -553,7 +585,7 @@ function generarR12(ptas: any[]): ReporteGenerado {
     const comps = [...current, ...legacyAadm];
     const ter = p.territorial || 'SIN TERRITORIAL';
     comps.forEach((c: any) => {
-      const tipo = c.nombre || c.actividad_nombre || c.actividad || c.tipo || 'Sin clasificar';
+      const tipo = c.nombre || c.actividad_nombre || c.actividad || c.tipo || 'Sin detalle de actividad';
       if (!tipoMap.has(tipo)) tipoMap.set(tipo, {
         docentes: new Set(),
         horas: 0,
@@ -561,21 +593,19 @@ function generarR12(ptas: any[]): ReporteGenerado {
         desgloses: new Set(),
       });
       const t = tipoMap.get(tipo)!;
-      t.docentes.add(String(p.docente_id || p.cedula || p.numero_documento || p.id || 'sin-identificador'));
+      t.docentes.add(docenteKey);
+      docentesConActividad.add(docenteKey);
       t.horas += Number(c.horas) || 0;
       t.territoriales.add(ter);
       const hierarchy = formatHierarchySelectionText(c);
       if (hierarchy) t.desgloses.add(hierarchy);
     });
-  });
-  // If no complementarias found, use aggregate data
-  if (tipoMap.size === 0) {
-    const categorias = ['Comites Institucionales', 'Representacion Institucional', 'Capacitacion Docente',
-      'Evaluacion Academica', 'Planeacion Institucional', 'Gestion de Calidad'];
-    ptas.forEach((p, idx) => {
+    // Algunos PTA legacy solo conservan el total, no el tipo de actividad. El
+    // total es real; se conserva sin asignarlo a una categoría supuesta.
+    if (comps.length === 0) {
       const hComp = p.horas_complementarias || 0;
       if (hComp > 0) {
-        const tipo = categorias[idx % categorias.length];
+        const tipo = 'Sin detalle de actividad (registro legacy)';
         if (!tipoMap.has(tipo)) tipoMap.set(tipo, {
           docentes: new Set(),
           horas: 0,
@@ -583,12 +613,13 @@ function generarR12(ptas: any[]): ReporteGenerado {
           desgloses: new Set(),
         });
         const t = tipoMap.get(tipo)!;
-        t.docentes.add(String(p.docente_id || p.cedula || p.numero_documento || p.id || idx));
+        t.docentes.add(docenteKey);
+        docentesConActividad.add(docenteKey);
         t.horas += hComp;
         t.territoriales.add(p.territorial || 'SIN TERRITORIAL');
       }
-    });
-  }
+    }
+  });
   const filas = Array.from(tipoMap.entries()).map(([tipo, d]) => ({
     tipo_actividad: tipo, docentes: d.docentes.size, horas_total: d.horas,
     territoriales: d.territoriales.size,
@@ -605,7 +636,7 @@ function generarR12(ptas: any[]): ReporteGenerado {
       { key: 'promedio', label: 'Prom.H/Doc', align: 'center' }, { key: 'desglose', label: 'Desglose seleccionado' },
     ],
     filas,
-    totales: { docentes: filas.reduce((s, f) => s + f.docentes, 0), horas_total: totalHoras, territoriales: '-' },
+    totales: { docentes: docentesConActividad.size, horas_total: totalHoras, territoriales: '—' },
     chartData: filas.slice(0, 8).map(f => ({
       name: f.tipo_actividad.length > 18 ? f.tipo_actividad.slice(0, 18) + '..' : f.tipo_actividad,
       Horas: f.horas_total, Docentes: f.docentes,
@@ -624,22 +655,22 @@ function generarR13(ptas: any[]): ReporteGenerado {
     const hist = p.historial || p.historial_aprobaciones || [];
     hist.forEach((h: any) => {
       auditLog.push({
-        fecha: h.fecha || '-',
-        docente: p.docente_nombre || 'N/A',
-        documento: p.cedula || p.numero_documento || '-',
-        territorial: p.territorial || '-',
-        accion: h.accion || h.estado_nuevo || '-',
-        estado_nuevo: h.estado_nuevo || '-',
-        actor: h.actor || '-',
+        fecha: h.fecha || '—',
+        docente: p.docente_nombre || 'No registrado',
+        documento: p.cedula || p.numero_documento || 'No registrado',
+        territorial: p.territorial || 'No registrado',
+        accion: h.accion || h.estado_nuevo || 'No registrado',
+        estado_nuevo: h.estado_nuevo || 'No registrado',
+        actor: h.actor || 'No registrado',
         observaciones: (h.observaciones || '').slice(0, 60),
-        pta_id: p.id || '-',
+        pta_id: p.id || 'No registrado',
       });
     });
   });
   // Sort by date descending
   auditLog.sort((a, b) => {
-    const da = a.fecha !== '-' ? new Date(a.fecha).getTime() : 0;
-    const db = b.fecha !== '-' ? new Date(b.fecha).getTime() : 0;
+    const da = a.fecha !== '—' ? new Date(a.fecha).getTime() : 0;
+    const db = b.fecha !== '—' ? new Date(b.fecha).getTime() : 0;
     return db - da;
   });
 
@@ -656,7 +687,7 @@ function generarR13(ptas: any[]): ReporteGenerado {
 
   return {
     titulo: 'R-13: Auditoria de Cambios del Sistema PTA',
-    subtitulo: `${auditLog.length} acciones registradas — ${ptas.length} PTAs — ${new Date().toLocaleDateString('es-CO')}`,
+    subtitulo: `${auditLog.length} acciones registradas — ${ptas.length} PTAs — Corte: ${new Date().toLocaleDateString('es-CO')}`,
     columnas: [
       { key: 'fecha', label: 'Fecha' }, { key: 'docente', label: 'Docente' },
       { key: 'territorial', label: 'Territorial' }, { key: 'accion', label: 'Accion' },
@@ -688,27 +719,32 @@ function generarR15(ptas: any[]): ReporteGenerado {
     const pctExt = hBase > 0 ? (hExt / hBase) * 100 : 0;
     const pctComp = hBase > 0 ? (hCompDoc / hBase) * 100 : 0;
     const pctTotal = hBase > 0 ? (total / hBase) * 100 : 0;
-    const invOk = pctInv <= 50, extOk = pctExt <= 25, compOk = pctComp <= 25;
-    const totalOk = pctTotal >= 95 && pctTotal <= 105;
+    const tieneBase = hBase > 0;
+    const invOk = tieneBase && pctInv <= 50, extOk = tieneBase && pctExt <= 25, compOk = tieneBase && pctComp <= 25;
+    const totalOk = tieneBase && pctTotal >= 95 && pctTotal <= 105;
     const violations: string[] = [];
-    if (!invOk) violations.push(`Inv: ${pctInv.toFixed(1)}% > 50%`);
-    if (!extOk) violations.push(`Ext: ${pctExt.toFixed(1)}% > 25%`);
-    if (!compOk) violations.push(`Comp: ${pctComp.toFixed(1)}% > 25%`);
-    if (!totalOk) violations.push(`Total: ${pctTotal.toFixed(1)}%`);
+    if (!tieneBase) violations.push('Horas base no registradas');
+    else {
+      if (!invOk) violations.push(`Inv: ${pctInv.toFixed(1)}% > 50%`);
+      if (!extOk) violations.push(`Ext: ${pctExt.toFixed(1)}% > 25%`);
+      if (!compOk) violations.push(`Comp: ${pctComp.toFixed(1)}% > 25%`);
+      if (!totalOk) violations.push(`Total: ${pctTotal.toFixed(1)}%`);
+    }
     return {
-      documento: p.cedula || p.numero_documento || '-', nombre: p.docente_nombre || 'N/A',
-      territorial: p.territorial || '-', pct_inv: `${pctInv.toFixed(1)}%`, pct_ext: `${pctExt.toFixed(1)}%`,
-      pct_comp: `${pctComp.toFixed(1)}%`, pct_total: `${pctTotal.toFixed(1)}%`,
-      cumple: violations.length === 0 ? 'SI' : 'NO',
+      documento: p.cedula || p.numero_documento || 'No registrado', nombre: p.docente_nombre || 'No registrado',
+      territorial: p.territorial || 'No registrado', pct_inv: tieneBase ? `${pctInv.toFixed(1)}%` : '—', pct_ext: tieneBase ? `${pctExt.toFixed(1)}%` : '—',
+      pct_comp: tieneBase ? `${pctComp.toFixed(1)}%` : '—', pct_total: tieneBase ? `${pctTotal.toFixed(1)}%` : '—',
+      cumple: !tieneBase ? 'NO DETERMINADO' : (violations.length === 0 ? 'SI' : 'NO'),
       detalle: violations.length > 0 ? violations.join('; ') : 'OK',
       _violations: violations.length,
     };
   });
   const incumplidos = filas.filter(f => f.cumple === 'NO');
   const cumplidos = filas.filter(f => f.cumple === 'SI');
+  const indeterminados = filas.filter(f => f.cumple === 'NO DETERMINADO');
   return {
     titulo: 'R-15: Cumplimiento Normativo — Circular 003/2025',
-    subtitulo: `${cumplidos.length} cumplen, ${incumplidos.length} con observaciones — ${ptas.length} total`,
+    subtitulo: `${cumplidos.length} cumplen, ${incumplidos.length} con observaciones, ${indeterminados.length} no determinados — ${ptas.length} total`,
     columnas: [
       { key: 'documento', label: 'Documento' }, { key: 'nombre', label: 'Docente' },
       { key: 'territorial', label: 'Territorial' }, { key: 'pct_inv', label: '%Inv (<=50%)', align: 'center' },
@@ -720,31 +756,64 @@ function generarR15(ptas: any[]): ReporteGenerado {
     chartData: [
       { name: 'Cumplen', value: cumplidos.length },
       { name: 'No cumplen', value: incumplidos.length },
+      { name: 'No determinados', value: indeterminados.length },
     ],
     chartType: 'pie',
     chartTitle: 'Cumplimiento Normativo General — Circular 003/2025',
-    alertas: incumplidos.slice(0, 5).map(f => `${f.nombre} (${f.territorial}): ${f.detalle}`),
+    alertas: [...incumplidos, ...indeterminados].slice(0, 5).map(f => `${f.nombre} (${f.territorial}): ${f.detalle}`),
   };
 }
 
-function generarR14(_ptas: any[]): ReporteGenerado {
-  const sinPTA = [
-    { documento: '98765432', nombre: 'CARLOS ANDRES MUÑOZ VERA', territorial: 'SEDE CENTRAL', dedicacion: 'TC', dias_sin_pta: 45 },
-    { documento: '87654321', nombre: 'SANDRA MILENA OCAMPO', territorial: 'ANTIOQUIA', dedicacion: 'TC', dias_sin_pta: 38 },
-    { documento: '76543210', nombre: 'FERNANDO JOSE ESPINOSA', territorial: 'VALLE', dedicacion: 'MT', dias_sin_pta: 32 },
-    { documento: '65432109', nombre: 'ADRIANA LUCIA HENAO', territorial: 'CALDAS', dedicacion: 'TC', dias_sin_pta: 28 },
-    { documento: '54321098', nombre: 'JOSE MANUEL BARRERA', territorial: 'SANTANDER', dedicacion: 'TC', dias_sin_pta: 21 },
-  ];
+function claveIdentidad(value: unknown): string | null {
+  const key = String(value ?? '').trim().toLocaleLowerCase('es');
+  return key || null;
+}
+
+function generarR14(ptas: any[], docentes: any[] = [], fuenteDisponible = false): ReporteGenerado {
+  const identidadesConPta = new Set<string>();
+  ptas.forEach((pta) => {
+    [pta.docente_id, pta.docenteId, pta.persona_id, pta.personaId, pta.documento_identidad, pta.docente_identificacion, pta.cedula, pta.numero_documento]
+      .map(claveIdentidad)
+      .filter((value): value is string => Boolean(value))
+      .forEach(value => identidadesConPta.add(value));
+  });
+
+  const docentesUnicos = [...new Map(docentes.map((docente, index) => {
+    const identity = [docente.documento_identidad, docente.persona_id, docente.docente_id, docente.usuario_id]
+      .map(claveIdentidad)
+      .find(Boolean) || `registro-${index}`;
+    return [identity, docente] as const;
+  })).values()];
+
+  const sinPta = docentesUnicos.filter((docente) => {
+    const identities = [docente.docente_id, docente.persona_id, docente.usuario_id, docente.documento_identidad]
+      .map(claveIdentidad)
+      .filter((value): value is string => Boolean(value));
+    return !identities.some(value => identidadesConPta.has(value));
+  });
+
+  const filas = sinPta.map(docente => ({
+    documento: docente.documento_identidad || 'No registrado',
+    nombre: docente.nombre_completo || 'No registrado',
+    territorial: docente.territorial || docente.territorial_nombre || 'No registrado',
+    dedicacion: formatPtaDedicacion(docente.dedicacion || docente.dedicacion_codigo) || 'No registrado',
+    estado: 'Sin PTA registrado',
+  }));
+
   return {
     titulo: 'R-14: Docentes sin PTA Registrado',
-    subtitulo: `${sinPTA.length} docentes sin PTA`,
+    subtitulo: fuenteDisponible
+      ? `${filas.length} de ${docentesUnicos.length} docentes activos sin PTA en el período`
+      : 'No fue posible consultar el Banco de Docentes del período',
     columnas: [
       { key: 'documento', label: 'Documento' }, { key: 'nombre', label: 'Docente' },
       { key: 'territorial', label: 'Territorial' }, { key: 'dedicacion', label: 'Ded.' },
-      { key: 'dias_sin_pta', label: 'Dias sin PTA', align: 'center' },
+      { key: 'estado', label: 'Estado' },
     ],
-    filas: sinPTA,
-    alertas: sinPTA.filter(d => d.dias_sin_pta > 30).map(d => `ALERTA: ${d.nombre} — ${d.dias_sin_pta} dias sin PTA`),
+    filas,
+    alertas: fuenteDisponible
+      ? (filas.length > 0 ? [`${filas.length} docentes activos no tienen PTA registrado.`] : undefined)
+      : ['No se muestran nombres porque falló la consulta a la fuente oficial; no se usan datos de ejemplo.'],
   };
 }
 
@@ -752,28 +821,32 @@ function generarR14(_ptas: any[]): ReporteGenerado {
 
 function generarEXP01_SIIF(ptas: any[]) {
   const aprobados = ptas.filter(p => p.estado === 'Aprobado');
+  const periodo = periodoDeDatos(aprobados.length > 0 ? aprobados : ptas);
+  const vigencia = periodo.match(/^\d{4}/)?.[0] || '';
   const BOM = '\uFEFF';
   const header = 'TIPO_REG|COD_ENTIDAD|VIGENCIA|COD_DEPENDENCIA|COD_CARGO|DOCUMENTO|NOMBRE|HORAS_ASIGNADAS|COMPONENTE_PRINCIPAL|TIPO_VINCULACION|FECHA_APROBACION';
   const lines = [header];
   aprobados.forEach(p => {
     const comps = [
-      { comp: 'DOC', horas: p.horas_docencia || 0 },
-      { comp: 'INV', horas: p.horas_investigacion || 0 },
-      { comp: 'EXT', horas: p.horas_extension || 0 },
-      { comp: 'COMP', horas: p.complementarias_secciones?.complementarias_docencia ?? (p.horas_complementarias || 0) },
-      { comp: 'AADM', horas: p.complementarias_secciones?.academico_administrativas ?? (p.horas_acad_admin || 0) },
+      { comp: 'DOC', horas: ptaNumero(p.horas_docencia) },
+      { comp: 'INV', horas: ptaNumero(p.horas_investigacion) },
+      { comp: 'EXT', horas: ptaNumero(p.horas_extension) },
+      { comp: 'COMP', horas: ptaNumero(p.complementarias_secciones?.complementarias_docencia) },
+      { comp: 'AADM', horas: ptaNumero(p.complementarias_secciones?.academico_administrativas ?? p.horas_acad_admin) },
     ];
-    const principal = comps.reduce((a, b) => a.horas >= b.horas ? a : b);
+    const principal = comps
+      .filter((item): item is { comp: string; horas: number } => item.horas !== null && item.horas > 0)
+      .sort((a, b) => b.horas - a.horas)[0];
     lines.push([
-      'D', '0127', '2026', p.territorial || '01', 'DOCENTE',
+      'D', '0127', vigencia, p.territorial || '', 'DOCENTE',
       p.cedula || p.numero_documento || '', (p.docente_nombre || '').replace(/\|/g, ' '),
-      p.total_horas_programadas || 0, principal.comp,
-      p.tipo_vinculacion || 'Carrera',
-      p.updated_at ? new Date(p.updated_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      numeroExportable(p.total_horas_programadas), principal?.comp || '',
+      p.tipo_vinculacion || '',
+      fechaIso(p.fecha_aprobacion ?? p.fechaAprobacion),
     ].join('|'));
   });
   // Trailer
-  lines.push(`T|${aprobados.length}|${new Date().toISOString().slice(0, 10)}|PTA_ESAP_2026-1`);
+  lines.push(`T|${aprobados.length}|${new Date().toISOString().slice(0, 10)}|PTA_ESAP_${periodo}`);
   const blob = new Blob([BOM + lines.join('\r\n')], { type: 'text/plain;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -792,19 +865,19 @@ function generarEXP03_Nomina(ptas: any[]) {
     'TOTAL_HORAS', 'PORCENTAJE_PROGRAMACION', 'ESTADO_PTA', 'FECHA_APROBACION', 'TIPO_VINCULACION'];
   const lines = [headers.map(h => `"${h}"`).join(',')];
   aprobados.forEach(p => {
-    const total = p.total_horas_programadas || 0;
-    const base = p.horas_asignables ?? p.horas_a_programar ?? 0;
+    const total = ptaNumero(p.total_horas_programadas);
+    const base = ptaNumero(p.horas_asignables ?? p.horas_a_programar);
     lines.push([
       `"${p.cedula || p.numero_documento || ''}"`,
       `"${(p.docente_nombre || '').replace(/"/g, '""')}"`,
       `"${p.territorial || ''}"`, `"${p.dedicacion || ''}"`, `"${p.categoria_escalafon || ''}"`,
-      p.horas_docencia || 0, p.horas_investigacion || 0, p.horas_extension || 0,
-      p.complementarias_secciones?.complementarias_docencia ?? (p.horas_complementarias || 0),
-      p.complementarias_secciones?.academico_administrativas ?? (p.horas_acad_admin || 0),
-      total, base > 0 ? `${((total / base) * 100).toFixed(1)}%` : '0%',
+      numeroExportable(p.horas_docencia), numeroExportable(p.horas_investigacion), numeroExportable(p.horas_extension),
+      numeroExportable(p.complementarias_secciones?.complementarias_docencia),
+      numeroExportable(p.complementarias_secciones?.academico_administrativas ?? p.horas_acad_admin),
+      total ?? '', total !== null && base !== null && base > 0 ? `${((total / base) * 100).toFixed(1)}%` : '',
       `"Aprobado"`,
-      `"${p.updated_at ? new Date(p.updated_at).toISOString().slice(0, 10) : ''}"`,
-      `"${p.tipo_vinculacion || 'Carrera'}"`,
+      `"${fechaIso(p.fecha_aprobacion ?? p.fechaAprobacion)}"`,
+      `"${p.tipo_vinculacion || ''}"`,
     ].join(','));
   });
   const blob = new Blob([BOM + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
@@ -824,6 +897,8 @@ function generarEXP02_XML(ptas: any[]) {
   if (aprobados.length === 0) { toast.info('No hay PTAs aprobados para exportar'); return; }
 
   const now = new Date();
+  const periodo = periodoDeDatos(aprobados);
+  const vigencia = periodo.match(/^\d{4}/)?.[0] || '';
   const escapeXml = (s: string) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const xmlLines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -835,8 +910,8 @@ function generarEXP02_XML(ptas: any[]) {
     `    <CodigoEntidad>0127</CodigoEntidad>`,
     `    <TipoArchivo>PTA_INTEROPERABILIDAD</TipoArchivo>`,
     `    <Version>2.0</Version>`,
-    `    <Vigencia>2026</Vigencia>`,
-    `    <Periodo>2026-1</Periodo>`,
+    `    <Vigencia>${vigencia}</Vigencia>`,
+    `    <Periodo>${periodo}</Periodo>`,
     `    <FechaGeneracion>${now.toISOString()}</FechaGeneracion>`,
     `    <TotalRegistros>${aprobados.length}</TotalRegistros>`,
     '  </Encabezado>',
@@ -844,14 +919,19 @@ function generarEXP02_XML(ptas: any[]) {
   ];
 
   aprobados.forEach((p, idx) => {
-    const hDoc = p.horas_docencia || 0, hInv = p.horas_investigacion || 0;
-    const hExt = p.horas_extension || 0;
+    const hDoc = ptaNumero(p.horas_docencia), hInv = ptaNumero(p.horas_investigacion);
+    const hExt = ptaNumero(p.horas_extension);
     // Complementarias unificado; el XML conserva el desglose por sección (no solapado).
-    const hCompTotal = p.horas_complementarias || 0;
-    const hAadm = p.complementarias_secciones?.academico_administrativas ?? (p.horas_acad_admin || 0);
-    const hComp = p.complementarias_secciones?.complementarias_docencia ?? Math.max(0, hCompTotal - hAadm);
-    const total = p.total_horas_programadas || (hDoc + hInv + hExt + hCompTotal);
-    const base = p.horas_asignables ?? p.horas_a_programar ?? 0;
+    const hCompTotal = ptaNumero(p.horas_complementarias);
+    const hAadm = ptaNumero(p.complementarias_secciones?.academico_administrativas ?? p.horas_acad_admin);
+    const hCompRegistrado = ptaNumero(p.complementarias_secciones?.complementarias_docencia);
+    const hComp = hCompRegistrado ?? (hCompTotal !== null && hAadm !== null ? Math.max(0, hCompTotal - hAadm) : null);
+    const totalRegistrado = ptaNumero(p.total_horas_programadas);
+    const componentesCompletos = [hDoc, hInv, hExt, hCompTotal].every((value): value is number => value !== null);
+    const total = totalRegistrado ?? (componentesCompletos
+      ? (hDoc as number) + (hInv as number) + (hExt as number) + (hCompTotal as number)
+      : null);
+    const base = ptaNumero(p.horas_asignables ?? p.horas_a_programar);
     xmlLines.push(`    <PTA secuencia="${idx + 1}">`);
     xmlLines.push(`      <Identificacion>`);
     xmlLines.push(`        <PtaId>${escapeXml(p.id || '')}</PtaId>`);
@@ -860,22 +940,22 @@ function generarEXP02_XML(ptas: any[]) {
     xmlLines.push(`        <Territorial>${escapeXml(p.territorial || '')}</Territorial>`);
     xmlLines.push(`        <Dedicacion>${escapeXml(p.dedicacion || '')}</Dedicacion>`);
     xmlLines.push(`        <CategoriaEscalafon>${escapeXml(p.categoria_escalafon || '')}</CategoriaEscalafon>`);
-    xmlLines.push(`        <TipoVinculacion>${escapeXml(p.tipo_vinculacion || 'Carrera')}</TipoVinculacion>`);
+    xmlLines.push(`        <TipoVinculacion>${escapeXml(p.tipo_vinculacion || '')}</TipoVinculacion>`);
     xmlLines.push(`      </Identificacion>`);
     xmlLines.push(`      <DistribucionHoras>`);
-    xmlLines.push(`        <HorasBase>${base}</HorasBase>`);
-    xmlLines.push(`        <Docencia>${hDoc}</Docencia>`);
-    xmlLines.push(`        <Investigacion>${hInv}</Investigacion>`);
-    xmlLines.push(`        <Extension>${hExt}</Extension>`);
-    xmlLines.push(`        <Complementarias>${hComp}</Complementarias>`);
-    xmlLines.push(`        <AcademicoAdministrativo>${hAadm}</AcademicoAdministrativo>`);
-    xmlLines.push(`        <TotalProgramado>${total}</TotalProgramado>`);
-    xmlLines.push(`        <PorcentajeProgramacion>${base > 0 ? ((total / base) * 100).toFixed(2) : '0'}</PorcentajeProgramacion>`);
+    xmlLines.push(`        <HorasBase>${base ?? ''}</HorasBase>`);
+    xmlLines.push(`        <Docencia>${hDoc ?? ''}</Docencia>`);
+    xmlLines.push(`        <Investigacion>${hInv ?? ''}</Investigacion>`);
+    xmlLines.push(`        <Extension>${hExt ?? ''}</Extension>`);
+    xmlLines.push(`        <Complementarias>${hComp ?? ''}</Complementarias>`);
+    xmlLines.push(`        <AcademicoAdministrativo>${hAadm ?? ''}</AcademicoAdministrativo>`);
+    xmlLines.push(`        <TotalProgramado>${total ?? ''}</TotalProgramado>`);
+    xmlLines.push(`        <PorcentajeProgramacion>${base !== null && base > 0 && total !== null ? ((total / base) * 100).toFixed(2) : ''}</PorcentajeProgramacion>`);
     xmlLines.push(`      </DistribucionHoras>`);
     xmlLines.push(`      <Estado>`);
     xmlLines.push(`        <EstadoActual>APROBADO</EstadoActual>`);
-    xmlLines.push(`        <FechaAprobacion>${p.updated_at ? new Date(p.updated_at).toISOString().slice(0, 10) : ''}</FechaAprobacion>`);
-    xmlLines.push(`        <FechaCreacion>${p.created_at ? new Date(p.created_at).toISOString().slice(0, 10) : ''}</FechaCreacion>`);
+    xmlLines.push(`        <FechaAprobacion>${fechaIso(p.fecha_aprobacion ?? p.fechaAprobacion)}</FechaAprobacion>`);
+    xmlLines.push(`        <FechaCreacion>${fechaIso(p.created_at ?? p.createdAt)}</FechaCreacion>`);
     xmlLines.push(`      </Estado>`);
     const asigs = p.asignaturas || [];
     if (asigs.length > 0) {
@@ -885,9 +965,9 @@ function generarEXP02_XML(ptas: any[]) {
         xmlLines.push(`          <Nombre>${escapeXml(formatPtaAssignmentName(a))}</Nombre>`);
         xmlLines.push(`          <Programa>${escapeXml(a.programa_nombre_completo || a.programa_nombre || a.programa || '')}</Programa>`);
         xmlLines.push(`          <Pensum>${escapeXml(formatPtaPensum(a.pensum))}</Pensum>`);
-        xmlLines.push(`          <Creditos>${a.creditos || 0}</Creditos>`);
-        xmlLines.push(`          <Grupos>${a.num_grupos || 1}</Grupos>`);
-        xmlLines.push(`          <Horas>${a.total_horas_calculadas || a.horas || 0}</Horas>`);
+        xmlLines.push(`          <Creditos>${numeroExportable(a.creditos)}</Creditos>`);
+        xmlLines.push(`          <Grupos>${a.num_grupos ?? ''}</Grupos>`);
+        xmlLines.push(`          <Horas>${numeroExportable(a.total_horas_calculadas ?? a.total_horas ?? a.horas)}</Horas>`);
         xmlLines.push(`        </Asignatura>`);
       });
       xmlLines.push(`      </Asignaturas>`);
@@ -897,13 +977,13 @@ function generarEXP02_XML(ptas: any[]) {
 
   xmlLines.push('  </PlanesTrabajo>');
   xmlLines.push('  <Resumen>');
-  const totalH = aprobados.reduce((s, p) => s + (p.total_horas_programadas || 0), 0);
-  const totalDoc = aprobados.reduce((s, p) => s + (p.horas_docencia || 0), 0);
-  const totalInv = aprobados.reduce((s, p) => s + (p.horas_investigacion || 0), 0);
-  const totalExt = aprobados.reduce((s, p) => s + (p.horas_extension || 0), 0);
-  const totalAadm = aprobados.reduce((s, p) => s + (p.complementarias_secciones?.academico_administrativas ?? (p.horas_acad_admin || 0)), 0);
+  const totalH = sumarSiCompleto(aprobados, p => p.total_horas_programadas);
+  const totalDoc = sumarSiCompleto(aprobados, p => p.horas_docencia);
+  const totalInv = sumarSiCompleto(aprobados, p => p.horas_investigacion);
+  const totalExt = sumarSiCompleto(aprobados, p => p.horas_extension);
+  const totalAadm = sumarSiCompleto(aprobados, p => p.complementarias_secciones?.academico_administrativas ?? p.horas_acad_admin);
   // Complementarias del XML = solo sección "a la docencia" (no solapa con AADM).
-  const totalComp = aprobados.reduce((s, p) => s + (p.complementarias_secciones?.complementarias_docencia ?? Math.max(0, (p.horas_complementarias || 0) - (p.complementarias_secciones?.academico_administrativas ?? (p.horas_acad_admin || 0)))), 0);
+  const totalComp = sumarSiCompleto(aprobados, p => p.complementarias_secciones?.complementarias_docencia);
   xmlLines.push(`    <TotalDocentes>${aprobados.length}</TotalDocentes>`);
   xmlLines.push(`    <TotalHorasProgramadas>${totalH}</TotalHorasProgramadas>`);
   xmlLines.push(`    <HorasDocencia>${totalDoc}</HorasDocencia>`);
@@ -911,7 +991,7 @@ function generarEXP02_XML(ptas: any[]) {
   xmlLines.push(`    <HorasExtension>${totalExt}</HorasExtension>`);
   xmlLines.push(`    <HorasComplementarias>${totalComp}</HorasComplementarias>`);
   xmlLines.push(`    <HorasAcademicoAdministrativo>${totalAadm}</HorasAcademicoAdministrativo>`);
-  const ters = new Set(aprobados.map(p => p.territorial));
+  const ters = new Set(aprobados.map(p => p.territorial).filter(Boolean));
   xmlLines.push(`    <TerritorialesActivas>${ters.size}</TerritorialesActivas>`);
   xmlLines.push('  </Resumen>');
   xmlLines.push('</ESAPExportacion>');
@@ -923,13 +1003,14 @@ function generarEXP02_XML(ptas: any[]) {
   a.download = `EXP02_XML_PTA_ESAP_${now.toISOString().slice(0, 10)}.xml`;
   a.click();
   URL.revokeObjectURL(url);
-  toast.success(`EXP-02: XML Interoperabilidad generado — ${aprobados.length} PTAs, ${totalH.toLocaleString()} horas`, { duration: 5000 });
+  toast.success(`EXP-02: XML Interoperabilidad generado — ${aprobados.length} PTAs${totalH === '' ? '' : `, ${totalH.toLocaleString()} horas`}`, { duration: 5000 });
 }
 
 // ═══ Componente Principal ═══
 
-export function CentroReportesPTA() {
+export function CentroReportesPTA({ periodo }: { periodo?: string } = {}) {
   const [ptas, setPtas] = useState<any[]>([]);
+  const [periodoInferido, setPeriodoInferido] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedReporte, setSelectedReporte] = useState<ReporteConfig | null>(null);
   const [reporteGenerado, setReporteGenerado] = useState<ReporteGenerado | null>(null);
@@ -951,20 +1032,27 @@ export function CentroReportesPTA() {
   const [tablePage, setTablePage] = useState(0);
   const PAGE_SIZE = 25;
 
-  useEffect(() => { loadData(); }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
-    const res = await getAllPTAs({ periodo: '2025-2' });
+    const res = await getAllPTAs(periodo ? { periodo } : undefined);
     // Validación robusta: asegurar que siempre sea un array
     if (res.success && Array.isArray(res.data)) {
-      setPtas(res.data);
+      const inferred = periodo || periodoDeDatos(res.data);
+      setPeriodoInferido(inferred === 'SIN-PERIODO' ? '' : inferred);
+      // Cuando no hay contexto padre, no se mezclan períodos en un mismo
+      // informe: se usa el más reciente que realmente vino en la respuesta.
+      setPtas(periodo ? res.data : res.data.filter((pta: any) => String(pta?.periodo || '') === inferred));
     } else {
       console.warn('[CentroReportes] PTA data is not an array:', res);
       setPtas([]);
+      setPeriodoInferido(periodo || '');
     }
     setLoading(false);
-  };
+  }, [periodo]);
+
+  useEffect(() => { void loadData(); }, [loadData]);
+
+  const periodoActual = periodo || periodoInferido;
 
   const reportesFiltrados = useMemo(() => {
     let lista: ReporteConfig[] = CATALOGO_REPORTES;
@@ -986,7 +1074,43 @@ export function CentroReportesPTA() {
     setGenerando(true);
     setTablePage(0);
     await new Promise(r => setTimeout(r, 600));
-    setReporteGenerado(reporte.generadorFn(ptas));
+    if (reporte.id === 'R-14') {
+      let docentes: any[] = [];
+      let fuenteDisponible = false;
+      try {
+        const first = await getBancoDocentes({
+          estado: 'ACTIVO',
+          periodoCarga: periodoActual || undefined,
+          page: 1,
+          limit: 200,
+        });
+        if (first.success) {
+          fuenteDisponible = true;
+          docentes = first.data?.data || [];
+          const pages = Math.max(1, Number(first.data?.pages) || 1);
+          if (pages > 1) {
+            const remaining = await Promise.all(Array.from({ length: pages - 1 }, (_, index) => (
+              getBancoDocentes({
+                estado: 'ACTIVO',
+                periodoCarga: periodoActual || undefined,
+                page: index + 2,
+                limit: 200,
+              })
+            )));
+            for (const page of remaining) {
+              if (!page.success) fuenteDisponible = false;
+              else docentes.push(...(page.data?.data || []));
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('[CentroReportes] No fue posible cruzar Banco de Docentes para R-14:', error);
+      }
+      if (!fuenteDisponible) docentes = [];
+      setReporteGenerado(generarR14(ptas, docentes, fuenteDisponible));
+    } else {
+      setReporteGenerado(reporte.generadorFn(ptas));
+    }
     setGenerando(false);
   };
 
@@ -1026,40 +1150,44 @@ export function CentroReportesPTA() {
       const p = aprobados[i];
       setBatchCurrent(p.docente_nombre || `Docente ${i + 1}`);
       setBatchProgress(i + 1);
-      await new Promise(r => setTimeout(r, 120)); // Simulate processing
-
-      const hDoc = p.horas_docencia || 0, hInv = p.horas_investigacion || 0;
-      const hExt = p.horas_extension || 0, hComp = p.horas_complementarias || 0;
-      const total = p.total_horas_programadas || (hDoc + hInv + hExt + hComp);
-      const base = p.horas_asignables ?? p.horas_a_programar ?? 0;
+      const hDoc = ptaNumero(p.horas_docencia), hInv = ptaNumero(p.horas_investigacion);
+      const hExt = ptaNumero(p.horas_extension), hComp = ptaNumero(p.horas_complementarias);
+      const componentesCompletos = [hDoc, hInv, hExt, hComp].every((value): value is number => value !== null);
+      const total = ptaNumero(p.total_horas_programadas) ?? (componentesCompletos
+        ? (hDoc as number) + (hInv as number) + (hExt as number) + (hComp as number)
+        : null);
+      const base = ptaNumero(p.horas_asignables ?? p.horas_a_programar);
+      const porcentaje = (value: number | null) => value !== null && base !== null && base > 0
+        ? `${((value / base) * 100).toFixed(1)}%`
+        : '—';
 
       sections.push(`
         <div style="page-break-after:always;padding:20px;font-family:Arial,sans-serif;font-size:12px;">
           <div style="text-align:center;border-bottom:2px solid #003DA5;padding-bottom:10px;margin-bottom:15px;">
             <div style="font-size:16px;font-weight:bold;color:#003DA5;">ESCUELA SUPERIOR DE ADMINISTRACION PUBLICA — ESAP</div>
-            <div style="font-size:14px;font-weight:bold;margin-top:5px;">PLAN DE TRABAJO ACADEMICO — Periodo 2026-1</div>
+            <div style="font-size:14px;font-weight:bold;margin-top:5px;">PLAN DE TRABAJO ACADEMICO — Periodo ${p.periodo || periodoActual || 'No registrado'}</div>
             <div style="font-size:11px;color:#666;margin-top:3px;">Formato GTH-F081 | R-01 Resumen Individual | Generado: ${new Date().toLocaleString('es-CO')}</div>
           </div>
           <table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
-            <tr><td style="padding:5px;font-weight:bold;width:30%;border:1px solid #ddd;background:#f5f5f5;">Docente:</td><td style="padding:5px;border:1px solid #ddd;">${p.docente_nombre || 'N/A'}</td></tr>
-            <tr><td style="padding:5px;font-weight:bold;border:1px solid #ddd;background:#f5f5f5;">Documento:</td><td style="padding:5px;border:1px solid #ddd;">${p.cedula || p.numero_documento || '-'}</td></tr>
-            <tr><td style="padding:5px;font-weight:bold;border:1px solid #ddd;background:#f5f5f5;">Territorial:</td><td style="padding:5px;border:1px solid #ddd;">${p.territorial || '-'}</td></tr>
-            <tr><td style="padding:5px;font-weight:bold;border:1px solid #ddd;background:#f5f5f5;">Dedicacion:</td><td style="padding:5px;border:1px solid #ddd;">${p.dedicacion || '-'} | Escalafon: ${p.categoria_escalafon || '-'}</td></tr>
+            <tr><td style="padding:5px;font-weight:bold;width:30%;border:1px solid #ddd;background:#f5f5f5;">Docente:</td><td style="padding:5px;border:1px solid #ddd;">${p.docente_nombre || 'No registrado'}</td></tr>
+            <tr><td style="padding:5px;font-weight:bold;border:1px solid #ddd;background:#f5f5f5;">Documento:</td><td style="padding:5px;border:1px solid #ddd;">${p.cedula || p.numero_documento || 'No registrado'}</td></tr>
+            <tr><td style="padding:5px;font-weight:bold;border:1px solid #ddd;background:#f5f5f5;">Territorial:</td><td style="padding:5px;border:1px solid #ddd;">${p.territorial || 'No registrado'}</td></tr>
+            <tr><td style="padding:5px;font-weight:bold;border:1px solid #ddd;background:#f5f5f5;">Dedicacion:</td><td style="padding:5px;border:1px solid #ddd;">${formatPtaDedicacion(p.dedicacion) || 'No registrado'} | Escalafon: ${p.categoria_escalafon || 'No registrado'}</td></tr>
           </table>
           <table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
             <thead><tr style="background:#003DA5;color:white;">
               <th style="padding:6px;text-align:left;">Componente</th><th style="padding:6px;text-align:center;">Horas</th><th style="padding:6px;text-align:center;">%</th>
             </tr></thead>
             <tbody>
-              <tr><td style="padding:5px;border:1px solid #ddd;">Docencia</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${hDoc}</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${base > 0 ? ((hDoc / base) * 100).toFixed(1) : 0}%</td></tr>
-              <tr><td style="padding:5px;border:1px solid #ddd;">Investigacion</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${hInv}</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${base > 0 ? ((hInv / base) * 100).toFixed(1) : 0}%</td></tr>
-              <tr><td style="padding:5px;border:1px solid #ddd;">Extension</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${hExt}</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${base > 0 ? ((hExt / base) * 100).toFixed(1) : 0}%</td></tr>
-              <tr><td style="padding:5px;border:1px solid #ddd;">Complementarias</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${hComp}</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${base > 0 ? ((hComp / base) * 100).toFixed(1) : 0}%</td></tr>
-              <tr style="font-weight:bold;background:#f5f5f5;"><td style="padding:5px;border:1px solid #ddd;">TOTAL PROGRAMADO</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${total} / ${base}</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${base > 0 ? ((total / base) * 100).toFixed(1) : 0}%</td></tr>
+              <tr><td style="padding:5px;border:1px solid #ddd;">Docencia</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${hDoc ?? '—'}</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${porcentaje(hDoc)}</td></tr>
+              <tr><td style="padding:5px;border:1px solid #ddd;">Investigacion</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${hInv ?? '—'}</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${porcentaje(hInv)}</td></tr>
+              <tr><td style="padding:5px;border:1px solid #ddd;">Extension</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${hExt ?? '—'}</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${porcentaje(hExt)}</td></tr>
+              <tr><td style="padding:5px;border:1px solid #ddd;">Complementarias</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${hComp ?? '—'}</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${porcentaje(hComp)}</td></tr>
+              <tr style="font-weight:bold;background:#f5f5f5;"><td style="padding:5px;border:1px solid #ddd;">TOTAL PROGRAMADO</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${total ?? '—'} / ${base ?? '—'}</td><td style="padding:5px;text-align:center;border:1px solid #ddd;">${porcentaje(total)}</td></tr>
             </tbody>
           </table>
           <div style="margin-top:20px;padding-top:10px;border-top:1px solid #ddd;font-size:10px;color:#888;">
-            Estado: APROBADO | Fecha: ${p.updated_at ? new Date(p.updated_at).toLocaleDateString('es-CO') : '-'} | Documento ${i + 1} de ${aprobados.length}
+            Estado: APROBADO | Fecha: ${fechaReporte(p.fecha_aprobacion ?? p.fechaAprobacion)} | Documento ${i + 1} de ${aprobados.length}
           </div>
         </div>`);
     }
@@ -1075,7 +1203,7 @@ export function CentroReportesPTA() {
 
     setBatchExporting(false);
     toast.success(`R-01 Batch: ${aprobados.length} reportes generados para impresion`, { duration: 5000 });
-  }, [ptas]);
+  }, [ptas, periodoActual]);
 
   const handleSort = (key: string) => {
     setTablePage(0);
@@ -1288,7 +1416,7 @@ export function CentroReportesPTA() {
 
   // ═══ Comparativo dual-periodo ═══
   const [showComparativo, setShowComparativo] = useState(false);
-  const [periodoComparar, setPeriodoComparar] = useState('2025-2');
+  const [periodoComparar, setPeriodoComparar] = useState('');
   const [ptasComparar, setPtasComparar] = useState<any[]>([]);
   const [loadingComparar, setLoadingComparar] = useState(false);
 
@@ -1502,6 +1630,10 @@ export function CentroReportesPTA() {
 
   // ═══ Comparativo dual-periodo ═══
   const handleLoadComparativo = useCallback(async () => {
+    if (!periodoComparar) {
+      toast.info('No hay un período anterior disponible para comparar');
+      return;
+    }
     setLoadingComparar(true);
     try {
       const res = await getAllPTAs({ periodo: periodoComparar });
@@ -1540,7 +1672,7 @@ export function CentroReportesPTA() {
       doc.setTextColor(55, 65, 81);
       doc.setFontSize(11);
       doc.setFont('helvetica', 'bold');
-      doc.text(`Comparativo: 2026-1 vs ${periodoComparar}`, 14, 30);
+      doc.text(`Comparativo: ${periodoActual || 'Sin periodo'} vs ${periodoComparar}`, 14, 30);
       const metricsLabels = ['Total PTAs', 'Aprobados', 'Pendientes', 'Devueltos', 'Horas Programadas', '% Aprobacion', '% Programacion', 'Territoriales'];
       const cur = kpiMetrics;
       const comp = comparativoMetrics;
@@ -1552,13 +1684,13 @@ export function CentroReportesPTA() {
           [cur.pctProgramacion, comp.pctProgramacion], [cur.territoriales, comp.territoriales],
         ][i] as [number, number];
         const diff = vals[0] - vals[1];
-        const pctChange = vals[1] !== 0 ? ((diff / vals[1]) * 100).toFixed(1) : 'N/A';
+        const pctChange = vals[1] !== 0 ? ((diff / vals[1]) * 100).toFixed(1) : 'No calculable';
         const fmt = (v: number) => i >= 5 ? `${v.toFixed(1)}%` : String(Math.round(v));
         return [label, fmt(vals[0]), fmt(vals[1]), typeof pctChange === 'string' ? pctChange : `${Number(pctChange) >= 0 ? '+' : ''}${pctChange}%`];
       });
       autoTable(doc, {
         startY: 36,
-        head: [['Metrica', '2026-1 (Actual)', periodoComparar, 'Variacion %']],
+        head: [['Metrica', `${periodoActual || 'Actual'} (Actual)`, periodoComparar, 'Variacion %']],
         body: rows, theme: 'grid',
         headStyles: { fillColor: [0, 61, 165], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
         styles: { fontSize: 9, cellPadding: 4 },
@@ -1571,15 +1703,37 @@ export function CentroReportesPTA() {
           }
         },
       });
-      doc.save(`Comparativo_PTA_2026-1_vs_${periodoComparar}_${new Date().toISOString().slice(0, 10)}.pdf`);
+      doc.save(`Comparativo_PTA_${periodoActual || 'actual'}_vs_${periodoComparar}_${new Date().toISOString().slice(0, 10)}.pdf`);
       toast.success('PDF comparativo generado');
     } catch (err) {
       console.error('Error generating comparative PDF:', err);
       toast.error('Error al generar PDF comparativo');
     }
-  }, [kpiMetrics, comparativoMetrics, periodoComparar]);
+  }, [kpiMetrics, comparativoMetrics, periodoComparar, periodoActual]);
 
-  const PERIODOS_DISPONIBLES = ['2025-2', '2025-1', '2024-2', '2024-1'];
+  const PERIODOS_DISPONIBLES = useMemo(() => {
+    const match = periodoActual.match(/^(\d{4})-([12])$/);
+    if (!match) return [];
+    let year = Number(match[1]);
+    let semester = Number(match[2]);
+    const values: string[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      if (semester === 1) {
+        year -= 1;
+        semester = 2;
+      } else {
+        semester = 1;
+      }
+      values.push(`${year}-${semester}`);
+    }
+    return values;
+  }, [periodoActual]);
+  useEffect(() => {
+    if (!periodoComparar || !PERIODOS_DISPONIBLES.includes(periodoComparar)) {
+      setPeriodoComparar(PERIODOS_DISPONIBLES[0] || '');
+      setPtasComparar([]);
+    }
+  }, [PERIODOS_DISPONIBLES, periodoComparar]);
   const DIAS_SEMANA = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
   const FRECUENCIAS = [
     { value: 'diario', label: 'Diario' },
@@ -2299,17 +2453,17 @@ export function CentroReportesPTA() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#111827' }}>{pta.docente_nombre || 'Sin nombre'}</div>
                     <div style={{ fontSize: '0.75rem', color: '#6B7280' }}>
-                      {pta.cedula || pta.numero_documento || 'Sin documento'} — {pta.territorial || '-'} — {pta.dedicacion || '-'}
+                      {pta.cedula || pta.numero_documento || 'Sin documento'} — {pta.territorial || 'No registrado'} — {formatPtaDedicacion(pta.dedicacion) || 'No registrado'}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <span style={{
                       padding: '2px 8px', borderRadius: 6, fontSize: '0.68rem', fontWeight: 600,
-                      background: getPtaStatusVisual(pta.estado || 'Borrador').bg,
-                      color: getPtaStatusVisual(pta.estado || 'Borrador').color,
-                      border: `1px solid ${getPtaStatusVisual(pta.estado || 'Borrador').border}`,
-                    }}>{pta.estado || 'Borrador'}</span>
-                    <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 2 }}>{pta.total_horas_programadas || 0}h</div>
+                      background: getPtaStatusVisual(pta.estado || 'Sin estado').bg,
+                      color: getPtaStatusVisual(pta.estado || 'Sin estado').color,
+                      border: `1px solid ${getPtaStatusVisual(pta.estado || 'Sin estado').border}`,
+                    }}>{pta.estado || 'Sin estado'}</span>
+                    <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 2 }}>{ptaNumero(pta.total_horas_programadas) !== null ? `${ptaNumero(pta.total_horas_programadas)}h` : 'Horas no registradas'}</div>
                   </div>
                 </button>
               ))}
@@ -2607,7 +2761,7 @@ export function CentroReportesPTA() {
                     padding: '8px 14px', borderRadius: 8, background: '#EFF6FF',
                     border: '1px solid #BFDBFE', fontSize: '0.85rem', fontWeight: 700, color: '#003DA5',
                   }}>
-                    2026-1
+                    {periodoActual || 'Sin periodo'}
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', padding: '0 8px', color: '#9CA3AF', fontWeight: 800, fontSize: '1.1rem' }}>
@@ -2660,7 +2814,7 @@ export function CentroReportesPTA() {
                     <thead>
                       <tr style={{ borderBottom: '2px solid #E5E7EB' }}>
                         <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 800, color: '#374151' }}>Metrica</th>
-                        <th style={{ textAlign: 'center', padding: '10px 12px', fontWeight: 800, color: '#003DA5' }}>2026-1</th>
+                        <th style={{ textAlign: 'center', padding: '10px 12px', fontWeight: 800, color: '#003DA5' }}>{periodoActual || 'Actual'}</th>
                         <th style={{ textAlign: 'center', padding: '10px 12px', fontWeight: 800, color: '#7C3AED' }}>{periodoComparar}</th>
                         <th style={{ textAlign: 'center', padding: '10px 12px', fontWeight: 800, color: '#374151' }}>Variacion</th>
                       </tr>
@@ -2725,7 +2879,7 @@ export function CentroReportesPTA() {
                           <YAxis tick={{ fontSize: 11, fill: '#6B7280' }} />
                           <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E5E7EB', fontSize: '0.78rem' }} />
                           <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
-                          <Bar dataKey="actual" name="2026-1 (Actual)" fill="#003DA5" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="actual" name={`${periodoActual || 'Actual'} (Actual)`} fill="#003DA5" radius={[4, 4, 0, 0]} />
                           <Bar dataKey="comparar" name={periodoComparar} fill="#7C3AED" radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
@@ -2746,7 +2900,7 @@ export function CentroReportesPTA() {
                           <YAxis dataKey="name" type="category" width={110} tick={{ fontSize: 11, fill: '#6B7280' }} />
                           <Tooltip contentStyle={{ borderRadius: 8, border: '1px solid #E5E7EB', fontSize: '0.78rem' }} formatter={(v: any) => `${v}%`} />
                           <Legend wrapperStyle={{ fontSize: '0.72rem' }} />
-                          <Bar dataKey="actual" name="2026-1 (Actual)" fill="#003DA5" radius={[0, 4, 4, 0]} />
+                          <Bar dataKey="actual" name={`${periodoActual || 'Actual'} (Actual)`} fill="#003DA5" radius={[0, 4, 4, 0]} />
                           <Bar dataKey="comparar" name={periodoComparar} fill="#7C3AED" radius={[0, 4, 4, 0]} />
                         </BarChart>
                       </ResponsiveContainer>

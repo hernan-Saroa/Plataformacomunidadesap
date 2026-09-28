@@ -1,16 +1,17 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { fijarAlcance, olvidarAlcance } from '../auth/alcance';
+import { AlcanceVista } from '../types';
 import ContratacionModulePremium from './ContratacionModulePremium';
 
 /**
- * Qué entradas del menú ve cada rol (EFDS-1183).
+ * Qué entradas del menú ve cada quien (EFDS-1183, migración 083).
  *
- * El primer grupo no filtraba nada: a un usuario con permiso solo para el
- * listado se le ofrecía Expedientes, que reúne todo lo cargado en el proceso.
  * Esconder no es la protección —el guard del servicio sigue negando— es no
- * pintar puertas falsas.
+ * pintar puertas falsas. Desde la 083 el menú pregunta por el alcance: qué
+ * acción tiene quien mira, y dónde.
  */
 vi.mock('./procesos/VistaProcesos', () => ({
   VistaProcesos: () => <div>listado de procesos</div>,
@@ -21,44 +22,54 @@ vi.mock('./expedientes/VistaExpedientes', () => ({
 vi.mock('./cdp/VistaBandejaCdp', () => ({
   VistaBandejaCdp: () => <div>bandeja de solicitudes de CDP</div>,
 }));
+// El alcance se fija a mano en cada caso: que el módulo no salga a pedirlo.
+vi.mock('../services/contratacionService', () => ({
+  contratacionService: { alcanceMio: vi.fn(() => new Promise(() => undefined)) },
+}));
 
-describe('ContratacionModulePremium · menú según el permiso', () => {
-  const sesionCon = (...permisos: string[]) => {
-    (window as unknown as { __esap_auth_cache?: unknown }).__esap_auth_cache = {
-      roles: [],
-      permissions: permisos,
-    };
-  };
+const CONFIGURAR = 'contratacion.config.manage';
 
-  afterEach(() => {
-    delete (window as unknown as { __esap_auth_cache?: unknown }).__esap_auth_cache;
+const conAlcance = (lugares: [string, string][], transversales: string[] = []) =>
+  fijarAlcance({
+    alcances: lugares.map(([accion, lugar]) => ({ accion, lugar }) as AlcanceVista),
+    transversales,
   });
 
-  it('ofrece Expedientes a quien puede consultarlo', () => {
-    sesionCon('contratacion.proceso.view', 'contratacion.expediente.view');
+const GESTOR: [string, string][] = [
+  ['ver', 'TODO'],
+  ['editar', '3.1'],
+  ['editar', '4.1'],
+];
+const FINANCIERA: [string, string][] = [
+  ['ver', 'E4'],
+  ['editar', '4.2'],
+  ['editar', '4.3'],
+  ['aprobar', '9.5'],
+];
+
+afterEach(() => {
+  olvidarAlcance();
+  localStorage.clear();
+});
+
+describe('ContratacionModulePremium · menú según el alcance', () => {
+  it('ofrece Expedientes a quien ve alguna parte del proceso', () => {
+    conAlcance([['ver', 'E3']]);
     render(<ContratacionModulePremium />);
 
     expect(screen.getByText('Expedientes')).toBeInTheDocument();
   });
 
-  it('también al Archivo de Gestión, que audita sin tener `expediente.view`', () => {
-    sesionCon('contratacion.expediente.auditar');
+  it('no se lo ofrece a quien no ve nada de ningún proceso', () => {
+    // El administrador del módulo configura sin trabajar procesos.
+    conAlcance([], [CONFIGURAR]);
     render(<ContratacionModulePremium />);
 
-    expect(screen.getByText('Expedientes')).toBeInTheDocument();
-  });
-
-  it('no se lo ofrece a quien solo ve el listado', () => {
-    sesionCon('contratacion.proceso.view');
-    render(<ContratacionModulePremium />);
-
-    // Entra al módulo —el listado se pinta— pero sin la entrada al expediente.
-    expect(screen.getByText('listado de procesos')).toBeInTheDocument();
     expect(screen.queryByText('Expedientes')).toBeNull();
   });
 
-  it('esconde la sección de configuración a quien no la administra', () => {
-    sesionCon('contratacion.proceso.view');
+  it('esconde la configuración a quien no la administra', () => {
+    conAlcance(GESTOR);
     render(<ContratacionModulePremium />);
 
     for (const tab of ['Umbrales', 'Plazos', 'MIPYME', 'Plantillas']) {
@@ -67,16 +78,16 @@ describe('ContratacionModulePremium · menú según el permiso', () => {
   });
 
   it('se la ofrece a quien sí', () => {
-    sesionCon('contratacion.proceso.view', 'contratacion.config.manage');
+    conAlcance([['ver', 'E3']], [CONFIGURAR]);
     render(<ContratacionModulePremium />);
 
     expect(screen.getByText('Umbrales')).toBeInTheDocument();
     expect(screen.getByText('Plantillas')).toBeInTheDocument();
   });
 
-  it('sin sesión no esconde nada', () => {
-    // Otro shell, o la sesión aún sin restaurar: dejar el menú vacío sería
-    // peor que una entrada de más, y el servicio sigue negando lo suyo.
+  it('mientras el alcance no llega no esconde nada', () => {
+    // Otro shell, o la respuesta aún en camino: dejar el menú vacío sería peor
+    // que una entrada de más, y el servicio sigue negando lo suyo.
     render(<ContratacionModulePremium />);
 
     expect(screen.getByText('Expedientes')).toBeInTheDocument();
@@ -84,18 +95,15 @@ describe('ContratacionModulePremium · menú según el permiso', () => {
   });
 
   it('ofrece Alertas a quien trabaja procesos, no solo a quien configura', () => {
-    // Estaba dentro de Configuracion, que exige el permiso de administrar: el
-    // gestor tenia «ver alertas» y aun asi no veia la entrada donde le llegan
-    // sus aprobaciones pendientes.
-    sesionCon('contratacion.proceso.view', 'contratacion.alerta.ver');
+    conAlcance(GESTOR);
     render(<ContratacionModulePremium />);
 
     expect(screen.getByText('Alertas')).toBeInTheDocument();
     expect(screen.queryByText('Umbrales')).toBeNull();
   });
 
-  it('no se la ofrece a quien no tiene ese permiso', () => {
-    sesionCon('contratacion.proceso.view');
+  it('no se la ofrece a quien no ve ningún proceso', () => {
+    conAlcance([], [CONFIGURAR]);
     render(<ContratacionModulePremium />);
 
     expect(screen.queryByText('Alertas')).toBeNull();
@@ -106,31 +114,29 @@ describe('ContratacionModulePremium · menú según el permiso', () => {
  * La Dirección Financiera entra por su cola, no por la lista de procesos.
  *
  * Su trabajo en el módulo no es un expediente sino las solicitudes de CDP que
- * esperan, y hasta que existió la bandeja abría el módulo, veía la misma lista
- * que todos y no tenía forma de saber qué le tocaba.
+ * esperan.
  */
 describe('ContratacionModulePremium · la bandeja de la Financiera', () => {
-  const sesionCon = (...permisos: string[]) => {
-    (window as unknown as { __esap_auth_cache?: unknown }).__esap_auth_cache = {
-      roles: [],
-      permissions: permisos,
-    };
-  };
-
-  afterEach(() => {
-    delete (window as unknown as { __esap_auth_cache?: unknown }).__esap_auth_cache;
-  });
-
-  it('quien gestiona presupuesto entra directo a la bandeja', () => {
-    sesionCon('contratacion.proceso.view', 'contratacion.presupuesto.gestionar');
+  it('quien solo mueve presupuesto entra directo a la bandeja', () => {
+    conAlcance(FINANCIERA);
     render(<ContratacionModulePremium />);
 
     expect(screen.getByText('bandeja de solicitudes de CDP')).toBeInTheDocument();
     expect(screen.queryByText('listado de procesos')).toBeNull();
   });
 
+  it('también si su alcance llega después de abrir el módulo', () => {
+    // El alcance viene del servicio: al montar todavía no se sabe quién entra.
+    render(<ContratacionModulePremium />);
+    expect(screen.getByText('listado de procesos')).toBeInTheDocument();
+
+    act(() => conAlcance(FINANCIERA));
+
+    expect(screen.getByText('bandeja de solicitudes de CDP')).toBeInTheDocument();
+  });
+
   it('y la tiene en el menú', () => {
-    sesionCon('contratacion.proceso.view', 'contratacion.presupuesto.gestionar');
+    conAlcance(FINANCIERA);
     render(<ContratacionModulePremium />);
 
     expect(screen.getByText('Solicitudes de CDP')).toBeInTheDocument();
@@ -139,11 +145,7 @@ describe('ContratacionModulePremium · la bandeja de la Financiera', () => {
   it('quien además diligencia procesos sigue entrando por la lista', () => {
     // Un mismo usuario puede tener los dos papeles. Entonces la lista sí es su
     // trabajo, y mandarlo a la bandeja le escondería la mitad de lo que hace.
-    sesionCon(
-      'contratacion.proceso.view',
-      'contratacion.actividad.edit',
-      'contratacion.presupuesto.gestionar',
-    );
+    conAlcance([...FINANCIERA, ['editar', '3.1']]);
     render(<ContratacionModulePremium />);
 
     expect(screen.getByText('listado de procesos')).toBeInTheDocument();
@@ -151,16 +153,16 @@ describe('ContratacionModulePremium · la bandeja de la Financiera', () => {
   });
 
   it('a quien no mueve presupuesto no se le ofrece', () => {
-    sesionCon('contratacion.proceso.view', 'contratacion.actividad.edit');
+    conAlcance(GESTOR);
     render(<ContratacionModulePremium />);
 
     expect(screen.queryByText('Solicitudes de CDP')).toBeNull();
     expect(screen.getByText('listado de procesos')).toBeInTheDocument();
   });
 
-  it('sin sesión se entra por la lista, como siempre', () => {
-    // `tienePermiso` responde que sí ante una sesión incompleta, así que sin
-    // este cuidado cualquiera sin sesión aterrizaría en la bandeja.
+  it('sin alcance se entra por la lista, como siempre', () => {
+    // Ante la duda todo responde que sí, así que sin este cuidado cualquiera
+    // aterrizaría en la bandeja.
     render(<ContratacionModulePremium />);
 
     expect(screen.getByText('listado de procesos')).toBeInTheDocument();

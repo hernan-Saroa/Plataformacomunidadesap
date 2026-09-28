@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
 import {
   IsDateString,
   IsIn,
@@ -8,7 +9,10 @@ import {
   MaxLength,
   MinLength,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
+
+import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 export class EmitirAdendaDto {
   @ApiProperty({ description: 'Qué modifica la adenda', enum: ['FONDO', 'CRONOGRAMA'] })
@@ -43,6 +47,14 @@ export class PublicarAdendaDto {
   @ApiProperty({ description: 'Fecha en que se publicó la adenda (YYYY-MM-DD)' })
   @IsDateString({}, { message: 'La fecha de publicación debe tener el formato YYYY-MM-DD' })
   fechaPublicacion: string;
+
+  /** Solo si la 5.6 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }
 
 export class AnularAdendaDto {
@@ -52,4 +64,11 @@ export class AnularAdendaDto {
   @MinLength(10, { message: 'El motivo debe explicar la anulación, no una palabra suelta' })
   @MaxLength(1000)
   motivo: string;
+
+  /** Solo si la 5.6 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }

@@ -48,6 +48,14 @@ export interface FirmaData {
   coords?: { x: number; y: number };
   firmaImg?: string;
   scale?: number;
+  /**
+   * true  → el sello quedó incrustado en los bytes del archivo (PDF re-estampado con pdf-lib).
+   * false → el archivo no se pudo re-estampar (DOCX, imagen, PDF protegido): la única
+   *         representación visual de la firma es el overlay del visor.
+   * undefined → firmas antiguas, anteriores a este campo (se asume incrustada si es PDF).
+   * Evita pintar el sello dos veces: una dentro del PDF y otra superpuesta en pantalla.
+   */
+  estampadoEnArchivo?: boolean;
 }
 
 type FirmaStep = 'verificacion' | 'trazado' | 'generando' | 'confirmacion' | 'completado';

@@ -21,9 +21,9 @@ export class AsignarAbogadoDto {
 
 /** Motivo del cambio. Comun a quitar y a reasignar. */
 export class MotivoDto {
-  @ApiProperty({ description: 'Por que cambia de manos' })
+  @ApiProperty({ description: 'Por qué cambia de manos' })
   @IsString()
-  @IsNotEmpty({ message: 'Explica por que cambia el responsable' })
+  @IsNotEmpty({ message: 'Explica por qué cambia el responsable' })
   @MinLength(10, { message: 'El motivo debe explicar el cambio, no una palabra suelta' })
   @MaxLength(1000)
   motivo: string;
@@ -37,9 +37,9 @@ export class MotivoDto {
  * entre uno y otro, y si el segundo falla queda asi indefinidamente.
  */
 export class ReasignarAbogadoDto extends AsignarAbogadoDto {
-  @ApiProperty({ description: 'Por que se cambia de abogado' })
+  @ApiProperty({ description: 'Por qué se cambia de abogado' })
   @IsString()
-  @IsNotEmpty({ message: 'Explica por que se reasigna el proceso' })
+  @IsNotEmpty({ message: 'Explica por qué se reasigna el proceso' })
   @MinLength(10, { message: 'El motivo debe explicar el cambio, no una palabra suelta' })
   @MaxLength(1000)
   motivo: string;

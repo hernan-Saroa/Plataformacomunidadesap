@@ -21,6 +21,7 @@ import { ParticipacionService } from '../participacion/participacion.service';
 import { CdpService } from '../cdp/cdp.service';
 import { ElegirCausalDto } from './dto/causal-contratacion.dto';
 import { NUMERAL_MODALIDAD } from '../modalidad-proceso/modalidad-proceso.service';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 
 /** Actividad 3.6 de la matriz —su 3.5.1—: la causal de contratación. */
 export const NUMERAL_CAUSAL = '3.6';
@@ -101,6 +102,7 @@ export class CausalContratacionService {
     private readonly dataSource: DataSource,
     private readonly participacion: ParticipacionService,
     private readonly cdp: CdpService,
+    private readonly cierre: CierreActividadService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -114,7 +116,7 @@ export class CausalContratacionService {
     const estadoModalidad = await this.estadoDeLaModalidad(em, procesoId);
 
     const noElige = motivoParaNoElegir(estadoActual, estadoModalidad, proceso.etapa);
-    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso);
+    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso, NUMERAL_CAUSAL);
 
     const causales = await this.causalesDe(em, proceso.modalidad);
     const elegida = proceso.causal
@@ -171,7 +173,7 @@ export class CausalContratacionService {
    * habría provocado.
    */
   async elegir(procesoId: string, dto: ElegirCausalDto, acceso: HiringAccess) {
-    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso);
+    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso, NUMERAL_CAUSAL);
     if (motivo === 'SIN_ABOGADO') {
       throw new ConflictException(
         'Este proceso todavía no tiene abogado asignado: se reparte en la actividad 3.3 y después se elige la causal',
@@ -237,12 +239,23 @@ export class CausalContratacionService {
         );
       }
 
+      if (await this.cierre.exigeFirma(em, NUMERAL_CAUSAL)) {
+        this.cierre.exigirFirmaValida(dto.firma);
+      }
+
       const anterior = proceso.causal;
       proceso.causal = causal.codigo;
       proceso.causalSustento = dto.sustento?.trim() || null;
       await em.save(Proceso, proceso);
 
-      await this.marcar(em, procesoId, acceso);
+      await this.cierre.resolverCierre(
+        em,
+        procesoId,
+        NUMERAL_CAUSAL,
+        proceso.modalidad,
+        acceso,
+        dto.firma,
+      );
 
       // RECTIFICAR al cambiarla y no otro GUARDAR: la causal anterior sustentó
       // lo que el expediente ya diga, y la traza tiene que distinguir la
@@ -343,44 +356,6 @@ export class CausalContratacionService {
     return consulta.getOne();
   }
 
-  /**
-   * Deja la actividad cumplida y sellada por quien eligió.
-   *
-   * Cierra en APROBADO sin pasar por EN_REVISION: elegir la causal ya es la
-   * decisión, y el único que puede tomarla es el abogado que responde por el
-   * proceso. Un envío intermedio sería un paso que nadie resuelve.
-   *
-   * Si la fila no existe —un proceso anterior a que la matriz se instanciara—
-   * se crea, porque para entonces la actividad ya se comprobó aplicable.
-   */
-  private async marcar(em: EntityManager, procesoId: string, acceso: HiringAccess) {
-    const actividad = await em
-      .getRepository(ProcesoActividad)
-      .findOne({ where: { procesoId, numeral: NUMERAL_CAUSAL } });
-
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_CAUSAL,
-          estado: 'APROBADO' as EstadoActividad,
-          datos: {},
-          enviadoPor: acceso.userName,
-          enviadoPorId: acceso.userId ?? null,
-          revisadoPor: acceso.userName,
-          revisadoAt: new Date(),
-        } as Partial<ProcesoActividad>),
-      );
-      return;
-    }
-
-    actividad.estado = 'APROBADO';
-    actividad.enviadoPor = acceso.userName;
-    actividad.enviadoPorId = acceso.userId ?? null;
-    actividad.revisadoPor = acceso.userName;
-    actividad.revisadoAt = new Date();
-    await em.save(ProcesoActividad, actividad);
-  }
 
   private traza(
     em: EntityManager,

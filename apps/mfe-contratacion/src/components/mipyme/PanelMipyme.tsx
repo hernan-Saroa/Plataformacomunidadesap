@@ -25,11 +25,14 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '5.4';
 
 const pesos = new Intl.NumberFormat('es-CO', {
   style: 'currency',
@@ -46,6 +49,7 @@ const pesos = new Intl.NumberFormat('es-CO', {
  * que se aparte de él siempre que se motive.
  */
 export function PanelMipyme({ procesoId, onCambio }: Props) {
+  const firma = useFirma(NUMERAL, 'Registrar la decisión sobre la limitación a MIPYME');
   const [estado, setEstado] = useState<EstadoMipyme | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -182,17 +186,20 @@ export function PanelMipyme({ procesoId, onCambio }: Props) {
             rectifica={decidido}
             trabajando={trabajando}
             onCancelar={decidido ? () => setRectificando(false) : undefined}
-            onDecidir={async (datos, acto) => {
-              const ok = await ejecutar(
-                () => contratacionService.decidirMipyme(procesoId, datos, acto),
-                decidido ? 'Decisión rectificada' : 'Decisión registrada',
-              );
-              if (ok) setRectificando(false);
-              return ok;
-            }}
+            onDecidir={async (datos, acto) =>
+              firma.conFirma(async (firmaOtp) => {
+                const ok = await ejecutar(
+                  () => contratacionService.decidirMipyme(procesoId, datos, acto, firmaOtp),
+                  decidido ? 'Decisión rectificada' : 'Decisión registrada',
+                );
+                if (ok) setRectificando(false);
+                return ok;
+              })
+            }
           />
         </div>
       )}
+      {firma.modal}
     </Marco>
   );
 }
@@ -540,7 +547,10 @@ function FormularioDecision({
   rectifica: boolean;
   trabajando: boolean;
   onCancelar?: () => void;
-  onDecidir: (datos: { limitado: boolean; motivo?: string }, acto: File | null) => Promise<boolean>;
+  onDecidir: (
+    datos: { limitado: boolean; motivo?: string },
+    acto: File | null,
+  ) => Promise<boolean> | boolean | undefined;
 }) {
   const [limitado, setLimitado] = useState<boolean | null>(null);
   const [motivo, setMotivo] = useState('');

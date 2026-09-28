@@ -2,6 +2,44 @@ import { PtaPermissionsService } from './pta-permissions.service';
 import { PtaAuthGuard } from './pta-auth.guard';
 
 describe('permisos vigentes de las decisiones PTA', () => {
+  it.each([
+    ['pta.review.academica.pregrado', 'academica_pregrado:general'],
+    ['pta.review.investigacion', 'investigacion:general'],
+    ['pta.review.extension.capacitacion', 'ext_capacitacion:general'],
+    ['pta.review.complementarias.pregrado', 'complementarias_pregrado:docencia'],
+    ['pta.review.complementarias.territorial.pregrado', 'complementarias_territorial:docencia'],
+  ])('%s concede revisión únicamente sobre su componente', async (permissionCode, expectedScope) => {
+    const query = jest.fn().mockResolvedValue([
+      { role_code: 'REVISOR_COMPONENTE', permission_code: permissionCode },
+    ]);
+    const service = new PtaPermissionsService({ query } as any);
+
+    const ctx = await service.resolveForUser('user-review');
+
+    expect(ctx.allowedReviewSubsecciones).toContain(expectedScope);
+    expect(ctx.allowedComponents).toEqual([]);
+    expect(ctx.approvesAll).toBe(false);
+  });
+
+  it.each([
+    ['pta.approve.academica.pregrado', 'academica_pregrado'],
+    ['pta.approve.investigacion', 'investigacion'],
+    ['pta.approve.extension.capacitacion', 'ext_capacitacion'],
+    ['pta.approve.complementarias.pregrado', 'complementarias_pregrado'],
+    ['pta.approve.complementarias.territorial.pregrado', 'complementarias_territorial'],
+  ])('%s concede aprobación pero no revisión de solicitudes', async (permissionCode, expectedComponent) => {
+    const query = jest.fn().mockResolvedValue([
+      { role_code: 'APROBADOR_COMPONENTE', permission_code: permissionCode },
+    ]);
+    const service = new PtaPermissionsService({ query } as any);
+
+    const ctx = await service.resolveForUser('user-approve');
+
+    expect(ctx.allowedComponents).toEqual([expectedComponent]);
+    expect(ctx.allowedReviewSubsecciones).toEqual([]);
+    expect(ctx.reviewsAll).toBe(false);
+  });
+
   it('reconoce los permisos territoriales por nivel del rol personalizado', async () => {
     const query = jest.fn().mockResolvedValue([
       { role_code: 'APROBAR_PTA_2', permission_code: 'pta.approve.academica.territorial.pregrado' },

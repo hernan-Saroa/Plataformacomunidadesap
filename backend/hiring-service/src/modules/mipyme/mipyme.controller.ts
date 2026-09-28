@@ -7,7 +7,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -20,6 +19,7 @@ import { DecidirLimitacionDto, RegistrarManifestacionDto } from './dto/mipyme.dt
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -28,8 +28,6 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 const CARGA = opcionesDeCarga(
   [...MIME_DOCUMENTOS, ...MIME_IMAGENES],
@@ -48,8 +46,7 @@ export class MipymeController {
   constructor(private readonly service: MipymeService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', '5.4')
   @ApiOperation({
     summary: 'Manifestaciones, condiciones evaluadas y decisión',
     description:
@@ -60,8 +57,7 @@ export class MipymeController {
   }
 
   @Post('manifestaciones')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.4')
   @UseInterceptors(FileInterceptor('file', CARGA))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
@@ -81,8 +77,7 @@ export class MipymeController {
   }
 
   @Post('decision')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.4')
   @UseInterceptors(FileInterceptor('file', CARGA))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({

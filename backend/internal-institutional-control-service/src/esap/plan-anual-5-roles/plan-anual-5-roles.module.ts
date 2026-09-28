@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PlanAnual5RolesController } from './plan-anual-5-roles.controller';
 import { PlanAnual5RolesService } from './plan-anual-5-roles.service';
+import { ProgramaAnualRol4TareaSyncService } from './programa-anual-rol4-tarea-sync.service';
 import { PlanAnual5Roles } from './entities/plan-anual-5-roles.entity';
 import { RolPlanAnual5 } from './entities/rol-plan-anual-5.entity';
 import { ActividadPlanAnual5 } from './entities/actividad-plan-anual-5.entity';
@@ -10,6 +11,7 @@ import { HistorialPlanAnual } from './entities/historial-plan-anual.entity';
 import { PlanAnualWizardBorrador } from './entities/plan-anual-wizard-borrador.entity';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { AuthModule } from '../../auth/auth.module';
+import { ProgramaAnualVersionesModule } from '../programa-anual-versiones/programa-anual-versiones.module';
 
 @Module({
   imports: [
@@ -23,9 +25,10 @@ import { AuthModule } from '../../auth/auth.module';
     ]),
     NotificacionesModule,
     AuthModule,
+    ProgramaAnualVersionesModule,
   ],
   controllers: [PlanAnual5RolesController],
-  providers: [PlanAnual5RolesService],
+  providers: [PlanAnual5RolesService, ProgramaAnualRol4TareaSyncService],
   exports: [PlanAnual5RolesService],
 })
 export class PlanAnual5RolesModule {}

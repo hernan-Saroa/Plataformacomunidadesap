@@ -13,13 +13,15 @@ import {
   CatalogoItem,
   infraestructuraService,
   clasificarSLA,
+  obtenerSesionUMI,
+  listarCodigosTecnicosDeSesionUMI,
 } from '../services/infraestructuraService';
 
 interface SolicitudesMantenimientoProps {
   mantenimientos: SolicitudMantenimiento[];
   remitidasTI: SolicitudMantenimiento[];
-  vista: 'todas' | 'remitidasTI';
-  onChangeVista: (vista: 'todas' | 'remitidasTI') => void;
+  vista: 'todas' | 'remitidasTI' | 'asignadasMi';
+  onChangeVista: (vista: 'todas' | 'remitidasTI' | 'asignadasMi') => void;
   onNuevaSolicitud: () => void;
   onGestionar?: (idSolicitud: string) => void;
   loading?: boolean;
@@ -73,7 +75,52 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
   onRefresh,
   catalogoCS = [],
 }) => {
-  const lista = vista === 'todas' ? mantenimientos : remitidasTI;
+  const sesionUmi = useMemo(() => obtenerSesionUMI(), []);
+  const [catalogoTecnicos, setCatalogoTecnicos] = useState<CatalogoItem[]>([]);
+  const [codigosTecnicosSesion, setCodigosTecnicosSesion] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelado = false;
+    const cargar = async () => {
+      try {
+        const tecnicos = await infraestructuraService.getTecnicos(false);
+        if (cancelado) return;
+        setCatalogoTecnicos(Array.isArray(tecnicos) ? tecnicos : []);
+        const cods = await listarCodigosTecnicosDeSesionUMI(sesionUmi, Array.isArray(tecnicos) ? tecnicos : []);
+        if (cancelado) return;
+        setCodigosTecnicosSesion(cods);
+      } catch (err) {
+        console.error('[UMI-ERROR cargar tecnicos]', err);
+        setCatalogoTecnicos([]);
+      }
+    };
+    cargar();
+    return () => { cancelado = true; };
+  }, [sesionUmi]);
+  const asignadasMi = useMemo(() => {
+    const codigosSet = new Set((codigosTecnicosSesion || []).map((c) => c.trim().toUpperCase()));
+    const result = mantenimientos.filter((m) => {
+      const r = String(m.responsableAsignado || '').trim();
+      if (!r) return false;
+      if (codigosSet.size > 0) {
+        const match = r.match(/TEC[-_][A-Za-z0-9]+[-_][A-Za-z0-9]+/);
+        if (match && match[0]) {
+          return codigosSet.has(match[0].toUpperCase());
+        }
+      }
+      const lower = r.toLowerCase();
+      const email = String(sesionUmi.email || '').trim().toLowerCase();
+      const userId = String(sesionUmi.userId || '').trim().toLowerCase();
+      if (email && lower.includes(` ${email} `)) return true;
+      if (email && lower.endsWith(` ${email}`)) return true;
+      if (email && lower.startsWith(`${email} `)) return true;
+      if (email && lower === email) return true;
+      if (userId && lower.includes(userId)) return true;
+      return false;
+    });
+    return result;
+  }, [mantenimientos, codigosTecnicosSesion, sesionUmi]);
+  const lista =
+    vista === 'todas' ? mantenimientos : vista === 'asignadasMi' ? asignadasMi : remitidasTI;
   const [expandidos, setExpandidos] = useState<Record<string, boolean>>({});
   const [catalogoEstado, setCatalogoEstado] = useState<CatalogoItem[]>([]);
   const [catalogoPrioridad, setCatalogoPrioridad] = useState<CatalogoItem[]>([]);
@@ -253,6 +300,21 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
           </button>
           <button
             type="button"
+            onClick={() => onChangeVista('asignadasMi')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
+              vista === 'asignadasMi'
+                ? 'border-indigo-600 text-indigo-700 bg-indigo-50/40'
+                : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+            }`}
+          >
+            <User className="w-4 h-4" />
+            Asignadas a mí
+            <span className="ml-1 px-2 py-0.5 text-xs rounded-full bg-slate-100 text-slate-700">
+              {asignadasMi.length}
+            </span>
+          </button>
+          <button
+            type="button"
             onClick={() => onChangeVista('remitidasTI')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-sm font-bold transition-all border-b-2 ${
               vista === 'remitidasTI'
@@ -282,15 +344,19 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
               <p className="text-sm font-semibold text-slate-700">
                 {vista === 'remitidasTI'
                   ? 'Aún no hay solicitudes remitidas a Tecnologías de la Información'
+                  : vista === 'asignadasMi'
+                  ? 'Aún no tienes solicitudes de mantenimiento asignadas'
                   : 'No hay solicitudes de mantenimiento para la bandeja UMI'}
               </p>
               <p className="text-xs text-slate-400 mt-1">
                 {vista === 'remitidasTI'
                   ? 'Cuando radique una solicitud clasificada como TECNOLÓGICA, aparecerá aquí para seguimiento.'
+                  : vista === 'asignadasMi'
+                  ? 'Las solicitudes asignadas a tus códigos de técnico vinculados aparecerán aquí automáticamente.'
                   : 'Puede que la bandeja general esté vacía o no cuente con permiso para ver todas'}
               </p>
             </div>
-            {vista === 'todas' && (
+            {(vista === 'todas') && (
               <button
                 type="button"
                 onClick={onNuevaSolicitud}

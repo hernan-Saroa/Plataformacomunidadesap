@@ -1,4 +1,4 @@
-﻿/**
+/**
  * MODALES DE GESTIoN DOCUMENTAL - CONTROL INTERNO DISCIPLINARIO
  * Componentes para Gestión de Autos, Evidencias, Oficios, Notificaciones, Actas e Historial
  */
@@ -670,12 +670,13 @@ export function ModalGestionAutos({ proceso, onClose, onCrearAuto }: ModalAutosP
       }
 
       // Crear auto legal
-      const esApertura = tipoAutoSeleccionado.id?.startsWith('AUTO_APERTURA_');
+      const esPliego = tipoAutoSeleccionado.id === 'AUTO_FORMULACION_PLIEGO' || tipoAutoSeleccionado.id === 'PLIEGO_CARGOS';
+      const esApertura = tipoAutoSeleccionado.id?.startsWith('AUTO_APERTURA_') || esPliego;
       const autoData = {
         processId: processId,
         tipoAuto: tipoAutoSeleccionado.id,
         autoConfigurationId: tipoAutoSeleccionado.autoConfigurationId,
-        etapaDestino: esApertura ? (tipoAutoSeleccionado.etapa || undefined) : undefined,
+        etapaDestino: esApertura ? (tipoAutoSeleccionado.etapa || (esPliego ? 'CARGOS' : undefined)) : undefined,
         contenidoHtml: descripcion || '',
         numero: titulo,
         comentarios: descripcion || '',

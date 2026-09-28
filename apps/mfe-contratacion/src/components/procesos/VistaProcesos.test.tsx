@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 
 import { VistaProcesos } from './VistaProcesos';
 import { contratacionService } from '../../services/contratacionService';
+import { fijarAlcance, olvidarAlcance } from '../../auth/alcance';
 
 vi.mock('../../services/contratacionService', () => ({
   contratacionService: {
@@ -190,26 +191,29 @@ describe('VistaProcesos · la bandeja', () => {
  * a un ente de control —que solo consulta— se le ofrecía «Nuevo proceso», y al
  * pulsarlo recibía un 403 que no puede interpretar.
  */
-describe('VistaProcesos · acciones según el permiso', () => {
+describe('VistaProcesos · acciones según el alcance', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
+    olvidarAlcance();
     servicio.listarProcesos.mockResolvedValue([]);
     servicio.modalidades.mockResolvedValue(MODALIDADES);
   });
 
-  const sesionCon = (...permisos: string[]) =>
-    localStorage.setItem('user', JSON.stringify({ roles: [], permissions: permisos }));
+  // Radicar es empezar el estudio previo: quien edita la 3.1 (migración 083).
+  const quienRadica = () =>
+    fijarAlcance({ alcances: [{ accion: 'editar', lugar: '3.1' }], transversales: [] });
+  const quienSoloConsulta = () =>
+    fijarAlcance({ alcances: [{ accion: 'ver', lugar: 'TODO' }], transversales: [] });
 
   it('ofrece crear a quien radica', async () => {
-    sesionCon('contratacion.proceso.create');
+    quienRadica();
     render(<VistaProcesos onAbrir={vi.fn()} />);
 
     expect(await screen.findByRole('button', { name: /Nuevo proceso/ })).toBeInTheDocument();
   });
 
   it('no se lo ofrece a quien solo consulta', async () => {
-    sesionCon('contratacion.expediente.auditar');
+    quienSoloConsulta();
     render(<VistaProcesos onAbrir={vi.fn()} />);
 
     await waitFor(() => expect(servicio.listarProcesos).toHaveBeenCalled());
@@ -219,13 +223,13 @@ describe('VistaProcesos · acciones según el permiso', () => {
   it('a quien solo consulta le explica el vacío sin pedirle que cree', async () => {
     // «Crea el primero» sobre una lista vacía es una instrucción que ese rol
     // no puede seguir.
-    sesionCon('contratacion.expediente.auditar');
+    quienSoloConsulta();
     render(<VistaProcesos onAbrir={vi.fn()} />);
 
     expect(await screen.findByText(/cuando haya alguno radicado/)).toBeInTheDocument();
   });
 
-  it('sin sesión no esconde nada', async () => {
+  it('mientras el alcance no llega no esconde nada', async () => {
     render(<VistaProcesos onAbrir={vi.fn()} />);
 
     expect(await screen.findByRole('button', { name: /Nuevo proceso/ })).toBeInTheDocument();

@@ -17,6 +17,8 @@ import { InformeEvaluacion } from '../../entities/informe-evaluacion.entity';
 import { DeclaratoriaDesierta } from '../../entities/declaratoria-desierta.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Numerales de la etapa 7, tal como los numera la matriz oficial. */
 export const NUMERAL_AUDIENCIA = '7.1';
@@ -59,7 +61,10 @@ export interface ArchivoCargado {
  */
 @Injectable()
 export class AdjudicacionBase {
-  constructor(protected readonly dataSource: DataSource) {}
+  constructor(
+    protected readonly dataSource: DataSource,
+    protected readonly cierre: CierreActividadService,
+  ) {}
 
   protected async exigirProceso(em: EntityManager, procesoId: string): Promise<Proceso> {
     const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
@@ -187,36 +192,59 @@ export class AdjudicacionBase {
     );
   }
 
-  /** Crea o actualiza la fila del riel para un numeral de la etapa 7. */
+  /**
+   * Crea o actualiza la fila del riel para un numeral de la etapa 7.
+   *
+   * Aprobación y firma (EFDS-1183, EFDS-2070) solo se preguntan al pasar de
+   * BORRADOR a cumplida: si ya estaba decidida —aprobada o en revisión—, no
+   * se repite la pregunta en cada acción posterior sobre la misma actividad.
+   */
   protected async marcarActividad(
     em: EntityManager,
     procesoId: string,
     numeral: string,
     cumplida: boolean,
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
-    const estado = cumplida ? 'APROBADO' : 'BORRADOR';
     const actividad = await em
       .getRepository(ProcesoActividad)
       .findOne({ where: { procesoId, numeral } });
 
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral,
-          estado: estado as any,
-          datos: {},
-          ...(cumplida ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!cumplida) {
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = cumplida ? acceso.userName : null;
-    actividad.revisadoAt = cumplida ? new Date() : null;
-    await em.save(actividad);
+    if (actividad && actividad.estado !== 'BORRADOR') return;
+
+    if (await this.cierre.exigeFirma(em, numeral)) {
+      this.cierre.exigirFirmaValida(firma);
+    }
+
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      numeral,
+      proceso?.modalidad ?? null,
+      acceso,
+      firma,
+    );
   }
 
   protected traza(

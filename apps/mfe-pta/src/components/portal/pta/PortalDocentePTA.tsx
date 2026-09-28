@@ -149,9 +149,12 @@ function parseDetallesTransicion(value: unknown): Record<string, any> {
   }
 }
 
-function timeAgo(d: string): string {
+function timeAgo(d?: string | null): string {
+  if (!d) return 'Fecha no registrada';
   const now = Date.now();
   const then = new Date(d).getTime();
+  if (!Number.isFinite(then)) return 'Fecha no registrada';
+  if (then > now) return new Date(then).toLocaleDateString('es-CO');
   const mins = Math.floor((now - then) / 60000);
   if (mins < 1) return 'ahora';
   if (mins < 60) return `hace ${mins}m`;
@@ -159,6 +162,15 @@ function timeAgo(d: string): string {
   if (hrs < 24) return `hace ${hrs}h`;
   const days = Math.floor(hrs / 24);
   return days < 7 ? `hace ${days}d` : new Date(d).toLocaleDateString('es-CO');
+}
+
+function fechaPortal(d?: string | null, includeTime = false): string {
+  if (!d) return 'Fecha no registrada';
+  const date = new Date(d);
+  if (!Number.isFinite(date.getTime())) return 'Fecha no registrada';
+  return includeTime
+    ? date.toLocaleString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : date.toLocaleDateString('es-CO');
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -886,14 +898,19 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
 
   // ═══ Pending notifications ═══
   const notificaciones = useMemo(() => {
-    const items: { id: string; tipo: string; titulo: string; descripcion: string; fecha: string; ptaId: string }[] = [];
+    const items: { id: string; tipo: string; titulo: string; descripcion: string; fecha: string | null; ptaId: string }[] = [];
     ptas.forEach(p => {
-      if (p.estado === 'NOTIFICADO_DOCENTE') items.push({ id: `notif-${p.id}`, tipo: 'revision', titulo: 'Propuesta pendiente de revisión', descripcion: `PTA periodo ${p.periodo} requiere tu decisión`, fecha: p.updated_at || p.created_at || new Date().toISOString(), ptaId: p.id });
-      if (p.estado === 'Devuelto') items.push({ id: `dev-${p.id}`, tipo: 'devolucion', titulo: 'PTA devuelto — corrección requerida', descripcion: p.motivo_devolucion || 'Revisar observaciones', fecha: p.updated_at || new Date().toISOString(), ptaId: p.id });
-      if (p.estado === 'EN_CONCERTACION') items.push({ id: `conc-${p.id}`, tipo: 'concertacion', titulo: 'Mesa de concertación activa', descripcion: 'Revisar mensajes de concertación', fecha: p.updated_at || new Date().toISOString(), ptaId: p.id });
-      if (p.estado === 'Aprobado') items.push({ id: `apr-${p.id}`, tipo: 'aprobacion', titulo: 'PTA Aprobado', descripcion: 'Tu Plan de Trabajo ha sido aprobado', fecha: p.updated_at || new Date().toISOString(), ptaId: p.id });
+      const fechaRegistro = p.updated_at || p.updatedAt || p.created_at || p.createdAt || null;
+      if (p.estado === 'NOTIFICADO_DOCENTE') items.push({ id: `notif-${p.id}`, tipo: 'revision', titulo: 'Propuesta pendiente de revisión', descripcion: `PTA periodo ${p.periodo} requiere tu decisión`, fecha: fechaRegistro, ptaId: p.id });
+      if (p.estado === 'Devuelto') items.push({ id: `dev-${p.id}`, tipo: 'devolucion', titulo: 'PTA devuelto — corrección requerida', descripcion: p.motivo_devolucion || 'Revisar observaciones', fecha: fechaRegistro, ptaId: p.id });
+      if (p.estado === 'EN_CONCERTACION') items.push({ id: `conc-${p.id}`, tipo: 'concertacion', titulo: 'Mesa de concertación activa', descripcion: 'Revisar mensajes de concertación', fecha: fechaRegistro, ptaId: p.id });
+      if (p.estado === 'Aprobado') items.push({ id: `apr-${p.id}`, tipo: 'aprobacion', titulo: 'PTA Aprobado', descripcion: 'Tu Plan de Trabajo ha sido aprobado', fecha: p.fecha_aprobacion || p.fechaAprobacion || fechaRegistro, ptaId: p.id });
     });
-    return items.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+    return items.sort((a, b) => {
+      const fechaA = a.fecha ? new Date(a.fecha).getTime() : 0;
+      const fechaB = b.fecha ? new Date(b.fecha).getTime() : 0;
+      return (Number.isFinite(fechaB) ? fechaB : 0) - (Number.isFinite(fechaA) ? fechaA : 0);
+    });
   }, [ptas]);
 
   // ═══ Devoluciones ═══
@@ -1206,7 +1223,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                                     Plan de Trabajo Académico
                                   </h4>
                                   <span className="text-[0.72rem] text-gray-400 font-medium">
-                                    Periodo {pta.periodo || '2025-2'}
+                                    Periodo {pta.periodo || 'No registrado'}
                                   </span>
                                 </div>
                               </div>
@@ -1345,7 +1362,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                 {/* Header row */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                   <div className="min-w-0">
-                    <h3 className="text-[0.95rem] sm:text-[1.05rem] font-black text-gray-900 m-0 tracking-tight">PTA — {selectedPta.periodo || '2025-2'}</h3>
+                    <h3 className="text-[0.95rem] sm:text-[1.05rem] font-black text-gray-900 m-0 tracking-tight">PTA — {selectedPta.periodo || 'No registrado'}</h3>
                     <p className="text-[0.7rem] sm:text-[0.75rem] text-gray-500 mt-0.5 font-medium">{selectedPta.dedicacion} • <span className="text-gray-400">ID: {selectedPta.id?.substring(0, 14)}</span></p>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1860,7 +1877,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                             <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#111827' }}>
                               {h.estadoNuevo || h.estado_nuevo || accion || 'Actualización del PTA'}
                               <span style={{ fontWeight: 400, color: '#9CA3AF', marginLeft: 6, fontSize: '0.68rem' }}>
-                                {fecha ? new Date(fecha).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                                {fechaPortal(fecha, true)}
                               </span>
                             </div>
                             {accion && <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: 1 }}>{String(accion).replace(/_/g, ' ')}</div>}
@@ -2021,8 +2038,8 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                         const devEntry = [...pta.historial].reverse().find((h: any) => h.estado_nuevo === 'Devuelto');
                         return devEntry ? (
                           <div style={{ marginTop: 8, fontSize: '0.72rem', color: '#6B7280' }}>
-                            Devuelto por: {devEntry.actor || devEntry.aprobador_nombre || 'N/A'} •{' '}
-                            {devEntry.fecha ? new Date(devEntry.fecha).toLocaleDateString('es-CO') : ''}
+                            Devuelto por: {devEntry.actor || devEntry.aprobador_nombre || 'No registrado'} •{' '}
+                            {fechaPortal(devEntry.fecha)}
                           </div>
                         ) : null;
                       })()}

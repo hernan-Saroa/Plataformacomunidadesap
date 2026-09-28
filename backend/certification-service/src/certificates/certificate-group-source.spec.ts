@@ -334,3 +334,129 @@ describe('la misma persona imprime igual en las dos formas de datos', () => {
     },
   );
 });
+
+/**
+ * Solicitud de edicion de certificado, caso real COR-20260918-UWFYU1EXP.
+ *
+ * El certificado imprimia bien "Direccion de Talento Humano. Grupo de
+ * Administracion de Personal...", pero en la solicitud de edicion la vista
+ * previa se quedaba sin [GRUPO] y el campo "Grupo o ubicacion" precargaba la
+ * DEPENDENCIA. Motivo: ese flujo nunca hidrataba el contexto de la vinculacion
+ * normal, asi que `certificate_dependency` y `certificate_group` llegaban
+ * vacios y todo se resolvia con la fila del encargo; al coincidir con la
+ * dependencia, la regla de no duplicar callaba [GRUPO].
+ */
+describe('solicitud de edicion de certificado con encargo', () => {
+  const service = Object.create(CertificatesService.prototype) as CertificatesService;
+  const pdf = Object.create(LaborCertificatePdfService.prototype) as LaborCertificatePdfService;
+
+  const DTH = 'Direccion de Talento Humano';
+  const GRUPO = 'Grupo de Administracion de Personal y de Carrera Administrativa';
+
+  const base = {
+    id_number: '53062883',
+    full_name: 'DIANA MARIA GUTIERREZ RAMIREZ',
+    status: 'A',
+    position_category: 'Cra. Administrativa',
+    monthly_salary: 5099764,
+  };
+
+  /** Vinculacion normal vigente: aqui viven la dependencia y el grupo. */
+  const normal = {
+    ...base,
+    id: 'normal',
+    observations: 'N',
+    career_category: 'Profesional Universitario Grado 09',
+    cod_cargo: '204409',
+    cod_grade: '09',
+    hiring_date: '2024-05-14',
+    request_date: '2026-04-01 12:00:00',
+    department: DTH,
+    organization_department: DTH,
+    internal_group: GRUPO,
+    cost_center: GRUPO,
+    position_location: DTH,
+  } as unknown as CertificateRequest;
+
+  /** Encargo: no tiene grupo propio, por eso arrastraba la dependencia. */
+  const encargo = {
+    ...base,
+    id: 'encargo',
+    observations: 'E',
+    career_category: 'Profesional Especializado Grado 16',
+    cod_cargo: '202816',
+    cod_grade: '16',
+    hiring_date: '2025-04-01',
+    request_date: '2025-06-05 12:00:00',
+    department: DTH,
+    organization_department: DTH,
+    internal_group: null,
+    cost_center: null,
+    position_location: DTH,
+  } as unknown as CertificateRequest;
+
+  const certificadoHidratado = (extra: Record<string, unknown> = {}) => {
+    const certificate = {
+      ...encargo,
+      certificate_number: '12_620_700_20_CD 117',
+      request: { ...encargo },
+      ...extra,
+    } as unknown as Certificate;
+    // Lo que hace el flujo real al cargar la solicitud de correccion.
+    service['applyRequestContextToCertificate'](certificate, [encargo, normal]);
+    return certificate;
+  };
+
+  it('hidrata la dependencia y el grupo de la vinculacion normal', () => {
+    const certificate = certificadoHidratado();
+
+    expect(certificate.request?.certificate_dependency).toBe(DTH);
+    expect(certificate.request?.certificate_group).toBe(GRUPO);
+  });
+
+  it('el formulario precarga cada campo con su propio dato', () => {
+    const certificate = certificadoHidratado();
+    const respuesta = service['correctionResponse']({
+      id: 'cor-1',
+      certificate,
+    } as never) as { certificate: Certificate };
+
+    expect(respuesta.certificate.department).toBe(DTH);
+    // El bug: aqui se precargaba la dependencia en vez del grupo.
+    expect(respuesta.certificate.position_location).toBe(GRUPO);
+  });
+
+  it('la vista previa de la correccion imprime las dos variables', () => {
+    const html = pdf['buildCertificateContent']({
+      certificate: certificadoHidratado(),
+      templateType: 'administrador',
+      includeSalary: false,
+      includeTechnicalBonus: false,
+      templateHtml: '<p>ubicado en [DEPENDENCIA]. [GRUPO]</p>',
+    });
+
+    expect(html).toContain(`ubicado en ${DTH}. ${GRUPO}`);
+  });
+
+  it('un certificado ya corregido no hereda el contexto de otra vinculacion', () => {
+    // Manda lo que guardo el coordinador, sin que la vinculacion normal lo pise.
+    const certificate = certificadoHidratado({
+      is_corrected: true,
+      department: 'Dependencia CORREGIDA',
+      position_location: 'Grupo CORREGIDO',
+    });
+
+    expect(certificate.request?.certificate_dependency).toBeUndefined();
+    expect(certificate.request?.certificate_group).toBeUndefined();
+
+    const html = pdf['buildCertificateContent']({
+      certificate,
+      templateType: 'administrador',
+      includeSalary: false,
+      includeTechnicalBonus: false,
+      templateHtml: '<p>ubicado en [DEPENDENCIA]. [GRUPO]</p>',
+    });
+
+    expect(html).toContain('ubicado en Dependencia CORREGIDA. Grupo CORREGIDO');
+  });
+});

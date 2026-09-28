@@ -8,6 +8,7 @@ import {
   BalanceLiquidacion,
   DatosLiquidacion,
   EstadoLiquidacion,
+  EvidenciaFirmaOtp,
   TipoLiquidacion,
 } from '../../types';
 import {
@@ -22,11 +23,15 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '10.2';
 
 const pesos = (valor: number | null | undefined) =>
   valor == null
@@ -59,6 +64,8 @@ const VACIO = {
  * servicio va a rechazar.
  */
 export function PanelLiquidacion({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
+  const firma = useFirma(NUMERAL, 'Liquidar el contrato');
   const [estado, setEstado] = useState<EstadoLiquidacion | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,7 +98,7 @@ export function PanelLiquidacion({ procesoId, onCambio }: Props) {
     setSoporte(null);
   };
 
-  const liquidar = async () => {
+  const liquidar = async (firmaOtp?: EvidenciaFirmaOtp) => {
     if (!tipo || !acta) return;
 
     const cuerpo: DatosLiquidacion = {
@@ -99,6 +106,7 @@ export function PanelLiquidacion({ procesoId, onCambio }: Props) {
       fechaActa: datos.fechaActa,
       pazYSalvo: datos.pazYSalvo,
       ...(datos.observaciones.trim() ? { observaciones: datos.observaciones.trim() } : {}),
+      firma: firmaOtp,
     };
 
     setGuardando(true);
@@ -115,7 +123,13 @@ export function PanelLiquidacion({ procesoId, onCambio }: Props) {
   };
 
   const anular = async () => {
-    const motivo = window.prompt('¿Por qué se anula el acta de liquidación?')?.trim();
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Anular el acta de liquidación',
+      descripcion: 'El acta anulada se conserva en el expediente: la liquidación vuelve a quedar pendiente.',
+      etiqueta: 'Motivo de la anulación',
+      confirmar: 'Anular el acta',
+      tono: 'peligro',
+    });
     if (!motivo) return;
 
     setGuardando(true);
@@ -379,7 +393,7 @@ export function PanelLiquidacion({ procesoId, onCambio }: Props) {
             <Boton
               icono={<FileCheck2 className="w-3.5 h-3.5" />}
               disabled={guardando || !completo}
-              onClick={liquidar}
+              onClick={() => firma.conFirma(liquidar)}
             >
               Liquidar
             </Boton>
@@ -393,6 +407,8 @@ export function PanelLiquidacion({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : null}
+      {firma.modal}
+      {dialogo.elemento}
     </Marco>
   );
 }

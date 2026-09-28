@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CalendarClock, FileText, Lock, Paperclip, Trash2, UserPlus } from 'lucide-react';
+import { CalendarClock, Check, FileText, Lock, Paperclip, Trash2, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { EstadoOfertas, Oferente } from '../../types';
 import { Aviso, Ayuda, Boton, campo, Marco, Pendiente, Titulo } from '../shared/PiezasPanel';
-import { momentoConHora } from '../shared/fechas';
+import { horaEnBogota, hoyEnBogota, momentoConHora } from '../shared/fechas';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
@@ -34,11 +35,23 @@ const TONO_PLAZO = {
  * de ofrecer cambios y pasa a mostrar el registro.
  */
 export function PanelOfertas({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
   const [estado, setEstado] = useState<EstadoOfertas | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [registrando, setRegistrando] = useState(false);
+
+  /**
+   * El formulario del vencimiento (EFDS-1155).
+   *
+   * Antes esto era un `window.prompt` que pedía «AAAA-MM-DD HH:MM» en texto
+   * libre y partía la cadena a mano: un diálogo gris del navegador, imposible
+   * de estilar, que bloquea la pestaña y que no valida nada hasta enviarlo.
+   */
+  const [ajustandoPlazo, setAjustandoPlazo] = useState(false);
+  const [plazoDia, setPlazoDia] = useState('');
+  const [plazoHora, setPlazoHora] = useState('');
 
   const [nombre, setNombre] = useState('');
   const [identificacion, setIdentificacion] = useState('');
@@ -101,7 +114,13 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
   };
 
   const retirar = async (oferente: Oferente) => {
-    if (!window.confirm(`¿Retirar la oferta ${oferente.numero} de ${oferente.nombre}?`)) return;
+    const seguro = await dialogo.confirmar({
+      titulo: `Retirar la oferta ${oferente.numero}`,
+      descripcion: `Sale de la lista la oferta de ${oferente.nombre}. Solo se puede mientras la recepción siga abierta.`,
+      confirmar: 'Retirar la oferta',
+      tono: 'peligro',
+    });
+    if (!seguro) return;
 
     setGuardando(true);
     try {
@@ -133,23 +152,37 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
     }
   };
 
-  const corregirPlazo = async () => {
-    const valor = window.prompt(
-      'Vencimiento del plazo de ofertas (AAAA-MM-DD HH:MM, hora de Bogotá)',
-      estado?.recepcion ? estado.recepcion.vencimientoDia + ' 17:00' : '',
-    );
-    if (!valor?.trim()) return;
+  /**
+   * Abre el formulario con lo que ya hay.
+   *
+   * Precargado y no en blanco: casi siempre se entra aquí a mover la hora que
+   * el cronograma fijó, no a inventar una fecha desde cero. Las cinco de la
+   * tarde es la hora de cierre habitual de una ventanilla, y es lo único que
+   * se supone cuando todavía no hay vencimiento.
+   */
+  const abrirPlazo = () => {
+    const actual = estado?.recepcion ?? null;
+    setPlazoDia(actual?.vencimientoDia ?? hoyEnBogota());
+    setPlazoHora(actual ? horaEnBogota(actual.vencimiento) : '17:00');
+    setAjustandoPlazo(true);
+  };
 
-    const [dia, hora] = valor.trim().split(/\s+/);
-    if (!dia || !hora) {
-      toast.error('Escribe la fecha y la hora, por ejemplo 2026-09-01 10:00');
-      return;
-    }
+  const guardarPlazo = async () => {
+    if (!plazoDia || !plazoHora) return;
 
     setGuardando(true);
     try {
-      setEstado(await contratacionService.fijarPlazoOfertas(procesoId, `${dia}T${hora}:00-05:00`));
-      toast.success('Plazo actualizado');
+      // El desfase va escrito y no se deja a la zona del navegador: en UTC las
+      // 23:59 de Bogotá son ya el día siguiente, y ahí un día de diferencia es
+      // un plazo mal contado.
+      setEstado(
+        await contratacionService.fijarPlazoOfertas(
+          procesoId,
+          `${plazoDia}T${plazoHora}:00-05:00`,
+        ),
+      );
+      setAjustandoPlazo(false);
+      toast.success('Vencimiento actualizado');
       onCambio?.();
     } catch (err: any) {
       toast.error(err.message);
@@ -264,15 +297,30 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
             </Boton>
           ) : null}
 
-          <button
-            type="button"
-            disabled={guardando}
-            onClick={corregirPlazo}
-            className="text-[11.5px] font-bold text-slate-500 hover:underline disabled:opacity-50"
-          >
-            {recepcion ? 'Corregir el vencimiento' : 'Fijar el vencimiento'}
-          </button>
+          {!ajustandoPlazo ? (
+            <button
+              type="button"
+              disabled={guardando}
+              onClick={abrirPlazo}
+              className="text-[11.5px] font-bold text-slate-500 hover:underline disabled:opacity-50"
+            >
+              {recepcion ? 'Corregir el vencimiento' : 'Fijar el vencimiento'}
+            </button>
+          ) : null}
         </div>
+      ) : null}
+
+      {estado.abierto && !estado.listaPublicada && ajustandoPlazo ? (
+        <FormularioPlazo
+          recepcion={recepcion}
+          dia={plazoDia}
+          hora={plazoHora}
+          guardando={guardando}
+          onDia={setPlazoDia}
+          onHora={setPlazoHora}
+          onGuardar={guardarPlazo}
+          onCancelar={() => setAjustandoPlazo(false)}
+        />
       ) : null}
 
       {/* Por qué no se puede cerrar todavía, en vez de un botón apagado sin
@@ -376,7 +424,125 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : null}
+      {dialogo.elemento}
     </Marco>
+  );
+}
+
+/**
+ * El vencimiento del plazo de ofertas, a mano.
+ *
+ * Hace falta en dos casos que no son excepcionales: la modalidad puede no
+ * tener plazo parametrizado —y entonces no hay nada que calcular—, y el
+ * cronograma del proceso suele fijar una hora concreta en vez del final del
+ * día que supone la plataforma.
+ *
+ * Fecha y hora en dos campos y no en una cadena: el vencimiento de ofertas es
+ * de los pocos plazos del módulo donde la hora decide, porque de ella depende
+ * si la oferta radicada esa misma mañana entró en término. Pedirla escrita
+ * dejaba el formato en manos de quien la escribe.
+ */
+function FormularioPlazo({
+  recepcion,
+  dia,
+  hora,
+  guardando,
+  onDia,
+  onHora,
+  onGuardar,
+  onCancelar,
+}: {
+  recepcion: EstadoOfertas['recepcion'];
+  dia: string;
+  hora: string;
+  guardando: boolean;
+  onDia: (valor: string) => void;
+  onHora: (valor: string) => void;
+  onGuardar: () => void;
+  onCancelar: () => void;
+}) {
+  const completo = !!dia && !!hora;
+  // El instante que va a quedar, leído con el desfase de Bogotá igual que al
+  // enviarlo: sin eso, la vista previa y lo que se guarda podrían no coincidir
+  // para quien tenga el navegador en otra zona.
+  const elegido = completo ? new Date(`${dia}T${hora}:00-05:00`) : null;
+  const quedaVencido = !!elegido && elegido.getTime() < Date.now();
+  const sinCambio = !!recepcion && elegido?.getTime() === new Date(recepcion.vencimiento).getTime();
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
+      <p className="text-[12.5px] font-bold text-slate-800 m-0">
+        {recepcion ? 'Corregir el vencimiento' : 'Fijar el vencimiento'}
+      </p>
+      <p className="text-[11px] text-gray-500 m-0 leading-relaxed">
+        Es la fecha y la hora del cronograma del proceso, en hora de Bogotá. Al fijarla a mano deja
+        de contarse con los días hábiles de la modalidad.
+      </p>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label htmlFor="ofertas-dia" className="block text-xs font-bold text-gray-600 mb-1.5">
+            Fecha <span className="text-red-600">*</span>
+          </label>
+          <input
+            id="ofertas-dia"
+            type="date"
+            value={dia}
+            disabled={guardando}
+            onChange={(e) => onDia(e.target.value)}
+            className={campo}
+          />
+        </div>
+        <div>
+          <label htmlFor="ofertas-hora" className="block text-xs font-bold text-gray-600 mb-1.5">
+            Hora <span className="text-red-600">*</span>
+          </label>
+          <input
+            id="ofertas-hora"
+            type="time"
+            value={hora}
+            disabled={guardando}
+            onChange={(e) => onHora(e.target.value)}
+            className={campo}
+          />
+        </div>
+      </div>
+
+      {/* Qué va a pasar, antes de que pase: una fecha en el pasado no es un
+          error —así se corrige un plazo que ya corrió— pero habilita el cierre,
+          y eso publica la lista de oferentes. */}
+      {quedaVencido ? (
+        <Aviso tono="aviso" titulo="Ese vencimiento ya pasó">
+          El plazo queda vencido y se habilita el cierre de la recepción. Lo que no se haya
+          registrado hasta entonces ya no entra en la lista.
+        </Aviso>
+      ) : null}
+
+      {recepcion && recepcion.plazoDiasHabiles !== null && !sinCambio ? (
+        <p className="text-[11px] text-gray-500 m-0 leading-relaxed">
+          El vencimiento actual salió de los {recepcion.plazoDiasHabiles} día(s) hábil(es) de la
+          modalidad. Al corregirlo, el expediente pasa a explicarse con la fecha que fijes aquí.
+        </p>
+      ) : null}
+
+      <div className="flex items-center gap-2">
+        <Boton
+          icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
+          disabled={!completo || sinCambio || guardando}
+          onClick={onGuardar}
+        >
+          {guardando ? 'Guardando…' : 'Guardar el vencimiento'}
+        </Boton>
+        <button
+          type="button"
+          disabled={guardando}
+          onClick={onCancelar}
+          className="text-[11.5px] font-bold text-slate-500 hover:underline disabled:opacity-50"
+        >
+          Cancelar
+        </button>
+      </div>
+    </div>
   );
 }
 

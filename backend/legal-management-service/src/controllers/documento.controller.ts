@@ -1,13 +1,18 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, HttpStatus, HttpException, UseInterceptors, UploadedFile, Res } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, HttpStatus, HttpException, UseInterceptors, UploadedFile, Res, Req } from '@nestjs/common';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import * as multer from 'multer';
 import { extname } from 'path';
 import { DocumentoService, CreateDocumentoDto, UpdateDocumentoDto } from '../services/documento.service';
+import { FirmaAutorizacionService, solicitaMarcarFirmado } from '../services/firma-autorizacion.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 
 @Controller('documentos')
 export class DocumentoController {
-    constructor(private readonly documentoService: DocumentoService) { }
+    constructor(
+        private readonly documentoService: DocumentoService,
+        private readonly firmaAutorizacionService: FirmaAutorizacionService
+    ) { }
 
     // Rutas específicas con prefijo 'expediente/' primero
     @Get('expediente/:expedienteId')
@@ -135,8 +140,21 @@ export class DocumentoController {
     }
 
     @Put(':id')
-    async actualizar(@Param('id') id: string, @Body() dto: UpdateDocumentoDto) {
+    async actualizar(@Param('id') id: string, @Body() dto: UpdateDocumentoDto, @Req() req?: any) {
         try {
+            // Marcar un documento como firmado sólo lo puede hacer el aprobador configurado de la
+            // etapa; el resto de actualizaciones (nombre, categoría, etc.) no se tocan.
+            if (solicitaMarcarFirmado(dto)) {
+                const actual = await this.documentoService.obtenerPorId(id);
+                if (!actual) {
+                    throw new HttpException('Documento no encontrado', HttpStatus.NOT_FOUND);
+                }
+                await this.firmaAutorizacionService.assertPuedeFirmarDocumentoExpediente(
+                    actual.expedienteId,
+                    getLegalAccessFromRequest(req)
+                );
+            }
+
             const documento = await this.documentoService.actualizar(id, dto);
             if (!documento) {
                 throw new HttpException('Documento no encontrado', HttpStatus.NOT_FOUND);
@@ -161,7 +179,7 @@ export class DocumentoController {
             fileSize: 50 * 1024 * 1024, // 50MB
         }
     }))
-    async actualizarArchivo(@Param('id') id: string, @UploadedFile() file: Express.Multer.File) {
+    async actualizarArchivo(@Param('id') id: string, @UploadedFile() file: Express.Multer.File, @Req() req?: any) {
         try {
             if (!file) {
                 throw new HttpException('Archivo requerido', HttpStatus.BAD_REQUEST);
@@ -170,6 +188,12 @@ export class DocumentoController {
             if (!doc) {
                 throw new HttpException('Documento no encontrado', HttpStatus.NOT_FOUND);
             }
+            // Este endpoint es el que sustituye el archivo por el PDF con el sello estampado,
+            // así que aplica la misma regla de aprobador configurado de la etapa.
+            await this.firmaAutorizacionService.assertPuedeFirmarDocumentoExpediente(
+                doc.expedienteId,
+                getLegalAccessFromRequest(req)
+            );
             const updated = await this.documentoService.actualizar(id, {
                 archivoUrl: `files/${file.filename}`,
                 archivoNombreOriginal: file.originalname,

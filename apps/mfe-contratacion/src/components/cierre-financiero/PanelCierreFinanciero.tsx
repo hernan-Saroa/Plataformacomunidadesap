@@ -7,6 +7,7 @@ import {
   CuadrePresupuestal,
   DatosCierreFinanciero,
   EstadoCierreFinanciero,
+  EvidenciaFirmaOtp,
 } from '../../types';
 import {
   Aviso,
@@ -20,11 +21,15 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '10.3';
 
 const pesos = (valor: number | null | undefined) =>
   valor == null
@@ -50,6 +55,8 @@ const VACIO = {
  * dejarla como una fila más de una tabla.
  */
 export function PanelCierreFinanciero({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
+  const firma = useFirma(NUMERAL, 'Cerrar financieramente el contrato');
   const [estado, setEstado] = useState<EstadoCierreFinanciero | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,11 +81,12 @@ export function PanelCierreFinanciero({ procesoId, onCambio }: Props) {
     leer();
   }, [procesoId]);
 
-  const cerrar = async () => {
+  const cerrar = async (firmaOtp?: EvidenciaFirmaOtp) => {
     const cuerpo: DatosCierreFinanciero = {
       referenciaPagoFinal: datos.referenciaPagoFinal.trim(),
       fechaPagoFinal: datos.fechaPagoFinal,
       ...(datos.observaciones.trim() ? { observaciones: datos.observaciones.trim() } : {}),
+      firma: firmaOtp,
     };
 
     setGuardando(true);
@@ -97,7 +105,13 @@ export function PanelCierreFinanciero({ procesoId, onCambio }: Props) {
   };
 
   const revertir = async () => {
-    const motivo = window.prompt('¿Por qué se revierte el cierre financiero?')?.trim();
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Revertir el cierre financiero',
+      descripcion: 'Los saldos vuelven a quedar por liberar. La reversión queda registrada con su motivo.',
+      etiqueta: 'Motivo de la reversión',
+      confirmar: 'Revertir el cierre',
+      tono: 'peligro',
+    });
     if (!motivo) return;
 
     setGuardando(true);
@@ -313,7 +327,7 @@ export function PanelCierreFinanciero({ procesoId, onCambio }: Props) {
             <Boton
               icono={<Landmark className="w-3.5 h-3.5" />}
               disabled={guardando || !datos.referenciaPagoFinal.trim()}
-              onClick={cerrar}
+              onClick={() => firma.conFirma(cerrar)}
             >
               Cerrar financieramente
             </Boton>
@@ -331,6 +345,8 @@ export function PanelCierreFinanciero({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : null}
+      {firma.modal}
+      {dialogo.elemento}
     </Marco>
   );
 }

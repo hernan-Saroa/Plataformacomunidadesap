@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -17,6 +16,7 @@ import { join } from 'path';
 
 import { CdpService } from './cdp.service';
 import {
+  AdjuntarSoporteCdpDto,
   ExpedirCdpDto,
   RechazarCdpDto,
   SolicitarCdpDto,
@@ -25,6 +25,7 @@ import {
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -32,8 +33,6 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Ciclo del CDP — etapa 4 (EFDS-1148).
@@ -47,8 +46,7 @@ export class CdpController {
   constructor(private readonly service: CdpService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view', 'contratacion.presupuesto.gestionar')
+  @Puede('ver', '4.1')
   @ApiOperation({
     summary: 'Estado del respaldo presupuestal del proceso',
     description:
@@ -59,8 +57,7 @@ export class CdpController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '4.1')
   @ApiOperation({ summary: 'Actividad 4.1 · Radicar la solicitud de CDP' })
   solicitar(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -71,8 +68,7 @@ export class CdpController {
   }
 
   @Post('verificar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.presupuesto.gestionar')
+  @Puede('editar', '4.2')
   @ApiOperation({
     summary: 'Actividad 4.2 · Verificar la disponibilidad presupuestal',
     description:
@@ -87,8 +83,7 @@ export class CdpController {
   }
 
   @Post('expedir')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.presupuesto.gestionar')
+  @Puede('editar', '4.3')
   @ApiOperation({
     summary: 'Actividad 4.3 · Expedir el CDP',
     description:
@@ -103,8 +98,7 @@ export class CdpController {
   }
 
   @Post('documento')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.presupuesto.gestionar', 'contratacion.actividad.edit')
+  @Puede('editar', '4.4')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -119,16 +113,16 @@ export class CdpController {
   async adjuntar(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @UploadedFile() file: any,
+    @Body() dto: AdjuntarSoporteCdpDto,
     @Req() req: any,
   ) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
-    return this.service.adjuntarSoporte(procesoId, file, hash, getHiringAccess(req));
+    return this.service.adjuntarSoporte(procesoId, file, hash, getHiringAccess(req), dto.firma);
   }
 
   @Post('rechazar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.presupuesto.gestionar')
+  @Puede('editar', '4.2')
   @ApiOperation({ summary: 'Cerrar el ciclo por falta de disponibilidad en el rubro' })
   rechazar(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -157,8 +151,7 @@ export class BandejaCdpController {
   constructor(private readonly service: CdpService) {}
 
   @Get('bandeja')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.presupuesto.gestionar')
+  @Puede('editar', '4.2')
   @ApiOperation({
     summary: 'Etapa 4 · Las solicitudes de CDP que esperan a la Financiera',
     description:

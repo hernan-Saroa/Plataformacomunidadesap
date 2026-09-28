@@ -14,8 +14,10 @@ import {
 } from '../../entities/comite-contratacion.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
+import { Revision } from '../../entities/revision.entity';
 import { ParticipacionModule } from '../participacion/participacion.module';
 import { CdpModule } from '../cdp/cdp.module';
+import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
 @Module({
   imports: [
@@ -30,12 +32,14 @@ import { CdpModule } from '../cdp/cdp.module';
       UmbralComiteContratacion,
       ProcesoActividad,
       Trazabilidad,
+      Revision,
     ]),
     // Quién transcribe lo que decidió el comité es el abogado repartido en la 3.3.
     ParticipacionModule,
     // Aprobar cierra la 3.7, que en las modalidades que pasan por comité es la
     // última de la etapa 3: la solicitud de CDP nace ahí.
     CdpModule,
+    CierreActividadModule,
   ],
   controllers: [ComiteContratacionController],
   providers: [ComiteContratacionService],

@@ -18,6 +18,7 @@ import { Expediente } from '../../entities/expediente.entity';
 // Quién integra el comité y si lo hay son preguntas de EFDS-1156; se le
 // preguntan a su servicio en vez de repetir la regla aquí.
 import { ComiteModule } from '../comite/comite.module';
+import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { ComiteModule } from '../comite/comite.module';
       Expediente,
     ]),
     ComiteModule,
+    CierreActividadModule,
   ],
   controllers: [EvaluacionController],
   providers: [EvaluacionService],

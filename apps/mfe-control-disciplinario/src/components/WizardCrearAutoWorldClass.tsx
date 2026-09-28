@@ -27,8 +27,14 @@ import {
 import { toast } from 'sonner';
 import { Card } from '@esap-mfe/shared-ui/card';
 import { Badge } from '@esap-mfe/shared-ui/badge';
-import { Button } from '@esap-mfe/shared-ui/button';
-import { ETAPAS_PROCESO, type EtapaProcesoId, type TipoAuto, type PlantillaArchivo } from './configuracion/SeccionPlantillasAutosUnificada';
+import {
+  ETAPAS_PROCESO,
+  canonicalizarEtapaId,
+  getEtapaProcesoConfig,
+  type EtapaProcesoId,
+  type TipoAuto,
+  type PlantillaArchivo,
+} from './configuracion/SeccionPlantillasAutosUnificada';
 import { disciplinaryService } from '../../../services/api/disciplinary.service';
 import { buildApiUrl } from '../../../config/environment';
 import { authService } from '../../../services/api/authService';
@@ -148,7 +154,7 @@ interface WizardCrearAutoWorldClassProps {
 // EFDS-1566: un auto de apertura no puede retroceder la etapa del proceso.
 // El orden de las etapas sale de "Configuracion > Estados Kanban"; ETAPAS_PROCESO es el respaldo.
 const normalizarClaveEtapa = (valor?: string): string =>
-  String(valor || '')
+  canonicalizarEtapaId(valor)
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase()
@@ -606,7 +612,22 @@ export function WizardCrearAutoWorldClass({
       return;
     }
 
-    const esApertura = tipoSeleccionado?.tipo && tieneAccion(tipoSeleccionado.tipo) && tipoSeleccionado.tipo.startsWith('AUTO_APERTURA_');
+    const esPliego =
+      tipoSeleccionado?.tipo === 'AUTO_FORMULACION_PLIEGO' ||
+      tipoSeleccionado?.tipo === 'PLIEGO_CARGOS' ||
+      Boolean(
+        tipoSeleccionado?.nombre &&
+        (tipoSeleccionado.nombre.toLowerCase().includes('pliego') ||
+         tipoSeleccionado.nombre.toLowerCase().includes('cargo'))
+      );
+
+    const tieneCambioEtapa = Boolean(
+      tipoSeleccionado?.tipo && (
+        tipoSeleccionado.tipo.startsWith('AUTO_APERTURA_') ||
+        esPliego ||
+        (tipoSeleccionado.etapa && tieneAccion(tipoSeleccionado.tipo))
+      )
+    );
 
     try {
       setGuardando(true);
@@ -669,7 +690,7 @@ export function WizardCrearAutoWorldClass({
         documentName: archivoAdjunto.name,
         documentType: archivoAdjunto.type,
         documentSize: archivoAdjunto.size,
-        etapaDestino: esApertura ? (tipoSeleccionado.etapa || undefined) : undefined,
+        etapaDestino: tieneCambioEtapa ? (tipoSeleccionado.etapa || (esPliego ? 'CARGOS' : undefined)) : undefined,
         prorrogaMeses: prorrogaMeses || undefined,
       });
 
@@ -720,7 +741,9 @@ export function WizardCrearAutoWorldClass({
   const ordenEtapaActualProceso = ordenEtapaDe(proceso?.etapaActual);
 
   const tiposFiltrados = tiposAutos.filter(tipo => {
-    const cumpleFiltroEtapa = filtroEtapa === 'todas' || tipo.etapa === filtroEtapa;
+    const cumpleFiltroEtapa =
+      filtroEtapa === 'todas' ||
+      canonicalizarEtapaId(tipo.etapa) === canonicalizarEtapaId(filtroEtapa);
     const cumpleBusqueda = tipo.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
       tipo.descripcion.toLowerCase().includes(busqueda.toLowerCase());
     // EFDS-1566: ocultar autos de apertura cuya etapa destino es anterior a la
@@ -1052,7 +1075,7 @@ export function WizardCrearAutoWorldClass({
                     ) : (
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                         {tiposFiltrados.map((tipo) => {
-                          const etapa = ETAPAS_PROCESO[tipo.etapa] || { nombre: 'Etapa Desconocida', color: '#6B7280', icon: FileText };
+                          const etapa = getEtapaProcesoConfig(tipo.etapa);
 
                           const Icon = etapa.icon;
                           const seleccionado = tipoSeleccionado?.id === tipo.id;
@@ -1940,23 +1963,24 @@ export function WizardCrearAutoWorldClass({
 
               {/* Footer */}
               <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
-                <Button
+                <button
                   onClick={() => setVisorDocumento({ show: false, documento: null })}
-                  variant="outline"
+                  className="px-4 py-2 rounded-xl font-bold text-sm border-2 border-gray-300 text-gray-700 hover:bg-white hover:border-gray-400 transition-all shadow-sm"
                 >
                   Cerrar
-                </Button>
-                <Button
+                </button>
+                <button
                   onClick={async () => {
                     if (!visorDocumento.documento?.documentUrl) return;
                     await descargarAutoGenerado(visorDocumento.documento);
                   }}
                   disabled={!visorDocumento.documento?.documentUrl}
-                  style={{ background: '#003DA5', color: '#FFFFFF' }}
+                  className="px-4 py-2 rounded-xl font-bold text-sm text-white transition-all shadow-lg hover:shadow-xl flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: '#003DA5' }}
                 >
-                  <Download className="w-4 h-4 mr-2" />
+                  <Download className="w-4 h-4" />
                   Descargar
-                </Button>
+                </button>
               </div>
             </motion.div>
           </motion.div>

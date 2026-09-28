@@ -8,7 +8,9 @@ export type TipoRegla =
   | 'BLOQUEA_AVANCE'
   | 'REGLA_DERIVADA'
   /** La actividad no se cierra sin que alguien la apruebe (EFDS-1183). */
-  | 'EXIGE_APROBACION';
+  | 'EXIGE_APROBACION'
+  /** La actividad no se cierra sin que quien la trabaja la firme con el token institucional. */
+  | 'EXIGE_FIRMA';
 
 
 /** Como se compara un dato del formulario con un valor esperado. */

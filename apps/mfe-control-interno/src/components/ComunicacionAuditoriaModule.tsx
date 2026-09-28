@@ -38,6 +38,7 @@ import { configuracionesProfesionalesOCIApi } from './services/api';
 import { API_MODE, getDefaultHeaders, getServiceUrl } from '../../../config/environment';
 import { VisorOnlyOffice } from './VisorOnlyOffice';
 import { onlyOfficePuedeAbrir } from './services/onlyofficeVisor';
+import { esAuditoriaTerritorial, nombreDireccionTerritorial, nombreUnidadAuditada } from './services/unidadAuditada';
 
 
 // ====================================
@@ -143,6 +144,26 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
   const rApertura = reuniones.find((r: any) => r.tipo?.toLowerCase()?.includes('apertura'));
   const rCierre = reuniones.find((r: any) => r.tipo?.toLowerCase()?.includes('cierre'));
 
+  // El oficio se dirige al Responsable del Área Auditada que se registra en el
+  // paso 2 (EFDS-1090). El campo viejo "responsable" se sigue mirando de último
+  // porque en las auditorías antiguas quedó con identificadores, textos de
+  // relleno y hasta el propio auditor líder, que era lo que salía en el informe.
+  const nombreDePersona = (valor?: unknown): string => {
+    const texto = typeof valor === 'string' ? valor.trim() : '';
+    if (!texto.includes(' ')) return '';
+    if (/^(por|sin|no)\s+(asignar|asignado|asignada|registrado)$/i.test(texto)) return '';
+    return texto;
+  };
+  const responsableDelArea =
+    nombreDePersona((auditoria as any).responsableArea?.nombre) ||
+    nombreDePersona((auditoria as any).responsableAreaNombre) ||
+    nombreDePersona((auditoria as any).responsableUnidad);
+  const responsableHeredado = nombreDePersona((auditoria as any).responsable);
+  const responsableAuditado =
+    responsableDelArea ||
+    (responsableHeredado !== auditorLiderNombre ? responsableHeredado : '') ||
+    undefined;
+
   return {
     codigo: auditoria.codigo,
     nombre: auditoria.nombre,
@@ -150,9 +171,18 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
     auditorLider: auditorLiderNombre,
     radicado: (auditoria as any).radicado,
     fechaOficio: informe?.fecha,
-    destinatarioNombre: (auditoria as any).responsable || (auditoria as any).responsableUnidad || (auditoria as any).responsableArea?.nombre,
+    destinatarioNombre: responsableAuditado,
     destinatarioCargo: (auditoria as any).cargo || (auditoria as any).responsableAreaCargo || (auditoria as any).responsableArea?.cargo || 'Director(a) Territorial',
-    unidadAuditable: (auditoria as any).areaAuditable || (auditoria as any).areaResponsable || (auditoria as any).areaAuditada || (auditoria as any).territorial || auditoria.nombre,
+    // A quién se audita: en las auditorías de una territorial el oficio la nombra
+    // a ella, "Dirección Territorial Antioquia", y no el área genérica ni el
+    // nombre de la auditoría, que era lo que salía antes (EFDS-1090).
+    unidadAuditable: esAuditoriaTerritorial((auditoria as any).territorial)
+      ? nombreDireccionTerritorial((auditoria as any).territorial)
+      : nombreUnidadAuditada(
+          (auditoria as any).areaAuditable || (auditoria as any).areaResponsable || (auditoria as any).areaAuditada || auditoria.nombre,
+          (auditoria as any).territorial,
+        ),
+    territorial: (auditoria as any).territorial,
     fechaLimitePronunciamiento: (auditoria as any).fechaLimitePronunciamiento,
     jefeOCI: (auditoria as any).jefeOCI || (auditoria as any).reviso || jefeOCIDefault,
     // Elaboró: líder + resto del equipo
@@ -161,7 +191,7 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
       ...((auditoria as any).equipoAuditores?.slice?.(1) || []).map((a: any) => typeof a === 'string' ? a : a?.nombreCompleto || a?.nombre || a?.persona?.nombre || a?.name).filter(Boolean),
     ].filter(Boolean).join(' / '),
     tituloAuditoria: auditoria.nombre,
-    responsableUnidadAuditada: (auditoria as any).responsable || (auditoria as any).responsableUnidad || (auditoria as any).responsableArea?.nombre,
+    responsableUnidadAuditada: responsableAuditado,
     // Lugar de ejecución: campo explícito > sede > territorial
     lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).sede || (auditoria as any).territorial,
     // Fechas de ejecución de la auditoría (cuándo se realizó)
@@ -235,6 +265,7 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
     aspectosRelevantes: (auditoria as any).aspectosRelevantes,
     evaluacionControlInterno: (auditoria as any).evaluacionControlInterno,
     fortalezas: (auditoria as any).fortalezas,
+    conclusiones: (auditoria as any).conclusiones,
     recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
     riesgosIdentificados: (auditoria as any).riesgosIdentificados,
     riesgosAsociados: (auditoria as any).riesgosAsociados,
@@ -631,6 +662,11 @@ export const ComunicacionAuditoriaModule: React.FC<{
           ...(audData.focos && { focos: audData.focos }),
           ...(audData.fortalezas && { fortalezas: audData.fortalezas }),
           ...(audData.recomendacionesPorCategoria && { recomendacionesPorCategoria: audData.recomendacionesPorCategoria }),
+          // Recomendaciones generales y conclusiones registradas en Ejecución (EFDS-1636)
+          ...(!audData.recomendacionesPorCategoria?.length && audData.recomendacionesGenerales?.length && {
+            recomendacionesPorCategoria: [{ categoria: 'Recomendaciones generales', items: audData.recomendacionesGenerales }],
+          }),
+          ...(audData.conclusiones && { conclusiones: audData.conclusiones }),
           ...(audData.fechaReunionApertura && { fechaReunionApertura: audData.fechaReunionApertura }),
           ...(audData.fechaReunionCierre && { fechaReunionCierre: audData.fechaReunionCierre }),
           reuniones: reunionesArr,
@@ -744,8 +780,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
       if ((auditoriaFinal as any).hallazgos && hallazgosParaPDF.length === 0) {
         hallazgosParaPDF = (auditoriaFinal as any).hallazgos;
       }
-      if (!informePreliminar.observaciones && contenidoIA.conclusiones) {
-        informeFinalTmp = { ...informeFinalTmp, observaciones: contenidoIA.conclusiones };
+      if (!informePreliminar.observaciones && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+        informeFinalTmp = { ...informeFinalTmp, observaciones: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
       }
       toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen' });
     } catch {
@@ -790,8 +826,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
       auditoriaFinal = aplicarContenidoIA(auditoriaBase, contenidoIA);
       
       let informeFinalMapeado = { ...informeFinal };
-      if (!informeFinal.observacionesFinales && contenidoIA.conclusiones) {
-        informeFinalMapeado = { ...informeFinalMapeado, observacionesFinales: contenidoIA.conclusiones };
+      if (!informeFinal.observacionesFinales && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+        informeFinalMapeado = { ...informeFinalMapeado, observacionesFinales: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
       }
 
       toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen-final' });
@@ -1630,7 +1666,12 @@ const SeccionInformePreliminar: React.FC<{
       </CardSIGL>
 
       {/* Riesgos Identificados del Proceso */}
-      {((auditoria as any).riesgosIdentificados?.length > 0 || (auditoria as any).objetivo) && (
+      {((auditoria as any).riesgosIdentificados?.length > 0
+        || (auditoria as any).objetivo
+        // Resultados registrados en Ejecución (EFDS-1636)
+        || (auditoria as any).fortalezas?.length > 0
+        || (auditoria as any).recomendacionesPorCategoria?.length > 0
+        || (auditoria as any).conclusiones) && (
         <CardSIGL className={embedded ? '!border !border-gray-200 !shadow-none' : ''}>
           <div className={embedded ? 'p-4' : 'p-6'}>
             <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -1698,6 +1739,13 @@ const SeccionInformePreliminar: React.FC<{
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {(auditoria as any).conclusiones && (
+              <div className="mt-4">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">Conclusiones registradas en Ejecución</span>
+                <p className="text-[13px] text-gray-700 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100 whitespace-pre-wrap">{(auditoria as any).conclusiones}</p>
               </div>
             )}
           </div>
@@ -2656,8 +2704,8 @@ const SeccionInformeEjecutivo: React.FC<{
               
               // Usar conclusiones generadas si no hay observaciones propias
               let informeMapeado = { ...informe };
-              if (!informe.observacionesFinales && contenidoIA.conclusiones) {
-                informeMapeado = { ...informeMapeado, observacionesFinales: contenidoIA.conclusiones };
+              if (!informe.observacionesFinales && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+                informeMapeado = { ...informeMapeado, observacionesFinales: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
               }
 
               toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen-exec' });
@@ -3367,8 +3415,8 @@ const ModalPreviewInforme: React.FC<{
             if ((auditoriaBase as any).hallazgos && hallazgosParaPDF.length === 0) {
               hallazgosParaPDF = (auditoriaBase as any).hallazgos;
             }
-            if (!informe.observaciones && contenidoIA.conclusiones) {
-              informeParaPDF = { ...informeParaPDF, observaciones: contenidoIA.conclusiones };
+            if (!informe.observaciones && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+              informeParaPDF = { ...informeParaPDF, observaciones: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
             }
           } catch (e) {
             console.error('Error IA preview:', e);
@@ -3410,8 +3458,8 @@ const ModalPreviewInforme: React.FC<{
         if ((auditoriaBase as any).hallazgos && hallazgosParaPDF.length === 0) {
           hallazgosParaPDF = (auditoriaBase as any).hallazgos;
         }
-        if (!informe.observaciones && contenidoIA.conclusiones) {
-          informeParaPDF = { ...informeParaPDF, observaciones: contenidoIA.conclusiones };
+        if (!informe.observaciones && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+          informeParaPDF = { ...informeParaPDF, observaciones: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
         }
       }
 

@@ -12,6 +12,7 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { ParticipacionModule } from '../participacion/participacion.module';
 import { UmbralesModule } from '../umbrales/umbrales.module';
 import { CdpModule } from '../cdp/cdp.module';
+import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { CdpModule } from '../cdp/cdp.module';
     // Ratificarla cierra la 3.5, y en mínima cuantía eso cierra la etapa 3: la
     // solicitud de CDP nace en ese momento.
     CdpModule,
+    CierreActividadModule,
   ],
   controllers: [ModalidadProcesoController],
   providers: [ModalidadProcesoService],

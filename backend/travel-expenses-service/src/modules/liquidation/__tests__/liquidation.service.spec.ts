@@ -4,7 +4,7 @@ import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { EscalaViaticoEntity } from '../../../entities/liquidation/escala-viatico.entity';
 import { TarifaInvestigadorEntity } from '../../../entities/liquidation/tarifa-investigador.entity';
-import { TarifaRegionalExcepcionEntity } from '../../../entities/liquidation/tarifa-regional-excepcion.entity';
+import { TarifaTransporteTerminalEntity } from '../../../entities/liquidation/tarifa-transporte-terminal.entity';
 import { LiquidationParamEntity } from '../../../entities/liquidation/liquidation-param.entity';
 import { AuthSystemSettingEntity } from '../../../entities/auth-system-setting.entity';
 import {
@@ -17,7 +17,7 @@ describe('LiquidationService - unit by process', () => {
     overrides: {
       escalaRepo?: any;
       investigadorRepo?: any;
-      regionalRepo?: any;
+      terminalRepo?: any;
       paramRepo?: any;
       authSettingRepo?: any;
       dataSource?: any;
@@ -26,7 +26,13 @@ describe('LiquidationService - unit by process', () => {
     const {
       escalaRepo = { find: jest.fn() },
       investigadorRepo = { findOne: jest.fn() },
-      regionalRepo = { findOne: jest.fn() },
+      terminalRepo = {
+        find: jest.fn().mockResolvedValue([
+          { ciudad: 'ANTIOQUIA', ciudadAeropuerto: 'ANTIOQUIA (Rionegro)', valorMaximo: 162634, activo: true },
+          { ciudad: 'ATLANTICO', ciudadAeropuerto: 'ATLANTICO (Soledad)', valorMaximo: 130704, activo: true },
+          { ciudad: 'Otros', ciudadAeropuerto: 'Otros', valorMaximo: 50689, activo: true },
+        ]),
+      },
       paramRepo = { findOne: jest.fn() },
       authSettingRepo = { findOne: jest.fn() },
       dataSource = {},
@@ -45,8 +51,8 @@ describe('LiquidationService - unit by process', () => {
           useValue: investigadorRepo,
         },
         {
-          provide: getRepositoryToken(TarifaRegionalExcepcionEntity),
-          useValue: regionalRepo,
+          provide: getRepositoryToken(TarifaTransporteTerminalEntity),
+          useValue: terminalRepo,
         },
         {
           provide: getRepositoryToken(LiquidationParamEntity),
@@ -471,7 +477,7 @@ describe('LiquidationService - unit by process', () => {
   });
 
   describe('5) Cálculo de días/noches', () => {
-    it('sin pernocta cuenta 1 día', async () => {
+    it('sin pernocta cuenta 0.5 días según formato GF-FO-023', async () => {
       const svc = await buildSvc({
         escalaRepo: {
           find: jest.fn().mockResolvedValue([
@@ -494,10 +500,13 @@ describe('LiquidationService - unit by process', () => {
         destinoCiudad: 'Bogotá',
       });
 
-      expect(result.data.numeroDiasNoches).toBe(1);
+      expect(result.data.numeroDiasNoches).toBe(0.5);
+      expect(result.data.diasPernoctados).toBe(0);
+      expect(result.data.diasNoPernoctados).toBe(1);
+      expect(result.data.totalNoPernoctados).toBe(167760);
     });
 
-    it('con pernocta cuenta diferencia de días', async () => {
+    it('con pernocta cuenta diferencia de días más medio día de retorno', async () => {
       const svc = await buildSvc({
         escalaRepo: {
           find: jest.fn().mockResolvedValue([
@@ -520,12 +529,13 @@ describe('LiquidationService - unit by process', () => {
         destinoCiudad: 'Bogotá',
       });
 
-      expect(result.data.numeroDiasNoches).toBe(4);
+      // 3 noches (3.0) + medio día retorno (0.5) = 3.5 días
+      expect(result.data.numeroDiasNoches).toBe(3.5);
     });
   });
 
   describe('6) Generación de desglose diario', () => {
-    it('genera un item por día con pernocta', async () => {
+    it('genera un item por día con pernocta y medio día en retorno', async () => {
       const svc = await buildSvc({
         escalaRepo: {
           find: jest.fn().mockResolvedValue([
@@ -548,6 +558,8 @@ describe('LiquidationService - unit by process', () => {
         destinoCiudad: 'Bogotá',
       });
 
+      // Del 20 al 22 son 2 noches completas + día 22 como retorno medio día (3 ítems en total, 2.5 días)
+      expect(result.data.numeroDiasNoches).toBe(2.5);
       expect(result.data.desgloseCalculo).toHaveLength(3);
       expect(result.data.desgloseCalculo[0]).toEqual({
         dia: 1,
@@ -555,8 +567,20 @@ describe('LiquidationService - unit by process', () => {
         valor: 335520,
         pernocta: true,
       });
-      expect(result.data.desgloseCalculo[1].fecha).toBe('2026-09-21');
-      expect(result.data.desgloseCalculo[2].fecha).toBe('2026-09-22');
+      expect(result.data.desgloseCalculo[1]).toEqual({
+        dia: 2,
+        fecha: '2026-09-21',
+        valor: 335520,
+        pernocta: true,
+      });
+      // Día de retorno sin pernocta al 50%
+      expect(result.data.desgloseCalculo[2]).toEqual({
+        dia: 3,
+        fecha: '2026-09-22',
+        valor: 167760,
+        pernocta: false,
+      });
+      expect(result.data.valorTotalViaticos).toBe(335520 + 335520 + 167760);
     });
 
     it('genera un solo item sin pernocta', async () => {
@@ -653,58 +677,13 @@ describe('LiquidationService - unit by process', () => {
     });
   });
 
-  describe('9) Excepción regional Art. 5', () => {
-    it('aplica tarifa regional cuando está activa', async () => {
-      const svc = await buildSvc({
-        escalaRepo: { find: jest.fn().mockResolvedValue([]) },
-        regionalRepo: {
-          findOne: jest.fn().mockResolvedValue({
-            departamento: 'Amazonas',
-            esNuevoDepartamento: true,
-            tarifaDiaria: 380000,
-            activo: true,
-            decretoReferencia: 'Decreto 314 de 2026 - Artículo 5',
-          }),
-        },
-      });
-
-      const result = await svc.calcularLiquidacion({
-        tipoComisionado: TipoComisionadoLiquidacion.FUNCIONARIO,
-        asignacionesBasicas: [5000000],
-        fechaInicio: '2026-09-20',
-        fechaFin: '2026-09-21',
-        pernocta: true,
-        destinoCiudad: 'Leticia',
-        destinoDepartamento: 'Amazonas',
-        aplicaExcepcionRegional: true,
-      });
-
-      expect(result.data.tarifaDiariaBase).toBe(380000);
-      expect(result.data.decretoAplicado).toBe(
-        'Decreto 314 de 2026 - Artículo 5',
-      );
-    });
-
-    it('ignora excepción regional cuando aplicaExcepcionRegional=false', async () => {
+  describe('9) Tarifas de transporte a terminales aéreos (Resolución)', () => {
+    it('liquida tarifa especial de Antioquia (Rionegro) por $ 162.634', async () => {
       const svc = await buildSvc({
         escalaRepo: {
           find: jest.fn().mockResolvedValue([
-            {
-              rangoMinimo: 4022983,
-              rangoMaximo: 5102609,
-              tarifaDiaria: 335520,
-              anoVigencia: 2026,
-            },
+            { rangoMinimo: 4000000, rangoMaximo: 6000000, tarifaDiaria: 335520, anoVigencia: 2026 },
           ]),
-        },
-        regionalRepo: {
-          findOne: jest.fn().mockResolvedValue({
-            departamento: 'Amazonas',
-            esNuevoDepartamento: true,
-            tarifaDiaria: 380000,
-            activo: true,
-            decretoReferencia: 'Decreto 314 de 2026 - Artículo 5',
-          }),
         },
       });
 
@@ -714,12 +693,34 @@ describe('LiquidationService - unit by process', () => {
         fechaInicio: '2026-09-20',
         fechaFin: '2026-09-21',
         pernocta: true,
-        destinoCiudad: 'Leticia',
-        destinoDepartamento: 'Amazonas',
-        aplicaExcepcionRegional: false,
+        destinoCiudad: 'Rionegro',
+        destinoDepartamento: 'Antioquia',
+        incluyeTransporteAereo: true,
       });
 
-      expect(result.data.tarifaDiariaBase).toBe(335520);
+      expect(result.data.transporteTerminalesAereos).toBe(162634);
+    });
+
+    it('liquida tarifa para destino Otros por $ 50.689', async () => {
+      const svc = await buildSvc({
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            { rangoMinimo: 4000000, rangoMaximo: 6000000, tarifaDiaria: 335520, anoVigencia: 2026 },
+          ]),
+        },
+      });
+
+      const result = await svc.calcularLiquidacion({
+        tipoComisionado: TipoComisionadoLiquidacion.FUNCIONARIO,
+        asignacionesBasicas: [5000000],
+        fechaInicio: '2026-09-20',
+        fechaFin: '2026-09-21',
+        pernocta: true,
+        destinoCiudad: 'Bogotá',
+        destinoDepartamento: 'Bogotá D.C.',
+        incluyeTransporteAereo: true,
+      });
+      expect(result.data.transporteTerminalesAereos).toBe(50689);
     });
   });
 
@@ -774,6 +775,57 @@ describe('LiquidationService - unit by process', () => {
           destinoCiudad: 'Bogotá',
         }),
       ).rejects.toThrow();
+    });
+  });
+
+  describe('11) Sección 4 GF-FO-023: Liquidación de Gastos de Desplazamiento', () => {
+    it('liquida transporte a terminales aéreos cuando incluyeTransporteAereo=true', async () => {
+      const svc = await buildSvc({
+        escalaRepo: {
+          find: jest.fn().mockResolvedValue([
+            {
+              rangoMinimo: 9000000,
+              rangoMaximo: 10000000,
+              tarifaDiaria: 434866,
+              anoVigencia: 2026,
+            },
+          ]),
+        },
+        paramRepo: {
+          findOne: jest.fn().mockImplementation(({ where: { clave } }) => {
+            if (clave === 'FACTOR_CONTRATISTA') return Promise.resolve({ clave, valor: '0.8' });
+            if (clave === 'FACTOR_SIN_PERNOCTA') return Promise.resolve({ clave, valor: '0.5' });
+            if (clave === 'TARIFA_TERMINAL_AEREO') return Promise.resolve({ clave, valor: '162634' });
+            return Promise.resolve(null);
+          }),
+        },
+      });
+
+      const res = await svc.calcularLiquidacion({
+        tipoComisionado: TipoComisionadoLiquidacion.CONTRATISTA,
+        asignacionesBasicas: [9200000],
+        fechaInicio: '2026-02-11',
+        fechaFin: '2026-02-11',
+        pernocta: false,
+        destinoCiudad: 'Rionegro',
+        destinoDepartamento: 'Antioquia',
+        incluyeTransporteAereo: true,
+        montoTransporteTerrestre: 0,
+      });
+
+      // Viáticos (Sec 3)
+      expect(res.data.tarifaDiariaBase).toBe(434866);
+      expect(res.data.tarifaDiaPernoctado).toBe(347893); // 434866 * 0.8
+      expect(res.data.tarifaDiaNoPernoctado).toBe(173947); // 347893 * 0.5
+      expect(res.data.totalNoPernoctados).toBe(173947);
+      expect(res.data.valorTotalViaticos).toBe(173947);
+
+      // Gastos de desplazamiento (Sec 4)
+      expect(res.data.transporteTerminalesAereos).toBe(162634);
+      expect(res.data.transporteTerrestreFluvial).toBe(0);
+      expect(res.data.totalGastosDesplazamiento).toBe(162634);
+      // Total Viáticos, Transportes y Desplazamientos
+      expect(res.data.totalViaticosYDesplazamientos).toBe(336581); // 173947 + 162634
     });
   });
 });

@@ -2,7 +2,7 @@ import { ForbiddenException, BadRequestException, NotFoundException, ConflictExc
 import { MantenimientoService } from './mantenimiento.service';
 
 function servicio({
-  mantenimientoRepo = { count: jest.fn(), save: jest.fn(), createQueryBuilder: jest.fn(), findOne: jest.fn() } as any,
+  mantenimientoRepo = { count: jest.fn(), save: jest.fn(), createQueryBuilder: jest.fn(), findOne: jest.fn(), find: jest.fn() } as any,
   sedeRepo = { findOne: jest.fn() } as any,
   catalogoRepo = {
     find: jest.fn(),
@@ -18,12 +18,25 @@ function servicio({
   } as any,
   evidenciaRepo = { findBy: jest.fn(), save: jest.fn(), create: jest.fn(), find: jest.fn() } as any,
   storage = { subirArchivo: jest.fn(), regenerarUrlPresigned: jest.fn() } as any,
+  valoracionRepo = {
+    findOne: jest.fn(),
+    find: jest.fn(),
+    save: jest.fn((d: any) => Promise.resolve(Array.isArray(d) ? d : { idValoracion: 'val-1', ...(d || {}) })),
+    create: jest.fn((d: any) => d),
+  } as any,
+  valoracionInsumoRepo = {
+    delete: jest.fn(() => Promise.resolve({ affected: 0 })),
+    save: jest.fn((rows: any[]) => Promise.resolve(rows || [])),
+    create: jest.fn((d: any) => d),
+  } as any,
 } = {}) {
   return new MantenimientoService(
     mantenimientoRepo,
     sedeRepo,
     catalogoRepo,
     evidenciaRepo,
+    valoracionRepo,
+    valoracionInsumoRepo,
     storage,
   );
 }
@@ -1437,7 +1450,7 @@ describe('[EFDS-1734] RF-INF-005 validación roles guard clause SUPER_ADMIN | GE
     const userGestor = { ...userValido, roles: ['GESTOR_MANTENIMIENTO'] };
     const s = servicio({
       mantenimientoRepo: {
-        findOne: jest.fn().mockResolvedValue({ idSolicitud: 'SOL-GES-1', asignaciones: [] }),
+        findOne: jest.fn().mockResolvedValue({ idSolicitud: 'SOL-GES-1', estado: 'RECIBIDA', idCategoria: 47, asignaciones: [] }),
       } as any,
       catalogoRepo: {
         findOne: jest.fn().mockResolvedValue(null), // técnico no existe => BadRequest (no Forbidden)
@@ -1490,12 +1503,12 @@ describe('[EFDS-1734] RF-INF-005 AC-01 / AC-02 Aprobar y Asignar', () => {
     expect(String(r.asignaciones[0].accion)).toBe('APROBADA_Y_ASIGNADA');
     expect(save).toHaveBeenCalledTimes(1);
   });
-  it('aprobarYAsignar solicitud previamente RECHAZADA → limpia motivoRechazo = undefined D7', async () => {
+  it('aprobarYAsignar solicitud RECIBIDA con motivoRechazo previo (simula registro residual) → se limpia motivoRechazo = undefined D7', async () => {
     const save = jest.fn().mockImplementation((d) => Promise.resolve({ ...d, updatedAt: new Date() }));
     const s = servicio({
       mantenimientoRepo: {
         findOne: jest.fn().mockResolvedValue({
-          idSolicitud: 'SOL-APR-RECH-1', estado: 'RECHAZADA', idCategoria: 47,
+          idSolicitud: 'SOL-APR-RECH-1', estado: 'RECIBIDA', idCategoria: 47,
           motivoRechazo: 'Motivo anterior rechazo suficiente', asignaciones: [],
         }),
         save,
@@ -1507,7 +1520,7 @@ describe('[EFDS-1734] RF-INF-005 AC-01 / AC-02 Aprobar y Asignar', () => {
         }),
       } as any,
     });
-    const r = await s.aprobarYAsignar('SOL-APR-RECH-1', { tecnicoCodigo: 'TEC-ELC-001', observaciones: 'se re-aprueba' }, userGestor);
+    const r = await s.aprobarYAsignar('SOL-APR-RECH-1', { tecnicoCodigo: 'TEC-ELC-001', observaciones: 'se aprueba y limpia campo rechazo' }, userGestor);
     expect(r.estado).toBe('ASIGNADA');
     expect(r.motivoRechazo).toBeUndefined();
   });
@@ -1558,7 +1571,7 @@ describe('[EFDS-1734] RF-INF-005 AC-02 Rechazar + motivo longitud ≥10 D1 visib
       s.rechazar('SOL-REC-1', { motivo: '123456789' }, userSuper),
     ).rejects.toThrow(BadRequestException);
   });
-  it('rechazar motivo="solicitud rechazada por x motivo valido" length ≥10 → estado=RECHAZADA D3 + motivoRechazo guardado + responsableAsignado=undefined D9 + historial 1 entry', async () => {
+  it('rechazar motivo="solicitud rechazada por x motivo valido" length ≥10 → estado=RECHAZADA D3 + motivoRechazo guardado + responsableAsignado=null D9 + historial 1 entry', async () => {
     const save = jest.fn().mockImplementation((d) => Promise.resolve({ ...d, updatedAt: new Date() }));
     const s = servicio({
       mantenimientoRepo: {
@@ -1573,7 +1586,7 @@ describe('[EFDS-1734] RF-INF-005 AC-02 Rechazar + motivo longitud ≥10 D1 visib
     const r = await s.rechazar('SOL-REC-OK-1', { motivo, observaciones: 'Gestor revisó y rechazó' }, userSuper);
     expect(r.estado).toBe('RECHAZADA');
     expect(String(r.motivoRechazo)).toBe(motivo.trim());
-    expect(r.responsableAsignado).toBeUndefined();
+    expect(r.responsableAsignado).toBeNull();
     expect(Array.isArray(r.asignaciones)).toBe(true);
     expect(r.asignaciones).toHaveLength(1);
     expect(String(r.asignaciones[0].accion)).toBe('RECHAZADA');
@@ -1669,7 +1682,7 @@ describe('[EFDS-1734] AC-03 Histórico auditoría JSONB asignaciones push entrie
     idCatalogo: 89, catalogo: 'TECNICO_MANTENIMIENTO', codigo: 'TEC-HIST-2',
     nombre: 'Histórico 2', isActivo: true,
   };
-  it('3 acciones consecutivas (aprobar → rechazar → redistribuir) → asignaciones.length=3 entries, orden cronológico ASC push al final (sin sobreescribir)', async () => {
+  it('3 acciones consecutivas (aprobar → redistribuir → redistribuir) → asignaciones.length=3 entries, orden cronológico ASC push al final (sin sobreescribir) y ids únicos', async () => {
     let memoria: any = {
       idSolicitud: 'SOL-HIST-1', estado: 'RECIBIDA', idCategoria: 47, asignaciones: [],
     };
@@ -1688,17 +1701,24 @@ describe('[EFDS-1734] AC-03 Histórico auditoría JSONB asignaciones push entrie
       catalogoRepo: { findOne: catalogoFindOne } as any,
     });
     await s.aprobarYAsignar('SOL-HIST-1', { tecnicoCodigo: 'TEC-HIST-1', observaciones: 'aprobación inicial' }, userSuper);
-    await s.rechazar('SOL-HIST-1', { motivo: 'rechazo auditoria con motivo suficiente 123', observaciones: 'se rechaza' }, userSuper);
-    const final = await s.redistribuir(
+    await s.redistribuir(
       'SOL-HIST-1',
       { tecnicoCodigo: 'TEC-HIST-2', motivoRedistribucion: 'reasignado a técnico 2' },
+      userSuper,
+    );
+    const final = await s.redistribuir(
+      'SOL-HIST-1',
+      { tecnicoCodigo: 'TEC-HIST-1', motivoRedistribucion: 'devuelto a técnico 1' },
       userSuper,
     );
     expect(Array.isArray(final.asignaciones)).toBe(true);
     expect(final.asignaciones).toHaveLength(3);
     expect(String(final.asignaciones[0].accion)).toBe('APROBADA_Y_ASIGNADA');
-    expect(String(final.asignaciones[1].accion)).toBe('RECHAZADA');
+    expect(String(final.asignaciones[1].accion)).toBe('REDISTRIBUIDA');
     expect(String(final.asignaciones[2].accion)).toBe('REDISTRIBUIDA');
+    const ids = final.asignaciones.map((a: any) => a.id);
+    const idsUnicos = new Set(ids);
+    expect(idsUnicos.size).toBe(ids.length);
   });
   it('entry JSONB historial usa snake_case exact keys: id, fecha, accion, tecnico_codigo, tecnico_nombre_display, motivo, observaciones, usuario_id, usuario_email, usuario_roles (NO camelCase)', async () => {
     let memoria: any = {
@@ -1769,5 +1789,658 @@ describe('[EFDS-1734] AC-03 Histórico auditoría JSONB asignaciones push entrie
     expect(id0).not.toBe(id1);
     expect(id0.length).toBeGreaterThan(5);
     expect(id1.length).toBeGreaterThan(5);
+  });
+});
+
+// ===========================================================================
+// EFDS-1735 RF-INF-006. Valoración en campo + insumos + transición automática
+// ===========================================================================
+describe('[EFDS-1735] Valoración en campo (iniciarValoracion / guardarValoracionCompleta)', () => {
+  const userSuper: any = { userId: '11111111-aaaa-bbbb-cccc-dddddddddddd', username: 'Encargado UMI', email: 'super@esap.edu.co', roles: ['SUPER_ADMIN'] };
+  const userTecnico: any = {
+    userId: '22222222-aaaa-bbbb-cccc-dddddddddddd',
+    username: 'Porky Técnico',
+    email: 'porky@esap.edu.co',
+    roles: ['USER'],
+  };
+  const userOtro: any = { userId: '33333333-aaaa-bbbb-cccc-dddddddddddd', username: 'Otro Usuario', email: 'otro@esap.edu.co', roles: ['USER'] };
+  const tecCatalogo = (codigo: string, nombre: string, correo: string, usuarioId: string, catalogos: string[] = ['CS_001']) => ({
+    idCatalogoItem: 9000,
+    catalogo: 'TECNICO_MANTENIMIENTO',
+    codigo,
+    nombre,
+    isActivo: true,
+    metadata: { correos: [correo], usuarioIdsAutorizados: [usuarioId], catalogos } as any,
+  });
+  const montar = (sol: any, tec: any) => {
+    const repoSol = {
+      findOne: jest.fn().mockReturnValue(Promise.resolve({ ...sol, asignaciones: sol.asignaciones ? [...sol.asignaciones] : [] })),
+      save: jest.fn().mockImplementation((d) => Promise.resolve({ ...d })),
+      count: jest.fn().mockReturnValue(Promise.resolve(0)),
+      find: jest.fn().mockReturnValue(Promise.resolve([])),
+    } as any;
+    const repoVal: any = {
+      findOne: jest.fn().mockReturnValue(Promise.resolve(null)),
+      save: jest.fn().mockImplementation((d) => Promise.resolve({ idValoracion: 'val-x', createdAt: new Date(), ...(d || {}) })),
+      create: jest.fn((d) => d),
+      find: jest.fn().mockReturnValue(Promise.resolve([])),
+    };
+    const repoIns: any = {
+      delete: jest.fn(() => Promise.resolve({ affected: 0 })),
+      save: jest.fn((r) => Promise.resolve(Array.isArray(r) ? r : [r])),
+      create: jest.fn((d) => d),
+    };
+    const repoCat = {
+      findOne: jest.fn().mockImplementation((w: any) => {
+        if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') {
+          if (!w.where.codigo || String(w.where.codigo) === String(tec.codigo)) return tec;
+          return null;
+        }
+        if (w?.where?.catalogo === 'REGLA_ESCALAMIENTO') return null;
+        return null;
+      }),
+    } as any;
+    return { servicio: servicio({ mantenimientoRepo: repoSol, catalogoRepo: repoCat, valoracionRepo: repoVal, valoracionInsumoRepo: repoIns } as any), repoSol, repoVal, repoIns };
+  };
+
+  it('iniciarValoracion lanza ForbiddenException si usuario NO está vinculado al técnico asignado', async () => {
+    const sol = { idSolicitud: 'SOL-VAL-1', estado: 'ASIGNADA', idCategoria: 47, areaResponsableActual: 'UMI', codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', asignaciones: [] };
+    const { servicio } = montar(sol, tecCatalogo('TEC-01', 'Porky', 'porky@esap.edu.co', 'otro-uuid-distinto'));
+    await expect(servicio.iniciarValoracion('SOL-VAL-1', null, userOtro)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('iniciarValoracion OK estado pasa a EN_CAMPO_VALORACION y retorna idValoracion', async () => {
+    const sol = { idSolicitud: 'SOL-VAL-2', estado: 'ASIGNADA', idCategoria: 47, areaResponsableActual: 'UMI', codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', asignaciones: [] };
+    const { servicio } = montar(sol, tecCatalogo('TEC-01', 'Porky', 'porky@esap.edu.co', userTecnico.userId));
+    const r = await servicio.iniciarValoracion('SOL-VAL-2', null, userTecnico);
+    expect(r.valoracion).toBeDefined();
+    expect(String(r.valoracion.idValoracion).length).toBeGreaterThan(3);
+    expect(r.solicitud.estado).toBe('EN_CAMPO_VALORACION');
+  });
+
+  it('iniciarValoracion lanza BadRequestException para área TI', async () => {
+    const sol = { idSolicitud: 'SOL-VAL-3', estado: 'ASIGNADA', idCategoria: 47, areaResponsableActual: 'TI', codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', asignaciones: [] };
+    const { servicio } = montar(sol, tecCatalogo('TEC-01', 'Porky', 'porky@esap.edu.co', userTecnico.userId));
+    await expect(servicio.iniciarValoracion('SOL-VAL-3', null, userTecnico)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('iniciarValoracion ConflictException si estado = EN_PROGRESO (no ASIGNADA ni EN_CAMPO)', async () => {
+    const sol = { idSolicitud: 'SOL-VAL-4', estado: 'EN_PROGRESO', idCategoria: 47, areaResponsableActual: 'UMI', codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', asignaciones: [] };
+    const { servicio } = montar(sol, tecCatalogo('TEC-01', 'Porky', 'porky@esap.edu.co', userTecnico.userId));
+    await expect(servicio.iniciarValoracion('SOL-VAL-4', null, userTecnico)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('guardarValoracionCompleta NotFound si idValoracion no existe', async () => {
+    const repoVal: any = {
+      findOne: jest.fn().mockReturnValue(Promise.resolve(null)),
+      save: jest.fn(),
+      create: jest.fn((d) => d),
+    };
+    const s = servicio({ valoracionRepo: repoVal } as any);
+    await expect(s.guardarValoracionCompleta('NO-EXISTE', { diagnostico: 'd'.repeat(20), alcanceIdentificado: 'a'.repeat(20), tiempoEstimadoHoras: 1, nivelRiesgo: 'BAJO', insumos: [] }, userTecnico)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('guardarValoracionCompleta Forbidden si usuario NO es técnico asignado', async () => {
+    const sol = { idSolicitud: 'SOL-VAL-5', estado: 'EN_CAMPO_VALORACION', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const val = { idValoracion: 'val-abc', idSolicitudMantenimiento: sol.idSolicitud, solicitud: sol };
+    const s = servicio({
+      mantenimientoRepo: { findOne: jest.fn().mockReturnValue(Promise.resolve(sol)), save: jest.fn().mockImplementation((d) => Promise.resolve(d)) } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO' && String(w.where.codigo) === 'TEC-01') return tecCatalogo('TEC-01', 'Porky', 'porky@esap.edu.co', userTecnico.userId);
+          return null;
+        }),
+      } as any,
+      valoracionRepo: { findOne: jest.fn().mockReturnValue(Promise.resolve(val)), save: jest.fn().mockImplementation((d) => Promise.resolve({ ...val, ...d })), create: jest.fn((d) => d) } as any,
+      valoracionInsumoRepo: { delete: jest.fn(), save: jest.fn(), create: jest.fn((d) => d) } as any,
+    } as any);
+    await expect(s.guardarValoracionCompleta('val-abc', { diagnostico: 'd'.repeat(20), alcanceIdentificado: 'a'.repeat(20), tiempoEstimadoHoras: 1, nivelRiesgo: 'BAJO', insumos: [] }, userOtro)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('guardarValoracionCompleta BadRequest diagnóstico < 10 chars', async () => {
+    const sol = { idSolicitud: 'SOL-VAL-6', estado: 'EN_CAMPO_VALORACION', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const val = { idValoracion: 'val-x1', idSolicitudMantenimiento: sol.idSolicitud, solicitud: sol };
+    const s = servicio({
+      mantenimientoRepo: { findOne: jest.fn().mockReturnValue(Promise.resolve(sol)), save: jest.fn() } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO' && String(w.where.codigo) === 'TEC-01') return tecCatalogo('TEC-01', 'Porky', 'porky@esap.edu.co', userTecnico.userId);
+          return null;
+        }),
+      } as any,
+      valoracionRepo: { findOne: jest.fn().mockReturnValue(Promise.resolve(val)), save: jest.fn().mockResolvedValue(val), create: jest.fn((d) => d) } as any,
+      valoracionInsumoRepo: { delete: jest.fn(), save: jest.fn(), create: jest.fn((d) => d) } as any,
+    } as any);
+    await expect(s.guardarValoracionCompleta('val-x1', { diagnostico: 'corto', alcanceIdentificado: 'a'.repeat(20), tiempoEstimadoHoras: 1, nivelRiesgo: 'BAJO', insumos: [] }, userTecnico)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('guardarValoracionCompleta BadRequest CS_002 Eléctrica requiereApagadoElectrico indefinido', async () => {
+    const sol = { idSolicitud: 'SOL-VAL-7', estado: 'EN_CAMPO_VALORACION', idCategoria: 48, codigoTecnicoAsignado: 'TEC-ELC-001', responsableAsignado: 'TEC-ELC-001 · Porky Eléctrico', areaResponsableActual: 'UMI', asignaciones: [] };
+    const val = { idValoracion: 'val-elc', idSolicitudMantenimiento: sol.idSolicitud, solicitud: sol };
+    const s = servicio({
+      mantenimientoRepo: { findOne: jest.fn().mockReturnValue(Promise.resolve(sol)), save: jest.fn() } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO' && String(w.where.codigo) === 'TEC-ELC-001') return tecCatalogo('TEC-ELC-001', 'Porky Eléctrico', 'porky@esap.edu.co', userTecnico.userId, ['CS_002']);
+          if (w?.where?.catalogo === 'REGLA_ESCALAMIENTO') return null;
+          return null;
+        }),
+      } as any,
+      valoracionRepo: { findOne: jest.fn().mockReturnValue(Promise.resolve(val)), save: jest.fn().mockResolvedValue(val), create: jest.fn((d) => d) } as any,
+      valoracionInsumoRepo: { delete: jest.fn(), save: jest.fn(), create: jest.fn((d) => d) } as any,
+    } as any);
+    await expect(s.guardarValoracionCompleta('val-elc', { diagnostico: 'cable dañado en caja 123', alcanceIdentificado: 'cambio cable y enchufe', tiempoEstimadoHoras: 2, nivelRiesgo: 'ALTO', insumos: [], requiereApagadoElectrico: undefined } as any, userTecnico)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('guardarValoracionCompleta si todos insumos EN_BODEGA → estado automático EN_PROGRESO y totalEstimadoInsumosCop calculado', async () => {
+    const sol = { idSolicitud: 'SOL-VAL-8', estado: 'EN_CAMPO_VALORACION', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const val = { idValoracion: 'val-prog', idSolicitudMantenimiento: sol.idSolicitud, solicitud: sol };
+    const repoSol = {
+      findOne: jest.fn().mockImplementation(() => Promise.resolve({ ...sol })),
+      save: jest.fn().mockImplementation((d) => Promise.resolve(d)),
+      count: jest.fn().mockResolvedValue(0),
+      find: jest.fn().mockResolvedValue([]),
+    } as any;
+    const repoVal = {
+      findOne: jest.fn().mockReturnValue(Promise.resolve(val)),
+      save: jest.fn().mockImplementation((d) => Promise.resolve({ ...val, ...d })),
+      create: jest.fn((d) => d),
+    } as any;
+    const repoIns = { delete: jest.fn(), save: jest.fn(), create: jest.fn((d) => d) } as any;
+    const s = servicio({
+      mantenimientoRepo: repoSol,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO' && String(w.where.codigo) === 'TEC-01') return tecCatalogo('TEC-01', 'Porky', 'porky@esap.edu.co', userTecnico.userId);
+          return null;
+        }),
+      } as any,
+      valoracionRepo: repoVal,
+      valoracionInsumoRepo: repoIns,
+    } as any);
+    const r = await s.guardarValoracionCompleta('val-prog', {
+      diagnostico: 'diagnostico OK 12345',
+      alcanceIdentificado: 'alcance OK 12345678',
+      tiempoEstimadoHoras: 2,
+      nivelRiesgo: 'BAJO',
+      requiereApagadoElectrico: false,
+      insumos: [
+        { nombre: 'Tornillo', cantidad: 10, costoUnitarioCop: 500, disponibilidad: 'DISPONIBLE_EN_BODEGA', unidadMedida: 'un' },
+        { nombre: 'Lija', cantidad: 2, costoUnitarioCop: 2500, disponibilidad: 'DISPONIBLE_EN_BODEGA', unidadMedida: 'hoja' },
+      ],
+    }, userTecnico);
+    expect(r.solicitud.estado).toBe('EN_PROGRESO');
+    expect(r.solicitud.esperaInsumosFlag).toBe(false);
+    expect(Number(r.solicitud.totalEstimadoInsumosCop)).toBe(10 * 500 + 2 * 2500);
+    expect(repoIns.save).toHaveBeenCalled();
+  });
+
+  it('guardarValoracionCompleta si hay NO_DISPONIBLE → estado EN_ESPERA_DE_INSUMOS y esperaFlag true', async () => {
+    const sol = { idSolicitud: 'SOL-VAL-9', estado: 'EN_CAMPO_VALORACION', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const val = { idValoracion: 'val-espera', idSolicitudMantenimiento: sol.idSolicitud, solicitud: sol };
+    const repoSol = {
+      findOne: jest.fn().mockReturnValue(Promise.resolve({ ...sol })),
+      save: jest.fn().mockImplementation((d) => Promise.resolve(d)),
+    } as any;
+    const s = servicio({
+      mantenimientoRepo: repoSol,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO' && String(w.where.codigo) === 'TEC-01') return tecCatalogo('TEC-01', 'Porky', 'porky@esap.edu.co', userTecnico.userId);
+          return null;
+        }),
+      } as any,
+      valoracionRepo: {
+        findOne: jest.fn().mockReturnValue(Promise.resolve(val)),
+        save: jest.fn().mockImplementation((d) => Promise.resolve({ ...val, ...d })),
+        create: jest.fn((d) => d),
+      } as any,
+      valoracionInsumoRepo: { delete: jest.fn(), save: jest.fn(), create: jest.fn((d) => d) } as any,
+    } as any);
+    const r = await s.guardarValoracionCompleta('val-espera', {
+      diagnostico: 'diagnostico largo 123456',
+      alcanceIdentificado: 'alcance largo 123456789',
+      tiempoEstimadoHoras: 3,
+      nivelRiesgo: 'MEDIO',
+      requiereApagadoElectrico: false,
+      insumos: [
+        { nombre: 'Pintura', cantidad: 1, disponibilidad: 'NO_DISPONIBLE_A_SOLICITAR', tiempoAdquisicionDias: 5, costoUnitarioCop: 30000, unidadMedida: 'gal' },
+      ],
+    }, userTecnico);
+    expect(r.solicitud.estado).toBe('EN_ESPERA_DE_INSUMOS');
+    expect(r.solicitud.esperaInsumosFlag).toBe(true);
+  });
+
+  it('guardarValoracionCompleta BadRequest NO_DISPONIBLE sin tiempoAdquisicionDias', async () => {
+    const sol = { idSolicitud: 'SOL-VAL-10', estado: 'EN_CAMPO_VALORACION', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const val = { idValoracion: 'val-bad', idSolicitudMantenimiento: sol.idSolicitud, solicitud: sol };
+    const s = servicio({
+      mantenimientoRepo: { findOne: jest.fn().mockReturnValue(Promise.resolve(sol)), save: jest.fn() } as any,
+      catalogoRepo: {
+        findOne: jest.fn().mockImplementation((w: any) => {
+          if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO' && String(w.where.codigo) === 'TEC-01') return tecCatalogo('TEC-01', 'Porky', 'porky@esap.edu.co', userTecnico.userId);
+          return null;
+        }),
+      } as any,
+      valoracionRepo: { findOne: jest.fn().mockReturnValue(Promise.resolve(val)), save: jest.fn(), create: jest.fn((d) => d) } as any,
+      valoracionInsumoRepo: { delete: jest.fn(), save: jest.fn(), create: jest.fn((d) => d) } as any,
+    } as any);
+    await expect(s.guardarValoracionCompleta('val-bad', {
+      diagnostico: 'diagnostico 1234567890',
+      alcanceIdentificado: 'alcance 12345678901',
+      tiempoEstimadoHoras: 1,
+      nivelRiesgo: 'BAJO',
+      insumos: [
+        { nombre: 'Repuesto X', cantidad: 1, disponibilidad: 'NO_DISPONIBLE_A_SOLICITAR', costoUnitarioCop: 100000, unidadMedida: 'un' } as any,
+      ],
+    }, userTecnico)).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+// ===========================================================================
+// EFDS-1736 RF-INF-007. Cierre técnico ejecución y evidencia
+// ===========================================================================
+describe('[EFDS-1736] Cierre técnico (cerrarTecnicamente)', () => {
+  const userTecnico: any = { userId: 'uuuu-porky-1234', username: 'Porky', email: 'porky@esap.edu.co', roles: ['USER'] };
+  const userNoTecnico: any = { userId: 'otro-uuid-9999', username: 'Otro', email: 'otro@esap.edu.co', roles: ['USER'] };
+  const userSuper: any = { userId: 'super-uuid', username: 'Admin', email: 'super@esap.edu.co', roles: ['SUPER_ADMIN'] };
+  const tec = (cod: string, nombre: string, cat = ['CS_001', 'CS_002']) => ({
+    idCatalogoItem: 1,
+    catalogo: 'TECNICO_MANTENIMIENTO',
+    codigo: cod,
+    nombre,
+    isActivo: true,
+    metadata: { correos: [userTecnico.email], usuarioIdsAutorizados: [userTecnico.userId], catalogos: cat },
+  });
+  const montarSol = (sol: any, tecnico: any, reglaEsc001: any = null) => {
+    const saved: any = { ...sol };
+    const repo = {
+      findOne: jest.fn().mockImplementation(() => Promise.resolve(saved)),
+      save: jest.fn().mockImplementation((d: any) => {
+        Object.assign(saved, d);
+        return Promise.resolve(saved);
+      }),
+      find: jest.fn().mockResolvedValue([]),
+    } as any;
+    const catalogoFindOne = jest.fn().mockImplementation((w: any) => {
+      if (w?.where?.catalogo === 'TECNICO_MANTENIMIENTO') {
+        if (!w.where.codigo || String(w.where.codigo) === String(tecnico.codigo)) return tecnico;
+        return null;
+      }
+      if (w?.where?.catalogo === 'REGLA_ESCALAMIENTO' && w?.where?.codigo === 'REG_001_CATEGORIA_48_ELECTRICAS') {
+        return reglaEsc001;
+      }
+      if (w?.where?.catalogo === 'REGLA_ESCALAMIENTO') return null;
+      return tecnico;
+    });
+    return {
+      saved,
+      servicio: servicio({
+        mantenimientoRepo: repo,
+        catalogoRepo: { findOne: catalogoFindOne } as any,
+      } as any),
+    };
+  };
+
+  it('cerrarTecnicamente ForbiddenException si usuario NO es técnico asignado', async () => {
+    const sol = { idSolicitud: 'SOL-CIERRE-1', estado: 'EN_PROGRESO', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const { servicio } = montarSol(sol, tec('TEC-01', 'Porky'));
+    await expect(servicio.cerrarTecnicamente('SOL-CIERRE-1', { trabajoRealizado: 'cambié la cerradura y ajusté el marco', evidencias: [{ id: 'e1' }], costoFinalEfectivoCop: 120000 }, userNoTecnico)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('cerrarTecnicamente ConflictException si estado NO es EN_PROGRESO (ASIGNADA)', async () => {
+    const sol = { idSolicitud: 'SOL-CIERRE-2', estado: 'ASIGNADA', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const { servicio } = montarSol(sol, tec('TEC-01', 'Porky'));
+    await expect(servicio.cerrarTecnicamente('SOL-CIERRE-2', { trabajoRealizado: 'cerradura cambiada', evidencias: [{ id: 'e1' }], costoFinalEfectivoCop: 50000 }, userTecnico)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('cerrarTecnicamente ForbiddenException CS_002 Eléctrica regla REG_001 exige TEC-ELC y asignado es TEC-GEN', async () => {
+    const sol = { idSolicitud: 'SOL-CIERRE-3', estado: 'EN_PROGRESO', idCategoria: 48, codigoTecnicoAsignado: 'TEC-GEN', responsableAsignado: 'TEC-GEN · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const regla = { idCatalogoItem: 99, catalogo: 'REGLA_ESCALAMIENTO', codigo: 'REG_001_CATEGORIA_48_ELECTRICAS', isActivo: true, metadata: { tecnicoCodigo: 'TEC-ELC' } };
+    const { servicio } = montarSol(sol, tec('TEC-GEN', 'Porky'), regla);
+    await expect(servicio.cerrarTecnicamente('SOL-CIERRE-3', { trabajoRealizado: 'cambio tomacorriente', evidencias: [{ id: 'e1' }], costoFinalEfectivoCop: 80000 }, userTecnico)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('cerrarTecnicamente CS_002 OK cuando REG_001 coincide tecnicoCodigo con asignado', async () => {
+    const sol = { idSolicitud: 'SOL-CIERRE-3B', estado: 'EN_PROGRESO', idCategoria: 48, codigoTecnicoAsignado: 'TEC-ELC', responsableAsignado: 'TEC-ELC · Hernando', areaResponsableActual: 'UMI', asignaciones: [] };
+    const regla = { idCatalogoItem: 99, catalogo: 'REGLA_ESCALAMIENTO', codigo: 'REG_001_CATEGORIA_48_ELECTRICAS', isActivo: true, metadata: { tecnicoCodigo: 'TEC-ELC' } };
+    const tecnicoEsp = { ...tec('TEC-ELC', 'Hernando'), metadata: { correos: [userTecnico.email], usuarioIdsAutorizados: [userTecnico.userId] } };
+    const { servicio } = montarSol(sol, tecnicoEsp, regla);
+    const r = await servicio.cerrarTecnicamente('SOL-CIERRE-3B', { trabajoRealizado: 'cambio tomacorriente y revisión tablero', evidencias: [{ id: 'e1' }], costoFinalEfectivoCop: 80000 }, userTecnico);
+    expect(r.estado).toBe('COMPLETADA');
+    expect(r.idCategoria).toBe(48);
+  });
+
+  it('cerrarTecnicamente OK estado pasa a COMPLETADA + fechaCierreTecnico seteada + conteoReaperturas 0', async () => {
+    const sol = { idSolicitud: 'SOL-CIERRE-4', estado: 'EN_PROGRESO', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const { servicio, saved } = montarSol(sol, tec('TEC-01', 'Porky'));
+    const r = await servicio.cerrarTecnicamente('SOL-CIERRE-4', {
+      trabajoRealizado: 'Cambio cerradura principal puerta oficina 701 y ajuste bisagra',
+      evidencias: [{ id: 'e1', nombre: 'antes.jpg' }, { id: 'e2', nombre: 'despues.jpg' }],
+      costoFinalEfectivoCop: 145000,
+      observaciones: 'Se entrega copia de llave a coordinador',
+      requiereSeguimiento: false,
+    }, userTecnico);
+    expect(r.estado).toBe('COMPLETADA');
+    expect(r.fechaCierreTecnico).toBeDefined();
+    expect(r.fechaLimiteConformidad).toBeDefined();
+    expect(Number(r.conteoReaperturasConformidad)).toBe(0);
+    expect(r.resultadoConformidad).toBeUndefined();
+    expect(r.usuarioCierreTecnicoId).toBe(userTecnico.userId);
+    expect(Number(r.costoFinalEfectivoCop)).toBe(145000);
+    expect(Array.isArray(r.evidenciasCierre)).toBe(true);
+    expect(r.evidenciasCierre).toHaveLength(2);
+    expect(saved.asignaciones?.[0]?.accion).toBe('CIERRE_TECNICO');
+  });
+
+  it('cerrarTecnicamente fechaLimiteConformidad = ~72h después de fechaCierreTecnico', async () => {
+    const sol = { idSolicitud: 'SOL-CIERRE-5', estado: 'EN_PROGRESO', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const { servicio } = montarSol(sol, tec('TEC-01', 'Porky'));
+    const antes = new Date();
+    const r = await servicio.cerrarTecnicamente('SOL-CIERRE-5', {
+      trabajoRealizado: 'trabajo de prueba 12345678',
+      evidencias: [{ id: 'x1' }],
+      costoFinalEfectivoCop: 0,
+    }, userTecnico);
+    const despues = new Date();
+    const diff72h = new Date(new Date(r.fechaCierreTecnico).getTime() + 72 * 3600 * 1000).getTime();
+    const limite = new Date(r.fechaLimiteConformidad).getTime();
+    expect(limite).toBe(diff72h);
+    expect(new Date(r.fechaCierreTecnico).getTime()).toBeGreaterThanOrEqual(antes.getTime());
+    expect(new Date(r.fechaCierreTecnico).getTime()).toBeLessThanOrEqual(despues.getTime());
+  });
+
+  it('cerrarTecnicamente BadRequestException para área TI', async () => {
+    const sol = { idSolicitud: 'SOL-CIERRE-6', estado: 'EN_PROGRESO', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'TI', asignaciones: [] };
+    const { servicio } = montarSol(sol, tec('TEC-01', 'Porky'));
+    await expect(servicio.cerrarTecnicamente('SOL-CIERRE-6', { trabajoRealizado: 'x'.repeat(20), evidencias: [{ id: 'e1' }], costoFinalEfectivoCop: 0 }, userTecnico)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('cerrarTecnicamente OK costo 0 y 1 evidencia (caso mínimo happy path)', async () => {
+    const sol = { idSolicitud: 'SOL-CIERRE-7', estado: 'EN_PROGRESO', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const { servicio } = montarSol(sol, tec('TEC-01', 'Porky'));
+    const r = await servicio.cerrarTecnicamente('SOL-CIERRE-7', { trabajoRealizado: 'ajuste mínimo de bisagra sin costo', evidencias: [{ id: 'e1' }], costoFinalEfectivoCop: 0 }, userTecnico);
+    expect(r.estado).toBe('COMPLETADA');
+    expect(Number(r.costoFinalEfectivoCop)).toBe(0);
+  });
+
+  it('cerrarTecnicamente OK trabajoRealizado se guarda tal cual (sin truncar) + responsableCierreDisplay formato COD · Nombre', async () => {
+    const sol = { idSolicitud: 'SOL-CIERRE-8', estado: 'EN_PROGRESO', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const { servicio } = montarSol(sol, tec('TEC-01', 'Porky'));
+    const txt = 'Trabajo de ajuste de puerta con cambio de 2 bisagras y lubricación de cerradura';
+    const r = await servicio.cerrarTecnicamente('SOL-CIERRE-8', { trabajoRealizado: txt, evidencias: [{ id: 'e1' }], costoFinalEfectivoCop: 0 }, userTecnico);
+    expect(r.trabajoRealizado).toBe(txt);
+    expect(r.responsableCierreDisplay).toBe('TEC-01 · Porky');
+  });
+
+  it('cerrarTecnicamente OK requiereSeguimiento=true y observacionesCierre guardadas + push asignacion motivo con 2 evidencias', async () => {
+    const sol = { idSolicitud: 'SOL-CIERRE-9', estado: 'EN_PROGRESO', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const { servicio, saved } = montarSol(sol, tec('TEC-01', 'Porky'));
+    const r = await servicio.cerrarTecnicamente('SOL-CIERRE-9', {
+      trabajoRealizado: 'reparación parcial, requiere visita seguimiento en 15 días',
+      evidencias: [{ id: 'a1' }, { id: 'a2' }],
+      costoFinalEfectivoCop: 35000,
+      observaciones: 'Se acuerda nueva visita coordinar con coordinador',
+      requiereSeguimiento: true,
+    }, userTecnico);
+    expect(r.requiereSeguimiento).toBe(true);
+    expect(r.observacionesCierre).toBe('Se acuerda nueva visita coordinar con coordinador');
+    const ultima = saved.asignaciones?.[0];
+    expect(ultima.accion).toBe('CIERRE_TECNICO');
+    expect(ultima.tecnico_codigo).toBe('TEC-01');
+    expect(ultima.tecnico_nombre_display).toBe('Porky');
+    expect(ultima.motivo).toContain('2 evidencia');
+  });
+
+  it('cerrarTecnicamente OK 6 evidencias se persisten sin truncar (validación max 5 es DTO)', async () => {
+    const sol = { idSolicitud: 'SOL-CIERRE-10', estado: 'EN_PROGRESO', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const { servicio } = montarSol(sol, tec('TEC-01', 'Porky'));
+    const evs = Array.from({ length: 6 }, (_, i) => ({ id: `e${i + 1}`, nombre: `ev${i + 1}.jpg` }));
+    const r = await servicio.cerrarTecnicamente('SOL-CIERRE-10', { trabajoRealizado: 'x'.repeat(20), evidencias: evs, costoFinalEfectivoCop: 0 }, userTecnico);
+    expect(r.evidenciasCierre).toHaveLength(6);
+    expect(r.estado).toBe('COMPLETADA');
+  });
+
+  it('cerrarTecnicamente OK costo alto 99B se guarda como number (validación overflow es DTO/DB)', async () => {
+    const sol = { idSolicitud: 'SOL-CIERRE-11', estado: 'EN_PROGRESO', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const { servicio } = montarSol(sol, tec('TEC-01', 'Porky'));
+    const r = await servicio.cerrarTecnicamente('SOL-CIERRE-11', { trabajoRealizado: 'x'.repeat(20), evidencias: [{ id: 'e1' }], costoFinalEfectivoCop: 99999999999 }, userTecnico);
+    expect(Number(r.costoFinalEfectivoCop)).toBe(99999999999);
+  });
+
+  it('cerrarTecnicamente SUPER_ADMIN bypass puede cerrar técnicamente sin ser técnico asignado (guardia bypassa rol asignador)', async () => {
+    const sol = { idSolicitud: 'SOL-CIERRE-12', estado: 'EN_PROGRESO', idCategoria: 47, codigoTecnicoAsignado: 'TEC-01', responsableAsignado: 'TEC-01 · Porky', areaResponsableActual: 'UMI', asignaciones: [] };
+    const { servicio } = montarSol(sol, tec('TEC-01', 'Porky'));
+    const r = await servicio.cerrarTecnicamente('SOL-CIERRE-12', { trabajoRealizado: 'x'.repeat(20), evidencias: [{ id: 'e1' }], costoFinalEfectivoCop: 0 }, userSuper);
+    expect(r.estado).toBe('COMPLETADA');
+    expect(r.usuarioCierreTecnicoId).toBe(userSuper.userId);
+  });
+});
+
+// ===========================================================================
+// EFDS-1737 RF-INF-008. Conformidad Área Solicitante
+// ===========================================================================
+describe('[EFDS-1737] Conformidad Área Solicitante (confirmar/rechazar/batch)', () => {
+  const userSolicitante: any = { userId: 'sol-user-uuid-0001', username: 'Ana Coordinadora', email: 'ana.coordinadora@esap.edu.co', roles: ['USER'] };
+  const userNoSolicitante: any = { userId: 'no-sol-user-9999', username: 'Invitado', email: 'invitado@esap.edu.co', roles: ['USER'] };
+  const userGestor: any = { userId: 'gestor-uuid', username: 'Gestor UMI', email: 'gestor@esap.edu.co', roles: ['GESTOR_MANTENIMIENTO'] };
+  const userSuper: any = { userId: 'super-uuid', username: 'Admin', email: 'super@esap.edu.co', roles: ['SUPER_ADMIN'] };
+  const userAnon: any = null;
+
+  const cerradaTecnico = (overrides: any = {}) => ({
+    idSolicitud: overrides.idSolicitud || 'SOL-CONF-1',
+    estado: 'COMPLETADA',
+    idCategoria: 47,
+    areaResponsableActual: 'UMI',
+    usuarioSolicitanteId: userSolicitante.userId,
+    usuarioSolicitanteEmail: userSolicitante.email,
+    solicitanteEmail: userSolicitante.email,
+    fechaCierreTecnico: new Date(Date.now() - 3600 * 1000),
+    trabajoRealizado: 'Cambio de cerradura y ajuste de bisagra',
+    costoFinalEfectivoCop: 120000,
+    evidenciasCierre: [{ id: 'ev1' }],
+    usuarioCierreTecnicoId: 'tec-uuid-1',
+    fechaLimiteConformidad: new Date(Date.now() + 48 * 3600 * 1000),
+    conteoReaperturasConformidad: 0,
+    asignaciones: [],
+    ...overrides,
+  });
+
+  const montar = (sol: any) => {
+    const saved: any = { ...sol, asignaciones: [...(sol.asignaciones || [])] };
+    const repo = {
+      findOne: jest.fn().mockImplementation(() => Promise.resolve(saved)),
+      save: jest.fn().mockImplementation((d: any) => {
+        Object.assign(saved, d);
+        return Promise.resolve(saved);
+      }),
+      find: jest.fn().mockResolvedValue([]),
+    } as any;
+    return {
+      saved,
+      servicio: servicio({ mantenimientoRepo: repo } as any),
+      repo,
+    };
+  };
+
+  it('confirmarConformidad ForbiddenException sin usuario autenticado', async () => {
+    const { servicio } = montar(cerradaTecnico());
+    await expect(servicio.confirmarConformidad('SOL-CONF-1', { observacionesConformidad: 'todo bien' }, userAnon)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('confirmarConformidad ForbiddenException usuario NO es solicitante ni admin', async () => {
+    const { servicio } = montar(cerradaTecnico());
+    await expect(servicio.confirmarConformidad('SOL-CONF-1', {}, userNoSolicitante)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('confirmarConformidad ConflictException estado NO COMPLETADA (EN_PROGRESO)', async () => {
+    const { servicio } = montar(cerradaTecnico({ estado: 'EN_PROGRESO' }));
+    await expect(servicio.confirmarConformidad('SOL-CONF-1', {}, userSolicitante)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('confirmarConformidad OK solicitante retorna estado CERRADA y resultado CONFIRMADA', async () => {
+    const { servicio, saved } = montar(cerradaTecnico());
+    const r = await servicio.confirmarConformidad('SOL-CONF-1', { observacionesConformidad: '  excelente trabajo  ' }, userSolicitante);
+    expect(r.estado).toBe('CERRADA');
+    expect(r.resultadoConformidad).toBe('CONFIRMADA');
+    expect(r.fechaConformidad).toBeDefined();
+    expect(r.usuarioConformidadId).toBe(userSolicitante.userId);
+    expect(r.responsableConformidadDisplay).toBe(userSolicitante.username);
+    expect(r.observacionesConformidad).toBe('excelente trabajo');
+    expect(saved.asignaciones?.[0]?.accion).toBe('CONFORMIDAD_CONFIRMADA');
+  });
+
+  it('confirmarConformidad bypass GESTOR_MANTENIMIENTO aunque NO sea solicitante', async () => {
+    const { servicio } = montar(cerradaTecnico());
+    const r = await servicio.confirmarConformidad('SOL-CONF-1', {}, userGestor);
+    expect(r.estado).toBe('CERRADA');
+    expect(r.resultadoConformidad).toBe('CONFIRMADA');
+    expect(r.usuarioConformidadId).toBe(userGestor.userId);
+  });
+
+  it('confirmarConformidad usuario coincide solo por email (no userId) → OK', async () => {
+    const sol = cerradaTecnico({ usuarioSolicitanteId: undefined, usuarioSolicitanteEmail: userSolicitante.email });
+    const { servicio } = montar(sol);
+    const r = await servicio.confirmarConformidad('SOL-CONF-1', {}, userSolicitante);
+    expect(r.estado).toBe('CERRADA');
+  });
+
+  it('rechazarConformidadYReabrir ForbiddenException user NO solicitante', async () => {
+    const { servicio } = montar(cerradaTecnico());
+    await expect(servicio.rechazarConformidadYReabrir('SOL-CONF-1', { observacionesConformidad: 'x'.repeat(30) }, userNoSolicitante)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('rechazarConformidadYReabrir ConflictException estado NO COMPLETADA', async () => {
+    const { servicio } = montar(cerradaTecnico({ estado: 'ASIGNADA' }));
+    await expect(servicio.rechazarConformidadYReabrir('SOL-CONF-1', { observacionesConformidad: 'x'.repeat(30) }, userSolicitante)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('rechazarConformidadYReabrir observacionesConformidad trim se aplica en service (sin espacios extremos)', async () => {
+    const { servicio } = montar(cerradaTecnico());
+    const r = await servicio.rechazarConformidadYReabrir('SOL-CONF-1', { observacionesConformidad: '  La puerta sigue desajustada y hace ruido al abrir  ' }, userSolicitante);
+    expect(r.resultadoConformidad).toBe('RECHAZADA_Y_REABIERTA');
+    expect(r.observacionesConformidad).toBe('La puerta sigue desajustada y hace ruido al abrir');
+  });
+
+  it('rechazarYReabrir OK → EN_PROGRESO, conteo +1, SLA 24h NUEVO y NO borra cierre técnico cols (trabajoRealizado / fechaCierreTecnico INTACTOS)', async () => {
+    const sol = cerradaTecnico();
+    const cerraduraOriginal = sol.fechaCierreTecnico;
+    const trabajoOriginal = sol.trabajoRealizado;
+    const costoOriginal = sol.costoFinalEfectivoCop;
+    const evidenciasOriginales = sol.evidenciasCierre;
+    const { servicio, saved } = montar(sol);
+    const antes = new Date();
+    const r = await servicio.rechazarConformidadYReabrir('SOL-CONF-1', {
+      observacionesConformidad: '  La cerradura sigue fallando y la bisagra quedó desalineada. Por favor revisar de nuevo  ',
+    }, userSolicitante);
+    const despues = new Date();
+    expect(r.estado).toBe('EN_PROGRESO');
+    expect(r.resultadoConformidad).toBe('RECHAZADA_Y_REABIERTA');
+    expect(Number(r.conteoReaperturasConformidad)).toBe(1);
+    expect(r.observacionesConformidad).toBe('La cerradura sigue fallando y la bisagra quedó desalineada. Por favor revisar de nuevo');
+    const limiteAtencionMs = new Date(r.fechaLimiteAtencion).getTime();
+    const expected24h = antes.getTime() + 24 * 3600 * 1000;
+    expect(limiteAtencionMs).toBeGreaterThanOrEqual(expected24h - 1000);
+    expect(limiteAtencionMs).toBeLessThanOrEqual(despues.getTime() + 24 * 3600 * 1000 + 1000);
+    expect(r.fechaLimiteOriginalAntesExtension).toBeUndefined();
+    expect(r.fechaCierreTecnico).toBe(cerraduraOriginal);
+    expect(r.trabajoRealizado).toBe(trabajoOriginal);
+    expect(Number(r.costoFinalEfectivoCop)).toBe(Number(costoOriginal));
+    expect(r.evidenciasCierre).toEqual(evidenciasOriginales);
+    expect(saved.asignaciones?.[0]?.accion).toBe('CONFORMIDAD_RECHAZADA_Y_REABIERTA');
+  });
+
+  it('reapertura #2 conteoReaperturasConformidad = 2 y cierre técnico sigue intacto', async () => {
+    const sol = cerradaTecnico({ conteoReaperturasConformidad: 1 });
+    const { servicio, saved } = montar(sol);
+    const r = await servicio.rechazarConformidadYReabrir('SOL-CONF-1', { observacionesConformidad: 'segundo rechazo por detalles pendientes de ajuste' }, userSolicitante);
+    expect(Number(r.conteoReaperturasConformidad)).toBe(2);
+    expect(r.fechaCierreTecnico).toBeDefined();
+    expect(r.trabajoRealizado).toBeDefined();
+    expect(saved.asignaciones?.[0]?.accion).toBe('CONFORMIDAD_RECHAZADA_Y_REABIERTA');
+  });
+
+  it('ejecutarCierresSinRespuestaVencidos ForbiddenException usuario sin rol asignador (USER)', async () => {
+    const { servicio } = montar(cerradaTecnico());
+    await expect(servicio.ejecutarCierresSinRespuestaVencidos(userSolicitante)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('ejecutarCierresSinRespuestaVencidos OK SUPER_ADMIN filtra vencidas y marca CERRADA_SIN_ATENCION resultado SIN_RESPUESTA', async () => {
+    const vencida1 = cerradaTecnico({ idSolicitud: 'V-1', fechaLimiteConformidad: new Date(Date.now() - 24 * 3600 * 1000), asignaciones: [] });
+    const vencida2 = cerradaTecnico({ idSolicitud: 'V-2', fechaLimiteConformidad: new Date(Date.now() - 10 * 60 * 1000), asignaciones: [] });
+    const noVencida = cerradaTecnico({ idSolicitud: 'V-3', fechaLimiteConformidad: new Date(Date.now() + 10 * 24 * 3600 * 1000), asignaciones: [] });
+    const enProgreso = cerradaTecnico({ idSolicitud: 'V-4', estado: 'EN_PROGRESO', asignaciones: [] });
+    const find = jest.fn().mockResolvedValue([vencida1, vencida2, noVencida, enProgreso]);
+    const save = jest.fn().mockImplementation((d) => Promise.resolve(d));
+    const s = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue(null),
+        save,
+        find,
+      } as any,
+    } as any);
+    const r = await s.ejecutarCierresSinRespuestaVencidos(userSuper);
+    expect(r.actualizadas).toBe(2);
+    expect(r.ids).toHaveLength(2);
+    expect(r.ids).toContain('V-1');
+    expect(r.ids).toContain('V-2');
+    expect(save).toHaveBeenCalledTimes(2);
+    const salvados = save.mock.calls.map((c) => c[0]);
+    for (const s2 of salvados) {
+      expect(s2.estado).toBe('CERRADA_SIN_ATENCION');
+      expect(s2.resultadoConformidad).toBe('SIN_RESPUESTA');
+      expect(s2.fechaConformidad).toBeDefined();
+    }
+  });
+
+  it('ejecutarCierresSinRespuestaVencidos actualizadas = 0 cuando no hay vencidas', async () => {
+    const s = servicio({
+      mantenimientoRepo: {
+        find: jest.fn().mockResolvedValue([cerradaTecnico()]),
+        save: jest.fn(),
+      } as any,
+    } as any);
+    const r = await s.ejecutarCierresSinRespuestaVencidos(userGestor);
+    expect(r.actualizadas).toBe(0);
+    expect(r.ids).toEqual([]);
+  });
+
+  it('3 acciones conformidad en pushAsignacion tienen nombres exactos union type (case-sensitive)', async () => {
+    const accionesVistas: string[] = [];
+    const recolector = (sol: any) => {
+      const r = servicio({
+        mantenimientoRepo: {
+          findOne: jest.fn().mockResolvedValue(sol),
+          save: jest.fn().mockImplementation((d: any) => {
+            if (Array.isArray(d.asignaciones)) {
+              accionesVistas.push(String(d.asignaciones.at(-1)?.accion || ''));
+            }
+            return Promise.resolve(d);
+          }),
+          find: jest.fn().mockResolvedValue([]),
+        } as any,
+      } as any);
+      return r;
+    };
+
+    const sol1 = cerradaTecnico();
+    await recolector(sol1).confirmarConformidad('x', {}, userSuper);
+    const sol2 = cerradaTecnico({ idSolicitud: 'Z-2' });
+    await recolector(sol2).rechazarConformidadYReabrir('Z-2', { observacionesConformidad: 'rechazo 1234567890 qwerty' }, userSuper);
+    const s3 = cerradaTecnico({ idSolicitud: 'V-99', fechaLimiteConformidad: new Date(Date.now() - 1000) });
+    const r3 = servicio({
+      mantenimientoRepo: {
+        findOne: jest.fn().mockResolvedValue(null),
+        find: jest.fn().mockResolvedValue([s3]),
+        save: jest.fn().mockImplementation((d) => {
+          if (Array.isArray(d.asignaciones)) accionesVistas.push(String(d.asignaciones.at(-1)?.accion || ''));
+          return Promise.resolve(d);
+        }),
+      } as any,
+    } as any);
+    await r3.ejecutarCierresSinRespuestaVencidos(userSuper);
+    expect(accionesVistas).toContain('CONFORMIDAD_CONFIRMADA');
+    expect(accionesVistas).toContain('CONFORMIDAD_RECHAZADA_Y_REABIERTA');
+    expect(accionesVistas).toContain('CONFORMIDAD_SIN_RESPUESTA');
   });
 });

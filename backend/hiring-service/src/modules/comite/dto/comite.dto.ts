@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { plainToInstance, Transform, Type } from 'class-transformer';
 import {
   ArrayMinSize,
@@ -6,12 +6,15 @@ import {
   IsDateString,
   IsIn,
   IsNotEmpty,
+  IsOptional,
   IsString,
   IsUUID,
   MaxLength,
   MinLength,
   ValidateNested,
 } from 'class-validator';
+
+import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 export class MiembroComiteDto {
   @ApiProperty({ description: 'id_person de la persona en el directorio' })
@@ -70,6 +73,14 @@ export class DesignarComiteDto {
   @ValidateNested({ each: true })
   @Type(() => MiembroComiteDto)
   miembros: MiembroComiteDto[];
+
+  /** Solo si la 6.2 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }
 
 export class RevocarComiteDto {

@@ -21,6 +21,7 @@ vi.mock('../../../../services/api/authService', () => ({
   authService: {
     getCurrentUser: vi.fn(),
     hasRole: vi.fn(),
+    isSuperAdmin: vi.fn(() => false),
     getProfesionales: vi.fn(),
     getTodosLosUsuariosActivos: vi.fn(),
   },

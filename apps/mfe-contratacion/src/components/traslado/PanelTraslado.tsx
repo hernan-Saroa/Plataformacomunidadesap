@@ -17,6 +17,7 @@ import { contratacionService } from '../../services/contratacionService';
 import {
   EstadoSubsanaciones,
   EstadoTraslado,
+  EvidenciaFirmaOtp,
   InformeEvaluacion,
   Subsanacion,
   TipoSubsanacion,
@@ -31,12 +32,19 @@ import {
   Pendiente,
   Titulo,
 } from '../shared/PiezasPanel';
+import { TerminarPlazo } from '../shared/TerminarPlazo';
 import { fechaLarga, hoyEnBogota, momentoConHora } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL_TRASLADO = '6.4';
+const NUMERAL_SUBSANACIONES = '6.5';
+const NUMERAL_RESPUESTAS = '6.6';
 
 const pesos = (valor: number | null) =>
   valor == null
@@ -66,6 +74,10 @@ const ETIQUETA_TIPO: Record<TipoSubsanacion, string> = {
  * recibió.
  */
 export function PanelTraslado({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
+  const firmaTraslado = useFirma(NUMERAL_TRASLADO, 'Trasladar el informe de evaluación');
+  const firmaCierre = useFirma(NUMERAL_SUBSANACIONES, 'Cerrar el traslado');
+  const firmaRespuesta = useFirma(NUMERAL_RESPUESTAS, 'Responder la subsanación u observación');
   const [traslado, setTraslado] = useState<EstadoTraslado | null>(null);
   const [escritos, setEscritos] = useState<EstadoSubsanaciones | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -129,13 +141,18 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
     }
   };
 
-  const trasladar = async () => {
+  const trasladar = async (firmaOtp?: EvidenciaFirmaOtp) => {
     if (!evidencia || medioPublicacion.trim().length < 10) return;
 
     setGuardando(true);
     try {
       setTraslado(
-        await contratacionService.trasladarInforme(procesoId, medioPublicacion.trim(), evidencia),
+        await contratacionService.trasladarInforme(
+          procesoId,
+          medioPublicacion.trim(),
+          evidencia,
+          firmaOtp,
+        ),
       );
       setMedioPublicacion('');
       setEvidencia(null);
@@ -150,7 +167,13 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
   };
 
   const anular = async () => {
-    const motivo = window.prompt('¿Por qué se anula el informe?')?.trim();
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Anular el informe de evaluación',
+      descripcion: 'El informe anulado se conserva en el expediente y el traslado vuelve a quedar pendiente.',
+      etiqueta: 'Motivo de la anulación',
+      confirmar: 'Anular el informe',
+      tono: 'peligro',
+    });
     if (!motivo) return;
 
     setGuardando(true);
@@ -209,7 +232,7 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
     }
   };
 
-  const responder = async (subsanacionId: string) => {
+  const responder = async (subsanacionId: string, firmaOtp?: EvidenciaFirmaOtp) => {
     if (respuesta.trim().length < 10) return;
 
     setGuardando(true);
@@ -218,7 +241,7 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
         await contratacionService.responderSubsanacion(
           procesoId,
           subsanacionId,
-          { aceptada, respuesta: respuesta.trim() },
+          { aceptada, respuesta: respuesta.trim(), firma: firmaOtp },
           documentoRespuesta,
         ),
       );
@@ -235,12 +258,23 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
     }
   };
 
-  const cerrar = async () => {
-    const nota = window.prompt('Nota de cierre del traslado (opcional)') ?? '';
+  const cerrar = async (firmaOtp?: EvidenciaFirmaOtp) => {
+    // Cancelar ahora cancela: antes, cerrar el cuadro devolvía cadena vacía y
+    // el traslado se cerraba igual, que es lo contrario de lo que hace quien
+    // lo cierra para pensárselo.
+    const nota = await dialogo.pedirMotivo({
+      titulo: 'Cerrar el traslado',
+      descripcion: 'Se da por agotado el término. A partir de aquí no se registran más subsanaciones.',
+      etiqueta: 'Nota de cierre',
+      ayuda: 'Para dejar dicho lo que no cabe en las respuestas: que nadie presentó nada, o lo que el comité concluyó.',
+      opcional: true,
+      confirmar: 'Cerrar el traslado',
+    });
+    if (nota === null) return;
 
     setGuardando(true);
     try {
-      setEscritos(await contratacionService.cerrarTraslado(procesoId, nota));
+      setEscritos(await contratacionService.cerrarTraslado(procesoId, nota, firmaOtp));
       await leer();
       toast.success('Traslado cerrado');
       onCambio?.();
@@ -386,7 +420,7 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
 
           <Boton
             icono={<Megaphone className="w-3.5 h-3.5" />}
-            onClick={trasladar}
+            onClick={() => firmaTraslado.conFirma(trasladar)}
             disabled={guardando || !evidencia || medioPublicacion.trim().length < 10}
           >
             Trasladar el informe
@@ -484,7 +518,9 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
                         <div className="flex gap-2">
                           <Boton
                             icono={<MessageSquare className="w-3.5 h-3.5" />}
-                            onClick={() => responder(escrito.id)}
+                            onClick={() =>
+                              firmaRespuesta.conFirma((firmaOtp) => responder(escrito.id, firmaOtp))
+                            }
                             disabled={guardando || respuesta.trim().length < 10}
                           >
                             Guardar respuesta
@@ -622,8 +658,27 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
 
           {/* ------------------------------------------------- el cierre --- */}
 
+          {escritos.plazosSaltados && (
+            <Aviso tono="aviso" titulo="Parámetro de pruebas activo">
+              El sistema está saltando el plazo de espera. Esto no puede estar activo en
+              producción.
+            </Aviso>
+          )}
+
+          <TerminarPlazo
+            visible={!!escritos.puedeTerminarPlazo}
+            termino="El término de subsanaciones"
+            terminar={() => contratacionService.terminarPlazoTraslado(procesoId)}
+            onTerminado={setEscritos}
+            disabled={guardando}
+          />
+
           {escritos.puedeCerrar ? (
-            <Boton icono={<CheckCircle2 className="w-3.5 h-3.5" />} onClick={cerrar} disabled={guardando}>
+            <Boton
+              icono={<CheckCircle2 className="w-3.5 h-3.5" />}
+              onClick={() => firmaCierre.conFirma(cerrar)}
+              disabled={guardando}
+            >
               Cerrar el traslado
             </Boton>
           ) : !escritos.terminoVencido ? (
@@ -653,6 +708,10 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
           </ul>
         </div>
       )}
+      {firmaTraslado.modal}
+      {firmaCierre.modal}
+      {firmaRespuesta.modal}
+      {dialogo.elemento}
     </Marco>
   );
 }

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsIn,
   IsISO8601,
@@ -11,9 +11,11 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
 
 import { TipoPiezaAudiencia } from '../../../entities/audiencia-adjudicacion.entity';
+import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 /**
  * Los números llegan como texto dentro del multipart —la petición trae también
@@ -47,6 +49,14 @@ export class CelebrarAudienciaDto {
   @IsString()
   @MaxLength(4000)
   resumen?: string;
+
+  /** Solo si la 7.1 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }
 
 export class CargarPiezaAudienciaDto {
@@ -85,6 +95,14 @@ export class AbrirSobreDto {
   @IsString()
   @MaxLength(1000)
   observacion?: string;
+
+  /** Solo si la 7.2 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }
 
 export class AnularAudienciaDto {
