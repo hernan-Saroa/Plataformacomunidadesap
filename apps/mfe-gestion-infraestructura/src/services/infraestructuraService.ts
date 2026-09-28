@@ -307,6 +307,87 @@ export interface ConsolidadoCalificacionItem {
   distribucion: DistribucionCalificacion;
 }
 
+// ===== EFDS-1739 RF-INF-010 Reportes e Indicadores de Gestión =====
+export type AreaFiltroReporte = 'UMI' | 'TI' | 'TODAS';
+export interface FiltrosReporteGestionParams {
+  fechaDesde?: string | Date | null;
+  fechaHasta?: string | Date | null;
+  idSede?: string | null;
+  idCategoria?: number | string | null;
+  areaResponsable?: AreaFiltroReporte | string | null;
+  codigoTecnico?: string | null;
+  estado?: string | null;
+}
+export interface ReportePeriodoDelta {
+  valorActual: number;
+  valorAnterior: number;
+  variacionAbsoluta: number;
+  variacionPorcentual: number;
+}
+export interface ReporteGestionTotalCasos {
+  totalRadicados: ReportePeriodoDelta;
+  porEstado: Array<{ estado: string; cantidad: number; porcentaje: number }>;
+  porTipoAtencion: Array<{ tipoAtencion: string; cantidad: number; porcentaje: number }>;
+}
+export interface ReporteGestionPorCategoriaItem {
+  idCategoria: number | null;
+  codigoCategoria?: string | null;
+  nombreCategoria: string;
+  radicados: number;
+  completados: number;
+  enCurso: number;
+  vencidos: number;
+  promedioCalificacion: number;
+  color?: string | null;
+}
+export interface ReporteGestionPorTecnicoItem {
+  codigoTecnico: string | null;
+  nombreTecnico: string;
+  asignados: number;
+  completados: number;
+  enCurso: number;
+  promedioCalificacion: number;
+  cargaVigente: number;
+}
+export interface ReporteGestionTiemposAtencionItem {
+  idCategoria: number | null;
+  nombreCategoria: string;
+  metaSlaDias: number;
+  casosCumplenSLA: number;
+  casosExcedenSLA: number;
+  porcentajeCumplimiento: number;
+  promedioRealDias: number;
+}
+export interface ReporteGestionPercepcionServicio {
+  promedioGlobal: number;
+  totalCalificaciones: number;
+  porDistribucion: DistribucionCalificacion;
+  porCategoria: ConsolidadoCalificacionItem[];
+  porTecnico: ConsolidadoCalificacionItem[];
+}
+export interface ReporteGestionRollupGeograficoItem {
+  idSede: string | null;
+  nombreSede: string;
+  radicados: number;
+  completados: number;
+  enCurso: number;
+  porPiso?: Array<{ piso: string; cantidad: number }>;
+}
+export interface ReporteGestionDto {
+  periodo: {
+    fechaDesdeISO: string | null;
+    fechaHastaISO: string | null;
+    fechaDesdeAnteriorISO: string | null;
+    fechaHastaAnteriorISO: string | null;
+  };
+  totalCasos: ReporteGestionTotalCasos;
+  porCategoria: ReporteGestionPorCategoriaItem[];
+  porTecnico: ReporteGestionPorTecnicoItem[];
+  tiemposAtencionVsMeta: ReporteGestionTiemposAtencionItem[];
+  percepcionServicio: ReporteGestionPercepcionServicio;
+  rollupGeografico: ReporteGestionRollupGeograficoItem[];
+}
+
 export interface CreateMantenimientoPayload {
   idSede: string;
   idEspacio?: string;
@@ -1790,6 +1871,105 @@ export const infraestructuraService = {
       throw new Error(m);
     }
     return await res.json();
+  },
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1739 RF-INF-010 Reportes e Indicadores de Gestión
+  // ---------------------------------------------------------------------------
+
+  async getReporteGestion(params?: FiltrosReporteGestionParams): Promise<ReporteGestionDto> {
+    const sp = new URLSearchParams();
+    const append = (k: string, v: unknown) => {
+      if (v == null || v === '' || (typeof v === 'number' && !Number.isFinite(v))) return;
+      sp.append(k, typeof v === 'object' && v instanceof Date ? v.toISOString() : String(v));
+    };
+    append('fechaDesde', params?.fechaDesde);
+    append('fechaHasta', params?.fechaHasta);
+    append('idSede', params?.idSede);
+    append('idCategoria', params?.idCategoria);
+    append('areaResponsable', params?.areaResponsable);
+    append('codigoTecnico', params?.codigoTecnico);
+    append('estado', params?.estado);
+    const qs = sp.toString();
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/estadisticas/reporte-gestion${qs.length ? `?${qs}` : ''}`,
+      { credentials: 'include' },
+    );
+    if (!res.ok) {
+      let m = 'Error consultando reporte de gestión';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async descargarExcelReporte(params?: FiltrosReporteGestionParams): Promise<Blob> {
+    const sp = new URLSearchParams();
+    const append = (k: string, v: unknown) => {
+      if (v == null || v === '' || (typeof v === 'number' && !Number.isFinite(v))) return;
+      sp.append(k, typeof v === 'object' && v instanceof Date ? v.toISOString() : String(v));
+    };
+    append('fechaDesde', params?.fechaDesde);
+    append('fechaHasta', params?.fechaHasta);
+    append('idSede', params?.idSede);
+    append('idCategoria', params?.idCategoria);
+    append('areaResponsable', params?.areaResponsable);
+    append('codigoTecnico', params?.codigoTecnico);
+    append('estado', params?.estado);
+    const qs = sp.toString();
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/estadisticas/reporte-gestion/excel${qs.length ? `?${qs}` : ''}`,
+      { credentials: 'include' },
+    );
+    if (!res.ok) {
+      let m = 'Error descargando reporte Excel';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.blob();
+  },
+
+  async descargarPdfReporte(params?: FiltrosReporteGestionParams): Promise<Blob> {
+    const sp = new URLSearchParams();
+    const append = (k: string, v: unknown) => {
+      if (v == null || v === '' || (typeof v === 'number' && !Number.isFinite(v))) return;
+      sp.append(k, typeof v === 'object' && v instanceof Date ? v.toISOString() : String(v));
+    };
+    append('fechaDesde', params?.fechaDesde);
+    append('fechaHasta', params?.fechaHasta);
+    append('idSede', params?.idSede);
+    append('idCategoria', params?.idCategoria);
+    append('areaResponsable', params?.areaResponsable);
+    append('codigoTecnico', params?.codigoTecnico);
+    append('estado', params?.estado);
+    const qs = sp.toString();
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/estadisticas/reporte-gestion/pdf${qs.length ? `?${qs}` : ''}`,
+      { credentials: 'include' },
+    );
+    if (!res.ok) {
+      let m = 'Error descargando reporte PDF';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.blob();
+  },
+
+  getUrlDescargaEvidencia(idEvidencia: string): string {
+    return `${API_BASE_URL}/mantenimiento/evidencias/${encodeURIComponent(idEvidencia)}/download`;
+  },
+
+  async descargarZipEvidenciasSolicitud(idSolicitud: string): Promise<Blob> {
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/evidencias/zip`,
+      { credentials: 'include' },
+    );
+    if (!res.ok) {
+      let m = 'Error descargando ZIP de evidencias';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.blob();
   },
 };
 

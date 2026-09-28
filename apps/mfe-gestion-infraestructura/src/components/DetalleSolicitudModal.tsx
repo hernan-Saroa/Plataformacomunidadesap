@@ -214,6 +214,8 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [ejecutandoRecepcion, setEjecutandoRecepcion] = useState<boolean>(false);
   const [errorRecepcion, setErrorRecepcion] = useState<string>('');
 
+  const [descargandoZip, setDescargandoZip] = useState<boolean>(false);
+
   const [valoracionesAbierto, setValoracionesAbierto] = useState<boolean>(true);
 
   // ---------------------------------------------------------------------------
@@ -244,6 +246,29 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     }
     await recargarDetalle();
     await onCambioExitoso?.();
+  };
+
+  const handleDescargarZipEvidencias = async () => {
+    if (!idSolicitud || descargandoZip) return;
+    setDescargandoZip(true);
+    try {
+      const blob = await infraestructuraService.descargarZipEvidenciasSolicitud(idSolicitud);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const consecutivo = detalle?.consecutivo || idSolicitud.slice(0, 8);
+      a.download = `evidencias_${consecutivo}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setToastModal({ tipo: 'ok', texto: 'ZIP de evidencias descargado correctamente.' });
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Error al descargar ZIP de evidencias.';
+      setToastModal({ tipo: 'err', texto: msg });
+    } finally {
+      setDescargandoZip(false);
+    }
   };
 
   useEffect(() => {
@@ -2328,6 +2353,21 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                   </span>
                 </div>
               )}
+            {detalle && idSolicitud && (
+              <button
+                type="button"
+                onClick={handleDescargarZipEvidencias}
+                disabled={descargandoZip}
+                title="Descargar todas las evidencias de la solicitud empaquetadas en un archivo ZIP (radicación, valoración, cierre técnico y conformidad)."
+                className="inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-xl bg-white hover:bg-indigo-50 border border-indigo-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed disabled:border-slate-200 text-indigo-800 text-xs font-bold transition-all active:scale-[0.98] whitespace-nowrap"
+              >
+                {descargandoZip ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generando ZIP…</>
+                ) : (
+                  <><Package className="w-3.5 h-3.5" /> Descargar ZIP evidencias</>
+                )}
+              </button>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-3 ml-auto">
             {puedeReenviarTI && !ESTADOS_FINALES_O_BLOQUEADOS.includes(estadoActual) && (
