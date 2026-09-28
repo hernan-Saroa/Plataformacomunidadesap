@@ -781,14 +781,24 @@ export class UsersService {
     await this.userRepo.save(user);
   }
 
-  async setResetToken(userId: string, token: string | null): Promise<void> {
+  async setResetToken(userId: string, token: string | null, signatureContext?: string): Promise<void> {
     const user = await this.userRepo.findOne({ where: { id_user: userId } });
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
     }
 
     user.token = token;
+    user.signatureOtpContext = token ? signatureContext ?? null : null;
     await this.userRepo.save(user);
+  }
+
+  /** Consumo atómico: dos verificaciones concurrentes no pueden usar el mismo OTP. */
+  async consumeSignatureOtp(userId: string, token: string, context: string): Promise<boolean> {
+    const result = await this.userRepo.update(
+      { id_user: userId, token, signatureOtpContext: context },
+      { token: null, signatureOtpContext: null },
+    );
+    return result.affected === 1;
   }
 
   async setMicrosoftToken(userId: string, microsoftOid: string): Promise<void> {

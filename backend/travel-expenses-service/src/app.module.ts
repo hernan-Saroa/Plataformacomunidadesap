@@ -35,6 +35,7 @@ import { TicketsModule } from './modules/tickets/tickets.module';
 import { ConsolidacionModule } from './modules/consolidacion/consolidacion.module';
 import { CommonModule } from './common/common.module';
 import { LegalizacionModule, LEGALIZACION_ENTITIES } from './modules/legalizacion/legalizacion.module';
+import { PazYSalvoModule } from './modules/paz-y-salvo/paz-y-salvo.module';
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { LegalizacionModule, LEGALIZACION_ENTITIES } from './modules/legalizacio
     NotificationsModule,
     CommonModule,
     LegalizacionModule,
+    PazYSalvoModule,
   ],
   controllers: [AppController],
   providers: [

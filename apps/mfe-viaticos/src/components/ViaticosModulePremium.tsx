@@ -47,6 +47,7 @@ import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
 import CancelarComisionModal from './CancelarComisionModal';
 import PresupuestoInbox from './PresupuestoInbox';
 import LegalizacionesSeccion from './LegalizacionesSeccion';
+import PazYSalvoCoordinadora from './paz-y-salvo/PazYSalvoCoordinadora';
 import VistaAnalistaViaticos from './VistaAnalistaViaticos';
 import ProcesarPagoModal from './ProcesarPagoModal';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
@@ -88,7 +89,7 @@ const Permissions = {
   VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
 } as const;
 
-type Seccion = 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'autorizaciones' | 'autorizaciones-direccion' | 'presupuesto' | 'tesoreria' | 'sst';
+type Seccion = 'paz-y-salvo' | 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'autorizaciones' | 'autorizaciones-direccion' | 'presupuesto' | 'tesoreria' | 'sst';
 
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
   OBLIGADA: 1,
@@ -212,6 +213,10 @@ export default function ViaticosModulePremium() {
           subtitle: 'Carga de facturas y cumplidos',
           icon: <Receipt className="w-5 h-5" />,
           color: '#D97706',
+        },
+        {
+          id: 'paz-y-salvo', label: 'Paz y salvo', subtitle: 'Certificación y firma de Viáticos',
+          icon: <FileCheck className="w-5 h-5" />, color: '#003DA5',
         },
         {
           id: 'resoluciones',
@@ -647,6 +652,7 @@ export default function ViaticosModulePremium() {
      authService.hasPermission('travel_expenses:reject_extemporaneous');
 
   const puedeCancelarComision = authService.canCancelarComision();
+  const puedeEmitirPazYSalvo = esSuperAdmin || authService.hasPermission('travel_expenses:paz_y_salvo.manage');
   const puedeVerPresupuesto =
     !tieneContextoAuth ||
     esSuperAdmin ||
@@ -684,6 +690,7 @@ export default function ViaticosModulePremium() {
         if (item.id === 'mis-solicitudes') return puedeVerSolicitudesAsignadas;
         if (item.id === 'tiquetes') return puedeVerTiquetes;
         if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
+        if (item.id === 'paz-y-salvo') return puedeEmitirPazYSalvo;
         if (item.id === 'resoluciones') return puedeVerResoluciones;
         if (item.id === 'autorizaciones') return puedeVerAutorizaciones;
         if (item.id === 'autorizaciones-direccion') return puedeVerAutorizacionesDireccion;
@@ -1535,6 +1542,9 @@ export default function ViaticosModulePremium() {
            {/* ── LEGALIZACIONES ── */}
            {seccion === 'legalizaciones' && puedeVerLegalizaciones && (
              <LegalizacionesSeccion />
+          )}
+           {seccion === 'paz-y-salvo' && puedeEmitirPazYSalvo && (
+             <PazYSalvoCoordinadora />
           )}
 
             {/* ── RESOLUCIONES ── */}
