@@ -8,9 +8,8 @@ import { quienLaHace } from './quien-la-hace';
  * por un rol escrito en el código.
  */
 describe('quienLaHace', () => {
-  it('el estudio previo y el análisis del sector son del área que radicó', () => {
+  it('el estudio previo, que trae el análisis del sector, es del área que radicó', () => {
     expect(quienLaHace('3.1')).toEqual({ papeles: ['RADICADOR'] });
-    expect(quienLaHace('3.2')).toEqual({ papeles: ['RADICADOR'] });
   });
 
   it('la radicación le toca a quien puede tomarla de la bandeja: aún no es de nadie', () => {

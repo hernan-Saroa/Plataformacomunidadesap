@@ -67,6 +67,9 @@ const ETIQUETA_PIEZA: Record<TipoPiezaAudiencia, string> = {
 };
 
 /** Vacío es "no viene", no cero. */
+/** Basta con que tenga arroba y dominio: el servidor valida el resto. */
+const correoValido = (texto: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(texto.trim());
+
 const aNumero = (texto: string): number | undefined => {
   const limpio = texto.trim();
   if (!limpio) return undefined;
@@ -127,6 +130,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
   const [numeroActo, setNumeroActo] = useState('');
   const [fechaActo, setFechaActo] = useState('');
   const [valorAdjudicado, setValorAdjudicado] = useState('');
+  const [correoContratista, setCorreoContratista] = useState('');
   const [justificacion, setJustificacion] = useState('');
   const [actoArchivo, setActoArchivo] = useState<File | null>(null);
   const [medioActo, setMedioActo] = useState('');
@@ -231,6 +235,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
           numeroActo: numeroActo.trim(),
           fechaActo,
           valorAdjudicado: aNumero(valorAdjudicado) as number,
+          correoContratista: correoContratista.trim() || undefined,
           justificacion: justificacion.trim() || undefined,
           firma: firmaOtp,
         },
@@ -241,6 +246,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
       setNumeroActo('');
       setFechaActo('');
       setValorAdjudicado('');
+      setCorreoContratista('');
       setJustificacion('');
       setActoArchivo(null);
     }, 'Proceso adjudicado');
@@ -638,6 +644,21 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
                 value={valorAdjudicado}
                 onChange={(e) => setValorAdjudicado(e.target.value)}
               />
+              {/* El contratista es externo y su registro vive en Click: esto es lo
+                  único suyo que se pide, para poder avisarle desde aquí. */}
+              <label className="block">
+                <span className="text-[11.5px] text-slate-600">Correo del contratista</span>
+                <input
+                  type="email"
+                  className={campo}
+                  placeholder="Para enviarle las notificaciones del proceso"
+                  value={correoContratista}
+                  onChange={(e) => setCorreoContratista(e.target.value)}
+                />
+                {correoContratista.trim() && !correoValido(correoContratista) && (
+                  <span className="text-[11px] text-red-600">No parece un correo válido</span>
+                )}
+              </label>
 
               {seApartaDelInforme && (
                 <Aviso tono="aviso" titulo="El acto se aparta del informe definitivo">
@@ -676,6 +697,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
                     !fechaActo ||
                     aNumero(valorAdjudicado) == null ||
                     !actoArchivo ||
+                    (correoContratista.trim() !== '' && !correoValido(correoContratista)) ||
                     (seApartaDelInforme && justificacion.trim().length === 0)
                   }
                 >
@@ -902,6 +924,11 @@ function ResumenActo({ acto }: { acto: ActoAdjudicacion }) {
       <p className="text-[12px] text-slate-600 m-0">
         Resolución {acto.numeroActo} del {fechaLarga(acto.fechaActo)} ·{' '}
         {pesos(acto.valorAdjudicado)}
+      </p>
+      <p className="text-[11.5px] text-slate-500 m-0">
+        {acto.correoContratista
+          ? `Las notificaciones al contratista van a ${acto.correoContratista}.`
+          : 'Sin correo del contratista: los avisos dirigidos a él no tienen a dónde llegar.'}
       </p>
       {acto.publicadoAt ? (
         <p className="text-[11.5px] text-slate-500 m-0">

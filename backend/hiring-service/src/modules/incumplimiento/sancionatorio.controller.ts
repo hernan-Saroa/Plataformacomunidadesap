@@ -7,7 +7,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -26,13 +25,8 @@ import {
   NotificarResolucionDto,
   RevocarResolucionDto,
 } from './dto/sancionatorio.dto';
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import {
-  PERMISO_INCUMPLIMIENTO_DECIDIR,
-  PERMISO_INCUMPLIMIENTO_TRAMITAR,
-} from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 
@@ -65,8 +59,7 @@ export class SancionatorioController {
   ) {}
 
   @Post('abrir')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_INCUMPLIMIENTO_TRAMITAR)
+  @Puede('editar', 'INC.2')
   @UseInterceptors(FileInterceptor('file', opcionesDeCarga(MIME_DOCUMENTOS, MENSAJE_CARGA)))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
@@ -87,8 +80,7 @@ export class SancionatorioController {
   }
 
   @Post('audiencias')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_INCUMPLIMIENTO_TRAMITAR)
+  @Puede('editar', 'INC.2')
   @UseInterceptors(FileInterceptor('file', opcionesDeCarga(MIME_DOCUMENTOS, MENSAJE_CARGA)))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
@@ -109,8 +101,7 @@ export class SancionatorioController {
   }
 
   @Post('audiencias/:audienciaId/celebrar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_INCUMPLIMIENTO_TRAMITAR)
+  @Puede('editar', 'INC.2')
   @UseInterceptors(FileInterceptor('file', opcionesDeCarga(MIME_DOCUMENTOS, MENSAJE_CARGA)))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
@@ -132,8 +123,7 @@ export class SancionatorioController {
   }
 
   @Post('audiencias/:audienciaId/suspender')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_INCUMPLIMIENTO_TRAMITAR)
+  @Puede('editar', 'INC.2')
   @ApiOperation({
     summary: 'Registrar que la audiencia se suspendió',
     description: 'Se cita otra después. Exige motivo: de la audiencia depende que hubiera defensa.',
@@ -151,8 +141,7 @@ export class SancionatorioController {
   }
 
   @Post('audiencias/:audienciaId/cancelar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_INCUMPLIMIENTO_TRAMITAR)
+  @Puede('editar', 'INC.2')
   @ApiOperation({ summary: 'Registrar que la audiencia se canceló' })
   async cancelar(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -167,8 +156,7 @@ export class SancionatorioController {
   }
 
   @Post('decidir')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_INCUMPLIMIENTO_DECIDIR)
+  @Puede('decidir', 'INC.2')
   @UseInterceptors(FileInterceptor('file', opcionesDeCarga(MIME_DOCUMENTOS, MENSAJE_CARGA)))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
@@ -189,8 +177,7 @@ export class SancionatorioController {
   }
 
   @Post('resoluciones/:resolucionId/notificar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_INCUMPLIMIENTO_TRAMITAR)
+  @Puede('editar', 'INC.2')
   @ApiOperation({
     summary: 'Registrar la notificación de la resolución y, si la hay, su firmeza',
     description:
@@ -209,8 +196,7 @@ export class SancionatorioController {
   }
 
   @Post('resoluciones/:resolucionId/revocar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_INCUMPLIMIENTO_DECIDIR)
+  @Puede('decidir', 'INC.2')
   @ApiOperation({
     summary: 'Revocar una resolución del trámite',
     description:

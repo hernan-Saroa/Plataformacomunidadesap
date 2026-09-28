@@ -8,6 +8,7 @@ import { RolesGuard } from '../../auth/roles.guard';
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Permisos } from '../../auth/permisos.decorator';
 import { PermisosGuard } from '../../auth/permisos.guard';
+import { Puede } from '../../auth/puede.guard';
 
 
 /**
@@ -26,8 +27,7 @@ export class PlazosController {
   constructor(private readonly service: PublicacionService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({
     summary: 'Plazos de publicidad por modalidad',
     description:

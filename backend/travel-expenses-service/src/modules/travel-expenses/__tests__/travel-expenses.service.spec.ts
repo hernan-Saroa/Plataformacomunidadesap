@@ -769,6 +769,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -833,6 +835,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -904,6 +908,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) =>
           cb({
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -1036,6 +1042,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -1107,11 +1115,13 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
                 where: jest.fn().mockReturnThis(),
-                getRawOne: jest.fn().mockResolvedValue({ max: 'COM-2026-0005' }),
+                getRawOne: jest.fn().mockResolvedValue({ max: 5 }),
               }),
             }),
           };
@@ -1148,7 +1158,7 @@ describe('TravelExpensesService', () => {
 
       expect(result).toBeDefined();
       expect(entidadCapturada.diasComision).toBe(1.5);
-      expect(entidadCapturada.camposAdicionales).toEqual({
+      expect(entidadCapturada.camposAdicionales).toMatchObject({
         centroCostos: 'CC-Amazonas-01',
         contactoEmergencia: '3129876543',
       });
@@ -1252,6 +1262,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -1676,6 +1688,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -1731,6 +1745,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) =>
           cb({
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -4897,6 +4913,59 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
         const pdfBuffer = await svc.exportarFormato023('sol-023-002');
+
+        expect(pdfBuffer).toBeInstanceOf(Buffer);
+        expect(pdfBuffer.length).toBeGreaterThan(0);
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+      });
+
+      it('debe generar el Formato 023 con desglose de transporte y dejar campos vacíos si no han ocurrido los procesos', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.SOLICITADO),
+          id: 'sol-023-003',
+          consecutivoUnico: 'SOL-2026-0003',
+          creadoPorUsuarioId: 'user-enlace-1',
+          analistaAsignadoId: null,
+          pagadoPorId: null,
+          comisionado: {
+            primerNombre: 'Pedro',
+            primerApellido: 'Gómez',
+            numeroDocumento: '79123456',
+            tipoComisionado: 'CONTRATISTA',
+          },
+          montoViaticos: 347893,
+          montoGastosViaje: 180000,
+          itinerario: [
+            {
+              origenCiudad: 'Bogotá',
+              destinoCiudad: 'Cali',
+              tipoTransporte: 'AEREO',
+              tipoTrayecto: 'IDA_Y_VUELTA',
+              tarifaTerminalAereo: 50000,
+            },
+          ],
+          camposAdicionales: {
+            transporteTerrestre: 130000,
+          },
+        };
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+        };
+
+        const dataSource = {
+          query: jest.fn().mockImplementation(async (query: string, params: any[]) => {
+            if (params?.[0] === 'user-enlace-1') {
+              return [{ nom_largo: 'Enlace Solicitante Juan' }];
+            }
+            return [];
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-003');
 
         expect(pdfBuffer).toBeInstanceOf(Buffer);
         expect(pdfBuffer.length).toBeGreaterThan(0);

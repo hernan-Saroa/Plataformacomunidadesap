@@ -17,11 +17,7 @@ import { Documento } from '../../entities/documento.entity';
 import { DocumentoProceso } from '../../entities/documento-proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import {
-  PERMISO_ACTIVIDAD_EDITAR,
-  PERMISO_PRESUPUESTO_GESTIONAR,
-  tienePermiso,
-} from '../../auth/permisos';
+import { AlcanceService } from '../../auth/alcance.service';
 import {
   ExpedirCdpDto,
   RechazarCdpDto,
@@ -288,6 +284,8 @@ export class CdpService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly cierre: CierreActividadService,
+    /** Qué puede hacer quien consulta en la etapa 4 (migración 083). */
+    private readonly alcance: AlcanceService,
   ) {}
 
   /**
@@ -438,8 +436,8 @@ export class CdpService {
     // token. Si la pantalla lo dedujera por su cuenta, ofrecería botones que la
     // API rechaza con un 403 cuando ya es tarde.
     const permisos = {
-      puedeSolicitar: tienePermiso(acceso, PERMISO_ACTIVIDAD_EDITAR),
-      puedeGestionar: tienePermiso(acceso, PERMISO_PRESUPUESTO_GESTIONAR),
+      puedeSolicitar: await this.alcance.puedeEn(acceso, 'editar', '4.1'),
+      puedeGestionar: await this.alcance.puedeEn(acceso, 'editar', '4.2'),
     };
 
     const aplica = await this.aplicaCdp(proceso.modalidad, em);

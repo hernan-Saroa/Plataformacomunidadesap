@@ -4,10 +4,11 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  OnModuleInit,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource, EntityManager, FindOptionsWhere, In, Not } from 'typeorm';
+import { DataSource, EntityManager, FindOptionsWhere, In } from 'typeorm';
 import { createHash } from 'crypto';
 
 import { EstadoProceso, Proceso } from '../../entities/proceso.entity';
@@ -22,26 +23,24 @@ import { Documento } from '../../entities/documento.entity';
 import { DocumentoProceso } from '../../entities/documento-proceso.entity';
 import { Trazabilidad, AccionTraza } from '../../entities/trazabilidad.entity';
 import { DecisionRevision, Revision } from '../../entities/revision.entity';
-import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import {
-  PERMISO_ACTIVIDAD_APROBAR,
-  PERMISO_PRESUPUESTO_GESTIONAR,
-  PERMISO_PROCESO_TOMAR,
-  PERMISO_PROCESO_VER_TODOS,
-  tienePermiso,
-} from '../../auth/permisos';
+import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { PermisosService } from '../../auth/permisos.service';
+import { AlcanceService } from '../../auth/alcance.service';
 import { AprobacionService } from '../aprobacion/aprobacion.service';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import { CrearProcesoDto, GuardarBorradorDto } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
-import { ParticipacionService, esSuya } from '../participacion/participacion.service';
+import {
+  NUMERAL_RADICACION as NUMERAL_RADICACION_DIRECCION,
+  ParticipacionService,
+  esSuya,
+} from '../participacion/participacion.service';
 import { CdpService } from '../cdp/cdp.service';
-import { ListaChequeoService } from '../lista-chequeo/lista-chequeo.service';
+import { DocumentosActividadService } from '../documentos-actividad/documentos-actividad.service';
 
 const ETAPA_ESTUDIOS_PREVIOS = 3;
 
@@ -93,12 +92,6 @@ export function porQueNoSePuedeRadicar(
 }
 
 /**
- * Numeral 3.2: el análisis del sector, que el área entrega junto al estudio
- * previo y que la 3.4 revisa con él.
- */
-export const NUMERAL_ANALISIS_SECTOR = '3.2';
-
-/**
  * Numeral 3.4: la revisión, que se resuelve desde el estudio previo.
  *
  * No tiene panel ni tarjeta en el riel: el abogado decide leyendo la 3.1, y
@@ -112,8 +105,8 @@ export const NUMERAL_REVISION = '3.4';
 /**
  * Si el estudio previo de este proceso es de quien intenta tocarlo (EFDS-1183).
  *
- * `contratacion.actividad.edit` dice que alguien diligencia estudios previos, no
- * que diligencie el de cualquier expediente de la entidad. Hasta ahora era lo
+ * Editar la 3.1 dice que alguien diligencia estudios previos, no que
+ * diligencie el de cualquier expediente de la entidad. Hasta ahora era lo
  * segundo: un estructurador de un área podía abrir y reescribir el estudio
  * previo que otra área había radicado.
  *
@@ -191,7 +184,7 @@ function sha256(texto: string): string {
 }
 
 @Injectable()
-export class EstudioPrevioService {
+export class EstudioPrevioService implements OnModuleInit {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly umbrales: UmbralesService,
@@ -209,13 +202,18 @@ export class EstudioPrevioService {
      */
     private readonly cierre: CierreActividadService,
     /**
-     * El paquete con el que se radica en la Dirección de Contratación.
+     * Los documentos que pide la 3.1: el estudio previo firmado y el paquete
+     * con el que se radica en la Dirección de Contratación (EFDS-2066).
      *
-     * Lo consulta el envío, que es el acto de radicar, y lo arma el área desde
-     * las tres rutas que este servicio expone: quién puede hacerlo es la misma
-     * regla que protege el borrador, y por eso pasa por aquí.
+     * Lo consulta el envío, que es el acto de radicar. Quién puede armarlo es
+     * la misma regla que protege el borrador, y se registra como guardia.
      */
-    private readonly listaChequeo: ListaChequeoService,
+    private readonly documentos: DocumentosActividadService,
+    /**
+     * Quién puede tomar de la bandeja o atender la de la Financiera (083): lo
+     * que la vista de un proceso sin dueño pregunta antes de enseñarlo.
+     */
+    private readonly alcance: AlcanceService,
   ) {}
 
   /**
@@ -256,7 +254,7 @@ export class EstudioPrevioService {
   }
 
   private quienDecide(procesoId: string, acceso: HiringAccess) {
-    return this.participacion.quienDecide(procesoId, acceso);
+    return this.participacion.quienDecide(procesoId, acceso, NUMERAL_REVISION);
   }
 
   // ------------------------------------------------------------- proceso ---
@@ -386,11 +384,11 @@ export class EstudioPrevioService {
        */
       const puedeRecibirlo =
         enElProceso ||
-        (tienePermiso(acceso, PERMISO_PROCESO_TOMAR) &&
+        ((await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION_DIRECCION)) &&
           (await this.participacion.estaEnLaBandeja(procesoId))) ||
         // Y la solicitud de CDP sin atender, por lo mismo: el listado se la
         // enseña a la Financiera y al pulsarla le diría que no existe.
-        (tienePermiso(acceso, PERMISO_PRESUPUESTO_GESTIONAR) &&
+        ((await this.alcance.puedeEn(acceso, 'editar', '4.2')) &&
           (await this.participacion.estaEnLaBandejaFinanciera(procesoId)));
 
       if (!puedeRecibirlo) {
@@ -440,7 +438,7 @@ export class EstudioPrevioService {
       mios.push({ createdBy: acceso!.userName });
 
       const alcanzables = new Set(await this.participacion.procesosDe(acceso!));
-      if (tienePermiso(acceso!, PERMISO_PROCESO_TOMAR)) {
+      if (await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION_DIRECCION)) {
         for (const id of await this.participacion.idsEnBandeja()) alcanzables.add(id);
       }
       /**
@@ -451,7 +449,7 @@ export class EstudioPrevioService {
        * Contratación, así que las tres vías anteriores le devuelven la lista
        * vacía aunque tenga solicitudes de CDP esperándola.
        */
-      if (tienePermiso(acceso!, PERMISO_PRESUPUESTO_GESTIONAR)) {
+      if (await this.alcance.puedeEn(acceso, 'editar', '4.2')) {
         for (const id of await this.participacion.idsEnBandejaFinanciera()) {
           alcanzables.add(id);
         }
@@ -669,52 +667,39 @@ export class EstudioPrevioService {
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
 
       /*
-       * El estudio previo es el adjunto **propio** de la actividad.
-       *
-       * Los documentos de la lista de chequeo se guardan con este mismo
-       * numeral —pertenecen a la 3.1— así que sin descontarlos, cargar el
-       * memorando daría por adjunto el estudio previo y el envío pasaría sin
-       * él. Se distinguen por su fila en `documentos_proceso`, que es la que
-       * dice qué requisito cubre cada archivo; los anulados se descuentan
-       * igual, porque tampoco eran el estudio previo.
-       */
-      const deLaLista = await em.getRepository(DocumentoProceso).find({
-        where: { procesoId, numeral: NUMERAL_ESTUDIO_PREVIO },
-      });
-      const idsDeLaLista = deLaLista.map((d) => d.documentoId);
-
-      const adjuntos = await em.count(Documento, {
-        where: {
-          expedienteId: expediente.id,
-          numeral: NUMERAL_ESTUDIO_PREVIO,
-          tipo: 'ADJUNTO',
-          ...(idsDeLaLista.length > 0 ? { id: Not(In(idsDeLaLista)) } : {}),
-        },
-      });
-
-      /*
        * Enviar es radicar: el proceso aparece en la bandeja de la Dirección en
        * cuanto la 3.1 entra en revisión, y el procedimiento manda remitir «los
        * documentos previstos en la lista de chequeo que resulten aplicables,
-       * según la modalidad de contratación». Hasta ahora llegaba el estudio
-       * previo solo y el resto del paquete viajaba por correo.
+       * según la modalidad de contratación».
+       *
+       * Desde EFDS-2066 el estudio previo firmado es un documento más de esa
+       * lista —la fila de su formato—, así que una sola pregunta cubre lo que
+       * antes se contaba por separado.
        */
       const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
-      const sinRadicar = await this.listaChequeo.pendientes(
-        procesoId,
-        proceso?.modalidad ?? null,
-        em,
-      );
+      const requeridos = await this.documentos.requeridosDe(procesoId, NUMERAL_ESTUDIO_PREVIO, em);
+      const sinRadicar = await this.documentos.faltantes(procesoId, NUMERAL_ESTUDIO_PREVIO, em);
 
-      if (faltantes.length > 0 || adjuntos === 0 || sinRadicar.length > 0) {
+      /*
+       * Si Configuración no dejó ningún documento para esta modalidad, se sigue
+       * exigiendo al menos un adjunto: una lista vacía por descuido no puede
+       * volver el envío una radicación sin estudio previo.
+       */
+      const sinDocumento =
+        requeridos.length === 0 &&
+        (await em.count(Documento, {
+          where: { expedienteId: expediente.id, numeral: NUMERAL_ESTUDIO_PREVIO, tipo: 'ADJUNTO' },
+        })) === 0;
+
+      if (faltantes.length > 0 || sinDocumento || sinRadicar.length > 0) {
         throw new UnprocessableEntityException({
           message: porQueNoSePuedeRadicar(
             faltantes.length,
-            adjuntos === 0,
+            sinDocumento,
             sinRadicar.map((r) => r.nombre),
           ),
           camposFaltantes: faltantes,
-          documentoFaltante: adjuntos === 0,
+          documentoFaltante: sinDocumento,
           documentosDeLaLista: sinRadicar.map((r) => ({
             codigo: r.codigo,
             nombre: r.nombre,
@@ -790,73 +775,85 @@ export class EstudioPrevioService {
   // -------------------------------------------------- lista de chequeo (3.1) ---
 
   /**
-   * El paquete con el que se radica, con lo que ya está y lo que falta.
+   * Las reglas de la 3.1 sobre sus documentos, para el catálogo único.
    *
-   * Leer sigue abierto a quien vea el proceso —la Dirección tiene que poder
-   * comprobar qué recibió—; lo que se protege es armarlo.
+   * La lista la resuelve `DocumentosActividadService` como la de cualquier
+   * actividad; lo propio de esta es quién y cuándo puede tocarla, y eso sigue
+   * viviendo aquí porque es la misma regla que protege el borrador.
    */
-  paqueteDeRadicacion(procesoId: string) {
-    return this.listaChequeo.estado(procesoId);
+  onModuleInit() {
+    this.documentos.registrarGuardia(NUMERAL_ESTUDIO_PREVIO, {
+      antesDeCambiar: (em, procesoId, _cambio, acceso) =>
+        this.exigirPaqueteEditable(em, procesoId, acceso),
+    });
   }
 
   /**
-   * Carga uno de los documentos de la lista.
+   * El radicado con el que se remitió el paquete.
    *
-   * Pasa por aquí y no por una ruta propia del módulo de la lista para
-   * comprobar antes las dos cosas que ya protegen el borrador: que sea el área
-   * que radicó el proceso, y que el estudio previo no esté en revisión ni
-   * aprobado. Cambiar el paquete mientras el abogado lo revisa le movería el
-   * suelo bajo los pies.
+   * La lista viaja por la ruta de documentos de la actividad; esto es lo único
+   * del acto de radicar que no es un documento. Leer sigue abierto a quien vea
+   * el proceso: la Dirección tiene que poder comprobar qué recibió.
    */
-  async cargarDelPaquete(
-    procesoId: string,
-    codigo: string,
-    archivo: { filename: string; originalname: string; mimetype: string; size: number },
-    hash: string,
-    acceso: HiringAccess,
-  ) {
-    await this.exigirPaqueteEditable(procesoId, acceso);
-    return this.listaChequeo.cargar(procesoId, codigo, archivo, hash, acceso);
+  async radicado(procesoId: string) {
+    const proceso = await this.dataSource
+      .getRepository(Proceso)
+      .findOne({ where: { id: procesoId } });
+    if (!proceso) throw new NotFoundException('Proceso no encontrado');
+    return { radicadoGestionDocumental: proceso.radicadoGestionDocumental ?? null };
   }
 
   /**
-   * Anota con qué radicado de Active Document se remitió el paquete.
+   * Anota el consecutivo de Active Document con el que el área remitió el
+   * paquete.
    *
-   * Mismas condiciones que cargar un documento: es parte del mismo acto, y
-   * quien remite es quien sabe el número.
+   * Se puede corregir mientras el paquete sea editable: el número se transcribe
+   * a mano —no hay integración con Active Document— y un dígito mal copiado
+   * sería un expediente que no cruza con nada. Vacío lo borra: el procedimiento
+   * admite remitir por correo o por carpeta compartida, vías que no generan
+   * consecutivo.
    */
   async anotarRadicadoDeLaRadicacion(
     procesoId: string,
     radicado: string | null,
     acceso: HiringAccess,
   ) {
-    await this.exigirPaqueteEditable(procesoId, acceso);
-    return this.listaChequeo.anotarRadicado(procesoId, radicado, acceso);
-  }
+    await this.dataSource.transaction(async (em) => {
+      await this.exigirPaqueteEditable(em, procesoId, acceso);
 
-  /** Sustituye uno de los documentos de la lista. Mismas condiciones. */
-  async anularDelPaquete(procesoId: string, documentoProcesoId: string, acceso: HiringAccess) {
-    await this.exigirPaqueteEditable(procesoId, acceso);
-    return this.listaChequeo.anular(procesoId, documentoProcesoId, acceso);
+      const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
+      if (!proceso) throw new NotFoundException('Proceso no encontrado');
+
+      proceso.radicadoGestionDocumental = radicado?.trim() || null;
+      await em.save(proceso);
+
+      await this.traza(em, procesoId, 'procesos', proceso.id, 'RADICAR', acceso, {
+        actividad: NUMERAL_ESTUDIO_PREVIO,
+        radicadoGestionDocumental: proceso.radicadoGestionDocumental,
+      });
+    });
+
+    return this.radicado(procesoId);
   }
 
   /**
-   * Quién y cuándo puede tocar el paquete de la radicación.
+   * Quién y cuándo puede tocar los documentos de la 3.1.
    *
    * DEVUELTO y BORRADOR sí: devolver existe justamente para que el área
    * corrija, y lo que le devuelven puede ser un documento mal remitido.
+   * Cambiarlos mientras el abogado revisa le movería el suelo bajo los pies.
    */
-  private async exigirPaqueteEditable(procesoId: string, acceso: HiringAccess) {
+  private async exigirPaqueteEditable(em: EntityManager, procesoId: string, acceso: HiringAccess) {
     await this.exigirQueSeaSuyo(procesoId, acceso);
 
-    const actividad = await this.dataSource.getRepository(ProcesoActividad).findOne({
+    const actividad = await em.getRepository(ProcesoActividad).findOne({
       where: { procesoId, numeral: NUMERAL_ESTUDIO_PREVIO },
     });
     if (!actividad) throw new NotFoundException('El proceso no tiene estudio previo iniciado');
 
     if (actividad.estado === 'EN_REVISION') {
       throw new ConflictException(
-        'El estudio previo está en revisión: el paquete no se puede cambiar mientras lo miran',
+        'El estudio previo está en revisión: sus documentos no se pueden cambiar mientras lo miran',
       );
     }
     if (actividad.estado === 'APROBADO') {
@@ -865,32 +862,6 @@ export class EstudioPrevioService {
     if (actividad.estado === 'NEGADO') {
       throw new ConflictException('El proceso fue negado: no hay radicación que completar');
     }
-  }
-
-  // ------------------------------------------------------------ plantillas ---
-
-  /**
-   * Formatos oficiales aplicables a una actividad. Si se indica la modalidad
-   * se devuelve solo el que corresponde: el estudio previo tiene cuatro
-   * formatos distintos según cómo se contrate.
-   */
-  async plantillas(numeral: string, modalidad?: string) {
-    const todas = await this.dataSource.getRepository(Plantilla).find({
-      where: { numeral, activo: true },
-      order: { codigo: 'ASC' },
-    });
-
-    if (!modalidad) return todas;
-
-    // La misma regla que aplica el cliente: alcance vacío significa todas, y
-    // si el formato declara modalidades, la de este proceso tiene que estar.
-    // El antiguo «si ninguna casa se devuelven todas» existía porque la
-    // siembra escribía nombres donde el filtro esperaba códigos y nada casaba
-    // nunca; la migración 034 unificó la convención y el parche sobra — y
-    // ofrecería el pliego de licitación en una contratación directa.
-    return todas.filter(
-      (p) => p.modalidades.length === 0 || p.modalidades.includes(modalidad),
-    );
   }
 
   // ------------------------------------------------------------- revisión ---
@@ -1000,12 +971,6 @@ export class EstudioPrevioService {
       actividad.revisadoAt = new Date();
       await em.save(ProcesoActividad, actividad);
 
-      // La 3.4 revisa lo que el área entregó en 3.1 **y en 3.2**, así que la
-      // decisión alcanza a las dos. Devolver solo la 3.1 dejaba al área
-      // corrigiendo el estudio previo mientras su análisis del sector seguía
-      // dado por bueno, y negar dejaba una actividad aprobada colgando de un
-      // proceso muerto.
-      await this.arrastrarALaDelSector(em, procesoId, actividad.estado);
       await this.cerrarLaRevision(em, procesoId, decision, acceso, firma);
 
       /*
@@ -1044,34 +1009,6 @@ export class EstudioPrevioService {
         revisadoAt: actividad.revisadoAt,
       };
     });
-  }
-
-  /**
-   * Lleva la 3.2 al mismo sitio que la 3.1 cuando la 3.4 la devuelve o la niega.
-   *
-   * Solo hacia atrás: aprobar la 3.1 no aprueba la 3.2, porque el análisis del
-   * sector tiene su propio registro y darlo por bueno desde aquí sellaría como
-   * revisado algo que nadie miró.
-   *
-   * Una 3.2 que no aplica a la modalidad se queda como está: NO_APLICA no es un
-   * estado del que se pueda devolver a nadie.
-   */
-  private async arrastrarALaDelSector(
-    em: EntityManager,
-    procesoId: string,
-    estadoDeLa31: EstadoActividad,
-  ) {
-    if (estadoDeLa31 !== 'BORRADOR' && estadoDeLa31 !== 'NEGADO') return;
-
-    const sector = await em.getRepository(ProcesoActividad).findOne({
-      where: { procesoId, numeral: NUMERAL_ANALISIS_SECTOR },
-    });
-    if (!sector || sector.estado === 'NO_APLICA') return;
-
-    sector.estado = estadoDeLa31;
-    sector.revisadoPor = null as any;
-    sector.revisadoAt = null as any;
-    await em.save(ProcesoActividad, sector);
   }
 
   /**

@@ -9,12 +9,12 @@ import { ACTIVIDADES_CON_REGISTRO, TIENEN_PANEL } from '../proceso/DetalleProces
 import { AprobacionActividad } from './AprobacionActividad';
 import { FirmaActividad } from './FirmaActividad';
 import { NotificacionesActividad } from './NotificacionesActividad';
-import { FormatosActividad } from './FormatosActividad';
+import { DocumentosQuePide } from './DocumentosQuePide';
 import { QueSePide } from './QueSePide';
 import { VistaPrevia } from './VistaPrevia';
 import { Peticion } from './peticiones';
 
-type Pestana = 'entrega' | 'archivos' | 'aprobacion' | 'firma' | 'avisos' | 'previa';
+type Pestana = 'entrega' | 'documentos' | 'aprobacion' | 'firma' | 'avisos' | 'previa';
 
 /** La única actividad cuyo formulario se arma con campos configurables. */
 const NUMERAL_FORMULARIO_CONFIGURABLE = '3.1';
@@ -69,7 +69,7 @@ export function DetalleActividad({
   // formulario genérico mostraría una pantalla que no existe.
   const pestanas: [Pestana, string][] = [
     ['entrega', 'Qué entrega'],
-    ['archivos', 'Archivos'],
+    ['documentos', 'Documentos'],
     ['aprobacion', 'Aprobación'],
     ['firma', 'Firma'],
     ['avisos', 'Notificaciones'],
@@ -133,8 +133,8 @@ export function DetalleActividad({
             </p>
           ))}
 
-        {pestana === 'archivos' && (
-          <FormatosActividad numeral={fila.numeral} modalidad="" modalidades={modalidades} />
+        {pestana === 'documentos' && (
+          <DocumentosQuePide numeral={fila.numeral} modalidades={modalidades} />
         )}
 
         {pestana === 'aprobacion' && <AprobacionActividad numeral={fila.numeral} />}

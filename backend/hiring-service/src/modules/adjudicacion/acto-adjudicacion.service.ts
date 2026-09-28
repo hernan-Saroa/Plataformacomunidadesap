@@ -154,6 +154,7 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
           numeroActo: dto.numeroActo.trim(),
           fechaActo: dto.fechaActo,
           valorAdjudicado: String(dto.valorAdjudicado),
+          correoContratista: dto.correoContratista?.toLowerCase() ?? null,
           actoDocumentoId: doc.id,
           estado: 'VIGENTE' as const,
           emitidoPor: acceso.userName,
@@ -289,6 +290,7 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
       numeroActo: acto.numeroActo,
       fechaActo: acto.fechaActo,
       valorAdjudicado: Number(acto.valorAdjudicado),
+      correoContratista: acto.correoContratista ?? null,
       acto: doc ? { id: doc.id, nombre: doc.nombre, archivoUrl: doc.archivoUrl } : null,
       evidencia: evidencia
         ? { id: evidencia.id, nombre: evidencia.nombre, archivoUrl: evidencia.archivoUrl }

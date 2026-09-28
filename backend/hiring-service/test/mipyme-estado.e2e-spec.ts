@@ -31,7 +31,6 @@ describe('Actividad 5.4 · el estado de MIPYME se puede consultar', () => {
     userId: '00000000-0000-0000-0000-000000000001',
     userName: 'prueba.gestor',
     roles: ['GESTOR_CONTRATACION'],
-    puedeEditar: true,
   };
 
   const crear = (modalidad: string) =>

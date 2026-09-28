@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFiles,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
@@ -21,10 +20,9 @@ import { AnularAudienciaDto, RegistrarAudienciaDto } from './dto/riesgos.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Audiencia de asignación de riesgos — actividad 5.5 (EFDS-1153).
@@ -39,8 +37,7 @@ export class RiesgosController {
   constructor(private readonly service: RiesgosService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', '5.5')
   @ApiOperation({
     summary: 'Estado de la audiencia de riesgos del proceso',
     description:
@@ -51,8 +48,7 @@ export class RiesgosController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.5')
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -108,8 +104,7 @@ export class RiesgosController {
   }
 
   @Post('anular')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.5')
   @ApiOperation({
     summary: 'Anular la audiencia registrada para corregirla',
     description:

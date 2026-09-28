@@ -8,12 +8,11 @@ import {
   Plus,
   Search,
   Upload,
-  X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { Modalidad, PlantillaFormato } from '../../types';
+import { PlantillaFormato } from '../../types';
 import { Modal } from '../shared/Modal';
 
 import { NOMBRE_ETAPA } from './simbolos';
@@ -26,10 +25,7 @@ const EXTENSIONES = '.pdf,.doc,.docx,.xls,.xlsx';
 const CLASE_ENTRADA =
   'w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5]';
 
-/** Alto de la lista desplegada, en píxeles. Decide hacia qué lado se abre. */
-const ALTO_LISTA = 240;
-
-/** Lo que la biblioteca necesita saber de una actividad para ofrecerla. */
+/** Lo que la biblioteca necesita saber de una actividad para ubicar sus formatos. */
 interface ActividadCatalogo {
   numeral: string;
   nombre: string;
@@ -37,146 +33,9 @@ interface ActividadCatalogo {
 }
 
 /**
- * Elegir una actividad entre sesenta y tres.
- *
- * Se escribe para filtrar en vez de desplegarlas todas: una lista de sesenta y
- * tres no cabe en la pantalla, y quien busca la 5.4 ya sabe lo que busca —
- * teclear «aviso» o «5.4» llega antes que recorrer la lista entera.
- */
-function SelectorActividad({
-  actividades,
-  valor,
-  onCambio,
-  id,
-  etiqueta,
-}: {
-  actividades: ActividadCatalogo[];
-  valor: string;
-  onCambio: (numeral: string) => void;
-  id: string;
-  /** Para la tabla, donde la cabecera de la columna no llega al lector. */
-  etiqueta?: string;
-}) {
-  const [busqueda, setBusqueda] = useState('');
-  const [abierto, setAbierto] = useState(false);
-  const [haciaArriba, setHaciaArriba] = useState(false);
-  const contenedor = useRef<HTMLDivElement>(null);
-
-  const elegida = actividades.find((a) => a.numeral === valor);
-
-  // Pulsar fuera cierra la lista. Sin esto quedaría abierta encima de lo
-  // siguiente que se quiera tocar.
-  useEffect(() => {
-    if (!abierto) return;
-    const alPulsar = (e: MouseEvent) => {
-      if (!contenedor.current?.contains(e.target as Node)) setAbierto(false);
-    };
-    document.addEventListener('mousedown', alPulsar);
-    return () => document.removeEventListener('mousedown', alPulsar);
-  }, [abierto]);
-
-  // Dentro del modal el cuerpo tiene su propio scroll, así que una lista
-  // desplegada hacia abajo se recorta contra el pie. Se mira el hueco real y
-  // se abre hacia el lado donde quepa.
-  useEffect(() => {
-    if (!abierto || !contenedor.current) return;
-    const { bottom } = contenedor.current.getBoundingClientRect();
-    setHaciaArriba(window.innerHeight - bottom < ALTO_LISTA + 24);
-  }, [abierto]);
-
-  const texto = busqueda.trim().toLowerCase();
-  const coinciden = texto
-    ? actividades.filter(
-        (a) => a.numeral.includes(texto) || a.nombre.toLowerCase().includes(texto),
-      )
-    : actividades;
-
-  const elegir = (numeral: string) => {
-    onCambio(numeral);
-    setBusqueda('');
-    setAbierto(false);
-  };
-
-  return (
-    <div ref={contenedor} className="relative">
-      <input
-        id={id}
-        value={abierto ? busqueda : (elegida ? `${elegida.numeral} · ${elegida.nombre}` : '')}
-        onChange={(e) => {
-          setBusqueda(e.target.value);
-          setAbierto(true);
-        }}
-        onFocus={() => setAbierto(true)}
-        placeholder="Escribe el número o el nombre de la actividad"
-        autoComplete="off"
-        role="combobox"
-        aria-label={etiqueta}
-        aria-expanded={abierto}
-        aria-controls={`${id}-lista`}
-        // Espacio a la derecha para que el texto no pase por debajo de la X.
-        className={`${CLASE_ENTRADA} ${valor && !abierto ? 'pr-8' : ''}`}
-      />
-
-      {/* Quitar la actividad sin tener que borrar el texto a mano. */}
-      {valor && !abierto && (
-        <button
-          type="button"
-          onClick={() => elegir('')}
-          title="Quitar la actividad"
-          aria-label="Quitar la actividad"
-          className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded bg-white p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      )}
-
-      {abierto && (
-        <ul
-          id={`${id}-lista`}
-          role="listbox"
-          style={{ maxHeight: ALTO_LISTA }}
-          className={`absolute z-20 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg m-0 list-none ${
-            haciaArriba ? 'bottom-full mb-1' : 'top-full mt-1'
-          }`}
-        >
-          {coinciden.length === 0 ? (
-            <li className="px-3 py-2 text-xs text-gray-500">
-              Ninguna actividad coincide
-            </li>
-          ) : (
-            // Se enseña la etapa de cada una: dos actividades pueden llamarse
-            // parecido y el numeral solo no dice en qué momento del proceso va.
-            coinciden.map((a) => (
-              <li key={a.numeral}>
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={a.numeral === valor}
-                  onClick={() => elegir(a.numeral)}
-                  className={`block w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 ${
-                    a.numeral === valor ? 'bg-gray-100 font-semibold' : ''
-                  }`}
-                >
-                  <span className="text-gray-900">
-                    {a.numeral} · {a.nombre}
-                  </span>
-                  <span className="block text-[11px] text-gray-500">
-                    Etapa {a.etapa} · {NOMBRE_ETAPA[a.etapa] ?? ''}
-                  </span>
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-/**
  * Un filtro de la lista, con cuántos formatos deja ver.
  *
- * El número va dentro del propio botón: saber que hay tres sin asignar solo
+ * El número va dentro del propio botón: saber que hay tres sin usar solo
  * sirve si desde ahí se llega a esos tres.
  */
 function Filtro({
@@ -231,16 +90,20 @@ function Filtro({
  * Viven aquí y no dentro de cada actividad porque un mismo formato sirve en
  * varias: subirlo actividad por actividad multiplicaría copias del mismo
  * archivo y las dejaría desincronizadas cuando el SIG publique una versión
- * nueva. Se sube una vez y se asigna donde corresponda.
+ * nueva.
+ *
+ * Desde EFDS-2066 un formato no se asigna a una actividad: lo citan los
+ * documentos que cada actividad pide, y se configuran en la actividad
+ * (Configuración → la actividad → Documentos). Aquí se ve dónde se usa cada
+ * uno, que es lo que hay que saber antes de retirarlo.
  */
 export function BibliotecaFormatos() {
   const [formatos, setFormatos] = useState<PlantillaFormato[]>([]);
   const [actividades, setActividades] = useState<ActividadCatalogo[]>([]);
-  const [modalidades, setModalidades] = useState<Modalidad[]>([]);
   const [cargando, setCargando] = useState(true);
   const [busqueda, setBusqueda] = useState('');
-  /** Qué subconjunto se está mirando: todos, una etapa, o los que no se ven. */
-  const [etapa, setEtapa] = useState<number | 'todas' | 'sin-asignar'>('todas');
+  /** Qué subconjunto se está mirando: todos, una etapa, o los que no se usan. */
+  const [etapa, setEtapa] = useState<number | 'todas' | 'sin-usar'>('todas');
   // Qué formulario está abierto: 'nuevo' para un alta, el formato para
   // corregirlo, y nada si no hay ninguno. Es el mismo formulario en los dos
   // casos, así que basta un estado para saber con qué datos abrirlo.
@@ -256,8 +119,8 @@ export function BibliotecaFormatos() {
   useEffect(() => {
     setCargando(true);
     cargar();
-    // El catálogo alimenta el selector de actividad: sin él habría que
-    // escribir el numeral a mano y acertar con uno de sesenta y tres.
+    // El catálogo dice a qué etapa pertenece cada actividad que usa un
+    // formato, para poder filtrar la biblioteca por etapa.
     contratacionService
       .catalogoActividades()
       .then((etapas) =>
@@ -272,29 +135,22 @@ export function BibliotecaFormatos() {
         ),
       )
       .catch(() => setActividades([]));
-
-    // Para decir a qué modalidades aplica cada formato. Vacío significa todas,
-    // que es lo habitual: solo el estudio previo tiene uno por tipo de
-    // contratación.
-    contratacionService
-      .modalidades()
-      .then(setModalidades)
-      .catch(() => setModalidades([]));
   }, []);
 
-  // La etapa de un formato es la de su actividad: el numeral «5.4» vive en la
-  // etapa 5, y sin actividad no pertenece a ninguna.
-  const etapaDe = (formato: PlantillaFormato): number | null => {
-    if (!formato.numeral) return null;
-    return actividades.find((a) => a.numeral === formato.numeral)?.etapa ?? null;
+  // Las etapas de un formato son las de las actividades que lo usan: el
+  // mismo formato puede pedirse en la 3.1 y en la 5.4.
+  const etapasDe = (formato: PlantillaFormato): number[] => {
+    const etapas = (formato.usadaEn ?? [])
+      .map((n) => actividades.find((a) => a.numeral === n)?.etapa)
+      .filter((e): e is number => e !== undefined);
+    return [...new Set(etapas)];
   };
 
-  /** Las etapas que tienen algún formato, con cuántos. */
+  /** Las etapas que usan algún formato, con cuántos. */
   const etapasConFormatos = useMemo(() => {
     const cuentas = new Map<number, number>();
     for (const f of formatos) {
-      const e = etapaDe(f);
-      if (e !== null) cuentas.set(e, (cuentas.get(e) ?? 0) + 1);
+      for (const e of etapasDe(f)) cuentas.set(e, (cuentas.get(e) ?? 0) + 1);
     }
     return [...cuentas.entries()]
       .map(([etapa, cuenta]) => ({ etapa, cuenta }))
@@ -304,51 +160,19 @@ export function BibliotecaFormatos() {
   const filtrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
     return formatos.filter((f) => {
-      if (etapa === 'sin-asignar' && f.numeral) return false;
-      if (typeof etapa === 'number' && etapaDe(f) !== etapa) return false;
+      if (etapa === 'sin-usar' && (f.usadaEn ?? []).length > 0) return false;
+      if (typeof etapa === 'number' && !etapasDe(f).includes(etapa)) return false;
       if (!texto) return true;
       return (
         f.nombre.toLowerCase().includes(texto) ||
         f.codigo.toLowerCase().includes(texto) ||
-        f.numeral.includes(texto)
+        (f.usadaEn ?? []).some((n) => n.includes(texto))
       );
     });
   }, [formatos, actividades, busqueda, etapa]);
 
-  const sinAsignar = formatos.filter((f) => !f.numeral).length;
+  const sinUsar = formatos.filter((f) => f.activo && (f.usadaEn ?? []).length === 0).length;
   const filtrando = etapa !== 'todas';
-
-  const asignar = async (formato: PlantillaFormato, numeral: string) => {
-    try {
-      await contratacionService.asignarPlantilla(formato.id, numeral);
-      await cargar();
-      toast.success(numeral ? `Asignado a la actividad ${numeral}` : 'Devuelto a la biblioteca');
-    } catch (err: any) {
-      toast.error(err.message ?? 'No se pudo asignar');
-    }
-  };
-
-  /**
-   * A qué modalidades aplica el formato. Lista vacía significa todas.
-   *
-   * Va junto a la asignación y no en el formulario de alta porque es una
-   * decisión sobre dónde se usa el formato, no sobre el formato en sí: el
-   * mismo archivo puede servir a todas las modalidades y dejar de servir a
-   * alguna sin que cambie ni su código ni su versión.
-   */
-  const cambiarModalidades = async (formato: PlantillaFormato, modalidad: string) => {
-    const actuales = formato.modalidades ?? [];
-    const siguientes = actuales.includes(modalidad)
-      ? actuales.filter((m) => m !== modalidad)
-      : [...actuales, modalidad];
-
-    try {
-      await contratacionService.asignarPlantilla(formato.id, formato.numeral, siguientes);
-      await cargar();
-    } catch (err: any) {
-      toast.error(err.message ?? 'No se pudieron guardar las modalidades');
-    }
-  };
 
   const cambiarEstado = async (formato: PlantillaFormato) => {
     try {
@@ -375,8 +199,9 @@ export function BibliotecaFormatos() {
       <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <p className="m-0 text-xs text-gray-600 leading-relaxed min-w-0 flex-1">
-            Los formatos aprobados del Sistema Integrado de Gestión. El gestor los descarga
-            desde su actividad, los diligencia, los firma y los adjunta al expediente.
+            Aquí están los formatos aprobados del Sistema Integrado de Gestión (SIG). El gestor los
+            descarga en cada actividad, junto al documento que los usa. Para elegir en qué
+            actividades se pide un formato, abre la actividad y ve a la pestaña Documentos.
           </p>
 
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -402,7 +227,7 @@ export function BibliotecaFormatos() {
         </div>
 
         {/* Los contadores son los filtros. Enseñar «12 formatos · 3 sin
-            asignar» y obligar a buscarlos a mano deja el dato mirando sin
+            usar» y obligar a buscarlos a mano deja el dato mirando sin
             servir de nada: aquí el número es el botón que los muestra. */}
         <div className="flex flex-wrap items-center gap-1.5 border-t border-gray-100 pt-2">
           <Filtro
@@ -427,15 +252,15 @@ export function BibliotecaFormatos() {
             </Filtro>
           ))}
 
-          {sinAsignar > 0 && (
+          {sinUsar > 0 && (
             <Filtro
-              activo={etapa === 'sin-asignar'}
-              onClick={() => setEtapa('sin-asignar')}
-              cuenta={sinAsignar}
+              activo={etapa === 'sin-usar'}
+              onClick={() => setEtapa('sin-usar')}
+              cuenta={sinUsar}
               alerta
-              titulo="Están cargados, pero el gestor no los ve en ninguna actividad"
+              titulo="Están vigentes, pero ninguna actividad los pide, así que el gestor no los ve"
             >
-              Sin asignar
+              Sin usar
             </Filtro>
           )}
         </div>
@@ -447,7 +272,6 @@ export function BibliotecaFormatos() {
           // en pantalla lo escrito para el anterior.
           key={editando === 'nuevo' ? 'nuevo' : editando.id}
           formato={editando === 'nuevo' ? undefined : editando}
-          actividades={actividades}
           formatos={formatos}
           onListo={async () => {
             await cargar();
@@ -507,10 +331,6 @@ export function BibliotecaFormatos() {
               <TarjetaFormato
                 key={f.id}
                 formato={f}
-                actividades={actividades}
-                modalidades={modalidades}
-                onAsignar={(numeral) => asignar(f, numeral)}
-                onAlternarModalidad={(m) => cambiarModalidades(f, m)}
                 onEditar={() => setEditando(f)}
                 onCambiarEstado={() => cambiarEstado(f)}
               />
@@ -529,10 +349,7 @@ export function BibliotecaFormatos() {
                     Formato
                   </th>
                   <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
-                    Actividad en la que se ofrece
-                  </th>
-                  <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
-                    Modalidades
+                    Usado en
                   </th>
                   <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-wide text-slate-500">
                     Archivo
@@ -548,10 +365,6 @@ export function BibliotecaFormatos() {
                   <Fila
                     key={f.id}
                     formato={f}
-                    actividades={actividades}
-                    modalidades={modalidades}
-                    onAsignar={(numeral) => asignar(f, numeral)}
-                    onAlternarModalidad={(m) => cambiarModalidades(f, m)}
                     onEditar={() => setEditando(f)}
                     onCambiarEstado={() => cambiarEstado(f)}
                   />
@@ -568,25 +381,16 @@ export function BibliotecaFormatos() {
 /**
  * Un formato de la biblioteca.
  *
- * La actividad se cambia desde la propia fila porque es lo que más se toca —
- * un formato se reasigna sin que nada más cambie. Lo demás se corrige en el
- * mismo formulario con el que se dio de alta, para no tener dos sitios donde
- * editar los mismos datos.
+ * Se corrige en el mismo formulario con el que se dio de alta, para no tener
+ * dos sitios donde editar los mismos datos. Dónde se usa no se cambia aquí:
+ * lo decide cada actividad al pedir el documento.
  */
 function Fila({
   formato,
-  actividades,
-  modalidades,
-  onAsignar,
-  onAlternarModalidad,
   onEditar,
   onCambiarEstado,
 }: {
   formato: PlantillaFormato;
-  actividades: ActividadCatalogo[];
-  modalidades: Modalidad[];
-  onAsignar: (numeral: string) => void;
-  onAlternarModalidad: (modalidad: string) => void;
   onEditar: () => void;
   onCambiarEstado: () => void;
 }) {
@@ -610,23 +414,7 @@ function Fila({
       </td>
 
       <td className="px-4 py-2.5">
-        <div className="w-64">
-          <SelectorActividad
-            id={`actividad-${formato.id}`}
-            etiqueta={`Actividad de ${formato.nombre}`}
-            actividades={actividades}
-            valor={formato.numeral}
-            onCambio={onAsignar}
-          />
-        </div>
-      </td>
-
-      <td className="px-4 py-2.5">
-        <SelectorModalidades
-          formato={formato}
-          modalidades={modalidades}
-          onAlternar={onAlternarModalidad}
-        />
+        <UsadoEn formato={formato} />
       </td>
 
       {/* Sin archivo el formato está declarado pero no se puede descargar: se
@@ -649,104 +437,13 @@ function Fila({
   );
 }
 
-/**
- * A qué modalidades aplica el formato.
- *
- * Desplegable y no once casillas en la fila: lo habitual es que un formato
- * sirva para todas —por eso vacío significa todas— y solo el estudio previo
- * tiene uno por tipo de contratación. Mostrarlas siempre haría que la tabla
- * gritara una excepción.
- */
-function SelectorModalidades({
-  formato,
-  modalidades,
-  onAlternar,
-}: {
-  formato: PlantillaFormato;
-  modalidades: Modalidad[];
-  onAlternar: (modalidad: string) => void;
-}) {
-  const [abierto, setAbierto] = useState(false);
-  const elegidas = formato.modalidades ?? [];
-
-  const resumen =
-    elegidas.length === 0
-      ? 'Todas'
-      : elegidas.length === 1
-        ? (modalidades.find((m) => m.codigo === elegidas[0])?.nombre ?? elegidas[0])
-        : `${elegidas.length} modalidades`;
-
-  return (
-    <div className="relative w-56">
-      <button
-        type="button"
-        onClick={() => setAbierto((v) => !v)}
-        title={
-          elegidas.length === 0
-            ? 'Aplica a todas las modalidades'
-            : elegidas
-                .map((c) => modalidades.find((m) => m.codigo === c)?.nombre ?? c)
-                .join(' · ')
-        }
-        className={`w-full text-left rounded-md border px-2.5 py-1.5 text-[11.5px] transition-colors ${
-          elegidas.length === 0
-            ? 'border-gray-200 bg-white text-slate-500 hover:border-[#003DA5]'
-            : 'border-[#003DA5]/30 bg-[#E0EDFF] text-[#003DA5] font-bold'
-        }`}
-      >
-        {resumen}
-      </button>
-
-      {abierto && (
-        <>
-          {/* Cierra al pulsar fuera: sin esto habría que volver al botón, y con
-              varias filas abiertas la tabla se vuelve ilegible. */}
-          <button
-            type="button"
-            aria-label="Cerrar"
-            onClick={() => setAbierto(false)}
-            className="fixed inset-0 z-10 cursor-default"
-          />
-          <div className="absolute z-20 mt-1 w-72 max-h-64 overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg p-1.5 space-y-0.5">
-            <p className="text-[10.5px] text-slate-500 px-2 py-1 m-0 leading-snug">
-              Sin ninguna marcada, el formato aplica a todas.
-            </p>
-            {modalidades.map((m) => (
-              <label
-                key={m.codigo}
-                className="flex items-start gap-2 px-2 py-1.5 rounded-md hover:bg-slate-50 cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={elegidas.includes(m.codigo)}
-                  onChange={() => onAlternar(m.codigo)}
-                  className="mt-0.5"
-                />
-                <span className="text-[11.5px] text-slate-700 leading-snug">{m.nombre}</span>
-              </label>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 /** El mismo formato de la tabla, apilado para la pantalla del teléfono. */
 function TarjetaFormato({
   formato,
-  actividades,
-  modalidades,
-  onAsignar,
-  onAlternarModalidad,
   onEditar,
   onCambiarEstado,
 }: {
   formato: PlantillaFormato;
-  actividades: ActividadCatalogo[];
-  modalidades: Modalidad[];
-  onAsignar: (numeral: string) => void;
-  onAlternarModalidad: (modalidad: string) => void;
   onEditar: () => void;
   onCambiarEstado: () => void;
 }) {
@@ -769,21 +466,7 @@ function TarjetaFormato({
       </div>
 
       <div className="mt-2">
-        <SelectorActividad
-          id={`actividad-movil-${formato.id}`}
-          etiqueta={`Actividad de ${formato.nombre}`}
-          actividades={actividades}
-          valor={formato.numeral}
-          onCambio={onAsignar}
-        />
-      </div>
-
-      <div className="mt-2">
-        <SelectorModalidades
-          formato={formato}
-          modalidades={modalidades}
-          onAlternar={onAlternarModalidad}
-        />
+        <UsadoEn formato={formato} />
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
@@ -791,6 +474,32 @@ function TarjetaFormato({
         <BotonEditarFormato formato={formato} onEditar={onEditar} />
       </div>
     </li>
+  );
+}
+
+/**
+ * En qué actividades se pide el formato.
+ *
+ * Solo se lee: lo decide cada actividad al configurar sus documentos. Se dice
+ * cuando ninguna lo usa, porque un formato vigente que nadie cita es uno que
+ * el gestor nunca verá.
+ */
+function UsadoEn({ formato }: { formato: PlantillaFormato }) {
+  const usos = formato.usadaEn ?? [];
+  if (usos.length === 0) {
+    return (
+      <span
+        title="Ninguna actividad lo pide, así que el gestor no lo ve"
+        className="text-[11px] font-bold text-amber-700"
+      >
+        En ninguna actividad
+      </span>
+    );
+  }
+  return (
+    <span className="text-[11px] font-bold text-slate-600 tabular-nums">
+      {usos.map((n) => `Actividad ${n}`).join(' · ')}
+    </span>
   );
 }
 
@@ -879,19 +588,17 @@ function BotonEditarFormato({
  * obligaría a mantener dos veces las mismas reglas.
  *
  * La versión no se pide: la lleva el sistema, porque volver a subir un código
- * que ya existe significa que el SIG publicó una revisión. El alcance por
- * modalidad lo resuelve la actividad a la que se asigna.
+ * que ya existe significa que el SIG publicó una revisión. Dónde se pide y a
+ * qué modalidades lo decide cada actividad al configurar sus documentos.
  */
 function Formulario({
   formato,
-  actividades,
   formatos,
   onListo,
   onCancelar,
 }: {
   /** El formato que se corrige, o nada si es un alta. */
   formato?: PlantillaFormato;
-  actividades: ActividadCatalogo[];
   formatos: PlantillaFormato[];
   onListo: () => Promise<void>;
   onCancelar: () => void;
@@ -899,7 +606,6 @@ function Formulario({
   const editando = formato !== undefined;
   const [codigo, setCodigo] = useState(formato?.codigo ?? '');
   const [nombre, setNombre] = useState(formato?.nombre ?? '');
-  const [numeral, setNumeral] = useState(formato?.numeral ?? '');
   const [archivo, setArchivo] = useState<File | null>(null);
   const [guardando, setGuardando] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -928,7 +634,6 @@ function Formulario({
       const cuerpo = new FormData();
       cuerpo.append('codigo', codigo.trim());
       cuerpo.append('nombre', nombre.trim());
-      cuerpo.append('numeral', numeral);
       if (archivo) cuerpo.append('file', archivo);
 
       if (editando) {
@@ -959,7 +664,7 @@ function Formulario({
       description={
         editando
           ? `${formato.codigo} · versión ${formato.version}`
-          : 'Queda en la biblioteca y el gestor lo descarga desde su actividad'
+          : 'Quedará en la biblioteca y aparecerá en las actividades que lo pidan'
       }
       size="large"
       icon={<FileText className="w-5 h-5" />}
@@ -1043,19 +748,6 @@ function Formulario({
             </span>
           </p>
         )}
-
-        <Campo
-          etiqueta="Actividad en la que se ofrece"
-          id="nuevo-formato-actividad"
-          ayuda="Es donde el gestor lo encontrará. Puedes decidirlo más tarde."
-        >
-          <SelectorActividad
-            id="nuevo-formato-actividad"
-            actividades={actividades}
-            valor={numeral}
-            onCambio={setNumeral}
-          />
-        </Campo>
 
         {/* Tres situaciones distintas: un archivo recién elegido, el que ya
             estaba guardado, y ninguno. Solo la última es un aviso — editar el

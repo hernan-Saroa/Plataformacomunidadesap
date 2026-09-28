@@ -44,6 +44,7 @@ import { WizardCreacion, DashboardPlan } from './PlanAnualWizardDashboard';
 import { PlanAnualRol4Integrado } from './PlanAnualRol4Integrado';
 import { IntegracionRol4Provider } from './IntegracionRol4Context';
 import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
+import { cortesComoPeriodos } from './services/cortesPlanAnual';
 import {
   ConfiguracionEvidencias,
   ObservacionHistorica,
@@ -1430,7 +1431,8 @@ function normalizarFechaCampoAVigencia(fecha: unknown, vigencia: number): string
 
 function mapPuntosControlFechasVigencia(puntos: unknown, vigencia: number): any[] {
   if (!Array.isArray(puntos)) return [];
-  return puntos.map((pc: any) => {
+  // Los cortes guardados como cierre → entrega del informe se leen como periodos (EFDS-958)
+  return cortesComoPeriodos(puntos.map((pc: any) => {
     const next = { ...pc };
     const fp = pc.fechaProgramada ?? pc.fecha_programada;
     if (fp != null && fp !== '') {
@@ -1447,7 +1449,7 @@ function mapPuntosControlFechasVigencia(puntos: unknown, vigencia: number): any[
       next.fechaReal = seguimientoDespuesDelCorte(normalizarFechaCampoAVigencia(fr, vigencia), next.fechaProgramada);
     }
     return next;
-  });
+  }));
 }
 
 function normalizarFechaTarea(fecha: unknown): string {

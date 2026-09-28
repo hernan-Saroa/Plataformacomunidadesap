@@ -233,6 +233,16 @@ export interface AvisoConfigurado {
   personas: string[];
   /** Ids de `auth.dependencias`: avisa a todas las personas de cada una. */
   dependencias: string[];
+  /**
+   * El texto que la Dirección escribió, con variables (088). `null` es el de
+   * siempre, que es el que dice `mensajeDeAviso`.
+   */
+  titulo: string | null;
+  mensaje: string | null;
+  /** Direcciones de fuera de la plataforma: les llega solo por correo. */
+  correosExternos: string[];
+  /** Si llega también al correo del contratista del acto de adjudicación. */
+  alContratista: boolean;
 }
 
 /** Lee una fila de `hiring.avisos`, descartando lo que no tenga forma válida. */
@@ -243,10 +253,15 @@ export function leerAviso(fila: {
   roles: unknown;
   personas?: unknown;
   dependencias?: unknown;
+  titulo?: unknown;
+  mensaje?: unknown;
+  correos_externos?: unknown;
+  al_contratista?: unknown;
 }): AvisoConfigurado | null {
   if (!esEvento(fila.evento)) return null;
   const lista = (v: unknown) =>
     Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && !!x) : [];
+  const texto = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
   return {
     evento: fila.evento,
@@ -259,7 +274,58 @@ export function leerAviso(fila: {
     dependencias: Array.isArray(fila.dependencias)
       ? fila.dependencias.filter((x) => x !== null && x !== '').map(String)
       : [],
+    titulo: texto(fila.titulo),
+    mensaje: texto(fila.mensaje),
+    correosExternos: lista(fila.correos_externos).filter(esCorreo),
+    alContratista: fila.al_contratista === true,
   };
+}
+
+/**
+ * Si parece una dirección de correo.
+ *
+ * No pretende validar el estándar: basta con no mandarle a notifications-service
+ * algo que no tiene arroba o dominio y que va a rebotar seguro.
+ */
+export const esCorreo = (valor: unknown): valor is string =>
+  typeof valor === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(valor.trim());
+
+/**
+ * Las variables que el texto de un aviso puede usar, con lo que ponen.
+ *
+ * Son las que el aviso ya conoce al enviarse: no hay que consultar nada más
+ * para llenarlas, y por eso son pocas.
+ */
+export const VARIABLES_AVISO: { clave: string; descripcion: string }[] = [
+  { clave: 'actividad', descripcion: 'Numeral y nombre de la actividad (8.1 · Elaboración de contrato)' },
+  { clave: 'proceso', descripcion: 'Radicado del proceso' },
+  { clave: 'quien', descripcion: 'Quién hizo la acción' },
+  { clave: 'observaciones', descripcion: 'Las observaciones de una devolución' },
+  { clave: 'vence', descripcion: 'La fecha en que vence el plazo' },
+];
+
+const CLAVES_AVISO = new Set(VARIABLES_AVISO.map((v) => v.clave));
+
+/** Las variables escritas en un texto que no existen: `{actvidad}` no se llenaría nunca. */
+export function variablesDesconocidas(texto: string): string[] {
+  const halladas = [...texto.matchAll(/\{([^{}]*)\}/g)].map((m) => m[1].trim());
+  return [...new Set(halladas.filter((c) => !CLAVES_AVISO.has(c)))];
+}
+
+/**
+ * Llena las variables de un texto.
+ *
+ * Lo que no se conoce en ese aviso —las observaciones de algo que no se
+ * devolvió, el radicado de un proceso que aún no lo tiene— queda vacío, y se
+ * recogen los espacios y la puntuación que eso deja sueltos para que no se lea
+ * «del proceso  fue devuelta».
+ */
+export function llenarTexto(texto: string, valores: Record<string, string | null>): string {
+  return texto
+    .replace(/\{([^{}]*)\}/g, (_, clave: string) => valores[clave.trim()] ?? '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ ([.,:;])/g, '$1')
+    .trim();
 }
 
 /** El aviso de un evento, con lo que alguien configuró o, si nadie lo tocó, lo sugerido. */
@@ -285,6 +351,10 @@ export function avisoQueRige(
     roles: [],
     personas: [],
     dependencias: [],
+    titulo: null,
+    mensaje: null,
+    correosExternos: [],
+    alContratista: false,
   };
 }
 
@@ -508,6 +578,35 @@ export function mensajeDeAviso(
         prioridad: 'Media',
       };
   }
+}
+
+/**
+ * El texto con que sale el aviso: el que escribió la Dirección o el de siempre.
+ *
+ * Título y mensaje se deciden por separado: cambiar solo el mensaje no obliga a
+ * reescribir el título. La prioridad no se configura, sale del evento.
+ */
+export function textoDelAviso(
+  ocurrido: Pick<EventoOcurrido, 'evento' | 'numeral' | 'actorNombre' | 'observaciones' | 'plazo'>,
+  actividad: string | null,
+  radicado: string | null,
+  propio: Pick<AvisoConfigurado, 'titulo' | 'mensaje'>,
+): { titulo: string; mensaje: string; prioridad: 'Media' | 'Alta' } {
+  const deSiempre = mensajeDeAviso(ocurrido, actividad, radicado);
+  if (!propio.titulo && !propio.mensaje) return deSiempre;
+
+  const valores: Record<string, string | null> = {
+    actividad: `${ocurrido.numeral}${actividad ? ` · ${actividad}` : ''}`,
+    proceso: radicado,
+    quien: ocurrido.actorNombre,
+    observaciones: ocurrido.observaciones,
+    vence: ocurrido.plazo ? fechaLarga(ocurrido.plazo.vence) : null,
+  };
+  return {
+    titulo: (propio.titulo && llenarTexto(propio.titulo, valores)) || deSiempre.titulo,
+    mensaje: (propio.mensaje && llenarTexto(propio.mensaje, valores)) || deSiempre.mensaje,
+    prioridad: deSiempre.prioridad,
+  };
 }
 
 /** «17 de septiembre de 2026»: la fecha como se lee en un aviso. */

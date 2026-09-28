@@ -78,6 +78,7 @@ describe('EstudioPrevioService · reemplazarAdjunto', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     return { instancia, removidos, documentosCreados, trazas };

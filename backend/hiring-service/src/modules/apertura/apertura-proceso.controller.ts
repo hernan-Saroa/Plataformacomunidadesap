@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFiles,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
@@ -21,6 +20,7 @@ import { RegistrarAperturaDto } from './dto/apertura.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -29,8 +29,6 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Apertura formal del proceso — actividad 5.7 (EFDS-1152).
@@ -46,8 +44,7 @@ export class AperturaProcesoController {
   constructor(private readonly service: AperturaService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', '5.7')
   @ApiOperation({
     summary: 'Estado de la apertura y qué falta para poder abrir',
     description:
@@ -58,8 +55,7 @@ export class AperturaProcesoController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.7')
   @UseInterceptors(
     FileFieldsInterceptor(
       [

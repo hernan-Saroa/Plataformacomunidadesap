@@ -395,7 +395,23 @@ export function ModalConfiguracionPuntosControl({
   };
 
   const handleCambiarFrecuencia = (nuevaFrecuencia: FrecuenciaPuntoControl) => {
-    if (nuevaFrecuencia === frecuenciaSeleccionada) return;
+    if (nuevaFrecuencia === frecuenciaSeleccionada) {
+      // Elegir de nuevo la misma periodicidad recalcula las fechas: así se corrigen cortes
+      // que quedaron mal guardados sin tener que pasar por otra periodicidad (EFDS-958).
+      if (nuevaFrecuencia !== 'personalizada') {
+        manualmenteEditado.current = false;
+        setPuntosControl(
+          generarPuntosControlAutomaticos(
+            nuevaFrecuencia,
+            fechaInicioActividad,
+            fechaCorteLocal || fechaFinActividad,
+            nombreActividad,
+            puntosControlExistentes
+          )
+        );
+      }
+      return;
+    }
     setFrecuenciaSeleccionada(nuevaFrecuencia);
   };
 

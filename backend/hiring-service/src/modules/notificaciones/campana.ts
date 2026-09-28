@@ -151,6 +151,42 @@ export class Campana {
     return enviados;
   }
 
+  /**
+   * El aviso, solo por correo, a quien no tiene cuenta en la plataforma (088).
+   *
+   * El contratista y los correos escritos a mano no tienen campana, así que el
+   * correo es su único canal: sale aunque la actividad tenga el correo apagado
+   * para sus usuarios, porque configurarlos ya es pedir que les llegue. El texto
+   * no los manda a la plataforma, a la que no pueden entrar.
+   */
+  async aCorreosExternos(
+    correos: string[],
+    aviso: Pick<AvisoCampana, 'titulo' | 'mensaje'>,
+  ): Promise<number> {
+    const unicos = [...new Set(correos.map((c) => c.trim().toLowerCase()).filter(Boolean))];
+    const url = process.env.NOTIFICATIONS_SERVICE_URL || 'http://notifications-service:3009';
+    let enviados = 0;
+    for (const para of unicos) {
+      try {
+        const respuesta = await fetch(`${url}/api/v1/emails/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: para,
+            subject: `ESAP · ${aviso.titulo}`,
+            text: aviso.mensaje,
+            html: htmlDelAviso(aviso, { externo: true }),
+          }),
+        });
+        if (respuesta.ok) enviados++;
+        else this.logger.warn(`El correo externo a ${para} no salió: ${respuesta.status}`);
+      } catch (error: any) {
+        this.logger.warn(`El correo externo a ${para} no salió: ${error.message}`);
+      }
+    }
+    return enviados;
+  }
+
   /** Descarta los avisos idénticos que el destinatario todavía no ha leído. */
   private async sinAvisarYa(avisos: AvisoCampana[]): Promise<AvisoCampana[]> {
     try {
@@ -189,18 +225,30 @@ function escapar(texto: string): string {
     .replace(/"/g, '&quot;');
 }
 
-/** El aviso con el aspecto del módulo: título, mensaje y el enlace a la plataforma. */
-export function htmlDelAviso(aviso: Pick<AvisoCampana, 'titulo' | 'mensaje'>): string {
+/**
+ * El aviso con el aspecto del módulo: título, mensaje y el enlace a la plataforma.
+ *
+ * Con `externo`, sin el enlace ni la nota de la campana: quien lo recibe no
+ * tiene cuenta, y mandarlo a la plataforma sería mandarlo a una puerta cerrada.
+ */
+export function htmlDelAviso(
+  aviso: Pick<AvisoCampana, 'titulo' | 'mensaje'>,
+  opciones: { externo?: boolean } = {},
+): string {
   const portal = process.env.FRONTEND_URL;
-  const enlace = portal
-    ? `<p style="margin:20px 0 0"><a href="${escapar(portal)}" style="background:#003DA5;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:6px;font-weight:700;font-size:14px">Abrir la plataforma</a></p>`
-    : '';
+  const enlace =
+    portal && !opciones.externo
+      ? `<p style="margin:20px 0 0"><a href="${escapar(portal)}" style="background:#003DA5;color:#ffffff;text-decoration:none;padding:10px 16px;border-radius:6px;font-weight:700;font-size:14px">Abrir la plataforma</a></p>`
+      : '';
+  const pie = opciones.externo
+    ? 'Mensaje enviado por la Dirección de Contratación de la ESAP.'
+    : 'Este aviso también está en la campana de la plataforma.';
   return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#1e293b">
   <div style="background:#003DA5;color:#ffffff;padding:14px 20px;border-radius:8px 8px 0 0;font-weight:700;font-size:15px">Contratación · ESAP</div>
   <div style="border:1px solid #e2e8f0;border-top:0;padding:20px;border-radius:0 0 8px 8px">
     <p style="font-size:16px;font-weight:700;margin:0 0 8px">${escapar(aviso.titulo)}</p>
     <p style="font-size:14px;line-height:1.5;margin:0">${escapar(aviso.mensaje)}</p>${enlace}
-    <p style="font-size:12px;color:#64748b;margin:20px 0 0">Este aviso también está en la campana de la plataforma.</p>
+    <p style="font-size:12px;color:#64748b;margin:20px 0 0">${pie}</p>
   </div>
 </div>`;
 }

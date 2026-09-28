@@ -691,7 +691,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         return;
       }
       setComisionado(resultado);
-      setForm((prev) => ({ ...prev, comisionadoId: resultado.id }));
+      setForm((prev) => ({
+        ...prev,
+        comisionadoId: resultado.id,
+        idDependencia: resultado.idDependencia ?? prev.idDependencia,
+      }));
       if (!resultado.autorizacionHabeasData) {
         setHabeasPendiente(true);
       }
@@ -874,6 +878,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     return { origenCiudad: sync.origenCiudad, origenDepartamento: sync.origenDepartamento, destinoCiudad: sync.destinoCiudad, destinoDepartamento: sync.destinoDepartamento };
   };
 
+  const validarCamposDinamicosObligatorios = (): string | null => {
+    const obligatorios = camposCatalogo.filter(
+      (c) => c.activo && !camposEstandar.has(c.clave) && !esCampoOculto(c.clave) && esCampoObligatorio(c.clave),
+    );
+    for (const campo of obligatorios) {
+      const val = form.camposAdicionales?.[campo.clave];
+      if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+        return `Por favor complete el campo obligatorio: "${campo.etiqueta}".`;
+      }
+    }
+    return null;
+  };
+
   const irPaso = (siguiente: number) => {
     if (siguiente === 2 && !tieneComisionadoAutorizado) return;
     if (siguiente === 3) {
@@ -897,6 +914,24 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       const error = validarFechasSolicitud(fechaInicio, fechaFin);
       if (error) {
         setErrorValidacion(error);
+        return;
+      }
+      // ── Validación: origen ≠ destino ──────────────────────────────────────
+      {
+        const { origenCiudad: oc, destinoCiudad: dc } = obtenerOrigenDestinoItinerario();
+        const normalizar = (s: string) =>
+          s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+        if (oc && dc && normalizar(oc) === normalizar(dc)) {
+          setErrorValidacion(
+            `La ciudad de destino ("${dc}") no puede ser la misma que la de origen ("${oc}"). ` +
+            'Si el itinerario tiene un tramo de regreso, el destino se calculará como el punto más alejado antes del retorno.',
+          );
+          return;
+        }
+      }
+      const errCamposDinamicos = validarCamposDinamicosObligatorios();
+      if (errCamposDinamicos) {
+        setErrorValidacion(errCamposDinamicos);
         return;
       }
       if (comisionado && parametrizacion) {
@@ -935,6 +970,29 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setErrorValidacion('Debe consultar el comisionado antes de guardar.');
       return;
     }
+    // ── Validación: origen ≠ destino ────────────────────────────────────────
+    // La sincronización del itinerario ya aplica la lógica de ida-vuelta, pero
+    // se agrega esta guarda adicional para detectar casos donde la ciudad de
+    // destino calculada termina siendo igual a la de origen (p.ej. itinerarios
+    // incompletos o con rutas de retorno sin tramo intermedio registrado).
+    {
+      const { origenCiudad: oc, destinoCiudad: dc } = obtenerOrigenDestinoItinerario();
+      const normalizar = (s: string) =>
+        s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+      if (oc && dc && normalizar(oc) === normalizar(dc)) {
+        setErrorValidacion(
+          `La ciudad de destino ("${dc}") no puede ser la misma que la ciudad de origen ("${oc}"). ` +
+          'Verifique el itinerario: si hay un tramo de regreso, el destino se calculará como el punto más alejado antes del retorno.',
+        );
+        return;
+      }
+    }
+    const errCamposDinamicos = validarCamposDinamicosObligatorios();
+    if (errCamposDinamicos) {
+      setErrorValidacion(errCamposDinamicos);
+      return;
+    }
+
     setEnviando(true);
     setErrorValidacion(null);
     try {
@@ -978,18 +1036,59 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 return 'TERRESTRE';
               })(),
             esInternacional: Boolean(form.esInternacional),
-            camposAdicionales: form.camposAdicionales ?? {},
+            idDependencia: form.idDependencia ?? comisionado?.idDependencia ?? undefined,
+            diasPernoctados: form.diasPernoctados ?? undefined,
+            tarifaDiaPernoctado: form.tarifaDiaPernoctado ?? undefined,
+            totalPernoctados: form.totalPernoctados ?? undefined,
+            diasNoPernoctados: form.diasNoPernoctados ?? undefined,
+            tarifaDiaNoPernoctado: form.tarifaDiaNoPernoctado ?? undefined,
+            totalNoPernoctados: form.totalNoPernoctados ?? undefined,
+            tarifaDiariaBase: form.tarifaDiariaBase ?? undefined,
+            tarifaFinalAplicadaDia: form.tarifaFinalAplicadaDia ?? undefined,
+            salarioBaseAplicado: form.salarioBaseAplicado ?? undefined,
+            decretoAplicado: form.decretoAplicado ?? undefined,
+            factorComisionado: form.factorComisionado ?? undefined,
+            factorPernocta: form.factorPernocta ?? undefined,
+            desgloseCalculo: form.desgloseCalculo ?? undefined,
+            alertasLiquidacion: form.alertasLiquidacion ?? undefined,
+            camposAdicionales: {
+              ...(form.camposAdicionales ?? {}),
+              transporteTerminalAereo:
+                form.camposAdicionales?.transporteTerminalAereo ??
+                (form.itinerario || []).reduce(
+                  (acc, r) => acc + (r.tarifaTerminalAereo || 0),
+                  0,
+                ),
+              transporteTerrestre:
+                form.camposAdicionales?.transporteTerrestre ??
+                Math.max(
+                  0,
+                  (form.montoGastosViaje || 0) -
+                    (form.itinerario || []).reduce(
+                      (acc, r) => acc + (r.tarifaTerminalAereo || 0),
+                      0,
+                    ),
+                ),
+              fechaAutoliquidacion:
+                form.camposAdicionales?.fechaAutoliquidacion ||
+                new Date().toISOString().split('T')[0],
+            },
             itinerario: (form.itinerario || []).map((r) => {
               const {
                 guardada,
                 origenDepartamentoId,
                 destinoDepartamentoId,
-                horaEstimadaSalida,
-                horaEstimadaLlegada,
-                tarifaTerminalAereo,
                 ...cleanRuta
               } = r;
-              return cleanRuta;
+              const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
+              const horaLlegada = r.horaEstimadaLlegada || '';
+              return {
+                ...cleanRuta,
+                tarifaTerminalAereo: r.tarifaTerminalAereo,
+                horaEstimadaSalida: horaSalida,
+                horarioEstimadoMilitar: horaSalida || r.horarioEstimadoMilitar,
+                horaEstimadaLlegada: horaLlegada,
+              };
             }),
           },
         );
@@ -1010,9 +1109,16 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       const tipoChecklist = form.esInternacional ? 'INTERNACIONAL' : comisionado.tipoComisionado;
       await cargarChecklist(tipoChecklist);
       setPaso(3);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error guardando borrador:', e);
-      setErrorValidacion('No fue posible guardar el borrador. Verifique e intente nuevamente.');
+      const msg = e?.response?.data?.message || e?.message;
+      setErrorValidacion(
+        Array.isArray(msg)
+          ? msg.join(', ')
+          : typeof msg === 'string' && msg.length > 0
+            ? msg
+            : 'No fue posible guardar el borrador. Verifique e intente nuevamente.',
+      );
     } finally {
       setEnviando(false);
     }
@@ -1914,7 +2020,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                   id={`campo_${campo.clave}`}
                                   required={obligatorio}
                                   rows={2}
-                                  placeholder={campo.ayuda || ''}
+                                  placeholder={campo.placeholder || (campo as any).ayuda || ''}
                                   value={String(valorActual)}
                                   onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.value)}
                                   className={inputCls}
@@ -1966,7 +2072,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                 id={`campo_${campo.clave}`}
                                 type={campo.tipoCampo === 'DATE' ? 'date' : 'text'}
                                 required={obligatorio}
-                                placeholder={campo.ayuda || ''}
+                                placeholder={campo.placeholder || (campo as any).ayuda || ''}
                                 value={campo.tipoCampo === 'CURRENCY' && typeof valorActual === 'number' ? formatearMoneda(valorActual) : String(valorActual)}
                                 onChange={(e) => {
                                   const val = campo.tipoCampo === 'CURRENCY' ? Number(soloNumeros(e.target.value)) || 0 : e.target.value;
@@ -2045,12 +2151,40 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   incluyeTransporteAereo={form.itinerario?.some((r) => r.tipoTransporte === 'AEREO')}
                   montoTransporteTerrestre={0}
                   itinerario={form.itinerario}
-                  onAplicarValor={(montoViaticos, dias, montoGastosDesplazamiento) => {
-                    actualizar('montoViaticos', montoViaticos);
-                    actualizar('diasComision', dias);
-                    if (montoGastosDesplazamiento !== undefined && montoGastosDesplazamiento > 0) {
-                      actualizar('montoGastosViaje', montoGastosDesplazamiento);
-                    }
+                  onAplicarValor={(montoViaticos, dias, montoGastosDesplazamiento, datosCompletos) => {
+                    const tarifasAereas = (form.itinerario || []).reduce((acc, r) => acc + (r.tarifaTerminalAereo || 0), 0);
+                    const totalDesplazamiento = montoGastosDesplazamiento !== undefined && montoGastosDesplazamiento > 0
+                      ? montoGastosDesplazamiento
+                      : form.montoGastosViaje;
+                    const terrestre = Math.max(0, (totalDesplazamiento || 0) - (datosCompletos?.transporteTerminalesAereos ?? tarifasAereas));
+
+                    setForm((prev) => ({
+                      ...prev,
+                      montoViaticos,
+                      diasComision: dias,
+                      montoGastosViaje: totalDesplazamiento,
+                      idDependencia: prev.idDependencia ?? comisionado?.idDependencia ?? null,
+                      diasPernoctados: datosCompletos?.diasPernoctados ?? prev.diasPernoctados,
+                      tarifaDiaPernoctado: datosCompletos?.tarifaDiaPernoctado ?? prev.tarifaDiaPernoctado,
+                      totalPernoctados: datosCompletos?.totalPernoctados ?? prev.totalPernoctados,
+                      diasNoPernoctados: datosCompletos?.diasNoPernoctados ?? prev.diasNoPernoctados,
+                      tarifaDiaNoPernoctado: datosCompletos?.tarifaDiaNoPernoctado ?? prev.tarifaDiaNoPernoctado,
+                      totalNoPernoctados: datosCompletos?.totalNoPernoctados ?? prev.totalNoPernoctados,
+                      tarifaDiariaBase: datosCompletos?.tarifaDiariaBase ?? prev.tarifaDiariaBase,
+                      tarifaFinalAplicadaDia: datosCompletos?.tarifaFinalAplicadaDia ?? prev.tarifaFinalAplicadaDia,
+                      salarioBaseAplicado: datosCompletos?.salarioBaseAplicado ?? prev.salarioBaseAplicado,
+                      decretoAplicado: datosCompletos?.decretoAplicado ?? prev.decretoAplicado,
+                      factorComisionado: datosCompletos?.factorComisionado ?? prev.factorComisionado,
+                      factorPernocta: datosCompletos?.factorPernocta ?? prev.factorPernocta,
+                      desgloseCalculo: datosCompletos?.desgloseCalculo ?? prev.desgloseCalculo,
+                      alertasLiquidacion: datosCompletos?.alertas ?? prev.alertasLiquidacion,
+                      camposAdicionales: {
+                        ...(prev.camposAdicionales || {}),
+                        transporteTerminalAereo: datosCompletos?.transporteTerminalesAereos ?? tarifasAereas,
+                        transporteTerrestre: terrestre,
+                        fechaAutoliquidacion: prev.camposAdicionales?.fechaAutoliquidacion || new Date().toISOString().split('T')[0],
+                      },
+                    }));
                   }}
                 />
 
@@ -2146,7 +2280,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                       value={formatearMoneda(terrestreActual || 0)}
                                       onChange={(e) => {
                                         const terrestre = Number(soloNumeros(e.target.value)) || 0;
-                                        actualizar('montoGastosViaje', tarifasAereas + terrestre);
+                                        setForm((prev) => ({
+                                          ...prev,
+                                          montoGastosViaje: tarifasAereas + terrestre,
+                                          camposAdicionales: {
+                                            ...(prev.camposAdicionales || {}),
+                                            transporteTerminalAereo: tarifasAereas,
+                                            transporteTerrestre: terrestre,
+                                          },
+                                        }));
                                       }}
                                       className={`${inputCls} pl-7 text-right font-bold`}
                                     />

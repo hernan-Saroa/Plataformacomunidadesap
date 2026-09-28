@@ -332,6 +332,7 @@ describe('PanelAdjudicacion · etapa 7', () => {
           numeroActo: 'RES-2026-114',
           fechaActo: '2026-09-05',
           valorAdjudicado: 48_000_000,
+          correoContratista: null,
           acto: { id: 'd-3', nombre: 'resolucion.pdf', archivoUrl: '/documentos/d-3' },
           evidencia: null,
           notificadoAt: null,

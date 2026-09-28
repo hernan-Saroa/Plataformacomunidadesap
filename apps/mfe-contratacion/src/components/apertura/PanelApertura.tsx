@@ -6,7 +6,6 @@ import { contratacionService } from '../../services/contratacionService';
 import { EstadoApertura } from '../../types';
 import { Aviso, Ayuda, Boton, campo, Marco, Pendiente, Titulo } from '../shared/PiezasPanel';
 import { Permitido } from '../shared/Permitido';
-import { PERMISOS } from '../../auth/permisos';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
 
 interface Props {
@@ -272,7 +271,7 @@ export function PanelApertura({ procesoId, onCambio }: Props) {
         onElegir={setEvidencia}
       />
 
-      <Permitido permiso={PERMISOS.actividadEditar} quien="el gestor de contratación">
+      <Permitido accion="editar" punto="5.7" quien="el gestor de contratación">
         <Boton
           icono={<Gavel className="w-3.5 h-3.5" />}
           disabled={!listo || guardando}

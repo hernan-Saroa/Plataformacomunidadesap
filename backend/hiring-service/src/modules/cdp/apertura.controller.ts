@@ -1,12 +1,11 @@
-import { Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { CdpService } from './cdp.service';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
+import { Puede } from '../../auth/puede.guard';
 
 
 /**
@@ -23,8 +22,7 @@ export class AperturaController {
   constructor(private readonly cdp: CdpService) {}
 
   @Get(':id/actividades')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view', 'contratacion.presupuesto.gestionar')
+  @Puede('ver')
   @ApiOperation({
     summary: 'Actividades de una etapa del proceso, con su estado',
     description:
@@ -38,8 +36,7 @@ export class AperturaController {
   }
 
   @Post(':id/documentos/iniciar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.1')
   @ApiOperation({
     summary: 'Actividad 5.1 · Iniciar la elaboración de documentos',
     description:

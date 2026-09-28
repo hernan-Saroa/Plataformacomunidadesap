@@ -74,32 +74,27 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
     userId: '00000000-0000-0000-0000-000000000001',
     userName: 'prueba.gestor',
     roles: ['GESTOR_CONTRATACION'],
-    puedeEditar: true,
   };
   const financiero: HiringAccess = {
     userId: '00000000-0000-0000-0000-000000000002',
     userName: 'prueba.financiero',
     roles: ['ESTRUCTURADOR_FINANCIERO'],
-    puedeEditar: false,
   };
   const ordenador: HiringAccess = {
     userId: '00000000-0000-0000-0000-000000000003',
     userName: 'prueba.ordenador',
     roles: ['ORDENADOR_GASTO'],
-    puedeEditar: false,
   };
   const revisor: HiringAccess = {
     userId: '00000000-0000-0000-0000-000000000005',
     userName: 'prueba.revisor',
     roles: ['REVISOR_CONTRATACION'],
-    puedeEditar: false,
   };
   /** El supervisor de otro contrato: tiene el rol y no debe poder avalar aquí. */
   const otroSupervisor: HiringAccess = {
     userId: '00000000-0000-0000-0000-000000000008',
     userName: 'prueba.otro.supervisor',
     roles: ['SUPERVISOR_CONTRATO'],
-    puedeEditar: false,
   };
 
   /** El supervisor designado; su cuenta se resuelve en beforeAll. */
@@ -163,7 +158,6 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
         userId: cuenta.id_user,
         userName: 'prueba.juridica',
         roles: ['EVALUADOR_JURIDICO'],
-        puedeEditar: false,
       },
     };
 
@@ -173,7 +167,6 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
       userId: cuenta.id_person,
       userName: 'Supervisora del contrato',
       roles: ['SUPERVISOR_CONTRATO'],
-      puedeEditar: false,
     };
   });
 
@@ -618,7 +611,6 @@ describe('HU EFDS-1175 · cierre definitivo del contrato', () => {
     userId: '00000000-0000-0000-0000-000000000009',
     userName: 'prueba.archivo',
     roles: ['ARCHIVO_GESTION_DC'],
-    puedeEditar: false,
   };
 
   const archivarExpediente = (procesoId: string, datos: Record<string, unknown> = {}) =>

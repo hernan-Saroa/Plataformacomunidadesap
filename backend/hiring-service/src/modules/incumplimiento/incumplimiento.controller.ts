@@ -7,7 +7,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -17,13 +16,8 @@ import { unlink } from 'fs/promises';
 
 import { IncumplimientoService } from './incumplimiento.service';
 import { ReportarIncumplimientoDto } from './dto/incumplimiento.dto';
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import {
-  PERMISO_INCUMPLIMIENTO_REPORTAR,
-  PERMISO_INCUMPLIMIENTO_VER,
-} from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -50,8 +44,7 @@ export class IncumplimientoController {
   constructor(private readonly service: IncumplimientoService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_INCUMPLIMIENTO_VER)
+  @Puede('ver', 'INC.1')
   @ApiOperation({
     summary: 'Casos de presunto incumplimiento del contrato',
     description:
@@ -62,8 +55,7 @@ export class IncumplimientoController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_INCUMPLIMIENTO_REPORTAR)
+  @Puede('editar', 'INC.1')
   @UseInterceptors(
     FileInterceptor(
       'file',
