@@ -792,6 +792,93 @@ export class TravelExpensesService {
     return solicitud;
   }
 
+  /**
+   * Helper para descomponer el nombre completo del funcionario de Nómina
+   * en primerNombre, segundoNombre, primerApellido, segundoApellido.
+   */
+  private parsearNombreFuncionario(fullName: string): {
+    primerNombre: string;
+    segundoNombre: string | null;
+    primerApellido: string;
+    segundoApellido: string | null;
+  } {
+    const rawName = (fullName || '').trim();
+    const partes = rawName.split(/\s+/).filter(Boolean);
+    let primerNombre = 'SIN NOMBRE';
+    let segundoNombre: string | null = null;
+    let primerApellido = 'SIN APELLIDO';
+    let segundoApellido: string | null = null;
+
+    if (partes.length === 1) {
+      primerNombre = partes[0];
+    } else if (partes.length === 2) {
+      primerNombre = partes[0];
+      primerApellido = partes[1];
+    } else if (partes.length === 3) {
+      primerNombre = partes[0];
+      primerApellido = partes[1];
+      segundoApellido = partes[2];
+    } else if (partes.length >= 4) {
+      primerNombre = partes[0];
+      segundoNombre = partes[1];
+      primerApellido = partes[2];
+      segundoApellido = partes.slice(3).join(' ');
+    }
+
+    return { primerNombre, segundoNombre, primerApellido, segundoApellido };
+  }
+
+  /**
+   * Helper para resolver el id_dependencia institucional en auth.dependencias
+   * según el nombre o código de la dependencia retornado por Nómina.
+   */
+  private async resolverIdDependenciaPorNombre(
+    depNombre?: string | null,
+  ): Promise<number | null> {
+    const dep = (depNombre || '').trim();
+    if (!dep) return null;
+
+    try {
+      const depMatch = await this.dataSource.query(
+        `SELECT id_dependencia
+           FROM auth.dependencias
+          WHERE UPPER(nom_dependencia) = UPPER($1)
+             OR UPPER(cod_dependencia) = UPPER($1)
+          LIMIT 1`,
+        [dep],
+      );
+      if (depMatch?.[0]?.id_dependencia != null) {
+        return Number(depMatch[0].id_dependencia);
+      }
+    } catch (err: any) {
+      this.logger.debug?.(
+        `[resolverIdDependenciaPorNombre] No se pudo mapear id_dependencia para "${dep}": ${err?.message}`,
+      );
+    }
+    return null;
+  }
+
+  /**
+   * Consulta, registra o sincroniza un comisionado a partir de su documento de identidad.
+   *
+   * Flujo de integración claro y jerárquico:
+   * 1. PASO 1 (Integración primaria en línea): API Nómina / Talento Humano
+   *    (consumida vía certification-service / Oracle FNC - VW_INTEGRACIONFNC).
+   *
+   *    a) Si se encuentra en la API Nómina:
+   *       - Se verifica si ya está registrado en la tabla local `travel_expenses.comisionados`:
+   *         * Si NO está registrado: se agrega como nuevo registro en la tabla `comisionados` (origenDatos: 'HUMANO').
+   *         * Si YA está registrado: se actualizan sus datos (nombres, apellidos, correo, teléfono, idDependencia, origenDatos)
+   *           en caso de que hayan cambiado o se requiera sincronización.
+   *       - Retorna el registro comisionado persistido o actualizado.
+   *
+   *    b) Si la API Nómina NO trae datos o presenta errores (timeout, servicio no disponible, fallo de red, respuesta vacía):
+   *       - PASO 2 (Fallback en tabla local): Se busca en la tabla `travel_expenses.comisionados` del mismo microservicio.
+   *         * Si existe localmente: se retorna directamente.
+   *       - PASO 3 (Fallback institucional ESAP): Si tampoco está en la tabla local, se busca en `auth.personas`.
+   *         * Si existe en `auth.personas`: se materializa en `travel_expenses.comisionados` (origenDatos: 'ESAP').
+   *         * Si tampoco existe: se arroja NotFoundException.
+   */
   async consultarComisionado(documento: string): Promise<ComisionadoEntity> {
     const doc = (documento || '').trim();
     if (!doc) {
@@ -800,102 +887,141 @@ export class TravelExpensesService {
       );
     }
 
-    // 1) Búsqueda primaria: tabla local de comisionados (cache histórico).
-    const existente = await this.comisionadoRepo.findOne({
-      where: { numeroDocumento: doc },
-    });
-    if (existente) {
+    // =========================================================================
+    // PASO 1: Consulta primaria a la API de Nómina / Talento Humano
+    // (Integración Oracle FNC / VW_INTEGRACIONFNC vía certification-service).
+    // =========================================================================
+    let funcionarioFnc: HumanResourcesSuggestedPerson | null = null;
+    let huboErrorNomina = false;
+
+    if (this.humanResourcesClient) {
+      try {
+        funcionarioFnc =
+          await this.humanResourcesClient.consultarFuncionarioPorDocumento(doc);
+      } catch (err: any) {
+        huboErrorNomina = true;
+        this.logger.warn(
+          `[consultarComisionado] Error consultando API Nómina / Talento Humano para doc ${doc}: ${err?.message || err}. Se procederá con fallback en tabla comisionados.`,
+        );
+      }
+    } else {
+      this.logger.debug?.(
+        `[consultarComisionado] HumanResourcesClientService no disponible. Procediendo con fallback en tabla comisionados.`,
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // CASO 1: La API Nómina encontró al funcionario exitosamente
+    // -------------------------------------------------------------------------
+    if (funcionarioFnc && funcionarioFnc.id_number) {
+      const { primerNombre, segundoNombre, primerApellido, segundoApellido } =
+        this.parsearNombreFuncionario(funcionarioFnc.full_name || '');
+
+      const idDependenciaFnc = await this.resolverIdDependenciaPorNombre(
+        funcionarioFnc.organization_department || funcionarioFnc.cost_center,
+      );
+
+      const emailFnc = (
+        funcionarioFnc.email ||
+        funcionarioFnc.personal_email ||
+        ''
+      ).trim();
+      const phoneFnc = (funcionarioFnc.phone || '').trim();
+
+      // Buscar si el comisionado ya está registrado en la tabla local comisionados
+      const existente = await this.comisionadoRepo.findOne({
+        where: { numeroDocumento: doc },
+      });
+
+      if (!existente) {
+        // Sub-caso A: No está registrado en comisionados -> AGREGAR
+        this.logger.log(
+          `[consultarComisionado] Registrando nuevo comisionado ${doc} desde API Nómina`,
+        );
+        const nuevo = this.comisionadoRepo.create({
+          numeroDocumento: doc,
+          primerNombre,
+          segundoNombre,
+          primerApellido,
+          segundoApellido,
+          email: emailFnc || 'sin-correo@esap.edu.co',
+          telefonoContacto: phoneFnc || '0000000000',
+          tipoComisionado: 'FUNCIONARIO',
+          origenDatos: 'HUMANO',
+          autorizacionHabeasData: false,
+          idDependencia: idDependenciaFnc,
+        } as Partial<ComisionadoEntity>);
+
+        return await this.comisionadoRepo.save(nuevo);
+      }
+
+      // Sub-caso B: Ya está registrado en comisionados -> ACTUALIZAR DATOS SI SE REQUIERE
+      let requiereActualizacion = false;
+
+      if (primerNombre !== 'SIN NOMBRE' && existente.primerNombre !== primerNombre) {
+        existente.primerNombre = primerNombre;
+        requiereActualizacion = true;
+      }
+      if (segundoNombre !== existente.segundoNombre) {
+        existente.segundoNombre = segundoNombre;
+        requiereActualizacion = true;
+      }
+      if (primerApellido !== 'SIN APELLIDO' && existente.primerApellido !== primerApellido) {
+        existente.primerApellido = primerApellido;
+        requiereActualizacion = true;
+      }
+      if (segundoApellido !== existente.segundoApellido) {
+        existente.segundoApellido = segundoApellido;
+        requiereActualizacion = true;
+      }
+      if (emailFnc && emailFnc !== 'sin-correo@esap.edu.co' && existente.email !== emailFnc) {
+        existente.email = emailFnc;
+        requiereActualizacion = true;
+      }
+      if (phoneFnc && phoneFnc !== '0000000000' && existente.telefonoContacto !== phoneFnc) {
+        existente.telefonoContacto = phoneFnc;
+        requiereActualizacion = true;
+      }
+      if (idDependenciaFnc != null && existente.idDependencia !== idDependenciaFnc) {
+        existente.idDependencia = idDependenciaFnc;
+        requiereActualizacion = true;
+      }
+      if (existente.origenDatos !== 'HUMANO') {
+        existente.origenDatos = 'HUMANO';
+        requiereActualizacion = true;
+      }
+
+      if (requiereActualizacion) {
+        this.logger.log(
+          `[consultarComisionado] Actualizando datos de comisionado ${doc} con información reciente de API Nómina`,
+        );
+        return await this.comisionadoRepo.save(existente);
+      }
+
       return existente;
     }
 
-    // 2) Búsqueda secundaria: Talento Humano / Nómina (Oracle FNC - VW_INTEGRACIONFNC).
-    //    Se consulta vía certification-service (fuente oficial en línea de talento humano).
-    if (this.humanResourcesClient) {
-      try {
-        const funcionarioFnc =
-          await this.humanResourcesClient.consultarFuncionarioPorDocumento(doc);
+    // =========================================================================
+    // PASO 2 (Fallback local): Si la API Nómina NO trae datos o sale errores,
+    // se busca el comisionado en la tabla `comisionados` de travel-expenses-service.
+    // =========================================================================
+    const comisionadoLocal = await this.comisionadoRepo.findOne({
+      where: { numeroDocumento: doc },
+    });
 
-        if (funcionarioFnc && funcionarioFnc.id_number) {
-          const rawName = (funcionarioFnc.full_name || '').trim();
-          const partes = rawName.split(/\s+/).filter(Boolean);
-          let primerNombre = 'SIN NOMBRE';
-          let segundoNombre: string | null = null;
-          let primerApellido = 'SIN APELLIDO';
-          let segundoApellido: string | null = null;
-
-          if (partes.length === 1) {
-            primerNombre = partes[0];
-          } else if (partes.length === 2) {
-            primerNombre = partes[0];
-            primerApellido = partes[1];
-          } else if (partes.length === 3) {
-            primerNombre = partes[0];
-            primerApellido = partes[1];
-            segundoApellido = partes[2];
-          } else if (partes.length >= 4) {
-            primerNombre = partes[0];
-            segundoNombre = partes[1];
-            primerApellido = partes[2];
-            segundoApellido = partes.slice(3).join(' ');
-          }
-
-          // Resolver ID de dependencia en auth.dependencias si el nombre de dependencia viene informado
-          let idDependenciaFnc: number | null = null;
-          const depNombre = (
-            funcionarioFnc.organization_department ||
-            funcionarioFnc.cost_center ||
-            ''
-          ).trim();
-          if (depNombre) {
-            try {
-              const depMatch = await this.dataSource.query(
-                `SELECT id_dependencia
-                   FROM auth.dependencias
-                  WHERE UPPER(nom_dependencia) = UPPER($1)
-                     OR UPPER(cod_dependencia) = UPPER($1)
-                  LIMIT 1`,
-                [depNombre],
-              );
-              if (depMatch?.[0]?.id_dependencia != null) {
-                idDependenciaFnc = Number(depMatch[0].id_dependencia);
-              }
-            } catch (err: any) {
-              this.logger.debug?.(
-                `[consultarComisionado] No se pudo mapear id_dependencia para ${depNombre}: ${err?.message}`,
-              );
-            }
-          }
-
-          const nuevoDesdeFnc = this.comisionadoRepo.create({
-            numeroDocumento: doc,
-            primerNombre,
-            segundoNombre,
-            primerApellido,
-            segundoApellido,
-            email:
-              funcionarioFnc.email ||
-              funcionarioFnc.personal_email ||
-              'sin-correo@esap.edu.co',
-            telefonoContacto: funcionarioFnc.phone || '0000000000',
-            tipoComisionado: 'FUNCIONARIO',
-            origenDatos: 'HUMANO',
-            autorizacionHabeasData: false,
-            idDependencia: idDependenciaFnc,
-          } as Partial<ComisionadoEntity>);
-
-          return await this.comisionadoRepo.save(nuevoDesdeFnc);
-        }
-      } catch (err: any) {
-        this.logger.warn(
-          `[travel-expenses] Error consultando talento humano / Oracle FNC: ${err?.message || err}`,
-        );
-      }
+    if (comisionadoLocal) {
+      this.logger.log(
+        `[consultarComisionado] Comisionado ${doc} encontrado en tabla local comisionados (fallback por ${
+          huboErrorNomina ? 'error' : 'ausencia de datos'
+        } en API Nómina)`,
+      );
+      return comisionadoLocal;
     }
 
-    // 3) Búsqueda terciaria (fallback): auth.personas (origen único ESAP).
-    //    Ambos microservicios comparten la misma base de datos
-    //    (`esap_db`), por lo que se consulta directamente vía DataSource
-    //    para evitar un round-trip HTTP y mantener la latencia baja.
+    // =========================================================================
+    // PASO 3 (Fallback terciario institucional ESAP): auth.personas.
+    // Si tampoco está en comisionados locales, se busca en auth.personas y se materializa.
+    // =========================================================================
     const persona: AuthPersonaRow | undefined = await this.dataSource
       .query(
         `SELECT
@@ -920,17 +1046,11 @@ export class TravelExpensesService {
       });
 
     if (!persona) {
-      // 4) No existe ni en comisionados, ni en talento humano (Oracle FNC), ni en auth.personas:
-      //    bloqueamos el flujo porque no hay un funcionario válido
-      //    para asociar a la solicitud de viáticos.
       throw new NotFoundException(
-        `No se encontró un comisionado con documento ${doc} ni en la base de datos de talento humano ni en ESAP. Verifique el número o contacte al administrador.`,
+        `No se encontró un comisionado con documento ${doc} en la API de Nómina, ni en la tabla comisionados, ni en ESAP. Verifique el número o contacte al administrador.`,
       );
     }
 
-    // 5) Persistimos la "foto" de la persona de ESAP en
-    //    travel_expenses.comisionados para que las siguientes consultas
-    //    queden cacheadas localmente. El origen queda marcado como 'ESAP'.
     const nombres = (persona.nom_tercero || '').trim().split(/\s+/);
     const apellidos = (persona.pri_apellido || '').trim().split(/\s+/);
     const primerNombre = nombres.shift() || persona.nom_tercero || 'SIN NOMBRE';
@@ -956,7 +1076,7 @@ export class TravelExpensesService {
       idDependencia,
     } as Partial<ComisionadoEntity>);
 
-    return this.comisionadoRepo.save(nuevo);
+    return await this.comisionadoRepo.save(nuevo);
   }
 
   /**

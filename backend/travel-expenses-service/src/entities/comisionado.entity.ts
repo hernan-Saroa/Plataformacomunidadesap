@@ -30,7 +30,7 @@ export class ComisionadoEntity {
     length: 100,
     nullable: true,
   })
-  segundoNombre: string;
+  segundoNombre: string | null;
 
   @Column({ name: 'primer_apellido', type: 'varchar', length: 100 })
   primerApellido: string;
@@ -41,7 +41,7 @@ export class ComisionadoEntity {
     length: 100,
     nullable: true,
   })
-  segundoApellido: string;
+  segundoApellido: string | null;
 
   @Column({ type: 'varchar', length: 150 })
   email: string;

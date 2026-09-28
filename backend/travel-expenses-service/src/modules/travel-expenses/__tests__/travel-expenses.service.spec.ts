@@ -161,7 +161,7 @@ describe('TravelExpensesService', () => {
   });
 
   describe('consultarComisionado', () => {
-    it('debe retornar comisionado cuando existe en la tabla local', async () => {
+    it('debe retornar comisionado desde la tabla local cuando no hay cliente de nómina configurado', async () => {
       const comisionadoRepo = {
         findOne: jest.fn().mockResolvedValue(mockComisionado),
         save: jest.fn(),
@@ -180,7 +180,7 @@ describe('TravelExpensesService', () => {
       expect(dataSource.query).not.toHaveBeenCalled();
     });
 
-    it('debe materializar comisionado desde talento humano (Oracle FNC) y persistirlo cuando existe en la vista', async () => {
+    it('debe agregar comisionado a la tabla comisionados cuando la API Nómina lo encuentra y no está registrado', async () => {
       const comisionadoRepo = {
         findOne: jest.fn().mockResolvedValue(null),
         save: jest.fn().mockImplementation(async (x) => ({
@@ -219,6 +219,9 @@ describe('TravelExpensesService', () => {
       const result = await svc.consultarComisionado('80123456');
 
       expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('80123456');
+      expect(comisionadoRepo.findOne).toHaveBeenCalledWith({
+        where: { numeroDocumento: '80123456' },
+      });
       expect(comisionadoRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           numeroDocumento: '80123456',
@@ -240,7 +243,144 @@ describe('TravelExpensesService', () => {
       });
     });
 
-    it('debe materializar comisionado desde auth.personas y persistirlo cuando no existe localmente', async () => {
+    it('debe actualizar los datos del comisionado en comisionados si ya está registrado pero cambian datos en Nómina', async () => {
+      const comisionadoExistente = {
+        ...mockComisionado,
+        id: 'com-existente-1',
+        numeroDocumento: '80123456',
+        primerNombre: 'CARLOS',
+        segundoNombre: 'A',
+        primerApellido: 'GOMEZ',
+        segundoApellido: 'R',
+        email: 'correo.viejo@esap.edu.co',
+        telefonoContacto: '3000000000',
+        origenDatos: 'ESAP',
+        idDependencia: 1,
+      };
+
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoExistente),
+        save: jest.fn().mockImplementation(async (x) => x),
+        create: jest.fn((x) => x),
+      };
+      const dataSource = {
+        query: jest.fn().mockImplementation(async (sql: string) => {
+          if (sql.includes('auth.dependencias')) {
+            return [{ id_dependencia: 25 }];
+          }
+          return [];
+        }),
+        transaction: jest.fn(),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue({
+          full_name: 'CARLOS ALBERTO GOMEZ RESTREPO',
+          id_number: '80123456',
+          organization_department: 'SUBDIRECCION DE ALTO GOBIERNO',
+          email: 'carlos.alberto@esap.edu.co',
+          phone: '3159998877',
+        }),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+      const result = await svc.consultarComisionado('80123456');
+
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('80123456');
+      expect(comisionadoRepo.findOne).toHaveBeenCalledWith({
+        where: { numeroDocumento: '80123456' },
+      });
+      expect(comisionadoRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'com-existente-1',
+          numeroDocumento: '80123456',
+          primerNombre: 'CARLOS',
+          segundoNombre: 'ALBERTO',
+          primerApellido: 'GOMEZ',
+          segundoApellido: 'RESTREPO',
+          email: 'carlos.alberto@esap.edu.co',
+          telefonoContacto: '3159998877',
+          origenDatos: 'HUMANO',
+          idDependencia: 25,
+        }),
+      );
+      expect(result.email).toBe('carlos.alberto@esap.edu.co');
+      expect(result.idDependencia).toBe(25);
+    });
+
+    it('debe buscar en tabla local comisionados como fallback cuando la API Nómina produce error', async () => {
+      const comisionadoLocal = {
+        ...mockComisionado,
+        id: 'com-local-002',
+        numeroDocumento: '80123456',
+        primerNombre: 'CARLOS',
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoLocal),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+      const dataSource = { query: jest.fn(), transaction: jest.fn() };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockRejectedValue(
+          new Error('Conexión con Nómina Oracle falló'),
+        ),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+      const result = await svc.consultarComisionado('80123456');
+
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('80123456');
+      expect(comisionadoRepo.findOne).toHaveBeenCalledWith({
+        where: { numeroDocumento: '80123456' },
+      });
+      expect(result).toEqual(comisionadoLocal);
+      expect(comisionadoRepo.save).not.toHaveBeenCalled();
+      expect(dataSource.query).not.toHaveBeenCalled();
+    });
+
+    it('debe buscar en tabla local comisionados como fallback cuando la API Nómina no trae datos (retorna null)', async () => {
+      const comisionadoLocal = {
+        ...mockComisionado,
+        id: 'com-local-003',
+        numeroDocumento: '70123456',
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoLocal),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+      const dataSource = { query: jest.fn(), transaction: jest.fn() };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+      const result = await svc.consultarComisionado('70123456');
+
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('70123456');
+      expect(comisionadoRepo.findOne).toHaveBeenCalledWith({
+        where: { numeroDocumento: '70123456' },
+      });
+      expect(result).toEqual(comisionadoLocal);
+      expect(comisionadoRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('debe materializar comisionado desde auth.personas y persistirlo cuando no existe en Nómina ni en comisionados', async () => {
       const comisionadoRepo = {
         findOne: jest.fn().mockResolvedValue(null),
         save: jest.fn().mockImplementation(async (x) => ({
@@ -264,8 +404,15 @@ describe('TravelExpensesService', () => {
         ]),
         transaction: jest.fn(),
       };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+      };
 
-      const module = await createMockModule({ comisionadoRepo, dataSource });
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+      });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
       const result = await svc.consultarComisionado('1234567890');
 
@@ -295,7 +442,7 @@ describe('TravelExpensesService', () => {
       });
     });
 
-    it('debe lanzar NotFoundException cuando no existe ni en comisionados ni en auth.personas', async () => {
+    it('debe lanzar NotFoundException cuando no existe ni en Nómina, ni en comisionados ni en auth.personas', async () => {
       const comisionadoRepo = {
         findOne: jest.fn().mockResolvedValue(null),
         save: jest.fn(),
@@ -313,7 +460,6 @@ describe('TravelExpensesService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(comisionadoRepo.save).not.toHaveBeenCalled();
     });
-
 
     it('debe lanzar BadRequestException si el documento viene vacío', async () => {
       const comisionadoRepo = {
