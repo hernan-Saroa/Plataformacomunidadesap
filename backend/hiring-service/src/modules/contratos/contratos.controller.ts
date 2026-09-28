@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -26,10 +25,9 @@ import {
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Contrato electrónico — actividad 8.1 (EFDS-1161).
@@ -44,8 +42,7 @@ export class ContratosController {
   constructor(private readonly service: ContratosService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', '8.1')
   @ApiOperation({
     summary: 'Contrato del proceso',
     description:
@@ -56,8 +53,7 @@ export class ContratosController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '8.1')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -99,8 +95,7 @@ export class ContratosController {
   }
 
   @Post('aceptar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '8.1')
   @ApiOperation({
     summary: 'Registrar la aceptación del proponente',
     description:
@@ -115,8 +110,7 @@ export class ContratosController {
   }
 
   @Post('firmar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede(['editar', 'decidir'], '8.1')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -157,8 +151,7 @@ export class ContratosController {
   }
 
   @Post('rechazar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '8.1')
   @ApiOperation({
     summary: 'Registrar que el proponente no acepta la minuta',
     description:

@@ -1,10 +1,9 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { EstudioPrevioService } from './estudio-previo.service';
 import { RolesGuard } from '../../auth/roles.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
+import { Puede } from '../../auth/puede.guard';
 
 
 
@@ -22,8 +21,7 @@ export class ModalidadesController {
   // Es un catálogo de lectura: quien consulta un proceso necesita ver el
   // nombre de su modalidad, aunque no pueda crear procesos.
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({ summary: 'Modalidades vigentes, en el orden de la matriz de flujo' })
   listar() {
     return this.service.modalidades();

@@ -9,7 +9,6 @@ import {
   Req,
   UploadedFile,
   UploadedFiles,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
@@ -26,6 +25,7 @@ import {
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -34,8 +34,6 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Declaratoria desierta — etapa 7 (EFDS-1160, RF-ADJ-02).
@@ -51,8 +49,7 @@ export class DeclaratoriaDesiertaController {
   constructor(private readonly service: DeclaratoriaDesiertaService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view', 'contratacion.evaluacion.registrar', 'contratacion.adjudicacion.decidir', 'contratacion.actividad.edit')
+  @Puede('ver', '7.4')
   @ApiOperation({
     summary: 'Estado de la declaratoria desierta',
     description:
@@ -63,8 +60,7 @@ export class DeclaratoriaDesiertaController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '7.4')
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -120,8 +116,7 @@ export class DeclaratoriaDesiertaController {
   }
 
   @Post('publicar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '7.4')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -166,8 +161,7 @@ export class DeclaratoriaDesiertaController {
   }
 
   @Post('revocar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '7.4')
   @ApiOperation({
     summary: 'Revocar la declaratoria desierta',
     description:

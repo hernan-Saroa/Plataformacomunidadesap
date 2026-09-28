@@ -43,6 +43,10 @@ export interface VersionResuelta {
   motivo: string | null;
   filas: FilaProgramaAnual[];
   cambios: CambioProgramaAnual[];
+  /** El Plan Anual aún no está aprobado: el programa se exporta sin versión. */
+  borrador?: boolean;
+  /** Hay cambios sin versionar: lo exportado es el borrador de la siguiente versión. */
+  pendiente?: boolean;
 }
 
 export interface OpcionesGeneracion {
@@ -69,9 +73,14 @@ export class ProgramaAnualVersionesService {
   ) {}
 
   /**
-   * Devuelve la versión que corresponde al programa actual de la vigencia. Si
-   * no hay ninguna, crea la V1; si lo impreso cambió desde la última, crea la
-   * siguiente y cierra el ajuste abierto; si no cambió nada, devuelve la última.
+   * Versión del programa para exportar o para "Generar versión".
+   *
+   * Las versiones nacen con la aprobación del Plan Anual: mientras el plan está en
+   * borrador o en revisión el programa se modifica libremente y se exporta como
+   * borrador, sin versión. Al aprobarse se crea la V1; de ahí en adelante solo
+   * "Generar versión" (`cerrarAjuste`) crea la siguiente, y la exportación
+   * descarga lo actual sin crear versiones: si hay cambios sin versionar, sale
+   * como borrador de la siguiente.
    */
   async resolverVersion(
     vigencia: number,
@@ -79,26 +88,45 @@ export class ProgramaAnualVersionesService {
     opciones: OpcionesGeneracion = {},
   ): Promise<VersionResuelta> {
     const filas = await this.construirFilas(vigencia);
+
+    if (!(await this.planAprobado(vigencia))) {
+      return { version: 0, nueva: false, fecha: new Date(), generadaPor: '', motivo: null, filas, cambios: [], borrador: true };
+    }
+
+    const inicial = await this.asegurarVersionInicial(vigencia, usuario, filas);
+    if (inicial) return inicial;
+
     const huella = this.calcularHuella(filas);
     const motivo = opciones.motivo?.trim() || null;
 
     return this.dataSource.transaction(async (manager) => {
-      // Dos exportaciones simultáneas no deben crear el mismo número de versión.
+      // Dos "Generar versión" simultáneos no deben crear el mismo número.
       await manager.query('SELECT pg_advisory_xact_lock($1, $2)', [1919, vigencia]);
 
       const repo = manager.getRepository(VersionProgramaAnual);
       const ultima = await repo.findOne({ where: { vigencia }, order: { version: 'DESC' } });
-      const cambios = ultima ? this.compararFilas(ultima.filas, filas) : [];
+      if (!ultima) {
+        throw new NotFoundException(`El Programa Anual ${vigencia} aún no tiene la versión 1`);
+      }
+      const cambios = this.compararFilas(ultima.filas, filas);
+      const sinCambios = ultima.huella === huella || cambios.length === 0;
 
-      if (ultima && (ultima.huella === huella || cambios.length === 0)) {
-        if (opciones.cerrarAjuste) await this.cerrarAjuste(manager, vigencia, null);
+      if (!opciones.cerrarAjuste) {
+        // Exportar no versiona: lo actual, como la vigente o como borrador de la siguiente.
+        return sinCambios
+          ? this.aResuelta(ultima, false)
+          : { ...this.aResuelta(ultima, false), filas, cambios, pendiente: true };
+      }
+
+      if (sinCambios) {
+        await this.cerrarAjuste(manager, vigencia, null);
         return this.aResuelta(ultima, false);
       }
 
       const nueva = await repo.save(
         repo.create({
           vigencia,
-          version: (ultima?.version ?? 0) + 1,
+          version: ultima.version + 1,
           huella,
           filas,
           cambios,
@@ -113,26 +141,77 @@ export class ProgramaAnualVersionesService {
   }
 
   /**
-   * Estado del programa para el banner: versión vigente, si hay un ajuste
-   * abierto y cuántos cambios hay sin versionar. Modificar el programa activa el
-   * ajuste aunque nadie lo haya iniciado (EFDS-1919).
+   * Crea la V1 con lo programado si el Plan Anual de la vigencia ya está aprobado
+   * y el programa todavía no tiene versiones. Lo llama el Plan Anual al aprobarse,
+   * y el estado y la exportación para las vigencias aprobadas antes de este cambio.
+   * Devuelve la versión creada, o null si no correspondía crearla.
+   */
+  async asegurarVersionInicial(
+    vigencia: number,
+    usuario: UsuarioVersion,
+    filasActuales?: FilaProgramaAnual[],
+  ): Promise<VersionResuelta | null> {
+    if (!(await this.planAprobado(vigencia))) return null;
+    if ((await this.versionRepository.count({ where: { vigencia } })) > 0) return null;
+
+    const filas = filasActuales ?? (await this.construirFilas(vigencia));
+    return this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock($1, $2)', [1919, vigencia]);
+      const repo = manager.getRepository(VersionProgramaAnual);
+      if ((await repo.count({ where: { vigencia } })) > 0) return null;
+
+      const v1 = await repo.save(
+        repo.create({
+          vigencia,
+          version: 1,
+          huella: this.calcularHuella(filas),
+          filas,
+          cambios: [],
+          motivo: 'Aprobación del Plan Anual',
+          generadaPor: usuario?.nombre || 'Sistema',
+          generadaPorId: usuario?.id ?? null,
+        }),
+      );
+      return this.aResuelta(v1, true);
+    });
+  }
+
+  /**
+   * Estado del programa para el banner: si el Plan Anual ya está aprobado, la
+   * versión vigente, si hay un ajuste abierto y cuántos cambios hay sin versionar.
+   * Modificar el programa aprobado activa el ajuste aunque nadie lo haya iniciado
+   * (EFDS-1919).
    */
   async obtenerEstado(vigencia: number) {
+    const planAprobado = await this.planAprobado(vigencia);
+    if (planAprobado) await this.asegurarVersionInicial(vigencia, { nombre: 'Sistema' });
+
     const [ultima, filas, ajuste] = await Promise.all([
       this.versionRepository.findOne({ where: { vigencia }, order: { version: 'DESC' } }),
       this.construirFilas(vigencia),
       this.ajusteAbierto(this.dataSource.manager, vigencia),
     ]);
-    const cambiosPendientes = ultima ? this.compararFilas(ultima.filas, filas).length : filas.length;
+    const cambiosPendientes = ultima ? this.compararFilas(ultima.filas, filas).length : 0;
 
     return {
       vigencia,
+      planAprobado,
       versionActual: ultima
         ? { version: ultima.version, fecha: ultima.createdAt, generadaPor: ultima.generadaPor, motivo: ultima.motivo ?? null }
         : null,
       enAjuste: ajuste ? { iniciadoPor: ajuste.iniciado_por, iniciadoEn: ajuste.iniciado_at } : null,
       cambiosPendientes,
     };
+  }
+
+  /** El Plan Anual de la vigencia ya pasó por el comité: aprobado, en ejecución o completado. */
+  private async planAprobado(vigencia: number): Promise<boolean> {
+    const filas = await this.dataSource.query(
+      `SELECT lower(replace(estado, '_', '-')) AS estado
+         FROM control_interno.plan_anual_5_roles WHERE ano = $1 LIMIT 1`,
+      [vigencia],
+    );
+    return ['aprobado', 'en-ejecucion', 'completado', 'activo', 'vigente'].includes(filas[0]?.estado);
   }
 
   /**

@@ -1,12 +1,10 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Req } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { ModalidadProcesoService } from './modalidad-proceso.service';
 import { CambiarModalidadDto, DecidirModalidadDto } from './dto/modalidad-proceso.dto';
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PERMISO_ACTIVIDAD_EDITAR, PERMISO_PROCESO_VER } from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 /**
  * Actividad 3.5 · Definir la modalidad de contratación (EFDS-1183).
@@ -24,8 +22,7 @@ export class ModalidadProcesoController {
   constructor(private readonly service: ModalidadProcesoService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PROCESO_VER)
+  @Puede('ver', '3.5')
   @ApiOperation({
     summary: 'La modalidad del proceso y en qué va su ratificación',
     description:
@@ -36,8 +33,7 @@ export class ModalidadProcesoController {
   }
 
   @Put()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ACTIVIDAD_EDITAR)
+  @Puede('editar', '3.5')
   @ApiOperation({
     summary: 'Proponer la modalidad, o corregirla tras una devolución',
     description:

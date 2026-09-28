@@ -43,15 +43,40 @@ export type PrioridadSolicitud = 'ALTA' | 'MEDIA' | 'BAJA';
  * microservicio serializa sus entidades en camelCase, por lo que el payload
  * de creación (camelCase) y las respuestas (camelCase) son consistentes.
  */
+export interface RutaItinerario {
+  id: string;
+  origenCiudad: string;
+  origenDepartamento?: string;
+  origenDepartamentoId?: number | null;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  destinoDepartamentoId?: number | null;
+  tipoTrayecto: 'SOLO_IDA' | 'IDA_Y_VUELTA';
+  fechaSalida: string;
+  fechaLlegada: string;
+  diasRuta: number;
+  horarioEstimadoMilitar: string; // HH:mm militar, ej: 08:30, 14:00
+  horaEstimadaSalida?: string;
+  horaEstimadaLlegada?: string;
+  tipoTransporte?: 'AEREO' | 'TERRESTRE';
+  requiereTiquete?: boolean;
+  tarifaTerminalAereo?: number;
+  guardada?: boolean;
+}
+
 export interface FormNuevaSolicitud {
   documentoComisionado: string;
   comisionadoId: string;
   objetoComision: string;
+  origenCiudad: string;
+  origenDepartamento: string;
   destinoCiudad: string;
   destinoDepartamento: string;
   fechaInicio: string;
   fechaFin: string;
   rubroPresupuestal: string;
+  numeroCdp?: string;
+  fechaCdp?: string;
   prioridad: PrioridadSolicitud;
   requiereTiquetes: boolean;
   montoViaticos: number;
@@ -63,6 +88,8 @@ export interface FormNuevaSolicitud {
   documentos?: DocumentoFormItem[];
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
+  camposAdicionales?: Record<string, any>;
+  itinerario?: RutaItinerario[];
 }
 
 export type TipoComisionado = 'FUNCIONARIO' | 'CONTRATISTA' | 'DOCENTE' | 'ESTUDIANTE' | 'INVESTIGADOR';
@@ -192,6 +219,8 @@ export interface SolicitudComisionResponse {
     porcentajeUso: number;
     semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
   };
+  camposAdicionales?: Record<string, any>;
+  itinerario?: RutaItinerario[];
 }
 
 /**
@@ -207,6 +236,8 @@ export interface CreateSolicitudRequest {
   objetoComision: string;
   prioridad: string;
   rubroPresupuestal: string;
+  numeroCdp?: string;
+  fechaCdp?: string;
   requiereTiquetes: boolean;
   montoViaticos: number;
   montoGastosViaje: number;
@@ -226,6 +257,8 @@ export interface CreateSolicitudRequest {
     urlRepositorio: string;
     tipoMime?: string;
   }[];
+  camposAdicionales?: Record<string, any>;
+  itinerario?: RutaItinerario[];
 }
 
 /**
@@ -261,6 +294,8 @@ export interface SolicitudListaResponse {
   objetoComision: string;
   prioridad: string;
   rubroPresupuestal: string;
+  numeroCdp?: string | null;
+  fechaCdp?: string | null;
   requiereTiquetes: boolean;
   montoViaticos: number;
   montoGastosViaje: number;
@@ -315,6 +350,7 @@ export interface SolicitudListaResponse {
   observacionesPago?: string | null;
   pagadoPorId?: string | null;
   fechaRegistroPago?: string | null;
+  itinerario?: RutaItinerario[];
 }
 
 export interface CrearObligacionDto {
@@ -521,6 +557,18 @@ export interface LiquidacionResponse {
     tarifaFinalAplicadaDia: number;
     numeroDiasNoches: number;
     valorTotalViaticos: number;
+    // Campos estructurados según Formato GF-FO-023
+    diasPernoctados?: number;
+    tarifaDiaPernoctado?: number;
+    totalPernoctados?: number;
+    diasNoPernoctados?: number;
+    tarifaDiaNoPernoctado?: number;
+    totalNoPernoctados?: number;
+    // Sección 4 GF-FO-023: Liquidación de los Gastos de Desplazamiento
+    transporteTerminalesAereos?: number;
+    transporteTerrestreFluvial?: number;
+    totalGastosDesplazamiento?: number;
+    totalViaticosYDesplazamientos?: number;
     desgloseCalculo: DesgloseDiaLiquidacion[];
     alertas?: string[];
   };
@@ -536,7 +584,29 @@ export interface CalcularLiquidacionRequest {
   pernocta: boolean;
   destinoCiudad?: string;
   destinoDepartamento?: string;
-  aplicaExcepcionRegional?: boolean;
+  incluyeTransporteAereo?: boolean;
+  montoTransporteTerrestre?: number;
+  itinerario?: Array<{
+    origenCiudad?: string;
+    origenDepartamento?: string;
+    destinoCiudad?: string;
+    destinoDepartamento?: string;
+    tipoTransporte?: string;
+    tipoTrayecto?: string;
+  }>;
+}
+
+export interface TarifaTransporteTerminal {
+  id?: number;
+  departamento: string;
+  departamentoId?: number | null;
+  ciudad?: string;
+  ciudadAeropuerto: string;
+  valorMaximoTrayecto: number;
+  incrementoIncluido?: boolean;
+  activo?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // =========================================================================
@@ -776,6 +846,8 @@ export interface SolicitudControlViaticosResponse {
   objetoComision: string;
   prioridad: string;
   rubroPresupuestal: string;
+  numeroCdp?: string | null;
+  fechaCdp?: string | null;
   requiereTiquetes: boolean;
   montoViaticos: number;
   montoGastosViaje: number;

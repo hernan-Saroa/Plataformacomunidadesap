@@ -950,6 +950,15 @@ export class PtaController {
     return { success: true, data };
   }
 
+  @Post('revisar-componentes-lote')
+  @UseGuards(PtaAuthGuard)
+  async revisarComponentesLote(@Body() body: any, @Req() req: Request) {
+    // La revisión masiva aplica exactamente la misma autorización granular y
+    // alcance territorial que revisar-componente para cada elemento del lote.
+    const data = await this.ptaService.revisarComponentesLote(body, req.ptaAuth);
+    return { success: true, data };
+  }
+
   @Get(':ptaId/componentes-revision')
   async getComponentesRevision(@Param('ptaId') ptaId: string) {
     const data = await this.ptaService.getComponentesRevision(ptaId);

@@ -2,13 +2,9 @@ import { Injectable, Logger, OnApplicationBootstrap, Optional } from '@nestjs/co
 import { DataSource } from 'typeorm';
 
 import {
-  PERMISO_DESIGNACION_ORDENAR,
-  PERMISO_EXPEDIENTE_ARCHIVAR,
-  PERMISO_PRESUPUESTO_GESTIONAR,
   PERMISO_PROCESO_ASIGNAR,
-  PERMISO_PROCESO_TOMAR,
-  PERMISO_SUPERVISION_REASIGNAR,
 } from '../../auth/permisos';
+import { AlcanceService } from '../../auth/alcance.service';
 import { AvisosService } from './avisos.service';
 import { PasoDelFlujo, porEmpezar, SIN_PANEL } from './secuencia';
 import { Campana } from './campana';
@@ -16,8 +12,8 @@ import {
   AvisoConfigurado,
   destinatariosFinales,
   EventoOcurrido,
-  mensajeDeAviso,
   PapelAviso,
+  textoDelAviso,
 } from './eventos';
 
 /** Si el motor está encendido. Se apaga con `NOTIFICACIONES_CONFIGURABLES=false`. */
@@ -38,13 +34,21 @@ export class NotificadorService implements OnApplicationBootstrap {
   private readonly logger = new Logger(NotificadorService.name);
   private readonly campana: Campana;
   private readonly avisos: AvisosService;
+  private readonly alcance: AlcanceService;
 
   constructor(
     private readonly dataSource: DataSource,
     @Optional() avisos?: AvisosService,
+    /**
+     * A quién avisar de lo que aún no es de nadie (083). Opcional como los
+     * avisos, para que las pruebas que construyen el servicio a mano sigan
+     * funcionando con solo la fuente de datos.
+     */
+    @Optional() alcance?: AlcanceService,
   ) {
     this.campana = new Campana(dataSource, this.logger);
     this.avisos = avisos ?? new AvisosService(dataSource);
+    this.alcance = alcance ?? new AlcanceService(dataSource);
   }
 
   async despachar(ocurridos: EventoOcurrido[]): Promise<number> {
@@ -90,17 +94,30 @@ export class NotificadorService implements OnApplicationBootstrap {
     // Las personas designadas llegan como id de persona; la campana necesita la cuenta.
     const cuentas = await this.campana.cuentasDe(candidatos);
     const destinatarios = destinatariosFinales(cuentas, ocurrido.actorId);
-    if (!destinatarios.length) return 0;
+
+    // Los de fuera de la plataforma: solo tienen correo (088).
+    const externos = [...aviso.correosExternos];
+    if (aviso.alContratista) {
+      const correo = await this.correoDelContratista(ocurrido.procesoId);
+      if (correo) externos.push(correo);
+    }
+    if (!destinatarios.length && !externos.length) return 0;
 
     const [actividad] = await this.dataSource.query(
       `SELECT nombre FROM hiring.actividades WHERE numeral = $1`,
       [ocurrido.numeral],
     );
-    const { titulo, mensaje, prioridad } = mensajeDeAviso(
+    const { titulo, mensaje, prioridad } = textoDelAviso(
       ocurrido,
       actividad?.nombre ?? null,
       proceso.radicado ?? null,
+      aviso,
     );
+
+    const correosExternos = externos.length
+      ? await this.campana.aCorreosExternos(externos, { titulo, mensaje })
+      : 0;
+    if (!destinatarios.length) return correosExternos;
 
     // El correo lo decide la actividad, no el aviso: se acordó así para que
     // quien configura no tenga que repetirlo en cada uno.
@@ -123,7 +140,30 @@ export class NotificadorService implements OnApplicationBootstrap {
       })),
       { porCorreo },
     );
-    return resultado.enviados;
+    return resultado.enviados + correosExternos;
+  }
+
+  /**
+   * El correo del contratista, del acto de adjudicación vigente.
+   *
+   * Es el único dato suyo que el módulo guarda: su registro maestro vive en
+   * Click. Sin acto vigente, o sin correo en él, no hay a quién avisar.
+   */
+  private async correoDelContratista(procesoId: string): Promise<string | null> {
+    try {
+      const [fila] = await this.dataSource.query(
+        `SELECT correo_contratista AS correo
+           FROM hiring.actos_adjudicacion
+          WHERE proceso_id = $1 AND estado = 'VIGENTE' AND correo_contratista IS NOT NULL
+          ORDER BY emitido_at DESC
+          LIMIT 1`,
+        [procesoId],
+      );
+      return fila?.correo ?? null;
+    } catch (error: any) {
+      this.logger.warn(`No se pudo leer el correo del contratista: ${error.message}`);
+      return null;
+    }
   }
 
   /**
@@ -343,19 +383,29 @@ export class NotificadorService implements OnApplicationBootstrap {
         return [...(roles.length ? await this.cuentasConRol(roles) : []), ...personas];
       }
       case 'BANDEJA_CONTRATACION':
-        return this.cuentasConPermiso(PERMISO_PROCESO_TOMAR);
+        // Quien puede tomar de la bandeja es quien edita la 3.3, y quien
+        // atiende la solicitud de CDP, quien edita la 4.2: el mismo criterio
+        // con el que el guard y el listado deciden quién lo ve.
+        return this.alcance.cuentasQuePueden('editar', '3.3');
       case 'EQUIPO_FINANCIERO':
-        return this.cuentasConPermiso(PERMISO_PRESUPUESTO_GESTIONAR);
+        return this.alcance.cuentasQuePueden('editar', '4.2');
       // Los mismos permisos que protegen la pantalla de cada cosa: quien puede
       // hacerla es a quien le toca.
       case 'REPARTE_PROCESOS':
         return this.cuentasConPermiso(PERMISO_PROCESO_ASIGNAR);
       case 'DESIGNA_COMITE_Y_SUPERVISOR':
-        return this.cuentasConPermiso(PERMISO_DESIGNACION_ORDENAR);
+        // Designar el comité es decidir la 6.2 y designar al supervisor, la
+        // 8.2. Se fija a una de las dos y no se usa el numeral tal cual: el
+        // papel puede configurarse en el aviso de otra actividad, y ahí nadie
+        // tendría alcance.
+        return this.alcance.cuentasQuePueden(
+          'decidir',
+          ocurrido.numeral === '8.2' ? '8.2' : '6.2',
+        );
       case 'REASIGNA_SUPERVISION':
-        return this.cuentasConPermiso(PERMISO_SUPERVISION_REASIGNAR);
+        return this.alcance.cuentasQuePueden('decidir', '9.3');
       case 'ARCHIVA_EXPEDIENTE':
-        return this.cuentasConPermiso(PERMISO_EXPEDIENTE_ARCHIVAR);
+        return this.alcance.cuentasQuePueden('decidir', '10.4');
       case 'COMITE_EVALUADOR': {
         // Personas del comité vigente: la campana las traduce a sus cuentas.
         const filas = await this.dataSource.query(

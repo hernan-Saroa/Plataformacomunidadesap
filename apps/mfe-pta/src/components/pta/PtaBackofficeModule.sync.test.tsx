@@ -2,8 +2,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PtaBackofficeModule } from './PtaBackofficeModule';
 import {
-  deletePTA, getAllPTAs, getAllPtasConEvidencias, getPTADecisionListScope,
-  getSolicitudesPTA, resolverSolicitudPTA, revisarEvidenciaPTA,
+  aprobarComponentesLote, deletePTA, getAllPTAs, getAllPtasConEvidencias, getPTADecisionListScope,
+  getSolicitudesPTA, resolverSolicitudPTA, revisarComponentesLote, revisarEvidenciaPTA,
 } from '../../services/api/ptaApi';
 import { toast } from 'sonner';
 import { PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION } from './shared/ptaComponentPermissions';
@@ -42,6 +42,8 @@ vi.mock('../../services/api/ptaApi', () => ({
   getCatalogoTerritoriales: vi.fn().mockResolvedValue({ success: true, data: [] }),
   getPTAEstadisticas: vi.fn().mockResolvedValue({ success: true, data: {} }),
   getPTAById: vi.fn().mockResolvedValue({ success: false }),
+  aprobarComponentesLote: vi.fn(),
+  revisarComponentesLote: vi.fn(),
 }));
 vi.mock('./PTADetallePanelBackoffice', () => ({
   PTADetallePanelBackoffice: ({ pta, onUpdated }: any) => <button onClick={() => onUpdated({ ...pta, estado: 'Aprobado' })}>Resolver caso</button>,
@@ -559,6 +561,115 @@ describe('listado y contadores del backoffice', () => {
     expect(getAllPTAs).toHaveBeenCalledWith(expect.objectContaining({ periodo: '2026-1' }), true);
   });
 
+  it('permite la selección y revisión masiva con permisos exclusivos de revisión', async () => {
+    sync.permissions.puedeRevisar = true;
+    sync.permissions.componentesRevisables = ['academica_pregrado:general'];
+    sync.permissions.componentesAprobables = [];
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [{
+      ...pendientes[0],
+      componentes_en_alcance: ['academica_pregrado'],
+      componentes_revision_usuario: [{ componente: 'academica_pregrado', subseccion: 'general', estado: 'pendiente' }],
+      componentes_aprobacion_usuario: [],
+    }] });
+    vi.mocked(revisarComponentesLote).mockResolvedValue({
+      success: true,
+      data: {
+        resumen: { total: 1, revisados: 1, devueltos: 0, omitidos: 0, fallidos: 0 },
+        resultados: [{ ptaId: 'pta-1', componente: 'academica_pregrado', subseccion: 'general', estado: 'revisado' }],
+      },
+    });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    const rowCheckbox = screen.getAllByRole('checkbox').find(input => input.getAttribute('title')?.startsWith('Seleccionar'))!;
+    expect((rowCheckbox as HTMLInputElement).disabled).toBe(false);
+    fireEvent.click(rowCheckbox);
+
+    expect(screen.getByRole('button', { name: 'Marcar revisados' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Aprobar' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar revisados' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Revisar 1 PTA' }));
+
+    await waitFor(() => expect(revisarComponentesLote).toHaveBeenCalledWith(expect.objectContaining({
+      ptaIds: ['pta-1'], revisiones: ['academica_pregrado:general'],
+    })));
+  });
+
+  it('aprueba en un solo lote todos los componentes que autorizan los permisos, incluidas Complementarias', async () => {
+    sync.permissions.componentesAprobables = ['academica_pregrado', 'complementarias_pregrado'];
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [{
+      ...pendientes[0],
+      componentes_en_alcance: ['academica_pregrado', 'complementarias_pregrado'],
+      componentes_aprobacion_usuario: [
+        { componente: 'academica_pregrado', estado: 'pendiente', revision_completa: true },
+        { componente: 'complementarias_pregrado', estado: 'pendiente', revision_completa: true },
+      ],
+    }] });
+    vi.mocked(aprobarComponentesLote).mockResolvedValue({
+      success: true,
+      data: {
+        resumen: { total: 2, aprobados: 2, devueltos: 0, omitidos: 0, fallidos: 0 },
+        resultados: [
+          { ptaId: 'pta-1', componente: 'academica_pregrado', estado: 'aprobado' },
+          { ptaId: 'pta-1', componente: 'complementarias_pregrado', estado: 'aprobado' },
+        ],
+      },
+    });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    const rowCheckbox = screen.getAllByRole('checkbox').find(input => input.getAttribute('title')?.startsWith('Seleccionar'))!;
+    fireEvent.click(rowCheckbox);
+    fireEvent.click(screen.getByRole('button', { name: 'Aprobar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aprobar 1 PTAs' }));
+
+    await waitFor(() => expect(aprobarComponentesLote).toHaveBeenCalledWith(expect.objectContaining({
+      ptaIds: ['pta-1'],
+      componentes: ['academica_pregrado', 'complementarias_pregrado'],
+    })));
+  });
+
+  it('descarta una selección oculta por filtros y nunca la envía en una aprobación posterior', async () => {
+    sync.permissions.componentesAprobables = ['investigacion'];
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: pendientes.map(pta => ({
+      ...pta,
+      componentes_en_alcance: ['investigacion'],
+      componentes_aprobacion_usuario: [
+        { componente: 'investigacion', estado: 'pendiente', revision_completa: true },
+      ],
+    })) });
+    vi.mocked(aprobarComponentesLote).mockResolvedValue({
+      success: true,
+      data: {
+        resumen: { total: 1, aprobados: 1, devueltos: 0, omitidos: 0, fallidos: 0 },
+        resultados: [{ ptaId: 'pta-2', componente: 'investigacion', estado: 'aprobado' }],
+      },
+    });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    const rowCheckboxes = screen.getAllByRole('checkbox')
+      .filter(input => input.getAttribute('title')?.startsWith('Seleccionar'));
+    fireEvent.click(rowCheckboxes[0]);
+    expect(screen.getByText(/1 PTA seleccionado/)).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText('Buscar por docente, territorial, programa...'), {
+      target: { value: 'Docente dos' },
+    });
+    await waitFor(() => expect(screen.queryByText(/1 PTA seleccionado/)).toBeNull());
+
+    const visibleCheckbox = screen.getAllByRole('checkbox')
+      .find(input => input.getAttribute('title')?.startsWith('Seleccionar'))!;
+    fireEvent.click(visibleCheckbox);
+    fireEvent.click(screen.getByRole('button', { name: 'Aprobar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aprobar 1 PTAs' }));
+
+    await waitFor(() => expect(aprobarComponentesLote).toHaveBeenCalledWith(expect.objectContaining({
+      ptaIds: ['pta-2'],
+      componentes: ['investigacion'],
+    })));
+  });
+
   it('muestra filtros separados cuando una persona puede revisar y aprobar', async () => {
     sync.permissions.puedeRevisar = true;
     sync.permissions.componentesRevisables = ['academica_pregrado:general'];
@@ -576,6 +687,44 @@ describe('listado y contadores del backoffice', () => {
     expect(tab('Aprobación').textContent).toContain('1');
     expect(screen.getByRole('button', { name: 'Por revisar' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Por aprobar' })).toBeTruthy();
+  });
+
+  it('separa las acciones disponibles cuando el usuario tiene permisos mixtos', async () => {
+    sync.permissions.puedeRevisar = true;
+    sync.permissions.componentesRevisables = ['academica_pregrado:general'];
+    sync.permissions.componentesAprobables = ['investigacion'];
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [
+      {
+        ...pendientes[0],
+        componentes_en_alcance: ['academica_pregrado'],
+        componentes_revision_usuario: [
+          { componente: 'academica_pregrado', subseccion: 'general', estado: 'pendiente' },
+        ],
+        componentes_aprobacion_usuario: [],
+      },
+      {
+        ...pendientes[1],
+        componentes_en_alcance: ['investigacion'],
+        componentes_revision_usuario: [],
+        componentes_aprobacion_usuario: [
+          { componente: 'investigacion', estado: 'pendiente', revision_completa: true },
+        ],
+      },
+    ] });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    const rowCheckboxes = screen.getAllByRole('checkbox')
+      .filter(input => input.getAttribute('title')?.startsWith('Seleccionar'));
+
+    fireEvent.click(rowCheckboxes[0]);
+    expect(screen.getByRole('button', { name: 'Marcar revisados' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Aprobar' })).toBeNull();
+
+    fireEvent.click(rowCheckboxes[0]);
+    fireEvent.click(rowCheckboxes[1]);
+    expect(screen.queryByRole('button', { name: 'Marcar revisados' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Aprobar' })).toBeTruthy();
   });
 
   it('filtra Por revisar y Revisados con el estado de la tarea propia', async () => {

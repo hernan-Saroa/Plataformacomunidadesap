@@ -46,8 +46,7 @@ const ROTULO: Record<DecisionComite, string> = {
  * 3.1—, y reabrir la 3.1 ya las vuelve a abrir.
  */
 const NOMBRE_ACTIVIDAD: Record<string, string> = {
-  '3.1': '3.1 · Estudio previo',
-  '3.2': '3.2 · Análisis del sector',
+  '3.1': '3.1 · Estudio previo y análisis del sector',
   '3.5': '3.5 · Modalidad de contratación',
   '3.6': '3.6 · Causal de contratación',
 };

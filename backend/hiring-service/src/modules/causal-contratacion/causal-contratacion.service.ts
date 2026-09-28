@@ -116,7 +116,7 @@ export class CausalContratacionService {
     const estadoModalidad = await this.estadoDeLaModalidad(em, procesoId);
 
     const noElige = motivoParaNoElegir(estadoActual, estadoModalidad, proceso.etapa);
-    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso);
+    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso, NUMERAL_CAUSAL);
 
     const causales = await this.causalesDe(em, proceso.modalidad);
     const elegida = proceso.causal
@@ -173,7 +173,7 @@ export class CausalContratacionService {
    * habría provocado.
    */
   async elegir(procesoId: string, dto: ElegirCausalDto, acceso: HiringAccess) {
-    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso);
+    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso, NUMERAL_CAUSAL);
     if (motivo === 'SIN_ABOGADO') {
       throw new ConflictException(
         'Este proceso todavía no tiene abogado asignado: se reparte en la actividad 3.3 y después se elige la causal',

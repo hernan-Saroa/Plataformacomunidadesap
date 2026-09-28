@@ -68,6 +68,7 @@ export interface CrearCampoFormularioDTO {
 
 export interface ActualizarCampoFormularioDTO {
   etiqueta?: string;
+  tipoCampo?: TipoCampoFormulario;
   placeholder?: string;
   opciones?: Array<{ value: string; label: string }>;
   grupo?: GrupoCampoFormulario;
@@ -121,6 +122,19 @@ export interface TarifaRegionalExcepcion {
   decretoReferencia: string | null;
   activo: boolean;
   creadoEn: string;
+}
+
+export interface TarifaTransporteTerminal {
+  id?: number;
+  departamento: string;
+  departamentoId?: number | null;
+  ciudad?: string;
+  ciudadAeropuerto: string;
+  valorMaximoTrayecto: number;
+  incrementoIncluido?: boolean;
+  activo?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface LiquidationParam {

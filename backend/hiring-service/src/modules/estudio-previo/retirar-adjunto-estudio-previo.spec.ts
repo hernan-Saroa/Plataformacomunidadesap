@@ -64,6 +64,7 @@ describe('EstudioPrevioService · retirarAdjunto', () => {
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     return { instancia, removido, trazas };

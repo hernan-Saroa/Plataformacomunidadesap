@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -21,6 +20,7 @@ import { AnularInformeDto, GenerarInformeDto, TrasladarInformeDto } from './dto/
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -29,8 +29,6 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Traslado del informe de evaluación — actividad 6.4 (EFDS-1158).
@@ -46,8 +44,7 @@ export class TrasladoController {
   constructor(private readonly service: TrasladoService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view', 'contratacion.evaluacion.registrar')
+  @Puede('ver', '6.4')
   @ApiOperation({
     summary: 'Estado del traslado del informe',
     description:
@@ -58,8 +55,7 @@ export class TrasladoController {
   }
 
   @Post('informe')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '6.4')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -99,8 +95,7 @@ export class TrasladoController {
   }
 
   @Post('trasladar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '6.4')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -142,8 +137,7 @@ export class TrasladoController {
   }
 
   @Post('anular')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '6.4')
   @ApiOperation({
     summary: 'Anular el informe',
     description:

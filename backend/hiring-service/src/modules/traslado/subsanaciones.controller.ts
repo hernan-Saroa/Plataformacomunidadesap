@@ -36,6 +36,7 @@ import {
 import { PERMISO_PLAZO_TERMINAR } from '../../auth/permisos';
 import { Permisos } from '../../auth/permisos.decorator';
 import { PermisosGuard } from '../../auth/permisos.guard';
+import { Puede } from '../../auth/puede.guard';
 
 /**
  * Subsanaciones y observaciones al informe — actividad 6.5 (EFDS-1158).
@@ -51,8 +52,7 @@ export class SubsanacionesController {
   constructor(private readonly service: SubsanacionesService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view', 'contratacion.evaluacion.registrar')
+  @Puede('ver', '6.5')
   @ApiOperation({
     summary: 'Lo presentado contra el informe trasladado',
     description:
@@ -63,8 +63,7 @@ export class SubsanacionesController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '6.5')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -107,8 +106,7 @@ export class SubsanacionesController {
   }
 
   @Post(':subsanacionId/responder')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '6.5')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -155,8 +153,7 @@ export class SubsanacionesController {
   }
 
   @Post('cerrar')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '6.5')
   @ApiOperation({
     summary: 'Cerrar el traslado',
     description:

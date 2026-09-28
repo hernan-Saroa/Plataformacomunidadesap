@@ -60,6 +60,8 @@ describe('PermisosPTAContext - permiso funcional y alcance de Seguimiento', () =
     ['pta.approve.academica.pregrado', 'academica_pregrado'],
     ['pta.approve.investigacion', 'investigacion'],
     ['pta.approve.extension.capacitacion', 'ext_capacitacion'],
+    ['pta.approve.complementarias.pregrado', 'complementarias_pregrado'],
+    ['pta.approve.complementarias.territorial.pregrado', 'complementarias_territorial'],
   ] as Array<[string, PTAComponentKey]>)('%s define el componente, pero no abre Seguimiento por sí solo', (permiso, componente) => {
     const permisos = deriveFromGranular([permiso], perfil);
 
@@ -81,6 +83,8 @@ describe('PermisosPTAContext - permiso funcional y alcance de Seguimiento', () =
     ['pta.approve.academica.pregrado', 'academica_pregrado'],
     ['pta.approve.investigacion', 'investigacion'],
     ['pta.approve.extension.capacitacion', 'ext_capacitacion'],
+    ['pta.approve.complementarias.pregrado', 'complementarias_pregrado'],
+    ['pta.approve.complementarias.territorial.pregrado', 'complementarias_territorial'],
   ] as Array<[string, PTAComponentKey]>)('combina la entrada con el alcance exacto de %s', (permiso, componente) => {
     const permisos = deriveFromGranular([PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION, permiso], perfil);
 

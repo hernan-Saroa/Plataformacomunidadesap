@@ -21,11 +21,11 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import {
-  PERMISO_ACTIVIDAD_EDITAR,
   PERMISO_CONFIG_ADMINISTRAR,
   PERMISO_PLAZO_TERMINAR,
   tienePermiso,
 } from '../../auth/permisos';
+import { AlcanceService } from '../../auth/alcance.service';
 import { diasHabilesRestantes, estadoDelPlazo, sumarDiasHabiles } from './dias-habiles';
 import { festivosEntre } from './festivos-colombia';
 import {
@@ -39,7 +39,11 @@ export const NUMERAL_PUBLICACION = '5.2';
 
 @Injectable()
 export class PublicacionService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    /** Quién puede registrar la publicación (migración 083). */
+    private readonly alcance: AlcanceService,
+  ) {}
 
   // ------------------------------------------------------- calendario ------
 
@@ -245,7 +249,7 @@ export class PublicacionService {
 
     // Quién puede hacer qué lo responde el backend, que ya tiene los roles del
     // token. Si la pantalla lo dedujera, ofrecería un botón que la API rechaza.
-    const puedeRegistrar = tienePermiso(acceso, PERMISO_ACTIVIDAD_EDITAR);
+    const puedeRegistrar = await this.alcance.puedeEn(acceso, 'editar', NUMERAL_PUBLICACION);
 
     const aplica = await this.aplicaPublicacion(proceso.modalidad, em);
     if (!aplica) {

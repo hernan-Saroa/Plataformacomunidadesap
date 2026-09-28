@@ -8,7 +8,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -21,6 +20,7 @@ import { PublicarContratoDto } from './dto/publicacion-contrato.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -29,8 +29,6 @@ import {
   sha256Archivo,
   STORAGE_PATH,
 } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Publicación del contrato — actividad 8.8 (EFDS-1166).
@@ -45,8 +43,7 @@ export class PublicacionContratoController {
   constructor(private readonly service: PublicacionContratoService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', '8.8')
   @ApiOperation({
     summary: 'Publicaciones del contrato',
     description:
@@ -57,8 +54,7 @@ export class PublicacionContratoController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '8.8')
   @UseInterceptors(
     FileInterceptor(
       'file',

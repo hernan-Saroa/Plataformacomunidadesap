@@ -8,6 +8,7 @@ import { RolesGuard } from '../../auth/roles.guard';
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Permisos } from '../../auth/permisos.decorator';
 import { PermisosGuard } from '../../auth/permisos.guard';
+import { Puede } from '../../auth/puede.guard';
 
 
 /**
@@ -23,8 +24,7 @@ export class UmbralesController {
   constructor(private readonly service: UmbralesService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({
     summary: 'Umbrales vigentes por modalidad, con sus límites convertidos a pesos',
     description:
@@ -37,8 +37,7 @@ export class UmbralesController {
   // Se consulta antes de crear el proceso, así que no cuelga de ninguno: recibe
   // la cuantía y responde qué modalidad corresponde.
   @Get('sugerencia')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({
     summary: 'Modalidad que corresponde a una cuantía, con el umbral aplicado',
     description:
@@ -49,8 +48,7 @@ export class UmbralesController {
   }
 
   @Get('smmlv')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({ summary: 'Salarios mínimos registrados, base de los umbrales en SMMLV' })
   smmlv() {
     return this.service.smmlv();
@@ -67,8 +65,7 @@ export class UmbralesController {
   // Va después de las rutas fijas: `smmlv` no debe caer aquí como si fuera un
   // código de modalidad.
   @Get(':modalidad/historial')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({ summary: 'Umbrales que ha tenido una modalidad, vigentes y cerrados' })
   historial(@Param('modalidad') modalidad: string) {
     return this.service.historial(modalidad);

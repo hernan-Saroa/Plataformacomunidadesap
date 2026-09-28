@@ -1,3 +1,5 @@
+import { RutaItinerarioDto } from './RutaItinerarioDto';
+
 export class SolicitudResponseDto {
   id: string;
   consecutivoUnico: string;
@@ -9,6 +11,8 @@ export class SolicitudResponseDto {
   objetoComision: string;
   prioridad: string;
   rubroPresupuestal: string;
+  numeroCdp?: string | null;
+  fechaCdp?: string | null;
   requiereTiquetes: boolean;
   estadoSolicitud: string;
   radicadoFueraJornada: boolean;
@@ -19,4 +23,6 @@ export class SolicitudResponseDto {
   warningMessage?: string;
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
+  camposAdicionales?: Record<string, any>;
+  itinerario?: RutaItinerarioDto[];
 }
