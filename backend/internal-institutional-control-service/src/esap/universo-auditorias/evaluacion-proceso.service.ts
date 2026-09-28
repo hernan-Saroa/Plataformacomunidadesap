@@ -15,7 +15,6 @@ import { Repository } from 'typeorm';
 import { EvaluacionProceso } from './entities/evaluacion-proceso.entity';
 import { ProcesoAuditable } from './entities/proceso-auditable.entity';
 import { CreateEvaluacionProcesoDto, UpdateEvaluacionProcesoDto } from './dto/evaluacion-proceso.dto';
-import { EvaluacionRol4TareaSyncService } from './evaluacion-rol4-tarea-sync.service';
 import { calcularAuditableDesdeCiclo } from './evaluacion-auditable.util';
 
 export { calcularAuditableDesdeCiclo } from './evaluacion-auditable.util';
@@ -29,15 +28,7 @@ export class EvaluacionProcesoService implements OnModuleInit {
     private readonly evaluacionRepository: Repository<EvaluacionProceso>,
     @InjectRepository(ProcesoAuditable)
     private readonly procesoRepository: Repository<ProcesoAuditable>,
-    private readonly rol4TareaSync: EvaluacionRol4TareaSyncService,
   ) {}
-
-  private async syncTareaRol4(evaluacion: EvaluacionProceso): Promise<void> {
-    const conProceso = evaluacion.proceso
-      ? evaluacion
-      : await this.findOne(evaluacion.id);
-    await this.rol4TareaSync.sincronizarDesdeEvaluacion(conProceso);
-  }
 
   async onModuleInit() {
     try {
@@ -239,7 +230,6 @@ export class EvaluacionProcesoService implements OnModuleInit {
     try {
       const saved = await this.evaluacionRepository.save(evaluacion);
       const conProceso = await this.findOne(saved.id);
-      await this.syncTareaRol4(conProceso);
       return conProceso;
     } catch (error) {
       this.logger.error(`Error guardando evaluación: ${error.message}`, error.stack);
@@ -336,7 +326,6 @@ export class EvaluacionProcesoService implements OnModuleInit {
     try {
       const saved = await this.evaluacionRepository.save(evaluacion);
       const conProceso = await this.findOne(saved.id);
-      await this.syncTareaRol4(conProceso);
       return conProceso;
     } catch (error) {
       this.logger.error(`Error actualizando evaluación: ${error.message}`, error.stack);
@@ -363,7 +352,6 @@ export class EvaluacionProcesoService implements OnModuleInit {
     evaluacion.auditableManual = auditableManual;
     const saved = await this.evaluacionRepository.save(evaluacion);
     const conProceso = await this.findOne(saved.id);
-    await this.syncTareaRol4(conProceso);
     return conProceso;
   }
 
@@ -374,7 +362,6 @@ export class EvaluacionProcesoService implements OnModuleInit {
     const evaluacion = await this.findOne(id);
     evaluacion.activo = false;
     const saved = await this.evaluacionRepository.save(evaluacion);
-    await this.syncTareaRol4(saved);
   }
 
   /**
@@ -383,7 +370,6 @@ export class EvaluacionProcesoService implements OnModuleInit {
   async hardDelete(id: string): Promise<void> {
     const evaluacion = await this.findOne(id);
     evaluacion.activo = false;
-    await this.syncTareaRol4(evaluacion);
     await this.evaluacionRepository.remove(evaluacion);
   }
 

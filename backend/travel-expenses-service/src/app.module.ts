@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { TravelExpensesModule } from './modules/travel-expenses/travel-expenses.module';
 import { ConfigModule as ConfigParamModule } from './modules/config/config.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AnalistaEntity } from './entities/analista.entity';
 import { ComisionadoEntity } from './entities/comisionado.entity';
 import { SolicitudComisionEntity } from './entities/solicitud-comision.entity';
@@ -23,6 +25,9 @@ import { SaldoTiqueteEntity } from './entities/tickets/saldo-tiquete.entity';
 import { RutaRestringidaEntity } from './entities/tickets/ruta-restringida.entity';
 import { ExcepcionTiqueteEntity } from './entities/tickets/excepcion-tiquete.entity';
 import { SolicitudHistorialEstadoEntity } from './entities/solicitud-historial-estado.entity';
+import { FestivoColombiaEntity } from './entities/festivo-colombia.entity';
+import { AuthSystemSettingEntity } from './entities/auth-system-setting.entity';
+import { TarifaTransporteTerminalEntity } from './entities/liquidation/tarifa-transporte-terminal.entity';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PermissionsGuard } from './common/permissions.guard';
 import { LiquidationModule } from './modules/liquidation/liquidation.module';
@@ -33,6 +38,7 @@ import { CommonModule } from './common/common.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    EventEmitterModule.forRoot(),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST,
@@ -59,6 +65,9 @@ import { CommonModule } from './common/common.module';
         RutaRestringidaEntity,
         ExcepcionTiqueteEntity,
         SolicitudHistorialEstadoEntity,
+        FestivoColombiaEntity,
+        AuthSystemSettingEntity,
+        TarifaTransporteTerminalEntity,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV !== 'production',
@@ -69,6 +78,7 @@ import { CommonModule } from './common/common.module';
     LiquidationModule,
     TicketsModule,
     ConsolidacionModule,
+    NotificationsModule,
     CommonModule,
   ],
   controllers: [AppController],

@@ -6,6 +6,7 @@ import { EvidenciaDocumento } from './entities/evidencia-documento.entity';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
 import { HistorialAuditoria } from '../auditorias/entities/historial-auditoria.entity';
 import { AuthModule } from '../../auth/auth.module';
+import { OnlyOfficeService } from '../common/onlyoffice.service';
 
 @Module({
   imports: [
@@ -14,7 +15,7 @@ import { AuthModule } from '../../auth/auth.module';
     AuthModule,
   ],
   controllers: [EvidenciasController],
-  providers: [EvidenciasService],
+  providers: [EvidenciasService, OnlyOfficeService],
   exports: [EvidenciasService],
 })
 export class EvidenciasModule {}

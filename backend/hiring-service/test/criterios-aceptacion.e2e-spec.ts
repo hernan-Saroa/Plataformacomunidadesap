@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 
 import { AppModule } from '../src/app.module';
 import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-previo.service';
+import { DocumentosActividadService } from '../src/modules/documentos-actividad/documentos-actividad.service';
 import { Documento } from '../src/entities/documento.entity';
 import { Expediente } from '../src/entities/expediente.entity';
 import { CampoFormulario } from '../src/entities/campo-formulario.entity';
@@ -25,13 +26,13 @@ import { HiringAccess } from '../src/auth/hiring-access';
 describe('HU EFDS-1146 · criterios de aceptación', () => {
   let app: INestApplication;
   let service: EstudioPrevioService;
+  let catalogo: DocumentosActividadService;
   let dataSource: DataSource;
 
   const gestor: HiringAccess = {
     userId: '00000000-0000-0000-0000-000000000001',
     userName: 'prueba.gestor',
     roles: ['GESTOR_CONTRATACION'],
-    puedeEditar: true,
   };
 
   /**
@@ -66,6 +67,41 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
     return valores;
   };
 
+  /**
+   * Remite el paquete de la lista de chequeo, que es lo que exige radicar.
+   *
+   * Se lee del catálogo en vez de listar los códigos a mano: cuáles pide cada
+   * modalidad es parámetro en base desde la 074 —y desde EFDS-2066 incluye el
+   * estudio previo firmado, la fila de su formato—, y fijarlos aquí
+   * haría que añadir un documento a la lista rompiera estas pruebas por el
+   * motivo equivocado.
+   */
+  const remitirElPaquete = async (
+    procesoId: string,
+    /** Cuáles cargar; por omisión, todos los obligatorios pendientes. */
+    cuales: (doc: { codigo: string; plantilla: unknown }) => boolean = () => true,
+  ) => {
+    const paquete = await catalogo.estado(procesoId, '3.1');
+
+    for (const doc of paquete.documentos) {
+      if (!doc.obligatorio || doc.cargado || !cuales(doc)) continue;
+
+      await catalogo.cargar(
+        procesoId,
+        '3.1',
+        doc.codigo,
+        {
+          filename: `${doc.codigo.toLowerCase()}.pdf`,
+          originalname: `${doc.nombre}.pdf`,
+          mimetype: 'application/pdf',
+          size: 1024,
+        },
+        'b'.repeat(64),
+        gestor,
+      );
+    }
+  };
+
   const crearProceso = async () =>
     service.crearProceso(
       // El valor estimado se pide al crear desde EFDS-1147, y debe caber en la
@@ -84,6 +120,7 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
     await app.init();
 
     service = app.get(EstudioPrevioService);
+    catalogo = app.get(DocumentosActividadService);
     dataSource = app.get(DataSource);
   });
 
@@ -210,6 +247,8 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
     it('sigue bloqueando con los datos completos pero sin el documento', async () => {
       // El estudio previo se diligencia y firma en el formato oficial: sin el
       // archivo la actividad no tiene entregable, por más metadatos que haya.
+      // Desde EFDS-2066 es un documento más de la lista de la 3.1, así que el
+      // bloqueo lo nombra junto al resto de lo que falta.
       const proceso = await crearProceso();
       const datos = await datosCompletos();
       await service.guardarBorrador(proceso.id, { datos, version: 1 }, gestor);
@@ -223,7 +262,14 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
 
       const cuerpo = error.getResponse();
       expect(cuerpo.camposFaltantes).toHaveLength(0);
-      expect(cuerpo.documentoFaltante).toBe(true);
+
+      const obligatorios = (await catalogo.requeridosDe(proceso.id, '3.1'))
+        .filter((r) => r.obligatorio)
+        .map((r) => r.codigo);
+      expect(obligatorios.length).toBeGreaterThan(0);
+      expect(cuerpo.documentosDeLaLista.map((d: any) => d.codigo).sort()).toEqual(
+        obligatorios.sort(),
+      );
     });
 
     it('deja enviar cuando están los datos y el documento', async () => {
@@ -246,9 +292,95 @@ describe('HU EFDS-1146 · criterios de aceptación', () => {
         subidoPor: gestor.userName,
       } as Partial<Documento>);
 
+      // Radicar es remitir el paquete, no solo el estudio previo: el
+      // procedimiento manda adjuntar los documentos de la lista de chequeo que
+      // apliquen a la modalidad.
+      await remitirElPaquete(proceso.id);
+
       const resultado = await service.enviar(proceso.id, gestor);
 
       expect(resultado.estado).toBe('EN_REVISION');
+    });
+
+    it('bloquea el envío si falta algo de la lista de chequeo, y dice qué', async () => {
+      // El agujero que esto cierra: hasta la 074 bastaba con el estudio previo
+      // y el resto del paquete viajaba por correo, fuera del expediente. La
+      // Dirección recibía el proceso en su bandeja sin lo que tenía que
+      // verificar.
+      const proceso = await crearProceso();
+      const datos = await datosCompletos();
+      await service.guardarBorrador(proceso.id, { datos, version: 1 }, gestor);
+
+      const expediente = await dataSource.getRepository(Expediente).findOneOrFail({
+        where: { procesoId: proceso.id },
+      });
+      await dataSource.getRepository(Documento).save({
+        expedienteId: expediente.id,
+        numeral: '3.1',
+        tipo: 'ADJUNTO',
+        nombre: 'estudio-previo-firmado.pdf',
+        archivoUrl: '/uploads/pruebas/estudio-previo-firmado.pdf',
+        hashSha256: 'a'.repeat(64),
+        subidoPor: gestor.userName,
+      } as Partial<Documento>);
+
+      let error: any;
+      try {
+        await service.enviar(proceso.id, gestor);
+      } catch (e) {
+        error = e;
+      }
+
+      const cuerpo = error.getResponse();
+      // El estudio previo sí está: lo que falta es el resto del paquete, y se
+      // nombra uno a uno para que el área sepa qué buscar sin abrir la lista.
+      expect(cuerpo.documentoFaltante).toBe(false);
+      expect(cuerpo.documentosDeLaLista.length).toBeGreaterThan(0);
+      expect(cuerpo.message).toContain('No se puede radicar todavía');
+    });
+
+    it('anota el radicado de Active Document, y lo deja quitar', async () => {
+      // La 3.3 dejó de pedirlo cuando pasó a cumplirse tomando el proceso de
+      // la bandeja, y sin él el expediente no cruza con Active Document. Se
+      // puede quitar porque el procedimiento admite remitir por correo o por
+      // carpeta compartida, vías que no generan consecutivo.
+      const proceso = await crearProceso();
+
+      const conRadicado = await service.anotarRadicadoDeLaRadicacion(
+        proceso.id,
+        '2026-EE-004512',
+        gestor,
+      );
+      expect(conRadicado.radicadoGestionDocumental).toBe('2026-EE-004512');
+
+      const sinRadicado = await service.anotarRadicadoDeLaRadicacion(proceso.id, '  ', gestor);
+      expect(sinRadicado.radicadoGestionDocumental).toBeNull();
+    });
+
+    it('el documento de la lista no se cuenta como el estudio previo', async () => {
+      // Los dos se guardan con el numeral 3.1: cargar el memorando no puede
+      // dar por entregado el estudio previo. Cada uno cubre su propia fila, y
+      // la del estudio previo es la que cita su formato.
+      const proceso = await crearProceso();
+      const datos = await datosCompletos();
+      await service.guardarBorrador(proceso.id, { datos, version: 1 }, gestor);
+
+      await remitirElPaquete(proceso.id, (doc) => !doc.plantilla);
+
+      let error: any;
+      try {
+        await service.enviar(proceso.id, gestor);
+      } catch (e) {
+        error = e;
+      }
+
+      const conFormato = (await catalogo.requeridosDe(proceso.id, '3.1'))
+        .filter((r) => r.obligatorio && r.plantillaCodigo)
+        .map((r) => r.codigo);
+      expect(conFormato.length).toBeGreaterThan(0);
+      expect(error.getResponse().documentosDeLaLista.map((d: any) => d.codigo).sort()).toEqual(
+        conFormato.sort(),
+      );
     });
 
     it('el proceso no avanza mientras el envío esté bloqueado', async () => {

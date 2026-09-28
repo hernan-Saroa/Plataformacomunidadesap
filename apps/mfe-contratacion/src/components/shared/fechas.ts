@@ -59,3 +59,18 @@ export function momentoConHora(iso: string): string {
 export function hoyEnBogota(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
 }
+
+/**
+ * La hora de un instante, en Bogotá y en `HH:MM`.
+ *
+ * Es lo que necesita un `<input type="time">` para precargarse: el campo no
+ * entiende ISO y, si se le pasa la hora del navegador, un gestor conectado
+ * desde otra zona vería una hora distinta de la que el expediente guarda.
+ */
+export function horaEnBogota(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-GB', {
+    timeZone: 'America/Bogota',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}

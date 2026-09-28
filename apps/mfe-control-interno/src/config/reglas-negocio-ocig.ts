@@ -64,6 +64,16 @@ export const REGLAS_NEGOCIO_OCIG = {
     },
 
     /**
+     * Puede quedar como Auditor Líder de una auditoría: cualquier profesional con rol
+     * de auditor en Configuraciones > Profesionales OCI (Auditor Líder, Auditor,
+     * Auditor Júnior), no solo el rol "Auditor Líder" (EFDS-2132).
+     */
+    puedeLiderarAuditoria: (cargo: string | undefined | null): boolean => {
+      if (!cargo) return false;
+      return cargo.toLowerCase().includes('auditor');
+    },
+
+    /**
      * Valida si es parte del equipo auditor adicional.
      * Todos los profesionales configurados en OCI pueden participar como equipo auditor.
      * Los que ya están asignados como Jefe OCI o Auditor Líder se excluyen por ID en el componente.

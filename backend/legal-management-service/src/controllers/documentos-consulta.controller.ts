@@ -1,14 +1,19 @@
-import { Controller, Get, Post, Delete, Put, Param, Body, UseInterceptors, UploadedFile, Res, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Put, Param, Body, UseInterceptors, UploadedFile, Res, Req, BadRequestException, NotFoundException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, join, basename } from 'path';
 import { DocumentosConsultaService } from '../services/documentos-consulta.service';
+import { FirmaAutorizacionService, solicitaMarcarFirmado } from '../services/firma-autorizacion.service';
+import { getLegalAccessFromRequest } from '../auth/legal-access';
 import type { Response } from 'express';
 import * as fs from 'fs';
 
 @Controller('consultas-juridicas')
 export class DocumentosConsultaController {
-    constructor(private readonly documentosService: DocumentosConsultaService) { }
+    constructor(
+        private readonly documentosService: DocumentosConsultaService,
+        private readonly firmaAutorizacionService: FirmaAutorizacionService
+    ) { }
 
     // ==================== DOCUMENTOS ====================
 
@@ -93,7 +98,8 @@ export class DocumentosConsultaController {
     }))
     async replaceDocumento(
         @Param('documentoId') documentoId: string,
-        @UploadedFile() file: Express.Multer.File
+        @UploadedFile() file: Express.Multer.File,
+        @Req() req?: any
     ) {
         if (!file) {
             throw new BadRequestException('El archivo firmado es obligatorio');
@@ -101,6 +107,16 @@ export class DocumentosConsultaController {
 
         // Obtener el documento existente
         const existingDoc = await this.documentosService.findOne(documentoId);
+        if (!existingDoc) {
+            throw new NotFoundException('Documento no encontrado');
+        }
+
+        // Este endpoint deja el documento marcado como firmado: sólo el aprobador configurado
+        // de la etapa de la consulta puede hacerlo.
+        await this.firmaAutorizacionService.assertPuedeFirmarDocumentoConsulta(
+            existingDoc.consultaId,
+            getLegalAccessFromRequest(req)
+        );
 
         // Eliminar archivo anterior si existe
         if (existingDoc.archivoUrl) {
@@ -137,8 +153,22 @@ export class DocumentosConsultaController {
     @Put('documentos/:documentoId')
     async updateDocumento(
         @Param('documentoId') documentoId: string,
-        @Body() body: { firmado?: boolean; nombre?: string; descripcion?: string }
+        @Body() body: { firmado?: boolean; nombre?: string; descripcion?: string },
+        @Req() req?: any
     ) {
+        // Igual que en los documentos de expediente: marcar firmado exige ser el aprobador
+        // configurado de la etapa; renombrar o describir el documento no se restringe.
+        if (solicitaMarcarFirmado(body)) {
+            const actual = await this.documentosService.findOne(documentoId);
+            if (!actual) {
+                throw new NotFoundException('Documento no encontrado');
+            }
+            await this.firmaAutorizacionService.assertPuedeFirmarDocumentoConsulta(
+                actual.consultaId,
+                getLegalAccessFromRequest(req)
+            );
+        }
+
         return this.documentosService.update(documentoId, body);
     }
 

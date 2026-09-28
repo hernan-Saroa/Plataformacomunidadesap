@@ -337,7 +337,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
     color: 'text-teal-700',
     bgColor: 'bg-teal-50',
     permissions: [
-      { id: 'cl.dashboard.view', name: 'Ver Dashboard', description: 'Panel principal de certificados', module: 'certificados_laborales', criticidad: 'baja' },
+      { id: 'cl.functions.view', name: 'Funciones laborales: consultar', description: 'Ver el módulo Funciones laborales y consultar la Matriz Funciones ESAP (solo lectura)', module: 'certificados_laborales', criticidad: 'media' },
       { id: 'cl.request.view', name: 'Ver Solicitudes', description: 'Consultar solicitudes de certificados', module: 'certificados_laborales', criticidad: 'baja' },
       { id: 'cl.request.create', name: 'Crear Solicitud', description: 'Generar nueva solicitud', module: 'certificados_laborales', criticidad: 'media' },
       { id: 'cl.certificate.generate', name: 'Generar Certificado', description: 'Emitir certificado laboral', module: 'certificados_laborales', criticidad: 'alta' },
@@ -353,7 +353,7 @@ export const PERMISSION_MODULES: PermissionModule[] = [
       { id: 'cl.history.view', name: 'Ver Histórico', description: 'Consultar histórico de validaciones', module: 'certificados_laborales', criticidad: 'baja' },
       { id: 'cl.config.edit', name: 'Editar Prima', description: 'Modificar primas', module: 'certificados_laborales', criticidad: 'alta' },
       { id: 'cl.correction.manage', name: 'Aprobar solicitudes de corrección', description: 'Revisar, editar, aprobar o rechazar solicitudes de corrección de certificados laborales', module: 'certificados_laborales', criticidad: 'alta' },
-      { id: 'cl.functions.manage', name: 'Gestionar funciones laborales', description: 'Crear, editar, eliminar y cargar la Matriz Funciones ESAP', module: 'certificados_laborales', criticidad: 'alta' },
+      { id: 'cl.functions.manage', name: 'Funciones laborales: gestionar', description: 'Crear, editar, eliminar y ejecutar la carga masiva de la Matriz Funciones ESAP', module: 'certificados_laborales', criticidad: 'alta' },
     ]
   },
 

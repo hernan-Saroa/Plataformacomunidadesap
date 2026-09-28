@@ -15,6 +15,8 @@ import { CreateActividadDto } from './dto/create-actividad.dto';
 import { CreateAdjuntoDto } from './dto/create-adjunto.dto';
 import { NotificacionesService } from '../notificaciones/notificaciones.service';
 import { TipoNotificacion, PrioridadNotificacion, CanalNotificacion } from '../notificaciones/entities/notificacion.entity';
+import { ProgramaAnualRol4TareaSyncService } from './programa-anual-rol4-tarea-sync.service';
+import { ProgramaAnualVersionesService } from '../programa-anual-versiones/programa-anual-versiones.service';
 
 const COLOMBIA_TIME_ZONE = 'America/Bogota';
 
@@ -97,9 +99,34 @@ export class PlanAnual5RolesService {
     private readonly wizardBorradorRepository: Repository<PlanAnualWizardBorrador>,
     private readonly dataSource: DataSource,
     private readonly notificacionesService: NotificacionesService,
+    private readonly rol4TareaSync: ProgramaAnualRol4TareaSyncService,
+    private readonly versionesPrograma: ProgramaAnualVersionesService,
   ) {}
 
+  /**
+   * Antes de devolver un plan, el Rol 4 se pone al día con el Programa Anual de
+   * su vigencia (EFDS-2133): así refleja lo programado aunque el cambio se haya
+   * hecho desde el módulo de auditorías.
+   */
+  private async sincronizarRol4(filtro: { año?: number; planId?: string }): Promise<void> {
+    let años: number[] = filtro.año ? [filtro.año] : [];
+    if (!filtro.año) {
+      const rows: Array<{ ano: number }> = await this.dataSource
+        .query(
+          filtro.planId
+            ? `SELECT ano FROM control_interno.plan_anual_5_roles WHERE id::text = $1`
+            : `SELECT DISTINCT ano FROM control_interno.plan_anual_5_roles WHERE ano > 0`,
+          filtro.planId ? [filtro.planId] : [],
+        )
+        .catch(() => []);
+      años = rows.map((r) => Number(r.ano));
+    }
+    await this.rol4TareaSync.sincronizarVigencias(años);
+  }
+
   async findAll(year?: number, light = true): Promise<PlanAnual5Roles[]> {
+    await this.sincronizarRol4({ año: year });
+
     const query = this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
@@ -147,6 +174,8 @@ export class PlanAnual5RolesService {
   }
 
   async findOne(id: string): Promise<PlanAnual5Roles> {
+    await this.sincronizarRol4({ planId: id });
+
     const plan = await this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
@@ -181,6 +210,8 @@ export class PlanAnual5RolesService {
   }
 
   async findByYear(year: number): Promise<PlanAnual5Roles | null> {
+    await this.sincronizarRol4({ año: year });
+
     const plan = await this.planRepository
       .createQueryBuilder('plan')
       .leftJoinAndSelect('plan.roles', 'roles')
@@ -286,6 +317,7 @@ export class PlanAnual5RolesService {
   async update(id: string, updateDto: Partial<CreatePlanAnual5RolesDto>, usuarioId?: string): Promise<PlanAnual5Roles> {
     const plan = await this.findOne(id);
     const estadoAnterior = plan.estado;
+    const equipoAnterior = Array.isArray(plan.equipo_aprobacion) ? [...plan.equipo_aprobacion] : [];
     const cambios: Array<{ campo: string; valorAnterior: string; valorNuevo: string }> = [];
 
     // Actualizar campos si se proporcionan
@@ -402,12 +434,25 @@ export class PlanAnual5RolesService {
       );
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // NOTIFICACIONES: Enviar al Jefe OCI cuando el plan se envía a revisión
-    // ═══════════════════════════════════════════════════════════════════════════
-    if (updateDto.estado && updateDto.estado !== estadoAnterior) {
+    // Al aprobarse el plan nace la V1 del Programa Anual con lo programado en ese
+    // momento; antes el programa estaba en elaboración y no tenía versiones.
+    if (savedPlan.estado === 'aprobado' && this.normalizarEstadoPlan(estadoAnterior) !== 'aprobado') {
       try {
-        await this.notificarCambioEstadoPlan(savedPlan, estadoAnterior, updateDto.estado);
+        await this.versionesPrograma.asegurarVersionInicial(savedPlan.año, { id: usuarioId ?? null, nombre: 'Aprobación del comité' });
+      } catch (errorVersion) {
+        // Si falla, la V1 se crea al abrir el programa: no se bloquea la aprobación.
+        console.error('[PlanAnual5RolesService.update] No se pudo crear la V1 del Programa Anual:', errorVersion);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NOTIFICACIONES: cambios de estado y avance de turnos del comité (EFDS-873)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const cambioEstado = this.normalizarEstadoPlan(estadoAnterior) !== savedPlan.estado;
+    const avanceComite = savedPlan.estado === 'en-revision' && updateDto.equipo_aprobacion !== undefined;
+    if (updateDto.estado && (cambioEstado || avanceComite)) {
+      try {
+        await this.notificarCambioEstadoPlan(savedPlan, estadoAnterior, savedPlan.estado, equipoAnterior);
       } catch (notifError) {
         // No fallar la operación si las notificaciones fallan
         console.error('[PlanAnual5RolesService.update] Error al enviar notificaciones:', notifError);
@@ -844,6 +889,19 @@ export class PlanAnual5RolesService {
     await this.recalcularRol(actividad.rolId);
     await this.recalcularPlan(actividad.planId);
 
+    if ((updateDto as any).tareas_seguimiento !== undefined) {
+      try {
+        await this.notificarAsignacionTareas(
+          actividad,
+          actividad.plan,
+          actividad.tareas_seguimiento || [],
+          (updateDto as any).tareas_seguimiento || [],
+        );
+      } catch (notifError) {
+        console.error('[PlanAnual5RolesService.updateActividad] Error al notificar tareas asignadas:', notifError);
+      }
+    }
+
     // Registrar en historial si hubo cambios
     if (cambios.length > 0) {
       await this.registrarHistorial(
@@ -1228,19 +1286,9 @@ export class PlanAnual5RolesService {
     
     const usuariosNotificar: string[] = [];
 
-    // Buscar responsable por nombre
-    if (plan.responsable) {
-      try {
-        const responsable = await this.dataSource.query(
-          `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR CONCAT(nom_tercero, ' ', pri_apellido) ILIKE $1 LIMIT 1`,
-          [`%${plan.responsable}%`]
-        );
-        if (responsable && responsable.length > 0) {
-          usuariosNotificar.push(String(responsable[0].id_tercero));
-        }
-      } catch (error) {
-        console.error(`[PlanAnual5RolesService.crearNotificacionesPlanAnualCreado] Error al buscar responsable:`, error);
-      }
+    const responsableId = await this.resolverUsuarioIdResponsablePlan(plan);
+    if (responsableId) {
+      usuariosNotificar.push(responsableId);
     }
 
     // Obtener Jefes de Control Interno
@@ -1257,11 +1305,11 @@ export class PlanAnual5RolesService {
       try {
         await this.notificacionesService.create({
           usuarioId,
-          tipoNotificacion: TipoNotificacion.OTRO,
+          tipoNotificacion: 'EVT-PAI-CREADO' as any,
           titulo: `Plan Anual ${plan.año} Creado`,
-          mensaje: `Se ha creado el Plan Anual ${plan.año}. Responsable: ${plan.responsable || 'No especificado'}.`,
+          mensaje: `Se ha creado el Plan Anual de Auditoría de la vigencia ${plan.año}. Responsable: ${plan.responsable || 'No especificado'}. Revíselo en Control Interno de Gestión para completar las actividades y los responsables.`,
           prioridad: PrioridadNotificacion.ALTA,
-          canal: CanalNotificacion.SISTEMA,
+          canal: CanalNotificacion.AMBOS,
           metadata: {
             planAnualId: plan.id,
             año: plan.año,
@@ -1275,80 +1323,129 @@ export class PlanAnual5RolesService {
   }
 
   /**
-   * Notifica a los usuarios correspondientes cuando el estado del plan cambia
-   * - en-revision: Notifica al Jefe OCI para que revise y apruebe
-   * - aprobado: Notifica al responsable del plan
-   * - en-ejecucion: Notifica a todos los auditores asignados
+   * Miembros del comité a los que les corresponde votar: en orden secuencial el primer
+   * pendiente, en paralelo todos los pendientes (mismo criterio que la pestaña Aprobación).
+   */
+  private miembrosComiteConTurno(equipo: any[] | null | undefined, orden?: string | null): any[] {
+    const pendientes = (Array.isArray(equipo) ? equipo : []).filter(
+      (m) => m && String(m.estado || 'PENDIENTE').toUpperCase() === 'PENDIENTE',
+    );
+    return orden === 'secuencial' ? pendientes.slice(0, 1) : pendientes;
+  }
+
+  private claveMiembroComite(miembro: any): string {
+    return String(miembro?.id || miembro?.auditorId || miembro?.email || miembro?.nombre || '').trim().toLowerCase();
+  }
+
+  /**
+   * Notifica a los usuarios correspondientes cuando el estado del plan cambia (EFDS-873)
+   * - en-revision: a los miembros del comité a los que les corresponde aprobar
+   * - borrador desde en-revision con observaciones: devolución, al responsable y a los Jefes
+   * - aprobado: al responsable y a los Jefes, que deben activarlo
+   * - en-ejecucion: a los Jefes y al responsable
+   * Los Jefes son los profesionales configurados como Jefe OCIG en Profesionales OCI.
    */
   private async notificarCambioEstadoPlan(
-    plan: PlanAnual5Roles, 
-    estadoAnterior: string, 
-    nuevoEstado: string
+    plan: PlanAnual5Roles,
+    estadoAnterior: string,
+    nuevoEstado: string,
+    equipoAnterior: any[] = [],
   ): Promise<void> {
     console.log(`[PlanAnual5RolesService.notificarCambioEstadoPlan] ${estadoAnterior} → ${nuevoEstado}`);
-    
+
+    const estadoPrevio = this.normalizarEstadoPlan(estadoAnterior);
+    const mismoEstado = estadoPrevio === nuevoEstado;
     const usuariosNotificar: string[] = [];
     let titulo = '';
     let mensaje = '';
     let prioridad = PrioridadNotificacion.NORMAL;
+    let accion = '';
+    let eventoCode = 'EVT-PAI-ESTADO';
 
     switch (nuevoEstado) {
-      case 'en-revision':
-        // Notificar al Jefe OCI para que revise y apruebe el plan
-        titulo = `📋 Plan Anual ${plan.año} - Pendiente de Aprobación`;
-        mensaje = `El Plan Anual de Auditoría ${plan.año} ha sido enviado a revisión y está pendiente de su aprobación. Responsable: ${plan.responsable || 'No especificado'}.`;
-        prioridad = PrioridadNotificacion.ALTA;
-        
-        const jefesOCI = await this.obtenerJefesControlInterno();
-        usuariosNotificar.push(...jefesOCI);
-        break;
+      case 'en-revision': {
+        // Al enviarlo (o reenviarlo) se avisa a quienes tienen el turno; si ya estaba en revisión,
+        // solo a quienes acaban de recibirlo porque el miembro anterior aprobó.
+        const clavesAntes = new Set(
+          mismoEstado
+            ? this.miembrosComiteConTurno(equipoAnterior, plan.orden_aprobacion).map((m) => this.claveMiembroComite(m))
+            : [],
+        );
+        const nuevosConTurno = this.miembrosComiteConTurno(plan.equipo_aprobacion, plan.orden_aprobacion).filter(
+          (m) => !clavesAntes.has(this.claveMiembroComite(m)),
+        );
+        if (nuevosConTurno.length === 0) return;
 
-      case 'aprobado':
-        // Notificar al responsable que el plan fue aprobado
+        titulo = `📋 Plan Anual ${plan.año} - Pendiente de su aprobación`;
+        mensaje = `El Plan Anual de Auditoría ${plan.año} fue asignado al comité y está pendiente de su revisión y aprobación. Responsable: ${plan.responsable || 'No especificado'}.`;
+        prioridad = PrioridadNotificacion.ALTA;
+        accion = 'aprobar_plan_comite';
+        eventoCode = 'EVT-PAI-COMITE';
+
+        for (const miembro of nuevosConTurno) {
+          const idUsuario = await this.notificacionesService.resolverIdUsuario({
+            id: miembro.id || miembro.auditorId,
+            email: miembro.email,
+            nombre: miembro.nombre || miembro.auditorNombre,
+          });
+          if (idUsuario) {
+            usuariosNotificar.push(idUsuario);
+          } else {
+            console.warn(`[notificarCambioEstadoPlan] Miembro del comité sin usuario activo: ${miembro.nombre || miembro.email || miembro.id}`);
+          }
+        }
+        break;
+      }
+
+      case 'borrador': {
+        const observaciones = (Array.isArray(plan.equipo_aprobacion) ? plan.equipo_aprobacion : []).filter(
+          (m) => m && String(m.estado || '').toUpperCase() === 'OBSERVADA',
+        );
+        // Solo la devolución del comité (sale de revisión con observaciones) genera alerta.
+        if (estadoPrevio !== 'en-revision' || observaciones.length === 0) return;
+
+        const detalle = observaciones
+          .map((m) => `${m.nombre || m.auditorNombre || 'Miembro del comité'}: ${String(m.observacion || 'Sin detalle').trim()}`)
+          .join(' | ');
+        titulo = `↩️ Plan Anual ${plan.año} - Devuelto por el comité`;
+        mensaje = `El comité devolvió el Plan Anual de Auditoría ${plan.año} con observaciones. ${detalle}`;
+        prioridad = PrioridadNotificacion.ALTA;
+        accion = 'plan_devuelto_comite';
+        eventoCode = 'EVT-PAI-DEVUELTO';
+
+        const responsableDevuelto = await this.resolverUsuarioIdResponsablePlan(plan);
+        if (responsableDevuelto) usuariosNotificar.push(responsableDevuelto);
+        usuariosNotificar.push(...(await this.obtenerJefesControlInterno()));
+        break;
+      }
+
+      case 'aprobado': {
+        if (mismoEstado) return;
         titulo = `✅ Plan Anual ${plan.año} - Aprobado`;
         mensaje = `El Plan Anual de Auditoría ${plan.año} ha sido aprobado. Ya puede proceder a activarlo para iniciar la ejecución.`;
         prioridad = PrioridadNotificacion.ALTA;
-        
-        // Buscar al responsable
-        if (plan.responsable) {
-          try {
-            const responsable = await this.dataSource.query(
-              `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR CONCAT(nom_tercero, ' ', pri_apellido) ILIKE $1 LIMIT 1`,
-              [`%${plan.responsable}%`]
-            );
-            if (responsable && responsable.length > 0) {
-              usuariosNotificar.push(String(responsable[0].id_tercero));
-            }
-          } catch (error) {
-            console.error(`[notificarCambioEstadoPlan] Error al buscar responsable:`, error);
-          }
-        }
-        break;
+        accion = 'plan_aprobado';
+        eventoCode = 'EVT-PAI-APROBADO';
 
-      case 'en-ejecucion':
-        // Notificar a todos que el plan está vigente
+        const responsableAprobado = await this.resolverUsuarioIdResponsablePlan(plan);
+        if (responsableAprobado) usuariosNotificar.push(responsableAprobado);
+        usuariosNotificar.push(...(await this.obtenerJefesControlInterno()));
+        break;
+      }
+
+      case 'en-ejecucion': {
+        if (mismoEstado) return;
         titulo = `🚀 Plan Anual ${plan.año} - Vigente`;
         mensaje = `El Plan Anual de Auditoría ${plan.año} ha sido activado y está vigente. Las actividades programadas deben iniciar su ejecución.`;
         prioridad = PrioridadNotificacion.ALTA;
-        
-        // Notificar a Jefes OCI y responsable
-        const jefes = await this.obtenerJefesControlInterno();
-        usuariosNotificar.push(...jefes);
-        
-        if (plan.responsable) {
-          try {
-            const resp = await this.dataSource.query(
-              `SELECT id_tercero FROM auth.personas WHERE nom_largo ILIKE $1 OR CONCAT(nom_tercero, ' ', pri_apellido) ILIKE $1 LIMIT 1`,
-              [`%${plan.responsable}%`]
-            );
-            if (resp && resp.length > 0) {
-              usuariosNotificar.push(String(resp[0].id_tercero));
-            }
-          } catch (error) {
-            console.error(`[notificarCambioEstadoPlan] Error al buscar responsable:`, error);
-          }
-        }
+        accion = 'plan_activado';
+        eventoCode = 'EVT-PAI-VIGENTE';
+
+        usuariosNotificar.push(...(await this.obtenerJefesControlInterno()));
+        const responsableActivo = await this.resolverUsuarioIdResponsablePlan(plan);
+        if (responsableActivo) usuariosNotificar.push(responsableActivo);
         break;
+      }
 
       default:
         // No enviar notificaciones para otros estados
@@ -1357,27 +1454,97 @@ export class PlanAnual5RolesService {
 
     // Eliminar duplicados y enviar notificaciones
     const usuariosUnicos = [...new Set(usuariosNotificar)];
-    
+
     for (const usuarioId of usuariosUnicos) {
       try {
         await this.notificacionesService.create({
           usuarioId,
-          tipoNotificacion: TipoNotificacion.OTRO,
+          // Código de evento para poder prender o apagar el correo desde
+          // Configuraciones; si no está configurado, va por campana y correo.
+          tipoNotificacion: eventoCode as any,
           titulo,
           mensaje,
           prioridad,
-          canal: CanalNotificacion.SISTEMA,
+          canal: CanalNotificacion.AMBOS,
           metadata: {
             planAnualId: plan.id,
             año: plan.año,
             estadoAnterior,
             nuevoEstado,
             responsable: plan.responsable,
+            accion,
+            abrirSeccion: 'aprobar',
           },
+          accionUrl: `/control-interno/plan-anual?seccion=aprobar&vigencia=${plan.año}`,
         });
         console.log(`[notificarCambioEstadoPlan] Notificación enviada a usuario ${usuarioId}`);
       } catch (error) {
         console.error(`[notificarCambioEstadoPlan] Error al crear notificación para ${usuarioId}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Con el plan en ejecución, avisa a cada auditor que queda asignado a una tarea de seguimiento
+   * que antes no tenía (EFDS-873). Las tareas que ya tenía asignadas no se vuelven a notificar.
+   */
+  private async notificarAsignacionTareas(
+    actividad: ActividadPlanAnual5,
+    plan: PlanAnual5Roles | null | undefined,
+    tareasAnteriores: any[],
+    tareasNuevas: any[],
+  ): Promise<void> {
+    if (!plan || this.normalizarEstadoPlan(plan.estado) !== 'en-ejecucion') return;
+
+    const claveResponsable = (r: any) =>
+      String(typeof r === 'string' ? r : r?.email || r?.id || r?.nombre || '').trim().toLowerCase();
+    const responsablesPrevios = new Map<string, Set<string>>();
+    for (const tarea of Array.isArray(tareasAnteriores) ? tareasAnteriores : []) {
+      responsablesPrevios.set(
+        String(tarea?.id),
+        new Set((Array.isArray(tarea?.responsables) ? tarea.responsables : []).map(claveResponsable)),
+      );
+    }
+
+    for (const tarea of Array.isArray(tareasNuevas) ? tareasNuevas : []) {
+      const previos = responsablesPrevios.get(String(tarea?.id)) || new Set<string>();
+      const nuevos = (Array.isArray(tarea?.responsables) ? tarea.responsables : []).filter(
+        (r: any) => claveResponsable(r) && !previos.has(claveResponsable(r)),
+      );
+
+      for (const responsable of nuevos) {
+        const referencia = typeof responsable === 'string' ? { id: responsable, nombre: responsable } : responsable;
+        const usuarioId = await this.notificacionesService.resolverIdUsuario({
+          id: referencia.id,
+          email: referencia.email,
+          nombre: referencia.nombre,
+        });
+        if (!usuarioId) {
+          console.warn(`[notificarAsignacionTareas] Responsable sin usuario activo: ${referencia.nombre || referencia.id}`);
+          continue;
+        }
+
+        const fechaLimite = tarea.fechaLimite || tarea.fecha_limite || tarea.fechaEntrega;
+        try {
+          await this.notificacionesService.create({
+            usuarioId,
+            tipoNotificacion: 'EVT-PAI-TAREA' as any,
+            titulo: `📌 Plan Anual ${plan.año} - Nueva tarea asignada`,
+            mensaje: `Se le asignó la tarea "${tarea.descripcion || 'Sin descripción'}" de la actividad "${actividad.nombre}" del Plan Anual de Auditoría de la vigencia ${plan.año}.${fechaLimite ? ` Fecha límite: ${String(fechaLimite).split('T')[0]}.` : ''} Ingrese a Control Interno de Gestión para registrar su avance.`,
+            prioridad: PrioridadNotificacion.ALTA,
+            canal: CanalNotificacion.AMBOS,
+            metadata: {
+              planAnualId: plan.id,
+              año: plan.año,
+              actividadId: actividad.id,
+              tareaId: tarea.id,
+              accion: 'tarea_asignada',
+            },
+            accionUrl: `/control-interno/plan-anual?vigencia=${plan.año}`,
+          });
+        } catch (error) {
+          console.error(`[notificarAsignacionTareas] Error al notificar a ${usuarioId}:`, error);
+        }
       }
     }
   }
@@ -1597,11 +1764,11 @@ export class PlanAnual5RolesService {
 
     await this.notificacionesService.create({
       usuarioId,
-      tipoNotificacion: TipoNotificacion.OTRO,
+      tipoNotificacion: 'EVT-PAI-ENVIO-COMITE' as any,
       titulo: `Plan Anual ${plan.año} — pendiente de tu envío al comité`,
       mensaje,
       prioridad: PrioridadNotificacion.ALTA,
-      canal: CanalNotificacion.SISTEMA,
+      canal: CanalNotificacion.AMBOS,
       metadata: {
         planAnualId: plan.id,
         año: plan.año,
@@ -1633,25 +1800,10 @@ export class PlanAnual5RolesService {
   }
 
   /**
-   * Obtiene los IDs de usuarios con rol JEFE_CONTROL_INTERNO
+   * id_user de los Jefes OCIG configurados en Configuración de Profesionales OCI.
    */
   private async obtenerJefesControlInterno(): Promise<string[]> {
-    try {
-      const result = await this.dataSource.query(`
-        SELECT DISTINCT u.id_tercero
-        FROM auth."user" u
-        INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
-        INNER JOIN auth.role r ON r.id = ur.id_rol
-        WHERE r.code = 'JEFE_CONTROL_INTERNO'
-          AND ur.is_active = true
-          AND u.is_active = true
-      `);
-
-      return result.map((row: any) => String(row.id_tercero));
-    } catch (error) {
-      console.error('[PlanAnual5RolesService.obtenerJefesControlInterno] Error:', error);
-      return [];
-    }
+    return this.notificacionesService.obtenerJefesOcig();
   }
 
   /**
@@ -2267,6 +2419,8 @@ export class PlanAnual5RolesService {
       porcentajeCumplimiento: number;
     };
   }> {
+    await this.sincronizarRol4({ año });
+
     // Buscar la actividad de auditorías del Rol 4
     const actividadResult = await this.dataSource.query(`
       SELECT a.id

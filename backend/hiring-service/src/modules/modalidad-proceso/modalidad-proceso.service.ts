@@ -13,10 +13,13 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { DecisionRevision, Revision } from '../../entities/revision.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { PERMISO_ACTIVIDAD_EDITAR, tienePermiso } from '../../auth/permisos';
+import { AlcanceService } from '../../auth/alcance.service';
 import { ParticipacionService } from '../participacion/participacion.service';
 import { UmbralesService } from '../umbrales/umbrales.service';
+import { CdpService } from '../cdp/cdp.service';
 import { CambiarModalidadDto, DecidirModalidadDto } from './dto/modalidad-proceso.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 3.5 de la matriz: definir la modalidad de contratación. */
 export const NUMERAL_MODALIDAD = '3.5';
@@ -54,6 +57,10 @@ export class ModalidadProcesoService {
     private readonly dataSource: DataSource,
     private readonly participacion: ParticipacionService,
     private readonly umbrales: UmbralesService,
+    private readonly cdp: CdpService,
+    private readonly cierre: CierreActividadService,
+    /** Quién puede proponer la modalidad (migración 083). */
+    private readonly alcance: AlcanceService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -68,7 +75,7 @@ export class ModalidadProcesoService {
           .findOne({ where: { codigo: proceso.modalidad } })
       : null;
 
-    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso);
+    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso, NUMERAL_MODALIDAD);
     const estadoActual = actividad?.estado ?? 'BORRADOR';
 
     const revisiones = actividad
@@ -174,7 +181,7 @@ export class ModalidadProcesoService {
    * el ciclo se repetiría con la misma equivocación.
    */
   async decidir(procesoId: string, dto: DecidirModalidadDto, acceso: HiringAccess) {
-    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso);
+    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso, NUMERAL_MODALIDAD);
     if (motivo === 'SIN_ABOGADO') {
       throw new ConflictException(
         'Este proceso todavía no tiene abogado asignado: se reparte en la actividad 3.3 y después se revisa',
@@ -201,6 +208,12 @@ export class ModalidadProcesoService {
         throw new ConflictException('La modalidad no está en revisión');
       }
 
+      // Solo al ratificar: devolver no cierra la actividad, así que no exige
+      // la firma con la que quien decide responde por lo que cerró.
+      if (dto.decision === 'APROBADO' && (await this.cierre.exigeFirma(em, NUMERAL_MODALIDAD))) {
+        this.cierre.exigirFirmaValida(dto.firma);
+      }
+
       await em.save(Revision, {
         procesoActividadId: actividad.id,
         decision: dto.decision,
@@ -216,6 +229,7 @@ export class ModalidadProcesoService {
         estadoTrasDecidirLaModalidad(dto.decision),
         acceso,
         dto.decision === 'APROBADO',
+        dto.decision === 'APROBADO' ? dto.firma : undefined,
       );
 
       await this.traza(
@@ -225,6 +239,17 @@ export class ModalidadProcesoService {
         acceso,
         { actividad: NUMERAL_MODALIDAD, observaciones: dto.observaciones },
       );
+
+      // Si esta era la última que quedaba abierta en la etapa 3, la solicitud
+      // de CDP se radica sola. No es un caso raro: en mínima cuantía la matriz
+      // excluye la causal *y* el comité, así que ratificar la modalidad es
+      // justo lo que cierra la etapa, y sin esta llamada esa modalidad —una de
+      // las más frecuentes— nunca pedía su CDP.
+      //
+      // Devolver no cierra nada, así que no se pregunta.
+      if (dto.decision === 'APROBADO') {
+        await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+      }
     });
 
     return this.estado(procesoId, acceso);
@@ -240,7 +265,7 @@ export class ModalidadProcesoService {
    * equivocó y ya está encima del expediente.
    */
   private async esDelArea(proceso: Proceso, acceso: HiringAccess): Promise<boolean> {
-    if (!tienePermiso(acceso, PERMISO_ACTIVIDAD_EDITAR)) return false;
+    if (!(await this.alcance.puedeEn(acceso, 'editar', NUMERAL_MODALIDAD))) return false;
 
     const loRadico =
       !!proceso.createdBy &&
@@ -286,6 +311,7 @@ export class ModalidadProcesoService {
     estado: string,
     acceso: HiringAccess,
     cierra = false,
+    firma?: FirmaOtpDto,
   ) {
     const actividad = await em
       .getRepository(ProcesoActividad)
@@ -297,7 +323,7 @@ export class ModalidadProcesoService {
           procesoId,
           numeral: NUMERAL_MODALIDAD,
           estado: estado as any,
-          datos: {},
+          datos: firma ? { firma } : {},
           enviadoPor: acceso.userName,
           ...(cierra ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
         } as Partial<ProcesoActividad>),
@@ -314,6 +340,9 @@ export class ModalidadProcesoService {
     // decidido, y al devolver la actividad vuelve a estar abierta.
     actividad.revisadoPor = cierra ? acceso.userName : (null as any);
     actividad.revisadoAt = cierra ? new Date() : (null as any);
+    if (firma) {
+      actividad.datos = { ...(actividad.datos ?? {}), firma };
+    }
     await em.save(ProcesoActividad, actividad);
   }
 

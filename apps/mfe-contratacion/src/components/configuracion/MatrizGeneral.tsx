@@ -10,7 +10,7 @@ import { LeyendaMatriz, NOMBRE_ETAPA, SimboloMatriz, sigla } from './simbolos';
 const ETAPA_INICIAL = 3;
 
 interface Props {
-  /** Abre el detalle de una actividad en la modalidad de esa columna. */
+  /** Abre la ficha de una actividad; con modalidad, si se llegó desde su celda. */
   onAbrir: (numeral: string, modalidad: string) => void;
 }
 
@@ -139,8 +139,8 @@ export function MatrizGeneral({ onAbrir }: Props) {
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <p className="m-0 text-xs text-gray-600 leading-relaxed min-w-0 flex-1">
             Cada fila es una actividad y cada columna una modalidad.{' '}
-            <strong className="font-semibold text-gray-800">Pulsa una celda</strong> para
-            cambiar si se exige o corregir su texto.
+            <strong className="font-semibold text-gray-800">Pulsa una actividad</strong> para
+            configurarla: qué entrega el gestor, quién la aprueba y en qué modalidades se hace.
           </p>
 
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -280,14 +280,20 @@ export function MatrizGeneral({ onAbrir }: Props) {
                     lista.map((fila) => (
                       <tr key={fila.numeral} className="group border-b border-gray-100 transition-colors hover:bg-gray-50">
                         <td className="sticky left-0 z-10 bg-white hover:bg-gray-50 border-r border-gray-200 px-3 py-2 transition-colors">
-                          <span className="flex items-baseline gap-2">
+                          {/* El nombre abre la ficha: es donde se configura la
+                              actividad entera, para todas las modalidades. */}
+                          <button
+                            type="button"
+                            onClick={() => onAbrir(fila.numeral, '')}
+                            className="flex items-baseline gap-2 text-left w-full hover:text-[#003DA5]"
+                          >
                             <span className="text-[11px] font-bold text-gray-400 flex-shrink-0">
                               {fila.numeral}
                             </span>
-                            <span className="text-sm text-gray-800 leading-snug">
+                            <span className="text-sm text-gray-800 leading-snug hover:text-[#003DA5] hover:underline">
                               {fila.nombre}
                             </span>
-                          </span>
+                          </button>
                         </td>
 
                         {fila.celdas.map((celda) => (

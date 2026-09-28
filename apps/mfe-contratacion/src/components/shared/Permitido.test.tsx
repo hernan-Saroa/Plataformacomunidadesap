@@ -1,26 +1,37 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { fijarAlcance, olvidarAlcance } from '../../auth/alcance';
 import { Permitido } from './Permitido';
 
+// El alcance se fija a mano en cada caso: que el hook no salga a pedirlo.
+vi.mock('../../services/contratacionService', () => ({
+  contratacionService: { alcanceMio: vi.fn(() => new Promise(() => undefined)) },
+}));
+
 /**
- * Qué ve quien no puede ejecutar la acción (EFDS-1183).
+ * Qué ve quien no puede ejecutar la acción (EFDS-1183, migración 083).
  *
  * Esconder no es la protección —el guard del servicio ya niega lo que
  * corresponda— sino no pintar puertas falsas: un botón que responde 403 lleva
  * al usuario a concluir que la plataforma está rota.
  */
 describe('Permitido', () => {
-  const sesionCon = (...permisos: string[]) =>
-    localStorage.setItem('user', JSON.stringify({ roles: [], permissions: permisos }));
+  const conAlcance = (...lugares: [string, string][]) =>
+    act(() =>
+      fijarAlcance({
+        alcances: lugares.map(([accion, lugar]) => ({ accion: accion as never, lugar })),
+        transversales: [],
+      }),
+    );
 
-  afterEach(() => localStorage.clear());
+  afterEach(() => olvidarAlcance());
 
-  it('muestra la acción a quien la tiene', () => {
-    sesionCon('contratacion.actividad.edit');
+  it('muestra la acción a quien la tiene en ese punto', () => {
+    conAlcance(['editar', '5.6']);
     render(
-      <Permitido permiso="contratacion.actividad.edit">
+      <Permitido accion="editar" punto="5.6">
         <button>Registrar</button>
       </Permitido>,
     );
@@ -28,10 +39,32 @@ describe('Permitido', () => {
     expect(screen.getByRole('button', { name: 'Registrar' })).toBeInTheDocument();
   });
 
-  it('la esconde a quien no', () => {
-    sesionCon('contratacion.expediente.auditar');
+  it('y a quien la tiene en toda la etapa', () => {
+    conAlcance(['editar', 'E5']);
     render(
-      <Permitido permiso="contratacion.actividad.edit">
+      <Permitido accion="editar" punto="5.6">
+        <button>Registrar</button>
+      </Permitido>,
+    );
+
+    expect(screen.getByRole('button', { name: 'Registrar' })).toBeInTheDocument();
+  });
+
+  it('la esconde a quien la tiene en otro punto', () => {
+    conAlcance(['editar', '5.5']);
+    render(
+      <Permitido accion="editar" punto="5.6">
+        <button>Registrar</button>
+      </Permitido>,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Registrar' })).toBeNull();
+  });
+
+  it('ver el punto no es editarlo', () => {
+    conAlcance(['ver', 'E5']);
+    render(
+      <Permitido accion="editar" punto="5.6">
         <button>Registrar</button>
       </Permitido>,
     );
@@ -40,9 +73,9 @@ describe('Permitido', () => {
   });
 
   it('con `quien`, explica en vez de dejar un hueco', () => {
-    sesionCon('contratacion.expediente.auditar');
+    conAlcance(['ver', 'TODO']);
     render(
-      <Permitido permiso="contratacion.actividad.edit" quien="el gestor de contratación">
+      <Permitido accion="editar" punto="5.6" quien="el gestor de contratación">
         <button>Registrar</button>
       </Permitido>,
     );
@@ -53,9 +86,9 @@ describe('Permitido', () => {
 
   it('sin `quien`, no deja rastro', () => {
     // Donde la pantalla ya dice quién actúa, un aviso más sería ruido.
-    sesionCon('contratacion.expediente.auditar');
+    conAlcance(['ver', 'TODO']);
     const { container } = render(
-      <Permitido permiso="contratacion.actividad.edit">
+      <Permitido accion="editar" punto="5.6">
         <button>Registrar</button>
       </Permitido>,
     );
@@ -63,13 +96,24 @@ describe('Permitido', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('sin sesión no esconde nada', () => {
+  it('mientras el alcance no llega no esconde nada', () => {
     render(
-      <Permitido permiso="contratacion.actividad.edit">
+      <Permitido accion="editar" punto="5.6">
         <button>Registrar</button>
       </Permitido>,
     );
 
     expect(screen.getByRole('button', { name: 'Registrar' })).toBeInTheDocument();
+  });
+
+  it('y cuando llega se esconde sin recargar', () => {
+    render(
+      <Permitido accion="editar" punto="5.6">
+        <button>Registrar</button>
+      </Permitido>,
+    );
+    conAlcance(['ver', 'TODO']);
+
+    expect(screen.queryByRole('button', { name: 'Registrar' })).toBeNull();
   });
 });

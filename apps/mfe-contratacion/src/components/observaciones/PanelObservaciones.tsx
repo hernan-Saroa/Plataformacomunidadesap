@@ -12,7 +12,7 @@ import {
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EstadoObservaciones, ObservacionPliego } from '../../types';
+import { EstadoObservaciones, EvidenciaFirmaOtp, ObservacionPliego } from '../../types';
 import {
   Aviso,
   Ayuda,
@@ -24,12 +24,16 @@ import {
   SinPermiso,
   Titulo,
 } from '../shared/PiezasPanel';
+import { TerminarPlazo } from '../shared/TerminarPlazo';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '5.3';
 
 /**
  * Actividad 5.3 · Observaciones al proyecto de pliego (EFDS-1151).
@@ -42,6 +46,7 @@ interface Props {
  * respondió, así que lo que manda la vista es qué queda sin responder.
  */
 export function PanelObservaciones({ procesoId, onCambio }: Props) {
+  const firma = useFirma(NUMERAL, 'Cerrar la recepción de observaciones');
   const [estado, setEstado] = useState<EstadoObservaciones | null>(null);
   const [cargando, setCargando] = useState(true);
   const [trabajando, setTrabajando] = useState(false);
@@ -130,14 +135,17 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
                 puedeResponder={estado.puedeGestionar}
                 trabajando={trabajando}
                 onResponder={(datos) =>
-                  ejecutar(
-                    () =>
-                      contratacionService.responderObservacion(
-                        procesoId,
-                        observacion.id,
-                        datos,
-                      ),
-                    'Observación respondida',
+                  firma.conFirma((firmaOtp) =>
+                    ejecutar(
+                      () =>
+                        contratacionService.responderObservacion(
+                          procesoId,
+                          observacion.id,
+                          datos,
+                          firmaOtp,
+                        ),
+                      'Observación respondida',
+                    ),
                   )
                 }
               />
@@ -155,6 +163,18 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
           </p>
         </div>
       )}
+
+      {/* La llave de pruebas va aquí y no solo en el panel de la publicación:
+          es en la 5.3 donde el término estorba, porque un proceso sin
+          observaciones no se puede dar por cumplido hasta que venza. */}
+      <TerminarPlazo
+        visible={estado.puedeTerminarPlazo}
+        termino="El plazo de publicidad"
+        terminar={() => contratacionService.terminarPlazoPublicacion(procesoId)}
+        onTerminado={cargar}
+        nota="Si el pliego se publicó hoy, su fecha de publicación retrocede con el término: uno no puede terminar antes de empezar."
+        disabled={trabajando}
+      />
 
       {!estado.puedeGestionar ? (
         <SinPermiso quien="el gestor o la Dirección de Contratación" />
@@ -192,9 +212,11 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
               <BotonSecundario
                 disabled={trabajando}
                 onClick={() =>
-                  ejecutar(
-                    () => contratacionService.cerrarSinObservaciones(procesoId),
-                    'Actividad cerrada sin observaciones',
+                  firma.conFirma((firmaOtp) =>
+                    ejecutar(
+                      () => contratacionService.cerrarSinObservaciones(procesoId, firmaOtp),
+                      'Actividad cerrada sin observaciones',
+                    ),
                   )
                 }
                 icono={<CheckCheck className="w-3.5 h-3.5" />}
@@ -207,6 +229,7 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
       )}
 
       <Origen />
+      {firma.modal}
     </Marco>
   );
 }
@@ -277,7 +300,9 @@ function Observacion({
   observacion: ObservacionPliego;
   puedeResponder: boolean;
   trabajando: boolean;
-  onResponder: (datos: { respuesta: string; modificoPliego: boolean }) => Promise<boolean>;
+  onResponder: (
+    datos: { respuesta: string; modificoPliego: boolean },
+  ) => Promise<boolean> | boolean | undefined;
 }) {
   const [abierto, setAbierto] = useState(false);
   const [respuesta, setRespuesta] = useState('');

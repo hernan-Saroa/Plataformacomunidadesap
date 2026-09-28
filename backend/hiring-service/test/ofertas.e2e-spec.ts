@@ -32,14 +32,12 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
     userId: '00000000-0000-0000-0000-000000000001',
     userName: 'prueba.gestor',
     roles: ['GESTOR_CONTRATACION'],
-    puedeEditar: true,
   };
 
   const financiero: HiringAccess = {
     userId: '00000000-0000-0000-0000-000000000002',
     userName: 'prueba.financiero',
     roles: ['ESTRUCTURADOR_FINANCIERO'],
-    puedeEditar: false,
   };
 
   const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
@@ -67,7 +65,7 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
   /** Lleva el proceso hasta abierto, que es cuando arranca el plazo de ofertas. */
   const abrir = async (procesoId: string) => {
     await cdp.solicitar(procesoId, { rubro: 'A-02-02', valor: 1_000_000 }, gestor);
-    await cdp.verificar(procesoId, financiero);
+    await cdp.verificar(procesoId, {}, financiero);
     await cdp.expedir(
       procesoId,
       { numero: 'CDP-2026-155', valor: 1_000_000, fechaExpedicion: hoy() },

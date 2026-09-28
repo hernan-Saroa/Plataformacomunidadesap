@@ -19,6 +19,7 @@ import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSu
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
 import { formatPtaCompletionPercentage } from '../../../utils/ptaCompletion';
 import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
+import { formatPtaDedicacion, formatPtaVinculacion, ptaNumero } from '../../../utils/ptaInstitutionalDisplay';
 
 interface PTAResumenPrintProps {
   pta: any;
@@ -156,10 +157,11 @@ function ChipEstadoComp({ estado }: { estado?: string | null }) {
 
 /** Celda etiqueta+valor de la ficha del docente. */
 function Dato({ label, value }: { label: string; value: any }) {
+  const visibleValue = value === null || value === undefined || String(value).trim() === '' ? '—' : value;
   return (
     <div style={{ minWidth: 0 }}>
       <div style={{ fontSize: '0.6rem', fontWeight: 700, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{label}</div>
-      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#111827', marginTop: 2, overflowWrap: 'anywhere' }}>{value ?? '—'}</div>
+      <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#111827', marginTop: 2, overflowWrap: 'anywhere' }}>{visibleValue}</div>
     </div>
   );
 }
@@ -187,14 +189,14 @@ const TDC: React.CSSProperties = { ...TD, textAlign: 'center', whiteSpace: 'nowr
 const SUB: React.CSSProperties = { fontSize: '0.62rem', color: '#9CA3AF', marginTop: 2 };
 const zebra = (i: number): React.CSSProperties => ({ background: i % 2 === 1 ? '#FAFAFA' : '#fff' });
 
-export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, userName, componentesAprobacion = [], aprobacionTerritorial = [] }: PTAResumenPrintProps) {
+export function PTAResumenPrint({ pta, onClose, userDocumento, userName, componentesAprobacion = [], aprobacionTerritorial = [] }: PTAResumenPrintProps) {
   /**
    * Identificación del docente para el documento oficial.
    *
    * `userPersonId` es el id interno (un UUID) y se imprimía tal cual, que no
    * identifica a nadie. El backend ya resuelve la cédula contra la ficha
-   * institucional y la publica en el DTO con varios alias históricos; se leen
-   * todos y el id interno queda solo como último recurso.
+   * institucional y la publica en el DTO con varios alias históricos. Un UUID
+   * interno no reemplaza una identificación ausente en un documento oficial.
    */
   const identificacionDocente =
     userDocumento
@@ -203,7 +205,6 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, use
     || pta?.cedula
     || pta?.numero_documento
     || pta?.docente?.documento_identidad
-    || userPersonId
     || '';
   const tipoDocumento = pta?.tipo_documento || '';
 
@@ -258,9 +259,14 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, use
   const horasExt = pta?.horas_extension ?? extActs.reduce((s, a) => s + Number(a.horas || 0), 0);
   const horasComp = pta?.horas_complementarias ?? compActs.reduce((s, a) => s + Number(a.horas || 0), 0);
   const horasProg = pta?.horas_totales ?? pta?.total_horas_programadas ?? (horasDoc + horasInv + horasExt + horasComp);
-  const horasDisp = pta?.horas_asignables ?? pta?.horas_a_programar ?? 0;
-  const semanas = Number(pta?.semanas_vinculacion) || 16;
-  const pctDe = (h: number) => (horasProg > 0 ? Math.round((h / horasProg) * 100) : 0);
+  const horasProgConocidas = ptaNumero(pta?.horas_totales ?? pta?.total_horas_programadas) !== null
+    || asigs.length > 0 || proyectos.length > 0 || actInv.length > 0 || extActs.length > 0 || compActs.length > 0;
+  const horasDisp = ptaNumero(pta?.horas_asignables ?? pta?.horas_a_programar);
+  const semanas = ptaNumero(pta?.semanas_vinculacion);
+  const porcentajeCarga = horasProgConocidas && horasDisp !== null && horasDisp > 0
+    ? `${formatPtaCompletionPercentage(horasProg, horasDisp)}%`
+    : '—';
+  const pctDe = (h: number) => (horasProgConocidas && horasProg > 0 ? `${Math.round((h / horasProg) * 100)}%` : '—');
 
   const hayInv = proyectos.length > 0 || actInv.length > 0;
   const estadoCfg = estadoDocCfg(pta?.estado);
@@ -279,7 +285,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, use
     return { ...c, aprobadas, pendientes: Math.max(c.horas - aprobadas, 0), pctAprob: c.horas > 0 ? Math.round((aprobadas / c.horas) * 100) : 0 };
   });
   const totalAprobadas = resumenComponentes.reduce((s, c) => s + c.aprobadas, 0);
-  const pctAprobGlobal = horasProg > 0 ? Math.min(Math.round((totalAprobadas / horasProg) * 100), 100) : 0;
+  const pctAprobGlobal = horasProgConocidas && horasProg > 0 ? `${Math.min(Math.round((totalAprobadas / horasProg) * 100), 100)}%` : '—';
 
   // ── Detalle de quién aprobó cada sub-componente/territorial y cuándo ──
   const detalleAprobacion = (componentesAprobacion || [])
@@ -315,7 +321,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, use
   return createPortal(
     <AnimatePresence>
       {/* Aislamiento de impresión: solo la hoja del resumen llega al papel. */}
-      <style>{`
+      <style key="pta-print-styles">{`
         @media print {
           /* La hoja se monta como hijo directo de <body> (createPortal), asi que
              el resto de la aplicacion se puede apagar con display:none.
@@ -425,6 +431,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, use
         }
       `}</style>
       <div
+        key="pta-print-overlay"
         className="resumen-pta-overlay"
         style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '16px 8px 60px', background: 'rgba(17,24,39,0.7)', overflowY: 'auto' }}
       >
@@ -492,14 +499,14 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, use
                     o anidado en `docente`, y con una sola alternativa quedaba vacío. */}
                 <Dato label="Nombre" value={nombreDocente} />
                 <Dato label="Identificación" value={tipoDocumento ? `${tipoDocumento} ${identificacionDocente}` : identificacionDocente} />
-                <Dato label="Dedicación" value={pta?.dedicacion} />
-                <Dato label="Tipo de Vinculación" value={pta?.tipo_vinculacion} />
+                <Dato label="Dedicación" value={formatPtaDedicacion(pta?.dedicacion)} />
+                <Dato label="Tipo de Vinculación" value={formatPtaVinculacion(pta?.tipo_vinculacion)} />
                 <Dato label="Sede Territorial" value={pta?.territorial} />
                 <Dato label="CETAP" value={pta?.cetap} />
                 <Dato label="Programa Académico" value={pta?.programa} />
                 <Dato label="Semanas de Vinculación" value={pta?.semanas_vinculacion} />
-                <Dato label="Horas Programadas" value={`${horasProg} de ${horasDisp} h disponibles`} />
-                <Dato label="% de Carga" value={`${formatPtaCompletionPercentage(horasProg, horasDisp)}%`} />
+                <Dato label="Horas Programadas" value={!horasProgConocidas ? '—' : horasDisp !== null ? `${horasProg} de ${horasDisp} h disponibles` : `${horasProg} h; horas disponibles no registradas`} />
+                <Dato label="% de Carga" value={porcentajeCarga} />
               </div>
             </div>
 
@@ -522,7 +529,7 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, use
                   </thead>
                   <tbody>
                     {asigs.length > 0 ? asigs.map((a: any, i: number) => {
-                      const totalHoras = a.total_horas !== undefined ? Number(a.total_horas) : Number(a.horas || 0);
+                      const totalHoras = ptaNumero(a.total_horas ?? a.total_horas_calculadas ?? a.horas);
                       return (
                         <tr key={i} style={zebra(i)}>
                           <td style={TD}>
@@ -535,11 +542,11 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, use
                             {a.cetap_nombre && <div style={SUB}>CETAP {a.cetap_nombre}{a.territorial_nombre ? ` · ${a.territorial_nombre}` : ''}</div>}
                           </td>
                           <td style={TD}>{formatPtaPensum(a.pensum)}</td>
-                          <td style={TDC}>{a.creditos || '-'}</td>
-                          <td style={TDC}>{a.total_estudiantes || '-'}</td>
-                          <td style={TDC}>{(totalHoras / semanas).toFixed(1)}</td>
+                          <td style={TDC}>{a.creditos ?? '—'}</td>
+                          <td style={TDC}>{a.total_estudiantes ?? a.estudiantes ?? a.cupos ?? '—'}</td>
+                          <td style={TDC}>{totalHoras !== null && semanas !== null && semanas > 0 ? (totalHoras / semanas).toFixed(1) : '—'}</td>
                           <td style={TDC}>{rangoF(a.fecha_inicio, a.fecha_fin)}</td>
-                          <td style={{ ...TDC, fontWeight: 800, color: PTA_COLORS.DOCENCIA }}>{totalHoras}</td>
+                          <td style={{ ...TDC, fontWeight: 800, color: PTA_COLORS.DOCENCIA }}>{totalHoras ?? '—'}</td>
                         </tr>
                       );
                     }) : (
@@ -574,21 +581,21 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, use
                       {proyectos.map((p: any, i: number) => (
                         <tr key={`p-${i}`} style={zebra(i)}>
                           <td style={TD}>
-                            <div style={{ fontWeight: 700 }}>{p.nombre_proyecto || p.nombre || 'Proyecto de investigación'}</div>
+                            <div style={{ fontWeight: 700 }}>{p.nombre_proyecto || p.nombre || 'No registrado'}</div>
                             <div style={SUB}>
                               {[p.codigo && `Código ${p.codigo}`, p.grupo && `Grupo ${p.grupo}`, p.linea && `Línea ${p.linea}`, p.resolucion_nombre && `Resolución: ${p.resolucion_nombre}`].filter(Boolean).join(' · ') || 'Proyecto registrado en el PTA'}
                             </div>
                             <HierarchySelectionSummary activity={p} accent={PTA_COLORS.INVESTIGACION} compact className="mt-1" />
                           </td>
-                          <td style={TD}>{p.rol || 'Investigador'}</td>
+                          <td style={TD}>{p.rol || '—'}</td>
                           <td style={TDC}>{rangoF(p.fecha_inicio, p.fecha_fin)}</td>
-                          <td style={{ ...TDC, fontWeight: 800, color: PTA_COLORS.INVESTIGACION }}>{Number(p.horas_solicitadas || 0)}</td>
+                          <td style={{ ...TDC, fontWeight: 800, color: PTA_COLORS.INVESTIGACION }}>{ptaNumero(p.horas_solicitadas ?? p.horas) ?? '—'}</td>
                         </tr>
                       ))}
                       {actInv.map((a: any, i: number) => (
                         <tr key={`a-${i}`} style={zebra(proyectos.length + i)}>
                           <td style={TD}>
-                            <div style={{ fontWeight: 700 }}>{a.nombre || a.actividad_nombre || a.actividad || 'Actividad'}</div>
+                            <div style={{ fontWeight: 700 }}>{a.nombre || a.actividad_nombre || a.actividad || 'No registrado'}</div>
                             {(a.descripcion || Number(a.cantidad) > 0) && (
                               <div style={SUB}>
                                 {[a.descripcion, Number(a.cantidad) > 0 && `Cantidad: ${a.cantidad}${Number(a.horas_unitarias) > 0 ? ` × ${a.horas_unitarias}h` : ''}`].filter(Boolean).join(' · ')}
@@ -596,9 +603,9 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, use
                             )}
                             <HierarchySelectionSummary activity={a} accent={PTA_COLORS.INVESTIGACION} compact className="mt-1" />
                           </td>
-                          <td style={TD}>{a.tipo || 'Actividad investigativa'}</td>
+                          <td style={TD}>{a.tipo || 'No registrado'}</td>
                           <td style={TDC}>{rangoF(a.fecha_inicio, a.fecha_fin)}</td>
-                          <td style={{ ...TDC, fontWeight: 800, color: PTA_COLORS.INVESTIGACION }}>{Number(a.horas_total ?? a.horas ?? 0)}</td>
+                          <td style={{ ...TDC, fontWeight: 800, color: PTA_COLORS.INVESTIGACION }}>{ptaNumero(a.horas_total ?? a.horas) ?? '—'}</td>
                         </tr>
                       ))}
                       <tr>
@@ -629,13 +636,13 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, use
                       {extActs.map((a: any, i: number) => (
                         <tr key={i} style={zebra(i)}>
                           <td style={TD}>
-                            <div style={{ fontWeight: 700 }}>{a.nombre_actividad || a.actividad_nombre || a.actividad || a.nombre || 'Actividad'}</div>
+                            <div style={{ fontWeight: 700 }}>{a.nombre_actividad || a.actividad_nombre || a.actividad || a.nombre || 'No registrado'}</div>
                             <HierarchySelectionSummary activity={a} accent={PTA_COLORS.EXTENSION} compact className="mt-1" />
                             {a.descripcion && <div style={SUB}>{a.descripcion}</div>}
                           </td>
-                          <td style={TD}>{seccionPrintLabel(a.seccion) || 'Extensión'}</td>
+                          <td style={TD}>{seccionPrintLabel(a.seccion) || 'No registrado'}</td>
                           <td style={TDC}>{rangoF(a.fecha_inicio, a.fecha_fin)}</td>
-                          <td style={{ ...TDC, fontWeight: 800, color: PTA_COLORS.EXTENSION }}>{Number(a.horas || 0)}</td>
+                          <td style={{ ...TDC, fontWeight: 800, color: PTA_COLORS.EXTENSION }}>{ptaNumero(a.horas) ?? '—'}</td>
                         </tr>
                       ))}
                       <tr>
@@ -666,13 +673,13 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, use
                       {compActs.map((a: any, i: number) => (
                         <tr key={i} style={zebra(i)}>
                           <td style={TD}>
-                            <div style={{ fontWeight: 700 }}>{a.nombre || a.actividad || 'Actividad'}</div>
+                            <div style={{ fontWeight: 700 }}>{a.nombre || a.actividad || 'No registrado'}</div>
                             <HierarchySelectionSummary activity={a} accent="#A16207" compact className="mt-1" />
                             {a.descripcion && <div style={SUB}>{a.descripcion}</div>}
                           </td>
-                          <td style={TD}>{seccionPrintLabel(a.seccion) || a.categoria || a.tipo || 'Complementaria'}</td>
+                          <td style={TD}>{seccionPrintLabel(a.seccion) || a.categoria || a.tipo || 'No registrado'}</td>
                           <td style={TDC}>{rangoF(a.fecha_inicio, a.fecha_fin)}</td>
-                          <td style={{ ...TDC, fontWeight: 800, color: '#A16207' }}>{Number(a.horas || 0)}</td>
+                          <td style={{ ...TDC, fontWeight: 800, color: '#A16207' }}>{ptaNumero(a.horas) ?? '—'}</td>
                         </tr>
                       ))}
                       <tr>
@@ -710,17 +717,17 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, use
                         <td style={{ ...TDC, background: '#F0FDF4' }}>{c.aprobadas}</td>
                         <td style={{ ...TDC, background: '#FEF9C3' }}>{c.pendientes}</td>
                         <td style={TDC}>{c.pctAprob}%</td>
-                        <td style={TDC}>{pctDe(c.horas)}%</td>
+                        <td style={TDC}>{pctDe(c.horas)}</td>
                       </tr>
                     ))}
                     <tr>
                       <td style={{ ...TD, fontWeight: 900, background: '#F3F4F6' }}>TOTAL PROGRAMADO</td>
-                      <td style={{ ...TDC, background: '#F3F4F6', fontSize: '0.66rem', color: '#6B7280', fontWeight: 700 }}>{horasDisp} h disponibles</td>
-                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{horasProg}</td>
+                      <td style={{ ...TDC, background: '#F3F4F6', fontSize: '0.66rem', color: '#6B7280', fontWeight: 700 }}>{horasDisp !== null ? `${horasDisp} h disponibles` : 'Horas disponibles no registradas'}</td>
+                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{horasProgConocidas ? horasProg : '—'}</td>
                       <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{totalAprobadas}</td>
-                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{Math.max(horasProg - totalAprobadas, 0)}</td>
-                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{pctAprobGlobal}%</td>
-                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{formatPtaCompletionPercentage(horasProg, horasDisp)}% de carga</td>
+                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{horasProgConocidas ? Math.max(horasProg - totalAprobadas, 0) : '—'}</td>
+                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{pctAprobGlobal}</td>
+                      <td style={{ ...TDC, fontWeight: 900, background: '#F3F4F6' }}>{porcentajeCarga === '—' ? '—' : `${porcentajeCarga} de carga`}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -758,8 +765,8 @@ export function PTAResumenPrint({ pta, onClose, userPersonId, userDocumento, use
                         <span style={{ fontWeight: 800, fontSize: '0.78rem' }}>Aprobado Electrónicamente</span>
                       </div>
                       <div style={{ borderBottom: '1px solid #059669', width: 200, margin: '0 auto 8px', opacity: 0.5 }} />
-                      <p style={{ margin: 0, fontWeight: 700, fontSize: '0.78rem' }}>{pta?.aprobador_nombre || 'Grupo de Gestión Profesoral'}</p>
-                      <p style={{ margin: '2px 0 0', fontSize: '0.64rem', color: '#6B7280' }}>Aprobador Oficial ESAP</p>
+                      <p style={{ margin: 0, fontWeight: 700, fontSize: '0.78rem' }}>{pta?.aprobador_nombre || 'No registrado'}</p>
+                      <p style={{ margin: '2px 0 0', fontSize: '0.64rem', color: '#6B7280' }}>Aprobador registrado en el sistema</p>
                     </div>
                   ) : (
                     <div>

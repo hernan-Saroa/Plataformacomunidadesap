@@ -2283,22 +2283,12 @@ export function ModalDetallesProceso({
     || [currentUser?.firstName, currentUser?.lastName].filter(Boolean).join(' ').trim()
     || currentUser?.email
     || 'Sistema';
-  const isJefe = (currentUser?.roles || []).some((r: any) => {
-    const code = typeof r === 'string' ? r : r?.code || r?.name;
-    return code === 'JEFE_DE_LA_OCID';
-  });
-  const isRadicador = (currentUser?.roles || []).some((r: any) => {
-    const code = (typeof r === 'string' ? r : r?.code || r?.name || '').toUpperCase();
-    return code === 'SECRETARIA_RADICADOR' || code === 'RADICADOR_DISCIPLINARIO' || code === 'RADICADOR';
-  });
+  const isJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
+  const isRadicador = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR);
   const canSendJuridica =
     isRadicador ||
     authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
-    authService.isSuperAdmin() ||
-    (currentUser?.roles || []).some((r: any) => {
-      const code = (typeof r === 'string' ? r : r?.code || r?.name || '').toUpperCase();
-      return code === 'SUPER_ADMIN' || code === 'ADMIN';
-    });
+    authService.isSuperAdmin();
   const isEtapaJuzgamiento = (etapaNombre?: string): boolean => {
     if (!etapaNombre) return false;
     const n = etapaNombre

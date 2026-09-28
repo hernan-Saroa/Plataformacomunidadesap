@@ -136,4 +136,66 @@ describe('AutorizacionDireccionInbox — RF-AUT-002 (Etapa 6)', () => {
       expect(screen.getAllByText(/COM-2026-EXT-0001/i).length).toBeGreaterThan(0);
     });
   });
+
+  it('muestra estado vacío amigable cuando no existen solicitudes extemporáneas', async () => {
+    (viaticosService.obtenerBandejaDireccionNacional as any).mockResolvedValue({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 20,
+    });
+
+    render(<AutorizacionDireccionInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/No hay comisiones extemporáneas pendientes/i)).toBeDefined();
+    });
+  });
+
+  it('muestra alerta de error y botón de reintentar si el servicio falla', async () => {
+    (viaticosService.obtenerBandejaDireccionNacional as any).mockRejectedValueOnce(
+      new Error('Error de conectividad con el microservicio'),
+    );
+
+    render(<AutorizacionDireccionInbox />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Error de conectividad con el microservicio/i)).toBeDefined();
+    });
+
+    // Reintentar
+    (viaticosService.obtenerBandejaDireccionNacional as any).mockResolvedValueOnce({
+      data: mockExtemporaneas,
+      total: 2,
+      page: 1,
+      limit: 20,
+    });
+
+    const btnReintentar = screen.getByRole('button', { name: /Reintentar/i });
+    fireEvent.click(btnReintentar);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/COM-2026-EXT-0001/i).length).toBeGreaterThan(0);
+    });
+  });
+
+  it('permite buscar por texto en el input de búsqueda', async () => {
+    render(<AutorizacionDireccionInbox />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/COM-2026-EXT-0001/i).length).toBeGreaterThan(0);
+    });
+
+    const inputBusqueda = screen.getByPlaceholderText(/Buscar por radicado, comisionado, cédula o ciudad destino.../i);
+    fireEvent.change(inputBusqueda, { target: { value: 'Leticia' } });
+
+    await waitFor(() => {
+      expect(viaticosService.obtenerBandejaDireccionNacional).toHaveBeenCalledWith(
+        1,
+        20,
+        'Leticia',
+        undefined,
+      );
+    });
+  });
 });

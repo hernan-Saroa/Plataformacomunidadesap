@@ -32,6 +32,7 @@ export interface AuditoriaBackendDTO {
   fechaFinEjecucion?: string; // ISO 8601: "2026-02-25" - Fin de Ejecución
   fechaInicioComunicacion?: string; // ISO 8601: "2026-02-26" - Inicio de Comunicación
   fechaFin: string;    // ISO 8601: "2026-02-28" - Fin de Comunicación
+  semanasExcluidas?: string[]; // Lunes de las semanas sacadas del cronograma (EFDS-2132)
   
   // Campos opcionales
   descripcion?: string;
@@ -97,6 +98,7 @@ export interface AuditoriaFormData {
   fechaFinEjecucion?: string; // Fin de Ejecución
   fechaInicioComunicacion?: string; // Inicio de Comunicación
   fechaFin: string; // Fin de Comunicación
+  semanasExcluidas?: string[]; // Semanas sacadas del cronograma en el calendario (EFDS-2132)
   periodicidad?: string;
   
   // Objetivos y criterios
@@ -185,7 +187,8 @@ export function mapFormToBackendDTO(form: AuditoriaFormData): AuditoriaBackendDT
     fechaFinEjecucion,
     fechaInicioComunicacion,
     fechaFin,
-    
+    semanasExcluidas: form.semanasExcluidas ?? [],
+
     // Campos opcionales
     descripcion: form.descripcion,
     progreso: 0,
@@ -258,6 +261,8 @@ export function mapBackendToUI(auditoria: AuditoriaResponse): AuditoriaUI {
     fechaInicioEjecucion: auditoria.fechaInicioEjecucion,
     fechaFinEjecucion: auditoria.fechaFinEjecucion,
     fechaInicioComunicacion: auditoria.fechaInicioComunicacion,
+    // Semanas que se sacaron del cronograma, para pintar el calendario igual (EFDS-2132)
+    semanasExcluidas: (auditoria as any).semanasExcluidas || [],
     // ✅ Pasar estadoKanban para mapeo correcto
     estado: mapearEstadoUI(auditoria.fase, auditoria.progreso, estadoKanban),
     // ✅ Conservar estadoKanban original para filtros
@@ -305,6 +310,8 @@ export interface AuditoriaUI {
   fechaInicioEjecucion?: string;
   fechaFinEjecucion?: string;
   fechaInicioComunicacion?: string;
+  /** Lunes de las semanas sacadas del cronograma (EFDS-2132) */
+  semanasExcluidas?: string[];
   estado: 'PROGRAMADA' | 'EN_EJECUCION' | 'COMPLETADA' | 'CANCELADA';
   // ✅ Estado Kanban original del backend (Planeación, Ejecución, Comunicación, Finalizada)
   estadoKanban?: string;

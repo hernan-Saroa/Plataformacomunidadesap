@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ObservacionesService } from './observaciones.service';
 import { ObservacionesController } from './observaciones.controller';
 import { PublicacionModule } from '../publicacion/publicacion.module';
+import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
 import { ObservacionPliego } from '../../entities/observacion-pliego.entity';
 import { Actividad, ActividadExcluida } from '../../entities/actividad.entity';
@@ -29,6 +30,7 @@ import { Expediente } from '../../entities/expediente.entity';
     // si una observación llegó en término, y la comprobación de que hay pliego
     // publicado sobre el que observar.
     PublicacionModule,
+    CierreActividadModule,
   ],
   controllers: [ObservacionesController],
   providers: [ObservacionesService],

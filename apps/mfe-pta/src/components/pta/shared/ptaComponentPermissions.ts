@@ -18,6 +18,12 @@ export type PTAComponentKey =
   | 'complementarias_territorial'
   | 'complementarias_gestion_profesoral';
 
+/** Puerta de entrada a la bandeja; pta.review.* define los componentes gestionables. */
+export const PTA_MANAGE_EDIT_REQUESTS_PERMISSION = 'pta.requests.edit.manage';
+
+/** Puerta de entrada a Seguimiento; pta.approve.* define los componentes gestionables. */
+export const PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION = 'pta.backoffice.seguimiento';
+
 export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   academica_pregrado: 'pta.approve.academica.pregrado',
   academica_posgrado: 'pta.approve.academica.posgrado',
@@ -184,7 +190,11 @@ export type PTABulkApprovalGroupKey =
   | 'ext_procesos'
   | 'ext_fortalecimiento'
   | 'ext_gobierno'
-  | 'complementarias';
+  | 'complementarias'
+  | 'complementarias_pregrado'
+  | 'complementarias_posgrado'
+  | 'complementarias_territorial'
+  | 'complementarias_gestion_profesoral';
 
 export type PTABulkApprovalGroup = {
   key: PTABulkApprovalGroupKey;
@@ -207,9 +217,9 @@ export const PTA_BULK_APPROVAL_GROUPS: PTABulkApprovalGroup[] = [
     key: 'docencia_pregrado',
     label: 'Docencia Pregrado',
     permission: PTA_COMPONENT_PERMISSION.academica_pregrado,
-    // Mismo permiso habilita Docencia y Complementarias de pregrado (ver
-    // COMPONENT_PERMISSION en el backend): el botón aprueba ambos a la vez.
-    componentKeys: ['academica_pregrado', 'complementarias_pregrado'],
+    // Cada permiso aprueba exclusivamente su componente. Complementarias de
+    // pregrado tiene un permiso independiente desde EFDS-1353.
+    componentKeys: ['academica_pregrado'],
     // Azul ESAP: mismo tono que usa "academica" colapsado en esta pantalla.
     color: '#003DA5',
     colorBg: '#EFF6FF',
@@ -218,7 +228,7 @@ export const PTA_BULK_APPROVAL_GROUPS: PTABulkApprovalGroup[] = [
     key: 'docencia_posgrado',
     label: 'Docencia Posgrado',
     permission: PTA_COMPONENT_PERMISSION.academica_posgrado,
-    componentKeys: ['academica_posgrado', 'complementarias_posgrado'],
+    componentKeys: ['academica_posgrado'],
     color: '#003DA5',
     colorBg: '#EFF6FF',
   },
@@ -226,9 +236,6 @@ export const PTA_BULK_APPROVAL_GROUPS: PTABulkApprovalGroup[] = [
     key: 'docencia_territorial',
     label: 'Docencia Territorial',
     permission: PTA_COMPONENT_PERMISSION.academica_territorial,
-    // Sin contraparte en Complementarias: no existe 'complementarias_territorial'.
-    // El alcance por seccional del aprobador lo valida el backend por PTA
-    // (assertAlcanceTerritorial), no esta pantalla.
     componentKeys: ['academica_territorial'],
     color: '#003DA5',
     colorBg: '#EFF6FF',
@@ -285,6 +292,38 @@ export const PTA_BULK_APPROVAL_GROUPS: PTABulkApprovalGroup[] = [
     // Catch-all: ni pregrado ni posgrado (ver clasificarComplementarias).
     componentKeys: ['complementarias'],
     // Amarillo — tono oscuro para que el texto sea legible sobre fondo claro.
+    color: '#A16207',
+    colorBg: '#FEF9C3',
+  },
+  {
+    key: 'complementarias_pregrado',
+    label: 'Complementarias Pregrado',
+    permission: PTA_COMPONENT_PERMISSION.complementarias_pregrado,
+    componentKeys: ['complementarias_pregrado'],
+    color: '#A16207',
+    colorBg: '#FEF9C3',
+  },
+  {
+    key: 'complementarias_posgrado',
+    label: 'Complementarias Posgrado',
+    permission: PTA_COMPONENT_PERMISSION.complementarias_posgrado,
+    componentKeys: ['complementarias_posgrado'],
+    color: '#A16207',
+    colorBg: '#FEF9C3',
+  },
+  {
+    key: 'complementarias_territorial',
+    label: 'Complementarias Territorial',
+    permission: PTA_COMPONENT_PERMISSION.complementarias_territorial,
+    componentKeys: ['complementarias_territorial'],
+    color: '#A16207',
+    colorBg: '#FEF9C3',
+  },
+  {
+    key: 'complementarias_gestion_profesoral',
+    label: 'Complementarias Gestión Profesoral',
+    permission: PTA_COMPONENT_PERMISSION.complementarias_gestion_profesoral,
+    componentKeys: ['complementarias_gestion_profesoral'],
     color: '#A16207',
     colorBg: '#FEF9C3',
   },
@@ -598,10 +637,17 @@ export function isEvidenciaAuthorized(
 ): boolean {
   const comp = String(ev?.componentePta ?? ev?.componente_pta ?? '').toLowerCase().trim();
   const sec = ev?.seccionExtension ?? ev?.seccion_extension;
+  // La evidencia no conserva el subtipo de Complementarias; cualquiera de sus
+  // permisos granulares debe poder gestionar este grupo, igual que Docencia.
+  if (comp === 'complementarias' || comp === 'acad_admin') {
+    return PTA_COMPLEMENTARIAS_COMPONENT_KEYS.some(k => isAuthorized(k));
+  }
   const key = componentKeyForEvidencia(comp, sec);
   if (key) return isAuthorized(key);
   // Extensión legacy sin sección: autorizada si el usuario aprueba CUALQUIER sección de extensión.
-  if (comp === 'extension') return PTA_EXTENSION_COMPONENT_KEYS.some(k => isAuthorized(k));
+  if (comp === 'extension' && !String(sec || '').trim()) {
+    return PTA_EXTENSION_COMPONENT_KEYS.some(k => isAuthorized(k));
+  }
   // Docencia sin nivel asignado: autorizada si el usuario aprueba pregrado O posgrado.
   if (DOCENCIA_EVIDENCIA_VALUES.has(comp)) return PTA_DOCENCIA_COMPONENT_KEYS.some(k => isAuthorized(k));
   return false;

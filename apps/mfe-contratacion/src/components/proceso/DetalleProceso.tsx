@@ -1,5 +1,16 @@
-import React, { useEffect, useState } from 'react';
-import { ArrowLeft, FileText, FolderOpen, ClipboardList, ShieldCheck } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  ClipboardCheck,
+  FilePen,
+  FileText,
+  FolderOpen,
+  ClipboardList,
+  ListChecks,
+  ShieldCheck,
+} from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { ActividadProceso, EstudioPrevio } from '../../types';
@@ -9,9 +20,11 @@ import { estadoDeActividad } from './estadoActividad';
 import {
   actividadesDisponibles,
   motivoDelBloqueo,
+  NUNCA_BLOQUEA,
   PasoDelFlujo,
 } from './secuenciaActividades';
 import { RielActividades } from './RielActividades';
+import { etapaEnCurso } from '../procesos/etapaEnCurso';
 import { PanelExpediente } from '../estudio-previo/PanelExpediente';
 import { ContenidoEstudioPrevio } from '../estudio-previo/ContenidoEstudioPrevio';
 import { PanelCdp } from '../cdp/PanelCdp';
@@ -39,17 +52,22 @@ import { PanelSupervision } from '../supervision/PanelSupervision';
 import { PanelRegistroPresupuestal } from '../registro-presupuestal/PanelRegistroPresupuestal';
 import { PanelPublicacionContrato } from '../publicacion-contrato/PanelPublicacionContrato';
 import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
+import { PanelSuscripcionActa } from '../acta-inicio/PanelSuscripcionActa';
 import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
 import { PanelRegistroActividad } from '../actividades/PanelRegistroActividad';
 import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
-import { DocumentosDeLaActividad } from '../shared/DocumentosDeLaActividad';
+import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
 import { BurbujaDecision } from '../shared/BurbujaDecision';
 import { EncabezadoActividad } from '../shared/PiezasPanel';
 import { AvisoSoloLectura, SoloLectura } from '../shared/SoloLectura';
+import { Modal } from '../shared/Modal';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
 import { PanelRadicacion } from '../participacion/PanelRadicacion';
 import { PanelModalidad } from '../modalidad/PanelModalidad';
+import { PanelCausal } from '../causal/PanelCausal';
+import { PanelComiteContratacion } from '../comite-contratacion/PanelComiteContratacion';
+import { esSoloPresupuesto, useAlcance } from '../../auth/alcance';
 
 /** Actividad 3.3: la radicación en la Dirección, que reparte el proceso. */
 const NUMERAL_RADICACION = '3.3';
@@ -70,15 +88,43 @@ const NUMERAL_REVISION = '3.4';
 
 /** Actividad 3.5: la modalidad que el área eligió, que el abogado ratifica. */
 const NUMERAL_MODALIDAD = '3.5';
+/** Causal de contratación: la 3.5.1 de la matriz, aplanada a 3.6 en la base. */
+const NUMERAL_CAUSAL = '3.6';
+/**
+ * Comité de contratación, la 3.6 de la matriz.
+ *
+ * Nombre largo a propósito: `NUMERAL_COMITE` ya es la 6.2, que es el comité
+ * **evaluador**. Son dos cuerpos distintos en dos etapas distintas, y confundir
+ * uno con otro es fácil justo aquí, donde solo se ven los numerales.
+ */
+const NUMERAL_COMITE_CONTRATACION = '3.7';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
 const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
 
 /**
- * Actividades cuyo panel ya reparte sus formatos documento por documento.
- * El bloque genérico se salta ambas para no duplicarlos.
+ * Las etapas en las que interviene la Dirección Financiera.
+ *
+ * Son las cuatro donde se mueve el presupuesto de la entidad y donde la siembra
+ * de la 083 le da alcance: el CDP (4), el registro
+ * presupuestal (8.3), el trámite del pago avalado (9.4) y el cierre financiero
+ * (10.3). La 8 entra aunque casi todo lo suyo sea del gestor —la 8.3 es de la
+ * Financiera y esconderla le quitaría el RP—.
+ *
+ * Se listan por etapa y no por numeral porque el recorte es del recorrido, no
+ * del riel: dentro de la etapa se ven todas sus actividades, que es como se
+ * entiende en qué punto va el proceso.
  */
-const NUMERALES_CON_FORMATOS_PROPIOS = ['3.1', '5.1'];
+const ETAPAS_DE_LA_FINANCIERA = [4, 8, 9, 10];
+
+/**
+ * Actividades cuyo panel monta la lista de documentos dentro de sí (EFDS-2066).
+ *
+ * La lista es la misma pieza en todas; estas la ponen en su sitio —la 3.1 en
+ * su pestaña de documentos, junto al radicado; la 5.1 como el cuerpo de la
+ * actividad—, y montarla además aquí la pediría dos veces.
+ */
+const NUMERALES_CON_LISTA_PROPIA = ['3.1', '5.1'];
 
 /**
  * Actividades cuyo panel ya tiene su propio ciclo de aprobación.
@@ -173,13 +219,12 @@ const NUMERAL_GARANTIAS = '8.4';
 const NUMERAL_ARL = '8.5';
 
 /**
- * Acta de inicio, cuando el contrato la pactó (EFDS-1167), actividad 8.7.
+ * Acta de inicio suscrita, actividad 8.7 (migración 089).
  *
- * La matriz nombra el acta dos veces: aquí, al cerrar la legalización, y en la
- * 9.1 como «reunión de inicio». Es un solo hecho y un solo registro —una sola
- * acta por contrato—, así que las dos casillas abren el mismo panel en vez de
- * duplicar el trámite. Se llegue por donde se llegue, lo que se ve es el
- * estado del acta de ese contrato.
+ * Compartía panel con la reunión de inicio (9.1) y la casilla «Acta de
+ * inicio» abría una pantalla titulada «Reunión de inicio». Se separaron a
+ * pedido de la Dirección: aquí se registra el acta firmada, que cierra la
+ * legalización, y la reunión la toma de aquí.
  */
 const NUMERAL_ACTA_INICIO_LEGALIZACION = '8.7';
 
@@ -240,9 +285,6 @@ const NUMERALES_ETAPA_9 = [
 /** Los dos numerales que trabajan la supervisión: designarla y reasignarla. */
 const NUMERALES_SUPERVISION = [NUMERAL_SUPERVISOR, NUMERAL_REASIGNACION];
 
-/** Los dos numerales desde los que se llega al acta de inicio del contrato. */
-const NUMERALES_ACTA_INICIO = [NUMERAL_ACTA_INICIO_LEGALIZACION, NUMERAL_ACTA_INICIO];
-
 /**
  * Informe final de ejecucion (EFDS-1171), primera actividad de la etapa 10.
  *
@@ -268,19 +310,22 @@ const NUMERALES_ETAPA_10 = [
   NUMERAL_ARCHIVO_EXPEDIENTE,
 ];
 
-/** Las 6 actividades de la etapa 3 (matriz de flujo, anexo A2). */
+/**
+ * Las 7 actividades de la etapa 3 (matriz de flujo, anexo A2).
+ *
+ * Solo se usa si la consulta del catálogo falla: el riel no puede quedarse
+ * vacío por eso. Se había quedado en seis y con la 3.6 nombrada «Comité de
+ * contratación», que es el nombre de la 3.7 desde que la matriz completa
+ * aplanó la 3.5.1 a 3.6. Un respaldo que miente sobre el numeral es peor que
+ * no tenerlo: abre el panel de la causal con el título del comité.
+ */
 const ACTIVIDADES_ETAPA_3 = [
   {
     numeral: '3.1',
     etapa: 3,
-    nombre: 'Elaboración de estudios previos',
-    descripcion: 'Descripción de la necesidad, fundamento jurídico y modalidad propuesta',
-  },
-  {
-    numeral: '3.2',
-    etapa: 3,
-    nombre: 'Análisis del sector y estudio de mercado',
-    descripcion: 'Consulta de proveedores y precios para estimar el valor',
+    nombre: 'Elaboración de estudios previos, análisis del sector y estudio de mercado',
+    descripcion:
+      'Descripción de la necesidad, fundamento jurídico y modalidad propuesta, con el análisis del sector y el estudio de mercado',
   },
   {
     numeral: '3.3',
@@ -303,6 +348,12 @@ const ACTIVIDADES_ETAPA_3 = [
   {
     numeral: '3.6',
     etapa: 3,
+    nombre: 'Causal de contratación',
+    descripcion: 'Filtro según la modalidad (Ley 1150 de 2007, art. 2)',
+  },
+  {
+    numeral: '3.7',
+    etapa: 3,
     nombre: 'Comité de contratación',
     descripcion: 'Revisa, observa o aprueba los documentos del proceso',
   },
@@ -321,14 +372,16 @@ const ACTIVIDADES_ETAPA_3 = [
  * situación que las once y se habían quedado fuera de la cuenta, saliendo con
  * candado en el riel.
  */
-const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
-  '3.2': 'Análisis del sector y estudio de mercado',
+export const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
+  // La 3.2 salió con la migración 090: el análisis del sector y el estudio de
+  // mercado se entregan en la lista de chequeo de la 3.1.
   // La 3.3 y la 3.4 salieron de aquí con EFDS-1183. Ninguna de las dos se
   // cumple registrando una fecha y un documento: la 3.3 es recibir el proceso
   // en la Dirección y ponerle responsable, y la 3.4 es la decisión del abogado,
   // que se toma leyendo el estudio previo y por eso vive en su panel.
-  '3.6': 'Causal de contratación',
-  '3.7': 'Comité de contratación',
+  // La 3.6 y la 3.7 salieron: la causal es un filtro por modalidad y el comité
+  // son tres desenlaces —aprueba, condiciona u observa—. Ninguna de las dos
+  // cabe en una fecha y una nota.
   '5.9': 'Manifestación de interés',
   '5.10': 'Sorteo',
   '5.11': 'Publicación de la manifestación de interés',
@@ -349,10 +402,12 @@ const NUMERALES_CON_REGISTRO = Object.keys(ACTIVIDADES_CON_REGISTRO);
  * las que la modalidad excluye. Cuando estén las sesenta y tres, esto devuelve
  * siempre true y la excepción sobra.
  */
-const TIENEN_PANEL = (numeral: string): boolean =>
+export const TIENEN_PANEL = (numeral: string): boolean =>
   numeral === '3.1' ||
   numeral === NUMERAL_RADICACION ||
   numeral === NUMERAL_MODALIDAD ||
+  numeral === NUMERAL_CAUSAL ||
+  numeral === NUMERAL_COMITE_CONTRATACION ||
   NUMERALES_CDP.includes(numeral) ||
   NUMERALES_ETAPA_5.includes(numeral) ||
   NUMERALES_ETAPA_6.includes(numeral) ||
@@ -381,6 +436,20 @@ const TIENEN_PANEL = (numeral: string): boolean =>
  * Aplica la misma regla que el riel, con los mismos ayudantes, para que no
  * abra una actividad que el riel muestra bloqueada.
  */
+/**
+ * La actividad que alguien reabrió, si la hay.
+ *
+ * `DEVUELTO` es el único estado que pide volver atrás: el comité aprueba la
+ * 3.7 y de paso reabre la 3.1 para que se la validen, y a partir de ahí lo que
+ * sigue no es lo que viene después en la matriz, es esa. La guía del paso
+ * siguiente solo miraba hacia adelante, así que saltaba por encima y mandaba a
+ * la etapa 4.
+ *
+ * Fuera del componente para poder fijar la regla sin montar la pantalla.
+ */
+export const actividadReabierta = (flujo: PasoDelFlujo[]): PasoDelFlujo | null =>
+  flujo.find((p) => p.aplica && p.construida && p.estado === 'DEVUELTO') ?? null;
+
 export const actividadEnCurso = (
   catalogo: any[],
   estadoDelEstudio: string,
@@ -405,6 +474,11 @@ export const actividadEnCurso = (
       if (estadoDelEstudio !== 'APROBADO') return '3.1';
       continue;
     }
+
+    // La 9.2 nunca llega a "aprobada" mientras el contrato se ejecuta (dura
+    // toda la vigencia): tratarla como pendiente la dejaría fija como "la
+    // actividad en curso" para siempre, sin dejar ver qué más falta de verdad.
+    if (NUNCA_BLOQUEA.has(act.numeral)) continue;
 
     const aplica = act.aplica !== false;
     if (!aplica || !disponibles.has(act.numeral)) continue;
@@ -453,6 +527,26 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
    */
   const [etapaElegida, setEtapaElegida] = useState<number | null>(null);
   const [auditoriaAbierta, setAuditoriaAbierta] = useState(false);
+  /**
+   * Quien solo mueve presupuesto ve el recorrido recortado a lo suyo.
+   *
+   * Se decide por lo que *no* tiene, igual que la sección de entrada: alguien
+   * que además diligencie procesos ve las diez, porque entonces las diez son su
+   * trabajo. Mientras el alcance no llega responde que no, así que la duda cae
+   * del lado de enseñarlo todo.
+   */
+  const { puede } = useAlcance();
+  const soloPresupuesto = esSoloPresupuesto(puede);
+  /**
+   * Y puede pedir el proceso entero.
+   *
+   * No es un adorno: para certificar la disponibilidad hay que poder leer el
+   * estudio previo que justifica el gasto, y eso vive en la etapa 3. El recorte
+   * ahorra el ruido de nueve etapas ajenas; esconderlas del todo le quitaría el
+   * expediente que necesita para decidir.
+   */
+  const [verTodasLasEtapas, setVerTodasLasEtapas] = useState(false);
+  const recortado = soloPresupuesto && !verTodasLasEtapas;
   /** Actividades de la etapa, con su estado. Vacío mientras carga o si falla. */
   const [catalogo, setCatalogo] = useState<ActividadProceso[]>([]);
   const [tokenExpediente, setTokenExpediente] = useState(0);
@@ -494,6 +588,22 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   const [decisionEscondida, setDecisionEscondida] = useState<string | null>(null);
   /** Documentos por numeral, para mostrar el contador en cada actividad. */
   const [adjuntosPorNumeral, setAdjuntosPorNumeral] = useState<Record<string, number>>({});
+  /**
+   * Lo que se avisa al gestor justo después de enviar una actividad.
+   *
+   * Modal y no una notificación de esquina: la primera versión usaba un toast
+   * y no se notaba —el gestor seguía sin saber qué hacer después—. Aquí hay
+   * que pararse a leer y elegir, así que se pone en medio de la pantalla y con
+   * el botón que da el siguiente paso, en vez de avanzar solo.
+   */
+  const [avisoPaso, setAvisoPaso] = useState<
+    | { tipo: 'revision' }
+    | { tipo: 'fin' }
+    | { tipo: 'bloqueado'; motivo: string }
+    | { tipo: 'siguiente'; numeral: string; nombre: string }
+    | { tipo: 'reabierta'; numeral: string; nombre: string }
+    | null
+  >(null);
 
   useEffect(() => {
     contratacionService
@@ -507,6 +617,101 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       })
       .catch(() => undefined);
   }, [procesoId, tokenExpediente]);
+
+  /** El estado de la actividad abierta la última vez que se revisó, para notar cuándo avanza. */
+  const avanceRef = useRef<{ numeral: string; estado: string | null | undefined } | null>(null);
+
+  /**
+   * Avisa a dónde sigue el proceso justo después de enviar una actividad.
+   *
+   * El módulo se sentía pesado porque enviar algo no decía qué pasaba después:
+   * tocaba ir al riel a averiguar si ya se podía seguir o a quién le tocaba
+   * ahora. Se detecta comparando el estado de la actividad abierta contra el
+   * que tenía la vez anterior que este efecto corrió —no cada carga de
+   * `tokenExpediente`, que también sube al subir un adjunto que no cierra
+   * nada— y solo cuando avanza a `EN_REVISION` o `APROBADO`.
+   *
+   * Va con los demás hooks, antes del `if (cargando)` de más abajo: el resto
+   * de esta función deja de llamar hooks después de esa condición, así que
+   * reconstruye del `catalogo` y `datos` lo mismo que el cuerpo del componente
+   * arma más abajo como `flujo`, en vez de depender de esa variable.
+   */
+  useEffect(() => {
+    if (!expandida) {
+      avanceRef.current = null;
+      return;
+    }
+
+    const flujoActual: PasoDelFlujo[] = (catalogo.length > 0 ? catalogo : ACTIVIDADES_ETAPA_3)
+      .filter((act: any) => act.numeral !== NUMERAL_REVISION)
+      .map((act: any) => ({
+        numeral: act.numeral,
+        // La 3.1 no vive en `proceso_actividades`: su estado es el del estudio
+        // previo, igual que en el `flujo` que arma el resto del componente.
+        estado: act.numeral === '3.1' ? (datos?.estado ?? null) : act.estado,
+        aplica: act.aplica !== false,
+        construida: TIENEN_PANEL(act.numeral),
+      }));
+
+    const actual = flujoActual.find((p) => p.numeral === expandida) ?? null;
+    const anterior = avanceRef.current;
+    avanceRef.current = actual ? { numeral: actual.numeral, estado: actual.estado } : null;
+
+    // Sin base de comparación, o se cambió de actividad sin enviar nada: no
+    // hay avance que anunciar, solo una nueva base para la próxima vez.
+    if (!actual || !anterior || anterior.numeral !== actual.numeral) return;
+    if (anterior.estado === actual.estado) return;
+    if (actual.estado !== 'EN_REVISION' && actual.estado !== 'APROBADO') return;
+
+    if (actual.estado === 'EN_REVISION') {
+      setAvisoPaso({ tipo: 'revision' });
+      return;
+    }
+
+    /*
+     * Lo reabierto manda sobre lo que viene después.
+     *
+     * Una actividad DEVUELTA es la única que pide volver atrás, y puede estar
+     * antes en el flujo: el comité aprueba la 3.7 y de paso reabre la 3.1 para
+     * que se la validen. Buscando solo hacia adelante, la guía saltaba por
+     * encima y mandaba a la etapa 4 —o, con la 3.1 bloqueando, decía «debe
+     * continuar otra persona»—, que es justo lo contrario de lo que acababa de
+     * pasar.
+     */
+    const reabierta = actividadReabierta(flujoActual);
+    if (reabierta) {
+      setAvisoPaso({
+        tipo: 'reabierta',
+        numeral: reabierta.numeral,
+        nombre:
+          catalogo.find((a: any) => a.numeral === reabierta.numeral)?.nombre ?? reabierta.numeral,
+      });
+      return;
+    }
+
+    // APROBADO: se busca el siguiente paso del flujo para guiar hacia él.
+    const indice = flujoActual.findIndex((p) => p.numeral === actual.numeral);
+    const siguiente = flujoActual
+      .slice(indice + 1)
+      .find((p) => p.aplica && p.construida && p.estado !== 'APROBADO');
+
+    if (!siguiente) {
+      setAvisoPaso({ tipo: 'fin' });
+      return;
+    }
+
+    const nombreSiguiente =
+      catalogo.find((a: any) => a.numeral === siguiente.numeral)?.nombre ?? siguiente.numeral;
+
+    if (actividadesDisponibles(flujoActual).has(siguiente.numeral)) {
+      setAvisoPaso({ tipo: 'siguiente', numeral: siguiente.numeral, nombre: nombreSiguiente });
+    } else {
+      setAvisoPaso({
+        tipo: 'bloqueado',
+        motivo: motivoDelBloqueo(siguiente.numeral, flujoActual) ?? 'Debe continuar otra persona del equipo',
+      });
+    }
+  }, [tokenExpediente, expandida, catalogo, datos]);
 
   useEffect(() => {
     // Si falla se sigue con la lista de la etapa 3 que había antes: el riel no
@@ -526,6 +731,15 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
     if (typeof suya === 'number') setEtapaElegida(suya);
   }, [expandida, catalogo]);
 
+  /*
+   * El estudio previo, que además es de donde sale el estado de la 3.1.
+   *
+   * Depende de `tokenExpediente` igual que el catálogo y los adjuntos: la 3.1
+   * no vive en `proceso_actividades` como las demás —su estado es el del
+   * estudio previo—, así que sin esto se quedaba con el que tenía al entrar. Si
+   * el comité la reabría, el riel la seguía pintando verde y la guía del
+   * siguiente paso la daba por aprobada y mandaba a la etapa 4.
+   */
   useEffect(() => {
     let vigente = true;
     contratacionService
@@ -536,7 +750,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
     return () => {
       vigente = false;
     };
-  }, [procesoId]);
+  }, [procesoId, tokenExpediente]);
 
   // Se abre sola al entrar, no en cada refresco: una vez el gestor ha elegido,
   // mandar la pantalla de vuelta a la actividad en curso sería quitarle lo que
@@ -670,6 +884,19 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
 
   const actividades = delCatalogo;
 
+  /**
+   * Las modificaciones (9.5) no van en el riel.
+   *
+   * El riel cuenta una secuencia, y una prórroga, una adición o una suspensión
+   * no son un paso de ella: caben en cualquier momento de la ejecución. En el
+   * riel se leían como «lo siguiente después de los pagos», así que se abren
+   * desde su propio botón en la cabecera, igual que el expediente.
+   */
+  const modificaciones =
+    actividades.find((a) => a.numeral === NUMERAL_MODIFICACIONES && a.estado !== 'no_aplica') ??
+    null;
+  const actividadesDelRiel = actividades.filter((a) => a.numeral !== NUMERAL_MODIFICACIONES);
+
   const actividadSeleccionada = actividades.find((a) => a.numeral === expandida) ?? null;
 
   /**
@@ -693,7 +920,35 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           'Esta actividad todavía no está habilitada')
       : null;
 
-  const etapaVista = etapaElegida ?? datos.proceso.etapa;
+  /**
+   * Qué etapa se mira.
+   *
+   * Con el recorrido recortado, la etapa del proceso puede no estar en él —un
+   * proceso en la 3 para quien solo ve 4, 8, 9 y 10—, y entonces el riel
+   * quedaría vacío sin que nada lo explicara. Se cae en la primera de las
+   * suyas, que es donde esa persona tiene algo que hacer.
+   */
+  /**
+   * En qué etapa va el proceso.
+   *
+   * La misma cuenta que el listado: `procesos.etapa` se queda en 5 después de
+   * la apertura —a propósito, ver `ofertas.service.ts`—, así que un contrato
+   * en ejecución se abría en la etapa 5 y la línea del tiempo marcaba esa como
+   * la actual. Solo cuentan las que tienen fila: las del catálogo que nadie ha
+   * empezado llegan sin estado, y eso no es trabajo hecho.
+   */
+  const etapaActual = etapaEnCurso({
+    etapa: datos.proceso.etapa,
+    actividades: catalogoDelProceso
+      .filter((act: any) => act.numeral !== '3.1' && act.estado)
+      .map((act: any) => ({ numeral: act.numeral, estado: act.estado })),
+  });
+
+  const etapaDelProceso = etapaElegida ?? etapaActual;
+  const etapaVista =
+    recortado && !ETAPAS_DE_LA_FINANCIERA.includes(etapaDelProceso)
+      ? ETAPAS_DE_LA_FINANCIERA[0]
+      : etapaDelProceso;
 
   /**
    * Cuántas actividades aplican y cuántas están hechas, por etapa.
@@ -702,8 +957,10 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
    * modalidad: exigir las excluidas para dar una etapa por cerrada dejaría
    * etapas que nunca llegan al final.
    */
+  // Sobre lo que muestra el riel: contar la 9.5, que puede no ocurrir nunca,
+  // dejaría la etapa 9 sin llegar al final en todo contrato que no se modificó.
   const avance: Record<number, AvanceEtapa> = {};
-  for (const act of actividades) {
+  for (const act of actividadesDelRiel) {
     const numero = act.etapa ?? 3;
     if (!avance[numero]) avance[numero] = { aplicables: 0, completas: 0 };
     if (act.estado === 'no_aplica') continue;
@@ -716,6 +973,23 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   const elegirEtapa = (numero: number) => {
     setEtapaElegida(numero);
     setExpandida(null);
+  };
+
+  const abrirActividad = (numeral: string) => {
+    // Volver a pulsar la actividad abierta no reinicia nada: el riel
+    // no deselecciona, así que sería apagar la columna sin que nadie
+    // vuelva a encenderla —la pieza de aprobación no se remonta y no
+    // repite el aviso—, y la tarjeta caía al final del flujo.
+    if (numeral === expandida) return;
+
+    // Al cambiar de actividad sí: el contador de formatos y la
+    // decisión son de la anterior, y arrastrarlos bloquearía o abriría
+    // esta por documentos que no son suyos.
+    setFaltanFormatos(0);
+    setHayDecision(false);
+    setPideAprobacion(false);
+    setFueDevuelta(false);
+    setExpandida(numeral);
   };
 
   // La cuantía se muestra en la cabecera porque desde EFDS-1147 es dato del
@@ -788,11 +1062,65 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
 
           <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
             <LineaDeTiempoEtapas
-              etapaActual={datos.proceso.etapa}
+              etapaActual={etapaActual}
               etapaSeleccionada={etapaVista}
               onSeleccionar={elegirEtapa}
               avance={avance}
+              soloEstas={recortado ? ETAPAS_DE_LA_FINANCIERA : undefined}
             />
+
+            {/* Solo a quien se le recortó: para los demás sería un interruptor
+                que no apaga nada. */}
+            {soloPresupuesto && (
+              <button
+                type="button"
+                onClick={() => setVerTodasLasEtapas((v) => !v)}
+                aria-pressed={verTodasLasEtapas}
+                title={
+                  verTodasLasEtapas
+                    ? 'Volver a las etapas en las que interviene la Dirección Financiera'
+                    : 'Ver las diez etapas del proceso, incluido el estudio previo que justifica el gasto'
+                }
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold
+                  border transition-colors ${
+                    verTodasLasEtapas
+                      ? 'bg-[#E0EDFF] border-[#003DA5]/30 text-[#003DA5]'
+                      : 'bg-white border-gray-200 text-slate-600 hover:border-[#003DA5]/30 hover:text-[#003DA5]'
+                  }`}
+              >
+                <ListChecks className="w-3.5 h-3.5" />
+                {verTodasLasEtapas ? 'Solo lo mío' : 'Todo el proceso'}
+              </button>
+            )}
+
+            {/* Desde que la ejecución arrancó, o mirando la etapa 9 o la 10.
+                No se pregunta por `datos.proceso.etapa`: en la base se queda
+                atrás —hay contratos en ejecución con el proceso en la 5— y el
+                botón no salía nunca. Antes de eso no hay nada que modificar.
+                Mirando la etapa 9 sin acta de inicio se abre igual, como
+                cualquier actividad del riel: el panel queda de solo lectura y
+                dice qué falta. */}
+            {modificaciones && (modificaciones.disponible || etapaVista >= 9) && (
+              <button
+                type="button"
+                onClick={() => abrirActividad(NUMERAL_MODIFICACIONES)}
+                aria-pressed={expandida === NUMERAL_MODIFICACIONES}
+                title={
+                  modificaciones.disponible
+                    ? 'Prórroga, adición, cesión, suspensión y demás modificaciones del contrato'
+                    : modificaciones.detalle ?? 'Todavía no se puede modificar el contrato'
+                }
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold
+                  border transition-colors ${
+                    expandida === NUMERAL_MODIFICACIONES
+                      ? 'bg-[#E0EDFF] border-[#003DA5]/30 text-[#003DA5]'
+                      : 'bg-white border-gray-200 text-slate-600 hover:border-[#003DA5]/30 hover:text-[#003DA5]'
+                  }`}
+              >
+                <FilePen className="w-3.5 h-3.5" />
+                Modificaciones
+              </button>
+            )}
 
             <button
               type="button"
@@ -852,25 +1180,10 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
       >
         <RielActividades
           etapa={etapaVista}
-          etapaActual={datos.proceso.etapa}
-          actividades={actividades}
+          etapaActual={etapaActual}
+          actividades={actividadesDelRiel}
           seleccionada={expandida}
-          onSeleccionar={(numeral) => {
-            // Volver a pulsar la actividad abierta no reinicia nada: el riel
-            // no deselecciona, así que sería apagar la columna sin que nadie
-            // vuelva a encenderla —la pieza de aprobación no se remonta y no
-            // repite el aviso—, y la tarjeta caía al final del flujo.
-            if (numeral === expandida) return;
-
-            // Al cambiar de actividad sí: el contador de formatos y la
-            // decisión son de la anterior, y arrastrarlos bloquearía o abriría
-            // esta por documentos que no son suyos.
-            setFaltanFormatos(0);
-            setHayDecision(false);
-            setPideAprobacion(false);
-            setFueDevuelta(false);
-            setExpandida(numeral);
-          }}
+          onSeleccionar={abrirActividad}
         />
 
         <div className="min-w-0">
@@ -925,6 +1238,21 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 // La 3.5 deja de ser constancia: definir la modalidad es
                 // ratificar la que el área eligió, o devolverla para corregirla.
                 <PanelModalidad
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_CAUSAL ? (
+                // La 3.6 deja de ser constancia: la causal es una calificación
+                // jurídica que se elige del catálogo de la modalidad, no una
+                // fecha con una nota.
+                <PanelCausal
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_COMITE_CONTRATACION ? (
+                // La 3.7 deja de ser constancia: lo que el comité decidió son
+                // tres desenlaces, y observar devuelve los documentos.
+                <PanelComiteContratacion
                   procesoId={procesoId}
                   onCambio={() => setTokenExpediente((t) => t + 1)}
                 />
@@ -1004,8 +1332,12 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                   procesoId={procesoId}
                   onCambio={() => setTokenExpediente((t) => t + 1)}
                 />
-              ) : actividadSeleccionada &&
-                NUMERALES_ACTA_INICIO.includes(actividadSeleccionada.numeral) ? (
+              ) : actividadSeleccionada?.numeral === NUMERAL_ACTA_INICIO_LEGALIZACION ? (
+                <PanelSuscripcionActa
+                  procesoId={procesoId}
+                  onCambio={() => setTokenExpediente((t) => t + 1)}
+                />
+              ) : actividadSeleccionada?.numeral === NUMERAL_ACTA_INICIO ? (
                 <PanelActaInicio
                   procesoId={procesoId}
                   onCambio={() => setTokenExpediente((t) => t + 1)}
@@ -1131,25 +1463,17 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               )}
             </div>
 
-            {/* Los documentos que la actividad entrega, debajo del panel: primero
-                se trabaja, después se adjunta.
-
-                Un solo bloque, con los formatos requeridos y lo demás que quedó
-                en el expediente como dos secciones dentro del mismo marco. Antes
-                eran dos componentes apilados con estilos distintos, y había que
-                deducir cuál lista era cuál.
-
-                Donde el panel ya reparte sus formatos —3.1 y 5.1— se monta en
-                modo `soloExpediente`, para listar lo demás sin duplicarlos. */}
-            {actividadSeleccionada ? (
+            {/* La lista de documentos de la actividad, debajo del panel: primero
+                se trabaja, después se adjunta. Es la misma para las sesenta y
+                tres —sale de lo que Configuración le pide a cada una— y no se
+                pinta donde la actividad no pide ni tiene documentos. */}
+            {actividadSeleccionada &&
+            !NUMERALES_CON_LISTA_PROPIA.includes(actividadSeleccionada.numeral) ? (
               <div className="mt-3">
-                <DocumentosDeLaActividad
+                <ListaDeDocumentos
                   procesoId={procesoId}
                   numeral={actividadSeleccionada.numeral}
                   recargarToken={tokenExpediente}
-                  soloExpediente={NUMERALES_CON_FORMATOS_PROPIOS.includes(
-                    actividadSeleccionada.numeral,
-                  )}
                   onCambio={() => setTokenExpediente((t) => t + 1)}
                   onFaltantes={setFaltanFormatos}
                 />
@@ -1208,6 +1532,82 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
           onAbrir={() => setDecisionEscondida(null)}
         />
       ) : null}
+
+      {/* La guía paso a paso: se para a mitad de pantalla porque una esquina
+          que desaparece sola no se nota, y el gestor se queda sin saber qué
+          sigue. Avanzar es un clic, no algo que ocurra solo. */}
+      <Modal
+        isOpen={avisoPaso !== null}
+        onClose={() => setAvisoPaso(null)}
+        title="Enviado correctamente"
+        size="small"
+        icon={
+          avisoPaso?.tipo === 'siguiente' ? (
+            <CheckCircle2 className="w-5 h-5" />
+          ) : (
+            <ClipboardCheck className="w-5 h-5" />
+          )
+        }
+        color={avisoPaso?.tipo === 'siguiente' ? '#10B981' : '#003DA5'}
+        footer={
+          avisoPaso?.tipo === 'siguiente' || avisoPaso?.tipo === 'reabierta' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setExpandida(avisoPaso.numeral);
+                setAvisoPaso(null);
+              }}
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[#003DA5] px-4 py-2 text-sm font-bold text-white hover:opacity-90"
+            >
+              Ir a {avisoPaso.numeral} · {avisoPaso.nombre}
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAvisoPaso(null)}
+              className="ml-auto rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
+            >
+              Entendido
+            </button>
+          )
+        }
+      >
+        {avisoPaso?.tipo === 'revision' && (
+          <p className="text-sm text-slate-700 m-0 leading-relaxed">
+            Queda en revisión: te avisaremos aquí cuando Contratación continúe.
+          </p>
+        )}
+        {avisoPaso?.tipo === 'fin' && (
+          <p className="text-sm text-slate-700 m-0 leading-relaxed">
+            Por ahora no quedan más pasos pendientes en este proceso.
+          </p>
+        )}
+        {avisoPaso?.tipo === 'bloqueado' && (
+          <p className="text-sm text-slate-700 m-0 leading-relaxed">{avisoPaso.motivo}.</p>
+        )}
+        {avisoPaso?.tipo === 'siguiente' && (
+          <p className="text-sm text-slate-700 m-0 leading-relaxed">
+            El siguiente paso es{' '}
+            <strong className="font-bold">
+              {avisoPaso.numeral} · {avisoPaso.nombre}
+            </strong>
+            .
+          </p>
+        )}
+        {/* Volver atrás no es «el siguiente paso»: es una actividad que ya
+            estaba cerrada y que hay que diligenciar otra vez. */}
+        {avisoPaso?.tipo === 'reabierta' && (
+          <p className="text-sm text-slate-700 m-0 leading-relaxed">
+            Se reabrió{' '}
+            <strong className="font-bold">
+              {avisoPaso.numeral} · {avisoPaso.nombre}
+            </strong>
+            : hay que volver a diligenciarla antes de que el proceso siga. Avisamos a quien la
+            había enviado.
+          </p>
+        )}
+      </Modal>
     </div>
   );
 }

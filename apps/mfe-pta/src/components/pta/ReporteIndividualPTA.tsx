@@ -11,7 +11,7 @@
  * 7. Firmas y Aprobaciones (cadena multinivel + firma digital)
  */
 
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { Fragment, useRef, useState, useEffect, useCallback } from 'react';
 import { getPtaHistoryActorLabel } from '../../utils/ptaHistoryActor';
 import { motion } from 'motion/react';
 import {
@@ -26,6 +26,13 @@ import { getPtaApprovalDisplayStatus } from './shared/ptaComponentStatus';
 import { HierarchySelectionSummary } from './shared/HierarchySelectionSummary';
 import { getComponentesAprobacion } from '../../services/api/ptaApi';
 import { formatPtaAssignmentName, formatPtaPensum } from '../../utils/ptaPensumCompatibility';
+import {
+  formatPtaDedicacion,
+  formatPtaVinculacion,
+  ptaDato,
+  ptaNumero,
+  ptaPorcentaje,
+} from '../../utils/ptaInstitutionalDisplay';
 
 
 // Aprobación del PTA por COMPONENTE (flujo paralelo, no lineal de N1/N2/N3).
@@ -47,10 +54,16 @@ const COMPONENTE_COLORS: Record<string, { bg: string; border: string; color: str
 };
 
 function fmtFecha(d?: string): string {
-  if (!d) return '';
+  if (!d) return 'No registrado';
   const date = new Date(d);
-  if (isNaN(date.getTime())) return d;
+  if (isNaN(date.getTime())) return 'No registrado';
   return date.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function fmtFechaHora(d?: string): string {
+  if (!d) return 'No registrado';
+  const date = new Date(d);
+  return Number.isFinite(date.getTime()) ? date.toLocaleString('es-CO') : 'No registrado';
 }
 
 export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIndividualPTAProps) {
@@ -157,34 +170,42 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
   const totalProgramado = pta.total_horas_programadas
     || (horasDocencia + horasInvestigacion + horasExtension + horasComplementarias);
 
-  const pctDocencia = ((horasDocencia / horasProgramables) * 100).toFixed(1);
-  const pctInvestigacion = ((horasInvestigacion / horasProgramables) * 100).toFixed(1);
-  const pctExtension = ((horasExtension / horasProgramables) * 100).toFixed(1);
-  const pctComplementarias = ((horasComplementarias / horasProgramables) * 100).toFixed(1);
-  const pctAcadAdmin = ((horasAcadAdmin / horasProgramables) * 100).toFixed(1);
-  const pctTotal = ((totalProgramado / horasProgramables) * 100).toFixed(1);
+  const pctDocencia = ptaPorcentaje(horasDocencia, horasProgramables);
+  const pctInvestigacion = ptaPorcentaje(horasInvestigacion, horasProgramables);
+  const pctExtension = ptaPorcentaje(horasExtension, horasProgramables);
+  const pctComplementarias = ptaPorcentaje(horasComplementarias, horasProgramables);
+  const pctAcadAdmin = ptaPorcentaje(horasAcadAdmin, horasProgramables);
+  const pctTotal = ptaPorcentaje(totalProgramado, horasProgramables);
+  const mostrarPorcentaje = (pct: string) => pct === '—' ? '—' : `${pct}%`;
+  const anchoPorcentaje = (pct: string) => {
+    const numeric = Number(pct);
+    return Number.isFinite(numeric) ? Math.min(Math.max(numeric, 0), 100) : 0;
+  };
+  const tieneHorasProgramables = horasProgramables > 0;
 
   // Validations
   const validaciones = [
     {
-      label: `Investigacion: ${pctInvestigacion}% (Maximo 50%)`,
-      ok: horasInvestigacion <= horasProgramables * 0.5,
+      label: `Investigacion: ${mostrarPorcentaje(pctInvestigacion)} (Maximo 50%)`,
+      ok: tieneHorasProgramables ? horasInvestigacion <= horasProgramables * 0.5 : null,
     },
     {
-      label: `Extension: ${pctExtension}% (Maximo 25%)`,
-      ok: horasExtension <= horasProgramables * 0.25,
+      label: `Extension: ${mostrarPorcentaje(pctExtension)} (Maximo 25%)`,
+      ok: tieneHorasProgramables ? horasExtension <= horasProgramables * 0.25 : null,
     },
     {
       // El tope del 25% aplica a la sección "complementarias a la docencia"; la
       // sección académico-administrativa tiene sus propios topes (incl. 100%).
-      label: `Complementarias a la docencia: ${((horasComplementariasDocencia / horasProgramables) * 100).toFixed(1)}% (Maximo 25%)`,
-      ok: horasComplementariasDocencia <= horasProgramables * 0.25,
+      label: `Complementarias a la docencia: ${mostrarPorcentaje(ptaPorcentaje(horasComplementariasDocencia, horasProgramables))} (Maximo 25%)`,
+      ok: tieneHorasProgramables ? horasComplementariasDocencia <= horasProgramables * 0.25 : null,
     },
     {
-      label: `Total programado: ${pctTotal}% de ${horasProgramables}h`,
-      ok: totalProgramado <= horasProgramables,
+      label: `Total programado: ${mostrarPorcentaje(pctTotal)} de ${tieneHorasProgramables ? `${horasProgramables}h` : 'horas base no registradas'}`,
+      ok: tieneHorasProgramables ? totalProgramado <= horasProgramables : null,
     },
   ];
+  const validacionDeterminada = validaciones.every(v => v.ok !== null);
+  const validacionCumplida = validacionDeterminada && validaciones.every(v => v.ok);
 
   // Approval chain — supports both camelCase (historialEstados) and legacy snake_case
   const getField = (h: any, camel: string, snake: string) => h[camel] ?? h[snake];
@@ -202,7 +223,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
           : (en === 'Aprobado DEF' || en === 'Aprobado') ? 'N3 — Gestión Profesoral'
           : en,
         aprobador: getPtaHistoryActorLabel(h, pta),
-        fecha: fecha ? new Date(fecha).toLocaleDateString('es-CO') : 'N/A',
+        fecha: fecha ? fmtFecha(String(fecha)) : 'No registrado',
         observaciones: getField(h, 'comentarios', 'observaciones') || 'Sin observaciones',
         aprobado: true,
       };
@@ -233,7 +254,14 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
     }
   };
 
-  const codigoPTA = `ESAP-PTA-${pta.periodo || '2025-2'}-${pta.docente_identificacion || pta.cedula || pta.docente_id?.slice(-8) || '00000000'}-001`;
+  const documentoDocente = pta.documento_identidad || pta.docente_identificacion || pta.cedula || pta.numero_documento;
+  const nombreDocente = pta.docente_nombre || pta.nombre_docente || pta.docente?.nombre_completo || pta.docente?.nombre;
+  // La sede/CETAP de una asignatura no equivale a la territorial de vinculación
+  // del docente. Si la ficha institucional no trae territorial, no se presume.
+  const territorialDocente = pta.territorial || pta.territorial_nombre;
+  const periodoReporte = ptaDato(pta.periodo, 'SIN-PERIODO');
+  const identificadorCodigo = documentoDocente || (pta.id ? `ID-${String(pta.id).slice(0, 8)}` : 'SIN-DOCUMENTO');
+  const codigoPTA = `ESAP-PTA-${periodoReporte}-${identificadorCodigo}-001`;
 
   return (
     /* ═══ MODAL OVERLAY ═══ */
@@ -357,7 +385,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                 padding: '6px 14px', borderRadius: 8, background: '#003DA5',
                 color: 'white', fontSize: '0.85rem', fontWeight: 700,
               }}>
-                Periodo {pta.periodo || '2025-2'}
+                Periodo {ptaDato(pta.periodo)}
               </div>
               <div style={{ fontSize: '0.72rem', color: '#9CA3AF', marginTop: 6 }}>
                 Emision: {new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })}
@@ -370,14 +398,14 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
         <SectionHeader icon={User} label="1. IDENTIFICACION DEL DOCENTE" />
         <div style={{ padding: '16px 32px 20px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 24px', fontSize: '0.85rem' }}>
-            <Field label="Documento" value={pta.documento_identidad || pta.docente_identificacion || pta.cedula || pta.numero_documento || 'N/A'} />
-            <Field label="Nombre Completo" value={pta.docente_nombre || pta.nombre_docente || 'N/A'} bold />
-            <Field label="Territorial" value={pta.territorial || pta.sede || 'SEDE CENTRAL'} />
-            <Field label="Tipo Vinculacion" value={pta.tipo_vinculacion || 'Profesor de Carrera'} />
-            <Field label="Dedicacion" value={pta.dedicacion || 'Tiempo Completo'} />
-            <Field label="Categoria Escalafon" value={pta.categoria_escalafon || pta.escalafon || 'Asociado'} />
-            <Field label="Nucleo Tematico" value={pta.nucleo_tematico || 'Administracion Publica'} />
-            <Field label="Horas a Programar" value={`${horasProgramables} horas`} bold />
+            <Field label="Documento" value={ptaDato(documentoDocente)} />
+            <Field label="Nombre Completo" value={ptaDato(nombreDocente)} bold />
+            <Field label="Territorial" value={ptaDato(territorialDocente)} />
+            <Field label="Tipo Vinculación" value={ptaDato(formatPtaVinculacion(pta.tipo_vinculacion))} />
+            <Field label="Dedicación" value={ptaDato(formatPtaDedicacion(pta.dedicacion))} />
+            <Field label="Categoría Escalafón" value={ptaDato(pta.categoria_escalafon || pta.escalafon)} />
+            <Field label="Núcleo Temático" value={ptaDato(pta.nucleo_tematico)} />
+            <Field label="Horas a Programar" value={horasProgramables > 0 ? `${horasProgramables} horas` : 'No registrado'} bold />
           </div>
           <div style={{ fontSize: '0.68rem', color: '#9CA3AF', marginTop: 10 }}>
             Información proveniente de la ficha institucional del docente (Banco de Docentes / RUND). Este bloque no modifica los datos del PTA.
@@ -405,11 +433,11 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
               </thead>
               <tbody>
                 {asignaturas.map((asig: any, idx: number) => (
-                  <>
-                    <tr key={idx} style={{ borderBottom: asig.observaciones ? 'none' : '1px solid #E5E7EB' }}>
+                  <Fragment key={asig.id || asig.asignatura_id || idx}>
+                    <tr style={{ borderBottom: asig.observaciones ? 'none' : '1px solid #E5E7EB' }}>
                       <td style={{ padding: '6px 8px', color: '#9CA3AF' }}>{idx + 1}</td>
                       <td style={{ padding: '6px 8px', fontWeight: 600, color: '#111827' }}>
-                        {formatPtaAssignmentName(asig) || 'N/A'}
+                        {ptaDato(formatPtaAssignmentName(asig))}
                         <HierarchySelectionSummary activity={asig} accent={PTA_COLORS.DOCENCIA} compact className="mt-1.5" />
                       </td>
                       <td
@@ -419,14 +447,14 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                           overflowWrap: 'anywhere', lineHeight: 1.25,
                         }}
                       >
-                        {asig.programa_nombre_completo || asig.programa_nombre || asig.programa || asig.programa_id || 'N/A'}
+                        {ptaDato(asig.programa_nombre_completo || asig.programa_nombre || asig.programa)}
                       </td>
                       <td style={{ padding: '6px 8px', color: '#6B7280' }}>
                         {formatPtaPensum(asig.pensum)}
                       </td>
-                      <td style={{ padding: '6px 8px', textAlign: 'center' }}>{asig.creditos || 3}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'center' }}>{ptaDato(asig.creditos, '—')}</td>
                       <td style={{ padding: '6px 8px', textAlign: 'center' }}>
-                        {asig.total_estudiantes || asig.estudiantes || asig.cupos || '-'}
+                        {ptaDato(asig.total_estudiantes ?? asig.estudiantes ?? asig.cupos, '—')}
                       </td>
                       <td style={{ padding: '6px 8px', textAlign: 'center' }}>
                         <span style={{
@@ -434,7 +462,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                           background: asig.modalidad === 'VIRTUAL' ? '#F0FDF4' : asig.modalidad === 'MIXTA' ? '#FEF3C7' : '#EFF6FF',
                           color: asig.modalidad === 'VIRTUAL' ? '#059669' : asig.modalidad === 'MIXTA' ? '#D97706' : '#003DA5',
                         }}>
-                          {asig.modalidad || 'PRESENCIAL'}
+                          {ptaDato(asig.modalidad, '—')}
                         </span>
                       </td>
                       <td style={{ padding: '6px 8px', textAlign: 'center', fontSize: '0.68rem', color: '#6B7280' }}>
@@ -443,10 +471,10 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                           : '—'}
                       </td>
                       <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>
-                        {asig.total_horas || asig.total_horas_calculadas || asig.horas || 0}
+                        {ptaNumero(asig.total_horas ?? asig.total_horas_calculadas ?? asig.horas) ?? '—'}
                       </td>
                       <td style={{ padding: '6px 8px', textAlign: 'center', color: '#6B7280' }}>
-                        {((asig.total_horas || asig.total_horas_calculadas || asig.horas || 0) / horasProgramables * 100).toFixed(1)}%
+                        {mostrarPorcentaje(ptaPorcentaje(asig.total_horas ?? asig.total_horas_calculadas ?? asig.horas, horasProgramables))}
                       </td>
                     </tr>
                     {asig.observaciones && (
@@ -457,7 +485,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
               <tfoot>
@@ -469,7 +497,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                     {horasDocencia}
                   </td>
                   <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: PTA_COLORS.DOCENCIA }}>
-                    {pctDocencia}%
+                    {mostrarPorcentaje(pctDocencia)}
                   </td>
                 </tr>
               </tfoot>
@@ -488,11 +516,11 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
           {investigacion ? (
             <div style={{ padding: 14, borderRadius: 8, background: `${PTA_COLORS.INVESTIGACION}08`, border: `1px solid ${PTA_COLORS.INVESTIGACION}30`, marginBottom: invActividades.length > 0 ? 12 : 0 }}>
               <div style={{ fontSize: '0.85rem', fontWeight: 700, color: PTA_COLORS.INVESTIGACION, marginBottom: 4 }}>
-                {investigacion.nombre || investigacion.proyecto || 'Proyecto de Investigación'}
+                {ptaDato(investigacion.nombre || investigacion.proyecto)}
               </div>
               <div style={{ display: 'flex', gap: 16, fontSize: '0.8rem', color: PTA_COLORS.INVESTIGACION, flexWrap: 'wrap' }}>
-                <span>Rol: <strong>{investigacion.rol || 'Investigador'}</strong></span>
-                <span>Horas: <strong>{investigacion.horas_solicitadas || investigacion.horas || horasInvestigacion}h</strong></span>
+                <span>Rol: <strong>{ptaDato(investigacion.rol)}</strong></span>
+                <span>Horas: <strong>{ptaNumero(investigacion.horas_solicitadas ?? investigacion.horas) ?? '—'}{ptaNumero(investigacion.horas_solicitadas ?? investigacion.horas) !== null ? 'h' : ''}</strong></span>
                 {investigacion.codigo_sni && <span>SNI: <strong>{investigacion.codigo_sni}</strong></span>}
                 {investigacion.recibe_estimulo !== undefined && (
                   <span>Estímulo: <strong>{investigacion.recibe_estimulo ? 'Sí' : 'No'}</strong></span>
@@ -530,7 +558,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                   <tr key={idx} style={{ borderBottom: `1px solid ${PTA_COLORS.INVESTIGACION}20` }}>
                     <td style={{ padding: '6px 10px', color: '#9CA3AF' }}>{idx + 1}</td>
                     <td style={{ padding: '6px 10px', color: '#111827', fontWeight: 500 }}>
-                      {act.nombre || act.actividad || `Actividad ${idx + 1}`}
+                      {ptaDato(act.nombre || act.actividad)}
                       {act.descripcion && (
                         <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 2, fontStyle: 'italic' }}>{act.descripcion}</div>
                       )}
@@ -542,13 +570,13 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                       )}
                       <HierarchySelectionSummary activity={act} accent={PTA_COLORS.INVESTIGACION} compact className="mt-1.5" />
                     </td>
-                    <td style={{ padding: '6px 10px', textAlign: 'center' }}>{act.cantidad || 1}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'center' }}>{act.horas_unitarias || '-'}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'center' }}>{ptaDato(act.cantidad, '—')}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'center' }}>{ptaDato(act.horas_unitarias, '—')}</td>
                     <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 700, color: PTA_COLORS.INVESTIGACION }}>
-                      {act.horas_total || act.horas || 0}
+                      {ptaNumero(act.horas_total ?? act.horas) ?? '—'}
                     </td>
                     <td style={{ padding: '6px 10px', textAlign: 'center', color: '#6B7280' }}>
-                      {((act.horas_total || act.horas || 0) / horasProgramables * 100).toFixed(1)}%
+                      {mostrarPorcentaje(ptaPorcentaje(act.horas_total ?? act.horas, horasProgramables))}
                     </td>
                   </tr>
                 ))}
@@ -559,7 +587,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
             marginTop: 10, padding: '8px 12px', borderRadius: 6, background: `${PTA_COLORS.INVESTIGACION}12`,
             fontWeight: 700, fontSize: '0.85rem', color: PTA_COLORS.INVESTIGACION, textAlign: 'right',
           }}>
-            TOTAL HORAS INVESTIGACION: {horasInvestigacion} horas ({pctInvestigacion}%)
+            TOTAL HORAS INVESTIGACION: {horasInvestigacion} horas ({mostrarPorcentaje(pctInvestigacion)})
           </div>
         </div>
 
@@ -580,8 +608,8 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                         padding: '5px 8px', borderBottom: `1px solid ${PTA_COLORS.EXTENSION}20`,
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span>{act.nombre || act.actividad || `Actividad ${i + 1}`}</span>
-                          <span style={{ fontWeight: 600, whiteSpace: 'nowrap', marginLeft: 8 }}>{act.horas || 0}h</span>
+                          <span>{ptaDato(act.nombre || act.actividad)}</span>
+                          <span style={{ fontWeight: 600, whiteSpace: 'nowrap', marginLeft: 8 }}>{ptaNumero(act.horas) !== null ? `${ptaNumero(act.horas)}h` : '—'}</span>
                         </div>
                         <HierarchySelectionSummary activity={act} accent={PTA_COLORS.EXTENSION} compact className="mt-1.5" />
                         {act.descripcion && (
@@ -608,7 +636,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
             marginTop: 10, padding: '8px 12px', borderRadius: 6, background: `${PTA_COLORS.EXTENSION}12`,
             fontWeight: 700, fontSize: '0.85rem', color: PTA_COLORS.EXTENSION, textAlign: 'right',
           }}>
-            TOTAL HORAS EXTENSION: {horasExtension} horas ({pctExtension}%)
+            TOTAL HORAS EXTENSION: {horasExtension} horas ({mostrarPorcentaje(pctExtension)})
           </div>
         </div>
 
@@ -630,7 +658,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                   <tr key={idx} style={{ borderBottom: `1px solid ${PTA_COLORS.COMPLEMENTARIAS}30` }}>
                     <td style={{ padding: '6px 10px', color: '#9CA3AF', verticalAlign: 'top' }}>{idx + 1}</td>
                     <td style={{ padding: '6px 10px', color: '#111827' }}>
-                      <div>{act.nombre || act.actividad || 'Actividad Complementaria'}</div>
+                      <div>{ptaDato(act.nombre || act.actividad)}</div>
                       {act.descripcion && (
                         <div style={{ fontSize: '0.72rem', color: '#6B7280', marginTop: 2, fontStyle: 'italic' }}>{act.descripcion}</div>
                       )}
@@ -643,10 +671,10 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                       )}
                     </td>
                     <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 600, verticalAlign: 'top' }}>
-                      {act.horas || 0}
+                      {ptaNumero(act.horas) ?? '—'}
                     </td>
                     <td style={{ padding: '6px 10px', textAlign: 'center', color: '#6B7280', verticalAlign: 'top' }}>
-                      {((act.horas || 0) / horasProgramables * 100).toFixed(1)}%
+                      {mostrarPorcentaje(ptaPorcentaje(act.horas, horasProgramables))}
                     </td>
                   </tr>
                 ))}
@@ -661,7 +689,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
             marginTop: 10, padding: '8px 12px', borderRadius: 6, background: `${PTA_COLORS.COMPLEMENTARIAS}15`,
             fontWeight: 700, fontSize: '0.85rem', color: PTA_COLORS.COMPLEMENTARIAS, textAlign: 'right',
           }}>
-            TOTAL HORAS COMPLEMENTARIAS: {horasComplementarias} horas ({pctComplementarias}%)
+            TOTAL HORAS COMPLEMENTARIAS: {horasComplementarias} horas ({mostrarPorcentaje(pctComplementarias)})
           </div>
         </div>
 
@@ -710,12 +738,12 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                         {row.horas}
                       </td>
                       <td style={{ padding: '7px 10px', textAlign: 'center', fontWeight: 700, color: row.color }}>
-                        {row.pct}%
+                        {mostrarPorcentaje(row.pct)}
                       </td>
                       <td style={{ padding: '7px 10px' }}>
                         <div style={{ height: 8, borderRadius: 10, background: '#E5E7EB', overflow: 'hidden' }}>
                           <div style={{
-                            width: `${Math.min(parseFloat(row.pct), 100)}%`,
+                            width: `${anchoPorcentaje(row.pct)}%`,
                             height: '100%', borderRadius: 10, background: row.color,
                           }} />
                         </div>
@@ -732,14 +760,14 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                       {totalProgramado}
                     </td>
                     <td style={{ padding: '9px 10px', textAlign: 'center', fontWeight: 800, color: 'white', fontSize: '1rem' }}>
-                      {pctTotal}%
+                      {mostrarPorcentaje(pctTotal)}
                     </td>
                     <td style={{ padding: '9px 10px' }}>
                       <div style={{ height: 8, borderRadius: 10, background: 'rgba(255,255,255,0.3)', overflow: 'hidden' }}>
                         <div style={{
-                          width: `${Math.min(parseFloat(pctTotal), 100)}%`,
+                          width: `${anchoPorcentaje(pctTotal)}%`,
                           height: '100%', borderRadius: 10,
-                          background: parseFloat(pctTotal) === 100 ? '#34D399' : '#FBBF24',
+                          background: pctTotal !== '—' && Number(pctTotal) === 100 ? '#34D399' : '#FBBF24',
                         }} />
                       </div>
                     </td>
@@ -752,12 +780,12 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
           {/* Normative validation */}
           <div style={{
             padding: 14, borderRadius: 10,
-            background: validaciones.every(v => v.ok) ? '#F0FDF4' : '#FEF2F2',
-            border: `1px solid ${validaciones.every(v => v.ok) ? '#A7F3D0' : '#FCA5A5'}`,
+            background: !validacionDeterminada ? '#F9FAFB' : validacionCumplida ? '#F0FDF4' : '#FEF2F2',
+            border: `1px solid ${!validacionDeterminada ? '#D1D5DB' : validacionCumplida ? '#A7F3D0' : '#FCA5A5'}`,
           }}>
             <div style={{
               fontSize: '0.82rem', fontWeight: 700, marginBottom: 8,
-              color: validaciones.every(v => v.ok) ? '#065F46' : '#991B1B',
+              color: !validacionDeterminada ? '#4B5563' : validacionCumplida ? '#065F46' : '#991B1B',
               display: 'flex', alignItems: 'center', gap: 6,
             }}>
               <Shield style={{ width: 16, height: 16 }} />
@@ -767,9 +795,11 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
               {validaciones.map((v, idx) => (
                 <div key={idx} style={{
                   display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem',
-                  color: v.ok ? '#065F46' : '#991B1B',
+                  color: v.ok === null ? '#4B5563' : v.ok ? '#065F46' : '#991B1B',
                 }}>
-                  {v.ok ? (
+                  {v.ok === null ? (
+                    <Clock style={{ width: 14, height: 14, color: '#6B7280' }} />
+                  ) : v.ok ? (
                     <CheckCircle2 style={{ width: 14, height: 14, color: '#059669' }} />
                   ) : (
                     <AlertTriangle style={{ width: 14, height: 14, color: '#DC2626' }} />
@@ -804,7 +834,7 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
               }}>
                 <div style={{ fontSize: '0.75rem', color: '#9CA3AF', marginBottom: 6, fontWeight: 600 }}>DOCENTE</div>
                 <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#111827', marginBottom: 4 }}>
-                  {pta.docente_nombre || 'N/A'}
+                  {ptaDato(nombreDocente)}
                 </div>
                 <div style={{
                   display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -888,12 +918,12 @@ export function ReporteIndividualPTA({ pta, onClose, reporteVersion }: ReporteIn
                 </span>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, fontSize: '0.78rem' }}>
-                <Field label="Firmante" value={firmaDigital.firmante} />
-                <Field label="Cargo" value={firmaDigital.cargo} />
-                <Field label="Certificado" value={firmaDigital.certificado_id} />
-                <Field label="Fecha" value={firmaDigital.timestamp ? new Date(firmaDigital.timestamp).toLocaleString('es-CO') : 'N/A'} />
-                <Field label="Hash" value={firmaDigital.hash?.slice(0, 20) + '...'} />
-                <Field label="PIN Verificado" value={firmaDigital.pin_verificado ? 'Si' : 'No'} />
+                <Field label="Firmante" value={ptaDato(firmaDigital.firmante)} />
+                <Field label="Cargo" value={ptaDato(firmaDigital.cargo)} />
+                <Field label="Certificado" value={ptaDato(firmaDigital.certificado_id)} />
+                <Field label="Fecha" value={fmtFechaHora(firmaDigital.timestamp)} />
+                <Field label="Hash" value={firmaDigital.hash ? `${String(firmaDigital.hash).slice(0, 20)}...` : 'No registrado'} />
+                <Field label="PIN Verificado" value={firmaDigital.pin_verificado === true ? 'Sí' : firmaDigital.pin_verificado === false ? 'No' : 'No registrado'} />
               </div>
             </div>
           )}

@@ -21,9 +21,9 @@ import {
   UpdateTarifaInvestigadorDto,
 } from '../../dto/liquidation/tarifa-investigador.dto';
 import {
-  CreateTarifaRegionalExcepcionDto,
-  UpdateTarifaRegionalExcepcionDto,
-} from '../../dto/liquidation/tarifa-regional-excepcion.dto';
+  CreateTarifaTransporteTerminalDto,
+  UpdateTarifaTransporteTerminalDto,
+} from '../../dto/liquidation/tarifa-transporte-terminal.dto';
 import { UpdateLiquidationParamsDto } from '../../dto/liquidation/liquidation-params.dto';
 
 @Controller('liquidation/config')
@@ -87,37 +87,37 @@ export class LiquidationConfigController {
     return this.configService.eliminarTarifaInvestigador(Number(id));
   }
 
-  // ==================== EXCEPCIONES REGIONALES ====================
-
-  @Get('excepciones-regionales')
-  obtenerExcepcionesRegionales() {
-    return this.configService.obtenerExcepcionesRegionales();
-  }
-
   @Get('catalogo-departamentos')
   obtenerCatalogoDepartamentos() {
     return this.configService.obtenerCatalogoDepartamentos();
   }
 
-  @Post('excepciones-regionales')
-  @Permissions('travel_expenses:manage_config')
-  crearExcepcionRegional(@Body() dto: CreateTarifaRegionalExcepcionDto) {
-    return this.configService.crearExcepcionRegional(dto);
+  // ==================== TARIFAS TRANSPORTE TERMINALES AÉREOS ====================
+
+  @Get('tarifas-transporte-terminal')
+  obtenerTarifasTransporteTerminal() {
+    return this.configService.obtenerTarifasTransporteTerminal();
   }
 
-  @Put('excepciones-regionales/:id')
+  @Post('tarifas-transporte-terminal')
   @Permissions('travel_expenses:manage_config')
-  actualizarExcepcionRegional(
+  crearTarifaTransporteTerminal(@Body() dto: CreateTarifaTransporteTerminalDto) {
+    return this.configService.crearTarifaTransporteTerminal(dto);
+  }
+
+  @Put('tarifas-transporte-terminal/:id')
+  @Permissions('travel_expenses:manage_config')
+  actualizarTarifaTransporteTerminal(
     @Param('id') id: string,
-    @Body() dto: UpdateTarifaRegionalExcepcionDto,
+    @Body() dto: UpdateTarifaTransporteTerminalDto,
   ) {
-    return this.configService.actualizarExcepcionRegional(Number(id), dto);
+    return this.configService.actualizarTarifaTransporteTerminal(Number(id), dto);
   }
 
-  @Delete('excepciones-regionales/:id')
+  @Delete('tarifas-transporte-terminal/:id')
   @Permissions('travel_expenses:manage_config')
-  async eliminarExcepcionRegional(@Param('id') id: string) {
-    return this.configService.eliminarExcepcionRegional(Number(id));
+  async eliminarTarifaTransporteTerminal(@Param('id') id: string) {
+    return this.configService.eliminarTarifaTransporteTerminal(Number(id));
   }
 
   // ==================== PARÁMETROS GLOBALES ====================

@@ -35,6 +35,7 @@ const estado = (parcial: Partial<EstadoRegistroActividad> = {}): EstadoRegistroA
   motivoNoAplica: null,
   registro: null,
   historial: [],
+  exigeFirma: false,
   ...parcial,
 });
 

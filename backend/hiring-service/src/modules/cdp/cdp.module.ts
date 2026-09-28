@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { CdpService } from './cdp.service';
-import { CdpController } from './cdp.controller';
+import { BandejaCdpController, CdpController } from './cdp.controller';
 import { AperturaController } from './apertura.controller';
 
 import { Cdp } from '../../entities/cdp.entity';
@@ -12,6 +12,7 @@ import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
+import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
 @Module({
   imports: [
@@ -25,8 +26,9 @@ import { Expediente } from '../../entities/expediente.entity';
       Documento,
       Expediente,
     ]),
+    CierreActividadModule,
   ],
-  controllers: [CdpController, AperturaController],
+  controllers: [CdpController, BandejaCdpController, AperturaController],
   providers: [CdpService],
   // Lo consumirán el ciclo del CDP (EFDS-1338) y las validaciones de apertura
   // (EFDS-1340) y de contratación directa (EFDS-1341).

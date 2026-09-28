@@ -3,13 +3,13 @@ import { IsDateString, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-
 
 /** Reporte de un presunto incumplimiento (EFDS-1180, RF-INC-01). */
 export class ReportarIncumplimientoDto {
-  @ApiProperty({ description: 'Que se observo' })
+  @ApiProperty({ description: 'Qué se observó' })
   @IsString()
-  @IsNotEmpty({ message: 'Describe que se observo' })
+  @IsNotEmpty({ message: 'Describe qué se observó' })
   // Diez y no cinco como en el seguimiento: esto es lo que el area juridica lee
   // para decidir si abre tramite, y «no cumplio» no le sirve de nada.
   @MinLength(10, {
-    message: 'El motivo debe decir que se observo, no una palabra suelta',
+    message: 'El motivo debe decir qué se observó, no una palabra suelta',
   })
   @MaxLength(2000)
   motivo: string;

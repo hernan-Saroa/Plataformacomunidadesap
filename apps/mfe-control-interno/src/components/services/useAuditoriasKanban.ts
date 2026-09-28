@@ -389,7 +389,8 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
       criterio: typeof crit === 'string' ? crit : (crit.criterio || '')
     })),
     calificacionRiesgo: auditoriaBackend.calificacionRiesgo || `Riesgo ${mapearRiesgo(auditoriaBackend.nivelRiesgo)}`,
-    documentos: (auditoriaBackend.totalDocumentos || auditoriaBackend.documentosCount || 0) + (auditoriaBackend.documentoCierre?.url ? 1 : 0),
+    // El backend ya cuenta documentos, evidencias y documento de cierre como el expediente (EFDS-1614)
+    documentos: auditoriaBackend.totalDocumentos ?? auditoriaBackend.documentosCount ?? 0,
     informes: auditoriaBackend.totalInformes || auditoriaBackend.informesCount || 0,
     tareas: auditoriaBackend.totalTareas || auditoriaBackend.tareasCount || 0,
     tipo: mapearTipo(auditoriaBackend.tipo),
@@ -425,6 +426,8 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     planAnualVigencia:
       auditoriaBackend.planAnualVigencia ?? auditoriaBackend.plan_anual_vigencia,
     planAnualId: auditoriaBackend.planAnualId ?? auditoriaBackend.plan_anual_id,
+    // Semanas que no se trabajan (EFDS-2132): sin ellas, editar y guardar las borraba
+    semanasExcluidas: Array.isArray(auditoriaBackend.semanasExcluidas) ? auditoriaBackend.semanasExcluidas : [],
     programaAnualMetadata: auditoriaBackend.programaAnualMetadata,
     supervisorAsignadoId: auditoriaBackend.supervisorAsignadoId || '',
     vinculadaPlanAnual: auditoriaBackend.vinculadaPlanAnual || true,

@@ -6,6 +6,9 @@ describe('PtaService - avance de aprobación por componente', () => {
     service.ptaComponentApprovalRepo = {
       find: jest.fn().mockResolvedValue(approvals),
     };
+    service.ptaComponentReviewRepo = {
+      find: jest.fn().mockResolvedValue([]),
+    };
     service.configuracionRepo = {
       findOne: jest.fn().mockResolvedValue(null),
     };
@@ -149,5 +152,27 @@ describe('PtaService - avance de aprobación por componente', () => {
       expect.objectContaining({ key: 'extension', estado: 'no_aplica', horas: 0 }),
       expect.objectContaining({ key: 'complementarias', estado: 'aprobado', horas: 170 }),
     ]));
+  });
+
+  it('expone por separado los estados granulares de revisión y aprobación', async () => {
+    const service = createService([
+      { ptaId: 'pta-etapas', componente: 'investigacion', estado: 'pendiente' },
+    ]);
+    service.ptaComponentReviewRepo.find.mockResolvedValue([
+      { ptaId: 'pta-etapas', componente: 'investigacion', subseccion: 'general', estado: 'revisado' },
+    ]);
+    const dtos: any[] = [{
+      id: 'pta-etapas', estado: 'Pendiente Decanatura', horas_docencia: 0,
+      horas_investigacion: 200, horas_complementarias: 0, extension_actividades: [],
+    }];
+
+    await service.attachComponentApprovalProgress(dtos);
+
+    expect(dtos[0].componentes_revision_estado).toEqual([
+      { componente: 'investigacion', subseccion: 'general', estado: 'revisado' },
+    ]);
+    expect(dtos[0].componentes_aprobacion_estado).toEqual([
+      { componente: 'investigacion', estado: 'pendiente', revision_completa: true },
+    ]);
   });
 });

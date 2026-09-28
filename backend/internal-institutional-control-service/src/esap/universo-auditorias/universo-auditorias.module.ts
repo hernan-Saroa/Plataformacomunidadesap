@@ -7,7 +7,6 @@ import { EvaluacionProceso } from './entities/evaluacion-proceso.entity';
 import { TipoProceso } from './entities/tipo-proceso.entity';
 import { EvaluacionProcesoController } from './evaluacion-proceso.controller';
 import { EvaluacionProcesoService } from './evaluacion-proceso.service';
-import { EvaluacionRol4TareaSyncService } from './evaluacion-rol4-tarea-sync.service';
 import { AuthModule } from '../../auth/auth.module';
 
 @Module({
@@ -19,12 +18,10 @@ import { AuthModule } from '../../auth/auth.module';
   providers: [
     UniversoAuditoriasService,
     EvaluacionProcesoService,
-    EvaluacionRol4TareaSyncService,
   ],
   exports: [
     UniversoAuditoriasService,
     EvaluacionProcesoService,
-    EvaluacionRol4TareaSyncService,
     TypeOrmModule,
   ],
 })

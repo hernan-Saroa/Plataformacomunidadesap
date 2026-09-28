@@ -121,6 +121,66 @@ export const ETAPAS_PROCESO = {
 
 export type EtapaProcesoId = keyof typeof ETAPAS_PROCESO;
 
+/**
+ * Convierte cualquier variante o alias de etapa al ID canónico oficial
+ * de ETAPAS_PROCESO (ej: INVESTIGACION_DISCIPLINARIA -> INVESTIGACION)
+ */
+export function canonicalizarEtapaId(etapa?: string): EtapaProcesoId {
+  if (!etapa) return 'INVESTIGACION';
+  
+  if (etapa in ETAPAS_PROCESO) {
+    return etapa as EtapaProcesoId;
+  }
+  
+  const norm = etapa
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/\s+/g, '_')
+    .trim();
+
+  if (norm.includes('INVESTIGAC')) return 'INVESTIGACION';
+  if (norm.includes('INDAGAC_PREVIA') || norm.includes('INDAGACION_PREVIA') || norm.includes('PRELIMINAR')) return 'INDAGACION_PREVIA';
+  if (norm.includes('INDAGAC')) return 'INDAGACION';
+  if (norm.includes('VALORAC')) return 'VALORACION';
+  if (norm.includes('RECEPC')) return 'RECEPCION';
+  if (norm.includes('JUZGAM')) return 'JUZGAMIENTO';
+  if (norm.includes('EVALUAC')) return 'EVALUACION';
+  if (norm.includes('CARGO') || norm.includes('PLIEGO')) return 'CARGOS';
+  if (norm.includes('FALLO')) return 'FALLO';
+  if (norm.includes('SEGUNDA')) return 'SEGUNDA_INSTANCIA';
+  if (norm.includes('INHIBI')) return 'INHIBITORIO';
+  if (norm.includes('ARCHIV')) return 'ARCHIVO';
+
+  for (const [key, val] of Object.entries(ETAPAS_PROCESO)) {
+    const normNombre = val.nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/\s+/g, '_');
+    if (norm === normNombre) return key as EtapaProcesoId;
+  }
+
+  return (etapa as EtapaProcesoId) || 'INVESTIGACION';
+}
+
+/**
+ * Obtiene la configuración visual (nombre, color, icono) de una etapa
+ * de forma resiliente para evitar mostrar 'Etapa Desconocida'
+ */
+export function getEtapaProcesoConfig(etapaKeyOrName?: string) {
+  if (!etapaKeyOrName) {
+    return { id: 'DESCONOCIDA', nombre: 'Etapa Desconocida', color: '#6B7280', icon: FileText, orden: 999 };
+  }
+  const canId = canonicalizarEtapaId(etapaKeyOrName);
+  if (canId in ETAPAS_PROCESO) {
+    return ETAPAS_PROCESO[canId];
+  }
+  return {
+    id: etapaKeyOrName,
+    nombre: etapaKeyOrName,
+    color: '#6B7280',
+    icon: FileText,
+    orden: 999
+  };
+}
+
 // ============ INTERFACES ============
 
 export interface PlantillaArchivo {
@@ -135,6 +195,7 @@ export interface PlantillaArchivo {
   fechaCreacion: string;
   fechaModificacion?: string;
   activo: boolean;
+  file?: File;
 }
 
 export interface TipoAuto {
@@ -200,8 +261,7 @@ export function SeccionPlantillasAutosUnificada({
 
   // Función helper para obtener nombre de etapa
   const getEtapaNombre = (etapaId: string): string => {
-    const etapa = ETAPAS_PROCESO[etapaId as keyof typeof ETAPAS_PROCESO];
-    return etapa ? etapa.nombre : etapaId;
+    return getEtapaProcesoConfig(etapaId).nombre;
   };
 
   const handleDescargarPlantilla = async (plantilla: PlantillaArchivo) => {
@@ -364,21 +424,13 @@ export function SeccionPlantillasAutosUnificada({
             <div className="space-y-3">
               {tiposPaginados
                 .sort((a, b) => {
-                  const etapaA = ETAPAS_PROCESO[a.etapa];
-                  const etapaB = ETAPAS_PROCESO[b.etapa];
-                  if (!etapaA || !etapaB) return 0;
+                  const etapaA = getEtapaProcesoConfig(a.etapa);
+                  const etapaB = getEtapaProcesoConfig(b.etapa);
                   if (etapaA.orden !== etapaB.orden) return etapaA.orden - etapaB.orden;
                   return a.orden - b.orden;
                 })
                 .map((tipo) => {
-                  const etapaKey = tipo.etapa as keyof typeof ETAPAS_PROCESO;
-                  const etapa = ETAPAS_PROCESO[etapaKey] ?? {
-                    nombre: tipo.etapa || 'Sin etapa',
-                    descripcion: '',
-                    color: '#6B7280',
-                    icon: FileText,
-                    orden: 999,
-                  };
+                  const etapa = getEtapaProcesoConfig(tipo.etapa);
 
                   const Icon = etapa.icon;
                   const plantillasActivas = tipo.plantilla ? 1 : 0;

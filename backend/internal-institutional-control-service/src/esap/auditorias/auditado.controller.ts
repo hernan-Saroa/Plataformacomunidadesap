@@ -487,7 +487,36 @@ export class AuditadoController {
   async findMisDocumentos(@Param('id') id: string, @Req() req: any) {
     const usuario = this.getUsuarioFromReq(req);
     await this.auditoriasService.assertAuditadoOwnership(id, usuario);
-    return this.documentosService.findAll({ auditoriaId: id });
+
+    // Mismos documentos que Expediente → Documentación: documentos, evidencias sin duplicar
+    // y documento de cierre, para que la cantidad coincida en todas las vistas (EFDS-1614).
+    const [documentos, evidencias, auditoria] = await Promise.all([
+      this.documentosService.findAll({ auditoriaId: id }),
+      this.evidenciasService.findByAuditoria(id),
+      this.auditoriasService.findOne(id),
+    ]);
+    const idsDocumentos = new Set(documentos.map((d) => d.id));
+    const cierre = (auditoria as any)?.documentoCierre;
+
+    return [
+      ...(cierre?.url
+        ? [{
+            id: 'doc-cierre',
+            nombre: cierre.nombre || 'Documento de cierre',
+            tipoDocumento: 'documento_cierre',
+            tipoMime: cierre.tipo || 'application/pdf',
+            createdAt: cierre.fechaCarga || (auditoria as any)?.fechaFinalizacion,
+            tamanioBytes: cierre.tamano,
+            url: cierre.url,
+            origen: 'auditor',
+            fuente: 'cierre',
+          }]
+        : []),
+      ...documentos.map((d) => ({ ...d, fuente: 'documento' })),
+      ...evidencias
+        .filter((e) => !idsDocumentos.has(e.id))
+        .map((e) => ({ ...e, nombre: e.nombre || e.nombreArchivoOriginal, fuente: 'evidencia' })),
+    ];
   }
 
   /**

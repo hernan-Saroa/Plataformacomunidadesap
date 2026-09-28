@@ -18,6 +18,7 @@ vi.mock('../../services/contratacionService', () => ({
     responderSubsanacion: vi.fn(),
     cerrarTraslado: vi.fn(),
     urlDescarga: (url: string) => `https://gateway${url}`,
+    firmaDeActividad: vi.fn().mockResolvedValue({ requiereFirma: false }),
   },
 }));
 

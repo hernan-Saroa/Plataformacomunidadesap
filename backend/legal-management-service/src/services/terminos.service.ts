@@ -10,6 +10,7 @@ import { ProcesoCoactivo } from '../entities/proceso-coactivo.entity';
 import { Actuacion } from '../entities/actuacion.entity';
 import { LegalNotificationsService } from './legal-notifications.service';
 import { SequenceService } from './sequence.service';
+import { calcularDiasTermino } from '../utils/plazo-termino';
 
 @Injectable()
 export class TerminosService {
@@ -431,6 +432,17 @@ export class TerminosService {
 
     async update(id: string, data: any): Promise<TerminoProcesal> {
         const termino = await this.findOne(id);
+
+        // Si la edición mueve el plazo pero no dice cuánto dura, se recalcula: `diasTermino`
+        // alimenta la barra de progreso del detalle, y dejarlo con el valor viejo mostraba un
+        // avance incoherente (p. ej. "35 de 30 días transcurridos") tras aplazar un informe.
+        if (!('diasTermino' in data) && ('fechaVencimiento' in data || 'fechaBase' in data)) {
+            const fechaBase = data.fechaBase ?? termino.fechaBase;
+            const fechaVencimiento = data.fechaVencimiento ?? termino.fechaVencimiento;
+            if (fechaBase && fechaVencimiento) {
+                data.diasTermino = calcularDiasTermino(fechaBase, fechaVencimiento);
+            }
+        }
         
         // Si viene un comentario nuevo, lo concatenamos de forma segura
         if (data.nuevoComentario) {

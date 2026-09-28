@@ -5,6 +5,7 @@ import {
   CamposFaltantesError,
   ConflictoError,
   EstudioPrevio,
+  EvidenciaFirmaOtp,
 } from '../types';
 
 interface Estado {
@@ -14,6 +15,14 @@ interface Estado {
   faltantes: CampoFaltante[];
   /** El estudio previo firmado no se ha adjuntado. */
   documentoFaltante: boolean;
+  /**
+   * Lo que falta del paquete de la radicación.
+   *
+   * Aparte de `faltantes`, que son campos del formulario y se marcan sobre él:
+   * estos no están en la pantalla del estudio previo, así que la única forma
+   * de enterarse es que el envío los nombre.
+   */
+  documentosDeLaLista: { codigo: string; nombre: string }[];
   cargando: boolean;
   guardando: boolean;
   enviando: boolean;
@@ -26,6 +35,7 @@ const INICIAL: Estado = {
   errores: {},
   faltantes: [],
   documentoFaltante: false,
+  documentosDeLaLista: [],
   cargando: true,
   guardando: false,
   enviando: false,
@@ -132,12 +142,19 @@ export function useEstudioPrevio(procesoId: string | null) {
   }, [procesoId, estado.datos, guardarReintentando]);
 
   /** Guarda y envía. El 422 se traduce en la lista de faltantes marcada en pantalla. */
-  const enviar = useCallback(async () => {
+  const enviar = useCallback(async (firma?: EvidenciaFirmaOtp) => {
     if (!procesoId || !estado.datos) return;
-    setEstado((e) => ({ ...e, enviando: true, mensaje: null, faltantes: [], documentoFaltante: false }));
+    setEstado((e) => ({
+      ...e,
+      enviando: true,
+      mensaje: null,
+      faltantes: [],
+      documentoFaltante: false,
+      documentosDeLaLista: [],
+    }));
     try {
       await guardarReintentando(estado.datos.version);
-      await contratacionService.enviarARevision(procesoId);
+      await contratacionService.enviarARevision(procesoId, firma);
       await cargar();
       setEstado((e) => ({
         ...e,
@@ -154,9 +171,17 @@ export function useEstudioPrevio(procesoId: string | null) {
           errores,
           faltantes: err.camposFaltantes,
           documentoFaltante: err.documentoFaltante,
-          mensaje: err.documentoFaltante && err.camposFaltantes.length === 0
-            ? { tipo: 'error', texto: err.message }
-            : null,
+          documentosDeLaLista: err.documentosDeLaLista,
+          /*
+           * El mensaje solo cuando no hay campos que marcar. Los campos se
+           * señalan sobre el formulario, y repetirlos arriba diría dos veces lo
+           * mismo; lo que no se ve en el formulario —el estudio previo sin
+           * adjuntar, el paquete incompleto— sí necesita decirse.
+           */
+          mensaje:
+            err.camposFaltantes.length === 0
+              ? { tipo: 'error', texto: err.message }
+              : null,
         }));
         return;
       }

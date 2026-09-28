@@ -5,6 +5,7 @@ import { DocumentosService } from './documentos.service';
 import { Documento } from './entities/documento.entity';
 import { Auditoria } from '../auditorias/entities/auditoria.entity';
 import { AuthModule } from '../../auth/auth.module';
+import { OnlyOfficeService } from '../common/onlyoffice.service';
 
 @Module({
   imports: [
@@ -12,7 +13,7 @@ import { AuthModule } from '../../auth/auth.module';
     AuthModule,
   ],
   controllers: [DocumentosController],
-  providers: [DocumentosService],
+  providers: [DocumentosService, OnlyOfficeService],
   exports: [DocumentosService, TypeOrmModule],
 })
 export class DocumentosModule {}

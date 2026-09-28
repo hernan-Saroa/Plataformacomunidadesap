@@ -66,6 +66,12 @@ export class SolicitudComisionEntity {
   @Column({ name: 'rubro_presupuestal', type: 'varchar', length: 100 })
   rubroPresupuestal: string;
 
+  @Column({ name: 'numero_cdp', type: 'varchar', length: 100, nullable: true })
+  numeroCdp: string | null;
+
+  @Column({ name: 'fecha_cdp', type: 'varchar', length: 50, nullable: true })
+  fechaCdp: string | null;
+
   @Column({ name: 'requiere_tiquetes', type: 'boolean', default: false })
   requiereTiquetes: boolean;
 
@@ -87,8 +93,128 @@ export class SolicitudComisionEntity {
   })
   montoGastosViaje: number;
 
-  @Column({ name: 'dias_comision', type: 'int', default: 1 })
+  @Column({
+    name: 'dias_comision',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    default: 1,
+  })
   diasComision: number;
+
+  // ========== Autoliquidación GF-FO-023 (Decreto 314 de 2026) ==========
+  @Column({
+    name: 'dias_pernoctados',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  diasPernoctados: number | null;
+
+  @Column({
+    name: 'tarifa_dia_pernoctado',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  tarifaDiaPernoctado: number | null;
+
+  @Column({
+    name: 'total_pernoctados',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  totalPernoctados: number | null;
+
+  @Column({
+    name: 'dias_no_pernoctados',
+    type: 'numeric',
+    precision: 5,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  diasNoPernoctados: number | null;
+
+  @Column({
+    name: 'tarifa_dia_no_pernoctado',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  tarifaDiaNoPernoctado: number | null;
+
+  @Column({
+    name: 'total_no_pernoctados',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  totalNoPernoctados: number | null;
+
+  @Column({
+    name: 'factor_comisionado',
+    type: 'numeric',
+    precision: 3,
+    scale: 2,
+    default: 1.0,
+    nullable: true,
+  })
+  factorComisionado: number | null;
+
+  @Column({
+    name: 'factor_pernocta',
+    type: 'numeric',
+    precision: 3,
+    scale: 2,
+    default: 1.0,
+    nullable: true,
+  })
+  factorPernocta: number | null;
+
+  @Column({
+    name: 'tarifa_diaria_base',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  tarifaDiariaBase: number | null;
+
+  @Column({
+    name: 'tarifa_final_aplicada_dia',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  tarifaFinalAplicadaDia: number | null;
+
+  @Column({
+    name: 'salario_base_aplicado',
+    type: 'numeric',
+    precision: 12,
+    scale: 2,
+    default: 0,
+    nullable: true,
+  })
+  salarioBaseAplicado: number | null;
+
+  @Column({ name: 'decreto_aplicado', type: 'varchar', length: 100, nullable: true })
+  decretoAplicado: string | null;
 
   @Column({
     name: 'estado_solicitud',
@@ -110,6 +236,9 @@ export class SolicitudComisionEntity {
 
   @Column({ name: 'fecha_revision', type: 'timestamp', nullable: true })
   fechaRevision: Date | null;
+
+  @Column({ name: 'fecha_radicacion', type: 'timestamp', nullable: true })
+  fechaRadicacion: Date | null;
 
   @Column({
     name: 'tipo_comision',
@@ -218,12 +347,183 @@ export class SolicitudComisionEntity {
   @Column({ name: 'es_delegado_direccion', type: 'boolean', default: false })
   esDelegadoDireccion: boolean;
 
+  @Column({ name: 'motivo_cancelacion', type: 'text', nullable: true })
+  motivoCancelacion: string | null;
+
+  @Column({ name: 'fecha_cancelacion', type: 'timestamp', nullable: true })
+  fechaCancelacion: Date | null;
+
+  @Column({ name: 'cancelado_por_usuario_id', type: 'uuid', nullable: true })
+  canceladoPorUsuarioId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'cancelado_por_usuario_id' })
+  canceladoPorUsuario: UsuarioEntity;
+
+  @Column({ name: 'responsable_cancelacion', type: 'varchar', length: 255, nullable: true })
+  responsableCancelacion: string | null;
+
+  @Column({ name: 'pendiente_reintegro', type: 'boolean', default: false })
+  pendienteReintegro: boolean;
+
+  // ========== Etapa 7: Presupuesto y RP (RF-PRE-001) ==========
+  @Column({ name: 'enviado_presupuesto', type: 'boolean', default: false })
+  enviadoPresupuesto: boolean;
+
+  @Column({ name: 'fecha_envio_presupuesto', type: 'timestamp with time zone', nullable: true })
+  fechaEnvioPresupuesto: Date | null;
+
+  @Column({ name: 'enviado_presupuesto_por_id', type: 'uuid', nullable: true })
+  enviadoPresupuestoPorId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'enviado_presupuesto_por_id' })
+  enviadoPresupuestoPor: UsuarioEntity;
+
+  @Column({ name: 'observaciones_envio_presupuesto', type: 'text', nullable: true })
+  observacionesEnvioPresupuesto: string | null;
+
+  @Column({ name: 'numero_rp', type: 'varchar', length: 100, nullable: true })
+  numeroRp: string | null;
+
+  @Column({ name: 'fecha_rp', type: 'date', nullable: true })
+  fechaRp: Date | null;
+
+  @Column({
+    name: 'valor_comprometido',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    nullable: true,
+  })
+  valorComprometido: number | null;
+
+  @Column({ name: 'rubro_rp', type: 'varchar', length: 100, nullable: true })
+  rubroRp: string | null;
+
+  @Column({ name: 'soporte_rp_path', type: 'varchar', length: 255, nullable: true })
+  soporteRpPath: string | null;
+
+  @Column({ name: 'codigo_rp', type: 'varchar', length: 150, nullable: true })
+  codigoRp: string | null;
+
+  @Column({ name: 'expedido_rp_por_id', type: 'uuid', nullable: true })
+  expedidoRpPorId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'expedido_rp_por_id' })
+  expedidoRpPor: UsuarioEntity;
+
+  @Column({ name: 'fecha_expedicion_rp', type: 'timestamp with time zone', nullable: true })
+  fechaExpedicionRp: Date | null;
+
+  @Column({ name: 'observaciones_rp', type: 'text', nullable: true })
+  observacionesRp: string | null;
+
+  // ========== Etapa 7: Modalidad de Pago (RF-PRE-003) ==========
+  @Column({ name: 'modalidad_pago', type: 'varchar', length: 50, default: 'AVANCE' })
+  modalidadPago: string;
+
+  @Column({ name: 'dias_habiles_previos', type: 'int', default: 0 })
+  diasHabilesPrevios: number;
+
+  @Column({ name: 'fecha_calculo_modalidad', type: 'timestamp', nullable: true })
+  fechaCalculoModalidad: Date | null;
+
+  // ========== Etapa 8: Tesorería y Obligación SIIF (RF-PAG-001) ==========
+  @Column({ name: 'numero_obligacion', type: 'varchar', length: 100, nullable: true })
+  numeroObligacion: string | null;
+
+  @Column({ name: 'fecha_obligacion', type: 'date', nullable: true })
+  fechaObligacion: Date | null;
+
+  @Column({ name: 'valor_obligacion', type: 'numeric', precision: 12, scale: 2, nullable: true })
+  valorObligacion: number | null;
+
+  @Column({ name: 'observaciones_obligacion', type: 'text', nullable: true })
+  observacionesObligacion: string | null;
+
+  @Column({ name: 'soporte_obligacion_path', type: 'varchar', length: 255, nullable: true })
+  soporteObligacionPath: string | null;
+
+  @Column({ name: 'obligado_por_id', type: 'uuid', nullable: true })
+  obligadoPorId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'obligado_por_id' })
+  obligadoPor: UsuarioEntity;
+
+  @Column({ name: 'fecha_registro_obligacion', type: 'timestamp with time zone', nullable: true })
+  fechaRegistroObligacion: Date | null;
+
+  // ========== Etapa 8: Tesorería y Desembolso / Pago (RF-PAG-003) ==========
+  @Column({ name: 'fecha_pago', type: 'date', nullable: true })
+  fechaPago: Date | null;
+
+  @Column({ name: 'valor_pagado', type: 'numeric', precision: 12, scale: 2, nullable: true })
+  valorPagado: number | null;
+
+  @Column({ name: 'soporte_pago_path', type: 'varchar', length: 255, nullable: true })
+  soportePagoPath: string | null;
+
+  @Column({ name: 'numero_orden_pago', type: 'varchar', length: 100, nullable: true })
+  numeroOrdenPago: string | null;
+
+  @Column({ name: 'observaciones_pago', type: 'text', nullable: true })
+  observacionesPago: string | null;
+
+  @Column({ name: 'pagado_por_id', type: 'uuid', nullable: true })
+  pagadoPorId: string | null;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'pagado_por_id' })
+  pagadoPor: UsuarioEntity;
+
+  @Column({ name: 'fecha_registro_pago', type: 'timestamp with time zone', nullable: true })
+  fechaRegistroPago: Date | null;
+
+  // ========== Etapa 8: Notificación Automática a SST (RF-PAG-002) ==========
+  @Column({ name: 'notificado_sst', type: 'boolean', default: false })
+  notificadoSst: boolean;
+
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;
 
   @UpdateDateColumn({ name: 'actualizado_en' })
   actualizadoEn: Date;
 
+  @Column({
+    name: 'campos_adicionales',
+    type: 'jsonb',
+    default: () => "'{}'::jsonb",
+  })
+  camposAdicionales: Record<string, any>;
+
+  @Column({
+    name: 'itinerario',
+    type: 'jsonb',
+    default: () => "'[]'::jsonb",
+  })
+  itinerario: Array<{
+    id?: string;
+    origenCiudad: string;
+    origenDepartamento?: string;
+    destinoCiudad: string;
+    destinoDepartamento: string;
+    tipoTrayecto: 'SOLO_IDA' | 'IDA_Y_VUELTA';
+    fechaSalida: string;
+    fechaLlegada: string;
+    diasRuta: number;
+    horarioEstimadoMilitar?: string;
+    horaEstimadaSalida?: string;
+    horaEstimadaLlegada?: string;
+    horaSalida?: string;
+    horaLlegada?: string;
+    tipoTransporte?: 'AEREO' | 'TERRESTRE';
+    requiereTiquete?: boolean;
+  }>;
+
   @OneToMany(() => DocumentoSoporteEntity, (doc) => doc.solicitud)
   documentosSoporte: DocumentoSoporteEntity[];
 }
+

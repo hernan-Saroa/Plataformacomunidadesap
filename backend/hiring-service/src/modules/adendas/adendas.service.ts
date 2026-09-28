@@ -17,6 +17,8 @@ import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { AnularAdendaDto, EmitirAdendaDto, PublicarAdendaDto } from './dto/adendas.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 5.6 de la matriz: las adendas del proceso. */
 export const NUMERAL_ADENDAS = '5.6';
@@ -33,7 +35,11 @@ interface ArchivoCargado {
 
 @Injectable()
 export class AdendasService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    /** Si la 5.6 exige firmar con el token institucional al cerrarse (EFDS-2070). */
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -243,7 +249,7 @@ export class AdendasService {
       }
 
       await em.save(adenda);
-      await this.marcarActividad(em, procesoId, acceso);
+      await this.marcarActividad(em, procesoId, acceso, dto.firma);
 
       await this.traza(em, procesoId, adenda.id, 'PUBLICAR', acceso, {
         actividad: NUMERAL_ADENDAS,
@@ -288,7 +294,7 @@ export class AdendasService {
       adenda.motivoAnulacion = dto.motivo;
       await em.save(adenda);
 
-      await this.marcarActividad(em, procesoId, acceso);
+      await this.marcarActividad(em, procesoId, acceso, dto.firma);
 
       await this.traza(em, procesoId, adenda.id, 'ANULAR', acceso, {
         actividad: NUMERAL_ADENDAS,
@@ -364,7 +370,12 @@ export class AdendasService {
    * Un proceso sin adendas no la necesita, así que solo se marca desde que se
    * emite la primera: antes de eso no hay nada pendiente que señalar.
    */
-  private async marcarActividad(em: EntityManager, procesoId: string, acceso: HiringAccess) {
+  private async marcarActividad(
+    em: EntityManager,
+    procesoId: string,
+    acceso: HiringAccess,
+    firma?: FirmaOtpDto,
+  ) {
     const pendientes = await em.getRepository(Adenda).count({
       where: { procesoId, estado: 'EMITIDA' },
     });
@@ -376,13 +387,19 @@ export class AdendasService {
       where: { procesoId, numeral: NUMERAL_ADENDAS },
     });
 
+    // Solo se pide firma al cerrar: si ya estaba cerrada, no se repite el
+    // pedido (EFDS-2070).
+    if (aprobado && actividad?.estado !== 'APROBADO' && (await this.cierre.exigeFirma(em, NUMERAL_ADENDAS))) {
+      this.cierre.exigirFirmaValida(firma);
+    }
+
     if (!actividad) {
       await em.save(
         em.create(ProcesoActividad, {
           procesoId,
           numeral: NUMERAL_ADENDAS,
           estado: estado as any,
-          datos: {},
+          datos: aprobado && firma ? { firma } : {},
           ...(aprobado ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
         }),
       );
@@ -392,6 +409,9 @@ export class AdendasService {
     actividad.estado = estado as any;
     actividad.revisadoPor = aprobado ? acceso.userName : null;
     actividad.revisadoAt = aprobado ? new Date() : null;
+    if (aprobado && firma) {
+      actividad.datos = { ...(actividad.datos ?? {}), firma };
+    }
     await em.save(actividad);
   }
 

@@ -4,6 +4,16 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'express';
 import { join } from 'path';
 
+// Las columnas de fecha de certificados (request_date, issuance_timestamp,
+// created_at, updated_at) son `timestamp WITHOUT time zone` y la BD, con sesión
+// America/Bogota, las guarda con el wall-clock de Bogotá. Si el proceso Node
+// corre en UTC (Docker/servidor), node-postgres las interpreta como UTC y las
+// corre +5 horas: la hora de solicitud sale desfasada y, cuando el registro es
+// de madrugada, la fecha se va al día anterior. Fijar la zona a la de la BD
+// hace que la lectura sea consistente en cualquier entorno.
+// Configurable con APP_TZ por si operaciones necesita otra zona.
+process.env.TZ = process.env.APP_TZ || 'America/Bogota';
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,

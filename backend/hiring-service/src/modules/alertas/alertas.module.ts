@@ -3,6 +3,9 @@ import { Module } from '@nestjs/common';
 import { AlertasController } from './alertas.controller';
 import { AlertasCron } from './alertas.cron';
 import { AlertasService } from './alertas.service';
+import { NotificacionesModule } from '../notificaciones/notificaciones.module';
+import { ParticipacionModule } from '../participacion/participacion.module';
+import { ParametrosAlertaService } from './parametros-alerta.service';
 
 /**
  * Alertas de vencimiento (EFDS-1185).
@@ -16,8 +19,14 @@ import { AlertasService } from './alertas.service';
  * pueden contradecirse.
  */
 @Module({
+  /**
+   * Participación, para saber a quién avisarle de una solicitud de CDP que
+   * nadie ha tomado: es el único aviso que hay que mandar sin responsable, y
+   * quién puede resolverla se responde allí y no aquí.
+   */
+  imports: [ParticipacionModule, NotificacionesModule],
   controllers: [AlertasController],
-  providers: [AlertasService, AlertasCron],
-  exports: [AlertasService],
+  providers: [AlertasService, AlertasCron, ParametrosAlertaService],
+  exports: [AlertasService, ParametrosAlertaService],
 })
 export class AlertasModule {}

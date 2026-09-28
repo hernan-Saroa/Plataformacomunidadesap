@@ -95,6 +95,7 @@ import { toast } from 'sonner';
 import { colors } from '../../esap/shared/designTokens';
 import { Button } from '@esap-mfe/shared-ui';
 import { controlInternoService } from '../../../services/api/controlInternoService';
+import { API_MODE, getServiceUrl } from '../../../config/environment';
 
 // ════════════════════════════════════════════════════════════════════════════
 // FEATURE FLAGS DE INTEGRACIÓN
@@ -310,6 +311,9 @@ interface DocumentoItem {
   observacion?: string;
   /** Indica si el doc fue cargado por el equipo auditor (informe preliminar, oficios, etc.) */
   origen?: 'auditor' | 'auditado';
+  /** URL para ver el archivo en el navegador (solo PDF e imágenes) */
+  urlVer?: string;
+  urlDescarga?: string;
 }
 
 interface MisAuditoriasControlInternoProps {
@@ -631,19 +635,44 @@ function mapHallazgoApi(raw: any): HallazgoItem {
   };
 }
 
+/** URL de un archivo del servicio de Control Interno según el ambiente (gateway o directo). */
+function urlArchivoControlInterno(ruta: string): string {
+  if (/^https?:\/\//i.test(ruta)) return ruta;
+  const prefijo = API_MODE === 'gateway' ? '/control-institucional/api/v1' : '';
+  return `${getServiceUrl('control-institucional')}${prefijo}${ruta.startsWith('/') ? ruta : `/${ruta}`}`;
+}
+
+const ESTADO_DOCUMENTO_API: Record<string, DocumentoItem['estado']> = {
+  aprobado: 'Aprobado',
+  aceptado: 'Aprobado',
+  pendiente: 'Pendiente',
+  con_observaciones: 'Pendiente',
+  rechazado: 'Rechazado',
+  solicitado: 'Solicitado',
+};
+
 function mapDocumentoApi(raw: any): DocumentoItem {
   const subidoPorAuditor = String(raw.tipoDocumento ?? '').includes('preliminar')
     || String(raw.tipoDocumento ?? '').includes('oficio')
     || String(raw.subidoPor ?? '').toLowerCase().includes('auditor');
+  const id = String(raw.id ?? '');
+  // Documentos, evidencias y documento de cierre se abren desde su propio endpoint (EFDS-1614)
+  const rutaBase = raw.fuente === 'evidencia' ? `/evidencias/${id}` : `/documentos/${id}`;
+  const urlCierre = raw.fuente === 'cierre' && raw.url ? urlArchivoControlInterno(String(raw.url)) : undefined;
+  const tipoMime = String(raw.tipoMime ?? '').toLowerCase();
+  const puedeVerse = tipoMime.startsWith('image/') || tipoMime === 'application/pdf';
+  const bytes = Number(raw.tamanioBytes);
   return {
-    id: String(raw.id ?? ''),
-    nombre: raw.nombre ?? raw.nombreArchivo ?? 'Documento',
+    id,
+    nombre: raw.nombre ?? raw.nombreArchivo ?? raw.nombreArchivoOriginal ?? 'Documento',
     tipo: raw.tipoDocumento ?? raw.tipo ?? 'Archivo',
     fechaSubida: fechaCO(raw.fechaSubida ?? raw.createdAt),
-    tamano: raw.tamano ?? raw.tamanoArchivo ?? '',
-    estado: (raw.estadoValidacion ?? raw.estado ?? 'Pendiente') as DocumentoItem['estado'],
+    tamano: raw.tamano ?? raw.tamanoArchivo ?? (bytes > 0 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : ''),
+    estado: ESTADO_DOCUMENTO_API[String(raw.estadoValidacion ?? raw.estado ?? 'pendiente').toLowerCase()] ?? 'Pendiente',
     observacion: raw.observaciones ?? raw.observacion,
-    origen: subidoPorAuditor ? 'auditor' : 'auditado',
+    origen: raw.origen === 'auditor' || subidoPorAuditor ? 'auditor' : 'auditado',
+    urlVer: puedeVerse ? (urlCierre ?? urlArchivoControlInterno(`${rutaBase}/preview`)) : undefined,
+    urlDescarga: urlCierre ?? urlArchivoControlInterno(`${rutaBase}/download`),
   };
 }
 
@@ -2911,7 +2940,7 @@ function TabPlanMejoramientoAuditado({
                                   {ev.tamanioBytes ? `${(Number(ev.tamanioBytes) / 1024).toFixed(0)} KB` : ''}
                                 </span>
                                 <button type="button" title="Descargar"
-                                  onClick={() => window.open(`http://localhost:3007/evidencias/${ev.id}/download`, '_blank')}
+                                  onClick={() => window.open(urlArchivoControlInterno(`/evidencias/${ev.id}/download`), '_blank')}
                                   style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#047857', padding: '0 2px', display: 'flex', alignItems: 'center' }}>
                                   <Download style={{ width: 12, height: 12 }} />
                                 </button>
@@ -5294,7 +5323,15 @@ function SeccionDocumentos({
               </>
             ) : d.fechaSubida ? (
               <button
-                onClick={() => toast.info('Vista previa no disponible (mock)')}
+                onClick={() => {
+                  const url = d.urlVer ?? d.urlDescarga;
+                  if (!url) {
+                    toast.error('El archivo no está disponible');
+                    return;
+                  }
+                  window.open(url, '_blank', 'noopener');
+                }}
+                title={d.urlVer ? 'Ver el documento' : 'Este formato no se puede previsualizar; se descarga'}
                 style={{
                   height: 32, padding: '0 12px', borderRadius: 8,
                   border: '1px solid #E5E7EB', background: 'white',
@@ -5302,8 +5339,8 @@ function SeccionDocumentos({
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                 }}
               >
-                <Eye style={{ width: 12, height: 12 }} />
-                Ver
+                {d.urlVer ? <Eye style={{ width: 12, height: 12 }} /> : <Download style={{ width: 12, height: 12 }} />}
+                {d.urlVer ? 'Ver' : 'Descargar'}
               </button>
             ) : null}
           </div>

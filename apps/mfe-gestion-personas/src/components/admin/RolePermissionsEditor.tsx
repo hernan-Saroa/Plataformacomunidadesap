@@ -175,6 +175,7 @@ const LABOR_CERTIFICATE_ASSIGNABLE_PERMISSION_CODES = new Set([
   'certificados-laborales.template.manage',
   'certificados-laborales.correction.manage',
   'certificados-laborales.functions.manage',
+  'certificados-laborales.functions.view',
   'cl.certificate.deliver',
   'cl.certificate.sign',
   'cl.certificate.verify',
@@ -183,6 +184,7 @@ const LABOR_CERTIFICATE_ASSIGNABLE_PERMISSION_CODES = new Set([
   'cl.template.manage',
   'cl.correction.manage',
   'cl.functions.manage',
+  'cl.functions.view',
 ]);
 
 const isLaborCertificatePermissionCode = (code: string) =>

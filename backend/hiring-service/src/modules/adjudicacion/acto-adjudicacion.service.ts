@@ -18,6 +18,7 @@ import {
   NUMERAL_INFORME_DEFINITIVO,
 } from './adjudicacion.base';
 import { AdjudicarDto, PublicarActoDto, RevocarActoDto } from './dto/acto.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 
 /**
  * Acto de adjudicación — actividad 7.4 (EFDS-1159, RF-ADJ-01).
@@ -32,8 +33,8 @@ import { AdjudicarDto, PublicarActoDto, RevocarActoDto } from './dto/acto.dto';
  */
 @Injectable()
 export class ActoAdjudicacionService extends AdjudicacionBase {
-  constructor(dataSource: DataSource) {
-    super(dataSource);
+  constructor(dataSource: DataSource, cierre: CierreActividadService) {
+    super(dataSource, cierre);
   }
 
   // ------------------------------------------------------------- consulta --
@@ -153,13 +154,14 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
           numeroActo: dto.numeroActo.trim(),
           fechaActo: dto.fechaActo,
           valorAdjudicado: String(dto.valorAdjudicado),
+          correoContratista: dto.correoContratista?.toLowerCase() ?? null,
           actoDocumentoId: doc.id,
           estado: 'VIGENTE' as const,
           emitidoPor: acceso.userName,
         }),
       );
 
-      await this.marcarActividad(em, procesoId, NUMERAL_ACTO, true, acceso);
+      await this.marcarActividad(em, procesoId, NUMERAL_ACTO, true, acceso, dto.firma);
       // El proceso de selección terminó: lo que sigue es contrato. El estado lo
       // trajo EFDS-1160 para poder decir "desierto"; adjudicar es el otro
       // desenlace y dejarlo EN_CURSO haría que la columna mintiera.
@@ -288,6 +290,7 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
       numeroActo: acto.numeroActo,
       fechaActo: acto.fechaActo,
       valorAdjudicado: Number(acto.valorAdjudicado),
+      correoContratista: acto.correoContratista ?? null,
       acto: doc ? { id: doc.id, nombre: doc.nombre, archivoUrl: doc.archivoUrl } : null,
       evidencia: evidencia
         ? { id: evidencia.id, nombre: evidencia.nombre, archivoUrl: evidencia.archivoUrl }

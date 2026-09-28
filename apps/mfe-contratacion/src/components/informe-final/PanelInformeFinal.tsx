@@ -17,6 +17,7 @@ import {
   DatosInformeFinal,
   EntregableInforme,
   EstadoInformeFinal,
+  EvidenciaFirmaOtp,
 } from '../../types';
 import {
   Aviso,
@@ -30,11 +31,15 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '10.1';
 
 const pesos = (valor: number | null | undefined) =>
   valor == null
@@ -68,6 +73,8 @@ const ENTREGABLE_VACIO = {
  * ven los dos.
  */
 export function PanelInformeFinal({ procesoId, onCambio }: Props) {
+  const dialogo = useDialogo();
+  const firma = useFirma(NUMERAL, 'Elaborar el informe final de ejecución');
   const [estado, setEstado] = useState<EstadoInformeFinal | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,12 +118,13 @@ export function PanelInformeFinal({ procesoId, onCambio }: Props) {
     }
   };
 
-  const elaborar = async () => {
+  const elaborar = async (firmaOtp?: EvidenciaFirmaOtp) => {
     if (!informe) return;
 
     const cuerpo: DatosInformeFinal = {
       fechaElaboracion: datos.fechaElaboracion,
       conclusion: datos.conclusion.trim(),
+      firma: firmaOtp,
     };
 
     const listo = await ejecutar(
@@ -150,8 +158,13 @@ export function PanelInformeFinal({ procesoId, onCambio }: Props) {
     }
   };
 
-  const anular = () => {
-    const motivo = window.prompt('¿Por qué se anula el informe final?')?.trim();
+  const anular = async () => {
+    const motivo = await dialogo.pedirMotivo({
+      titulo: 'Anular el informe final',
+      etiqueta: 'Motivo de la anulación',
+      confirmar: 'Anular el informe',
+      tono: 'peligro',
+    });
     if (!motivo) return;
     return ejecutar(
       () => contratacionService.anularInformeFinal(procesoId, motivo),
@@ -459,7 +472,7 @@ export function PanelInformeFinal({ procesoId, onCambio }: Props) {
             <Boton
               icono={<ClipboardCheck className="w-3.5 h-3.5" />}
               disabled={guardando || !completo}
-              onClick={elaborar}
+              onClick={() => firma.conFirma(elaborar)}
             >
               Elaborar
             </Boton>
@@ -477,6 +490,8 @@ export function PanelInformeFinal({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : null}
+      {firma.modal}
+      {dialogo.elemento}
     </Marco>
   );
 }

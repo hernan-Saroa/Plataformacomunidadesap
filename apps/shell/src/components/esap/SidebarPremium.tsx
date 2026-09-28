@@ -42,7 +42,8 @@ import {
   Rows4,
   BriefcaseBusiness,
   Plane,
-  Bot
+  Bot,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { ESAPLogo } from '../assets/ESAPLogo';
@@ -50,7 +51,7 @@ import { ESAPLogo } from '../assets/ESAPLogo';
 // Importar isotipo oficial de ESAP (OPTIMIZADO: SVG en lugar de PNG)
 import { IsotipoESAP } from '../assets/ESAPLogoSVG';
 
-type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion' | 'viaticos' | 'programacion-academica' | 'gestion-infraestructura' | 'dependencias' | 'chatbot';
+type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion' | 'viaticos' | 'programacion-academica' | 'gestion-infraestructura' | 'dependencias' | 'ajustes-generales' | 'chatbot';
 
 export interface ActiveModuleItem {
   code: string;
@@ -145,6 +146,7 @@ const DEFAULT_MODULE_CONFIG: Record<string, { name: string; description?: string
   'programacion-academica': { name: 'Programación Académica', description: 'Gestión de franjas horarias y aulas' },
   'gestion-infraestructura': { name: 'Gestión de Infraestructura', description: 'Sedes, espacios físicos y mantenimiento' },
   'dependencias': { name: 'Dependencias', description: 'Catálogo transversal ESAP' },
+  'ajustes-generales': { name: 'Ajustes Generales', description: 'Salario mínimo y festivos nacionales' },
   'chatbot': { name: 'ChatBot Institucional', description: 'Asistente virtual y consultas inteligentes' },
 };
 
@@ -199,15 +201,14 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
       const aliases = getModuleAliases(module);
       return hasAllModules || aliases.some((alias) => assignedModules.includes(alias));
     }
-    if (userRole?.includes('SUPER_ADMIN') && (module === 'modules' || module === 'dependencias')) return true;
+    if (userRole?.includes('SUPER_ADMIN') && (module === 'modules' || module === 'dependencias' || module === 'ajustes-generales')) return true;
 
-    // 'dependencias' es transversal a la plataforma (consumida por viáticos,
-    // estructura organizacional, control interno, etc.). Para que esté
-    // disponible en "Configuración General" sin requerir alta explícita en
-    // auth.module ni asignación por rol, se muestra a cualquier usuario
-    // con sesión activa. La autorización fina (CRUD) la hace el JwtAuthGuard
-    // global en el backend.
-    if (module === 'dependencias') {
+    // 'dependencias' y 'ajustes-generales' son transversales a la plataforma
+    // (consumidos por viáticos, estructura organizacional, control interno, etc.).
+    // Para que estén disponibles en "Configuración General" sin requerir alta
+    // explícita en auth.module ni asignación por rol, se muestran a cualquier
+    // usuario con sesión activa. La autorización fina la hace el JwtAuthGuard.
+    if (module === 'dependencias' || module === 'ajustes-generales') {
       if (import.meta.env.MODE === 'development' && (!assignedModules || assignedModules.length === 0)) {
         return true;
       }
@@ -1180,6 +1181,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
 
               {/* Configuración General — agrupador transversal */}
               {(
+                canShowModule('ajustes-generales') ||
                 canShowModule('modules') ||
                 canShowModule('dependencias')
               ) && (
@@ -1197,6 +1199,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                         transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
                         className="overflow-hidden"
                       >
+                        {renderMenuItem('ajustes-generales', <SlidersHorizontal className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                         {renderMenuItem('modules', <Rows4 className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                         {renderMenuItem('dependencias', <BriefcaseBusiness className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                       </motion.div>

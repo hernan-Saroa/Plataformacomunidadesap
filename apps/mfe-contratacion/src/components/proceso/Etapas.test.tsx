@@ -93,3 +93,59 @@ describe('LineaDeTiempoEtapas · qué se ha hecho', () => {
     expect(screen.getAllByText('Actual')).toHaveLength(1);
   });
 });
+
+/**
+ * El recorrido recortado, para quien solo interviene en algunas etapas.
+ *
+ * La Dirección Financiera entra en cuatro de las diez. Con las diez delante,
+ * nueve de cada diez clics posibles la llevan a trabajo de otro.
+ */
+describe('LineaDeTiempoEtapas · recorrido recortado', () => {
+  const DE_LA_FINANCIERA = [4, 8, 9, 10];
+
+  const pintarRecortado = (onSeleccionar = vi.fn()) =>
+    render(
+      <LineaDeTiempoEtapas
+        etapaActual={5}
+        etapaSeleccionada={4}
+        onSeleccionar={onSeleccionar}
+        avance={avance}
+        soloEstas={DE_LA_FINANCIERA}
+      />,
+    );
+
+  it('pinta solo las etapas pedidas', () => {
+    pintarRecortado();
+    for (const numero of DE_LA_FINANCIERA) {
+      expect(screen.getByTitle(new RegExp(`Etapa ${numero} · `))).toBeInTheDocument();
+    }
+  });
+
+  it('y ninguna de las demás', () => {
+    pintarRecortado();
+    for (const numero of [1, 2, 3, 5, 6, 7]) {
+      expect(screen.queryByTitle(new RegExp(`Etapa ${numero} · `))).toBeNull();
+    }
+  });
+
+  it('las que quedan siguen llevando a su etapa', async () => {
+    // Recortar la vista no es recortar la navegación: lo que se muestra se usa.
+    const onSeleccionar = vi.fn();
+    pintarRecortado(onSeleccionar);
+
+    await userEvent.click(screen.getByTitle('Etapa 10 · Seguimiento y Liquidación'));
+    expect(onSeleccionar).toHaveBeenCalledWith(10);
+  });
+
+  it('no señala «Actual» cuando el proceso está en una etapa que no se pinta', () => {
+    // El proceso va por la 5 y la 5 no está en el recorrido. Marcar otra como
+    // actual mentiría sobre dónde está el proceso.
+    pintarRecortado();
+    expect(screen.queryByText('Actual')).toBeNull();
+  });
+
+  it('sin la prop se siguen pintando las diez', () => {
+    pintar();
+    expect(screen.getByTitle('Etapa 3 · Estudios Previos')).toBeInTheDocument();
+  });
+});

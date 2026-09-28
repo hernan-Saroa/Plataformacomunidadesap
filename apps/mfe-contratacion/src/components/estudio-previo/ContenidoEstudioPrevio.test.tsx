@@ -46,6 +46,19 @@ describe('ContenidoEstudioPrevio · quién resuelve la 3.4', () => {
     vi.spyOn(contratacionService, 'obtenerExpediente').mockResolvedValue({
       documentos: [],
     } as never);
+    // La pantalla pregunta también por la lista de la 3.1 para poder avisar
+    // en la pestaña de cuántos documentos faltan. Sin el doble, la llamada
+    // real revienta y el efecto se corta antes de pintar el historial.
+    vi.spyOn(contratacionService, 'documentosDeActividad').mockResolvedValue({
+      numeral: '3.1',
+      modalidad: 'MINIMA_CUANTIA',
+      tipologia: null,
+      documentos: [],
+      adicionales: [],
+      faltantes: [],
+      completo: true,
+      puedeCargar: false,
+    } as never);
   });
 
   const pintar = (datos: Record<string, unknown>) => {

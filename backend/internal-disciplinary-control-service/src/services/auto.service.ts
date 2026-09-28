@@ -13,7 +13,7 @@ import { DisciplinaryProfessional } from '../entities/disciplinary-professional.
 import { AlertasService } from './alertas.service';
 import { DocumentConversionService } from './document-conversion.service';
 import { PdfModifierService } from './pdf-modifier.service';
-import { ProcessService } from './process.service';
+import { ProcessService, normalizeProcessStage } from './process.service';
 import { SequenceService } from './sequence.service';
 import { JuridicaEmailService, EmailAdjunto } from './juridica-email.service';
 import { NotificationClientService } from './notification-client.service';
@@ -126,12 +126,31 @@ export class AutoService {
         }
       }
 
+      let etapaDestino = createAutoDto.etapaDestino;
+      if (!etapaDestino && createAutoDto.tipoAuto?.startsWith('AUTO_APERTURA_')) {
+        etapaDestino = createAutoDto.tipoAuto.replace(/^AUTO_APERTURA_/, '');
+      }
+      if (!etapaDestino && createAutoDto.autoConfigurationId) {
+        try {
+          const config = await this.autosConfigurationService.findById(createAutoDto.autoConfigurationId);
+          if (config?.stage) {
+            etapaDestino = config.stage;
+          }
+        } catch (e) {
+          // ignore error fetching config
+        }
+      }
+      if (!etapaDestino && (createAutoDto.tipoAuto === AutoType.PLIEGO_CARGOS || createAutoDto.tipoAuto === AutoType.AUTO_FORMULACION_PLIEGO)) {
+        etapaDestino = 'CARGOS';
+      }
+
       // CORRECCIÓN AQUI: Mapeo manual de campos DTO -> Entidad
       const auto = this.autoRepository.create({
         tipo: createAutoDto.tipoAuto,
         autoConfigurationId: createAutoDto.autoConfigurationId ?? null,
         numero: createAutoDto.numero,
         contenido: createAutoDto.contenidoHtml ?? '',
+        processId: createAutoDto.processId,
         process: { id: createAutoDto.processId },
         estado: AutoStatus.BORRADOR,
         documentUrl: createAutoDto.documentUrl,
@@ -139,7 +158,7 @@ export class AutoService {
         documentType: createAutoDto.documentType,
         documentSize: createAutoDto.documentSize,
         comentarios: createAutoDto.comentarios,
-        etapaDestino: createAutoDto.etapaDestino,
+        etapaDestino,
         prorrogaMeses: createAutoDto.prorrogaMeses ?? null,
       });
 
@@ -213,7 +232,112 @@ export class AutoService {
     }
 
     auto.estado = AutoStatus.REVISION_JEFE;
-    return await this.autoRepository.save(auto);
+    const savedAuto = await this.autoRepository.save(auto);
+
+    await this.notificarJefesAutoEnRevision(savedAuto).catch((err) => {
+      console.error('Error notificando a Jefes sobre auto en revisión:', err);
+    });
+
+    return savedAuto;
+  }
+
+  /**
+   * Obtiene los IDs de usuarios con permiso de Jefe OCID (control-disciplinario.general.es_jefe_ocid)
+   */
+  private async obtenerJefesOcid(): Promise<
+    Array<{ id: string; email: string; nombre: string }>
+  > {
+    try {
+      const jefeRows: any[] = await this.autoRepository.manager.query(
+        `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
+         FROM auth.user u
+         JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
+         JOIN auth.permission perm ON perm.id_permission = rp.id_permission AND perm.is_active = true
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.is_active = true
+           AND perm.code = 'control-disciplinario.general.es_jefe_ocid'`,
+      );
+
+      return (jefeRows || [])
+        .map((r) => ({
+          id: r.id_user,
+          email: (
+            r.dir_email ||
+            (r.username?.includes('@') ? r.username : '') ||
+            ''
+          ).trim(),
+          nombre: r.nom_largo || r.username || 'Jefe OCID',
+        }))
+        .filter((j) => j.id);
+    } catch (err) {
+      console.error(
+        'Error consultando usuarios con permiso de Jefe OCID:',
+        err,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Notifica a los Jefes OCID que un auto ha sido enviado a revisión
+   */
+  private async notificarJefesAutoEnRevision(auto: LegalAuto): Promise<void> {
+    const jefes = await this.obtenerJefesOcid();
+    if (!jefes.length) return;
+
+    const proceso = auto.process;
+    if (!proceso) return;
+
+    const tipoAutoFormateado = await this.formatearTipoAuto(auto);
+    const asunto = `Auto Pendiente de Revisión: ${tipoAutoFormateado} - Proceso ${proceso.radicadoProceso}`;
+    const mensaje = `El Profesional ha enviado a revisión el ${tipoAutoFormateado} del proceso ${proceso.radicadoProceso}. Se encuentra pendiente de revisión y aprobación por parte del Jefe.`;
+    const baseUrl = this.getFrontendBaseUrl();
+    const urlAccion = `${baseUrl}/?module=control-disciplinario&processId=${encodeURIComponent(proceso.id)}&radicado=${encodeURIComponent(proceso.radicadoProceso)}`;
+
+    // 1. Notificaciones en plataforma (in-app)
+    const notificaciones: import('./notification-client.service').SendNotificationDto[] =
+      jefes.map((jefe) => ({
+        id_usuario_destinatario: jefe.id,
+        tipo_notificacion: 'AUTO_EN_REVISION',
+        titulo: 'Auto pendiente de revisión',
+        mensaje,
+        descripcion_corta: `Auto en revisión - ${proceso.radicadoProceso}`,
+        icono: 'FileText',
+        color: '#2563EB',
+        prioridad: 'Alta' as const,
+        categoria: 'DISCIPLINARIO',
+        tiene_accion: true,
+        texto_boton_accion: 'Revisar auto',
+        url_accion: urlAccion,
+        datos_adicionales: {
+          processId: proceso.id,
+          radicadoProceso: proceso.radicadoProceso,
+          autoId: auto.id,
+          autoTipo: auto.tipo,
+          autoNumero: auto.numero,
+        },
+      }));
+    await this.notificationClient.sendMany(notificaciones).catch(() => {});
+
+    // 2. Correo electrónico institucional estilo ESAP
+    const html = this.buildEmailTemplateAvisoESAP(
+      asunto,
+      mensaje,
+      urlAccion,
+      'Revisar Auto',
+    );
+    await Promise.all(
+      jefes.map(async (jefe) => {
+        try {
+          if (jefe.email) {
+            await this.enviarEmailDirecto(jefe.email, asunto, html, mensaje);
+          }
+        } catch (err) {
+          console.error(`Error enviando correo a Jefe ${jefe.id}:`, err);
+        }
+      }),
+    );
   }
 
   /**
@@ -289,22 +413,40 @@ export class AutoService {
       const etapaAntesDeAprobar = auto.process?.etapaActual;
 
       // Si es AUTO_APERTURA_*, transicionar el proceso a la etapa destino
-      if (auto.tipo.startsWith('AUTO_APERTURA_') && auto.etapaDestino) {
+      if (auto.tipo.startsWith('AUTO_APERTURA_')) {
+        const etapaCandidata =
+          auto.etapaDestino ||
+          auto.tipo.replace(/^AUTO_APERTURA_/, '');
         await this.processService.changeStageByAutoApertura(
           auto.processId,
-          auto.etapaDestino as ProcessStage,
+          etapaCandidata,
           new Date(),
           aprobadoPorId,
           aprobadoPorNombre,
         );
       }
 
-      // Si es Pliego de Cargos, transicionar el proceso a Juzgamiento y notificar
-      // al Radicador para que pueda enviarlo a la Oficina Jurídica
+      // Si es Pliego de Cargos, transicionar el proceso a la etapa configurada (o CARGOS) y notificar
+      // al Radicador para que pueda posteriormente trasladarlo a Juzgamiento
       if (auto.tipo === AutoType.PLIEGO_CARGOS || auto.tipo === AutoType.AUTO_FORMULACION_PLIEGO) {
+        let etapaDestino = auto.etapaDestino;
+        if (!etapaDestino && auto.autoConfigurationId) {
+          try {
+            const config = await this.autosConfigurationService.findById(auto.autoConfigurationId);
+            if (config?.stage) {
+              etapaDestino = config.stage;
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+        if (!etapaDestino) {
+          etapaDestino = 'CARGOS';
+        }
+
         await this.processService.changeStageByAutoApertura(
           auto.processId,
-          ProcessStage.JUZGAMIENTO,
+          etapaDestino,
           new Date(),
           aprobadoPorId,
           aprobadoPorNombre,
@@ -314,7 +456,7 @@ export class AutoService {
         const procesoPliego = auto.process;
         if (procesoPliego) {
           const asuntoPliego = `Pliego de Cargos Aprobado - Proceso ${procesoPliego.radicadoProceso}`;
-          const mensajePliego = `El pliego de cargos del proceso ${procesoPliego.radicadoProceso} fue aprobado y el proceso pasó a Juzgamiento. Debe enviarlo a la Oficina Jurídica.`;
+          const mensajePliego = `El pliego de cargos del proceso ${procesoPliego.radicadoProceso} fue aprobado y el proceso pasó a la etapa ${etapaDestino}. El Secretario/Radicador podrá trasladarlo a Juzgamiento cuando corresponda.`;
           await this.notificarRadicadores(
             procesoPliego,
             auto,
@@ -1380,7 +1522,7 @@ export class AutoService {
       console.warn('Error consultando usuarios con rol Radicador:', err);
     }
 
-    // 4. Usuarios con permiso de radicación
+    // 4. Usuarios con permiso de radicación (es_radicador)
     try {
       const permUsers: any[] = await this.autoRepository.manager.query(
         `SELECT DISTINCT u.id_user
@@ -1390,7 +1532,7 @@ export class AutoService {
          JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
          WHERE u.is_active = true
            AND p.code = $1`,
-        ['control-disciplinario.noticia-disciplinaria.view_mine'],
+        ['control-disciplinario.general.es_radicador'],
       );
       for (const r of permUsers) {
         if (r.id_user) radicadoresIds.add(r.id_user);
@@ -1411,8 +1553,9 @@ export class AutoService {
       ? await this.obtenerNombreUsuario(radicadorAsignadoId)
       : 'Sin asignar';
 
-    const asunto = `Auto Aprobado: ${this.formatearTipoAuto(auto.tipo)} - Proceso ${proceso.radicadoProceso}`;
-    const mensajeBase = `El ${this.formatearTipoAuto(auto.tipo)} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
+    const tipoAutoFormateado = await this.formatearTipoAuto(auto);
+    const asunto = `Auto Aprobado: ${tipoAutoFormateado} - Proceso ${proceso.radicadoProceso}`;
+    const mensajeBase = `El ${tipoAutoFormateado} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
       (radicadorAsignadoId
         ? `Las tareas correspondientes han sido asignadas al secretario ${radicadorAsignadoNombre}.`
         : `El auto se encuentra disponible en la plataforma para las actuaciones correspondientes.`);
@@ -1453,11 +1596,12 @@ export class AutoService {
     const radicadoresFiltrados = radicadoresIds.filter((rId) => rId !== aprobadoPorId);
 
     if (radicadoresFiltrados.length > 0) {
+      const tipoAutoFormateado = await this.formatearTipoAuto(auto);
       const notificacionesRadicadores: import('./notification-client.service').SendNotificationDto[] = radicadoresFiltrados.map((radicadorId) => ({
         id_usuario_destinatario: radicadorId,
         tipo_notificacion: 'NUEVO_AUTO_RADICADOR',
         titulo: 'Nuevo auto disponible para radicación',
-        mensaje: `El ${this.formatearTipoAuto(auto.tipo)} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
+        mensaje: `El ${tipoAutoFormateado} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
           (radicadorAsignadoId
             ? `Las tareas correspondientes han sido asignadas al secretario ${radicadorAsignadoNombre}.`
             : `El auto se encuentra disponible en la plataforma para continuar con las actuaciones correspondientes.`),
@@ -1481,8 +1625,8 @@ export class AutoService {
       await this.notificationClient.sendMany(notificacionesRadicadores);
 
       // Correo a cada radicador
-      const asuntoRadicador = `Auto aprobado: ${this.formatearTipoAuto(auto.tipo)} - Proceso ${proceso.radicadoProceso}`;
-      const mensajeRadicador = `El ${this.formatearTipoAuto(auto.tipo)} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
+      const asuntoRadicador = `Auto aprobado: ${tipoAutoFormateado} - Proceso ${proceso.radicadoProceso}`;
+      const mensajeRadicador = `El ${tipoAutoFormateado} del proceso ${proceso.radicadoProceso} ha sido aprobado por el jefe. ` +
         (radicadorAsignadoId
           ? `Las tareas correspondientes han sido asignadas al secretario ${radicadorAsignadoNombre}.`
           : `El auto se encuentra disponible en la plataforma para continuar con las actuaciones correspondientes.`);
@@ -1664,8 +1808,18 @@ export class AutoService {
     return 'Usuario';
   }
 
-  private formatearTipoAuto(tipo: string): string {
-    return tipo.replace(/_/g, ' ').toLowerCase();
+  private async formatearTipoAuto(auto: LegalAuto): Promise<string> {
+    if (auto.autoConfigurationId) {
+      try {
+        const config = await this.autosConfigurationService.findById(auto.autoConfigurationId);
+        if (config?.nombre) {
+          return config.nombre;
+        }
+      } catch (error) {
+        console.warn('No se pudo obtener configuración de auto:', error);
+      }
+    }
+    return auto.tipo.replace(/_/g, ' ').toLowerCase();
   }
 
   private async resolverDestinatario(idOrProfId: string): Promise<{
@@ -1782,6 +1936,7 @@ export class AutoService {
     profesionalNombre: string;
     radicadoProceso: string;
     tipoAuto: string;
+    tipoAutoFormateado?: string;
     numeroAuto?: string;
     jefeNombre: string;
     observaciones: string;
@@ -1789,7 +1944,7 @@ export class AutoService {
     processId?: string;
     urlAcceso?: string;
   }): string {
-    const tipoFormateado = this.formatearTipoAuto(data.tipoAuto);
+    const tipoFormateado = data.tipoAutoFormateado || data.tipoAuto.replace(/_/g, ' ').toLowerCase();
     const baseUrl = this.getFrontendBaseUrl();
     const urlAcceso =
       data.urlAcceso ||
@@ -1947,7 +2102,7 @@ export class AutoService {
       }
 
       const motivoTexto = observaciones?.trim() || 'Sin observaciones registradas';
-      const tipoAutoFormateado = this.formatearTipoAuto(auto.tipo);
+      const tipoAutoFormateado = await this.formatearTipoAuto(auto);
       const baseUrl = this.getFrontendBaseUrl();
       const urlAcceso = `${baseUrl}/?module=control-disciplinario&processId=${encodeURIComponent(auto.processId || '')}&radicado=${encodeURIComponent(proceso.radicadoProceso || '')}`;
 
@@ -2005,6 +2160,7 @@ export class AutoService {
               profesionalNombre: datos.nombre,
               radicadoProceso: proceso.radicadoProceso,
               tipoAuto: auto.tipo,
+              tipoAutoFormateado,
               numeroAuto: auto.numero,
               jefeNombre,
               observaciones: motivoTexto,
@@ -2053,7 +2209,7 @@ export class AutoService {
        JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
        JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
        WHERE p.code = $1`,
-      ['control-disciplinario.noticia-disciplinaria.view_mine'],
+      ['control-disciplinario.general.es_radicador'],
     );
 
     const ids = radicadoresRows.map((r) => r.id_user).filter(Boolean);

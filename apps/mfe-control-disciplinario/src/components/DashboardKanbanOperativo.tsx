@@ -53,7 +53,26 @@ import { convertirProcesoABorrador } from './utils-aprobacion'; // ✅ NUEVO: Ut
 import { obtenerAccionesPorEtapa, obtenerDescripcionEtapa, type EtapaProceso } from './accionesPorEtapa'; // ✅ NUEVO: Acciones por etapa
 import { useResponsive } from './hooks/useResponsive';
 
+import { canonicalizarEtapaId } from './configuracion/SeccionPlantillasAutosUnificada';
+
 // ==================== HELPERS GLOBALES ====================
+const matchEtapasKanban = (etapaA?: string, etapaB?: string): boolean => {
+  if (!etapaA || !etapaB) return false;
+  if (etapaA === etapaB) return true;
+  const canA = canonicalizarEtapaId(etapaA);
+  const canB = canonicalizarEtapaId(etapaB);
+  if (canA && canB && canA === canB) return true;
+
+  const normA = String(etapaA).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+  const normB = String(etapaB).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '');
+  if (normA === normB) return true;
+
+  if (normA.startsWith('investigac') && normB.startsWith('investigac')) return true;
+  if (normA.startsWith('indagac') && normB.startsWith('indagac')) return true;
+
+  return false;
+};
+
 const getNombre = (p: any): string => {
   if (!p) return 'Sin información';
   return typeof p === 'string' ? p : (p.nombre || 'Sin información');
@@ -112,56 +131,9 @@ function normalizeText(text: string): string {
 // ==================== HELPERS: ROLES Y ETAPAS PARA DRAG & DROP ====================
 export const isSecretarioRadicadorUser = (): boolean => {
   try {
-    const user = authService.getCurrentUser?.();
-    const rawRoles = [
-      ...(Array.isArray(user?.roles) ? user.roles : user?.roles ? [user.roles] : []),
-      ...(Array.isArray((user as any)?.person?.roles) ? (user as any).person.roles : []),
-      ...((user as any)?.role ? [(user as any).role] : []),
-      ...((user as any)?.rol ? [(user as any).rol] : []),
-    ];
-
-    const hasRadicadorRole = rawRoles.some((r: any) => {
-      const candidates = [
-        typeof r === 'string' ? r : '',
-        r?.code,
-        r?.name,
-        r?.nombre,
-        r?.slug,
-      ].filter(Boolean);
-
-      return candidates.some((cand: string) => {
-        const clean = cand
-          .toString()
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .trim()
-          .toUpperCase();
-        return (
-          clean === 'SECRETARIA_RADICADOR' ||
-          clean === 'SECRETARIO_RADICADOR' ||
-          clean === 'RADICADOR_DISCIPLINARIO' ||
-          clean === 'RADICADOR' ||
-          clean.includes('SECRETARI') ||
-          clean.includes('RADICADOR')
-        );
-      });
-    });
-
-    if (hasRadicadorRole) return true;
-
-    return (
-      authService.hasRole('SECRETARIA_RADICADOR') ||
-      authService.hasRole('RADICADOR_DISCIPLINARIO') ||
-      authService.hasRole('SECRETARIO_RADICADOR') ||
-      authService.hasRole('RADICADOR') ||
-      authService.hasRole('Secretaría / Radicador') ||
-      authService.hasRole('Secretaria / Radicador') ||
-      authService.hasRole('Secretaría/Radicador') ||
-      authService.hasRole('Secretario / Radicador') ||
-      authService.hasRole('Radicador Disciplinario')
-    );
+    return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR);
   } catch (err) {
-    console.error('Error verificando rol Secretario/Radicador:', err);
+    console.error('Error verificando permiso Secretario/Radicador:', err);
     return false;
   }
 };
@@ -443,7 +415,8 @@ interface TarjetaNoticiaProps {
 }
 
 function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetencia, onArchivar, onVerDetalles, onVerDetallesRemision, onAsociarNoticiaProceso, onAsociarNoticiaNoticia, onVerProcesoAsociado, onEditarNoticia, onEliminarNoticia, onReenviar, vistaCompacta, isMobile, colapsada, onToggleColapso, etapa, currentUserId }: TarjetaNoticiaProps) {
-  const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+  const [hoverReenviar, setHoverReenviar] = useState(false);
+  const esJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
   const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR);
   const canEdit = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
   const canDelete = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE);
@@ -678,11 +651,15 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             </p>
           )}
 
-          {/* Indicador de días */}
+          {/* Indicador de días — nunca muestra negativos */}
           <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-1.5 text-gray-600">
-              <Clock className="w-3.5 h-3.5 text-gray-400" />
-              <span className="font-semibold">{noticia.diasPendientes} días</span>
+            <div className="flex items-center gap-1.5">
+              <Clock className={`w-3.5 h-3.5 ${noticia.diasPendientes <= 0 ? 'text-red-400' : 'text-gray-400'}`} />
+              {noticia.diasPendientes <= 0 ? (
+                <span className="font-bold text-red-600">Vencido</span>
+              ) : (
+                <span className="font-semibold text-gray-600">{noticia.diasPendientes} días</span>
+              )}
             </div>
             <span className="text-gray-400 text-[11px]">
               {new Date(noticia.fechaRecepcion).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', timeZone: 'America/Bogota' })}
@@ -842,11 +819,8 @@ function TarjetaProceso({
   const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
   const canSendJuridica =
     authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
-    authService.isSuperAdmin() ||
-    authService.hasRole('ADMIN') ||
-    authService.hasRole('SECRETARIA_RADICADOR') ||
-    authService.hasRole('RADICADOR_DISCIPLINARIO') ||
-    authService.hasRole('RADICADOR');
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR) ||
+    authService.isSuperAdmin();
   const esProcesoEnJuzgamiento = isEtapaJuzgamiento(proceso.etapaActual);
   const isArchivado =
     proceso.etapaActual === 'ARCHIVO' ||
@@ -1051,9 +1025,16 @@ function TarjetaProceso({
                 Pendiente
               </span>
             )}
-            <span className="text-[11px] font-semibold px-2 py-1 rounded-full bg-gray-50 border border-gray-200 flex items-center gap-1" style={{ color: semaforo.color }}>
-              <span className="w-2 h-2 rounded-full" style={{ background: semaforo.color }} />
-              {formatDiasRestantes(proceso.diasRestantes)}
+            <span
+              className={`text-[11px] font-semibold px-2 py-1 rounded-full flex items-center gap-1 border ${
+                proceso.diasRestantes <= 0 || proceso.semaforo === 'rojo'
+                  ? 'bg-red-50 border-red-300 text-red-700'
+                  : 'bg-gray-50 border-gray-200'
+              }`}
+              style={{ color: proceso.diasRestantes <= 0 ? '#B91C1C' : semaforo.color }}
+            >
+              <span className="w-2 h-2 rounded-full" style={{ background: proceso.diasRestantes <= 0 ? '#DC2626' : semaforo.color }} />
+              {proceso.diasRestantes <= 0 ? 'Vencido' : formatDiasRestantes(proceso.diasRestantes)}
             </span>
             {noticiasSeguras.length > 0 && (
               <button
@@ -1308,7 +1289,7 @@ function VistaLista({
   isMobile
 }: VistaListaProps) {
   // Permission and role checks for list view (same as kanban)
-  const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+  const esJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
   const canConvert = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CONVERTIR);
   const canEditNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT);
   const canDeleteNoticia = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_DELETE);
@@ -1325,11 +1306,8 @@ function VistaLista({
   const canApprove = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REVISION_APROBACION_APROBAR);
   const canSendJuridica =
     authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
-    authService.isSuperAdmin() ||
-    authService.hasRole('ADMIN') ||
-    authService.hasRole('SECRETARIA_RADICADOR') ||
-    authService.hasRole('RADICADOR_DISCIPLINARIO') ||
-    authService.hasRole('RADICADOR');
+    authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR) ||
+    authService.isSuperAdmin();
   const [filtroEtapa, setFiltroEtapa] = useState<string>('todos');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -1348,8 +1326,12 @@ function VistaLista({
         ? (item as Proceso).denunciado.toLowerCase().includes(searchTerm.toLowerCase())
         : (item as Proceso).denunciado.nombre?.toLowerCase().includes(searchTerm.toLowerCase())));
 
-    // Filtrar por etapa comparando ID de etapa parametrizada contra kanbanStage del item
-    const matchEtapa = filtroEtapa === 'todos' || item.kanbanStage === filtroEtapa;
+    // Filtrar por etapa comparando ID de etapa parametrizada o nombre contra kanbanStage / etapaActual del item
+    const matchEtapa =
+      filtroEtapa === 'todos' ||
+      item.kanbanStage === filtroEtapa ||
+      item.etapaActual === filtroEtapa ||
+      matchEtapasKanban(item.etapaActual, filtroEtapa);
 
     return matchSearch && matchEtapa;
   });
@@ -2174,16 +2156,16 @@ function ColumnaKanban({
         } else {
           // Para procesos, buscar la etapa actual del proceso
           const etapaActualProceso = etapasConfig.find(e =>
-            e.etapa === item.etapaActual ||
-            e.etapa.toLowerCase() === item.etapaActual?.toLowerCase()
+            matchEtapasKanban(e.etapa, item.etapaActual) ||
+            matchEtapasKanban(e.nombre, item.etapaActual)
           );
           itemOrden = etapaActualProceso?.orden ?? 0;
         }
 
         // Obtener el orden de la etapa de destino
         const etapaDestino = etapasConfig.find(e =>
-          e.etapa === etapa ||
-          e.etapa.toLowerCase() === etapa.toLowerCase()
+          matchEtapasKanban(e.etapa, etapa) ||
+          matchEtapasKanban(e.nombre, etapa)
         );
         const etapaDestinoOrden = etapaDestino?.orden ?? itemOrden + 1;
 
@@ -2246,10 +2228,20 @@ function ColumnaKanban({
     if (item.tipo === 'noticia') {
       const noticia = item as Noticia;
       if (noticia.procesoAsociado) return false;
-      // Las noticias se muestran en la etapa inicial (orden 1) - comparar de forma normalizada
-      return etapaNormalizada === etapaInicialNormalizada;
+      // Las noticias se muestran en la etapa inicial (orden 1) - comparar con matchEtapasKanban
+      return matchEtapasKanban(etapa, etapaInicial);
     }
-    return item.tipo === 'proceso' && item.etapaActual === etapa;
+    if (item.tipo === 'proceso') {
+      const stageConfigDeColumna = etapasConfig.find(e => e.etapa === etapa || e.id === etapa);
+      if (stageConfigDeColumna && item.kanbanStage && item.kanbanStage === stageConfigDeColumna.id) {
+        return true;
+      }
+      if (item.etapaActual === etapa) {
+        return true;
+      }
+      return matchEtapasKanban(item.etapaActual, etapa);
+    }
+    return false;
   });
 
   const noticias = (itemsFiltrados.filter(i => i.tipo === 'noticia') as Noticia[])
@@ -3439,14 +3431,17 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
   };
 
   // Calcula el nivel del semáforo con base en los porcentajes de riesgo/crítico configurados
+  // alertaDias: umbral en días hábiles para el estado amarillo (parametrizado por etapa en config)
   function calcularNivelSemaforo(
     diasRestantes: number,
     porcentajeTiempo: number,
     porcentajeRiesgo: number = 85,
-    porcentajeCritico: number = 95
+    porcentajeCritico: number = 95,
+    alertaDias: number = 3
   ): 'verde' | 'amarillo' | 'rojo' {
     if (diasRestantes <= 0 || porcentajeTiempo >= porcentajeCritico) return 'rojo';
-    if (porcentajeTiempo >= porcentajeRiesgo) return 'amarillo';
+    // Alerta amarilla: faltan <= alertaDias días (parametrizado por etapa) O % de tiempo en zona de riesgo
+    if (diasRestantes <= alertaDias || porcentajeTiempo >= porcentajeRiesgo) return 'amarillo';
     return 'verde';
   }
 
@@ -3461,11 +3456,10 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
   }
 
   // Mensaje estándar de tiempo restante para etapas/procesos
+  // Nunca muestra negativos: si diasRestantes <= 0 siempre indica vencimiento
   function formatDiasRestantes(diasRestantes: number): string {
-    if (diasRestantes === 0) return 'Vence Hoy';
-    if (diasRestantes > 0) return `Faltan ${diasRestantes} Día${diasRestantes === 1 ? '' : 's'}`;
-    const dias = Math.abs(diasRestantes);
-    return `Vencido por ${dias} Día${dias === 1 ? '' : 's'}`;
+    if (diasRestantes <= 0) return 'Vencido';
+    return `Faltan ${diasRestantes} Día${diasRestantes === 1 ? '' : 's'}`;
   }
 
   // Transformar proceso desde API al formato interno
@@ -3486,10 +3480,20 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       }
     }
 
+    // Obtener alertaDias del stage config que coincida con esta etapa
+    const stageMatch = currentStages.find(s =>
+      s.id === etapa || s.etapa === etapa || s.nombre === etapa ||
+      s.etapa?.toUpperCase() === etapa?.toUpperCase() ||
+      s.nombre?.toUpperCase() === etapa?.toUpperCase()
+    );
+    const alertaDiasEtapa: number = stageMatch?.alertaDias ?? 3;
+
     const fechaVenc = proceso.fechaVencimientoEtapa ? new Date(proceso.fechaVencimientoEtapa) : null;
     const fechaCreacion = proceso.createdAt ? new Date(proceso.createdAt) : new Date();
     const hoy = new Date();
-    const diasRestantes = fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+    // Clamp a 0: nunca mostrar días negativos
+    const rawDias = fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+    const diasRestantes = Math.max(0, rawDias);
 
     const porcentajeTiempo = proceso.timePercentage !== undefined
       ? Math.round(proceso.timePercentage)
@@ -3499,7 +3503,10 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
         return Math.min(100, Math.max(0, Math.round((transcurridos / totalDias) * 100)));
       })();
 
-    const semaforo: 'verde' | 'amarillo' | 'rojo' = diasRestantes <= 0 ? 'rojo' : (diasRestantes <= 7 || porcentajeTiempo >= 80 ? 'amarillo' : 'verde');
+    // Si rawDias era negativo (ya vencido), forzar rojo independientemente del porcentaje
+    const semaforo: 'verde' | 'amarillo' | 'rojo' = rawDias <= 0
+      ? 'rojo'
+      : calcularNivelSemaforo(diasRestantes, porcentajeTiempo, 85, 95, alertaDiasEtapa);
     const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
 
     return {
@@ -3896,7 +3903,7 @@ export function DashboardKanbanOperativo({
       const canViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_MINE);
       const hasNoticiaView = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW);
       const hasNoticiaViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIA_DISCIPLINARIA_VIEW_MINE);
-      const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+      const esJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
 
       console.log('esJefe', esJefe);
       console.log('hasNoticiaView', hasNoticiaView);
@@ -3937,7 +3944,7 @@ export function DashboardKanbanOperativo({
         
         
         
-        noticiasFiltradas = noticiasData.filter(n => parseInt((n as any).radicadorId) === parseInt(userInfo));
+        noticiasFiltradas = noticiasData.filter(n => String((n as any).radicadorId) === String(userInfo));
         
       }
 
@@ -4203,7 +4210,8 @@ export function DashboardKanbanOperativo({
       estado: mapEstadoNoticia((noticia as any).estado) as any,
       createdAt: (noticia as any).createdAt,
       prioridad: (noticia as any).prioridad || 'media',
-      diasPendientes: typeof (noticia as any).diasHabilesRestantes === 'number' ? (noticia as any).diasHabilesRestantes : dias,
+      // Clamp a 0: nunca almacenar días negativos; semáforo y estilo manejan el estado "vencido"
+      diasPendientes: Math.max(0, typeof (noticia as any).diasHabilesRestantes === 'number' ? (noticia as any).diasHabilesRestantes : dias),
       tipo: 'noticia' as const,
       etapaActual: etapaNormalizada,
     radicador: (noticia as any).radicadorNombre || (noticia as any).radicador,
@@ -4297,7 +4305,11 @@ export function DashboardKanbanOperativo({
     if (etapaNombre) {
       // Buscar en config solo si no es INHIBITORIO/ARCHIVO (no están en columnas Kanban)
       if (etapaNombre !== 'INHIBITORIO' && etapaNombre !== 'ARCHIVO') {
-        const match = currentStages.find(s => s.id === etapaNombre || s.etapa === etapaNombre || s.nombre === etapaNombre);
+        const match = currentStages.find(s =>
+          s.id === etapaNombre ||
+          matchEtapasKanban(s.etapa, etapaNombre) ||
+          matchEtapasKanban(s.nombre, etapaNombre)
+        );
         if (match) etapa = match.etapa || match.nombre || etapaNombre;
       }
       // INHIBITORIO/ARCHIVO se preservan tal cual
@@ -4308,7 +4320,10 @@ export function DashboardKanbanOperativo({
         const match = currentStages.find(s => s.id === proceso.kanbanStage);
         if (match) etapa = match.etapa || match.nombre || proceso.kanbanStage;
       } else {
-        const match = currentStages.find(s => s.etapa === proceso.kanbanStage || s.nombre === proceso.kanbanStage);
+        const match = currentStages.find(s =>
+          matchEtapasKanban(s.etapa, proceso.kanbanStage) ||
+          matchEtapasKanban(s.nombre, proceso.kanbanStage)
+        );
         if (match) etapa = match.etapa || match.nombre || proceso.kanbanStage;
       }
     }
@@ -4320,9 +4335,19 @@ export function DashboardKanbanOperativo({
     // semana/festivos), asi que "dias restantes" debe contarse tambien en dias habiles -
     // de lo contrario el numero mostrado queda inflado frente a lo configurado por etapa
     // (ej. mostraba 20 dias calendario cuando la etapa vence en 13 dias habiles).
-    const diasRestantes = typeof proceso.diasHabilesRestantes === 'number'
+    const rawDiasHabiles = typeof proceso.diasHabilesRestantes === 'number'
       ? proceso.diasHabilesRestantes
       : (fechaVenc ? Math.ceil((fechaVenc.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24)) : 0);
+    // Clamp a 0: nunca mostrar días negativos en la tarjeta; semáforo rojo indica vencimiento
+    const diasRestantes = Math.max(0, rawDiasHabiles);
+
+    // Obtener alertaDias del stage config que coincida con esta etapa
+    const stageAlertMatch = currentStages.find(s =>
+      s.id === etapa || s.etapa === etapa || s.nombre === etapa ||
+      s.etapa?.toUpperCase() === etapa?.toUpperCase() ||
+      s.nombre?.toUpperCase() === etapa?.toUpperCase()
+    );
+    const alertaDiasEtapa: number = stageAlertMatch?.alertaDias ?? 3;
 
     const porcentajeTiempo = proceso.timePercentage !== undefined
       ? Math.round(proceso.timePercentage)
@@ -4332,7 +4357,10 @@ export function DashboardKanbanOperativo({
         return Math.min(100, Math.max(0, Math.round((transcurridos / totalDias) * 100)));
       })();
 
-    const semaforo = calcularNivelSemaforo(diasRestantes, porcentajeTiempo, umbrales.porcentajeRiesgo, umbrales.porcentajeCritico);
+    // Si rawDiasHabiles era negativo (ya vencido), forzar rojo
+    const semaforo = rawDiasHabiles <= 0
+      ? 'rojo' as const
+      : calcularNivelSemaforo(diasRestantes, porcentajeTiempo, umbrales.porcentajeRiesgo, umbrales.porcentajeCritico, alertaDiasEtapa);
 
     const abogado = proceso.abogadoAsignadoNombre || (proceso as any).abogadoAsignado?.nombreCompleto || 'Sin asignar';
 
@@ -6512,7 +6540,7 @@ export function DashboardKanbanOperativo({
   const normalizedGlobalQuery = normalizeText(busquedaGlobal.trim());
 
   // ✅ HU panel/alerta: estado consolidado (Pendientes/En revisión/Aprobados/Devueltos) por proceso
-  const esJefeVista = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+  const esJefeVista = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
   const procesoIdsVisibles = useMemo(
     () => new Set(procesos.map(p => p.id)),
     [procesos],
@@ -6688,233 +6716,225 @@ export function DashboardKanbanOperativo({
           </motion.div>
         )}
 
-        {/* Header World Class Responsive - usa containerWidth real */}
-        <div className="w-full max-w-full bg-white rounded-xl border border-gray-200/80 px-5 py-3.5" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-          <div className="flex items-center gap-4 w-full">
-            {/* Título - ocupa espacio disponible, se trunca si es necesario */}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#003DA510' }}>
-                  {tipoVista === 'archivados' ? (
-                    <Archive className="w-5 h-5" style={{ color: '#003DA5' }} />
-                  ) : tipoVista === 'inhibitorios' ? (
-                    <Ban className="w-5 h-5 text-amber-700" />
-                  ) : tipoVista === 'lista' ? (
-                    <List className="w-5 h-5" style={{ color: '#003DA5' }} />
-                  ) : (
-                    <Columns3 className="w-5 h-5" style={{ color: '#003DA5' }} />
-                  )}
-                </div>
+        {/* Header World Class - Barra de Control y Filtros Amigable */}
+        <div
+          className="w-full max-w-full bg-white rounded-2xl border border-gray-200/90 p-3.5 sm:p-4 shadow-sm overflow-hidden space-y-3"
+          style={{ boxShadow: '0 2px 8px -2px rgba(0, 61, 165, 0.05), 0 1px 4px -1px rgba(0,0,0,0.06)' }}
+        >
+          {/* Fila 1: Título de Vista contextual */}
+          <div className="flex items-center gap-3">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-xs transition-colors"
+              style={{
+                background: tipoVista === 'inhibitorios' ? '#FEF3C7' : '#003DA512',
+                border: tipoVista === 'inhibitorios' ? '1px solid #FDE68A' : '1px solid #003DA525'
+              }}
+            >
+              {tipoVista === 'archivados' ? (
+                <Archive className="w-5 h-5" style={{ color: '#003DA5' }} />
+              ) : tipoVista === 'inhibitorios' ? (
+                <Ban className="w-5 h-5 text-amber-700" />
+              ) : tipoVista === 'lista' ? (
+                <List className="w-5 h-5" style={{ color: '#003DA5' }} />
+              ) : (
+                <Columns3 className="w-5 h-5" style={{ color: '#003DA5' }} />
+              )}
+            </div>
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
                 <h2
-                  className="font-bold leading-tight truncate tracking-tight"
+                  className="font-bold leading-tight truncate tracking-tight text-gray-900"
                   style={{
-                    color: '#003DA5',
-                    fontSize: containerWidth < 500 ? '1rem' : containerWidth < 700 ? '1.1rem' : '1.25rem'
+                    fontSize: containerWidth < 500 ? '1.05rem' : '1.2rem'
                   }}
                 >
                   {tipoVista === 'archivados'
                     ? 'Archivados'
                     : tipoVista === 'inhibitorios'
-                      ? 'Inhibitorios'
+                      ? 'Inhibitorios (Art. 209)'
                       : tipoVista === 'lista'
                         ? 'Lista de Procesos'
-                        : 'Kanban'}
+                        : 'Tablero Kanban'}
                 </h2>
-              </div>
-            </div>
-
-            {/* ✅ BÚSQUEDA GLOBAL COLAPSABLE — lupa → campo expandido con animación */}
-            <div className="flex items-center flex-shrink-0">
-              <AnimatePresence mode="wait">
-                {!showBusquedaGlobal ? (
-                  <motion.button
-                    key="search-icon"
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    transition={{ duration: 0.15 }}
-                    onClick={() => {
-                      setShowBusquedaGlobal(true);
-                      setTimeout(() => busquedaInputRef.current?.focus(), 80);
-                    }}
-                    className="rounded-lg hover:bg-blue-50 transition-colors group flex items-center justify-center"
-                    title="Buscar en todo el tablero"
-                    style={{ color: '#003DA5', width: 36, height: 36, minWidth: 36, minHeight: 36 }}
-                  >
-                    <Search style={{ width: 20, height: 20 }} className="group-hover:scale-110 transition-transform" />
-                  </motion.button>
-                ) : (
-                  <motion.div
-                    key="search-field"
-                    initial={{ width: 36, opacity: 0.5 }}
-                    animate={{ width: containerWidth < 500 ? 180 : containerWidth < 700 ? 220 : 280, opacity: 1 }}
-                    exit={{ width: 36, opacity: 0 }}
-                    transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                    className="relative flex items-center overflow-hidden"
-                  >
-                    <Search className="absolute left-2.5 w-4 h-4 pointer-events-none" style={{ color: '#003DA5' }} />
-                    <input
-                      ref={busquedaInputRef}
-                      type="text"
-                      value={busquedaGlobal}
-                      onChange={(e) => setBusquedaGlobal(e.target.value)}
-                      // onBlur={() => {
-                      //   if (!busquedaGlobal.trim()) setShowBusquedaGlobal(false);
-                      // }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                          setBusquedaGlobal('');
-                          // setShowBusquedaGlobal(false);
-                        }
-                      }}
-                      placeholder="Buscar noticias, procesos..."
-                      className="w-full pl-8 pr-8 py-2 rounded-xl border text-sm focus:outline-none transition-all focus:ring-2 focus:ring-[#003DA5]/20"
-                      style={{
-                        borderColor: busquedaGlobal ? '#003DA5' : '#E2E8F0',
-                        backgroundColor: '#FAFBFC',
-                      }}
-                    />
-                    {busquedaGlobal && (
-                      <button
-                        onClick={() => {
-                          setBusquedaGlobal('');
-                          busquedaInputRef.current?.focus();
-                        }}
-                        className="absolute right-2 p-0.5 rounded-full hover:bg-gray-200 transition-colors"
-                        title="Limpiar búsqueda"
-                      >
-                        <X className="w-3.5 h-3.5 text-gray-400" />
-                      </button>
-                    )}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-              {/* Badge indicador de filtro activo */}
-              {busquedaGlobal.trim() && !showBusquedaGlobal && (
                 <span
-                  className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold text-white"
-                  style={{ backgroundColor: '#003DA5' }}
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold"
+                  style={{
+                    backgroundColor: tipoVista === 'inhibitorios' ? '#FEF3C7' : '#EFF6FF',
+                    color: tipoVista === 'inhibitorios' ? '#92400E' : '#003DA5'
+                  }}
                 >
-                  {itemsFiltrados.length + itemsArchivadosFiltrados.length + itemsInhibitoriosFiltrados.length}
+                  {tipoVista === 'archivados'
+                    ? `${itemsArchivadosFiltrados.length} exp.`
+                    : tipoVista === 'inhibitorios'
+                      ? `${itemsInhibitoriosFiltrados.length} exp.`
+                      : `${itemsFiltrados.length} activos`}
                 </span>
-              )}
+              </div>
+              <p className="text-[11px] text-gray-400 truncate">
+                {tipoVista === 'archivados'
+                  ? 'Expedientes archivados o cerrados'
+                  : tipoVista === 'inhibitorios'
+                    ? 'Procesos culminados por auto inhibitorio'
+                    : 'Control operativo de noticias y expedientes'}
+              </p>
             </div>
+          </div>
 
-            {/* Controles — Design Standard: Filtro Tipo + ViewToggle + Vistas Separadas + CTA */}
-            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-              {/* Filtro por tipo (visible en tablero principal y archivados) */}
-              {tipoVista !== 'inhibitorios' && (
-                <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100">
-                  {([
-                    { value: 'todos', label: 'Todos' },
-                    { value: 'noticia', label: 'Noticias' },
-                    { value: 'proceso', label: 'Procesos' },
-                  ] as const).map(opt => (
-                    <button
-                      key={opt.value}
-                      onClick={() => setFiltroTipo(opt.value)}
-                      className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${filtroTipo === opt.value
-                        ? 'bg-white shadow-sm text-gray-900'
-                        : 'text-gray-500 hover:bg-gray-200'
+          {/* Fila 2: Buscador de procesos y noticias a ancho completo */}
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: '#003DA5' }} />
+            <input
+              ref={busquedaInputRef}
+              type="text"
+              value={busquedaGlobal}
+              onChange={(e) => setBusquedaGlobal(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setBusquedaGlobal('');
+              }}
+              placeholder="Buscar por proceso, radicado..."
+              className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm rounded-xl border transition-all focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20"
+              style={{
+                borderColor: busquedaGlobal ? '#003DA5' : '#E2E8F0',
+                backgroundColor: busquedaGlobal ? '#FFFFFF' : '#F8FAFC',
+              }}
+            />
+            {busquedaGlobal ? (
+              <button
+                onClick={() => {
+                  setBusquedaGlobal('');
+                  busquedaInputRef.current?.focus();
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-200/60 transition-colors"
+                title="Limpiar búsqueda"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            ) : null}
+          </div>
+
+          {/* Fila 2: Barra de herramientas y filtros con scroll horizontal estético */}
+          <div className="w-full max-w-full overflow-x-auto toolbar-scroll-container pt-2 border-t border-gray-100">
+            <div className="flex items-center justify-between gap-2.5 min-w-max pb-1">
+              {/* Bloque Izquierdo: Filtro Tipo + Vista Toggle + Vistas Archivados e Inhibitorios */}
+              <div className="flex items-center gap-2">
+                {/* Filtro por tipo (Todos / Noticias / Procesos) */}
+                {tipoVista !== 'inhibitorios' && (
+                  <div className="flex items-center gap-0.5 p-1 rounded-xl bg-gray-100/90 border border-gray-200/60 shadow-inner">
+                    {([
+                      { value: 'todos', label: 'Todos' },
+                      { value: 'noticia', label: 'Noticias' },
+                      { value: 'proceso', label: 'Procesos' },
+                    ] as const).map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setFiltroTipo(opt.value)}
+                        className={`px-2.5 py-1 rounded-lg text-xs transition-all ${
+                          filtroTipo === opt.value
+                            ? 'bg-white shadow-xs font-bold text-[#003DA5]'
+                            : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50 font-medium'
                         }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
-              {/* Vistas Principales: Kanban / Lista */}
-              <KanbanViewToggle
-                options={[
-                  ...(isMobile ? [] : [{ value: 'kanban', icon: <Columns3 style={{ width: 16, height: 16 }} />, label: 'Kanban' }]),
-                  { value: 'lista', icon: <List style={{ width: 16, height: 16 }} />, label: 'Lista' },
-                ]}
-                current={tipoVista === 'kanban' || tipoVista === 'lista' ? tipoVista : ''}
-                onChange={(id) => setTipoVista(id as any)}
-              />
+                {/* Vistas Principales: Kanban / Lista */}
+                <KanbanViewToggle
+                  options={[
+                    ...(isMobile ? [] : [{ value: 'kanban', icon: <Columns3 style={{ width: 15, height: 15 }} />, label: 'Kanban' }]),
+                    { value: 'lista', icon: <List style={{ width: 15, height: 15 }} />, label: 'Lista' },
+                  ]}
+                  current={tipoVista === 'kanban' || tipoVista === 'lista' ? tipoVista : ''}
+                  onChange={(id) => setTipoVista(id as any)}
+                />
 
-              {/* Separador vertical */}
-              <div className="h-5 w-[1px] bg-gray-200" />
+                {/* Separador vertical */}
+                <div className="h-5 w-[1px] bg-gray-200/80 mx-0.5" />
 
-              {/* Vistas Especializadas Separadas y Responsive: Archivados e Inhibitorios */}
-              <div className="flex items-center gap-1.5">
                 {/* Botón Archivados */}
                 <button
-                  onClick={() => setTipoVista('archivados')}
-                  className={`relative group inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                  onClick={() => setTipoVista(tipoVista === 'archivados' ? 'kanban' : 'archivados')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
                     tipoVista === 'archivados'
-                      ? 'bg-blue-50 text-[#003DA5] border-[#003DA5]/40 shadow-sm ring-1 ring-[#003DA5]/20 font-bold'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900'
+                      ? 'bg-blue-50 text-[#003DA5] border-[#003DA5]/40 shadow-xs ring-1 ring-[#003DA5]/20 font-bold'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-blue-50/40 hover:text-[#003DA5] hover:border-blue-200'
                   }`}
-                  title={`Archivados (${itemsArchivados.length})`}
+                  title="Ver procesos y noticias archivadas"
                 >
-                  <Archive className="w-4 h-4 flex-shrink-0" />
-                  <span className="hidden md:inline">Archivados</span>
-                  {itemsArchivados.length > 0 && (
-                    <span
-                      className={`inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 py-0.5 leading-none ${
-                        tipoVista === 'archivados' ? 'bg-[#003DA5] text-white' : 'bg-gray-200 text-gray-700'
-                      }`}
-                    >
-                      {itemsArchivados.length}
-                    </span>
-                  )}
-                  {/* Tooltip flotante en responsive / mobile */}
-                  <div className="md:hidden absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-900 text-white text-[11px] font-medium rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                    Archivados ({itemsArchivados.length})
-                  </div>
+                  <Archive className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span>Archivados</span>
+                  <span
+                    className={`inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 py-0.5 min-w-[18px] leading-none ${
+                      tipoVista === 'archivados' ? 'bg-[#003DA5] text-white' : 'bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    {itemsArchivados.length}
+                  </span>
                 </button>
 
                 {/* Botón Inhibitorios */}
                 <button
-                  onClick={() => setTipoVista('inhibitorios')}
-                  className={`relative group inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                  onClick={() => setTipoVista(tipoVista === 'inhibitorios' ? 'kanban' : 'inhibitorios')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
                     tipoVista === 'inhibitorios'
-                      ? 'bg-amber-50 text-amber-900 border-amber-300 shadow-sm ring-1 ring-amber-400/30 font-bold'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900'
+                      ? 'bg-amber-50 text-amber-900 border-amber-300 shadow-xs ring-1 ring-amber-400/30 font-bold'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-amber-50/40 hover:text-amber-800 hover:border-amber-200'
                   }`}
-                  title={`Inhibitorios (${itemsInhibitorios.length})`}
+                  title="Ver procesos inhibitorios (art. 209)"
                 >
-                  <Ban className="w-4 h-4 flex-shrink-0 text-amber-700" />
-                  <span className="hidden md:inline">Inhibitorios</span>
-                  {itemsInhibitorios.length > 0 && (
-                    <span
-                      className={`inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 py-0.5 leading-none ${
-                        tipoVista === 'inhibitorios' ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-800'
-                      }`}
-                    >
-                      {itemsInhibitorios.length}
-                    </span>
-                  )}
-                  {/* Tooltip flotante en responsive / mobile */}
-                  <div className="md:hidden absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 px-2 py-1 bg-gray-900 text-white text-[11px] font-medium rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50">
-                    Inhibitorios ({itemsInhibitorios.length})
-                  </div>
+                  <Ban className="w-3.5 h-3.5 flex-shrink-0 text-amber-700" />
+                  <span>Inhibitorios</span>
+                  <span
+                    className={`inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 py-0.5 min-w-[18px] leading-none ${
+                      tipoVista === 'inhibitorios' ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-800'
+                    }`}
+                  >
+                    {itemsInhibitorios.length}
+                  </span>
                 </button>
               </div>
 
-              {authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT || Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE) && (
-                <KanbanToolbarCTA
-                  onClick={() => setModalActivo('crear-noticia')}
-                  icon={<Plus style={{ width: 16, height: 16 }} />}
-                >
-                  Nueva
-                </KanbanToolbarCTA>
-              )}
+              {/* Bloque Derecho: Acciones de Exportar y Crear */}
+              <div className="flex items-center gap-2">
+                {/* Botón Exportar */}
+                {(authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR) ||
+                  authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_REPORTES_EXPORTAR) ||
+                  authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_VENCIMIENTOS_EXPORTAR) ||
+                  authService.isSuperAdmin()) && (
+                  <button
+                    onClick={handleExportarVencimientos}
+                    disabled={exportandoVencimientos}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300 hover:text-[#003DA5] shadow-xs active:scale-95 disabled:opacity-50"
+                    title="Exportar informe de vencimientos"
+                  >
+                    {exportandoVencimientos ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#003DA5]" />
+                    ) : (
+                      <Download className="w-3.5 h-3.5 text-gray-500" />
+                    )}
+                    <span>Exportar</span>
+                  </button>
+                )}
 
-              {(authService.hasRole('SECRETARIA_RADICADOR') || authService.hasRole('RADICADOR_DISCIPLINARIO') || authService.hasRole('ADMIN') || authService.isSuperAdmin()) && (
-                <KanbanToolbarCTA
-                  onClick={handleExportarVencimientos}
-                  icon={
-                    exportandoVencimientos
-                      ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" />
-                      : <Download style={{ width: 16, height: 16 }} />
-                  }
-                >
-                  Exportar
-                </KanbanToolbarCTA>
-              )}
+                {/* Botón Nueva Noticia */}
+                {(authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR) ||
+                  authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_EDIT) ||
+                  authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_CREATE) ||
+                  authService.isSuperAdmin()) && (
+                  <button
+                    onClick={() => setModalActivo('crear-noticia')}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white transition-all shadow-xs hover:shadow-md active:scale-95 hover:brightness-110"
+                    style={{ backgroundColor: '#003DA5' }}
+                    title="Registrar nueva noticia disciplinaria"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Nueva Noticia</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -6922,8 +6942,29 @@ export function DashboardKanbanOperativo({
         {/* Estadísticas - Responsive: 2 cols en estrecho, 4 cols en ancho */}
 
 
-        {/* CSS para kanban-scroll-container */}
+        {/* CSS para kanban-scroll-container y toolbar-scroll-container */}
         <style>{`
+          .toolbar-scroll-container {
+            scrollbar-width: thin;
+            scrollbar-color: #CBD5E1 transparent;
+            -webkit-overflow-scrolling: touch;
+          }
+          .toolbar-scroll-container::-webkit-scrollbar {
+            height: 5px;
+          }
+          .toolbar-scroll-container::-webkit-scrollbar-track {
+            background: #F8FAFC;
+            border-radius: 9999px;
+          }
+          .toolbar-scroll-container::-webkit-scrollbar-thumb {
+            background: #CBD5E1;
+            border-radius: 9999px;
+            transition: background-color 0.2s ease;
+          }
+          .toolbar-scroll-container::-webkit-scrollbar-thumb:hover {
+            background: #94A3B8;
+          }
+
           .kanban-scroll-container {
             /* Scroll horizontal personalizado para contenedor de columnas kanban */
           }

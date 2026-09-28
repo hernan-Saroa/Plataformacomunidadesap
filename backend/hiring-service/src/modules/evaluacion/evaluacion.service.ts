@@ -25,6 +25,8 @@ import {
   RectificarResultadoDto,
   RegistrarResultadoDto,
 } from './dto/evaluacion.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
 /** Actividad 6.3 de la matriz: la evaluación de las ofertas. */
 export const NUMERAL_EVALUACION = '6.3';
@@ -55,6 +57,7 @@ export class EvaluacionService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly comite: ComiteService,
+    private readonly cierre: CierreActividadService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -180,6 +183,10 @@ export class EvaluacionService {
 
       this.validarValoracion(dto);
 
+      if (await this.cierre.exigeFirma(em, NUMERAL_EVALUACION)) {
+        this.cierre.exigirFirmaValida(dto.firma);
+      }
+
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
 
@@ -213,7 +220,7 @@ export class EvaluacionService {
         }),
       );
 
-      await this.marcarActividad(em, procesoId, acceso);
+      await this.marcarActividad(em, procesoId, acceso, dto.firma);
 
       await this.traza(em, procesoId, resultado.id, 'GUARDAR', acceso, {
         actividad: NUMERAL_EVALUACION,
@@ -457,31 +464,45 @@ export class EvaluacionService {
    * en curso si se rectifica: el proceso se queda sin resultado hasta que se
    * registre otro, y el riel tiene que decirlo. Mismo criterio del comité.
    */
-  private async marcarActividad(em: EntityManager, procesoId: string, acceso: HiringAccess) {
+  private async marcarActividad(
+    em: EntityManager,
+    procesoId: string,
+    acceso: HiringAccess,
+    firma?: FirmaOtpDto,
+  ) {
     const registrado = !!(await this.resultadoVigente(procesoId, em));
-    const estado = registrado ? 'APROBADO' : 'BORRADOR';
 
-    const actividad = await em.getRepository(ProcesoActividad).findOne({
-      where: { procesoId, numeral: NUMERAL_EVALUACION },
-    });
-
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_EVALUACION,
-          estado: estado as any,
-          datos: {},
-          ...(registrado ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!registrado) {
+      const actividad = await em.getRepository(ProcesoActividad).findOne({
+        where: { procesoId, numeral: NUMERAL_EVALUACION },
+      });
+      if (!actividad) {
+        await em.save(
+          em.create(ProcesoActividad, {
+            procesoId,
+            numeral: NUMERAL_EVALUACION,
+            estado: 'BORRADOR' as any,
+            datos: {},
+          }),
+        );
+        return;
+      }
+      actividad.estado = 'BORRADOR' as any;
+      actividad.revisadoPor = null;
+      actividad.revisadoAt = null;
+      await em.save(actividad);
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = registrado ? acceso.userName : null;
-    actividad.revisadoAt = registrado ? new Date() : null;
-    await em.save(actividad);
+    const proceso = await this.exigirProceso(em, procesoId);
+    await this.cierre.resolverCierre(
+      em,
+      procesoId,
+      NUMERAL_EVALUACION,
+      proceso.modalidad,
+      acceso,
+      firma,
+    );
   }
 
   private guardarDocumento(

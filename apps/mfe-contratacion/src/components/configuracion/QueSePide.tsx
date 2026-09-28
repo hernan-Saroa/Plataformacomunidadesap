@@ -114,9 +114,6 @@ export function QueSePide({
 
   return (
     <div className="space-y-3">
-      <p className="text-sm font-semibold text-gray-800 m-0">
-        Para terminar esta actividad, el gestor debe:
-      </p>
 
       {activos.length === 0 ? (
         /* Sin nada configurado el gestor la cierra con un clic y el expediente
@@ -142,8 +139,8 @@ export function QueSePide({
               No se le pide nada todavía
             </p>
             <p className="text-xs text-amber-800 mt-1 mb-0 leading-relaxed">
-              El gestor la marcará como terminada sin dejar constancia en el expediente.
-              Si la actividad produce un documento, pídelo aquí.
+              Agrega los datos que el gestor debe diligenciar. Si la actividad produce un
+              documento, asígnale su formato en Plantillas.
             </p>
           </div>
         )

@@ -146,7 +146,7 @@ export function SolicitarCertificadoPublicoNuevo({ onBack }: Props) {
         nombre: codigoData.solicitud.full_name,
         email: codigoData.solicitud.email || 'email@esap.edu.co',
         cargo: codigoData.solicitud.position_category || 'Sin especificar',
-        dependencia: codigoData.solicitud.department || 'Sin especificar',
+        dependencia: codigoData.solicitud.certificate_dependency ?? (codigoData.solicitud.department || 'Sin especificar'),
         estado: 'ACTIVO'
       };
 

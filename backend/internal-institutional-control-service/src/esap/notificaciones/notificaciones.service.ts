@@ -5,6 +5,7 @@ import { Notificacion, EstadoNotificacion, TipoNotificacion, CanalNotificacion, 
 import { PreferenciaNotificacion } from './entities/preferencia-notificacion.entity';
 import { CreateNotificacionDto } from './dto/create-notificacion.dto';
 import { ConfigService } from '@nestjs/config';
+import { ROL_OCIG_JEFE, variantesRolOcigOperativo } from '../configuraciones/roles-ocig-operativos.constants';
 
 @Injectable()
 export class NotificacionesService implements OnModuleInit {
@@ -265,6 +266,93 @@ export class NotificacionesService implements OnModuleInit {
   }
 
   /**
+   * id_user de los Jefes OCIG: los profesionales activos que la oficina tiene configurados con
+   * ese rol en Configuración de Profesionales OCI. El permiso de activar el plan no sirve para
+   * distinguirlos porque lo comparten todos los roles operativos de la OCI.
+   */
+  async obtenerJefesOcig(): Promise<string[]> {
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT DISTINCT u.id_user::text AS id_user
+         FROM control_interno.configuracion_profesionales_ocig c
+         INNER JOIN auth."user" u ON u.id_person::text = c.id_tercero::text AND u.is_active = true
+         WHERE c.activo = true
+           AND c.rol_ocig = ANY($1::text[])`,
+        [variantesRolOcigOperativo(ROL_OCIG_JEFE)],
+      );
+      return (rows || []).map((r: { id_user: string }) => String(r.id_user));
+    } catch (error) {
+      this.logger.error(`[obtenerJefesOcig] ${(error as Error).message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Resuelve el id_user (el que consulta la campana) de una persona referenciada
+   * por id (id_user, id_person o id de configuración OCI), correo o nombre completo.
+   */
+  async resolverIdUsuario(referencia: { id?: string | null; email?: string | null; nombre?: string | null }): Promise<string | null> {
+    const id = String(referencia?.id ?? '').trim();
+    const email = String(referencia?.email ?? '').trim().toLowerCase();
+    const nombre = String(referencia?.nombre ?? '').trim().replace(/\s+/g, ' ');
+    const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
+    try {
+      if (esUuid) {
+        const porId = await this.dataSource.query(
+          `SELECT u.id_user::text AS id_user
+           FROM auth."user" u
+           WHERE u.is_active = true
+             AND (
+               u.id_user::text = $1
+               OR u.id_person::text = $1
+               OR u.id_person::text IN (
+                 SELECT c.id_tercero::text FROM control_interno.configuracion_profesionales_ocig c WHERE c.id::text = $1
+               )
+             )
+           LIMIT 1`,
+          [id],
+        );
+        if (porId?.[0]?.id_user) return String(porId[0].id_user);
+      }
+
+      if (email.includes('@')) {
+        const porEmail = await this.dataSource.query(
+          `SELECT u.id_user::text AS id_user
+           FROM auth."user" u
+           LEFT JOIN auth.personas p ON p.id_person = u.id_person
+           WHERE u.is_active = true
+             AND (LOWER(TRIM(u.username)) = $1 OR LOWER(TRIM(COALESCE(p.dir_email, ''))) = $1)
+           LIMIT 1`,
+          [email],
+        );
+        if (porEmail?.[0]?.id_user) return String(porEmail[0].id_user);
+      }
+
+      if (nombre.length > 3) {
+        // Solo coincidencia exacta y única, para no notificar a un homónimo.
+        const porNombre = await this.dataSource.query(
+          `SELECT DISTINCT u.id_user::text AS id_user
+           FROM auth."user" u
+           INNER JOIN auth.personas p ON p.id_person = u.id_person
+           WHERE u.is_active = true
+             AND (
+               LOWER(TRIM(p.nom_largo)) = LOWER($1)
+               OR LOWER(TRIM(CONCAT(p.nom_tercero, ' ', p.pri_apellido))) = LOWER($1)
+             )
+           LIMIT 2`,
+          [nombre],
+        );
+        if (porNombre?.length === 1) return String(porNombre[0].id_user);
+      }
+    } catch (error) {
+      this.logger.error(`[resolverIdUsuario] ${(error as Error).message}`);
+    }
+
+    return null;
+  }
+
+  /**
    * MOTOR CENTRALIZADO: Dispara un evento de notificación resolviendo destinatarios y canales
    */
   async dispararEvento(eventoCode: string, context: { 
@@ -273,6 +361,7 @@ export class NotificacionesService implements OnModuleInit {
     auditoriaNombre?: string;
     planId?: string;
     usuarioId?: string; // Destinatario explícito si aplica
+    usuariosIds?: string[]; // Destinatarios adicionales a los roles configurados en el evento
     responsableAreaEmail?: string; // Email del responsable del área auditada (para AUDITADO)
     tituloCustom?: string;
     mensajeCustom?: string;
@@ -295,6 +384,7 @@ export class NotificacionesService implements OnModuleInit {
       if (context.usuarioId) {
         destinatariosSet.add(context.usuarioId);
       }
+      (context.usuariosIds || []).filter(Boolean).forEach((id) => destinatariosSet.add(String(id)));
 
       const rolesDestinatarios = (configEvento as any)?.roles || [];
 

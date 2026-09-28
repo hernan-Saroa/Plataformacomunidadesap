@@ -2014,6 +2014,14 @@ class ControlInternoService {
     return client.patch<any>(`/auditorias/${id}`, data);
   }
 
+  /** Fortalezas, recomendaciones generales y conclusiones registradas en Ejecución (EFDS-1636) */
+  async actualizarResultadosAuditoria(
+    id: string,
+    data: { fortalezas?: string[]; recomendacionesGenerales?: string[]; conclusiones?: string },
+  ): Promise<{ fortalezas: string[]; recomendacionesGenerales: string[]; conclusiones: string | null }> {
+    return client.put(`/auditorias/${id}/resultados`, data);
+  }
+
   /**
    * Elimina una auditoría
    */

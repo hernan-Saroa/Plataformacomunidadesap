@@ -65,7 +65,12 @@ export type AccionTraza =
   // La Dirección toma un proceso de la bandeja (EFDS-1183, actividad 3.3).
   // Acción propia y no reuso de DESIGNAR: designar es poner a otro, y aquí
   // nadie entrega nada —quien llega primero se queda con el proceso—.
-  | 'RADICAR';
+  | 'RADICAR'
+  // Reemplazar un adjunto suelto de documentos previos (EFDS-2067). Acción
+  // propia y no un ANULAR seguido de un ADJUNTAR: son dos filas de traza sin
+  // relación aparente entre sí, y lo que ocurrió fue una sola operación —el
+  // documento que salió y el que entró en su lugar quedan enlazados.
+  | 'REEMPLAZAR';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {

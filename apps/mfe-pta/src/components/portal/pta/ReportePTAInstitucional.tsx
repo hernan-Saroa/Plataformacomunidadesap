@@ -18,6 +18,7 @@ import { PTA_COLORS } from '../../pta/shared/ptaColors';
 import { getPtaComponentDisplayStatus } from '../../pta/shared/ptaComponentStatus';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
+import { formatPtaDedicacion, formatPtaVinculacion } from '../../../utils/ptaInstitutionalDisplay';
 
 interface ReportePTAInstitucionalProps {
   pta: any;
@@ -813,8 +814,8 @@ export function ReportePTAInstitucional({
     userPerfil?.perfil_academico,
     userPerfil?.perfil_academico_pro,
   );
-  const categoriaDocente = datoNoVacio(userPerfil?.categoria);
-  const territorialVinculacion = datoNoVacio(userPerfil?.territorial);
+  const categoriaDocente = datoNoVacio(userPerfil?.categoria, pta?.categoria_escalafon, pta?.escalafon);
+  const territorialVinculacion = datoNoVacio(userPerfil?.territorial, pta?.territorial, pta?.territorial_nombre);
   const situacionAdministrativa = datoNoVacio(userPerfil?.situacion_administrativa);
   const ultimaEvaluacion = datoNoVacio(userPerfil?.ultima_evaluacion);
   const correoInstitucional = datoNoVacio(
@@ -832,15 +833,15 @@ export function ReportePTAInstitucional({
     userPerfil?.numero_celular,
     pta?.telefono_docente,
   );
-  const tipoVinculacion = datoNoVacio(
+  const tipoVinculacion = formatPtaVinculacion(datoNoVacio(
     userPerfil?.vinculacion,
     pta?.tipo_vinculacion,
-  );
-  const tipoDedicacion = datoNoVacio(
+  ));
+  const tipoDedicacion = formatPtaDedicacion(datoNoVacio(
     userPerfil?.dedicacion,
     pta?.dedicacion,
-  );
-  const nucleoVinculacion = datoNoVacio(userPerfil?.nucleo_tematico);
+  ));
+  const nucleoVinculacion = datoNoVacio(userPerfil?.nucleo_tematico, pta?.nucleo_tematico);
   const actoAdministrativo = datoNoVacio(userPerfil?.acto_administrativo_vinculacion);
   const inicioVinculacion = fmtFechaOTexto(datoNoVacio(
     userPerfil?.inicio_vinculacion,
@@ -1902,9 +1903,9 @@ export function ReportePTAInstitucional({
                     <div style={{ fontSize: '0.85rem', fontWeight: 900, color: '#047857', textTransform: 'uppercase', marginTop: 4 }}>Documento Firmado</div>
                     <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', padding: 12, borderRadius: 6, fontSize: '0.66rem', textAlign: 'left', width: '100%', marginTop: 10 }}>
                       <div style={{ fontWeight: 800, color: '#1F2937', marginBottom: 4 }}>CERTIFICADO DIGITAL DE APROBACIÓN</div>
-                      <div style={{ fontFamily: 'monospace', background: '#E5E7EB', padding: 4, marginBottom: 8, overflowWrap: 'anywhere' }}>{certificadoId || 'CERT-N/A'}</div>
+                      <div style={{ fontFamily: 'monospace', background: '#E5E7EB', padding: 4, marginBottom: 8, overflowWrap: 'anywhere' }}>{certificadoId || 'No registrado'}</div>
                       <div style={{ color: '#6B7280', lineHeight: 1.6 }}>
-                        <strong>Fecha de Firma:</strong> {signedAt ? new Date(signedAt).toLocaleString('es-CO') : '—'}<br />
+                        <strong>Fecha de Firma:</strong> {signedAt && Number.isFinite(new Date(signedAt).getTime()) ? new Date(signedAt).toLocaleString('es-CO') : '—'}<br />
                         <strong>Firmante Autenticado:</strong> {nombreDocente || '—'}<br />
                         El documento ha surtido efecto y ha sido anclado al expediente.
                       </div>

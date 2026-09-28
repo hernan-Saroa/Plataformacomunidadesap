@@ -3,7 +3,7 @@ import { Check, CircleDollarSign, Send, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EstadoRegistroPresupuestal } from '../../types';
+import { EstadoRegistroPresupuestal, EvidenciaFirmaOtp } from '../../types';
 import {
   Aviso,
   Ayuda,
@@ -16,11 +16,14 @@ import {
   Titulo,
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota } from '../shared/fechas';
+import { useFirma } from '../shared/useFirma';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL = '8.3';
 
 const pesos = new Intl.NumberFormat('es-CO', {
   style: 'currency',
@@ -45,6 +48,7 @@ const ETIQUETA_ESTADO: Record<string, string> = {
  * RP solo después de firmarlo.
  */
 export function PanelRegistroPresupuestal({ procesoId, onCambio }: Props) {
+  const firma = useFirma(NUMERAL, 'Expedir el registro presupuestal');
   const [estado, setEstado] = useState<EstadoRegistroPresupuestal | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -108,7 +112,7 @@ export function PanelRegistroPresupuestal({ procesoId, onCambio }: Props) {
     }
   };
 
-  const expedir = async () => {
+  const expedir = async (firmaOtp?: EvidenciaFirmaOtp) => {
     setGuardando(true);
     try {
       setEstado(
@@ -118,6 +122,7 @@ export function PanelRegistroPresupuestal({ procesoId, onCambio }: Props) {
             numero: datos.numero.trim(),
             valor: Number(datos.valor),
             fechaExpedicion: datos.fechaExpedicion,
+            firma: firmaOtp,
           },
           soporte,
         ),
@@ -337,7 +342,7 @@ export function PanelRegistroPresupuestal({ procesoId, onCambio }: Props) {
                 <Boton
                   icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
                   disabled={guardando || !completo}
-                  onClick={expedir}
+                  onClick={() => firma.conFirma(expedir)}
                 >
                   Expedir
                 </Boton>
@@ -398,6 +403,7 @@ export function PanelRegistroPresupuestal({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : null}
+      {firma.modal}
     </Marco>
   );
 }

@@ -13,6 +13,8 @@ import {
   EstadoContrato,
 } from '../../entities/contrato.entity';
 import { ActaInicio } from '../../entities/acta-inicio.entity';
+import { SuscripcionActaInicio } from '../../entities/suscripcion-acta-inicio.entity';
+import { ActividadExcluida } from '../../entities/actividad.entity';
 import { SupervisionContrato } from '../../entities/supervision-contrato.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
@@ -20,10 +22,28 @@ import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { SuscribirActaInicioDto } from './dto/acta-inicio.dto';
+import { SuscribirActaDto, SuscribirActaInicioDto } from './dto/acta-inicio.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
+import { aplicaArl } from '../legalizacion/legalizacion.service';
 
 /** Actividad 9.1 de la matriz: la reunión de inicio. */
 export const NUMERAL_ACTA_INICIO = '9.1';
+
+/**
+ * Actividad 8.7: el acta de inicio suscrita, que cierra la legalización.
+ *
+ * Hasta la 089 se trataba como la misma reunión de la 9.1 contada dos veces, y
+ * las dos casillas abrían la misma pantalla. Se separaron a pedido de la
+ * Dirección: el acta se registra aquí, con su fecha de firma y su documento, y
+ * la reunión la toma de aquí cuando la modalidad la exige.
+ *
+ * Queda un camino heredado: registrar la reunión adjuntando el acta en el
+ * mismo paso, como antes, sigue cerrando las dos casillas. Es lo que usan los
+ * procesos que ya venían así y las pruebas de extremo a extremo que arrancan
+ * un contrato para probar lo que viene después.
+ */
+export const NUMERAL_ACTA_INICIO_LEGALIZACION = '8.7';
 
 /**
  * Si el contrato admite que se le registre la reunión de inicio.
@@ -60,7 +80,10 @@ interface ArchivoCargado {
  */
 @Injectable()
 export class ActaInicioService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly cierre: CierreActividadService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -81,20 +104,37 @@ export class ActaInicioService {
     const acta = await this.dataSource
       .getRepository(ActaInicio)
       .findOne({ where: { contratoId: contrato.id } });
+    const proceso = await this.dataSource
+      .getRepository(Proceso)
+      .findOne({ where: { id: procesoId } });
 
-    const documento = acta?.actaDocumentoId
-      ? await this.dataSource
-          .getRepository(Documento)
-          .findOne({ where: { id: acta.actaDocumentoId } })
-      : null;
+    // El acta de la 8.7: si la modalidad la exige y si ya se suscribió. La
+    // reunión la toma de ahí, sin volver a pedirla.
+    const actaAplica = await this.actaAplica(this.dataSource.manager, proceso?.modalidad ?? null);
+    const suscripcion = await this.suscripcionDe(this.dataSource.manager, contrato.id);
+    const faltaActa = actaAplica && !suscripcion && !acta;
 
     return {
       // Las dos condiciones por separado: la pantalla necesita decir cuál
       // falta, no solo que no se puede.
       legalizado,
       tieneSupervisor: !!supervisor,
-      puedeIniciar: legalizado && !!supervisor && !acta,
-      motivoNoPuede: this.motivoNoPuede(contrato.estado, !!supervisor, !!acta),
+      puedeIniciar: legalizado && !!supervisor && !acta && !faltaActa,
+      motivoNoPuede:
+        this.motivoNoPuede(contrato.estado, !!supervisor, !!acta) ??
+        (faltaActa ? 'falta registrar el acta de inicio suscrita' : null),
+      actaAplica,
+      suscripcion: suscripcion ? await this.vistaSuscripcion(suscripcion) : null,
+      // La ARL solo se exige a persona natural, y solo en las modalidades que
+      // la matriz no excluye (EFDS-1183, EFDS-1164): sin esto, la pantalla no
+      // tiene cómo distinguir si lo que falta son las garantías (8.4, que
+      // aplica siempre) o la ARL (8.5, que ni la persona jurídica ni una
+      // modalidad que la excluye van a pedir nunca).
+      requiereArl: await aplicaArl(
+        this.dataSource.manager,
+        proceso?.modalidad ?? null,
+        contrato.contratistaTipo,
+      ),
       contrato: {
         numero: contrato.numero,
         objeto: contrato.objeto,
@@ -113,12 +153,6 @@ export class ActaInicioService {
             actaPactada: acta.actaPactada,
             registradoPor: acta.registradoPor,
             createdAt: acta.createdAt,
-            documento: documento
-              ? {
-                  nombre: documento.archivoNombreOriginal ?? documento.nombre,
-                  url: documento.archivoUrl,
-                }
-              : null,
           }
         : null,
     };
@@ -152,17 +186,33 @@ export class ActaInicioService {
 
       this.validarFecha(dto.fechaInicio);
 
-      // Por defecto se da por pactada: es lo habitual, y suponer lo contrario
-      // dejaría arrancar sin acta a quien sí debía suscribirla.
-      const pactada = dto.actaPactada ?? true;
-      if (pactada && !archivo) {
+      if (await this.cierre.exigeFirma(em, NUMERAL_ACTA_INICIO)) {
+        this.cierre.exigirFirmaValida(dto.firma);
+      }
+
+      /*
+       * El acta, de donde venga.
+       *
+       * Si se suscribió en la 8.7, la reunión la toma de ahí y no la vuelve a
+       * pedir. Si no, y llega adjunta, es el camino de antes (acta y reunión en
+       * un solo paso). Si no hay ninguna de las dos, lo que manda es la matriz:
+       * donde la 8.7 aplica, falta el acta; donde no, se arranca sin ella.
+       */
+      const proceso = await this.exigirProceso(em, procesoId);
+      const suscripcion = await this.suscripcionDe(em, contrato.id);
+      const aplica = await this.actaAplica(em, proceso.modalidad ?? null);
+      const pactada = suscripcion ? true : archivo ? true : (dto.actaPactada ?? aplica) && aplica;
+      if (pactada && !suscripcion && !archivo) {
         throw new BadRequestException(
-          'Adjunta el acta firmada por ambas partes, o indica que el contrato no la pactó',
+          'Esta modalidad exige acta de inicio: regístrala suscrita en la actividad 8.7 antes de la reunión',
         );
       }
 
-      let documentoId: string | null = null;
-      if (archivo && hash) {
+      // Por el camino de antes el acta llega aquí, pero se guarda como la de la
+      // 8.7: si quedara colgada de la reunión, las dos casillas mostrarían el
+      // mismo documento. La fecha de firma es la de la reunión, que es la
+      // única que trae.
+      if (!suscripcion && archivo && hash) {
         const expediente = await em.findOne(Expediente, { where: { procesoId } });
         if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
 
@@ -173,8 +223,16 @@ export class ActaInicioService {
           archivo,
           hash,
           acceso,
+          NUMERAL_ACTA_INICIO_LEGALIZACION,
         );
-        documentoId = doc.id;
+        await em.save(
+          em.create(SuscripcionActaInicio, {
+            contratoId: contrato.id,
+            fechaSuscripcion: dto.fechaInicio,
+            actaDocumentoId: doc.id,
+            registradoPor: acceso.userName ?? null,
+          }),
+        );
       }
 
       const acta = await em.save(
@@ -183,7 +241,7 @@ export class ActaInicioService {
           fechaInicio: dto.fechaInicio,
           temasTratados: dto.temasTratados.trim(),
           asistentes: dto.asistentes?.trim() || null,
-          actaDocumentoId: documentoId,
+          actaDocumentoId: null,
           actaPactada: pactada,
           registradoPor: acceso.userName,
         } as Partial<ActaInicio>),
@@ -195,7 +253,12 @@ export class ActaInicioService {
       contrato.ejecucionDesde = dto.fechaInicio;
       await em.save(contrato);
 
-      await this.marcarActividad(em, procesoId, contrato.id, acceso);
+      // Con el acta suscrita en la 8.7, esa casilla ya se cerró allá: la
+      // reunión solo cierra la suya. Por el camino de antes cierra las dos.
+      const numerales = suscripcion
+        ? [NUMERAL_ACTA_INICIO]
+        : [NUMERAL_ACTA_INICIO_LEGALIZACION, NUMERAL_ACTA_INICIO];
+      await this.marcarActividad(em, procesoId, contrato.id, numerales, acceso, dto.firma);
 
       await this.traza(em, procesoId, acta.id, 'INICIAR', acceso, {
         actividad: NUMERAL_ACTA_INICIO,
@@ -209,7 +272,167 @@ export class ActaInicioService {
     return this.estado(procesoId, acceso);
   }
 
+  // ---------------------------------------------------- acta suscrita (8.7) --
+
+  /** El acta de inicio del contrato: si aplica, si se puede registrar y la registrada. */
+  async estadoActa(procesoId: string) {
+    const em = this.dataSource.manager;
+    const proceso = await this.exigirProceso(em, procesoId);
+    const contrato = await this.contratoDelProceso(em, procesoId);
+    const aplica = await this.actaAplica(em, proceso.modalidad ?? null);
+
+    if (!contrato) {
+      return {
+        aplica,
+        puedeRegistrar: false,
+        motivoNoPuede: 'el proceso todavía no tiene contrato generado',
+        legalizado: false,
+        requiereArl: false,
+        suscripcion: null,
+      };
+    }
+
+    const suscripcion = await this.suscripcionDe(em, contrato.id);
+    // Con la reunión registrada sin acta ya no hay nada que suscribir aquí.
+    const reunion = await em.getRepository(ActaInicio).findOne({ where: { contratoId: contrato.id } });
+    const supervisor = await this.supervisorVigente(contrato.id);
+    const motivo = this.motivoNoPuede(contrato.estado, !!supervisor, false);
+
+    return {
+      aplica,
+      puedeRegistrar: aplica && !suscripcion && !reunion && !motivo,
+      motivoNoPuede: suscripcion || reunion ? null : motivo,
+      legalizado: admiteInicio(contrato.estado),
+      requiereArl: await aplicaArl(em, proceso.modalidad ?? null, contrato.contratistaTipo),
+      suscripcion: suscripcion ? await this.vistaSuscripcion(suscripcion) : null,
+    };
+  }
+
+  /**
+   * Registra el acta de inicio suscrita — actividad 8.7.
+   *
+   * Pide lo mismo que la reunión —contrato legalizado y con supervisor—, porque
+   * el acta la firman el contratista y quien va a vigilar la ejecución. Cierra
+   * la 8.7 y nada más: el contrato entra en ejecución con la reunión (9.1).
+   */
+  async registrarActa(
+    procesoId: string,
+    dto: SuscribirActaDto,
+    archivo: ArchivoCargado | null,
+    hash: string | null,
+    acceso: HiringAccess,
+  ) {
+    if (!archivo || !hash) {
+      throw new BadRequestException('Adjunta el acta de inicio firmada por las dos partes');
+    }
+
+    await this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId);
+      if (!(await this.actaAplica(em, proceso.modalidad ?? null))) {
+        throw new ConflictException('Esta modalidad no suscribe acta de inicio: la matriz la excluye');
+      }
+
+      const contrato = await this.exigirContratoLegalizado(em, procesoId);
+      const supervisor = await this.supervisorVigente(contrato.id, em);
+      if (!supervisor) {
+        throw new ConflictException(
+          'El contrato no tiene supervisor designado: el acta de inicio la suscribe quien va a vigilar la ejecución',
+        );
+      }
+
+      if (await this.suscripcionDe(em, contrato.id)) {
+        throw new ConflictException('El contrato ya tiene registrada su acta de inicio');
+      }
+      if (await em.getRepository(ActaInicio).findOne({ where: { contratoId: contrato.id } })) {
+        throw new ConflictException('El acta de inicio llegó con la reunión de inicio, que ya está registrada');
+      }
+
+      this.validarFecha(dto.fechaSuscripcion, 'La fecha de suscripción no puede ser posterior a hoy');
+
+      if (await this.cierre.exigeFirma(em, NUMERAL_ACTA_INICIO_LEGALIZACION)) {
+        this.cierre.exigirFirmaValida(dto.firma);
+      }
+
+      const expediente = await em.findOne(Expediente, { where: { procesoId } });
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+      const doc = await this.guardarDocumento(
+        em,
+        expediente.id,
+        `Contrato ${contrato.numero} · acta de inicio`,
+        archivo,
+        hash,
+        acceso,
+        NUMERAL_ACTA_INICIO_LEGALIZACION,
+      );
+
+      const suscripcion = await em.save(
+        em.create(SuscripcionActaInicio, {
+          contratoId: contrato.id,
+          fechaSuscripcion: dto.fechaSuscripcion,
+          actaDocumentoId: doc.id,
+          registradoPor: acceso.userName ?? null,
+        }),
+      );
+
+      await this.cierre.resolverCierre(
+        em,
+        procesoId,
+        NUMERAL_ACTA_INICIO_LEGALIZACION,
+        proceso.modalidad ?? null,
+        acceso,
+        dto.firma,
+      );
+
+      await this.traza(em, procesoId, suscripcion.id, 'FIRMAR', acceso, {
+        actividad: NUMERAL_ACTA_INICIO_LEGALIZACION,
+        contrato: contrato.numero,
+        fechaSuscripcion: dto.fechaSuscripcion,
+      });
+    });
+
+    return this.estadoActa(procesoId);
+  }
+
   // ----------------------------------------------------------- auxiliares --
+
+  /**
+   * Si la modalidad suscribe acta de inicio.
+   *
+   * Lo dice la matriz SÍ/NO: la 8.7 excluida es una modalidad sin acta. Sin
+   * modalidad se da por aplicable, que es lo que la matriz dice en casi todas.
+   */
+  private async actaAplica(em: EntityManager, modalidad: string | null): Promise<boolean> {
+    if (!modalidad) return true;
+    const excluida = await em
+      .getRepository(ActividadExcluida)
+      .findOne({ where: { numeral: NUMERAL_ACTA_INICIO_LEGALIZACION, modalidad } });
+    return !excluida;
+  }
+
+  private suscripcionDe(em: EntityManager, contratoId: string) {
+    return em.getRepository(SuscripcionActaInicio).findOne({ where: { contratoId } });
+  }
+
+  private async vistaSuscripcion(
+    s: Pick<SuscripcionActaInicio, 'fechaSuscripcion' | 'actaDocumentoId' | 'registradoPor' | 'createdAt'>,
+  ) {
+    const documento = await this.dataSource
+      .getRepository(Documento)
+      .findOne({ where: { id: s.actaDocumentoId } });
+    return {
+      fechaSuscripcion: s.fechaSuscripcion,
+      registradoPor: s.registradoPor,
+      createdAt: s.createdAt,
+      documento: documento
+        ? {
+            nombre: documento.archivoNombreOriginal ?? documento.nombre,
+            url: documento.archivoUrl,
+            mimeType: documento.archivoMimeType ?? null,
+          }
+        : null,
+    };
+  }
 
   /** Por qué no se puede todavía, dicho por el servidor y no deducido en pantalla. */
   private motivoNoPuede(
@@ -228,13 +451,14 @@ export class ActaInicioService {
   }
 
   /** La reunión ya ocurrió; no se arranca la ejecución hacia el futuro. */
-  private validarFecha(fecha: string) {
+  private validarFecha(
+    fecha: string,
+    mensaje = 'La fecha de inicio no puede ser posterior a hoy: es la de la reunión ya celebrada',
+  ) {
     const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
 
     if (fecha > hoy) {
-      throw new BadRequestException(
-        'La fecha de inicio no puede ser posterior a hoy: es la de la reunión ya celebrada',
-      );
+      throw new BadRequestException(mensaje);
     }
   }
 
@@ -287,39 +511,59 @@ export class ActaInicioService {
    *
    * No hay vuelta atrás como en la supervisión: la ejecución empieza una vez y
    * la reunión no se «desconvoca».
+   *
+   * Cierra las casillas que le digan: la 9.1 siempre, y la 8.7 cuando el acta
+   * llegó en este mismo paso y no por su actividad (ver
+   * `NUMERAL_ACTA_INICIO_LEGALIZACION`). Dejarla abierta en ese caso la
+   * dejaría en BORRADOR sin nada pendiente, y el riel no dejaría avanzar.
    */
   private async marcarActividad(
     em: EntityManager,
     procesoId: string,
     contratoId: string,
+    numerales: string[],
     acceso: HiringAccess,
+    firma?: FirmaOtpDto,
   ) {
     const cumplida = !!(await em
       .getRepository(ActaInicio)
       .findOne({ where: { contratoId } }));
-    const estado = cumplida ? 'APROBADO' : 'BORRADOR';
 
-    const actividad = await em.getRepository(ProcesoActividad).findOne({
-      where: { procesoId, numeral: NUMERAL_ACTA_INICIO },
-    });
-
-    if (!actividad) {
-      await em.save(
-        em.create(ProcesoActividad, {
-          procesoId,
-          numeral: NUMERAL_ACTA_INICIO,
-          estado: estado as any,
-          datos: {},
-          ...(cumplida ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
-        }),
-      );
+    if (!cumplida) {
+      for (const numeral of numerales) {
+        const actividad = await em.getRepository(ProcesoActividad).findOne({
+          where: { procesoId, numeral },
+        });
+        if (!actividad) {
+          await em.save(
+            em.create(ProcesoActividad, {
+              procesoId,
+              numeral,
+              estado: 'BORRADOR' as any,
+              datos: {},
+            }),
+          );
+          continue;
+        }
+        actividad.estado = 'BORRADOR' as any;
+        actividad.revisadoPor = null;
+        actividad.revisadoAt = null;
+        await em.save(actividad);
+      }
       return;
     }
 
-    actividad.estado = estado as any;
-    actividad.revisadoPor = cumplida ? acceso.userName : null;
-    actividad.revisadoAt = cumplida ? new Date() : null;
-    await em.save(actividad);
+    const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+    for (const numeral of numerales) {
+      await this.cierre.resolverCierre(
+        em,
+        procesoId,
+        numeral,
+        proceso?.modalidad ?? null,
+        acceso,
+        firma,
+      );
+    }
   }
 
   private guardarDocumento(
@@ -329,11 +573,12 @@ export class ActaInicioService {
     archivo: ArchivoCargado,
     hash: string,
     acceso: HiringAccess,
+    numeral = NUMERAL_ACTA_INICIO,
   ) {
     return em.save(
       em.create(Documento, {
         expedienteId,
-        numeral: NUMERAL_ACTA_INICIO,
+        numeral,
         tipo: 'ADJUNTO',
         nombre,
         archivoUrl: `hiring/files/${archivo.filename}`,

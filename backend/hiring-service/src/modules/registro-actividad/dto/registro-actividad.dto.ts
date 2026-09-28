@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsIn,
   IsISO8601,
   IsNotEmpty,
   IsObject,
@@ -7,7 +9,32 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
+
+/**
+ * Evidencia de la firma con el token institucional (EFDS-2070).
+ *
+ * La verificó el auth-service, no este servicio: quien completa el OTP recibe
+ * de vuelta `fechaFirma`, `metodo` e `id` bajo su propia sesión, y esto es lo
+ * que la pantalla reenvía como comprobante de que ocurrió. El servicio de
+ * hiring no puede volver a validar el código —ya se consumió—, así que lo que
+ * controla es que la evidencia tenga la forma esperada y sea reciente.
+ */
+export class FirmaOtpDto {
+  @ApiProperty({ description: 'Identificador que devolvió el auth-service al verificar el OTP' })
+  @IsString()
+  @IsNotEmpty()
+  id: string;
+
+  @ApiProperty({ description: 'Momento en que se verificó el código OTP' })
+  @IsISO8601()
+  fechaFirma: string;
+
+  @ApiProperty({ description: 'Método de firma', example: 'OTP_EMAIL' })
+  @IsIn(['OTP_EMAIL'])
+  metodo: string;
+}
 
 export class RegistrarActividadDto {
   /**
@@ -42,6 +69,18 @@ export class RegistrarActividadDto {
   @IsOptional()
   @IsObject()
   datos?: Record<string, any>;
+
+  /**
+   * Solo si la actividad quedó configurada con `EXIGE_FIRMA`. Viaja como
+   * string en el multipart, igual que `datos`, así que se parsea antes de
+   * validarse contra `FirmaOtpDto`.
+   */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
 }
 
 export class AnularRegistroDto {

@@ -19,7 +19,7 @@ describe('PtaService - identificación institucional del docente en reportes', (
     return service;
   }
 
-  it('completa documento, escalafón, núcleo temático y territorial desde la ficha institucional cuando el PTA no los trae', async () => {
+  it('completa identificación y vinculación desde la ficha institucional cuando el PTA no las trae', async () => {
     const query = jest.fn().mockResolvedValue([{
       docente_id: 'docente-1',
       documento_identidad: '123456789',
@@ -27,6 +27,8 @@ describe('PtaService - identificación institucional del docente en reportes', (
       categoria_escalafon: 'Titular',
       nucleo_tematico: 'Administración Pública',
       territorial: 'Antioquia',
+      tipo_vinculacion: 'Período de prueba',
+      dedicacion: 'Tiempo completo',
     }]);
     const service = createService(query);
 
@@ -44,6 +46,8 @@ describe('PtaService - identificación institucional del docente en reportes', (
       escalafon: 'Titular',
       nucleo_tematico: 'Administración Pública',
       territorial: 'Antioquia',
+      tipo_vinculacion: 'Período de prueba',
+      dedicacion: 'Tiempo completo',
     });
     expect(query).toHaveBeenCalledTimes(1);
     expect(query.mock.calls[0][1]).toEqual([['docente-1']]);

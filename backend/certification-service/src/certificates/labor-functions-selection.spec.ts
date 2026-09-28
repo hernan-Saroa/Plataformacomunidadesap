@@ -9,6 +9,7 @@ import { LaborFunctionsService } from './labor-functions.service';
 describe('LaborFunctionsService.listAllForSelection', () => {
   const perfil = (index: number) => ({
     id: `profile-${index}`,
+    id_number: String(10000000 + index),
     position_code: '2028',
     grade_code: '12',
     combined_code: '202812',
@@ -41,6 +42,7 @@ describe('LaborFunctionsService.listAllForSelection', () => {
 
     const result = await service.listAllForSelection();
 
+    expect(service['profileRepo'].find).toHaveBeenCalledTimes(1);
     expect(result.total).toBe(250);
     expect(result.items).toHaveLength(250);
     // Sin ids repetidos entre páginas.
@@ -49,15 +51,15 @@ describe('LaborFunctionsService.listAllForSelection', () => {
 
   it('respeta el filtro de búsqueda', async () => {
     const profiles = [
-      { ...perfil(1), position_name: 'PROFESIONAL ESPECIALIZADO' },
-      { ...perfil(2), position_name: 'SECRETARIO EJECUTIVO', combined_code: '421015' },
+      { ...perfil(1), id_number: '12345678' },
+      { ...perfil(2), id_number: '99999999' },
     ];
     const service = buildService(profiles);
 
-    const result = await service.listAllForSelection({ search: 'secretario' });
+    const result = await service.listAllForSelection({ search: '9999' });
 
     expect(result.items).toHaveLength(1);
-    expect(result.items[0].position_name).toBe('SECRETARIO EJECUTIVO');
+    expect(result.items[0].id_number).toBe('99999999');
   });
 
   it('devuelve una forma compacta: sin el detalle de las funciones', async () => {
@@ -68,8 +70,8 @@ describe('LaborFunctionsService.listAllForSelection', () => {
     expect(result.items[0]).not.toHaveProperty('functions');
     // Pero sí los totales que muestra la confirmación de borrado.
     expect(result.items[0].function_count).toBe(2);
-    expect(result.items[0]).toHaveProperty('association_count');
-    expect(result.items[0]).toHaveProperty('combined_code');
+    expect(result.items[0]).not.toHaveProperty('association_count');
+    expect(result.items[0]).toHaveProperty('id_number');
   });
 
   it('no falla cuando no hay perfiles', async () => {

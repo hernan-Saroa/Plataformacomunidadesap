@@ -47,13 +47,13 @@ rm -f "$CLEAN_ENV"
 if ! command -v psql >/dev/null 2>&1; then
   # Fallback para macOS
   PSQL_FALLBACK="/Applications/Postgres.app/Contents/Versions/16/bin/psql"
-  PSQL_WINDOWS_18="/c/Program Files/PostgreSQL/18/bin/psql"
-  PSQL_WINDOWS_17="/c/Program Files/PostgreSQL/17/bin/psql"
+  PSQL_WINDOWS_18="/c/Program Files/PostgreSQL/18/bin"
+  PSQL_WINDOWS_17="/c/Program Files/PostgreSQL/17/bin"
   if [ -x "$PSQL_FALLBACK" ]; then
     export PATH="/Applications/Postgres.app/Contents/Versions/16/bin:$PATH"
-  elif [ -x "$PSQL_WINDOWS_18" ]; then
+  elif [ -d "$PSQL_WINDOWS_18" ]; then
     export PATH="/c/Program Files/PostgreSQL/18/bin:$PATH"
-  elif [ -x "$PSQL_WINDOWS_17" ]; then
+  elif [ -d "$PSQL_WINDOWS_17" ]; then
     export PATH="/c/Program Files/PostgreSQL/17/bin:$PATH"
   else
     echo "Error: psql no encontrado. Instala Postgres CLI o agrega psql al PATH."

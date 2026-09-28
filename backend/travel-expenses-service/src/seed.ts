@@ -11,6 +11,7 @@ import { ConfigTipoComisionadoDocumentoEntity } from './entities/config/config-t
 import { EscalaViaticoEntity } from './entities/liquidation/escala-viatico.entity';
 import { TarifaInvestigadorEntity } from './entities/liquidation/tarifa-investigador.entity';
 import { TarifaRegionalExcepcionEntity } from './entities/liquidation/tarifa-regional-excepcion.entity';
+import { TarifaTransporteTerminalEntity } from './entities/liquidation/tarifa-transporte-terminal.entity';
 import { LiquidationParamEntity } from './entities/liquidation/liquidation-param.entity';
 
 async function seed() {
@@ -423,10 +424,161 @@ async function seed() {
           orden: 12,
           activo: true,
         },
+        // ── Campos dinámicos por tipo de comisionado ────────────────────────
+        {
+          clave: 'numeroContrato',
+          etiqueta: 'Número de Contrato',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. C-2024-001 (contrato SECOP)',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 13,
+          activo: true,
+        },
+        {
+          clave: 'cargoEsap',
+          etiqueta: 'Cargo / Rol ESAP',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. Asesor Jurídico, Coordinador de Área...',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 14,
+          activo: true,
+        },
+        {
+          clave: 'rolEsap',
+          etiqueta: 'Rol ESAP',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. Docente Capacitador, Catedrático, Investigador...',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 15,
+          activo: true,
+        },
       ] as any);
 
       await campoRepo.save(campos);
       console.log(`✅ ${campos.length} campos de formulario creados.`);
+    } else {
+      const nuevosCampos = [
+        {
+          clave: 'numeroContrato',
+          etiqueta: 'Número de Contrato',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. C-2024-001 (contrato SECOP)',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 13,
+          activo: true,
+        },
+        {
+          clave: 'cargoEsap',
+          etiqueta: 'Cargo / Rol ESAP',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. Asesor Jurídico, Coordinador de Área...',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 14,
+          activo: true,
+        },
+        {
+          clave: 'rolEsap',
+          etiqueta: 'Rol ESAP',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. Docente Capacitador, Catedrático, Investigador...',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 15,
+          activo: true,
+        },
+        {
+          clave: 'fechaNacimiento',
+          etiqueta: 'Fecha de Nacimiento',
+          tipoCampo: 'DATE',
+          placeholder: 'DD/MM/AAAA',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 16,
+          activo: true,
+        },
+        {
+          clave: 'entidadBancaria',
+          etiqueta: 'Entidad Bancaria',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. BANCOLOMBIA',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 17,
+          activo: true,
+        },
+        {
+          clave: 'tipoCuenta',
+          etiqueta: 'Tipo de Cuenta',
+          tipoCampo: 'SELECT',
+          placeholder: 'Seleccione tipo de cuenta',
+          opciones: ['Ahorros', 'Corriente'],
+          grupo: 'comisionado',
+          orden: 18,
+          activo: true,
+        },
+        {
+          clave: 'numeroCuenta',
+          etiqueta: 'No. de Cuenta',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. 33596027216',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 19,
+          activo: true,
+        },
+        {
+          clave: 'ciudadOrigen',
+          etiqueta: 'Ciudad de Origen',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. Bogotá',
+          opciones: null,
+          grupo: 'comision',
+          orden: 20,
+          activo: true,
+        },
+        {
+          clave: 'aeropuertoDestino',
+          etiqueta: 'Aeropuerto Destino',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. Aeropuerto Alfredo Vásquez Cobo',
+          opciones: null,
+          grupo: 'comision',
+          orden: 21,
+          activo: true,
+        },
+        {
+          clave: 'horaVueloIda',
+          etiqueta: 'Hora de vuelo ida (estimada)',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. 8:00',
+          opciones: null,
+          grupo: 'comision',
+          orden: 22,
+          activo: true,
+        },
+        {
+          clave: 'horaVueloRegreso',
+          etiqueta: 'Hora de vuelo regreso (estimada)',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. 17:00',
+          opciones: null,
+          grupo: 'comision',
+          orden: 23,
+          activo: true,
+        },
+      ];
+      for (const nc of nuevosCampos) {
+        const existe = await campoRepo.findOne({ where: { clave: nc.clave } });
+        if (!existe) {
+          await campoRepo.save(campoRepo.create(nc as any));
+          console.log(`➕ Campo de formulario '${nc.clave}' agregado al catálogo.`);
+        }
+      }
     }
 
     const existingTiposDoc = await dataSource
@@ -489,9 +641,10 @@ async function seed() {
             'montoGastosViaje',
             'diasComision',
             'requiereTiquetes',
+            'cargoEsap',
           ],
           camposOpcionales: ['prioridad'],
-          camposOcultos: [],
+          camposOcultos: ['numeroContrato', 'rolEsap'],
           activo: true,
         },
         {
@@ -509,9 +662,10 @@ async function seed() {
             'montoGastosViaje',
             'diasComision',
             'requiereTiquetes',
+            'numeroContrato',
           ],
           camposOpcionales: ['prioridad'],
-          camposOcultos: [],
+          camposOcultos: ['cargoEsap', 'rolEsap'],
           activo: true,
         },
         {
@@ -529,9 +683,10 @@ async function seed() {
             'montoGastosViaje',
             'diasComision',
             'requiereTiquetes',
+            'rolEsap',
           ],
           camposOpcionales: ['prioridad'],
-          camposOcultos: [],
+          camposOcultos: ['numeroContrato', 'cargoEsap'],
           activo: true,
         },
         {
@@ -550,7 +705,7 @@ async function seed() {
             'diasComision',
           ],
           camposOpcionales: ['prioridad', 'requiereTiquetes'],
-          camposOcultos: [],
+          camposOcultos: ['numeroContrato', 'cargoEsap', 'rolEsap'],
           activo: true,
         },
         {
@@ -568,9 +723,10 @@ async function seed() {
             'montoGastosViaje',
             'diasComision',
             'requiereTiquetes',
+            'rolEsap',
           ],
           camposOpcionales: ['prioridad'],
-          camposOcultos: [],
+          camposOcultos: ['numeroContrato', 'cargoEsap'],
           activo: true,
         },
         {
@@ -590,7 +746,7 @@ async function seed() {
             'requiereTiquetes',
           ],
           camposOpcionales: ['prioridad'],
-          camposOcultos: [],
+          camposOcultos: ['numeroContrato', 'cargoEsap', 'rolEsap'],
           activo: true,
         },
       ]);
@@ -741,6 +897,79 @@ async function seed() {
         console.log(
           `✅ ${relaciones.length} relaciones documento-configuración creadas.`,
         );
+      }
+    } else {
+      // Si ya existen configuraciones, actualizar los campos obligatorios y ocultos para cada tipo
+      const configsExistentes = await configRepo.find();
+      for (const cfg of configsExistentes) {
+        let modificado = false;
+        const obl = new Set(cfg.camposObligatorios || []);
+        const ocu = new Set(cfg.camposOcultos || []);
+
+        if (cfg.tipoComisionado === 'FUNCIONARIO') {
+          if (!obl.has('cargoEsap')) {
+            obl.add('cargoEsap');
+            modificado = true;
+          }
+          if (!ocu.has('numeroContrato')) {
+            ocu.add('numeroContrato');
+            modificado = true;
+          }
+          if (!ocu.has('rolEsap')) {
+            ocu.add('rolEsap');
+            modificado = true;
+          }
+        } else if (cfg.tipoComisionado === 'CONTRATISTA') {
+          if (!obl.has('numeroContrato')) {
+            obl.add('numeroContrato');
+            modificado = true;
+          }
+          if (!ocu.has('cargoEsap')) {
+            ocu.add('cargoEsap');
+            modificado = true;
+          }
+          if (!ocu.has('rolEsap')) {
+            ocu.add('rolEsap');
+            modificado = true;
+          }
+        } else if (
+          cfg.tipoComisionado === 'DOCENTE' ||
+          cfg.tipoComisionado === 'INVESTIGADOR'
+        ) {
+          if (!obl.has('rolEsap')) {
+            obl.add('rolEsap');
+            modificado = true;
+          }
+          if (!ocu.has('numeroContrato')) {
+            ocu.add('numeroContrato');
+            modificado = true;
+          }
+          if (!ocu.has('cargoEsap')) {
+            ocu.add('cargoEsap');
+            modificado = true;
+          }
+        } else {
+          // ESTUDIANTE / DEFAULT
+          if (!ocu.has('numeroContrato')) {
+            ocu.add('numeroContrato');
+            modificado = true;
+          }
+          if (!ocu.has('cargoEsap')) {
+            ocu.add('cargoEsap');
+            modificado = true;
+          }
+          if (!ocu.has('rolEsap')) {
+            ocu.add('rolEsap');
+            modificado = true;
+          }
+        }
+
+        if (modificado) {
+          cfg.camposObligatorios = Array.from(obl);
+          cfg.camposOcultos = Array.from(ocu);
+          await configRepo.save(cfg);
+          console.log(`🔄 Configuración actualizada para '${cfg.tipoComisionado}'.`);
+        }
       }
     }
 
@@ -911,18 +1140,32 @@ async function seed() {
       );
     }
 
+    const existingTransporte = await dataSource
+      .getRepository(TarifaTransporteTerminalEntity)
+      .count();
+    if (existingTransporte === 0) {
+      await dataSource.getRepository(TarifaTransporteTerminalEntity).save([
+        { ciudad: 'ANTIOQUIA', ciudadAeropuerto: 'ANTIOQUIA (Rionegro)', valorMaximo: 162634, activo: true },
+        { ciudad: 'ATLANTICO', ciudadAeropuerto: 'ATLANTICO (Soledad)', valorMaximo: 130704, activo: true },
+        { ciudad: 'CORDOBA', ciudadAeropuerto: 'CORDOBA (Los Garzones)', valorMaximo: 118731, activo: true },
+        { ciudad: 'MAGDALENA', ciudadAeropuerto: 'MAGDALENA (Santa Marta)', valorMaximo: 129708, activo: true },
+        { ciudad: 'NARIÑO', ciudadAeropuerto: 'NARIÑO (Chachagui)', valorMaximo: 186581, activo: true },
+        { ciudad: 'Otros', ciudadAeropuerto: 'Otros', valorMaximo: 50689, activo: true },
+        { ciudad: 'PUTUMAYO', ciudadAeropuerto: 'PUTUMAYO (Puerto Asís)', valorMaximo: 93788, activo: true },
+        { ciudad: 'QUINDIO (ARMENIA)', ciudadAeropuerto: 'QUNDIO (La Tebaida)', valorMaximo: 186581, activo: true },
+        { ciudad: 'SANTANDER', ciudadAeropuerto: 'SANTANDER (Lebrija)', valorMaximo: 186581, activo: true },
+        { ciudad: 'SUCRE', ciudadAeropuerto: 'SUCRE (Corozal)', valorMaximo: 162634, activo: true },
+        { ciudad: 'VALLE DEL CAUCA', ciudadAeropuerto: 'VALLE DEL CAUCA (Palmira)', valorMaximo: 186581, activo: true },
+      ]);
+      console.log(`✅ 11 tarifas de transporte a terminales aéreos creadas.`);
+    }
+
     const existingParams = await dataSource
       .getRepository(LiquidationParamEntity)
       .count();
     if (existingParams === 0) {
       await dataSource.getRepository(LiquidationParamEntity).save([
         {
-          clave: 'SMMLV_2026',
-          valor: '1423500',
-          tipo: 'NUMBER',
-          descripcion: 'Salario mínimo mensual vigente 2026',
-        },
-        {
           clave: 'FACTOR_CONTRATISTA',
           valor: '0.8',
           tipo: 'NUMBER',
@@ -945,17 +1188,19 @@ async function seed() {
           valor: '5',
           tipo: 'NUMBER',
           descripcion: 'Tiempo de vida del caché en memoria',
+        },
+        {
+          clave: 'TARIFA_TERMINAL_AEREO',
+          valor: '162634',
+          tipo: 'NUMBER',
+          descripcion:
+            'Total transporte y desplazamientos terminales aéreos (Resolución de viáticos vigente)',
         },
       ]);
       console.log(`✅ ${existingParams} parámetros de liquidación creados.`);
     } else {
-      await dataSource.getRepository(LiquidationParamEntity).save([
-        {
-          clave: 'SMMLV_2026',
-          valor: '1423500',
-          tipo: 'NUMBER',
-          descripcion: 'Salario mínimo mensual vigente 2026',
-        },
+      const paramRepo = dataSource.getRepository(LiquidationParamEntity);
+      const paramsToUpdate = [
         {
           clave: 'FACTOR_CONTRATISTA',
           valor: '0.8',
@@ -980,10 +1225,47 @@ async function seed() {
           tipo: 'NUMBER',
           descripcion: 'Tiempo de vida del caché en memoria',
         },
-      ]);
+        {
+          clave: 'TARIFA_TERMINAL_AEREO',
+          valor: '162634',
+          tipo: 'NUMBER',
+          descripcion:
+            'Total transporte y desplazamientos terminales aéreos (Resolución de viáticos vigente)',
+        },
+      ];
+      for (const p of paramsToUpdate) {
+        const existing = await paramRepo.findOne({ where: { clave: p.clave } });
+        if (existing) {
+          existing.valor = p.valor;
+          existing.descripcion = p.descripcion;
+          await paramRepo.save(existing);
+        } else {
+          await paramRepo.save(paramRepo.create(p));
+        }
+      }
       console.log(
         `🔄 ${existingParams} parámetros de liquidación actualizados.`,
       );
+    }
+
+    const existingTerminales = await dataSource
+      .getRepository(TarifaTransporteTerminalEntity)
+      .count();
+    if (existingTerminales === 0) {
+      await dataSource.getRepository(TarifaTransporteTerminalEntity).save([
+        { departamento: 'Antioquia', departamentoId: 5, ciudad: 'ANTIOQUIA', ciudadAeropuerto: 'ANTIOQUIA (Rionegro)', valorMaximo: 162634, activo: true },
+        { departamento: 'Atlántico', departamentoId: 8, ciudad: 'ATLANTICO', ciudadAeropuerto: 'ATLANTICO (Soledad)', valorMaximo: 130704, activo: true },
+        { departamento: 'Córdoba', departamentoId: 23, ciudad: 'CORDOBA', ciudadAeropuerto: 'CORDOBA (Los Garzones)', valorMaximo: 118731, activo: true },
+        { departamento: 'Magdalena', departamentoId: 47, ciudad: 'MAGDALENA', ciudadAeropuerto: 'MAGDALENA (Santa Marta)', valorMaximo: 129708, activo: true },
+        { departamento: 'Nariño', departamentoId: 52, ciudad: 'NARIÑO', ciudadAeropuerto: 'NARIÑO (Chachagui)', valorMaximo: 186581, activo: true },
+        { departamento: 'Otros', departamentoId: null, ciudad: 'Otros', ciudadAeropuerto: 'Otros', valorMaximo: 50689, activo: true },
+        { departamento: 'Putumayo', departamentoId: 86, ciudad: 'PUTUMAYO', ciudadAeropuerto: 'PUTUMAYO (Puerto Asís)', valorMaximo: 93788, activo: true },
+        { departamento: 'Quindío', departamentoId: 63, ciudad: 'QUINDIO (ARMENIA)', ciudadAeropuerto: 'QUNDIO (La Tebaida)', valorMaximo: 186581, activo: true },
+        { departamento: 'Santander', departamentoId: 68, ciudad: 'SANTANDER', ciudadAeropuerto: 'SANTANDER (Lebrija)', valorMaximo: 186581, activo: true },
+        { departamento: 'Sucre', departamentoId: 70, ciudad: 'SUCRE', ciudadAeropuerto: 'SUCRE (Corozal)', valorMaximo: 162634, activo: true },
+        { departamento: 'Valle del Cauca', departamentoId: 76, ciudad: 'VALLE DEL CAUCA', ciudadAeropuerto: 'VALLE DEL CAUCA (Palmira)', valorMaximo: 186581, activo: true },
+      ]);
+      console.log('✅ Tarifas de transporte a terminales aéreos creadas.');
     }
 
     console.log('\n🎉 Seed finalizado correctamente.');

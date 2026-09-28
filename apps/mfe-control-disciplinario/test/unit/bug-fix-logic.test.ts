@@ -17,15 +17,16 @@ function canUserSendJuridica(
   roles: (string | { code: string })[],
   permissions: string[]
 ): boolean {
+  const hasSendJuridicaPerm = permissions.includes('control-disciplinario.procesos.send_to_juridica');
+  const hasEsRadicadorPerm = permissions.includes('control-disciplinario.es_radicador');
   const roleCodes = roles.map(r => (typeof r === 'string' ? r : r?.code));
   const isSuperAdmin = roleCodes.includes('SUPER_ADMIN');
   const isAdmin = roleCodes.includes('ADMIN');
-  const isRadicador = roleCodes.some(
+  const isRadicador = hasEsRadicadorPerm || roleCodes.some(
     r => r === 'SECRETARIA_RADICADOR' || r === 'RADICADOR_DISCIPLINARIO' || r === 'RADICADOR'
   );
-  const hasPermission = permissions.includes('control-disciplinario.procesos.send_to_juridica');
 
-  return hasPermission || isSuperAdmin || isAdmin || isRadicador;
+  return hasSendJuridicaPerm || hasEsRadicadorPerm || isSuperAdmin || isAdmin || isRadicador;
 }
 
 // Detection of Pliego de Cargos autos
@@ -151,6 +152,7 @@ describe('Pliego auto detection - esPliegoAuto', () => {
 // Helper implementing the new robust isSecretarioRadicadorUser logic
 function checkIsSecretarioRadicador(user: any): boolean {
   if (!user) return false;
+  if (user?.permissions?.includes('control-disciplinario.es_radicador')) return true;
   const rawRoles = [
     ...(Array.isArray(user?.roles) ? user.roles : user?.roles ? [user.roles] : []),
     ...(Array.isArray(user?.person?.roles) ? user.person.roles : []),
@@ -237,6 +239,10 @@ function canDragInKanban(
 }
 
 describe('Secretario/Radicador Role Detection - checkIsSecretarioRadicador', () => {
+  it('detects permission "control-disciplinario.es_radicador"', () => {
+    expect(checkIsSecretarioRadicador({ permissions: ['control-disciplinario.es_radicador'] })).toBe(true);
+  });
+
   it('detects string role "SECRETARIA_RADICADOR"', () => {
     expect(checkIsSecretarioRadicador({ roles: ['SECRETARIA_RADICADOR'] })).toBe(true);
   });

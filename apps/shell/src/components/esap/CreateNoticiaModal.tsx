@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { disciplinaryService, DisciplinaryBehavior } from '../../services/api/disciplinary.service';
 import { authService } from '../../services/api/authService';
 import { estructuraService } from '../../services/api/estructura.service';
+import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 // ✅ NUEVO: Interface para Apoderado
 interface Apoderado {
@@ -221,9 +222,8 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   // adicionales. La conducta que puso el Radicador queda fija (no removible).
   const esJefeEditandoConductas =
     Boolean(isEditMode) &&
-    (authService.hasRole('JEFE_DE_LA_OCID') ||
-      authService.hasRole('JEFE_OCID') ||
-      authService.hasRole('SUPER_ADMIN'));
+    (authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) ||
+      authService.isSuperAdmin());
 
   const conductasDesdeNoticia = (): string[] =>
     Array.isArray(noticiaToEdit?.conductas)

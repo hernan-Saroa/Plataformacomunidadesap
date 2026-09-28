@@ -396,7 +396,16 @@ El estudio previo no se podrá aprobar ni devolver hasta que elijas a otro, y el
                     {h.nombre}
                     <span className="font-normal text-slate-400">
                       {' · '}
-                      {h.papel === 'ABOGADO' ? 'abogado' : 'contratación'}
+                      {/* Un mapa y no un ternario: con tres papeles, «el que no
+                          es abogado» dejó de significar contratación, y un
+                          financiero relevado se mostraba con el papel de otro. */}
+                      {
+                        {
+                          ABOGADO: 'abogado',
+                          CONTRATACION: 'contratación',
+                          FINANCIERA: 'financiera',
+                        }[h.papel]
+                      }
                     </span>
                   </p>
                   <p className="text-[11px] text-slate-500 m-0 mt-0.5 leading-relaxed break-words">

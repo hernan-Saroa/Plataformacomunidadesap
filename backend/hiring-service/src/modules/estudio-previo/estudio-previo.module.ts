@@ -20,9 +20,15 @@ import { Plantilla } from '../../entities/plantilla.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { UmbralesModule } from '../umbrales/umbrales.module';
 import { AprobacionModule } from '../aprobacion/aprobacion.module';
+import { CdpModule } from '../cdp/cdp.module';
+import { DocumentosActividadModule } from '../documentos-actividad/documentos-actividad.module';
+import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.module';
 
 @Module({
   imports: [
+    // Aprobar la 3.4 cierra la revisión, y con ella puede cerrarse la etapa 3:
+    // la solicitud de CDP se radica sola en ese momento.
+    CdpModule,
     // La creación del proceso valida la modalidad contra los umbrales vigentes.
     UmbralesModule,
     // El envio consulta si alguien revisa la 3.1 antes de dejarla en revision.
@@ -37,6 +43,11 @@ import { AprobacionModule } from '../aprobacion/aprobacion.module';
     // La 3.4 la resuelve el abogado asignado en la 3.3, así que hay que saber
     // quién es antes de aceptar una decisión.
     ParticipacionModule,
+    // Enviar el estudio previo es radicar en la Dirección de Contratación, y
+    // el procedimiento manda remitir con él los documentos de la lista de
+    // chequeo que la modalidad exija: los de la 3.1 en el catálogo único.
+    DocumentosActividadModule,
+    CierreActividadModule,
   ],
   controllers: [EstudioPrevioController, ModalidadesController, PersonasController, FilesController],
   providers: [EstudioPrevioService],

@@ -35,11 +35,34 @@ import controlInternoService from '../../../services/api/controlInternoService';
 import { useIntegracionAuditoriaPlanes, type AuditoriaParaPlan, type HallazgoAuditoria } from './IntegracionAuditoriasPlanesContext';
 import { exportarPDFInformeCierre } from './services/exportarPDFInformeCierreEjecutivo';
 import { configuracionesProfesionalesOCIApi } from './services/api';
+import { API_MODE, getDefaultHeaders, getServiceUrl } from '../../../config/environment';
+import { VisorOnlyOffice } from './VisorOnlyOffice';
+import { onlyOfficePuedeAbrir } from './services/onlyofficeVisor';
+import { esAuditoriaTerritorial, nombreDireccionTerritorial, nombreUnidadAuditada } from './services/unidadAuditada';
 
 
 // ====================================
 // TIPOS Y DATOS
 // ====================================
+
+/** URL del soporte del hallazgo para verlo o descargarlo (endpoints /documentos/:id/preview y /download). */
+function urlDocumento(idOrUrl: string, accion: 'preview' | 'download'): string {
+  if (/^https?:\/\//i.test(idOrUrl)) return idOrUrl;
+  const base = API_MODE === 'gateway'
+    ? `${getServiceUrl('control-institucional')}/control-institucional/api/v1/documentos`
+    : `${getServiceUrl('control-institucional')}/documentos`;
+  return `${base}/${encodeURIComponent(idOrUrl)}/${accion}`;
+}
+
+/** Nombre del soporte del auditado legible en los informes (corrige tildes mal codificadas). */
+function nombreSoporteLegible(nombre?: string): string | undefined {
+  if (!nombre) return undefined;
+  try {
+    return decodeURIComponent(escape(nombre));
+  } catch {
+    return nombre;
+  }
+}
 
 interface Auditoria {
   id: string;
@@ -121,6 +144,26 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
   const rApertura = reuniones.find((r: any) => r.tipo?.toLowerCase()?.includes('apertura'));
   const rCierre = reuniones.find((r: any) => r.tipo?.toLowerCase()?.includes('cierre'));
 
+  // El oficio se dirige al Responsable del Área Auditada que se registra en el
+  // paso 2 (EFDS-1090). El campo viejo "responsable" se sigue mirando de último
+  // porque en las auditorías antiguas quedó con identificadores, textos de
+  // relleno y hasta el propio auditor líder, que era lo que salía en el informe.
+  const nombreDePersona = (valor?: unknown): string => {
+    const texto = typeof valor === 'string' ? valor.trim() : '';
+    if (!texto.includes(' ')) return '';
+    if (/^(por|sin|no)\s+(asignar|asignado|asignada|registrado)$/i.test(texto)) return '';
+    return texto;
+  };
+  const responsableDelArea =
+    nombreDePersona((auditoria as any).responsableArea?.nombre) ||
+    nombreDePersona((auditoria as any).responsableAreaNombre) ||
+    nombreDePersona((auditoria as any).responsableUnidad);
+  const responsableHeredado = nombreDePersona((auditoria as any).responsable);
+  const responsableAuditado =
+    responsableDelArea ||
+    (responsableHeredado !== auditorLiderNombre ? responsableHeredado : '') ||
+    undefined;
+
   return {
     codigo: auditoria.codigo,
     nombre: auditoria.nombre,
@@ -128,9 +171,18 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
     auditorLider: auditorLiderNombre,
     radicado: (auditoria as any).radicado,
     fechaOficio: informe?.fecha,
-    destinatarioNombre: (auditoria as any).responsable || (auditoria as any).responsableUnidad || (auditoria as any).responsableArea?.nombre,
+    destinatarioNombre: responsableAuditado,
     destinatarioCargo: (auditoria as any).cargo || (auditoria as any).responsableAreaCargo || (auditoria as any).responsableArea?.cargo || 'Director(a) Territorial',
-    unidadAuditable: (auditoria as any).areaAuditable || (auditoria as any).areaResponsable || (auditoria as any).areaAuditada || (auditoria as any).territorial || auditoria.nombre,
+    // A quién se audita: en las auditorías de una territorial el oficio la nombra
+    // a ella, "Dirección Territorial Antioquia", y no el área genérica ni el
+    // nombre de la auditoría, que era lo que salía antes (EFDS-1090).
+    unidadAuditable: esAuditoriaTerritorial((auditoria as any).territorial)
+      ? nombreDireccionTerritorial((auditoria as any).territorial)
+      : nombreUnidadAuditada(
+          (auditoria as any).areaAuditable || (auditoria as any).areaResponsable || (auditoria as any).areaAuditada || auditoria.nombre,
+          (auditoria as any).territorial,
+        ),
+    territorial: (auditoria as any).territorial,
     fechaLimitePronunciamiento: (auditoria as any).fechaLimitePronunciamiento,
     jefeOCI: (auditoria as any).jefeOCI || (auditoria as any).reviso || jefeOCIDefault,
     // Elaboró: líder + resto del equipo
@@ -139,7 +191,7 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
       ...((auditoria as any).equipoAuditores?.slice?.(1) || []).map((a: any) => typeof a === 'string' ? a : a?.nombreCompleto || a?.nombre || a?.persona?.nombre || a?.name).filter(Boolean),
     ].filter(Boolean).join(' / '),
     tituloAuditoria: auditoria.nombre,
-    responsableUnidadAuditada: (auditoria as any).responsable || (auditoria as any).responsableUnidad || (auditoria as any).responsableArea?.nombre,
+    responsableUnidadAuditada: responsableAuditado,
     // Lugar de ejecución: campo explícito > sede > territorial
     lugarEjecucion: (auditoria as any).lugarEjecucion || (auditoria as any).sede || (auditoria as any).territorial,
     // Fechas de ejecución de la auditoría (cuándo se realizó)
@@ -213,6 +265,7 @@ const mapearAuditoriaParaPDF = (auditoria: Auditoria, informe?: any) => {
     aspectosRelevantes: (auditoria as any).aspectosRelevantes,
     evaluacionControlInterno: (auditoria as any).evaluacionControlInterno,
     fortalezas: (auditoria as any).fortalezas,
+    conclusiones: (auditoria as any).conclusiones,
     recomendacionesPorCategoria: (auditoria as any).recomendacionesPorCategoria,
     riesgosIdentificados: (auditoria as any).riesgosIdentificados,
     riesgosAsociados: (auditoria as any).riesgosAsociados,
@@ -609,6 +662,11 @@ export const ComunicacionAuditoriaModule: React.FC<{
           ...(audData.focos && { focos: audData.focos }),
           ...(audData.fortalezas && { fortalezas: audData.fortalezas }),
           ...(audData.recomendacionesPorCategoria && { recomendacionesPorCategoria: audData.recomendacionesPorCategoria }),
+          // Recomendaciones generales y conclusiones registradas en Ejecución (EFDS-1636)
+          ...(!audData.recomendacionesPorCategoria?.length && audData.recomendacionesGenerales?.length && {
+            recomendacionesPorCategoria: [{ categoria: 'Recomendaciones generales', items: audData.recomendacionesGenerales }],
+          }),
+          ...(audData.conclusiones && { conclusiones: audData.conclusiones }),
           ...(audData.fechaReunionApertura && { fechaReunionApertura: audData.fechaReunionApertura }),
           ...(audData.fechaReunionCierre && { fechaReunionCierre: audData.fechaReunionCierre }),
           reuniones: reunionesArr,
@@ -722,8 +780,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
       if ((auditoriaFinal as any).hallazgos && hallazgosParaPDF.length === 0) {
         hallazgosParaPDF = (auditoriaFinal as any).hallazgos;
       }
-      if (!informePreliminar.observaciones && contenidoIA.conclusiones) {
-        informeFinalTmp = { ...informeFinalTmp, observaciones: contenidoIA.conclusiones };
+      if (!informePreliminar.observaciones && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+        informeFinalTmp = { ...informeFinalTmp, observaciones: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
       }
       toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen' });
     } catch {
@@ -749,6 +807,9 @@ export const ComunicacionAuditoriaModule: React.FC<{
       estadoFinal: h.estado,
       decisionAuditor: h.decisionAuditor,
       fundamentacionTecnica: (h as any).fundamentacionTecnica,
+      respuestaAuditado: h.observacionesControversia || h.argumentosControversia,
+      soporteAuditado: nombreSoporteLegible(h.documentoControversiaNombre),
+      fechaDecision: h.fechaDecision,
     }));
     const { generarContenidoInformeIA, aplicarContenidoIA } = await import('./services/generarContenidoInformeIA');
     
@@ -765,8 +826,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
       auditoriaFinal = aplicarContenidoIA(auditoriaBase, contenidoIA);
       
       let informeFinalMapeado = { ...informeFinal };
-      if (!informeFinal.observacionesFinales && contenidoIA.conclusiones) {
-        informeFinalMapeado = { ...informeFinalMapeado, observacionesFinales: contenidoIA.conclusiones };
+      if (!informeFinal.observacionesFinales && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+        informeFinalMapeado = { ...informeFinalMapeado, observacionesFinales: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
       }
 
       toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen-final' });
@@ -975,8 +1036,11 @@ export const ComunicacionAuditoriaModule: React.FC<{
   const handleDescargarDocumentoControversia = async (url: string, nombre: string) => {
     try {
       toast.loading('Descargando documento...', { id: 'descarga-doc' });
-      const safeUrl = encodeURI(url);
-      const blob = await controlInternoService.downloadDocumento(safeUrl);
+      // El servicio compartido de este microfrontend no tiene descarga de documentos:
+      // se descarga directo del endpoint, igual que en el expediente.
+      const res = await fetch(urlDocumento(url, 'download'), { headers: getDefaultHeaders() });
+      if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status} al descargar`);
+      const blob = await res.blob();
       const windowUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = windowUrl;
@@ -988,7 +1052,8 @@ export const ComunicacionAuditoriaModule: React.FC<{
       toast.success('Documento descargado con éxito', { id: 'descarga-doc' });
     } catch (error) {
       console.error('Error descargando documento:', error);
-      toast.error('No se pudo descargar el documento', { id: 'descarga-doc' });
+      const detalle = error instanceof Error ? error.message : '';
+      toast.error('No se pudo descargar el documento', { id: 'descarga-doc', description: detalle || undefined });
     }
   };
 
@@ -1601,7 +1666,12 @@ const SeccionInformePreliminar: React.FC<{
       </CardSIGL>
 
       {/* Riesgos Identificados del Proceso */}
-      {((auditoria as any).riesgosIdentificados?.length > 0 || (auditoria as any).objetivo) && (
+      {((auditoria as any).riesgosIdentificados?.length > 0
+        || (auditoria as any).objetivo
+        // Resultados registrados en Ejecución (EFDS-1636)
+        || (auditoria as any).fortalezas?.length > 0
+        || (auditoria as any).recomendacionesPorCategoria?.length > 0
+        || (auditoria as any).conclusiones) && (
         <CardSIGL className={embedded ? '!border !border-gray-200 !shadow-none' : ''}>
           <div className={embedded ? 'p-4' : 'p-6'}>
             <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -1669,6 +1739,13 @@ const SeccionInformePreliminar: React.FC<{
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {(auditoria as any).conclusiones && (
+              <div className="mt-4">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-2">Conclusiones registradas en Ejecución</span>
+                <p className="text-[13px] text-gray-700 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-100 whitespace-pre-wrap">{(auditoria as any).conclusiones}</p>
               </div>
             )}
           </div>
@@ -1825,11 +1902,23 @@ const SeccionGestionHallazgos: React.FC<{
     }
   };
 
+  // Visor del soporte de la controversia (EFDS-1080)
+  const [soporteVisor, setSoporteVisor] = useState<{ id: string; nombre: string } | null>(null);
+  const [soporteFallo, setSoporteFallo] = useState<string | null>(null);
+
+  const abrirSoporteControversia = (id: string, nombre: string) => {
+    setSoporteFallo(null);
+    setSoporteVisor({ id, nombre });
+  };
+
   const handleDescargarDocumentoControversia = async (url: string, nombre: string) => {
     try {
       toast.loading('Descargando documento...', { id: 'descarga-doc' });
-      const safeUrl = encodeURI(url);
-      const blob = await controlInternoService.downloadDocumento(safeUrl);
+      // El servicio compartido de este microfrontend no tiene descarga de documentos:
+      // se descarga directo del endpoint, igual que en el expediente.
+      const res = await fetch(urlDocumento(url, 'download'), { headers: getDefaultHeaders() });
+      if (!res.ok) throw new Error(res.status === 401 ? 'No autorizado' : `Error ${res.status} al descargar`);
+      const blob = await res.blob();
       const windowUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = windowUrl;
@@ -1841,7 +1930,8 @@ const SeccionGestionHallazgos: React.FC<{
       toast.success('Documento descargado con éxito', { id: 'descarga-doc' });
     } catch (error) {
       console.error('Error descargando documento:', error);
-      toast.error('No se pudo descargar el documento', { id: 'descarga-doc' });
+      const detalle = error instanceof Error ? error.message : '';
+      toast.error('No se pudo descargar el documento', { id: 'descarga-doc', description: detalle || undefined });
     }
   };
 
@@ -1953,11 +2043,29 @@ const SeccionGestionHallazgos: React.FC<{
                         </div>
                       )}
                       {hallazgo.documentoControversiaNombre && (
-                        <div className="pt-2">
+                        <div className="pt-2 flex flex-wrap items-center gap-2">
                           <Button
                             variant="outline"
                             size="sm"
-                            className="text-sm font-medium bg-white text-gray-700 border-gray-300 hover:bg-green-600 shadow-sm"
+                            className="text-sm font-medium bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-[#003DA5] hover:border-[#003DA5] shadow-sm"
+                            onClick={() => {
+                              if (hallazgo.documentoControversiaUrl) {
+                                abrirSoporteControversia(
+                                  hallazgo.documentoControversiaUrl,
+                                  fixEncoding(hallazgo.documentoControversiaNombre) || 'documento',
+                                );
+                              } else {
+                                toast.error('El enlace del documento no está disponible.');
+                              }
+                            }}
+                          >
+                            <Eye className="w-4 h-4 mr-2" />
+                            <span className="truncate max-w-[200px] sm:max-w-xs">{fixEncoding(hallazgo.documentoControversiaNombre)}</span>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-sm font-medium bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:text-[#003DA5] hover:border-[#003DA5] shadow-sm"
                             onClick={() => {
                               if (hallazgo.documentoControversiaUrl) {
                                 handleDescargarDocumentoControversia(hallazgo.documentoControversiaUrl, fixEncoding(hallazgo.documentoControversiaNombre) || 'documento');
@@ -1966,8 +2074,8 @@ const SeccionGestionHallazgos: React.FC<{
                               }
                             }}
                           >
-                            <Download className="w-4 h-4 mr-2 text-gray-500" />
-                            <span className="truncate max-w-[200px] sm:max-w-xs">{fixEncoding(hallazgo.documentoControversiaNombre)}</span>
+                            <Download className="w-4 h-4 mr-2" />
+                            Descargar
                           </Button>
                         </div>
                       )}
@@ -2024,6 +2132,82 @@ const SeccionGestionHallazgos: React.FC<{
           );
         })}
       </div>
+
+      {/* Visor del soporte de la controversia (EFDS-1080) */}
+      {soporteVisor && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-5"
+          onClick={() => setSoporteVisor(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Vista previa de ${soporteVisor.nombre}`}
+        >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div
+            className="relative z-10 flex w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+            style={{ height: '94vh', maxHeight: '94vh' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="shrink-0 rounded-t-xl bg-gradient-to-r from-[#1e5da8] to-[#2a6dbd] px-5 py-4 text-white">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-lg font-semibold leading-tight">Vista previa del documento</h3>
+                  <p className="mt-1 truncate text-sm text-blue-100" title={soporteVisor.nombre}>
+                    {soporteVisor.nombre}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSoporteVisor(null)}
+                  className="shrink-0 rounded-lg p-2 transition-colors hover:bg-white/15"
+                  title="Cerrar vista previa"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-5 py-2.5">
+              <span className="text-sm text-gray-600">Soporte del área auditada</span>
+              <button
+                type="button"
+                onClick={() => handleDescargarDocumentoControversia(soporteVisor.id, soporteVisor.nombre)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100"
+                title="Descargar soporte"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Descargar
+              </button>
+            </div>
+
+            <div className="flex min-h-0 flex-1 flex-col bg-gray-200">
+              {!soporteFallo && onlyOfficePuedeAbrir(soporteVisor.nombre) ? (
+                <VisorOnlyOffice
+                  origen="documentos"
+                  id={soporteVisor.id}
+                  onFallo={(motivo) => setSoporteFallo(motivo)}
+                />
+              ) : (
+                <div className="flex flex-1 flex-col items-center justify-center bg-gray-100 px-6 text-center">
+                  <FileText className="mb-3 h-14 w-14 text-gray-400" />
+                  <h4 className="mb-2 text-base font-semibold text-gray-800">Vista previa no disponible</h4>
+                  <p className="mb-4 max-w-md text-sm text-gray-600">
+                    {soporteFallo || 'Este tipo de archivo no se puede previsualizar.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => handleDescargarDocumentoControversia(soporteVisor.id, soporteVisor.nombre)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#1e5da8] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#174a8a]"
+                  >
+                    <Download className="h-4 w-4" />
+                    Descargar archivo
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -2135,22 +2319,61 @@ const SeccionInformeFinal: React.FC<{
           <div className="space-y-2">
             {hallazgos
               .filter(h => h.estado !== 'retirado')
-              .map((hallazgo, index) => (
-                <div key={hallazgo.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
-                  <div className="flex items-center gap-3">
-                    <div className="w-7 h-7 bg-white rounded-lg flex items-center justify-center text-sm font-semibold border border-gray-300">
-                      {index + 1}
+              .map((hallazgo, index) => {
+                // Respuesta del auditado y decisión del auditor que quedan en el informe final (EFDS-1637)
+                const estadoHallazgo = hallazgo.estado || '';
+                const respuesta = (hallazgo.observacionesControversia || hallazgo.argumentosControversia || '').trim();
+                const decision = (hallazgo.decisionAuditor || estadoHallazgo).toLowerCase();
+                const tieneDecision = ['ratificado', 'modificado', 'retirado'].includes(decision);
+                const textoRespuesta = estadoHallazgo === 'aceptado'
+                  ? 'Aceptó el hallazgo'
+                  : respuesta || estadoHallazgo === 'en-controversia' || tieneDecision
+                    ? 'Presentó controversia'
+                    : 'Sin respuesta registrada';
+                return (
+                <div key={hallazgo.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 bg-white rounded-lg flex items-center justify-center text-sm font-semibold border border-gray-300">
+                        {index + 1}
+                      </div>
+                      <span className="font-medium text-gray-900">{hallazgo.titulo || hallazgo.descripcion?.substring(0, 50)}</span>
                     </div>
-                    <span className="font-medium text-gray-900">{hallazgo.titulo || hallazgo.descripcion?.substring(0, 50)}</span>
+                    <BadgeSIGL variant={
+                      (hallazgo.gravedad || '').toUpperCase() === 'GRAVE' || (hallazgo.gravedad || '').toUpperCase() === 'CRITICO' ? 'danger' :
+                      (hallazgo.gravedad || '').toUpperCase() === 'MODERADO' ? 'warning' : 'info'
+                    }>
+                      {hallazgo.gravedad || 'N/A'}
+                    </BadgeSIGL>
                   </div>
-                  <BadgeSIGL variant={
-                    (hallazgo.gravedad || '').toUpperCase() === 'GRAVE' || (hallazgo.gravedad || '').toUpperCase() === 'CRITICO' ? 'danger' :
-                    (hallazgo.gravedad || '').toUpperCase() === 'MODERADO' ? 'warning' : 'info'
-                  }>
-                    {hallazgo.gravedad || 'N/A'}
-                  </BadgeSIGL>
+                  <div className="mt-3 ml-10 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                    <div className="bg-white rounded-md border border-gray-200 p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700 mb-1">Respuesta del área auditada</p>
+                      <p className="font-medium text-gray-900">{textoRespuesta}</p>
+                      {respuesta && (
+                        <p className="text-gray-600 whitespace-pre-wrap mt-1 line-clamp-4">{respuesta}</p>
+                      )}
+                      {hallazgo.documentoControversiaNombre && (
+                        <p className="text-xs text-gray-500 mt-1">Soporte: {nombreSoporteLegible(hallazgo.documentoControversiaNombre)}</p>
+                      )}
+                    </div>
+                    <div className="bg-white rounded-md border border-gray-200 p-3">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-[#003DA5] mb-1">Análisis y decisión del auditor</p>
+                      {tieneDecision ? (
+                        <>
+                          <p className="font-medium text-gray-900 capitalize">{decision}</p>
+                          {hallazgo.fundamentacionTecnica && (
+                            <p className="text-gray-600 whitespace-pre-wrap mt-1 line-clamp-4">{hallazgo.fundamentacionTecnica}</p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-gray-500">{estadoHallazgo === 'aceptado' ? 'Hallazgo en firme por aceptación del área auditada' : 'Sin decisión registrada'}</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              ))}
+                );
+              })}
           </div>
         </div>
       </CardSIGL>
@@ -2461,6 +2684,9 @@ const SeccionInformeEjecutivo: React.FC<{
               estadoFinal: h.estado,
               decisionAuditor: h.decisionAuditor,
               fundamentacionTecnica: (h as any).fundamentacionTecnica,
+              respuestaAuditado: h.observacionesControversia || h.argumentosControversia,
+              soporteAuditado: nombreSoporteLegible(h.documentoControversiaNombre),
+              fechaDecision: h.fechaDecision,
             }));
             const { generarContenidoInformeIA, aplicarContenidoIA } = await import('./services/generarContenidoInformeIA');
             
@@ -2478,8 +2704,8 @@ const SeccionInformeEjecutivo: React.FC<{
               
               // Usar conclusiones generadas si no hay observaciones propias
               let informeMapeado = { ...informe };
-              if (!informe.observacionesFinales && contenidoIA.conclusiones) {
-                informeMapeado = { ...informeMapeado, observacionesFinales: contenidoIA.conclusiones };
+              if (!informe.observacionesFinales && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+                informeMapeado = { ...informeMapeado, observacionesFinales: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
               }
 
               toast.success('Contenido generado. Descargando PDF...', { id: 'pdf-gen-exec' });
@@ -3155,6 +3381,9 @@ const ModalPreviewInforme: React.FC<{
       estadoFinal: h.estado,
       decisionAuditor: h.decisionAuditor,
       fundamentacionTecnica: (h as any).fundamentacionTecnica,
+      respuestaAuditado: h.observacionesControversia || h.argumentosControversia,
+      soporteAuditado: nombreSoporteLegible(h.documentoControversiaNombre),
+      fechaDecision: h.fechaDecision,
     }));
 
     const auditoriaBase = mapearAuditoriaParaPDF(auditoria, informe);
@@ -3186,8 +3415,8 @@ const ModalPreviewInforme: React.FC<{
             if ((auditoriaBase as any).hallazgos && hallazgosParaPDF.length === 0) {
               hallazgosParaPDF = (auditoriaBase as any).hallazgos;
             }
-            if (!informe.observaciones && contenidoIA.conclusiones) {
-              informeParaPDF = { ...informeParaPDF, observaciones: contenidoIA.conclusiones };
+            if (!informe.observaciones && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+              informeParaPDF = { ...informeParaPDF, observaciones: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
             }
           } catch (e) {
             console.error('Error IA preview:', e);
@@ -3229,8 +3458,8 @@ const ModalPreviewInforme: React.FC<{
         if ((auditoriaBase as any).hallazgos && hallazgosParaPDF.length === 0) {
           hallazgosParaPDF = (auditoriaBase as any).hallazgos;
         }
-        if (!informe.observaciones && contenidoIA.conclusiones) {
-          informeParaPDF = { ...informeParaPDF, observaciones: contenidoIA.conclusiones };
+        if (!informe.observaciones && ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones)) {
+          informeParaPDF = { ...informeParaPDF, observaciones: ((auditoriaBase as any).conclusiones || contenidoIA.conclusiones) };
         }
       }
 

@@ -362,12 +362,12 @@ describe('LaborCertificatePdfService', () => {
     },
   );
 
-  // ── [DEPENDENCIA]: centro de costo primero, dependencia de respaldo ──
+  // ── [DEPENDENCIA]: dependencia primero, centro de costo de respaldo ──
   // La misma informacion llega en columnas distintas segun la fuente, asi que
   // se prueba con las dos formas reales de los datos.
 
   it.each(['docente', 'administrador'] as const)(
-    'prioriza el centro de costo sobre la dependencia con datos LOCALES en la plantilla %s',
+    'prioriza la dependencia sobre el centro de costo con datos LOCALES en la plantilla %s',
     (templateType) => {
       // Forma local (medida en certification.certificate_requests):
       //   department = dependencia, internal_group = grupo, cost_center vacio.
@@ -392,16 +392,21 @@ describe('LaborCertificatePdfService', () => {
         templateHtml: '<p>Inicio[DEPENDENCIA]Fin</p>',
       });
 
-      expect(result).toContain(
+      expect(result).toContain('InicioDireccion de Talento HumanoFin');
+      expect(result).not.toContain(
         'Grupo de Administracion de Personal y de Carrera Administrativa',
       );
     },
   );
 
   it.each(['docente', 'administrador'] as const)(
-    'prioriza el centro de costo sobre la dependencia con datos de ORACLE en la plantilla %s',
+    'imprime la DEPENDENCIA y no el CENTROCOSTO con datos de ORACLE en la plantilla %s',
     (templateType) => {
-      // Forma Oracle: cost_center = CENTROCOSTO y position_location = DEPENDENCIA.
+      // Forma Oracle: `department` guarda el CENTROCOSTO (el grupo) y la
+      // dependencia real vive en `organization_department`. Leer `department`
+      // primero hacia que [DEPENDENCIA] imprimiera el grupo y que [GRUPO]
+      // quedara vacio por la regla de no duplicar: cada variable debe traer su
+      // propio dato, igual que en el modal de "Consulta informativa".
       const result = service['buildCertificateContent']({
         certificate: {
           department: 'Grupo de Seguridad y Salud en el Trabajo',
@@ -417,11 +422,11 @@ describe('LaborCertificatePdfService', () => {
         templateType,
         includeSalary: true,
         includeTechnicalBonus: false,
-        templateHtml: '<p>Inicio[DEPENDENCIA]Fin</p>',
+        templateHtml: '<p>DEP:[DEPENDENCIA]</p><p>GRUPO:[GRUPO]</p>',
       });
 
-      expect(result).toContain('Grupo de Seguridad y Salud en el Trabajo');
-      expect(result).not.toContain('Subdireccion Nacional de Gestion Corporativa');
+      expect(result).toContain('DEP:Subdireccion Nacional de Gestion Corporativa');
+      expect(result).toContain('GRUPO:Grupo de Seguridad y Salud en el Trabajo');
     },
   );
 
@@ -450,12 +455,36 @@ describe('LaborCertificatePdfService', () => {
     },
   );
 
+  it.each(['docente', 'administrador'] as const)(
+    'cae al centro de costo cuando la solicitud no trae dependencia en la plantilla %s',
+    (templateType) => {
+      const result = service['buildCertificateContent']({
+        certificate: {
+          department: null,
+          request: {
+            department: null,
+            // Sin ninguna dependencia: ni la organizacional ni la del contrato.
+            organization_department: null,
+            internal_group: 'Grupo de Seguridad y Salud en el Trabajo',
+            cost_center: null,
+          },
+        } as any,
+        templateType,
+        includeSalary: true,
+        includeTechnicalBonus: false,
+        templateHtml: '<p>Inicio[DEPENDENCIA]Fin</p>',
+      });
+
+      expect(result).toContain('InicioGrupo de Seguridad y Salud en el TrabajoFin');
+    },
+  );
+
   it('ignora un centro de costo marcado como N/A y cae a la dependencia', () => {
     const result = service['buildCertificateContent']({
       certificate: {
         department: 'Direccion Territorial',
         request: {
-          department: 'Direccion Territorial',
+          department: null,
           internal_group: 'N/A',
           cost_center: 'No Aplica',
         },

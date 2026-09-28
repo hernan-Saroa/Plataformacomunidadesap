@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsIn, IsInt, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsIn, IsInt, Min, Max, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateAutosConfigurationDto {
@@ -18,6 +18,7 @@ export class CreateAutosConfigurationDto {
 
   @ApiPropertyOptional({ description: 'Plantilla en formato base64 o link', nullable: true })
   @IsOptional()
+  @ValidateIf((o, v) => v !== null && v !== undefined)
   @IsString()
   plantilla?: string;
 
@@ -26,6 +27,7 @@ export class CreateAutosConfigurationDto {
     example: 'RECEPCION',
   })
   @IsOptional()
+  @ValidateIf((o, v) => v !== null && v !== undefined)
   @IsString()
   stage?: string;
 
@@ -39,11 +41,13 @@ export class CreateAutosConfigurationDto {
   // Campos de plantilla
   @ApiPropertyOptional({ description: 'Nombre de la plantilla' })
   @IsOptional()
+  @ValidateIf((o, v) => v !== null && v !== undefined)
   @IsString()
   nombre_plantilla?: string;
 
   @ApiPropertyOptional({ description: 'Descripción de la plantilla' })
   @IsOptional()
+  @ValidateIf((o, v) => v !== null && v !== undefined)
   @IsString()
   descripcion_plantilla?: string;
 
@@ -76,17 +80,20 @@ export class UpdateAutosConfigurationDto {
   @IsIn(['activo', 'inactivo'])
   estado?: string;
 
-  @ApiPropertyOptional({ description: 'Plantilla en formato base64 o link' })
+  @ApiPropertyOptional({ description: 'Plantilla en formato base64 o link', nullable: true })
   @IsOptional()
+  @ValidateIf((o, v) => v !== null && v !== undefined)
   @IsString()
-  plantilla?: string;
+  plantilla?: string | null;
 
   @ApiPropertyOptional({
     description: 'Etapa del proceso asociada con este auto. Valores permitidos: RECEPCION, EVALUACION, VALORACION, INDAGACION_PREVIA, INVESTIGACION, JUZGAMIENTO, SEGUNDA_INSTANCIA. NULL significa disponible para todas las etapas.',
+    nullable: true,
   })
   @IsOptional()
+  @ValidateIf((o, v) => v !== null && v !== undefined)
   @IsString()
-  stage?: string;
+  stage?: string | null;
 
   @ApiPropertyOptional({ description: 'Orden para visualización' })
   @IsOptional()
@@ -96,15 +103,17 @@ export class UpdateAutosConfigurationDto {
   orden?: number;
 
   // Campos de plantilla
-  @ApiPropertyOptional({ description: 'Nombre de la plantilla' })
+  @ApiPropertyOptional({ description: 'Nombre de la plantilla', nullable: true })
   @IsOptional()
+  @ValidateIf((o, v) => v !== null && v !== undefined)
   @IsString()
-  nombre_plantilla?: string;
+  nombre_plantilla?: string | null;
 
-  @ApiPropertyOptional({ description: 'Descripción de la plantilla' })
+  @ApiPropertyOptional({ description: 'Descripción de la plantilla', nullable: true })
   @IsOptional()
+  @ValidateIf((o, v) => v !== null && v !== undefined)
   @IsString()
-  descripcion_plantilla?: string;
+  descripcion_plantilla?: string | null;
 
   @ApiPropertyOptional({ description: 'Versión de la plantilla' })
   @IsOptional()

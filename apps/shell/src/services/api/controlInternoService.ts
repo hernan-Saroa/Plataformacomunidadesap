@@ -354,6 +354,8 @@ export interface FilaProgramaAnual {
   fechaFinEjecucion: string | null;
   fechaInicioComunicacion: string | null;
   fechaFin: string | null;
+  /** Lunes de las semanas sacadas del cronograma; el Excel no las pinta (EFDS-2132) */
+  semanasExcluidas?: string[];
 }
 
 export interface CambioProgramaAnual {
@@ -371,6 +373,10 @@ export interface VersionProgramaAnual {
   motivo: string | null;
   filas: FilaProgramaAnual[];
   cambios: CambioProgramaAnual[];
+  /** El Plan Anual aún no está aprobado: se exporta sin versión. */
+  borrador?: boolean;
+  /** Hay cambios sin versionar: lo exportado es el borrador de la siguiente versión. */
+  pendiente?: boolean;
 }
 
 export interface ResumenVersionProgramaAnual {
@@ -385,6 +391,8 @@ export interface ResumenVersionProgramaAnual {
 
 export interface EstadoProgramaAnual {
   vigencia: number;
+  /** Las versiones nacen con la aprobación del Plan Anual de la vigencia. */
+  planAprobado?: boolean;
   versionActual: { version: number; fecha: string; generadaPor: string; motivo: string | null } | null;
   enAjuste: { iniciadoPor: string; iniciadoEn: string } | null;
   cambiosPendientes: number;

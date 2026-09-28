@@ -32,6 +32,7 @@ import { SolicitarAmpliacionPlazoDto } from './dto/solicitar-ampliacion-plazo.dt
 import { AprobarAmpliacionPlazoDto } from './dto/aprobar-ampliacion-plazo.dto';
 import { RechazarAmpliacionPlazoDto } from './dto/rechazar-ampliacion-plazo.dto';
 import { FinalizarAuditoriaDto } from './dto/finalizar-auditoria.dto';
+import { ActualizarResultadosAuditoriaDto } from './dto/actualizar-resultados-auditoria.dto';
 import { FaseAuditoria, EstadoKanban } from './entities/auditoria.entity';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
@@ -659,6 +660,23 @@ export class AuditoriasController {
   updatePut(@Param('id') id: string, @Body() updateDto: UpdateAuditoriaDto, @Req() req: any) {
     const user = req.user || this.extractUserFromToken(req);
     return this.auditoriasService.update(id, updateDto, user?.userId);
+  }
+
+  /**
+   * PUT /esap/auditorias/:id/resultados
+   * Fortalezas, recomendaciones generales y conclusiones registradas en Ejecución (EFDS-1636).
+   * Las edita quien puede editar la auditoría o registrar hallazgos.
+   */
+  @Put(':id/resultados')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_EDIT, CIP.HALLAZGO_CREATE)
+  actualizarResultados(
+    @Param('id') id: string,
+    @Body() dto: ActualizarResultadosAuditoriaDto,
+    @Req() req: any,
+  ) {
+    const user = req.user || this.extractUserFromToken(req);
+    return this.auditoriasService.actualizarResultados(id, dto, user?.userId);
   }
 
   /**

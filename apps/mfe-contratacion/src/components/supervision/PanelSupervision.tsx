@@ -3,7 +3,13 @@ import { BellRing, Check, Eye, Paperclip, Undo2, UserCheck } from 'lucide-react'
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { DatosReasignacion, DatosSupervisor, EstadoSupervision, Persona } from '../../types';
+import {
+  DatosReasignacion,
+  DatosSupervisor,
+  EstadoSupervision,
+  EvidenciaFirmaOtp,
+  Persona,
+} from '../../types';
 import {
   Aviso,
   Ayuda,
@@ -17,11 +23,15 @@ import {
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 import { SelectorPersona } from '../estudio-previo/SelectorPersona';
+import { useFirma } from '../shared/useFirma';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
 }
+
+const NUMERAL_SUPERVISOR = '8.2';
+const NUMERAL_REASIGNACION = '9.3';
 
 const VACIO = {
   cargo: '',
@@ -36,6 +46,8 @@ const VACIO = {
  * nombre y el acto que lo nombra, o no hay supervisor—.
  */
 export function PanelSupervision({ procesoId, onCambio }: Props) {
+  const firmaDesignacion = useFirma(NUMERAL_SUPERVISOR, 'Designar el supervisor');
+  const firmaReasignacion = useFirma(NUMERAL_REASIGNACION, 'Reasignar la supervisión');
   const [estado, setEstado] = useState<EstadoSupervision | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +84,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
     setReasignando(false);
   };
 
-  const designar = async () => {
+  const designar = async (firmaOtp?: EvidenciaFirmaOtp) => {
     if (!persona || !acto) return;
 
     const cuerpo: DatosSupervisor = {
@@ -81,6 +93,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
       fechaDesignacion: datos.fechaDesignacion,
       ...(datos.cargo.trim() ? { cargo: datos.cargo.trim() } : {}),
       ...(persona.email ? { email: persona.email } : {}),
+      firma: firmaOtp,
     };
 
     setGuardando(true);
@@ -102,7 +115,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
    * Releva y designa en un solo acto: hacerlo en dos dejaría el contrato sin
    * quien lo vigile mientras tanto.
    */
-  const reasignar = async () => {
+  const reasignar = async (firmaOtp?: EvidenciaFirmaOtp) => {
     if (!persona || !acto) return;
 
     const cuerpo: DatosReasignacion = {
@@ -112,6 +125,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
       motivo: motivo.trim(),
       ...(datos.cargo.trim() ? { cargo: datos.cargo.trim() } : {}),
       ...(persona.email ? { email: persona.email } : {}),
+      firma: firmaOtp,
     };
 
     setGuardando(true);
@@ -337,7 +351,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
             <Boton
               icono={<UserCheck className="w-3.5 h-3.5" />}
               disabled={!persona || !acto || motivo.trim().length < 10 || guardando}
-              onClick={reasignar}
+              onClick={() => firmaReasignacion.conFirma(reasignar)}
             >
               {guardando ? 'Reasignando…' : 'Reasignar'}
             </Boton>
@@ -436,7 +450,7 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
             <Boton
               icono={<UserCheck className="w-3.5 h-3.5" />}
               disabled={guardando || !completo}
-              onClick={designar}
+              onClick={() => firmaDesignacion.conFirma(designar)}
             >
               Designar
             </Boton>
@@ -450,6 +464,8 @@ export function PanelSupervision({ procesoId, onCambio }: Props) {
           </div>
         </div>
       ) : null}
+      {firmaDesignacion.modal}
+      {firmaReasignacion.modal}
     </Marco>
   );
 }

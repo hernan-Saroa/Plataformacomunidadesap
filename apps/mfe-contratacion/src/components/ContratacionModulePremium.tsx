@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   BarChart3,
   BellRing,
@@ -8,6 +8,7 @@ import {
   CalendarClock,
   FileSignature,
   ClipboardCheck,
+  Landmark,
   FileText,
   Store,
   Settings,
@@ -30,13 +31,16 @@ import { VistaPlazosPublicacion } from './plazos/VistaPlazosPublicacion';
 import { VistaCondicionesMipyme } from './mipyme/VistaCondicionesMipyme';
 import { VistaExpedientes } from './expedientes/VistaExpedientes';
 import { VistaAlertas } from './alertas/VistaAlertas';
+import { VistaBandejaCdp } from './cdp/VistaBandejaCdp';
 import { VistaEstadisticas } from './estadisticas/VistaEstadisticas';
-import { PERMISOS, tieneAlguno, tienePermiso } from '../auth/permisos';
+import { PERMISOS } from '../auth/permisos';
+import { esSoloPresupuesto, useAlcance } from '../auth/alcance';
 
 type Seccion =
   | 'estudios-previos'
   | 'revision'
   | 'alertas'
+  | 'bandeja-cdp'
   | 'expedientes'
   | 'estadisticas'
   | 'umbrales'
@@ -64,23 +68,64 @@ const SECCIONES_DE_CONFIGURACION: Seccion[] = [
   'configuracion',
 ];
 
+/**
+ * Por dónde se entra al módulo.
+ *
+ * «Procesos» para casi todo el mundo, porque casi todo el mundo trabaja un
+ * expediente. La excepción es quien solo mueve presupuesto: la Dirección
+ * Financiera no radica ni diligencia nada, así que una lista de procesos no le
+ * dice qué hacer hoy —su trabajo es la cola de solicitudes de CDP—. Entrar por
+ * ahí le ahorra un clic que iba a dar siempre.
+ *
+ * Se decide por lo que *no* tiene, y no por el rol: alguien que gestione
+ * presupuesto y además diligencie procesos sigue entrando por «Procesos»,
+ * porque entonces la lista sí es su trabajo. La regla vive en `esSoloPresupuesto`,
+ * que responde que no mientras el alcance no ha llegado: ante la duda se entra
+ * por «Procesos», como siempre.
+ */
+function seccionDeEntrada(): Seccion {
+  return esSoloPresupuesto() ? 'bandeja-cdp' : 'estudios-previos';
+}
+
 export default function ContratacionModulePremium() {
-  const [seccion, setSeccion] = useState<Seccion>('estudios-previos');
+  // Solo el valor inicial: a partir de ahí manda el menú, y recalcularlo en
+  // cada render devolvería al usuario a la bandeja cada vez que algo refresca.
+  const [seccion, setSeccionElegida] = useState<Seccion>(seccionDeEntrada);
+  const { cargado, puede, tiene } = useAlcance();
+
+  /**
+   * La sección de entrada se decide otra vez cuando llega el alcance.
+   *
+   * Al montar todavía no se sabe qué puede hacer quien entra —el alcance viene
+   * del servicio— y sin esto la Financiera nunca aterrizaría en su bandeja. Solo
+   * si no ha navegado: sacarlo de donde ya eligió ir sería peor que el clic.
+   */
+  const navego = useRef(false);
+  const setSeccion = (nueva: Seccion) => {
+    navego.current = true;
+    setSeccionElegida(nueva);
+  };
+  useEffect(() => {
+    if (cargado && !navego.current) setSeccionElegida(seccionDeEntrada());
+  }, [cargado]);
   const [procesoId, setProcesoId] = useState<string | null>(null);
   const [actividad, setActividad] = useState<string | null>(null);
 
-  const puedeConfigurar = tienePermiso(PERMISOS.configurar);
-  const puedeVerReportes = tienePermiso(PERMISOS.reporteVer);
-  /*
-   * El expediente lo consulta quien lo audita, no cualquiera con acceso al
-   * módulo: reúne todo lo que se cargó en el proceso. Basta uno de los dos
-   * permisos —verlo o auditarlo— porque el Archivo de Gestión tiene el
-   * segundo sin el primero.
+  const puedeConfigurar = tiene(PERMISOS.configurar);
+  /**
+   * Quien mueve el presupuesto de la entidad: la Dirección Financiera.
+   *
+   * Su trabajo en el módulo no es un proceso sino una cola —las solicitudes de
+   * CDP que esperan—, así que tiene sección propia. Nadie más la ve: para el
+   * resto no hay nada que recoger en ella.
    */
-  const puedeVerExpedientes = tieneAlguno(
-    PERMISOS.expedienteVer,
-    PERMISOS.expedienteAuditar,
-  );
+  const gestionaPresupuesto = puede('editar', '4.2');
+  const puedeVerReportes = tiene(PERMISOS.reporteVer);
+  /*
+   * El expediente lo consulta quien ve alguna parte del proceso: el servicio
+   * le enseña de cada expediente lo que su alcance cubre.
+   */
+  const puedeVerExpedientes = puede('ver');
 
   const grupos: MenuGroup[] = [
     {
@@ -109,7 +154,7 @@ export default function ContratacionModulePremium() {
            el gestor tenía «ver alertas de vencimiento» y aun así nunca veía la
            entrada, aunque ahí es donde le llegan sus aprobaciones pendientes.
            Va con el trabajo diario y se rige por su propio permiso. */
-        ...(!tienePermiso(PERMISOS.alertaVer)
+        ...(!puede('ver')
           ? []
           : [
               {
@@ -118,6 +163,23 @@ export default function ContratacionModulePremium() {
                 subtitle: 'Vencimientos y aprobaciones',
                 icon: <BellRing className="w-5 h-5" />,
                 color: '#DC2626',
+              },
+            ]),
+        /* La cola de la Financiera, junto a Alertas y por lo mismo: las dos
+           dicen qué reclama atención hoy. Aparte de «Procesos» porque no se
+           navega igual —no se busca un expediente, se recoge lo que llegó—, y
+           porque a quien solo gestiona presupuesto la lista de procesos no le
+           dice qué hacer. */
+        ...(!gestionaPresupuesto
+          ? []
+          : [
+              {
+                id: 'bandeja-cdp' as Seccion,
+                label: 'Solicitudes de CDP',
+                subtitle: 'Bandeja de la Financiera',
+                icon: <Landmark className="w-5 h-5" />,
+                // El mismo cian con el que las alertas ya marcan el CDP y el RP.
+                color: '#0891B2',
               },
             ]),
         ...(!puedeVerExpedientes
@@ -216,7 +278,7 @@ export default function ContratacionModulePremium() {
     // Se comprueban aunque el menú ya las esconda: la sección sobrevive en el
     // estado, y quien tenía la pantalla abierta cuando le retiraron el permiso
     // seguiría dentro de ella.
-    if (seccion === 'alertas' && !tienePermiso(PERMISOS.alertaVer)) {
+    if (seccion === 'alertas' && !puede('ver')) {
       return (
         <div className="bg-white border border-gray-200 rounded-xl px-4 py-12 text-center">
           <p className="text-[13px] font-bold text-slate-700 m-0">No tienes acceso a las alertas</p>
@@ -260,7 +322,15 @@ export default function ContratacionModulePremium() {
     // abierta.
     if (seccion === 'estadisticas') {
       return puedeVerReportes ? (
-        <VistaEstadisticas />
+        // Una fila del listado lleva a su proceso: del «hay tres vencidos» se
+        // pasa a atenderlos sin buscarlos.
+        <VistaEstadisticas
+          onAbrir={(id) => {
+            setSeccion('estudios-previos');
+            setProcesoId(id);
+            setActividad(null);
+          }}
+        />
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl px-4 py-12 text-center">
           <p className="text-[13px] font-bold text-slate-700 m-0">
@@ -286,6 +356,33 @@ export default function ContratacionModulePremium() {
           }}
         />
       );
+    /* Se comprueba aunque el menú ya la esconda, por lo mismo que las demás:
+       la sección sobrevive en el estado si le retiran el permiso con la
+       pantalla abierta. */
+    if (seccion === 'bandeja-cdp') {
+      return gestionaPresupuesto ? (
+        // Lleva al proceso y a la actividad que toca atender —verificar o
+        // expedir—: quien recoge una solicitud quiere resolverla, no buscarla.
+        <VistaBandejaCdp
+          onAbrir={(id, numeral) => {
+            setSeccion('estudios-previos');
+            setProcesoId(id);
+            setActividad(numeral ?? null);
+          }}
+        />
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-xl px-4 py-12 text-center">
+          <p className="text-[13px] font-bold text-slate-700 m-0">
+            No tienes acceso a las solicitudes de CDP
+          </p>
+          <p className="text-[11.5px] text-slate-500 m-0 mt-1">
+            Las atiende la Dirección Financiera, que es quien compromete el presupuesto de la
+            entidad.
+          </p>
+        </div>
+      );
+    }
+
     if (seccion === 'expedientes') return <VistaExpedientes />;
     if (seccion === 'umbrales') return <VistaUmbrales />;
     if (seccion === 'plazos') return <VistaPlazosPublicacion />;

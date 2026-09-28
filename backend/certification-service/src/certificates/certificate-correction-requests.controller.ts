@@ -27,12 +27,11 @@ import {
   type CorrectedCertificateData,
 } from './certificates.service';
 import { LaborCertificatePermissionsService } from '../auth/labor-certificate-permissions.service';
+import { MANAGE_CORRECTIONS_PERMISSION } from './certificate-corrections.constants';
 
 const MAX_EVIDENCE_SIZE = 10 * 1024 * 1024;
 const REQUEST_EVIDENCE_DIR = './private-uploads/certificate-corrections/submitted';
 const RESOLUTION_EVIDENCE_DIR = './private-uploads/certificate-corrections/resolution';
-const MANAGE_CORRECTIONS_PERMISSION =
-  'certificados-laborales.correction.manage';
 const DELIVER_CERTIFICATE_PERMISSION =
   'certificados-laborales.certificate.deliver';
 const MANAGE_CORRECTIONS_DENIED_MESSAGE =
@@ -189,6 +188,8 @@ export class CertificateCorrectionRequestsController {
     @Query('limit') limit?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Query('sort') sort?: string,
+    @Query('order') order?: string,
   ) {
     await this.assertCanManage(req);
     return this.certificatesService.listCertificateCorrectionRequests({
@@ -196,6 +197,8 @@ export class CertificateCorrectionRequestsController {
       limit: Number(limit) || 10,
       status,
       search,
+      sort,
+      order,
     });
   }
 

@@ -287,7 +287,7 @@ function ControlInternoContent({
     <>
     <Toaster position="bottom-right" richColors />
     <ModuleLayout
-      moduleName="CONTROL INTERNO DE GESTIÓN"
+      moduleName="CONTROL INTERNO"
       moduleDescription="Sistema de Gestión"
       moduleIcon={<Shield className="w-6 h-6" />}
       moduleColor="#F97316"

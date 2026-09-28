@@ -44,6 +44,14 @@ const ALIAS_ROL_OCIG: Record<string, string> = {
   'Jefe OCI': 'Jefe OCIG',
 };
 
+/** Rol operativo de quien dirige la OCIG; la persona se asigna en Configuración de Profesionales OCI. */
+export const ROL_OCIG_JEFE: (typeof NOMBRES_ROLES_OCIG_OPERATIVOS)[number] = 'Jefe OCIG';
+
+/** Nombres guardados que corresponden a un rol operativo, incluidos sus alias históricos. */
+export function variantesRolOcigOperativo(rol: string): string[] {
+  return [rol, ...Object.keys(ALIAS_ROL_OCIG).filter((alias) => ALIAS_ROL_OCIG[alias] === rol)];
+}
+
 export function normalizarRolOcigOperativo(rol?: string | null): string {
   const valor = (rol ?? '').trim();
   if (!valor) return 'Auditor';

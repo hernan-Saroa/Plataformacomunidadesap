@@ -7,8 +7,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { EscalaViaticoEntity } from '../../entities/liquidation/escala-viatico.entity';
 import { TarifaInvestigadorEntity } from '../../entities/liquidation/tarifa-investigador.entity';
-import { TarifaRegionalExcepcionEntity } from '../../entities/liquidation/tarifa-regional-excepcion.entity';
 import { LiquidationParamEntity } from '../../entities/liquidation/liquidation-param.entity';
+import { AuthSystemSettingEntity } from '../../entities/auth-system-setting.entity';
+import { TarifaTransporteTerminalEntity } from '../../entities/liquidation/tarifa-transporte-terminal.entity';
+import {
+  CreateTarifaTransporteTerminalDto,
+  UpdateTarifaTransporteTerminalDto,
+} from '../../dto/liquidation/tarifa-transporte-terminal.dto';
+import { Optional } from '@nestjs/common';
 import {
   CreateEscalaViaticoDto,
   UpdateEscalaViaticoDto,
@@ -17,10 +23,6 @@ import {
   CreateTarifaInvestigadorDto,
   UpdateTarifaInvestigadorDto,
 } from '../../dto/liquidation/tarifa-investigador.dto';
-import {
-  CreateTarifaRegionalExcepcionDto,
-  UpdateTarifaRegionalExcepcionDto,
-} from '../../dto/liquidation/tarifa-regional-excepcion.dto';
 import { UpdateLiquidationParamsDto } from '../../dto/liquidation/liquidation-params.dto';
 import { LiquidationService } from './liquidation.service';
 
@@ -31,12 +33,15 @@ export class LiquidationConfigService {
     private readonly escalaRepo: Repository<EscalaViaticoEntity>,
     @InjectRepository(TarifaInvestigadorEntity)
     private readonly investigadorRepo: Repository<TarifaInvestigadorEntity>,
-    @InjectRepository(TarifaRegionalExcepcionEntity)
-    private readonly regionalRepo: Repository<TarifaRegionalExcepcionEntity>,
+    @InjectRepository(TarifaTransporteTerminalEntity)
+    private readonly terminalRepo: Repository<TarifaTransporteTerminalEntity>,
     @InjectRepository(LiquidationParamEntity)
     private readonly paramRepo: Repository<LiquidationParamEntity>,
     private readonly dataSource: DataSource,
     private readonly liquidationService: LiquidationService,
+    @Optional()
+    @InjectRepository(AuthSystemSettingEntity)
+    private readonly authSettingRepo?: Repository<AuthSystemSettingEntity>,
   ) {}
 
   // ==================== ESCALAS ====================
@@ -188,21 +193,6 @@ export class LiquidationConfigService {
 
   // ==================== EXCEPCIONES REGIONALES ====================
 
-  async obtenerExcepcionesRegionales(): Promise<
-    TarifaRegionalExcepcionEntity[]
-  > {
-    return this.regionalRepo.find({
-      where: { activo: true },
-      order: { departamento: 'ASC' },
-    });
-  }
-
-  async obtenerExcepcionRegionalPorId(
-    id: number,
-  ): Promise<TarifaRegionalExcepcionEntity | null> {
-    return this.regionalRepo.findOne({ where: { id } });
-  }
-
   async obtenerCatalogoDepartamentos(): Promise<string[]> {
     return [
       'Amazonas',
@@ -240,75 +230,75 @@ export class LiquidationConfigService {
     ];
   }
 
-  async crearExcepcionRegional(
-    dto: CreateTarifaRegionalExcepcionDto,
-  ): Promise<TarifaRegionalExcepcionEntity> {
-    const existente = await this.regionalRepo.findOne({
-      where: { departamento: dto.departamento, activo: true },
-    });
-    if (existente) {
-      throw new BadRequestException(
-        `Ya existe una excepción regional activa para el departamento ${dto.departamento}.`,
-      );
-    }
-
-    const entity = this.regionalRepo.create({
-      ...dto,
-      activo: dto.activo ?? true,
-    });
-    return this.regionalRepo.save(entity);
-  }
-
-  async actualizarExcepcionRegional(
-    id: number,
-    dto: UpdateTarifaRegionalExcepcionDto,
-  ): Promise<TarifaRegionalExcepcionEntity> {
-    const entity = await this.regionalRepo.findOne({ where: { id } });
-    if (!entity) {
-      throw new NotFoundException(
-        `Excepción regional con id ${id} no encontrada`,
-      );
-    }
-
-    if (dto.departamento && dto.departamento !== entity.departamento) {
-      const existe = await this.regionalRepo.findOne({
-        where: { departamento: dto.departamento, activo: true },
-      });
-      if (existe) {
-        throw new BadRequestException(
-          `Ya existe una excepción regional activa para el departamento ${dto.departamento}.`,
-        );
-      }
-    }
-
-    Object.assign(entity, dto);
-    return this.regionalRepo.save(entity);
-  }
-
-  async eliminarExcepcionRegional(id: number): Promise<{ message: string }> {
-    const entity = await this.regionalRepo.findOne({ where: { id } });
-    if (!entity) {
-      throw new NotFoundException(
-        `Excepción regional con id ${id} no encontrada`,
-      );
-    }
-    entity.activo = false;
-    await this.regionalRepo.save(entity);
-    return { message: 'Excepción regional eliminada correctamente' };
-  }
-
   // ==================== PARÁMETROS GLOBALES ====================
 
   async obtenerParametros(): Promise<LiquidationParamEntity[]> {
-    return this.paramRepo.find({
-      order: { clave: 'ASC' },
-    });
+    const list = (
+      await this.paramRepo.find({
+        order: { clave: 'ASC' },
+      })
+    ).filter((p) => p.clave !== 'SMMLV_2026');
+
+    let smmlvNum = 1423500;
+    if (this.authSettingRepo) {
+      try {
+        const authSetting = await this.authSettingRepo.findOne({
+          where: { key: 'SALARIO_MINIMO_MENSUAL' },
+        });
+        if (authSetting && authSetting.value) {
+          try {
+            if (authSetting.value.trim().startsWith('{')) {
+              const parsed = JSON.parse(authSetting.value);
+              smmlvNum = Number(parsed.salarioMinimo) || 1423500;
+            } else {
+              smmlvNum = Number(authSetting.value) || 1423500;
+            }
+          } catch {
+            smmlvNum = Number(authSetting.value) || 1423500;
+          }
+        }
+      } catch {
+        // En contingencia continúa con valor por defecto
+      }
+    }
+
+    const smmlvParam = new LiquidationParamEntity();
+    smmlvParam.id = 0;
+    smmlvParam.clave = 'SMMLV_2026';
+    smmlvParam.valor = String(smmlvNum);
+    smmlvParam.tipo = 'NUMBER';
+    smmlvParam.descripcion =
+      'Salario mínimo mensual legal vigente (Catálogo maestro Auth - Solo lectura)';
+    smmlvParam.creadoEn = new Date();
+    smmlvParam.actualizadoEn = new Date();
+
+    const hasTarifaTerminal = list.some((p) => p.clave === 'TARIFA_TERMINAL_AEREO');
+    const extraParams: LiquidationParamEntity[] = [];
+    if (!hasTarifaTerminal) {
+      const tarifaParam = new LiquidationParamEntity();
+      tarifaParam.id = 0;
+      tarifaParam.clave = 'TARIFA_TERMINAL_AEREO';
+      tarifaParam.valor = '162634';
+      tarifaParam.tipo = 'NUMBER';
+      tarifaParam.descripcion =
+        'Total transporte y desplazamientos terminales aéreos (Resolución de viáticos vigente)';
+      tarifaParam.creadoEn = new Date();
+      tarifaParam.actualizadoEn = new Date();
+      extraParams.push(tarifaParam);
+    }
+
+    return [smmlvParam, ...extraParams, ...list];
   }
 
   async actualizarParametro(
     clave: string,
     valor: string,
   ): Promise<LiquidationParamEntity> {
+    if (clave === 'SMMLV_2026') {
+      throw new BadRequestException(
+        'El parámetro SMMLV_2026 es de solo lectura y debe gestionarse desde Ajustes Generales de Auth.',
+      );
+    }
     let entity = await this.paramRepo.findOne({ where: { clave } });
     if (!entity) {
       entity = this.paramRepo.create({
@@ -327,24 +317,8 @@ export class LiquidationConfigService {
     params: UpdateLiquidationParamsDto,
   ): Promise<LiquidationParamEntity[]> {
     const resultados: LiquidationParamEntity[] = [];
+
     await this.dataSource.transaction(async (manager) => {
-      if (params.smmlv !== undefined) {
-        const entity = await manager.findOne(LiquidationParamEntity, {
-          where: { clave: 'SMMLV_2026' },
-        });
-        if (!entity) {
-          const nuevo = manager.create(LiquidationParamEntity, {
-            clave: 'SMMLV_2026',
-            valor: String(params.smmlv),
-            tipo: 'NUMBER',
-            descripcion: 'Salario mínimo mensual vigente 2026',
-          });
-          resultados.push(await manager.save(nuevo));
-        } else {
-          entity.valor = String(params.smmlv);
-          resultados.push(await manager.save(entity));
-        }
-      }
       if (params.factorContratista !== undefined) {
         const entity = await manager.findOne(LiquidationParamEntity, {
           where: { clave: 'FACTOR_CONTRATISTA' },
@@ -396,9 +370,101 @@ export class LiquidationConfigService {
           resultados.push(await manager.save(entity));
         }
       }
+      if (params.tarifaTerminalAereo !== undefined) {
+        const entity = await manager.findOne(LiquidationParamEntity, {
+          where: { clave: 'TARIFA_TERMINAL_AEREO' },
+        });
+        if (!entity) {
+          const nuevo = manager.create(LiquidationParamEntity, {
+            clave: 'TARIFA_TERMINAL_AEREO',
+            valor: String(params.tarifaTerminalAereo),
+            tipo: 'NUMBER',
+            descripcion:
+              'Total transporte y desplazamientos terminales aéreos (Resolución de viáticos vigente)',
+          });
+          resultados.push(await manager.save(nuevo));
+        } else {
+          entity.valor = String(params.tarifaTerminalAereo);
+          resultados.push(await manager.save(entity));
+        }
+      }
     });
 
     await this.liquidationService.recargarParametros();
     return resultados;
   }
+
+  // ==================== TARIFAS TRANSPORTE TERMINALES AÉREOS ====================
+
+  async obtenerTarifasTransporteTerminal(): Promise<TarifaTransporteTerminalEntity[]> {
+    return this.terminalRepo.find({
+      order: { departamento: 'ASC', ciudad: 'ASC' },
+    });
+  }
+
+  async obtenerTarifaTransporteTerminalPorId(
+    id: number,
+  ): Promise<TarifaTransporteTerminalEntity | null> {
+    return this.terminalRepo.findOne({ where: { id } });
+  }
+
+  async crearTarifaTransporteTerminal(
+    dto: CreateTarifaTransporteTerminalDto,
+  ): Promise<TarifaTransporteTerminalEntity> {
+    const depto = dto.departamento || dto.ciudad || '';
+    const ciudadVal = dto.ciudad || dto.departamento || '';
+    const existente = await this.terminalRepo.findOne({
+      where: [
+        { departamento: depto, ciudadAeropuerto: dto.ciudadAeropuerto, activo: true },
+        { ciudad: ciudadVal, ciudadAeropuerto: dto.ciudadAeropuerto, activo: true },
+      ],
+    });
+    if (existente) {
+      throw new BadRequestException(
+        `Ya existe una tarifa activa para ${depto || ciudadVal} y ${dto.ciudadAeropuerto}.`,
+      );
+    }
+    const entity = this.terminalRepo.create({
+      ...dto,
+      departamento: depto,
+      ciudad: ciudadVal,
+      activo: dto.activo ?? true,
+    });
+    const guardada = await this.terminalRepo.save(entity);
+    this.liquidationService.invalidarCache();
+    return guardada;
+  }
+
+  async actualizarTarifaTransporteTerminal(
+    id: number,
+    dto: UpdateTarifaTransporteTerminalDto,
+  ): Promise<TarifaTransporteTerminalEntity> {
+    const entity = await this.terminalRepo.findOne({ where: { id } });
+    if (!entity) {
+      throw new NotFoundException(
+        `Tarifa de transporte terminal con id ${id} no encontrada`,
+      );
+    }
+    Object.assign(entity, dto);
+    const guardada = await this.terminalRepo.save(entity);
+    this.liquidationService.invalidarCache();
+    return guardada;
+  }
+
+  async eliminarTarifaTransporteTerminal(
+    id: number,
+  ): Promise<{ message: string }> {
+    const entity = await this.terminalRepo.findOne({ where: { id } });
+    if (!entity) {
+      throw new NotFoundException(
+        `Tarifa de transporte terminal con id ${id} no encontrada`,
+      );
+    }
+    await this.terminalRepo.remove(entity);
+    this.liquidationService.invalidarCache();
+    return {
+      message: `Tarifa de transporte terminal con id ${id} eliminada exitosamente`,
+    };
+  }
 }
+

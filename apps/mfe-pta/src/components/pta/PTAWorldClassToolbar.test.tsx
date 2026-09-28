@@ -104,4 +104,34 @@ describe('PTAWorldClassToolbar — contadores de las pestañas Todos/Aprobación
     tabButton('Aprobado').click();
     expect(setFiltroEstado).toHaveBeenCalledWith('aprobado');
   });
+
+  it('renderiza la nomenclatura de Revisión cuando el padre entrega pestañas por permisos', () => {
+    const setFiltroEstado = vi.fn();
+    render(<PTAWorldClassToolbar {...baseProps({
+      setFiltroEstado,
+      workflowTabs: [
+        { id: '', label: 'Todos', color: '#6B7280', count: 2 },
+        { id: 'revision_pendiente', label: 'Revisión', color: '#F59E0B', count: 1 },
+        { id: 'revision_revisado', label: 'Revisado', color: '#10B981', count: 1 },
+      ],
+    })} />);
+
+    expect(tabButton('Revisión').textContent).toContain('1');
+    expect(tabButton('Revisado').textContent).toContain('1');
+    expect(screen.queryByText('Aprobación')).toBeNull();
+    tabButton('Revisión').click();
+    expect(setFiltroEstado).toHaveBeenCalledWith('revision_pendiente');
+  });
+
+  it('ubica los filtros personales en una franja responsive separada de las herramientas', () => {
+    render(<PTAWorldClassToolbar {...baseProps({
+      secondaryFilters: <div>Filtros personales</div>,
+      additionalTools: <button>Herramienta</button>,
+    })} />);
+
+    expect(screen.getByText('Filtros personales').parentElement?.className)
+      .toContain('pta-world-toolbar-secondary');
+    expect(screen.getByText('Herramienta').parentElement?.className)
+      .toContain('pta-world-toolbar-actions');
+  });
 });

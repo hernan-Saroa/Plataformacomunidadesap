@@ -14,6 +14,7 @@ vi.mock('../../services/contratacionService', () => ({
     rectificarResultadoEvaluacion: vi.fn(),
     cargarEvidenciaEvaluacion: vi.fn(),
     urlDescarga: (url: string) => `https://gateway${url}`,
+    firmaDeActividad: vi.fn().mockResolvedValue({ requiereFirma: false }),
   },
 }));
 

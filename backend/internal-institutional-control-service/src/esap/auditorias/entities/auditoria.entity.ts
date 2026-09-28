@@ -144,6 +144,10 @@ export class Auditoria {
   @Column({ type: 'date', name: 'fecha_fin', nullable: false })
   fechaFin: Date; // Fin de Comunicación (fin de auditoría) = fechaFinComunicacion
 
+  // Lunes (YYYY-MM-DD) de las semanas que el usuario sacó del cronograma (EFDS-2132)
+  @Column({ type: 'jsonb', name: 'semanas_excluidas', default: () => "'[]'::jsonb" })
+  semanasExcluidas: string[];
+
   @Column({ type: 'integer', default: 0 })
   progreso: number; // 0-100
 
@@ -340,6 +344,16 @@ export class Auditoria {
 
   @Column({ name: 'observaciones_cierre', type: 'text', nullable: true })
   observacionesCierre?: string;
+
+  /** Resultados consolidados en Ejecución (EFDS-1636) */
+  @Column({ name: 'fortalezas', type: 'jsonb', default: () => "'[]'::jsonb" })
+  fortalezas: string[];
+
+  @Column({ name: 'recomendaciones_generales', type: 'jsonb', default: () => "'[]'::jsonb" })
+  recomendacionesGenerales: string[];
+
+  @Column({ name: 'conclusiones', type: 'text', nullable: true })
+  conclusiones?: string | null;
 
   /** Informe de cierre (Sección 2): lecciones y recomendaciones */
   @Column({ name: 'lecciones_aprendidas', type: 'text', nullable: true })

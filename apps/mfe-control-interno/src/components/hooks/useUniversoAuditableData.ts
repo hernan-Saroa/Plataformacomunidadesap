@@ -49,6 +49,13 @@ export interface ProcesoAuditableUI {
   frecuenciaSugerida: string;
   horasEstimadas: number;
   tiempoUltimaAuditoria: number;
+  // Campos adicionales para el mapeo
+  dependencia?: string;
+  idEvaluacion?: string;
+  auditableCalculado?: boolean;
+  auditableManual?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
   // Campos del backend que mantenemos para el mapeo inverso
   _backendId?: string;
   _codigo?: string;

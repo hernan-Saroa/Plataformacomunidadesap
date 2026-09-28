@@ -7,6 +7,7 @@ import { AnalistaEntity } from '../../../entities/analista.entity';
 import { SolicitudComisionEntity } from '../../../entities/solicitud-comision.entity';
 import { SolicitudHistorialEstadoEntity } from '../../../entities/solicitud-historial-estado.entity';
 import { EstadoSolicitud } from '../../../entities/estado-solicitud.enum';
+import { NotificationClientService } from '../../../common/notification-client.service';
 
 describe('AssignmentsService — RF-REC-002', () => {
   let service: AssignmentsService;
@@ -103,6 +104,16 @@ describe('AssignmentsService — RF-REC-002', () => {
         {
           provide: getRepositoryToken(SolicitudHistorialEstadoEntity),
           useValue: historialRepo,
+        },
+        {
+          provide: NotificationClientService,
+          useValue: {
+            notifyUser: jest.fn().mockResolvedValue(undefined),
+            notifyByPermission: jest.fn().mockResolvedValue(undefined),
+            notifyByRole: jest.fn().mockResolvedValue(undefined),
+            send: jest.fn().mockResolvedValue(undefined),
+            sendEmail: jest.fn().mockResolvedValue(undefined),
+          },
         },
       ],
     }).compile();

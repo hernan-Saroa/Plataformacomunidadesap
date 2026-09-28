@@ -108,6 +108,7 @@ const ProgramacionAcademicaModule = lazyRemote(() => import('programacion_academ
 const GestionInfraestructuraModule = lazyRemote(() => import('gestion_infraestructura/Module'), ['GestionInfraestructuraModule']);
 const ChatbotModule = lazyRemote(() => import('chatbot/Module'), ['ChatbotModule', 'default']);
 const DependenciasPage = lazy(() => import('./DependenciasPage'));
+const AjustesGeneralesPage = lazy(() => import('./AjustesGeneralesPage'));
 const ModulesManagementModulePremium = lazy(() => import('./ModulesManagementModulePremium').then(m => ({ default: m.ModulesManagementModulePremium })));
 import { ChatbotFloatingButton } from './ChatbotFloatingButton';
 
@@ -167,7 +168,8 @@ type ModuleView =
   | 'gestion-infraestructura'
   | 'chatbot'
   | 'modules'
-  | 'dependencias';
+  | 'dependencias'
+  | 'ajustes-generales';
 
 interface BackofficeAppProps {
   onLogout?: () => void;
@@ -253,7 +255,8 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'gestion-profesoral': 'gestion-profesoral',
   'registro-academico': 'graduates',
   'modules': 'modules',
-  'dependencias': 'dependencias'
+  'dependencias': 'dependencias',
+  'ajustes-generales': 'ajustes-generales'
 };
 
 const SIDEBAR_VIEW_ORDER: ModuleView[] = [
@@ -907,6 +910,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         return (
           <Suspense fallback={<ModuleLoader />}>
             <DependenciasPage />
+          </Suspense>
+        );
+
+      case 'ajustes-generales':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <AjustesGeneralesPage />
           </Suspense>
         );
 

@@ -2,15 +2,14 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
   Post,
   Put,
-  Query,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -21,18 +20,16 @@ import { createHash, randomBytes } from 'crypto';
 import { createReadStream } from 'fs';
 
 import { EstudioPrevioService } from './estudio-previo.service';
-import { CrearProcesoDto, GuardarBorradorDto, RevisarDto } from './dto/estudio-previo.dto';
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { Permisos } from '../../auth/permisos.decorator';
 import {
-  PERMISO_ACTIVIDAD_APROBAR,
-  PERMISO_ACTIVIDAD_EDITAR,
-  PERMISO_ACTIVIDAD_ENVIAR,
-  PERMISO_DOCUMENTO_ADJUNTAR,
-  PERMISO_EXPEDIENTE_VER,
-  PERMISO_PROCESO_CREAR,
-} from '../../auth/permisos';
+  AnotarRadicadoDto,
+  CrearProcesoDto,
+  EnviarEstudioPrevioDto,
+  GuardarBorradorDto,
+  RevisarDto,
+} from './dto/estudio-previo.dto';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
+import { NOMBRE_EN_UTF8 } from '../archivos';
 
 
 const STORAGE_PATH = process.env.HIRING_STORAGE_PATH || './uploads';
@@ -60,8 +57,7 @@ export class EstudioPrevioController {
   constructor(private readonly service: EstudioPrevioService) {}
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PROCESO_CREAR)
+  @Puede('editar', '3.1')
   @ApiOperation({ summary: 'Crear proceso en etapa 3 y abrir su expediente electrónico' })
   crearProceso(@Body() dto: CrearProcesoDto, @Req() req: any) {
     return this.service.crearProceso(dto, getHiringAccess(req));
@@ -90,8 +86,7 @@ export class EstudioPrevioController {
   }
 
   @Put(':id/estudio-previo')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ACTIVIDAD_EDITAR)
+  @Puede('editar', '3.1')
   @ApiOperation({ summary: 'Guardar borrador (no valida campos obligatorios)' })
   guardar(
     @Param('id', ParseUUIDPipe) id: string,
@@ -102,21 +97,23 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/enviar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ACTIVIDAD_ENVIAR)
+  @Puede('editar', '3.1')
   @ApiOperation({
     summary: 'Enviar a revisión',
     description:
       'Valida los campos obligatorios. Si faltan responde 422 con camposFaltantes. ' +
       'Si está completo registra el estudio previo como documento del expediente.',
   })
-  enviar(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
-    return this.service.enviar(id, getHiringAccess(req));
+  enviar(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EnviarEstudioPrevioDto,
+    @Req() req: any,
+  ) {
+    return this.service.enviar(id, getHiringAccess(req), dto?.firma);
   }
 
   @Post(':id/estudio-previo/aprobar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ACTIVIDAD_APROBAR)
+  @Puede('aprobar', '3.4')
   @ApiOperation({
     summary: 'Aprobar el estudio previo (numeral 3.4)',
     description: 'Solo aplica si está en revisión. Tras aprobarlo no admite cambios.',
@@ -126,12 +123,11 @@ export class EstudioPrevioController {
     @Body() dto: RevisarDto,
     @Req() req: any,
   ) {
-    return this.service.aprobar(id, dto.observaciones, getHiringAccess(req));
+    return this.service.aprobar(id, dto.observaciones, getHiringAccess(req), dto.firma);
   }
 
   @Post(':id/estudio-previo/devolver')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ACTIVIDAD_APROBAR)
+  @Puede('aprobar', '3.4')
   @ApiOperation({
     summary: 'Devolver el estudio previo con observaciones (numeral 3.4)',
     description: 'Regresa a borrador para que el gestor corrija y lo reenvíe.',
@@ -145,8 +141,7 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/negar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_ACTIVIDAD_APROBAR)
+  @Puede('aprobar', '3.4')
   @ApiOperation({
     summary: 'Negar el proceso (numeral 3.4)',
     description:
@@ -162,14 +157,6 @@ export class EstudioPrevioController {
     return this.service.revisiones(id);
   }
 
-  @Get('plantillas/:numeral')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_EXPEDIENTE_VER)
-  @ApiOperation({ summary: 'Formatos oficiales aplicables a la actividad' })
-  plantillas(@Param('numeral') numeral: string, @Query('modalidad') modalidad?: string) {
-    return this.service.plantillas(numeral, modalidad);
-  }
-
   @Get(':id/expediente')
   @ApiOperation({ summary: 'Documentos del expediente electrónico del proceso' })
   expediente(@Param('id', ParseUUIDPipe) id: string) {
@@ -177,10 +164,10 @@ export class EstudioPrevioController {
   }
 
   @Post(':id/estudio-previo/documentos')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_DOCUMENTO_ADJUNTAR)
+  @Puede('editar', '3.1')
   @UseInterceptors(
     FileInterceptor('file', {
+      defParamCharset: NOMBRE_EN_UTF8,
       storage: diskStorage({
         destination: STORAGE_PATH,
         filename: (_req, file, cb) =>
@@ -202,5 +189,88 @@ export class EstudioPrevioController {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
     return this.service.registrarAdjunto(id, file, hash, getHiringAccess(req));
+  }
+
+  @Delete(':id/estudio-previo/documentos/:documentoId')
+  @Puede('editar', '3.1')
+  @ApiOperation({
+    summary: 'Retirar un documento del estudio previo',
+    description:
+      'Queda la traza de que se cargó y de que se retiró, con quién y cuándo. El archivo en disco se conserva: el expediente debe poder probar qué se entregó.',
+  })
+  retirarAdjunto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('documentoId', ParseUUIDPipe) documentoId: string,
+    @Req() req: any,
+  ) {
+    return this.service.retirarAdjunto(id, documentoId, getHiringAccess(req));
+  }
+
+  @Put(':id/estudio-previo/documentos/:documentoId')
+  @Puede('editar', '3.1')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      defParamCharset: NOMBRE_EN_UTF8,
+      storage: diskStorage({
+        destination: STORAGE_PATH,
+        filename: (_req, file, cb) =>
+          cb(null, `${randomBytes(16).toString('hex')}${extname(file.originalname)}`),
+      }),
+      limits: { fileSize: 25 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) =>
+        MIME_PERMITIDOS.includes(file.mimetype)
+          ? cb(null, true)
+          : cb(new BadRequestException('Solo se admiten archivos PDF, Word o Excel'), false),
+    }),
+  )
+  @ApiOperation({
+    summary: 'Reemplazar un documento del estudio previo',
+    description:
+      'Retira el documento y adjunta el nuevo en una sola operación. Queda una traza de REEMPLAZAR con el documento anterior y el nuevo enlazados, en vez de un ANULAR y un ADJUNTAR sueltos.',
+  })
+  async reemplazarAdjunto(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('documentoId', ParseUUIDPipe) documentoId: string,
+    @UploadedFile() file: any,
+    @Req() req: any,
+  ) {
+    if (!file) throw new BadRequestException('No se recibió ningún archivo');
+    const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
+    return this.service.reemplazarAdjunto(id, documentoId, file, hash, getHiringAccess(req));
+  }
+
+  // ---------------------------------------------- lista de chequeo (3.1) ---
+  //
+  // Los documentos de la lista —el estudio previo firmado y lo que lo acompaña
+  // al radicar— van por la ruta de documentos de la actividad, como los de
+  // cualquier otra (EFDS-2066). Aquí queda solo el radicado, que no es un
+  // documento.
+
+  @Get(':id/estudio-previo/radicado')
+  @Puede('ver', '3.1')
+  @ApiOperation({
+    summary: 'Radicado de Active Document con el que se remitió el paquete',
+  })
+  radicado(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.radicado(id);
+  }
+
+  @Post(':id/estudio-previo/radicado')
+  @Puede('editar', '3.1')
+  @ApiOperation({
+    summary: 'Anotar el radicado de Active Document con el que se remitió el paquete',
+    description:
+      'Sin integración con el aplicativo: lo transcribe quien radicó. Opcional, porque el procedimiento admite remitir por correo o por carpeta compartida, vías que no generan consecutivo; mandarlo vacío lo borra.',
+  })
+  anotarRadicado(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AnotarRadicadoDto,
+    @Req() req: any,
+  ) {
+    return this.service.anotarRadicadoDeLaRadicacion(
+      id,
+      dto.radicado ?? null,
+      getHiringAccess(req),
+    );
   }
 }

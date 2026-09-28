@@ -95,7 +95,7 @@
     "scripts": {
         "dev": "npm run dev -w @esap-mfe/shell",
         "dev:backend": "node scripts/dev-backend-all.mjs",
-        "dev:backend:custom": "node scripts/dev-backend-all.mjs --services=api-gateway,auth-service,internal-disciplinary-control-service,travel-expenses-service,audit-service,notifications-service",
+        "dev:backend:custom": "node scripts/dev-backend-all.mjs --services=api-gateway,auth-service,internal-disciplinary-control-service,travel-expenses-service,audit-service,notifications-service,certification-service,academic-registration-service",
         "dev:all": "node scripts/dev-all.mjs",
         "build": "node scripts/build-frontends.mjs",
         "build:app": "node scripts/build-frontend-app.mjs",

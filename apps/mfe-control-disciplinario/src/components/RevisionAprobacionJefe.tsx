@@ -96,20 +96,12 @@ export function RevisionAprobacionJefe({
 }: RevisionAprobacionJefeProps) {
   const [borradorSeleccionado, setBorradorSeleccionado] = useState<BorradorPendiente | null>(null);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudReasignacion | null>(null);
-  const currentUser = authService.getCurrentUser();
-  const userRolesList = currentUser?.roles || [];
-  const isJefe = userRolesList.some((r: any) => (typeof r === 'string' ? r : r?.code) === 'JEFE_DE_LA_OCID');
-  const isRadicador = userRolesList.some((r: any) => {
-    const c = typeof r === 'string' ? r : r?.code;
-    return c === 'SECRETARIA_RADICADOR' || c === 'RADICADOR_DISCIPLINARIO' || c === 'RADICADOR';
-  });
+  const isJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
+  const isRadicador = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR);
   const canSendJuridica =
     authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_SEND_TO_JURIDICA) ||
-    authService.isSuperAdmin() ||
-    userRolesList.some((r: any) => {
-      const c = typeof r === 'string' ? r : r?.code;
-      return c === 'ADMIN' || c === 'SUPER_ADMIN' || c === 'SECRETARIA_RADICADOR' || c === 'RADICADOR_DISCIPLINARIO' || c === 'RADICADOR';
-    });
+    isRadicador ||
+    authService.isSuperAdmin();
   const esSoloEnvioJuridica = modoEnvioJuridica ?? (!isJefe && (isRadicador || canSendJuridica));
 
   const [borradorEnvioJuridica, setBorradorEnvioJuridica] = useState<BorradorPendiente | null>(null);

@@ -57,6 +57,52 @@ describe('DocumentConversionService', () => {
       expect(template).toContain(headerText);
       expect(template).not.toContain('position:absolute');
     });
+
+    it('should render structured header with banner constrained to max-height', () => {
+      const template = service.buildHeaderTemplate({
+        images: [
+          {
+            src: 'data:image/png;base64,banner123',
+            target: 'word/media/image1.png',
+            rId: 'rId1',
+            widthCm: 21.0,
+            heightCm: 3.4,
+            isBanner: true,
+            behindDoc: true,
+            align: 'left',
+          },
+        ],
+        textBlocks: [],
+      });
+
+      expect(template).toContain('width:100%');
+      expect(template).toContain('max-height:3.2cm');
+      expect(template).toContain('object-fit:contain');
+    });
+
+    it('should NOT set width: 100% on header icon/logo and bound its size', () => {
+      const template = service.buildHeaderTemplate({
+        images: [
+          {
+            src: 'data:image/png;base64,logo123',
+            target: 'word/media/logo.png',
+            rId: 'rId1',
+            widthCm: 4.5,
+            heightCm: 2.0,
+            isBanner: false,
+            behindDoc: false,
+            align: 'left',
+          },
+        ],
+        textBlocks: ['MINISTERIO DE EDUCACIÓN'],
+      });
+
+      // Debe preservar dimensiones de logo sin forzar width: 100% en el elemento img
+      expect(template).not.toContain('<img src="data:image/png;base64,logo123" style="display:block; width:100%;"');
+      expect(template).toContain('width:4.50cm');
+      expect(template).toContain('max-height:2.00cm');
+      expect(template).toContain('MINISTERIO DE EDUCACIÓN');
+    });
   });
 
   describe('buildFooterTemplate', () => {
@@ -76,6 +122,65 @@ describe('DocumentConversionService', () => {
       expect(template).toContain('position:absolute; left:0; top:4px;');
       expect(template).toContain(footerImage);
       expect(template).toContain(footerText);
+    });
+
+    it('should render footer with banner and address without blowing up', () => {
+      const template = service.buildFooterTemplate({
+        images: [
+          {
+            src: 'data:image/png;base64,bannerFoot',
+            target: 'word/media/footer.png',
+            rId: 'rId1',
+            widthCm: 23.0,
+            heightCm: 3.2,
+            isBanner: true,
+            behindDoc: true,
+            align: 'left',
+          },
+        ],
+        textBlocks: ['Sede principal', 'Calle 44 # 53 - 37'],
+      });
+
+      expect(template).toContain('pageNumber');
+      expect(template).toContain('max-height:1.8cm');
+      expect(template).toContain('Sede principal');
+      expect(template).toContain('Calle 44 # 53 - 37');
+    });
+
+    it('should render small footer icons (e.g. ICONTEC / ISO) side-by-side without setting width: 100%', () => {
+      const template = service.buildFooterTemplate({
+        images: [
+          {
+            src: 'data:image/png;base64,icontec',
+            target: 'word/media/icontec.png',
+            rId: 'rId1',
+            widthCm: 2.5,
+            heightCm: 1.2,
+            isBanner: false,
+            behindDoc: false,
+            align: 'right',
+          },
+          {
+            src: 'data:image/png;base64,iso9001',
+            target: 'word/media/iso.png',
+            rId: 'rId2',
+            widthCm: 2.5,
+            heightCm: 1.2,
+            isBanner: false,
+            behindDoc: false,
+            align: 'right',
+          },
+        ],
+        textBlocks: ['Contacto: contacto@esap.edu.co'],
+      });
+
+      // No debe tener width: 100% en los íconos
+      expect(template).not.toContain('<img src="data:image/png;base64,icontec" style="display:block; width:100%;"');
+      expect(template).toContain('width:2.50cm');
+      expect(template).toContain('max-height:1.20cm');
+      expect(template).toContain('display:flex; align-items:center; justify-content:flex-end; gap:8px;');
+      expect(template).toContain('Contacto: contacto@esap.edu.co');
+      expect(template).toContain('pageNumber');
     });
   });
 });

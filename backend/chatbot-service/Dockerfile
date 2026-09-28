@@ -8,7 +8,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install all dependencies (including dev dependencies for building)
-RUN --mount=type=cache,target=/root/.npm npm ci --prefer-offline --no-audit
+RUN --mount=type=cache,target=/root/.npm npm install --prefer-offline --no-audit
 
 # Copy source code
 COPY . .

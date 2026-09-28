@@ -22,6 +22,7 @@ import {
   NUMERAL_INFORME_DEFINITIVO,
 } from './adjudicacion.base';
 import { AnularDefinitivoDto, PublicarDefinitivoDto } from './dto/informe-definitivo.dto';
+import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 
 /**
  * Informe de evaluación definitivo — actividad 7.3 (EFDS-1159).
@@ -37,8 +38,8 @@ import { AnularDefinitivoDto, PublicarDefinitivoDto } from './dto/informe-defini
  */
 @Injectable()
 export class InformeDefinitivoService extends AdjudicacionBase {
-  constructor(dataSource: DataSource) {
-    super(dataSource);
+  constructor(dataSource: DataSource, cierre: CierreActividadService) {
+    super(dataSource, cierre);
   }
 
   // ------------------------------------------------------------- consulta --
@@ -217,7 +218,14 @@ export class InformeDefinitivoService extends AdjudicacionBase {
       informe.publicadoAt = new Date();
       await em.save(informe);
 
-      await this.marcarActividad(em, procesoId, NUMERAL_INFORME_DEFINITIVO, true, acceso);
+      await this.marcarActividad(
+        em,
+        procesoId,
+        NUMERAL_INFORME_DEFINITIVO,
+        true,
+        acceso,
+        dto.firma,
+      );
       await this.traza(em, procesoId, informe.id, 'informe_definitivo', 'PUBLICAR', acceso, {
         actividad: NUMERAL_INFORME_DEFINITIVO,
         medio: dto.medioPublicacion.trim(),

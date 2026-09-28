@@ -112,11 +112,20 @@ export const PETICIONES: Record<Peticion, FormaPeticion> = {
  * (EFDS-1183), que sí bloquea la actividad, exige que decida alguien distinto y
  * deja constancia de quién lo hizo.
  *
- * Su definición se conserva en PETICIONES para que los campos ya guardados de
- * ese tipo se sigan mostrando; lo que se retira es la posibilidad de crear más.
+ * `ADJUNTAR_DOCUMENTO` sale por lo mismo. Abría un selector genérico —«Documento
+ * firmado»— mientras la biblioteca de formatos pide el mismo papel diciendo de
+ * cuál se trata y prestando la plantilla en blanco. Eran dos casillas para un
+ * solo documento, y ya se resolvió que manda el formato: el panel de registro
+ * retira su selector donde la actividad tiene formatos asignados. Esta era la
+ * otra mitad, la que seguía ofreciendo crear la casilla duplicada.
+ *
+ * Pedir un documento es asignarle su formato a la actividad en Plantillas.
+ *
+ * Sus definiciones se conservan en PETICIONES para que los campos ya guardados
+ * de esos tipos se sigan mostrando; lo que se retira es la posibilidad de crear
+ * más.
  */
 export const ORDEN_PETICIONES: Peticion[] = [
-  'ADJUNTAR_DOCUMENTO',
   'ESCRIBIR_JUSTIFICACION',
   'REGISTRAR_FECHA',
   'MARCAR_CASILLA',

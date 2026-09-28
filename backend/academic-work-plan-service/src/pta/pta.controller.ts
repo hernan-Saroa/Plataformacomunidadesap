@@ -478,8 +478,9 @@ export class PtaController {
   // Evidencias
   // ─────────────────────────────
   @Get('evidencias/ptas')
-  async getPtasConEvidencias(@Query('periodo') periodo?: string) {
-    const data = await this.ptaService.getAllPtasConEvidencias(periodo);
+  @UseGuards(PtaAuthGuard)
+  async getPtasConEvidencias(@Query('periodo') periodo: string | undefined, @Req() req: Request) {
+    const data = await this.ptaService.getAllPtasConEvidencias(periodo, req.ptaAuth);
     return { success: true, data };
   }
 
@@ -523,15 +524,17 @@ export class PtaController {
   }
 
   @Patch(':ptaId/evidencias/:evidenciaId/revision')
-  async revisarEvidencia(@Param('ptaId') ptaId: string, @Param('evidenciaId') evidenciaId: string, @Body() body: any) {
-    const data = await this.ptaService.revisarEvidenciaPTA(ptaId, evidenciaId, body || {});
+  @UseGuards(PtaAuthGuard)
+  async revisarEvidencia(@Param('ptaId') ptaId: string, @Param('evidenciaId') evidenciaId: string, @Body() body: any, @Req() req: Request) {
+    const data = await this.ptaService.revisarEvidenciaPTA(ptaId, evidenciaId, body || {}, req.ptaAuth);
     return { success: true, data };
   }
 
   // Alias para compatibilidad con el frontend (PATCH /evidencias/:id).
   @Patch(':ptaId/evidencias/:evidenciaId')
-  async revisarEvidenciaAlias(@Param('ptaId') ptaId: string, @Param('evidenciaId') evidenciaId: string, @Body() body: any) {
-    const data = await this.ptaService.revisarEvidenciaPTA(ptaId, evidenciaId, body || {});
+  @UseGuards(PtaAuthGuard)
+  async revisarEvidenciaAlias(@Param('ptaId') ptaId: string, @Param('evidenciaId') evidenciaId: string, @Body() body: any, @Req() req: Request) {
+    const data = await this.ptaService.revisarEvidenciaPTA(ptaId, evidenciaId, body || {}, req.ptaAuth);
     return { success: true, data };
   }
 
@@ -900,6 +903,13 @@ export class PtaController {
     return { success: true, data };
   }
 
+  @Get(':ptaId/evidencias/seguimiento')
+  @UseGuards(PtaAuthGuard)
+  async getEvidenciasSeguimiento(@Param('ptaId') ptaId: string, @Req() req: Request) {
+    const data = await this.ptaService.getEvidenciasSeguimientoPTA(ptaId, req.ptaAuth);
+    return { success: true, data };
+  }
+
   @Get(':ptaId/permisos-decision')
   @UseGuards(PtaAuthGuard)
   async getDecisionPermissions(@Param('ptaId') ptaId: string, @Req() req: Request) {
@@ -937,6 +947,15 @@ export class PtaController {
     // Aprobación masiva: mismo criterio de autorización que aprobar-componente,
     // aplicado individualmente por cada (ptaId, componente) del lote.
     const data = await this.ptaService.aprobarComponentesLote(body, req.ptaAuth);
+    return { success: true, data };
+  }
+
+  @Post('revisar-componentes-lote')
+  @UseGuards(PtaAuthGuard)
+  async revisarComponentesLote(@Body() body: any, @Req() req: Request) {
+    // La revisión masiva aplica exactamente la misma autorización granular y
+    // alcance territorial que revisar-componente para cada elemento del lote.
+    const data = await this.ptaService.revisarComponentesLote(body, req.ptaAuth);
     return { success: true, data };
   }
 

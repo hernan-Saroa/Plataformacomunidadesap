@@ -15,13 +15,11 @@ import {
 export const NUMERAL_RADICACION = '3.3';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import {
-  PERMISO_ACTIVIDAD_APROBAR,
-  PERMISO_PROCESO_ASIGNAR,
-  PERMISO_PROCESO_TOMAR,
-  tienePermiso,
-} from '../../auth/permisos';
+import { PERMISO_PROCESO_ASIGNAR, tienePermiso } from '../../auth/permisos';
+import { Accion } from '../../auth/alcance';
+import { AlcanceService } from '../../auth/alcance.service';
 import { AsignarAbogadoDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
+import { CdpService } from '../cdp/cdp.service';
 
 /** Una cuenta a la que se le puede dar un papel en un proceso. */
 export interface CuentaCandidata {
@@ -100,7 +98,19 @@ export function motivoParaNoDecidir(
  */
 @Injectable()
 export class ParticipacionService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    /**
+     * Cerrar la 3.3 puede cerrar la etapa 3, y entonces nace el CDP.
+     *
+     * Se llama explícitamente en vez de por evento para que quien lea `tomar`
+     * vea el efecto completo del acto: tomar el proceso puede, en una modalidad
+     * corta, dejar la solicitud de CDP radicada.
+     */
+    private readonly cdp: CdpService,
+    /** Quién puede qué en cada punto (migración 083). */
+    private readonly alcance: AlcanceService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -117,18 +127,35 @@ export class ParticipacionService {
 
     const contratacion = vigente('CONTRATACION');
     const abogado = vigente('ABOGADO');
+    const financiera = vigente('FINANCIERA');
 
     // Quien tomó el proceso es quien reparte el abogado. El Director también,
     // porque `proceso.assign` es suyo y tiene que poder corregir un reparto.
     const soyElDeContratacion = !!contratacion && esSuya(contratacion, acceso);
     const puedeRepartir = soyElDeContratacion || tienePermiso(acceso, PERMISO_PROCESO_ASIGNAR);
 
+    /**
+     * Ofrecer tomar la solicitud solo donde hay una que tomar.
+     *
+     * Se comprueba contra la bandeja y no solo contra el permiso porque si no
+     * la pantalla enseñaría el botón en todos los procesos, incluidos los que
+     * no han pedido CDP y los que ya lo tienen expedido, y la API lo rechazaría
+     * cuando ya es tarde.
+     */
+    const puedeTomarFinanciera =
+      !financiera &&
+      (await this.alcance.puedeEn(acceso, 'editar', '4.2')) &&
+      (await this.estaEnLaBandejaFinanciera(procesoId));
+
     return {
       /** Sin tomar: el proceso está en la bandeja y nadie responde por él. */
-      puedeTomar: !contratacion && tienePermiso(acceso, PERMISO_PROCESO_TOMAR),
+      puedeTomar: !contratacion && (await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION)),
       puedeRepartir,
       contratacion: contratacion ? this.aVista(contratacion, acceso) : null,
       abogado: abogado ? this.aVista(abogado, acceso) : null,
+      /** Quién responde por el CDP en la etapa 4, o nulo si nadie lo ha tomado. */
+      financiera: financiera ? this.aVista(financiera, acceso) : null,
+      puedeTomarFinanciera,
       /**
        * No debería pasar, pero quitar un abogado sin poner otro es una
        * situación real. En vez de impedirla se dice, para que el proceso no se
@@ -155,14 +182,29 @@ export class ParticipacionService {
   /**
    * Las cuentas a las que se les puede dar el papel de abogado.
    *
-   * Se resuelven por permiso y no por código de rol —quien pueda aprobar una
-   * actividad es quien puede revisar el proceso—, igual que hacen los
-   * endpoints. Nombrar aquí `REVISOR_CONTRATACION` ataría el reparto a un rol
+   * Se resuelven por alcance y no por código de rol —quien pueda aprobar la
+   * 3.4 es quien puede revisar el proceso—, igual que hacen los endpoints. Nombrar aquí `REVISOR_CONTRATACION` ataría el reparto a un rol
    * que el administrador puede renombrar o desdoblar mañana desde el
    * backoffice, que es justo lo que la migración 060 vino a quitar del código.
    */
   async abogados(termino = ''): Promise<CuentaCandidata[]> {
-    return this.cuentasCon(PERMISO_ACTIVIDAD_APROBAR, termino);
+    return this.cuentasCon('aprobar', '3.4', termino);
+  }
+
+  /**
+   * Las cuentas de la Dirección Financiera que pueden resolver un CDP.
+   *
+   * Por alcance y no por rol, igual que los abogados: quien pueda editar la
+   * 4.2 es quien verifica la disponibilidad y expide. Nombrar aquí
+   * `ESTRUCTURADOR_FINANCIERO` ataría la etapa 4 a un código de rol que el
+   * administrador puede renombrar o desdoblar mañana desde el backoffice.
+   *
+   * No lo consume un desplegable —la solicitud no se reparte, se toma— sino el
+   * aviso: mientras nadie la ha tomado no hay responsable a quien notificar, y
+   * esta es la lista a la que se le manda.
+   */
+  async financieros(termino = ''): Promise<CuentaCandidata[]> {
+    return this.cuentasCon('editar', '4.2', termino);
   }
 
   // ------------------------------------------------------------ el proceso --
@@ -200,6 +242,67 @@ export class ParticipacionService {
 
       await this.traza(em, procesoId, nueva.id, 'RADICAR', acceso, {
         papel: 'CONTRATACION',
+        quien: cuenta.nombre,
+      });
+
+      // Dentro de la transacción: si la creación del CDP falla, tomar el
+      // proceso tampoco queda hecho, y no hay un estado intermedio en el que la
+      // etapa 3 esté cerrada sin su solicitud.
+      await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+    });
+
+    return this.estado(procesoId, acceso);
+  }
+
+  /**
+   * Tomar la solicitud de CDP de la bandeja de la Financiera (actividad 4.1).
+   *
+   * Mismo acto que `tomar` y por el mismo motivo: nadie la entrega, la toma
+   * quien va a resolverla. Lo que cambia es de qué bandeja sale —una solicitud
+   * sin atender, no un proceso sin recibir— y que aquí no se cierra ninguna
+   * actividad: la 4.1 la cumple la solicitud misma, no el hecho de tomarla.
+   *
+   * Tomarla es lo que pone nombre al responsable, y con eso el aviso deja de ir
+   * a toda la Dirección Financiera y pasa a ser suyo.
+   */
+  async tomarFinanciera(procesoId: string, acceso: HiringAccess) {
+    await this.dataSource.transaction(async (em) => {
+      await this.exigirProceso(em, procesoId, true);
+
+      const actual = await this.vigente(procesoId, 'FINANCIERA', em);
+      if (actual) {
+        throw new ConflictException(
+          esSuya(actual, acceso)
+            ? 'Ya habías tomado esta solicitud'
+            : `${actual.nombre} tomó esta solicitud antes que tú`,
+        );
+      }
+
+      // Que la solicitud exista y siga sin resolver. Sin esto se podría tomar
+      // el CDP de un proceso que no lo ha pedido —o uno ya expedido—, y el
+      // responsable quedaría puesto sobre algo que nadie tiene que atender.
+      const [solicitud] = await em.query(
+        `SELECT 1
+           FROM hiring.cdp
+          WHERE proceso_id = $1
+            AND modificacion_id IS NULL
+            AND estado = 'SOLICITADO'
+          LIMIT 1`,
+        [procesoId],
+      );
+      if (!solicitud) {
+        throw new ConflictException(
+          'Este proceso no tiene una solicitud de CDP esperando a que la atiendan',
+        );
+      }
+
+      const cuenta = await this.exigirCuenta(acceso.userId, acceso.userName);
+      const nueva = await this.guardar(em, procesoId, 'FINANCIERA', cuenta, acceso);
+
+      // RADICAR y no DESIGNAR, con el criterio con que se eligió para la 3.3:
+      // designar es poner a otro, y aquí nadie entrega nada.
+      await this.traza(em, procesoId, nueva.id, 'RADICAR', acceso, {
+        papel: 'FINANCIERA',
         quien: cuenta.nombre,
       });
     });
@@ -312,11 +415,14 @@ export class ParticipacionService {
    * Vive aquí y no en el estudio previo porque ya son dos las actividades que
    * lo preguntan —la revisión del estudio previo y la de la modalidad— y con
    * una copia en cada una acabarían discrepando sobre el mismo proceso.
+   *
+   * `numeral` es la actividad que se decide (3.4, 3.5, 3.6 o 3.7): el permiso
+   * de aprobar se mira con el alcance de ese punto, no en general.
    */
-  async quienDecide(procesoId: string, acceso: HiringAccess) {
+  async quienDecide(procesoId: string, acceso: HiringAccess, numeral: string) {
     const abogado = await this.vigente(procesoId, 'ABOGADO');
     const motivo = motivoParaNoDecidir(
-      tienePermiso(acceso, PERMISO_ACTIVIDAD_APROBAR),
+      await this.alcance.puedeEn(acceso, 'aprobar', numeral),
       !!abogado,
       !!abogado && esSuya(abogado, acceso),
     );
@@ -406,6 +512,43 @@ export class ParticipacionService {
    */
   async estaEnLaBandeja(procesoId: string): Promise<boolean> {
     return (await this.idsEnBandeja(procesoId)).length > 0;
+  }
+
+  /**
+   * Las solicitudes de CDP que están en la bandeja de la Financiera.
+   *
+   * «Estar» es tener un CDP en SOLICITADO que nadie ha tomado. Se define por el
+   * estado del CDP y no por la etapa del proceso a propósito: `procesos.etapa`
+   * es dónde se está trabajando, y un proceso puede haber avanzado mientras la
+   * solicitud sigue sin resolver.
+   *
+   * `modificacion_id IS NULL` con el criterio de `delProceso`: el CDP de una
+   * adición es suyo y no entra a esta bandeja.
+   */
+  async idsEnBandejaFinanciera(soloEste?: string): Promise<string[]> {
+    const filas: { id: string }[] = await this.dataSource.query(
+      `SELECT p.id
+         FROM hiring.procesos p
+         JOIN hiring.cdp c
+           ON c.proceso_id = p.id
+          AND c.modificacion_id IS NULL
+          AND c.estado = 'SOLICITADO'
+        WHERE p.estado = 'EN_CURSO'
+          AND ($1::uuid IS NULL OR p.id = $1::uuid)
+          AND NOT EXISTS (
+            SELECT 1 FROM hiring.participaciones_proceso pp
+             WHERE pp.proceso_id = p.id
+               AND pp.papel = 'FINANCIERA'
+               AND pp.estado = 'VIGENTE'
+          )`,
+      [soloEste ?? null],
+    );
+    return filas.map((f) => f.id);
+  }
+
+  /** Si esa solicitud concreta sigue en la bandeja de la Financiera. */
+  async estaEnLaBandejaFinanciera(procesoId: string): Promise<boolean> {
+    return (await this.idsEnBandejaFinanciera(procesoId)).length > 0;
   }
 
   /** Quién está en cada proceso del listado, en una sola consulta. */
@@ -587,8 +730,23 @@ export class ParticipacionService {
     throw new NotFoundException('Esa cuenta no existe o está inactiva');
   }
 
-  /** Las cuentas cuyos roles otorgan ese permiso, para los desplegables. */
-  private cuentasCon(permiso: string, termino: string): Promise<CuentaCandidata[]> {
+  /**
+   * Las cuentas que pueden hacer esa acción en ese punto, para los
+   * desplegables.
+   *
+   * Quién puede lo decide `AlcanceService`, que es donde vive la regla de qué
+   * alcance cubre qué punto; aquí solo se les pone nombre y correo. Repetir
+   * esa regla en esta consulta haría que el desplegable y el guard pudieran
+   * discrepar sobre la misma persona.
+   */
+  private async cuentasCon(
+    accion: Accion,
+    numeral: string,
+    termino: string,
+  ): Promise<CuentaCandidata[]> {
+    const ids = await this.alcance.cuentasQuePueden(accion, numeral);
+    if (!ids.length) return [];
+
     // Parámetros ligados, nunca interpolados: el término viene del navegador.
     return this.dataSource.query(
       `SELECT DISTINCT
@@ -599,20 +757,14 @@ export class ParticipacionService {
               NULL::varchar                     AS cargo,
               COALESCE(p.dir_email, u.username) AS email
          FROM auth."user" u
-         LEFT JOIN auth.personas p     ON p.id_person = u.id_person
-         JOIN auth.user_roles ur       ON ur.id_user = u.id_user AND ur.is_active = true
-         JOIN auth.role r              ON r.id = ur.id_rol AND r.is_active = true
-         JOIN auth.role_permissions rp ON rp.id_rol = r.id AND rp.is_active = true
-         JOIN auth.permission perm     ON perm.id_permission = rp.id_permission
-                                      AND perm.is_active = true
-        WHERE u.is_active = true
-          AND perm.code = $1
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+        WHERE u.id_user::text = ANY($1::text[])
           AND ($2 = ''
                OR COALESCE(p.nom_largo, p.nom_tercero, u.username) ILIKE '%' || $2 || '%'
                OR u.username ILIKE '%' || $2 || '%')
         ORDER BY nombre
         LIMIT 50`,
-      [permiso, termino.trim()],
+      [ids, termino.trim()],
     );
   }
 

@@ -121,7 +121,18 @@ export type CertificateCorrectionListResponse =
       page: number;
       limit: number;
       totalPages: number;
+      sort?: CorrectionSortField;
+      order?: 'ASC' | 'DESC';
     };
+
+/** Columnas por las que el backend acepta ordenar la bandeja de correcciones. */
+export type CorrectionSortField =
+  | 'status'
+  | 'request_number'
+  | 'requester_name'
+  | 'certificate_number'
+  | 'created_at'
+  | 'due_date';
 
 export type PrimaTecnicaCategoria = string;
 
@@ -161,95 +172,27 @@ export type LaborFunctionItemApi = {
 
 export type LaborFunctionProfileApi = {
   id: string;
-  position_code: string;
-  grade_code: string | null;
-  combined_code: string;
-  hierarchical_level: string | null;
-  position_name: string;
-  department_name: string | null;
-  internal_group: string | null;
+  id_number: string | null;
+  needs_assignment?: boolean;
   source_sheet: string | null;
   is_active: boolean;
   functions: LaborFunctionItemApi[];
   function_count: number;
-  association_count: number;
   created_at: string;
   updated_at: string;
 };
-
-export type LaborFunctionAssociationApi = {
-  id: string;
-  /** De donde salio la vinculacion: la tabla local o la vista Oracle FNC. */
-  origen: 'local' | 'oracle';
-  request_number: string;
-  full_name: string;
-  id_number: string;
-  document_type: string | null;
-  email: string | null;
-  campus: string | null;
-  status: string;
-  position_name: string | null;
-  position_category: string | null;
-  hierarchical_level: string | null;
-  combined_code: string;
-  department_name: string | null;
-  internal_group: string | null;
-  hiring_date: string | null;
-  request_date: string | null;
-  created_at: string;
-};
-
-export type LaborFunctionAssociationsResponseApi = {
-  profile: {
-    id: string;
-    combined_code: string;
-    position_code: string;
-    grade_code: string | null;
-    position_name: string;
-    hierarchical_level: string | null;
-    department_name: string | null;
-    internal_group: string | null;
-    function_count: number;
-  };
-  items: LaborFunctionAssociationApi[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-  summary: {
-    associations: number;
-    uniquePeople: number;
-    byStatus: Record<string, number>;
-    fromLocal: number;
-    fromOracle: number;
-    oracleAvailable: boolean;
-  };
-};
-
-export type LaborFunctionProfileHintApi = {
-  id: string;
-  combined_code: string;
-  position_code: string;
-  grade_code: string | null;
-  hierarchical_level: string | null;
-  position_name: string;
-  department_name: string | null;
-  internal_group: string | null;
-  function_count: number;
-  is_active: boolean;
-};
-
 export type LaborPersonLookupItemApi = {
   origen: 'local' | 'oracle';
   full_name: string | null;
-  id_number: string | null;
+  id_number: string;
   document_type: string | null;
   email: string | null;
   hiring_date: string | null;
   position_category: string | null;
   status: string | null;
   request_number: string | null;
-  /** Datos exactos con los que hay que crear el perfil para que le cruce. */
+  certificate_dependency: string | null;
+  total_vinculaciones: number;
   matrix: {
     position_code: string | null;
     grade_code: string | null;
@@ -259,33 +202,24 @@ export type LaborPersonLookupItemApi = {
     department_name: string | null;
     internal_group: string | null;
   };
-  /** Cuántas vinculaciones tiene la persona; solo se muestra la vigente. */
-  total_vinculaciones: number;
-  matched_profile: LaborFunctionProfileHintApi | null;
-  /** Cuántos perfiles comparten el cod_cargo (para contexto, no se listan). */
+  functions_match_status: 'MATCHED' | 'NOT_FOUND' | 'AMBIGUOUS';
+  matched_profile: { id: string; id_number: string | null; function_count: number; is_active: boolean } | null;
   profiles_same_code: number;
-  /** Perfiles que fallan por UN solo dato, con el nombre de ese dato. */
-  near_matches: Array<
-    LaborFunctionProfileHintApi & { differing_fields: string[] }
-  >;
+  near_matches: Array<{
+    id: string;
+    position_name: string | null;
+    department_name: string | null;
+    internal_group: string | null;
+    differing_fields: string[];
+  }>;
 };
-
 export type LaborPersonLookupResponseApi = {
-  search: string;
-  total: number;
-  limit: number;
+  search: string; total: number; limit: number;
   items: LaborPersonLookupItemApi[];
   sources: { local: number; oracle: number; oracleAvailable: boolean };
 };
-
 export type LaborFunctionProfilePayloadApi = {
-  positionCode?: string;
-  gradeCode?: string;
-  combinedCode?: string;
-  hierarchicalLevel?: string;
-  positionName?: string;
-  departmentName?: string;
-  internalGroup?: string;
+  idNumber: string;
   sourceSheet?: string;
   functions: string[] | string;
   isActive?: boolean;
@@ -299,6 +233,8 @@ export const certificadosService = {
       limit?: number;
       status?: CorrectionStatus | 'ALL';
       search?: string;
+      sort?: CorrectionSortField;
+      order?: 'ASC' | 'DESC';
     }, options?: CorrectionReadOptions): Promise<CertificateCorrectionListResponse> {
       return apiClient.get(`${SERVICE_PREFIX}/certificates/correction-requests`, params, correctionReadConfig(options));
     },
@@ -455,19 +391,9 @@ export const certificadosService = {
       page: number;
       limit: number;
       totalPages: number;
-      stats: { profiles: number; functions: number; associatedRequests: number };
+      stats: { profiles: number; functions: number; pending?: number };
     }> {
-      return apiClient.get(`${SERVICE_PREFIX}/certificates/labor-functions`, params);
-    },
-
-    async listarAsociadosFuncionesLaborales(
-      id: string,
-      params?: { search?: string; page?: number; limit?: number },
-    ): Promise<LaborFunctionAssociationsResponseApi> {
-      return apiClient.get(
-        `${SERVICE_PREFIX}/certificates/labor-functions/${id}/associations`,
-        params,
-      );
+      return apiClient.get(`${SERVICE_PREFIX}/certificates/labor-functions`, params, { cache: 'no-store' });
     },
 
     async consultarEmpleadoFuncionesLaborales(
@@ -477,6 +403,7 @@ export const certificadosService = {
       return apiClient.get(
         `${SERVICE_PREFIX}/certificates/labor-functions/person-lookup`,
         { search, ...(params || {}) },
+        { cache: 'no-store' },
       );
     },
 
@@ -489,20 +416,15 @@ export const certificadosService = {
         Pick<
           LaborFunctionProfileApi,
           | 'id'
-          | 'combined_code'
-          | 'position_code'
-          | 'grade_code'
-          | 'position_name'
-          | 'department_name'
-          | 'internal_group'
+          | 'id_number'
           | 'function_count'
-          | 'association_count'
         >
       >;
     }> {
       return apiClient.get(
         `${SERVICE_PREFIX}/certificates/labor-functions/selection`,
         params,
+        { cache: 'no-store' },
       );
     },
 
@@ -542,7 +464,7 @@ export const certificadosService = {
         rowNumber: number;
         status: 'valid' | 'error';
         action?: 'created' | 'updated' | null;
-        combined_code?: string;
+        id_number?: string;
         function_count?: number;
         message: string;
       }>;
@@ -560,7 +482,7 @@ export const certificadosService = {
         rowNumber: number;
         status: 'success' | 'error';
         action?: 'created' | 'updated';
-        combined_code?: string;
+        id_number?: string;
         function_count?: number;
         message: string;
       }>;

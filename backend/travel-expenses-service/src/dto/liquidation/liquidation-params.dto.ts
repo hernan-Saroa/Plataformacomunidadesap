@@ -4,11 +4,6 @@ export class UpdateLiquidationParamsDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  smmlv?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
   @Max(1)
   factorContratista?: number;
 
@@ -22,4 +17,9 @@ export class UpdateLiquidationParamsDto {
   @IsNumber()
   @Min(0)
   cacheTtlMinutes?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  tarifaTerminalAereo?: number;
 }

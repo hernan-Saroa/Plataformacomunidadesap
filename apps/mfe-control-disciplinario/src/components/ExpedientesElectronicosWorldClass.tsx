@@ -487,7 +487,7 @@ export function ExpedientesElectronicosWorldClass({
      setError(null);
      try {
        // ✅ Filtrar procesos según rol: Jefe/Radicador ven todos, Profesional solo los suyos
-       const esJefe = authService.hasRole('JEFE_DE_LA_OCID') || authService.isSuperAdmin();
+       const esJefe = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_JEFE_OCID) || authService.isSuperAdmin();
        const canViewAll = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_ALL);
        const canViewMine = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_VIEW_MINE);
        const currentUserId = authService.getCurrentUser()?.id;

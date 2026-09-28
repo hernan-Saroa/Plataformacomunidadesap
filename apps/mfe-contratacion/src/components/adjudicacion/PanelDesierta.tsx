@@ -10,6 +10,7 @@ import {
 } from '../../types';
 import { Aviso, Boton, BotonSecundario, campo } from '../shared/PiezasPanel';
 import { fechaLarga, momentoConHora } from '../shared/fechas';
+import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
   procesoId: string;
@@ -36,6 +37,7 @@ const ETIQUETA_CAUSAL: Record<CausalDesierta, string> = {
  * dos sería invitar a firmar un acto que contradice la lista de oferentes.
  */
 export function PanelDesierta({ procesoId, estado, onCambio }: Props) {
+  const dialogo = useDialogo();
   const [declarando, setDeclarando] = useState(false);
   const [guardando, setGuardando] = useState(false);
 
@@ -103,7 +105,13 @@ export function PanelDesierta({ procesoId, estado, onCambio }: Props) {
     }, 'Declaratoria notificada y publicada');
 
   const revocar = async () => {
-    const razon = window.prompt('¿Por qué se revoca la declaratoria desierta?')?.trim();
+    const razon = await dialogo.pedirMotivo({
+      titulo: 'Revocar la declaratoria desierta',
+      descripcion: 'El proceso vuelve a quedar sin desenlace. Lo declarado se conserva en el expediente.',
+      etiqueta: 'Motivo de la revocatoria',
+      confirmar: 'Revocar la declaratoria',
+      tono: 'peligro',
+    });
     if (!razon) return;
     await conGuardado(
       () => contratacionService.revocarDeclaratoriaDesierta(procesoId, razon),
@@ -305,6 +313,7 @@ export function PanelDesierta({ procesoId, estado, onCambio }: Props) {
           </ul>
         </div>
       )}
+      {dialogo.elemento}
     </div>
   );
 }

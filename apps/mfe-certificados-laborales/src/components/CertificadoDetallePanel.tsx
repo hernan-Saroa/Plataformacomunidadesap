@@ -54,6 +54,7 @@ interface CertificadoDetallePanelProps {
     fechaGeneracion: string;
     position_location?: string;
     department?: string;
+    certificate_dependency?: string;
     campus?: string;
     cod_cargo?: string;
     cod_grade?: string;
@@ -819,7 +820,7 @@ export function CertificadoDetallePanel({
                           Dependencia
                         </label>
                         <p className="text-sm text-gray-900 flex items-center gap-1.5">
-                          {certificado.empleado.dependencia || ubicacionCargo || 'No disponible'}
+                          {certificado.certificate_dependency ?? (certificado.empleado.dependencia || ubicacionCargo || 'No disponible')}
                         </p>
                       </div>
                       <div className={infoTileClass}>

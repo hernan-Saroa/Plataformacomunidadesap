@@ -7,7 +7,6 @@ import {
   Post,
   Req,
   UploadedFile,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -20,10 +19,9 @@ import { CerrarFinancieramenteDto, RevertirCierreDto } from './dto/cierre-financ
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 import { MIME_DOCUMENTOS, opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PermisosGuard } from '../../auth/permisos.guard';
 
 /**
  * Cierre financiero — actividad 10.3 (EFDS-1173).
@@ -38,8 +36,7 @@ export class CierreFinancieroController {
   constructor(private readonly service: CierreFinancieroService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.seguimiento.ver')
+  @Puede('ver', '10.3')
   @ApiOperation({
     summary: 'Estado del cierre financiero',
     description:
@@ -50,8 +47,7 @@ export class CierreFinancieroController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.presupuesto.gestionar')
+  @Puede('editar', '10.3')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -90,8 +86,7 @@ export class CierreFinancieroController {
   }
 
   @Post('revertir')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.presupuesto.gestionar')
+  @Puede('editar', '10.3')
   @ApiOperation({
     summary: 'Revertir el cierre financiero',
     description:

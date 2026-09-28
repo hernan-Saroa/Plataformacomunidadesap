@@ -28,8 +28,26 @@ interface WordPlaceholderReplacement {
   value: string;
 }
 
-interface ConvertWordToPdfOptions {
+export interface ExtractedImageItem {
+  src: string;
+  target: string;
+  rId: string;
+  cx?: number;
+  cy?: number;
+  widthCm?: number;
+  heightCm?: number;
+  isBanner: boolean;
+  behindDoc: boolean;
+  align?: 'left' | 'center' | 'right';
+}
+
+export interface ConvertWordToPdfOptions {
   autoConfigTipo?: string;
+}
+
+export interface HeaderFooterContent {
+  images: ExtractedImageItem[];
+  textBlocks: string[];
 }
 
 @Injectable()
@@ -320,16 +338,6 @@ export class DocumentConversionService {
     replacements: WordPlaceholderReplacement[] = [],
     options: ConvertWordToPdfOptions = {},
   ): Promise<string[]> {
-    const { autoConfigTipo } = options;
-    // Aplicar restricción de altura solo para tipos de auto con pie de página problemático
-    // (ej. Auto Inhibitorio con iconos ICONTEC/ISO en el footer)
-    // Usamos la configuración paramétrica (autoConfigTipo) en lugar de hardcoded strings
-    const shouldConstrainFooterImages = autoConfigTipo
-      ? ['INHIBITORIO', 'AUTO_INHIBITORIO'].some((t) =>
-          autoConfigTipo.toUpperCase().includes(t.toUpperCase()),
-        )
-      : false;
-
     let browser;
     try {
       this.logger.log(`[Mammoth] Starting conversion: ${inputPath} -> ${outputPath}`);
@@ -359,54 +367,36 @@ export class DocumentConversionService {
 
       this.logger.log(`[Mammoth] HTML content length: ${htmlContent.length}`);
 
-      // Mammoth no lee word/header*.xml ni word/footer*.xml (solo word/document.xml),
-      // así que el membrete y el pie de página insertados como encabezado/pie de
-      // Word se pierden en la conversión. Se extraen aparte (imágenes y texto) y
-      // se inyectan como encabezado/pie de página REALES de Puppeteer, para que
-      // queden fijos en el margen y se repitan en todas las páginas, tal como en
-      // el documento original (antes se anteponían al cuerpo y salían en línea a
-      // mitad de página, en desorden).
+      // Extraer encabezado y pie de página preservando dimensiones y metadatos de imágenes
       const headerContent = await this.extractHeaderContent(inputPath);
       const footerContent = await this.extractFooterContent(inputPath);
 
-      // El membrete y el pie de ESAP son imágenes tipo "banner" que ocupan todo el
-      // ancho de la página (el logo queda a la izquierda; "www.esap.edu.co" a la
-      // derecha). Se renderizan a ancho completo, no centradas ni encogidas.
-      // FIX: Para Auto Inhibitorio, el pie tiene iconos (ICONTEC/ISO) que son banner ancho.
-      // Aumentamos el margen inferior para que quepan sin solaparse con el cuerpo.
-      // El margen normal es 4cm; usamos 5.5cm para dar espacio al banner del pie.
-      const footerImageStyle = shouldConstrainFooterImages
-        ? 'display:block; width:100%; height:auto; object-fit:contain;'
-        : 'display:block; width:100%;';
-      // Margen inferior para dar espacio completo al banner del pie institucional,
-      // las 5 líneas de contacto y la paginación para TODOS los autos con pie
-      const footerMarginBottom = shouldConstrainFooterImages ? '5.5cm' : '4.8cm';
-      const headerImagesHtml = headerContent.images
-        .map((src) => `<img src="${src}" style="display:block; width:100%;" />`)
-        .join('');
-      const headerTextHtml = headerContent.textBlocks
-        .map(
-          (texto) =>
-            `<div style="text-align:center; font-size:8pt; line-height:1.3;">${this.escapeHtmlText(texto)}</div>`,
-        )
-        .join('');
-      const footerImagesHtml = footerContent.images
-        .map((src) => `<img src="${src}" style="${footerImageStyle}" />`)
-        .join('');
-      const footerTextHtml = footerContent.textBlocks
-        .map(
-          (texto) =>
-            `<div style="text-align:left; font-size:7pt; line-height:1.2;">${this.escapeHtmlText(texto)}</div>`,
-        )
-        .join('');
+      const hasHeader =
+        headerContent.images.length > 0 || headerContent.textBlocks.length > 0;
+      const hasFooter =
+        footerContent.images.length > 0 || footerContent.textBlocks.length > 0;
 
-      const hasHeader = headerImagesHtml.length > 0 || headerTextHtml.length > 0;
-      const hasFooter = footerImagesHtml.length > 0 || footerTextHtml.length > 0;
+      const headerTemplate = this.buildHeaderTemplate(headerContent);
+      const footerTemplate = this.buildFooterTemplate(footerContent);
 
-      const headerTemplate = this.buildHeaderTemplate(headerImagesHtml, headerTextHtml);
-      const footerTemplate = this.buildFooterTemplate(footerImagesHtml, footerTextHtml);
+      // Calcular márgenes dinámicos y proporcionales con margen de seguridad garantizado
+      // Si hay banner de encabezado se necesitan 3.8cm; con logo o texto simple basta 3.0cm
+      const topMargin = hasHeader
+        ? headerContent.images.some((i) => i.isBanner)
+          ? '3.8cm'
+          : '3.0cm'
+        : '2.2cm';
 
-      // Crear HTML completo con estilos limpios sin doble margen de body
+      // Para el pie de página, si hay banner o múltiples líneas de contacto basta 3.4cm; con pie simple 2.8cm
+      const bottomMargin = hasFooter
+        ? headerContent.images.some((i) => i.isBanner) ||
+          footerContent.images.some((i) => i.isBanner) ||
+          footerContent.textBlocks.length > 2
+          ? '3.4cm'
+          : '2.8cm'
+        : '2.2cm';
+
+      // Crear HTML completo con estilos limpios y protección para imágenes del cuerpo
       const fullHtml = `
         <!DOCTYPE html>
         <html>
@@ -416,6 +406,9 @@ export class DocumentConversionService {
             @page {
               size: A4;
             }
+            *, *:before, *:after {
+              box-sizing: border-box;
+            }
             body {
               font-family: 'Times New Roman', Times, serif;
               font-size: 12pt;
@@ -423,6 +416,8 @@ export class DocumentConversionService {
               margin: 0;
               padding: 0;
               color: #000;
+              word-wrap: break-word;
+              overflow-wrap: break-word;
             }
             .mammoth-style-wrapper {
               max-width: 100%;
@@ -430,9 +425,37 @@ export class DocumentConversionService {
             p { 
               margin: 0 0 8pt 0; 
               text-align: justify;
+              orphans: 2;
+              widows: 2;
             }
-            table { border-collapse: collapse; width: 100%; }
-            td, th { border: 1px solid #000; padding: 4pt; }
+            h1, h2, h3, h4, h5, h6 {
+              page-break-after: avoid;
+              break-after: avoid;
+            }
+            table { 
+              border-collapse: collapse; 
+              width: 100%; 
+              page-break-inside: auto;
+            }
+            tr { 
+              page-break-inside: avoid; 
+              break-inside: avoid; 
+            }
+            td, th { 
+              border: 1px solid #000; 
+              padding: 4pt; 
+            }
+            img { 
+              max-width: 100%; 
+              height: auto; 
+              object-fit: contain; 
+              page-break-inside: avoid;
+              break-inside: avoid;
+            }
+            .signature-block, .signature-container, .firma-block {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
           </style>
         </head>
         <body>
@@ -455,17 +478,15 @@ export class DocumentConversionService {
           '--disable-accelerated-2d-canvas',
           '--no-first-run',
           '--no-zygote',
-          '--disable-gpu'
-        ]
+          '--disable-gpu',
+        ],
       });
 
       this.logger.log(`[Mammoth] Creating page and setting content...`);
       const page = await browser.newPage();
       await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
 
-      // Generar PDF. Cuando hay membrete/pie se activa displayHeaderFooter y se
-      // amplía el margen superior/inferior para que las plantillas quepan sin
-      // solaparse con el cuerpo.
+      // Generar PDF con encabezado y pie de página controlados
       this.logger.log(`[Mammoth] Generating PDF...`);
       await page.pdf({
         path: outputPath,
@@ -475,16 +496,15 @@ export class DocumentConversionService {
         headerTemplate,
         footerTemplate,
         margin: {
-          top: hasHeader ? '3.8cm' : '2cm',
+          top: topMargin,
           right: '2cm',
-          bottom: hasFooter ? footerMarginBottom : '2cm',
-          left: '2cm'
-        }
+          bottom: bottomMargin,
+          left: '2cm',
+        },
       });
 
       this.logger.log(`[Mammoth] PDF generated successfully at: ${outputPath}`);
       return htmlReplacementResult.replacedMarkers;
-
     } catch (error) {
       this.logger.error(`[Mammoth] Conversion failed:`, error);
       throw error;
@@ -497,44 +517,185 @@ export class DocumentConversionService {
 
   /**
    * Construye la plantilla HTML del encabezado para la exportación a PDF.
-   * La imagen del membrete se renderiza a ancho completo y el texto institucional
-   * se superpone de forma absoluta en el espacio superior del banner, evitando que
-   * se desplace hacia abajo y se solape con el cuerpo del auto.
+   * Soporta tanto el objeto estructurado HeaderFooterContent como llamadas con strings HTML.
    */
-  buildHeaderTemplate(headerImagesHtml: string, headerTextHtml: string): string {
-    const hasHeader = Boolean(headerImagesHtml || headerTextHtml);
-    if (!hasHeader) {
+  buildHeaderTemplate(
+    headerInput: HeaderFooterContent | string,
+    headerTextHtml?: string,
+  ): string {
+    // Modo de compatibilidad hacia atrás si se reciben cadenas HTML
+    if (typeof headerInput === 'string') {
+      const headerImagesHtml = headerInput;
+      const textHtml = headerTextHtml || '';
+      const hasHeader = Boolean(headerImagesHtml || textHtml);
+      if (!hasHeader) {
+        return '<div></div>';
+      }
+
+      const headerBodyHtml = headerImagesHtml
+        ? `<div style="position:relative; width:100%;">${headerImagesHtml}${
+            textHtml
+              ? `<div style="position:absolute; left:0; top:8px; width:100%; padding:0 2cm; box-sizing:border-box;">${textHtml}</div>`
+              : ''
+          }</div>`
+        : `<div style="padding:0 2cm; box-sizing:border-box;">${textHtml}</div>`;
+
+      return `<div style="width:100%; -webkit-print-color-adjust:exact; overflow:hidden;">${headerBodyHtml}</div>`;
+    }
+
+    const { images, textBlocks } = headerInput;
+    if (images.length === 0 && textBlocks.length === 0) {
       return '<div></div>';
     }
 
-    const headerBodyHtml = headerImagesHtml
-      ? `<div style="position:relative; width:100%;">${headerImagesHtml}${
-          headerTextHtml
-            ? `<div style="position:absolute; left:0; top:8px; width:100%; padding:0 2cm; box-sizing:border-box;">${headerTextHtml}</div>`
-            : ''
-        }</div>`
-      : `<div style="padding:0 2cm; box-sizing:border-box;">${headerTextHtml}</div>`;
+    const banners = images.filter((img) => img.isBanner);
+    const nonBanners = images.filter((img) => !img.isBanner);
 
-    return `<div style="width:100%; -webkit-print-color-adjust:exact; overflow:hidden;">${headerBodyHtml}</div>`;
+    let bannerHtml = '';
+    if (banners.length > 0) {
+      bannerHtml = banners
+        .map(
+          (b) =>
+            `<img src="${b.src}" style="display:block; width:100%; max-height:3.2cm; object-fit:contain;" />`,
+        )
+        .join('');
+    }
+
+    let iconsHtml = '';
+    if (nonBanners.length > 0) {
+      iconsHtml = `<div style="display:flex; align-items:center; gap:12px; padding:0 2cm; box-sizing:border-box; width:100%;">
+        ${nonBanners
+          .map((img) => {
+            const w = img.widthCm
+              ? `${Math.min(img.widthCm, 7).toFixed(2)}cm`
+              : 'auto';
+            const h = img.heightCm
+              ? `${Math.min(img.heightCm, 2.5).toFixed(2)}cm`
+              : '2.2cm';
+            return `<img src="${img.src}" style="display:inline-block; width:${w}; max-height:${h}; height:auto; object-fit:contain;" />`;
+          })
+          .join('')}
+      </div>`;
+    }
+
+    let textHtml = '';
+    if (textBlocks.length > 0) {
+      textHtml = `<div style="padding:2px 2cm; box-sizing:border-box; text-align:center; font-size:8pt; line-height:1.2;">
+        ${textBlocks.map((t) => `<div>${this.escapeHtmlText(t)}</div>`).join('')}
+      </div>`;
+    }
+
+    if (bannerHtml) {
+      return `<div style="width:100%; -webkit-print-color-adjust:exact; overflow:hidden;">
+        <div style="position:relative; width:100%;">
+          ${bannerHtml}
+          ${textHtml ? `<div style="position:absolute; left:0; top:6px; width:100%;">${textHtml}</div>` : ''}
+          ${iconsHtml ? `<div style="position:absolute; left:0; top:6px; width:100%;">${iconsHtml}</div>` : ''}
+        </div>
+      </div>`;
+    }
+
+    return `<div style="width:100%; -webkit-print-color-adjust:exact; overflow:hidden;">
+      ${iconsHtml}
+      ${textHtml}
+    </div>`;
   }
 
   /**
    * Construye la plantilla HTML del pie de página para la exportación a PDF.
+   * Soporta tanto el objeto estructurado HeaderFooterContent como llamadas con strings HTML.
    */
-  buildFooterTemplate(footerImagesHtml: string, footerTextHtml: string): string {
-    const hasFooter = Boolean(footerImagesHtml || footerTextHtml);
-    if (!hasFooter) {
+  buildFooterTemplate(
+    footerInput: HeaderFooterContent | string,
+    footerTextHtml?: string,
+  ): string {
+    // Modo de compatibilidad hacia atrás si se reciben cadenas HTML
+    if (typeof footerInput === 'string') {
+      const footerImagesHtml = footerInput;
+      const textHtml = footerTextHtml || '';
+      const hasFooter = Boolean(footerImagesHtml || textHtml);
+      if (!hasFooter) {
+        return '<div></div>';
+      }
+
+      const footerPageNumberHtml =
+        '<div style="text-align:center; font-size:7pt; line-height:1.2; margin-bottom:2px; color:#555;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>';
+
+      const footerBodyHtml = footerImagesHtml
+        ? `<div style="position:relative; width:100%;">${footerImagesHtml}<div style="position:absolute; left:0; top:4px; width:100%; padding:0 2cm; box-sizing:border-box;">${textHtml}</div></div>`
+        : `<div style="padding:0 2cm; box-sizing:border-box;">${textHtml}</div>`;
+
+      return `<div style="width:100%; font-size:7pt; -webkit-print-color-adjust:exact; padding-bottom:2mm;">${footerPageNumberHtml}${footerBodyHtml}</div>`;
+    }
+
+    const { images, textBlocks } = footerInput;
+    if (images.length === 0 && textBlocks.length === 0) {
       return '<div></div>';
     }
 
-    const footerPageNumberHtml =
-      '<div style="text-align:center; font-size:7pt; line-height:1.2; margin-bottom:2px; color:#555;">Página <span class="pageNumber"></span> de <span class="totalPages"></span></div>';
+    const banners = images.filter((img) => img.isBanner);
+    const nonBanners = images.filter((img) => !img.isBanner);
 
-    const footerBodyHtml = footerImagesHtml
-      ? `<div style="position:relative; width:100%;">${footerImagesHtml}<div style="position:absolute; left:0; top:4px; width:100%; padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div></div>`
-      : `<div style="padding:0 2cm; box-sizing:border-box;">${footerTextHtml}</div>`;
+    const pageNumberHtml = `<div style="text-align:right; font-size:7pt; color:#444; margin-bottom:2px;">
+      Página <span class="pageNumber"></span> de <span class="totalPages"></span>
+    </div>`;
 
-    return `<div style="width:100%; font-size:7pt; -webkit-print-color-adjust:exact; padding-bottom:2mm;">${footerPageNumberHtml}${footerBodyHtml}</div>`;
+    let bannerHtml = '';
+    if (banners.length > 0) {
+      bannerHtml = banners
+        .map(
+          (b) =>
+            `<img src="${b.src}" style="display:block; width:100%; max-height:1.8cm; object-fit:contain;" />`,
+        )
+        .join('');
+    }
+
+    let iconsHtml = '';
+    if (nonBanners.length > 0) {
+      iconsHtml = `<div style="display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+        ${nonBanners
+          .map((img) => {
+            const w = img.widthCm
+              ? `${Math.min(img.widthCm, 4.5).toFixed(2)}cm`
+              : 'auto';
+            const h = img.heightCm
+              ? `${Math.min(img.heightCm, 1.6).toFixed(2)}cm`
+              : '1.4cm';
+            return `<img src="${img.src}" style="display:inline-block; width:${w}; max-height:${h}; height:auto; object-fit:contain;" />`;
+          })
+          .join('')}
+      </div>`;
+    }
+
+    let textHtml = '';
+    if (textBlocks.length > 0) {
+      textHtml = `<div style="text-align:left; font-size:7pt; line-height:1.2; color:#333;">
+        ${textBlocks.map((t) => `<div>${this.escapeHtmlText(t)}</div>`).join('')}
+      </div>`;
+    }
+
+    // Caso 1: Tiene un banner de fondo (como la plantilla institucional ESAP con "www.esap.edu.co" a la derecha)
+    if (bannerHtml) {
+      return `<div style="width:100%; font-size:7pt; -webkit-print-color-adjust:exact; padding-bottom:2mm;">
+        <div style="padding:0 2cm; box-sizing:border-box;">${pageNumberHtml}</div>
+        <div style="position:relative; width:100%;">
+          ${bannerHtml}
+          <div style="position:absolute; left:0; top:2px; width:100%; padding:0 2cm; box-sizing:border-box; display:flex; justify-content:space-between; align-items:flex-end;">
+            <div>${textHtml}</div>
+            <div>${iconsHtml}</div>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    // Caso 2: Sin banner de fondo, pero con íconos o texto institucional
+    return `<div style="width:100%; font-size:7pt; -webkit-print-color-adjust:exact; padding:0 2cm 2mm 2cm; box-sizing:border-box;">
+      ${pageNumberHtml}
+      <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+        <div style="flex:1;">${textHtml}</div>
+        ${iconsHtml ? `<div>${iconsHtml}</div>` : ''}
+      </div>
+    </div>`;
   }
 
   private escapePowerShellString(value: string): string {
@@ -543,178 +704,233 @@ export class DocumentConversionService {
 
   private async extractHeaderContent(
     inputPath: string,
-  ): Promise<{ images: string[]; textBlocks: string[] }> {
-    try {
-      const docxBuffer = await fs.readFile(inputPath);
-      const zip = await JSZip.loadAsync(docxBuffer);
-
-      const headerFiles = Object.keys(zip.files).filter((fileName) =>
-        /^word\/header\d*\.xml$/i.test(fileName),
-      );
-
-      const images: string[] = [];
-      const textBlocks: string[] = [];
-      const seenMediaPaths = new Set<string>();
-      const seenText = new Set<string>();
-
-      for (const headerFile of headerFiles) {
-        const headerXml = await zip.file(headerFile)?.async('string');
-        if (!headerXml) {
-          continue;
-        }
-
-        const relsPath = `word/_rels/${path.basename(headerFile)}.rels`;
-        const relsXml = await zip.file(relsPath)?.async('string');
-
-        const relsMap = new Map<string, string>();
-        if (relsXml) {
-          const relRegex = /<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/?>/g;
-          let relMatch: RegExpExecArray | null;
-
-          while ((relMatch = relRegex.exec(relsXml)) !== null) {
-            relsMap.set(relMatch[1], relMatch[2]);
-          }
-
-          const embedRegex = /r:embed="([^"]+)"/g;
-          let embedMatch: RegExpExecArray | null;
-
-          while ((embedMatch = embedRegex.exec(headerXml)) !== null) {
-            const target = relsMap.get(embedMatch[1]);
-            if (!target) {
-              continue;
-            }
-
-            const mediaPath = path.posix.normalize(`word/${target}`);
-            if (seenMediaPaths.has(mediaPath)) {
-              continue;
-            }
-            seenMediaPaths.add(mediaPath);
-
-            const mediaFile = zip.file(mediaPath);
-            if (!mediaFile) {
-              continue;
-            }
-
-            const mimeType = this.getImageMimeType(mediaPath);
-            if (!mimeType) {
-              this.logger.warn(
-                `[Conversion] Imagen de encabezado con formato no soportado para vista web: ${mediaPath}`,
-              );
-              continue;
-            }
-
-            const mediaBuffer = await mediaFile.async('nodebuffer');
-            images.push(`data:${mimeType};base64,${mediaBuffer.toString('base64')}`);
-          }
-        }
-
-        // Mammoth tampoco lee el texto del encabezado (ej. dirección, NIT, datos de
-        // contacto de la institución debajo del logo). Se extrae párrafo por párrafo.
-        const paragraphRegex = /<w:p\b[^>]*>([\s\S]*?)<\/w:p>/g;
-        let paragraphMatch: RegExpExecArray | null;
-
-        while ((paragraphMatch = paragraphRegex.exec(headerXml)) !== null) {
-          const paragraphXml = paragraphMatch[1];
-          const textRegex = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
-          let textMatch: RegExpExecArray | null;
-          let paragraphText = '';
-
-          while ((textMatch = textRegex.exec(paragraphXml)) !== null) {
-            paragraphText += textMatch[1];
-          }
-
-          const decodedText = this.decodeXmlEntities(paragraphText).trim();
-          if (decodedText && !seenText.has(decodedText)) {
-            seenText.add(decodedText);
-            textBlocks.push(decodedText);
-          }
-        }
-      }
-
-      return { images, textBlocks };
-    } catch (error) {
-      this.logger.warn(
-        `[Conversion] No se pudo extraer el contenido del encabezado del documento: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      return { images: [], textBlocks: [] };
-    }
+  ): Promise<HeaderFooterContent> {
+    return this.extractPartContent(inputPath, /^word\/header\d*\.xml$/i);
   }
 
   private async extractFooterContent(
     inputPath: string,
-  ): Promise<{ images: string[]; textBlocks: string[] }> {
+  ): Promise<HeaderFooterContent> {
+    return this.extractPartContent(inputPath, /^word\/footer\d*\.xml$/i);
+  }
+
+  private async extractPartContent(
+    inputPath: string,
+    partRegex: RegExp,
+  ): Promise<HeaderFooterContent> {
     try {
       const docxBuffer = await fs.readFile(inputPath);
       const zip = await JSZip.loadAsync(docxBuffer);
 
-      const footerFiles = Object.keys(zip.files).filter((fileName) =>
-        /^word\/footer\d*\.xml$/i.test(fileName),
+      const matchingFiles = Object.keys(zip.files).filter((fileName) =>
+        partRegex.test(fileName),
       );
 
-      const images: string[] = [];
+      const images: ExtractedImageItem[] = [];
       const textBlocks: string[] = [];
       const seenMediaPaths = new Set<string>();
       const seenText = new Set<string>();
 
-      for (const footerFile of footerFiles) {
-        const footerXml = await zip.file(footerFile)?.async('string');
-        if (!footerXml) {
+      for (const xmlFile of matchingFiles) {
+        const partXml = await zip.file(xmlFile)?.async('string');
+        if (!partXml) {
           continue;
         }
 
-        const relsPath = `word/_rels/${path.basename(footerFile)}.rels`;
+        const relsPath = `word/_rels/${path.basename(xmlFile)}.rels`;
         const relsXml = await zip.file(relsPath)?.async('string');
-
         const relsMap = new Map<string, string>();
         if (relsXml) {
-          const relRegex = /<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/?>/g;
+          const relRegex =
+            /<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/?>/g;
           let relMatch: RegExpExecArray | null;
-
           while ((relMatch = relRegex.exec(relsXml)) !== null) {
             relsMap.set(relMatch[1], relMatch[2]);
           }
-
-          const embedRegex = /r:embed="([^"]+)"/g;
-          let embedMatch: RegExpExecArray | null;
-
-          while ((embedMatch = embedRegex.exec(footerXml)) !== null) {
-            const target = relsMap.get(embedMatch[1]);
-            if (!target) {
-              continue;
-            }
-
-            const mediaPath = path.posix.normalize(`word/${target}`);
-            if (seenMediaPaths.has(mediaPath)) {
-              continue;
-            }
-            seenMediaPaths.add(mediaPath);
-
-            const mediaFile = zip.file(mediaPath);
-            if (!mediaFile) {
-              continue;
-            }
-
-            const mimeType = this.getImageMimeType(mediaPath);
-            if (!mimeType) {
-              this.logger.warn(
-                `[Conversion] Imagen de pie de página con formato no soportado para vista web: ${mediaPath}`,
-              );
-              continue;
-            }
-
-            const mediaBuffer = await mediaFile.async('nodebuffer');
-            images.push(`data:${mimeType};base64,${mediaBuffer.toString('base64')}`);
-          }
         }
 
-        // Igual que con el encabezado, Mammoth no lee el texto del pie de página
-        // (ej. dirección, notas legales, numeración) del word/footer*.xml.
+        // 1. Extraer imágenes de DrawingML (<w:drawing>)
+        const drawingRegex = /<w:drawing\b[^>]*>([\s\S]*?)<\/w:drawing>/g;
+        let drawingMatch: RegExpExecArray | null;
+
+        while ((drawingMatch = drawingRegex.exec(partXml)) !== null) {
+          const dXml = drawingMatch[1];
+          const blipMatch = /<a:blip\b[^>]*r:embed="([^"]+)"/g.exec(dXml);
+          if (!blipMatch) {
+            continue;
+          }
+
+          const rId = blipMatch[1];
+          const target = relsMap.get(rId);
+          if (!target) {
+            continue;
+          }
+
+          const mediaPath = path.posix.normalize(`word/${target}`);
+          if (seenMediaPaths.has(mediaPath)) {
+            continue;
+          }
+          seenMediaPaths.add(mediaPath);
+
+          const mediaFile = zip.file(mediaPath);
+          if (!mediaFile) {
+            continue;
+          }
+
+          const mimeType = this.getImageMimeType(mediaPath);
+          if (!mimeType) {
+            this.logger.warn(
+              `[Conversion] Imagen con formato no soportado para vista web: ${mediaPath}`,
+            );
+            continue;
+          }
+
+          const mediaBuffer = await mediaFile.async('nodebuffer');
+          const extMatch =
+            /<wp:extent\b[^>]*cx="(\d+)"\b[^>]*cy="(\d+)"/g.exec(dXml) ||
+            /<a:ext\b[^>]*cx="(\d+)"\b[^>]*cy="(\d+)"/g.exec(dXml);
+
+          const cx = extMatch ? parseInt(extMatch[1], 10) : undefined;
+          const cy = extMatch ? parseInt(extMatch[2], 10) : undefined;
+
+          let widthCm = cx ? cx / 360000 : undefined;
+          let heightCm = cy ? cy / 360000 : undefined;
+
+          // Fallback a dimensiones del buffer si no vienen en XML
+          if (!widthCm || !heightCm) {
+            const dims = this.parseImageDimensionsFromBuffer(mediaBuffer);
+            if (dims) {
+              widthCm = (dims.width / 96) * 2.54;
+              heightCm = (dims.height / 96) * 2.54;
+            }
+          }
+
+          const behindDoc = /behindDoc="1"/i.test(dXml);
+
+          let align: 'left' | 'center' | 'right' = 'left';
+          if (/<wp:align\b[^>]*>right<\/wp:align>/i.test(dXml)) {
+            align = 'right';
+          } else if (/<wp:align\b[^>]*>center<\/wp:align>/i.test(dXml)) {
+            align = 'center';
+          }
+
+          const isBanner = Boolean(
+            (widthCm && widthCm >= 15.0) ||
+              (widthCm &&
+                heightCm &&
+                widthCm / heightCm >= 3.5 &&
+                widthCm >= 12.0),
+          );
+
+          images.push({
+            src: `data:${mimeType};base64,${mediaBuffer.toString('base64')}`,
+            target: mediaPath,
+            rId,
+            cx,
+            cy,
+            widthCm,
+            heightCm,
+            isBanner,
+            behindDoc,
+            align,
+          });
+        }
+
+        // 2. Extraer imágenes VML heredadas (<w:pict>)
+        const vmlRegex = /<v:shape\b[^>]*>([\s\S]*?)<\/v:shape>/g;
+        let vmlMatch: RegExpExecArray | null;
+
+        while ((vmlMatch = vmlRegex.exec(partXml)) !== null) {
+          const vXml = vmlMatch[0];
+          const imgMatch = /<v:imagedata\b[^>]*r:id="([^"]+)"/g.exec(vXml);
+          if (!imgMatch) {
+            continue;
+          }
+
+          const rId = imgMatch[1];
+          const target = relsMap.get(rId);
+          if (!target) {
+            continue;
+          }
+
+          const mediaPath = path.posix.normalize(`word/${target}`);
+          if (seenMediaPaths.has(mediaPath)) {
+            continue;
+          }
+          seenMediaPaths.add(mediaPath);
+
+          const mediaFile = zip.file(mediaPath);
+          if (!mediaFile) {
+            continue;
+          }
+
+          const mimeType = this.getImageMimeType(mediaPath);
+          if (!mimeType) {
+            continue;
+          }
+
+          const mediaBuffer = await mediaFile.async('nodebuffer');
+          const styleMatch = /style="([^"]+)"/i.exec(vXml);
+          let widthCm: number | undefined;
+          let heightCm: number | undefined;
+
+          if (styleMatch) {
+            const style = styleMatch[1];
+            const wMatch = /width:\s*([\d.]+)(pt|in|cm|px)/i.exec(style);
+            const hMatch = /height:\s*([\d.]+)(pt|in|cm|px)/i.exec(style);
+
+            if (wMatch) {
+              const val = parseFloat(wMatch[1]);
+              const unit = wMatch[2].toLowerCase();
+              if (unit === 'pt') widthCm = (val * 2.54) / 72;
+              else if (unit === 'in') widthCm = val * 2.54;
+              else if (unit === 'cm') widthCm = val;
+              else if (unit === 'px') widthCm = (val * 2.54) / 96;
+            }
+
+            if (hMatch) {
+              const val = parseFloat(hMatch[1]);
+              const unit = hMatch[2].toLowerCase();
+              if (unit === 'pt') heightCm = (val * 2.54) / 72;
+              else if (unit === 'in') heightCm = val * 2.54;
+              else if (unit === 'cm') heightCm = val;
+              else if (unit === 'px') heightCm = (val * 2.54) / 96;
+            }
+          }
+
+          if (!widthCm || !heightCm) {
+            const dims = this.parseImageDimensionsFromBuffer(mediaBuffer);
+            if (dims) {
+              widthCm = (dims.width / 96) * 2.54;
+              heightCm = (dims.height / 96) * 2.54;
+            }
+          }
+
+          const isBanner = Boolean(
+            (widthCm && widthCm >= 15.0) ||
+              (widthCm &&
+                heightCm &&
+                widthCm / heightCm >= 3.5 &&
+                widthCm >= 12.0),
+          );
+
+          images.push({
+            src: `data:${mimeType};base64,${mediaBuffer.toString('base64')}`,
+            target: mediaPath,
+            rId,
+            widthCm,
+            heightCm,
+            isBanner,
+            behindDoc: false,
+            align: 'left',
+          });
+        }
+
+        // 3. Extraer párrafos de texto (excluyendo números de página aislados)
         const paragraphRegex = /<w:p\b[^>]*>([\s\S]*?)<\/w:p>/g;
         let paragraphMatch: RegExpExecArray | null;
 
-        while ((paragraphMatch = paragraphRegex.exec(footerXml)) !== null) {
+        while ((paragraphMatch = paragraphRegex.exec(partXml)) !== null) {
           const paragraphXml = paragraphMatch[1];
           const textRegex = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
           let textMatch: RegExpExecArray | null;
@@ -725,7 +941,19 @@ export class DocumentConversionService {
           }
 
           const decodedText = this.decodeXmlEntities(paragraphText).trim();
-          if (decodedText && !seenText.has(decodedText)) {
+          if (!decodedText) {
+            continue;
+          }
+
+          // Evitar duplicación de números de página que Puppeteer inyecta dinámicamente
+          if (
+            /^p[áa]gina\s*\d*\s*de\s*\d*$/i.test(decodedText) ||
+            /^\d+\s*de\s*\d+$/i.test(decodedText)
+          ) {
+            continue;
+          }
+
+          if (!seenText.has(decodedText)) {
             seenText.add(decodedText);
             textBlocks.push(decodedText);
           }
@@ -735,13 +963,52 @@ export class DocumentConversionService {
       return { images, textBlocks };
     } catch (error) {
       this.logger.warn(
-        `[Conversion] No se pudo extraer el contenido del pie de página del documento: ${
+        `[Conversion] No se pudo extraer el contenido del documento (${partRegex}): ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
       return { images: [], textBlocks: [] };
     }
   }
+
+  private parseImageDimensionsFromBuffer(
+    buffer: Buffer,
+  ): { width: number; height: number } | null {
+    try {
+      // Detección PNG (IHDR chunk en bytes 16 a 24)
+      if (
+        buffer.length > 24 &&
+        buffer[0] === 0x89 &&
+        buffer[1] === 0x50 &&
+        buffer[2] === 0x4e &&
+        buffer[3] === 0x47
+      ) {
+        const width = buffer.readUInt32BE(16);
+        const height = buffer.readUInt32BE(20);
+        return { width, height };
+      }
+
+      // Detección JPEG (Marcadores SOF0/SOF2)
+      if (buffer.length > 4 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+        let offset = 2;
+        while (offset < buffer.length) {
+          if (buffer[offset] !== 0xff) break;
+          const marker = buffer[offset + 1];
+          if (marker === 0xc0 || marker === 0xc2) {
+            const height = buffer.readUInt16BE(offset + 5);
+            const width = buffer.readUInt16BE(offset + 7);
+            return { width, height };
+          }
+          const len = buffer.readUInt16BE(offset + 2);
+          offset += 2 + len;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
 
   private decodeXmlEntities(value: string): string {
     return value

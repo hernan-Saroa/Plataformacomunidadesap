@@ -1,15 +1,10 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { ParticipacionService } from './participacion.service';
 import { AsignarAbogadoDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import {
-  PERMISO_PROCESO_TOMAR,
-  PERMISO_PROCESO_VER,
-} from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 /**
  * Quién está en un proceso (EFDS-1183).
@@ -25,8 +20,7 @@ export class ParticipacionController {
   constructor(private readonly service: ParticipacionService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PROCESO_VER)
+  @Puede('ver', '3.3')
   @ApiOperation({
     summary: 'Quién lleva el proceso',
     description:
@@ -37,8 +31,7 @@ export class ParticipacionController {
   }
 
   @Post('tomar')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PROCESO_TOMAR)
+  @Puede('editar', '3.3')
   @ApiOperation({
     summary: 'Actividad 3.3 · Tomar el proceso de la bandeja',
     description:
@@ -46,6 +39,25 @@ export class ParticipacionController {
   })
   tomar(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
     return this.service.tomar(procesoId, getHiringAccess(req));
+  }
+
+  /**
+   * Lo mismo que verificar: editar la 4.2, y no la 4.1.
+   *
+   * Quien recibe la solicitud es quien la resuelve, y exigir otra cosa solo
+   * permitiría apropiarse de solicitudes que luego no se pueden atender. La
+   * 4.1 tampoco sirve: la edita el gestor al solicitar, y con ella podría
+   * quedarse con la solicitud de la Financiera.
+   */
+  @Post('financiera/tomar')
+  @Puede('editar', '4.2')
+  @ApiOperation({
+    summary: 'Actividad 4.1 · Tomar la solicitud de CDP',
+    description:
+      'Quien la toma responde por ella y pasa a ser el destinatario de sus avisos. La bandeja es compartida: si otro la tomó antes, responde 409.',
+  })
+  tomarFinanciera(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.service.tomarFinanciera(procesoId, getHiringAccess(req));
   }
 
   /**
@@ -109,8 +121,7 @@ export class CandidatosController {
   constructor(private readonly service: ParticipacionService) {}
 
   @Get('abogados')
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PROCESO_VER)
+  @Puede('ver', '3.4')
   @ApiOperation({
     summary: 'Cuentas que pueden revisar un proceso',
     description:
@@ -118,5 +129,16 @@ export class CandidatosController {
   })
   abogados(@Query('q') q?: string) {
     return this.service.abogados(q ?? '');
+  }
+
+  @Get('financieros')
+  @Puede('ver', '4.1')
+  @ApiOperation({
+    summary: 'Cuentas que pueden resolver un CDP',
+    description:
+      'Las que tienen permiso para gestionar el presupuesto, que es lo que hace la Dirección Financiera en la etapa 4. Se resuelve por permiso y no por código de rol.',
+  })
+  financieros(@Query('q') q?: string) {
+    return this.service.financieros(q ?? '');
   }
 }

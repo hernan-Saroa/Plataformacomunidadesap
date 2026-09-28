@@ -18,7 +18,11 @@ export type EstadoSolicitudViatico =
   | 'EN_VERIFICACION'
   | 'AUTORIZACION_DIRECCION'
   | 'EN_AUTORIZACION'
-  | 'AUTORIZADA';
+  | 'AUTORIZADA'
+  | 'CANCELADA'
+  | 'EN_PRESUPUESTO'
+  | 'COMPROMETIDA'
+  | 'OBLIGADA';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -39,15 +43,40 @@ export type PrioridadSolicitud = 'ALTA' | 'MEDIA' | 'BAJA';
  * microservicio serializa sus entidades en camelCase, por lo que el payload
  * de creación (camelCase) y las respuestas (camelCase) son consistentes.
  */
+export interface RutaItinerario {
+  id: string;
+  origenCiudad: string;
+  origenDepartamento?: string;
+  origenDepartamentoId?: number | null;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  destinoDepartamentoId?: number | null;
+  tipoTrayecto: 'SOLO_IDA' | 'IDA_Y_VUELTA';
+  fechaSalida: string;
+  fechaLlegada: string;
+  diasRuta: number;
+  horarioEstimadoMilitar: string; // HH:mm militar, ej: 08:30, 14:00
+  horaEstimadaSalida?: string;
+  horaEstimadaLlegada?: string;
+  tipoTransporte?: 'AEREO' | 'TERRESTRE';
+  requiereTiquete?: boolean;
+  tarifaTerminalAereo?: number;
+  guardada?: boolean;
+}
+
 export interface FormNuevaSolicitud {
   documentoComisionado: string;
   comisionadoId: string;
   objetoComision: string;
+  origenCiudad: string;
+  origenDepartamento: string;
   destinoCiudad: string;
   destinoDepartamento: string;
   fechaInicio: string;
   fechaFin: string;
   rubroPresupuestal: string;
+  numeroCdp?: string;
+  fechaCdp?: string;
   prioridad: PrioridadSolicitud;
   requiereTiquetes: boolean;
   montoViaticos: number;
@@ -59,6 +88,23 @@ export interface FormNuevaSolicitud {
   documentos?: DocumentoFormItem[];
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
+  idDependencia?: number | null;
+  diasPernoctados?: number | null;
+  tarifaDiaPernoctado?: number | null;
+  totalPernoctados?: number | null;
+  diasNoPernoctados?: number | null;
+  tarifaDiaNoPernoctado?: number | null;
+  totalNoPernoctados?: number | null;
+  tarifaDiariaBase?: number | null;
+  tarifaFinalAplicadaDia?: number | null;
+  salarioBaseAplicado?: number | null;
+  decretoAplicado?: string | null;
+  factorComisionado?: number | null;
+  factorPernocta?: number | null;
+  desgloseCalculo?: any[];
+  alertasLiquidacion?: string[];
+  camposAdicionales?: Record<string, any>;
+  itinerario?: RutaItinerario[];
 }
 
 export type TipoComisionado = 'FUNCIONARIO' | 'CONTRATISTA' | 'DOCENTE' | 'ESTUDIANTE' | 'INVESTIGADOR';
@@ -141,6 +187,9 @@ export interface SolicitudComisionResponse {
   comisionadoId: string;
   destinoCiudad: string;
   destinoDepartamento: string;
+  ciudadOrigen?: string;
+  origenCiudad?: string;
+  sedeOrigen?: string;
   fechaInicio: Date;
   fechaFin: Date;
   objetoComision: string;
@@ -171,6 +220,13 @@ export interface SolicitudComisionResponse {
   observacionesSegundaRevision?: string | null;
   fechaSegundaRevision?: string | null;
   revisorControlNombre?: string | null;
+  motivoCancelacion?: string | null;
+  fechaCancelacion?: string | null;
+  responsableCancelacion?: string | null;
+  pendienteReintegro?: boolean;
+  modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string | null;
+  diasHabilesPrevios?: number | null;
+  fechaCalculoModalidad?: string | null;
   resumenPresupuestal?: {
     totalGastado: number;
     cantidadSolicitudes: number;
@@ -178,6 +234,8 @@ export interface SolicitudComisionResponse {
     porcentajeUso: number;
     semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
   };
+  camposAdicionales?: Record<string, any>;
+  itinerario?: RutaItinerario[];
 }
 
 /**
@@ -193,6 +251,8 @@ export interface CreateSolicitudRequest {
   objetoComision: string;
   prioridad: string;
   rubroPresupuestal: string;
+  numeroCdp?: string;
+  fechaCdp?: string;
   requiereTiquetes: boolean;
   montoViaticos: number;
   montoGastosViaje: number;
@@ -205,6 +265,21 @@ export interface CreateSolicitudRequest {
   modoBorrador?: boolean;
   tipoComision?: string;
   esInternacional?: boolean;
+  idDependencia?: number;
+  diasPernoctados?: number;
+  tarifaDiaPernoctado?: number;
+  totalPernoctados?: number;
+  diasNoPernoctados?: number;
+  tarifaDiaNoPernoctado?: number;
+  totalNoPernoctados?: number;
+  tarifaDiariaBase?: number;
+  tarifaFinalAplicadaDia?: number;
+  salarioBaseAplicado?: number;
+  decretoAplicado?: string;
+  factorComisionado?: number;
+  factorPernocta?: number;
+  desgloseCalculo?: any[];
+  alertasLiquidacion?: string[];
   documentos?: {
     tipoDocumento: TipoDocumentoSoporte;
     nombreArchivoOriginal: string;
@@ -212,6 +287,8 @@ export interface CreateSolicitudRequest {
     urlRepositorio: string;
     tipoMime?: string;
   }[];
+  camposAdicionales?: Record<string, any>;
+  itinerario?: RutaItinerario[];
 }
 
 /**
@@ -239,11 +316,16 @@ export interface SolicitudListaResponse {
   > | null;
   destinoCiudad: string;
   destinoDepartamento: string;
+  ciudadOrigen?: string;
+  origenCiudad?: string;
+  sedeOrigen?: string;
   fechaInicio: string;
   fechaFin: string;
   objetoComision: string;
   prioridad: string;
   rubroPresupuestal: string;
+  numeroCdp?: string | null;
+  fechaCdp?: string | null;
   requiereTiquetes: boolean;
   montoViaticos: number;
   montoGastosViaje: number;
@@ -251,6 +333,7 @@ export interface SolicitudListaResponse {
   estadoSolicitud: string;
   radicadoFueraJornada: boolean;
   extemporanea: boolean;
+  fechaRadicacion?: string | null;
   creadoPorUsuarioId?: string;
   esCreadoPorMi?: boolean;
   creadoEn: string;
@@ -268,6 +351,57 @@ export interface SolicitudListaResponse {
   costoEstimadoTiquete?: number;
   analistaAsignadoId?: string | null;
   idDependencia?: number | string | null;
+  dependencia?: string;
+  nombreDependencia?: string;
+  motivoCancelacion?: string | null;
+  fechaCancelacion?: string | null;
+  responsableCancelacion?: string | null;
+  pendienteReintegro?: boolean;
+  // Etapa 7: Presupuesto y RP (RF-PRE-001 / RF-PRE-003)
+  codigoRp?: string | null;
+  numeroRp?: string | null;
+  fechaRp?: string | null;
+  valorComprometido?: number | null;
+  rubroRp?: string | null;
+  modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string | null;
+  diasHabilesPrevios?: number | null;
+  // Etapa 8: Tesorería y Obligación SIIF (RF-PAG-001)
+  numeroObligacion?: string | null;
+  fechaObligacion?: string | null;
+  valorObligacion?: number | null;
+  observacionesObligacion?: string | null;
+  soporteObligacionPath?: string | null;
+  obligadoPorId?: string | null;
+  fechaRegistroObligacion?: string | null;
+  // Etapa 8: Tesorería y Desembolso / Pago (RF-PAG-003)
+  fechaPago?: string | null;
+  valorPagado?: number | null;
+  soportePagoPath?: string | null;
+  numeroOrdenPago?: string | null;
+  observacionesPago?: string | null;
+  pagadoPorId?: string | null;
+  fechaRegistroPago?: string | null;
+  itinerario?: RutaItinerario[];
+}
+
+export interface CrearObligacionDto {
+  numeroObligacion: string;
+  fechaObligacion: string;
+  valorObligacion: number;
+  modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string;
+  observacionesObligacion?: string;
+  soporteObligacionPath?: string;
+}
+
+export interface ProcesarPagoDto {
+  fechaPago: string;
+  valorPagado: number;
+  soportePagoPath?: string;
+  soporteDesembolsoPath?: string;
+  numeroOrdenPago?: string;
+  comprobantePago?: string;
+  observacionesPago?: string;
+  modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string;
 }
 
 export interface BandejaSecretarioResponse {
@@ -298,6 +432,7 @@ export interface SolicitudViatico {
   cargoComisionado: string;
   dependencia: string;
   sedeOrigen: string;
+  ciudadOrigen?: string;
   ciudadDestino: string;
   departamentoDestino: string;
   fechaInicio: string;
@@ -312,6 +447,7 @@ export interface SolicitudViatico {
   estado: EstadoSolicitudViatico;
   extemporanea: boolean;
   radicadoFueraJornada: boolean;
+  fechaRadicacion?: string | null;
   requiereTiqueteAereo: boolean;
   prioridad?: string;
   numeroResolucion?: string;
@@ -325,6 +461,56 @@ export interface SolicitudViatico {
   observacionesSegundaRevision?: string | null;
   fechaSegundaRevision?: string | null;
   revisorControlId?: string | null;
+  motivoCancelacion?: string | null;
+  fechaCancelacion?: string | null;
+  responsableCancelacion?: string | null;
+  pendienteReintegro?: boolean;
+  enviadoPresupuesto?: boolean;
+  fechaEnvioPresupuesto?: string | null;
+  numeroRp?: string | null;
+  fechaRp?: string | null;
+  valorComprometido?: number | null;
+  rubroRp?: string | null;
+  codigoRp?: string | null;
+  fechaExpedicionRp?: string | null;
+  modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string | null;
+  diasHabilesPrevios?: number | null;
+  fechaCalculoModalidad?: string | null;
+  notificadoSst?: boolean;
+  numeroObligacion?: string | null;
+  fechaObligacion?: string | null;
+  valorObligacion?: number | null;
+  fechaPago?: string | null;
+  valorPagado?: number | null;
+  soportePagoPath?: string | null;
+  numeroOrdenPago?: string | null;
+  observacionesPago?: string | null;
+  pagadoPorId?: string | null;
+}
+
+/** Registro de notificación formal enviada al área de SST (RF-PAG-002) */
+export interface NotificacionSstLog {
+  id: string;
+  solicitudId: string;
+  comisionadoId: string;
+  fechaEnvio: string;
+  canalEnvio: 'EMAIL' | 'INTERNAL_MODULE' | 'WEBHOOK' | string;
+  estadoEnvio: 'ENVIADO' | 'FALLIDO' | 'PENDIENTE' | string;
+  destinatario: string;
+  payloadNotificado: {
+    nombre_completo_comisionado?: string;
+    documento_identidad?: string;
+    ciudad_destino?: string;
+    fecha_inicio_viaje?: string;
+    fecha_fin_viaje?: string;
+    objeto_comision?: string;
+    consecutivo_comision?: string;
+    estado_actual?: string;
+    monto_viaticos?: number;
+    [key: string]: any;
+  };
+  errorMensaje?: string | null;
+  creadoEn: string;
 }
 
 export interface TiqueteAereo {
@@ -403,6 +589,18 @@ export interface LiquidacionResponse {
     tarifaFinalAplicadaDia: number;
     numeroDiasNoches: number;
     valorTotalViaticos: number;
+    // Campos estructurados según Formato GF-FO-023
+    diasPernoctados?: number;
+    tarifaDiaPernoctado?: number;
+    totalPernoctados?: number;
+    diasNoPernoctados?: number;
+    tarifaDiaNoPernoctado?: number;
+    totalNoPernoctados?: number;
+    // Sección 4 GF-FO-023: Liquidación de los Gastos de Desplazamiento
+    transporteTerminalesAereos?: number;
+    transporteTerrestreFluvial?: number;
+    totalGastosDesplazamiento?: number;
+    totalViaticosYDesplazamientos?: number;
     desgloseCalculo: DesgloseDiaLiquidacion[];
     alertas?: string[];
   };
@@ -418,7 +616,29 @@ export interface CalcularLiquidacionRequest {
   pernocta: boolean;
   destinoCiudad?: string;
   destinoDepartamento?: string;
-  aplicaExcepcionRegional?: boolean;
+  incluyeTransporteAereo?: boolean;
+  montoTransporteTerrestre?: number;
+  itinerario?: Array<{
+    origenCiudad?: string;
+    origenDepartamento?: string;
+    destinoCiudad?: string;
+    destinoDepartamento?: string;
+    tipoTransporte?: string;
+    tipoTrayecto?: string;
+  }>;
+}
+
+export interface TarifaTransporteTerminal {
+  id?: number;
+  departamento: string;
+  departamentoId?: number | null;
+  ciudad?: string;
+  ciudadAeropuerto: string;
+  valorMaximoTrayecto: number;
+  incrementoIncluido?: boolean;
+  activo?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // =========================================================================
@@ -658,6 +878,8 @@ export interface SolicitudControlViaticosResponse {
   objetoComision: string;
   prioridad: string;
   rubroPresupuestal: string;
+  numeroCdp?: string | null;
+  fechaCdp?: string | null;
   requiereTiquetes: boolean;
   montoViaticos: number;
   montoGastosViaje: number;
@@ -675,6 +897,8 @@ export interface SolicitudControlViaticosResponse {
   costoEstimadoTiquete?: number;
   analistaAsignadoId?: string | null;
   idDependencia?: number | string | null;
+  dependencia?: string;
+  nombreDependencia?: string;
   /** Analista que realizó la verificación de 1er nivel (auditoría). */
   analistaVerificadorId?: string | null;
   /** Nombre completo del analista verificador de 1er nivel. */
@@ -794,6 +1018,8 @@ export interface SolicitudAutorizacion {
   } | null;
   destinoCiudad: string;
   destinoDepartamento: string;
+  dependencia?: string;
+  idDependencia?: number | string | null;
   fechaInicio: string;
   fechaFin: string;
   diasComision: number;
@@ -845,4 +1071,82 @@ export interface RechazarExtemporaneaPayload {
   justificacion: string;
   esDelegado?: boolean;
 }
+
+// ============================================================================
+// Tipos e interfaces de Cancelación de Comisión (RF-AUT-003, Etapa 6)
+// ============================================================================
+
+export interface CancelarComisionPayload {
+  motivoCancelacion: string;
+  responsableCancelacion?: string;
+  recursosComprometidos?: boolean;
+}
+
+export interface CancelarComisionResponse {
+  success: boolean;
+  data: any;
+  message: string;
+  timestamp: string;
+}
+
+// ============================================================================
+// Tipos e interfaces de Presupuesto y RP (RF-PRE-001, Etapa 7)
+// ============================================================================
+
+export interface EnviarPresupuestoPayload {
+  observaciones?: string;
+}
+
+export interface ExpedirRpPayload {
+  numeroRp: string;
+  fechaRp: string;
+  valorComprometido: number;
+  rubro: string;
+  codigoRp?: string;
+  observaciones?: string;
+}
+
+export interface ItemCargaMasivaRp {
+  solicitudId?: string;
+  consecutivoUnico?: string;
+  numeroRp: string;
+  fechaRp: string;
+  valorComprometido: number;
+  rubro: string;
+  codigoRp?: string;
+  observaciones?: string;
+}
+
+export interface ResumenCargaMasivaRp {
+  total: number;
+  exitosos: number;
+  fallidos: number;
+  procesados: Array<{
+    solicitudId: string;
+    consecutivoUnico: string;
+    codigoRp: string;
+    valorComprometido: number;
+    estado: string;
+  }>;
+  errores: Array<{
+    fila: number;
+    identificador: string;
+    error: string;
+  }>;
+}
+
+export interface BandejaPresupuestoResponse {
+  success: boolean;
+  data: any[];
+  total: number;
+  page: number;
+  limit: number;
+  kpis: {
+    pendientesRp: number;
+    comprometidas: number;
+    totalComprometido: number;
+  };
+  timestamp: string;
+}
+
 
