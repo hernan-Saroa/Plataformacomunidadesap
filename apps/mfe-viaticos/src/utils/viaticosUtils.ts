@@ -668,6 +668,16 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
     bg: 'bg-emerald-100 dark:bg-emerald-900/30',
     text: 'text-emerald-800 dark:text-emerald-300',
   },
+  PENDIENTE_FIRMAS: {
+    label: 'Pendiente de Firmas',
+    bg: 'bg-amber-100 text-amber-900 border border-amber-300',
+    text: 'text-amber-800',
+  },
+  PAGADA: {
+    label: 'Pagada (Desembolsada)',
+    bg: 'bg-emerald-100 dark:bg-emerald-900/30',
+    text: 'text-emerald-800 dark:text-emerald-300',
+  },
 };
 
 

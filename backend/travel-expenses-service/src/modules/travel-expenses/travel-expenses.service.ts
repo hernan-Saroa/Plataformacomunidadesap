@@ -42,6 +42,11 @@ import { ItemCargaMasivaRpDto } from '../../dto/carga-masiva-rp.dto';
 import { ItemBulkIssueRpDto, BulkIssueRpDto } from '../../dto/bulk-issue-rp.dto';
 import { CrearObligacionDto } from '../../dto/crear-obligacion.dto';
 import { ProcesarPagoDto } from '../../dto/procesar-pago.dto';
+import {
+  FirmarSolicitudDto,
+  DevolverFirmaDto,
+  TipoFirmaAprobacion,
+} from '../../dto/firmar-solicitud.dto';
 
 import {
   sanitizeObjetoComision,
@@ -121,6 +126,7 @@ function formatoISO(fecha: Date): string {
 function etiquetaEstadoHumana(estado?: string): string {
   const mapa: Record<string, string> = {
     PENDIENTE: 'borrador/pendiente',
+    PENDIENTE_FIRMAS: 'pendiente de firmas de aprobación',
     RADICADA: 'radicada',
     EXTEMPORANEA: 'extemporánea',
     DEVUELTA: 'devuelta para subsanar',
@@ -2277,6 +2283,547 @@ if (dto.costoEstimadoTiquete !== undefined) {
     return response;
   }
 
+  /**
+   * Resuelve los firmantes de aprobación requeridos previo a la radicación de la solicitud
+   * conforme a la normativa institucional y las reglas de desplazamiento y jerarquía:
+   *  - Jefe de dependencia o supervisor y Gerente de Proyecto.
+   *  - En caso de ausencia o desplazamiento del jefe de dependencia:
+   *    * Si se desplaza el subdirector Nacional de G.C., firma el director nacional.
+   *    * Si se desplaza el director nacional, firma el subdirector Nacional de G.C.
+   *    * Si se desplaza el director territorial, firma el director nacional.
+   */
+  determinarFirmantesAprobacion(
+    solicitud: SolicitudComisionEntity,
+    dependenciaNombre?: string,
+  ): {
+    reglaDesplazamiento: string;
+    descripcionRegla: string;
+    firmante1: {
+      tipo: TipoFirmaAprobacion;
+      titulo: string;
+      cargo: string;
+      descripcion: string;
+      esRequerido: boolean;
+    };
+    firmante2: {
+      tipo: TipoFirmaAprobacion;
+      titulo: string;
+      cargo: string;
+      descripcion: string;
+      esRequerido: boolean;
+    };
+  } {
+    const comisionado = solicitud.comisionado;
+    const cargoComisionado = (
+      solicitud.camposAdicionales?.cargo ||
+      solicitud.camposAdicionales?.cargoEsap ||
+      (comisionado as any)?.cargo ||
+      ''
+    )
+      .toLowerCase()
+      .trim();
+
+    const dep = (
+      dependenciaNombre ||
+      solicitud.camposAdicionales?.dependenciaSolicitante ||
+      solicitud.camposAdicionales?.dependencia ||
+      ''
+    )
+      .toLowerCase()
+      .trim();
+
+    const tipoCom = (
+      comisionado?.tipoComisionado ||
+      solicitud.camposAdicionales?.tipoComisionado ||
+      ''
+    ).toUpperCase();
+
+    // 1) Si se desplaza el subdirector Nacional de G.C., firma el director nacional.
+    const esSubdirectorGC =
+      cargoComisionado.includes('subdirector') &&
+      (cargoComisionado.includes('g.c') ||
+        cargoComisionado.includes('gc') ||
+        cargoComisionado.includes('corporativa') ||
+        cargoComisionado.includes('conocimiento') ||
+        dep.includes('corporativa') ||
+        dep.includes('conocimiento'));
+
+    // 2) Si se desplaza el director nacional, firma el subdirector Nacional de G.C.
+    const esDirectorNacional =
+      !cargoComisionado.includes('territorial') &&
+      !dep.includes('territorial') &&
+      (cargoComisionado.includes('director nacional') ||
+        cargoComisionado.includes('director general') ||
+        (cargoComisionado === 'director' && dep.includes('nacional')));
+
+    // 3) Si se desplaza el director territorial, firma el director nacional.
+    const esDirectorTerritorial =
+      cargoComisionado.includes('director territorial') ||
+      (cargoComisionado.includes('director') &&
+        (cargoComisionado.includes('territorial') || dep.includes('territorial')));
+
+    let reglaDesplazamiento = 'REGULAR';
+    let descripcionRegla =
+      'Flujo regular de firmas de aprobación de la solicitud previo a radicación.';
+    let tituloFirmante1 = 'Jefe de Dependencia';
+    let cargoFirmante1 =
+      solicitud.camposAdicionales?.cargoJefe ||
+      (dep ? `Jefe ${dep}` : 'Jefe de Dependencia Solicitante');
+
+    if (esSubdirectorGC) {
+      reglaDesplazamiento = 'DESPLAZAMIENTO_SUBDIRECTOR_GC';
+      descripcionRegla =
+        'Por desplazamiento del Subdirector Nacional de G.C., firma el Director Nacional.';
+      tituloFirmante1 = 'Director Nacional';
+      cargoFirmante1 = 'Director Nacional';
+    } else if (esDirectorNacional) {
+      reglaDesplazamiento = 'DESPLAZAMIENTO_DIRECTOR_NACIONAL';
+      descripcionRegla =
+        'Por desplazamiento del Director Nacional, firma el Subdirector Nacional de G.C.';
+      tituloFirmante1 = 'Subdirector Nacional de G.C.';
+      cargoFirmante1 = 'Subdirector Nacional de Gestión Corporativa';
+    } else if (esDirectorTerritorial) {
+      reglaDesplazamiento = 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL';
+      descripcionRegla =
+        'Por desplazamiento del Director Territorial, firma el Director Nacional.';
+      tituloFirmante1 = 'Director Nacional';
+      cargoFirmante1 = 'Director Nacional';
+    } else if (tipoCom === 'CONTRATISTA' || tipoCom === 'DOCENTE') {
+      tituloFirmante1 = 'Jefe de Dependencia o Supervisor';
+      cargoFirmante1 =
+        solicitud.camposAdicionales?.cargoJefe ||
+        'Jefe de Dependencia / Supervisor de Contrato';
+    }
+
+    const cargoGerente =
+      solicitud.camposAdicionales?.cargoGerente ||
+      (dep ? `Gerente de Proyecto - ${dep}` : 'Gerente de Proyecto');
+
+    return {
+      reglaDesplazamiento,
+      descripcionRegla,
+      firmante1: {
+        tipo: TipoFirmaAprobacion.JEFE_DEPENDENCIA,
+        titulo: tituloFirmante1,
+        cargo: cargoFirmante1,
+        descripcion:
+          esSubdirectorGC || esDirectorNacional || esDirectorTerritorial
+            ? descripcionRegla
+            : 'Firma de aprobación de la solicitud: Jefe de Dependencia o Supervisor.',
+        esRequerido: true,
+      },
+      firmante2: {
+        tipo: TipoFirmaAprobacion.GERENTE_PROYECTO,
+        titulo: 'Gerente de Proyecto',
+        cargo: cargoGerente,
+        descripcion:
+          'Firma de aprobación de la solicitud: Gerente de Proyecto / Ordenador del Gasto.',
+        esRequerido: true,
+      },
+    };
+  }
+
+  /**
+   * Obtiene el estado consolidado de firmas de aprobación requeridas previo a la radicación.
+   */
+  async obtenerEstadoFirmas(solicitudId: string): Promise<any> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    let dependenciaNombre =
+      solicitud.camposAdicionales?.dependenciaSolicitante ||
+      solicitud.camposAdicionales?.dependencia ||
+      '';
+
+    const idDep = solicitud.idDependencia || solicitud.comisionado?.idDependencia;
+    if (!dependenciaNombre && idDep) {
+      try {
+        const dRows = await this.dataSource.query(
+          `SELECT nom_dependencia FROM auth.dependencias WHERE id_dependencia = $1 LIMIT 1`,
+          [idDep],
+        );
+        if (dRows?.[0]?.nom_dependencia) {
+          dependenciaNombre = dRows[0].nom_dependencia;
+        }
+      } catch {}
+    }
+
+    const { reglaDesplazamiento, descripcionRegla, firmante1, firmante2 } =
+      this.determinarFirmantesAprobacion(solicitud, dependenciaNombre);
+
+    const firmasRegistradas: any[] = Array.isArray(
+      solicitud.camposAdicionales?.firmasAprobacion,
+    )
+      ? solicitud.camposAdicionales.firmasAprobacion
+      : [];
+
+    const firmaJefe = firmasRegistradas.find(
+      (f) => f.tipo === TipoFirmaAprobacion.JEFE_DEPENDENCIA && f.estado !== 'RECHAZADO',
+    );
+    const firmaGerente = firmasRegistradas.find(
+      (f) => f.tipo === TipoFirmaAprobacion.GERENTE_PROYECTO && f.estado !== 'RECHAZADO',
+    );
+
+    const firmantes = [
+      {
+        ...firmante1,
+        firmado: Boolean(firmaJefe),
+        firma: firmaJefe || null,
+      },
+      {
+        ...firmante2,
+        firmado: Boolean(firmaGerente),
+        firma: firmaGerente || null,
+      },
+    ];
+
+    const completado = Boolean(firmaJefe && firmaGerente);
+
+    return {
+      solicitudId: solicitud.id,
+      consecutivoUnico: solicitud.consecutivoUnico,
+      estadoSolicitud: solicitud.estadoSolicitud,
+      reglaDesplazamiento,
+      descripcionRegla,
+      firmantes,
+      completado,
+      requiereFirmasParaRadicar: true,
+      mensaje: completado
+        ? 'Flujo de firmas de aprobación surtido completamente.'
+        : 'La solicitud incorpora el flujo de firmas de aprobación previo a su radicación: sin las firmas de aprobación la solicitud no se radica.',
+    };
+  }
+
+  /**
+   * Consolida la solicitud e inicia formalmente el flujo de firmas de aprobación
+   * previo a la radicación (estado PENDIENTE_FIRMAS).
+   */
+  async solicitarFirmasAprobacion(
+    solicitudId: string,
+    usuarioId?: string,
+  ): Promise<SolicitudComisionEntity> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    const estadosPermitidos = [
+      EstadoSolicitud.PENDIENTE,
+      EstadoSolicitud.DEVUELTA,
+      EstadoSolicitud.BORRADOR,
+      EstadoSolicitud.PENDIENTE_FIRMAS,
+    ];
+
+    if (!estadosPermitidos.includes(solicitud.estadoSolicitud)) {
+      throw new BadRequestException(
+        `La solicitud tiene estado ${solicitud.estadoSolicitud} y no puede enviarse a flujo de firmas.`,
+      );
+    }
+
+    // Validar checklist de soportes obligatorios en PDF
+    const documentos = await this.documentoRepo.find({
+      where: { solicitudId: solicitud.id },
+    });
+    const tipoChecklist = solicitud.esInternacional
+      ? 'INTERNACIONAL'
+      : solicitud.comisionado?.tipoComisionado;
+
+    const { faltantes, noPdf } = await this.validarChecklistCompleto(
+      tipoChecklist,
+      documentos,
+    );
+    if (faltantes.length > 0) {
+      throw new BadRequestException(
+        `No se puede solicitar firmas. Faltan soportes obligatorios en PDF: ${faltantes.join(', ')}.`,
+      );
+    }
+    if (noPdf.length > 0) {
+      throw new BadRequestException(
+        `Los siguientes soportes obligatorios deben estar en formato PDF: ${noPdf.join(', ')}.`,
+      );
+    }
+
+    // Validar solapamiento de fechas
+    const solapamiento = await this.solicitudRepo
+      .createQueryBuilder('s')
+      .where('s.comisionado_id = :comisionadoId', {
+        comisionadoId: solicitud.comisionadoId,
+      })
+      .andWhere('s.id <> :solicitudId', { solicitudId: solicitud.id })
+      .andWhere(
+        `(s.fecha_inicio, s.fecha_fin) OVERLAPS (:fechaInicio, :fechaFin)`,
+        { fechaInicio: solicitud.fechaInicio, fechaFin: solicitud.fechaFin },
+      )
+      .getOne();
+
+    if (solapamiento) {
+      throw new ConflictException(
+        this.mensajeConflictoFechas(solapamiento, solicitud.fechaInicio, solicitud.fechaFin),
+      );
+    }
+
+    const estadoAnterior = solicitud.estadoSolicitud;
+    solicitud.estadoSolicitud = EstadoSolicitud.PENDIENTE_FIRMAS;
+    solicitud.motivoDevolucion = null;
+
+    const estadoFirmas = await this.obtenerEstadoFirmas(solicitud.id);
+    solicitud.camposAdicionales = {
+      ...(solicitud.camposAdicionales || {}),
+      reglaDesplazamiento: estadoFirmas.reglaDesplazamiento,
+      descripcionReglaDesplazamiento: estadoFirmas.descripcionRegla,
+      firmasCompletadas: false,
+    };
+
+    const saved = await this.solicitudRepo.save(solicitud);
+
+    await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+      solicitudId: solicitud.id,
+      estadoAnterior,
+      estadoNuevo: EstadoSolicitud.PENDIENTE_FIRMAS,
+      usuarioId:
+        usuarioId ||
+        solicitud.creadoPorUsuarioId ||
+        '00000000-0000-0000-0000-000000000000',
+      comentarios: `Solicitud consolidada y enviada al flujo de firmas de aprobación previo a radicación (${estadoFirmas.descripcionRegla}).`,
+    });
+
+    return saved;
+  }
+
+  /**
+   * Registra una firma de aprobación (Jefe de Dependencia/Supervisor o Gerente de Proyecto).
+   * Al completarse ambas firmas y validaciones, la solicitud transiciona a estado RADICADA.
+   */
+  async firmarAprobacionSolicitud(
+    solicitudId: string,
+    dto: FirmarSolicitudDto,
+    usuarioId?: string,
+    userRoles: string[] = [],
+  ): Promise<{
+    solicitud: SolicitudComisionEntity;
+    radicada: boolean;
+    mensaje: string;
+    firmas: any[];
+  }> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    const estadosPermitidosFirmar = [
+      EstadoSolicitud.PENDIENTE_FIRMAS,
+      EstadoSolicitud.PENDIENTE,
+      EstadoSolicitud.DEVUELTA,
+    ];
+
+    if (!estadosPermitidosFirmar.includes(solicitud.estadoSolicitud)) {
+      throw new BadRequestException(
+        `La solicitud tiene estado ${solicitud.estadoSolicitud} y no admite firmas de aprobación en esta etapa.`,
+      );
+    }
+
+    const firmasPrevias: any[] = Array.isArray(
+      solicitud.camposAdicionales?.firmasAprobacion,
+    )
+      ? [...solicitud.camposAdicionales.firmasAprobacion]
+      : [];
+
+    const fechaFirma = new Date().toISOString();
+    const nuevaFirma = {
+      tipo: dto.tipoFirma,
+      nombreFirmante: dto.nombreFirmante.trim(),
+      cargoFirmante: dto.cargoFirmante.trim(),
+      firmaImagen: dto.firmaImagen || null,
+      esAusencia: Boolean(dto.esAusencia),
+      motivoAusencia: dto.motivoAusencia?.trim() || null,
+      comentarios: dto.comentarios?.trim() || null,
+      fechaFirma,
+      usuarioId: usuarioId || null,
+      estado: 'FIRMADO',
+    };
+
+    const idxExistente = firmasPrevias.findIndex((f) => f.tipo === dto.tipoFirma);
+    if (idxExistente >= 0) {
+      firmasPrevias[idxExistente] = nuevaFirma;
+    } else {
+      firmasPrevias.push(nuevaFirma);
+    }
+
+    const tieneFirmaJefe = firmasPrevias.some(
+      (f) => f.tipo === TipoFirmaAprobacion.JEFE_DEPENDENCIA && f.estado === 'FIRMADO',
+    );
+    const tieneFirmaGerente = firmasPrevias.some(
+      (f) => f.tipo === TipoFirmaAprobacion.GERENTE_PROYECTO && f.estado === 'FIRMADO',
+    );
+
+    const todasFirmasCompletadas = tieneFirmaJefe && tieneFirmaGerente;
+
+    solicitud.camposAdicionales = {
+      ...(solicitud.camposAdicionales || {}),
+      firmasAprobacion: firmasPrevias,
+      firmasCompletadas: todasFirmasCompletadas,
+    };
+
+    let radicada = false;
+    let mensaje = `Firma registrada para ${
+      dto.tipoFirma === TipoFirmaAprobacion.JEFE_DEPENDENCIA
+        ? 'Jefe de Dependencia / Supervisor'
+        : 'Gerente de Proyecto'
+    }.`;
+
+    if (todasFirmasCompletadas) {
+      // – Surtido el flujo de firmas y las validaciones, la solicitud queda en estado RADICADA.
+      const ahora = new Date();
+      const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
+      const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
+      const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.RADICADA;
+      solicitud.extemporanea = false;
+      solicitud.radicadoFueraJornada = radicadoFueraJornada;
+      radicada = true;
+      mensaje =
+        'Flujo de firmas de aprobación surtido satisfactoriamente. La solicitud ha quedado formalmente en estado RADICADA.';
+
+      const saved = await this.solicitudRepo.save(solicitud);
+
+      await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.RADICADA,
+        usuarioId:
+          usuarioId ||
+          solicitud.creadoPorUsuarioId ||
+          '00000000-0000-0000-0000-000000000000',
+        comentarios:
+          'Flujo de firmas de aprobación surtido (Jefe de Dependencia y Gerente de Proyecto). Solicitud radicada exitosamente.',
+      });
+
+      return {
+        solicitud: saved,
+        radicada,
+        mensaje,
+        firmas: firmasPrevias,
+      };
+    } else {
+      if (solicitud.estadoSolicitud !== EstadoSolicitud.PENDIENTE_FIRMAS) {
+        solicitud.estadoSolicitud = EstadoSolicitud.PENDIENTE_FIRMAS;
+      }
+      const saved = await this.solicitudRepo.save(solicitud);
+
+      await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior: solicitud.estadoSolicitud,
+        estadoNuevo: EstadoSolicitud.PENDIENTE_FIRMAS,
+        usuarioId: usuarioId || '00000000-0000-0000-0000-000000000000',
+        comentarios: `Firma registrada para ${dto.tipoFirma} (${dto.nombreFirmante}). Pendiente firma restante para radicación formal.`,
+      });
+
+      return {
+        solicitud: saved,
+        radicada: false,
+        mensaje: `${mensaje} Pendiente la firma restante para surtir la radicación formal.`,
+        firmas: firmasPrevias,
+      };
+    }
+  }
+
+  /**
+   * Devuelve la solicitud durante el flujo de firmas de aprobación con observaciones.
+   */
+  async devolverFirmaAprobacion(
+    solicitudId: string,
+    motivo: string,
+    usuarioId?: string,
+  ): Promise<SolicitudComisionEntity> {
+    if (!motivo || !motivo.trim()) {
+      throw new BadRequestException('El motivo de devolución es obligatorio.');
+    }
+
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    const estadoAnterior = solicitud.estadoSolicitud;
+    solicitud.estadoSolicitud = EstadoSolicitud.DEVUELTA;
+    solicitud.motivoDevolucion = motivo.trim();
+
+    if (solicitud.camposAdicionales?.firmasAprobacion) {
+      solicitud.camposAdicionales.firmasCompletadas = false;
+    }
+
+    const saved = await this.solicitudRepo.save(solicitud);
+
+    await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+      solicitudId: solicitud.id,
+      estadoAnterior,
+      estadoNuevo: EstadoSolicitud.DEVUELTA,
+      usuarioId: usuarioId || '00000000-0000-0000-0000-000000000000',
+      comentarios: `Solicitud devuelta en revisión de firmas de aprobación: ${motivo.trim().slice(0, 200)}`,
+    });
+
+    return saved;
+  }
+
+  /**
+   * Obtiene la bandeja de solicitudes que requieren firma de aprobación previa a la radicación.
+   * Lista comisiones en estado PENDIENTE_FIRMAS con información de comisionado y firmas.
+   */
+  async obtenerBandejaFirmas(
+    page = 1,
+    limit = 20,
+    busqueda?: string,
+  ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
+    const query = this.solicitudRepo
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.comisionado', 'comisionado')
+      .where('s.estado_solicitud = :estado', {
+        estado: EstadoSolicitud.PENDIENTE_FIRMAS,
+      });
+
+    if (busqueda && busqueda.trim()) {
+      const term = `%${busqueda.trim().toLowerCase()}%`;
+      query.andWhere(
+        '(LOWER(s.codigo_solicitud) LIKE :term OR LOWER(comisionado.nombre) LIKE :term OR LOWER(comisionado.numeroDocumento) LIKE :term OR LOWER(s.objeto_comision) LIKE :term OR LOWER(s.ciudad_destino) LIKE :term)',
+        { term },
+      );
+    }
+
+    query.orderBy('s.creadoEn', 'DESC');
+
+    const total = await query.getCount();
+    const data = await query
+      .offset((page - 1) * limit)
+      .limit(limit)
+      .getMany();
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+    };
+  }
+
   private inferirTipoMime(nombreArchivo: string): string {
     const extension = nombreArchivo.split('.').pop()?.toLowerCase() || '';
     if (extension === 'pdf') return 'application/pdf';
@@ -3125,17 +3672,22 @@ if (dto.costoEstimadoTiquete !== undefined) {
       ? formatFechaEspanolLarga(solicitud.fechaCdp)
       : '';
 
-    // Cargos de los jefes para el bloque de firmas
+    // Cargos de los jefes para el bloque de firmas (dinámicos según reglas de desplazamiento)
+    const { firmante1: fReq1, firmante2: fReq2 } = this.determinarFirmantesAprobacion(solicitud, dependenciaNombre);
+    const firmasRegistradasPdf: any[] = Array.isArray(solicitud.camposAdicionales?.firmasAprobacion)
+      ? solicitud.camposAdicionales.firmasAprobacion
+      : [];
+    const firmaJefePdf = firmasRegistradasPdf.find((f: any) => f.tipo === TipoFirmaAprobacion.JEFE_DEPENDENCIA && f.estado !== 'RECHAZADO');
+    const firmaGerentePdf = firmasRegistradasPdf.find((f: any) => f.tipo === TipoFirmaAprobacion.GERENTE_PROYECTO && f.estado !== 'RECHAZADO');
+
     const cargoJefe =
+      firmaJefePdf?.cargoFirmante ||
       solicitud.camposAdicionales?.cargoJefe ||
-      (dependenciaNombre
-        ? `Jefe ${dependenciaNombre.toLowerCase()}`
-        : 'Jefe Dependencia Solicitante');
+      fReq1.cargo;
     const cargoGerente =
+      firmaGerentePdf?.cargoFirmante ||
       solicitud.camposAdicionales?.cargoGerente ||
-      (dependenciaNombre
-        ? `Gerente de Proyecto - ${dependenciaNombre.toLowerCase()}`
-        : 'Gerente de Proyecto');
+      fReq2.cargo;
 
     return new Promise<Buffer>((resolve, reject) => {
       // Página carta exacta (612 x 792 pt) con márgenes ajustados a 28 pt
@@ -3662,16 +4214,66 @@ if (itinerarioGeneral) {
       doc.fillColor('#C00000').font('Helvetica-Bold').text(fechaCdpLarga || '____________________', { continued: true });
       doc.fillColor('#000000').font('Helvetica').text('.');
 
-      // ========== ESPACIO DE FIRMAS DE JEFES (GRANDE Y VACÍO) ==========
+      // ========== ESPACIO DE FIRMAS DE APROBACIÓN (JEFE/SUPERVISOR Y GERENTE DE PROYECTO) ==========
       const yFirmas = ySec5Body + 24 + 3;
       const hFirmas = 115;
       drawBox(28, yFirmas, 556, hFirmas, null);
       doc.moveTo(306, yFirmas).lineTo(306, yFirmas + hFirmas).strokeColor('#000000').lineWidth(0.6).stroke();
 
-      // Línea y cargo izquierdo (Jefe de Dependencia)
+      // Firma izquierda: Jefe de Dependencia / Supervisor / Director Nacional / Subdirector
+      if (firmaJefePdf) {
+        if (firmaJefePdf.firmaImagen && typeof firmaJefePdf.firmaImagen === 'string') {
+          try {
+            const rawBase64 = firmaJefePdf.firmaImagen.replace(/^data:image\/\w+;base64,/, '');
+            const imgBuf = Buffer.from(rawBase64, 'base64');
+            doc.image(imgBuf, 75, yFirmas + 8, { fit: [160, 48], align: 'center' });
+          } catch {}
+        }
+        doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#003DA5');
+        doc.text('FIRMADO DIGITALMENTE', 32, yFirmas + 58, { width: 266, align: 'center' });
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000');
+        doc.text(firmaJefePdf.nombreFirmante, 32, yFirmas + 67, { width: 266, align: 'center' });
+        doc.fontSize(5).font('Helvetica').fillColor('#475569');
+        const fStr = firmaJefePdf.fechaFirma ? formatFechaSlash(firmaJefePdf.fechaFirma) : '';
+        doc.text(
+          [firmaJefePdf.cargoFirmante, fStr ? `Fecha: ${fStr}` : ''].filter(Boolean).join(' · '),
+          32,
+          yFirmas + 76,
+          { width: 266, align: 'center' },
+        );
+        if (firmaJefePdf.esAusencia && firmaJefePdf.motivoAusencia) {
+          doc.fontSize(4.5).font('Helvetica-Oblique').fillColor('#D97706');
+          doc.text(`(En ausencia del titular: ${firmaJefePdf.motivoAusencia})`, 32, yFirmas + 84, { width: 266, align: 'center' });
+        }
+      }
+
+      // Línea y cargo izquierdo (Jefe de Dependencia / Supervisor)
       doc.moveTo(55, yFirmas + 94).lineTo(275, yFirmas + 94).strokeColor('#000000').lineWidth(0.6).stroke();
       doc.fontSize(6).font('Helvetica').fillColor('#000000');
       doc.text(cargoJefe, 32, yFirmas + 99, { width: 266, align: 'center' });
+
+      // Firma derecha: Gerente de Proyecto
+      if (firmaGerentePdf) {
+        if (firmaGerentePdf.firmaImagen && typeof firmaGerentePdf.firmaImagen === 'string') {
+          try {
+            const rawBase64 = firmaGerentePdf.firmaImagen.replace(/^data:image\/\w+;base64,/, '');
+            const imgBuf = Buffer.from(rawBase64, 'base64');
+            doc.image(imgBuf, 355, yFirmas + 8, { fit: [160, 48], align: 'center' });
+          } catch {}
+        }
+        doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#003DA5');
+        doc.text('FIRMADO DIGITALMENTE', 310, yFirmas + 58, { width: 266, align: 'center' });
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000');
+        doc.text(firmaGerentePdf.nombreFirmante, 310, yFirmas + 67, { width: 266, align: 'center' });
+        doc.fontSize(5).font('Helvetica').fillColor('#475569');
+        const fStr = firmaGerentePdf.fechaFirma ? formatFechaSlash(firmaGerentePdf.fechaFirma) : '';
+        doc.text(
+          [firmaGerentePdf.cargoFirmante, fStr ? `Fecha: ${fStr}` : ''].filter(Boolean).join(' · '),
+          310,
+          yFirmas + 76,
+          { width: 266, align: 'center' },
+        );
+      }
 
       // Línea y cargo derecho (Gerente de Proyecto / Ordenador)
       doc.moveTo(335, yFirmas + 94).lineTo(555, yFirmas + 94).strokeColor('#000000').lineWidth(0.6).stroke();
@@ -3688,10 +4290,15 @@ if (itinerarioGeneral) {
       doc.moveTo(28, yFooter + hFilaFooter).lineTo(398, yFooter + hFilaFooter).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
       doc.moveTo(28, yFooter + hFilaFooter * 2).lineTo(398, yFooter + hFilaFooter * 2).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
 
+      const nombresAprobadores = [firmaJefePdf?.nombreFirmante, firmaGerentePdf?.nombreFirmante].filter(Boolean).join(' / ');
+      const aproboTextoFinal =
+        solicitud.camposAdicionales?.aprobo ||
+        (nombresAprobadores ? `Aprobó: ${nombresAprobadores}` : aproboTexto);
+
       doc.fontSize(5.5).font('Helvetica').fillColor('#000000');
       doc.text(elaboroTexto, 32, yFooter + 3.5, { width: 362 });
       doc.text(revisoTexto, 32, yFooter + hFilaFooter + 3.5, { width: 362 });
-      doc.text(aproboTexto, 32, yFooter + hFilaFooter * 2 + 3.5, { width: 362 });
+      doc.text(aproboTextoFinal, 32, yFooter + hFilaFooter * 2 + 3.5, { width: 362 });
 
       doc.fontSize(5.6).font('Helvetica').fillColor('#000000');
       doc.text(

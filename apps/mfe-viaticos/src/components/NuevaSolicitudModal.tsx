@@ -1263,15 +1263,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setFinalizando(true);
     setErrorValidacion(null);
     try {
-      const radicada = await viaticosService.finalizarSolicitud(solicitudBorrador.id);
-      onSolicitudCreada(radicada as unknown as SolicitudComisionResponse);
+      // Iniciar formalmente el flujo de firmas de aprobación previo a la radicación (estado PENDIENTE_FIRMAS)
+      // El Enlace no firma: solo remite la solicitud a revisión y firma de los jefes
+      const conFirmas = await viaticosService.solicitarFirmasAprobacion(solicitudBorrador.id);
+      onSolicitudCreada(conFirmas);
       onCerrar();
     } catch (e: any) {
-      console.error('Error radicando solicitud:', e);
+      console.error('Error enviando a firmas de aprobación:', e);
       const mensaje =
         e?.response?.data?.message ||
         e?.message ||
-        'No fue posible radicar la solicitud. Verifique e intente nuevamente.';
+        'No fue posible iniciar el flujo de firmas de aprobación. Verifique e intente nuevamente.';
       setErrorValidacion(
         Array.isArray(mensaje) ? mensaje.join(' ') : mensaje,
       );
@@ -2814,7 +2816,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   onClick={() => void finalizarSolicitud()}
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 transition-colors disabled:opacity-50"
                 >
-                  <Send className="w-4 h-4" /> {finalizando ? 'Radicando...' : 'Finalizar y Radicar'}
+                  <Send className="w-4 h-4" /> {finalizando ? 'Consolidando...' : 'Consolidar y Pasar a Firmas'}
                 </button>
               </div>
             </div>

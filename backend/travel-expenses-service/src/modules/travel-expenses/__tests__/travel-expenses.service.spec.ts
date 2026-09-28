@@ -5115,5 +5115,158 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         );
       });
     });
+
+    describe('Flujo de Firmas de Aprobación Previo a Radicación (Formato 023)', () => {
+      it('Regla 1: Si se desplaza el Subdirector Nacional de G.C., firma el Director Nacional', async () => {
+        const module = await createMockModuleEtapa5();
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const solicitud = {
+          id: 'sol-subdirector-gc',
+          comisionado: {
+            primerNombre: 'Pedro',
+            primerApellido: 'Gómez',
+            tipoComisionado: 'FUNCIONARIO',
+          },
+          camposAdicionales: {
+            cargo: 'Subdirector Nacional de Gestión del Conocimiento',
+            dependencia: 'Subdirección de Gestión Corporativa',
+          },
+        } as any;
+
+        const resultado = svc.determinarFirmantesAprobacion(solicitud, 'Subdirección de Gestión Corporativa');
+        expect(resultado.reglaDesplazamiento).toBe('DESPLAZAMIENTO_SUBDIRECTOR_GC');
+        expect(resultado.firmante1.cargo).toBe('Director Nacional');
+        expect(resultado.firmante2.cargo).toContain('Gerente');
+      });
+
+      it('Regla 2: Si se desplaza el Director Nacional, firma el Subdirector Nacional de G.C.', async () => {
+        const module = await createMockModuleEtapa5();
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const solicitud = {
+          id: 'sol-director-nal',
+          comisionado: {
+            primerNombre: 'Ana',
+            primerApellido: 'Martínez',
+            tipoComisionado: 'FUNCIONARIO',
+          },
+          camposAdicionales: {
+            cargo: 'Director General Nacional',
+            dependencia: 'Dirección General',
+          },
+        } as any;
+
+        const resultado = svc.determinarFirmantesAprobacion(solicitud, 'Dirección General');
+        expect(resultado.reglaDesplazamiento).toBe('DESPLAZAMIENTO_DIRECTOR_NACIONAL');
+        expect(resultado.firmante1.titulo).toBe('Subdirector Nacional de G.C.');
+        expect(resultado.firmante1.cargo).toContain('Subdirector Nacional');
+        expect(resultado.firmante2.cargo).toContain('Gerente');
+      });
+
+      it('Regla 3: Si se desplaza el Director Territorial, firma el Director Nacional', async () => {
+        const module = await createMockModuleEtapa5();
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const solicitud = {
+          id: 'sol-dir-territorial',
+          comisionado: {
+            primerNombre: 'Luis',
+            primerApellido: 'Vargas',
+            tipoComisionado: 'FUNCIONARIO',
+          },
+          camposAdicionales: {
+            cargo: 'Director Territorial Santander',
+            dependencia: 'Dirección Territorial Santander',
+          },
+        } as any;
+
+        const resultado = svc.determinarFirmantesAprobacion(solicitud, 'Dirección Territorial Santander');
+        expect(resultado.reglaDesplazamiento).toBe('DESPLAZAMIENTO_DIRECTOR_TERRITORIAL');
+        expect(resultado.firmante1.cargo).toBe('Director Nacional');
+      });
+
+      it('Regla Regular: comisionado regular es firmado por Jefe de Dependencia/Supervisor y Gerente de Proyecto', async () => {
+        const module = await createMockModuleEtapa5();
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const solicitud = {
+          id: 'sol-regular',
+          comisionado: {
+            primerNombre: 'María',
+            primerApellido: 'López',
+            tipoComisionado: 'FUNCIONARIO',
+          },
+          camposAdicionales: {
+            cargo: 'Profesional Especializado',
+            cargoJefe: 'Jefe de Oficina Asesora de Planeación',
+          },
+        } as any;
+
+        const resultado = svc.determinarFirmantesAprobacion(solicitud, 'Oficina Asesora de Planeación');
+        expect(resultado.reglaDesplazamiento).toBe('REGULAR');
+        expect(resultado.firmante1.cargo).toBe('Jefe de Oficina Asesora de Planeación');
+        expect(resultado.firmante2.tipo).toBe('GERENTE_PROYECTO');
+      });
+
+      it('firmarAprobacionSolicitud: cuando se registran ambas firmas, transiciona a estado RADICADA', async () => {
+        const solicitud = {
+          id: 'sol-firmas-completa',
+          consecutivoUnico: 'SOL-2026-999',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+          fechaInicio: new Date('2026-10-10'),
+          fechaFin: new Date('2026-10-15'),
+          comisionado: { primerNombre: 'Mario', primerApellido: 'Duarte' },
+          camposAdicionales: {
+            firmasAprobacion: [
+              {
+                tipo: 'JEFE_DEPENDENCIA',
+                nombreFirmante: 'Dr. Carlos Mendoza',
+                cargoFirmante: 'Director Nacional',
+                estado: 'FIRMADO',
+                fechaFirma: new Date().toISOString(),
+              },
+            ],
+          },
+        } as any;
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn().mockImplementation((s) => Promise.resolve(s)),
+        };
+
+        const historialRepo = {
+          save: jest.fn().mockResolvedValue({ id: 'h-1' }),
+        };
+
+        const dataSource = {
+          getRepository: jest.fn().mockReturnValue(historialRepo),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const resultadoFirma2 = await svc.firmarAprobacionSolicitud(
+          'sol-firmas-completa',
+          {
+            tipoFirma: 'GERENTE_PROYECTO' as any,
+            nombreFirmante: 'Ing. Sandra Jiménez',
+            cargoFirmante: 'Gerente de Proyecto SIICE',
+            comentarios: 'Aprobado y verificado',
+          },
+          'user-gerente-1',
+          ['GERENTE_PROYECTO'],
+        );
+
+        expect(resultadoFirma2.radicada).toBe(true);
+        expect(resultadoFirma2.solicitud.estadoSolicitud).toBe(EstadoSolicitud.RADICADA);
+        expect(resultadoFirma2.mensaje).toContain('RADICADA');
+        expect(historialRepo.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            estadoNuevo: EstadoSolicitud.RADICADA,
+          }),
+        );
+      });
+    });
   });
 });
