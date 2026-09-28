@@ -88,4 +88,14 @@ export class RutaItinerarioDto {
   @IsOptional()
   @IsBoolean()
   requiereTiquete?: boolean;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  tarifaTerminalAereo?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  montoTransporteTerrestre?: number;
 }

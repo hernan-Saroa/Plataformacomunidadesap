@@ -512,8 +512,32 @@ export function mapearARequestCreacion(
       : 'TERRESTRE';
   })();
 
+  const tarifasAereasItin = (form.itinerario || []).reduce(
+    (acc, r) => acc + (r.tarifaTerminalAereo || 0),
+    0,
+  );
+  const transporteTerrestreItin = Math.max(
+    0,
+    (form.montoGastosViaje || 0) - tarifasAereasItin,
+  );
+
   return {
     comisionadoId: comisionado.id,
+    idDependencia: form.idDependencia ?? comisionado.idDependencia ?? undefined,
+    diasPernoctados: form.diasPernoctados ?? undefined,
+    tarifaDiaPernoctado: form.tarifaDiaPernoctado ?? undefined,
+    totalPernoctados: form.totalPernoctados ?? undefined,
+    diasNoPernoctados: form.diasNoPernoctados ?? undefined,
+    tarifaDiaNoPernoctado: form.tarifaDiaNoPernoctado ?? undefined,
+    totalNoPernoctados: form.totalNoPernoctados ?? undefined,
+    tarifaDiariaBase: form.tarifaDiariaBase ?? undefined,
+    tarifaFinalAplicadaDia: form.tarifaFinalAplicadaDia ?? undefined,
+    salarioBaseAplicado: form.salarioBaseAplicado ?? undefined,
+    decretoAplicado: form.decretoAplicado ?? undefined,
+    factorComisionado: form.factorComisionado ?? undefined,
+    factorPernocta: form.factorPernocta ?? undefined,
+    desgloseCalculo: form.desgloseCalculo ?? undefined,
+    alertasLiquidacion: form.alertasLiquidacion ?? undefined,
     destinoCiudad: form.destinoCiudad.trim(),
     destinoDepartamento: form.destinoDepartamento.trim(),
     fechaInicio: form.fechaInicio,
@@ -536,14 +560,22 @@ export function mapearARequestCreacion(
     tipoComision: tipoComisionCalculado,
     esInternacional: Boolean(form.esInternacional),
     documentos,
-    camposAdicionales: form.camposAdicionales ?? {},
+    camposAdicionales: {
+      ...(form.camposAdicionales ?? {}),
+      transporteTerminalAereo:
+        form.camposAdicionales?.transporteTerminalAereo ?? tarifasAereasItin,
+      transporteTerrestre:
+        form.camposAdicionales?.transporteTerrestre ?? transporteTerrestreItin,
+      fechaAutoliquidacion:
+        form.camposAdicionales?.fechaAutoliquidacion ||
+        new Date().toISOString().split('T')[0],
+    },
     itinerario: (form.itinerario || []).map((r) => {
       // Excluir únicamente campos auxiliares de UI interna
       const {
         guardada,
         origenDepartamentoId,
         destinoDepartamentoId,
-        tarifaTerminalAereo,
         ...cleanRuta
       } = r;
       const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';

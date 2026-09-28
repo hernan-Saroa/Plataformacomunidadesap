@@ -691,7 +691,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         return;
       }
       setComisionado(resultado);
-      setForm((prev) => ({ ...prev, comisionadoId: resultado.id }));
+      setForm((prev) => ({
+        ...prev,
+        comisionadoId: resultado.id,
+        idDependencia: resultado.idDependencia ?? prev.idDependencia,
+      }));
       if (!resultado.autorizacionHabeasData) {
         setHabeasPendiente(true);
       }
@@ -1032,19 +1036,55 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 return 'TERRESTRE';
               })(),
             esInternacional: Boolean(form.esInternacional),
-            camposAdicionales: form.camposAdicionales ?? {},
+            idDependencia: form.idDependencia ?? comisionado?.idDependencia ?? undefined,
+            diasPernoctados: form.diasPernoctados ?? undefined,
+            tarifaDiaPernoctado: form.tarifaDiaPernoctado ?? undefined,
+            totalPernoctados: form.totalPernoctados ?? undefined,
+            diasNoPernoctados: form.diasNoPernoctados ?? undefined,
+            tarifaDiaNoPernoctado: form.tarifaDiaNoPernoctado ?? undefined,
+            totalNoPernoctados: form.totalNoPernoctados ?? undefined,
+            tarifaDiariaBase: form.tarifaDiariaBase ?? undefined,
+            tarifaFinalAplicadaDia: form.tarifaFinalAplicadaDia ?? undefined,
+            salarioBaseAplicado: form.salarioBaseAplicado ?? undefined,
+            decretoAplicado: form.decretoAplicado ?? undefined,
+            factorComisionado: form.factorComisionado ?? undefined,
+            factorPernocta: form.factorPernocta ?? undefined,
+            desgloseCalculo: form.desgloseCalculo ?? undefined,
+            alertasLiquidacion: form.alertasLiquidacion ?? undefined,
+            camposAdicionales: {
+              ...(form.camposAdicionales ?? {}),
+              transporteTerminalAereo:
+                form.camposAdicionales?.transporteTerminalAereo ??
+                (form.itinerario || []).reduce(
+                  (acc, r) => acc + (r.tarifaTerminalAereo || 0),
+                  0,
+                ),
+              transporteTerrestre:
+                form.camposAdicionales?.transporteTerrestre ??
+                Math.max(
+                  0,
+                  (form.montoGastosViaje || 0) -
+                    (form.itinerario || []).reduce(
+                      (acc, r) => acc + (r.tarifaTerminalAereo || 0),
+                      0,
+                    ),
+                ),
+              fechaAutoliquidacion:
+                form.camposAdicionales?.fechaAutoliquidacion ||
+                new Date().toISOString().split('T')[0],
+            },
             itinerario: (form.itinerario || []).map((r) => {
               const {
                 guardada,
                 origenDepartamentoId,
                 destinoDepartamentoId,
-                tarifaTerminalAereo,
                 ...cleanRuta
               } = r;
               const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
               const horaLlegada = r.horaEstimadaLlegada || '';
               return {
                 ...cleanRuta,
+                tarifaTerminalAereo: r.tarifaTerminalAereo,
                 horaEstimadaSalida: horaSalida,
                 horarioEstimadoMilitar: horaSalida || r.horarioEstimadoMilitar,
                 horaEstimadaLlegada: horaLlegada,
@@ -2111,12 +2151,40 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   incluyeTransporteAereo={form.itinerario?.some((r) => r.tipoTransporte === 'AEREO')}
                   montoTransporteTerrestre={0}
                   itinerario={form.itinerario}
-                  onAplicarValor={(montoViaticos, dias, montoGastosDesplazamiento) => {
-                    actualizar('montoViaticos', montoViaticos);
-                    actualizar('diasComision', dias);
-                    if (montoGastosDesplazamiento !== undefined && montoGastosDesplazamiento > 0) {
-                      actualizar('montoGastosViaje', montoGastosDesplazamiento);
-                    }
+                  onAplicarValor={(montoViaticos, dias, montoGastosDesplazamiento, datosCompletos) => {
+                    const tarifasAereas = (form.itinerario || []).reduce((acc, r) => acc + (r.tarifaTerminalAereo || 0), 0);
+                    const totalDesplazamiento = montoGastosDesplazamiento !== undefined && montoGastosDesplazamiento > 0
+                      ? montoGastosDesplazamiento
+                      : form.montoGastosViaje;
+                    const terrestre = Math.max(0, (totalDesplazamiento || 0) - (datosCompletos?.transporteTerminalesAereos ?? tarifasAereas));
+
+                    setForm((prev) => ({
+                      ...prev,
+                      montoViaticos,
+                      diasComision: dias,
+                      montoGastosViaje: totalDesplazamiento,
+                      idDependencia: prev.idDependencia ?? comisionado?.idDependencia ?? null,
+                      diasPernoctados: datosCompletos?.diasPernoctados ?? prev.diasPernoctados,
+                      tarifaDiaPernoctado: datosCompletos?.tarifaDiaPernoctado ?? prev.tarifaDiaPernoctado,
+                      totalPernoctados: datosCompletos?.totalPernoctados ?? prev.totalPernoctados,
+                      diasNoPernoctados: datosCompletos?.diasNoPernoctados ?? prev.diasNoPernoctados,
+                      tarifaDiaNoPernoctado: datosCompletos?.tarifaDiaNoPernoctado ?? prev.tarifaDiaNoPernoctado,
+                      totalNoPernoctados: datosCompletos?.totalNoPernoctados ?? prev.totalNoPernoctados,
+                      tarifaDiariaBase: datosCompletos?.tarifaDiariaBase ?? prev.tarifaDiariaBase,
+                      tarifaFinalAplicadaDia: datosCompletos?.tarifaFinalAplicadaDia ?? prev.tarifaFinalAplicadaDia,
+                      salarioBaseAplicado: datosCompletos?.salarioBaseAplicado ?? prev.salarioBaseAplicado,
+                      decretoAplicado: datosCompletos?.decretoAplicado ?? prev.decretoAplicado,
+                      factorComisionado: datosCompletos?.factorComisionado ?? prev.factorComisionado,
+                      factorPernocta: datosCompletos?.factorPernocta ?? prev.factorPernocta,
+                      desgloseCalculo: datosCompletos?.desgloseCalculo ?? prev.desgloseCalculo,
+                      alertasLiquidacion: datosCompletos?.alertas ?? prev.alertasLiquidacion,
+                      camposAdicionales: {
+                        ...(prev.camposAdicionales || {}),
+                        transporteTerminalAereo: datosCompletos?.transporteTerminalesAereos ?? tarifasAereas,
+                        transporteTerrestre: terrestre,
+                        fechaAutoliquidacion: prev.camposAdicionales?.fechaAutoliquidacion || new Date().toISOString().split('T')[0],
+                      },
+                    }));
                   }}
                 />
 
@@ -2212,7 +2280,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                       value={formatearMoneda(terrestreActual || 0)}
                                       onChange={(e) => {
                                         const terrestre = Number(soloNumeros(e.target.value)) || 0;
-                                        actualizar('montoGastosViaje', tarifasAereas + terrestre);
+                                        setForm((prev) => ({
+                                          ...prev,
+                                          montoGastosViaje: tarifasAereas + terrestre,
+                                          camposAdicionales: {
+                                            ...(prev.camposAdicionales || {}),
+                                            transporteTerminalAereo: tarifasAereas,
+                                            transporteTerrestre: terrestre,
+                                          },
+                                        }));
                                       }}
                                       className={`${inputCls} pl-7 text-right font-bold`}
                                     />

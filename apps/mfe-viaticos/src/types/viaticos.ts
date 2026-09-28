@@ -88,6 +88,21 @@ export interface FormNuevaSolicitud {
   documentos?: DocumentoFormItem[];
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
+  idDependencia?: number | null;
+  diasPernoctados?: number | null;
+  tarifaDiaPernoctado?: number | null;
+  totalPernoctados?: number | null;
+  diasNoPernoctados?: number | null;
+  tarifaDiaNoPernoctado?: number | null;
+  totalNoPernoctados?: number | null;
+  tarifaDiariaBase?: number | null;
+  tarifaFinalAplicadaDia?: number | null;
+  salarioBaseAplicado?: number | null;
+  decretoAplicado?: string | null;
+  factorComisionado?: number | null;
+  factorPernocta?: number | null;
+  desgloseCalculo?: any[];
+  alertasLiquidacion?: string[];
   camposAdicionales?: Record<string, any>;
   itinerario?: RutaItinerario[];
 }
@@ -250,6 +265,21 @@ export interface CreateSolicitudRequest {
   modoBorrador?: boolean;
   tipoComision?: string;
   esInternacional?: boolean;
+  idDependencia?: number;
+  diasPernoctados?: number;
+  tarifaDiaPernoctado?: number;
+  totalPernoctados?: number;
+  diasNoPernoctados?: number;
+  tarifaDiaNoPernoctado?: number;
+  totalNoPernoctados?: number;
+  tarifaDiariaBase?: number;
+  tarifaFinalAplicadaDia?: number;
+  salarioBaseAplicado?: number;
+  decretoAplicado?: string;
+  factorComisionado?: number;
+  factorPernocta?: number;
+  desgloseCalculo?: any[];
+  alertasLiquidacion?: string[];
   documentos?: {
     tipoDocumento: TipoDocumentoSoporte;
     nombreArchivoOriginal: string;

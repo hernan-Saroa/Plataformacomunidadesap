@@ -282,7 +282,7 @@ export const AutorizacionDireccionInbox: React.FC = () => {
                     <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                       <Building2 className="w-2.5 h-2.5 text-slate-500 shrink-0" />
                       <span className="truncate">
-                        {viaticosService.resolverNombreDependencia(sol)}
+                        {viaticosService.resolverNombreDependencia?.(sol)}
                       </span>
                     </span>
                   </div>
@@ -355,8 +355,8 @@ export const AutorizacionDireccionInbox: React.FC = () => {
                         <div className="mt-1 flex items-center gap-1">
                           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                             <Building2 className="w-2.5 h-2.5 text-slate-500 shrink-0" />
-                            <span className="truncate max-w-[200px]" title={viaticosService.resolverNombreDependencia(sol)}>
-                              {viaticosService.resolverNombreDependencia(sol)}
+                            <span className="truncate max-w-[200px]" title={viaticosService.resolverNombreDependencia?.(sol)}>
+                              {viaticosService.resolverNombreDependencia?.(sol)}
                             </span>
                           </span>
                         </div>

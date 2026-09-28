@@ -292,7 +292,7 @@ export const AutorizacionGastoModal: React.FC<AutorizacionGastoModalProps> = ({
               <div>
                 <span className="text-[11px] text-slate-400 font-semibold block">Dependencia:</span>
                 <span className="font-bold text-slate-900">
-                  {viaticosService.resolverNombreDependencia(solicitud)}
+                  {viaticosService.resolverNombreDependencia?.(solicitud)}
                 </span>
               </div>
               <div>

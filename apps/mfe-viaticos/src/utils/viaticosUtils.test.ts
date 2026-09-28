@@ -411,7 +411,7 @@ describe('Preservación de hora de salida y llegada en itinerario', () => {
     expect(payload.itinerario![0].horarioEstimadoMilitar).toBe('08:00');
     // Verifica que los auxiliares de UI fueron eliminados
     expect((payload.itinerario![0] as any).guardada).toBeUndefined();
-    expect((payload.itinerario![0] as any).tarifaTerminalAereo).toBeUndefined();
+    expect((payload.itinerario![0] as any).tarifaTerminalAereo).toBe(0);
   });
 });
 

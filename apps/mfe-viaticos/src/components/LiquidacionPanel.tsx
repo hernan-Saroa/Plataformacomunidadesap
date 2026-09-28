@@ -31,7 +31,12 @@ interface LiquidacionPanelProps {
     tipoTransporte?: string;
     tipoTrayecto?: string;
   }>;
-  onAplicarValor?: (montoViaticos: number, diasComision: number, montoGastosDesplazamiento?: number) => void;
+  onAplicarValor?: (
+    montoViaticos: number,
+    diasComision: number,
+    montoGastosDesplazamiento?: number,
+    datosCompletos?: any,
+  ) => void;
 }
 
 export default function LiquidacionPanel({
@@ -125,6 +130,7 @@ export default function LiquidacionPanel({
       resultado.data.valorTotalViaticos,
       resultado.data.numeroDiasNoches,
       resultado.data.totalGastosDesplazamiento,
+      resultado.data,
     );
   }, [resultado, onAplicarValor]);
 
