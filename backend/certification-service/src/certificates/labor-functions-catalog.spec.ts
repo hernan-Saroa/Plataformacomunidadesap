@@ -3,7 +3,7 @@ import { LaborFunctionsController } from './labor-functions.controller';
 
 describe('Local labor-function catalog (no aggregate employee queries)', () => {
   const profile = {
-    id: 'profile', combined_code: '202812', position_code: '2028', grade_code: '12',
+    id: 'profile', id_number: '12345678', combined_code: '202812', position_code: '2028', grade_code: '12',
     position_name: 'Profesional', department_name: 'Dirección', internal_group: null,
     is_active: true, functions: [{ ordinal: 2, description: 'Dos' }, { ordinal: 1, description: 'Uno' }],
   };
@@ -21,9 +21,9 @@ describe('Local labor-function catalog (no aggregate employee queries)', () => {
 
   it.each([true, false])('lists, searches, selects and reads profiles without touching employees (Oracle=%s)', async enabled => {
     const { service, requests, oracle } = fixture([profile], enabled);
-    const list = await service.list({ search: 'direccion' });
+    const list = await service.list({ search: '1234' });
     expect(list.total).toBe(1);
-    expect(list.stats).toEqual({ profiles: 1, functions: 2 });
+    expect(list.stats).toEqual({ profiles: 1, functions: 2, pending: 0 });
     expect(list.items[0]).not.toHaveProperty('association_count');
     expect(list.items[0].functions.map(f => f.description)).toEqual(['Uno', 'Dos']);
     expect((await service.listAllForSelection()).total).toBe(1);

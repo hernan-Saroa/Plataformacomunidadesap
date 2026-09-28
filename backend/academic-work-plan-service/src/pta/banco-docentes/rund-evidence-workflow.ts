@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { DataSource, QueryRunner } from 'typeorm';
+import { EXTRACTION_FIELDS_BY_BLOCK } from './rund-extraccion-fields';
 
 export const EVIDENCE_TYPES: Record<string, string[]> = {
   IDENTIDAD: ['documento_identidad', 'cedula_extranjeria', 'pasaporte'],
@@ -56,6 +57,15 @@ export function evidenceBlocksForFields(fields: string[]): string[] {
     TRANSVERSAL: ['observaciones'],
   };
   return Object.entries(mapping).filter(([, keys]) => fields.some(f => keys.includes(f))).map(([block]) => block);
+}
+
+async function hasPendingExtraction(runner: Pick<QueryRunner, 'query'>, docenteId: string, block: string) {
+  const [pending] = await runner.query(`SELECT s.id FROM academic_work_plan."RundExtraccionSugerencia" s
+    JOIN academic_work_plan."RundExtraccionTrabajo" j ON j.id=s.trabajo_id
+    JOIN academic_work_plan."RundDocumentoPerfil" d ON d.id=j.documento_id
+    WHERE j.docente_id::text=$1 AND s.estado='PENDIENTE' AND d.estado='ACTIVO' AND s.campo=ANY($2::text[]) LIMIT 1`,
+  [docenteId,EXTRACTION_FIELDS_BY_BLOCK[block]||[]]);
+  return Boolean(pending);
 }
 
 export async function invalidateEditedEvidence(manager: Pick<QueryRunner, 'query'>, docenteId: string, fields: string[], actorId: string, ip?: string) {
@@ -177,6 +187,7 @@ export class RundEvidenceWorkflow {
       if (current.cargado_por === actorId) throw new BadRequestException('La revisión requiere una persona distinta de quien cargó los datos.');
       const supports = (await runner.query('SELECT * FROM academic_work_plan."RundSoporteCampo" WHERE docente_id::text = $1 AND bloque = $2', [docenteId, block])).filter((s: any) => isReviewableEvidence(s.tipo_soporte));
       if (!returning) {
+        if (await hasPendingExtraction(runner,docenteId,block)) throw new BadRequestException('Confirme o rechace las sugerencias OCR pendientes antes de aprobar el bloque.');
         const missing = requiredEvidence(block, docente).filter(group => !supports.some((s: any) => group.includes(s.tipo_soporte) && s.documento_carpeta_id));
         if (missing.length) throw new BadRequestException(`Faltan soportes obligatorios: ${missing.map(g => g[0]).join(', ')}.`);
         if (supports.some((s: any) => s.estado !== 'Aprobado' || evidenceFields(s.tipo_soporte).some(field => evidenceFieldDecision(s, field).estado !== 'Aprobado') || (s.fecha_vencimiento && new Date(s.fecha_vencimiento) < new Date()))) throw new BadRequestException('Revise y apruebe cada soporte vigente y cada fila antes de aprobar el bloque. Hay documentos pendientes, devueltos o vencidos.');

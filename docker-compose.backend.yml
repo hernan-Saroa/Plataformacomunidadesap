@@ -179,6 +179,8 @@ services:
       <<: *db-env
       NODE_ENV: production
       PORT: 3004
+      CERTIFICATION_EMAIL_SAFE_MODE: 'true'
+      NOTIFICATION_SERVICE_URL: http://notifications-service:3009
       DB_SCHEMA: certification
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
       REDIS_URL: redis://redis:6379

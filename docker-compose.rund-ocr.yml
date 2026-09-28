@@ -10,7 +10,7 @@ services:
       - '127.0.0.1:8091:8091'
     volumes:
       - rund-paddle-models:/root/.paddlex
-    mem_limit: 4g
+    mem_limit: 6g
     cpus: 2
     security_opt:
       - no-new-privileges:true

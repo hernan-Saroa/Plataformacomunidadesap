@@ -614,8 +614,8 @@ export function validateManualBancoDocentePayload(
 
   const documentType = String(payload.documentType || '').toUpperCase();
   const documentNumber = String(payload.documentNumber || '');
-  if (!['CC', 'CE', 'PA', 'NIT'].includes(documentType)) {
-    fail('El tipo de documento no es valido.', 'TIPO_DOCUMENTO', documentType, 'CC, CE, PA o NIT');
+  if (!['CC', 'CE', 'PA', 'PEP', 'NIT'].includes(documentType)) {
+    fail('El tipo de documento no es valido.', 'TIPO_DOCUMENTO', documentType, 'CC, CE, PA, PEP o NIT');
   }
   if (documentNumber.length < 5 || documentNumber.length > 20) {
     fail('El documento debe tener entre 5 y 20 caracteres.', 'DOCUMENTO_IDENTIDAD', documentNumber, 'Entre 5 y 20 caracteres');
@@ -1525,7 +1525,10 @@ export class BancoDocentesService implements OnModuleInit {
       const authPersonId = authPersona?.id_person || randomUUID();
       const firstName = payload.primer_nombre || splitFullName(finalFullName).primer_nombre || 'Docente';
       const lastName = payload.primer_apellido || splitFullName(finalFullName).primer_apellido || null;
-      const gender = (payload.genero || 'N').trim().toUpperCase().slice(0, 6);
+      const genderText = normalizeLookupText(payload.genero || 'N');
+      const gender = ['m', 'masculino'].includes(genderText) ? 'M'
+        : ['f', 'femenino'].includes(genderText) ? 'F'
+          : (payload.genero || 'N').trim().toUpperCase().slice(0, 20);
 
       if (!authPersona) {
         const legacyPersonId = await this.getNextAuthLegacyPersonId(manager);
@@ -2339,6 +2342,9 @@ export class BancoDocentesService implements OnModuleInit {
       delete safeBody[key];
     }
     const requestedPeriod = body.periodoCarga || body.periodo_carga || null;
+    // El número sigue siendo inmutable, pero se conserva para poder confirmar una
+    // sugerencia OCR que coincide con la identidad ya registrada.
+    const suggestionPayload = { ...safeBody, documentNumber: body.documentNumber };
     if (!d.periodoCarga) {
       throw new BadRequestException('El registro no tiene periodo RUND asociado. Debe regularizarse antes de editar para proteger sus relaciones PTA.');
     }
@@ -2359,7 +2365,7 @@ export class BancoDocentesService implements OnModuleInit {
     const changedFields = Object.keys(body).filter((key) => !ignoredAuditKeys.has(key));
     const execute = async (outerManager?: any) => {
       const suggestions = suggestionIds.length
-        ? await lockExtractionSuggestions(outerManager, docenteId, suggestionIds, safeBody) : [];
+        ? await lockExtractionSuggestions(outerManager, docenteId, suggestionIds, suggestionPayload) : [];
       const result = await this.upsertDocente({
         ...safeBody,
         canal_origen: 'MODAL',
@@ -2386,7 +2392,7 @@ export class BancoDocentesService implements OnModuleInit {
           },
         },
       });
-      if (suggestions.length) await confirmExtractionSuggestions(outerManager, suggestions, safeBody,
+      if (suggestions.length) await confirmExtractionSuggestions(outerManager, suggestions, suggestionPayload,
         body.actorId || body.cargadoPor, String(body.justificacionEdicion).trim());
       return result;
     };

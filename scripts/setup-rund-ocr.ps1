@@ -1,6 +1,6 @@
-param([switch]$Start, [switch]$CpuOnly, [string]$Model = 'gemma4:e2b-it-qat')
+param([switch]$Start, [switch]$CpuOnly, [string]$Model = 'qwen3.5:4b')
 $ErrorActionPreference = 'Stop'
-if ($Model -notmatch '^gemma4:[a-zA-Z0-9_.-]+$' -or $Model -match 'cloud') { throw 'Seleccione una etiqueta local de Gemma 4.' }
+if ($Model -notmatch '^qwen3\.5:4b(?:-[a-zA-Z0-9_.-]+)?$' -or $Model -match 'cloud') { throw 'Seleccione la etiqueta local qwen3.5:4b validada para RUND.' }
 $rundRoot = Split-Path -Parent $PSScriptRoot
 $rundConfig = Join-Path $rundRoot '.env.rund-ocr.local'
 if (-not (Test-Path -LiteralPath $rundConfig)) {
@@ -39,13 +39,19 @@ if ($LASTEXITCODE -ne 0) { throw 'Inicie Docker Desktop con contenedores Linux a
 docker @rundCompose up -d --build
 if ($LASTEXITCODE -ne 0) { throw 'No se pudo iniciar la infraestructura OCR local.' }
 docker @rundCompose exec -T rund-ollama ollama pull $Model
-if ($LASTEXITCODE -ne 0) { throw 'No se pudo descargar Gemma 4 local.' }
-if ($Model -eq 'gemma4:e2b-it-qat') {
-  node (Join-Path $rundRoot 'scripts/prepare-rund-text-model.cjs') $Model
-  if ($LASTEXITCODE -ne 0) { throw 'No se pudo preparar el modelo de texto OCR.' }
-}
+if ($LASTEXITCODE -ne 0) { throw 'No se pudo descargar Qwen 3.5 local.' }
 docker @rundCompose exec -T rund-ocr python warmup.py
 if ($LASTEXITCODE -ne 0) { throw 'No se pudieron preparar los modelos de PaddleOCR.' }
 node (Join-Path $rundRoot 'scripts/warm-rund-ollama.cjs')
-if ($LASTEXITCODE -ne 0) { throw 'Gemma 4 no pudo inicializar el contexto de extracción local.' }
+if ($LASTEXITCODE -ne 0) { throw 'Qwen 3.5 no pudo inicializar el contexto de extracción local.' }
+# El reemplazo se hace al final: solo se eliminan los pesos anteriores cuando
+# Qwen y PP-OCRv6 ya quedaron descargados y respondieron correctamente.
+$installedModels = @(docker @rundCompose exec -T rund-ollama ollama list)
+if ($LASTEXITCODE -ne 0) { throw 'No fue posible consultar los modelos locales instalados.' }
+foreach ($oldModel in @('gemma4:rund-e2b-text', 'gemma4:e2b-it-qat')) {
+  if ($installedModels -match ('^' + [regex]::Escape($oldModel) + '\s')) {
+    docker @rundCompose exec -T rund-ollama ollama rm $oldModel
+    if ($LASTEXITCODE -ne 0) { throw "No fue posible eliminar el modelo anterior $oldModel." }
+  }
+}
 Write-Host 'Motores preparados. Aplique la migración 656 y cargue las variables locales en el servicio PTA antes de habilitar RUND_OCR_ENABLED=true.'
