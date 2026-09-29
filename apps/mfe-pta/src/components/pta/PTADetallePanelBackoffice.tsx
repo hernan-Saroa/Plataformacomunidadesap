@@ -1632,9 +1632,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       setFirmaCorreoDestino(res.data.email || 'tu correo institucional');
       if (res.data.devCode) {
         console.log('🔑 [PRUEBAS] Código OTP de firma (aprobador):', res.data.devCode);
-        toast.info(`[PRUEBAS] Código de validación: ${res.data.devCode}`, { duration: Infinity });
+        toast.info(`[PRUEBAS] Código de validación: ${res.data.devCode}`, {
+          id: 'pta-firma-otp',
+          duration: 20000,
+        });
+      } else {
+        toast.success('Código de validación enviado a tu correo registrado.');
       }
-      toast.success('Código de validación enviado a tu correo registrado.');
       return true;
     } catch (error: any) {
       setFirmaVerificationId('');
@@ -1701,6 +1705,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   };
 
   const handleFirmaCompleta = async (firmaData: FirmaData) => {
+    toast.dismiss('pta-firma-otp');
     setShowFirmaDigital(false);
     setFirmaVerificationId('');
     setFirmaCorreoDestino('');
@@ -4898,6 +4903,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       {preparandoDecision && <PTADecisionLoading firma={preparandoDecision === 'firma'} />}
       {showFirmaDigital && createPortal(
         <FirmaDigitalPTA
+          showSuccessToast={false}
           ptaId={pta.id}
           docenteNombre={pta.docente_nombre || pta.nombre_docente || ''}
           periodo={pta.periodo || ''}
@@ -4917,7 +4923,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           correoDestino={firmaCorreoDestino}
           onVerifyCodigo={verificarCodigoFirmaAprobador}
           onFirmaCompleta={handleFirmaCompleta}
-          onCancelar={() => { setShowFirmaDigital(false); setFirmaVerificationId(''); setFirmaCorreoDestino(''); setFirmaAccion(null); }}
+          onCancelar={() => { toast.dismiss('pta-firma-otp'); setShowFirmaDigital(false); setFirmaVerificationId(''); setFirmaCorreoDestino(''); setFirmaAccion(null); }}
         />,
         document.body
       )}

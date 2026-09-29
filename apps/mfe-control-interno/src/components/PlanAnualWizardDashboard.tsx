@@ -36,6 +36,7 @@ import { ModalFirmaOTP, type FirmaElectronicaMetadata } from './ModalFirmaOTP';
 
 // a️ IMPORTACIN OBLIGATORIA DE REGLAS DE NEGOCIO Y CUMPLIMIENTO NORMATIVO
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
+import { normalizarRolOcigOperativo } from '../config/roles-ocig-operativos';
 import { createPortal } from 'react-dom';
 // Hook para sincronizar evidencias con backend y API de auditores
 import {
@@ -64,7 +65,7 @@ import {
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
 import { fechaSeguimientoTarea } from './services/fechaSeguimientoTarea';
 import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
-import { corteDeLaFecha, cortesComoPeriodos, estadoDelCorte, fechaEntregaDeTarea, fechaSeguimientoPorDefecto, tareasEnElAñoDeLosCortes } from './services/cortesPlanAnual';
+import { corteDeLaFecha, corteDelInicio, cortesComoPeriodos, esTareaDelProgramaAnual, estadoDelCorte, fechaEntregaDeTarea, fechaSeguimientoPorDefecto, tareasEnElAñoDeLosCortes } from './services/cortesPlanAnual';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
 import { idPersonaParaPlanAnual, type ReferenciaPersonaPlan } from '../utils/persona-id-plan-anual';
 
@@ -217,7 +218,7 @@ function mapearProfesionalesOCIGDesdeApi(data: any[]): Auditor[] {
       idPerson: id,
       idTercero: id,
       nombre: String(config.nombre).trim(),
-      cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor',
+      cargo: String(normalizarRolOcigOperativo(config.rolOcig || config.rolOCI || config.cargo)),
       email: config.email || '',
       configId: config.id,
     });
@@ -700,7 +701,11 @@ function enriquecerActividadDesdeBackend(act: any, vigencia: number) {
   const tareasOriginales = ((act as any).tareasSeguimiento || (act as any).tareas_seguimiento || []) as any[];
   const tareasConCorte = normalizarTareasConCortes(tareasOriginales, puntosControlActividad).map((t: any) => ({
     ...t,
-    fechaEntrega: fechaEntregaDeTarea(t), // EFDS-958: muchas solo traen fechaLimite
+    // EFDS-958: muchas solo traen fechaLimite. Las del Programa Anual toman siempre el
+    // fin de su auditoría, no una fecha de entrega que haya quedado guardada (EFDS-2237).
+    fechaEntrega: esTareaDelProgramaAnual(t)
+      ? fechaEntregaDeTarea({ fechaLimite: t.fechaLimite || t.fecha_limite, fechaEntrega: undefined }) ?? fechaEntregaDeTarea(t)
+      : fechaEntregaDeTarea(t),
     responsables: normalizarResponsablesTarea(t.responsables),
     adjuntosTarea: normalizarAdjuntosTareaDesdeBackend(t.adjuntosTarea || t.adjuntos_tarea || []),
   }));
@@ -779,7 +784,9 @@ function alinearTareasFechasEntregaAVigencia(
   añoActividad?: number,
 ): TareaSeguimiento[] | undefined {
   if (!tareas?.length) return tareas;
+  // Las tareas del Programa Anual llevan las fechas de su auditoría: no se mueven de año (EFDS-2237)
   const años = tareas
+    .filter((t) => !esTareaDelProgramaAnual(t))
     .map((t) => t.fechaEntrega?.slice(0, 4))
     .filter((y): y is string => !!y && /^\d{4}$/.test(y))
     .map((y) => parseInt(y, 10));
@@ -789,7 +796,7 @@ function alinearTareasFechasEntregaAVigencia(
   // Tareas heredadas de una vigencia anterior a la actividad: se traen a la vigencia
   if (minAño + delta < vigencia) delta = vigencia - minAño;
   if (delta === 0) return tareas;
-  return tareas.map((t) => ({
+  return tareas.map((t) => (esTareaDelProgramaAnual(t) ? t : {
     ...t,
     fechaEntrega: t.fechaEntrega ? sumarAniosIso(t.fechaEntrega, delta) : t.fechaEntrega,
   }));
@@ -3791,7 +3798,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             return opcionesResponsable.length === 0 ? (
               <div className="flex items-center gap-2 px-4 py-3 border-2 border-orange-300 rounded-lg bg-orange-50">
                 <AlertCircle className="w-5 h-5 text-orange-600" />
-                <span className="text-orange-700">No hay profesionales con rol Jefe OCIG o Auditor Líder configurados. Configure uno en Profesionales OCI.</span>
+                <span className="text-orange-700">No hay profesionales con rol Jefe OCI o Auditor configurados. Configure uno en Profesionales OCI.</span>
               </div>
             ) : (
               <select 
@@ -3802,12 +3809,12 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
               >
                 <option value="">Seleccionar responsable...</option>
                 {opcionesResponsable.map((a: any) => (
-                  <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Jefe OCIG'}</option>
+                  <option key={a.id} value={a.id}>{a.nombre} - {String(normalizarRolOcigOperativo(a.cargo || 'Jefe OCI'))}</option>
                 ))}
               </select>
             );
           })()}
-          <p className="text-xs text-gray-500 mt-1">Solo profesionales con rol Jefe OCIG o Auditor Líder pueden ser responsables del Plan Anual</p>
+          <p className="text-xs text-gray-500 mt-1">Solo profesionales con rol Jefe OCI o Auditor pueden ser responsables del Plan Anual</p>
         </div>
       </div>
     </motion.div>
@@ -4353,9 +4360,20 @@ function Paso2({
       [...puntosNuevos].sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada))[0].fechaProgramada.slice(0, 4),
       10,
     );
-    const tareasEnAño = tareasEnElAñoDeLosCortes(tareas || [], añoCortes, añoBaseDelPlan);
+    // Las tareas del Programa Anual no se mueven de año: llevan las fechas de su auditoría (EFDS-2237)
+    const tareasPlantilla = (tareas || []).filter((t) => !esTareaDelProgramaAnual(t));
+    const plantillaEnAño = tareasEnElAñoDeLosCortes(tareasPlantilla, añoCortes, añoBaseDelPlan);
+    let iPlantilla = 0;
+    const tareasEnAño = (tareas || []).map((t) => (esTareaDelProgramaAnual(t) ? t : plantillaEnAño[iPlantilla++]));
 
     return tareasEnAño.map((tarea, tIdx) => {
+      // Tarea del Programa Anual: al corte que contiene la fecha de inicio de su auditoría,
+      // y su fecha de entrega sigue siendo el fin de la auditoría (EFDS-2237).
+      if (esTareaDelProgramaAnual(tarea)) {
+        const destino = corteDelInicio((tarea as any).fechaInicio || (tarea as any).fechaLimite, puntosNuevos);
+        return destino ? { ...tarea, puntoControlId: destino.id } : tarea;
+      }
+
       const corteViejo = puntosViejos.find((p) => p.id === tarea.puntoControlId);
       const corteNuevo = puntosNuevos.find((p) => p.id === tarea.puntoControlId);
 
@@ -5011,14 +5029,14 @@ function Paso2({
                                         </div>
                                         <button
                                           type="button"
-                                          disabled={soloLectura || cortePorVigencia}
-                                          title={cortePorVigencia ? 'Las tareas de esta actividad vienen del Programa Anual' : undefined}
+                                          disabled={soloLectura}
+                                          title={cortePorVigencia ? 'Las tareas vienen del Programa Anual: al configurar cortes, cada auditoría queda en el corte de su fecha de inicio' : undefined}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, false);
                                           }}
                                           className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-colors ${
-                                            soloLectura || cortePorVigencia
+                                            soloLectura
                                               ? 'bg-slate-400 text-slate-100 cursor-default'
                                               : 'bg-blue-600 hover:bg-blue-700 text-white'
                                           }`}
@@ -6425,7 +6443,7 @@ function Paso3({
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 leading-tight bg-white/50 p-2 rounded border border-blue-100">
-                  <span className="font-semibold text-blue-600">Tip:</span> Solo aparecen profesionales configurados con rol <code className="text-[9px]">Aprobador PAI</code>. El orden importa si el flujo es secuencial.
+                  <span className="font-semibold text-blue-600">Tip:</span> Solo aparecen profesionales configurados con rol <code className="text-[9px]">Aprobador Plan Anual</code>. El orden importa si el flujo es secuencial.
                 </p>
               </div>
               )}
@@ -6463,7 +6481,7 @@ function Paso3({
                         if (r.includes('líder') || r.includes('lider') || r.includes('senior') || r.includes('sénior')) return 'bg-cyan-100 text-cyan-700';
                         if (r.includes('junior') || r.includes('júnior')) return 'bg-green-100 text-green-700';
                         if (r.includes('auditado')) return 'bg-amber-100 text-amber-700';
-                        if (r.includes('aprobador pai')) return 'bg-orange-100 text-orange-700';
+                        if (r.includes('aprobador')) return 'bg-orange-100 text-orange-700';
                         return 'bg-blue-100 text-blue-700';
                       };
 
@@ -6501,7 +6519,7 @@ function Paso3({
                           </div>
 
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${getRoleBadgeColor(miembro.cargo || 'Funcionario')}`}>
-                            {miembro.cargo || 'Funcionario'}
+                            {miembro.cargo ? String(normalizarRolOcigOperativo(miembro.cargo)) : 'Funcionario'}
                           </span>
 
                           {!soloLectura && (
