@@ -45,6 +45,9 @@ const ACCION_TEXTO: Record<string, string> = {
   APROBACION: 'Revisión aprobada',
   EXPORTACION_SIIF: 'CSV exportado para SIIF',
   REGISTRO_SIIF_Y_CIERRE: 'Registrada en SIIF y cerrada',
+  REVERSION_SOLICITADA: 'Reversión de la aprobación solicitada',
+  REVERSION_APROBADA: 'Reversión aprobada: la revisión vuelve a empezar',
+  REVERSION_RECHAZADA: 'Reversión rechazada',
 };
 
 function mensajeDeError(err: unknown): string {
@@ -142,6 +145,7 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
   const [devolviendo, setDevolviendo] = useState(false);
   const [obsDevolucion, setObsDevolucion] = useState('');
   const [siif, setSiif] = useState({ numero: '', fecha: hoyColombia(), valor: '', dias: '', obs: '' });
+  const [reversion, setReversion] = useState<string | null>(null);
   const [confirmarCierre, setConfirmarCierre] = useState(false);
 
   const cargar = useCallback(async () => {
@@ -390,6 +394,49 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
                 {mayorQuePagado ? 'Devolver al comisionado por mayor valor' : 'Registrar en SIIF y cerrar'}
               </button>
             </div>
+          )}
+        </div>
+      )}
+
+      {d.reversionPendiente && (
+        <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
+          <p className="font-bold">Reversión de la aprobación pendiente</p>
+          <p className="mt-1">
+            Solicitada el {formatearFechaLimite(d.reversionPendiente.solicitadaEn)}: {d.reversionPendiente.motivo}
+          </p>
+          <p className="mt-1">Debe aprobarla o rechazarla otra persona. Mientras tanto no se puede registrar en SIIF.</p>
+        </div>
+      )}
+
+      {d.puedeSolicitarReversion && (
+        <div className="space-y-2 rounded-xl border border-slate-200 p-4">
+          {reversion === null ? (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-slate-600">¿Aprobó la revisión por error? Otra persona debe autorizar la reversión, y solo antes del registro en SIIF.</p>
+              <button type="button" onClick={() => setReversion('')}
+                className="shrink-0 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-50">
+                Solicitar reversión de la aprobación
+              </button>
+            </div>
+          ) : (
+            <>
+              <label className="block text-xs text-slate-700">Motivo de la reversión
+                <textarea value={reversion} onChange={(e) => setReversion(e.target.value)} rows={2} maxLength={500}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs" />
+              </label>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setReversion(null)}
+                  className="rounded-lg px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100">Cancelar</button>
+                <button type="button" disabled={trabajando || reversion.trim().length < 10}
+                  onClick={() => ejecutar(async () => {
+                    await legalizacionService.solicitarReversion(solicitudId, reversion.trim());
+                    setReversion(null);
+                  }, 'Reversión solicitada. Queda pendiente de aprobación por otra persona.')}
+                  className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white disabled:bg-slate-300">
+                  Enviar solicitud de reversión
+                </button>
+              </div>
+            </>
           )}
         </div>
       )}

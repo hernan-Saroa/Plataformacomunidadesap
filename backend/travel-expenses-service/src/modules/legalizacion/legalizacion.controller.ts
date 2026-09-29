@@ -31,6 +31,11 @@ import type { FiltroBandeja, RegistrarSiifDto } from './legalizacion-revision.se
 
 /** EFDS-1310 — El MFE ya consulta este permiso para la sección de legalizaciones. */
 const PERMISO_REVISAR = 'travel_expenses:legalizations.manage';
+/**
+ * EFDS-1310 — Aprobar la reversión de una revisión aprobada. Registrado por la
+ * migración 454 sin asignar a ningún rol: el rol que aprueba aún no está confirmado.
+ */
+const PERMISO_APROBAR_REVERSION = 'travel_expenses:legalizations.revert_approval';
 
 /**
  * Los tokens de auth-service no llevan permisos (solo roles), así que el guard
@@ -153,6 +158,35 @@ export class LegalizacionController {
     @Req() req: RequestConUsuario,
   ) {
     return this.revision.devolver(solicitudId, body, req.user!);
+  }
+
+  @Post('revision/:solicitudId/solicitar-reversion')
+  @Permissions(PERMISO_REVISAR)
+  @ApiOperation({ summary: 'Pedir que otra persona revierta la aprobación de la revisión (antes de SIIF)' })
+  solicitarReversion(
+    @Param('solicitudId', new ParseUUIDPipe()) solicitudId: string,
+    @Body() body: { motivo: string },
+    @Req() req: RequestConUsuario,
+  ) {
+    return this.revision.solicitarReversion(solicitudId, body, req.user!);
+  }
+
+  @Get('reversiones/pendientes')
+  @Permissions(PERMISO_APROBAR_REVERSION)
+  @ApiOperation({ summary: 'Solicitudes de reversión pendientes (salvo las propias)' })
+  reversionesPendientes(@Req() req: RequestConUsuario) {
+    return this.revision.reversionesPendientes(req.user!);
+  }
+
+  @Post('reversiones/:reversionId/resolver')
+  @Permissions(PERMISO_APROBAR_REVERSION)
+  @ApiOperation({ summary: 'Aprobar o rechazar una reversión; quien la solicitó no puede resolverla' })
+  resolverReversion(
+    @Param('reversionId', new ParseUUIDPipe()) reversionId: string,
+    @Body() body: { decision: 'APROBAR' | 'RECHAZAR'; observacion?: string },
+    @Req() req: RequestConUsuario,
+  ) {
+    return this.revision.resolverReversion(reversionId, body, req.user!);
   }
 
   @Post('revision/:solicitudId/aprobar')

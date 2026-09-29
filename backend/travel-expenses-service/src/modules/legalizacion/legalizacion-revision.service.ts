@@ -15,6 +15,7 @@ import { NotificationClientService } from '../../common/notification-client.serv
 import { LegalizacionComisionEntity } from './entities/legalizacion-comision.entity';
 import { LegalizacionSoporteEntity } from './entities/legalizacion-soporte.entity';
 import { AccionRevision, LegalizacionRevisionEntity } from './entities/legalizacion-revision.entity';
+import { LegalizacionReversionEntity } from './entities/legalizacion-reversion.entity';
 import {
   esSuperAdmin,
   LegalizacionService,
@@ -233,6 +234,7 @@ export class LegalizacionRevisionService {
       i.soportes.every((s) => s.revision !== null),
     );
     const hayRechazos = detalle.checklist.items.some((i) => i.soportes.some((s) => s.revision === 'RECHAZADO'));
+    const reversionPendiente = await this.reversionPendiente(this.dataSource, leg.id);
     return {
       ...detalle,
       puedeEditar: false,
@@ -248,7 +250,9 @@ export class LegalizacionRevisionService {
         detalle.checklist.completo &&
         todosRevisados &&
         !hayRechazos,
-      puedeRegistrarSiif: Boolean(leg.revisionAprobadaEn && !leg.cerradaEn),
+      puedeRegistrarSiif: Boolean(leg.revisionAprobadaEn && !leg.cerradaEn && !reversionPendiente),
+      puedeSolicitarReversion: Boolean(leg.revisionAprobadaEn && !leg.cerradaEn && !reversionPendiente),
+      reversionPendiente,
       historialRevision: historial,
     };
   }
@@ -480,6 +484,11 @@ export class LegalizacionRevisionService {
       if (!leg.revisionAprobadaEn) {
         throw new BadRequestException('Apruebe la revisión de los soportes antes de registrar en SIIF.');
       }
+      if (await this.reversionPendiente(m, leg.id)) {
+        throw new BadRequestException(
+          'Hay una solicitud de reversión de la revisión pendiente: debe resolverse antes de registrar en SIIF.',
+        );
+      }
       if (bloqueada?.estado_solicitud !== EstadoSolicitud.PENDIENTE_LEGALIZACION) {
         throw new BadRequestException(
           `La comisión debe estar en PENDIENTE_LEGALIZACION para cerrarse (estado actual: ${bloqueada?.estado_solicitud}).`,
@@ -606,6 +615,123 @@ export class LegalizacionRevisionService {
       valorLegalizado,
       valorReintegro: r.valorReintegro,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reversión de una revisión aprobada (antes del registro en SIIF)
+  // ---------------------------------------------------------------------------
+
+  private reversionPendiente(m: EntityManager | DataSource, legalizacionId: string) {
+    return m.getRepository(LegalizacionReversionEntity).findOne({ where: { legalizacionId, estado: 'PENDIENTE' } });
+  }
+
+  /**
+   * El analista que revisa pide revertir la aprobación. No cambia nada hasta que
+   * otra persona, con el permiso de aprobar reversiones, la apruebe.
+   */
+  async solicitarReversion(solicitudId: string, dto: { motivo: string }, user: UsuarioAutenticado) {
+    const motivo = dto?.motivo?.trim() || '';
+    if (motivo.length < MIN_OBSERVACION) {
+      throw new BadRequestException(`Explique por qué se debe revertir la aprobación (mínimo ${MIN_OBSERVACION} caracteres).`);
+    }
+    const sol = await this.legalizaciones.cargarSolicitud(solicitudId);
+    await this.exigirRevisor(sol, user);
+
+    return this.dataSource.transaction(async (m) => {
+      const leg = await this.bloquearEnRevision(m, solicitudId, { permitirAprobada: true });
+      if (!leg.revisionAprobadaEn) {
+        throw new BadRequestException('La revisión no está aprobada: no hay nada que revertir.');
+      }
+      if (await this.reversionPendiente(m, leg.id)) {
+        throw new BadRequestException('Ya hay una solicitud de reversión pendiente para esta legalización.');
+      }
+      const repo = m.getRepository(LegalizacionReversionEntity);
+      const reversion = await repo.save(repo.create({ legalizacionId: leg.id, motivo, solicitadaPorId: user.userId }));
+      await this.registrar(m, leg.id, 'REVERSION_SOLICITADA', user.userId, {
+        observacion: motivo,
+        detalle: { reversionId: reversion.id },
+      });
+      return reversion;
+    });
+  }
+
+  /** Bandeja de quien aprueba: las solicitudes pendientes, salvo las propias. */
+  async reversionesPendientes(user: UsuarioAutenticado) {
+    return this.dataSource.query(
+      `SELECT r.id, r.motivo, r.solicitada_por_id AS "solicitadaPorId", r.solicitada_en AS "solicitadaEn",
+              l.solicitud_id AS "solicitudId", s.consecutivo_unico AS "consecutivoUnico",
+              TRIM(CONCAT_WS(' ', c.primer_nombre, c.segundo_nombre, c.primer_apellido, c.segundo_apellido)) AS "comisionadoNombre",
+              s.valor_pagado::float AS "valorPagado", l.revision_aprobada_en AS "revisionAprobadaEn",
+              l.siif_exportado_en AS "siifExportadoEn"
+         FROM travel_expenses.legalizacion_reversiones r
+         JOIN travel_expenses.legalizaciones_comision l ON l.id = r.legalizacion_id
+         JOIN travel_expenses.solicitudes_comision s ON s.id = l.solicitud_id
+         LEFT JOIN travel_expenses.comisionados c ON c.id = s.comisionado_id
+        WHERE r.estado = 'PENDIENTE' AND r.solicitada_por_id <> $1
+        ORDER BY r.solicitada_en`,
+      [user.userId],
+    );
+  }
+
+  /**
+   * Aprueba o rechaza una solicitud de reversión. Aprobar deshace la aprobación
+   * de la revisión y la exportación a SIIF: la legalización vuelve a revisión.
+   */
+  async resolverReversion(
+    reversionId: string,
+    dto: { decision: 'APROBAR' | 'RECHAZAR'; observacion?: string },
+    user: UsuarioAutenticado,
+  ) {
+    if (dto?.decision !== 'APROBAR' && dto?.decision !== 'RECHAZAR') {
+      throw new BadRequestException('La decisión debe ser APROBAR o RECHAZAR.');
+    }
+    const observacion = dto.observacion?.trim() || null;
+    if (dto.decision === 'RECHAZAR' && (observacion?.length ?? 0) < MIN_OBSERVACION) {
+      throw new BadRequestException(`El rechazo requiere una observación (mínimo ${MIN_OBSERVACION} caracteres).`);
+    }
+
+    return this.dataSource.transaction(async (m) => {
+      const filas: Array<{ solicitud_id: string }> = await m.query(
+        `SELECT l.solicitud_id
+           FROM travel_expenses.legalizacion_reversiones r
+           JOIN travel_expenses.legalizaciones_comision l ON l.id = r.legalizacion_id
+          WHERE r.id = $1
+          FOR UPDATE OF r`,
+        [reversionId],
+      );
+      if (!filas[0]) throw new NotFoundException('Solicitud de reversión no encontrada.');
+      const repo = m.getRepository(LegalizacionReversionEntity);
+      const reversion = await repo.findOneOrFail({ where: { id: reversionId } });
+      if (reversion.estado !== 'PENDIENTE') {
+        throw new BadRequestException(`La solicitud de reversión ya fue resuelta (${reversion.estado}).`);
+      }
+      if (reversion.solicitadaPorId === user.userId) {
+        throw new ForbiddenException('Quien solicitó la reversión no puede resolverla: debe hacerlo otra persona.');
+      }
+      // Cerrada, la legalización es inmutable: la reversión ya no procede.
+      const leg = await this.bloquearEnRevision(m, filas[0].solicitud_id, { permitirAprobada: true });
+
+      const aprobar = dto.decision === 'APROBAR';
+      if (aprobar) {
+        leg.revisionAprobadaEn = null;
+        leg.revisionAprobadaPorId = null;
+        leg.siifExportadoEn = null;
+        leg.siifExportadoPorId = null;
+        await m.getRepository(LegalizacionComisionEntity).save(leg);
+      }
+      Object.assign(reversion, {
+        estado: aprobar ? 'APROBADA' : 'RECHAZADA',
+        resueltaPorId: user.userId,
+        resueltaEn: new Date(),
+        observacionResolucion: observacion,
+      });
+      await repo.save(reversion);
+      await this.registrar(m, leg.id, aprobar ? 'REVERSION_APROBADA' : 'REVERSION_RECHAZADA', user.userId, {
+        observacion,
+        detalle: { reversionId, solicitadaPorId: reversion.solicitadaPorId },
+      });
+      return { reversionId, estado: reversion.estado, solicitudId: filas[0].solicitud_id, legalizacionId: leg.id };
+    });
   }
 
   private async notificar(

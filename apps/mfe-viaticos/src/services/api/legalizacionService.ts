@@ -118,8 +118,30 @@ export interface DetalleRevision extends DetalleLegalizacion {
   puedeRevisar: boolean;
   puedeAprobar: boolean;
   puedeRegistrarSiif: boolean;
+  puedeSolicitarReversion?: boolean;
+  reversionPendiente?: ReversionRevision | null;
   historialRevision: EntradaHistorialRevision[];
 }
+
+/** EFDS-1310 — Solicitud de reversión de una revisión aprobada. */
+export interface ReversionRevision {
+  id: string;
+  motivo: string;
+  solicitadaPorId: string;
+  solicitadaEn: string;
+}
+
+export interface ItemReversionPendiente extends ReversionRevision {
+  solicitudId: string;
+  consecutivoUnico: string;
+  comisionadoNombre: string;
+  valorPagado: number | null;
+  revisionAprobadaEn: string | null;
+  siifExportadoEn: string | null;
+}
+
+/** Permiso de quien aprueba las reversiones (migración 454, sin asignar a ningún rol). */
+export const PERMISO_APROBAR_REVERSION = 'travel_expenses:legalizations.revert_approval';
 
 export interface RegistroSiifPayload {
   numeroRegistroSiif: string;
@@ -238,6 +260,22 @@ class LegalizacionService {
       `${BASE}/revision/${solicitudId}/registrar-siif`,
       payload,
     );
+  }
+
+  // EFDS-1310 — reversión de una revisión aprobada.
+  solicitarReversion(solicitudId: string, motivo: string): Promise<ReversionRevision> {
+    return apiClient.post(`${BASE}/revision/${solicitudId}/solicitar-reversion`, { motivo });
+  }
+
+  reversionesPendientes(): Promise<ItemReversionPendiente[]> {
+    return apiClient.get(`${BASE}/reversiones/pendientes`);
+  }
+
+  resolverReversion(reversionId: string, decision: 'APROBAR' | 'RECHAZAR', observacion?: string) {
+    return apiClient.post<{ estado: string; solicitudId: string }>(`${BASE}/reversiones/${reversionId}/resolver`, {
+      decision,
+      ...(observacion ? { observacion } : {}),
+    });
   }
 
   // EFDS-1309 — soportes de legalización administrables.

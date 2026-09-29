@@ -13,6 +13,7 @@ vi.mock('../services/api/legalizacionService', () => ({
     exportarSiif: vi.fn(),
     registrarSiif: vi.fn(),
     abrirSoporte: vi.fn(),
+    solicitarReversion: vi.fn(),
   },
 }));
 
@@ -144,6 +145,35 @@ describe('LegalizacionRevision — EFDS-1310', () => {
     expect(svc.registrarSiif).toHaveBeenCalledWith('sol-1', expect.objectContaining({
       valorLegalizado: 2000000, observaciones: 'Factura duplicada.',
     }));
+  });
+
+  it('revisión aprobada: el analista solicita la reversión con un motivo', async () => {
+    svc.detalleRevision.mockResolvedValue(
+      detalle({ puedeRevisar: false, puedeRegistrarSiif: true, puedeSolicitarReversion: true, revisionAprobadaEn: '2026-09-25T18:00:00Z' }),
+    );
+    svc.solicitarReversion.mockResolvedValue({ id: 'rev-1' });
+    await abrirDetalle();
+    fireEvent.click(await screen.findByRole('button', { name: 'Solicitar reversión de la aprobación' }));
+    const enviar = screen.getByRole('button', { name: 'Enviar solicitud de reversión' });
+    expect(enviar).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Motivo de la reversión'), { target: { value: 'Aprobé por error el formato sin firma.' } });
+    fireEvent.click(enviar);
+    await screen.findByText('Reversión solicitada. Queda pendiente de aprobación por otra persona.');
+    expect(svc.solicitarReversion).toHaveBeenCalledWith('sol-1', 'Aprobé por error el formato sin firma.');
+  });
+
+  it('reversión pendiente: lo avisa y no ofrece registrar en SIIF', async () => {
+    svc.detalleRevision.mockResolvedValue(
+      detalle({
+        puedeRevisar: false, puedeRegistrarSiif: false, puedeSolicitarReversion: false, revisionAprobadaEn: '2026-09-25T18:00:00Z',
+        reversionPendiente: { id: 'rev-1', motivo: 'Aprobé por error.', solicitadaPorId: 'a', solicitadaEn: '2026-09-26T15:00:00Z' },
+      }),
+    );
+    await abrirDetalle();
+    expect(await screen.findByText('Reversión de la aprobación pendiente')).toBeInTheDocument();
+    expect(screen.getByText(/Aprobé por error\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Registrar en SIIF/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Solicitar reversión de la aprobación' })).not.toBeInTheDocument();
   });
 
   it('cerrada: muestra el expediente sin ninguna acción', async () => {

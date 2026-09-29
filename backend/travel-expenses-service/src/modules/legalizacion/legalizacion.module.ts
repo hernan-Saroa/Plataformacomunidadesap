@@ -7,6 +7,7 @@ import { ConfigLegalizacionDocumentoEntity } from './entities/config-legalizacio
 import { LegalizacionComisionEntity } from './entities/legalizacion-comision.entity';
 import { LegalizacionSoporteEntity } from './entities/legalizacion-soporte.entity';
 import { LegalizacionRevisionEntity } from './entities/legalizacion-revision.entity';
+import { LegalizacionReversionEntity } from './entities/legalizacion-reversion.entity';
 import { LegalizacionRevisionService } from './legalizacion-revision.service';
 import { LegalizacionController } from './legalizacion.controller';
 import { LegalizacionService } from './legalizacion.service';
@@ -23,6 +24,7 @@ export const LEGALIZACION_ENTITIES = [
   LegalizacionComisionEntity,
   LegalizacionSoporteEntity,
   LegalizacionRevisionEntity,
+  LegalizacionReversionEntity,
 ];
 
 /**
