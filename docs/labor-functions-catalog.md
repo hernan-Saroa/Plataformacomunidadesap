@@ -1,69 +1,49 @@
-# Catálogo local y validación individual de funciones laborales
+# Funciones laborales por número de identificación
 
-## Comportamiento
+Desde el cambio del 28/09/2026, cada registro pertenece a una sola identificación. Cargo, grado, nivel, dependencia, grupo y tipo de vinculación ya no participan en la asociación de funciones.
 
-- El listado, las estadísticas, la selección de perfiles, la carga masiva y la
-  edición trabajan con los perfiles y funciones de PostgreSQL. El listado no
-  lee las solicitudes de empleados ni consulta Oracle.
-- Se retiraron la columna y el contador de asociados, su modal, exportación y
-  endpoint `GET certificates/labor-functions/:id/associations`.
-- `Consultar empleado` conserva la búsqueda informativa bajo demanda por nombre
-  o documento. No es una enumeración de toda la vista. La búsqueda por nombre
-  puede devolver varias personas; usa el documento completo para una persona.
-- El autoservicio conserva la consulta por documento y la elección existente
-  de vinculación, cargo, grado y contexto organizacional, incluidos encargos.
-- Al seleccionar funciones se comprueba la coincidencia individual. Al solicitar
-  se verifica nuevamente y al emitir el backend vuelve a resolver las funciones
-  vigentes. Sin coincidencia o con ambigüedad no se emite con funciones. Se puede
-  solicitar sin funciones desmarcando la opción.
-- Los certificados emitidos conservan su `functions_snapshot` histórico. Este
-  campo del certificado no es el sincronizador de matriz que se descartó.
+## Gestión y plantilla
 
-## Validaciones de interfaz
+- Alta y edición: número de identificación y funciones. La identificación se guarda como texto, conserva ceros iniciales y admite puntos, espacios o guiones de presentación que se retiran al normalizar. No admite letras ni notación científica.
+- Una identificación tiene como máximo un registro, incluso si está inactivo. La API y un índice único de PostgreSQL evitan duplicados. Para cambiar funciones se utiliza Editar.
+- Plantilla Excel: dos columnas, `Número de identificación` y `FUNCIONES`, en la hoja `Matriz Funciones ESAP`. Se conservan las tres filas iniciales de identificación, instrucciones y encabezados. Los ejemplos ficticios van en otra hoja y no se importan.
+- Una fila por persona y una función por línea dentro de la celda (Alt+Enter). Puede numerarse cada línea. Los números internos, como «numeral 2.», permanecen en el texto. Las funciones repetidas se deduplican conservando su orden.
+- Máximo 10 MB y 5.000 registros por archivo; máximo 500 funciones por persona y entre 8 y 5.000 caracteres por función.
+- Excel puede perder precisión después de 15 dígitos numéricos. Las identificaciones extensas deben guardarse y escribirse como texto; el importador rechaza las celdas numéricas que puedan haber perdido precisión.
+- La carga valida cada fila y permite crear únicamente las válidas. No sobrescribe registros existentes. La importación vuelve a verificar unicidad y cada fila se guarda en una transacción.
+- El listado busca por identificación y muestra identificación, cantidad de funciones y acciones según permisos. Seleccionar todos usa una sola lectura del catálogo.
+- Consultar empleado sigue buscando por nombre o documento bajo demanda. La asociación se informa por identificación y no depende de la vinculación seleccionada, ni de la antigüedad de sus campos de cargo.
 
-Cambiar documento o tipo invalida las respuestas pendientes. Desmarcar funciones
-impide que una respuesta anterior restablezca su mensaje de disponibilidad.
-Si las funciones permanecen marcadas al cambiar la cédula, el formulario vuelve
-a validarlas automáticamente 500 ms después de terminar de escribir. Esa espera
-evita enviar una consulta individual a Oracle por cada dígito.
-Ocultar salario invalida una validación de prima pendiente. Las verificaciones
-simultáneas de funciones y prima para el mismo documento comparten únicamente la
-petición en curso: no se reutilizan respuestas completadas para validar funciones.
+## Landing y certificado
 
-Durante el envío del código se bloquean identidad y preferencias para evitar
-mezclar solicitudes. Se evitan envíos duplicados y operaciones simultáneas de
-validación/reenvío del código. El servidor sigue siendo la autoridad para emitir.
-El catálogo distingue un error de lectura de una lista vacía y descarta respuestas
-de búsquedas anteriores.
+El checkbox se llama `Incluir mis funciones laborales` y es voluntario. Al marcarlo se consulta la disponibilidad para el documento ingresado. Cambiar documento invalida respuestas anteriores y vuelve a verificar; desmarcar permite continuar sin funciones.
 
-## Despliegue
+El servidor revalida las funciones al emitir. Si se eliminan, se inactivan o se reasignan después de la primera consulta, no se emite con funciones para la identificación anterior. La identidad y elegibilidad laboral mantienen sus validaciones existentes: cargar funciones no crea una persona ni le concede por sí solo acceso a certificados.
 
-Desplegar conjuntamente `certification-service`, `mfe-certificados-laborales` y el
-`shell` (landing). No hay migraciones, paquetes ni variables nuevas para este
-ajuste. Conservar la configuración Oracle existente en PRE/PROD; DEV/QA conservan
-sus fuentes locales. No hace falta configurar `shadow` ni `on`.
+Los certificados nuevos guardan `profile_id`, `id_number`, `matched_at` y la lista ordenada en `functions_snapshot`. Las plantillas y el renderizado del PDF permanecen iguales. Los certificados anteriores conservan sus snapshots y sus funciones, aunque se edite o elimine la asignación actual.
 
-La propuesta anterior de sincronización de matriz se retiró del código pendiente:
-worker, rutas, migración 658 y variables nuevas de Compose y `.env.example`.
-Si aquella propuesta llegó a instalarse en algún servidor, revisar ese ambiente
-antes de limpiar objetos: este cambio no borra tablas remotas ni intenta revertir
-automáticamente una migración ya aplicada. Sus variables de snapshot ya no se usan.
+## Datos anteriores y despliegue
 
-## Verificación local
+Aplicar **`db/migrations/664_labor_functions_by_identification.sql` antes de arrancar la nueva versión de certification-service**. Desplegar coordinadamente el servicio, `mfe-certificados-laborales` y el shell. No hay paquetes ni variables de entorno nuevos.
 
-- Suite de certification-service: 223 pruebas aprobadas, incluidas pruebas de
-  catálogo sin llamadas a empleados/Oracle, >10.000 perfiles, coincidencia
-  individual, ambigüedad y eliminación de perfiles entre consulta y emisión.
-- Microfrontend de certificados: 39 pruebas aprobadas.
-- Formulario público: 14 pruebas aprobadas de cambios de identidad/opciones,
-  respuestas fuera de orden, reintentos y protección contra envíos duplicados.
-- Compilaciones de backend, microfrontend y shell aprobadas.
-- Suite general del shell: 44 pruebas aprobadas y una suite previa que no inicia:
-  `disciplinary.service.spec.ts` usa `jest` bajo Vitest (`jest is not defined`).
-  Ese módulo y su configuración no fueron modificados.
+La migración agrega la identificación y su índice único, permite que los campos antiguos de cargo sean nulos y conserva todas las filas y funciones existentes. No intenta deducir una identificación desde un cargo ni modifica certificados emitidos.
 
-Las fuentes externas están simuladas en las pruebas. No se ejecutaron escrituras
-en servidores ni pruebas contra bases de PRE/PROD. Antes de promover a producción,
-comprobar en PRE carga/listado, consulta de empleado y certificados autorizados
-con y sin funciones. Eliminar el cruce masivo no garantiza disponibilidad absoluta
-de Oracle, PostgreSQL o la red.
+Los registros anteriores sin identificación aparecen como **Pendiente de identificación**. Conservan sus funciones y pueden completarse desde Editar. Mientras no se les asigne una identificación, no habilitan funciones para nuevas solicitudes. Si un antiguo perfil era compartido por varias personas, deben crearse registros separados por cada identificación; el primero puede reutilizarse mediante Editar y los demás mediante alta o la nueva plantilla.
+
+La plantilla anterior de ocho columnas se rechaza expresamente para evitar interpretar códigos de cargo como documentos. No existe un fallback al cruce antiguo.
+
+La migración fue comprobada dos veces sobre tablas temporales en PostgreSQL local. No se ha aplicado a las tablas reales ni se han desplegado servicios.
+
+## Verificación reproducible
+
+- Backend: `npm test -- --runInBand` y `npm run build` en `backend/certification-service`.
+- Microfrontend: `npx vitest run` y `npm run build` en `apps/mfe-certificados-laborales`.
+- Landing: `npx vitest run src/components/portal/SolicitarCertificadoLaboral.functions.test.tsx` y `npm run build` en `apps/shell`.
+- Plantilla real y validación de ejemplos: `node scripts/verify-labor-functions-template.cjs`.
+- Migración y operaciones reales del servicio sobre tablas TEMP: `node scripts/verify-labor-functions-db.cjs`. Solo admite el PostgreSQL local configurado en el `.env` de certification-service; revierte la transacción y nunca modifica tablas de aplicación.
+
+Las pruebas incluyen asociación sin datos del cargo, aislamiento entre documentos, documentos normalizados, duplicados de creación/edición/importación, registros heredados, reasignación antes de emitir, conservación histórica, permisos y respuestas fuera de orden del landing.
+
+Resultado local del 28/09/2026: 255 pruebas del backend, 72 del microfrontend y 16 del landing aprobadas; compilaciones del backend, microfrontend y shell aprobadas. También pasaron ambos scripts de verificación.
+
+La comprobación de tipos de los archivos frontend afectados encontró ocho diagnósticos preexistentes en el cliente API (opciones `requiresAuth`/`params` y alias del código de verificación). Se compararon con los mismos archivos de HEAD en memoria: no aparecieron diagnósticos nuevos. Esto no equivale a una comprobación de tipos limpia de todo el repositorio.

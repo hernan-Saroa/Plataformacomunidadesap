@@ -237,6 +237,9 @@ export class SolicitudComisionEntity {
   @Column({ name: 'fecha_revision', type: 'timestamp', nullable: true })
   fechaRevision: Date | null;
 
+  @Column({ name: 'fecha_radicacion', type: 'timestamp', nullable: true })
+  fechaRadicacion: Date | null;
+
   @Column({
     name: 'tipo_comision',
     type: 'varchar',

@@ -915,6 +915,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -979,6 +981,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -1050,6 +1054,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) =>
           cb({
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -1182,6 +1188,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -1253,11 +1261,13 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
                 where: jest.fn().mockReturnThis(),
-                getRawOne: jest.fn().mockResolvedValue({ max: 'COM-2026-0005' }),
+                getRawOne: jest.fn().mockResolvedValue({ max: 5 }),
               }),
             }),
           };
@@ -1398,6 +1408,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -1822,6 +1834,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -1877,6 +1891,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) =>
           cb({
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),

@@ -177,7 +177,7 @@ export function CertificadosLaboralesRouter({ userEmail, userPermissions = [] }:
       id: 'funciones-laborales',
       label: 'Funciones laborales',
       icon: <BookOpenCheck className="w-5 h-5" />,
-      description: 'Matriz normalizada de funciones por cargo',
+      description: 'Funciones asignadas por número de identificación',
       color: '#0F766E'
     }
   ];

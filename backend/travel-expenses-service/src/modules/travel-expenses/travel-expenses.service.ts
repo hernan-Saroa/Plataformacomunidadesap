@@ -8,7 +8,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+import { Repository, DataSource, EntityManager, In } from 'typeorm';
 import { existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { ComisionadoEntity } from '../../entities/comisionado.entity';
@@ -473,6 +473,7 @@ export class TravelExpensesService {
       estadoSolicitud: s.estadoSolicitud,
       radicadoFueraJornada: s.radicadoFueraJornada,
       extemporanea: s.extemporanea,
+      fechaRadicacion: s.fechaRadicacion instanceof Date ? s.fechaRadicacion.toISOString() : (s.fechaRadicacion || null),
       creadoEn: s.creadoEn instanceof Date ? s.creadoEn.toISOString() : (s.creadoEn || null),
       actualizadoEn: s.actualizadoEn instanceof Date ? s.actualizadoEn.toISOString() : (s.actualizadoEn || null),
       creadoPorUsuarioId: s.creadoPorUsuarioId,
@@ -634,6 +635,7 @@ export class TravelExpensesService {
       extemporanea: s.extemporanea,
       motivoDevolucion: s.motivoDevolucion,
       fechaRevision: s.fechaRevision?.toISOString() ?? null,
+      fechaRadicacion: s.fechaRadicacion?.toISOString() ?? null,
       creadoEn: s.creadoEn.toISOString(),
       actualizadoEn: s.actualizadoEn.toISOString(),
       creadoPorUsuarioId: s.creadoPorUsuarioId,
@@ -1644,26 +1646,6 @@ export class TravelExpensesService {
       estadoSolicitud = EstadoSolicitud.PENDIENTE;
     }
 
-    let consecutivoUnico = '';
-    await this.dataSource.transaction(async (manager) => {
-      const maxSolicitud = await manager
-        .getRepository(SolicitudComisionEntity)
-        .createQueryBuilder('s')
-        .select('MAX(s.consecutivo_unico)', 'max')
-        .where('s.consecutivo_unico LIKE :pattern', { pattern: 'COM-2026-%' })
-        .getRawOne();
-
-      let nextNumber = 1;
-      if (maxSolicitud?.max) {
-        const match = maxSolicitud.max.match(/COM-2026-(\d+)/);
-        if (match) {
-          nextNumber = parseInt(match[1], 10) + 1;
-        }
-      }
-
-      consecutivoUnico = `COM-2026-${String(nextNumber).padStart(4, '0')}`;
-    });
-
     // ========== Autoliquidación GF-FO-023: Garantizar que NUNCA venga NULL ==========
     const montoV = Number(dto.montoViaticos ?? 0);
     const diasTotal = Number(sincronizacion.diasComision ?? 1);
@@ -1754,7 +1736,6 @@ export class TravelExpensesService {
     }
 
     const solicitud = this.solicitudRepo.create({
-      consecutivoUnico,
       comisionadoId: dto.comisionadoId,
       idDependencia:
         dto.idDependencia ?? (comisionado as any)?.idDependencia ?? null,
@@ -1798,7 +1779,15 @@ export class TravelExpensesService {
       decretoAplicado,
     });
 
-    const saved = await this.solicitudRepo.save(solicitud);
+    // El consecutivo se calcula y se guarda bajo un bloqueo de la transacción para
+    // que dos radicaciones simultáneas no obtengan el mismo número (EFDS-1287).
+    const saved = await this.dataSource.transaction(async (manager) => {
+      await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+        'travel_expenses.solicitudes_comision.consecutivo_unico',
+      ]);
+      solicitud.consecutivoUnico = await this.generarConsecutivoUnico(manager);
+      return manager.withRepository(this.solicitudRepo).save(solicitud);
+    });
 
     if (dto.documentos && dto.documentos.length > 0) {
       const documentos = dto.documentos.map((doc) => {
@@ -2826,6 +2815,26 @@ if (dto.costoEstimadoTiquete !== undefined) {
       page,
       limit,
     };
+  }
+
+  /**
+   * Siguiente consecutivo correlativo. Se compara la parte numérica (no el texto)
+   * para que COM-2026-10000 quede después de COM-2026-9999. Debe invocarse dentro
+   * de la transacción que tiene el bloqueo del consecutivo.
+   */
+  private async generarConsecutivoUnico(manager: EntityManager): Promise<string> {
+    const resultado = await manager
+      .getRepository(SolicitudComisionEntity)
+      .createQueryBuilder('s')
+      .select(
+        "MAX(CAST(SUBSTRING(s.consecutivo_unico FROM '^COM-2026-([0-9]+)$') AS INTEGER))",
+        'max',
+      )
+      .where('s.consecutivo_unico LIKE :pattern', { pattern: 'COM-2026-%' })
+      .getRawOne();
+
+    const siguiente = Number(resultado?.max ?? 0) + 1;
+    return `COM-2026-${String(siguiente).padStart(4, '0')}`;
   }
 
   private inferirTipoMime(nombreArchivo: string): string {
