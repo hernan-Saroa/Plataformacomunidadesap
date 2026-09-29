@@ -2207,30 +2207,66 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {!esCampoOculto('montoViaticos') && (
-                        <div>
-                          <label className={labelCls} htmlFor="montoViaticos">
-                            {renderLabel('montoViaticos', 'Viáticos')}
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
-                            <input
-                              id="montoViaticos"
-                              type="text"
-                              inputMode="numeric"
-                              required={esCampoObligatorio('montoViaticos')}
-                              value={formatearMoneda(form.montoViaticos)}
-                              readOnly
-                              aria-readonly="true"
-                              title="Calculado automáticamente por el Autoliquidador (no editable)"
-                              className={`${inputCls} pl-7 text-right font-bold bg-slate-100 cursor-not-allowed`}
-                            />
+                      {/* Columna Izquierda: Viáticos y Días de comisión */}
+                      <div className="space-y-3">
+                        {!esCampoOculto('montoViaticos') && (
+                          <div>
+                            <label className={labelCls} htmlFor="montoViaticos">
+                              {renderLabel('montoViaticos', 'Viáticos')}
+                            </label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                              <input
+                                id="montoViaticos"
+                                type="text"
+                                inputMode="numeric"
+                                required={esCampoObligatorio('montoViaticos')}
+                                value={formatearMoneda(form.montoViaticos)}
+                                readOnly
+                                aria-readonly="true"
+                                title="Calculado automáticamente por el Autoliquidador (no editable)"
+                                className={`${inputCls} pl-7 text-right font-bold bg-slate-100 cursor-not-allowed`}
+                              />
+                            </div>
+                            <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
+                              <Calculator className="w-3 h-3" /> Automático (Autoliquidador)
+                            </span>
                           </div>
-                          <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
-                            <Calculator className="w-3 h-3" /> Automático (Autoliquidador)
-                          </span>
-                        </div>
-                      )}
+                        )}
+
+                        {!esCampoOculto('diasComision') && (
+                          <div>
+                            <label className={labelCls} htmlFor="diasComision">
+                              {renderLabel('diasComision', 'Días de comisión')}
+                            </label>
+                            <input
+                              type="hidden"
+                              id="diasComision"
+                              value={form.diasComision}
+                            />
+                            <div className="mt-1 flex items-center justify-between px-3.5 py-2.5 bg-slate-50 border border-slate-200/90 rounded-xl hover:bg-slate-100/60 transition-colors">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="p-1.5 bg-blue-50 text-[#003DA5] rounded-lg shrink-0">
+                                  <Calendar className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-slate-800 leading-tight">
+                                    {formatearDiasComision(Number(form.diasComision))}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 font-medium">
+                                    Calculado según itinerario
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md shrink-0">
+                                {Number(form.diasComision)} {Number(form.diasComision) === 1 ? 'día' : 'días'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Columna Derecha: Gastos de Desplazamiento y Transporte */}
                       {!esCampoOculto('montoGastosViaje') && (() => {
                           const tarifasAereas = (form.itinerario || []).reduce((acc, r) => acc + (r.tarifaTerminalAereo || 0), 0);
                           const transporteTerrestreOtrosTotal = (form.itinerario || []).reduce(
@@ -2238,22 +2274,22 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             0,
                           );
                           return (
-                            <div className="space-y-3">
+                            <div className="space-y-1.5">
                               <p className={labelCls}>
-                                {renderLabel('montoGastosViaje', '4. Gastos de Desplazamiento y Transporte')}
+                                {renderLabel('montoGastosViaje', 'Gastos de Desplazamiento y Transporte')}
                               </p>
                               {/* Desglose visual */}
                               <div className="rounded-xl border border-slate-200 bg-slate-50/50 divide-y divide-slate-100 overflow-hidden">
                                 {/* Fila: Terminales Aéreos */}
-                                <div className="grid grid-cols-2 items-center px-3 py-2.5 gap-2">
+                                <div className="grid grid-cols-2 items-center px-3 py-2 gap-2">
                                   <div>
                                     <p className="text-[11px] font-bold text-slate-700">
                                        Transporte a terminales aéreos
                                     </p>
                                     <p className="text-[10px] text-slate-400">
                                       {form.itinerario?.some((r) => r.tipoTransporte === 'AEREO')
-                                        ? 'Calculado por tarifa regulada (itinerario aéreo)'
-                                        : 'Sin rutas aéreas en el itinerario'}
+                                        ? 'Calculado por tarifa regulada'
+                                        : 'Sin rutas aéreas'}
                                     </p>
                                   </div>
                                   <div className="relative">
@@ -2275,15 +2311,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                   </div>
                                 </div>
                                 {/* Fila: Transporte Terrestre / Otros */}
-                                <div className="grid grid-cols-2 items-center px-3 py-2.5 gap-2">
+                                <div className="grid grid-cols-2 items-center px-3 py-2 gap-2">
                                   <div>
                                     <p className="text-[11px] font-bold text-slate-700">
                                       Transporte terrestre / fluvial / ferroviario / otros
                                     </p>
                                     <p className="text-[10px] text-slate-400">
                                       {transporteTerrestreOtrosTotal > 0
-                                        ? 'Totalizado automáticamente desde el itinerario'
-                                        : 'Calculado automáticamente desde el itinerario'}
+                                        ? 'Totalizado desde itinerario'
+                                        : 'Calculado desde itinerario'}
                                     </p>
                                   </div>
                                   <div className="relative">
@@ -2305,7 +2341,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                   </div>
                                 </div>
                                 {/* Total desplazamiento */}
-                                <div className="grid grid-cols-2 items-center px-3 py-2.5 gap-2 bg-blue-50/70 border-t border-blue-100">
+                                <div className="grid grid-cols-2 items-center px-3 py-2 gap-2 bg-blue-50/70 border-t border-blue-100">
                                   <span className="text-[11px] font-black text-blue-900 uppercase tracking-wide">
                                     Total Gastos de Desplazamiento
                                   </span>
@@ -2317,42 +2353,27 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             </div>
                           );
                         })()}
-
                     </div>
 
-                    {!esCampoOculto('diasComision') && (
-                      <div className="w-full sm:max-w-[260px]">
-                        <label className={labelCls} htmlFor="diasComision">
-                          {renderLabel('diasComision', 'Días de comisión')}
-                        </label>
-                        <div className="relative">
-                          <Calendar className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
-                          <input
-                            id="diasComision"
-                            type="text"
-                            readOnly
-                            aria-readonly="true"
-                            title="Calculado automáticamente desde el itinerario (no editable)"
-                            required={esCampoObligatorio('diasComision')}
-                            value={formatearDiasComision(Number(form.diasComision))}
-                            className={`${inputCls} pl-9 pr-14 font-bold bg-slate-100 text-slate-800 cursor-not-allowed`}
-                          />
-                          <span className="absolute right-2.5 top-2 text-[10px] font-bold text-slate-400">
-                            ({Number(form.diasComision)} d)
+                    {(form.montoViaticos > 0 || form.montoGastosViaje > 0) && (
+                      <div className="bg-[#003DA5] text-white rounded-xl px-6 py-5 shadow-sm border border-blue-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200">
+                            Total Estimado de la Comisión
+                          </p>
+                          <p className="text-2xl font-black text-white tracking-tight">
+                            {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
+                          </p>
+                          <p className="text-xs text-blue-100 font-medium">
+                            Viáticos ({formatearMoneda(form.montoViaticos)}) + Desplazamiento ({formatearMoneda(form.montoGastosViaje)})
+                          </p>
+                        </div>
+                        <div className="sm:text-right shrink-0">
+                          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white/15 text-white border border-white/20 shadow-xs">
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-300" />
+                            Total consolidado
                           </span>
                         </div>
-                        <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
-                          <Calculator className="w-3 h-3" /> Automático (Itinerario)
-                        </span>
-                      </div>
-                    )}
-
-                    {(form.montoViaticos > 0 || form.montoGastosViaje > 0) && (
-                      <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-slate-200">
-                        <span className="text-xs font-bold text-slate-600">Total estimado</span>
-                        <span className="text-sm font-black text-slate-800">
-                          {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
-                        </span>
                       </div>
                     )}
                   </div>
