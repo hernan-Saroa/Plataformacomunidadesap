@@ -18,7 +18,7 @@ import { authService, AuthService, UsuarioActual } from '../services/api/authSer
 
 describe('viaticosPermissionsGuard — Mapeo y Guards por Permisos Inmutables', () => {
   describe('Constantes y Mapeo Canónico', () => {
-    it('debe contener los 10 permisos generales inmutables de la migración 441', () => {
+    it('debe contener los 12 permisos generales inmutables de la plataforma', () => {
       expect(VIATICOS_PERMISOS_GENERALES.ENLACE).toBe('travel_expenses.general.es_enlace_dependencia');
       expect(VIATICOS_PERMISOS_GENERALES.SECRETARIO).toBe('travel_expenses.general.es_secretario_viaticos');
       expect(VIATICOS_PERMISOS_GENERALES.ANALISTA).toBe('travel_expenses.general.es_analista_viaticos');
@@ -29,6 +29,8 @@ describe('viaticosPermissionsGuard — Mapeo y Guards por Permisos Inmutables', 
       expect(VIATICOS_PERMISOS_GENERALES.TESORERIA).toBe('travel_expenses.general.es_tesoreria');
       expect(VIATICOS_PERMISOS_GENERALES.SST).toBe('travel_expenses.general.es_sst');
       expect(VIATICOS_PERMISOS_GENERALES.TIQUETES).toBe('travel_expenses.general.es_responsable_tiquetes');
+      expect(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA).toBe('travel_expenses.general.es_jefe_dependencia');
+      expect(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO).toBe('travel_expenses.general.es_gerente_proyecto');
     });
 
     it('cada rol funcional debe tener configurado su permiso inmutable y su fallback', () => {
@@ -298,6 +300,28 @@ describe('viaticosPermissionsGuard — Mapeo y Guards por Permisos Inmutables', 
       };
 
       expect(authService.isResponsableTiquetes()).toBe(true);
+    });
+
+    it('authService.isJefeDependencia() reconoce al usuario con permiso inmutable o rol legado', () => {
+      (window as any).__esap_auth_cache = {
+        id_user: 'user-jefe-01',
+        roles: ['USUARIO_GENERICO'],
+        permissions: ['travel_expenses.general.es_jefe_dependencia'],
+      };
+
+      expect(authService.isJefeDependencia()).toBe(true);
+      expect(authService.canFirmarAprobacion()).toBe(true);
+    });
+
+    it('authService.isGerenteProyecto() reconoce al usuario con permiso inmutable o rol legado', () => {
+      (window as any).__esap_auth_cache = {
+        id_user: 'user-gerente-01',
+        roles: ['GERENTE_PROYECTO'],
+        permissions: [],
+      };
+
+      expect(authService.isGerenteProyecto()).toBe(true);
+      expect(authService.canFirmarAprobacion()).toBe(true);
     });
   });
 });

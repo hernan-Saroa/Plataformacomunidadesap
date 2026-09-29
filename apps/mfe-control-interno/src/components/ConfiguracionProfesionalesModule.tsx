@@ -1,12 +1,12 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * CONFIGURACIÓN DE PROFESIONALES OCIG - ESAP
+ * CONFIGURACIÓN DE PROFESIONALES OCI - ESAP
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Módulo para asignar y configurar profesionales del equipo OCIG.
+ * Módulo para asignar y configurar profesionales del equipo OCI.
  * 
  * ✅ NO CREA PROFESIONALES (eso se hace en Administración - Perfiles)
- * ✅ Asigna profesionales existentes al equipo OCIG
+ * ✅ Asigna profesionales existentes al equipo OCI
  * ✅ Configura roles/especialidades dentro del Control Interno
  * ✅ Define capacidad de trabajo (auditorías simultáneas, horas disponibles)
  * ✅ Muestra carga actual por auditorías asignadas
@@ -187,7 +187,7 @@ export function ConfiguracionProfesionalesModule() {
       {/* ═══════════════════════════════════════════════════════════════ */}
       <HeaderSeccionConfig
         icon={<Users className="w-full h-full" />}
-        titulo="Profesionales OCIG"
+        titulo="Profesionales OCI"
         subtitulo="Gestiona el equipo de Control Interno y su capacidad de trabajo"
       >
         <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 text-xs font-bold rounded-full">
@@ -246,7 +246,7 @@ export function ConfiguracionProfesionalesModule() {
             <Users className="w-4 h-4 text-blue-600" />
           </div>
           <p className="text-2xl font-black text-blue-700">{estadisticasGlobales.totalProfesionales}</p>
-          <p className="text-xs text-blue-600">activos en OCIG</p>
+          <p className="text-xs text-blue-600">activos en OCI</p>
         </div>
 
         <div
@@ -339,7 +339,7 @@ export function ConfiguracionProfesionalesModule() {
             <p className="text-sm text-gray-400 mt-2">
               {busqueda || filtroRol !== 'TODOS'
                 ? 'Intenta ajustar los filtros de búsqueda'
-                : 'Agrega profesionales al equipo OCIG'}
+                : 'Agrega profesionales al equipo OCI'}
             </p>
           </div>
         )}
@@ -435,9 +435,9 @@ function TarjetaProfesional({
         </div>
 
         <div className="space-y-4">
-          {/* Rol OCIG */}
+          {/* Rol OCI */}
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2">Rol en OCIG</label>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Rol en OCI</label>
             <Select value={form.rolOCIG} onValueChange={(value) => setForm({ ...form, rolOCIG: value as any })}>
               <SelectTrigger className="w-full font-semibold">
                 <SelectValue />
@@ -512,19 +512,15 @@ function TarjetaProfesional({
                 {profesional.usuario.nombre}
               </h3>
               <div className="flex flex-wrap items-center gap-2">
-                {/* Rol OCIG (principal en este módulo) */}
+                {/* Rol OCI (principal en este módulo) */}
                 <span className="text-sm text-gray-600">{profesional.usuario.email}</span>
                 <span className={`px-3 py-1 rounded-lg text-xs font-bold ${
-                  profesional.configuracion.rolOCIG === 'Jefe OCI' || profesional.configuracion.rolOCIG === 'Jefe OCIG' ? 'bg-red-100 text-red-700' :
-                  profesional.configuracion.rolOCIG === 'Auditor Líder' || profesional.configuracion.rolOCIG === 'Auditor Sénior' ? 'bg-blue-100 text-blue-700' :
+                  profesional.configuracion.rolOCIG === 'Jefe OCI' ? 'bg-red-100 text-red-700' :
                   profesional.configuracion.rolOCIG === 'Auditor' ? 'bg-cyan-100 text-cyan-700' :
-                  profesional.configuracion.rolOCIG === 'Auditor Júnior' ? 'bg-green-100 text-green-700' :
-                  profesional.configuracion.rolOCIG === 'Profesional OCI' ? 'bg-teal-100 text-teal-700' :
-                  profesional.configuracion.rolOCIG === 'Apoyo Técnico' ? 'bg-purple-100 text-purple-700' :
-                  profesional.configuracion.rolOCIG === 'Aprobador PAI' ? 'bg-orange-100 text-orange-700' :
+                  profesional.configuracion.rolOCIG === 'Aprobador Plan Anual' ? 'bg-orange-100 text-orange-700' :
                   'bg-gray-100 text-gray-700'
                 }`}>
-                  {profesional.configuracion.rolOCIG || 'Sin rol OCIG'}
+                  {profesional.configuracion.rolOCIG || 'Sin rol OCI'}
                 </span>
                 <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-semibold">
                   CC: {profesional.usuario.identificacion}
@@ -545,7 +541,7 @@ function TarjetaProfesional({
                 <button
                   onClick={() => setConfirmandoEliminar(true)}
                   className="p-2 hover:bg-red-100 rounded-lg transition-colors group"
-                  title="Remover de OCIG"
+                  title="Remover de OCI"
                 >
                   <Trash2 className="w-4 h-4 text-gray-400 group-hover:text-red-600" />
                 </button>
@@ -650,7 +646,7 @@ function TarjetaProfesional({
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// MODAL: AGREGAR PROFESIONAL AL EQUIPO OCIG
+// MODAL: AGREGAR PROFESIONAL AL EQUIPO OCI
 // ════════════════════════════════════════════════════════════════════════════
 
 interface ModalAgregarProfesionalProps {
@@ -812,7 +808,7 @@ function ModalAgregarProfesional({
                   Asignar Profesional
                 </h2>
                 <p style={{ fontSize: '0.75rem', marginTop: '0.25rem', color: 'rgba(255,255,255,0.65)', margin: '0.25rem 0 0' }}>
-                  Equipo OCIG — Control Interno de Gestión
+                  Equipo OCI — Control Interno de Gestión
                 </p>
               </div>
               <button
@@ -1010,10 +1006,10 @@ function ModalAgregarProfesional({
                     </div>
                   )}
 
-                  {/* Rol OCIG */}
+                  {/* Rol OCI */}
                   <div>
                     <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-1.5">
-                      Rol en OCIG
+                      Rol en OCI
                     </label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                       {rolesDisponibles.map(rol => (
@@ -1241,7 +1237,7 @@ function ModalAgregarProfesional({
                 style={{ background: 'linear-gradient(135deg, #16a34a, #059669)' }}
               >
                 <UserCheck className="w-4 h-4" />
-                Asignar a OCIG
+                Asignar a OCI
               </button>
             )}
           </div>

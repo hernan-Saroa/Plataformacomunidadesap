@@ -1,6 +1,7 @@
 export type EstadoSolicitudViatico =
   | 'BORRADOR'
   | 'PENDIENTE'
+  | 'PENDIENTE_FIRMAS'
   | 'SOLICITADO'
   | 'APROBADO_JEFE'
   | 'APROBADO_TALENTO_HUMANO'
@@ -22,7 +23,8 @@ export type EstadoSolicitudViatico =
   | 'CANCELADA'
   | 'EN_PRESUPUESTO'
   | 'COMPROMETIDA'
-  | 'OBLIGADA';
+  | 'OBLIGADA'
+  | 'PAGADA';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -58,7 +60,9 @@ export interface RutaItinerario {
   horarioEstimadoMilitar: string; // HH:mm militar, ej: 08:30, 14:00
   horaEstimadaSalida?: string;
   horaEstimadaLlegada?: string;
-  tipoTransporte?: 'AEREO' | 'TERRESTRE';
+  tipoTransporte?: 'AEREO' | 'TERRESTRE' | 'MARITIMO' | 'FLUVIAL' | 'FERROVIARIO' | string;
+  valorTransporte?: number;
+  montoTransporteTerrestre?: number;
   requiereTiquete?: boolean;
   tarifaTerminalAereo?: number;
   guardada?: boolean;
@@ -555,6 +559,7 @@ export interface ChecklistDocumento {
   codigo: string;
   nombre: string;
   descripcion: string | null;
+  instruccionesValidacion?: string | null;
 }
 
 export interface ChecklistDocumentosResponse {
@@ -1148,5 +1153,61 @@ export interface BandejaPresupuestoResponse {
   };
   timestamp: string;
 }
+
+// =========================================================================
+// Firmas de Aprobación del Formato 023 (Previo a Radicación)
+// =========================================================================
+
+export type TipoFirmaAprobacion = 'JEFE_DEPENDENCIA' | 'GERENTE_PROYECTO';
+
+export interface FirmaAprobacionRegistrada {
+  tipo: TipoFirmaAprobacion;
+  nombreFirmante: string;
+  cargoFirmante: string;
+  firmaImagen?: string | null;
+  esAusencia?: boolean;
+  motivoAusencia?: string | null;
+  comentarios?: string | null;
+  fechaFirma: string;
+  usuarioId?: string | null;
+  estado: 'FIRMADO' | 'RECHAZADO';
+}
+
+export interface FirmanteRequerido {
+  tipo: TipoFirmaAprobacion;
+  titulo: string;
+  cargo: string;
+  descripcion: string;
+  esRequerido: boolean;
+  firmado: boolean;
+  firma: FirmaAprobacionRegistrada | null;
+}
+
+export interface EstadoFirmasResponse {
+  solicitudId: string;
+  consecutivoUnico: string;
+  estadoSolicitud: EstadoSolicitudViatico;
+  reglaDesplazamiento: string;
+  descripcionRegla: string;
+  firmantes: FirmanteRequerido[];
+  completado: boolean;
+  requiereFirmasParaRadicar: boolean;
+  mensaje: string;
+}
+
+export interface FirmarSolicitudPayload {
+  tipoFirma: TipoFirmaAprobacion;
+  nombreFirmante: string;
+  cargoFirmante: string;
+  firmaImagen?: string;
+  esAusencia?: boolean;
+  motivoAusencia?: string;
+  comentarios?: string;
+}
+
+export interface DevolverFirmaPayload {
+  motivo: string;
+}
+
 
 

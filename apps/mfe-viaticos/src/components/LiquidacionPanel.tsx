@@ -135,6 +135,10 @@ export default function LiquidacionPanel({
   }, [resultado, onAplicarValor]);
 
   const esSinPernocta = resultado?.data?.factorPernocta === 0.5;
+  const valorViaticos = resultado?.data?.valorTotalViaticos || 0;
+  const totalGastosDesplazamiento = resultado?.data?.totalGastosDesplazamiento ??
+    ((resultado?.data?.transporteTerminalesAereos || 0) + (resultado?.data?.transporteTerrestreFluvial || 0));
+  const totalGeneral = resultado?.data?.totalViaticosYDesplazamientos ?? (valorViaticos + totalGastosDesplazamiento);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
@@ -143,68 +147,35 @@ export default function LiquidacionPanel({
         onClick={() => setExpandido(!expandido)}
         className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors"
       >
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 bg-blue-50 text-[#003DA5] rounded-lg">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 bg-blue-50 text-[#003DA5] rounded-lg">
             <Calculator className="w-4 h-4" />
           </div>
           <div>
-            <p className="text-xs font-black text-slate-900">Liquidación Automática de Viáticos</p>
-            <p className="text-[11px] text-slate-500">Cálculo proactivo según Decreto 314 de 2026</p>
+            <p className="text-xs font-black text-slate-900">
+              {expandido ? 'Ocultar desglose detallado del cálculo' : 'Ver desglose detallado del cálculo'}
+            </p>
+            <p className="text-[11px] text-slate-500">
+              {expandido
+                ? 'Haga clic para contraer las tablas de liquidación y soportes normativos'
+                : 'Consultar tarifas diarias, pernoctas, transporte y soporte normativo'}
+            </p>
           </div>
         </div>
-        {expandido ? (
-          <ChevronUp className="w-4 h-4 text-slate-400" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-slate-400" />
-        )}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold text-[#003DA5] bg-blue-50 px-2.5 py-1 rounded-md border border-blue-100 hidden sm:inline-block">
+            {expandido ? 'Ocultar' : 'Ver desglose'}
+          </span>
+          {expandido ? (
+            <ChevronUp className="w-4 h-4 text-slate-400" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-slate-400" />
+          )}
+        </div>
       </button>
 
       {expandido && (
-        <div className="px-4 pb-4 space-y-3 border-t border-slate-100">
-          {/* Ayuda: explica la norma y por qué se define ese valor. */}
-          <details className="group text-[11px] text-slate-600">
-            <summary className="cursor-pointer list-none flex items-center gap-1.5 py-2 font-bold text-slate-700 hover:text-slate-900 select-none">
-              <HelpCircle className="w-3.5 h-3.5 text-[#003DA5] shrink-0" />
-              ¿Cómo se define el valor de viáticos? (Decreto 314 de 2026)
-              <ChevronDown className="w-3.5 h-3.5 ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
-            </summary>
-            <div className="space-y-1.5 bg-slate-50 border border-slate-200 rounded-xl p-3 leading-relaxed">
-              <p>
-                El sistema aplica automáticamente el <strong>Decreto 314 de 2026</strong>{' '}
-                (escala salarial de viáticos) según los datos de la comisión:
-              </p>
-              <ul className="list-disc pl-4 space-y-1">
-                <li>
-                  <strong>Tarifa diaria base:</strong> se ubica según su asignación básica
-                  mensual (si hay doble rol se usa el mayor salario). Los{' '}
-                  <em>estudiantes</em> usan el SMMLV y los <em>investigadores</em> la tarifa
-                  de su categoría (Junior / Asociado / Senior).
-                </li>
-                <li>
-                  <strong>Factor por tipo de comisionado:</strong> los{' '}
-                  <em>contratistas</em> aplican el 80 % (deducción del 20 %).
-                </li>
-                <li>
-                  <strong>Factor por pernocta:</strong> si la comisión <strong>no</strong>{' '}
-                  pernocta se reconoce el 50 % (día de viaje sin noche).
-                </li>
-                <li>
-                  <strong>Excepción regional (Art. 5):</strong> si el destino es un
-                  departamento nuevo creado por la Constitución, se usa su tarifa especial.
-                </li>
-                <li>
-                  <strong>Días/noches a liquidar:</strong> se calculan desde las fechas
-                  indicadas y la pernocta.
-                </li>
-              </ul>
-              <p className="text-slate-500">
-                El total se <strong>aplica automáticamente</strong> al campo “Viáticos”
-                (no editable). Modifique fechas, pernocta, salario o categoría para ver
-                cómo se recalcula.
-              </p>
-            </div>
-          </details>
-
+        <div className="px-4 pb-4 space-y-3.5 border-t border-slate-100">
           {!puedeCalcular ? (
             <p className="text-xs text-slate-400 py-2">
               Complete las fechas y el tipo de comisionado para calcular la liquidación.
@@ -239,59 +210,11 @@ export default function LiquidacionPanel({
                 </div>
               )}
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Tarifa Base</p>
-                  <p className="text-sm font-black text-slate-800">{formatearMoneda(resultado.data.tarifaDiariaBase)}</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Factor Tipo</p>
-                  <p className="text-sm font-black text-slate-800">{resultado.data.factorComisionado * 100}%</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Factor Pernocta</p>
-                  <p className="text-sm font-black text-slate-800">{resultado.data.factorPernocta * 100}%</p>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Tarifa Final/Día</p>
-                  <p className="text-sm font-black text-slate-800">{formatearMoneda(resultado.data.tarifaFinalAplicadaDia)}</p>
-                </div>
-              </div>
-
-              {resultado.data.factorComisionado < 1 && (
-                <div className="flex items-center gap-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
-                  <AlertCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  Deducción por contratista: 20% de descuento aplicado sobre la tarifa base.
-                </div>
-              )}
-
-              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <p className="text-xl font-black text-blue-900">{formatearMoneda(resultado.data.valorTotalViaticos)}</p>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-100 text-blue-800">
-                        {formatearDiasComision(resultado.data.numeroDiasNoches)}
-                      </span>
-                      <span className="text-[11px] text-blue-600/90 font-medium">
-                        ({resultado.data.numeroDiasNoches} {resultado.data.numeroDiasNoches === 1 ? 'día' : 'días'}) a liquidar
-                      </span>
-                    </div>
-                  </div>
-                  {onAplicarValor && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-100 text-blue-700 border border-blue-200">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Aplicación automática a Viáticos
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Sección 3 Oficial GF-FO-023: Liquidación de la Autorización de Desplazamiento */}
+              {/* 1. Liquidación de la Autorización de Desplazamiento (Puesto primero y sin números) */}
               <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
                 <div className="px-3 py-2 bg-slate-100/80 border-b border-slate-200 flex items-center justify-between">
                   <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                    3. Liquidación de la Autorización de Desplazamiento
+                    Liquidación de la Autorización de Desplazamiento
                   </span>
                   <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
                     {resultado.data.decretoAplicado || 'Decreto 314 de 2026'}
@@ -330,21 +253,21 @@ export default function LiquidacionPanel({
                       {formatearMoneda(resultado.data.totalNoPernoctados ?? Math.round(resultado.data.tarifaDiariaBase * resultado.data.factorComisionado * 0.5))}
                     </span>
                   </div>
-                  {/* Fila Total Viáticos */}
+                  {/* Fila Subtotal Viáticos */}
                   <div className="grid grid-cols-4 px-3 py-2 items-center bg-blue-50/70 font-bold text-blue-900 border-t border-blue-100">
                     <span className="col-span-3">Total Viáticos</span>
                     <span className="text-right text-sm font-black text-blue-950">
-                      {formatearMoneda(resultado.data.valorTotalViaticos)}
+                      {formatearMoneda(valorViaticos)}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* Sección 4 Oficial GF-FO-023: Liquidación de los Gastos de Desplazamiento */}
+              {/* 2. Liquidación de los Gastos de Desplazamiento (Sin números) */}
               <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50">
                 <div className="px-3 py-2 bg-slate-100/80 border-b border-slate-200 flex items-center justify-between">
                   <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                    4. Liquidación de los Gastos de Desplazamiento
+                    Liquidación de los Gastos de Desplazamiento
                   </span>
                   <span className="text-[10px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200">
                     Resolución de Viáticos
@@ -382,16 +305,13 @@ export default function LiquidacionPanel({
                       {formatearMoneda(resultado.data.transporteTerrestreFluvial ?? 0)}
                     </span>
                   </div>
-                  {/* Total Viáticos y Desplazamientos */}
-                  <div className="grid grid-cols-3 px-3 py-2.5 items-center bg-emerald-50/80 font-bold text-emerald-950 border-t border-emerald-200">
-                    <span className="col-span-2 text-xs font-black uppercase text-emerald-900">
-                      TOTAL VIÁTICOS, TRANSPORTES Y DESPLAZAMIENTOS*
+                  {/* Fila Subtotal Gastos de Desplazamiento */}
+                  <div className="grid grid-cols-3 px-3 py-2 items-center bg-blue-50/70 font-bold text-blue-900 border-t border-blue-100">
+                    <span className="col-span-2 text-xs font-bold uppercase text-blue-900">
+                      Total Gastos de Desplazamiento
                     </span>
-                    <span className="text-right text-base font-black text-emerald-900">
-                      {formatearMoneda(
-                        resultado.data.totalViaticosYDesplazamientos ??
-                          ((resultado.data.valorTotalViaticos || 0) + (resultado.data.totalGastosDesplazamiento || 0)),
-                      )}
+                    <span className="text-right text-sm font-black text-blue-950">
+                      {formatearMoneda(totalGastosDesplazamiento)}
                     </span>
                   </div>
                 </div>
@@ -400,26 +320,126 @@ export default function LiquidacionPanel({
                 </div>
               </div>
 
-              <details className="text-xs">
-                <summary className="cursor-pointer text-slate-600 font-semibold hover:text-slate-800">
-                  Ver desglose día por día
+              {/* 3. Parámetros y factores del cálculo */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Tarifa Base</p>
+                  <p className="text-sm font-black text-slate-800">{formatearMoneda(resultado.data.tarifaDiariaBase)}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Factor Tipo</p>
+                  <p className="text-sm font-black text-slate-800">{resultado.data.factorComisionado * 100}%</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Factor Pernocta</p>
+                  <p className="text-sm font-black text-slate-800">{resultado.data.factorPernocta * 100}%</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Tarifa Final/Día</p>
+                  <p className="text-sm font-black text-slate-800">{formatearMoneda(resultado.data.tarifaFinalAplicadaDia)}</p>
+                </div>
+              </div>
+
+              {resultado.data.factorComisionado < 1 && (
+                <div className="flex items-center gap-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  Deducción por contratista: 20% de descuento aplicado sobre la tarifa base.
+                </div>
+              )}
+
+              {/* Desglose día por día */}
+              {resultado.data.desgloseCalculo && resultado.data.desgloseCalculo.length > 0 && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-slate-600 font-semibold hover:text-slate-800">
+                    Ver desglose día por día
+                  </summary>
+                  <div className="mt-2 space-y-1">
+                    {resultado.data.desgloseCalculo.map((dia) => (
+                      <div key={dia.dia} className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-100">
+                        <span className="text-slate-600 min-w-0">
+                          Día {dia.dia} · {dia.fecha}{' '}
+                          {dia.pernocta
+                            ? '· Con pernocta (100%)'
+                            : resultado.data.desgloseCalculo.length > 1
+                              ? '· Retorno / Medio día (50%)'
+                              : '· Sin pernocta (50%)'}
+                        </span>
+                        <span className="font-bold text-slate-800">{formatearMoneda(dia.valor)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+
+              {/* Ayuda: explica la norma y por qué se define ese valor */}
+              {/* Ayuda normativa limpia y compacta */}
+              <details className="group text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl overflow-hidden">
+                <summary className="cursor-pointer list-none flex items-center gap-2 px-3 py-2 font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100/60 transition-colors select-none">
+                  <HelpCircle className="w-3.5 h-3.5 text-[#003DA5] shrink-0" />
+                  <span className="text-xs">¿Cómo se define el valor de viáticos? (Decreto 314 de 2026)</span>
+                  <ChevronDown className="w-3.5 h-3.5 ml-auto text-slate-400 group-open:rotate-180 transition-transform" />
                 </summary>
-                <div className="mt-2 space-y-1">
-                  {resultado.data.desgloseCalculo.map((dia) => (
-                    <div key={dia.dia} className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 rounded-lg px-3 py-1.5 border border-slate-100">
-                      <span className="text-slate-600 min-w-0">
-                        Día {dia.dia} · {dia.fecha}{' '}
-                        {dia.pernocta
-                          ? '· Con pernocta (100%)'
-                          : resultado.data.desgloseCalculo.length > 1
-                            ? '· Retorno / Medio día (50%)'
-                            : '· Sin pernocta (50%)'}
-                      </span>
-                      <span className="font-bold text-slate-800">{formatearMoneda(dia.valor)}</span>
-                    </div>
-                  ))}
+                <div className="px-3 pb-3 pt-1 border-t border-slate-200/80 space-y-1.5 text-[11px] leading-relaxed text-slate-600 bg-white">
+                  <p>
+                    El sistema aplica automáticamente el <strong>Decreto 314 de 2026</strong> según los datos de la comisión:
+                  </p>
+                  <ul className="list-disc pl-4 space-y-1">
+                    <li>
+                      <strong>Tarifa diaria base:</strong> según asignación básica mensual (si hay doble rol se usa el mayor salario). Los <em>estudiantes</em> aplican sobre el SMMLV y los <em>investigadores</em> según su categoría.
+                    </li>
+                    <li>
+                      <strong>Factor por tipo de comisionado:</strong> los <em>contratistas</em> aplican el 80% (deducción del 20%).
+                    </li>
+                    <li>
+                      <strong>Factor por pernocta:</strong> si la comisión <strong>no</strong> pernocta se reconoce el 50% (medio día de viaje).
+                    </li>
+                    <li>
+                      <strong>Días a liquidar:</strong> se calculan automáticamente desde las fechas e itinerario de la comisión.
+                    </li>
+                  </ul>
+                  <p className="text-slate-500 pt-0.5">
+                    El total se aplica automáticamente al expediente. Modifique fechas, pernocta, salario o categoría para ver cómo se recalcula.
+                  </p>
                 </div>
               </details>
+
+              {/* Cierre del Autoliquidador: Tarjeta analítica clara y técnica, diferenciada del resultado final */}
+              <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 shadow-2xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-blue-800">
+                      Total Liquidado por Autoliquidador (Viáticos + Transporte)
+                    </p>
+                    <div className="flex items-baseline gap-2 mt-0.5">
+                      <span className="text-xl font-black text-blue-950 tracking-tight">
+                        {formatearMoneda(totalGeneral)}
+                      </span>
+                      <span className="text-xs text-blue-700 font-medium">
+                        ({formatearDiasComision(resultado.data.numeroDiasNoches)} a liquidar)
+                      </span>
+                    </div>
+                  </div>
+
+                  {onAplicarValor && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-100/90 text-blue-800 border border-blue-200 self-start sm:self-auto shrink-0">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-blue-700 shrink-0" />
+                      Total aplicado automáticamente
+                    </span>
+                  )}
+                </div>
+
+                {/* Sub-desglose comparativo en tarjetas blancas */}
+                <div className="mt-3 pt-3 border-t border-blue-200/80 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-blue-100 shadow-2xs">
+                    <span className="text-slate-600 font-medium text-[11px]">Viáticos reconocidos:</span>
+                    <span className="font-bold text-slate-900">{formatearMoneda(valorViaticos)}</span>
+                  </div>
+                  <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-blue-100 shadow-2xs">
+                    <span className="text-slate-600 font-medium text-[11px]">Gastos de transporte:</span>
+                    <span className="font-bold text-slate-900">{formatearMoneda(totalGastosDesplazamiento)}</span>
+                  </div>
+                </div>
+              </div>
             </>
           ) : null}
         </div>

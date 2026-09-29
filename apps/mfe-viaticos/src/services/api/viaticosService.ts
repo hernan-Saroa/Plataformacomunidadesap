@@ -55,6 +55,9 @@ import {
   CrearObligacionDto,
   ProcesarPagoDto,
   NotificacionSstLog,
+  EstadoFirmasResponse,
+  FirmarSolicitudPayload,
+  DevolverFirmaPayload,
 } from '../../types/viaticos';
 
 import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
@@ -786,12 +789,144 @@ export class ViaticosService {
       throw err;
     }
   }
+
+  /**
+   * Obtiene el estado consolidado de firmas de aprobación requeridas previo a la radicación.
+   * Aplica las reglas jerárquicas y de desplazamiento institucional.
+   */
+  async obtenerEstadoFirmas(solicitudId: string): Promise<EstadoFirmasResponse> {
+    try {
+      const res = await apiClient.get<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/firmas`,
+      );
+      return (res as any)?.data || res;
+    } catch (error) {
+      console.error('Error obteniendo estado de firmas:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Consolida formalmente la solicitud e inicia el flujo de firmas de aprobación
+   * previo a la radicación (estado PENDIENTE_FIRMAS).
+   */
+  async solicitarFirmasAprobacion(solicitudId: string): Promise<SolicitudComisionResponse> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/solicitar-firmas`,
+        {},
+      );
+      return (res as any)?.data || res;
+    } catch (error) {
+      console.error('Error solicitando firmas de aprobación:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Registra la firma de aprobación de la solicitud (Jefe de Dependencia o Gerente de Proyecto).
+   * Al completarse ambas firmas, la solicitud queda formalmente en estado RADICADA.
+   */
+  async firmarSolicitud(
+    solicitudId: string,
+    payload: FirmarSolicitudPayload,
+  ): Promise<{
+    solicitud: SolicitudComisionResponse;
+    radicada: boolean;
+    mensaje: string;
+    firmas: any[];
+  }> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/firmar`,
+        payload,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('Error registrando firma de aprobación:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Devuelve la solicitud con observaciones durante la revisión de firmas.
+   */
+  async devolverFirma(
+    solicitudId: string,
+    payload: DevolverFirmaPayload,
+  ): Promise<{ message: string; solicitud: SolicitudComisionResponse }> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/devolver-firma`,
+        payload,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('Error devolviendo firma de aprobación:', error);
+      throw error;
+    }
+  }
+
   async exportarFormato023(solicitudId: string, codigo: string): Promise<Blob> {
     try {
       return await apiClient.getBlob(`/viaticos/api/v1/solicitudes/${solicitudId}/exportar/pdf`);
     } catch (error) {
       console.error('Error exportando Formato 023:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Obtiene la bandeja de solicitudes que requieren firma de aprobación (Formato 023).
+   * Lista comisiones en estado PENDIENTE_FIRMAS.
+   */
+  async obtenerBandejaFirmas(
+    page: number = 1,
+    limit: number = 20,
+    busqueda?: string,
+  ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
+    try {
+      const params = new URLSearchParams();
+      params.append('page', String(page));
+      params.append('limit', String(limit));
+      if (busqueda && busqueda.trim()) {
+        params.append('busqueda', busqueda.trim());
+      }
+      const res = await apiClient.get<any>(`/viaticos/api/v1/requests/firmas-inbox?${params.toString()}`);
+      if (res && Array.isArray(res.data)) {
+        return {
+          data: res.data,
+          total: res.total || res.data.length,
+          page: res.page || page,
+          limit: res.limit || limit,
+        };
+      }
+      return { data: [], total: 0, page: 1, limit };
+    } catch (error) {
+      console.warn('[viaticosService] obtenerBandejaFirmas endpoint no disponible; usando fallback de lista general:', error);
+      try {
+        const { solicitudes } = await this.obtenerSolicitudes();
+        let items = solicitudes.filter((s) => s.estado === 'PENDIENTE_FIRMAS');
+        if (busqueda && busqueda.trim()) {
+          const q = busqueda.trim().toLowerCase();
+          items = items.filter(
+            (s) =>
+              s.codigo?.toLowerCase().includes(q) ||
+              s.nombreComisionado?.toLowerCase().includes(q) ||
+              s.cedulaComisionado?.toLowerCase().includes(q) ||
+              s.ciudadDestino?.toLowerCase().includes(q),
+          );
+        }
+        return {
+          data: items as any[],
+          total: items.length,
+          page,
+          limit,
+        };
+      } catch (errFallback) {
+        console.error('Error en fallback de bandeja de firmas:', errFallback);
+        return { data: [], total: 0, page: 1, limit };
+      }
     }
   }
 

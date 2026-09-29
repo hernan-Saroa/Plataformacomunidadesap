@@ -16,6 +16,8 @@
 export enum EstadoSolicitud {
   BORRADOR = 'BORRADOR',
   PENDIENTE = 'PENDIENTE',
+  /** En flujo de firmas de aprobación previo a su radicación (Jefe de dependencia/Supervisor y Gerente de Proyecto) */
+  PENDIENTE_FIRMAS = 'PENDIENTE_FIRMAS',
   RADICADA = 'RADICADA',
   EXTEMPORANEA = 'EXTEMPORANEA',
   /** Devuelta por el Grupo de Viáticos para subsanar faltantes. */
