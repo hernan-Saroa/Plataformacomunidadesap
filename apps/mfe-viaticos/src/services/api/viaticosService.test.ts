@@ -25,7 +25,7 @@ const mockedApiClient = apiClient as ReturnType<typeof vi.fn> & {
   post: ReturnType<typeof vi.fn>;
 };
 const mockedBuildApiUrl = buildApiUrl as ReturnType<typeof vi.fn>;
-const mockedDependenciasService = dependenciasService as ReturnType<typeof vi.fn> & {
+const mockedDependenciasService = dependenciasService as unknown as ReturnType<typeof vi.fn> & {
   getDependencias: ReturnType<typeof vi.fn>;
 };
 const mockedFallbackGeopolitica = fallbackGeopolitica as ReturnType<typeof vi.fn>;
