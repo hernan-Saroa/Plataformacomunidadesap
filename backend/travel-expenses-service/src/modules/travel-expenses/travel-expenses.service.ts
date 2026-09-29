@@ -3022,7 +3022,13 @@ if (dto.costoEstimadoTiquete !== undefined) {
     if (busqueda && busqueda.trim()) {
       const term = `%${busqueda.trim().toLowerCase()}%`;
       query.andWhere(
-        '(LOWER(s.codigo_solicitud) LIKE :term OR LOWER(comisionado.nombre) LIKE :term OR LOWER(comisionado.numeroDocumento) LIKE :term OR LOWER(s.objeto_comision) LIKE :term OR LOWER(s.ciudad_destino) LIKE :term)',
+        `(LOWER(s.consecutivo_unico) LIKE :term
+          OR LOWER(comisionado.primer_nombre) LIKE :term
+          OR LOWER(comisionado.primer_apellido) LIKE :term
+          OR LOWER(comisionado.segundo_nombre) LIKE :term
+          OR LOWER(comisionado.numero_documento) LIKE :term
+          OR LOWER(s.objeto_comision) LIKE :term
+          OR LOWER(s.destino_ciudad) LIKE :term)`,
         { term },
       );
     }
