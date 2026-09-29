@@ -137,7 +137,6 @@ export class LegalizacionDisparadorService {
         const ahora = new Date();
         const plazo = calcularPlazo({
           fechaFinComisionYmd: sol.fecha_fin_ymd,
-          fechaDisparo: ahora,
           plazoDiasHabiles: config.plazoDiasHabiles,
           horaCorte: config.horaCorte,
           festivos,

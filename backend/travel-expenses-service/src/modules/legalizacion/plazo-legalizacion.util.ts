@@ -66,10 +66,8 @@ export function sumarDiasHabiles(
 }
 
 export interface ParametrosPlazo {
-  /** Último día de la comisión (YYYY-MM-DD), leído como fecha, sin zona. */
+  /** Fecha de regreso de la comisión (YYYY-MM-DD), leída como fecha, sin zona. */
   fechaFinComisionYmd: string;
-  /** Momento en que se abre la legalización. */
-  fechaDisparo: Date;
   plazoDiasHabiles: number;
   /** HH:MM en hora de Colombia. */
   horaCorte: string;
@@ -83,28 +81,25 @@ export interface PlazoCalculado {
 }
 
 /**
- * El plazo corre desde el más tardío entre el fin de la comisión y la apertura
- * de la legalización: una comisión pagada antes de viajar (AVANCE) no puede
- * vencer mientras el comisionado todavía está de viaje, y una pagada después de
- * terminada (RECONOCIMIENTO_POSTERIOR) no puede nacer vencida.
+ * El plazo corre desde la fecha de regreso de la comisión (confirmado por el
+ * Grupo de Viáticos), sin importar cuándo se pague: una comisión pagada después
+ * de vencido su plazo abre su legalización ya vencida.
+ *
+ * El modelo no registra una fecha de regreso real distinta de la planeada: se
+ * usa solicitudes_comision.fecha_fin.
  *
  * Vence el último día hábil del plazo a la hora de corte, en hora de Colombia.
+ * La migración 453 replica este cálculo en SQL para las legalizaciones abiertas.
  */
 export function calcularPlazo(p: ParametrosPlazo): PlazoCalculado {
-  const disparoYmd = fechaColombia(p.fechaDisparo);
-  const baseDesdeFin = p.fechaFinComisionYmd > disparoYmd;
-  const baseYmd = baseDesdeFin ? p.fechaFinComisionYmd : disparoYmd;
-
   const { fecha, calendarioIncompleto } = sumarDiasHabiles(
-    baseYmd,
+    p.fechaFinComisionYmd,
     p.plazoDiasHabiles,
     p.festivos,
   );
 
   return {
-    fechaBasePlazo: baseDesdeFin
-      ? instanteColombia(baseYmd, '23:59', '59')
-      : p.fechaDisparo,
+    fechaBasePlazo: instanteColombia(p.fechaFinComisionYmd, '23:59', '59'),
     fechaLimite: instanteColombia(fecha, p.horaCorte),
     calendarioIncompleto,
   };

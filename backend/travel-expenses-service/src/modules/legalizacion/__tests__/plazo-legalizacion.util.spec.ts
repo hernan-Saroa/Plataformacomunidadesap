@@ -57,72 +57,51 @@ describe('EFDS-1309 — plazo de legalización (días hábiles, hora Colombia)',
     });
   });
 
-  describe('calcularPlazo', () => {
-    it('comisión ya terminada al pagarse: el plazo corre desde el pago', () => {
-      const r = calcularPlazo({
-        fechaFinComisionYmd: '2026-09-05',
-        fechaDisparo: new Date('2026-09-24T15:00:00Z'), // 10:00 Colombia, jueves 24
-        plazoDiasHabiles: 5,
-        horaCorte: '16:30',
-        festivos: FESTIVOS_2026,
-      });
-      expect(r.fechaBasePlazo.toISOString()).toBe('2026-09-24T15:00:00.000Z');
-      expect(r.fechaLimite.toISOString()).toBe(instanteColombia('2026-10-01', '16:30').toISOString());
-      expect(r.fechaLimite.toISOString()).toBe('2026-10-01T21:30:00.000Z');
+  describe('calcularPlazo — corre desde la fecha de regreso', () => {
+    const base = { plazoDiasHabiles: 5, horaCorte: '16:30', festivos: FESTIVOS_2026 };
+
+    it('vence el quinto día hábil después del regreso, a la hora de corte', () => {
+      const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-09-05' }); // sábado
+      // 7, 8, 9, 10, 11 de septiembre.
+      expect(r.fechaLimite.toISOString()).toBe(instanteColombia('2026-09-11', '16:30').toISOString());
+      expect(r.fechaLimite.toISOString()).toBe('2026-09-11T21:30:00.000Z');
+      expect(r.fechaBasePlazo.toISOString()).toBe(instanteColombia('2026-09-05', '23:59', '59').toISOString());
     });
 
-    it('comisión pagada antes de viajar (avance): el plazo corre desde el fin de la comisión', () => {
-      const r = calcularPlazo({
-        fechaFinComisionYmd: '2026-10-02', // viernes
-        fechaDisparo: new Date('2026-09-24T15:00:00Z'),
-        plazoDiasHabiles: 5,
-        horaCorte: '16:30',
-        festivos: FESTIVOS_2026,
-      });
+    it('pagada después de vencido el plazo: la legalización nace vencida', () => {
+      const pago = new Date('2026-09-24T15:00:00Z');
+      const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-09-05' });
+      expect(r.fechaLimite.getTime()).toBeLessThan(pago.getTime());
+      expect(calcularSemaforo({ fechaLimite: r.fechaLimite, fechaEnvio: null }, pago, 2, FESTIVOS_2026)).toBe('VENCIDA');
+    });
+
+    it('pagada antes de viajar (avance): igual corre desde el regreso', () => {
+      const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-10-02' }); // viernes
       expect(fechaColombia(r.fechaBasePlazo)).toBe('2026-10-02');
       // 5, 6, 7, 8, 9 de octubre.
       expect(fechaColombia(r.fechaLimite)).toBe('2026-10-09');
     });
 
-    it('un pago a las 23:30 de Colombia cuenta desde ese día, no desde el siguiente en UTC', () => {
-      const r = calcularPlazo({
-        fechaFinComisionYmd: '2026-09-05',
-        fechaDisparo: new Date('2026-09-24T04:30:00Z'), // 23:30 del miércoles 23 en Colombia
-        plazoDiasHabiles: 5,
-        horaCorte: '16:30',
-        festivos: FESTIVOS_2026,
-      });
-      // Miércoles 23 → 24, 25, 28, 29, 30.
-      expect(fechaColombia(r.fechaLimite)).toBe('2026-09-30');
+    it('salta festivos: regreso el viernes 9 de octubre y el lunes 12 es festivo', () => {
+      const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-10-09' });
+      // 13, 14, 15, 16, 19 de octubre.
+      expect(fechaColombia(r.fechaLimite)).toBe('2026-10-19');
     });
 
     it('la fecha límite siempre es posterior a la base (CHECK de la migración 450)', () => {
       for (let plazo = 1; plazo <= 15; plazo++) {
-        const r = calcularPlazo({
-          fechaFinComisionYmd: '2026-09-05',
-          fechaDisparo: new Date('2026-09-25T21:00:00Z'),
-          plazoDiasHabiles: plazo,
-          horaCorte: '00:00',
-          festivos: FESTIVOS_2026,
-        });
+        const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-09-05', plazoDiasHabiles: plazo, horaCorte: '00:00' });
         expect(r.fechaLimite.getTime()).toBeGreaterThan(r.fechaBasePlazo.getTime());
       }
     });
 
     it('no depende de la zona horaria del proceso (el contenedor corre en UTC)', () => {
       const original = process.env.TZ;
-      const params = {
-        fechaFinComisionYmd: '2026-09-05',
-        fechaDisparo: new Date('2026-09-24T04:30:00Z'),
-        plazoDiasHabiles: 5,
-        horaCorte: '16:30',
-        festivos: FESTIVOS_2026,
-      };
       const resultados: string[] = [];
       try {
         for (const tz of ['UTC', 'America/Bogota', 'Asia/Tokyo', 'Pacific/Honolulu']) {
           process.env.TZ = tz;
-          resultados.push(calcularPlazo(params).fechaLimite.toISOString());
+          resultados.push(calcularPlazo({ ...base, fechaFinComisionYmd: '2026-09-05' }).fechaLimite.toISOString());
         }
       } finally {
         process.env.TZ = original;
