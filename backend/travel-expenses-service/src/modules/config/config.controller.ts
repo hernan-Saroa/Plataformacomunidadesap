@@ -31,6 +31,8 @@ import {
 interface AuthenticatedRequest extends Request {
   user?: {
     userId: string;
+    username?: string;
+    email?: string;
     roles?: string[];
     role?: string;
     permissions?: string[];
@@ -56,10 +58,18 @@ export class ConfigController {
     return campo;
   }
 
+  private obtenerUsuarioModificador(req: AuthenticatedRequest): string {
+    return req?.user?.username || (req?.user as any)?.email || req?.user?.userId || 'Administrador del Sistema';
+  }
+
   @Post('campos-formulario')
   @Permissions('travel_expenses:manage_config')
-  crearCampoFormulario(@Body() dto: CreateCampoFormularioDto) {
-    return this.configService.crearCampoFormulario(dto);
+  crearCampoFormulario(
+    @Body() dto: CreateCampoFormularioDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.crearCampoFormulario(dto, usuario);
   }
 
   @Put('campos-formulario/:clave')
@@ -67,14 +77,20 @@ export class ConfigController {
   actualizarCampoFormulario(
     @Param('clave') clave: string,
     @Body() dto: UpdateCampoFormularioDto,
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.configService.actualizarCampoFormulario(clave, dto);
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.actualizarCampoFormulario(clave, dto, usuario);
   }
 
   @Delete('campos-formulario/:clave')
   @Permissions('travel_expenses:manage_config')
-  eliminarCampoFormulario(@Param('clave') clave: string) {
-    return this.configService.eliminarCampoFormulario(clave);
+  eliminarCampoFormulario(
+    @Param('clave') clave: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.eliminarCampoFormulario(clave, usuario);
   }
 
   @Get('tipos-documento-soporte')
@@ -87,8 +103,12 @@ export class ConfigController {
 
   @Post('tipos-documento-soporte')
   @Permissions('travel_expenses:manage_config')
-  crearTipoDocumentoSoporte(@Body() dto: CreateTipoDocumentoSoporteDto) {
-    return this.configService.crearTipoDocumentoSoporte(dto);
+  crearTipoDocumentoSoporte(
+    @Body() dto: CreateTipoDocumentoSoporteDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.crearTipoDocumentoSoporte(dto, usuario);
   }
 
   @Put('tipos-documento-soporte/:codigo')
@@ -96,14 +116,20 @@ export class ConfigController {
   actualizarTipoDocumentoSoporte(
     @Param('codigo') codigo: string,
     @Body() dto: UpdateTipoDocumentoSoporteDto,
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.configService.actualizarTipoDocumentoSoporte(codigo, dto);
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.actualizarTipoDocumentoSoporte(codigo, dto, usuario);
   }
 
   @Delete('tipos-documento-soporte/:codigo')
   @Permissions('travel_expenses:manage_config')
-  eliminarTipoDocumentoSoporte(@Param('codigo') codigo: string) {
-    return this.configService.eliminarTipoDocumentoSoporte(codigo);
+  eliminarTipoDocumentoSoporte(
+    @Param('codigo') codigo: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.eliminarTipoDocumentoSoporte(codigo, usuario);
   }
 
   @Get('config-tipo-comisionado')
@@ -147,8 +173,12 @@ export class ConfigController {
 
   @Post('config-tipo-comisionado')
   @Permissions('travel_expenses:manage_config')
-  crearConfigTipoComisionado(@Body() dto: CreateConfigTipoComisionadoDto) {
-    return this.configService.crearConfigTipoComisionado(dto);
+  crearConfigTipoComisionado(
+    @Body() dto: CreateConfigTipoComisionadoDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.crearConfigTipoComisionado(dto, usuario);
   }
 
   @Put('config-tipo-comisionado/:tipo')
@@ -156,8 +186,10 @@ export class ConfigController {
   actualizarConfigTipoComisionado(
     @Param('tipo') tipo: string,
     @Body() dto: UpdateConfigTipoComisionadoDto,
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.configService.actualizarConfigTipoComisionado(tipo, dto);
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.actualizarConfigTipoComisionado(tipo, dto, usuario);
   }
 
   @Get('resumen')

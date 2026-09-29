@@ -92,9 +92,41 @@ export class ComisionadoEntity {
   @Index('idx_comisionados_id_dependencia')
   idDependencia: number | null;
 
+  @Column({
+    name: 'fecha_inicio_contrato',
+    type: 'date',
+    nullable: true,
+  })
+  fechaInicioContrato: Date | string | null;
+
+  @Column({
+    name: 'fecha_fin_contrato',
+    type: 'date',
+    nullable: true,
+  })
+  fechaFinContrato: Date | string | null;
+
+  @Column({
+    name: 'salario_basico',
+    type: 'numeric',
+    precision: 15,
+    scale: 2,
+    nullable: true,
+  })
+  salarioBasico: number | null;
+
+  @Column({
+    name: 'cargo',
+    type: 'varchar',
+    length: 150,
+    nullable: true,
+  })
+  cargo: string | null;
+
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;
 
   @UpdateDateColumn({ name: 'actualizado_en' })
   actualizadoEn: Date;
 }
+

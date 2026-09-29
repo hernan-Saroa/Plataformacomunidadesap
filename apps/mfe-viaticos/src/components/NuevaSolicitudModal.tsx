@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
+  AlertTriangle,
   Calculator,
   Calendar,
   CheckCircle,
@@ -11,6 +12,7 @@ import {
   DollarSign,
   Eye,
   FileText,
+  MapPin,
   Plane,
   PlaneTakeoff,
   Bus,
@@ -43,6 +45,7 @@ import {
   RutaItinerario,
   SaldoTiquete,
   SolicitudComisionResponse,
+  SolicitudPendiente023,
   TicketValidationResult,
   TipoTransporteTiquete,
 } from '../types/viaticos';
@@ -66,6 +69,7 @@ import {
   formatearDiasComision,
   formatearMoneda,
   formatearNombreComisionado,
+  getConfigEstado,
   hoyISO,
   inferirTipoMime,
   formInicialNuevaSolicitud,
@@ -152,6 +156,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [paso, setPaso] = useState(1);
   const [form, setForm] = useState<FormNuevaSolicitud>(formInicialNuevaSolicitud());
   const [comisionado, setComisionado] = useState<Comisionado | null>(null);
+  const [solicitudesPendientes023, setSolicitudesPendientes023] = useState<SolicitudPendiente023[]>([]);
   const [consultando, setConsultando] = useState(false);
   const [errorConsulta, setErrorConsulta] = useState<string | null>(null);
   const [errorValidacion, setErrorValidacion] = useState<string | null>(null);
@@ -163,6 +168,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     extemporanea: boolean;
     diasHabiles: number;
     radicadoFueraJornada: boolean;
+  } | null>(null);
+  const [alertaSolapamiento, setAlertaSolapamiento] = useState<{
+    mensaje: string;
+    solicitudConflicto?: any | null;
+    claveFechas: string;
+    permitirContinuar: boolean;
   } | null>(null);
   const [departamentos, setDepartamentos] = useState<Geopolitica[]>([]);
   const [ciudades, setCiudades] = useState<Geopolitica[]>([]);
@@ -467,6 +478,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setPaso(1);
       setForm(formInicialNuevaSolicitud());
       setComisionado(null);
+      setSolicitudesPendientes023([]);
       setConsultando(false);
       setErrorConsulta(null);
       setErrorValidacion(null);
@@ -474,6 +486,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setHabeasMarcado(false);
       setEnviando(false);
       setAlertaAnticipacion(null);
+      setAlertaSolapamiento(null);
       setDepartamentos([]);
       setCiudades([]);
       setCiudadesDepto('');
@@ -685,6 +698,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setConsultando(true);
     setErrorConsulta(null);
     setComisionado(null);
+    setSolicitudesPendientes023([]);
     setHabeasPendiente(false);
     setHabeasMarcado(false);
     try {
@@ -696,10 +710,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         return;
       }
       setComisionado(resultado);
+      const pendientes = resultado.solicitudesPendientes || [];
+      setSolicitudesPendientes023(pendientes);
       setForm((prev) => ({
         ...prev,
         comisionadoId: resultado.id,
         idDependencia: resultado.idDependencia ?? prev.idDependencia,
+        salarioBasico: resultado.salarioBasico != null && Number(resultado.salarioBasico) > 0
+          ? Number(resultado.salarioBasico)
+          : prev.salarioBasico,
       }));
       if (!resultado.autorizacionHabeasData) {
         setHabeasPendiente(true);
@@ -961,7 +980,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setPaso(siguiente);
   };
 
-  const guardarYBorrador = async () => {
+  const guardarYBorrador = async (forzarContinuar = false) => {
     if (!form.itinerario || form.itinerario.length === 0) {
       setErrorValidacion('Debe registrar al menos un tramo en el itinerario.');
       return;
@@ -1002,6 +1021,52 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     if (errCamposDinamicos) {
       setErrorValidacion(errCamposDinamicos);
       return;
+    }
+
+    // ── Validación de duplicidad / solapamiento por cédula y fechas ──────────
+    // Al intentar guardar y continuar al cargue de soportes, se verifica duplicidad.
+    // Si se detecta solapamiento, se alerta al usuario y NO se le deja continuar la primera vez.
+    // Si el usuario decide continuar voluntariamente (segundo clic o botón explícito), puede continuar en borrador,
+    // pero al final en la radicación el backend bloqueará la terminación definitiva.
+    const claveFechasActual = `${comisionado.numeroDocumento}_${fechaInicio}_${fechaFin}`;
+    if (!forzarContinuar) {
+      const yaConfirmadoContinuar =
+        alertaSolapamiento &&
+        alertaSolapamiento.claveFechas === claveFechasActual &&
+        alertaSolapamiento.permitirContinuar;
+
+      if (!yaConfirmadoContinuar) {
+        setEnviando(true);
+        setErrorValidacion(null);
+        try {
+          const verif = await viaticosService.verificarSolapamiento(
+            comisionado.numeroDocumento,
+            fechaInicio,
+            fechaFin,
+            solicitudBorrador?.id,
+          );
+          if (verif.haySolapamiento) {
+            setAlertaSolapamiento({
+              mensaje:
+                verif.mensaje ||
+                'Se detectó duplicidad o solapamiento de fechas con otra solicitud del comisionado.',
+              solicitudConflicto: verif.solicitudConflicto,
+              claveFechas: claveFechasActual,
+              permitirContinuar: true,
+            });
+            setErrorValidacion(
+              verif.mensaje ||
+                'Se detectó duplicidad o solapamiento de fechas con otra comisión existente del comisionado. Por seguridad, no puede continuar la primera vez; revise las fechas o confirme si desea continuar en modo borrador.',
+            );
+            setEnviando(false);
+            return; // Bloquea y no deja continuar la primera vez
+          } else {
+            setAlertaSolapamiento(null);
+          }
+        } catch (eVerif) {
+          console.warn('Error al verificar solapamiento:', eVerif);
+        }
+      }
     }
 
     setEnviando(true);
@@ -1396,6 +1461,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     const depUbicacion = (depMatch as any)?.dirDependencia || null;
     const depEmail = (depMatch as any)?.dirEmail || null;
 
+    const fechaInicioContrato = comisionado?.fechaInicioContrato
+      ? String(comisionado.fechaInicioContrato).split('T')[0]
+      : null;
+    const fechaFinContrato = comisionado?.fechaFinContrato
+      ? String(comisionado.fechaFinContrato).split('T')[0]
+      : null;
+    const salarioBasico =
+      comisionado?.salarioBasico != null
+        ? Number(comisionado.salarioBasico)
+        : null;
+
     return {
       nombre,
       cedula,
@@ -1410,6 +1486,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       depCodigo,
       depUbicacion,
       depEmail,
+      fechaInicioContrato,
+      fechaFinContrato,
+      salarioBasico,
     };
   }, [comisionado, form, dependencias, dependenciaId, usuarioActual]);
 
@@ -1517,6 +1596,88 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         <form onSubmit={onSubmitFormulario} className="space-y-4">
           {paso === 1 && (
             <div className="space-y-4">
+              {solicitudesPendientes023.length > 0 && (
+                <div
+                  className="rounded-2xl border-2 border-amber-300 bg-amber-50/95 dark:bg-amber-950/30 p-4 sm:p-5 shadow-xs space-y-3 transition-all animate-fadeIn"
+                  role="alert"
+                  aria-live="polite"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                      <AlertTriangle className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-amber-900 dark:text-amber-200 text-sm sm:text-base">
+                          Atención: El comisionado tiene solicitudes de Formato 023 pendientes
+                        </h4>
+                        <span className="px-2.5 py-0.5 text-xs font-black rounded-full bg-amber-200 dark:bg-amber-900/80 text-amber-900 dark:text-amber-100 border border-amber-400">
+                          {solicitudesPendientes023.length} {solicitudesPendientes023.length === 1 ? 'solicitud en trámite' : 'solicitudes en trámite'}
+                        </span>
+                      </div>
+                      <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
+                        Este comisionado ya cuenta con solicitudes de comisión (Formato GF-FO-023) registradas y en trámite. Por favor verifique que las nuevas fechas, trayectos y compromisos no generen solapamiento de fechas, duplicidad o incompatibilidad con las solicitudes listadas a continuación:
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 mt-2 pt-2 border-t border-amber-200/90 dark:border-amber-800/60">
+                    <p className="text-xs font-bold text-amber-950 dark:text-amber-200 uppercase tracking-wider flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-amber-700" />
+                      Solicitudes de Formato 023 pendientes / en trámite:
+                    </p>
+                    <div className="grid grid-cols-1 gap-2.5 max-h-64 overflow-y-auto pr-1">
+                      {solicitudesPendientes023.map((sol) => {
+                        const cfgEstado = getConfigEstado(sol.estadoSolicitud);
+                        const consecutivo = sol.codigoSolicitud || sol.consecutivoUnico || `SOL-${sol.id.slice(0, 8)}`;
+                        const total = Number(sol.totalGeneral ?? ((sol.montoViaticos || 0) + (sol.montoGastosViaje || 0)));
+                        return (
+                          <div
+                            key={sol.id}
+                            className="bg-white/95 dark:bg-slate-900/90 rounded-xl p-3.5 border border-amber-200 dark:border-amber-800/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:border-amber-300 transition-colors"
+                          >
+                            <div className="space-y-1.5 min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-extrabold text-[#003DA5] dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 text-xs">
+                                  {consecutivo}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${cfgEstado.bg} ${cfgEstado.text}`}>
+                                  {cfgEstado.label}
+                                </span>
+                                <span className="text-slate-500 font-medium text-[11px]">
+                                  Formato GF-FO-023
+                                </span>
+                              </div>
+                              <p className="text-slate-700 dark:text-slate-200 font-semibold line-clamp-2" title={sol.objetoComision}>
+                                {sol.objetoComision || 'Sin objeto registrado'}
+                              </p>
+                              <div className="flex items-center gap-4 text-slate-500 dark:text-slate-400 text-[11px] flex-wrap">
+                                <span className="inline-flex items-center gap-1 font-medium">
+                                  <MapPin className="w-3 h-3 text-slate-400" />
+                                  Destino: {sol.destinoCiudad || 'N/A'}{sol.destinoDepartamento ? `, ${sol.destinoDepartamento}` : ''}
+                                </span>
+                                <span className="inline-flex items-center gap-1 font-medium">
+                                  <Calendar className="w-3 h-3 text-slate-400" />
+                                  Periodo: {sol.fechaInicio || 'N/A'} al {sol.fechaFin || 'N/A'}
+                                </span>
+                              </div>
+                            </div>
+                            {total > 0 && (
+                              <div className="sm:text-right shrink-0 bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200/60">
+                                <span className="text-[10px] text-slate-500 font-medium block">Total Estimado</span>
+                                <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                                  {formatearMoneda(total)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
                 1. Datos del Funcionario Comisionado
               </h4>
@@ -1532,7 +1693,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     required={esCampoObligatorio('documentoComisionado')}
                     placeholder="Ej. 1019283746"
                     value={form.documentoComisionado}
-                    onChange={(e) => actualizar('documentoComisionado', soloNumeros(e.target.value))}
+                    onChange={(e) => {
+                      actualizar('documentoComisionado', soloNumeros(e.target.value));
+                      if (solicitudesPendientes023.length > 0) {
+                        setSolicitudesPendientes023([]);
+                      }
+                    }}
                     className={inputCls}
                   />
                   <button
@@ -1588,6 +1754,26 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     <div className="bg-white/90 p-2.5 rounded-xl border border-emerald-100">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Correo Electrónico</span>
                       <span className="font-bold text-slate-800 truncate block" title={infoComisionadoCompleta.correo}>{infoComisionadoCompleta.correo}</span>
+                    </div>
+                    {infoComisionadoCompleta.salarioBasico != null && infoComisionadoCompleta.salarioBasico > 0 && (
+                      <div className="bg-white/90 p-2.5 rounded-xl border border-emerald-100">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Salario Básico</span>
+                        <span className="font-bold text-slate-800">{formatearMoneda(infoComisionadoCompleta.salarioBasico)}</span>
+                      </div>
+                    )}
+                    {(infoComisionadoCompleta.fechaInicioContrato || infoComisionadoCompleta.fechaFinContrato) && (
+                      <div className="bg-white/90 p-2.5 rounded-xl border border-emerald-100">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Vigencia Contrato / Vinculación</span>
+                        <span className="font-bold text-slate-800">
+                          {infoComisionadoCompleta.fechaInicioContrato || 'Inicio'} al {infoComisionadoCompleta.fechaFinContrato || 'Indefinido / Vigente'}
+                        </span>
+                      </div>
+                    )}
+                    <div className="bg-white/90 p-2.5 rounded-xl border border-emerald-100">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Régimen DIAN / Facturación</span>
+                      <span className="font-bold text-slate-800">
+                        {infoComisionadoCompleta.esFacturador ? 'Facturador Electrónico' : 'Régimen Ordinario / RUT'}
+                      </span>
                     </div>
                     <div className="sm:col-span-2 lg:col-span-3 bg-white/90 p-2.5 rounded-xl border border-emerald-100 flex items-center justify-between flex-wrap gap-2">
                       <div>
@@ -2136,6 +2322,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 <ItinerarioBuilder
                   itinerario={form.itinerario || []}
                   onChange={(itinerario) => {
+                    if (alertaSolapamiento) {
+                      setAlertaSolapamiento(null);
+                    }
                     const sync = sincronizarItinerarioFormulario(itinerario.filter((r) => r.guardada));
                     setForm((prev) => ({
                       ...prev,
@@ -2396,6 +2585,64 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 )}
               </div>
 
+              {alertaSolapamiento && (
+                <div className="rounded-xl border-2 border-amber-400 bg-amber-50/95 p-4 space-y-3 shadow-xs">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-xl bg-amber-100 text-amber-800 shrink-0">
+                      <AlertTriangle className="w-5 h-5 text-amber-700" />
+                    </div>
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-xs font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                          Alerta de Duplicidad / Solapamiento de Fechas
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-200 text-amber-900 border border-amber-300">
+                          Bloqueo preventivo
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-900 leading-relaxed font-semibold">
+                        {alertaSolapamiento.mensaje}
+                      </p>
+                      {alertaSolapamiento.solicitudConflicto && (
+                        <div className="bg-white/90 border border-amber-200 rounded-lg p-2.5 text-xs text-slate-800 space-y-1">
+                          <p className="font-semibold text-slate-900">
+                            Solicitud en conflicto:{' '}
+                            <span className="font-bold text-[#003DA5]">
+                              {alertaSolapamiento.solicitudConflicto.consecutivoUnico || alertaSolapamiento.solicitudConflicto.id}
+                            </span>{' '}
+                            <span className="text-[11px] text-slate-500 font-normal">
+                              ({alertaSolapamiento.solicitudConflicto.estadoSolicitud})
+                            </span>
+                          </p>
+                          <p className="text-slate-600 text-[11px]">
+                            Vigencia en conflicto:{' '}
+                            <strong>
+                              {alertaSolapamiento.solicitudConflicto.fechaInicio ? new Date(alertaSolapamiento.solicitudConflicto.fechaInicio).toLocaleDateString() : ''} al{' '}
+                              {alertaSolapamiento.solicitudConflicto.fechaFin ? new Date(alertaSolapamiento.solicitudConflicto.fechaFin).toLocaleDateString() : ''}
+                            </strong>{' '}
+                            {alertaSolapamiento.solicitudConflicto.destinoCiudad && `— Destino: ${alertaSolapamiento.solicitudConflicto.destinoCiudad}`}
+                          </p>
+                        </div>
+                      )}
+                      <div className="text-[11px] text-amber-800 font-medium bg-amber-100/70 rounded-md p-2 border border-amber-200/80">
+                        ⚠️ <strong>Primera advertencia:</strong> No se le permite continuar automáticamente para prevenir duplicidad. Si aún así desea continuar guardando el borrador y cargando soportes, puede pulsar nuevamente <em>"Guardar y Continuar"</em> o hacer clic en el botón a continuación. Tenga en cuenta que en la etapa final de radicación la validación del sistema no le permitirá culminar el proceso.
+                      </div>
+                      <div className="pt-1 flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          disabled={enviando}
+                          onClick={() => void guardarYBorrador(true)}
+                          className="px-3.5 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1.5 shadow-2xs"
+                        >
+                          {enviando && <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                          Continuar de todos modos al cargue de soportes <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {errorValidacion && (
                 <p className="text-xs text-red-600 font-semibold bg-red-50 border border-red-200 rounded-lg px-3 py-2" role="alert">
                   {errorValidacion}
@@ -2429,6 +2676,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
               <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
                 3. Documentos de la Comisión
               </h4>
+              {alertaSolapamiento && (
+                <div className="rounded-xl border border-amber-300 bg-amber-50/90 p-3 flex items-start gap-2.5 text-xs text-amber-900 shadow-2xs">
+                  <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5 flex-1 min-w-0">
+                    <span className="font-bold text-[11px] uppercase tracking-wider text-amber-800 block">
+                      Aviso de Solapamiento de Fechas
+                    </span>
+                    <p className="text-[11px] leading-snug">
+                      Esta solicitud presenta cruce de fechas con otra comisión del comisionado ({alertaSolapamiento.solicitudConflicto?.consecutivoUnico || 'comisión existente'}). Puede completar el cargue de soportes en modo borrador, pero al radicarla definitivamente el sistema bloqueará la radicación hasta corregir las fechas.
+                    </p>
+                  </div>
+                </div>
+              )}
               {cargandoChecklist && (
                 <p className="text-xs text-slate-400 flex items-center gap-2">
                   <AlertCircle className="w-3.5 h-3.5" /> Cargando checklist de documentos...
@@ -2775,6 +3035,26 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
               <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
                 4. Confirmación de la Solicitud
               </h4>
+              {alertaSolapamiento && (
+                <div className="rounded-xl border border-red-300 bg-red-50/95 p-3.5 flex items-start gap-3 text-xs text-red-900 shadow-2xs">
+                  <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1 flex-1 min-w-0">
+                    <span className="font-bold text-xs uppercase tracking-wider text-red-800 block">
+                      ⚠️ Bloqueo por Cruce de Fechas / Duplicidad
+                    </span>
+                    <p className="text-[11px] leading-relaxed text-red-900">
+                      Esta solicitud tiene fechas que se cruzan con la comisión <strong>{alertaSolapamiento.solicitudConflicto?.consecutivoUnico || alertaSolapamiento.solicitudConflicto?.id || 'existente'}</strong>. Al presionar <em>"Enviar a Firmas de Aprobación"</em>, el sistema rechazará la radicación. Para poder radicarla, regrese al paso de <strong>Objeto y Destino</strong> y ajuste las fechas del itinerario.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => irPaso(2)}
+                      className="mt-1 px-3 py-1 bg-red-700 hover:bg-red-800 text-white rounded-lg text-[10px] font-bold inline-flex items-center gap-1 transition-colors"
+                    >
+                      <ChevronLeft className="w-3 h-3" /> Regresar y ajustar fechas
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 text-xs">
                 <div className="flex justify-between px-4 py-2.5">
                   <span className="text-slate-400 font-bold">Comisionado</span>

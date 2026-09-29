@@ -200,6 +200,14 @@ export class TravelExpensesController {
       normalizedPermissions.includes('travel_expenses:read_sst_requests') ||
       normalizedPermissions.includes('travel_expenses:resend_sst_notification');
 
+    const isComisionado =
+      normalizedRoles.some(
+        (r) => r === 'COMISIONADO' || r === 'ROL_COMISIONADO',
+      ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_comisionado') ||
+      normalizedPermissions.includes('es_comisionado') ||
+      normalizedPermissions.includes('travel_expenses:read_own_requests');
+
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
     const result = await this.service.obtenerSolicitudes(
@@ -212,6 +220,7 @@ export class TravelExpensesController {
       isSecretario,
       isTesoreria,
       isSst,
+      isComisionado,
     );
     return {
       data: result.data,
@@ -289,6 +298,47 @@ export class TravelExpensesController {
   })
   consultarComisionado(@Param('documento') documento: string) {
     return this.service.consultarComisionado(documento);
+  }
+
+  @Get('comisionados/:documento/solicitudes-pendientes')
+  @Public()
+  @ApiOperation({
+    summary: 'Consultar solicitudes de comisión (Formato 023) pendientes de un comisionado',
+    description:
+      'Retorna las solicitudes en trámite o activas (no pagadas, canceladas ni rechazadas) para alertar al momento de diligenciar una nueva comisión.',
+  })
+  @ApiParam({
+    name: 'documento',
+    description: 'Número de documento de identidad del comisionado',
+    example: '1019283746',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Listado de solicitudes de Formato 023 pendientes del comisionado.',
+  })
+  obtenerSolicitudesPendientesComisionado(@Param('documento') documento: string) {
+    return this.service.obtenerSolicitudesPendientesPorDocumento(documento);
+  }
+
+  @Get('comisionados/:documento/verificar-solapamiento')
+  @Public()
+  @ApiOperation({
+    summary: 'Verificar duplicidad y solapamiento de fechas para un comisionado',
+    description:
+      'Verifica si las fechas seleccionadas se cruzan con alguna solicitud activa o en trámite del comisionado antes de avanzar al cargue de soportes.',
+  })
+  verificarSolapamiento(
+    @Param('documento') documento: string,
+    @Query('fechaInicio') fechaInicio: string,
+    @Query('fechaFin') fechaFin: string,
+    @Query('solicitudId') solicitudId?: string,
+  ) {
+    return this.service.verificarSolapamientoFechas(
+      documento,
+      fechaInicio,
+      fechaFin,
+      solicitudId,
+    );
   }
 
   @Get('talento-humano/consultar')
@@ -573,6 +623,7 @@ export class TravelExpensesController {
     'travel_expenses:authorize_expense',
     'travel_expenses:read_obligations',
     'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
   )
   obtenerSolicitud(@Param('id') id: string) {
     return this.service.obtenerSolicitudCompleta(id);
@@ -737,6 +788,7 @@ export class TravelExpensesController {
     'travel_expenses:read_authorized',
     'travel_expenses:read_obligations',
     'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
   )
   async exportarFormato023(
     @Param('id') id: string,

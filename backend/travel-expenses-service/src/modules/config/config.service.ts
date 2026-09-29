@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
   ConflictException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -10,6 +11,7 @@ import { CampoFormularioEntity } from '../../entities/config/campo-formulario.en
 import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
 import { TipoDocumentoSoporteEntity } from '../../entities/config/tipo-documento-soporte.entity';
 import { ConfigTipoComisionadoDocumentoEntity } from '../../entities/config/config-tipo-comisionado-documento.entity';
+import { NotificationClientService } from '../../common/notification-client.service';
 import {
   CreateCampoFormularioDto,
   UpdateCampoFormularioDto,
@@ -34,7 +36,24 @@ export class ConfigService {
     private readonly tipoDocumentoRepo: Repository<TipoDocumentoSoporteEntity>,
     @InjectRepository(ConfigTipoComisionadoDocumentoEntity)
     private readonly configDocumentoRepo: Repository<ConfigTipoComisionadoDocumentoEntity>,
+    @Optional()
+    private readonly notificationClient?: NotificationClientService,
   ) {}
+
+  private notificarCambioParametro(params: {
+    tipoConfiguracion: string;
+    operacion?: string;
+    descripcionAjuste: string;
+    detalle?: Record<string, any>;
+    usuarioModificador?: string;
+  }) {
+    if (!this.notificationClient) return;
+    this.notificationClient
+      .notifyTravelExpensesConfigChange(params)
+      .catch((err) => {
+        // Log silenciado para no romper la transacción
+      });
+  }
 
   async obtenerCamposFormulario(): Promise<CampoFormularioEntity[]> {
     const campos = await this.campoRepo.find({
@@ -68,6 +87,7 @@ export class ConfigService {
 
   async crearCampoFormulario(
     dto: CreateCampoFormularioDto,
+    usuarioModificador?: string,
   ): Promise<CampoFormularioEntity> {
     const existente = await this.campoRepo.findOne({
       where: { clave: dto.clave },
@@ -90,12 +110,28 @@ export class ConfigService {
       grupo: dto.grupo ?? null,
     });
 
-    return this.campoRepo.save(entity);
+    const guardado = await this.campoRepo.save(entity);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Campos del Formulario',
+      operacion: 'Creación de Nuevo Campo',
+      descripcionAjuste: `Se configuró el nuevo campo "${guardado.etiqueta}" (clave: ${guardado.clave}) con tipo de dato [${guardado.tipoCampo}] para el diligenciamiento de solicitudes.`,
+      detalle: {
+        clave: guardado.clave,
+        etiqueta: guardado.etiqueta,
+        tipoCampo: guardado.tipoCampo,
+        grupo: guardado.grupo,
+      },
+      usuarioModificador,
+    });
+
+    return guardado;
   }
 
   async actualizarCampoFormulario(
     clave: string,
     dto: UpdateCampoFormularioDto,
+    usuarioModificador?: string,
   ): Promise<CampoFormularioEntity> {
     const entity = await this.campoRepo.findOne({ where: { clave } });
     if (!entity) {
@@ -114,10 +150,29 @@ export class ConfigService {
       entity.grupo = dto.grupo;
     }
 
-    return this.campoRepo.save(entity);
+    const guardado = await this.campoRepo.save(entity);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Campos del Formulario',
+      operacion: 'Actualización de Campo',
+      descripcionAjuste: `Se actualizó la configuración del campo [${clave}] ("${guardado.etiqueta}"). Estado: ${guardado.activo ? 'Activo' : 'Inactivo'}, Tipo: [${guardado.tipoCampo}].`,
+      detalle: {
+        clave,
+        etiqueta: guardado.etiqueta,
+        tipoCampo: guardado.tipoCampo,
+        activo: guardado.activo,
+        orden: guardado.orden,
+      },
+      usuarioModificador,
+    });
+
+    return guardado;
   }
 
-  async eliminarCampoFormulario(clave: string): Promise<void> {
+  async eliminarCampoFormulario(
+    clave: string,
+    usuarioModificador?: string,
+  ): Promise<void> {
     const entity = await this.campoRepo.findOne({ where: { clave } });
     if (!entity) {
       throw new NotFoundException(`Campo con clave ${clave} no encontrado`);
@@ -125,6 +180,14 @@ export class ConfigService {
 
     entity.activo = false;
     await this.campoRepo.save(entity);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Campos del Formulario',
+      operacion: 'Desactivación de Campo',
+      descripcionAjuste: `Se desactivó el campo [${clave}] ("${entity.etiqueta}") del catálogo de captura de viáticos.`,
+      detalle: { clave, etiqueta: entity.etiqueta, activo: false },
+      usuarioModificador,
+    });
   }
 
   async obtenerTodosTiposDocumentoSoporte(
@@ -145,6 +208,7 @@ export class ConfigService {
 
   async crearTipoDocumentoSoporte(
     dto: CreateTipoDocumentoSoporteDto,
+    usuarioModificador?: string,
   ): Promise<TipoDocumentoSoporteEntity> {
     const normalizado = dto.codigo.trim().toUpperCase();
     const existe = await this.tipoDocumentoRepo.findOne({
@@ -164,12 +228,28 @@ export class ConfigService {
       activo: dto.activo !== undefined ? dto.activo : true,
     });
 
-    return this.tipoDocumentoRepo.save(nuevo);
+    const guardado = await this.tipoDocumentoRepo.save(nuevo);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Documentos Soporte',
+      operacion: 'Nuevo Documento Soporte',
+      descripcionAjuste: `Se registró en travel_expenses.tipos_documento_soporte el documento "${guardado.nombre}" (código: ${guardado.codigo})${guardado.instruccionesValidacion ? ' con instrucciones de validación' : ''}.`,
+      detalle: {
+        codigo: guardado.codigo,
+        nombre: guardado.nombre,
+        descripcion: guardado.descripcion,
+        instruccionesValidacion: guardado.instruccionesValidacion,
+      },
+      usuarioModificador,
+    });
+
+    return guardado;
   }
 
   async actualizarTipoDocumentoSoporte(
     codigo: string,
     dto: UpdateTipoDocumentoSoporteDto,
+    usuarioModificador?: string,
   ): Promise<TipoDocumentoSoporteEntity> {
     const entity = await this.tipoDocumentoRepo.findOne({ where: { codigo } });
     if (!entity) {
@@ -193,10 +273,28 @@ export class ConfigService {
       entity.activo = dto.activo;
     }
 
-    return this.tipoDocumentoRepo.save(entity);
+    const guardado = await this.tipoDocumentoRepo.save(entity);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Documentos Soporte',
+      operacion: 'Actualización de Documento Soporte',
+      descripcionAjuste: `Se actualizó el documento soporte [${codigo}] ("${guardado.nombre}"). Estado: ${guardado.activo ? 'Activo' : 'Inactivo'}${dto.instruccionesValidacion !== undefined ? ', con actualización de instrucciones de validación' : ''}.`,
+      detalle: {
+        codigo,
+        nombre: guardado.nombre,
+        activo: guardado.activo,
+        instruccionesValidacion: guardado.instruccionesValidacion,
+      },
+      usuarioModificador,
+    });
+
+    return guardado;
   }
 
-  async eliminarTipoDocumentoSoporte(codigo: string): Promise<void> {
+  async eliminarTipoDocumentoSoporte(
+    codigo: string,
+    usuarioModificador?: string,
+  ): Promise<void> {
     const entity = await this.tipoDocumentoRepo.findOne({ where: { codigo } });
     if (!entity) {
       throw new NotFoundException(
@@ -206,6 +304,14 @@ export class ConfigService {
 
     entity.activo = false;
     await this.tipoDocumentoRepo.save(entity);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Documentos Soporte',
+      operacion: 'Desactivación de Documento Soporte',
+      descripcionAjuste: `Se desactivó el documento soporte [${codigo}] ("${entity.nombre}").`,
+      detalle: { codigo, nombre: entity.nombre, activo: false },
+      usuarioModificador,
+    });
   }
 
   async obtenerTodasConfiguraciones(): Promise<ConfigTipoComisionadoEntity[]> {
@@ -252,6 +358,7 @@ export class ConfigService {
 
   async crearConfigTipoComisionado(
     dto: CreateConfigTipoComisionadoDto,
+    usuarioModificador?: string,
   ): Promise<ConfigTipoComisionadoEntity> {
     const existente = await this.configRepo.findOne({
       where: { tipoComisionado: dto.tipoComisionado },
@@ -290,6 +397,19 @@ export class ConfigService {
       );
     }
 
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Configuración por Tipo de Comisionado',
+      operacion: 'Nueva Configuración por Tipo',
+      descripcionAjuste: `Se creó la configuración de formulario y requisitos documentales para el tipo de comisionado [${dto.tipoComisionado}].`,
+      detalle: {
+        tipoComisionado: dto.tipoComisionado,
+        codigoFormulario: dto.codigoFormulario,
+        camposObligatorios: dto.camposObligatorios,
+        documentosObligatorios: dto.documentosObligatorios,
+      },
+      usuarioModificador,
+    });
+
     return this.obtenerConfiguracionPorTipo(
       savedConfig.tipoComisionado,
     ) as Promise<ConfigTipoComisionadoEntity>;
@@ -298,6 +418,7 @@ export class ConfigService {
   async actualizarConfigTipoComisionado(
     tipoComisionado: string,
     dto: UpdateConfigTipoComisionadoDto,
+    usuarioModificador?: string,
   ): Promise<ConfigTipoComisionadoEntity> {
     const entity = await this.configRepo.findOne({
       where: { tipoComisionado },
@@ -335,6 +456,18 @@ export class ConfigService {
         );
       }
     }
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Configuración por Tipo de Comisionado',
+      operacion: 'Actualización de Requisitos por Tipo',
+      descripcionAjuste: `Se actualizaron los campos y documentos requeridos para el tipo de comisionado [${tipoComisionado}].`,
+      detalle: {
+        tipoComisionado,
+        codigoFormulario: dto.codigoFormulario ?? entity.codigoFormulario,
+        activo: dto.activo ?? entity.activo,
+      },
+      usuarioModificador,
+    });
 
     return this.obtenerConfiguracionPorTipo(
       tipoComisionado,

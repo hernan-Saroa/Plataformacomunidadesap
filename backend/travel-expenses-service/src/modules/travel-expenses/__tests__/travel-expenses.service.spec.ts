@@ -478,7 +478,92 @@ describe('TravelExpensesService', () => {
         BadRequestException,
       );
     });
+
+    it('debe lanzar BadRequestException si el comisionado local tiene contrato vencido', async () => {
+      const comisionadoVencido = {
+        ...mockComisionado,
+        id: 'com-vencido',
+        numeroDocumento: '1098765432',
+        primerNombre: 'PEDRO',
+        primerApellido: 'PEREZ',
+        fechaFinContrato: '2020-01-01', // Vencido
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoVencido),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+      };
+
+      const module = await createMockModule({ comisionadoRepo, humanResourcesClient });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(svc.consultarComisionado('1098765432')).rejects.toThrow(
+        /tiene su contrato o vinculación laboral vencida/i,
+      );
+    });
+
+    it('debe consultar Humanos y actualizar cuando el contrato local esté próximo a vencer', async () => {
+      const comisionadoProximo = {
+        ...mockComisionado,
+        id: 'com-proximo',
+        numeroDocumento: '1098765432',
+        fechaFinContrato: '2026-09-30', // Próximo a vencer
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoProximo),
+        save: jest.fn().mockImplementation(async (x) => x),
+        create: jest.fn((x) => x),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue({
+          full_name: 'PEDRO PEREZ LOPEZ',
+          id_number: '1098765432',
+          contract_end_date: '2027-12-31', // Prorrogado
+          hiring_date: '2025-01-01',
+          monthly_salary: 5000000,
+        }),
+      };
+
+      const module = await createMockModule({ comisionadoRepo, humanResourcesClient });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.consultarComisionado('1098765432');
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('1098765432');
+      expect(comisionadoRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fechaFinContrato: '2027-12-31',
+          salarioBasico: 5000000,
+        }),
+      );
+      expect(result.fechaFinContrato).toBe('2027-12-31');
+    });
+
+    it('debe lanzar BadRequestException si un nuevo comisionado en Humanos tiene contrato vencido', async () => {
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue({
+          full_name: 'MARIA VENCIDA',
+          id_number: '11223344',
+          contract_end_date: '2021-05-30', // Vencido
+        }),
+      };
+
+      const module = await createMockModule({ comisionadoRepo, humanResourcesClient });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(svc.consultarComisionado('11223344')).rejects.toThrow(
+        /vinculación laboral\/contractual está vencida/i,
+      );
+    });
   });
+
 
   describe('buscarTalentoHumano', () => {
     it('debe buscar por documento en talento humano (Oracle FNC) exitosamente', async () => {
@@ -5282,6 +5367,149 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
             estadoNuevo: EstadoSolicitud.RADICADA,
           }),
         );
+      });
+
+      it('solicitarFirmasAprobacion: dispara notificaciones a directivos (Jefe/Gerente) y al comisionado', async () => {
+        const solicitud = {
+          id: 'sol-023-notif',
+          consecutivoUnico: 'SOL-2026-023',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE,
+          fechaInicio: new Date('2026-11-01'),
+          fechaFin: new Date('2026-11-05'),
+          comisionadoId: 'com-1',
+          comisionado: {
+            id: 'com-1',
+            primerNombre: 'Ana',
+            primerApellido: 'García',
+            email: 'ana.garcia@esap.edu.co',
+            numeroDocumento: '52123456',
+            tipoComisionado: 'DOCENTE_PLANTA',
+          },
+          objetoComision: 'Capacitación territorial en Girardot',
+          destinoCiudad: 'Girardot',
+          destinoDepartamento: 'Cundinamarca',
+          camposAdicionales: {},
+        } as any;
+
+        const qbMock: any = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null),
+        };
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn().mockImplementation((s) => Promise.resolve(s)),
+          createQueryBuilder: jest.fn().mockReturnValue(qbMock),
+        };
+
+        const documentoRepo = {
+          find: jest.fn().mockResolvedValue([]),
+        };
+
+        const historialRepo = {
+          save: jest.fn().mockResolvedValue({ id: 'h-notif' }),
+        };
+
+        const dataSource = {
+          getRepository: jest.fn().mockReturnValue(historialRepo),
+        };
+
+        const mockNotificationClient = {
+          notifyEnvioAFirmas023: jest.fn().mockResolvedValue(undefined),
+          send: jest.fn().mockResolvedValue(undefined),
+          sendMany: jest.fn().mockResolvedValue(undefined),
+          sendEmail: jest.fn().mockResolvedValue(undefined),
+        };
+
+        const module = await createMockModuleEtapa5({
+          solicitudRepo,
+          documentoRepo,
+          dataSource,
+          notificationClient: mockNotificationClient,
+        });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        // Spy en validarChecklistCompleto para permitir el paso
+        jest.spyOn(svc, 'validarChecklistCompleto').mockResolvedValue({
+          completo: true,
+          faltantes: [],
+          noPdf: [],
+          documentosValidos: [],
+        });
+
+        const res = await svc.solicitarFirmasAprobacion('sol-023-notif', 'user-enlace-1');
+
+        expect(res.estadoSolicitud).toBe(EstadoSolicitud.PENDIENTE_FIRMAS);
+        expect(mockNotificationClient.notifyEnvioAFirmas023).toHaveBeenCalledWith(
+          expect.objectContaining({
+            solicitud: expect.objectContaining({ id: 'sol-023-notif' }),
+            comisionado: expect.objectContaining({ email: 'ana.garcia@esap.edu.co' }),
+          }),
+        );
+      });
+
+      it('obtenerSolicitudes con isComisionado=true consulta solicitudes radicadas para el comisionado', async () => {
+        const qbMock: any = {
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          offset: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(1),
+          getMany: jest.fn().mockResolvedValue([
+            {
+              id: 'sol-com-1',
+              consecutivoUnico: 'SOL-COM-001',
+              comisionadoId: 'com-1',
+              estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+              fechaInicio: new Date('2026-11-01'),
+              fechaFin: new Date('2026-11-05'),
+              creadoEn: new Date(),
+              actualizadoEn: new Date(),
+              comisionado: {
+                id: 'com-1',
+                numeroDocumento: '1019283746',
+                primerNombre: 'Carlos',
+                primerApellido: 'Pérez',
+                email: 'carlos.perez@esap.edu.co',
+              },
+            },
+          ]),
+        };
+
+        const solicitudRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue(qbMock),
+          query: jest.fn().mockResolvedValue([
+            {
+              num_identificacion: '1019283746',
+              dir_email: 'carlos.perez@esap.edu.co',
+              username: 'carlos.perez',
+            },
+          ]),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const result = await svc.obtenerSolicitudes(
+          'user-comisionado-id',
+          false, // isSuperAdmin
+          1,
+          20,
+          false,
+          false,
+          false,
+          false,
+          false,
+          true, // isComisionado
+        );
+
+        expect(result.data).toHaveLength(1);
+        expect(result.data[0].consecutivoUnico).toBe('SOL-COM-001');
+        expect(qbMock.andWhere).toHaveBeenCalled();
       });
     });
   });
