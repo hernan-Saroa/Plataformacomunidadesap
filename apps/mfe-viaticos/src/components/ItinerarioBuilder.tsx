@@ -16,6 +16,9 @@ import {
   Plane,
   Bus,
   Info,
+  ArrowLeftRight,
+  ArrowRight,
+  Sparkles,
 } from 'lucide-react';
 import { RutaItinerario, Geopolitica } from '../types/viaticos';
 import {
@@ -79,14 +82,37 @@ function convertirA12h(hhmm: string): string {
   return `${String(h12).padStart(2, '0')}:${m} ${ampm}`;
 }
 
+/**
+ * Calcula la duración estimada entre hora de salida y llegada en formato amigable
+ */
+export function calcularDuracionEstimada(horaSalida?: string, horaLlegada?: string): string | null {
+  if (!horaSalida || !horaLlegada) return null;
+  const matchSalida = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(horaSalida.trim());
+  const matchLlegada = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(horaLlegada.trim());
+  if (!matchSalida || !matchLlegada) return null;
+
+  const mSalida = parseInt(matchSalida[1], 10) * 60 + parseInt(matchSalida[2], 10);
+  const mLlegada = parseInt(matchLlegada[1], 10) * 60 + parseInt(matchLlegada[2], 10);
+
+  let dif = mLlegada - mSalida;
+  if (dif === 0) return 'Misma hora';
+  if (dif < 0) {
+    dif += 24 * 60; // cruce de medianoche o trayecto nocturno
+  }
+  const horas = Math.floor(dif / 60);
+  const mins = dif % 60;
+  if (horas === 0) return `${mins} min`;
+  if (mins === 0) return `${horas} hora${horas > 1 ? 's' : ''}`;
+  return `${horas}h ${mins}m`;
+}
+
 export interface FranjaHorariaOpciones {
   grupo: string;
   opciones: { valor: string; label: string }[];
 }
 
 /**
- * Genera opciones militares (00:00 a 23:45 en pasos de 15 min)
- * organizadas por franja horaria para no sugerir fecha y facilitar selección.
+ * Mantenido para compatibilidad con módulos externos
  */
 export function generarOpcionesHorarioMilitar(valorActual?: string): FranjaHorariaOpciones[] {
   const map: Record<string, { valor: string; label: string }[]> = {};
@@ -107,7 +133,7 @@ export function generarOpcionesHorarioMilitar(valorActual?: string): FranjaHorar
     }
   }
 
-  // Preservar valores existentes personalizados que no sean múltiplos exactos de 15 min
+  // Preservar valores existentes personalizados que no sean múltiplos de 15 min (ej: 08:05, 09:20)
   if (valorActual && esHorarioMilitarValido(valorActual)) {
     const hh = parseInt(valorActual.slice(0, 2), 10);
     const franja = FRANJAS_HORARIAS.find((f) => hh >= f.desde && hh <= f.hasta) || FRANJAS_HORARIAS[0];
@@ -126,6 +152,241 @@ export function generarOpcionesHorarioMilitar(valorActual?: string): FranjaHorar
     grupo: f.grupo,
     opciones: map[f.grupo],
   }));
+}
+
+/**
+ * Selector de Horario Militar Inteligente (24 Horas)
+ * Permite escritura numérica directa (inputMode="numeric" con auto-formateo HH:mm),
+ * ajuste rápido con botones stepper ▲/▼, chip de hora civil dinámico (Mañana, Tarde, Noche)
+ * y select accesible sincronizado.
+ */
+export function SelectorHoraMilitar({
+  ariaLabel,
+  valor,
+  onChange,
+  error,
+}: {
+  ariaLabel: string;
+  valor: string;
+  onChange: (val: string) => void;
+  error?: string;
+}) {
+  const valorLimpio = valor && esHorarioMilitarValido(valor) ? valor : '08:00';
+  const [texto, setTexto] = useState(valorLimpio);
+
+  // Mantener sincronizado el input con el prop externo
+  useEffect(() => {
+    if (valor && esHorarioMilitarValido(valor) && valor !== texto) {
+      setTexto(valor);
+    }
+  }, [valor]);
+
+  const [hh, mm] = (esHorarioMilitarValido(texto) ? texto : valorLimpio).split(':');
+  const horaNum = parseInt(hh || '0', 10);
+  const minNum = parseInt(mm || '0', 10);
+
+  // Chip de momento del día dinámico
+  const momento = useMemo(() => {
+    const eq = convertirA12h(`${hh}:${mm}`);
+    if (horaNum >= 5 && horaNum < 12) {
+      return { icon: '🌅', label: `${eq} · Mañana`, estilo: 'bg-amber-50 text-amber-900 border-amber-200' };
+    }
+    if (horaNum >= 12 && horaNum < 18) {
+      return { icon: '☀️', label: `${eq} · Tarde`, estilo: 'bg-blue-50 text-[#003DA5] border-blue-200' };
+    }
+    if (horaNum >= 18 && horaNum <= 23) {
+      return { icon: '🌙', label: `${eq} · Noche`, estilo: 'bg-indigo-50 text-indigo-900 border-indigo-200' };
+    }
+    return { icon: '🌌', label: `${eq} · Madrugada`, estilo: 'bg-purple-50 text-purple-900 border-purple-200' };
+  }, [hh, mm, horaNum]);
+
+  // Manejo de escritura numérica directa con máscara inteligente
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let raw = e.target.value.replace(/[^\d:]/g, '');
+
+    // Auto-completar los dos puntos después de los dos primeros dígitos
+    if (!raw.includes(':') && raw.length >= 3) {
+      raw = `${raw.slice(0, 2)}:${raw.slice(2, 4)}`;
+    }
+    if (raw.length > 5) raw = raw.slice(0, 5);
+
+    setTexto(raw);
+
+    // Si ya completó un formato HH:mm válido, propagar cambio
+    if (/^([01]\d|2[0-3]):([0-5]\d)$/.test(raw)) {
+      onChange(raw);
+    }
+  };
+
+  const handleBlur = () => {
+    if (!esHorarioMilitarValido(texto)) {
+      const soloNum = texto.replace(/\D/g, '');
+      if (soloNum.length === 1 || soloNum.length === 2) {
+        const h = Math.min(23, parseInt(soloNum, 10));
+        const val = `${String(h).padStart(2, '0')}:00`;
+        setTexto(val);
+        onChange(val);
+      } else if (soloNum.length === 3 || soloNum.length === 4) {
+        const h = Math.min(23, parseInt(soloNum.slice(0, 2), 10));
+        const m = Math.min(59, parseInt(soloNum.slice(2, 4).padEnd(2, '0'), 10));
+        const val = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        setTexto(val);
+        onChange(val);
+      } else {
+        setTexto(valorLimpio);
+      }
+    }
+  };
+
+  // Steppers para ajustar horas o minutos con un toque
+  const stepHora = (delta: number) => {
+    const nuevaHora = (horaNum + delta + 24) % 24;
+    const nuevoVal = `${String(nuevaHora).padStart(2, '0')}:${mm}`;
+    setTexto(nuevoVal);
+    onChange(nuevoVal);
+  };
+
+  const stepMinuto = (delta: number) => {
+    let nuevoMin = minNum + delta;
+    let nuevaHora = horaNum;
+    if (nuevoMin >= 60) {
+      nuevoMin = 0;
+      nuevaHora = (nuevaHora + 1) % 24;
+    } else if (nuevoMin < 0) {
+      nuevoMin = 45;
+      nuevaHora = (nuevaHora - 1 + 24) % 24;
+    }
+    const nuevoVal = `${String(nuevaHora).padStart(2, '0')}:${String(nuevoMin).padStart(2, '0')}`;
+    setTexto(nuevoVal);
+    onChange(nuevoVal);
+  };
+
+  // Opciones completas sincronizadas para accesibilidad y tests
+  const todasLasOpciones: string[] = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 15) {
+      todasLasOpciones.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    }
+  }
+  if (!todasLasOpciones.includes(valorLimpio)) {
+    todasLasOpciones.push(valorLimpio);
+    todasLasOpciones.sort();
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div
+        className={`relative flex items-center justify-between p-2.5 bg-gradient-to-r from-slate-50/90 via-white to-blue-50/30 border rounded-2xl shadow-2xs transition-all ${
+          error
+            ? 'border-red-300 ring-2 ring-red-100 bg-red-50/20'
+            : 'border-slate-200/90 focus-within:border-[#003DA5] focus-within:ring-2 focus-within:ring-blue-100 hover:border-slate-300'
+        }`}
+      >
+        <div className="flex items-center gap-2.5">
+          {/* Icono de Reloj con micro-gradiente */}
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#003DA5] to-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+            <Clock className="w-4 h-4" />
+          </div>
+
+          {/* Campo Numérico Inteligente */}
+          <div className="flex items-center bg-white border border-slate-200/90 rounded-xl px-2 py-0.5 shadow-2xs focus-within:border-[#003DA5] focus-within:ring-1 focus-within:ring-[#003DA5]">
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={5}
+              value={texto}
+              onChange={handleInputChange}
+              onBlur={handleBlur}
+              placeholder="08:00"
+              className="w-16 font-mono font-black text-slate-900 text-base sm:text-lg tracking-wider text-center bg-transparent focus:outline-none"
+              title="Escriba la hora militar (ej: 08:30 o 14:00)"
+            />
+            <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider pr-1">h</span>
+
+            {/* Steppers ▲ / ▼ para horas */}
+            <div className="flex flex-col border-l border-slate-200 pl-1.5 py-0.5">
+              <button
+                type="button"
+                onClick={() => stepHora(1)}
+                className="text-slate-400 hover:text-[#003DA5] hover:bg-blue-50 rounded px-1 text-[9px] font-black transition-colors leading-none py-0.5 cursor-pointer"
+                title="Avanzar 1 hora"
+              >
+                ▲
+              </button>
+              <button
+                type="button"
+                onClick={() => stepHora(-1)}
+                className="text-slate-400 hover:text-[#003DA5] hover:bg-blue-50 rounded px-1 text-[9px] font-black transition-colors leading-none py-0.5 cursor-pointer"
+                title="Retroceder 1 hora"
+              >
+                ▼
+              </button>
+            </div>
+
+            {/* Steppers :15 min */}
+            <div className="flex flex-col border-l border-slate-100 pl-1 py-0.5">
+              <button
+                type="button"
+                onClick={() => stepMinuto(15)}
+                className="text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded px-1 text-[8px] font-black transition-colors leading-none py-0.5 cursor-pointer"
+                title="+15 min"
+              >
+                +15
+              </button>
+              <button
+                type="button"
+                onClick={() => stepMinuto(-15)}
+                className="text-slate-400 hover:text-red-700 hover:bg-red-50 rounded px-1 text-[8px] font-black transition-colors leading-none py-0.5 cursor-pointer"
+                title="-15 min"
+              >
+                -15
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Chip Dinámico con Icono de Momento y Hora Civil */}
+        <div className="flex items-center pl-2">
+          <span
+            className={`text-[11px] font-extrabold px-2.5 py-1 rounded-xl border flex items-center gap-1.5 shadow-2xs whitespace-nowrap ${momento.estilo}`}
+          >
+            <span>{momento.icon}</span>
+            <span>{momento.label}</span>
+          </span>
+        </div>
+
+        {/* Select accesible oculto sincronizado con todos los valores para tests y automatización */}
+        <select
+          aria-label={ariaLabel}
+          value={valorLimpio}
+          onChange={(e) => {
+            setTexto(e.target.value);
+            onChange(e.target.value);
+          }}
+          className="sr-only"
+          tabIndex={-1}
+        >
+          {todasLasOpciones.map((op) => (
+            <option key={op} value={op}>
+              {op}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {error ? (
+        <p className="text-[10px] text-red-600 font-semibold mt-0.5">{error}</p>
+      ) : (
+        <div className="flex items-center justify-between text-[10px] text-slate-500 font-medium px-1">
+          <span className="flex items-center gap-1">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            Horario militar (24h) · Tipee directamente o use ▲▼
+          </span>
+          <span className="text-slate-400">Sin fechas</span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface Props {
@@ -431,6 +692,35 @@ function RutaForm({
     void cargarCiudadesDepto(depto);
   };
 
+  const intercambiarOrigenDestino = () => {
+    const origCiudad = ruta.origenCiudad;
+    const origDepto = ruta.origenDepartamento;
+    const origDeptoId = ruta.origenDepartamentoId;
+
+    const destCiudad = ruta.destinoCiudad;
+    const destDepto = ruta.destinoDepartamento;
+    const destDeptoId = ruta.destinoDepartamentoId;
+
+    const tarifa = ruta.tipoTransporte === 'AEREO'
+      ? calcularTarifaTerminalAereoRuta(origDepto || '', origCiudad || '', ruta.tipoTrayecto, undefined, origDeptoId).totalTramo
+      : 0;
+
+    onChange({
+      ...ruta,
+      origenCiudad: destCiudad,
+      origenDepartamento: destDepto,
+      origenDepartamentoId: destDeptoId,
+      destinoCiudad: origCiudad,
+      destinoDepartamento: origDepto,
+      destinoDepartamentoId: origDeptoId,
+      tarifaTerminalAereo: tarifa,
+      guardada: false,
+    });
+    setSaved(false);
+    if (destDepto) void cargarCiudadesDepto(destDepto);
+    if (origDepto) void cargarCiudadesDepto(origDepto);
+  };
+
   const handleSave = () => {
     const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
@@ -524,13 +814,32 @@ function RutaForm({
           {editMode ? (
             <>
               {/* Bloque 1: Ubicación Origen y Destino */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Columna Origen */}
-                <div className="p-3.5 bg-slate-50/70 border border-slate-200/80 rounded-xl space-y-2.5">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 pb-1 border-b border-slate-200/60">
-                    <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Punto de Origen</span>
-                  </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-[#003DA5]" />
+                    Trayecto del Tramo {index + 1}
+                  </span>
+                  {itinerarioCompleto.length === 1 && (ruta.origenCiudad || ruta.destinoCiudad) && (
+                    <button
+                      type="button"
+                      onClick={intercambiarOrigenDestino}
+                      className="px-2.5 py-1 text-xs font-bold text-[#003DA5] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                      title="Invertir origen y destino de este tramo"
+                    >
+                      <ArrowLeftRight className="w-3.5 h-3.5" />
+                      <span>Invertir ruta (⇄ Swap)</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Columna Origen */}
+                  <div className="p-3.5 bg-slate-50/70 border border-slate-200/80 rounded-xl space-y-2.5">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 pb-1 border-b border-slate-200/60">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Punto de Origen</span>
+                    </div>
 
                   <div>
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">
@@ -625,8 +934,9 @@ function RutaForm({
                   </div>
                 </div>
               </div>
+            </div>
 
-              {/* Bloque 2: Fechas y Horario Militar de la Ruta */}
+            {/* Bloque 2: Fechas y Horario Militar de la Ruta */}
               <div className="p-4 bg-slate-50/70 border border-slate-200/80 rounded-2xl space-y-4">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-200/80 flex-wrap gap-2">
                   <div className="flex items-center gap-2">
@@ -652,15 +962,18 @@ function RutaForm({
                         value={ruta.fechaSalida ? String(ruta.fechaSalida).slice(0, 10) : ''}
                         onChange={(e) => {
                           const val = e.target.value;
-                          const nuevosDias = calcularDiasRuta(val, ruta.fechaLlegada);
+                          // Auto-sugerir misma fecha para llegada si está vacía o es menor
+                          const nuevaFechaLlegada = (!ruta.fechaLlegada || ruta.fechaLlegada < val) ? val : ruta.fechaLlegada;
+                          const nuevosDias = calcularDiasRuta(val, nuevaFechaLlegada);
                           onChange({
                             ...ruta,
                             fechaSalida: val,
+                            fechaLlegada: nuevaFechaLlegada,
                             ...(nuevosDias > 0 ? { diasRuta: nuevosDias } : {}),
                             guardada: false,
                           });
                           setSaved(false);
-                          setErrors((prev) => ({ ...prev, fechaSalida: undefined, secuencia: undefined }));
+                          setErrors((prev) => ({ ...prev, fechaSalida: undefined, fechaLlegada: undefined, secuencia: undefined }));
                         }}
                         min={rutaAnterior?.fechaLlegada ? String(rutaAnterior.fechaLlegada).slice(0, 10) : (rutaAnterior?.fechaSalida ? String(rutaAnterior.fechaSalida).slice(0, 10) : undefined)}
                         className={`w-full px-4 py-2.5 border rounded-xl text-sm sm:text-base text-slate-800 bg-white shadow-xs focus:outline-none focus:ring-2 focus:ring-[#003DA5] ${errors.fechaSalida || errors.secuencia ? 'border-red-300 bg-red-50' : 'border-slate-200'}`}
@@ -711,107 +1024,82 @@ function RutaForm({
                 </div>
 
                 {/* Aviso Destacado de Horario Militar */}
-                <div className="p-3 bg-gradient-to-r from-blue-50/90 via-sky-50/50 to-indigo-50/40 border border-blue-200/90 rounded-xl space-y-1">
-                  <div className="flex items-center gap-2 text-xs font-bold text-[#003DA5]">
-                    <Clock className="w-4 h-4 text-[#003DA5] shrink-0" />
-                    <span>Aviso: Horario de Rutas en Formato Militar (24 Horas)</span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 leading-relaxed">
-                    Las horas estimadas de salida y llegada deben seleccionarse en <strong>horario militar</strong> (de 00:00 a 23:45). Este campo indica exclusivamente la <u>hora</u> de desplazamiento y <strong>no sugiere ni admite fechas</strong> para evitar malas interpretaciones.
-                  </p>
+                <div className="flex items-center gap-2.5 px-3 py-2 bg-blue-50/70 border border-blue-200/80 rounded-xl text-xs text-slate-700 shadow-2xs">
+                  <Clock className="w-4 h-4 text-[#003DA5] shrink-0" />
+                  <span className="leading-snug text-[11px] sm:text-xs">
+                    <strong className="text-slate-900">Aviso: Horario de Rutas en Formato Militar (24 Horas)</strong> · Registro exclusivo de hora (no sugiere ni admite fechas).
+                  </span>
                 </div>
 
-                {/* Subsección 2: Selectores de Horario Militar */}
+                {/* Subsección 2: Selectores de Horario Militar y Duración Estimada */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                   <div>
                     <label className="text-xs sm:text-sm font-bold text-slate-700 flex items-center gap-1.5 mb-1.5">
                       <Clock className="w-3.5 h-3.5 text-[#003DA5]" /> Hora estimada salida <span className="text-red-500">*</span>
                     </label>
-                    <div className="relative">
-                      <select
-                        aria-label="Hora estimada salida"
-                        value={ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '08:00'}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          onChange({
-                            ...ruta,
-                            horaEstimadaSalida: val,
-                            horarioEstimadoMilitar: val,
-                            guardada: false,
-                          });
-                          setSaved(false);
-                          setErrors((prev) => ({ ...prev, horaEstimadaSalida: undefined, horarioEstimadoMilitar: undefined }));
-                        }}
-                        className={`w-full px-3 py-2.5 border rounded-xl text-xs sm:text-sm text-slate-800 bg-white shadow-xs focus:outline-none focus:ring-2 focus:ring-[#003DA5] font-mono tracking-wide cursor-pointer ${
-                          errors.horaEstimadaSalida ? 'border-red-300 bg-red-50' : 'border-slate-200'
-                        }`}
-                      >
-                        <option value="">-- Seleccione hora militar --</option>
-                        {opcionesSalida.map((franja) => (
-                          <optgroup key={franja.grupo} label={franja.grupo}>
-                            {franja.opciones.map((opt) => (
-                              <option key={opt.valor} value={opt.valor}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                    </div>
-                    {errors.horaEstimadaSalida ? (
-                      <p className="text-[10px] text-red-600 font-semibold mt-1">{errors.horaEstimadaSalida}</p>
-                    ) : (
-                      <p className="text-[10px] text-slate-500 flex items-center gap-1 mt-1 font-medium">
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        Horario militar (24h) · Sin fecha
-                      </p>
-                    )}
+                    <SelectorHoraMilitar
+                      ariaLabel="Hora estimada salida"
+                      valor={ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '08:00'}
+                      onChange={(val) => {
+                        onChange({
+                          ...ruta,
+                          horaEstimadaSalida: val,
+                          horarioEstimadoMilitar: val,
+                          guardada: false,
+                        });
+                        setSaved(false);
+                        setErrors((prev) => ({ ...prev, horaEstimadaSalida: undefined, horarioEstimadoMilitar: undefined }));
+                      }}
+                      error={errors.horaEstimadaSalida}
+                    />
                   </div>
 
                   <div>
                     <label className="text-xs sm:text-sm font-bold text-slate-700 flex items-center gap-1.5 mb-1.5">
                       <Clock className="w-3.5 h-3.5 text-[#003DA5]" /> Hora estimada llegada <span className="text-red-500">*</span>
                     </label>
-                    <div className="relative">
-                      <select
-                        aria-label="Hora estimada llegada"
-                        value={ruta.horaEstimadaLlegada || '14:30'}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          onChange({
-                            ...ruta,
-                            horaEstimadaLlegada: val,
-                            guardada: false,
-                          });
-                          setSaved(false);
-                          setErrors((prev) => ({ ...prev, horaEstimadaLlegada: undefined }));
-                        }}
-                        className={`w-full px-3 py-2.5 border rounded-xl text-xs sm:text-sm text-slate-800 bg-white shadow-xs focus:outline-none focus:ring-2 focus:ring-[#003DA5] font-mono tracking-wide cursor-pointer ${
-                          errors.horaEstimadaLlegada ? 'border-red-300 bg-red-50' : 'border-slate-200'
-                        }`}
-                      >
-                        <option value="">-- Seleccione hora militar --</option>
-                        {opcionesLlegada.map((franja) => (
-                          <optgroup key={franja.grupo} label={franja.grupo}>
-                            {franja.opciones.map((opt) => (
-                              <option key={opt.valor} value={opt.valor}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                    </div>
-                    {errors.horaEstimadaLlegada ? (
-                      <p className="text-[10px] text-red-600 font-semibold mt-1">{errors.horaEstimadaLlegada}</p>
-                    ) : (
-                      <p className="text-[10px] text-slate-500 flex items-center gap-1 mt-1 font-medium">
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        Horario militar (24h) · Sin fecha
-                      </p>
-                    )}
+                    <SelectorHoraMilitar
+                      ariaLabel="Hora estimada llegada"
+                      valor={ruta.horaEstimadaLlegada || '14:30'}
+                      onChange={(val) => {
+                        onChange({
+                          ...ruta,
+                          horaEstimadaLlegada: val,
+                          guardada: false,
+                        });
+                        setSaved(false);
+                        setErrors((prev) => ({ ...prev, horaEstimadaLlegada: undefined }));
+                      }}
+                      error={errors.horaEstimadaLlegada}
+                    />
                   </div>
                 </div>
+
+                {/* Duración estimada del trayecto */}
+                {(() => {
+                  const hSalida = ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar;
+                  const hLlegada = ruta.horaEstimadaLlegada;
+                  const duracion = calcularDuracionEstimada(hSalida, hLlegada);
+                  if (!duracion) return null;
+                  return (
+                    <div className="p-3 bg-gradient-to-r from-blue-50/90 via-indigo-50/40 to-slate-50 border border-blue-200/80 rounded-xl space-y-1.5 shadow-2xs">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-[#003DA5]" />
+                          Tiempo estimado de desplazamiento:
+                        </span>
+                        <span className="font-black text-[#003DA5] bg-white px-2.5 py-0.5 rounded-lg border border-blue-200 shadow-2xs">
+                          ⏱️ {duracion}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium pt-1 border-t border-blue-100/80">
+                        <span>Salida: <strong className="text-slate-900">{hSalida} h</strong> ({convertirA12h(hSalida || '')})</span>
+                        <span className="text-slate-300 font-bold text-xs">──────▶</span>
+                        <span>Llegada: <strong className="text-slate-900">{hLlegada} h</strong> ({convertirA12h(hLlegada || '')})</span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Bloque 3: Modalidad de Transporte */}
@@ -891,7 +1179,7 @@ function RutaForm({
                   </div>
                   <div className="flex items-center justify-between flex-wrap gap-2 text-[11px] text-slate-600 pt-1 border-t border-blue-100">
                     <span>
-                      Tarifa oficial por trayecto: <strong>{formatearMoneda(tarifaTerminalInfo.valorMaximoPorTrayecto)}</strong> ·{' '}
+                      Valor a reconocer máximo por trayecto: <strong>{formatearMoneda(tarifaTerminalInfo.valorMaximoPorTrayecto)}</strong> ·{' '}
                       {tarifaTerminalInfo.factorTrayecto === 2 ? 'Ida y Vuelta (x2)' : 'Solo Ida (x1)'}
                     </span>
                     <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
@@ -930,10 +1218,24 @@ function RutaForm({
                     type="button"
                     onClick={handleSave}
                     disabled={saving}
-                    className="px-4 py-2 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors shadow-xs disabled:opacity-50"
+                    className={`px-4 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50 ${
+                      ruta.origenCiudad && ruta.destinoCiudad && ruta.fechaSalida && ruta.fechaLlegada
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white ring-2 ring-emerald-200'
+                        : 'bg-[#003DA5] hover:bg-[#002b75] text-white'
+                    }`}
                   >
-                    {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                    <span>{saving ? 'Guardando...' : 'Guardar Tramo'}</span>
+                    {saving ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Save className="w-3.5 h-3.5" />
+                    )}
+                    <span>
+                      {saving
+                        ? 'Guardando...'
+                        : ruta.origenCiudad && ruta.destinoCiudad && ruta.fechaSalida && ruta.fechaLlegada
+                        ? '✓ Listo para Guardar Tramo'
+                        : 'Guardar Tramo'}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -1073,6 +1375,54 @@ export default function ItinerarioBuilder({
     onChange([...itinerario, nuevaRuta]);
   }, [itinerario, onChange, cargarCiudadesDepto]);
 
+  const agregarTramoRegreso = useCallback(() => {
+    const primerTramo = itinerario[0];
+    const ultimoTramo = itinerario[itinerario.length - 1];
+    if (!primerTramo || !ultimoTramo?.destinoCiudad) return;
+
+    const ciudadSalidaRegreso = ultimoTramo.destinoCiudad;
+    const deptoSalidaRegreso = ultimoTramo.destinoDepartamento;
+    const deptoIdSalidaRegreso = ultimoTramo.destinoDepartamentoId ?? null;
+
+    const ciudadDestinoRegreso = primerTramo.origenCiudad || '';
+    const deptoDestinoRegreso = primerTramo.origenDepartamento || '';
+    const deptoIdDestinoRegreso = primerTramo.origenDepartamentoId ?? null;
+
+    const fechaSalidaRegreso = ultimoTramo.fechaLlegada || ultimoTramo.fechaSalida || '';
+
+    const tarifa = ultimoTramo.tipoTransporte === 'AEREO'
+      ? calcularTarifaTerminalAereoRuta(deptoDestinoRegreso, ciudadDestinoRegreso, 'SOLO_IDA', undefined, deptoIdDestinoRegreso).totalTramo
+      : 0;
+
+    const nuevoTramo: RutaItinerario = {
+      id: generarId(),
+      origenCiudad: ciudadSalidaRegreso,
+      origenDepartamento: deptoSalidaRegreso,
+      origenDepartamentoId: deptoIdSalidaRegreso,
+      destinoCiudad: ciudadDestinoRegreso,
+      destinoDepartamento: deptoDestinoRegreso,
+      destinoDepartamentoId: deptoIdDestinoRegreso,
+      tipoTrayecto: 'SOLO_IDA',
+      fechaSalida: fechaSalidaRegreso,
+      fechaLlegada: fechaSalidaRegreso,
+      diasRuta: 1,
+      horarioEstimadoMilitar: '14:00',
+      horaEstimadaSalida: '14:00',
+      horaEstimadaLlegada: '16:00',
+      tipoTransporte: ultimoTramo.tipoTransporte || 'TERRESTRE',
+      valorTransporte: ultimoTramo.valorTransporte || 0,
+      montoTransporteTerrestre: ultimoTramo.montoTransporteTerrestre || 0,
+      tarifaTerminalAereo: tarifa,
+      requiereTiquete: ultimoTramo.requiereTiquete || false,
+      guardada: false,
+    };
+
+    if (deptoSalidaRegreso) void cargarCiudadesDepto(deptoSalidaRegreso);
+    if (deptoDestinoRegreso) void cargarCiudadesDepto(deptoDestinoRegreso);
+
+    onChange([...itinerario, nuevoTramo]);
+  }, [itinerario, onChange, cargarCiudadesDepto]);
+
   const actualizarRuta = useCallback(
     (rutaActualizada: RutaItinerario) => {
       const actualizado = itinerario.map((r) =>
@@ -1122,15 +1472,84 @@ export default function ItinerarioBuilder({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={agregarRuta}
-          className="px-3.5 py-2 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors shadow-xs"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Agregar Tramo</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {itinerario.length === 1 && Boolean(itinerario[0]?.destinoCiudad) && (
+            <button
+              type="button"
+              onClick={agregarTramoRegreso}
+              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+              title="Crea automáticamente el tramo de retorno invirtiendo origen y destino"
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5" />
+              <span>+ Tramo de Regreso</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={agregarRuta}
+            className="px-3.5 py-2 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Agregar Tramo</span>
+          </button>
+        </div>
       </div>
+
+      {/* ========== TIMELINE VISUAL DE LA RUTA ========== */}
+      {itinerario.some((r) => r.origenCiudad || r.destinoCiudad) && (
+        <div className="my-3 p-4 sm:p-5 bg-gradient-to-r from-slate-50/90 via-white to-blue-50/30 border border-slate-200/90 rounded-2xl shadow-xs overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-max py-1 px-1 pr-8">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1.5 shrink-0">
+              <Route className="w-3.5 h-3.5 text-[#003DA5]" />
+              Recorrido:
+            </span>
+            {itinerario.map((r, i) => {
+              const iconTransporte =
+                r.tipoTransporte === 'AEREO'
+                  ? '✈️'
+                  : r.tipoTransporte === 'MARITIMO'
+                  ? '🚢'
+                  : r.tipoTransporte === 'FLUVIAL'
+                  ? '🚤'
+                  : r.tipoTransporte === 'FERROVIARIO'
+                  ? '🚆'
+                  : '🚌';
+              return (
+                <div key={r.id} className="flex items-center gap-2 shrink-0">
+                  {i === 0 && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50/90 border border-blue-200 text-blue-950 font-bold text-xs shadow-2xs">
+                      <MapPin className="w-3.5 h-3.5 text-[#003DA5]" />
+                      <span>{r.origenCiudad || 'Origen'}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-1 px-1">
+                    <span className="text-xs text-slate-300 font-bold">───</span>
+                    <span
+                      className="p-1 rounded-lg bg-white border border-slate-200 text-xs shadow-2xs"
+                      title={r.tipoTransporte ? `Transporte: ${r.tipoTransporte}` : 'Transporte: Terrestre'}
+                    >
+                      {iconTransporte}
+                    </span>
+                    <span className="text-xs text-slate-300 font-bold">──▶</span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200/90 text-slate-900 font-bold text-xs shadow-2xs hover:border-slate-300 transition-colors">
+                    <MapPin className="w-3.5 h-3.5 text-slate-600" />
+                    <span>{r.destinoCiudad || 'Destino'}</span>
+                    {r.fechaSalida && (
+                      <span className="text-[10px] text-slate-500 font-medium ml-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                        {r.fechaSalida}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Banner explicativo amigable de configuración por trayectos */}
       <div className="p-4 bg-gradient-to-r from-blue-50/90 via-sky-50/50 to-indigo-50/60 border border-blue-200/80 rounded-2xl flex items-start gap-3.5 shadow-2xs">
