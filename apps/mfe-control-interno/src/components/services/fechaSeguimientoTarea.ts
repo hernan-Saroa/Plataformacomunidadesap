@@ -1,3 +1,5 @@
+import { esTareaDelProgramaAnual } from './cortesPlanAnual';
+
 /**
  * Fecha de seguimiento de una tarea del Plan Anual (EFDS-1542).
  *
@@ -6,8 +8,14 @@
  * 2. la fecha de entrega o límite con la que se programó la tarea;
  * 3. la del corte (punto de control) al que está vinculada la tarea;
  * 4. la fecha de corte de la actividad.
+ *
+ * Las tareas del Rol 4 que genera el Programa Anual muestran la fecha fin de su
+ * auditoría, tal como quedó en la programación (EFDS-2237).
  */
 export function fechaSeguimientoTarea(actividad: any, tarea?: any): string {
+  if (esTareaDelProgramaAnual(tarea) && (tarea?.fechaLimite || tarea?.fecha_limite)) {
+    return tarea.fechaLimite || tarea.fecha_limite;
+  }
   const puntos = actividad?.puntosControl || actividad?.puntos_control || [];
   const puntoId = tarea?.puntoControlId || tarea?.punto_control_id;
   const punto = Array.isArray(puntos) && puntoId
