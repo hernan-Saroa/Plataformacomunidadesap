@@ -474,3 +474,111 @@ describe('Preservación de hora de salida y llegada en itinerario', () => {
   });
 });
 
+describe('obtenerAyudaValidacionDocumento', () => {
+  const mockComisionado: any = {
+    id: 'com-1',
+    numeroDocumento: '10203040',
+    primerNombre: 'Ana',
+    segundoNombre: 'María',
+    primerApellido: 'Gómez',
+    segundoApellido: 'Pérez',
+    tipoComisionado: 'CONTRATISTA',
+  };
+
+  const mockForm: any = {
+    numeroCdp: 'CDP-2026-999',
+    fechaCdp: '2026-09-20',
+    rubroPresupuestal: '2.1.2.02.02',
+    montoViaticos: 500000,
+    montoGastosViaje: 150000,
+    fechaInicio: '2026-10-01',
+    fechaFin: '2026-10-05',
+    diasComision: 5,
+    camposAdicionales: {
+      numeroContrato: 'CO1.PCONT.1234567',
+      cuentaBancaria: '9876543210',
+      banco: 'Banco de Bogotá',
+    },
+  };
+
+  it('genera ayuda visual para CERT_BANCARIA con límite de 90 días y datos bancarios contrastados', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const ayuda = obtenerAyudaValidacionDocumento('CERT_BANCARIA', null, {
+      form: mockForm,
+      comisionado: mockComisionado,
+    });
+
+    expect(ayuda).not.toBeNull();
+    expect(ayuda?.titulo).toBe('Pauta de Validación');
+    expect(ayuda?.instruccion).toContain('90 días');
+    expect(ayuda?.datosAContrastar.some((d) => d.valor.includes('9876543210'))).toBe(true);
+    expect(ayuda?.datosAContrastar.some((d) => d.valor.includes('Banco de Bogotá'))).toBe(true);
+    expect(ayuda?.datosAContrastar.some((d) => d.valor.includes('Ana María Gómez Pérez'))).toBe(true);
+  });
+
+  it('genera ayuda visual para RUT exigiendo vigencia del año en curso', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const anioActual = new Date().getFullYear();
+    const ayuda = obtenerAyudaValidacionDocumento('RUT', null, {
+      form: mockForm,
+      comisionado: mockComisionado,
+    });
+
+    expect(ayuda).not.toBeNull();
+    expect(ayuda?.titulo).toBe('Pauta de Validación');
+    expect(ayuda?.instruccion).toContain(String(anioActual));
+    expect(ayuda?.datosAContrastar.some((d) => d.valor.includes('10203040'))).toBe(true);
+  });
+
+  it('genera ayuda visual para SEGURIDAD_SOCIAL contrastando las fechas de la comisión', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const ayuda = obtenerAyudaValidacionDocumento('SEGURIDAD_SOCIAL', null, {
+      form: mockForm,
+      comisionado: mockComisionado,
+    });
+
+    expect(ayuda).not.toBeNull();
+    expect(ayuda?.titulo).toBe('Pauta de Validación');
+    expect(ayuda?.datosAContrastar.some((d) => d.valor.includes('2026-10-01 al 2026-10-05'))).toBe(true);
+  });
+
+  it('genera ayuda visual para CONTRATO_SECOP contrastando el número de contrato ingresado', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const ayuda = obtenerAyudaValidacionDocumento('CONTRATO_SECOP', null, {
+      form: mockForm,
+      comisionado: mockComisionado,
+    });
+
+    expect(ayuda).not.toBeNull();
+    expect(ayuda?.titulo).toBe('Pauta de Validación');
+    expect(ayuda?.datosAContrastar.some((d) => d.valor === 'CO1.PCONT.1234567')).toBe(true);
+  });
+
+  it('genera ayuda visual para CDP contrastando únicamente el número y la fecha (sin rubro ni saldo)', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const ayuda = obtenerAyudaValidacionDocumento('CDP', null, {
+      form: mockForm,
+      comisionado: mockComisionado,
+    });
+
+    expect(ayuda).not.toBeNull();
+    expect(ayuda?.titulo).toBe('Pauta de Validación');
+    expect(ayuda?.datosAContrastar.some((d) => d.valor === 'CDP-2026-999')).toBe(true);
+    expect(ayuda?.datosAContrastar.some((d) => d.valor === '2026-09-20')).toBe(true);
+    // Verificar que no incluye rubro ni saldo/presupuesto
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta.includes('Rubro'))).toBe(false);
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta.includes('liquidado'))).toBe(false);
+  });
+
+  it('prioriza las instrucciones parametrizadas en backend si se proporcionan', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const ayuda = obtenerAyudaValidacionDocumento('CDP', 'Instrucción personalizada desde base de datos', {
+      form: mockForm,
+      comisionado: mockComisionado,
+    });
+
+    expect(ayuda?.instruccion).toBe('Instrucción personalizada desde base de datos');
+  });
+});
+
+

@@ -2162,11 +2162,13 @@ if (dto.costoEstimadoTiquete !== undefined) {
       codigo: string;
       nombre: string;
       descripcion: string | null;
+      instruccionesValidacion?: string | null;
     }>;
     opcionales: Array<{
       codigo: string;
       nombre: string;
       descripcion: string | null;
+      instruccionesValidacion?: string | null;
     }>;
   }> {
     const config =
@@ -2183,6 +2185,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
         codigo: d.codigo,
         nombre: d.nombre,
         descripcion: d.descripcion,
+        instruccionesValidacion: (d as any).instruccionesValidacion ?? null,
       }));
 
     const opcionales = config.documentos
@@ -2193,6 +2196,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
         codigo: d.codigo,
         nombre: d.nombre,
         descripcion: d.descripcion,
+        instruccionesValidacion: (d as any).instruccionesValidacion ?? null,
       }));
 
     return { obligatorios, opcionales };

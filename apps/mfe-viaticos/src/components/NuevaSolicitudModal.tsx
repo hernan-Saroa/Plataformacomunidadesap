@@ -70,6 +70,7 @@ import {
   inferirTipoMime,
   formInicialNuevaSolicitud,
   mapearARequestCreacion,
+  obtenerAyudaValidacionDocumento,
   sanitizeObjetoComision,
   soloNumeros,
   sincronizarItinerarioFormulario,
@@ -189,7 +190,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [cargandoParametrizacion, setCargandoParametrizacion] = useState(false);
   const [documentosFaltantes, setDocumentosFaltantes] = useState<string[]>([]);
   const [solicitudBorrador, setSolicitudBorrador] = useState<SolicitudComisionResponse | null>(null);
-  const [checklist, setChecklist] = useState<{ obligatorios: Array<{ codigo: string; nombre: string; descripcion: string | null }>; opcionales: Array<{ codigo: string; nombre: string; descripcion: string | null }> } | null>(null);
+  const [checklist, setChecklist] = useState<{
+    obligatorios: Array<{ codigo: string; nombre: string; descripcion: string | null; instruccionesValidacion?: string | null }>;
+    opcionales: Array<{ codigo: string; nombre: string; descripcion: string | null; instruccionesValidacion?: string | null }>;
+  } | null>(null);
   const [cargandoChecklist, setCargandoChecklist] = useState(false);
   const [subiendoDocs, setSubiendoDocs] = useState(false);
   const [errorDocumentos, setErrorDocumentos] = useState<string | null>(null);
@@ -2427,8 +2431,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     const cargados = documentosCargados(doc.codigo);
                     const faltan = cargados.length === 0;
                     const noPdf = cargados.some((d) => !esPdfMime(d.tipoMime || ''));
+                    const ayuda = obtenerAyudaValidacionDocumento(doc.codigo, doc.instruccionesValidacion, {
+                      form,
+                      comisionado,
+                    });
+                    const esAlerta = ayuda?.badgeTipo === 'alert';
+                    const esWarning = ayuda?.badgeTipo === 'warning';
+
                     return (
-                      <div key={doc.codigo} className="border border-slate-200 rounded-xl p-3">
+                      <div key={doc.codigo} className="border border-slate-200 rounded-xl p-3 bg-white shadow-2xs hover:border-blue-200 transition-colors">
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <p className="font-semibold text-slate-800 text-xs">{doc.nombre}</p>
@@ -2471,8 +2482,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             </div>
                           )}
                         </div>
+
                         {cargados.map((d) => (
-                          <div key={d.id} className="flex items-center justify-between gap-2 mt-1">
+                          <div key={d.id} className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-100">
                             <p className="text-[10px] text-slate-500 truncate">
                               {d.nombreArchivoOriginal} · {d.tipoMime}
                             </p>
@@ -2481,12 +2493,85 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                               title="Previsualizar PDF"
                               aria-label="Previsualizar documento"
                               onClick={() => abrirPrevisualizacion(d)}
-                              className="p-1 rounded-md text-[#003DA5] hover:bg-blue-50 transition-colors shrink-0"
+                              className="p-1 rounded-md text-[#003DA5] hover:bg-blue-50 transition-colors shrink-0 inline-flex items-center gap-1 text-[10px] font-medium"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5" /> Ver PDF
                             </button>
                           </div>
                         ))}
+
+                        {ayuda && (
+                          <div
+                            className={`mt-2.5 rounded-xl p-3 border text-xs transition-colors ${
+                              esAlerta
+                                ? 'bg-amber-50/70 border-amber-200/90 text-amber-950'
+                                : esWarning
+                                ? 'bg-sky-50/70 border-sky-200/90 text-slate-800'
+                                : 'bg-slate-50/90 border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <div
+                                className={`p-1.5 rounded-lg shrink-0 ${
+                                  esAlerta
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : esWarning
+                                    ? 'bg-sky-100 text-[#003DA5]'
+                                    : 'bg-slate-200 text-slate-700'
+                                }`}
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="space-y-1.5 flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <span className="font-bold text-[10px] uppercase tracking-wider text-slate-500">
+                                    Pauta de validación
+                                  </span>
+                                  {ayuda.notaAlerta && (
+                                    <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-300/60">
+                                      {ayuda.notaAlerta}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p className="text-[11px] text-slate-700 leading-snug">
+                                  {ayuda.instruccion}
+                                </p>
+
+                                {ayuda.datosAContrastar.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-slate-200/80">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1">
+                                      <Search className="w-3 h-3 text-[#003DA5]" />
+                                      Datos registrados en el sistema para contrastar:
+                                    </p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                      {ayuda.datosAContrastar.map((item, idx) => (
+                                        <div
+                                          key={idx}
+                                          className="bg-white/95 border border-slate-200/90 rounded-lg px-2.5 py-1.5 shadow-2xs flex flex-col"
+                                        >
+                                          <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-tight">
+                                            {item.etiqueta}
+                                          </span>
+                                          <span className="text-[11px] font-bold text-slate-800 truncate" title={item.valor}>
+                                            {item.valor}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {!faltan && (
+                                  <div className="mt-2 pt-1.5 border-t border-slate-200/70 flex items-center gap-1.5 text-[10px] text-emerald-700 font-medium">
+                                    <CheckCircle className="w-3 h-3 shrink-0" />
+                                    Soporte cargado. Verifica en la previsualización del PDF que los datos coincidan fielmente.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2500,12 +2585,22 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   {checklist.opcionales.map((doc) => {
                     const cargados = documentosCargados(doc.codigo);
                     const faltan = cargados.length === 0;
+                    const ayuda = obtenerAyudaValidacionDocumento(doc.codigo, doc.instruccionesValidacion, {
+                      form,
+                      comisionado,
+                    });
+                    const esAlerta = ayuda?.badgeTipo === 'alert';
+                    const esWarning = ayuda?.badgeTipo === 'warning';
+
                     return (
-                      <div key={doc.codigo} className="border border-slate-200 rounded-xl p-3">
+                      <div key={doc.codigo} className="border border-slate-200 rounded-xl p-3 bg-white shadow-2xs hover:border-blue-200 transition-colors">
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <p className="font-semibold text-slate-800 text-xs">{doc.nombre}</p>
                             <p className="text-[10px] text-slate-400">{doc.codigo}</p>
+                            {doc.descripcion && (
+                              <p className="text-[10px] text-slate-400">{doc.descripcion}</p>
+                            )}
                           </div>
                           {faltan ? (
                             <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shrink-0">
@@ -2538,8 +2633,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             </div>
                           )}
                         </div>
+
                         {cargados.map((d) => (
-                          <div key={d.id} className="flex items-center justify-between gap-2 mt-1">
+                          <div key={d.id} className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-100">
                             <p className="text-[10px] text-slate-500 truncate">
                               {d.nombreArchivoOriginal} · {d.tipoMime}
                             </p>
@@ -2548,12 +2644,85 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                               title="Previsualizar PDF"
                               aria-label="Previsualizar documento"
                               onClick={() => abrirPrevisualizacion(d)}
-                              className="p-1 rounded-md text-[#003DA5] hover:bg-blue-50 transition-colors shrink-0"
+                              className="p-1 rounded-md text-[#003DA5] hover:bg-blue-50 transition-colors shrink-0 inline-flex items-center gap-1 text-[10px] font-medium"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5" /> Ver PDF
                             </button>
                           </div>
                         ))}
+
+                        {ayuda && (
+                          <div
+                            className={`mt-2.5 rounded-xl p-3 border text-xs transition-colors ${
+                              esAlerta
+                                ? 'bg-amber-50/70 border-amber-200/90 text-amber-950'
+                                : esWarning
+                                ? 'bg-sky-50/70 border-sky-200/90 text-slate-800'
+                                : 'bg-slate-50/90 border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <div
+                                className={`p-1.5 rounded-lg shrink-0 ${
+                                  esAlerta
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : esWarning
+                                    ? 'bg-sky-100 text-[#003DA5]'
+                                    : 'bg-slate-200 text-slate-700'
+                                }`}
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="space-y-1.5 flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <span className="font-bold text-[10px] uppercase tracking-wider text-slate-500">
+                                    Pauta de validación
+                                  </span>
+                                  {ayuda.notaAlerta && (
+                                    <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-300/60">
+                                      {ayuda.notaAlerta}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p className="text-[11px] text-slate-700 leading-snug">
+                                  {ayuda.instruccion}
+                                </p>
+
+                                {ayuda.datosAContrastar.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-slate-200/80">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1">
+                                      <Search className="w-3 h-3 text-[#003DA5]" />
+                                      Datos registrados en el sistema para contrastar:
+                                    </p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                      {ayuda.datosAContrastar.map((item, idx) => (
+                                        <div
+                                          key={idx}
+                                          className="bg-white/95 border border-slate-200/90 rounded-lg px-2.5 py-1.5 shadow-2xs flex flex-col"
+                                        >
+                                          <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-tight">
+                                            {item.etiqueta}
+                                          </span>
+                                          <span className="text-[11px] font-bold text-slate-800 truncate" title={item.valor}>
+                                            {item.valor}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {!faltan && (
+                                  <div className="mt-2 pt-1.5 border-t border-slate-200/70 flex items-center gap-1.5 text-[10px] text-emerald-700 font-medium">
+                                    <CheckCircle className="w-3 h-3 shrink-0" />
+                                    Soporte cargado. Verifica en la previsualización del PDF que los datos coincidan fielmente.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}

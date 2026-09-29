@@ -557,6 +557,7 @@ export interface ChecklistDocumento {
   codigo: string;
   nombre: string;
   descripcion: string | null;
+  instruccionesValidacion?: string | null;
 }
 
 export interface ChecklistDocumentosResponse {
