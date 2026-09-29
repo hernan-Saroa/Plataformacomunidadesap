@@ -16,7 +16,25 @@ export interface HumanResourcesSuggestedPerson {
   phone?: string | null;
   monthly_salary?: number | null;
   status?: string | null;
+  hiring_date?: string | null;
+  contract_end_date?: string | null;
+  source_dates?: {
+    fecha_creacion?: string | null;
+    fecha_ingreso?: string | null;
+    fecha_retiro?: string | null;
+  };
+  source_fields?: {
+    tipo_vinculacion?: string | null;
+    tipo_acto_administrativo?: string | null;
+    dependencia?: string | null;
+    sucursal?: string | null;
+    centro_costo?: string | null;
+    nivel_jerarquico?: string | null;
+    grupo_interno?: string | null;
+  };
+  raw?: Record<string, any>;
 }
+
 
 export interface HumanResourcesLookupResult {
   ok: boolean;
@@ -94,8 +112,28 @@ export class HumanResourcesClientService {
       this.logger.log(
         `[HumanResourcesClient] Documento ${docLimpio} encontrado: ${sugerido.full_name}`,
       );
-      return sugerido;
+      const raw = primerRegistro.raw || {};
+      const fechaFin =
+        sugerido.source_dates?.fecha_retiro ||
+        raw.FECHA_RETIRO ||
+        raw.fecha_retiro ||
+        null;
+      const fechaInicio =
+        sugerido.source_dates?.fecha_ingreso ||
+        sugerido.hiring_date ||
+        raw.FECHA_INGRESO ||
+        raw.fecha_ingreso ||
+        null;
+      const salario = sugerido.monthly_salary ?? raw.SUELDO_BASICO ?? null;
+      return {
+        ...sugerido,
+        contract_end_date: fechaFin,
+        hiring_date: fechaInicio,
+        monthly_salary: salario != null ? Number(salario) : null,
+        raw,
+      };
     }
+
 
     this.logger.warn(
       `[HumanResourcesClient] Sin id_number válido para documento ${docLimpio}`,

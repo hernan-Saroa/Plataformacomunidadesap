@@ -7,14 +7,24 @@ export interface CapacidadRol {
   horasMensualesDisponibles: number;
 }
 
+// Roles de Asignar Profesional (EFDS-2197). El Aprobador Plan Anual no audita: usa la del Auditor.
 export const CAPACIDADES_POR_DEFECTO: CapacidadRol[] = [
-  { rol: 'Jefe OCIG', capacidadMaximaAuditorias: 2, horasMensualesDisponibles: 80 },
-  { rol: 'Auditor Líder', capacidadMaximaAuditorias: 4, horasMensualesDisponibles: 150 },
+  { rol: 'Jefe OCI', capacidadMaximaAuditorias: 2, horasMensualesDisponibles: 80 },
   { rol: 'Auditor', capacidadMaximaAuditorias: 3, horasMensualesDisponibles: 120 },
-  { rol: 'Auditor Júnior', capacidadMaximaAuditorias: 2, horasMensualesDisponibles: 100 },
-  { rol: 'Apoyo Técnico', capacidadMaximaAuditorias: 1, horasMensualesDisponibles: 60 },
-  { rol: 'Profesional OCI', capacidadMaximaAuditorias: 3, horasMensualesDisponibles: 120 },
 ];
+
+/**
+ * Lo guardado en el navegador puede traer los nombres de rol anteriores
+ * (Jefe OCIG, Auditor Líder…): se pasan al rol actual y queda uno por rol.
+ */
+function normalizarCapacidadesGuardadas(guardadas: CapacidadRol[]): CapacidadRol[] {
+  const porRol = new Map<string, CapacidadRol>();
+  for (const c of guardadas) {
+    const rol = String(normalizarRolOcigOperativo(c.rol));
+    if (!porRol.has(rol)) porRol.set(rol, { ...c, rol });
+  }
+  return [...porRol.values()];
+}
 
 const LOCAL_STORAGE_KEY = '@esap/control-interno/capacidades-roles';
 
@@ -28,7 +38,7 @@ export function useConfiguracionCapacidadesGlobales() {
       const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (stored) {
         const parsed: CapacidadRol[] = JSON.parse(stored);
-        setCapacidadesRoles(parsed);
+        setCapacidadesRoles(normalizarCapacidadesGuardadas(parsed));
       } else {
         setCapacidadesRoles(CAPACIDADES_POR_DEFECTO);
       }

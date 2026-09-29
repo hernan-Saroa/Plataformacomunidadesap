@@ -32,12 +32,14 @@ export default function SearchableSelect({
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const selected = options.find(
+  const validOptions = (options || []).filter((o) => Boolean(o && (o.value || o.label)));
+
+  const selected = validOptions.find(
     (o) => o.value === value || (Boolean(value) && o.value?.trim().toLowerCase() === value?.trim().toLowerCase())
   );
-  const displayLabel = selected ? selected.label : (value || placeholder);
+  const displayLabel = selected ? (selected.label || selected.value) : (value || placeholder);
 
-  const filtered = options.filter((o) =>
+  const filtered = validOptions.filter((o) =>
     (o.label || '').toLowerCase().includes(query.toLowerCase()) ||
     (o.value || '').toLowerCase().includes(query.toLowerCase())
   );
@@ -108,7 +110,7 @@ export default function SearchableSelect({
                   onMouseDown={(e) => { e.preventDefault(); handleSelect(option.value); }} onClick={() => handleSelect(option.value)}
                   className={`w-full text-left px-3.5 py-2.5 text-sm hover:bg-blue-50 transition-colors ${option.value === value ? 'bg-blue-50 text-[#003DA5] font-bold' : 'text-slate-700'}`}
                 >
-                  {option.label}
+                  {option.label || option.value}
                 </button>
               ))
             )}

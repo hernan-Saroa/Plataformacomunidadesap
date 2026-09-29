@@ -19,6 +19,9 @@ export enum TipoTrayecto {
 export enum TipoTransporte {
   AEREO = 'AEREO',
   TERRESTRE = 'TERRESTRE',
+  MARITIMO = 'MARITIMO',
+  FLUVIAL = 'FLUVIAL',
+  FERROVIARIO = 'FERROVIARIO',
 }
 
 export class RutaItinerarioDto {
@@ -52,11 +55,34 @@ export class RutaItinerarioDto {
   @Min(0)
   diasRuta: number;
 
+  @IsOptional()
   @IsString()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
     message: 'horarioEstimadoMilitar debe estar en formato HH:mm (ej. 07:30, 14:45)',
   })
-  horarioEstimadoMilitar: string;
+  horarioEstimadoMilitar?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'horaEstimadaSalida debe estar en formato HH:mm (ej. 07:30, 14:45)',
+  })
+  horaEstimadaSalida?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
+    message: 'horaEstimadaLlegada debe estar en formato HH:mm (ej. 07:30, 14:45)',
+  })
+  horaEstimadaLlegada?: string;
+
+  @IsOptional()
+  @IsString()
+  horaSalida?: string;
+
+  @IsOptional()
+  @IsString()
+  horaLlegada?: string;
 
   @IsOptional()
   @IsEnum(TipoTransporte)
@@ -65,4 +91,19 @@ export class RutaItinerarioDto {
   @IsOptional()
   @IsBoolean()
   requiereTiquete?: boolean;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  tarifaTerminalAereo?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  montoTransporteTerrestre?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  valorTransporte?: number;
 }

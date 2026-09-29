@@ -136,9 +136,9 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
     expect(assignment).not.toHaveProperty('certificate_dependency');
   });
 
-  it('la consulta y el cruce de funciones usan grupo normal con codigo y grado del encargo', async () => {
+  it('la consulta y emisión asocian por identificación sin cambiar el contexto del encargo', async () => {
     const profile = {
-      id: 'perfil', combined_code: '202812', position_code: '2028', grade_code: '12',
+      id: 'perfil', id_number: normal().id_number, combined_code: '202812', position_code: '2028', grade_code: '12',
       is_active: true, position_name: 'Profesional Especializado', hierarchical_level: 'Profesional',
       department_name: normal().organization_department, internal_group: normal().internal_group,
       functions: [{ ordinal: 1, description: 'Funcion del perfil aplicable' }],
@@ -151,12 +151,7 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
     const result = await functions.lookupPerson('123', {
       selectPreferred: rows => service.resolveRequestUsedForCertificate(rows),
     });
-    expect(result.items[0].certificate_dependency).toBe(normal().department);
-    expect(result.items[0].matrix).toMatchObject({
-      combined_code: '202812', grade_code: '12',
-      department_name: normal().organization_department,
-      internal_group: normal().internal_group,
-    });
+    expect(result.items[0].id_number).toBe(normal().id_number);
     expect(result.items[0].matched_profile?.id).toBe('perfil');
     const selected = service.resolveRequestUsedForCertificate([normal(), encargo()])!;
     expect((await functions.resolveForRequest(selected)).profile?.id).toBe('perfil');
@@ -173,7 +168,7 @@ describe('[DEPENDENCIA] de la vinculacion normal durante un encargo', () => {
 
   it.each(['local', 'oracle', 'mixto'] as const)('el certificado conserva el contexto de la normal sin un cruce masivo (%s)', async source => {
     const profile = {
-      id: 'perfil', combined_code: '202812', position_code: '2028', grade_code: '12',
+      id: 'perfil', id_number: normal().id_number, combined_code: '202812', position_code: '2028', grade_code: '12',
       is_active: true, position_name: 'Profesional Especializado', hierarchical_level: 'Profesional',
       department_name: normal().organization_department, internal_group: normal().internal_group,
       functions: [{ ordinal: 1, description: 'Funcion aplicable' }],

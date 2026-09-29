@@ -165,21 +165,25 @@ export function BannerVersionProgramaAnual({ vigencia, puedeGestionar = true }: 
   if (!estado) return null;
 
   const actual = estado.versionActual;
-  // Modificar el programa activa el ajuste aunque nadie lo haya iniciado.
+  // Las versiones nacen con la aprobación del Plan Anual: antes el programa está en
+  // elaboración y se modifica sin versionar. Ya aprobado, modificarlo abre el ajuste
+  // aunque nadie lo haya iniciado, y solo "Generar versión" crea la siguiente.
+  const planAprobado = estado.planAprobado !== false;
   const enAjuste = Boolean(actual) && (Boolean(estado.enAjuste) || estado.cambiosPendientes > 0);
   const vigente = Boolean(actual) && !enAjuste;
-  const puedeGenerar = !actual || enAjuste;
+  const puedeGenerar = planAprobado && Boolean(actual) && enAjuste;
 
-  const titulo = `Versión actual: ${etiquetaVersion(actual?.version ?? 1)}`;
+  const titulo = actual ? `Versión actual: ${etiquetaVersion(actual.version)}` : 'Programa en elaboración';
   let etiqueta = 'Borrador';
-  let detalle = 'Aún no se ha generado una versión formal · sin fecha de publicación';
+  let detalle = planAprobado
+    ? 'Aún no se ha generado una versión formal · sin fecha de publicación'
+    : 'Se modifica libremente mientras el Plan Anual no esté aprobado · la versión 1 se genera al aprobarlo';
   if (actual && enAjuste) {
     etiqueta = 'En ajuste';
     detalle =
-      (estado.enAjuste
-        ? `Ajuste iniciado el ${fecha(estado.enAjuste.iniciadoEn)} por ${estado.enAjuste.iniciadoPor}`
-        : 'Hay modificaciones del programa sin versionar') +
-      ` · ${estado.cambiosPendientes} cambio(s) sin versionar · borrador de la ${etiquetaVersion(actual.version + 1)}`;
+      (estado.cambiosPendientes > 0
+        ? `Se hicieron ${estado.cambiosPendientes} cambio(s) después de la ${etiquetaVersion(actual.version)} · genere la ${etiquetaVersion(actual.version + 1)} para oficializarlos`
+        : `Ajuste iniciado el ${fecha(estado.enAjuste!.iniciadoEn)} por ${estado.enAjuste!.iniciadoPor} · aún sin cambios`);
   } else if (actual) {
     etiqueta = 'Vigente';
     detalle =
@@ -241,7 +245,7 @@ export function BannerVersionProgramaAnual({ vigencia, puedeGestionar = true }: 
               disabled={procesando}
               className="px-4 py-2 bg-[#003DA5] hover:bg-[#1e5da8] text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-50"
             >
-              Generar versión
+              Generar {actual ? etiquetaVersion(actual.version + 1) : 'versión'}
             </button>
           )}
         </div>

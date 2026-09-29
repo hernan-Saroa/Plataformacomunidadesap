@@ -1,6 +1,7 @@
 export type EstadoSolicitudViatico =
   | 'BORRADOR'
   | 'PENDIENTE'
+  | 'PENDIENTE_FIRMAS'
   | 'SOLICITADO'
   | 'APROBADO_JEFE'
   | 'APROBADO_TALENTO_HUMANO'
@@ -22,7 +23,8 @@ export type EstadoSolicitudViatico =
   | 'CANCELADA'
   | 'EN_PRESUPUESTO'
   | 'COMPROMETIDA'
-  | 'OBLIGADA';
+  | 'OBLIGADA'
+  | 'PAGADA';
 
 export type TipoComision =
   | 'SERVICIOS_INSTITUCIONALES'
@@ -58,7 +60,9 @@ export interface RutaItinerario {
   horarioEstimadoMilitar: string; // HH:mm militar, ej: 08:30, 14:00
   horaEstimadaSalida?: string;
   horaEstimadaLlegada?: string;
-  tipoTransporte?: 'AEREO' | 'TERRESTRE';
+  tipoTransporte?: 'AEREO' | 'TERRESTRE' | 'MARITIMO' | 'FLUVIAL' | 'FERROVIARIO' | string;
+  valorTransporte?: number;
+  montoTransporteTerrestre?: number;
   requiereTiquete?: boolean;
   tarifaTerminalAereo?: number;
   guardada?: boolean;
@@ -88,6 +92,21 @@ export interface FormNuevaSolicitud {
   documentos?: DocumentoFormItem[];
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
+  idDependencia?: number | null;
+  diasPernoctados?: number | null;
+  tarifaDiaPernoctado?: number | null;
+  totalPernoctados?: number | null;
+  diasNoPernoctados?: number | null;
+  tarifaDiaNoPernoctado?: number | null;
+  totalNoPernoctados?: number | null;
+  tarifaDiariaBase?: number | null;
+  tarifaFinalAplicadaDia?: number | null;
+  salarioBaseAplicado?: number | null;
+  decretoAplicado?: string | null;
+  factorComisionado?: number | null;
+  factorPernocta?: number | null;
+  desgloseCalculo?: any[];
+  alertasLiquidacion?: string[];
   camposAdicionales?: Record<string, any>;
   itinerario?: RutaItinerario[];
 }
@@ -126,6 +145,22 @@ export type TipoDocumentoSoporte =
   | 'FACTURA'
   | 'FACTURA_ELECTRONICA';
 
+export interface SolicitudPendiente023 {
+  id: string;
+  consecutivoUnico: string;
+  codigoSolicitud?: string;
+  estadoSolicitud: EstadoSolicitudViatico | string;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  fechaInicio: string;
+  fechaFin: string;
+  objetoComision: string;
+  montoViaticos?: number;
+  montoGastosViaje?: number;
+  totalGeneral?: number;
+  creadoEn: string;
+}
+
 /** Comisionado tal como lo serializa `ComisionadoEntity` (camelCase). */
 export interface Comisionado {
   id: string;
@@ -143,6 +178,11 @@ export interface Comisionado {
   fechaAutorizacionHabeasData?: Date;
   ipRegistroHabeasData?: string;
   idDependencia?: number | null;
+  fechaInicioContrato?: string | Date | null;
+  fechaFinContrato?: string | Date | null;
+  salarioBasico?: number | null;
+  cargo?: string | null;
+  solicitudesPendientes?: SolicitudPendiente023[];
 }
 
 export interface DocumentoSoporte {
@@ -250,6 +290,21 @@ export interface CreateSolicitudRequest {
   modoBorrador?: boolean;
   tipoComision?: string;
   esInternacional?: boolean;
+  idDependencia?: number;
+  diasPernoctados?: number;
+  tarifaDiaPernoctado?: number;
+  totalPernoctados?: number;
+  diasNoPernoctados?: number;
+  tarifaDiaNoPernoctado?: number;
+  totalNoPernoctados?: number;
+  tarifaDiariaBase?: number;
+  tarifaFinalAplicadaDia?: number;
+  salarioBaseAplicado?: number;
+  decretoAplicado?: string;
+  factorComisionado?: number;
+  factorPernocta?: number;
+  desgloseCalculo?: any[];
+  alertasLiquidacion?: string[];
   documentos?: {
     tipoDocumento: TipoDocumentoSoporte;
     nombreArchivoOriginal: string;
@@ -303,6 +358,7 @@ export interface SolicitudListaResponse {
   estadoSolicitud: string;
   radicadoFueraJornada: boolean;
   extemporanea: boolean;
+  fechaRadicacion?: string | null;
   creadoPorUsuarioId?: string;
   esCreadoPorMi?: boolean;
   creadoEn: string;
@@ -416,6 +472,7 @@ export interface SolicitudViatico {
   estado: EstadoSolicitudViatico;
   extemporanea: boolean;
   radicadoFueraJornada: boolean;
+  fechaRadicacion?: string | null;
   requiereTiqueteAereo: boolean;
   prioridad?: string;
   numeroResolucion?: string;
@@ -523,6 +580,7 @@ export interface ChecklistDocumento {
   codigo: string;
   nombre: string;
   descripcion: string | null;
+  instruccionesValidacion?: string | null;
 }
 
 export interface ChecklistDocumentosResponse {
@@ -1116,5 +1174,61 @@ export interface BandejaPresupuestoResponse {
   };
   timestamp: string;
 }
+
+// =========================================================================
+// Firmas de Aprobación del Formato 023 (Previo a Radicación)
+// =========================================================================
+
+export type TipoFirmaAprobacion = 'JEFE_DEPENDENCIA' | 'GERENTE_PROYECTO';
+
+export interface FirmaAprobacionRegistrada {
+  tipo: TipoFirmaAprobacion;
+  nombreFirmante: string;
+  cargoFirmante: string;
+  firmaImagen?: string | null;
+  esAusencia?: boolean;
+  motivoAusencia?: string | null;
+  comentarios?: string | null;
+  fechaFirma: string;
+  usuarioId?: string | null;
+  estado: 'FIRMADO' | 'RECHAZADO';
+}
+
+export interface FirmanteRequerido {
+  tipo: TipoFirmaAprobacion;
+  titulo: string;
+  cargo: string;
+  descripcion: string;
+  esRequerido: boolean;
+  firmado: boolean;
+  firma: FirmaAprobacionRegistrada | null;
+}
+
+export interface EstadoFirmasResponse {
+  solicitudId: string;
+  consecutivoUnico: string;
+  estadoSolicitud: EstadoSolicitudViatico;
+  reglaDesplazamiento: string;
+  descripcionRegla: string;
+  firmantes: FirmanteRequerido[];
+  completado: boolean;
+  requiereFirmasParaRadicar: boolean;
+  mensaje: string;
+}
+
+export interface FirmarSolicitudPayload {
+  tipoFirma: TipoFirmaAprobacion;
+  nombreFirmante: string;
+  cargoFirmante: string;
+  firmaImagen?: string;
+  esAusencia?: boolean;
+  motivoAusencia?: string;
+  comentarios?: string;
+}
+
+export interface DevolverFirmaPayload {
+  motivo: string;
+}
+
 
 

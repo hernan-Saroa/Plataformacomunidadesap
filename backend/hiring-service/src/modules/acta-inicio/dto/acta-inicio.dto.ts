@@ -13,6 +13,21 @@ import {
 
 import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
+/** El acta de inicio suscrita por las dos partes (actividad 8.7, migración 089). */
+export class SuscribirActaDto {
+  @ApiProperty({ description: 'Fecha en que las dos partes firmaron el acta (YYYY-MM-DD)' })
+  @IsDateString({}, { message: 'La fecha de suscripción debe tener el formato YYYY-MM-DD' })
+  fechaSuscripcion: string;
+
+  /** Solo si la 8.7 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @ValidateNested()
+  @Type(() => FirmaOtpDto)
+  firma?: FirmaOtpDto;
+}
+
 /** Registro de la reunion de inicio y su acta (EFDS-1167, actividad 9.1). */
 export class SuscribirActaInicioDto {
   /** La de la reunion, no la del registro: es cuando arranco la ejecucion. */

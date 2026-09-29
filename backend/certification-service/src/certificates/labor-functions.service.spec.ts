@@ -1,25 +1,25 @@
 import { LaborFunctionsService } from './labor-functions.service';
+import { LaborFunctionProfile } from './labor-function-profile.entity';
+import { ConflictException } from '@nestjs/common';
 
-describe('LaborFunctionsService strict association', () => {
+describe('Funciones asignadas por identificación', () => {
   const profile = {
     id: 'profile-1',
-    position_code: '2028',
-    grade_code: '24',
-    combined_code: '202824',
-    position_name: 'PROFESIONAL ESPECIALIZADO',
-    hierarchical_level: 'Profesional',
-    department_name: 'DIRECCIÓN DE FORMACIÓN',
-    department_key: 'direccion de formacion',
-    internal_group: 'GRUPO ACADÉMICO',
-    internal_group_key: 'grupo academico',
-    cost_center: 'CC-100',
+    id_number: '0012345678',
     is_active: true,
     functions: [
-      { ordinal: 1, description: 'Formular planes.' },
-      { ordinal: 2, description: 'Presentar informes.' },
+      { ordinal: 2, description: 'Presentar informes institucionales.' },
+      {
+        ordinal: 1,
+        description: 'Aplicar el numeral 2. Revisar los expedientes.',
+      },
     ],
   };
-
+  const payload = {
+    idNumber: '0012345678',
+    functions:
+      '1. Aplicar el numeral 2. Revisar los expedientes.\n2. Presentar informes institucionales.',
+  };
   const buildService = (profiles: any[] = [profile]) =>
     new LaborFunctionsService(
       { find: jest.fn().mockResolvedValue(profiles) } as any,
@@ -28,565 +28,253 @@ describe('LaborFunctionsService strict association', () => {
       {} as any,
       { isEnabled: () => false } as any,
     );
-
-  const exactRequest = {
-    cod_cargo: '202824',
-    cod_grade: '24',
-    base_position_code: '2028',
-    hierarchical_level: 'PROFESIONAL',
-    position_name: 'Profesional Especializado',
-    organization_department: 'Dirección de Formación',
-    internal_group: 'Grupo Académico',
-    cost_center: 'CC-100',
-    department: 'CC-100',
-    position_location: 'Dirección de Formación',
-    career_category: 'Profesional Especializado Grado 24',
-  };
-
-  it('enables functions only when every supplied labor field matches', async () => {
-    const result = await buildService().resolveForRequest(exactRequest as any);
-    expect(result.available).toBe(true);
-    expect(result.count).toBe(2);
-    expect(result.profile?.id).toBe('profile-1');
-  });
-
-  it('maps the legacy platform department and position location to dependency and group', async () => {
-    const legacyProfile = { ...profile, cost_center: 'N/A' };
-    const result = await buildService([legacyProfile]).resolveForRequest({
-      ...exactRequest,
-      organization_department: null,
-      internal_group: null,
-      cost_center: null,
-      department: 'Dirección de Formación',
-      position_location: 'Grupo Académico',
-    } as any);
-
-    expect(result.available).toBe(true);
-  });
-
-  it.each([
-    ['grade', { cod_grade: '23', cod_cargo: '202823' }],
-    ['position name', { position_name: 'Profesional Universitario', career_category: 'Profesional Universitario Grado 24' }],
-    ['hierarchical level', { hierarchical_level: 'Asistencial' }],
-    ['department', { organization_department: 'Oficina Jurídica', position_location: 'Oficina Jurídica' }],
-    ['internal group', { internal_group: 'Grupo Financiero' }],
-  ])('rejects a same-code profile when %s differs', async (_field, patch) => {
-    const result = await buildService().resolveForRequest({
-      ...exactRequest,
-      ...patch,
-    } as any);
-    expect(result.available).toBe(false);
-    expect(result.reason).toBe('NOT_FOUND');
-  });
-
-  it('requires the canonical position denomination to match exactly', async () => {
-    const result = await buildService().resolveForRequest({
-      ...exactRequest,
-      position_name: 'Profesional Universitario',
-      career_category: 'Profesional Especializado Grado 24',
-    } as any);
-
-    expect(result.available).toBe(false);
-    expect(result.reason).toBe('NOT_FOUND');
-  });
-
-  it('usa el grupo interno sin exigir un segundo centro de costo', async () => {
-    const result = await buildService().resolveForRequest({
-      ...exactRequest, cost_center: null,
-    } as any);
-    expect(result.available).toBe(true);
-  });
-
-  it('asocia CENTROCOSTO de Oracle con el grupo interno de la matriz', async () => {
-    const result = await buildService().resolveForRequest({
-      ...exactRequest, internal_group: null, cost_center: 'Grupo Académico',
-    } as any);
-    expect(result.available).toBe(true);
-  });
-
-  it('recupera perfiles antiguos que solo tenían centro de costo', async () => {
-    const result = await buildService([{
-      ...profile, internal_group: null, cost_center: 'Grupo Académico',
-    }]).resolveForRequest({ ...exactRequest, cost_center: null } as any);
-    expect(result.available).toBe(true);
-    expect(result.profile?.internal_group).toBe('Grupo Académico');
-  });
-
-  it('un centro de costo coincidente no oculta un grupo interno diferente', async () => {
-    const result = await buildService().resolveForRequest({
-      ...exactRequest, internal_group: 'Grupo Financiero', cost_center: 'Grupo Académico',
-      position_location: 'Grupo Académico',
-    } as any);
-    expect(result.reason).toBe('NOT_FOUND');
-  });
-
-  it('no elige funciones arbitrariamente si la unificación deja perfiles ambiguos', async () => {
-    const result = await buildService([profile, {
-      ...profile, id: 'legacy-duplicate', cost_center: null,
-      functions: [{ ordinal: 1, description: 'Otras funciones institucionales.' }],
-    }]).resolveForRequest(exactRequest as any);
-    expect(result.reason).toBe('AMBIGUOUS');
-    expect(result.available).toBe(false);
-  });
-
-  it('lista y busca el grupo que estaba guardado como centro de costo', async () => {
-    const service = new LaborFunctionsService(
-      { find: jest.fn().mockResolvedValue([{ ...profile, internal_group: null, cost_center: 'Grupo heredado' }]) } as any,
-      {} as any, { find: jest.fn().mockResolvedValue([]) } as any, {} as any,
-      { isEnabled: () => false } as any,
-    );
-    const result = await service.list({ search: 'grupo heredado' });
-    expect(result.total).toBe(1);
-    expect(result.items[0].internal_group).toBe('Grupo heredado');
-    expect(result.items[0]).not.toHaveProperty('cost_center');
-  });
-
-  it('asocia correctamente un contrato cuyo grado 09 llega como 9', async () => {
-    const zeroGradeProfile = {
-      ...profile,
-      id: 'profile-grade-09',
-      position_code: '4064',
-      grade_code: '09',
-      combined_code: '406409',
-      position_name: 'AUXILIAR DE SERVICIOS GENERALES',
-      hierarchical_level: 'Asistencial',
-      department_name: 'DIRECCIÓN TERRITORIAL',
-      department_key: 'direccion territorial',
-      internal_group: null,
-      internal_group_key: null,
-      cost_center: null,
-    };
-    const result = await buildService([zeroGradeProfile]).resolveForRequest({
-      cod_cargo: '406409',
-      cod_grade: '9',
-      base_position_code: null,
-      hierarchical_level: 'ASISTENCIAL',
-      position_name: 'Auxiliar de Servicios Generales',
-      organization_department: 'Dirección Territorial',
-      internal_group: null,
-      cost_center: null,
-      department: 'Dirección Territorial',
-      position_location: 'Dirección Territorial',
-      career_category: 'Auxiliar de Servicios Generales Grado 9',
-    } as any);
-
-    expect(result.available).toBe(true);
-    expect(result.profile?.id).toBe('profile-grade-09');
-  });
-
-  it('normaliza un registro individual válido y conserva los ceros iniciales', () => {
-    const result = (buildService() as any).normalizePayload({
-      positionCode: '0015',
-      gradeCode: '',
-      combinedCode: '0015',
-      hierarchicalLevel: 'Directivo',
-      positionName: 'Director Nacional',
-      departmentName: 'Despacho Dirección Nacional',
-      functions: '1. Dirigir los procesos institucionales. 2. Presentar informes de gestión.',
-    });
-
-    expect(result.position_code).toBe('0015');
-    expect(result.combined_code).toBe('0015');
-    expect(result.functions).toHaveLength(2);
-  });
-
-  it('acepta cod_cargo cuando el grado institucional comienza por cero', () => {
-    const result = (buildService() as any).normalizePayload({
-      positionCode: '4064',
-      gradeCode: '09',
-      combinedCode: '406409',
-      hierarchicalLevel: 'Asistencial',
-      positionName: 'Auxiliar de Servicios Generales',
-      departmentName: 'Dirección Territorial',
-      functions: '1. Apoyar la prestación de los servicios generales.',
-    });
-
-    expect(result.grade_code).toBe('09');
-    expect(result.combined_code).toBe('406409');
-  });
-
-  it('rechaza cod_cargo cuando no coincide con código y grado', () => {
-    expect(() => (buildService() as any).normalizePayload({
-      positionCode: '2028',
-      gradeCode: '24',
-      combinedCode: '202823',
-      hierarchicalLevel: 'Profesional',
-      positionName: 'Profesional Especializado',
-      departmentName: 'Dirección de Formación',
-      functions: '1. Formular planes institucionales.',
-    })).toThrow('El valor esperado es 202824');
-  });
-
-  it.each([
-    ['Nivel Jerárquico', { hierarchicalLevel: '' }],
-    ['Dependencia/Área', { departmentName: '' }],
-  ])('exige el campo institucional %s', (expectedMessage, patch) => {
-    expect(() => (buildService() as any).normalizePayload({
-      positionCode: '2028',
-      gradeCode: '24',
-      combinedCode: '202824',
-      hierarchicalLevel: 'Profesional',
-      positionName: 'Profesional Especializado',
-      departmentName: 'Dirección de Formación',
-      functions: '1. Formular planes institucionales.',
-      ...patch,
-    })).toThrow(expectedMessage);
-  });
-
-  it('acepta la fila cuando una función se repite dentro de ella y la guarda deduplicada', () => {
-    // Repetir una función dentro de la MISMA fila dejó de ser un error: no hay
-    // riesgo de duplicar el perfil y la lista se guarda única. La duplicidad que
-    // sí sigue bloqueando es la de fila contra fila (misma identidad).
-    const normalized = (buildService() as any).normalizePayload({
-      positionCode: '2028',
-      gradeCode: '24',
-      combinedCode: '202824',
-      hierarchicalLevel: 'Profesional',
-      positionName: 'Profesional Especializado',
-      departmentName: 'Dirección de Formación',
-      functions: '1. Formular planes institucionales. 2. Formular planes institucionales.',
-    });
-
-    expect(normalized.functions).toEqual(['Formular planes institucionales.']);
-  });
-
-  it('conserva el orden y todas las funciones distintas al deduplicar', () => {
-    const normalized = (buildService() as any).normalizePayload({
-      positionCode: '2028',
-      gradeCode: '24',
-      combinedCode: '202824',
-      hierarchicalLevel: 'Profesional',
-      positionName: 'Profesional Especializado',
-      departmentName: 'Dirección de Formación',
-      functions: '1. Formular planes institucionales. 2. Presentar informes de gestión. 3. Formular planes institucionales. 4. Atender auditorías internas.',
-    });
-
-    expect(normalized.functions).toEqual([
-      'Formular planes institucionales.',
-      'Presentar informes de gestión.',
-      'Atender auditorías internas.',
-    ]);
-  });
-
-  it('reporta en la carga masiva cuántas funciones repetidas se omitieron', async () => {
-    const service = buildService([]);
-    const result = await service.validateBulk([
+  it('asocia por documento aunque cambien o falten todos los datos del cargo', async () => {
+    const service = buildService();
+    for (const request of [
+      { id_number: '0012345678' },
       {
-        rowNumber: 1,
-        positionCode: '2028',
-        gradeCode: '24',
-        combinedCode: '202824',
-        hierarchicalLevel: 'Profesional',
-        positionName: 'Profesional Especializado',
-        departmentName: 'Dirección de Formación',
-        functions: '1. Formular planes institucionales. 2. Formular planes institucionales.',
+        id_number: '00.123.456-78',
+        cod_cargo: 'OTRO',
+        internal_group: 'OTRO',
+        organization_department: 'OTRA',
       },
-    ] as any);
-
-    expect(result.results[0].status).toBe('valid');
-    expect(result.results[0].message).toContain('Se omitieron 1 función repetida');
-  });
-
-  it('valida todas las filas de una carga antes de persistir', async () => {
-    const service = buildService([]);
-    const result = await service.validateBulk([
-      {
-        rowNumber: 4,
-        positionCode: '2028',
-        gradeCode: '24',
-        combinedCode: '202824',
-        hierarchicalLevel: 'Profesional',
-        positionName: 'Profesional Especializado',
-        departmentName: 'Dirección de Formación',
-        functions: '1. Formular planes institucionales.',
-      },
-      {
-        rowNumber: 5,
-        positionCode: '2028',
-        gradeCode: '24',
-        combinedCode: '202824',
-        hierarchicalLevel: 'Profesional',
-        positionName: '',
-        departmentName: 'Dirección de Formación',
-        functions: '1. Formular planes institucionales.',
-      },
-    ]);
-
-    expect(result.summary).toEqual({
-      total: 2,
-      valid: 1,
-      invalid: 1,
-      toCreate: 1,
-      toUpdate: 0,
-    });
-    expect(result.results[0]).toMatchObject({ rowNumber: 4, status: 'valid', action: 'created' });
-    expect(result.results[1]).toMatchObject({ rowNumber: 5, status: 'error' });
-  });
-
-  it('bloquea en la carga masiva una combinación que ya existe', async () => {
-    const payload = {
-      rowNumber: 4,
-      positionCode: '2028',
-      gradeCode: '24',
-      combinedCode: '202824',
-      hierarchicalLevel: 'Profesional',
-      positionName: 'Profesional Especializado',
-      departmentName: 'Dirección de Formación',
-      internalGroup: 'Grupo Académico',
-      costCenter: 'CC-100',
-      functions: '1. Formular planes institucionales.',
-    };
-    const normalized = (buildService([]) as any).normalizePayload(payload);
-    const service = buildService([{ ...profile, match_key: normalized.match_key }]);
-
-    const result = await service.validateBulk([payload]);
-
-    expect(result.summary).toEqual({
-      total: 1,
-      valid: 0,
-      invalid: 1,
-      toCreate: 0,
-      toUpdate: 0,
-    });
-    expect(result.results[0]).toMatchObject({
-      rowNumber: 4,
-      status: 'error',
-      action: null,
-    });
-    expect(result.results[0].message).toContain('ya existe en la matriz');
-  });
-
-  it('explica si una fila repetida es idéntica o tiene funciones diferentes', async () => {
-    const baseRow = {
-      positionCode: '2028',
-      gradeCode: '19',
-      combinedCode: '202819',
-      hierarchicalLevel: 'Profesional',
-      positionName: 'Profesional Especializado',
-      departmentName: 'Oficina de Planeación',
-      internalGroup: 'N/A',
-      functions: '1. Preparar los informes institucionales.',
-    };
-    const result = await buildService([]).validateBulk([
-      { ...baseRow, rowNumber: 35 },
-      { ...baseRow, rowNumber: 36 },
-      {
-        ...baseRow,
-        rowNumber: 37,
-        functions: '1. Realizar el seguimiento a los indicadores institucionales.',
-      },
-    ]);
-
-    expect(result.summary).toMatchObject({ total: 3, valid: 1, invalid: 2 });
-    expect(result.results[1].message).toContain('idéntica a la fila 35');
-    expect(result.results[2].message).toContain('funciones diferentes');
-  });
-
-  const groupPayload = {
-    positionCode: '2028', gradeCode: '24', combinedCode: '202824',
-    hierarchicalLevel: 'Profesional', positionName: 'Profesional Especializado',
-    departmentName: 'Dirección de Formación', internalGroup: 'Grupo Académico',
-    functions: '1. Formular planes institucionales.',
-  };
-
-  it('detecta duplicados antiguos aunque su huella incluía centro de costo', async () => {
-    const result = await buildService([{ ...profile, match_key: 'legacy-key-with-cost-center' }])
-      .validateBulk([groupPayload]);
-    expect(result.summary.invalid).toBe(1);
-    expect(result.results[0].message).toContain('ya existe en la matriz');
-  });
-
-  it('detecta duplicados de carga usando grupo interno o su alias antiguo', async () => {
-    const result = await buildService([]).validateBulk([
-      { ...groupPayload, rowNumber: 4 },
-      { ...groupPayload, rowNumber: 5, internalGroup: '', costCenter: 'GRUPO ACADÉMICO' },
-      { ...groupPayload, rowNumber: 6, costCenter: 'CC-ANTIGUO' },
-    ]);
-    expect(result.summary).toMatchObject({ valid: 1, invalid: 2 });
-  });
-
-  it('permite el mismo cargo en grupos internos distintos', async () => {
-    const result = await buildService([]).validateBulk([
-      groupPayload, { ...groupPayload, internalGroup: 'Grupo Financiero' },
-    ]);
-    expect(result.summary.valid).toBe(2);
-  });
-
-  it('normaliza el alias antiguo en un único campo y valida su longitud', () => {
-    const service = buildService([]) as any;
-    expect(service.normalizePayload({ ...groupPayload, internalGroup: '', costCenter: 'Grupo heredado' }))
-      .toMatchObject({ internal_group: 'Grupo heredado', cost_center: null });
-    expect(service.normalizePayload({ ...groupPayload, internalGroup: '' }))
-      .toMatchObject({ internal_group: null, cost_center: null });
-    expect(() => service.normalizePayload({ ...groupPayload, internalGroup: 'a'.repeat(501) }))
-      .toThrow('máximo 500 caracteres');
-  });
-
-  it.each(['create', 'bulk'] as const)('bloquea duplicados históricos al persistir con %s', async (method) => {
-    const profileRepository = { find: jest.fn().mockResolvedValue([{ ...profile, match_key: 'legacy-key' }]), save: jest.fn() };
-    const manager = { getRepository: jest.fn().mockReturnValue(profileRepository) };
-    const service = new LaborFunctionsService({} as any, {} as any, {} as any,
-      { transaction: jest.fn(async (callback) => callback(manager)) } as any,
-      { isEnabled: () => false } as any);
-    if (method === 'create') {
-      await expect(service.create(groupPayload)).rejects.toThrow('Ya existe un registro');
-    } else {
-      const result = await service.bulk([groupPayload]);
-      expect(result.summary.failed).toBe(1);
+    ]) {
+      const result = await service.resolveForRequest(request);
+      expect(result).toMatchObject({
+        available: true,
+        count: 2,
+        reason: 'MATCHED',
+      });
+      expect(result.functions[0].description).toBe(
+        'Aplicar el numeral 2. Revisar los expedientes.',
+      );
     }
-    expect(profileRepository.save).not.toHaveBeenCalled();
   });
-
-  it('ajusta una página solicitada cuando queda por fuera del total disponible', async () => {
-    const profiles = Array.from({ length: 16 }, (_, index) => ({
-      ...profile,
-      id: `profile-${index + 1}`,
-      position_code: String(index + 1).padStart(4, '0'),
-      combined_code: String(index + 1).padStart(4, '0'),
-    }));
-    const service = new LaborFunctionsService(
-      { find: jest.fn().mockResolvedValue(profiles) } as any,
-      {} as any,
-      { find: jest.fn().mockResolvedValue([]) } as any,
-      {} as any,
-      { isEnabled: () => false } as any,
-    );
-
-    const result = await service.list({ page: 24, limit: 15 });
-
-    expect(result.page).toBe(2);
-    expect(result.totalPages).toBe(2);
-    expect(result.items).toHaveLength(1);
+  it.each(['12345678', '0012345679', '', 'abc', 'abc0012345678'])(
+    'no presta funciones a otro documento o uno inválido: %s',
+    async (id_number) => {
+      expect(
+        (await buildService().resolveForRequest({ id_number })).available,
+      ).toBe(false);
+    },
+  );
+  it('ignora registros históricos sin identificación e inactivos', async () => {
+    for (const patch of [{ id_number: null }, { is_active: false }]) {
+      expect(
+        (
+          await buildService([{ ...profile, ...patch }]).resolveForRequest({
+            id_number: profile.id_number,
+          })
+        ).reason,
+      ).toBe('NOT_FOUND');
+    }
   });
-
-  it('lista primero los perfiles creados más recientemente', async () => {
-    const findProfiles = jest.fn().mockResolvedValue([]);
-    const service = new LaborFunctionsService(
-      { find: findProfiles } as any,
-      {} as any,
-      { find: jest.fn().mockResolvedValue([]) } as any,
-      {} as any,
-      { isEnabled: () => false } as any,
-    );
-
-    await service.list({ page: 1, limit: 15 });
-
-    expect(findProfiles).toHaveBeenCalledWith({
+  it('rechaza duplicados ambiguos incluso si contienen las mismas funciones', async () => {
+    const result = await buildService([
+      profile,
+      { ...profile, id: 'duplicate' },
+    ]).resolveForRequest({ id_number: profile.id_number });
+    expect(result.reason).toBe('AMBIGUOUS');
+  });
+  it('consulta el repositorio por identificación exacta y estado activo', async () => {
+    const service = buildService();
+    await service.resolveForRequest({ id_number: '00.123.456-78' });
+    expect(service['profileRepo'].find).toHaveBeenCalledWith({
+      where: { id_number: '0012345678', is_active: true },
       relations: ['functions'],
-      order: {
-        created_at: 'DESC',
-        position_code: 'ASC',
-        grade_code: 'ASC',
-        department_name: 'ASC',
-      },
     });
   });
-
-  it('edita un perfil y reemplaza sus funciones dentro de una transacción', async () => {
-    const currentProfile = { ...profile, match_key: 'previous-match-key' };
-    const profileRepository = {
-      find: jest.fn().mockResolvedValue([currentProfile]),
-      findOne: jest
-        .fn()
-        .mockResolvedValueOnce(currentProfile)
-        .mockResolvedValueOnce(currentProfile),
-      create: jest.fn((value) => value),
-      save: jest.fn(async (value) => ({ ...value, id: currentProfile.id })),
-      findOneOrFail: jest.fn(async () => ({
-        ...currentProfile,
-        position_name: 'PROFESIONAL ESPECIALIZADO ACTUALIZADO',
+  it('valida filas nuevas, duplicados normalizados y documentos ya registrados', async () => {
+    const service = buildService();
+    const result = await service.validateBulk([
+      { ...payload, idNumber: '1000000001', rowNumber: 4 },
+      { ...payload, idNumber: '1.000.000.001', rowNumber: 5 },
+      { ...payload, rowNumber: 6 },
+      { ...payload, idNumber: '', rowNumber: 7 },
+    ]);
+    expect(result.summary).toMatchObject({ valid: 1, invalid: 3, toUpdate: 0 });
+    expect(result.results.map((r) => r.status)).toEqual([
+      'valid',
+      'error',
+      'error',
+      'error',
+    ]);
+    expect(result.results[0]).toMatchObject({ id_number: '1000000001' });
+  });
+  it('exige identificación también a clientes con el contrato antiguo', async () => {
+    await expect(
+      buildService().create({
+        positionCode: '2028',
+        functions: payload.functions,
+      } as any),
+    ).rejects.toThrow('identificación');
+  });
+  it('informa funciones duplicadas sin alterar referencias numéricas internas', async () => {
+    const result = await buildService([]).validateBulk([
+      {
+        ...payload,
         functions: [
-          { id: 'function-1', ordinal: 1, description: 'Actualizar los planes institucionales.' },
-          { id: 'function-2', ordinal: 2, description: 'Presentar los informes de seguimiento.' },
+          profile.functions[0].description,
+          profile.functions[0].description,
         ],
+      },
+    ]);
+    expect(result.results[0]).toMatchObject({
+      status: 'valid',
+      function_count: 1,
+    });
+    expect(result.results[0].message).toContain('1 función');
+  });
+  it.each([null, [], Array(5001).fill(payload)])(
+    'rechaza una carga vacía o excesiva',
+    async (rows) => {
+      await expect(buildService().validateBulk(rows as any)).rejects.toThrow();
+    },
+  );
+  it('mantiene los registros heredados visibles y pendientes, sin exponer columnas del cargo', async () => {
+    const service = buildService([
+      { ...profile, id_number: null, position_code: '2028' },
+    ]);
+    const result = await service.list();
+    expect(result.stats.pending).toBe(1);
+    expect(result.items[0]).toMatchObject({
+      id_number: null,
+      needs_assignment: true,
+      function_count: 2,
+    });
+    expect(result.items[0]).not.toHaveProperty('position_code');
+  });
+  it('ajusta la página y aplica un orden estable al listado', async () => {
+    const service = buildService(
+      Array.from({ length: 16 }, (_, i) => ({ ...profile, id: String(i) })),
+    );
+    expect(await service.list({ page: 24, limit: 15 })).toMatchObject({
+      page: 2,
+      totalPages: 2,
+    });
+    expect(service['profileRepo'].find).toHaveBeenCalledWith({
+      relations: ['functions'],
+      order: { created_at: 'DESC', id: 'ASC' },
+    });
+  });
+  function persistence(existing: any = null, duplicate: any = null) {
+    let stored: any;
+    const profiles = {
+      findOne: jest.fn(async ({ where }: any) =>
+        where.id ? existing : duplicate,
+      ),
+      create: jest.fn((v) => v),
+      save: jest.fn(
+        async (v) => (stored = { ...v, id: existing?.id || 'new' }),
+      ),
+      findOneOrFail: jest.fn(async () => ({
+        ...stored,
+        functions: profile.functions,
       })),
     };
-    const functionRepository = {
-      delete: jest.fn().mockResolvedValue({ affected: 2 }),
-      create: jest.fn((value) => value),
-      save: jest.fn(async (value) => value),
+    const functions = {
+      delete: jest.fn(),
+      create: jest.fn((v) => v),
+      save: jest.fn(),
     };
-    const manager = {
-      getRepository: jest
-        .fn()
-        .mockReturnValueOnce(profileRepository)
-        .mockReturnValueOnce(functionRepository),
+    const source = {
+      transaction: jest.fn(async (cb) =>
+        cb({
+          getRepository: (entity: any) =>
+            entity === LaborFunctionProfile ? profiles : functions,
+        }),
+      ),
     };
-    const dataSource = {
-      transaction: jest.fn(async (callback) => callback(manager)),
+    return {
+      profiles,
+      functions,
+      source,
+      service: new LaborFunctionsService(
+        {} as any,
+        {} as any,
+        {} as any,
+        source as any,
+        {} as any,
+      ),
     };
-    const service = new LaborFunctionsService(
-      {} as any,
-      {} as any,
-      {} as any,
-      dataSource as any,
-      { isEnabled: () => false } as any
+  }
+  it('crea solo con identificación y funciones en una transacción', async () => {
+    const { service, profiles, functions, source } = persistence();
+    const result = await service.create(payload);
+    expect(source.transaction).toHaveBeenCalledTimes(1);
+    expect(profiles.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id_number: payload.idNumber,
+        match_key: 'document|0012345678',
+      }),
     );
-
-    const result = await service.update(currentProfile.id, {
-      positionCode: '2028',
-      gradeCode: '24',
-      combinedCode: '202824',
-      hierarchicalLevel: 'Profesional',
-      positionName: 'Profesional Especializado Actualizado',
-      departmentName: 'Dirección de Formación',
-      internalGroup: 'Grupo Académico',
-      costCenter: 'CC-100',
-      functions:
-        '1. Actualizar los planes institucionales. 2. Presentar los informes de seguimiento.',
-    });
-
-    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
-    expect(profileRepository.save).toHaveBeenCalledWith(expect.objectContaining({
-      internal_group: 'Grupo Académico', cost_center: null,
-    }));
-    expect(functionRepository.delete).toHaveBeenCalledWith({
-      profile_id: currentProfile.id,
-    });
-    expect(functionRepository.save).toHaveBeenCalledWith([
-      expect.objectContaining({ ordinal: 1, description: 'Actualizar los planes institucionales.' }),
-      expect.objectContaining({ ordinal: 2, description: 'Presentar los informes de seguimiento.' }),
+    expect(functions.save).toHaveBeenCalledWith([
+      expect.objectContaining({
+        ordinal: 1,
+        description: 'Aplicar el numeral 2. Revisar los expedientes.',
+      }),
+      expect.objectContaining({
+        ordinal: 2,
+        description: 'Presentar informes institucionales.',
+      }),
     ]);
-    expect(result).toMatchObject({ action: 'updated', function_count: 2 });
+    expect(result.action).toBe('created');
   });
-
-  it('impide editar un perfil para convertirlo en una combinación ya existente', async () => {
-    const currentProfile = { ...profile, id: 'profile-to-update', match_key: 'old-key' };
-    const conflictingProfile = { ...profile, id: 'another-profile', match_key: 'new-key' };
-    const profileRepository = {
-      find: jest.fn().mockResolvedValue([currentProfile, conflictingProfile]),
-      findOne: jest
-        .fn()
-        .mockResolvedValueOnce(currentProfile)
-        .mockResolvedValueOnce(conflictingProfile),
-    };
-    const manager = {
-      getRepository: jest.fn().mockReturnValueOnce(profileRepository).mockReturnValueOnce({}),
-    };
-    const dataSource = {
-      transaction: jest.fn(async (callback) => callback(manager)),
-    };
-    const service = new LaborFunctionsService(
-      {} as any,
-      {} as any,
-      {} as any,
-      dataSource as any,
-      { isEnabled: () => false } as any
+  it('asigna un registro heredado desde editar y reemplaza sus funciones', async () => {
+    const { service, profiles, functions } = persistence({
+      ...profile,
+      id_number: null,
+    });
+    const result = await service.update(profile.id, payload);
+    expect(profiles.findOne).toHaveBeenCalledWith({
+      where: { id: profile.id },
+      lock: { mode: 'pessimistic_write' },
+    });
+    expect(functions.delete).toHaveBeenCalledWith({ profile_id: profile.id });
+    expect(result).toMatchObject({
+      id_number: payload.idNumber,
+      needs_assignment: false,
+      action: 'updated',
+    });
+  });
+  it('permite editar las funciones de la misma identificación', async () => {
+    const { service } = persistence(profile, profile);
+    expect((await service.update(profile.id, payload)).action).toBe('updated');
+  });
+  it.each(['create', 'update'])(
+    'bloquea duplicados en %s sin borrar funciones',
+    async (operation) => {
+      const { service, profiles, functions } = persistence(profile, {
+        ...profile,
+        id: 'other',
+      });
+      await expect(
+        operation === 'create'
+          ? service.create(payload)
+          : service.update(profile.id, payload),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(profiles.save).not.toHaveBeenCalled();
+      expect(functions.delete).not.toHaveBeenCalled();
+    },
+  );
+  it('convierte la colisión concurrente de la base en un conflicto comprensible', async () => {
+    const { service, profiles } = persistence();
+    profiles.save.mockRejectedValueOnce({ code: '23505' });
+    await expect(service.create(payload)).rejects.toBeInstanceOf(
+      ConflictException,
     );
-
-    await expect(service.update(currentProfile.id, {
-      positionCode: '2028',
-      gradeCode: '24',
-      combinedCode: '202824',
-      hierarchicalLevel: 'Profesional',
-      positionName: 'Profesional Especializado',
-      departmentName: 'Dirección de Formación',
-      internalGroup: 'Grupo Académico',
-      costCenter: 'CC-100',
-      functions: '1. Formular los planes institucionales.',
-    })).rejects.toThrow('Ya existe un registro con el mismo código');
   });
-
+  it('revalida al importar y no sobrescribe documentos ya existentes', async () => {
+    const { service, profiles } = persistence(null, profile);
+    const result = await service.bulk([payload]);
+    expect(result.summary).toMatchObject({
+      success: 0,
+      failed: 1,
+      created: 0,
+      updated: 0,
+    });
+    expect(profiles.save).not.toHaveBeenCalled();
+  });
   it('elimina el perfil seleccionado y confirma el identificador eliminado', async () => {
     const profileRepository = {
       findOne: jest.fn().mockResolvedValue(profile),
@@ -620,7 +308,9 @@ describe('LaborFunctionsService strict association', () => {
       find: jest.fn().mockResolvedValue(selectedProfiles),
       remove: jest.fn().mockResolvedValue(selectedProfiles),
     };
-    const manager = { getRepository: jest.fn().mockReturnValue(profileRepository) };
+    const manager = {
+      getRepository: jest.fn().mockReturnValue(profileRepository),
+    };
     const dataSource = {
       transaction: jest.fn(async (callback) => callback(manager)),
     };
@@ -629,7 +319,7 @@ describe('LaborFunctionsService strict association', () => {
       {} as any,
       {} as any,
       dataSource as any,
-      { isEnabled: () => false } as any
+      { isEnabled: () => false } as any,
     );
 
     await expect(service.removeMany([...ids, ids[0]])).resolves.toEqual({
@@ -672,7 +362,9 @@ describe('LaborFunctionsService strict association', () => {
       find: jest.fn().mockResolvedValue([{ ...profile, id: ids[0] }]),
       remove: jest.fn(),
     };
-    const manager = { getRepository: jest.fn().mockReturnValue(profileRepository) };
+    const manager = {
+      getRepository: jest.fn().mockReturnValue(profileRepository),
+    };
     const dataSource = {
       transaction: jest.fn(async (callback) => callback(manager)),
     };
@@ -681,7 +373,7 @@ describe('LaborFunctionsService strict association', () => {
       {} as any,
       {} as any,
       dataSource as any,
-      { isEnabled: () => false } as any
+      { isEnabled: () => false } as any,
     );
 
     await expect(service.removeMany(ids)).rejects.toThrow(

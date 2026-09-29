@@ -53,6 +53,17 @@ export interface CatalogoItem {
   metadata: Record<string, any>;
 }
 
+// Catálogo cross-schema auth.dependencias (usado en formulario radicación mantenimiento como "Área solicitante")
+export interface DependenciaCatalogo {
+  idDependencia: number;
+  codDependencia: string;
+  nomDependencia: string;
+  idSede: number | null;
+  sedeUmiId: string | null;
+  sedeCodigo: string | null;
+  sedeNombre: string | null;
+}
+
 export interface SolicitudEvidencia {
   idEvidencia: string;
   idSolicitud?: string;
@@ -138,6 +149,11 @@ export interface SolicitudMantenimiento {
   observacionesConformidad?: string | null;
   fechaLimiteConformidad?: string | null;
   conteoReaperturasConformidad?: number;
+  // ----- EFDS-1738 RF-INF-009 -----
+  calificacionServicio?: 1 | 2 | 3 | 4 | 5 | null;
+  fechaCalificacion?: string | null;
+  usuarioCalificacionId?: string | null;
+  responsableCalificacionDisplay?: string | null;
 }
 
 export interface HistoricoAsignacionEntry {
@@ -273,6 +289,105 @@ export interface CierreTecnicoResponse {
   requiereSeguimiento: boolean;
 }
 
+// EFDS-1738 RF-INF-009 Calificación servicio consolidados
+export interface DistribucionCalificacion {
+  1: number;
+  2: number;
+  3: number;
+  4: number;
+  5: number;
+}
+export interface ConsolidadoCalificacionItem {
+  tipoGrupo: 'tecnico' | 'categoria' | 'area' | 'global';
+  idGrupo: number | string | null;
+  nombreGrupo: string;
+  numeroCalificaciones: number;
+  sumaCalificaciones: number;
+  promedio: number;
+  distribucion: DistribucionCalificacion;
+}
+
+// ===== EFDS-1739 RF-INF-010 Reportes e Indicadores de Gestión =====
+export type AreaFiltroReporte = 'UMI' | 'TI' | 'TODAS';
+export interface FiltrosReporteGestionParams {
+  fechaDesde?: string | Date | null;
+  fechaHasta?: string | Date | null;
+  idSede?: string | null;
+  idCategoria?: number | string | null;
+  areaResponsable?: AreaFiltroReporte | string | null;
+  codigoTecnico?: string | null;
+  estado?: string | null;
+}
+export interface ReportePeriodoDelta {
+  valorActual: number;
+  valorAnterior: number;
+  variacionAbsoluta: number;
+  variacionPorcentual: number;
+}
+export interface ReporteGestionTotalCasos {
+  totalRadicados: ReportePeriodoDelta;
+  porEstado: Array<{ estado: string; cantidad: number; porcentaje: number }>;
+  porTipoAtencion: Array<{ tipoAtencion: string; cantidad: number; porcentaje: number }>;
+}
+export interface ReporteGestionPorCategoriaItem {
+  idCategoria: number | null;
+  codigoCategoria?: string | null;
+  nombreCategoria: string;
+  radicados: number;
+  completados: number;
+  enCurso: number;
+  vencidos: number;
+  promedioCalificacion: number;
+  color?: string | null;
+}
+export interface ReporteGestionPorTecnicoItem {
+  codigoTecnico: string | null;
+  nombreTecnico: string;
+  asignados: number;
+  completados: number;
+  enCurso: number;
+  promedioCalificacion: number;
+  cargaVigente: number;
+}
+export interface ReporteGestionTiemposAtencionItem {
+  idCategoria: number | null;
+  nombreCategoria: string;
+  metaSlaDias: number;
+  casosCumplenSLA: number;
+  casosExcedenSLA: number;
+  porcentajeCumplimiento: number;
+  promedioRealDias: number;
+}
+export interface ReporteGestionPercepcionServicio {
+  promedioGlobal: number;
+  totalCalificaciones: number;
+  porDistribucion: DistribucionCalificacion;
+  porCategoria: ConsolidadoCalificacionItem[];
+  porTecnico: ConsolidadoCalificacionItem[];
+}
+export interface ReporteGestionRollupGeograficoItem {
+  idSede: string | null;
+  nombreSede: string;
+  radicados: number;
+  completados: number;
+  enCurso: number;
+  porPiso?: Array<{ piso: string; cantidad: number }>;
+}
+export interface ReporteGestionDto {
+  periodo: {
+    fechaDesdeISO: string | null;
+    fechaHastaISO: string | null;
+    fechaDesdeAnteriorISO: string | null;
+    fechaHastaAnteriorISO: string | null;
+  };
+  totalCasos: ReporteGestionTotalCasos;
+  porCategoria: ReporteGestionPorCategoriaItem[];
+  porTecnico: ReporteGestionPorTecnicoItem[];
+  tiemposAtencionVsMeta: ReporteGestionTiemposAtencionItem[];
+  percepcionServicio: ReporteGestionPercepcionServicio;
+  rollupGeografico: ReporteGestionRollupGeograficoItem[];
+}
+
 export interface CreateMantenimientoPayload {
   idSede: string;
   idEspacio?: string;
@@ -370,7 +485,171 @@ export interface SesionUsuarioUMI {
   email: string | null;
   username: string | null;
   roles: string[];
+  permissions: string[];
 }
+
+const normPerm = (s: unknown): string =>
+  String(s ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+
+const FE_GRUPOS: Record<string, string[]> = {
+  INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.VIEW_ALL',
+    'INFRAESTRUCTURA.VIEW_ALL_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CREATE',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.EDIT',
+    'INFRAESTRUCTURA.SOLICITUD.ASSIGN',
+    'INFRAESTRUCTURA.SOLICITUD.REJECT',
+    'INFRAESTRUCTURA.SOLICITUD.REDISTRIBUTE',
+    'INFRAESTRUCTURA.SOLICITUD.FORWARD_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CONFORMIDAD',
+    'INFRAESTRUCTURA.SOLICITUD.CALIFICACION',
+    'INFRAESTRUCTURA.REPORTES.CONSOLIDADOS',
+    'INFRAESTRUCTURA.REPORTES.GESTION',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.VIEW_ALL',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.CONFORMIDAD',
+    'INFRAESTRUCTURA.SOLICITUD.CALIFICACION',
+    'INFRAESTRUCTURA.REPORTES.CONSOLIDADOS',
+    'INFRAESTRUCTURA.REPORTES.GESTION',
+    'INFRAESTRUCTURA.PARAM.CATEGORIES_CRU',
+    'INFRAESTRUCTURA.PARAM.SEDES_CRU',
+    'INFRAESTRUCTURA.PARAM.ESPACIOS_CRU',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.VIEW_ALL',
+    'INFRAESTRUCTURA.VIEW_ALL_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CREATE',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.EDIT',
+    'INFRAESTRUCTURA.SOLICITUD.ASSIGN',
+    'INFRAESTRUCTURA.SOLICITUD.REJECT',
+    'INFRAESTRUCTURA.SOLICITUD.REDISTRIBUTE',
+    'INFRAESTRUCTURA.SOLICITUD.FORWARD_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CONFORMIDAD',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.READ_ASSIGNED',
+    'INFRAESTRUCTURA.SOLICITUD.EXECUTE_ASSIGNED',
+    'INFRAESTRUCTURA.SOLICITUD.CIERRE_TECNICO',
+    'INFRAESTRUCTURA.SOLICITUD.CLOSE_WITH_EVIDENCE',
+    'INFRAESTRUCTURA.SOLICITUD.READ_REJECTION_REASON_OWN',
+  ],
+  INFRA_SOLICITUD_CREATE_READ_CALIFICACION_CONF_MIASIGNADOR: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.SOLICITUD.CREATE',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.CONFORMIDAD',
+    'INFRAESTRUCTURA.SOLICITUD.CALIFICACION',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_REPORTES_CONSOLIDADOS_GESTION_TRAZABILIDAD: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.VIEW_ALL',
+    'INFRAESTRUCTURA.VIEW_ALL_TI',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.REPORTES.CONSOLIDADOS',
+    'INFRAESTRUCTURA.REPORTES.GESTION',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_PARAM_ALL_CRU: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.PARAM.CATEGORIES_CRU',
+    'INFRAESTRUCTURA.PARAM.SLA_CRU',
+    'INFRAESTRUCTURA.PARAM.TECNICOS_CRU',
+    'INFRAESTRUCTURA.PARAM.REGLAS_CRU',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+  INFRA_ANALISTA_ASIGNADOR_OPERATIVO: [
+    'INFRAESTRUCTURA.VIEW',
+    'INFRAESTRUCTURA.SOLICITUD.CREATE',
+    'INFRAESTRUCTURA.SOLICITUD.READ',
+    'INFRAESTRUCTURA.SOLICITUD.READ_ALL',
+    'INFRAESTRUCTURA.SOLICITUD.READ_TI',
+    'INFRAESTRUCTURA.SOLICITUD.ASSIGN',
+    'INFRAESTRUCTURA.SOLICITUD.REJECT',
+    'INFRAESTRUCTURA.SOLICITUD.REDISTRIBUTE',
+    'INFRAESTRUCTURA.SOLICITUD.FORWARD_TI',
+    'INFRAESTRUCTURA.SOLICITUD.CONFIRM_CLOSE_OWN',
+    'INFRAESTRUCTURA.SOLICITUD.READ_AUDIT_HISTORY_ANY',
+    'INFRAESTRUCTURA.REPORTES.GESTION',
+    'INFRAESTRUCTURA.AUDIT.TRAZABILIDAD',
+  ],
+};
+
+const FE_LEGACY_MAP: Record<string, string[]> = {
+  SUPER_ADMIN: ['__ALL__'],
+  ADMIN: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES'],
+  GESTOR_MANTENIMIENTO: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF_REPORTES'],
+  ADMINISTRADOR_FUNCIONAL: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
+  ADMINISTRADOR_FUNCIONAL_INFRA: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
+  COORDINADOR_INFRAESTRUCTURA: ['INFRA_GLOBAL_REPORTES_CONF_CIERRE_PARAM'],
+  UMI: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF'],
+  INFRAESTRUCTURA: ['INFRA_GLOBAL_ASSIGN_REJECT_REDIST_CONF'],
+  TECNICO_UMI: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
+  USER: ['INFRA_SOLICITUD_CREATE_READ_CALIFICACION_CONF_MIASIGNADOR'],
+  SOLICITANTE_INFRA: ['INFRA_SOLICITUD_CREATE_READ_CALIFICACION_CONF_MIASIGNADOR'],
+  ANALISTA_ASIGNADOR_UMI: ['INFRA_ANALISTA_ASIGNADOR_OPERATIVO'],
+  TECNICO_ELECTRICO_ESPECIALIZADO: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
+  TECNICO_UMI_MULTIPROPOSITO: ['INFRA_SOLICITUD_CIERRE_TECNICO_VALORACION_EJECUCION'],
+  CONSULTA_CALIDAD_INFRA: ['INFRA_REPORTES_CONSOLIDADOS_GESTION_TRAZABILIDAD'],
+  ADMINISTRADOR_MODULO_INFRA: ['INFRA_PARAM_ALL_CRU'],
+};
+
+export const hasPerm = (
+  ses: SesionUsuarioUMI | null | undefined,
+  codigoPermiso: string | string[] | null | undefined,
+): boolean => {
+  if (!ses || !codigoPermiso) return false;
+  const codigos = Array.isArray(codigoPermiso) ? codigoPermiso : [codigoPermiso];
+  if (codigos.length === 0) return false;
+  const rolesNorm = (ses.roles ?? []).map(normPerm);
+  if (rolesNorm.includes('SUPER_ADMIN')) return true;
+  const perms = new Set((ses.permissions ?? []).map(normPerm).filter(Boolean));
+  const legacySet = new Set<string>();
+  for (const rol of rolesNorm) {
+    const grupos = FE_LEGACY_MAP[rol] || [];
+    for (const g of grupos) {
+      if (g === '__ALL__') {
+        for (const list of Object.values(FE_GRUPOS)) for (const p of list) legacySet.add(normPerm(p));
+      } else {
+        const list = FE_GRUPOS[g] || [];
+        for (const p of list) legacySet.add(normPerm(p));
+      }
+    }
+  }
+  for (const raw of codigos) {
+    const needle = normPerm(raw);
+    if (!needle) continue;
+    if (perms.has(needle) || legacySet.has(needle)) return true;
+  }
+  return false;
+};
+
+const extraerCodigosPermisosDeObjeto = (obj: any): string[] => {
+  if (obj == null) return [];
+  if (Array.isArray(obj)) return obj.map((x) => String(x)).filter(Boolean);
+  if (typeof obj !== 'object') return [];
+  if (Array.isArray((obj as any).codes)) return (obj as any).codes.map((x: any) => String(x)).filter(Boolean);
+  if (Array.isArray((obj as any).data)) return extraerCodigosPermisosDeObjeto((obj as any).data);
+  if (Array.isArray((obj as any).permissions)) return extraerCodigosPermisosDeObjeto((obj as any).permissions);
+  if (typeof (obj as any).code === 'string') return [(obj as any).code];
+  if (typeof (obj as any).permission === 'string') return [(obj as any).permission];
+  return [];
+};
 
 const leerCookie = (nombre: string): string | null => {
   if (typeof document === 'undefined') return null;
@@ -423,11 +702,19 @@ export const obtenerSesionUMI = (): SesionUsuarioUMI => {
           .map((role: any) => typeof role === 'string' ? role : role?.code || role?.name || '')
           .filter(Boolean) as string[];
       }
+      let permissions: string[] = [];
+      if (Array.isArray(cache?.permissions)) permissions = cache.permissions as string[];
+      else if (Array.isArray(userObj?.permissions)) permissions = userObj.permissions as string[];
+      else if (userObj?.permissions != null) permissions = extraerCodigosPermisosDeObjeto(userObj.permissions);
+      if (cache?.permissions != null && !Array.isArray(cache.permissions)) {
+        permissions = Array.from(new Set([...permissions, ...extraerCodigosPermisosDeObjeto(cache.permissions)]));
+      }
       return {
         userId,
         email,
         username,
         roles: Array.isArray(roles) ? roles.filter((r: any) => typeof r === 'string' && r.length > 0) : [],
+        permissions: permissions.filter((p: any) => typeof p === 'string' && p.length > 0),
       };
     }
   }
@@ -458,7 +745,18 @@ export const obtenerSesionUMI = (): SesionUsuarioUMI => {
     else if (typeof payload?.realm_access?.roles !== 'undefined' && Array.isArray(payload.realm_access.roles))
       roles = payload.realm_access.roles as string[];
     else if (typeof payload?.rol === 'string') roles = [payload.rol];
-    return { userId, email, username, roles };
+    let permissions: string[] = [];
+    if (Array.isArray(payload?.permissions)) permissions = payload.permissions as string[];
+    else if (Array.isArray(payload?.perm_codes)) permissions = payload.perm_codes as string[];
+    else if (payload?.scope && typeof payload.scope === 'string') permissions = payload.scope.split(/\s+/).filter(Boolean);
+    else if (payload?.permissions != null) permissions = extraerCodigosPermisosDeObjeto(payload.permissions);
+    return {
+      userId,
+      email,
+      username,
+      roles: Array.isArray(roles) ? (roles as any[]).filter((r: any) => typeof r === 'string' && r.length > 0) : [],
+      permissions: permissions.filter((p: any) => typeof p === 'string' && p.length > 0),
+    };
   } catch {
     return vacio;
   }
@@ -481,24 +779,44 @@ const obtenerCatalogoTecnicosUMI = async (): Promise<CatalogoItem[]> => {
   }
   try {
     const lista = await infraestructuraService.getTecnicos(false);
-    catalogoTecnicosCache.ts = ahora;
-    catalogoTecnicosCache.data = Array.isArray(lista) ? lista : [];
-    return catalogoTecnicosCache.data;
+    const safe = Array.isArray(lista) ? lista : [];
+    if (safe.length > 0) {
+      catalogoTecnicosCache.ts = ahora;
+      catalogoTecnicosCache.data = safe;
+    } else if (catalogoTecnicosCache.data.length > 0) {
+      catalogoTecnicosCache.ts = ahora;
+    }
+    return safe.length > 0 ? safe : catalogoTecnicosCache.data;
   } catch {
     return catalogoTecnicosCache.data;
   }
 };
 
 export const tecnicoPerteneceASesionUMI = (tecnico: CatalogoItem, ses: SesionUsuarioUMI): boolean => {
+  const norm = (s: any): string => String(s ?? '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9]+/g, '')
+    .toLowerCase();
   const md = (tecnico?.metadata && typeof tecnico.metadata === 'object') ? (tecnico.metadata as Record<string, any>) : {};
   const correos: string[] = Array.isArray(md.correos) ? (md.correos as string[]) : [];
   if (typeof md.email === 'string' && md.email && !correos.includes(md.email)) correos.push(md.email);
   if (typeof md.correo === 'string' && md.correo && !correos.includes(md.correo)) correos.push(md.correo);
   const idsUsuarios: string[] = Array.isArray(md.usuarioIdsAutorizados) ? (md.usuarioIdsAutorizados as string[]) : [];
+  if (typeof md.usuarioIdAutorizado === 'string' && md.usuarioIdAutorizado && !idsUsuarios.includes(md.usuarioIdAutorizado)) {
+    idsUsuarios.push(md.usuarioIdAutorizado);
+  }
   const nombresAutorizados: string[] = Array.isArray(md.usuariosAutorizados) ? (md.usuariosAutorizados as string[]) : [];
+  const normSesEmail = norm(ses.email?.split('@')[0]);
+  const normSesUserId = norm(ses.userId);
+  const normSesUsername = norm(ses.username);
+  const normNombreTec = norm(tecnico?.nombre);
+  const splitNombre = String(tecnico?.nombre ?? '').split('·').map(p => p.trim());
+  const normNombreSolo = splitNombre.length > 1 ? norm(splitNombre[splitNombre.length - 1]) : normNombreTec;
   if (ses.email) {
     const needle = ses.email.trim().toLowerCase();
     if (needle && correos.some((c) => typeof c === 'string' && c.trim().toLowerCase() === needle)) return true;
+    if (normSesEmail && normNombreSolo && normNombreSolo.includes(normSesEmail)) return true;
+    if (normSesEmail && normNombreTec && normNombreTec.includes(normSesEmail)) return true;
     const nombreDisplay = String(tecnico?.nombre || '').trim().toLowerCase();
     if (nombreDisplay && needle && (nombreDisplay.includes(needle.replace(/@.*$/, '')) ||
       needle.replace(/@.*$/, '').length >= 4 && nombreDisplay.includes(needle.replace(/@.*$/, '')))) {
@@ -508,19 +826,35 @@ export const tecnicoPerteneceASesionUMI = (tecnico: CatalogoItem, ses: SesionUsu
   if (ses.userId) {
     const needle = ses.userId.trim().toLowerCase();
     if (needle && idsUsuarios.some((u) => typeof u === 'string' && u.trim().toLowerCase() === needle)) return true;
+    if (normSesUserId && normNombreTec.includes(normSesUserId)) return true;
   }
   if (ses.username) {
     const needle = ses.username.trim().toLowerCase();
     if (needle) {
+      const nU = norm(needle);
+      if (nU && (normNombreTec === nU || normNombreTec.includes(nU) || nU.includes(normNombreTec))) return true;
+      if (nU && normNombreSolo && (normNombreSolo === nU || normNombreSolo.includes(nU) || nU.includes(normNombreSolo))) return true;
       const nombreDisplay = String(tecnico?.nombre || '').trim().toLowerCase();
       if (nombreDisplay && (nombreDisplay === needle || nombreDisplay.includes(needle) || needle.includes(nombreDisplay))) return true;
-      if (nombresAutorizados.some((u) => typeof u === 'string' && u.trim().toLowerCase() === needle)) return true;
+      if (nombresAutorizados.some((u) => typeof u === 'string' && norm(u) === nU)) return true;
     }
   }
   if (ses.email && correos.length === 0) {
+    if (normSesEmail && normSesEmail.length >= 4 && normNombreSolo.includes(normSesEmail)) return true;
+    if (normSesEmail && normSesEmail.length >= 4 && normNombreTec.includes(normSesEmail)) return true;
     const nombre = String(tecnico?.nombre || '').trim().toLowerCase();
     const mail = ses.email.trim().toLowerCase().replace(/@.*$/, '');
     if (mail.length >= 4 && nombre.includes(mail)) return true;
+  }
+  if (normSesUsername && normSesUsername.length >= 4 && normNombreSolo.includes(normSesUsername)) return true;
+  if (nombresAutorizados.length > 0) {
+    const needles = new Set([normSesUsername, normSesEmail, norm(ses.username)]);
+    for (const autorizado of nombresAutorizados) {
+      const nA = norm(autorizado);
+      if (!nA) continue;
+      if (needles.has(nA)) return true;
+      for (const n of needles) if (n && (nA.includes(n) || n.includes(nA))) return true;
+    }
   }
   return false;
 };
@@ -809,6 +1143,20 @@ export const infraestructuraService = {
       return await res.json();
     } catch (err) {
       console.warn('[getCategoriasServicio] falló:', err);
+      return [];
+    }
+  },
+
+  // Catálogo dependencias/áreas solicitantes desde auth.dependencias (cross-schema).
+  // Reemplaza el input de texto libre en NuevaSolicitudForm. Nunca cachear arrays vacíos.
+  async getDependenciasCatalogo(): Promise<DependenciaCatalogo[]> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mantenimiento/catalogos/dependencias`, { credentials: 'include' });
+      if (!res.ok) throw new Error(`Listar dependencias ${res.status}`);
+      const data = (await res.json()) as DependenciaCatalogo[];
+      return Array.isArray(data) && data.length > 0 ? data : [];
+    } catch (err) {
+      console.warn('[getDependenciasCatalogo] falló:', err);
       return [];
     }
   },
@@ -1424,7 +1772,11 @@ export const infraestructuraService = {
 
   async confirmarConformidad(
     idSolicitud: string,
-    payload: { observacionesConformidad?: string },
+    payload: {
+      observacionesConformidad?: string;
+      // EFDS-1738 RF-INF-009: calificación opcional 1-5 (OQ-1 default opcional)
+      calificacionServicio?: 1 | 2 | 3 | 4 | 5;
+    },
   ): Promise<SolicitudMantenimiento> {
     const res = await fetch(
       `${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/conformidad/confirmar`,
@@ -1481,4 +1833,145 @@ export const infraestructuraService = {
     }
     return await res.json();
   },
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1738 RF-INF-009 Consolidados promedio calificación servicio
+  // ---------------------------------------------------------------------------
+
+  async getCalificacionesConsolidadas(params?: {
+    por?: 'tecnico' | 'categoria' | 'area' | 'global';
+    fechaDesde?: string | Date | null;
+    fechaHasta?: string | Date | null;
+    idCategoria?: number | null;
+    codigoTecnico?: string | null;
+    idAreaSolicitante?: string | null;
+  }): Promise<ConsolidadoCalificacionItem[]> {
+    const sp = new URLSearchParams();
+    const append = (k: string, v: unknown) => {
+      if (v == null || v === '' || (typeof v === 'number' && !Number.isFinite(v))) return;
+      sp.append(k, typeof v === 'object' && v instanceof Date ? v.toISOString() : String(v));
+    };
+    append('por', params?.por);
+    append('fechaDesde', params?.fechaDesde);
+    append('fechaHasta', params?.fechaHasta);
+    append('idCategoria', params?.idCategoria);
+    append('codigoTecnico', params?.codigoTecnico);
+    append('idAreaSolicitante', params?.idAreaSolicitante);
+    const qs = sp.toString();
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/estadisticas/calificaciones-consolidadas${qs.length ? `?${qs}` : ''}`,
+      {
+        method: 'GET',
+        credentials: 'include',
+      },
+    );
+    if (!res.ok) {
+      let m = 'Error consultando consolidados de calificación servicio';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1739 RF-INF-010 Reportes e Indicadores de Gestión
+  // ---------------------------------------------------------------------------
+
+  async getReporteGestion(params?: FiltrosReporteGestionParams): Promise<ReporteGestionDto> {
+    const sp = new URLSearchParams();
+    const append = (k: string, v: unknown) => {
+      if (v == null || v === '' || (typeof v === 'number' && !Number.isFinite(v))) return;
+      sp.append(k, typeof v === 'object' && v instanceof Date ? v.toISOString() : String(v));
+    };
+    append('fechaDesde', params?.fechaDesde);
+    append('fechaHasta', params?.fechaHasta);
+    append('idSede', params?.idSede);
+    append('idCategoria', params?.idCategoria);
+    append('areaResponsable', params?.areaResponsable);
+    append('codigoTecnico', params?.codigoTecnico);
+    append('estado', params?.estado);
+    const qs = sp.toString();
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/estadisticas/reporte-gestion${qs.length ? `?${qs}` : ''}`,
+      { credentials: 'include' },
+    );
+    if (!res.ok) {
+      let m = 'Error consultando reporte de gestión';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.json();
+  },
+
+  async descargarExcelReporte(params?: FiltrosReporteGestionParams): Promise<Blob> {
+    const sp = new URLSearchParams();
+    const append = (k: string, v: unknown) => {
+      if (v == null || v === '' || (typeof v === 'number' && !Number.isFinite(v))) return;
+      sp.append(k, typeof v === 'object' && v instanceof Date ? v.toISOString() : String(v));
+    };
+    append('fechaDesde', params?.fechaDesde);
+    append('fechaHasta', params?.fechaHasta);
+    append('idSede', params?.idSede);
+    append('idCategoria', params?.idCategoria);
+    append('areaResponsable', params?.areaResponsable);
+    append('codigoTecnico', params?.codigoTecnico);
+    append('estado', params?.estado);
+    const qs = sp.toString();
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/estadisticas/reporte-gestion/excel${qs.length ? `?${qs}` : ''}`,
+      { credentials: 'include' },
+    );
+    if (!res.ok) {
+      let m = 'Error descargando reporte Excel';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.blob();
+  },
+
+  async descargarPdfReporte(params?: FiltrosReporteGestionParams): Promise<Blob> {
+    const sp = new URLSearchParams();
+    const append = (k: string, v: unknown) => {
+      if (v == null || v === '' || (typeof v === 'number' && !Number.isFinite(v))) return;
+      sp.append(k, typeof v === 'object' && v instanceof Date ? v.toISOString() : String(v));
+    };
+    append('fechaDesde', params?.fechaDesde);
+    append('fechaHasta', params?.fechaHasta);
+    append('idSede', params?.idSede);
+    append('idCategoria', params?.idCategoria);
+    append('areaResponsable', params?.areaResponsable);
+    append('codigoTecnico', params?.codigoTecnico);
+    append('estado', params?.estado);
+    const qs = sp.toString();
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/estadisticas/reporte-gestion/pdf${qs.length ? `?${qs}` : ''}`,
+      { credentials: 'include' },
+    );
+    if (!res.ok) {
+      let m = 'Error descargando reporte PDF';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.blob();
+  },
+
+  getUrlDescargaEvidencia(idEvidencia: string): string {
+    return `${API_BASE_URL}/mantenimiento/evidencias/${encodeURIComponent(idEvidencia)}/download`;
+  },
+
+  async descargarZipEvidenciasSolicitud(idSolicitud: string): Promise<Blob> {
+    const res = await fetch(
+      `${API_BASE_URL}/mantenimiento/${encodeURIComponent(idSolicitud)}/evidencias/zip`,
+      { credentials: 'include' },
+    );
+    if (!res.ok) {
+      let m = 'Error descargando ZIP de evidencias';
+      try { const b = await res.json(); if (b?.message) m = Array.isArray(b.message) ? b.message.join(', ') : String(b.message); } catch {}
+      throw new Error(m);
+    }
+    return await res.blob();
+  },
 };
+
+export const getMisSolicitudes = (): Promise<SolicitudMantenimiento[]> =>
+  infraestructuraService.getMisSolicitudes();

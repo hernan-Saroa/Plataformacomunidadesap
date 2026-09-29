@@ -55,7 +55,7 @@ describe('NotificadorService · revisarHabilitadas', () => {
     query.mockImplementationOnce(query.getMockImplementation() as never);
     const original = query.getMockImplementation()!;
     query.mockImplementation(async (sql: string, params?: any[]) =>
-      sql.includes('perm.code = $1') ? [{ id: 'u-financiera' }] : original(sql, params),
+      sql.includes('hiring.alcances_permiso') ? [{ id: 'u-financiera' }] : original(sql, params),
     );
 
     expect(await srv.revisarHabilitadas(PROCESO, 'u-director', 'Director')).toBe(1);

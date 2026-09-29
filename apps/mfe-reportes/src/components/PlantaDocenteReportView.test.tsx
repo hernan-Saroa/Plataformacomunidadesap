@@ -43,6 +43,11 @@ const STATS_FILTRADO = {
   por_territorial: [{ territorial: 'Bogotá', total: 4 }],
 };
 
+const PERIODOS_ACADEMICOS = [
+  { codigo: '2025-2', anio: 2025, semestre: 2, estado: 'en_curso' },
+  { codigo: '2025-1', anio: 2025, semestre: 1, estado: 'cerrado' },
+];
+
 function mockGet(impl: (endpoint: string, params?: any) => any) {
   (apiClient.get as any).mockImplementation(impl);
 }
@@ -65,11 +70,13 @@ describe('PlantaDocenteReportView — reporte de planta docente (REQ-RUND-F019)'
   it('combina los 7 filtros (territorial, vinculación, categoría, género, nivel de formación, núcleo temático y período) en una sola consulta al generar el reporte', async () => {
     mockGet(async (endpoint: string) => {
       if (endpoint.endsWith('/stats')) return { data: STATS_SIN_FILTRO };
+      if (endpoint.endsWith('/periodos-academicos')) return { data: PERIODOS_ACADEMICOS };
       return { items: [], total: 0, pages: 1 };
     });
 
     render(<PlantaDocenteReportView />);
     await waitFor(() => expect(screen.getByText('Total docentes')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('option', { name: '2025-2 (en curso)' })).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText('Territorial'), { target: { value: 'Bogotá' } });
     fireEvent.change(screen.getByLabelText('Tipo de vinculación'), { target: { value: 'Carrera' } });
@@ -77,11 +84,12 @@ describe('PlantaDocenteReportView — reporte de planta docente (REQ-RUND-F019)'
     fireEvent.change(screen.getByLabelText('Género'), { target: { value: 'Femenino' } });
     fireEvent.change(screen.getByLabelText('Nivel de formación'), { target: { value: 'Maestría' } });
     fireEvent.change(screen.getByLabelText('Núcleo temático'), { target: { value: 'Ciencias Sociales' } });
-    fireEvent.change(screen.getByPlaceholderText('ej. 2025-2'), { target: { value: '2025-2' } });
+    fireEvent.change(screen.getByLabelText('Período académico'), { target: { value: '2025-2' } });
 
     (apiClient.get as any).mockClear();
     mockGet(async (endpoint: string) => {
       if (endpoint.endsWith('/stats')) return { data: STATS_FILTRADO };
+      if (endpoint.endsWith('/periodos-academicos')) return { data: PERIODOS_ACADEMICOS };
       return { items: [], total: 0, pages: 1 };
     });
 

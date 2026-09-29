@@ -426,6 +426,8 @@ function transformarAuditoria(auditoriaBackend: any, auditoresDisponibles?: Audi
     planAnualVigencia:
       auditoriaBackend.planAnualVigencia ?? auditoriaBackend.plan_anual_vigencia,
     planAnualId: auditoriaBackend.planAnualId ?? auditoriaBackend.plan_anual_id,
+    // Semanas que no se trabajan (EFDS-2132): sin ellas, editar y guardar las borraba
+    semanasExcluidas: Array.isArray(auditoriaBackend.semanasExcluidas) ? auditoriaBackend.semanasExcluidas : [],
     programaAnualMetadata: auditoriaBackend.programaAnualMetadata,
     supervisorAsignadoId: auditoriaBackend.supervisorAsignadoId || '',
     vinculadaPlanAnual: auditoriaBackend.vinculadaPlanAnual || true,

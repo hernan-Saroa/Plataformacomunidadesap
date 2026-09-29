@@ -265,6 +265,11 @@ export class ConsolidacionService {
         expediente.extemporanea = false;
       }
       expediente.motivoDevolucion = null;
+      // La fecha de radicación se fija solo al primer ingreso a la bandeja;
+      // una devolución y posterior reenvío no la modifica (EFDS-1287).
+      if (!expediente.fechaRadicacion) {
+        expediente.fechaRadicacion = ahora;
+      }
       await manager.save(SolicitudComisionEntity, expediente);
 
       // 5) Registrar la transición en el historial de auditoría (append-only).
@@ -827,12 +832,16 @@ const ETIQUETAS_CAMPOS_FORMATO: Record<string, string> = {
   montoViaticos: 'Viáticos (COP)',
   montoGastosViaje: 'Gastos de viaje (COP)',
   diasComision: 'Días de comisión',
+  numeroContrato: 'Número de Contrato',
+  cargoEsap: 'Cargo / Rol ESAP',
+  rolEsap: 'Rol ESAP',
 };
 
 /**
  * Obtiene el valor actual de un campo obligatorio parametrizado.
  * Las claves coinciden con las propiedades camelCase de la entidad; la única
  * excepción es `documentoComisionado`, que se resuelve desde el comisionado.
+ * Para campos dinámicos se busca también dentro de `expediente.camposAdicionales`.
  */
 function obtenerValorCampoFormato(
   expediente: SolicitudComisionEntity,
@@ -844,7 +853,14 @@ function obtenerValorCampoFormato(
   }
   // Las claves parametrizadas coinciden con las propiedades camelCase de la
   // entidad; se accede de forma genérica sin hardcodear la lista de campos.
-  return (expediente as unknown as Record<string, unknown>)[clave];
+  const valorDirecto = (expediente as unknown as Record<string, unknown>)[clave];
+  if (valorDirecto !== undefined && valorDirecto !== null && valorDirecto !== '') {
+    return valorDirecto;
+  }
+  if (expediente.camposAdicionales && typeof expediente.camposAdicionales === 'object') {
+    return (expediente.camposAdicionales as Record<string, unknown>)[clave];
+  }
+  return undefined;
 }
 
 /**

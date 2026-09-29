@@ -10,32 +10,20 @@
  * servicio suyo, para no acoplar el microfrontend a su host.
  */
 
-/** Los permisos del módulo que la pantalla necesita consultar. */
+/**
+ * Los permisos transversales que la pantalla consulta.
+ *
+ * Desde la migración 083 lo que es de una etapa se pregunta por acción y lugar
+ * —`puedeEn('editar', '4.2')`, en `auth/alcance.ts`—. Quedan aquí los que no
+ * son de ninguna etapa y conservan su código.
+ */
 export const PERMISOS = {
   configurar: 'contratacion.config.manage',
-  procesoCrear: 'contratacion.proceso.create',
-  procesoEditar: 'contratacion.proceso.edit',
-  procesoAsignar: 'contratacion.proceso.assign',
-  procesoArchivar: 'contratacion.proceso.archive',
-  actividadEditar: 'contratacion.actividad.edit',
-  actividadEnviar: 'contratacion.actividad.send',
-  actividadAprobar: 'contratacion.actividad.approve',
-  documentoCargar: 'contratacion.documento.upload',
-  documentoEliminar: 'contratacion.documento.delete',
-  expedienteVer: 'contratacion.expediente.view',
-  expedienteArchivar: 'contratacion.expediente.archivar',
-  expedienteAuditar: 'contratacion.expediente.auditar',
-  alertaVer: 'contratacion.alerta.ver',
   /** Consultar los indicadores de gestión (EFDS-1189). */
   reporteVer: 'contratacion.reporte.view',
-  /**
-   * Mover el presupuesto de la entidad: expedir el CDP y el RP, tramitar los
-   * pagos avalados y cerrar financieramente el contrato.
-   *
-   * Es el permiso de la Dirección Financiera, y lo que en la pantalla decide
-   * que alguien tiene bandeja propia en vez de una lista de procesos.
-   */
-  presupuestoGestionar: 'contratacion.presupuesto.gestionar',
+  procesoVerTodos: 'contratacion.proceso.view-all',
+  procesoAsignar: 'contratacion.proceso.assign',
+  plazoTerminar: 'contratacion.plazo.terminar',
 } as const;
 
 /** La sesión tal como la deja el shell; de ahí solo interesan dos campos. */
@@ -99,7 +87,3 @@ export function tienePermiso(permiso: string): boolean {
   return permisos.includes(permiso);
 }
 
-/** Si tiene al menos uno de los permisos indicados. */
-export function tieneAlguno(...permisos: string[]): boolean {
-  return permisos.some(tienePermiso);
-}

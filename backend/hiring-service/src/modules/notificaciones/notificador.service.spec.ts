@@ -23,6 +23,7 @@ describe('NotificadorService · despachar', () => {
   const conBase = (avisos: any[], extra: Record<string, any[]> = {}) => {
     const query = jest.fn(async (sql: string, _params?: unknown[]) => {
       if (sql.includes('avisos_por_correo')) return extra.porCorreo ?? [];
+      if (sql.includes('correo_contratista')) return extra.contratista ?? [];
       if (sql.includes('dir_email')) return extra.correos ?? [];
       if (sql.includes('FROM hiring.avisos')) return avisos;
       if (sql.includes('FROM hiring.procesos WHERE id')) return [{ modalidad: 'LICITACION', radicado: 'CTO-1' }];
@@ -163,22 +164,36 @@ describe('NotificadorService · despachar', () => {
       expect(sql).toContain("s.estado = 'VIGENTE'");
     });
 
-    it('«el equipo financiero» son las cuentas con permiso de presupuesto', async () => {
+    it('«el equipo financiero» son las cuentas que pueden editar la 4.2', async () => {
+      // Por alcance (083) y no por `presupuesto.gestionar`: un rol creado
+      // desde el backoffice con editar en la 4.2 también recibe el aviso.
       fetchOk();
       const { srv, query } = conBase([]);
 
       await srv.despachar([{ ...adjunto, evento: 'HABILITADA', numeral: '4.1' }]);
 
-      const llamada = query.mock.calls.find(([s]) => String(s).includes('perm.code = $1'));
-      expect(llamada?.[1]).toEqual(['contratacion.presupuesto.gestionar']);
+      const llamada = query.mock.calls.find(([s]) => String(s).includes('hiring.alcances_permiso'));
+      expect(llamada?.[1]).toEqual(['editar', '4.2', 4]);
     });
 
     it.each([
+      ['6.2', '6.2'],
+      ['8.2', '8.2'],
+      ['9.3', '9.3'],
+      ['10.4', '10.4'],
+    ])('HABILITADA en la %s llega a quien puede decidir la %s, por alcance', async (numeral, decide) => {
+      fetchOk();
+      const { srv, query } = conBase([]);
+
+      await srv.despachar([{ ...adjunto, evento: 'HABILITADA', numeral }]);
+
+      const llamada = query.mock.calls.find(([s]) => String(s).includes('hiring.alcances_permiso'));
+      expect(llamada?.[1]).toEqual(['decidir', decide, Number(decide.split('.')[0])]);
+    });
+
+    // El reparto no es de ninguna etapa: sigue por el permiso transversal.
+    it.each([
       ['PROCESO_RADICADO', '3.1', 'contratacion.proceso.assign'],
-      ['HABILITADA', '6.2', 'contratacion.designacion.ordenar'],
-      ['HABILITADA', '8.2', 'contratacion.designacion.ordenar'],
-      ['HABILITADA', '9.3', 'contratacion.supervision.reasignar'],
-      ['HABILITADA', '10.4', 'contratacion.expediente.archivar'],
     ])('%s en la %s llega a las cuentas con el permiso %s, no a un rol', async (evento, numeral, permiso) => {
       fetchOk();
       const { srv, query } = conBase([], { permiso: [{ id: 'u-con-permiso' }] });
@@ -188,6 +203,62 @@ describe('NotificadorService · despachar', () => {
       const llamada = query.mock.calls.find(([s]) => String(s).includes('perm.code = $1'));
       expect(llamada?.[1]).toEqual([permiso]);
       expect(query.mock.calls.some(([s]) => String(s).includes('FROM auth.user_roles') && !String(s).includes('perm.code'))).toBe(false);
+    });
+  });
+
+  describe('a quien no tiene cuenta (088)', () => {
+    const correosEnviados = (f: jest.Mock) =>
+      f.mock.calls
+        .filter(([url]) => String(url).endsWith('/api/v1/emails/send'))
+        .map(([, init]) => JSON.parse(init.body));
+
+    /** Adjuntar un documento, configurado solo para el contratista y un correo a mano. */
+    const soloDeFuera = (extra: Partial<Record<string, unknown>> = {}) => ({
+      evento: 'DOCUMENTO_ADJUNTO',
+      activo: true,
+      papeles: [],
+      roles: [],
+      correos_externos: ['interventoria@empresa.co'],
+      al_contratista: true,
+      ...extra,
+    });
+
+    it('le llega por correo al contratista del acto vigente y a los correos escritos', async () => {
+      const f = fetchOk();
+      const { srv } = conBase([soloDeFuera()], {
+        contratista: [{ correo: 'gerencia@contratista.co' }],
+      });
+
+      expect(await srv.despachar([adjunto])).toBe(2);
+      expect(correosEnviados(f).map((c) => c.to).sort()).toEqual([
+        'gerencia@contratista.co',
+        'interventoria@empresa.co',
+      ]);
+      // Sin cuenta no hay campana, y el correo no los manda a la plataforma.
+      expect(f.mock.calls.some(([url]) => String(url).endsWith('/notifications/bulk'))).toBe(false);
+      expect(correosEnviados(f)[0].html).not.toContain('Abrir la plataforma');
+    });
+
+    it('sin acto vigente o sin correo en él, al contratista no le llega nada', async () => {
+      const f = fetchOk();
+      const { srv } = conBase([soloDeFuera({ correos_externos: [] })], { contratista: [] });
+
+      expect(await srv.despachar([adjunto])).toBe(0);
+      expect(f).not.toHaveBeenCalled();
+    });
+
+    it('sale con el texto que escribió la Dirección', async () => {
+      const f = fetchOk();
+      const { srv } = conBase(
+        [soloDeFuera({ titulo: 'Nuevo soporte en {proceso}', mensaje: '{quien} adjuntó un documento en {actividad}.' })],
+        { contratista: [] },
+      );
+
+      await srv.despachar([adjunto]);
+
+      const [correo] = correosEnviados(f);
+      expect(correo.subject).toBe('ESAP · Nuevo soporte en CTO-1');
+      expect(correo.text).toBe('director@esap.edu.co adjuntó un documento en 3.2 · Revisión y reparto.');
     });
   });
 

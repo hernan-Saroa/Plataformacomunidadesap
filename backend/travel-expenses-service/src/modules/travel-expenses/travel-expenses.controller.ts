@@ -62,6 +62,10 @@ import { CargaMasivaRpDto } from '../../dto/carga-masiva-rp.dto';
 import { BulkIssueRpDto } from '../../dto/bulk-issue-rp.dto';
 import { CrearObligacionDto } from '../../dto/crear-obligacion.dto';
 import { ProcesarPagoDto } from '../../dto/procesar-pago.dto';
+import {
+  FirmarSolicitudDto,
+  DevolverFirmaDto,
+} from '../../dto/firmar-solicitud.dto';
 
 import { getClientIp } from '../../common/ip.util';
 import { SodGuard, SodProtected } from '../../common/sod.guard';
@@ -196,6 +200,14 @@ export class TravelExpensesController {
       normalizedPermissions.includes('travel_expenses:read_sst_requests') ||
       normalizedPermissions.includes('travel_expenses:resend_sst_notification');
 
+    const isComisionado =
+      normalizedRoles.some(
+        (r) => r === 'COMISIONADO' || r === 'ROL_COMISIONADO',
+      ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_comisionado') ||
+      normalizedPermissions.includes('es_comisionado') ||
+      normalizedPermissions.includes('travel_expenses:read_own_requests');
+
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
     const result = await this.service.obtenerSolicitudes(
@@ -208,6 +220,7 @@ export class TravelExpensesController {
       isSecretario,
       isTesoreria,
       isSst,
+      isComisionado,
     );
     return {
       data: result.data,
@@ -285,6 +298,47 @@ export class TravelExpensesController {
   })
   consultarComisionado(@Param('documento') documento: string) {
     return this.service.consultarComisionado(documento);
+  }
+
+  @Get('comisionados/:documento/solicitudes-pendientes')
+  @Public()
+  @ApiOperation({
+    summary: 'Consultar solicitudes de comisión (Formato 023) pendientes de un comisionado',
+    description:
+      'Retorna las solicitudes en trámite o activas (no pagadas, canceladas ni rechazadas) para alertar al momento de diligenciar una nueva comisión.',
+  })
+  @ApiParam({
+    name: 'documento',
+    description: 'Número de documento de identidad del comisionado',
+    example: '1019283746',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Listado de solicitudes de Formato 023 pendientes del comisionado.',
+  })
+  obtenerSolicitudesPendientesComisionado(@Param('documento') documento: string) {
+    return this.service.obtenerSolicitudesPendientesPorDocumento(documento);
+  }
+
+  @Get('comisionados/:documento/verificar-solapamiento')
+  @Public()
+  @ApiOperation({
+    summary: 'Verificar duplicidad y solapamiento de fechas para un comisionado',
+    description:
+      'Verifica si las fechas seleccionadas se cruzan con alguna solicitud activa o en trámite del comisionado antes de avanzar al cargue de soportes.',
+  })
+  verificarSolapamiento(
+    @Param('documento') documento: string,
+    @Query('fechaInicio') fechaInicio: string,
+    @Query('fechaFin') fechaFin: string,
+    @Query('solicitudId') solicitudId?: string,
+  ) {
+    return this.service.verificarSolapamientoFechas(
+      documento,
+      fechaInicio,
+      fechaFin,
+      solicitudId,
+    );
   }
 
   @Get('talento-humano/consultar')
@@ -439,8 +493,112 @@ export class TravelExpensesController {
     return this.service.finalizarSolicitud(id);
   }
 
+  @Get(['requests/firmas-inbox', 'api/v1/requests/firmas-inbox'])
+  @ApiOperation({
+    summary: 'Bandeja de solicitudes pendientes de firmas de aprobación (Formato 023)',
+    description:
+      'Retorna comisiones en estado PENDIENTE_FIRMAS requeridas para suscripción de Jefe de Dependencia/Supervisor o Gerente de Proyecto.',
+  })
+  @Permissions(
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:create_request',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_inbox',
+  )
+  async obtenerBandejaFirmas(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('busqueda') busqueda?: string,
+  ) {
+    const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+    const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
+    const result = await this.service.obtenerBandejaFirmas(
+      pageNum,
+      limitNum,
+      busqueda,
+    );
+    return {
+      success: true,
+      data: result.data,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Get('requests/:id/firmas')
+  @ApiOperation({
+    summary: 'Obtiene el estado de firmas de aprobación del Formato 023 previo a la radicación',
+    description:
+      'Retorna los firmantes requeridos (Jefe de dependencia/Supervisor y Gerente de Proyecto), la regla de desplazamiento aplicada y el estado de cada firma.',
+  })
+  @Permissions(
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:create_request',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_inbox',
+  )
+  obtenerEstadoFirmas(@Param('id') id: string) {
+    return this.service.obtenerEstadoFirmas(id);
+  }
+
+  @Post('requests/:id/solicitar-firmas')
+  @ApiOperation({
+    summary: 'Consolida la solicitud e inicia el flujo de firmas de aprobación previo a la radicación',
+    description:
+      'Valida que el expediente esté completo (checklist y datos) y transiciona el estado a PENDIENTE_FIRMAS.',
+  })
+  @Permissions('travel_expenses:create_request')
+  solicitarFirmasAprobacion(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.service.solicitarFirmasAprobacion(id, req.user?.userId);
+  }
+
+  @Post('requests/:id/firmar')
+  @ApiOperation({
+    summary: 'Registra la firma de aprobación de la solicitud (Jefe de Dependencia/Supervisor o Gerente de Proyecto)',
+    description:
+      'Sin las firmas de aprobación la solicitud no se radica. Surtido el flujo de firmas y validaciones, la solicitud queda en estado RADICADA.',
+  })
+  @Permissions(
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+  )
+  firmarAprobacion(
+    @Param('id') id: string,
+    @Body() dto: FirmarSolicitudDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const roles = req.user?.roles || (req.user?.role ? [req.user.role] : []);
+    return this.service.firmarAprobacionSolicitud(id, dto, req.user?.userId, roles);
+  }
+
+  @Post('requests/:id/devolver-firma')
+  @ApiOperation({
+    summary: 'Devuelve la solicitud durante el flujo de firmas de aprobación con observaciones',
+    description: 'Devuelve la solicitud a DEVUELTA para que el enlace subsane las observaciones.',
+  })
+  @Permissions(
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+  )
+  devolverFirma(
+    @Param('id') id: string,
+    @Body() dto: DevolverFirmaDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.service.devolverFirmaAprobacion(id, dto.motivo, req.user?.userId);
+  }
+
   @Get('requests/:id')
   @Permissions(
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
     'travel_expenses:create_request',
     'travel_expenses:read_inbox',
     'travel_expenses:set_priority',
@@ -465,6 +623,7 @@ export class TravelExpensesController {
     'travel_expenses:authorize_expense',
     'travel_expenses:read_obligations',
     'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
   )
   obtenerSolicitud(@Param('id') id: string) {
     return this.service.obtenerSolicitudCompleta(id);
@@ -629,6 +788,7 @@ export class TravelExpensesController {
     'travel_expenses:read_authorized',
     'travel_expenses:read_obligations',
     'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
   )
   async exportarFormato023(
     @Param('id') id: string,

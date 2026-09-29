@@ -14,7 +14,6 @@ import {
 import { ActividadExcluida } from '../../entities/actividad.entity';
 import { Documento } from '../../entities/documento.entity';
 import { Expediente } from '../../entities/expediente.entity';
-import { Plantilla } from '../../entities/plantilla.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
@@ -22,6 +21,7 @@ import { Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { AprobacionService } from '../aprobacion/aprobacion.service';
 import { CdpService } from '../cdp/cdp.service';
+import { DocumentosActividadService } from '../documentos-actividad/documentos-actividad.service';
 import { admiteRegistro, faltaParaRegistrar } from './admite-registro';
 import {
   AnularRegistroDto,
@@ -53,74 +53,41 @@ export class RegistroActividadService {
     private readonly dataSource: DataSource,
     private readonly aprobacion: AprobacionService,
     private readonly cdp: CdpService,
+    /** Qué documentos pide la actividad, del catálogo único (EFDS-2066). */
+    private readonly catalogo: DocumentosActividadService,
   ) {}
 
   /**
-   * Si la actividad tiene un formato del SIG asignado que le aplique.
+   * Si la actividad pide documentos a este proceso (EFDS-2066).
    *
-   * Un formato asignado exige el documento por sí solo, sin regla aparte: «el
-   * sistema ofrece el que corresponde y controla que el documento firmado se
-   * adjunte», dice la entidad. Pedir además una regla era el segundo paso que
-   * nadie daba —hay cuatro formatos asignados y una sola regla, ambos sobre la
-   * misma actividad, y treinta y siete actividades sin ninguna de las dos.
-   *
-   * El formato sin archivo subido cuenta igual: lo que obliga es que el
-   * documento se entregue, no que Contratación ya haya publicado la plantilla.
+   * Un documento requerido exige el documento por sí solo, sin regla aparte.
+   * Pedir además una regla era el segundo paso que nadie daba —hubo cuatro
+   * formatos asignados y una sola regla, y treinta y siete actividades sin
+   * ninguna de las dos—. Desde el catálogo único la pregunta es la misma para
+   * las sesenta y tres: qué pide la actividad según la modalidad y la
+   * tipología del proceso.
    */
-  private async tieneFormatoAsignado(
-    em: EntityManager,
-    numeral: string,
-    modalidad: string | null,
-  ): Promise<boolean> {
-    return (await this.formatosAplicables(em, numeral, modalidad)).length > 0;
-  }
-
-  /**
-   * Si queda algún formato de la actividad sin entregar.
-   *
-   * Es lo que decide si el formulario pide soporte: exigirlo por el solo hecho
-   * de que exista el formato dejaba atascada la corrección de una actividad
-   * devuelta, cuyo documento ya estaba cargado.
-   */
-  private async formatoPendiente(
+  private async tieneDocumentosRequeridos(
     em: EntityManager,
     procesoId: string,
     numeral: string,
-    modalidad: string | null,
   ): Promise<boolean> {
-    const formatos = await this.formatosAplicables(em, numeral, modalidad);
-    if (!formatos.length) return false;
-
-    const expediente = await em.findOne(Expediente, { where: { procesoId } });
-    if (!expediente) return true;
-
-    const entregados = await em.getRepository(Documento).find({
-      where: { expedienteId: expediente.id, numeral, tipo: 'ADJUNTO' },
-    });
-
-    return formatos.some((f) => !entregados.some((d) => d.plantillaId === f.id));
+    return (await this.catalogo.requeridosDe(procesoId, numeral, em)).length > 0;
   }
 
   /**
-   * Los formatos que esta actividad pide para esta modalidad.
+   * Si queda algún obligatorio de la actividad sin entregar.
    *
-   * Alcance vacío significa todas; si el formato declara modalidades, la de
-   * este proceso tiene que estar. Es el mismo criterio con el que se listan.
+   * Es lo que decide si el formulario pide soporte: exigirlo por el solo hecho
+   * de que exista el requisito dejaba atascada la corrección de una actividad
+   * devuelta, cuyo documento ya estaba cargado.
    */
-  private async formatosAplicables(
+  private async documentoPendiente(
     em: EntityManager,
+    procesoId: string,
     numeral: string,
-    modalidad: string | null,
-  ): Promise<Plantilla[]> {
-    const formatos = await em.getRepository(Plantilla).find({
-      where: { numeral, activo: true },
-      order: { codigo: 'ASC' },
-    });
-
-    return formatos.filter(
-      (f) =>
-        f.modalidades.length === 0 || (modalidad !== null && f.modalidades.includes(modalidad)),
-    );
+  ): Promise<boolean> {
+    return (await this.catalogo.faltantes(procesoId, numeral, em)).length > 0;
   }
 
   // -------------------------------------------------------------- consulta --
@@ -151,17 +118,19 @@ export class RegistroActividadService {
      * Quién pide el soporte, y si todavía hace falta.
      *
      * Dos exigencias apuntan al mismo papel: la de esta tabla, marcada por el
-     * equipo, y la del formato asignado en la biblioteca. Sumarlas pedía el
-     * documento dos veces —el formulario por un lado y el bloque de formatos
-     * por otro—, y al corregir una actividad devuelta el botón de registrar
-     * quedaba muerto porque reclamaba un archivo que ya estaba cargado.
+     * equipo, y la de los documentos que Configuración le pide a la
+     * actividad. Sumarlas pedía el documento dos veces —el formulario por un
+     * lado y el bloque de documentos por otro—, y al corregir una actividad
+     * devuelta el botón de registrar quedaba muerto porque reclamaba un
+     * archivo que ya estaba cargado.
      *
-     * Donde hay formato manda el formato: si ya se entregó, no hay nada
-     * pendiente. Donde no lo hay, la exigencia de la tabla sigue sola.
+     * Donde hay documentos requeridos mandan ellos: si ya se entregaron los
+     * obligatorios, no hay nada pendiente. Donde no los hay, la exigencia de
+     * la tabla sigue sola.
      */
-    const conFormato = await this.tieneFormatoAsignado(em, numeral, proceso.modalidad ?? null);
+    const conFormato = await this.tieneDocumentosRequeridos(em, procesoId, numeral);
     const pendientePorFormato = conFormato
-      ? await this.formatoPendiente(em, procesoId, numeral, proceso.modalidad ?? null)
+      ? await this.documentoPendiente(em, procesoId, numeral)
       : false;
 
     return {
@@ -172,19 +141,20 @@ export class RegistroActividadService {
       // institucional antes de que esto se dé por terminado (EFDS-2070).
       exigeFirma: await this.exigeFirma(em, numeral),
       /*
-       * Si el soporte lo recibe el bloque de formatos en vez del formulario.
+       * Si el soporte lo recibe el bloque de documentos en vez del formulario.
        *
        * El formulario y el bloque escriben el mismo adjunto —desde que el
-       * soporte cumple el formato pendiente, los dos llenan la misma casilla—,
-       * así que ofrecer los dos a la vez es pedir el documento dos veces. Con
-       * formatos asignados manda el bloque, que dice de qué formato se trata y
+       * soporte cubre el requisito pendiente, los dos llenan la misma
+       * casilla—, así que ofrecer los dos a la vez es pedir el documento dos
+       * veces. Con documentos requeridos manda el bloque, que dice cuál es y
        * presta la plantilla en blanco; el formulario retira su selector.
+       * Conserva el nombre `tieneFormatos` porque así lo lee la pantalla.
        */
       tieneFormatos: conFormato,
       // Se dice en la pantalla: una exigencia sin confirmar no se presenta como
-      // si viniera de la norma. Un formato asignado sí es decisión del área
-      // —alguien entró a la biblioteca y lo puso en esta actividad—, así que
-      // presentarlo como pendiente de confirmar sería decir algo falso.
+      // si viniera de la norma. Un documento requerido sí es decisión del
+      // área —alguien lo configuró en esta actividad—, así que presentarlo
+      // como pendiente de confirmar sería decir algo falso.
       exigenciaConfirmada: parametro.confirmado || conFormato,
       notaFuente: parametro.notaFuente,
       aplica: !excluida,
@@ -253,13 +223,12 @@ export class RegistroActividadService {
         fecha: dto.fecha,
         nota: dto.nota,
         tieneSoporte: archivo !== null,
-        // El formato asignado exige igual que la matriz: si se comprobara solo
-        // al consultar, la pantalla pediría el soporte y el servicio lo dejaría
-        // pasar, que es la peor de las dos respuestas.
-        // La misma regla que al consultar: donde hay formato manda el formato.
-        // Si difirieran, la pantalla dejaría registrar y el servicio no.
-        exigeSoporte: (await this.tieneFormatoAsignado(em, numeral, proceso.modalidad ?? null))
-          ? await this.formatoPendiente(em, procesoId, numeral, proceso.modalidad ?? null)
+        // El documento requerido exige igual que la matriz: si se comprobara
+        // solo al consultar, la pantalla pediría el soporte y el servicio lo
+        // dejaría pasar. Es la misma regla que al consultar; si difirieran, la
+        // pantalla dejaría registrar y el servicio no.
+        exigeSoporte: (await this.tieneDocumentosRequeridos(em, procesoId, numeral))
+          ? await this.documentoPendiente(em, procesoId, numeral)
           : parametro.exigeSoporte,
         hoy: new Date().toISOString().slice(0, 10),
       });
@@ -303,15 +272,7 @@ export class RegistroActividadService {
       }
 
       const documento = archivo
-        ? await this.guardarSoporte(
-            em,
-            procesoId,
-            numeral,
-            archivo,
-            hash as string,
-            acceso,
-            proceso.modalidad ?? null,
-          )
+        ? await this.guardarSoporte(em, procesoId, numeral, archivo, hash as string, acceso)
         : null;
 
       const registro = await em.save(
@@ -463,11 +424,11 @@ export class RegistroActividadService {
   /**
    * Guarda el soporte que pide el formulario de la actividad.
    *
-   * Si la actividad tiene formatos asignados, el soporte cumple el primero que
-   * siga pendiente. Sin esa atadura el documento quedaba suelto: el requisito
-   * del formato seguía sin cumplirse, el bloque de abajo volvía a pedir el
-   * mismo papel —la doble carga que se veía en pantalla— y la actividad podía
-   * aprobarse con el formato en blanco.
+   * Si la actividad tiene obligatorios pendientes, el soporte cubre el primero.
+   * Sin esa atadura el documento quedaba suelto: el requisito seguía sin
+   * cumplirse, el bloque de abajo volvía a pedir el mismo papel —la doble
+   * carga que se veía en pantalla— y la actividad podía aprobarse con el
+   * documento en blanco.
    */
   private async guardarSoporte(
     em: EntityManager,
@@ -476,33 +437,26 @@ export class RegistroActividadService {
     archivo: ArchivoCargado,
     hash: string,
     acceso: HiringAccess,
-    modalidad: string | null,
   ) {
+    const [pendiente] = await this.catalogo.faltantes(procesoId, numeral, em);
+    if (pendiente) {
+      return this.catalogo.cargar(procesoId, numeral, pendiente.codigo, archivo, hash, acceso, em);
+    }
+
     const expediente = await em.findOne(Expediente, { where: { procesoId } });
     if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
-
-    const formatos = await this.formatosAplicables(em, numeral, modalidad);
-    const entregados = formatos.length
-      ? await em.getRepository(Documento).find({
-          where: { expedienteId: expediente.id, numeral, tipo: 'ADJUNTO' },
-        })
-      : [];
-    const pendiente = formatos.find(
-      (f) => !entregados.some((d) => d.plantillaId === f.id),
-    );
 
     return em.save(
       em.create(Documento, {
         expedienteId: expediente.id,
         numeral,
         tipo: 'ADJUNTO',
-        nombre: pendiente?.nombre ?? `Soporte de la actividad ${numeral}`,
+        nombre: `Soporte de la actividad ${numeral}`,
         archivoUrl: `hiring/files/${archivo.filename}`,
         archivoNombreOriginal: archivo.originalname,
         archivoMimeType: archivo.mimetype,
         archivoTamano: archivo.size,
         hashSha256: hash,
-        plantillaId: pendiente?.id ?? null,
         subidoPor: acceso.userName,
       } as Partial<Documento>),
     );

@@ -32,14 +32,12 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
     userId: '00000000-0000-0000-0000-000000000001',
     userName: 'prueba.gestor',
     roles: ['GESTOR_CONTRATACION'],
-    puedeEditar: true,
   };
 
   const financiero: HiringAccess = {
     userId: '00000000-0000-0000-0000-000000000002',
     userName: 'prueba.financiero',
     roles: ['ESTRUCTURADOR_FINANCIERO'],
-    puedeEditar: false,
   };
 
   const hoy = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });

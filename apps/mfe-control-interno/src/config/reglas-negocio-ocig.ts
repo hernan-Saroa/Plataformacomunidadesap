@@ -1,83 +1,52 @@
 /**
- * REGLAS DE NEGOCIO - CONTROL INTERNO DE GESTIÓN (OCIG)
- * 
+ * REGLAS DE NEGOCIO - CONTROL INTERNO DE GESTIÓN (OCI)
+ *
  * ATENCIÓN: Este archivo contiene normas estructurales y requerimientos legales (Ej: Ley 648 de 2017)
  * que rigen el comportamiento, los permisos y flujos de trabajo del módulo de Control Interno.
- * 
+ *
  * ⚠️ NO SE DEBEN MODIFICAR ESTAS REGLAS SIN INSTRUCCIÓN EXPLÍCITA, YA QUE ESTÁN
  * VINCULADAS AL CUMPLIMIENTO NORMATIVO Y AL FLUJO DE AUDITORÍA OFICIAL.
+ *
+ * Los roles son los de Asignar Profesional (Configuraciones > Profesionales OCI):
+ * Jefe OCI, Auditor y Aprobador Plan Anual (EFDS-2197). Se compara el rol
+ * configurado, no un texto parecido en el cargo.
  */
+
+import { ROL_OCI_AUDITOR, ROL_OCI_JEFE, tieneRolOci } from './roles-ocig-operativos';
 
 export const REGLAS_NEGOCIO_OCIG = {
   // ──────────────────────────────────────────────────────────────────────────
-  // 1. REGLAS PARA LA DIRECCIÓN DEL PLAN ANUAL DE AUDITORÍA
-  // Solo ciertos roles están autorizados para ser "Responsables del Plan Anual".
+  // 1. REGLAS PARA LA DIRECCIÓN DEL PLAN ANUAL DE AUDITORÍA Y EL EQUIPO AUDITOR
   // ──────────────────────────────────────────────────────────────────────────
   ROLES_RESPONSABLES_PLAN_ANUAL: {
-    nombresRequeridos: ['jefe oci', 'jefe ocig', 'jefe oficina control interno', 'auditor lider', 'auditor líder', 'auditor lìder'],
-    
     /**
-     * Valida si el cargo otorgado a un usuario de control interno
-     * tiene autoridad suficiente para ser listado como Responsable del Plan Anual.
+     * Puede ser Responsable del Plan Anual: rol Jefe OCI o Auditor. Antes eran
+     * Jefe OCIG y Auditor Líder; el Auditor Líder pasó a ser Auditor (EFDS-2197).
      */
-    esAutorizadoParaResponsablePlan: (cargo: string | undefined | null): boolean => {
-      if (!cargo) return false;
-      const cargoMin = cargo.toLowerCase();
-      
-      const esJefeOCI = cargoMin.includes('jefe') && (
-        cargoMin.includes('oci') || 
-        cargoMin.includes('ocig') || 
-        cargoMin.includes('control interno')
-      );
-      const esAuditorLider = cargoMin.includes('auditor') && (cargoMin.includes('lider') || cargoMin.includes('líder') || cargoMin.includes('lìder'));
-      
-      return esJefeOCI || esAuditorLider;
-    },
+    esAutorizadoParaResponsablePlan: (cargo: string | undefined | null): boolean =>
+      tieneRolOci(cargo, ROL_OCI_JEFE) || tieneRolOci(cargo, ROL_OCI_AUDITOR),
+
+    /** Campo "Jefe OCI / Supervisor" de la auditoría: solo el rol Jefe OCI. */
+    esJefeOCISupervisor: (cargo: string | undefined | null): boolean =>
+      tieneRolOci(cargo, ROL_OCI_JEFE),
+
+    /** Campo "Auditor Líder" de la auditoría: solo el rol Auditor. */
+    puedeLiderarAuditoria: (cargo: string | undefined | null): boolean =>
+      tieneRolOci(cargo, ROL_OCI_AUDITOR),
 
     /**
-     * Valida si es Jefe OCI o Supervisor
-     * Requerimiento: Jefe de la OCI o la OCIG, o Supervisor.
+     * "Equipo Auditor Adicional": solo el rol Auditor. Quien ya quedó como
+     * Auditor Líder se excluye por ID en el componente.
      */
-    esJefeOCISupervisor: (cargo: string | undefined | null): boolean => {
-      if (!cargo) return false;
-      const cargoMin = cargo.toLowerCase();
-      return cargoMin.includes('jefe oci') || 
-             cargoMin.includes('jefe ocig') || 
-             cargoMin.includes('jefe de oci') ||
-             cargoMin.includes('jefe de la oci') ||
-             cargoMin.includes('jefe oficina control interno') ||
-             cargoMin.includes('supervisor');
-    },
-
-    /**
-     * Valida si es Auditor Líder
-     * Requerimiento: Solo profesionales con rol "Auditor Líder" en Configuraciones > Profesionales OCI.
-     */
-    esAuditorLider: (cargo: string | undefined | null): boolean => {
-      if (!cargo) return false;
-      const cargoMin = cargo.toLowerCase();
-      return cargoMin.includes('auditor') && (
-        cargoMin.includes('lider') || 
-        cargoMin.includes('líder') || 
-        cargoMin.includes('lìder')
-      );
-    },
-
-    /**
-     * Valida si es parte del equipo auditor adicional.
-     * Todos los profesionales configurados en OCI pueden participar como equipo auditor.
-     * Los que ya están asignados como Jefe OCI o Auditor Líder se excluyen por ID en el componente.
-     */
-    esEquipoAuditor: (_cargo: string | undefined | null): boolean => {
-      return true;
-    }
+    esEquipoAuditor: (cargo: string | undefined | null): boolean =>
+      tieneRolOci(cargo, ROL_OCI_AUDITOR),
   },
 
   // ──────────────────────────────────────────────────────────────────────────
   // 2. COMITÉ DE APROBACIÓN DEL PAI (Decreto 648 / Ley 648 de 2017)
-  // Los miembros del comité se eligen entre usuarios con permiso
-  // control-interno.plan-anual.approve (ver GET aprobadores-plan-anual).
-  // No se usa el rol OCIG "Aprobador PAI" en configuracion_profesionales_ocig.
+  // Los miembros del comité se eligen entre los profesionales con rol
+  // "Aprobador Plan Anual" (ver GET aprobadores-plan-anual); aprobar exige además
+  // el permiso control-interno.plan-anual.approve.
   // ──────────────────────────────────────────────────────────────────────────
   COMITE_INSTITUCIONAL: {
     permisoRequerido: 'control-interno.plan-anual.approve',

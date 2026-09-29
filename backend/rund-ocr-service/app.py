@@ -10,7 +10,10 @@ from fastapi.responses import JSONResponse
 MAX_BYTES = 25 * 1024 * 1024
 MAX_PAGES = 25
 MAX_TEXT = 50000
+MAX_RENDER_SCALE = 3.0
 TOKEN = os.environ.get('RUND_OCR_TOKEN', '')
+OCR_DETECTION_MODEL = 'PP-OCRv6_medium_det'
+OCR_RECOGNITION_MODEL = 'PP-OCRv6_medium_rec'
 app = FastAPI(title='RUND OCR local', docs_url=None, redoc_url=None, openapi_url=None)
 gate = threading.Lock()
 engine = None
@@ -39,11 +42,12 @@ def get_engine():
     global engine
     if engine is None:
         from paddleocr import PaddleOCR
-        # Modelos explícitos y ligeros: no heredar cambios de versión por defecto.
-        engine = PaddleOCR(device='cpu', text_detection_model_name='PP-OCRv5_mobile_det',
-                           text_recognition_model_name='latin_PP-OCRv5_mobile_rec',
-                           enable_mkldnn=False, cpu_threads=2, use_doc_orientation_classify=False,
-                           use_doc_unwarping=False, use_textline_orientation=False)
+        # Perfil de alta precisión para expedientes: PP-OCRv6 medium reconoce
+        # español de forma nativa y corrige rotación, perspectiva y líneas.
+        engine = PaddleOCR(device='cpu', text_detection_model_name=OCR_DETECTION_MODEL,
+                           text_recognition_model_name=OCR_RECOGNITION_MODEL,
+                           enable_mkldnn=False, cpu_threads=2, use_doc_orientation_classify=True,
+                           use_doc_unwarping=True, use_textline_orientation=True)
     return engine
 
 
@@ -76,7 +80,9 @@ def extract_pdf(content: bytes, ocr):
                 width, height = page.get_size()
                 if width <= 0 or height <= 0 or not math.isfinite(width * height):
                     raise HTTPException(422, 'Tamaño de página inválido.')
-                scale = min(2.2, math.sqrt(12_000_000 / (width * height)))
+                # ~216 DPI en un PDF estándar: mejora caracteres pequeños sin
+                # superar el límite defensivo de 12 millones de píxeles.
+                scale = min(MAX_RENDER_SCALE, math.sqrt(12_000_000 / (width * height)))
                 bitmap = page.render(scale=scale)
                 try:
                     # Paddle recibe imagen BGR, no se escribe el PDF ni las imágenes en disco.
@@ -100,7 +106,7 @@ def extract_pdf(content: bytes, ocr):
                     bitmap.close()
             finally:
                 page.close()
-    return {'motor': 'PaddleOCR 3.7.0 / PP-OCRv5_mobile_det / latin_PP-OCRv5_mobile_rec', 'paginas': pages}
+    return {'motor': f'PaddleOCR 3.7.0 / {OCR_DETECTION_MODEL} / {OCR_RECOGNITION_MODEL} / corrección documental', 'paginas': pages}
 
 
 @app.post('/extract')

@@ -7,7 +7,9 @@ import {
   Put,
   Delete,
   UseGuards,
+  Req,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { LiquidationConfigService } from './liquidation-config.service';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
@@ -26,10 +28,25 @@ import {
 } from '../../dto/liquidation/tarifa-transporte-terminal.dto';
 import { UpdateLiquidationParamsDto } from '../../dto/liquidation/liquidation-params.dto';
 
+interface AuthenticatedRequest extends Request {
+  user?: {
+    userId: string;
+    username?: string;
+    email?: string;
+    roles?: string[];
+    role?: string;
+    permissions?: string[];
+  };
+}
+
 @Controller('liquidation/config')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class LiquidationConfigController {
   constructor(private readonly configService: LiquidationConfigService) {}
+
+  private obtenerUsuarioModificador(req: AuthenticatedRequest): string {
+    return req?.user?.username || (req?.user as any)?.email || req?.user?.userId || 'Administrador del Sistema';
+  }
 
   // ==================== ESCALAS ====================
 
@@ -40,8 +57,12 @@ export class LiquidationConfigController {
 
   @Post('escalas')
   @Permissions('travel_expenses:manage_config')
-  crearEscala(@Body() dto: CreateEscalaViaticoDto) {
-    return this.configService.crearEscala(dto);
+  crearEscala(
+    @Body() dto: CreateEscalaViaticoDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.crearEscala(dto, usuario);
   }
 
   @Put('escalas/:id')
@@ -49,14 +70,20 @@ export class LiquidationConfigController {
   actualizarEscala(
     @Param('id') id: string,
     @Body() dto: UpdateEscalaViaticoDto,
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.configService.actualizarEscala(Number(id), dto);
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.actualizarEscala(Number(id), dto, usuario);
   }
 
   @Delete('escalas/:id')
   @Permissions('travel_expenses:manage_config')
-  async eliminarEscala(@Param('id') id: string) {
-    return this.configService.eliminarEscala(Number(id));
+  async eliminarEscala(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.eliminarEscala(Number(id), usuario);
   }
 
   // ==================== TARIFAS INVESTIGADOR ====================
@@ -68,8 +95,12 @@ export class LiquidationConfigController {
 
   @Post('tarifas-investigadores')
   @Permissions('travel_expenses:manage_config')
-  crearTarifaInvestigador(@Body() dto: CreateTarifaInvestigadorDto) {
-    return this.configService.crearTarifaInvestigador(dto);
+  crearTarifaInvestigador(
+    @Body() dto: CreateTarifaInvestigadorDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.crearTarifaInvestigador(dto, usuario);
   }
 
   @Put('tarifas-investigadores/:id')
@@ -77,14 +108,20 @@ export class LiquidationConfigController {
   actualizarTarifaInvestigador(
     @Param('id') id: string,
     @Body() dto: UpdateTarifaInvestigadorDto,
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.configService.actualizarTarifaInvestigador(Number(id), dto);
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.actualizarTarifaInvestigador(Number(id), dto, usuario);
   }
 
   @Delete('tarifas-investigadores/:id')
   @Permissions('travel_expenses:manage_config')
-  async eliminarTarifaInvestigador(@Param('id') id: string) {
-    return this.configService.eliminarTarifaInvestigador(Number(id));
+  async eliminarTarifaInvestigador(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.eliminarTarifaInvestigador(Number(id), usuario);
   }
 
   @Get('catalogo-departamentos')
@@ -101,8 +138,12 @@ export class LiquidationConfigController {
 
   @Post('tarifas-transporte-terminal')
   @Permissions('travel_expenses:manage_config')
-  crearTarifaTransporteTerminal(@Body() dto: CreateTarifaTransporteTerminalDto) {
-    return this.configService.crearTarifaTransporteTerminal(dto);
+  crearTarifaTransporteTerminal(
+    @Body() dto: CreateTarifaTransporteTerminalDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.crearTarifaTransporteTerminal(dto, usuario);
   }
 
   @Put('tarifas-transporte-terminal/:id')
@@ -110,14 +151,20 @@ export class LiquidationConfigController {
   actualizarTarifaTransporteTerminal(
     @Param('id') id: string,
     @Body() dto: UpdateTarifaTransporteTerminalDto,
+    @Req() req: AuthenticatedRequest,
   ) {
-    return this.configService.actualizarTarifaTransporteTerminal(Number(id), dto);
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.actualizarTarifaTransporteTerminal(Number(id), dto, usuario);
   }
 
   @Delete('tarifas-transporte-terminal/:id')
   @Permissions('travel_expenses:manage_config')
-  async eliminarTarifaTransporteTerminal(@Param('id') id: string) {
-    return this.configService.eliminarTarifaTransporteTerminal(Number(id));
+  async eliminarTarifaTransporteTerminal(
+    @Param('id') id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.eliminarTarifaTransporteTerminal(Number(id), usuario);
   }
 
   // ==================== PARÁMETROS GLOBALES ====================
@@ -129,7 +176,11 @@ export class LiquidationConfigController {
 
   @Put('parametros')
   @Permissions('travel_expenses:manage_config')
-  actualizarParametros(@Body() dto: UpdateLiquidationParamsDto) {
-    return this.configService.actualizarParametrosLote(dto);
+  actualizarParametros(
+    @Body() dto: UpdateLiquidationParamsDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuario = this.obtenerUsuarioModificador(req);
+    return this.configService.actualizarParametrosLote(dto, usuario);
   }
 }

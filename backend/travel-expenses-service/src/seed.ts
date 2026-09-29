@@ -133,6 +133,11 @@ async function seed() {
           autorizacionHabeasData: true,
           fechaAutorizacionHabeasData: new Date('2026-01-15'),
           ipRegistroHabeasData: '127.0.0.1',
+          cargo: 'Técnico Administrativo',
+          salarioBasico: 3200000.00,
+          fechaInicioContrato: '2024-03-01',
+          fechaFinContrato: '2027-04-30',
+          esFacturadorElectronico: false,
         },
         {
           numeroDocumento: '1004734004',
@@ -147,6 +152,11 @@ async function seed() {
           autorizacionHabeasData: true,
           fechaAutorizacionHabeasData: new Date('2026-02-10'),
           ipRegistroHabeasData: '127.0.0.1',
+          cargo: 'Contratista de Apoyo a la Gestión',
+          salarioBasico: 4500000.00,
+          fechaInicioContrato: '2026-01-10',
+          fechaFinContrato: '2026-12-31',
+          esFacturadorElectronico: true,
         },
         {
           numeroDocumento: '1019283746',
@@ -161,6 +171,11 @@ async function seed() {
           autorizacionHabeasData: true,
           fechaAutorizacionHabeasData: new Date('2026-03-05'),
           ipRegistroHabeasData: '127.0.0.1',
+          cargo: 'Profesional Especializado',
+          salarioBasico: 6850000.00,
+          fechaInicioContrato: '2024-01-15',
+          fechaFinContrato: '2027-12-31',
+          esFacturadorElectronico: false,
         },
         {
           numeroDocumento: '52839102',
@@ -175,6 +190,11 @@ async function seed() {
           autorizacionHabeasData: true,
           fechaAutorizacionHabeasData: new Date('2026-03-20'),
           ipRegistroHabeasData: '127.0.0.1',
+          cargo: 'Docente Ocasional Tiempo Completo',
+          salarioBasico: 5800000.00,
+          fechaInicioContrato: '2025-02-01',
+          fechaFinContrato: '2027-06-30',
+          esFacturadorElectronico: false,
         },
         {
           numeroDocumento: '79483920',
@@ -189,8 +209,52 @@ async function seed() {
           autorizacionHabeasData: true,
           fechaAutorizacionHabeasData: new Date('2026-04-12'),
           ipRegistroHabeasData: '127.0.0.1',
+          cargo: 'Asesor de Dirección',
+          salarioBasico: 9200000.00,
+          fechaInicioContrato: '2023-08-01',
+          fechaFinContrato: '2028-12-31',
+          esFacturadorElectronico: false,
+        },
+        {
+          numeroDocumento: '900000001',
+          primerNombre: 'Fernando',
+          segundoNombre: 'Andrés',
+          primerApellido: 'Próximo',
+          segundoApellido: 'Castillo',
+          email: 'fernando.proximo@esap.edu.co',
+          telefonoContacto: '3112223344',
+          tipoComisionado: 'CONTRATISTA',
+          origenDatos: 'HUMANO',
+          autorizacionHabeasData: true,
+          fechaAutorizacionHabeasData: new Date('2026-01-01'),
+          ipRegistroHabeasData: '127.0.0.1',
+          cargo: 'Contratista Asesor Territorial',
+          salarioBasico: 4800000.00,
+          fechaInicioContrato: '2026-01-01',
+          fechaFinContrato: '2026-10-15',
+          esFacturadorElectronico: false,
+        },
+        {
+          numeroDocumento: '900000002',
+          primerNombre: 'Mauricio',
+          segundoNombre: 'Javier',
+          primerApellido: 'Vencido',
+          segundoApellido: 'Paredes',
+          email: 'mauricio.vencido@esap.edu.co',
+          telefonoContacto: '3123334455',
+          tipoComisionado: 'CONTRATISTA',
+          origenDatos: 'HUMANO',
+          autorizacionHabeasData: true,
+          fechaAutorizacionHabeasData: new Date('2024-01-15'),
+          ipRegistroHabeasData: '127.0.0.1',
+          cargo: 'Auxiliar de Proyectos',
+          salarioBasico: 2900000.00,
+          fechaInicioContrato: '2024-01-15',
+          fechaFinContrato: '2025-12-31',
+          esFacturadorElectronico: false,
         },
       ]);
+
 
       const savedComisionados = await comisionadoRepo.save(comisionados);
       console.log(`✅ ${savedComisionados.length} comisionados creados.`);
@@ -424,10 +488,161 @@ async function seed() {
           orden: 12,
           activo: true,
         },
+        // ── Campos dinámicos por tipo de comisionado ────────────────────────
+        {
+          clave: 'numeroContrato',
+          etiqueta: 'Número de Contrato',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. C-2024-001 (contrato SECOP)',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 13,
+          activo: true,
+        },
+        {
+          clave: 'cargoEsap',
+          etiqueta: 'Cargo / Rol ESAP',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. Asesor Jurídico, Coordinador de Área...',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 14,
+          activo: true,
+        },
+        {
+          clave: 'rolEsap',
+          etiqueta: 'Rol ESAP',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. Docente Capacitador, Catedrático, Investigador...',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 15,
+          activo: true,
+        },
       ] as any);
 
       await campoRepo.save(campos);
       console.log(`✅ ${campos.length} campos de formulario creados.`);
+    } else {
+      const nuevosCampos = [
+        {
+          clave: 'numeroContrato',
+          etiqueta: 'Número de Contrato',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. C-2024-001 (contrato SECOP)',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 13,
+          activo: true,
+        },
+        {
+          clave: 'cargoEsap',
+          etiqueta: 'Cargo / Rol ESAP',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. Asesor Jurídico, Coordinador de Área...',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 14,
+          activo: true,
+        },
+        {
+          clave: 'rolEsap',
+          etiqueta: 'Rol ESAP',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. Docente Capacitador, Catedrático, Investigador...',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 15,
+          activo: true,
+        },
+        {
+          clave: 'fechaNacimiento',
+          etiqueta: 'Fecha de Nacimiento',
+          tipoCampo: 'DATE',
+          placeholder: 'DD/MM/AAAA',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 16,
+          activo: true,
+        },
+        {
+          clave: 'entidadBancaria',
+          etiqueta: 'Entidad Bancaria',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. BANCOLOMBIA',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 17,
+          activo: true,
+        },
+        {
+          clave: 'tipoCuenta',
+          etiqueta: 'Tipo de Cuenta',
+          tipoCampo: 'SELECT',
+          placeholder: 'Seleccione tipo de cuenta',
+          opciones: ['Ahorros', 'Corriente'],
+          grupo: 'comisionado',
+          orden: 18,
+          activo: true,
+        },
+        {
+          clave: 'numeroCuenta',
+          etiqueta: 'No. de Cuenta',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. 33596027216',
+          opciones: null,
+          grupo: 'comisionado',
+          orden: 19,
+          activo: true,
+        },
+        {
+          clave: 'ciudadOrigen',
+          etiqueta: 'Ciudad de Origen',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. Bogotá',
+          opciones: null,
+          grupo: 'comision',
+          orden: 20,
+          activo: true,
+        },
+        {
+          clave: 'aeropuertoDestino',
+          etiqueta: 'Aeropuerto Destino',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. Aeropuerto Alfredo Vásquez Cobo',
+          opciones: null,
+          grupo: 'comision',
+          orden: 21,
+          activo: true,
+        },
+        {
+          clave: 'horaVueloIda',
+          etiqueta: 'Hora de vuelo ida (estimada)',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. 8:00',
+          opciones: null,
+          grupo: 'comision',
+          orden: 22,
+          activo: true,
+        },
+        {
+          clave: 'horaVueloRegreso',
+          etiqueta: 'Hora de vuelo regreso (estimada)',
+          tipoCampo: 'TEXT',
+          placeholder: 'Ej. 17:00',
+          opciones: null,
+          grupo: 'comision',
+          orden: 23,
+          activo: true,
+        },
+      ];
+      for (const nc of nuevosCampos) {
+        const existe = await campoRepo.findOne({ where: { clave: nc.clave } });
+        if (!existe) {
+          await campoRepo.save(campoRepo.create(nc as any));
+          console.log(`➕ Campo de formulario '${nc.clave}' agregado al catálogo.`);
+        }
+      }
     }
 
     const existingTiposDoc = await dataSource
@@ -490,9 +705,10 @@ async function seed() {
             'montoGastosViaje',
             'diasComision',
             'requiereTiquetes',
+            'cargoEsap',
           ],
           camposOpcionales: ['prioridad'],
-          camposOcultos: [],
+          camposOcultos: ['numeroContrato', 'rolEsap'],
           activo: true,
         },
         {
@@ -510,9 +726,10 @@ async function seed() {
             'montoGastosViaje',
             'diasComision',
             'requiereTiquetes',
+            'numeroContrato',
           ],
           camposOpcionales: ['prioridad'],
-          camposOcultos: [],
+          camposOcultos: ['cargoEsap', 'rolEsap'],
           activo: true,
         },
         {
@@ -530,9 +747,10 @@ async function seed() {
             'montoGastosViaje',
             'diasComision',
             'requiereTiquetes',
+            'rolEsap',
           ],
           camposOpcionales: ['prioridad'],
-          camposOcultos: [],
+          camposOcultos: ['numeroContrato', 'cargoEsap'],
           activo: true,
         },
         {
@@ -551,7 +769,7 @@ async function seed() {
             'diasComision',
           ],
           camposOpcionales: ['prioridad', 'requiereTiquetes'],
-          camposOcultos: [],
+          camposOcultos: ['numeroContrato', 'cargoEsap', 'rolEsap'],
           activo: true,
         },
         {
@@ -569,9 +787,10 @@ async function seed() {
             'montoGastosViaje',
             'diasComision',
             'requiereTiquetes',
+            'rolEsap',
           ],
           camposOpcionales: ['prioridad'],
-          camposOcultos: [],
+          camposOcultos: ['numeroContrato', 'cargoEsap'],
           activo: true,
         },
         {
@@ -591,7 +810,7 @@ async function seed() {
             'requiereTiquetes',
           ],
           camposOpcionales: ['prioridad'],
-          camposOcultos: [],
+          camposOcultos: ['numeroContrato', 'cargoEsap', 'rolEsap'],
           activo: true,
         },
       ]);
@@ -742,6 +961,79 @@ async function seed() {
         console.log(
           `✅ ${relaciones.length} relaciones documento-configuración creadas.`,
         );
+      }
+    } else {
+      // Si ya existen configuraciones, actualizar los campos obligatorios y ocultos para cada tipo
+      const configsExistentes = await configRepo.find();
+      for (const cfg of configsExistentes) {
+        let modificado = false;
+        const obl = new Set(cfg.camposObligatorios || []);
+        const ocu = new Set(cfg.camposOcultos || []);
+
+        if (cfg.tipoComisionado === 'FUNCIONARIO') {
+          if (!obl.has('cargoEsap')) {
+            obl.add('cargoEsap');
+            modificado = true;
+          }
+          if (!ocu.has('numeroContrato')) {
+            ocu.add('numeroContrato');
+            modificado = true;
+          }
+          if (!ocu.has('rolEsap')) {
+            ocu.add('rolEsap');
+            modificado = true;
+          }
+        } else if (cfg.tipoComisionado === 'CONTRATISTA') {
+          if (!obl.has('numeroContrato')) {
+            obl.add('numeroContrato');
+            modificado = true;
+          }
+          if (!ocu.has('cargoEsap')) {
+            ocu.add('cargoEsap');
+            modificado = true;
+          }
+          if (!ocu.has('rolEsap')) {
+            ocu.add('rolEsap');
+            modificado = true;
+          }
+        } else if (
+          cfg.tipoComisionado === 'DOCENTE' ||
+          cfg.tipoComisionado === 'INVESTIGADOR'
+        ) {
+          if (!obl.has('rolEsap')) {
+            obl.add('rolEsap');
+            modificado = true;
+          }
+          if (!ocu.has('numeroContrato')) {
+            ocu.add('numeroContrato');
+            modificado = true;
+          }
+          if (!ocu.has('cargoEsap')) {
+            ocu.add('cargoEsap');
+            modificado = true;
+          }
+        } else {
+          // ESTUDIANTE / DEFAULT
+          if (!ocu.has('numeroContrato')) {
+            ocu.add('numeroContrato');
+            modificado = true;
+          }
+          if (!ocu.has('cargoEsap')) {
+            ocu.add('cargoEsap');
+            modificado = true;
+          }
+          if (!ocu.has('rolEsap')) {
+            ocu.add('rolEsap');
+            modificado = true;
+          }
+        }
+
+        if (modificado) {
+          cfg.camposObligatorios = Array.from(obl);
+          cfg.camposOcultos = Array.from(ocu);
+          await configRepo.save(cfg);
+          console.log(`🔄 Configuración actualizada para '${cfg.tipoComisionado}'.`);
+        }
       }
     }
 
@@ -971,7 +1263,8 @@ async function seed() {
       ]);
       console.log(`✅ ${existingParams} parámetros de liquidación creados.`);
     } else {
-      await dataSource.getRepository(LiquidationParamEntity).save([
+      const paramRepo = dataSource.getRepository(LiquidationParamEntity);
+      const paramsToUpdate = [
         {
           clave: 'FACTOR_CONTRATISTA',
           valor: '0.8',
@@ -1003,7 +1296,17 @@ async function seed() {
           descripcion:
             'Total transporte y desplazamientos terminales aéreos (Resolución de viáticos vigente)',
         },
-      ]);
+      ];
+      for (const p of paramsToUpdate) {
+        const existing = await paramRepo.findOne({ where: { clave: p.clave } });
+        if (existing) {
+          existing.valor = p.valor;
+          existing.descripcion = p.descripcion;
+          await paramRepo.save(existing);
+        } else {
+          await paramRepo.save(paramRepo.create(p));
+        }
+      }
       console.log(
         `🔄 ${existingParams} parámetros de liquidación actualizados.`,
       );

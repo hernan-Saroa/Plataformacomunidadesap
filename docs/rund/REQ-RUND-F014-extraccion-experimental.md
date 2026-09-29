@@ -1,12 +1,12 @@
 # REQ-RUND-F014 — Asistente documental experimental
 
-Implementación del procesamiento local PaddleOCR → Gemma 4/Ollama para proponer datos del perfil RUND. El módulo requiere activación explícita y revisión humana; no es una dependencia de la carga documental, del perfil manual ni de los PTA. No implementa REQ-RUND-F016 (historial «En Firme»).
+Implementación del procesamiento local PP-OCRv6 → Qwen 3.5/Ollama para proponer datos del perfil RUND. El módulo requiere activación explícita y revisión humana; no es una dependencia de la carga documental, del perfil manual ni de los PTA. No implementa REQ-RUND-F016 (historial «En Firme»).
 
 ## Estado de entrega
 
-Instalación local comprobada el 14 de septiembre de 2026: PaddleOCR y Ollama 0.34.0 ejecutados en contenedores, con Gemma 4 E2B QAT adaptado a entrada de texto. Las migraciones 656 y 657 están aplicadas a PostgreSQL local y la función habilitada en el backend PTA reiniciado. La verificación HTTP confirmó 401 sin sesión, 403 para docente y 200 con `enabled=true` para GGP. No se ha desplegado en producción.
+La instalación local se actualizó y comprobó el 25 de septiembre de 2026 con un perfil de mayor precisión: PP-OCRv6 medium con corrección de orientación/perspectiva y Qwen 3.5 4B para interpretar los campos en español. Los dos modelos Gemma anteriores fueron retirados después de validar Qwen. Las migraciones 656 y 657 permanecen vigentes y no se ha desplegado en producción.
 
-La prueba completa utilizó un diploma ficticio, motores reales y PostgreSQL con tablas temporales y rollback. Extrajo «Administración Pública», mantuvo el perfil intacto mientras la sugerencia estaba pendiente y verificó la confirmación humana, el rollback conjunto, la no duplicación, el reemplazo documental, el descarte y los reintentos. Las tres lecturas OCR tardaron 16,0 / 9,2 / 7,3 segundos y las consultas Gemma 3,5 / 2,4 / 1,9 segundos, con los motores preparados. El primer arranque del modelo de texto tardó 107 segundos en este equipo (15,3 GB RAM, GPU NVIDIA de 8 GB); ese tiempo depende de la memoria disponible.
+La prueba completa utilizó un diploma ficticio, motores reales y PostgreSQL con tablas temporales y rollback. PP-OCRv6 leyó correctamente todo el texto y Qwen extrajo «Administración Pública» con la cita exacta, mantuvo el perfil intacto mientras la sugerencia estaba pendiente y verificó la confirmación humana, el rollback conjunto, la no duplicación, el reemplazo documental, el descarte y los reintentos. En este equipo las tres lecturas OCR tardaron 74,3 / 56,6 / 54,1 segundos y Qwen 3,6 / 2,7 / 3,4 segundos. El nuevo perfil todavía debe medirse con el corpus institucional acordado.
 
 Los artefactos reproducibles están en `.local/rund-extraction-real/`. No se analizaron ni modificaron expedientes reales para esta prueba. La interfaz se verificó en navegador con componentes reales y API simulada. **Sigue pendiente la evaluación de precisión con un conjunto representativo de soportes institucionales**: un diploma sintético no acredita precisión general. El módulo conserva su carácter experimental y la validación humana obligatoria.
 
@@ -15,7 +15,7 @@ Los artefactos reproducibles están en `.local/rund-extraction-real/`. No se ana
 1. Cargar el PDF mediante la gestión documental RUND existente. Las nuevas versiones se detectan automáticamente después de habilitar la función.
 2. Abrir el expediente con acceso GGP. Debajo de los documentos aparece **Asistente de captura · Experimental**; los estados se consultan cada 10 segundos sin bloquear el perfil.
 3. Revisar el dato previo, la sugerencia, el fragmento OCR y su página. **Ver PDF de origen** abre la versión exacta. Una confianza baja queda marcada en naranja.
-4. **Revisar y aplicar** abre el editor habitual en el paso del campo sugerido. Corregirlo si corresponde, adjuntar el soporte de edición y confirmar el guardado. Se conserva la exigencia existente de justificación y soporte; puede adjuntarse el PDF original como soporte de esta modificación. Abrir o cancelar el editor no confirma nada.
+4. **Aplicar al perfil** guarda el dato exacto del OCR cuando el revisor lo confirma; **Confirmar coincidencia** registra la revisión de un valor que ya coincide. Las diferencias con el perfil se muestran como advertencias y no impiden aceptar una sugerencia. La decisión conserva el operador, la fecha y el PDF de origen. Para introducir otro valor se utiliza el editor habitual con su justificación y soporte.
 5. **Descartar** exige un motivo y conserva el resultado original para trazabilidad.
 
 Mientras trabaja, el asistente muestra una barra por etapas reales: **Preparar PDF → Leer texto → Extraer datos → Verificar sugerencias**, con tiempo transcurrido y mensajes de cola/reintento. No se presenta un porcentaje ficticio de tiempo restante. El progreso se guarda en PostgreSQL; salir del módulo, cerrar la pestaña o cerrar sesión no cancela el trabajo. En instalación local, el equipo y los servicios deben permanecer encendidos; si se detienen, la cola se recupera cuando vuelven a funcionar.
@@ -32,8 +32,8 @@ Los documentos anteriores a la primera activación se procesan solo mediante **E
 flowchart LR
   A[Carga PDF existente] --> B[Documento RUND versionado]
   B --> C[Cola PostgreSQL]
-  C --> D[PaddleOCR local]
-  D --> E[Gemma 4 en Ollama local]
+  C --> D[PP-OCRv6 local]
+  D --> E[Qwen 3.5 en Ollama local]
   E --> F[Validación de campos y evidencia]
   F --> G[Sugerencias pendientes]
   G --> H[Revisión humana GGP]
@@ -67,7 +67,7 @@ La lista cerrada está en `rund-extraccion-fields.ts`; el modelo nunca determina
 | Resoluciones específicas | Origen, situación administrativa, escalafón y núcleo temático |
 | Certificaciones y evaluación | Investigación y última evaluación |
 
-No se extraen identificadores editables, contraseñas, permisos, estados, horas calculadas, puntaje salarial, género ni otros atributos sensibles inferidos. La cédula permanece protegida por las reglas existentes. La fecha de nacimiento solo puede proponerse desde soporte de identidad; nunca se infiere edad para completar una fecha.
+Desde un soporte de identidad se proponen tipo y número de documento, nombre completo, género, sexo biológico y fecha de nacimiento. El revisor puede confirmar cada dato, incluido un número de documento diferente al registrado. Las diferencias simultáneas de nombre y número son informativas: no bloquean la aplicación ni obligan a rechazar el PDF. La corrección del número conserva el UUID de la persona y comprueba que el número no esté asignado a otra persona. Género y sexo solo se normalizan cuando el documento contiene un marcador explícito; nunca se deducen del nombre o la fotografía. No se extraen contraseñas, permisos, estados, horas calculadas, puntaje salarial ni otros atributos sensibles inferidos. La fecha de nacimiento nunca se reconstruye a partir de una edad.
 
 Se descartan campos desconocidos, repetidos, valores vacíos, páginas inexistentes y citas no presentes en el OCR. Los valores deben estar contenidos en la cita, salvo fechas normalizadas a `AAAA-MM-DD`, que siempre requieren una fecha válida y se marcan con confianza baja si no aparecen literalmente. Cada cita tiene como máximo 600 caracteres y cada valor 1000; las restricciones más precisas del formulario se aplican durante la revisión/guardado.
 
@@ -117,9 +117,7 @@ Desde la raíz del repositorio, PowerShell:
 
 El archivo generado `.env.rund-ocr.local` está ignorado por Git. No sobreescribe la configuración de la aplicación ni cambia una instalación existente de Ollama. El compose independiente usa OCR en `127.0.0.1:8091` y Ollama en `127.0.0.1:11435` para evitar colisión con un Ollama ya instalado en 11434. Las descargas iniciales de paquetes/modelos requieren Internet; los PDF se procesan localmente y no se envían a la nube. Los modelos se conservan en volúmenes Docker.
 
-Versiones fijadas: PaddleOCR 3.7.0, PaddlePaddle 3.3.1, Ollama 0.34.0 y modelo `gemma4:e2b-it-qat`. Se seleccionan explícitamente `PP-OCRv5_mobile_det` y `latin_PP-OCRv5_mobile_rec`, con MKLDNN desactivado y dos hilos CPU. Esto evita heredar un modelo OCR distinto cuando cambian los valores predeterminados del paquete. La instalación prepara el OCR mediante `/warmup` autenticado en el servidor activo y después inicializa el contexto de Gemma; no carga un segundo motor OCR en otro proceso.
-
-Para el flujo OCR → texto, `prepare-rund-text-model.cjs` crea `gemma4:rund-e2b-text` a partir de los pesos oficiales del modelo anterior, conservando su renderer, parser y licencia y excluyendo el proyector de imagen/audio. El instalador lo configura automáticamente después de descargar la base. Esto reduce el consumo del procesamiento textual. La preparación puede tardar varios minutos al verificar el archivo GGUF; no cambia la precisión de sus pesos. El script valida la estructura esperada y falla si el formato base cambió. Véase [Modelfile de Ollama](https://docs.ollama.com/modelfile).
+Versiones fijadas: PaddleOCR 3.7.0, PaddlePaddle 3.3.1, Ollama 0.34.0 y modelo local `qwen3.5:4b`. Se seleccionan explícitamente `PP-OCRv6_medium_det` y `PP-OCRv6_medium_rec`, con clasificación de orientación, corrección de perspectiva y orientación de líneas activas. MKLDNN permanece desactivado y se usan dos hilos CPU. El instalador descarga primero Qwen y PP-OCRv6, comprueba ambos motores y solo entonces elimina `gemma4:rund-e2b-text` y `gemma4:e2b-it-qat`; no conserva dos modelos de interpretación.
 
 Después de preparar los motores:
 
@@ -131,7 +129,7 @@ RUND_OCR_ENABLED=true
 RUND_OCR_URL=http://localhost:8091
 RUND_OCR_TOKEN=<token generado, mínimo 32 caracteres>
 RUND_OLLAMA_URL=http://localhost:11435
-RUND_OLLAMA_MODEL=gemma4:rund-e2b-text
+RUND_OLLAMA_MODEL=qwen3.5:4b
 ```
 
 3. Reiniciar el backend PTA. Si corre en otro contenedor, conectar ambos servicios a su red privada y usar `http://rund-ocr:8091` / `http://rund-ollama:11434`; `localhost` dentro del contenedor no es el host. No publicar Ollama ni el OCR en Internet. El servicio solo admite destinos locales/privados configurados; rechaza redirects, credenciales en URL y etiquetas de modelos cloud.
@@ -200,7 +198,7 @@ npm run build -w @esap-mfe/pta
 | Subtarea | Entrega |
 | --- | --- |
 | EFDS-1988 Arquitectura | Cola persistente independiente, worker, OCR separado y transacción de revisión |
-| EFDS-1990 Ollama/Gemma local | Compose, instalador y motores locales instalados; ejecución real comprobada con GPU |
+| EFDS-1990 Ollama/Qwen local | Compose e instalador local; Qwen reemplazó a Gemma y la ejecución real se comprobó con GPU |
 | EFDS-1986 Extracción asíncrona | Descubrimiento de nuevas versiones, OCR, modelo, reintentos y recuperación |
 | EFDS-1987 Mapeo | Lista cerrada por soporte/categoría y validación de citas |
 | EFDS-1989 Revisión humana | Asistente, PDF de origen, editor prellenado, corrección y descarte |
@@ -209,4 +207,4 @@ npm run build -w @esap-mfe/pta
 | EFDS-1992 Pruebas | Unitarias, PostgreSQL TEMP, navegador y PDF sintético con motores reales; evaluación de precisión institucional pendiente |
 | EFDS-1993 Documentación | Este documento y comandos reproducibles |
 
-Referencias primarias: [PaddleOCR, pipeline OCR](https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html), [Gemma 4 en Ollama](https://ollama.com/library/gemma4), [API chat de Ollama](https://docs.ollama.com/api/chat).
+Referencias primarias: [PaddleOCR, pipeline OCR](https://www.paddleocr.ai/main/en/version3.x/pipeline_usage/OCR.html), [Qwen 3.5 en Ollama](https://ollama.com/library/qwen3.5), [API chat de Ollama](https://docs.ollama.com/api/chat).
