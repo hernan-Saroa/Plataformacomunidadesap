@@ -15,8 +15,10 @@ import {
 import { ControlInternoPermissions as CIP } from '../../common/permissions.constants';
 import {
   ROLES_OCIG_OPERATIVOS,
+  ROL_OCI_APROBADOR_PLAN_ANUAL,
   esRolOcigOperativo,
   normalizarRolOcigOperativo,
+  variantesRolOcigOperativo,
 } from './roles-ocig-operativos.constants';
 
 @Injectable()
@@ -269,7 +271,7 @@ export class ConfiguracionesProfesionalesOCIGService {
   }
 
   /**
-   * Catálogo fijo de roles operativos OCIG (no depende de auth.role).
+   * Catálogo fijo de roles operativos OCI (no depende de auth.role).
    */
   async getRolesOCIG(): Promise<Array<{ name: string; description: string }>> {
     return [...ROLES_OCIG_OPERATIVOS];
@@ -279,7 +281,7 @@ export class ConfiguracionesProfesionalesOCIGService {
     const normalizado = normalizarRolOcigOperativo(rol);
     if (!esRolOcigOperativo(normalizado)) {
       throw new BadRequestException(
-        `Rol OCIG no válido. Use uno de: ${ROLES_OCIG_OPERATIVOS.map((r) => r.name).join(', ')}`,
+        `Rol OCI no válido. Use uno de: ${ROLES_OCIG_OPERATIVOS.map((r) => r.name).join(', ')}`,
       );
     }
     return normalizado;
@@ -434,7 +436,8 @@ export class ConfiguracionesProfesionalesOCIGService {
 
   /**
    * Personas que pueden integrar el comité de aprobación del PAI:
-   * SOLO profesionales configurados con rol_ocig = 'Aprobador PAI'.
+   * SOLO profesionales configurados con el rol 'Aprobador Plan Anual'
+   * (o su nombre anterior, 'Aprobador PAI').
    */
   async buscarAprobadoresPlanAnual(busqueda?: string): Promise<
     Array<{
@@ -448,7 +451,7 @@ export class ConfiguracionesProfesionalesOCIGService {
     }>
   > {
     try {
-      const params: string[] = ['Aprobador PAI'];
+      const params: unknown[] = [variantesRolOcigOperativo(ROL_OCI_APROBADOR_PLAN_ANUAL)];
       let query = `
         SELECT DISTINCT
           p.id_person,
@@ -460,7 +463,7 @@ export class ConfiguracionesProfesionalesOCIGService {
         INNER JOIN auth.personas p ON p.id_person = cfg.id_tercero::uuid
         INNER JOIN auth."user" u ON u.id_person = p.id_person
         WHERE cfg.activo = true
-          AND cfg.rol_ocig = $1
+          AND cfg.rol_ocig = ANY($1::text[])
           AND u.is_active = true
           AND p.nom_largo IS NOT NULL
       `;
@@ -506,7 +509,7 @@ export class ConfiguracionesProfesionalesOCIGService {
         nombre: p.nom_largo || 'Sin Nombre',
         email: p.dir_email || '',
         identificacion: p.num_identificacion || '',
-        cargo: p.cargo_ocig || 'Aprobador PAI',
+        cargo: normalizarRolOcigOperativo(p.cargo_ocig || ROL_OCI_APROBADOR_PLAN_ANUAL),
         roles: rolesMap.get(p.id_person) || [],
       }));
     } catch (error) {
@@ -632,7 +635,7 @@ export class ConfiguracionesProfesionalesOCIGService {
       return {
         id: config.id,
         idTercero: config.idTercero,
-        rolOcig: config.rolOcig,
+        rolOcig: normalizarRolOcigOperativo(config.rolOcig),
         especialidades: config.especialidades,
         capacidadMaximaAuditorias: config.capacidadMaximaAuditorias,
         horasMensualesDisponibles: config.horasMensualesDisponibles,
