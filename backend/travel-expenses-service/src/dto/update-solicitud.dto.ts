@@ -108,6 +108,12 @@ export class UpdateSolicitudDto {
   esInternacional?: boolean;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  idDependencia?: number;
+
+  @IsOptional()
   @IsObject()
   camposAdicionales?: Record<string, any>;
 
@@ -180,9 +186,7 @@ export class UpdateSolicitudDto {
 
   @IsOptional()
   @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => Object)
-  desgloseCalculo?: DesgloseCalculoDto[];
+  desgloseCalculo?: any[];
 
   @IsOptional()
   @IsArray()

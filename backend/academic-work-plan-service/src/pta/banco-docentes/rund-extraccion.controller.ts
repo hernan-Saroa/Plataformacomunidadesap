@@ -33,4 +33,12 @@ export class RundExtraccionController {
   async discard(@Param('id', new ParseUUIDPipe()) id: string, @Param('suggestionId', new ParseUUIDPipe()) suggestion: string, @Body() body: any, @Req() req: any) {
     return { success:true, data:await this.service.discard(id,suggestion,body?.motivo,this.actor(req)) };
   }
+  @Post('sugerencias/:suggestionId/confirmar')
+  async confirm(@Param('id', new ParseUUIDPipe()) id: string, @Param('suggestionId', new ParseUUIDPipe()) suggestion: string, @Req() req: any) {
+    return { success:true, data:await this.service.confirm(id,suggestion,this.actor(req)) };
+  }
+  @Post('trabajos/:jobId/descartar')
+  async discardJob(@Param('id', new ParseUUIDPipe()) id: string, @Param('jobId', new ParseUUIDPipe()) job: string, @Body() body: any, @Req() req: any) {
+    return { success:true, data:await this.service.discardJob(id,job,body?.motivo,this.actor(req)) };
+  }
 }

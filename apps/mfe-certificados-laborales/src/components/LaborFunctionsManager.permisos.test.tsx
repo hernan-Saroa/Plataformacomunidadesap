@@ -11,8 +11,7 @@ vi.mock('../../services/api/certificados.service', () => ({ certificadosService:
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
 const api = certificadosService.laborales;
-const profile = { id: 'p1', combined_code: '202812', position_code: '2028', grade_code: '12',
-  position_name: 'Profesional de prueba', department_name: 'Dirección', functions: [], function_count: 2 };
+const profile = { id: 'p1', id_number: '12345678', functions: [], function_count: 2 };
 const result = (items = [profile]) => ({ items, total: items.length, page: 1, limit: 15, totalPages: 1,
   stats: { profiles: items.length, functions: items.length * 2 } });
 const tick = async (ms = 300) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
@@ -32,12 +31,12 @@ describe('Matriz de funciones en solo lectura (sin permiso de gestión)', () => 
   it('muestra la matriz pero ninguna acción de escritura', async () => {
     render(<LaborFunctionsManager canManage={false} />); await tick();
 
-    expect(screen.getByText('Profesional de prueba')).toBeTruthy();
+    expect(screen.getByText('12345678')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Carga masiva/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /Agregar individual/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /Plantilla con ejemplos/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Editar Profesional de prueba/i })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Eliminar Profesional de prueba/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Editar 12345678/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Eliminar 12345678/i })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Acciones' })).toBeNull();
   });
 
@@ -60,8 +59,8 @@ describe('Matriz de funciones en solo lectura (sin permiso de gestión)', () => 
 
     expect(screen.getByRole('button', { name: /Carga masiva/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Agregar individual/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Editar Profesional de prueba/i })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Eliminar Profesional de prueba/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Editar 12345678/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Eliminar 12345678/i })).toBeTruthy();
   });
 
   it('el valor por omisión es cerrado: sin prop no hay acciones de escritura', async () => {

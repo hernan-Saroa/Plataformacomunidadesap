@@ -174,6 +174,22 @@ export function formatearHorarioMilitar(horario: string): string {
 }
 
 /**
+ * Formatea un horario militar HH:mm agregando su equivalente en formato 12h (AM/PM).
+ * Ej: '14:30' → '14:30 h (02:30 PM)'
+ */
+export function formatearHorarioMilitarCon12h(horario: string): string {
+  if (!horario) return '—';
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(horario.trim());
+  if (!match) return `${horario} h`;
+  const h = parseInt(match[1], 10);
+  const m = match[2];
+  const h12 = h === 0 ? 12 : (h > 12 ? h - 12 : h);
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const texto12h = `${String(h12).padStart(2, '0')}:${m} ${ampm}`;
+  return `${horario} h (${texto12h})`;
+}
+
+/**
  * Valida que una cadena tenga formato horario militar HH:mm.
  */
 export function esHorarioMilitarValido(horario: string): boolean {
@@ -285,6 +301,8 @@ export function sincronizarItinerarioFormulario(
   horaEstimadaLlegada: string;
   horaEstimadaGeneral: string;
   transporteTerminalesAereos: number;
+  transporteTerrestreOtros: number;
+  totalGastosDesplazamiento: number;
   tieneTransporteAereo: boolean;
 } {
   if (itinerario.length === 0) {
@@ -301,6 +319,8 @@ export function sincronizarItinerarioFormulario(
       horaEstimadaLlegada: '',
       horaEstimadaGeneral: '',
       transporteTerminalesAereos: 0,
+      transporteTerrestreOtros: 0,
+      totalGastosDesplazamiento: 0,
       tieneTransporteAereo: false,
     };
   }
@@ -312,13 +332,14 @@ export function sincronizarItinerarioFormulario(
   const fInicio = primeraRuta.fechaSalida || hoyISO();
   const fFin = ultimaRuta.fechaLlegada || primeraRuta.fechaLlegada || siguienteDiaISO();
 
-  let diasTotal = 0;
+  // El cálculo oficial de días de comisión se computa sobre el intervalo global (fechaInicio a fechaFin)
+  // según la regla oficial GF-FO-023 (N noches + medio día de retorno), garantizando total coherencia con el autoliquidador.
+  const diasTotal = calcularDiasComision(fInicio, fFin);
   let totalTerminalesAereos = 0;
+  let totalTransporteTerrestreOtros = 0;
   let tieneAereo = false;
 
   for (const ruta of itinerario) {
-    diasTotal += ruta.diasRuta || calcularDiasRuta(ruta.fechaSalida, ruta.fechaLlegada);
-
     if (ruta.tipoTransporte === 'AEREO') {
       tieneAereo = true;
       const tarifa = calcularTarifaTerminalAereoRuta(
@@ -329,6 +350,9 @@ export function sincronizarItinerarioFormulario(
         ruta.destinoDepartamentoId,
       );
       totalTerminalesAereos += tarifa.totalTramo;
+    } else {
+      const costoAdicional = Number(ruta.valorTransporte ?? ruta.montoTransporteTerrestre ?? 0);
+      totalTransporteTerrestreOtros += isNaN(costoAdicional) ? 0 : costoAdicional;
     }
   }
 
@@ -383,6 +407,8 @@ export function sincronizarItinerarioFormulario(
     horaEstimadaLlegada: horaLlegada,
     horaEstimadaGeneral: horaGeneral,
     transporteTerminalesAereos: totalTerminalesAereos,
+    transporteTerrestreOtros: totalTransporteTerrestreOtros,
+    totalGastosDesplazamiento: totalTerminalesAereos + totalTransporteTerrestreOtros,
     tieneTransporteAereo: tieneAereo,
   };
 }
@@ -512,8 +538,32 @@ export function mapearARequestCreacion(
       : 'TERRESTRE';
   })();
 
+  const tarifasAereasItin = (form.itinerario || []).reduce(
+    (acc, r) => acc + (r.tarifaTerminalAereo || 0),
+    0,
+  );
+  const transporteTerrestreItin = Math.max(
+    0,
+    (form.montoGastosViaje || 0) - tarifasAereasItin,
+  );
+
   return {
     comisionadoId: comisionado.id,
+    idDependencia: form.idDependencia ?? comisionado.idDependencia ?? undefined,
+    diasPernoctados: form.diasPernoctados ?? undefined,
+    tarifaDiaPernoctado: form.tarifaDiaPernoctado ?? undefined,
+    totalPernoctados: form.totalPernoctados ?? undefined,
+    diasNoPernoctados: form.diasNoPernoctados ?? undefined,
+    tarifaDiaNoPernoctado: form.tarifaDiaNoPernoctado ?? undefined,
+    totalNoPernoctados: form.totalNoPernoctados ?? undefined,
+    tarifaDiariaBase: form.tarifaDiariaBase ?? undefined,
+    tarifaFinalAplicadaDia: form.tarifaFinalAplicadaDia ?? undefined,
+    salarioBaseAplicado: form.salarioBaseAplicado ?? undefined,
+    decretoAplicado: form.decretoAplicado ?? undefined,
+    factorComisionado: form.factorComisionado ?? undefined,
+    factorPernocta: form.factorPernocta ?? undefined,
+    desgloseCalculo: form.desgloseCalculo ?? undefined,
+    alertasLiquidacion: form.alertasLiquidacion ?? undefined,
     destinoCiudad: form.destinoCiudad.trim(),
     destinoDepartamento: form.destinoDepartamento.trim(),
     fechaInicio: form.fechaInicio,
@@ -536,14 +586,22 @@ export function mapearARequestCreacion(
     tipoComision: tipoComisionCalculado,
     esInternacional: Boolean(form.esInternacional),
     documentos,
-    camposAdicionales: form.camposAdicionales ?? {},
+    camposAdicionales: {
+      ...(form.camposAdicionales ?? {}),
+      transporteTerminalAereo:
+        form.camposAdicionales?.transporteTerminalAereo ?? tarifasAereasItin,
+      transporteTerrestre:
+        form.camposAdicionales?.transporteTerrestre ?? transporteTerrestreItin,
+      fechaAutoliquidacion:
+        form.camposAdicionales?.fechaAutoliquidacion ||
+        new Date().toISOString().split('T')[0],
+    },
     itinerario: (form.itinerario || []).map((r) => {
       // Excluir únicamente campos auxiliares de UI interna
       const {
         guardada,
         origenDepartamentoId,
         destinoDepartamentoId,
-        tarifaTerminalAereo,
         ...cleanRuta
       } = r;
       const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
@@ -633,6 +691,16 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
   },
   OBLIGADA: {
     label: 'Obligada (Lista para Pago)',
+    bg: 'bg-emerald-100 dark:bg-emerald-900/30',
+    text: 'text-emerald-800 dark:text-emerald-300',
+  },
+  PENDIENTE_FIRMAS: {
+    label: 'Pendiente de Firmas',
+    bg: 'bg-amber-100 text-amber-900 border border-amber-300',
+    text: 'text-amber-800',
+  },
+  PAGADA: {
+    label: 'Pagada (Desembolsada)',
     bg: 'bg-emerald-100 dark:bg-emerald-900/30',
     text: 'text-emerald-800 dark:text-emerald-300',
   },
@@ -925,4 +993,202 @@ export function calcularTarifaTerminalAereoRuta(
     factorTrayecto: factor,
     totalTramo: valorUnitario * factor,
   };
+}
+
+export interface AyudaValidacionDocumento {
+  titulo: string;
+  instruccion: string;
+  badgeTipo: 'info' | 'warning' | 'alert' | 'success';
+  datosAContrastar: Array<{ etiqueta: string; valor: string }>;
+  notaAlerta?: string;
+}
+
+/**
+ * Genera la ayuda visual de validación y los datos ingresados en el formulario
+ * para contrastar y validar un soporte documental (Paso 3 de la solicitud).
+ *
+ * Utiliza las recomendaciones parametrizadas en backend (`instruccionesValidacion`)
+ * o las reglas canónicas de la ESAP por tipo de documento.
+ */
+export function obtenerAyudaValidacionDocumento(
+  codigoDoc: string,
+  instruccionesBackend?: string | null,
+  contexto?: {
+    form?: FormNuevaSolicitud;
+    comisionado?: Comisionado | null;
+  },
+): AyudaValidacionDocumento | null {
+  const c = codigoDoc?.trim().toUpperCase();
+  const com = contexto?.comisionado;
+  const f = contexto?.form;
+
+  const nombreComisionado = com
+    ? [com.primerNombre, com.segundoNombre, com.primerApellido, com.segundoApellido].filter(Boolean).join(' ')
+    : '';
+  const numDocumento = com?.numeroDocumento || f?.documentoComisionado || '';
+
+  if (c === 'CERT_BANCARIA') {
+    const cuenta = f?.camposAdicionales?.cuentaBancaria || f?.camposAdicionales?.numeroCuenta || '';
+    const banco = f?.camposAdicionales?.banco || f?.camposAdicionales?.entidadBancaria || '';
+    const datos: Array<{ etiqueta: string; valor: string }> = [];
+    if (nombreComisionado) datos.push({ etiqueta: 'Titular de la cuenta', valor: nombreComisionado });
+    if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
+    if (banco) datos.push({ etiqueta: 'Banco registrado', valor: String(banco) });
+    if (cuenta) datos.push({ etiqueta: 'N° Cuenta registrado', valor: String(cuenta) });
+    datos.push({ etiqueta: 'Vigencia permitida', valor: 'Máximo 90 días desde expedición' });
+
+    return {
+      titulo: 'Pauta de Validación',
+      instruccion:
+        instruccionesBackend ||
+        'Validar que la certificación bancaria no supere los 90 días de vigencia desde su expedición y que el titular y número de cuenta coincidan exactamente.',
+      badgeTipo: 'warning',
+      datosAContrastar: datos,
+      notaAlerta: 'No se admiten extractos bancarios ni certificaciones expedidas hace más de 3 meses (90 días).',
+    };
+  }
+
+  if (c === 'RUT') {
+    const anioActual = new Date().getFullYear();
+    const datos: Array<{ etiqueta: string; valor: string }> = [];
+    if (nombreComisionado) datos.push({ etiqueta: 'Nombre / Razón Social', valor: nombreComisionado });
+    if (numDocumento) datos.push({ etiqueta: 'NIT / Cédula', valor: numDocumento });
+    datos.push({ etiqueta: 'Año de vigencia exigido', valor: `${anioActual} (fecha de generación en pie de página)` });
+
+    return {
+      titulo: 'Pauta de Validación',
+      instruccion:
+        instruccionesBackend ||
+        `Revisar que el RUT esté actualizado con fecha de generación del año en curso (${anioActual}) y que el NIT o Cédula coincida con el comisionado.`,
+      badgeTipo: 'info',
+      datosAContrastar: datos,
+      notaAlerta: `Verifica que la fecha de generación impresa en el pie de página del PDF corresponda al año ${anioActual}.`,
+    };
+  }
+
+  if (c === 'SEGURIDAD_SOCIAL') {
+    const datos: Array<{ etiqueta: string; valor: string }> = [];
+    if (nombreComisionado) datos.push({ etiqueta: 'Afiliado cotizante', valor: nombreComisionado });
+    if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
+    if (f?.fechaInicio && f?.fechaFin) {
+      datos.push({
+        etiqueta: 'Periodo de comisión a cubrir',
+        valor: `${f.fechaInicio} al ${f.fechaFin} (${f.diasComision || 0} día(s))`,
+      });
+    }
+
+    return {
+      titulo: 'Pauta de Validación',
+      instruccion:
+        instruccionesBackend ||
+        'Verificar que la planilla de pago o certificado de afiliación a seguridad social cubra el periodo completo en el que se desarrollará la comisión.',
+      badgeTipo: 'info',
+      datosAContrastar: datos,
+      notaAlerta: 'La cobertura en salud y riesgos laborales debe estar activa durante todas las fechas del desplazamiento.',
+    };
+  }
+
+  if (c === 'CONTRATO_SECOP') {
+    const numContrato = f?.camposAdicionales?.numeroContrato || f?.camposAdicionales?.contrato || '';
+    const datos: Array<{ etiqueta: string; valor: string }> = [];
+    datos.push({
+      etiqueta: 'N° Contrato registrado',
+      valor: numContrato ? String(numContrato) : 'Pendiente o registrado en formulario',
+    });
+    if (nombreComisionado) datos.push({ etiqueta: 'Contratista comisionado', valor: nombreComisionado });
+    if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
+
+    return {
+      titulo: 'Pauta de Validación',
+      instruccion:
+        instruccionesBackend ||
+        'Verificar que el número de contrato en el documento SECOP coincida exactamente con el número de contrato registrado para la comisión.',
+      badgeTipo: 'warning',
+      datosAContrastar: datos,
+      notaAlerta: 'El contrato debe estar vigente, aprobado en SECOP y corresponder al comisionado.',
+    };
+  }
+
+  if (c === 'CDP') {
+    const datos: Array<{ etiqueta: string; valor: string }> = [];
+    datos.push({ etiqueta: 'N° CDP registrado', valor: f?.numeroCdp || 'No registrado' });
+    datos.push({ etiqueta: 'Fecha de expedición CDP', valor: f?.fechaCdp || 'No registrada' });
+
+    return {
+      titulo: 'Pauta de Validación',
+      instruccion:
+        instruccionesBackend ||
+        'Verificar que el número de CDP y su fecha de expedición coincidan con el documento soporte adjunto.',
+      badgeTipo: 'info',
+      datosAContrastar: datos,
+      notaAlerta: 'El número y fecha del CDP adjunto deben coincidir exactamente con los datos registrados.',
+    };
+  }
+
+  if (c === 'PASAPORTE') {
+    const datos: Array<{ etiqueta: string; valor: string }> = [];
+    if (nombreComisionado) datos.push({ etiqueta: 'Titular pasaporte', valor: nombreComisionado });
+    if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
+    if (f?.fechaFin) datos.push({ etiqueta: 'Fecha fin de viaje', valor: f.fechaFin });
+
+    return {
+      titulo: 'Pauta de Validación',
+      instruccion:
+        instruccionesBackend ||
+        'Verificar vigencia mínima de 6 meses posteriores a la fecha de retorno del viaje y legibilidad de datos del titular.',
+      badgeTipo: 'info',
+      datosAContrastar: datos,
+      notaAlerta: 'Asegúrese de que la hoja de datos biométricos sea nítida y visible.',
+    };
+  }
+
+  if (c === 'CARTA_INVITACION') {
+    const datos: Array<{ etiqueta: string; valor: string }> = [];
+    if (nombreComisionado) datos.push({ etiqueta: 'Comisionado invitado', valor: nombreComisionado });
+    if (f?.destinoCiudad || f?.destinoDepartamento) {
+      datos.push({ etiqueta: 'Destino de comisión', valor: `${f.destinoCiudad || ''}, ${f.destinoDepartamento || ''}` });
+    }
+    if (f?.fechaInicio && f?.fechaFin) {
+      datos.push({ etiqueta: 'Fechas del evento', valor: `${f.fechaInicio} al ${f.fechaFin}` });
+    }
+
+    return {
+      titulo: 'Pauta de Validación',
+      instruccion:
+        instruccionesBackend ||
+        'Verificar fecha del evento, lugar de destino y entidad anfitriona convocante.',
+      badgeTipo: 'info',
+      datosAContrastar: datos,
+    };
+  }
+
+  if (c === 'RESOLUCION_ACTO') {
+    const datos: Array<{ etiqueta: string; valor: string }> = [];
+    if (nombreComisionado) datos.push({ etiqueta: 'Comisionado autorizado', valor: nombreComisionado });
+    if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
+
+    return {
+      titulo: 'Pauta de Validación',
+      instruccion:
+        instruccionesBackend ||
+        'Verificar firma de la autoridad competente y coincidencia del nombre del comisionado.',
+      badgeTipo: 'info',
+      datosAContrastar: datos,
+    };
+  }
+
+  if (instruccionesBackend) {
+    const datos: Array<{ etiqueta: string; valor: string }> = [];
+    if (nombreComisionado) datos.push({ etiqueta: 'Comisionado', valor: nombreComisionado });
+    if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
+
+    return {
+      titulo: 'Pauta de Validación',
+      instruccion: instruccionesBackend,
+      badgeTipo: 'info',
+      datosAContrastar: datos,
+    };
+  }
+
+  return null;
 }

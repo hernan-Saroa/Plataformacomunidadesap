@@ -27,6 +27,7 @@ export interface TipoDocumentoSoporte {
   codigo: string;
   nombre: string;
   descripcion: string | null;
+  instruccionesValidacion?: string | null;
   activo: boolean;
 }
 

@@ -37,6 +37,8 @@ export const VIATICOS_PERMISOS_GENERALES = {
   TESORERIA: 'travel_expenses.general.es_tesoreria',
   SST: 'travel_expenses.general.es_sst',
   TIQUETES: 'travel_expenses.general.es_responsable_tiquetes',
+  JEFE_DEPENDENCIA: 'travel_expenses.general.es_jefe_dependencia',
+  GERENTE_PROYECTO: 'travel_expenses.general.es_gerente_proyecto',
 } as const;
 
 export const ROLES_SUBDIRECCION_GESTION_CORPORATIVA = [
@@ -560,6 +562,66 @@ export class AuthService {
     if (!user) return false;
     if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.ENLACE)) return true;
     return user.roles.some((r) => r.includes('ENLACE'));
+  }
+
+  /**
+   * Determina si el usuario es Jefe de Dependencia o Supervisor.
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_jefe_dependencia`.
+   */
+  isJefeDependencia(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA)) return true;
+    if (
+      this.hasPermission('travel_expenses:sign_approval') ||
+      this.hasPermission('travel_expenses:read_approvals')
+    ) {
+      return true;
+    }
+    return user.roles.some((r) =>
+      ['JEFE_DEPENDENCIA', 'SUPERVISOR', 'JEFE', 'DIRECTOR_TERRITORIAL', 'LIDER_DEPENDENCIA'].includes(r) ||
+      r.includes('JEFE') ||
+      r.includes('SUPERVISOR'),
+    );
+  }
+
+  /**
+   * Determina si el usuario es Gerente de Proyecto.
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_gerente_proyecto`.
+   */
+  isGerenteProyecto(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO)) return true;
+    if (
+      this.hasPermission('travel_expenses:sign_approval') ||
+      this.hasPermission('travel_expenses:read_approvals')
+    ) {
+      return true;
+    }
+    return user.roles.some((r) =>
+      ['GERENTE_PROYECTO', 'GERENTE', 'LIDER_PROYECTO', 'COORDINADOR_PROYECTO'].includes(r) ||
+      r.includes('GERENTE'),
+    );
+  }
+
+  /**
+   * Determina si el usuario puede firmar aprobaciones del Formato 023.
+   */
+  canFirmarAprobacion(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return (
+      this.isJefeDependencia() ||
+      this.isGerenteProyecto() ||
+      this.isSubdireccionGestionCorporativa() ||
+      this.isDireccionNacional() ||
+      this.hasPermission('travel_expenses:sign_approval') ||
+      this.hasPermission('travel_expenses:read_approvals')
+    );
   }
 
   getCurrentUserSync(): UsuarioActual | null {

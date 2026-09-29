@@ -234,6 +234,11 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
 
   useEffect(() => {
     if (docente) {
+      const suggestionField = suggestion?.campo === 'documentNumber' ? 'documento_identidad'
+        : suggestion?.campo === 'documentType' ? 'tipo_identificacion' : suggestion?.campo;
+      const suggestionValue = suggestion?.campo === 'documentNumber'
+        ? sanitizeManualDocument(suggestion.valor, docente.tipo_documento || 'CC')
+        : suggestion?.campo === 'genero' ? normalizeManualGender(suggestion.valor) : suggestion?.valor;
       setForm({
         nombreCompleto: docente.nombre_completo || '',
         documento_identidad: docente.documento_identidad || '',
@@ -273,14 +278,14 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
         fechaNacimiento: docente.nacimiento ? docente.nacimiento.split('T')[0] : '',
         idRund: docente.id_rund || docente.idRund || '',
         justificacionEdicion: '',
-        ...(suggestion ? { [suggestion.campo]: suggestion.valor, justificacionEdicion: `Validación humana de ${suggestion.label} extraído del soporte documental.` } : {}),
+        ...(suggestion && suggestionField ? { [suggestionField]: suggestionValue, justificacionEdicion: `Validación humana de ${suggestion.label} extraído del soporte documental.` } : {}),
       });
     } else {
       setForm((current) => ({ ...current, periodoCarga: periodoSeleccionado || current.periodoCarga }));
     }
     setFieldErrors({});
     setSupportFile(null);
-    if (suggestion) setActiveStep(suggestion.campo === 'fechaNacimiento' ? 3
+    if (suggestion) setActiveStep(['fechaNacimiento','genero','sexoBiologico'].includes(suggestion.campo) ? 3
       : ['pregrado','especializacion','maestria','doctorado','posDoctorado','perfilAcademico','nucleoTematico','investigacion'].includes(suggestion.campo) ? 1 : 0);
   }, [docente, periodoSeleccionado, suggestion]);
 

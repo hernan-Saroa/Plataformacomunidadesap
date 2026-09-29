@@ -118,7 +118,7 @@ export default function ControlViaticosInbox() {
     s.comisionado ? formatearNombreComisionado(s.comisionado as Comisionado) : 'N/A';
 
   const dependenciaOrigen = (s: SolicitudControlViaticosResponse): string => {
-    const res = viaticosService.resolverNombreDependencia(s);
+    const res = viaticosService.resolverNombreDependencia?.(s);
     if (res && res !== 'Sede Central') return res;
     const idDep = (s as any)?.idDependencia ?? (s.comisionado as Comisionado | null | undefined)?.idDependencia;
     if (idDep != null) {

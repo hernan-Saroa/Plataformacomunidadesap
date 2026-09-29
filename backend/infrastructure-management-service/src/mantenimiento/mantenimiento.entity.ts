@@ -261,6 +261,38 @@ export class SolicitudMantenimiento {
   })
   conteoReaperturasConformidad: number;
 
+  // ===== EFDS-1738 RF-INF-009 Calificación del Servicio Recibido (1-5) =====
+  @Column({
+    type: 'smallint',
+    name: 'calificacion_servicio',
+    nullable: true,
+    comment:
+      'Valoración 1..5 del área solicitante al CONFIRMAR conformidad cierre técnico. NULL = histórica o confirmada sin rating (OQ-1 opcional).',
+  })
+  calificacionServicio?: 1 | 2 | 3 | 4 | 5;
+
+  @Column({
+    type: 'timestamptz',
+    name: 'fecha_calificacion',
+    nullable: true,
+  })
+  fechaCalificacion?: Date;
+
+  @Column({
+    type: 'uuid',
+    name: 'usuario_calificacion_id',
+    nullable: true,
+  })
+  usuarioCalificacionId?: string;
+
+  @Column({
+    type: 'varchar',
+    length: 200,
+    name: 'responsable_calificacion_display',
+    nullable: true,
+  })
+  responsableCalificacionDisplay?: string;
+
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt: Date;
 

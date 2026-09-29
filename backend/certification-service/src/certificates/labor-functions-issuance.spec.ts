@@ -1,5 +1,6 @@
 import { CertificatesService } from './certificates.service';
 import { LaborFunctionsService } from './labor-functions.service';
+import { LaborCertificatePdfService } from './labor-certificate-pdf.service';
 
 describe('Public issuance keeps authoritative per-person matching', () => {
   function fixture(oracleEnabled = true) {
@@ -13,7 +14,7 @@ describe('Public issuance keeps authoritative per-person matching', () => {
       monthly_salary: 1234567, salary_text: 'SALARIO ORIGINAL', email: 'persona@example.test',
     };
     let profiles: any[] = [{
-      id: 'profile-1', is_active: true, combined_code: '202812', position_code: '2028', grade_code: '12',
+      id: 'profile-1', id_number: request.id_number, is_active: true, combined_code: '202812', position_code: '2028', grade_code: '12',
       position_name: 'Profesional', hierarchical_level: 'Profesional', department_name: 'Dirección',
       internal_group: 'Grupo', functions: [{ ordinal: 1, description: 'Función vigente.' }],
     }];
@@ -40,6 +41,8 @@ describe('Public issuance keeps authoritative per-person matching', () => {
     });
     return { service, functions, request, certificates, query, sync, profileRepo,
       removeProfiles: () => { profiles = []; },
+      reassignProfile: () => { profiles = profiles.map(p => ({ ...p, id_number: '87654321' })); },
+      changeFunctions: () => { profiles = profiles.map(p => ({ ...p, functions: [{ ordinal: 1, description: 'Nueva función asignada.' }] })); },
       makeAmbiguous: () => { profiles = [...profiles, { ...profiles[0], id: 'conflict', functions: [{ ordinal: 1, description: 'Otra función.' }] }]; },
     };
   }
@@ -54,7 +57,7 @@ describe('Public issuance keeps authoritative per-person matching', () => {
     expect(certificates.save).toHaveBeenCalledWith(expect.objectContaining({
       id_number: request.id_number, full_name: request.full_name, monthly_salary: request.monthly_salary,
       salary_text: request.salary_text, include_functions: true,
-      functions_snapshot: expect.objectContaining({ profile_id: 'profile-1', functions: [{ ordinal: 1, description: 'Función vigente.' }] }),
+      functions_snapshot: expect.objectContaining({ profile_id: 'profile-1', id_number: request.id_number, functions: [{ ordinal: 1, description: 'Función vigente.' }] }),
     }));
   });
 
@@ -64,6 +67,36 @@ describe('Public issuance keeps authoritative per-person matching', () => {
     removeProfiles();
     await expect(service.createCertificado(request.id, { includeFunctions: true })).rejects.toThrow('No es posible incluir funciones');
     expect(certificates.save).not.toHaveBeenCalled();
+  });
+
+  it('revalidates the document if the assignment changes after checking eligibility', async () => {
+    const { service, certificates, request, reassignProfile } = fixture();
+    expect((await service.verificarDocumentoPorSolicitud(request.id_number)).functions_available).toBe(true);
+    reassignProfile();
+    await expect(service.createCertificado(request.id, { includeFunctions: true })).rejects.toThrow('identificación');
+    expect(certificates.save).not.toHaveBeenCalled();
+  });
+
+  it('keeps issued functions unchanged and uses edited functions only in the next certificate', async () => {
+    const { service, certificates, request, changeFunctions } = fixture();
+    await service.createCertificado(request.id, { includeFunctions: true });
+    const issued = certificates.save.mock.calls[0][0];
+    changeFunctions();
+    await service.createCertificado(request.id, { includeFunctions: true });
+    const next = certificates.save.mock.calls[1][0];
+    const pdf = Object.create(LaborCertificatePdfService.prototype) as LaborCertificatePdfService;
+    expect(pdf['resolveLaborFunctions'](issued)).toEqual([{ ordinal: 1, description: 'Función vigente.' }]);
+    expect(pdf['resolveLaborFunctions'](next)).toEqual([{ ordinal: 1, description: 'Nueva función asignada.' }]);
+    expect(issued.functions_snapshot.id_number).toBe(request.id_number);
+    expect(issued.functions_snapshot).not.toHaveProperty('combined_code');
+  });
+
+  it('issues assigned functions even without the former job-matching fields', async () => {
+    const { service, request, certificates } = fixture(false);
+    for (const key of ['cod_cargo', 'cod_grade', 'hierarchical_level', 'position_name', 'organization_department', 'internal_group']) delete request[key];
+    await service.createCertificado(request.id, { includeFunctions: true });
+    expect(certificates.save).toHaveBeenCalledWith(expect.objectContaining({ include_functions: true,
+      functions_snapshot: expect.objectContaining({ id_number: request.id_number }) }));
   });
 
   it('rejects ambiguous functions on the server regardless of the client checkbox', async () => {

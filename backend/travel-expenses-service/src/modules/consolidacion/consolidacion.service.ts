@@ -265,6 +265,11 @@ export class ConsolidacionService {
         expediente.extemporanea = false;
       }
       expediente.motivoDevolucion = null;
+      // La fecha de radicación se fija solo al primer ingreso a la bandeja;
+      // una devolución y posterior reenvío no la modifica (EFDS-1287).
+      if (!expediente.fechaRadicacion) {
+        expediente.fechaRadicacion = ahora;
+      }
       await manager.save(SolicitudComisionEntity, expediente);
 
       // 5) Registrar la transición en el historial de auditoría (append-only).

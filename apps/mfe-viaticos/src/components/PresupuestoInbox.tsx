@@ -318,7 +318,7 @@ export default function PresupuestoInbox() {
                       {/* Dependencia */}
                       <td className="px-4 py-3">
                         <div className="text-slate-800 font-semibold text-[11px]">
-                          {sol.dependencia || viaticosService.resolverNombreDependencia(sol as any) || 'Sede Central'}
+                          {sol.dependencia || viaticosService.resolverNombreDependencia?.(sol as any) || 'Sede Central'}
                         </div>
                         <div className="text-[11px] text-slate-400">
                           {sol.ciudadDestino}
