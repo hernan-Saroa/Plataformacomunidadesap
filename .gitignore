@@ -186,6 +186,9 @@ backend/academic-work-plan-service/uploads/
 backend/hiring-service/uploads/
 backend/infrastructure-management-service/uploads/
 backend/travel-expenses-service/uploads/
+# EFDS-1311: paz y salvos firmados (datos personales). Hermano de TRAVEL_EXPENSES_STORAGE_PATH,
+# su ubicación depende del directorio de arranque: se ignora en cualquier nivel.
+uploads-private/
 
 #Archivos de ambiente
 .env.dev
