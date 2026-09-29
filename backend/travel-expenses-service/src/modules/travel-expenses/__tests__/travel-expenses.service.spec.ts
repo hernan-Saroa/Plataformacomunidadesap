@@ -876,7 +876,7 @@ describe('TravelExpensesService', () => {
       expect(result.data[0].numeroObligacion).toBe('OBL-SIIF-2026-001');
       expect(qb.andWhere).toHaveBeenCalledWith(
         's.estado_solicitud IN (:...estadosTesoreria)',
-        { estadosTesoreria: ['OBLIGADA', 'PAGADA'] },
+        { estadosTesoreria: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'] },
       );
     });
 
@@ -916,7 +916,7 @@ describe('TravelExpensesService', () => {
       expect(result.data[0].estadoSolicitud).toBe('PAGADA');
       expect(qb.andWhere).toHaveBeenCalledWith(
         's.estado_solicitud IN (:...estadosSst)',
-        { estadosSst: ['OBLIGADA', 'PAGADA'] },
+        { estadosSst: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'] },
       );
     });
   });

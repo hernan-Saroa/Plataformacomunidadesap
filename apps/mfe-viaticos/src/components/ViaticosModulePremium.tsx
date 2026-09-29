@@ -107,6 +107,11 @@ type Seccion =
   | 'sst'
   | 'firmas-aprobacion';
 
+// Una comisión pagada pasa enseguida a PENDIENTE_LEGALIZACION (EFDS-1309) y luego a
+// LEGALIZADO: para Tesorería y SST sigue siendo una comisión pagada.
+const ESTADOS_PAGADA = ['PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'];
+const ESTADOS_TESORERIA_SST = ['OBLIGADA', ...ESTADOS_PAGADA];
+
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
   OBLIGADA: 1,
   EN_PRESUPUESTO: 2,
@@ -414,7 +419,7 @@ export default function ViaticosModulePremium() {
         (filtroEstado === 'EXTEMPORANEA' ? esExt : sol.estado === filtroEstado);
       const cumpleSeccion =
         seccion === 'tesoreria' || seccion === 'sst'
-          ? ['OBLIGADA', 'PAGADA'].includes(sol.estado)
+          ? ESTADOS_TESORERIA_SST.includes(sol.estado)
           : true;
       return cumpleBusqueda && cumpleEstado && cumpleSeccion;
     })
@@ -877,7 +882,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pagadas (Desembolsadas)</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
-                        {solicitudes.filter((s) => s.estado === 'PAGADA').length}
+                        {solicitudes.filter((s) => ESTADOS_PAGADA.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-blue-600 font-medium mt-1">Giros formalizados</p>
                     </div>
@@ -890,7 +895,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Modalidad Avance</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
-                        {solicitudes.filter((s) => s.modalidadPago === 'AVANCE' && ['OBLIGADA', 'PAGADA'].includes(s.estado)).length}
+                        {solicitudes.filter((s) => s.modalidadPago === 'AVANCE' && ESTADOS_TESORERIA_SST.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-amber-600 font-medium mt-1">Giro previo al viaje</p>
                     </div>
@@ -905,7 +910,7 @@ export default function ViaticosModulePremium() {
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
                         {formatearMoneda(
                           solicitudes
-                            .filter((s) => s.estado === 'PAGADA')
+                            .filter((s) => ESTADOS_PAGADA.includes(s.estado))
                             .reduce((acc, s) => acc + (s.valorPagado || s.montoTotalEstimado || 0), 0)
                         )}
                       </h3>
@@ -922,7 +927,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Comisiones Formalizadas</p>
                       <h3 className="text-2xl font-black text-emerald-800 mt-1">
-                        {solicitudes.filter((s) => ['OBLIGADA', 'PAGADA'].includes(s.estado)).length}
+                        {solicitudes.filter((s) => ESTADOS_TESORERIA_SST.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-emerald-600 font-medium mt-1">Para cobertura y monitoreo SST</p>
                     </div>
@@ -948,7 +953,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pagadas / Desembolsadas</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
-                        {solicitudes.filter((s) => s.estado === 'PAGADA').length}
+                        {solicitudes.filter((s) => ESTADOS_PAGADA.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-blue-600 font-medium mt-1">Giro confirmado</p>
                     </div>
@@ -962,7 +967,7 @@ export default function ViaticosModulePremium() {
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Días Totales en Territorio</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
                         {solicitudes
-                          .filter((s) => ['OBLIGADA', 'PAGADA'].includes(s.estado))
+                          .filter((s) => ESTADOS_TESORERIA_SST.includes(s.estado))
                           .reduce((acc, s) => acc + (s.diasComision || 1), 0)}
                       </h3>
                       <p className="text-xs text-purple-600 font-medium mt-1">Exposición operativa</p>
@@ -2074,7 +2079,7 @@ export default function ViaticosModulePremium() {
                     {/* ========================================================================= */}
                     {/* HITO GRÁFICO SST (RF-PAG-002 — Etapa 8: Notificación Automática a SST)    */}
                     {/* ========================================================================= */}
-                    {Boolean(solicitudSeleccionada.notificadoSst || logsSst.length > 0 || ['COMPROMETIDA', 'OBLIGADA', 'PAGADA'].includes(solicitudSeleccionada.estado)) && (() => {
+                    {Boolean(solicitudSeleccionada.notificadoSst || logsSst.length > 0 || ['COMPROMETIDA', ...ESTADOS_TESORERIA_SST].includes(solicitudSeleccionada.estado)) && (() => {
                       const ultimoLogSst = logsSst[0];
                       const payloadSst = (ultimoLogSst?.payloadNotificado as any) || {
                         nombre_completo_comisionado: solicitudSeleccionada.nombreComisionado,
@@ -2252,7 +2257,7 @@ export default function ViaticosModulePremium() {
                     {/* ========================================================================= */}
                     {/* ETAPA 8: DETALLE DE DESEMBOLSO / PAGO REALIZADO (ESTADO PAGADA) */}
                     {/* ========================================================================= */}
-                    {solicitudSeleccionada.estado === 'PAGADA' && (
+                    {ESTADOS_PAGADA.includes(solicitudSeleccionada.estado) && (
                       <div className="mt-4 p-4 bg-emerald-50/90 rounded-xl border border-emerald-300 shadow-xs">
                         <div className="flex items-start gap-2.5">
                           <span className="p-2 rounded-lg bg-emerald-100 text-emerald-800 shrink-0 mt-0.5">
