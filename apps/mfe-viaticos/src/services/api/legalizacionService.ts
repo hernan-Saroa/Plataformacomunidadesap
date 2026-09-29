@@ -129,6 +129,28 @@ export interface RegistroSiifPayload {
   observaciones?: string;
 }
 
+export type RequisitoSoporte = 'OBLIGATORIO' | 'OPCIONAL';
+
+/** Condiciones que acepta el backend (CONDICIONES_SOPORTE). */
+export const CONDICIONES_SOPORTE_LEGALIZACION = [{ valor: 'TRANSPORTE_AEREO', etiqueta: 'Solo con transporte aéreo' }] as const;
+
+export interface ItemConfigChecklistLegalizacion {
+  tipo_comisionado: string;
+  codigo: string;
+  nombre: string;
+  tipo_requisito: RequisitoSoporte;
+  condicion: string | null;
+  orden: number;
+  activo: boolean;
+}
+
+export interface ItemChecklistPayload {
+  codigo: string;
+  tipoRequisito: RequisitoSoporte;
+  condicion?: string | null;
+  orden?: number;
+}
+
 class LegalizacionService {
   listarMias(): Promise<ResumenLegalizacion[]> {
     return apiClient.get<ResumenLegalizacion[]>(`${BASE}/mis`);
@@ -213,6 +235,15 @@ class LegalizacionService {
       `${BASE}/revision/${solicitudId}/registrar-siif`,
       payload,
     );
+  }
+
+  // EFDS-1309 — soportes de legalización administrables.
+  obtenerConfig(): Promise<{ checklist: ItemConfigChecklistLegalizacion[] }> {
+    return apiClient.get(`${BASE}/config`);
+  }
+
+  reemplazarChecklist(tipoComisionado: string, items: ItemChecklistPayload[]) {
+    return apiClient.put(`${BASE}/config/checklist/${encodeURIComponent(tipoComisionado)}`, { items });
   }
 }
 
