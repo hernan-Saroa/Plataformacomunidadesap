@@ -49,6 +49,30 @@ export interface RegistrarSiifDto {
   observaciones?: string;
 }
 
+/**
+ * Resultado del registro en SIIF: cierre, o devolución al comisionado cuando el
+ * valor legalizado supera el pagado (no se registra ni se cierra).
+ */
+export type ResultadoRegistroSiif =
+  | {
+      devuelta: false;
+      legalizacionId: string;
+      estadoSolicitud: EstadoSolicitud;
+      cerradaEn: Date | null;
+      numeroRegistroSiif: string;
+      valorPagado: number;
+      valorLegalizado: number;
+      valorReintegro: number;
+    }
+  | {
+      devuelta: true;
+      legalizacionId: string;
+      estadoSolicitud: EstadoSolicitud;
+      observacionDevolucion: string;
+      valorPagado: number;
+      valorLegalizado: number;
+    };
+
 const MIN_OBSERVACION = 10;
 
 /** SIIF no acepta tildes, eñes, punto y coma ni saltos de línea (mismo criterio que la Etapa 5). */
@@ -288,36 +312,59 @@ export class LegalizacionRevisionService {
 
     const leg = await this.dataSource.transaction(async (m) => {
       const l = await this.bloquearEnRevision(m, solicitudId);
-      l.devueltaEn = new Date();
-      l.devueltaPorId = user.userId;
-      l.observacionDevolucion = observacion;
-      l.numeroDevoluciones = (l.numeroDevoluciones ?? 0) + 1;
-      // Vuelve a quedar abierta para el comisionado.
-      l.fechaEnvio = null;
-      l.enviadaPorId = null;
-      await m.getRepository(LegalizacionComisionEntity).save(l);
-
-      await this.registrar(m, l.id, 'DEVOLUCION', user.userId, {
-        observacion,
-        detalle: { numeroDevolucion: l.numeroDevoluciones },
-      });
-      await m.getRepository(SolicitudHistorialEstadoEntity).save({
-        solicitudId,
-        estadoAnterior: sol.estado_solicitud,
-        estadoNuevo: sol.estado_solicitud,
-        usuarioId: user.userId,
-        comentarios: `[EFDS-1310] Legalización devuelta al comisionado: ${observacion}`.slice(0, 255),
-      });
+      await this.aplicarDevolucion(m, l, sol, user.userId, observacion);
       return l;
     });
 
-    await this.notificar(sol, {
+    await this.notificarDevolucion(sol, observacion);
+    return { legalizacionId: leg.id, devueltaEn: leg.devueltaEn, numeroDevoluciones: leg.numeroDevoluciones };
+  }
+
+  /**
+   * Devuelve la legalización al comisionado: queda abierta para que corrija y
+   * reenvíe. Si la revisión ya estaba aprobada, la aprobación y la exportación a
+   * SIIF se deshacen, porque lo que el comisionado cambie debe revisarse de nuevo.
+   */
+  private async aplicarDevolucion(
+    m: EntityManager,
+    l: LegalizacionComisionEntity,
+    sol: SolicitudContexto,
+    usuarioId: string,
+    observacion: string,
+    detalle: Record<string, unknown> = {},
+  ): Promise<void> {
+    l.devueltaEn = new Date();
+    l.devueltaPorId = usuarioId;
+    l.observacionDevolucion = observacion;
+    l.numeroDevoluciones = (l.numeroDevoluciones ?? 0) + 1;
+    l.fechaEnvio = null;
+    l.enviadaPorId = null;
+    l.revisionAprobadaEn = null;
+    l.revisionAprobadaPorId = null;
+    l.siifExportadoEn = null;
+    l.siifExportadoPorId = null;
+    await m.getRepository(LegalizacionComisionEntity).save(l);
+
+    await this.registrar(m, l.id, 'DEVOLUCION', usuarioId, {
+      observacion,
+      detalle: { numeroDevolucion: l.numeroDevoluciones, ...detalle },
+    });
+    await m.getRepository(SolicitudHistorialEstadoEntity).save({
+      solicitudId: l.solicitudId,
+      estadoAnterior: sol.estado_solicitud,
+      estadoNuevo: sol.estado_solicitud,
+      usuarioId,
+      comentarios: `[EFDS-1310] Legalización devuelta al comisionado: ${observacion}`.slice(0, 255),
+    });
+  }
+
+  private notificarDevolucion(sol: SolicitudContexto, observacion: string) {
+    return this.notificar(sol, {
       tipo: 'VIATICOS_LEGALIZACION_DEVUELTA',
       titulo: `Legalización devuelta: ${sol.consecutivo_unico}`,
       mensaje: `El analista devolvió la legalización de ${sol.consecutivo_unico}: ${observacion}`,
       color: '#dc2626',
     });
-    return { legalizacionId: leg.id, devueltaEn: leg.devueltaEn, numeroDevoluciones: leg.numeroDevoluciones };
   }
 
   // ---------------------------------------------------------------------------
@@ -404,18 +451,13 @@ export class LegalizacionRevisionService {
    * Registra la legalización en SIIF y cierra el expediente, en una sola
    * transacción: o queda LEGALIZADO y cerrado, o no cambia nada.
    */
-  async registrarYCerrar(solicitudId: string, dto: RegistrarSiifDto, user: UsuarioAutenticado) {
+  async registrarYCerrar(
+    solicitudId: string,
+    dto: RegistrarSiifDto,
+    user: UsuarioAutenticado,
+  ): Promise<ResultadoRegistroSiif> {
     const numero = dto?.numeroRegistroSiif?.trim() || '';
-    if (!numero || numero.length > 100) {
-      throw new BadRequestException('Digite el número del registro de la legalización en SIIF Nación (máximo 100 caracteres).');
-    }
     const fecha = dto?.fechaRegistroSiif?.trim() || '';
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(new Date(`${fecha}T00:00:00Z`).getTime())) {
-      throw new BadRequestException('La fecha del registro en SIIF debe tener el formato AAAA-MM-DD.');
-    }
-    if (fecha > fechaColombia(new Date())) {
-      throw new BadRequestException('La fecha del registro en SIIF no puede ser posterior a hoy.');
-    }
     const valorLegalizado = Number(dto?.valorLegalizado);
     if (!Number.isFinite(valorLegalizado) || valorLegalizado < 0) {
       throw new BadRequestException('El valor legalizado debe ser un número mayor o igual a cero.');
@@ -448,10 +490,26 @@ export class LegalizacionRevisionService {
       }
       const valorPagado = Number(bloqueada.valor_pagado);
       if (valorLegalizado > valorPagado) {
-        throw new BadRequestException(
-          `El valor legalizado ($${valorLegalizado.toLocaleString('es-CO')}) no puede superar el pagado ` +
-            `($${valorPagado.toLocaleString('es-CO')}): un mayor valor se tramita aparte.`,
-        );
+        // No se registra en SIIF ni se cierra: vuelve al comisionado para corregir.
+        const observacion =
+          `El valor legalizado ($${valorLegalizado.toLocaleString('es-CO')}) supera el valor pagado ` +
+          `($${valorPagado.toLocaleString('es-CO')}). Revise los soportes de la legalización y reenvíela.` +
+          (dto.observaciones?.trim() ? ` Observación del analista: ${dto.observaciones.trim()}` : '');
+        await this.aplicarDevolucion(m, leg, sol, user.userId, observacion, {
+          motivo: 'VALOR_LEGALIZADO_SUPERA_PAGADO',
+          valorPagado,
+          valorLegalizado,
+        });
+        return { devuelta: true as const, leg, valorPagado, observacion };
+      }
+      if (!numero || numero.length > 100) {
+        throw new BadRequestException('Digite el número del registro de la legalización en SIIF Nación (máximo 100 caracteres).');
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(new Date(`${fecha}T00:00:00Z`).getTime())) {
+        throw new BadRequestException('La fecha del registro en SIIF debe tener el formato AAAA-MM-DD.');
+      }
+      if (fecha > fechaColombia(new Date())) {
+        throw new BadRequestException('La fecha del registro en SIIF no puede ser posterior a hoy.');
       }
       const valorReintegro = Math.round((valorPagado - valorLegalizado) * 100) / 100;
       const cierre = new Date();
@@ -495,8 +553,20 @@ export class LegalizacionRevisionService {
         observacion: leg.observacionesCierre,
         detalle: { numeroRegistroSiif: numero, fechaRegistroSiif: fecha, valorPagado, valorLegalizado, valorReintegro, diasReales },
       });
-      return { leg, valorPagado, valorReintegro };
+      return { devuelta: false as const, leg, valorPagado, valorReintegro };
     });
+
+    if (r.devuelta) {
+      await this.notificarDevolucion(sol, r.observacion);
+      return {
+        devuelta: true,
+        legalizacionId: r.leg.id,
+        estadoSolicitud: EstadoSolicitud.PENDIENTE_LEGALIZACION,
+        observacionDevolucion: r.observacion,
+        valorPagado: r.valorPagado,
+        valorLegalizado,
+      };
+    }
 
     // Después del commit: quien escuche lee datos ya confirmados.
     if (r.valorReintegro > 0) {
@@ -527,6 +597,7 @@ export class LegalizacionRevisionService {
     });
 
     return {
+      devuelta: false,
       legalizacionId: r.leg.id,
       estadoSolicitud: EstadoSolicitud.LEGALIZADO,
       cerradaEn: r.leg.cerradaEn,

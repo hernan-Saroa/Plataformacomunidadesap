@@ -258,10 +258,7 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
       expect(fila).toContain('OBL-T-1310');
     });
 
-    it('rechaza un valor legalizado mayor que el pagado y una fecha futura', async () => {
-      await expect(
-        revision.registrarYCerrar(id, { numeroRegistroSiif: 'LEG-1', fechaRegistroSiif: '2026-09-25', valorLegalizado: 1_000_001 }, analista),
-      ).rejects.toThrow(/no puede superar el pagado/);
+    it('rechaza una fecha de registro futura', async () => {
       await expect(
         revision.registrarYCerrar(id, { numeroRegistroSiif: 'LEG-1', fechaRegistroSiif: '2099-01-01', valorLegalizado: 1 }, analista),
       ).rejects.toThrow(/posterior a hoy/);
@@ -352,13 +349,75 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
     });
   });
 
+  describe('legalizado mayor que lo pagado: se devuelve, no se rechaza', () => {
+    let id: string;
+    beforeAll(async () => {
+      id = await legalizacionEnviada(1_000_000);
+      await aprobarTodo(id);
+      await revision.exportarSiif(id, analista);
+    }, 60_000);
+
+    it('devuelve al comisionado sin registrar en SIIF ni cerrar, y deshace la aprobación', async () => {
+      const antes = eventos.length;
+      const r = await revision.registrarYCerrar(
+        id,
+        { numeroRegistroSiif: '', fechaRegistroSiif: '', valorLegalizado: 1_250_000, observaciones: 'Hay dos facturas del mismo hotel.' },
+        analista,
+      );
+      expect(r).toMatchObject({ devuelta: true, estadoSolicitud: 'PENDIENTE_LEGALIZACION', valorPagado: 1_000_000, valorLegalizado: 1_250_000 });
+
+      const [l] = await ds.query(
+        `SELECT l.devuelta_en, l.revision_aprobada_en, l.siif_exportado_en, l.fecha_envio, l.numero_registro_siif,
+                l.cerrada_en, l.observacion_devolucion, s.estado_solicitud
+           FROM travel_expenses.legalizaciones_comision l JOIN travel_expenses.solicitudes_comision s ON s.id = l.solicitud_id
+          WHERE l.solicitud_id = $1`,
+        [id],
+      );
+      expect(l).toMatchObject({
+        revision_aprobada_en: null, siif_exportado_en: null, fecha_envio: null, numero_registro_siif: null,
+        cerrada_en: null, estado_solicitud: 'PENDIENTE_LEGALIZACION',
+      });
+      expect(l.devuelta_en).not.toBeNull();
+      expect(l.observacion_devolucion).toContain('supera el valor pagado');
+      expect(l.observacion_devolucion).toContain('Hay dos facturas del mismo hotel.');
+      expect(eventos.length).toBe(antes);
+
+      const historial = (await revision.detalle(id, analista)).historialRevision;
+      expect(historial[historial.length - 1]).toMatchObject({ accion: 'DEVOLUCION' });
+      const [det] = await ds.query(
+        `SELECT r.detalle FROM travel_expenses.legalizacion_revisiones r
+           JOIN travel_expenses.legalizaciones_comision l ON l.id = r.legalizacion_id
+          WHERE l.solicitud_id = $1 AND r.accion = 'DEVOLUCION'`,
+        [id],
+      );
+      expect(det.detalle).toMatchObject({ motivo: 'VALOR_LEGALIZADO_SUPERA_PAGADO', valorPagado: 1_000_000, valorLegalizado: 1_250_000 });
+
+      const d = await legalizaciones.detalle(id, enlace);
+      expect(d.devuelta).toBe(true);
+    });
+
+    it('el comisionado reenvía y la revisión empieza de nuevo antes de poder cerrar', async () => {
+      await legalizaciones.enviar(id, enlace);
+      await expect(
+        revision.registrarYCerrar(id, { numeroRegistroSiif: 'LEG-SIIF-DEV', fechaRegistroSiif: '2026-09-25', valorLegalizado: 1_000_000 }, analista),
+      ).rejects.toThrow(/Apruebe la revisión/);
+      await revision.aprobar(id, analista);
+      const r = await revision.registrarYCerrar(
+        id,
+        { numeroRegistroSiif: 'LEG-SIIF-DEV', fechaRegistroSiif: '2026-09-25', valorLegalizado: 1_000_000 },
+        analista,
+      );
+      expect(r).toMatchObject({ devuelta: false, estadoSolicitud: 'LEGALIZADO', valorReintegro: 0 });
+    });
+  });
+
   describe('viaje completo y canario', () => {
     it('sin diferencia no emite evento de reintegro', async () => {
       const id = await legalizacionEnviada(500_000);
       await aprobarTodo(id);
       const antes = eventos.length;
       const r = await revision.registrarYCerrar(id, { numeroRegistroSiif: 'LEG-SIIF-EXACTO', fechaRegistroSiif: '2026-09-25', valorLegalizado: 500_000 }, analista);
-      expect(r.valorReintegro).toBe(0);
+      expect(r).toMatchObject({ devuelta: false, valorReintegro: 0 });
       expect(eventos.length).toBe(antes);
     });
 

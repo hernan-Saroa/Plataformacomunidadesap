@@ -156,13 +156,13 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
     void cargar();
   }, [cargar]);
 
-  const ejecutar = async (fn: () => Promise<unknown>, ok?: string) => {
+  const ejecutar = async <T,>(fn: () => Promise<T>, ok?: string | ((r: T) => string)) => {
     setTrabajando(true);
     setError(null);
     setAviso(null);
     try {
-      await fn();
-      if (ok) setAviso(ok);
+      const r = await fn();
+      if (ok) setAviso(typeof ok === 'function' ? ok(r) : ok);
       await cargar();
     } catch (e) {
       setError(mensajeDeError(e));
@@ -183,6 +183,8 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
   const valorLegalizado = Number(siif.valor);
   const reintegroPrevio =
     siif.valor !== '' && Number.isFinite(valorLegalizado) ? Number(d.valorPagado ?? 0) - valorLegalizado : null;
+  // Un legalizado mayor que lo pagado no se registra: la legalización vuelve al comisionado.
+  const mayorQuePagado = (reintegroPrevio ?? 0) < 0;
 
   return (
     <div className="space-y-4">
@@ -338,11 +340,15 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
               <input inputMode="decimal" value={siif.dias} onChange={(e) => setSiif({ ...siif, dias: e.target.value.replace(/[^\d.]/g, '') })}
                 className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs" />
             </label>
+            <label className="text-xs text-slate-700 sm:col-span-2">Observaciones (opcional)
+              <textarea value={siif.obs} onChange={(e) => setSiif({ ...siif, obs: e.target.value })} rows={2} maxLength={500}
+                className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs" />
+            </label>
           </div>
           {reintegroPrevio !== null && (
-            <p className={`text-xs ${reintegroPrevio < 0 ? 'text-red-700' : 'text-slate-700'}`}>
-              {reintegroPrevio < 0
-                ? 'El valor legalizado no puede superar el pagado.'
+            <p className={`text-xs ${mayorQuePagado ? 'font-semibold text-amber-800' : 'text-slate-700'}`}>
+              {mayorQuePagado
+                ? 'El valor legalizado supera el pagado: no se registra en SIIF, la legalización se devuelve al comisionado para que revise los soportes.'
                 : reintegroPrevio > 0
                   ? `Viaje menor: el comisionado deberá reintegrar ${formatearPesos(reintegroPrevio)}.`
                   : 'Sin diferencia con lo pagado: no hay reintegro.'}
@@ -350,12 +356,16 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
           )}
           {confirmarCierre ? (
             <div className="flex items-center justify-end gap-2">
-              <span className="text-xs text-slate-600">Al registrar, la comisión queda LEGALIZADO y el expediente se cierra sin posibilidad de cambios.</span>
+              <span className="text-xs text-slate-600">
+                {mayorQuePagado
+                  ? 'La legalización vuelve al comisionado; la aprobación de la revisión y la exportación a SIIF se deshacen.'
+                  : 'Al registrar, la comisión queda LEGALIZADO y el expediente se cierra sin posibilidad de cambios.'}
+              </span>
               <button type="button" onClick={() => setConfirmarCierre(false)}
                 className="rounded-lg px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100">Cancelar</button>
               <button type="button" disabled={trabajando}
                 onClick={() => ejecutar(async () => {
-                  await legalizacionService.registrarSiif(solicitudId, {
+                  const r = await legalizacionService.registrarSiif(solicitudId, {
                     numeroRegistroSiif: siif.numero.trim(),
                     fechaRegistroSiif: siif.fecha,
                     valorLegalizado: Number(siif.valor),
@@ -363,18 +373,21 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
                     observaciones: siif.obs || undefined,
                   });
                   setConfirmarCierre(false);
-                }, 'Legalización registrada en SIIF. Comisión legalizada y expediente cerrado.')}
-                className="rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-bold text-white">
-                Confirmar registro y cierre
+                  return r;
+                }, (r) => r.devuelta
+                  ? 'Legalización devuelta al comisionado: el valor legalizado supera el pagado.'
+                  : 'Legalización registrada en SIIF. Comisión legalizada y expediente cerrado.')}
+                className={`rounded-lg px-3 py-1.5 text-xs font-bold text-white ${mayorQuePagado ? 'bg-amber-600' : 'bg-blue-700'}`}>
+                {mayorQuePagado ? 'Confirmar devolución' : 'Confirmar registro y cierre'}
               </button>
             </div>
           ) : (
             <div className="flex justify-end">
               <button type="button"
-                disabled={!siif.numero.trim() || !siif.fecha || siif.valor === '' || (reintegroPrevio ?? 0) < 0}
+                disabled={siif.valor === '' || (!mayorQuePagado && (!siif.numero.trim() || !siif.fecha))}
                 onClick={() => setConfirmarCierre(true)}
-                className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-bold text-white disabled:bg-slate-300">
-                Registrar en SIIF y cerrar
+                className={`rounded-lg px-4 py-2 text-xs font-bold text-white disabled:bg-slate-300 ${mayorQuePagado ? 'bg-amber-600' : 'bg-blue-700'}`}>
+                {mayorQuePagado ? 'Devolver al comisionado por mayor valor' : 'Registrar en SIIF y cerrar'}
               </button>
             </div>
           )}

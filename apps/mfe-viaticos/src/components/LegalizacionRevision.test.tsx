@@ -110,7 +110,7 @@ describe('LegalizacionRevision — EFDS-1310', () => {
       detalle({ puedeRevisar: false, puedeRegistrarSiif: true, revisionAprobadaEn: '2026-09-25T18:00:00Z' },
         [soporte('s1', 'APROBADO')]),
     );
-    svc.registrarSiif.mockResolvedValue({ estadoSolicitud: 'LEGALIZADO', valorReintegro: 300000 });
+    svc.registrarSiif.mockResolvedValue({ devuelta: false, estadoSolicitud: 'LEGALIZADO', valorReintegro: 300000 });
     await abrirDetalle();
     fireEvent.change(await screen.findByLabelText('Número del registro en SIIF'), { target: { value: 'LEG-SIIF-123' } });
     fireEvent.change(screen.getByLabelText('Valor legalizado (COP)'), { target: { value: '1200000' } });
@@ -126,13 +126,24 @@ describe('LegalizacionRevision — EFDS-1310', () => {
     );
   });
 
-  it('bloquea registrar si el valor legalizado supera el pagado', async () => {
-    svc.detalleRevision.mockResolvedValue(detalle({ puedeRevisar: false, puedeRegistrarSiif: true }));
+  it('legalizado mayor que lo pagado: no registra, devuelve al comisionado (sin exigir número SIIF)', async () => {
+    svc.detalleRevision.mockResolvedValue(
+      detalle({ puedeRevisar: false, puedeRegistrarSiif: true, revisionAprobadaEn: '2026-09-25T18:00:00Z' }),
+    );
+    svc.registrarSiif.mockResolvedValue({ devuelta: true, estadoSolicitud: 'PENDIENTE_LEGALIZACION', observacionDevolucion: 'x' });
     await abrirDetalle();
-    fireEvent.change(await screen.findByLabelText('Número del registro en SIIF'), { target: { value: 'LEG-1' } });
-    fireEvent.change(screen.getByLabelText('Valor legalizado (COP)'), { target: { value: '2000000' } });
-    expect(screen.getByText('El valor legalizado no puede superar el pagado.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Registrar en SIIF y cerrar' })).toBeDisabled();
+    fireEvent.change(await screen.findByLabelText('Valor legalizado (COP)'), { target: { value: '2000000' } });
+    fireEvent.change(screen.getByLabelText('Observaciones (opcional)'), { target: { value: 'Factura duplicada.' } });
+    expect(screen.getByText(/supera el pagado: no se registra en SIIF/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Registrar en SIIF y cerrar' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Devolver al comisionado por mayor valor' }));
+    expect(svc.registrarSiif).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar devolución' }));
+    await screen.findByText('Legalización devuelta al comisionado: el valor legalizado supera el pagado.');
+    expect(svc.registrarSiif).toHaveBeenCalledWith('sol-1', expect.objectContaining({
+      valorLegalizado: 2000000, observaciones: 'Factura duplicada.',
+    }));
   });
 
   it('cerrada: muestra el expediente sin ninguna acción', async () => {

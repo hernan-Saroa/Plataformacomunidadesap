@@ -231,7 +231,10 @@ class LegalizacionService {
   }
 
   registrarSiif(solicitudId: string, payload: RegistroSiifPayload) {
-    return apiClient.post<{ estadoSolicitud: string; valorReintegro: number; numeroRegistroSiif: string }>(
+    return apiClient.post<
+      | { devuelta: false; estadoSolicitud: string; valorReintegro: number; numeroRegistroSiif: string }
+      | { devuelta: true; estadoSolicitud: string; observacionDevolucion: string }
+    >(
       `${BASE}/revision/${solicitudId}/registrar-siif`,
       payload,
     );
