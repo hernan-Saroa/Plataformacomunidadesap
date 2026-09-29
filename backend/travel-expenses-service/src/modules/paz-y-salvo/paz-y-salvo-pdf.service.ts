@@ -6,6 +6,10 @@ import { ContenidoPazYSalvo, FirmaOtp } from './paz-y-salvo.model';
 @Injectable()
 export class PazYSalvoPdfService {
   generar(contenido: ContenidoPazYSalvo, firma: FirmaOtp, hash: string): Promise<Buffer> {
+    const fechaColombia = new Intl.DateTimeFormat('es-CO', {
+      timeZone: 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).format(new Date(firma.fechaFirma));
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({ margin: 50, size: 'letter' });
       const chunks: Buffer[] = [];
@@ -31,7 +35,7 @@ export class PazYSalvoPdfService {
         .text(`Coordinación de Viáticos: ${contenido.coordinadoraNombre}`)
         .text(`Usuario: ${contenido.coordinadoraId}`)
         .text(`Correo: ${firma.email}`)
-        .text(`Fecha: ${firma.fechaFirma}`)
+        .text(`Fecha: ${fechaColombia} (hora de Colombia)`)
         .text(`Evidencia: ${firma.id}`);
       doc.moveDown().fontSize(8).text(`SHA-256 del contenido autorizado: ${hash}`);
       doc.fontSize(8).fillColor('#666666').text('ESAP · Paz y salvo de Viáticos · Página 1', 50, 730, { align: 'center' });

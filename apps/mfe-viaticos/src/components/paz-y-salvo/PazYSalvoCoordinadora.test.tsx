@@ -17,6 +17,14 @@ async function buscar() {
 }
 beforeEach(() => { vi.resetAllMocks(); vi.mocked(api.buscar).mockResolvedValue([persona]); });
 describe('EFDS-1311 :: interfaz', () => {
+  it('EFDS-1311 :: AC-02 :: muestra el vencimiento en Colombia aunque el navegador use otra zona', async () => {
+    vi.mocked(api.consultar).mockResolvedValue({ pendiente: true, documentos: [], comisiones: [
+      { id: 's', codigo: 'COM-2026-9003', estado: 'PAGADA', fechaLimite: '2026-10-02T21:30:00.000Z' },
+    ] });
+    await buscar();
+    expect(screen.getByText('02/10/2026, 16:30')).toBeInTheDocument();
+    expect(screen.getByText('Todas las fechas se muestran en hora de Colombia.')).toBeInTheDocument();
+  });
   it('EFDS-1311 :: AC-02 :: enumera pendientes y deshabilita emisión', async () => {
     vi.mocked(api.consultar).mockResolvedValue({ pendiente: true, documentos: [], comisiones: [
       { id: 's', codigo: 'COM-2026-9003', estado: 'PAGADA', fechaLimite: null },
