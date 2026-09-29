@@ -36,6 +36,7 @@ import { ModalFirmaOTP, type FirmaElectronicaMetadata } from './ModalFirmaOTP';
 
 // a️ IMPORTACIN OBLIGATORIA DE REGLAS DE NEGOCIO Y CUMPLIMIENTO NORMATIVO
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
+import { normalizarRolOcigOperativo } from '../config/roles-ocig-operativos';
 import { createPortal } from 'react-dom';
 // Hook para sincronizar evidencias con backend y API de auditores
 import {
@@ -217,7 +218,7 @@ function mapearProfesionalesOCIGDesdeApi(data: any[]): Auditor[] {
       idPerson: id,
       idTercero: id,
       nombre: String(config.nombre).trim(),
-      cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor',
+      cargo: String(normalizarRolOcigOperativo(config.rolOcig || config.rolOCI || config.cargo)),
       email: config.email || '',
       configId: config.id,
     });
@@ -3791,7 +3792,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             return opcionesResponsable.length === 0 ? (
               <div className="flex items-center gap-2 px-4 py-3 border-2 border-orange-300 rounded-lg bg-orange-50">
                 <AlertCircle className="w-5 h-5 text-orange-600" />
-                <span className="text-orange-700">No hay profesionales con rol Jefe OCIG o Auditor Líder configurados. Configure uno en Profesionales OCI.</span>
+                <span className="text-orange-700">No hay profesionales con rol Jefe OCI o Auditor configurados. Configure uno en Profesionales OCI.</span>
               </div>
             ) : (
               <select 
@@ -3802,12 +3803,12 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
               >
                 <option value="">Seleccionar responsable...</option>
                 {opcionesResponsable.map((a: any) => (
-                  <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Jefe OCIG'}</option>
+                  <option key={a.id} value={a.id}>{a.nombre} - {String(normalizarRolOcigOperativo(a.cargo || 'Jefe OCI'))}</option>
                 ))}
               </select>
             );
           })()}
-          <p className="text-xs text-gray-500 mt-1">Solo profesionales con rol Jefe OCIG o Auditor Líder pueden ser responsables del Plan Anual</p>
+          <p className="text-xs text-gray-500 mt-1">Solo profesionales con rol Jefe OCI o Auditor pueden ser responsables del Plan Anual</p>
         </div>
       </div>
     </motion.div>
@@ -6425,7 +6426,7 @@ function Paso3({
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 leading-tight bg-white/50 p-2 rounded border border-blue-100">
-                  <span className="font-semibold text-blue-600">Tip:</span> Solo aparecen profesionales configurados con rol <code className="text-[9px]">Aprobador PAI</code>. El orden importa si el flujo es secuencial.
+                  <span className="font-semibold text-blue-600">Tip:</span> Solo aparecen profesionales configurados con rol <code className="text-[9px]">Aprobador Plan Anual</code>. El orden importa si el flujo es secuencial.
                 </p>
               </div>
               )}
@@ -6463,7 +6464,7 @@ function Paso3({
                         if (r.includes('líder') || r.includes('lider') || r.includes('senior') || r.includes('sénior')) return 'bg-cyan-100 text-cyan-700';
                         if (r.includes('junior') || r.includes('júnior')) return 'bg-green-100 text-green-700';
                         if (r.includes('auditado')) return 'bg-amber-100 text-amber-700';
-                        if (r.includes('aprobador pai')) return 'bg-orange-100 text-orange-700';
+                        if (r.includes('aprobador')) return 'bg-orange-100 text-orange-700';
                         return 'bg-blue-100 text-blue-700';
                       };
 
@@ -6501,7 +6502,7 @@ function Paso3({
                           </div>
 
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${getRoleBadgeColor(miembro.cargo || 'Funcionario')}`}>
-                            {miembro.cargo || 'Funcionario'}
+                            {miembro.cargo ? String(normalizarRolOcigOperativo(miembro.cargo)) : 'Funcionario'}
                           </span>
 
                           {!soloLectura && (
