@@ -11,7 +11,7 @@
 
 import { Injectable, NotFoundException, ConflictException, BadRequestException, OnModuleInit, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { EvaluacionProceso } from './entities/evaluacion-proceso.entity';
 import { ProcesoAuditable } from './entities/proceso-auditable.entity';
 import { CreateEvaluacionProcesoDto, UpdateEvaluacionProcesoDto } from './dto/evaluacion-proceso.dto';
@@ -252,16 +252,20 @@ export class EvaluacionProcesoService implements OnModuleInit {
       const newFechaCorte = dto.fechaCorte ? new Date(dto.fechaCorte) : evaluacion.fechaCorte;
       const newDependencia = dto.dependenciaResponsable ?? evaluacion.dependenciaResponsable;
 
+      // Solo cuenta otra evaluación ACTIVA, igual que al crear: las eliminadas quedan
+      // inactivas como historial y no deben impedir editar la vigente.
       const existente = await this.evaluacionRepository.findOne({
         where: {
+          id: Not(id),
           procesoId: evaluacion.procesoId,
           vigencia: newVigencia,
           fechaCorte: newFechaCorte,
           dependenciaResponsable: newDependencia,
+          activo: true,
         },
       });
 
-      if (existente && existente.id !== id) {
+      if (existente) {
         throw new ConflictException(
           `Ya existe una evaluación para este proceso con vigencia ${newVigencia}, fecha de corte y unidad auditable ${newDependencia}`
         );
