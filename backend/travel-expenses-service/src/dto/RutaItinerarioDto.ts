@@ -19,6 +19,9 @@ export enum TipoTrayecto {
 export enum TipoTransporte {
   AEREO = 'AEREO',
   TERRESTRE = 'TERRESTRE',
+  MARITIMO = 'MARITIMO',
+  FLUVIAL = 'FLUVIAL',
+  FERROVIARIO = 'FERROVIARIO',
 }
 
 export class RutaItinerarioDto {
@@ -98,4 +101,9 @@ export class RutaItinerarioDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   montoTransporteTerrestre?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  valorTransporte?: number;
 }

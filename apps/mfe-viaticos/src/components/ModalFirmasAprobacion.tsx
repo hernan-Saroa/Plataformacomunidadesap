@@ -595,7 +595,12 @@ export default function ModalFirmasAprobacion({
                                 {tramo.tipoTransporte}
                               </span>
                             )}
-                            <span>{tramo.diasRuta || 1} días</span>
+                            {(tramo.horaEstimadaSalida || tramo.horarioEstimadoMilitar) && (
+                              <span className="font-mono text-[10px] text-slate-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded">
+                                {tramo.horaEstimadaSalida || tramo.horarioEstimadoMilitar} h
+                                {tramo.horaEstimadaLlegada ? ` → ${tramo.horaEstimadaLlegada} h` : ''}
+                              </span>
+                            )}
                           </div>
                         </div>
                       ))}

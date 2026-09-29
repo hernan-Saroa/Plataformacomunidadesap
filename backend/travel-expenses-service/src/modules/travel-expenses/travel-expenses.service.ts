@@ -3580,7 +3580,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
       montoTerrestreUOtro = solicitud.itinerario.reduce(
         (acc: number, r: any) =>
           acc +
-          Number(r.montoTransporteTerrestre ?? r.tarifaTerrestre ?? 0),
+          Number(r.montoTransporteTerrestre ?? r.valorTransporte ?? r.tarifaTerrestre ?? 0),
         0,
       );
     }
@@ -4000,8 +4000,8 @@ if (itinerarioGeneral) {
       doc.text('Origen', 60, yRutas + 2.5, { width: 108, align: 'center' });
       doc.text('Destino', 168, yRutas + 2.5, { width: 108, align: 'center' });
       doc.text('Medio Transporte', 276, yRutas + 2.5, { width: 72, align: 'center' });
-      doc.text('Salida (Fecha / Hora estimada)', 348, yRutas + 2.5, { width: 118, align: 'center' });
-      doc.text('Llegada (Fecha / Hora estimada)', 466, yRutas + 2.5, { width: 118, align: 'center' });
+      doc.text('Salida (Fecha / Hora militar)', 348, yRutas + 2.5, { width: 118, align: 'center' });
+      doc.text('Llegada (Fecha / Hora militar)', 466, yRutas + 2.5, { width: 118, align: 'center' });
 
       doc.moveTo(60, yRutas).lineTo(60, yRutas + 11).strokeColor('#CBD5E1').lineWidth(0.5).stroke();
       doc.moveTo(168, yRutas).lineTo(168, yRutas + 11).strokeColor('#CBD5E1').lineWidth(0.5).stroke();
@@ -4031,6 +4031,12 @@ if (itinerarioGeneral) {
           const dest = r.destinoCiudad || solicitud.destinoCiudad || '—';
           const medio = r.tipoTransporte === 'TERRESTRE'
             ? 'Terrestre'
+            : r.tipoTransporte === 'MARITIMO'
+            ? 'Marítimo'
+            : r.tipoTransporte === 'FLUVIAL'
+            ? 'Fluvial'
+            : r.tipoTransporte === 'FERROVIARIO'
+            ? 'Ferroviario'
             : r.tipoTransporte === 'AEREO'
             ? 'Aéreo'
             : (r.tipoTransporte || 'Aéreo');
@@ -4038,11 +4044,13 @@ if (itinerarioGeneral) {
 
           const fSalida = formatFechaSlash(r.fechaSalida || solicitud.fechaInicio);
           const hSalida = r.horaEstimadaSalida || r.horaSalida || r.horarioEstimadoMilitar || '';
-          const salidaTexto = [fSalida, hSalida].filter(Boolean).join(' - ') || '—';
+          const hSalidaStr = hSalida ? (hSalida.endsWith('h') ? hSalida : `${hSalida} h`) : '';
+          const salidaTexto = [fSalida, hSalidaStr].filter(Boolean).join(' · ') || '—';
 
           const fLlegada = formatFechaSlash(r.fechaLlegada || r.fechaSalida || solicitud.fechaFin);
           const hLlegada = r.horaEstimadaLlegada || r.horaLlegada || '';
-          const llegadaTexto = [fLlegada, hLlegada].filter(Boolean).join(' - ') || '—';
+          const hLlegadaStr = hLlegada ? (hLlegada.endsWith('h') ? hLlegada : `${hLlegada} h`) : '';
+          const llegadaTexto = [fLlegada, hLlegadaStr].filter(Boolean).join(' · ') || '—';
 
           doc.fontSize(6).font('Helvetica-Bold').fillColor('#000000');
           doc.text(labelRuta, 28, yRutas + 2.5, { width: 32, align: 'center' });

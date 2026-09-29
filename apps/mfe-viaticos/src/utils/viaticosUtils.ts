@@ -174,6 +174,22 @@ export function formatearHorarioMilitar(horario: string): string {
 }
 
 /**
+ * Formatea un horario militar HH:mm agregando su equivalente en formato 12h (AM/PM).
+ * Ej: '14:30' → '14:30 h (02:30 PM)'
+ */
+export function formatearHorarioMilitarCon12h(horario: string): string {
+  if (!horario) return '—';
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(horario.trim());
+  if (!match) return `${horario} h`;
+  const h = parseInt(match[1], 10);
+  const m = match[2];
+  const h12 = h === 0 ? 12 : (h > 12 ? h - 12 : h);
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const texto12h = `${String(h12).padStart(2, '0')}:${m} ${ampm}`;
+  return `${horario} h (${texto12h})`;
+}
+
+/**
  * Valida que una cadena tenga formato horario militar HH:mm.
  */
 export function esHorarioMilitarValido(horario: string): boolean {
@@ -285,6 +301,8 @@ export function sincronizarItinerarioFormulario(
   horaEstimadaLlegada: string;
   horaEstimadaGeneral: string;
   transporteTerminalesAereos: number;
+  transporteTerrestreOtros: number;
+  totalGastosDesplazamiento: number;
   tieneTransporteAereo: boolean;
 } {
   if (itinerario.length === 0) {
@@ -301,6 +319,8 @@ export function sincronizarItinerarioFormulario(
       horaEstimadaLlegada: '',
       horaEstimadaGeneral: '',
       transporteTerminalesAereos: 0,
+      transporteTerrestreOtros: 0,
+      totalGastosDesplazamiento: 0,
       tieneTransporteAereo: false,
     };
   }
@@ -312,13 +332,14 @@ export function sincronizarItinerarioFormulario(
   const fInicio = primeraRuta.fechaSalida || hoyISO();
   const fFin = ultimaRuta.fechaLlegada || primeraRuta.fechaLlegada || siguienteDiaISO();
 
-  let diasTotal = 0;
+  // El cálculo oficial de días de comisión se computa sobre el intervalo global (fechaInicio a fechaFin)
+  // según la regla oficial GF-FO-023 (N noches + medio día de retorno), garantizando total coherencia con el autoliquidador.
+  const diasTotal = calcularDiasComision(fInicio, fFin);
   let totalTerminalesAereos = 0;
+  let totalTransporteTerrestreOtros = 0;
   let tieneAereo = false;
 
   for (const ruta of itinerario) {
-    diasTotal += ruta.diasRuta || calcularDiasRuta(ruta.fechaSalida, ruta.fechaLlegada);
-
     if (ruta.tipoTransporte === 'AEREO') {
       tieneAereo = true;
       const tarifa = calcularTarifaTerminalAereoRuta(
@@ -329,6 +350,9 @@ export function sincronizarItinerarioFormulario(
         ruta.destinoDepartamentoId,
       );
       totalTerminalesAereos += tarifa.totalTramo;
+    } else {
+      const costoAdicional = Number(ruta.valorTransporte ?? ruta.montoTransporteTerrestre ?? 0);
+      totalTransporteTerrestreOtros += isNaN(costoAdicional) ? 0 : costoAdicional;
     }
   }
 
@@ -383,6 +407,8 @@ export function sincronizarItinerarioFormulario(
     horaEstimadaLlegada: horaLlegada,
     horaEstimadaGeneral: horaGeneral,
     transporteTerminalesAereos: totalTerminalesAereos,
+    transporteTerrestreOtros: totalTransporteTerrestreOtros,
+    totalGastosDesplazamiento: totalTerminalesAereos + totalTransporteTerrestreOtros,
     tieneTransporteAereo: tieneAereo,
   };
 }

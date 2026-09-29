@@ -60,7 +60,9 @@ export interface RutaItinerario {
   horarioEstimadoMilitar: string; // HH:mm militar, ej: 08:30, 14:00
   horaEstimadaSalida?: string;
   horaEstimadaLlegada?: string;
-  tipoTransporte?: 'AEREO' | 'TERRESTRE';
+  tipoTransporte?: 'AEREO' | 'TERRESTRE' | 'MARITIMO' | 'FLUVIAL' | 'FERROVIARIO' | string;
+  valorTransporte?: number;
+  montoTransporteTerrestre?: number;
   requiereTiquete?: boolean;
   tarifaTerminalAereo?: number;
   guardada?: boolean;

@@ -413,5 +413,64 @@ describe('Preservación de hora de salida y llegada en itinerario', () => {
     expect((payload.itinerario![0] as any).guardada).toBeUndefined();
     expect((payload.itinerario![0] as any).tarifaTerminalAereo).toBe(0);
   });
+
+  it('totaliza correctamente los costos de transporte adicional cuando se seleccionan medios no aéreos', () => {
+    const itinerario: RutaItinerario[] = [
+      {
+        id: 'r1',
+        origenCiudad: 'Bogotá, D.C.',
+        destinoCiudad: 'Buenaventura',
+        destinoDepartamento: 'VALLE DEL CAUCA',
+        tipoTrayecto: 'SOLO_IDA',
+        fechaSalida: '2026-10-14',
+        fechaLlegada: '2026-10-14',
+        diasRuta: 1,
+        horarioEstimadoMilitar: '08:00',
+        horaEstimadaSalida: '08:00',
+        horaEstimadaLlegada: '12:00',
+        tipoTransporte: 'TERRESTRE',
+        valorTransporte: 85000,
+        guardada: true,
+      },
+      {
+        id: 'r2',
+        origenCiudad: 'Buenaventura',
+        destinoCiudad: 'Guapi',
+        destinoDepartamento: 'CAUCA',
+        tipoTrayecto: 'SOLO_IDA',
+        fechaSalida: '2026-10-15',
+        fechaLlegada: '2026-10-15',
+        diasRuta: 1,
+        horarioEstimadoMilitar: '09:00',
+        horaEstimadaSalida: '09:00',
+        horaEstimadaLlegada: '13:00',
+        tipoTransporte: 'MARITIMO',
+        valorTransporte: 120000,
+        guardada: true,
+      },
+      {
+        id: 'r3',
+        origenCiudad: 'Guapi',
+        destinoCiudad: 'Timbiquí',
+        destinoDepartamento: 'CAUCA',
+        tipoTrayecto: 'SOLO_IDA',
+        fechaSalida: '2026-10-16',
+        fechaLlegada: '2026-10-16',
+        diasRuta: 1,
+        horarioEstimadoMilitar: '10:00',
+        horaEstimadaSalida: '10:00',
+        horaEstimadaLlegada: '14:00',
+        tipoTransporte: 'FLUVIAL',
+        valorTransporte: 50000,
+        guardada: true,
+      },
+    ];
+
+    const sync = sincronizarItinerarioFormulario(itinerario);
+    expect(sync.transporteTerrestreOtros).toBe(85000 + 120000 + 50000); // 255.000
+    expect(sync.transporteTerminalesAereos).toBe(0);
+    expect(sync.totalGastosDesplazamiento).toBe(255000);
+    expect(sync.tieneTransporteAereo).toBe(false);
+  });
 });
 
