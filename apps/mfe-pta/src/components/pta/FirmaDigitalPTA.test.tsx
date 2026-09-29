@@ -14,11 +14,12 @@ vi.mock('motion/react', async () => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.clearAllMocks(); });
 
-async function confirmar(onFirmaCompleta: any) {
+async function confirmar(onFirmaCompleta: any, showSuccessToast = true) {
   vi.useFakeTimers();
   const { container } = render(<FirmaDigitalPTA ptaId="pta-1" docenteNombre="Docente"
     periodo="2026-2" totalHoras={800} firmanteNombre="Revisor" firmanteCargo="Revisor"
-    etapaLabel="Revisión" onVerifyCodigo={async () => {}} onFirmaCompleta={onFirmaCompleta} onCancelar={vi.fn()} />);
+    etapaLabel="Revisión" onVerifyCodigo={async () => {}} onFirmaCompleta={onFirmaCompleta} onCancelar={vi.fn()}
+    showSuccessToast={showSuccessToast} />);
   const inputs = document.querySelectorAll('input');
   inputs.forEach(input => fireEvent.change(input, { target: { value: '1' } }));
   await act(async () => {});
@@ -46,6 +47,12 @@ describe('resultado de la firma', () => {
     await act(async () => {});
     expect(screen.getByText('Firma registrada')).toBeTruthy();
     expect(toast.success).toHaveBeenCalledTimes(1);
+  });
+  it('permite que el backoffice informe el éxito una sola vez desde la pantalla principal', async () => {
+    await confirmar(vi.fn().mockResolvedValue(true), false);
+    await act(async () => {});
+    expect(screen.getByText('Firma registrada')).toBeTruthy();
+    expect(toast.success).not.toHaveBeenCalled();
   });
   it('permite reintentar sin mostrar éxito si falla la conexión', async () => {
     await confirmar(vi.fn().mockRejectedValue(new Error('Conexión interrumpida')));

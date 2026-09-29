@@ -57,14 +57,13 @@ export function PTAModule({
       <NotificationsProvider>
         <>
           <Toaster 
-            position="bottom-right" 
+            position={embedded ? 'bottom-center' : 'bottom-right'}
             richColors 
             closeButton 
-            toastOptions={{
-              classNames: {
-                closeButton: 'left-2 right-auto hover:bg-gray-200 bg-white border-gray-200'
-              }
-            }}
+            expand
+            gap={12}
+            visibleToasts={2}
+            duration={4500}
           />
           <div className="min-h-screen">
             {!embedded && (

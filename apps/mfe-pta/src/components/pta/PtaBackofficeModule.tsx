@@ -2769,6 +2769,15 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     return tabs;
   }, [baseFilteredPtas, matchesPersonalStageFilter, tieneEtapaAprobacion, tieneEtapaRevision]);
 
+  const emptyStageTitle = !searchQuery && baseFilteredPtas.length > 0
+    ? ({
+        revision_pendiente: 'No tienes PTAs por revisar',
+        revision_revisado: 'No hay PTAs revisados',
+        aprobacion_pendiente: 'No tienes PTAs por aprobar',
+        aprobacion_aprobado: 'No hay PTAs aprobados',
+      } as Record<string, string>)[filtroEstado]
+    : undefined;
+
   useEffect(() => {
     const pages = Math.max(1, Math.ceil(filteredPtas.length / PAGE_SIZE));
     setCurrentPage(page => Math.max(1, Math.min(page, pages)));
@@ -4504,12 +4513,14 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   <FileText style={{ width: 32, height: 32, color: '#003DA5' }} />
                 </div>
                 <p style={{ fontWeight: 800, color: '#111827', fontSize: '1.05rem', margin: '0 0 8px' }}>
-                  {searchQuery ? `Sin resultados para "${searchQuery}"` : 'No se encontraron PTAs'}
+                  {searchQuery ? `Sin resultados para "${searchQuery}"` : emptyStageTitle || 'No se encontraron PTAs'}
                 </p>
                 <p style={{ fontSize: '0.85rem', color: '#6B7280', margin: '0 auto', maxWidth: 400, lineHeight: 1.6 }}>
                   {searchQuery
                     ? 'Intenta con otros términos de búsqueda o amplía los filtros.'
-                    : 'Ajusta los filtros de estado o periodo, o verifica que existan PTAs registrados para este periodo.'}
+                    : emptyStageTitle
+                      ? 'No hay registros en esta pestaña con los filtros actuales.'
+                      : 'Ajusta los filtros de estado o periodo, o verifica que existan PTAs registrados para este periodo.'}
                 </p>
               </div>
               <div style={{ padding: '20px 24px', display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -6173,6 +6184,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       <AnimatePresence>
         {showFirmaDigital && selectedPTA && (
           <FirmaDigitalPTA
+            showSuccessToast={false}
             ptaId={selectedPTA.id}
             docenteNombre={selectedPTA.docente_nombre || 'Docente ESAP'}
             periodo={selectedPTA.periodo || filtroPeriodo}

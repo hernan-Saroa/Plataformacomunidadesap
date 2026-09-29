@@ -748,6 +748,88 @@ describe('listado y contadores del backoffice', () => {
     expect(screen.queryByRole('button', { name: 'Ver pendientes' })).toBeNull();
   });
 
+  it('ubica un PTA aprobado en Aprobados y conserva su revisión resuelta en Revisados', async () => {
+    sync.isSuperUser = true;
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [
+      {
+        ...pendientes[0], estado: 'Aprobado',
+        componentes_revision_usuario: [{ componente: 'academica_territorial', estado: 'revisado' }],
+        componentes_aprobacion_usuario: [{ componente: 'academica_territorial', estado: 'aprobado' }],
+      },
+      {
+        ...pendientes[1], estado: 'Aprobado',
+        componentes_revision_usuario: [],
+        componentes_aprobacion_usuario: [{ componente: 'investigacion', estado: 'aprobado' }],
+      },
+    ] });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    expect(tab('Todos').textContent).toContain('2');
+    expect(tab('Revisados').textContent).toContain('1');
+    expect(tab('Aprobados').textContent).toContain('2');
+    expect(tab('Por revisar').textContent?.trim()).toBe('Por revisar');
+    expect(tab('Por aprobar').textContent?.trim()).toBe('Por aprobar');
+
+    fireEvent.click(tab('Por revisar'));
+    expect(await screen.findByText('No tienes PTAs por revisar')).toBeTruthy();
+    fireEvent.click(tab('Por aprobar'));
+    expect(await screen.findByText('No tienes PTAs por aprobar')).toBeTruthy();
+    fireEvent.click(tab('Revisados'));
+    expect(screen.getByText('Docente uno')).toBeTruthy();
+    expect(screen.queryByText('Docente dos')).toBeNull();
+    fireEvent.click(tab('Aprobados'));
+    expect(screen.getByText('Docente uno')).toBeTruthy();
+    expect(screen.getByText('Docente dos')).toBeTruthy();
+  });
+
+  it('recalcula las bandejas al avanzar revisión, aprobación y estado global desde el servidor', async () => {
+    sync.isSuperUser = true;
+    const other = {
+      ...pendientes[1], estado: 'Aprobado',
+      componentes_revision_usuario: [],
+      componentes_aprobacion_usuario: [{ componente: 'investigacion', estado: 'aprobado' }],
+    };
+    const pendingReview = {
+      ...pendientes[0],
+      componentes_revision_usuario: [{ componente: 'ext_capacitacion', estado: 'pendiente' }],
+      componentes_aprobacion_usuario: [{ componente: 'ext_capacitacion', estado: 'pendiente', revision_completa: false }],
+    };
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [pendingReview, other] });
+
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    expect(tab('Todos').textContent).toContain('2');
+    expect(tab('Por revisar').textContent).toContain('1');
+    expect(tab('Por aprobar').textContent?.trim()).toBe('Por aprobar');
+    expect(tab('Aprobados').textContent).toContain('1');
+
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [{
+      ...pendingReview,
+      componentes_revision_usuario: [{ componente: 'ext_capacitacion', estado: 'revisado' }],
+      componentes_aprobacion_usuario: [{ componente: 'ext_capacitacion', estado: 'pendiente', revision_completa: true }],
+    }, other] });
+    await act(async () => { await sync.options.onRefresh(); });
+    expect(tab('Por revisar').textContent?.trim()).toBe('Por revisar');
+    expect(tab('Revisados').textContent).toContain('1');
+    expect(tab('Por aprobar').textContent).toContain('1');
+    expect(tab('Aprobados').textContent).toContain('1');
+
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [{
+      ...pendingReview, estado: 'Aprobado',
+      componentes_revision_usuario: [{ componente: 'ext_capacitacion', estado: 'revisado' }],
+      componentes_aprobacion_usuario: [{ componente: 'ext_capacitacion', estado: 'aprobado', revision_completa: true }],
+    }, other] });
+    await act(async () => { await sync.options.onRefresh(); });
+    expect(tab('Todos').textContent).toContain('2');
+    expect(tab('Revisados').textContent).toContain('1');
+    expect(tab('Por aprobar').textContent?.trim()).toBe('Por aprobar');
+    expect(tab('Aprobados').textContent).toContain('2');
+    fireEvent.click(tab('Aprobados'));
+    expect(screen.getByText('Docente uno')).toBeTruthy();
+    expect(screen.getByText('Docente dos')).toBeTruthy();
+  });
+
   it('separa las acciones disponibles cuando el usuario tiene permisos mixtos', async () => {
     sync.permissions.puedeRevisar = true;
     sync.permissions.componentesRevisables = ['academica_pregrado:general'];
@@ -847,7 +929,7 @@ describe('listado y contadores del backoffice', () => {
 
     const selects = screen.getAllByRole('combobox');
     fireEvent.change(selects[1], { target: { value: 'Aprobado' } });
-    expect(await screen.findByText('No se encontraron PTAs')).toBeTruthy();
+    expect(await screen.findByText('No tienes PTAs por aprobar')).toBeTruthy();
 
     fireEvent.click(tab('Todos'));
     expect(await screen.findByText('Docente aprobado')).toBeTruthy();
