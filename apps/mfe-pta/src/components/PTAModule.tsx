@@ -1,9 +1,11 @@
 import { useMemo } from 'react';
+import { createPortal } from 'react-dom';
 // import '../styles/esap-theme.css';
 // import '../styles/responsive.css';
 // import '../styles/globals.css';
 // import '../styles/accessibility.css';
 import '../styles/pta-world-class.css';
+import '../styles/pta-notifications.css';
 import { PtaBackofficeModule } from './pta/PtaBackofficeModule';
 import { NotificationsProvider } from './esap/NotificationsContext';
 import { AuthProvider } from '../contexts/AuthContext';
@@ -56,15 +58,21 @@ export function PTAModule({
     >
       <NotificationsProvider>
         <>
-          <Toaster 
-            position={embedded ? 'bottom-center' : 'bottom-right'}
-            richColors 
-            closeButton 
-            expand
-            gap={12}
-            visibleToasts={2}
-            duration={4500}
-          />
+          {typeof document !== 'undefined' && createPortal(
+            <Toaster
+              className="toaster group pta-toaster"
+              position="bottom-right"
+              offset={20}
+              mobileOffset={16}
+              richColors
+              closeButton
+              expand
+              gap={12}
+              visibleToasts={2}
+              duration={4500}
+            />,
+            document.body,
+          )}
           <div className="min-h-screen">
             {!embedded && (
               <div className="sticky top-0 z-10 bg-white border-b">
