@@ -12,7 +12,10 @@ puede consultar su propio perfil. No existe borrado físico del perfil.
 - La cédula se normaliza sin puntos, es única y no puede modificarse desde el
   CRUD RUND. Un trigger también impide cambiarla directamente en
   `auth.personas` cuando ya existe un perfil docente. Los registros históricos
-  que aún no tengan documento pueden regularizarlo una sola vez.
+  que aún no tengan documento pueden regularizarlo una sola vez. Como excepción
+  controlada, GGP puede confirmar una corrección propuesta por OCR cuando la
+  sugerencia sigue pendiente, pertenece a la misma persona y su PDF está vigente;
+  el cambio y su auditoría se ejecutan en una única transacción.
 - `auth.personas.id_person` y `academic_work_plan."Docente".id` son UUID
   técnicos. No reemplazan la cédula como identificador funcional.
 - Los datos demográficos viven en `auth.personas`.

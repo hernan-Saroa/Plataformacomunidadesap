@@ -12,7 +12,9 @@ export const serviceMap = {
   // Auth Service - Puerto 3001
   auth: serviceUrl(
     'AUTH_SERVICE_URL',
-    'http://localhost:3001',
+    // Usar IPv4 de forma explícita. En Windows, `localhost` puede resolver a
+    // ::1 y terminar en otro proceso que también escuche el puerto por IPv6.
+    'http://127.0.0.1:3001',
     'http://auth-service:3001',
   ),
 

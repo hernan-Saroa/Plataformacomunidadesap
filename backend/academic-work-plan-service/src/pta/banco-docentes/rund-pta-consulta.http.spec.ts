@@ -142,12 +142,13 @@ describe('REQ-RUND-F015: HTTP, JWT real, RBAC y contrato PTA', () => {
     expect(query.mock.calls.find(([sql]) => sql.includes('FROM academic_work_plan'))![1]).toEqual([cedula, null]);
   });
 
-  it.each(['sin_token', 'malformado', 'vencido', 'firma_invalida', 'sin_sujeto'])(
+  it.each(['sin_token', 'malformado', 'vencido', 'firma_invalida', 'sin_sujeto', 'sujeto_en_blanco'])(
     '401: rechaza %s antes de consultar la base', async (kind) => {
       const tokens: Record<string, string> = {
         malformado: 'no-es-jwt', vencido: token(undefined, { expiresIn: -1 }),
         firma_invalida: new JwtService({ secret: randomUUID() }).sign({ sub: actorId, roles: ['SUPER_ADMIN'] }),
         sin_sujeto: jwt.sign({ roles: ['SUPER_ADMIN'] }),
+        sujeto_en_blanco: jwt.sign({ sub: '   ', roles: ['SUPER_ADMIN'] }),
       };
       const call = request(app.getHttpServer()).get(`${base}/${cedula}`);
       if (tokens[kind]) call.auth(tokens[kind], { type: 'bearer' });
@@ -155,6 +156,20 @@ describe('REQ-RUND-F015: HTTP, JWT real, RBAC y contrato PTA', () => {
       expect(query).not.toHaveBeenCalled();
     },
   );
+
+  it('200: acepta el token vía cookie httpOnly esap_access_token, no solo por header', async () => {
+    const response = await request(app.getHttpServer()).get(`${base}/${cedula}?periodo=2026-2`)
+      .set('Cookie', `esap_access_token=${token(['SUPER_ADMIN'])}`)
+      .expect(200);
+    expect(response.body.data.docente_id).toBe(docenteId);
+  });
+
+  it('401: ignora una cookie esap_access_token vencida aunque el formato sea válido', async () => {
+    await request(app.getHttpServer()).get(`${base}/${cedula}`)
+      .set('Cookie', `esap_access_token=${token(undefined, { expiresIn: -1 })}`)
+      .expect(401);
+    expect(query).not.toHaveBeenCalled();
+  });
 
   it.each(['DOCENTE', 'CONSULTOR_SIN_PERMISOS'])(
     '403: %s no puede consultar otros docentes sin permiso RUND', async (role) => {

@@ -33,6 +33,11 @@ class OcrContractTest(unittest.TestCase):
             self.assertEqual(self.client.post('/warmup', headers=self.auth).status_code, 200)
             engine.assert_called_once()
 
+    def test_high_accuracy_models_are_explicit(self):
+        self.assertEqual(app.OCR_DETECTION_MODEL, 'PP-OCRv6_medium_det')
+        self.assertEqual(app.OCR_RECOGNITION_MODEL, 'PP-OCRv6_medium_rec')
+        self.assertEqual(app.MAX_RENDER_SCALE, 3.0)
+
     def test_response_contract_with_simulated_ocr(self):
         import pypdfium2 as pdfium
         pdf = pdfium.PdfDocument.new()

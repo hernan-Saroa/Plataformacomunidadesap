@@ -32,6 +32,7 @@ interface FirmaDigitalPTAProps {
   onVerifyCodigo?: (codigo: string) => Promise<void>;
   onFirmaCompleta: (firmaData: FirmaData) => void | boolean | Promise<void | boolean>;
   onCancelar: () => void;
+  showSuccessToast?: boolean;
 }
 
 export interface FirmaData {
@@ -73,7 +74,7 @@ export function FirmaDigitalPTA({
   ptaId, docenteNombre, periodo, totalHoras,
   firmanteNombre, firmanteCargo, etapaLabel, correoDestino,
   onVerifyCodigo,
-  onFirmaCompleta, onCancelar,
+  onFirmaCompleta, onCancelar, showSuccessToast = true,
 }: FirmaDigitalPTAProps) {
   const [step, setStep] = useState<FirmaStep>('verificacion');
   const [pin, setPin] = useState(['', '', '', '', '', '']);
@@ -198,7 +199,7 @@ export function FirmaDigitalPTA({
         return;
       }
       setStep('completado');
-      toast.success('Firma digital aplicada correctamente');
+      if (showSuccessToast) toast.success('Firma digital aplicada correctamente');
     } catch (error: any) {
       setStep('confirmacion');
       toast.error(error?.message || 'No se pudo completar la firma y el envío del PTA.');

@@ -19,8 +19,7 @@ import { CertificatesService } from './certificates.service';
 // Acceso de solo lectura: ver el modulo y consultar la matriz.
 const VIEW_FUNCTIONS_PERMISSION = 'certificados-laborales.functions.view';
 // Escritura: crear, editar, eliminar y la carga masiva.
-const MANAGE_FUNCTIONS_PERMISSION =
-  'certificados-laborales.functions.manage';
+const MANAGE_FUNCTIONS_PERMISSION = 'certificados-laborales.functions.manage';
 const VIEW_FUNCTIONS_DENIED_MESSAGE =
   'No tienes permiso para consultar las funciones laborales.';
 const MANAGE_FUNCTIONS_DENIED_MESSAGE =
@@ -82,10 +81,7 @@ export class LaborFunctionsController {
 
   // Ruta estatica declarada antes de :id para que Nest no la tome como un id.
   @Get('selection')
-  async listAllForSelection(
-    @Req() req: any,
-    @Query('search') search?: string,
-  ) {
+  async listAllForSelection(@Req() req: any, @Query('search') search?: string) {
     await this.assertCanView(req);
     return await this.laborFunctionsService.listAllForSelection({ search });
   }
@@ -100,9 +96,6 @@ export class LaborFunctionsController {
     await this.assertCanView(req);
     return await this.laborFunctionsService.lookupPerson(search || '', {
       limit: Number(limit) || 25,
-      // Se reutiliza el pipeline real del certificado (seleccion + fuente
-      // salarial + merge de codigos) para mostrar una sola vinculacion por
-      // persona: exactamente la que sale impresa.
       selectPreferred: (requests) =>
         this.certificatesService.resolveRequestUsedForCertificate(
           requests as any,
@@ -117,10 +110,7 @@ export class LaborFunctionsController {
   }
 
   @Post()
-  async create(
-    @Body() body: LaborFunctionProfilePayload,
-    @Req() req: any,
-  ) {
+  async create(@Body() body: LaborFunctionProfilePayload, @Req() req: any) {
     await this.assertCanManage(req);
     return await this.laborFunctionsService.create({
       ...body,
@@ -148,10 +138,7 @@ export class LaborFunctionsController {
   }
 
   @Post('bulk/delete')
-  async removeMany(
-    @Body() body: { ids?: unknown },
-    @Req() req: any,
-  ) {
+  async removeMany(@Body() body: { ids?: unknown }, @Req() req: any) {
     await this.assertCanManage(req);
     return await this.laborFunctionsService.removeMany(body?.ids);
   }

@@ -1,0 +1,14 @@
+/* El shell fija left/right para todos los avisos; en pantallas estrechas
+   limitamos ese ajuste al contenedor PTA para que no se desborde. */
+@media (max-width: 600px) {
+  .pta-toaster[data-sonner-toaster] {
+    left: auto !important;
+    right: 16px !important;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+    width: min(356px, calc(100vw - 32px)) !important;
+  }
+
+  .pta-toaster[data-sonner-toaster] [data-sonner-toast] {
+    width: 100% !important;
+  }
+}

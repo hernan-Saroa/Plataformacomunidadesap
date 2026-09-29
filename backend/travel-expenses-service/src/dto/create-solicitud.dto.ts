@@ -131,6 +131,7 @@ export class CreateSolicitudDto {
   esInternacional?: boolean;
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   idDependencia?: number;
@@ -198,9 +199,7 @@ export class CreateSolicitudDto {
 
   @IsOptional()
   @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => Object)
-  desgloseCalculo?: DesgloseCalculoDto[];
+  desgloseCalculo?: any[];
 
   @IsOptional()
   @IsArray()

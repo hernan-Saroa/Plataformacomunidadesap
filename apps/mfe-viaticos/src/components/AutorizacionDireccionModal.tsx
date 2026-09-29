@@ -225,7 +225,7 @@ export const AutorizacionDireccionModal: React.FC<AutorizacionDireccionModalProp
               <div>
                 <p className="text-slate-400 font-semibold uppercase tracking-wider text-[10px]">Dependencia</p>
                 <p className="font-bold text-slate-800 mt-0.5">
-                  {viaticosService.resolverNombreDependencia(solicitud)}
+                  {viaticosService.resolverNombreDependencia?.(solicitud)}
                 </p>
                 <p className="text-slate-500 font-medium">
                   {solicitud.comisionado?.tipoComisionado || 'Servidor Público'}

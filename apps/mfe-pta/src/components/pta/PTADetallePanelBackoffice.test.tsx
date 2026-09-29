@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { toast } from 'sonner';
 import { getPTAById, getComponentesAprobacion, getComponentesRevision, getPTADecisionPermissions, requestPTAFirmaAprobadorCode, aprobarComponente, getAprobacionTerritorial, getEvidenciasSeguimientoPTA, revisarEvidenciaPTA } from '../../services/api/ptaApi';
 import { PTADetallePanelBackoffice, ApprovalTracker } from './PTADetallePanelBackoffice';
 import { PTA_COMPONENT_KEYS } from './shared/ptaComponentPermissions';
@@ -424,6 +425,27 @@ describe('autorización vigente del servidor', () => {
     fireEvent.click(await screen.findByText('Confirmar firma de prueba'));
     await waitFor(() => expect(resultadoFirma).toHaveBeenCalledWith(success));
     expect(aprobarComponente).toHaveBeenCalledTimes(1);
+  });
+
+  it('muestra un único aviso temporal cuando el servidor entrega un código de pruebas', async () => {
+    const info = vi.spyOn(toast, 'info').mockImplementation(() => 'otp-test');
+    const success = vi.spyOn(toast, 'success').mockImplementation(() => 'otp-test');
+    try {
+      vi.mocked(requestPTAFirmaAprobadorCode).mockResolvedValueOnce({ success: true,
+        data: { verificationId: 'otp-test', email: 'prueba@example.test', devCode: '676066' } } as any);
+      render(<PTADetallePanelBackoffice {...baseProps()} />);
+      fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+      fireEvent.click(await screen.findByRole('button', { name: /^Aprobar$/ }));
+      await screen.findByText('Confirmar firma de prueba');
+      expect(info).toHaveBeenCalledOnce();
+      expect(info).toHaveBeenCalledWith('[PRUEBAS] Código de validación: 676066', {
+        id: 'pta-firma-otp', duration: 20000,
+      });
+      expect(success).not.toHaveBeenCalled();
+    } finally {
+      info.mockRestore();
+      success.mockRestore();
+    }
   });
 
   it('muestra carga desde la comprobación de permisos y evita clics repetidos u otras decisiones hasta recibir el código', async () => {

@@ -6,6 +6,7 @@ export const MANUAL_DOCUMENT_TYPES = [
   { value: 'CC', label: 'Cédula de Ciudadanía' },
   { value: 'CE', label: 'Cédula de Extranjería' },
   { value: 'PA', label: 'Pasaporte' },
+  { value: 'PEP', label: 'Permiso Especial de Permanencia' },
   { value: 'NIT', label: 'NIT' },
 ] as const;
 

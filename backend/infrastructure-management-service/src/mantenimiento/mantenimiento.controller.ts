@@ -9,6 +9,7 @@ import {
   Param,
   Query,
   Req,
+  Res,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -19,7 +20,9 @@ import {
   NotFoundException,
   ConflictException,
   ParseIntPipe,
+  HttpStatus,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import {
@@ -59,6 +62,24 @@ export class MantenimientoController {
   // ---------------------------------------------------------------------------
   // Catálogos
   // ---------------------------------------------------------------------------
+
+  // ---------------------------------------------------------------------------
+  // Catálogo dependencias desde schema auth (cross-schema raw query)
+  // NUEVA REAJUSTE EFDS-173X: Área solicitante ya no es input de texto libre,
+  // se selecciona del catálogo auth.dependencias activo.
+  // DECLARADO ANTES del wildcard catalogos/:nombre para que NestJS matchee
+  // primero el path static y no interprete "dependencias" como valor de :nombre.
+  // ---------------------------------------------------------------------------
+  @Get('catalogos/dependencias')
+  @Public()
+  @ApiOperation({
+    summary:
+      'Obtener el catálogo de dependencias/áreas del esquema auth (activo = true). Usado en el formulario de radicación de mantenimiento para reemplazar el input de texto libre del "Área solicitante". Retorna cod, nombre y id de sede relacionada.',
+  })
+  listarDependenciasCatalogo() {
+    return this.mantenimientoService.listarDependenciasCatalogo();
+  }
+
   @Get('catalogos/:nombre')
   @Public()
   @ApiOperation({ summary: 'Obtener un catálogo parametrizable (TIPO_MANTENIMIENTO, PRIORIDAD, TIPO_ATENCION, ESTADO_SOLICITUD, CATEGORIA_SERVICIO)' })
@@ -74,12 +95,13 @@ export class MantenimientoController {
   // Solicitudes
   // ---------------------------------------------------------------------------
   @Get()
-  @Public()
-  @ApiOperation({ summary: 'Listar solicitudes de mantenimiento (bandeja general). UMI filtra por defecto area UMI/PENDIENTE; use ?incluirTI=true para ver también las remitidas a TI.' })
+  @ApiOperation({ summary: 'Listar solicitudes de mantenimiento (bandeja general). Usuario con permiso infraestructura.view_all ve bandeja general UMI (default excluye TI); incluirTI=true también incluye remitidas TI. Si solo tiene read_own, ve únicamente sus solicitudes radicadas (filtradas por usuarioSolicitanteId).' })
   @ApiQuery({ name: 'estado', required: false })
   @ApiQuery({ name: 'prioridad', required: false })
   @ApiQuery({ name: 'idCategoria', required: false, description: 'Filtrar por categoria servicio EFDS-1732 (idCatalogo CATEGORIA_SERVICIO, 47..54 = CS_001..CS_008)' })
   @ApiQuery({ name: 'incluirTI', required: false, description: 'Si true, incluye también solicitudes con area_responsable_actual = TI. Default false para usuarios UMI.' })
+  @ApiResponse({ status: 401, description: 'JWT o headers x-user-id/x-user-roles faltantes' })
+  @ApiResponse({ status: 403, description: 'Permisos insuficientes' })
   findAll(
     @Query('estado') estado?: string,
     @Query('prioridad') prioridad?: string,
@@ -242,6 +264,7 @@ export class MantenimientoController {
   // EFDS-1733: Técnicos mantenimiento
   // ---------------------------------------------------------------------------
   @Get('tecnicos')
+  @Public()
   @ApiOperation({
     summary:
       'EFDS-1733: Listar técnicos mantenimiento (catálogo TECNICO_MANTENIMIENTO). Por defecto solo activos; use ?soloActivos=false para todos.',
@@ -255,6 +278,7 @@ export class MantenimientoController {
   }
 
   @Get('tecnicos/con-carga-vigente')
+  @Public()
   @ApiOperation({
     summary:
       'EFDS-1733: Listar técnicos mantenimiento con columna extra cargaVigente (conteo solicitudes RECIBIDA/ASIGNADA/EN_PROGRESO/EN_ANALISIS area UMI). Por defecto solo activos; use ?incluirInactivos=true para también listar inactivos (cargaVigente=0, soft-delete visual Admin).',
@@ -587,6 +611,187 @@ export class MantenimientoController {
     return this.mantenimientoService.rechazarConformidadYReabrir(idSolicitud, dto, req?.user);
   }
 
+  // ---------------------------------------------------------------------------
+  // EFDS-1738 RF-INF-009: Consolidados promedio calificación servicio 1-5
+  // Declarado ANTES del wildcard @Get(':id') y ANTES del @Post() radicar,
+  // para evitar que NestJS interprete "estadisticas" como UUID param / como CREATE.
+  // ---------------------------------------------------------------------------
+  @Get('estadisticas/calificaciones-consolidadas')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'EFDS-1738 RF-INF-009: Promedio, suma, conteo y distribución buckets 1..5 de la calificación del servicio al confirmar conformidad. Agrupación controlada por ?por=tecnico(default)|categoria|area|global. Permite 5 filtros opcionales: rango fechas calificación, idCategoria, codigoTecnico, idAreaSolicitante. Guardia roles bypass (SUPER_ADMIN/GESTOR_MANTENIMIENTO/ADMIN_FUNCIONAL); técnico USER 403.',
+  })
+  @ApiQuery({
+    name: 'por',
+    required: false,
+    type: 'string',
+    enum: ['tecnico', 'categoria', 'area', 'global'],
+    description: 'Eje de agrupación. Default=tecnico. Si valor no coincide con el enum retorna 400.',
+  })
+  @ApiQuery({ name: 'fechaDesde', required: false, type: 'string', description: 'ISO 8601 inclusivo, solo filtra calificaciones emitidas desde esta fecha.' })
+  @ApiQuery({ name: 'fechaHasta', required: false, type: 'string', description: 'ISO 8601 inclusivo, solo filtra calificaciones emitidas hasta esta fecha.' })
+  @ApiQuery({ name: 'idCategoria', required: false, type: 'number', description: 'Filtrar a una categoría servicio específica (PK catalogo CATEGORIA_SERVICIO).' })
+  @ApiQuery({ name: 'codigoTecnico', required: false, type: 'string', description: 'Filtrar un técnico por código (prefijo antes del " · " en responsableAsignado, p.ej. TEC-CAR-001).' })
+  @ApiQuery({ name: 'idAreaSolicitante', required: false, type: 'string', description: 'Filtrar consolidados de un área solicitante.' })
+  @ApiResponse({ status: 200, description: 'Array de consolidados con promedio redondeado 2 decimales y distribución 5 buckets.' })
+  @ApiResponse({ status: 400, description: 'Valor "por" inválido. Valores permitidos: tecnico, categoria, area, global.' })
+  @ApiResponse({ status: 401, description: 'JWT ausente o inválido.' })
+  @ApiResponse({ status: 403, description: 'Rol insuficiente. Consolidadas sólo para SUPER_ADMIN, GESTOR_MANTENIMIENTO o ADMINISTRADOR_FUNCIONAL.' })
+  getCalificacionesConsolidadas(
+    @Query('por') por?: string,
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
+    @Query('idCategoria') idCategoria?: string,
+    @Query('codigoTecnico') codigoTecnico?: string,
+    @Query('idAreaSolicitante') idAreaSolicitante?: string,
+    @Req() req?: any,
+  ) {
+    const permitidos = ['tecnico', 'categoria', 'area', 'global'] as const;
+    const porLimpio = (por || '').trim().toLowerCase();
+    if (porLimpio.length > 0 && !permitidos.includes(porLimpio as (typeof permitidos)[number])) {
+      throw new BadRequestException(
+        'Parámetro "por" inválido. Valores permitidos: tecnico, categoria, area, global.',
+      );
+    }
+    return this.mantenimientoService.calificacionesConsolidadas(
+      {
+        por: porLimpio.length > 0 ? (porLimpio as any) : 'tecnico',
+        fechaDesde,
+        fechaHasta,
+        idCategoria,
+        codigoTecnico,
+        idAreaSolicitante,
+      },
+      req?.user,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1739 RF-INF-010: Reportes e Indicadores de Gestión
+  // Declarado ANTES de @Post() radicar y ANTES de wildcard @Get(':id').
+  // Endpoint consolidado con 6 métricas. Permiso infraestructura.reportes.gestion.
+  // ---------------------------------------------------------------------------
+  @Get('estadisticas/reporte-gestion')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'EFDS-1739 RF-INF-010: Reporte consolidado de gestión con 6 bloques (totalCasos, porCategoria, porTecnico, tiemposAtencionVsMeta, percepcionServicio, rollupGeografico). Filtro default últimos 90 días; rango máximo 12 meses (400 si excede). Guardia por permiso granular o bypass SUPER_ADMIN/P5/P7.',
+  })
+  @ApiQuery({ name: 'fechaDesde', required: false, type: 'string', description: 'ISO 8601 inclusivo. Default = hoy - 90 días.' })
+  @ApiQuery({ name: 'fechaHasta', required: false, type: 'string', description: 'ISO 8601 inclusivo. Default = hoy.' })
+  @ApiQuery({ name: 'idSede', required: false, type: 'string', description: 'UUID de sede para filtrar el reporte a una sola sede.' })
+  @ApiQuery({ name: 'idCategoria', required: false, type: 'number', description: 'Filtrar a una categoría servicio específica (PK catalogo CATEGORIA_SERVICIO: 47..54).' })
+  @ApiQuery({ name: 'areaResponsable', required: false, type: 'string', enum: ['UMI', 'TI', 'TODAS'], description: 'Filtrar por área responsable. Default=UMI (excluye TI). Usar TODAS para ver sin discriminación.' })
+  @ApiQuery({ name: 'codigoTecnico', required: false, type: 'string', description: 'Código de técnico (p. ej. TEC-CAR-001) para filtrar reporte a un solo técnico.' })
+  @ApiQuery({ name: 'estado', required: false, type: 'string', description: 'Filtrar reporte a un estado de solicitud específico.' })
+  @ApiResponse({ status: 200, description: 'Reporte consolidado con 6 bloques.' })
+  @ApiResponse({ status: 400, description: 'Rango de fechas excede 12 meses o parámetros inválidos.' })
+  @ApiResponse({ status: 401, description: 'JWT ausente o inválido.' })
+  @ApiResponse({ status: 403, description: 'Permiso insuficiente. Requiere infraestructura.reportes.gestion.' })
+  getReporteGestion(
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
+    @Query('idSede') idSede?: string,
+    @Query('idCategoria') idCategoria?: string,
+    @Query('areaResponsable') areaResponsable?: string,
+    @Query('codigoTecnico') codigoTecnico?: string,
+    @Query('estado') estado?: string,
+    @Req() req?: any,
+  ) {
+    return this.mantenimientoService.obtenerReporteGestion(
+      { fechaDesde, fechaHasta, idSede, idCategoria, areaResponsable, codigoTecnico, estado },
+      req?.user,
+    );
+  }
+
+  @Get('estadisticas/reporte-gestion/excel')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'EFDS-1739 ST2: Generar reporte de gestión en Excel (.xlsx) con 6 hojas (Resumen_KPI, Distribucion_Categoria, Rendimiento_Tecnicos, Tiempos_Atencion_SLA, Percepcion_Calificacion, Detalle_Casos_Atendidos con HYPERLINK() a evidencias). Filtros idénticos al endpoint JSON. Requiere permiso reportes.gestion.',
+  })
+  @ApiResponse({ status: 200, description: 'Archivo .xlsx listo para descarga (attachment).' })
+  @ApiResponse({ status: 400, description: 'Rango fechas excede 12 meses.' })
+  @ApiResponse({ status: 403, description: 'Permiso insuficiente.' })
+  async descargarExcelReporteGestion(
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
+    @Query('idSede') idSede?: string,
+    @Query('idCategoria') idCategoria?: string,
+    @Query('areaResponsable') areaResponsable?: string,
+    @Query('codigoTecnico') codigoTecnico?: string,
+    @Query('estado') estado?: string,
+    @Req() req?: any,
+    @Res() res?: Response,
+  ) {
+    const { buffer, filename } = await this.mantenimientoService.generarExcelReporteGestion(
+      { fechaDesde, fechaHasta, idSede, idCategoria, areaResponsable, codigoTecnico, estado },
+      req?.user,
+    );
+    const safe = encodeURIComponent(filename).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+    res!.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res!.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${safe}`);
+    res!.setHeader('Content-Length', String(buffer.length));
+    res!.status(HttpStatus.OK).send(buffer);
+  }
+
+  @Get('estadisticas/reporte-gestion/pdf')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'EFDS-1739 ST3: Generar reporte de gestión en PDF (carta 5 secciones: Portada, KPIs Cards, Distribución Categoría, Rendimiento Técnicos, Anexos). Footer "Página N / Total". Requiere permiso reportes.gestion.',
+  })
+  @ApiResponse({ status: 200, description: 'Archivo .pdf listo para descarga (attachment).' })
+  @ApiResponse({ status: 403, description: 'Permiso insuficiente.' })
+  async descargarPdfReporteGestion(
+    @Query('fechaDesde') fechaDesde?: string,
+    @Query('fechaHasta') fechaHasta?: string,
+    @Query('idSede') idSede?: string,
+    @Query('idCategoria') idCategoria?: string,
+    @Query('areaResponsable') areaResponsable?: string,
+    @Query('codigoTecnico') codigoTecnico?: string,
+    @Query('estado') estado?: string,
+    @Req() req?: any,
+    @Res() res?: Response,
+  ) {
+    const { buffer, filename } = await this.mantenimientoService.generarPdfReporteGestion(
+      { fechaDesde, fechaHasta, idSede, idCategoria, areaResponsable, codigoTecnico, estado },
+      req?.user,
+    );
+    const safe = encodeURIComponent(filename).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+    res!.setHeader('Content-Type', 'application/pdf');
+    res!.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${safe}`);
+    res!.setHeader('Content-Length', String(buffer.length));
+    res!.status(HttpStatus.OK).send(buffer);
+  }
+
+  // ---------------------------------------------------------------------------
+  // EFDS-1739 ST4: Descarga de evidencias (302 redirect individual + ZIP)
+  // Declarado ANTES del wildcard @Get(':id') y ANTES de POST radicar.
+  // ---------------------------------------------------------------------------
+  @Get('evidencias/:id/download')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'EFDS-1739 ST4: Descargar una evidencia individual (HTTP 302 redirect temporal a URL de descarga). UUID inválido retorna 400. Requiere permiso reportes.gestion.',
+  })
+  @ApiResponse({ status: 302, description: 'Redirige al cliente a la URL de la evidencia para descargar el archivo original.' })
+  @ApiResponse({ status: 400, description: 'UUID evidencia inválido.' })
+  @ApiResponse({ status: 403, description: 'Permiso insuficiente.' })
+  @ApiResponse({ status: 404, description: 'Evidencia no existe.' })
+  async descargarEvidenciaIndividual(
+    @Param('id') idEvidencia: string,
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    const info = await this.mantenimientoService.obtenerUrlDescargaEvidencia(idEvidencia, req?.user);
+    const safeFname = encodeURIComponent(info.nombreOriginal).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+    res.setHeader('Content-Type', info.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${info.nombreOriginal}"; filename*=UTF-8''${safeFname}`);
+    res.redirect(HttpStatus.FOUND, info.redirectUrl);
+  }
+
   @Post()
   @ApiOperation({ summary: 'Radicación oficial de una solicitud de mantenimiento (EFDS-1730)' })
   @ApiResponse({ status: 201, description: 'Solicitud radicada con consecutivo y estado RECIBIDA' })
@@ -643,7 +848,7 @@ export class MantenimientoController {
   @Public()
   @ApiOperation({
     summary:
-      'Subir un archivo evidencia al storage (MinIO). Se pueden subir antes de radicar y luego ligar por uploadedEvidenciaIds, o después con idSolicitud opcional.',
+      'Subir un archivo evidencia al storage local (uploads/). Se pueden subir antes de radicar y luego ligar por uploadedEvidenciaIds, o después con idSolicitud opcional.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -692,5 +897,32 @@ export class MantenimientoController {
   @ApiOperation({ summary: 'Listar evidencias/adjuntos de una solicitud, regenera URLs firmadas si van a vencer' })
   getEvidencias(@Param('id') idSolicitud: string) {
     return this.mantenimientoService.getEvidenciasBySolicitud(idSolicitud, 48);
+  }
+
+  @Get(':id/evidencias/zip')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'EFDS-1739 ST4: Descargar todas las evidencias de una solicitud empaquetadas en un ZIP. Stream directamente al cliente con nombre consecutivo. Si una evidencia no se encuentra en disco, incluye un txt "__FALLO" y continúa (no crashea). Requiere permiso reportes.gestion.',
+  })
+  @ApiResponse({ status: 200, description: 'Stream ZIP listo para descarga (attachment).' })
+  @ApiResponse({ status: 400, description: 'UUID solicitud inválido.' })
+  @ApiResponse({ status: 403, description: 'Permiso insuficiente.' })
+  @ApiResponse({ status: 404, description: 'Solicitud no existe.' })
+  async descargarZipEvidencias(
+    @Param('id') idSolicitud: string,
+    @Req() req: any,
+    @Res() res: Response,
+  ) {
+    const { stream, filename, totalBytes } = await this.mantenimientoService.descargarZipEvidenciasSolicitud(
+      idSolicitud,
+      req?.user,
+    );
+    const safe = encodeURIComponent(filename).replace(/['()]/g, escape).replace(/\*/g, '%2A');
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${safe}`);
+    if (totalBytes > 0) res.setHeader('Content-Length', String(totalBytes));
+    stream.on('error', () => { try { if (!res.headersSent) res.status(500).end(); } catch { /* ignore */ } });
+    stream.pipe(res);
   }
 }
