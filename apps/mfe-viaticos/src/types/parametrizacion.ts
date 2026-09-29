@@ -98,6 +98,21 @@ export interface ActualizarConfigTipoComisionadoDTO {
   activo?: boolean;
 }
 
+export interface CrearTipoDocumentoSoporteDTO {
+  codigo: string;
+  nombre: string;
+  descripcion?: string;
+  instruccionesValidacion?: string;
+  activo?: boolean;
+}
+
+export interface ActualizarTipoDocumentoSoporteDTO {
+  nombre?: string;
+  descripcion?: string;
+  instruccionesValidacion?: string;
+  activo?: boolean;
+}
+
 export interface EscalaViatico {
   id: number;
   decretoVigente: string;

@@ -23,6 +23,10 @@ import {
   CreateConfigTipoComisionadoDto,
   UpdateConfigTipoComisionadoDto,
 } from '../../dto/config/config-tipo-comisionado.dto';
+import {
+  CreateTipoDocumentoSoporteDto,
+  UpdateTipoDocumentoSoporteDto,
+} from '../../dto/config/tipo-documento-soporte.dto';
 
 interface AuthenticatedRequest extends Request {
   user?: {
@@ -74,8 +78,32 @@ export class ConfigController {
   }
 
   @Get('tipos-documento-soporte')
-  obtenerTiposDocumentoSoporte() {
-    return this.configService.obtenerTodosTiposDocumentoSoporte();
+  obtenerTiposDocumentoSoporte(
+    @Query('incluirInactivos') incluirInactivos?: string,
+  ) {
+    const todos = incluirInactivos === 'true' || incluirInactivos === '1';
+    return this.configService.obtenerTodosTiposDocumentoSoporte(todos);
+  }
+
+  @Post('tipos-documento-soporte')
+  @Permissions('travel_expenses:manage_config')
+  crearTipoDocumentoSoporte(@Body() dto: CreateTipoDocumentoSoporteDto) {
+    return this.configService.crearTipoDocumentoSoporte(dto);
+  }
+
+  @Put('tipos-documento-soporte/:codigo')
+  @Permissions('travel_expenses:manage_config')
+  actualizarTipoDocumentoSoporte(
+    @Param('codigo') codigo: string,
+    @Body() dto: UpdateTipoDocumentoSoporteDto,
+  ) {
+    return this.configService.actualizarTipoDocumentoSoporte(codigo, dto);
+  }
+
+  @Delete('tipos-documento-soporte/:codigo')
+  @Permissions('travel_expenses:manage_config')
+  eliminarTipoDocumentoSoporte(@Param('codigo') codigo: string) {
+    return this.configService.eliminarTipoDocumentoSoporte(codigo);
   }
 
   @Get('config-tipo-comisionado')

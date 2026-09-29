@@ -70,6 +70,8 @@ import {
   ActualizarCampoFormularioDTO,
   CrearConfigTipoComisionadoDTO,
   ActualizarConfigTipoComisionadoDTO,
+  CrearTipoDocumentoSoporteDTO,
+  ActualizarTipoDocumentoSoporteDTO,
   EscalaViatico,
   TarifaInvestigador,
   TarifaRegionalExcepcion,
@@ -544,12 +546,50 @@ export class ViaticosService {
     }
   }
 
-  async obtenerTiposDocumentoSoporte(): Promise<TipoDocumentoSoporte[]> {
+  async obtenerTiposDocumentoSoporte(incluirInactivos: boolean = false): Promise<TipoDocumentoSoporte[]> {
     try {
-      return await apiClient.get<TipoDocumentoSoporte[]>('/viaticos/api/v1/parametrizacion/tipos-documento-soporte');
+      const url = incluirInactivos
+        ? '/viaticos/api/v1/parametrizacion/tipos-documento-soporte?incluirInactivos=true'
+        : '/viaticos/api/v1/parametrizacion/tipos-documento-soporte';
+      return await apiClient.get<TipoDocumentoSoporte[]>(url);
     } catch (error) {
       console.error('Error obteniendo tipos de documento soporte:', error);
       return [];
+    }
+  }
+
+  async crearTipoDocumentoSoporte(dto: CrearTipoDocumentoSoporteDTO): Promise<TipoDocumentoSoporte | null> {
+    try {
+      return await apiClient.post<TipoDocumentoSoporte>('/viaticos/api/v1/parametrizacion/tipos-documento-soporte', dto);
+    } catch (error) {
+      console.error('Error creando tipo de documento soporte:', error);
+      throw error;
+    }
+  }
+
+  async actualizarTipoDocumentoSoporte(
+    codigo: string,
+    dto: ActualizarTipoDocumentoSoporteDTO,
+  ): Promise<TipoDocumentoSoporte | null> {
+    try {
+      return await apiClient.put<TipoDocumentoSoporte>(
+        `/viaticos/api/v1/parametrizacion/tipos-documento-soporte/${encodeURIComponent(codigo)}`,
+        dto,
+      );
+    } catch (error) {
+      console.error('Error actualizando tipo de documento soporte:', error);
+      throw error;
+    }
+  }
+
+  async eliminarTipoDocumentoSoporte(codigo: string): Promise<void> {
+    try {
+      await apiClient.delete(
+        `/viaticos/api/v1/parametrizacion/tipos-documento-soporte/${encodeURIComponent(codigo)}`,
+      );
+    } catch (error) {
+      console.error('Error eliminando tipo de documento soporte:', error);
+      throw error;
     }
   }
 

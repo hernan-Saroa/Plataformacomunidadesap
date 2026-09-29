@@ -2,6 +2,7 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -17,6 +18,10 @@ import {
   CreateConfigTipoComisionadoDto,
   UpdateConfigTipoComisionadoDto,
 } from '../../dto/config/config-tipo-comisionado.dto';
+import {
+  CreateTipoDocumentoSoporteDto,
+  UpdateTipoDocumentoSoporteDto,
+} from '../../dto/config/tipo-documento-soporte.dto';
 
 @Injectable()
 export class ConfigService {
@@ -32,9 +37,26 @@ export class ConfigService {
   ) {}
 
   async obtenerCamposFormulario(): Promise<CampoFormularioEntity[]> {
-    return this.campoRepo.find({
+    const campos = await this.campoRepo.find({
       where: { activo: true },
       order: { grupo: 'ASC', orden: 'ASC' },
+    });
+
+    return campos.map((campo) => {
+      if (campo.opciones && Array.isArray(campo.opciones)) {
+        campo.opciones = (campo.opciones as any[])
+          .map((o) => {
+            if (typeof o === 'string') return { value: o, label: o };
+            if (o && typeof o === 'object' && !Array.isArray(o)) {
+              const val = o.value ?? o.valor ?? o.id ?? '';
+              const lab = o.label ?? o.nombre ?? o.etiqueta ?? val;
+              if (val || lab) return { value: String(val), label: String(lab) };
+            }
+            return null;
+          })
+          .filter(Boolean) as Array<{ value: string; label: string }>;
+      }
+      return campo;
     });
   }
 
@@ -56,9 +78,15 @@ export class ConfigService {
       );
     }
 
+    const opciones = dto.opciones
+      ? dto.opciones
+          .map((o) => ({ value: o.value, label: o.label }))
+          .filter((o) => o.value && o.label)
+      : null;
+
     const entity = this.campoRepo.create({
       ...dto,
-      opciones: dto.opciones ?? null,
+      opciones,
       grupo: dto.grupo ?? null,
     });
 
@@ -76,7 +104,11 @@ export class ConfigService {
 
     Object.assign(entity, dto);
     if (dto.opciones !== undefined) {
-      entity.opciones = dto.opciones;
+      entity.opciones = dto.opciones
+        ? dto.opciones
+            .map((o) => ({ value: o.value, label: o.label }))
+            .filter((o) => o.value && o.label)
+        : null;
     }
     if (dto.grupo !== undefined) {
       entity.grupo = dto.grupo;
@@ -95,11 +127,12 @@ export class ConfigService {
     await this.campoRepo.save(entity);
   }
 
-  async obtenerTodosTiposDocumentoSoporte(): Promise<
-    TipoDocumentoSoporteEntity[]
-  > {
+  async obtenerTodosTiposDocumentoSoporte(
+    incluirInactivos: boolean = false,
+  ): Promise<TipoDocumentoSoporteEntity[]> {
+    const where = incluirInactivos ? {} : { activo: true };
     return this.tipoDocumentoRepo.find({
-      where: { activo: true },
+      where,
       order: { nombre: 'ASC' },
     });
   }
@@ -108,6 +141,71 @@ export class ConfigService {
     codigo: string,
   ): Promise<TipoDocumentoSoporteEntity | null> {
     return this.tipoDocumentoRepo.findOne({ where: { codigo } });
+  }
+
+  async crearTipoDocumentoSoporte(
+    dto: CreateTipoDocumentoSoporteDto,
+  ): Promise<TipoDocumentoSoporteEntity> {
+    const normalizado = dto.codigo.trim().toUpperCase();
+    const existe = await this.tipoDocumentoRepo.findOne({
+      where: { codigo: normalizado },
+    });
+    if (existe) {
+      throw new ConflictException(
+        `Ya existe un tipo de documento soporte con el código ${normalizado}`,
+      );
+    }
+
+    const nuevo = this.tipoDocumentoRepo.create({
+      codigo: normalizado,
+      nombre: dto.nombre.trim(),
+      descripcion: dto.descripcion?.trim() || null,
+      instruccionesValidacion: dto.instruccionesValidacion?.trim() || null,
+      activo: dto.activo !== undefined ? dto.activo : true,
+    });
+
+    return this.tipoDocumentoRepo.save(nuevo);
+  }
+
+  async actualizarTipoDocumentoSoporte(
+    codigo: string,
+    dto: UpdateTipoDocumentoSoporteDto,
+  ): Promise<TipoDocumentoSoporteEntity> {
+    const entity = await this.tipoDocumentoRepo.findOne({ where: { codigo } });
+    if (!entity) {
+      throw new NotFoundException(
+        `Tipo de documento soporte con código ${codigo} no encontrado`,
+      );
+    }
+
+    if (dto.nombre !== undefined) {
+      entity.nombre = dto.nombre.trim();
+    }
+    if (dto.descripcion !== undefined) {
+      entity.descripcion = dto.descripcion ? dto.descripcion.trim() : null;
+    }
+    if (dto.instruccionesValidacion !== undefined) {
+      entity.instruccionesValidacion = dto.instruccionesValidacion
+        ? dto.instruccionesValidacion.trim()
+        : null;
+    }
+    if (dto.activo !== undefined) {
+      entity.activo = dto.activo;
+    }
+
+    return this.tipoDocumentoRepo.save(entity);
+  }
+
+  async eliminarTipoDocumentoSoporte(codigo: string): Promise<void> {
+    const entity = await this.tipoDocumentoRepo.findOne({ where: { codigo } });
+    if (!entity) {
+      throw new NotFoundException(
+        `Tipo de documento soporte con código ${codigo} no encontrado`,
+      );
+    }
+
+    entity.activo = false;
+    await this.tipoDocumentoRepo.save(entity);
   }
 
   async obtenerTodasConfiguraciones(): Promise<ConfigTipoComisionadoEntity[]> {

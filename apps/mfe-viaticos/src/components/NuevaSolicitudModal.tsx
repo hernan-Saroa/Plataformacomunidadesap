@@ -2042,7 +2042,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             );
                           }
 
-                          if (campo.tipoCampo === 'CHECKBOX') {
+                          if ((campo.tipoCampo as string) === 'CHECKBOX' || (campo.tipoCampo as string) === 'BOOLEAN') {
                             return (
                               <div key={campo.clave} className="col-span-1 sm:col-span-2 flex items-center pt-2">
                                 <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
@@ -2059,7 +2059,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             );
                           }
 
-                          if (campo.tipoCampo === 'SELECT') {
+                          if (campo.tipoCampo?.toUpperCase() === 'SELECT') {
+                            const opcionesSelect = (campo.opciones || [])
+                              .map((o: any) => {
+                                if (typeof o === 'string') return { value: o, label: o };
+                                if (o && typeof o === 'object' && !Array.isArray(o)) {
+                                  const val = o.value ?? o.valor ?? o.id ?? '';
+                                  const lab = o.label ?? o.nombre ?? o.etiqueta ?? val;
+                                  if (val || lab) return { value: String(val), label: String(lab) };
+                                }
+                                return null;
+                              })
+                              .filter((o): o is { value: string; label: string } => Boolean(o && (o.value || o.label)));
+
                             return (
                               <div key={campo.clave}>
                                 <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
@@ -2067,7 +2079,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                 </label>
                                 <SearchableSelect
                                   id={`campo_${campo.clave}`}
-                                  options={(campo.opciones || []).map((o) => ({ value: o.value, label: o.label }))}
+                                  options={opcionesSelect}
                                   value={String(valorActual)}
                                   onChange={(v) => actualizarCampoAdicional(campo.clave, v)}
                                   placeholder="Seleccione..."
@@ -2880,9 +2892,14 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                       displayVal = val ? 'Sí' : 'No';
                     } else if (campo.tipoCampo === 'CURRENCY' && typeof val === 'number') {
                       displayVal = formatearMoneda(val);
-                    } else if (campo.tipoCampo === 'SELECT' && campo.opciones) {
-                      const matched = campo.opciones.find((o) => o.value === String(val));
-                      if (matched) displayVal = matched.label;
+                    } else if (campo.tipoCampo?.toUpperCase() === 'SELECT' && campo.opciones) {
+                      const matched = (campo.opciones as any[]).find((o) => {
+                        const v = typeof o === 'string' ? o : (o?.value ?? o?.valor);
+                        return String(v) === String(val);
+                      });
+                      if (matched) {
+                        displayVal = typeof matched === 'string' ? matched : (matched.label ?? matched.nombre ?? matched.value ?? displayVal);
+                      }
                     }
 
                     return (
