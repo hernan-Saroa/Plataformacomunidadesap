@@ -104,6 +104,7 @@ const GestionUsuariosPasswordTracking = lazyRemote(() => import('gestion_persona
 const GestionProfesoralApp = lazyRemote(() => import('gestion_profesoral/Module'), ['GestionProfesoralApp']);
 const ContratacionModulePremium = lazyRemote(() => import('contratacion/Module'), ['ContratacionModulePremium']);
 const ViaticosModulePremium = lazyRemote(() => import('viaticos/Module'), ['ViaticosModulePremium']);
+const RundModulePremium = lazyRemote(() => import('rund/Module'), ['RundModulePremium']);
 const ProgramacionAcademicaModule = lazyRemote(() => import('programacion_academica/Module'), ['ProgramacionAcademicaModule']);
 const GestionInfraestructuraModule = lazyRemote(() => import('gestion_infraestructura/Module'), ['GestionInfraestructuraModule']);
 const ChatbotModule = lazyRemote(() => import('chatbot/Module'), ['ChatbotModule', 'default']);
@@ -164,6 +165,7 @@ type ModuleView =
   | 'gestion-profesoral'
   | 'contratacion'
   | 'viaticos'
+  | 'rund'
   | 'programacion-academica'
   | 'gestion-infraestructura'
   | 'chatbot'
@@ -243,6 +245,7 @@ const SIDEBAR_TO_MODULE: Record<string, ModuleView> = {
   'pta': 'pta',
   'contratacion': 'contratacion',
   'viaticos': 'viaticos',
+  'rund': 'rund',
   'programacion-academica': 'programacion-academica',
   'academic-schedule': 'programacion-academica',
   'gestion-infraestructura': 'gestion-infraestructura',
@@ -280,6 +283,7 @@ const SIDEBAR_VIEW_ORDER: ModuleView[] = [
   'gestion-legal',
   'contratacion',
   'viaticos',
+  'rund',
   'chatbot',
 ];
 
@@ -868,6 +872,13 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         return (
           <Suspense fallback={<ModuleLoader />}>
             <ViaticosModulePremium />
+          </Suspense>
+        );
+
+      case 'rund':
+        return (
+          <Suspense fallback={<ModuleLoader />}>
+            <RundModulePremium />
           </Suspense>
         );
 

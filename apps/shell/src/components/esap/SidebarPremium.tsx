@@ -51,7 +51,7 @@ import { ESAPLogo } from '../assets/ESAPLogo';
 // Importar isotipo oficial de ESAP (OPTIMIZADO: SVG en lugar de PNG)
 import { IsotipoESAP } from '../assets/ESAPLogoSVG';
 
-type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'contratacion' | 'viaticos' | 'programacion-academica' | 'gestion-infraestructura' | 'dependencias' | 'ajustes-generales' | 'chatbot';
+type ModuleType = 'modules' | 'users' | 'users-management' | 'carpeta-digital' | 'roles-permissions-complete' | 'roles-administration' | 'audit' | 'executive' | 'dashboard' | 'reports' | 'control-interno' | 'control-disciplinario' | 'gestion-legal' | 'graduates' | 'graduates-management' | 'graduates-verification' | 'graduates-certificates' | 'graduates-review-requests' | 'motor-reglas' | 'reportes' | 'documental' | 'notificaciones' | 'configuracion' | 'integraciones' | 'certificados-laborales' | 'estructura-organizacional' | 'programas-academicos' | 'arquitectura-empresarial' | 'centro-alertas' | 'procesos' | 'gestion-profesoral' | 'firma-electronica' | 'pta' | 'banco-docentes-pta' | 'rund' | 'contratacion' | 'viaticos' | 'programacion-academica' | 'gestion-infraestructura' | 'dependencias' | 'ajustes-generales' | 'chatbot';
 
 export interface ActiveModuleItem {
   code: string;
@@ -105,6 +105,7 @@ function getModuleAliases(module: string): string[] {
     'contratacion': ['contratacion', 'hiring'],
     'hiring': ['contratacion', 'hiring'],
     'viaticos': ['viaticos', 'travel-expenses'],
+    'rund': ['rund', 'rund-service'],
     'programacion-academica': ['programacion-academica', 'academic-schedule'],
     'academic-schedule': ['programacion-academica', 'academic-schedule'],
     'gestion-infraestructura': ['gestion-infraestructura', 'infraestructura', 'infrastructure'],
@@ -116,8 +117,7 @@ function getModuleAliases(module: string): string[] {
     'graduates-verification': ['graduates-verification', 'graduates'],
     'graduates-certificates': ['graduates-certificates'],
     'verification-certificates': ['verification-certificates'],
-    'banco-docentes-pta': ['banco-docentes-pta', 'banco-docentes', 'gestion-profesoral', 'rund'],
-    // 'gestion-profesoral': ['gestion-profesoral', 'banco-docentes-pta', 'rund'],
+    'banco-docentes-pta': ['banco-docentes-pta', 'banco-docentes', 'gestion-profesoral'],
   };
   return map[module] || [module];
 }
@@ -125,7 +125,8 @@ function getModuleAliases(module: string): string[] {
 const DEFAULT_MODULE_CONFIG: Record<string, { name: string; description?: string }> = {
   'executive': { name: 'Dashboard Ejecutivo', description: 'Nivel gerencial' },
   'users-management': { name: 'Personas', description: 'Gestión de usuarios' },
-  'banco-docentes-pta': { name: 'Registro Único Nacional Docente (RUND)', description: 'Gestión y carga masiva' },
+  'rund': { name: 'Registro Único Nacional Docente (RUND)', description: 'Directorio, hoja de vida y tarjeta digital' },
+  'banco-docentes-pta': { name: 'Banco Docente PTA', description: 'Gestión y carga masiva' },
   'carpeta-digital': { name: 'Carpeta Digital', description: 'Documentos del usuario' },
   'estructura-organizacional': { name: 'Estructura Organizacional', description: 'Sedes y territoriales' },
   'programas-academicos': { name: 'Programas Académicos', description: 'Gestión de programas' },
@@ -252,6 +253,7 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
   // Secciones y visibilidad basada en módulos asignados
   const gestionPersonasModules: ModuleType[] = [
     'users-management',
+    'rund',
     'banco-docentes-pta',
     'carpeta-digital',
     'estructura-organizacional',
@@ -980,6 +982,8 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                 >
                       {/* Gestión de usuarios */}
                       {renderMenuItem('users-management', <Users className="w-4 h-4" />)}
+                      {/* Registro Único Nacional Docente RUND */}
+                      {renderMenuItem('rund', <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                       {/* Banco de Docentes PTA */}
                       {renderMenuItem('banco-docentes-pta', <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                       {/* Documentos del usuario */}
@@ -1227,6 +1231,8 @@ export function SidebarPremium({ isOpen, currentModule, currentSidebarModule, on
                 >
                   {/* Gestión de usuarios */}
                   {renderMenuItem('users-management', <Users className="w-4 h-4" />)}
+                  {/* Registro Único Nacional Docente RUND */}
+                  {renderMenuItem('rund', <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                   {/* Banco de Docentes PTA */}
                   {renderMenuItem('banco-docentes-pta', <GraduationCap className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />)}
                   {/* Documentos del usuario */}

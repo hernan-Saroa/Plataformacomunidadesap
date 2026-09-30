@@ -140,5 +140,18 @@ export const serviceMap = {
     'http://localhost:3015',
     'http://chatbot-service:3015',
   ),
+
+  // Registro Único Nacional Docente (RUND) - Puerto 3016
+  rund: serviceUrl(
+    'RUND_SERVICE_URL',
+    'http://localhost:3016',
+    'http://rund-service:3016',
+  ),
+  'rund-service': serviceUrl(
+    'RUND_SERVICE_URL',
+    'http://localhost:3016',
+    'http://rund-service:3016',
+  ),
 };
+
 
