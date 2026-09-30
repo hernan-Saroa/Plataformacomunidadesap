@@ -33,11 +33,16 @@ import { VistaExpedientes } from './expedientes/VistaExpedientes';
 import { VistaAlertas } from './alertas/VistaAlertas';
 import { VistaBandejaCdp } from './cdp/VistaBandejaCdp';
 import { VistaEstadisticas } from './estadisticas/VistaEstadisticas';
+import { VistaPorRevisar } from './revision/VistaPorRevisar';
+import { RevisionDeActividad } from './revision/RevisionDeActividad';
+import { contratacionService } from '../services/contratacionService';
+import { ElementoPorRevisar } from '../types';
 import { PERMISOS } from '../auth/permisos';
 import { esSoloPresupuesto, useAlcance } from '../auth/alcance';
 
 type Seccion =
   | 'estudios-previos'
+  | 'por-revisar'
   | 'revision'
   | 'alertas'
   | 'bandeja-cdp'
@@ -111,6 +116,39 @@ export default function ContratacionModulePremium() {
   const [procesoId, setProcesoId] = useState<string | null>(null);
   const [actividad, setActividad] = useState<string | null>(null);
 
+  /**
+   * La revisión abierta, si hay una.
+   *
+   * Es una pantalla aparte del proceso (reestructuración del flujo): quien
+   * aprueba lee y decide ahí, y vuelve a donde vino —su bandeja o el proceso—.
+   */
+  const [revision, setRevision] = useState<{
+    procesoId: string;
+    numeral: string;
+    desde: 'bandeja' | 'proceso';
+  } | null>(null);
+
+  /** Lo que espera la decisión de quien mira: la bandeja y su contador. */
+  const [porRevisar, setPorRevisar] = useState<ElementoPorRevisar[]>([]);
+  const [cargandoPorRevisar, setCargandoPorRevisar] = useState(false);
+  const [errorPorRevisar, setErrorPorRevisar] = useState<string | null>(null);
+  const cargarPorRevisar = () => {
+    setCargandoPorRevisar(true);
+    Promise.resolve()
+      .then(() => contratacionService.porRevisar())
+      .then((lista) => {
+        setPorRevisar(lista ?? []);
+        setErrorPorRevisar(null);
+      })
+      .catch((e: any) => setErrorPorRevisar(e?.message ?? 'No se pudo cargar la bandeja'))
+      .finally(() => setCargandoPorRevisar(false));
+  };
+  // Al entrar y cada vez que se vuelve a la bandeja o se cierra una revisión:
+  // el contador del menú tiene que bajar en cuanto algo se resuelve.
+  useEffect(() => {
+    cargarPorRevisar();
+  }, [seccion, revision === null]);
+
   const puedeConfigurar = tiene(PERMISOS.configurar);
   /**
    * Quien mueve el presupuesto de la entidad: la Dirección Financiera.
@@ -137,6 +175,24 @@ export default function ContratacionModulePremium() {
           icon: <FileSignature className="w-5 h-5" />,
           color: '#003DA5',
         },
+        /*
+         * «Por revisar» (reestructuración del flujo): lo que espera la decisión
+         * de quien mira, con su contador, como la «Revisión y Aprobación» del
+         * módulo disciplinario. Se ve si puede aprobar o decidir algo, o si
+         * tiene algo esperándolo —un abogado lo es por reparto, no por rol—.
+         */
+        ...(!(puede('aprobar') || puede('decidir') || porRevisar.length > 0)
+          ? []
+          : [
+              {
+                id: 'por-revisar' as Seccion,
+                label: 'Por revisar',
+                subtitle: 'Lo que espera tu decisión',
+                icon: <ClipboardCheck className="w-5 h-5" />,
+                color: '#059669',
+                badge: porRevisar.length,
+              },
+            ]),
         /*
          * Aquí había una sección «Revisión · Aprobación de documentos» marcada
          * como «Próx.». Se creó con la UI de aprobar y devolver del estudio
@@ -275,6 +331,37 @@ export default function ContratacionModulePremium() {
   // Dos niveles: lista de procesos y detalle. El formulario ya no es una
   // pantalla aparte — se despliega dentro de su actividad en el detalle.
   const contenido = () => {
+    if (revision) {
+      return (
+        <RevisionDeActividad
+          procesoId={revision.procesoId}
+          numeral={revision.numeral}
+          volverA={revision.desde === 'bandeja' ? 'Por revisar' : 'Proceso'}
+          onVolver={() => setRevision(null)}
+          onVerProceso={(numeral) => {
+            setSeccion('estudios-previos');
+            setProcesoId(revision.procesoId);
+            setActividad(numeral);
+            setRevision(null);
+          }}
+        />
+      );
+    }
+
+    if (seccion === 'por-revisar') {
+      return (
+        <VistaPorRevisar
+          elementos={porRevisar}
+          cargando={cargandoPorRevisar}
+          error={errorPorRevisar}
+          onRecargar={cargarPorRevisar}
+          onRevisar={(e) =>
+            setRevision({ procesoId: e.procesoId, numeral: e.numeral, desde: 'bandeja' })
+          }
+        />
+      );
+    }
+
     // Se comprueban aunque el menú ya las esconda: la sección sobrevive en el
     // estado, y quien tenía la pantalla abierta cuando le retiraron el permiso
     // seguiría dentro de ella.
@@ -349,7 +436,14 @@ export default function ContratacionModulePremium() {
         // La alerta lleva al proceso y, si es una aprobación, a la actividad
         // concreta: quien recibe el aviso quiere resolverlo, no buscarlo.
         <VistaAlertas
-          onAbrir={(id, numeral) => {
+          onAbrir={(id, numeral, tipo) => {
+            // Una aprobación pendiente se resuelve en su revisión, no en el
+            // formulario de quien la trabajó.
+            if (tipo === 'APROBACION_PENDIENTE' && numeral) {
+              setSeccion('por-revisar');
+              setRevision({ procesoId: id, numeral, desde: 'bandeja' });
+              return;
+            }
             setSeccion('estudios-previos');
             setProcesoId(id);
             setActividad(numeral ?? null);
@@ -398,6 +492,10 @@ export default function ContratacionModulePremium() {
             setActividad(null);
           }}
           actividadInicial={actividad}
+          onRevisar={(numeral) => {
+            setActividad(numeral);
+            setRevision({ procesoId, numeral, desde: 'proceso' });
+          }}
         />
       );
     }
@@ -436,11 +534,15 @@ export default function ContratacionModulePremium() {
         setSeccion(s as Seccion);
         setProcesoId(null);
         setActividad(null);
+        setRevision(null);
       }}
     >
       {/* La clave reinicia la animación al cambiar de sección: sin ella React
           reutiliza el nodo y el cambio es un corte seco. */}
-      <div key={`${seccion}-${procesoId ?? ''}`} className="anima-seccion">
+      <div
+        key={`${seccion}-${procesoId ?? ''}-${revision ? `${revision.procesoId}-${revision.numeral}` : ''}`}
+        className="anima-seccion"
+      >
         {contenido()}
       </div>
       {/* Misma configuración que gestión legal y control interno, para que las
