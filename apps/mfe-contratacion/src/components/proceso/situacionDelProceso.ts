@@ -1,5 +1,5 @@
 import { cubre } from '../../auth/alcance';
-import { AccionAlcance, ResponsableDeLugar } from '../../types';
+import { AccionAlcance, RespondeElAsignado, ResponsableDeLugar } from '../../types';
 import {
   actividadesDisponibles,
   estaTerminada,
@@ -32,6 +32,8 @@ export interface PasoConDatos extends PasoDelFlujo {
   actualizadoEn?: string | null;
   /** El cargo que Configuración le puso; manda sobre los roles del alcance. */
   responsableCargo?: string | null;
+  /** Si de ella responde una persona del proceso y no los roles (lo dice el backend). */
+  responde?: RespondeElAsignado | null;
 }
 
 export interface Persona {
@@ -88,8 +90,12 @@ const RADICACION = '3.3';
  * 3.1 enviada, igual que en el riel (EFDS-1183).
  */
 const REVISION = '3.4';
-/** Actividades del CDP que atiende la Financiera que lo tomó. */
-const DE_LA_FINANCIERA = ['4.2', '4.3'];
+/** El papel del backend con el nombre que lleva en la participación. */
+const EN_LA_PARTICIPACION = {
+  CONTRATACION: 'contratacion',
+  ABOGADO: 'abogado',
+  FINANCIERA: 'financiera',
+} as const;
 /** La reunión de inicio: desde ahí el contrato está en ejecución. */
 const INICIO_EJECUCION = '9.1';
 
@@ -160,11 +166,26 @@ export function responsableDelPaso(
   const puedoEn = (accion: AccionAlcance, numeral: string) => puedo?.(accion, numeral) ?? false;
   const accionPrincipal = acciones[0];
 
-  if (DE_LA_FINANCIERA.includes(paso.numeral) && participacion.financiera) {
+  /*
+   * Actividades de las que responde una persona del proceso y no un rol: el
+   * abogado de la 3.7, aunque el Gestor tenga el alcance de editarla. Cuáles
+   * son lo dice el backend (`responde`), que es quien lo exige; aquí solo se
+   * lee, para que la pantalla no nombre a quien después no puede actuar.
+   */
+  const regla = paso.responde;
+  if (regla && (!regla.soloEnRevision || paso.estado === 'EN_REVISION')) {
+    const persona = participacion[EN_LA_PARTICIPACION[regla.papel]];
+    if (persona) {
+      return { quien: persona.nombre, teToca: !!persona.esMio, accion: regla.accion };
+    }
+    // Sin nadie en el papel se nombra a los roles configurados para esa
+    // acción. Si el papel se asigna, ninguno puede actuar todavía; si se toma
+    // de la bandeja, le toca a quien pueda tomarlo.
+    const roles = rolesQuePueden(responsables, regla.accion, paso.numeral);
     return {
-      quien: participacion.financiera.nombre,
-      teToca: !!participacion.financiera.esMio,
-      accion: accionPrincipal,
+      quien: paso.responsableCargo || unaDeEstas(roles),
+      teToca: regla.seToma && puedoEn(regla.accion, paso.numeral),
+      accion: regla.accion,
     };
   }
 

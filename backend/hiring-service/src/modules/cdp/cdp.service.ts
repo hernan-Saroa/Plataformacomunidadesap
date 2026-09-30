@@ -25,6 +25,7 @@ import {
   VerificarCdpDto,
 } from './dto/cdp.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { respondeElAsignado } from '../participacion/quien-responde';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 /**
  * Días que una solicitud de CDP puede estar sin que nadie la atienda.
@@ -359,6 +360,8 @@ export class CdpService {
         // El cargo que Configuración le puso, si le puso uno: manda sobre los
         // roles del alcance para decir a quién le toca.
         responsableCargo: a.responsableCargo,
+        // Si de ella responde una persona del proceso y no los roles.
+        responde: respondeElAsignado(a.numeral),
       };
     });
   }

@@ -550,6 +550,7 @@ export function DetalleProceso({
       etapa: act.etapa ?? 3,
       actualizadoEn: act.actualizadoEn ?? null,
       responsableCargo: act.responsableCargo ?? null,
+      responde: act.responde ?? null,
     })),
     participacion: participacion ?? undefined,
     radicadoPorMi: datos.proceso.radicadoPorMi,

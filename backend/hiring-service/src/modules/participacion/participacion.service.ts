@@ -20,6 +20,7 @@ import { Accion } from '../../auth/alcance';
 import { AlcanceService } from '../../auth/alcance.service';
 import { AsignarAbogadoDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
 import { CdpService } from '../cdp/cdp.service';
+import { respondeElAsignado } from './quien-responde';
 
 /** Una cuenta a la que se le puede dar un papel en un proceso. */
 export interface CuentaCandidata {
@@ -464,9 +465,16 @@ export class ParticipacionService {
    * de aprobar se mira con el alcance de ese punto, no en general.
    */
   async quienDecide(procesoId: string, acceso: HiringAccess, numeral: string) {
+    // La regla sale de `RESPONDE_EL_ASIGNADO`, que es también lo que la
+    // pantalla lee para decir a quién le toca: si una actividad decidiera por
+    // el abogado sin figurar ahí, la pantalla nombraría a otro.
+    const regla = respondeElAsignado(numeral);
+    if (regla?.papel !== 'ABOGADO') {
+      throw new Error(`La ${numeral} no figura en RESPONDE_EL_ASIGNADO como del abogado`);
+    }
     const abogado = await this.vigente(procesoId, 'ABOGADO');
     const motivo = motivoParaNoDecidir(
-      await this.alcance.puedeEn(acceso, 'aprobar', numeral),
+      await this.alcance.puedeEn(acceso, regla.accion, numeral),
       !!abogado,
       !!abogado && esSuya(abogado, acceso),
     );

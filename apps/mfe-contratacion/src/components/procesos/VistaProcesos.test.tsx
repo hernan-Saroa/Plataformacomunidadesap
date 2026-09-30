@@ -299,7 +299,11 @@ describe('VistaProcesos · a quién le toca', () => {
         actividades: [
           actividad('3.1', 'APROBADO', 'Estudio previo'),
           actividad('3.3', 'APROBADO', 'Radicación'),
-          actividad('4.2', 'BORRADOR', 'Verificar disponibilidad presupuestal'),
+          {
+            ...actividad('4.2', 'BORRADOR', 'Verificar disponibilidad presupuestal'),
+            // Lo que manda el backend: de la 4.2 responde la Financiera que la tomó.
+            responde: { papel: 'FINANCIERA', accion: 'editar', seToma: true, soloEnRevision: false },
+          },
         ],
         participacion: {
           contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: false },

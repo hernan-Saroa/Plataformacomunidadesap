@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ResponsableDeLugar } from '../../types';
+import { RespondeElAsignado, ResponsableDeLugar } from '../../types';
 import {
   destinoDeLaSituacion,
   PasoConDatos,
@@ -10,8 +10,18 @@ import {
   situacionTrasAprobar,
 } from './situacionDelProceso';
 
+/** Lo que manda el backend en `responde` (`RESPONDE_EL_ASIGNADO`). */
+const ABOGADO = { papel: 'ABOGADO', accion: 'aprobar', seToma: false } as const;
+const RESPONDE: Record<string, RespondeElAsignado> = {
+  '3.5': { ...ABOGADO, soloEnRevision: true },
+  '3.6': { ...ABOGADO, soloEnRevision: false },
+  '3.7': { ...ABOGADO, soloEnRevision: false },
+  '4.2': { papel: 'FINANCIERA', accion: 'editar', seToma: true, soloEnRevision: false },
+};
+
 const paso = (numeral: string, cambios: Partial<PasoConDatos> = {}): PasoConDatos => ({
   numeral,
+  responde: RESPONDE[numeral] ?? null,
   nombre: `Actividad ${numeral}`,
   etapa: Number.parseInt(numeral, 10),
   estado: null,
@@ -138,6 +148,81 @@ describe('situación del proceso · lo que sigue', () => {
     });
 
     expect(s).toMatchObject({ momento: 'revision', numeral: '4.1', quien: 'Revisor' });
+  });
+
+  it('el comité lo transcribe el abogado del proceso, aunque el Gestor pueda editarlo', () => {
+    const pasos = [
+      paso('3.1', { estado: 'APROBADO' }),
+      paso('3.3', { estado: 'APROBADO' }),
+      paso('3.5', { estado: 'APROBADO' }),
+      paso('3.7', { estado: 'BORRADOR' }),
+    ];
+    const conGestor: ResponsableDeLugar[] = [
+      ...responsables,
+      { rol: 'Gestor de contratación', accion: 'editar', lugar: '3.7' },
+    ];
+    const entrada = (esMio: boolean) => ({
+      pasos,
+      responsables: conGestor,
+      participacion: {
+        contratacion: { nombre: 'Laura Gestora', esMio: !esMio },
+        abogado: { nombre: 'Diana Abogada', esMio },
+      },
+      // Al Gestor el alcance le dice que sí: no por eso le toca.
+      puedo: () => !esMio,
+    });
+
+    expect(situacionDelProceso(entrada(true))).toMatchObject({
+      numeral: '3.7',
+      quien: 'Diana Abogada',
+      teToca: true,
+    });
+    expect(situacionDelProceso(entrada(false))).toMatchObject({
+      quien: 'Diana Abogada',
+      teToca: false,
+    });
+  });
+
+  it('la modalidad la diligencia el Gestor y la decide el abogado', () => {
+    const participacion = { abogado: { nombre: 'Diana Abogada', esMio: false } };
+    const conEstado = (estado: string) =>
+      situacionDelProceso({
+        pasos: flujo({ '3.1': 'APROBADO', '3.3': 'APROBADO', '3.5': estado }),
+        responsables,
+        participacion,
+      });
+
+    expect(conEstado('BORRADOR').quien).toBe('Gestor de contratación');
+    expect(conEstado('EN_REVISION').quien).toBe('Diana Abogada');
+  });
+
+  it('sin abogado asignado nombra a los roles que pueden aprobar, y no le toca a nadie', () => {
+    const s = situacionDelProceso({
+      pasos: [
+        paso('3.1', { estado: 'APROBADO' }),
+        paso('3.3', { estado: 'APROBADO' }),
+        paso('3.7', { estado: 'BORRADOR' }),
+      ],
+      responsables: [
+        { rol: 'Gestor de contratación', accion: 'editar', lugar: '3.7' },
+        { rol: 'Revisor', accion: 'aprobar', lugar: 'E3' },
+        { rol: 'Director', accion: 'aprobar', lugar: 'E3' },
+      ],
+      puedo: () => true,
+    });
+
+    // El abogado se asigna: tener el alcance no basta para transcribir.
+    expect(s).toMatchObject({ quien: 'Revisor o Director', teToca: false });
+  });
+
+  it('la solicitud de CDP sin tomar le toca a quien puede tomarla', () => {
+    const s = situacionDelProceso({
+      pasos: flujo({ '3.1': 'APROBADO', '3.3': 'APROBADO', '3.5': 'APROBADO', '4.1': 'APROBADO' }),
+      responsables,
+      puedo: (accion, lugar) => accion === 'editar' && lugar === '4.2',
+    });
+
+    expect(s).toMatchObject({ numeral: '4.2', quien: 'Dirección Financiera', teToca: true });
   });
 
   it('lo devuelto manda sobre lo que viene después', () => {

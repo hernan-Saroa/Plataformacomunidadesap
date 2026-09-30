@@ -29,6 +29,7 @@ export function pasosDelResumen(
     construida: construida(a.numeral),
     actualizadoEn: a.actualizadoEn ?? null,
     responsableCargo: a.responsableCargo ?? null,
+    responde: a.responde ?? null,
   }));
 
   if (!pasos.some((p) => p.numeral === '3.1')) {

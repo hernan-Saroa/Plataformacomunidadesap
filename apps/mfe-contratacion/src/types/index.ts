@@ -406,6 +406,23 @@ export interface ActividadProceso {
   actualizadoEn: string | null;
   /** El cargo que Configuración le puso; si no hay, responden los roles del alcance. */
   responsableCargo?: string | null;
+  /** Si de ella responde una persona del proceso y no los roles (lo dice el backend). */
+  responde?: RespondeElAsignado | null;
+}
+
+/**
+ * Una actividad de la que responde quien ocupa un papel en el proceso
+ * (`RESPONDE_EL_ASIGNADO` en el backend): el abogado de la 3.7, por ejemplo,
+ * aunque el Gestor tenga el alcance de editarla.
+ */
+export interface RespondeElAsignado {
+  papel: 'CONTRATACION' | 'ABOGADO' | 'FINANCIERA';
+  /** Lo que esa persona hace ahí; sin nadie en el papel, la hacen los roles con ella. */
+  accion: Exclude<AccionAlcance, 'ver'>;
+  /** Solo mientras la actividad espera decisión. */
+  soloEnRevision: boolean;
+  /** El papel se toma de una bandeja: sin nadie en él, quien tenga el alcance puede tomarlo. */
+  seToma: boolean;
 }
 
 export type UnidadUmbral = 'SMMLV' | 'PESOS';
@@ -476,6 +493,7 @@ export interface ProcesoResumen {
     etapa?: number;
     actualizadoEn?: string | null;
     responsableCargo?: string | null;
+    responde?: RespondeElAsignado | null;
   }[];
   /** Quién lleva el proceso y si sigue en la bandeja (EFDS-1183). */
   participacion?: ParticipacionEnLista;

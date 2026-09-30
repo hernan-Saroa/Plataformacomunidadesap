@@ -40,6 +40,7 @@ import {
   ParticipacionService,
   esSuya,
 } from '../participacion/participacion.service';
+import { respondeElAsignado } from '../participacion/quien-responde';
 import { CdpService } from '../cdp/cdp.service';
 import {
   DocumentosActividadService,
@@ -577,6 +578,7 @@ export class EstudioPrevioService implements OnModuleInit {
               etapa: deLaMatriz.etapa,
               actualizadoEn: a.updatedAt,
               responsableCargo: deLaMatriz.responsableCargo,
+              responde: respondeElAsignado(a.numeral),
             };
           }),
       };
