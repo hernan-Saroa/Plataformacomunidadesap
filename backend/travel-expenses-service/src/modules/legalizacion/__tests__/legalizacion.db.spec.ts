@@ -279,6 +279,50 @@ describirConBase('EFDS-1309 — legalización contra base real', () => {
     });
   });
 
+  describe('datos del GF-FO-032 V2: fechas reales y comisión fuera de la ESAP', () => {
+    let id: string;
+    beforeAll(async () => {
+      id = await crearSolicitud('PAGADA', '2026-09-28');
+      await disparador.evaluar(id);
+    });
+
+    it('valida las fechas y exige la entidad cuando fue fuera de la ESAP', async () => {
+      const base = { fechaInicioReal: '2026-09-20', fechaFinReal: '2026-09-22', comisionExterna: false };
+      await expect(service.registrarCumplimiento(id, { ...base, fechaFinReal: '2026-09-19' }, enlace)).rejects.toThrow(/anterior a la de inicio/);
+      await expect(service.registrarCumplimiento(id, { ...base, fechaFinReal: '2099-01-01' }, enlace)).rejects.toThrow(/posterior a hoy/);
+      await expect(service.registrarCumplimiento(id, { ...base, fechaInicioReal: '20-09-2026' }, enlace)).rejects.toThrow(/AAAA-MM-DD/);
+      await expect(service.registrarCumplimiento(id, { ...base, comisionExterna: true }, enlace)).rejects.toThrow(/entidad externa/);
+      await expect(service.registrarCumplimiento(id, { ...base, comisionExterna: 'si' as any }, enlace)).rejects.toThrow(/fuera de la ESAP/);
+      await expect(service.registrarCumplimiento(id, base, otro)).rejects.toThrow(/Solo el comisionado o el enlace/);
+    });
+
+    it('fuera de la ESAP: el checklist exige el certificado de la entidad externa, después del GF-FO-031', async () => {
+      const antes = await service.detalle(id, enlace);
+      expect(antes.checklist.items.map((i) => i.codigo)).not.toContain('LEG_CERT_ENTIDAD_EXTERNA');
+
+      await service.registrarCumplimiento(
+        id, { fechaInicioReal: '2026-09-20', fechaFinReal: '2026-09-22', comisionExterna: true, entidadExterna: 'Gobernación del Cauca' }, enlace,
+      );
+      const d = await service.detalle(id, enlace);
+      const codigos = d.checklist.items.map((i) => i.codigo);
+      expect(codigos.slice(0, 2)).toEqual(['LEG_GF_FO_031', 'LEG_CERT_ENTIDAD_EXTERNA']);
+      expect(d.checklist.items[1]).toMatchObject({ tipoRequisito: 'OBLIGATORIO', condicion: 'COMISION_EXTERNA' });
+      expect(d.cumplimiento).toMatchObject({
+        fechaInicioReal: '2026-09-20', fechaFinReal: '2026-09-22', comisionExterna: true, entidadExterna: 'Gobernación del Cauca', registrado: true,
+      });
+      expect(d.checklist.items[0].nombre).toBe('Certificado de Cumplimiento');
+      expect(d.checklist.items[0].descripcion).toMatch(/^GF-FO-031 V2/);
+
+      // Si corrige y no fue externa, deja de exigirse y se borra la entidad.
+      await service.registrarCumplimiento(
+        id, { fechaInicioReal: '2026-09-20', fechaFinReal: '2026-09-22', comisionExterna: false, entidadExterna: 'ignorada' }, enlace,
+      );
+      const corregido = await service.detalle(id, enlace);
+      expect(corregido.checklist.items.map((i) => i.codigo)).not.toContain('LEG_CERT_ENTIDAD_EXTERNA');
+      expect(corregido.cumplimiento.entidadExterna).toBeNull();
+    });
+  });
+
   describe('checklist, carga de soportes y envío', () => {
     let id: string;
 
@@ -357,6 +401,11 @@ describirConBase('EFDS-1309 — legalización contra base real', () => {
       ]);
       expect(createHash('sha256').update(readFileSync(rutaAbsoluta)).digest('hex')).toBe(fila.sha256);
 
+      // Sin los datos del GF-FO-032 V2 no se envía.
+      await expect(service.enviar(id, enlace)).rejects.toThrow(/GF-FO-032/);
+      await service.registrarCumplimiento(
+        id, { fechaInicioReal: '2026-09-28', fechaFinReal: '2026-09-28', comisionExterna: false }, enlace,
+      );
       const envio = await service.enviar(id, enlace);
       expect(envio.totalSoportes).toBe(4);
 
@@ -364,6 +413,14 @@ describirConBase('EFDS-1309 — legalización contra base real', () => {
       expect(despues.semaforo).toBe('ENVIADA');
       expect(despues.puedeEditar).toBe(false);
       expect(fechaColombia(new Date(despues.fechaEnvio!))).toBe(fechaColombia(new Date()));
+    });
+
+    it('después del envío tampoco se cambian los datos del GF-FO-032', async () => {
+      await expect(
+        service.registrarCumplimiento(
+          id, { fechaInicioReal: '2026-09-28', fechaFinReal: '2026-09-28', comisionExterna: false }, enlace,
+        ),
+      ).rejects.toThrow(/ya fue enviada/);
     });
 
     it('después del envío no se pueden agregar ni quitar soportes', async () => {

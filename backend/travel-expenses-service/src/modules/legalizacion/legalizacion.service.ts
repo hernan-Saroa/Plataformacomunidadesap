@@ -18,7 +18,7 @@ import { NotificationClientService } from '../../common/notification-client.serv
 import { ConfigLegalizacionEntity } from './entities/config-legalizacion.entity';
 import { LegalizacionComisionEntity } from './entities/legalizacion-comision.entity';
 import { LegalizacionSoporteEntity } from './entities/legalizacion-soporte.entity';
-import { calcularSemaforo, diasHabilesRestantes, Semaforo } from './plazo-legalizacion.util';
+import { calcularSemaforo, diasHabilesRestantes, fechaColombia, Semaforo } from './plazo-legalizacion.util';
 import { esPdfPorContenido } from './pdf-contenido.util';
 
 /**
@@ -72,6 +72,19 @@ export interface SolicitudContexto {
   comisionado_numero_documento: string;
   comisionado_nombre: string;
   tipo_comisionado: string;
+  // Liquidación pagada (GF-FO-023), para el reintegro por viaje más corto.
+  dias_pernoctados: string | null;
+  tarifa_dia_pernoctado: string | null;
+  tarifa_dia_no_pernoctado: string | null;
+  total_pernoctados: string | null;
+  total_no_pernoctados: string | null;
+}
+
+export interface DatosCumplimientoDto {
+  fechaInicioReal: string;
+  fechaFinReal: string;
+  comisionExterna: boolean;
+  entidadExterna?: string | null;
 }
 
 export interface ItemChecklist {
@@ -136,7 +149,12 @@ export class LegalizacionService {
               c.numero_documento AS comisionado_numero_documento,
               trim(concat_ws(' ', c.primer_nombre, c.segundo_nombre, c.primer_apellido, c.segundo_apellido))
                 AS comisionado_nombre,
-              c.tipo_comisionado
+              c.tipo_comisionado,
+              s.dias_pernoctados::text AS dias_pernoctados,
+              s.tarifa_dia_pernoctado::text AS tarifa_dia_pernoctado,
+              s.tarifa_dia_no_pernoctado::text AS tarifa_dia_no_pernoctado,
+              s.total_pernoctados::text AS total_pernoctados,
+              s.total_no_pernoctados::text AS total_no_pernoctados
          FROM travel_expenses.solicitudes_comision s
          JOIN travel_expenses.comisionados c ON c.id = s.comisionado_id
         WHERE s.id = $1`,
@@ -228,8 +246,15 @@ export class LegalizacionService {
     });
 
     const transporteAereo = Boolean(sol.requiere_tiquetes || sol.tiene_tramo_aereo);
+    // Lo declara el comisionado con el GF-FO-032; sin declarar, no se exige todavía.
+    const [cumplimiento] = await this.dataSource.query(
+      `SELECT comision_externa FROM travel_expenses.legalizaciones_comision WHERE id = $1`,
+      [legalizacionId],
+    );
+    const comisionExterna = cumplimiento?.comision_externa === true;
     const items: ItemChecklist[] = config
       .filter((c: any) => c.condicion !== 'TRANSPORTE_AEREO' || transporteAereo)
+      .filter((c: any) => c.condicion !== 'COMISION_EXTERNA' || comisionExterna)
       .map((c: any) => {
         const propios = soportes
           .filter((s) => s.tipoDocumentoSoporteId === c.tipo_documento_soporte_id)
@@ -316,6 +341,14 @@ export class LegalizacionService {
       valorPagado: leg.valorPagado ?? sol.valor_pagado,
       valorLegalizado: leg.valorLegalizado,
       valorReintegro: leg.valorReintegro,
+      // GF-FO-032 V2: fechas reales y comisión fuera de la ESAP.
+      cumplimiento: {
+        fechaInicioReal: leg.fechaInicioReal,
+        fechaFinReal: leg.fechaFinReal,
+        comisionExterna: leg.comisionExterna,
+        entidadExterna: leg.entidadExterna,
+        registrado: Boolean(leg.cumplimientoRegistradoEn),
+      },
     };
   }
 
@@ -476,6 +509,60 @@ export class LegalizacionService {
   // Envío a revisión
   // ---------------------------------------------------------------------------
 
+  /**
+   * Datos del GF-FO-032 V2 que el comisionado diligencia al legalizar: las
+   * fechas en que realmente cumplió la comisión (para el reintegro por viaje
+   * más corto; el plazo no cambia) y si la cumplió fuera de la ESAP (exige el
+   * certificado de la entidad externa). Solo mientras la legalización está abierta.
+   */
+  async registrarCumplimiento(solicitudId: string, dto: DatosCumplimientoDto, user: UsuarioAutenticado) {
+    const ymd = /^\d{4}-\d{2}-\d{2}$/;
+    const inicio = dto?.fechaInicioReal?.trim() || '';
+    const fin = dto?.fechaFinReal?.trim() || '';
+    if (!ymd.test(inicio) || !ymd.test(fin) || Number.isNaN(Date.parse(`${inicio}T00:00:00Z`)) || Number.isNaN(Date.parse(`${fin}T00:00:00Z`))) {
+      throw new BadRequestException('Las fechas reales de la comisión deben tener el formato AAAA-MM-DD.');
+    }
+    if (fin < inicio) throw new BadRequestException('La fecha real de regreso no puede ser anterior a la de inicio.');
+    if (fin > fechaColombia(new Date())) {
+      throw new BadRequestException('La fecha real de regreso no puede ser posterior a hoy.');
+    }
+    if (typeof dto.comisionExterna !== 'boolean') {
+      throw new BadRequestException('Indique si la comisión se cumplió fuera de la ESAP.');
+    }
+    const entidad = dto.comisionExterna ? dto.entidadExterna?.trim() || '' : '';
+    if (dto.comisionExterna && (entidad.length < 2 || entidad.length > 200)) {
+      throw new BadRequestException('Indique la entidad externa donde se cumplió la comisión (máximo 200 caracteres).');
+    }
+
+    const sol = await this.cargarSolicitud(solicitudId);
+    await this.exigirAcceso(sol, user, 'ESCRITURA');
+
+    return this.dataSource.transaction(async (m) => {
+      const bloqueada = await m.query(
+        `SELECT id FROM travel_expenses.legalizaciones_comision WHERE solicitud_id = $1 FOR UPDATE`,
+        [solicitudId],
+      );
+      if (!bloqueada[0]) throw new NotFoundException('Esta comisión todavía no tiene legalización abierta.');
+      const leg = await m.getRepository(LegalizacionComisionEntity).findOneOrFail({ where: { solicitudId } });
+      this.exigirAbierta(leg);
+      Object.assign(leg, {
+        fechaInicioReal: inicio,
+        fechaFinReal: fin,
+        comisionExterna: dto.comisionExterna,
+        entidadExterna: dto.comisionExterna ? entidad : null,
+        cumplimientoRegistradoEn: new Date(),
+        cumplimientoRegistradoPorId: user.userId,
+      });
+      await m.getRepository(LegalizacionComisionEntity).save(leg);
+      return {
+        fechaInicioReal: inicio,
+        fechaFinReal: fin,
+        comisionExterna: dto.comisionExterna,
+        entidadExterna: leg.entidadExterna,
+      };
+    });
+  }
+
   async enviar(solicitudId: string, user: UsuarioAutenticado) {
     const sol = await this.cargarSolicitud(solicitudId);
     await this.exigirAcceso(sol, user, 'ESCRITURA');
@@ -503,6 +590,11 @@ export class LegalizacionService {
           .map((i) => i.nombre)
           .join(', ');
         throw new BadRequestException(`Faltan soportes obligatorios: ${faltan}.`);
+      }
+      if (!leg.cumplimientoRegistradoEn) {
+        throw new BadRequestException(
+          'Registre los datos del formato GF-FO-032: las fechas en que realmente cumplió la comisión y si fue fuera de la ESAP.',
+        );
       }
 
       leg.fechaEnvio = new Date();

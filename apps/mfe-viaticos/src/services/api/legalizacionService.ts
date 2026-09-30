@@ -9,6 +9,25 @@ const BASE = '/viaticos/api/v1/legalizaciones';
 
 export type SemaforoLegalizacion = 'VIGENTE' | 'POR_VENCER' | 'VENCIDA' | 'ENVIADA';
 
+/** GF-FO-032 V2: fechas en que realmente se cumplió la comisión y si fue fuera de la ESAP. */
+export interface DatosCumplimiento {
+  fechaInicioReal: string | null;
+  fechaFinReal: string | null;
+  comisionExterna: boolean | null;
+  entidadExterna: string | null;
+  registrado: boolean;
+}
+
+/** Reintegro por viaje más corto, calculado con las tarifas de la liquidación pagada. */
+export interface ViajeReal {
+  diasReales: number;
+  nochesPlaneadas: number | null;
+  nochesReales: number;
+  viaticosPlaneados: number | null;
+  viaticosReales: number | null;
+  reintegroViajeCorto: number | null;
+}
+
 export interface ResumenLegalizacion {
   legalizacionId: string;
   solicitudId: string;
@@ -39,6 +58,7 @@ export interface ResumenLegalizacion {
   valorPagado?: string | number | null;
   valorLegalizado?: string | number | null;
   valorReintegro?: string | number | null;
+  cumplimiento?: DatosCumplimiento;
 }
 
 export interface SoporteCargado {
@@ -119,6 +139,8 @@ export interface DetalleRevision extends DetalleLegalizacion {
   puedeAprobar: boolean;
   puedeRegistrarSiif: boolean;
   puedeSolicitarReversion?: boolean;
+  viajeReal?: ViajeReal | null;
+  maximoLegalizable?: number | null;
   reversionPendiente?: ReversionRevision | null;
   historialRevision: EntradaHistorialRevision[];
 }
@@ -154,7 +176,10 @@ export interface RegistroSiifPayload {
 export type RequisitoSoporte = 'OBLIGATORIO' | 'OPCIONAL';
 
 /** Condiciones que acepta el backend (CONDICIONES_SOPORTE). */
-export const CONDICIONES_SOPORTE_LEGALIZACION = [{ valor: 'TRANSPORTE_AEREO', etiqueta: 'Solo con transporte aéreo' }] as const;
+export const CONDICIONES_SOPORTE_LEGALIZACION = [
+  { valor: 'TRANSPORTE_AEREO', etiqueta: 'Solo con transporte aéreo' },
+  { valor: 'COMISION_EXTERNA', etiqueta: 'Solo si fue fuera de la ESAP' },
+] as const;
 
 export interface ItemConfigChecklistLegalizacion {
   tipo_comisionado: string;
@@ -191,6 +216,13 @@ class LegalizacionService {
 
   eliminarSoporte(solicitudId: string, soporteId: string): Promise<{ eliminado: boolean }> {
     return apiClient.delete(`${BASE}/${solicitudId}/soportes/${soporteId}`);
+  }
+
+  registrarCumplimiento(
+    solicitudId: string,
+    datos: { fechaInicioReal: string; fechaFinReal: string; comisionExterna: boolean; entidadExterna?: string | null },
+  ) {
+    return apiClient.put(`${BASE}/${solicitudId}/cumplimiento`, datos);
   }
 
   enviar(solicitudId: string): Promise<{ legalizacionId: string; fechaEnvio: string; totalSoportes: number }> {

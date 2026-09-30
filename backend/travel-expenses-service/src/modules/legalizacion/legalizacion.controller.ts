@@ -22,7 +22,7 @@ import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { Permissions } from '../../common/permissions.decorator';
 import { LegalizacionService } from './legalizacion.service';
-import type { UsuarioAutenticado } from './legalizacion.service';
+import type { DatosCumplimientoDto, UsuarioAutenticado } from './legalizacion.service';
 import { LegalizacionConfigService } from './legalizacion-config.service';
 import type { ActualizarModalidadDto, ItemChecklistConfigDto } from './legalizacion-config.service';
 import { LegalizacionCanarioService } from './legalizacion-canario.service';
@@ -269,6 +269,17 @@ export class LegalizacionController {
       type: 'application/pdf',
       disposition: `inline; filename*=UTF-8''${encodeURIComponent(nombre)}`,
     });
+  }
+
+  @Put(':solicitudId/cumplimiento')
+  @Permissions(...PERMISOS_LEGALIZAR)
+  @ApiOperation({ summary: 'Registrar los datos del GF-FO-032 V2: fechas reales y si fue fuera de la ESAP' })
+  registrarCumplimiento(
+    @Param('solicitudId', new ParseUUIDPipe()) solicitudId: string,
+    @Body() body: DatosCumplimientoDto,
+    @Req() req: RequestConUsuario,
+  ) {
+    return this.service.registrarCumplimiento(solicitudId, body, req.user!);
   }
 
   @Post(':solicitudId/enviar')

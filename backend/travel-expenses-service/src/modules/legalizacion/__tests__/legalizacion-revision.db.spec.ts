@@ -56,7 +56,15 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
   const solicitudes: string[] = [];
 
   /** Una comisión pagada, con la legalización cargada y enviada por el enlace. */
-  async function legalizacionEnviada(valorPagado = 1_000_000): Promise<string> {
+  /**
+   * Una comisión pagada, con la legalización cargada y enviada por el enlace.
+   * conLiquidacion: 4 noches a 100.000 y el regreso a 50.000 (viáticos 450.000).
+   * fechasReales: las del GF-FO-032; por omisión, las planeadas (14 al 18).
+   */
+  async function legalizacionEnviada(
+    valorPagado = 1_000_000,
+    opciones: { conLiquidacion?: boolean; fechasReales?: [string, string] } = {},
+  ): Promise<string> {
     const id = randomUUID();
     await ds.query(
       `INSERT INTO travel_expenses.solicitudes_comision
@@ -68,7 +76,20 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
       [id, `COM-TEST-1310-${id.slice(0, 8)}`, COMISIONADO, ENLACE, ANALISTA, valorPagado],
     );
     solicitudes.push(id);
+    if (opciones.conLiquidacion) {
+      await ds.query(
+        `UPDATE travel_expenses.solicitudes_comision
+            SET dias_pernoctados = 4, tarifa_dia_pernoctado = 100000, tarifa_dia_no_pernoctado = 50000,
+                total_pernoctados = 400000, total_no_pernoctados = 50000
+          WHERE id = $1`,
+        [id],
+      );
+    }
     await disparador.evaluar(id);
+    const [inicioReal, finReal] = opciones.fechasReales ?? ['2026-09-14', '2026-09-18'];
+    await legalizaciones.registrarCumplimiento(
+      id, { fechaInicioReal: inicioReal, fechaFinReal: finReal, comisionExterna: false }, enlace,
+    );
     const d = await legalizaciones.detalle(id, enlace);
     for (const item of d.checklist.items) {
       await legalizaciones.subirSoporte(id, item.tipoDocumentoSoporteId, { buffer: PDF(item.codigo), originalname: `${item.codigo}.pdf` }, enlace);
@@ -284,7 +305,7 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
       expect(hist).toEqual([{ estado_anterior: 'PENDIENTE_LEGALIZACION', estado_nuevo: 'LEGALIZADO' }]);
 
       expect(eventos.length).toBe(antes + 1);
-      expect(eventos[eventos.length - 1]).toMatchObject({ solicitudId: id, valorPagado: 1_000_000, valorLegalizado: 800_000, valorReintegro: 200_000, diasReales: 4 });
+      expect(eventos[eventos.length - 1]).toMatchObject({ solicitudId: id, valorPagado: 1_000_000, valorLegalizado: 800_000, valorReintegro: 200_000, diasReales: 5 });
 
       const acciones = (await revision.detalle(id, analista)).historialRevision.map((h) => h.accion);
       expect(acciones).toEqual(expect.arrayContaining(['SOPORTE_APROBADO', 'APROBACION', 'EXPORTACION_SIIF', 'REGISTRO_SIIF_Y_CIERRE']));
@@ -510,6 +531,59 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
     });
   });
 
+  describe('viaje más corto según las fechas reales del GF-FO-032', () => {
+    let id: string;
+    beforeAll(async () => {
+      // Planeada del 14 al 18 (4 noches); regresó el 16 (2 noches).
+      id = await legalizacionEnviada(1_000_000, { conLiquidacion: true, fechasReales: ['2026-09-14', '2026-09-16'] });
+      await aprobarTodo(id);
+    }, 60_000);
+
+    it('el analista ve el reintegro por viaje más corto y el tope de lo legalizable', async () => {
+      const d = await revision.detalle(id, analista);
+      expect(d.viajeReal).toMatchObject({
+        diasReales: 3, nochesPlaneadas: 4, nochesReales: 2, viaticosPlaneados: 450_000, viaticosReales: 250_000,
+        reintegroViajeCorto: 200_000,
+      });
+      expect(d.maximoLegalizable).toBe(800_000);
+    });
+
+    it('no deja legalizar más de lo que permiten los días realmente viajados', async () => {
+      await expect(
+        revision.registrarYCerrar(id, { numeroRegistroSiif: 'LEG-CORTO', fechaRegistroSiif: '2026-09-25', valorLegalizado: 900_000 }, analista),
+      ).rejects.toThrow(/viaje fue más corto \(2 de 4 noches\).*no puede superar \$800\.000/);
+    });
+
+    it('cierra con el reintegro calculado, los días reales del 032 y lo informa en el evento', async () => {
+      const antes = eventos.length;
+      const r = await revision.registrarYCerrar(
+        id,
+        // diasReales digitado se ignora: salen de las fechas del 032.
+        { numeroRegistroSiif: 'LEG-CORTO', fechaRegistroSiif: '2026-09-25', valorLegalizado: 800_000, diasReales: 9 },
+        analista,
+      );
+      expect(r).toMatchObject({ devuelta: false, estadoSolicitud: 'LEGALIZADO', valorReintegro: 200_000 });
+      const [l] = await ds.query(
+        `SELECT dias_reales::float AS dias, reintegro_viaje_corto::float AS corto, valor_reintegro::float AS reintegro
+           FROM travel_expenses.legalizaciones_comision WHERE solicitud_id = $1`,
+        [id],
+      );
+      expect(l).toEqual({ dias: 3, corto: 200_000, reintegro: 200_000 });
+      expect(eventos.length).toBe(antes + 1);
+      expect(eventos[eventos.length - 1]).toMatchObject({
+        solicitudId: id, valorReintegro: 200_000, reintegroViajeCorto: 200_000, diasReales: 3,
+        fechaInicioReal: '2026-09-14', fechaFinReal: '2026-09-16',
+      });
+    });
+
+    it('sin tarifas en la liquidación no hay tope: el analista decide, como antes', async () => {
+      const otra = await legalizacionEnviada(1_000_000, { fechasReales: ['2026-09-14', '2026-09-15'] });
+      const d = await revision.detalle(otra, analista);
+      expect(d.viajeReal).toMatchObject({ diasReales: 2, reintegroViajeCorto: null });
+      expect(d.maximoLegalizable).toBe(1_000_000);
+    });
+  });
+
   describe('viaje completo y canario', () => {
     it('sin diferencia no emite evento de reintegro', async () => {
       const id = await legalizacionEnviada(500_000);
@@ -526,7 +600,7 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
         expect(lista.filter((x) => solicitudes.includes(x))).toEqual([]);
       }
       // Estas son invariantes de datos cerrados, que no cambian por escrituras concurrentes.
-      expect(c.violaciones).toMatchObject({ reintegroInconsistente: 0, aprobadaConPendientes: 0 });
+      expect(c.violaciones).toMatchObject({ reintegroInconsistente: 0, aprobadaConPendientes: 0, reintegroMenorQueViajeCorto: 0 });
       expect(c.poblacion.legalizacionesPorEstadoSolicitud.LEGALIZADO).toBeGreaterThanOrEqual(2);
     });
   });

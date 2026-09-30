@@ -176,6 +176,30 @@ describe('LegalizacionRevision — EFDS-1310', () => {
     expect(screen.queryByRole('button', { name: 'Solicitar reversión de la aprobación' })).not.toBeInTheDocument();
   });
 
+  it('GF-FO-032: muestra el viaje real y no deja legalizar por encima de los días viajados', async () => {
+    svc.detalleRevision.mockResolvedValue(
+      detalle({
+        puedeRevisar: false, puedeRegistrarSiif: true, revisionAprobadaEn: '2026-09-25T18:00:00Z',
+        cumplimiento: { fechaInicioReal: '2026-09-01', fechaFinReal: '2026-09-03', comisionExterna: true, entidadExterna: 'Gobernación del Cauca', registrado: true },
+        viajeReal: { diasReales: 3, nochesPlaneadas: 4, nochesReales: 2, viaticosPlaneados: 450000, viaticosReales: 250000, reintegroViajeCorto: 200000 },
+        maximoLegalizable: 1300000,
+      }),
+    );
+    await abrirDetalle();
+    expect(await screen.findByText(/GF-FO-032: cumplida del 2026-09-01 al 2026-09-03 · fuera de la ESAP: Gobernación del Cauca/)).toBeInTheDocument();
+    expect(screen.getByText(/Viaje más corto según el GF-FO-032 \(2 de 4 noches\)/)).toHaveTextContent('200.000');
+    expect(screen.queryByLabelText('Días reales de la comisión (opcional)')).not.toBeInTheDocument();
+    expect(screen.getByText(/Días reales \(GF-FO-032\)/)).toHaveTextContent('3');
+
+    fireEvent.change(screen.getByLabelText('Número del registro en SIIF'), { target: { value: 'LEG-1' } });
+    fireEvent.change(screen.getByLabelText('Valor legalizado (COP)'), { target: { value: '1400000' } });
+    expect(screen.getByRole('alert')).toHaveTextContent('no puede superar');
+    expect(screen.getByRole('button', { name: 'Registrar en SIIF y cerrar' })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Valor legalizado (COP)'), { target: { value: '1300000' } });
+    expect(screen.getByRole('button', { name: 'Registrar en SIIF y cerrar' })).toBeEnabled();
+  });
+
   it('cerrada: muestra el expediente sin ninguna acción', async () => {
     svc.detalleRevision.mockResolvedValue(
       detalle({ estadoSolicitud: 'LEGALIZADO', puedeRevisar: false, puedeRegistrarSiif: false, enRevision: false,

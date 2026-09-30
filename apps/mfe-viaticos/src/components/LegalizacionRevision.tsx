@@ -189,6 +189,10 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
     siif.valor !== '' && Number.isFinite(valorLegalizado) ? Number(d.valorPagado ?? 0) - valorLegalizado : null;
   // Un legalizado mayor que lo pagado no se registra: la legalización vuelve al comisionado.
   const mayorQuePagado = (reintegroPrevio ?? 0) < 0;
+  // GF-FO-032: si el viaje fue más corto, lo legalizado no puede superar lo que permiten los días viajados.
+  const reintegroViajeCorto = d.viajeReal?.reintegroViajeCorto ?? null;
+  const superaMaximo =
+    !mayorQuePagado && siif.valor !== '' && d.maximoLegalizable != null && valorLegalizado > Number(d.maximoLegalizable);
 
   return (
     <div className="space-y-4">
@@ -209,6 +213,14 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
           <p className="mt-1 text-xs text-slate-600">
             Enviada el {formatearFechaLimite(d.fechaEnvio)} · plazo {formatearFechaLimite(d.fechaLimite)}
           </p>
+        )}
+        {d.cumplimiento?.registrado ? (
+          <p className="mt-1 text-xs text-slate-600">
+            GF-FO-032: cumplida del {d.cumplimiento.fechaInicioReal} al {d.cumplimiento.fechaFinReal}
+            {d.cumplimiento.comisionExterna ? ` · fuera de la ESAP: ${d.cumplimiento.entidadExterna}` : ' · en la ESAP'}
+          </p>
+        ) : (
+          <p className="mt-1 text-xs text-amber-700">Sin datos del GF-FO-032 (enviada antes de exigirlos).</p>
         )}
       </div>
 
@@ -340,16 +352,36 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
               <input inputMode="numeric" value={siif.valor} onChange={(e) => setSiif({ ...siif, valor: e.target.value.replace(/[^\d.]/g, '') })}
                 className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs" />
             </label>
-            <label className="text-xs text-slate-700">Días reales de la comisión (opcional)
-              <input inputMode="decimal" value={siif.dias} onChange={(e) => setSiif({ ...siif, dias: e.target.value.replace(/[^\d.]/g, '') })}
-                className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs" />
-            </label>
+            {d.viajeReal ? (
+              <p className="self-end text-xs text-slate-700">Días reales (GF-FO-032): <strong>{d.viajeReal.diasReales}</strong></p>
+            ) : (
+              <label className="text-xs text-slate-700">Días reales de la comisión (opcional)
+                <input inputMode="decimal" value={siif.dias} onChange={(e) => setSiif({ ...siif, dias: e.target.value.replace(/[^\d.]/g, '') })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs" />
+              </label>
+            )}
             <label className="text-xs text-slate-700 sm:col-span-2">Observaciones (opcional)
               <textarea value={siif.obs} onChange={(e) => setSiif({ ...siif, obs: e.target.value })} rows={2} maxLength={500}
                 className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs" />
             </label>
           </div>
-          {reintegroPrevio !== null && (
+          {reintegroViajeCorto !== null && reintegroViajeCorto > 0 && (
+            <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
+              Viaje más corto según el GF-FO-032 ({d.viajeReal!.nochesReales} de {d.viajeReal!.nochesPlaneadas} noches):
+              reintegro de {formatearPesos(reintegroViajeCorto)}. Máximo legalizable: {formatearPesos(d.maximoLegalizable)}.
+            </p>
+          )}
+          {d.viajeReal && reintegroViajeCorto === null && (
+            <p className="text-xs text-slate-500">
+              La liquidación no tiene tarifas registradas: el reintegro por viaje más corto no se puede calcular automáticamente.
+            </p>
+          )}
+          {superaMaximo && (
+            <p role="alert" className="text-xs font-semibold text-red-700">
+              Lo legalizado no puede superar {formatearPesos(d.maximoLegalizable)}: los días no viajados se reintegran.
+            </p>
+          )}
+          {reintegroPrevio !== null && !superaMaximo && (
             <p className={`text-xs ${mayorQuePagado ? 'font-semibold text-amber-800' : 'text-slate-700'}`}>
               {mayorQuePagado
                 ? 'El valor legalizado supera el pagado: no se registra en SIIF, la legalización se devuelve al comisionado para que revise los soportes.'
@@ -373,7 +405,7 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
                     numeroRegistroSiif: siif.numero.trim(),
                     fechaRegistroSiif: siif.fecha,
                     valorLegalizado: Number(siif.valor),
-                    diasReales: siif.dias === '' ? null : Number(siif.dias),
+                    diasReales: d.viajeReal || siif.dias === '' ? null : Number(siif.dias),
                     observaciones: siif.obs || undefined,
                   });
                   setConfirmarCierre(false);
@@ -388,7 +420,7 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
           ) : (
             <div className="flex justify-end">
               <button type="button"
-                disabled={siif.valor === '' || (!mayorQuePagado && (!siif.numero.trim() || !siif.fecha))}
+                disabled={siif.valor === '' || superaMaximo || (!mayorQuePagado && (!siif.numero.trim() || !siif.fecha))}
                 onClick={() => setConfirmarCierre(true)}
                 className={`rounded-lg px-4 py-2 text-xs font-bold text-white disabled:bg-slate-300 ${mayorQuePagado ? 'bg-amber-600' : 'bg-blue-700'}`}>
                 {mayorQuePagado ? 'Devolver al comisionado por mayor valor' : 'Registrar en SIIF y cerrar'}

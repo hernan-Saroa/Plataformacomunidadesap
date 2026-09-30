@@ -23,6 +23,7 @@ import {
   UsuarioAutenticado,
 } from './legalizacion.service';
 import { fechaColombia } from './plazo-legalizacion.util';
+import { calcularViajeReal, ViajeReal } from './viaje-real.util';
 
 /** Evento que consumirá EFDS-1308 (reintegros) cuando el viaje fue menor. */
 export const EVENTO_REINTEGRO = 'commission.reintegro_required';
@@ -37,6 +38,10 @@ export interface EventoReintegro {
   valorReintegro: number;
   diasComision: number | null;
   diasReales: number | null;
+  /** Parte del reintegro por los días no viajados (GF-FO-032). null si no se pudo calcular. */
+  reintegroViajeCorto: number | null;
+  fechaInicioReal: string | null;
+  fechaFinReal: string | null;
   usuarioId: string;
 }
 
@@ -73,6 +78,22 @@ export type ResultadoRegistroSiif =
       valorPagado: number;
       valorLegalizado: number;
     };
+
+/**
+ * Viaje real según el GF-FO-032 V2, con las tarifas de la liquidación pagada.
+ * null si la legalización no tiene fechas reales (enviada antes de exigirlas).
+ */
+export function viajeRealDe(sol: SolicitudContexto, leg: LegalizacionComisionEntity): ViajeReal | null {
+  if (!leg.fechaInicioReal || !leg.fechaFinReal) return null;
+  return calcularViajeReal(String(leg.fechaInicioReal).slice(0, 10), String(leg.fechaFinReal).slice(0, 10), {
+    diasPernoctados: sol.dias_pernoctados as any,
+    tarifaDiaPernoctado: sol.tarifa_dia_pernoctado as any,
+    tarifaDiaNoPernoctado: sol.tarifa_dia_no_pernoctado as any,
+    totalPernoctados: sol.total_pernoctados as any,
+    totalNoPernoctados: sol.total_no_pernoctados as any,
+    valorPagado: (leg.valorPagado ?? sol.valor_pagado) as any,
+  });
+}
 
 const MIN_OBSERVACION = 10;
 
@@ -235,6 +256,8 @@ export class LegalizacionRevisionService {
     );
     const hayRechazos = detalle.checklist.items.some((i) => i.soportes.some((s) => s.revision === 'RECHAZADO'));
     const reversionPendiente = await this.reversionPendiente(this.dataSource, leg.id);
+    const viajeReal = viajeRealDe(sol, leg);
+    const pagado = sol.valor_pagado == null ? null : Number(sol.valor_pagado);
     return {
       ...detalle,
       puedeEditar: false,
@@ -253,6 +276,12 @@ export class LegalizacionRevisionService {
       puedeRegistrarSiif: Boolean(leg.revisionAprobadaEn && !leg.cerradaEn && !reversionPendiente),
       puedeSolicitarReversion: Boolean(leg.revisionAprobadaEn && !leg.cerradaEn && !reversionPendiente),
       reversionPendiente,
+      // GF-FO-032 V2: reintegro por viaje más corto y tope de lo legalizable.
+      viajeReal,
+      maximoLegalizable:
+        pagado !== null && viajeReal?.reintegroViajeCorto != null
+          ? Math.round((pagado - viajeReal.reintegroViajeCorto) * 100) / 100
+          : pagado,
       historialRevision: historial,
     };
   }
@@ -520,6 +549,17 @@ export class LegalizacionRevisionService {
       if (fecha > fechaColombia(new Date())) {
         throw new BadRequestException('La fecha del registro en SIIF no puede ser posterior a hoy.');
       }
+      const viajeReal = viajeRealDe(sol, leg);
+      const reintegroViajeCorto = viajeReal?.reintegroViajeCorto ?? null;
+      if (reintegroViajeCorto && valorLegalizado > valorPagado - reintegroViajeCorto) {
+        const maximo = Math.round((valorPagado - reintegroViajeCorto) * 100) / 100;
+        throw new BadRequestException(
+          `Según las fechas reales del GF-FO-032 el viaje fue más corto (${viajeReal!.nochesReales} de ${viajeReal!.nochesPlaneadas} noches): ` +
+            `el reintegro por viaje más corto es $${reintegroViajeCorto.toLocaleString('es-CO')} y lo legalizado no puede superar ` +
+            `$${maximo.toLocaleString('es-CO')}.`,
+        );
+      }
+      const diasRegistrados = viajeReal ? viajeReal.diasReales : diasReales;
       const valorReintegro = Math.round((valorPagado - valorLegalizado) * 100) / 100;
       const cierre = new Date();
 
@@ -530,7 +570,8 @@ export class LegalizacionRevisionService {
         valorPagado: valorPagado.toFixed(2),
         valorLegalizado: valorLegalizado.toFixed(2),
         valorReintegro: valorReintegro.toFixed(2),
-        diasReales: diasReales === null ? null : diasReales.toFixed(2),
+        diasReales: diasRegistrados === null ? null : diasRegistrados.toFixed(2),
+        reintegroViajeCorto: reintegroViajeCorto === null ? null : reintegroViajeCorto.toFixed(2),
         observacionesCierre: dto.observaciones?.trim() || null,
         cerradaEn: cierre,
         cerradaPorId: user.userId,
@@ -560,9 +601,13 @@ export class LegalizacionRevisionService {
       });
       await this.registrar(m, leg.id, 'REGISTRO_SIIF_Y_CIERRE', user.userId, {
         observacion: leg.observacionesCierre,
-        detalle: { numeroRegistroSiif: numero, fechaRegistroSiif: fecha, valorPagado, valorLegalizado, valorReintegro, diasReales },
+        detalle: {
+          numeroRegistroSiif: numero, fechaRegistroSiif: fecha, valorPagado, valorLegalizado, valorReintegro,
+          diasReales: diasRegistrados, reintegroViajeCorto,
+          fechaInicioReal: leg.fechaInicioReal, fechaFinReal: leg.fechaFinReal,
+        },
       });
-      return { devuelta: false as const, leg, valorPagado, valorReintegro };
+      return { devuelta: false as const, leg, valorPagado, valorReintegro, diasRegistrados, reintegroViajeCorto };
     });
 
     if (r.devuelta) {
@@ -588,7 +633,10 @@ export class LegalizacionRevisionService {
         valorLegalizado,
         valorReintegro: r.valorReintegro,
         diasComision: sol.dias_comision == null ? null : Number(sol.dias_comision),
-        diasReales,
+        diasReales: r.diasRegistrados,
+        reintegroViajeCorto: r.reintegroViajeCorto,
+        fechaInicioReal: r.leg.fechaInicioReal,
+        fechaFinReal: r.leg.fechaFinReal,
         usuarioId: user.userId,
       };
       this.eventEmitter?.emit(EVENTO_REINTEGRO, evento);

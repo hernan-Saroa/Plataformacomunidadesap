@@ -1,7 +1,7 @@
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { TipoDocumentoSoporteEntity } from '../../../entities/config/tipo-documento-soporte.entity';
 
-export const CONDICIONES_SOPORTE = ['TRANSPORTE_AEREO'] as const;
+export const CONDICIONES_SOPORTE = ['TRANSPORTE_AEREO', 'COMISION_EXTERNA'] as const;
 export type CondicionSoporte = (typeof CONDICIONES_SOPORTE)[number];
 
 /**
