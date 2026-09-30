@@ -15,6 +15,8 @@ vi.mock('../../services/contratacionService', () => ({
     // Desde EFDS-1147 el formulario consulta la modalidad que corresponde a la
     // cuantía mientras se digita el valor.
     sugerenciaModalidad: vi.fn(),
+    // Quién responde por cada punto: la fila dice a quién le toca.
+    responsables: vi.fn(async () => []),
   },
 }));
 
@@ -233,5 +235,84 @@ describe('VistaProcesos · acciones según el alcance', () => {
     render(<VistaProcesos onAbrir={vi.fn()} />);
 
     expect(await screen.findByRole('button', { name: /Nuevo proceso/ })).toBeInTheDocument();
+  });
+});
+
+/**
+ * La fila dice en qué momento está el proceso y a quién le toca.
+ *
+ * Antes el estado era el del estudio previo: un contrato en la etapa 4 seguía
+ * diciendo «Aprobado», y el botón ofrecía «Revisar» también a quien no podía
+ * decidir nada.
+ */
+describe('VistaProcesos · a quién le toca', () => {
+  const proceso = (cambios: Record<string, unknown>) => ({
+    id: 'p-1',
+    radicado: 'CTO-2026-0020',
+    objeto: 'Mantenimiento de ascensores',
+    modalidad: 'MINIMA_CUANTIA',
+    etapa: 3,
+    fechaRadicacion: '2026-09-09T00:00:00.000Z',
+    estudioPrevio: null,
+    actividades: [],
+    participacion: { contratacion: null, abogado: null, enBandeja: false },
+    ...cambios,
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    olvidarAlcance();
+    servicio.modalidades.mockResolvedValue(MODALIDADES);
+  });
+
+  it('al abogado del proceso le dice que le toca revisar', async () => {
+    servicio.listarProcesos.mockResolvedValue([
+      proceso({
+        estudioPrevio: { estado: 'EN_REVISION', version: 1, camposFaltantes: 0, camposObligatorios: 5, actualizadoEn: '2026-09-20' },
+        participacion: {
+          contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: false },
+          abogado: { nombre: 'Andrés Rojas', usuarioNombre: 'andres@esap', esMio: true },
+          enBandeja: false,
+        },
+      }),
+    ]);
+
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect((await screen.findAllByText(/Te toca: Revisión del estudio previo/)).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: /Revisar/ })).toBeInTheDocument();
+  });
+
+  it('pasado el estudio previo, dice qué sigue y a quién le toca', async () => {
+    const actividad = (numeral: string, estado: string, nombre: string) => ({
+      numeral,
+      estado,
+      nombre,
+      etapa: Number.parseInt(numeral, 10),
+    });
+    servicio.listarProcesos.mockResolvedValue([
+      proceso({
+        estudioPrevio: { estado: 'APROBADO', version: 2, camposFaltantes: 0, camposObligatorios: 5, actualizadoEn: '2026-09-20' },
+        actividades: [
+          actividad('3.1', 'APROBADO', 'Estudio previo'),
+          actividad('3.3', 'APROBADO', 'Radicación'),
+          actividad('4.2', 'BORRADOR', 'Verificar disponibilidad presupuestal'),
+        ],
+        participacion: {
+          contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: false },
+          abogado: { nombre: 'Andrés Rojas', usuarioNombre: 'andres@esap', esMio: false },
+          financiera: { nombre: 'Marta Presupuesto', usuarioNombre: 'marta@esap', esMio: false },
+          enBandeja: false,
+        },
+      }),
+    ]);
+
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect(
+      (await screen.findAllByText(/Verificar disponibilidad presupuestal · Marta Presupuesto/)).length,
+    ).toBeGreaterThan(0);
+    // No le toca nada a quien mira: se consulta, no se «revisa».
+    expect(screen.getByRole('button', { name: /Consultar/ })).toBeInTheDocument();
   });
 });

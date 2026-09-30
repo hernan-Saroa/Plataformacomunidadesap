@@ -29,52 +29,21 @@ import { useAlcance } from '../../auth/alcance';
 import { TableroProcesos } from './TableroProcesos';
 import { StepperCompacto } from './StepperCompacto';
 import { etapaEnCurso } from './etapaEnCurso';
+import { pasosDelResumen } from './pasosDelResumen';
+import { useResponsables } from '../../auth/responsables';
+import { situacionDelProceso } from '../proceso/situacionDelProceso';
+import {
+  lineaDeLaSituacion,
+  RASGOS_DEL_MOMENTO,
+  verboDeLaSituacion,
+} from '../proceso/rasgosDelMomento';
+import { TIENEN_PANEL } from '../proceso/DetalleProceso';
 
 interface Props {
   /** Abre directamente el formulario del estudio previo. */
   onAbrir: (procesoId: string) => void;
   /** Abre el detalle con las actividades de la etapa. */
   onVerEtapa?: (procesoId: string) => void;
-}
-
-/** Estado del estudio previo, que es lo único que este HU gestiona. */
-function estadoDe(proceso: ProcesoResumen) {
-  const ep = proceso.estudioPrevio;
-  if (ep?.estado === 'APROBADO') {
-    return {
-      texto: 'Aprobado',
-      detalle: 'Puede continuar a las etapas siguientes',
-      clase: 'bg-emerald-50 text-emerald-700',
-      icono: <CheckCircle2 className="w-3.5 h-3.5" />,
-      colorDetalle: 'text-emerald-700',
-    };
-  }
-  if (ep?.estado === 'EN_REVISION') {
-    return {
-      texto: 'En revisión',
-      detalle: 'Pendiente de aprobación',
-      clase: 'bg-blue-50 text-[#003DA5]',
-      icono: <Lock className="w-3.5 h-3.5" />,
-      colorDetalle: 'text-[#003DA5]',
-    };
-  }
-  const faltan = ep?.camposFaltantes ?? 0;
-  if (faltan > 0) {
-    return {
-      texto: 'En elaboración',
-      detalle: `Faltan ${faltan} ${faltan === 1 ? 'campo obligatorio' : 'campos obligatorios'}`,
-      clase: 'bg-amber-50 text-amber-700',
-      icono: <AlertTriangle className="w-3.5 h-3.5" />,
-      colorDetalle: 'text-amber-700',
-    };
-  }
-  return {
-    texto: 'Listo para enviar',
-    detalle: 'Todos los campos obligatorios diligenciados',
-    clase: 'bg-blue-50 text-[#003DA5]',
-    icono: <Send className="w-3.5 h-3.5" />,
-    colorDetalle: 'text-[#003DA5]',
-  };
 }
 
 const formatoPesos = new Intl.NumberFormat('es-CO', {
@@ -92,14 +61,6 @@ function aNumero(texto: string): number | null {
   if (!limpio) return null;
   const n = Number(limpio);
   return Number.isFinite(n) && n >= 0 ? n : null;
-}
-
-/** El botón dice qué va a pasar, no un genérico "Abrir". */
-function enviadoOEnCurso(proceso: ProcesoResumen) {
-  const estado = proceso.estudioPrevio?.estado;
-  if (estado === 'APROBADO') return 'Consultar';
-  if (estado === 'EN_REVISION') return 'Revisar';
-  return 'Diligenciar';
 }
 
 export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
@@ -126,8 +87,50 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
   );
 
   /** Radicar es empezar el estudio previo: quien edita la 3.1. El resto consulta. */
-  const { puede } = useAlcance();
+  const { puede, cargado } = useAlcance();
   const puedeCrear = puede('editar', '3.1');
+  const responsables = useResponsables();
+
+  /**
+   * En qué momento está cada proceso y a quién le toca.
+   *
+   * Antes el estado de la fila era el del estudio previo, así que un contrato
+   * en ejecución seguía diciendo «Aprobado» y el botón «Consultar» aunque
+   * hubiera un pago esperando a quien miraba. Sale de la misma secuencia que
+   * el riel, para que la lista y el proceso no se contradigan.
+   */
+  const situaciones = useMemo(
+    () =>
+      new Map(
+        procesos.map((p) => [
+          p.id,
+          situacionDelProceso({
+            pasos: pasosDelResumen(p, TIENEN_PANEL),
+            participacion: p.participacion,
+            radicadoPorMi: p.radicadoPorMi,
+            responsables,
+            // Solo con el alcance ya leído: antes responde que sí a todo y le
+            // diría «te toca» a cualquiera.
+            puedo: cargado ? puede : undefined,
+          }),
+        ]),
+      ),
+    [procesos, responsables, cargado, puede],
+  );
+
+  /** El estado de la fila, el mismo en la lista y en el tablero. */
+  const estadoDe = (proceso: ProcesoResumen) => {
+    const situacion = situaciones.get(proceso.id)!;
+    const rasgos = RASGOS_DEL_MOMENTO[situacion.momento];
+    return {
+      texto: situacion.teToca ? 'Te toca' : rasgos.etiqueta,
+      detalle: lineaDeLaSituacion(situacion),
+      clase: situacion.teToca ? 'bg-[#003DA5] text-white' : rasgos.clase,
+      icono: <rasgos.Icono className="w-3.5 h-3.5" />,
+      colorDetalle: rasgos.color,
+      verbo: verboDeLaSituacion(situacion),
+    };
+  };
 
   const cambiarVista = (nueva: 'lista' | 'tablero') => {
     setVista(nueva);
@@ -691,7 +694,7 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
                         focus:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5]/40
                         focus-visible:ring-offset-1"
                     >
-                      {enviadoOEnCurso(p)} <ArrowRight className="w-3.5 h-3.5" />
+                      {estado.verbo} <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>

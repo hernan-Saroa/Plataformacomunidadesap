@@ -396,6 +396,8 @@ export interface ActividadProceso {
   aplica: boolean;
   estado: EstadoActividad | null;
   actualizadoEn: string | null;
+  /** El cargo que Configuración le puso; si no hay, responden los roles del alcance. */
+  responsableCargo?: string | null;
 }
 
 export type UnidadUmbral = 'SMMLV' | 'PESOS';
@@ -458,9 +460,19 @@ export interface ProcesoResumen {
     camposObligatorios: number;
     actualizadoEn: string;
   } | null;
-  actividades?: { numeral: string; estado: EstadoActividad }[];
+  /** En el orden de la matriz, con lo que hace falta para decir a quién le toca. */
+  actividades?: {
+    numeral: string;
+    estado: EstadoActividad;
+    nombre?: string;
+    etapa?: number;
+    actualizadoEn?: string | null;
+    responsableCargo?: string | null;
+  }[];
   /** Quién lleva el proceso y si sigue en la bandeja (EFDS-1183). */
   participacion?: ParticipacionEnLista;
+  /** Quien mira radicó el proceso: es el área que redacta el estudio previo. */
+  radicadoPorMi?: boolean;
 }
 
 /**
@@ -670,6 +682,8 @@ export interface EstadoParticipacion {
 export interface ParticipacionEnLista {
   contratacion: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
   abogado: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
+  /** Quién atiende el CDP en la Financiera, si alguien lo tomó. */
+  financiera?: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
   /** Llegó a la Dirección y nadie lo ha recibido. */
   enBandeja: boolean;
 }
@@ -685,6 +699,8 @@ export interface EstudioPrevio {
     valorEstimado?: number | null;
     etapa: number;
     expediente?: string;
+    /** Quien mira radicó el proceso: es el área que redacta el estudio previo. */
+    radicadoPorMi?: boolean;
   };
   estado: EstadoActividad;
   version: number;
@@ -3372,6 +3388,13 @@ export interface AlcanceMio {
   alcances: AlcanceVista[];
   /** Los permisos que no son de ninguna etapa: configurar, informes, ver todos… */
   transversales: string[];
+}
+
+/** Un rol que puede trabajar, aprobar o decidir en un lugar del módulo. */
+export interface ResponsableDeLugar {
+  rol: string;
+  accion: Exclude<AccionAlcance, 'ver'>;
+  lugar: string;
 }
 
 /** Un rol en la matriz de permisos por etapa. */

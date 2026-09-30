@@ -4,6 +4,7 @@ import {
   AlcanceMio,
   AlcanceVista,
   RolConAlcance,
+  ResponsableDeLugar,
   CamposFaltantesError,
   EstadoAdendas,
   EstadoApertura,
@@ -1994,6 +1995,9 @@ export const contratacionService = {
    * ofrecer algo que la API luego niegue.
    */
   alcanceMio: () => pedir<AlcanceMio>('/alcance/mio'),
+
+  /** Qué roles responden por cada punto, para decir a quién le toca. */
+  responsables: () => pedir<ResponsableDeLugar[]>('/alcance/responsables'),
 
   /** La matriz de permisos por etapa de todos los roles del módulo. */
   alcanceRoles: () => pedir<RolConAlcance[]>('/alcance/roles'),
