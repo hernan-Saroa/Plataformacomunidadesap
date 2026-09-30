@@ -36,4 +36,8 @@ services:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-audit-service:dev-latest
   hiring-service:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-hiring-service:dev-latest
+  chatbot-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-chatbot-service:dev-latest
+  rund-service:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-rund-service:dev-latest
 

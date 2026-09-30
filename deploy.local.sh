@@ -116,6 +116,7 @@ resolve_mfe_service() {
     programacion-academica|mfe-programacion-academica|frontend-mfe-programacion-academica) echo "frontend-mfe-programacion-academica" ;;
     gestion-infraestructura|mfe-gestion-infraestructura|frontend-mfe-gestion-infraestructura) echo "frontend-mfe-gestion-infraestructura" ;;
     chatbot|mfe-chatbot|frontend-mfe-chatbot) echo "frontend-mfe-chatbot" ;;
+    rund|mfe-rund|frontend-mfe-rund) echo "frontend-mfe-rund" ;;
     *) return 1 ;;
   esac
 }
@@ -161,12 +162,12 @@ cmd_restart() {
 
 cmd_up_backend() {
   echo -e "${GREEN}Levantando backend local sin PostgreSQL...${NC}"
-  compose_local up -d --build redis onlyoffice auth-service academic-registration-service academic-work-plan-service certification-service internal-disciplinary-control-service interoperability-service internal-institutional-control-service legal-management-service notifications-service travel-expenses-service audit-service hiring-service academic-schedule-service infrastructure-management-service chatbot-service api-gateway
+  compose_local up -d --build redis onlyoffice auth-service academic-registration-service academic-work-plan-service certification-service internal-disciplinary-control-service interoperability-service internal-institutional-control-service legal-management-service notifications-service travel-expenses-service audit-service hiring-service academic-schedule-service infrastructure-management-service chatbot-service rund-service api-gateway
 }
 
 cmd_up_frontend() {
   echo -e "${GREEN}Levantando frontend MFE local...${NC}"
-  compose_local up -d --build frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot
+  compose_local up -d --build frontend frontend-shell frontend-mfe-estructura-org frontend-mfe-gestion-profesoral frontend-mfe-programas-academicos frontend-mfe-gestion-personas frontend-mfe-auditoria frontend-mfe-reportes frontend-mfe-registro-academico frontend-mfe-certificados-laborales frontend-mfe-firma-electronica frontend-mfe-control-interno frontend-mfe-control-disciplinario frontend-mfe-gestion-legal frontend-mfe-pta frontend-mfe-contratacion frontend-mfe-viaticos frontend-mfe-programacion-academica frontend-mfe-gestion-infraestructura frontend-mfe-chatbot frontend-mfe-rund
 }
 
 cmd_logs() {
@@ -207,6 +208,7 @@ cmd_health() {
   check_tcp_port "localhost" "3013" "Academic Schedule Service" || failed=1
   check_tcp_port "localhost" "3014" "Infrastructure Management Service" || failed=1
   check_tcp_port "localhost" "3015" "Chatbot Service" || failed=1
+  check_tcp_port "localhost" "3016" "RUND Service" || failed=1
   echo ""
 
   echo -e "${YELLOW}Validando respuestas HTTP básicas:${NC}"
@@ -217,6 +219,7 @@ cmd_health() {
   check_http_url "http://localhost:3012/health" "Hiring Health" || failed=1
   check_http_url "http://localhost:3014/health" "Infrastructure Management Health" || failed=1
   check_http_url "http://localhost:3015/health" "Chatbot Health" || failed=1
+  check_http_url "http://localhost:3016/health" "RUND Health" || failed=1
   check_http_url "http://localhost:9000/" "OnlyOffice" || failed=1
 
   if [ "$failed" -ne 0 ]; then

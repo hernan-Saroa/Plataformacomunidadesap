@@ -39,6 +39,7 @@ services:
       - frontend-mfe-programacion-academica
       - frontend-mfe-gestion-infraestructura
       - frontend-mfe-chatbot
+      - frontend-mfe-rund
       - api-gateway
       - onlyoffice
     volumes:
@@ -272,3 +273,16 @@ services:
         FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-chatbot
     container_name: superapp-mfe-chatbot${FRONTEND_CONTAINER_SUFFIX:--prod}
     <<: *frontend-service
+
+  frontend-mfe-rund:
+    build:
+      context: .
+      dockerfile: ${FRONTEND_APP_DOCKERFILE:-Dockerfile.frontend.app}
+      args:
+        <<: *frontend-build-args
+        FRONTEND_APP_DIR: mfe-rund
+        FRONTEND_DIST_DIR: /app/build/remotes/mfe-rund
+        FRONTEND_PREBUILT_DIST_DIR: build/remotes/mfe-rund
+    container_name: superapp-mfe-rund${FRONTEND_CONTAINER_SUFFIX:--prod}
+    <<: *frontend-service
+

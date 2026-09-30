@@ -218,6 +218,30 @@ services:
       DB_NAME: ${LOCAL_DB_NAME:-esap_db}
     depends_on: {}
 
+  chatbot-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: chatbot-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USER: ${LOCAL_DB_USER:-postgres}
+      DB_PASS: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_NAME: ${LOCAL_DB_NAME:-esap_db}
+    depends_on: {}
+
+  rund-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: rund-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USER: ${LOCAL_DB_USER:-postgres}
+      DB_PASS: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_NAME: ${LOCAL_DB_NAME:-esap_db}
+    depends_on: {}
+
   frontend:
     extends:
       file: ./docker-compose.frontend-mfe.yml
@@ -312,6 +336,16 @@ services:
     extends:
       file: ./docker-compose.frontend-mfe.yml
       service: frontend-mfe-gestion-infraestructura
+
+  frontend-mfe-chatbot:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-chatbot
+
+  frontend-mfe-rund:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-rund
 networks:
   superapp-net:
     driver: bridge

@@ -105,6 +105,7 @@ services:
       ACADEMIC_SCHEDULE_SERVICE_URL: http://academic-schedule-service:3013
       INFRASTRUCTURE_MANAGEMENT_SERVICE_URL: http://infrastructure-management-service:3014
       CHATBOT_SERVICE_URL: http://chatbot-service:3015
+      RUND_SERVICE_URL: http://rund-service:3016
       REDIS_URL: redis://redis:6379
     ports:
       # 4000 en el host: es lo que el front espera en desarrollo
@@ -385,6 +386,24 @@ services:
       API_GATEWAY_URL: http://api-gateway:3000
     ports:
       - "3015:3015"
+
+  rund-service:
+    <<: *service-defaults
+    build:
+      context: ./backend/rund-service
+      dockerfile: Dockerfile
+    container_name: rund-service
+    environment:
+      <<: *db-env
+      NODE_ENV: production
+      PORT: 3016
+      DB_SCHEMA: rund
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
+      API_GATEWAY_URL: http://api-gateway:3000
+      AUTH_SERVICE_URL: http://auth-service:3001
+      NOTIFICATION_SERVICE_URL: http://notifications-service:3009
+    ports:
+      - "3016:3016"
 
 networks:
   esap-backend:

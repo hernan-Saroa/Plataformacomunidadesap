@@ -76,6 +76,7 @@ services:
       ACADEMIC_SCHEDULE_SERVICE_URL: http://academic-schedule-service:3013
       INFRASTRUCTURE_MANAGEMENT_SERVICE_URL: http://infrastructure-management-service:3014
       CHATBOT_SERVICE_URL: http://chatbot-service:3015
+      RUND_SERVICE_URL: http://rund-service:3016
     ports:
       - "${API_GATEWAY_PORT:-3000}:3000"
     depends_on:
@@ -94,6 +95,7 @@ services:
       - hiring-service
       - academic-schedule-service
       - infrastructure-management-service
+      - rund-service
     networks:
       - superapp-net
     restart: unless-stopped
@@ -664,6 +666,36 @@ services:
       CORS_ORIGIN: "*"
     ports:
       - "3015:3015"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - superapp-net
+    restart: unless-stopped
+
+  # ============ RUND SERVICE ============
+  rund-service:
+    build:
+      context: ./backend/rund-service
+      dockerfile: Dockerfile
+    container_name: rund-service
+    environment:
+      NODE_ENV: production
+      PORT: 3016
+
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
+      DB_NAME: esap_db
+      DB_SCHEMA: rund
+
+      JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
+      API_GATEWAY_URL: http://api-gateway:3000
+      AUTH_SERVICE_URL: http://auth-service:3001
+      NOTIFICATION_SERVICE_URL: http://notifications-service:3009
+    ports:
+      - "3016:3016"
     depends_on:
       db:
         condition: service_healthy
