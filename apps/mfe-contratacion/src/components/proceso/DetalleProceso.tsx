@@ -195,6 +195,8 @@ interface Props {
    * desde aquí se le ofrece abrir la revisión.
    */
   onRevisar?: (numeral: string) => void;
+  /** A dónde lleva «volver»: el listado o «Mi trabajo». */
+  volverA?: string;
 }
 
 export function DetalleProceso({
@@ -202,6 +204,7 @@ export function DetalleProceso({
   onVolver,
   actividadInicial = null,
   onRevisar,
+  volverA = 'Procesos',
 }: Props) {
   const [datos, setDatos] = useState<EstudioPrevio | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -497,7 +500,7 @@ export function DetalleProceso({
       <div className="bg-white border border-gray-200 rounded-xl p-10 text-center">
         <p className="text-sm text-red-600 m-0 mb-3">{error ?? 'No se pudo cargar el proceso'}</p>
         <button onClick={onVolver} className="text-sm font-bold text-[#003DA5]">
-          Volver a procesos
+          Volver a {volverA.toLowerCase()}
         </button>
       </div>
     );
@@ -766,7 +769,7 @@ export function DetalleProceso({
             onClick={onVolver}
             className="inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-[#003DA5] mb-2.5"
           >
-            <ArrowLeft className="w-3.5 h-3.5" /> Procesos
+            <ArrowLeft className="w-3.5 h-3.5" /> {volverA}
           </button>
 
           <div className="flex items-start gap-3">

@@ -142,6 +142,45 @@ function unaDeEstas(nombres: string[]): string | null {
  * del proceso y la bandeja dicen lo mismo, y lo dicen sin tener que abrir la
  * actividad.
  */
+/**
+ * Quién responde por un paso: la persona a cargo, el cargo configurado o los
+ * roles que pueden actuar, en ese orden.
+ *
+ * Aparte de `situacionDelProceso` porque la ficha del proceso lo pregunta por
+ * cada actividad, no solo por la actual, y la regla tiene que ser la misma.
+ * Las personas del reparto (3.3 y 3.4) las resuelve la situación, que sabe en
+ * qué punto del reparto va el proceso.
+ */
+export function responsableDelPaso(
+  entrada: EntradaSituacion,
+  paso: PasoConDatos,
+  acciones: Exclude<AccionAlcance, 'ver'>[] = ['editar', 'decidir'],
+): { quien: string | null; teToca: boolean; accion: Exclude<AccionAlcance, 'ver'> } {
+  const { participacion = {}, responsables = [], puedo } = entrada;
+  const puedoEn = (accion: AccionAlcance, numeral: string) => puedo?.(accion, numeral) ?? false;
+  const accionPrincipal = acciones[0];
+
+  if (DE_LA_FINANCIERA.includes(paso.numeral) && participacion.financiera) {
+    return {
+      quien: participacion.financiera.nombre,
+      teToca: !!participacion.financiera.esMio,
+      accion: accionPrincipal,
+    };
+  }
+
+  for (const accion of acciones) {
+    const roles = rolesQuePueden(responsables, accion, paso.numeral);
+    if (roles.length || paso.responsableCargo) {
+      return {
+        quien: paso.responsableCargo || unaDeEstas(roles),
+        teToca: puedoEn(accion, paso.numeral),
+        accion,
+      };
+    }
+  }
+  return { quien: null, teToca: puedoEn(accionPrincipal, paso.numeral), accion: accionPrincipal };
+}
+
 export function situacionDelProceso(entrada: EntradaSituacion): Situacion {
   const { participacion = {}, responsables = [], puedo } = entrada;
   // La 3.4 no es un paso aparte: es la 3.1 enviada. Contarla la dejaría como
@@ -150,34 +189,8 @@ export function situacionDelProceso(entrada: EntradaSituacion): Situacion {
   const ultimoMovimiento = ultimaFecha(pasos);
 
   const puedoEn = (accion: AccionAlcance, numeral: string) => puedo?.(accion, numeral) ?? false;
-
-  /** Quién responde por un paso: persona a cargo, cargo configurado o roles. */
-  const responsableDe = (
-    paso: PasoConDatos,
-    acciones: Exclude<AccionAlcance, 'ver'>[],
-  ): { quien: string | null; teToca: boolean; accion: Exclude<AccionAlcance, 'ver'> } => {
-    const accionPrincipal = acciones[0];
-
-    if (DE_LA_FINANCIERA.includes(paso.numeral) && participacion.financiera) {
-      return {
-        quien: participacion.financiera.nombre,
-        teToca: !!participacion.financiera.esMio,
-        accion: accionPrincipal,
-      };
-    }
-
-    for (const accion of acciones) {
-      const roles = rolesQuePueden(responsables, accion, paso.numeral);
-      if (roles.length || paso.responsableCargo) {
-        return {
-          quien: paso.responsableCargo || unaDeEstas(roles),
-          teToca: puedoEn(accion, paso.numeral),
-          accion,
-        };
-      }
-    }
-    return { quien: null, teToca: puedoEn(accionPrincipal, paso.numeral), accion: accionPrincipal };
-  };
+  const responsableDe = (paso: PasoConDatos, acciones: Exclude<AccionAlcance, 'ver'>[]) =>
+    responsableDelPaso(entrada, paso, acciones);
 
   const base = (paso: PasoConDatos | null) => ({
     numeral: paso?.numeral ?? null,

@@ -9,6 +9,8 @@ interface Props {
   error: string | null;
   onRecargar: () => void;
   onRevisar: (elemento: ElementoPorRevisar) => void;
+  /** Dentro de «Mi trabajo», que ya pone el título: solo los contadores. */
+  embebida?: boolean;
 }
 
 /** Desde cuántos días de espera se señala en ámbar. */
@@ -36,7 +38,14 @@ type Filtro = 'todo' | 'estudios' | 'actividades';
  * de una regla de aprobación: es la revisión más importante del proceso, y
  * antes solo se enteraba entrando al proceso.
  */
-export function VistaPorRevisar({ elementos, cargando, error, onRecargar, onRevisar }: Props) {
+export function VistaPorRevisar({
+  elementos,
+  cargando,
+  error,
+  onRecargar,
+  onRevisar,
+  embebida = false,
+}: Props) {
   const [filtro, setFiltro] = useState<Filtro>('todo');
 
   const estudios = elementos.filter((e) => e.tipo === 'ESTUDIO_PREVIO').length;
@@ -53,15 +62,23 @@ export function VistaPorRevisar({ elementos, cargando, error, onRecargar, onRevi
   return (
     <div className="space-y-3 md:space-y-4">
       <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-start gap-3 flex-wrap">
-        <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
-          <ClipboardCheck className="w-5 h-5 text-emerald-700" aria-hidden="true" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-[15px] font-bold text-slate-900 m-0">Por revisar</h2>
-          <p className="text-[13px] text-slate-500 m-0 mt-0.5">
+        {embebida ? (
+          <p className="min-w-0 flex-1 self-center text-[13px] text-slate-500 m-0">
             Lo que espera tu decisión, lo que más lleva esperando primero.
           </p>
-        </div>
+        ) : (
+          <>
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center flex-shrink-0">
+              <ClipboardCheck className="w-5 h-5 text-emerald-700" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-[15px] font-bold text-slate-900 m-0">Por revisar</h2>
+              <p className="text-[13px] text-slate-500 m-0 mt-0.5">
+                Lo que espera tu decisión, lo que más lleva esperando primero.
+              </p>
+            </div>
+          </>
+        )}
         <button
           type="button"
           onClick={onRecargar}

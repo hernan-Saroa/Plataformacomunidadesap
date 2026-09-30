@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   BarChart3,
   BellRing,
+  Inbox,
   Handshake,
   Coins,
   FolderOpen,
@@ -33,16 +34,15 @@ import { VistaExpedientes } from './expedientes/VistaExpedientes';
 import { VistaAlertas } from './alertas/VistaAlertas';
 import { VistaBandejaCdp } from './cdp/VistaBandejaCdp';
 import { VistaEstadisticas } from './estadisticas/VistaEstadisticas';
-import { VistaPorRevisar } from './revision/VistaPorRevisar';
 import { RevisionDeActividad } from './revision/RevisionDeActividad';
-import { contratacionService } from '../services/contratacionService';
-import { ElementoPorRevisar } from '../types';
+import { PestanaTrabajo, VistaMiTrabajo } from './trabajo/VistaMiTrabajo';
+import { useMiTrabajo } from '../hooks/useMiTrabajo';
 import { PERMISOS } from '../auth/permisos';
 import { esSoloPresupuesto, useAlcance } from '../auth/alcance';
 
 type Seccion =
   | 'estudios-previos'
-  | 'por-revisar'
+  | 'mi-trabajo'
   | 'revision'
   | 'alertas'
   | 'bandeja-cdp'
@@ -89,7 +89,9 @@ const SECCIONES_DE_CONFIGURACION: Seccion[] = [
  * por «Procesos», como siempre.
  */
 function seccionDeEntrada(): Seccion {
-  return esSoloPresupuesto() ? 'bandeja-cdp' : 'estudios-previos';
+  // «Mi trabajo» y no el listado (reestructuración del flujo): quien entra
+  // quiere saber qué le toca hoy, no qué procesos existen.
+  return esSoloPresupuesto() ? 'bandeja-cdp' : 'mi-trabajo';
 }
 
 export default function ContratacionModulePremium() {
@@ -128,26 +130,24 @@ export default function ContratacionModulePremium() {
     desde: 'bandeja' | 'proceso';
   } | null>(null);
 
-  /** Lo que espera la decisión de quien mira: la bandeja y su contador. */
-  const [porRevisar, setPorRevisar] = useState<ElementoPorRevisar[]>([]);
-  const [cargandoPorRevisar, setCargandoPorRevisar] = useState(false);
-  const [errorPorRevisar, setErrorPorRevisar] = useState<string | null>(null);
-  const cargarPorRevisar = () => {
-    setCargandoPorRevisar(true);
-    Promise.resolve()
-      .then(() => contratacionService.porRevisar())
-      .then((lista) => {
-        setPorRevisar(lista ?? []);
-        setErrorPorRevisar(null);
-      })
-      .catch((e: any) => setErrorPorRevisar(e?.message ?? 'No se pudo cargar la bandeja'))
-      .finally(() => setCargandoPorRevisar(false));
-  };
-  // Al entrar y cada vez que se vuelve a la bandeja o se cierra una revisión:
-  // el contador del menú tiene que bajar en cuanto algo se resuelve.
-  useEffect(() => {
-    cargarPorRevisar();
-  }, [seccion, revision === null]);
+  /**
+   * «Mi trabajo»: lo que le toca a quien mira, y el número del menú.
+   *
+   * Se relee al cambiar de sección y al cerrar una revisión o un proceso: el
+   * contador tiene que bajar en cuanto algo se resuelve.
+   */
+  const miTrabajo = useMiTrabajo(`${seccion}|${revision === null}|${procesoId === null}`);
+  const [pestanaTrabajo, setPestanaTrabajo] = useState<PestanaTrabajo | null>(null);
+  /** La pestaña con algo pendiente, si nadie ha elegido otra. */
+  const pestanaVisible: PestanaTrabajo =
+    pestanaTrabajo ??
+    (miTrabajo.trabajo.porHacer.length
+      ? 'hacer'
+      : miTrabajo.porRevisar.length
+        ? 'revisar'
+        : miTrabajo.trabajo.porAsignar.length
+          ? 'asignar'
+          : 'hacer');
 
   const puedeConfigurar = tiene(PERMISOS.configurar);
   /**
@@ -168,6 +168,23 @@ export default function ContratacionModulePremium() {
   const grupos: MenuGroup[] = [
     {
       items: [
+        /*
+         * «Mi trabajo» (reestructuración del flujo): lo que le toca a quien
+         * mira —hacer, revisar, asignar— y lo que espera a otros en sus
+         * procesos. El número es lo que le reclama una acción.
+         */
+        ...(!puede('ver')
+          ? []
+          : [
+              {
+                id: 'mi-trabajo' as Seccion,
+                label: 'Mi trabajo',
+                subtitle: 'Lo que te toca hoy',
+                icon: <Inbox className="w-5 h-5" />,
+                color: '#059669',
+                badge: miTrabajo.pendientes,
+              },
+            ]),
         {
           id: 'estudios-previos',
           label: 'Procesos',
@@ -175,24 +192,6 @@ export default function ContratacionModulePremium() {
           icon: <FileSignature className="w-5 h-5" />,
           color: '#003DA5',
         },
-        /*
-         * «Por revisar» (reestructuración del flujo): lo que espera la decisión
-         * de quien mira, con su contador, como la «Revisión y Aprobación» del
-         * módulo disciplinario. Se ve si puede aprobar o decidir algo, o si
-         * tiene algo esperándolo —un abogado lo es por reparto, no por rol—.
-         */
-        ...(!(puede('aprobar') || puede('decidir') || porRevisar.length > 0)
-          ? []
-          : [
-              {
-                id: 'por-revisar' as Seccion,
-                label: 'Por revisar',
-                subtitle: 'Lo que espera tu decisión',
-                icon: <ClipboardCheck className="w-5 h-5" />,
-                color: '#059669',
-                badge: porRevisar.length,
-              },
-            ]),
         /*
          * Aquí había una sección «Revisión · Aprobación de documentos» marcada
          * como «Próx.». Se creó con la UI de aprobar y devolver del estudio
@@ -336,8 +335,11 @@ export default function ContratacionModulePremium() {
         <RevisionDeActividad
           procesoId={revision.procesoId}
           numeral={revision.numeral}
-          volverA={revision.desde === 'bandeja' ? 'Por revisar' : 'Proceso'}
-          onVolver={() => setRevision(null)}
+          volverA={revision.desde === 'bandeja' ? 'Mi trabajo' : 'Proceso'}
+          onVolver={() => {
+            setRevision(null);
+            if (revision.desde === 'bandeja') setPestanaTrabajo('revisar');
+          }}
           onVerProceso={(numeral) => {
             setSeccion('estudios-previos');
             setProcesoId(revision.procesoId);
@@ -348,16 +350,25 @@ export default function ContratacionModulePremium() {
       );
     }
 
-    if (seccion === 'por-revisar') {
+    if (seccion === 'mi-trabajo' && !procesoId) {
       return (
-        <VistaPorRevisar
-          elementos={porRevisar}
-          cargando={cargandoPorRevisar}
-          error={errorPorRevisar}
-          onRecargar={cargarPorRevisar}
+        <VistaMiTrabajo
+          estado={miTrabajo}
+          pestana={pestanaVisible}
+          onPestana={setPestanaTrabajo}
           onRevisar={(e) =>
             setRevision({ procesoId: e.procesoId, numeral: e.numeral, desde: 'bandeja' })
           }
+          // El proceso se abre sin salir de la sección: «volver» regresa a la
+          // bandeja, que es de donde vino.
+          onTrabajar={(id, numeral) => {
+            setProcesoId(id);
+            setActividad(numeral);
+          }}
+          onConsultar={(id) => {
+            setProcesoId(id);
+            setActividad(null);
+          }}
         />
       );
     }
@@ -440,7 +451,8 @@ export default function ContratacionModulePremium() {
             // Una aprobación pendiente se resuelve en su revisión, no en el
             // formulario de quien la trabajó.
             if (tipo === 'APROBACION_PENDIENTE' && numeral) {
-              setSeccion('por-revisar');
+              setSeccion('mi-trabajo');
+              setPestanaTrabajo('revisar');
               setRevision({ procesoId: id, numeral, desde: 'bandeja' });
               return;
             }
@@ -487,6 +499,7 @@ export default function ContratacionModulePremium() {
       return (
         <DetalleProceso
           procesoId={procesoId}
+          volverA={seccion === 'mi-trabajo' ? 'Mi trabajo' : 'Procesos'}
           onVolver={() => {
             setProcesoId(null);
             setActividad(null);

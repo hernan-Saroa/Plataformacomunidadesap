@@ -1,5 +1,6 @@
-import { ProcesoResumen } from '../../types';
-import { PasoConDatos } from '../proceso/situacionDelProceso';
+import { AccionAlcance, ProcesoResumen, ResponsableDeLugar } from '../../types';
+import { PasoConDatos, Situacion, situacionDelProceso } from '../proceso/situacionDelProceso';
+import { TIENEN_PANEL } from '../proceso/actividadesConPanel';
 
 /**
  * El flujo de un proceso a partir de la fila del listado.
@@ -43,4 +44,25 @@ export function pasosDelResumen(
   }
 
   return pasos;
+}
+
+/**
+ * La situación de un proceso a partir de su fila del listado.
+ *
+ * La usan el listado y «Mi trabajo»: si cada uno la armara por su cuenta,
+ * podrían decir cosas distintas del mismo proceso.
+ */
+export function situacionDelResumen(
+  proceso: ProcesoResumen,
+  responsables: ResponsableDeLugar[],
+  /** Solo con el alcance ya leído: antes responde que sí a todo. */
+  puedo?: (accion: AccionAlcance, lugar: string) => boolean,
+): Situacion {
+  return situacionDelProceso({
+    pasos: pasosDelResumen(proceso, TIENEN_PANEL),
+    participacion: proceso.participacion,
+    radicadoPorMi: proceso.radicadoPorMi,
+    responsables,
+    puedo,
+  });
 }

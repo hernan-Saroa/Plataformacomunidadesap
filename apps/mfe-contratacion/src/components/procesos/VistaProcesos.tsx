@@ -29,15 +29,13 @@ import { useAlcance } from '../../auth/alcance';
 import { TableroProcesos } from './TableroProcesos';
 import { StepperCompacto } from './StepperCompacto';
 import { etapaEnCurso } from './etapaEnCurso';
-import { pasosDelResumen } from './pasosDelResumen';
+import { situacionDelResumen } from './pasosDelResumen';
 import { useResponsables } from '../../auth/responsables';
-import { situacionDelProceso } from '../proceso/situacionDelProceso';
 import {
   lineaDeLaSituacion,
   RASGOS_DEL_MOMENTO,
   verboDeLaSituacion,
 } from '../proceso/rasgosDelMomento';
-import { TIENEN_PANEL } from '../proceso/actividadesConPanel';
 import { ChipPlazo } from '../proceso/ChipPlazo';
 import { usePlazos } from '../../hooks/usePlazos';
 
@@ -108,15 +106,9 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
       new Map(
         procesos.map((p) => [
           p.id,
-          situacionDelProceso({
-            pasos: pasosDelResumen(p, TIENEN_PANEL),
-            participacion: p.participacion,
-            radicadoPorMi: p.radicadoPorMi,
-            responsables,
-            // Solo con el alcance ya leído: antes responde que sí a todo y le
-            // diría «te toca» a cualquiera.
-            puedo: cargado ? puede : undefined,
-          }),
+          // Solo con el alcance ya leído: antes responde que sí a todo y le
+          // diría «te toca» a cualquiera.
+          situacionDelResumen(p, responsables, cargado ? puede : undefined),
         ]),
       ),
     [procesos, responsables, cargado, puede],
