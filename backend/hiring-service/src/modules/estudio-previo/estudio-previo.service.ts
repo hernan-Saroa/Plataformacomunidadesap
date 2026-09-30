@@ -41,7 +41,10 @@ import {
   esSuya,
 } from '../participacion/participacion.service';
 import { CdpService } from '../cdp/cdp.service';
-import { DocumentosActividadService } from '../documentos-actividad/documentos-actividad.service';
+import {
+  DocumentosActividadService,
+  soportesDeDevolucion,
+} from '../documentos-actividad/documentos-actividad.service';
 
 const ETAPA_ESTUDIOS_PREVIOS = 3;
 
@@ -1088,10 +1091,20 @@ export class EstudioPrevioService implements OnModuleInit {
   /** Historial de revisiones del estudio previo, de la más reciente a la más antigua. */
   async revisiones(procesoId: string) {
     const actividad = await this.obtenerActividad(this.dataSource.manager, procesoId);
-    return this.dataSource.getRepository(Revision).find({
+    const revisiones = await this.dataSource.getRepository(Revision).find({
       where: { procesoActividadId: actividad.id },
       order: { createdAt: 'DESC' },
     });
+    // El archivo de cada devolución, para que el área abra las correcciones
+    // marcadas desde el aviso sin buscarlas en el expediente.
+    const soportes = await soportesDeDevolucion(
+      this.dataSource.manager,
+      revisiones.map((r) => r.soporteDocumentoId),
+    );
+    return revisiones.map((r) => ({
+      ...r,
+      soporte: r.soporteDocumentoId ? (soportes.get(r.soporteDocumentoId) ?? null) : null,
+    }));
   }
 
   // ----------------------------------------------------------- expediente ---
