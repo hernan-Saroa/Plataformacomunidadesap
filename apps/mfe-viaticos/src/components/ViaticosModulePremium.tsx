@@ -88,6 +88,7 @@ const Permissions = {
   VIATICOS_TIQUETES_MANAGE: 'travel_expenses:tickets.manage',
   VIATICOS_LEGALIZACIONES_VIEW: 'travel_expenses:legalizations.view',
   VIATICOS_LEGALIZACIONES_MANAGE: 'travel_expenses:legalizations.manage',
+  VIATICOS_LEGALIZACIONES_REVERTIR: 'travel_expenses:legalizations.revert_approval',
   VIATICOS_RESOLUCIONES_VIEW: 'travel_expenses:resolutions.view',
   VIATICOS_RESOLUCIONES_MANAGE: 'travel_expenses:resolutions.manage',
   VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
@@ -659,6 +660,7 @@ export default function ViaticosModulePremium() {
     authService.hasAnyPermission([
       Permissions.VIATICOS_LEGALIZACIONES_VIEW,
       Permissions.VIATICOS_LEGALIZACIONES_MANAGE,
+      Permissions.VIATICOS_LEGALIZACIONES_REVERTIR,
     ]);
   const puedeVerResoluciones =
     !tieneContextoAuth ||

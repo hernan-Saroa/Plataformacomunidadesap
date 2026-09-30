@@ -48,11 +48,13 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_siif_requested',
     'travel_expenses:double_check_request',
     'travel_expenses:return_to_analyst',
+    'travel_expenses:legalizations.revert_approval', // EFDS-1310: aprueba reversiones de revisión
   ],
   ROL_CONTROL_VIATICOS: [
     'travel_expenses:read_siif_requested',
     'travel_expenses:double_check_request',
     'travel_expenses:return_to_analyst',
+    'travel_expenses:legalizations.revert_approval', // EFDS-1310: aprueba reversiones de revisión
   ],
   ANALISTA: [
     'travel_expenses:read_assigned',

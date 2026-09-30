@@ -32,8 +32,8 @@ import type { FiltroBandeja, RegistrarSiifDto } from './legalizacion-revision.se
 /** EFDS-1310 — El MFE ya consulta este permiso para la sección de legalizaciones. */
 const PERMISO_REVISAR = 'travel_expenses:legalizations.manage';
 /**
- * EFDS-1310 — Aprobar la reversión de una revisión aprobada. Registrado por la
- * migración 454 sin asignar a ningún rol: el rol que aprueba aún no está confirmado.
+ * EFDS-1310 — Aprobar la reversión de una revisión aprobada. Lo tiene
+ * CONTROL_VIATICOS (migración 500 y permissions.guard.ts), por segregación de funciones.
  */
 const PERMISO_APROBAR_REVERSION = 'travel_expenses:legalizations.revert_approval';
 

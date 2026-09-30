@@ -14,7 +14,7 @@ type Vista = 'revision' | 'propias' | 'reversiones';
  * travel_expenses:legalizations.view), el analista revisa y cierra
  * (EFDS-1310, travel_expenses:legalizations.manage) y quien aprueba las
  * reversiones de revisión las resuelve (travel_expenses:legalizations.revert_approval,
- * aún sin rol asignado). Quien tenga más de una vista elige.
+ * CONTROL_VIATICOS). Quien tenga más de una vista elige.
  */
 export default function LegalizacionesSeccion() {
   const admin = Boolean(authService.getCurrentUserSync?.()?.esAdmin);

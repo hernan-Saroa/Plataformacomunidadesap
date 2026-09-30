@@ -140,7 +140,7 @@ export interface ItemReversionPendiente extends ReversionRevision {
   siifExportadoEn: string | null;
 }
 
-/** Permiso de quien aprueba las reversiones (migración 454, sin asignar a ningún rol). */
+/** Permiso de quien aprueba las reversiones: CONTROL_VIATICOS (migraciones 454 y 500). */
 export const PERMISO_APROBAR_REVERSION = 'travel_expenses:legalizations.revert_approval';
 
 export interface RegistroSiifPayload {
