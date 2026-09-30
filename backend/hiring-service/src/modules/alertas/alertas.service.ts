@@ -106,6 +106,23 @@ export type TipoAlerta =
    */
   | 'PLAZO_ACTIVIDAD';
 
+/** Algo que espera la decisión de quien consulta (bandeja «Por revisar»). */
+export interface ElementoPorRevisar {
+  /** El estudio previo lo decide el abogado; lo demás, quien aprueba la actividad. */
+  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD';
+  procesoId: string;
+  radicado: string | null;
+  objeto: string;
+  modalidad: string | null;
+  numeral: string;
+  actividad: string;
+  etapa: number;
+  version: number | null;
+  enviadoPor: string | null;
+  desde: string;
+  diasEsperando: number;
+}
+
 /** Una actividad cuyo plazo aprieta o ya pasó. */
 export interface PlazoDeActividad {
   procesoId: string;
@@ -364,23 +381,34 @@ export class AlertasService {
     });
   }
 
-  private async aprobacionesPendientes(
-    acceso: HiringAccess,
-  ): Promise<Omit<Alerta, never>[]> {
+  /**
+   * Las actividades enviadas que quien consulta puede aprobar.
+   *
+   * Una sola consulta para la alerta y para la bandeja «Por revisar»: si cada
+   * una decidiera por su cuenta quién aprueba, acabarían contando cosas
+   * distintas sobre lo mismo.
+   */
+  private filasPorAprobar(acceso: HiringAccess): Promise<any[]> {
     const roles = acceso.roles ?? [];
     const esSuperAdmin = roles.includes('SUPER_ADMIN');
 
-    const filas = await this.dataSource.query(
+    return this.dataSource.query(
       `
-      SELECT p.id                AS proceso_id,
+      SELECT DISTINCT ON (pa.id)
+             p.id                AS proceso_id,
              p.radicado          AS radicado,
+             p.objeto            AS objeto,
+             m.nombre            AS modalidad,
              pa.numeral          AS numeral,
              a.nombre            AS actividad,
+             a.etapa             AS etapa,
+             pa.version          AS version,
              pa.enviado_por      AS enviado_por,
              pa.updated_at       AS desde
         FROM hiring.proceso_actividades pa
         JOIN hiring.procesos p ON p.id = pa.proceso_id
         JOIN hiring.actividades a ON a.numeral = pa.numeral
+        LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
         JOIN hiring.reglas_actividad r
               ON r.numeral = pa.numeral
              AND r.tipo = 'EXIGE_APROBACION'
@@ -398,9 +426,18 @@ export class AlertasService {
               WHERE rol = ANY($1::text[])
            )
          )
-       ORDER BY pa.updated_at ASC
+       ORDER BY pa.id, pa.updated_at ASC
       `,
       [roles, acceso.userId ?? '', esSuperAdmin],
+    );
+  }
+
+  private async aprobacionesPendientes(
+    acceso: HiringAccess,
+  ): Promise<Omit<Alerta, never>[]> {
+    // DISTINCT ON exige ordenar por la fila; el orden de la lista se pone aquí.
+    const filas = (await this.filasPorAprobar(acceso)).sort(
+      (a: any, b: any) => new Date(a.desde).getTime() - new Date(b.desde).getTime(),
     );
 
     return filas.map((f: any) => {
@@ -437,6 +474,87 @@ export class AlertasService {
         responsableId: acceso.userId || null,
       };
     });
+  }
+
+  /**
+   * Lo que quien consulta tiene por revisar: la bandeja «Por revisar».
+   *
+   * Dos fuentes y una sola lista, como la «Revisión y Aprobación» del módulo
+   * disciplinario: quien revisa ve de una vez todo lo que espera su decisión,
+   * sin entrar proceso por proceso.
+   *
+   * - Las actividades con aprobación configurada, con la misma consulta que la
+   *   alerta.
+   * - Los estudios previos enviados cuyo abogado es quien consulta. La 3.4 no
+   *   sale de una regla de aprobación sino del reparto de la 3.3, y por eso la
+   *   alerta no la veía: el abogado tenía que entrar al proceso para enterarse.
+   *
+   * La 3.1 no se toma de la primera fuente aunque tuviera regla: su decisión
+   * es la del abogado, y listarla dos veces ofrecería dos caminos para lo mismo.
+   */
+  async porRevisar(acceso: HiringAccess): Promise<ElementoPorRevisar[]> {
+    const nombre = (acceso.userName ?? '').trim();
+    const id = (acceso.userId ?? '').trim();
+
+    const [aprobaciones, estudios] = await Promise.all([
+      this.filasPorAprobar(acceso),
+      nombre || id
+        ? this.dataSource.query(
+            `
+            SELECT p.id           AS proceso_id,
+                   p.radicado     AS radicado,
+                   p.objeto       AS objeto,
+                   m.nombre       AS modalidad,
+                   pa.numeral     AS numeral,
+                   a.nombre       AS actividad,
+                   a.etapa        AS etapa,
+                   pa.version     AS version,
+                   pa.enviado_por AS enviado_por,
+                   pa.updated_at  AS desde
+              FROM hiring.proceso_actividades pa
+              JOIN hiring.procesos p ON p.id = pa.proceso_id
+              JOIN hiring.actividades a ON a.numeral = pa.numeral
+              LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
+              JOIN hiring.participaciones_proceso pp
+                    ON pp.proceso_id = p.id
+                   AND pp.papel = 'ABOGADO'
+                   AND pp.estado = 'VIGENTE'
+             WHERE pa.numeral = '3.1'
+               AND pa.estado = 'EN_REVISION'
+               AND (
+                 ($1 <> '' AND LOWER(pp.usuario_nombre) = LOWER($1))
+                 OR ($2 <> '' AND pp.usuario_id::text = $2)
+               )
+            `,
+            [nombre, id],
+          )
+        : Promise.resolve([]),
+    ]);
+
+    const aElemento = (tipo: ElementoPorRevisar['tipo']) => (f: any): ElementoPorRevisar => {
+      const desde = f.desde instanceof Date ? f.desde : new Date(f.desde);
+      return {
+        tipo,
+        procesoId: f.proceso_id,
+        radicado: f.radicado,
+        objeto: f.objeto,
+        modalidad: f.modalidad ?? null,
+        numeral: f.numeral,
+        actividad: f.actividad,
+        etapa: Number(f.etapa),
+        version: f.version === null || f.version === undefined ? null : Number(f.version),
+        enviadoPor: f.enviado_por ?? null,
+        desde: desde.toISOString(),
+        diasEsperando: Math.max(0, Math.floor((Date.now() - desde.getTime()) / 86_400_000)),
+      };
+    };
+
+    return [
+      ...estudios.map(aElemento('ESTUDIO_PREVIO')),
+      ...aprobaciones.filter((f: any) => f.numeral !== '3.1').map(aElemento('ACTIVIDAD')),
+    ]
+      // Lo que más lleva esperando, arriba.
+      .sort((a, b) => b.diasEsperando - a.diasEsperando || a.desde.localeCompare(b.desde));
   }
 
   /**
