@@ -131,7 +131,7 @@ export interface Geopolitica {
   idPadre?: number;
 }
 
-export type { Dependencia } from '../../../shell/src/services/api/dependencias.service';
+export type { Dependencia, Cargo } from '../../../shell/src/services/api/dependencias.service';
 
 export type TipoDocumentoSoporte =
   | 'CDP'

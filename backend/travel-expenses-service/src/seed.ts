@@ -502,8 +502,8 @@ async function seed() {
         {
           clave: 'cargoEsap',
           etiqueta: 'Cargo / Rol ESAP',
-          tipoCampo: 'TEXT',
-          placeholder: 'Ej. Asesor Jurídico, Coordinador de Área...',
+          tipoCampo: 'SELECT',
+          placeholder: 'Seleccione cargo...',
           opciones: null,
           grupo: 'comisionado',
           orden: 14,
@@ -538,8 +538,8 @@ async function seed() {
         {
           clave: 'cargoEsap',
           etiqueta: 'Cargo / Rol ESAP',
-          tipoCampo: 'TEXT',
-          placeholder: 'Ej. Asesor Jurídico, Coordinador de Área...',
+          tipoCampo: 'SELECT',
+          placeholder: 'Seleccione cargo...',
           opciones: null,
           grupo: 'comisionado',
           orden: 14,

@@ -34,6 +34,7 @@ import {
   X,
 } from 'lucide-react';
 import {
+  Cargo,
   Comisionado,
   Dependencia,
   DocumentoFormItem,
@@ -179,6 +180,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [ciudades, setCiudades] = useState<Geopolitica[]>([]);
   const [dependencias, setDependencias] = useState<Dependencia[]>([]);
   const [cargandoDependencias, setCargandoDependencias] = useState(false);
+  const [cargosDisponibles, setCargosDisponibles] = useState<Cargo[]>([]);
+  const [cargandoCargos, setCargandoCargos] = useState(false);
+  const [cargoActualSeleccionado, setCargoActualSeleccionado] = useState<string>('');
   // Departamento al que pertenecen las ciudades cargadas (evita recargarlas al
   // navegar de vuelta o reanudar; garantiza que se carguen cuando hacen falta).
   const [ciudadesDepto, setCiudadesDepto] = useState('');
@@ -280,65 +284,53 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const cargarDependencias = async (depUsuario?: { codDependencia?: string; nomDependencia?: string; idDependencia?: number } | null) => {
-    if (puedeElegirDependencia()) {
-      setCargandoDependencias(true);
-      try {
-        const data = await viaticosService.obtenerDependencias();
-        setDependencias(data);
-        if (data.length > 0) {
-          const existe = data.some((d) => d.codDependencia === dependenciaId);
-          if (!existe) {
-            setDependenciaId(data[0].codDependencia);
-          }
-        }
-      } catch (e) {
-        console.error('Error cargando dependencias:', e);
-        setDependencias([]);
-      } finally {
-        setCargandoDependencias(false);
-      }
-      return;
-    }
+    setCargandoDependencias(true);
+    try {
+      const data = await viaticosService.obtenerDependencias();
+      setDependencias(data || []);
 
-    setDependencias([]);
-    setCargandoDependencias(false);
-    const dep = depUsuario || usuarioActual?.dependencia;
-    let codPropio = dep?.codDependencia || '';
-    let nomPropio = dep?.nomDependencia || '';
-    const idPropio = dep?.idDependencia;
+      const dep = depUsuario || usuarioActual?.dependencia;
+      let codPropio = dep?.codDependencia || '';
+      let nomPropio = dep?.nomDependencia || '';
+      const idPropio = dep?.idDependencia;
 
-    if (!codPropio && idPropio != null) {
-      setCargandoDependencias(true);
-      try {
-        const catalogo = await viaticosService.obtenerDependencias();
-        const match = catalogo.find(
-          (d) => Number(d.idDependencia) === Number(idPropio),
-        );
+      if (!codPropio && idPropio != null && data && data.length > 0) {
+        const match = data.find((d) => Number(d.idDependencia) === Number(idPropio));
         if (match) {
           codPropio = match.codDependencia;
           nomPropio = match.nomDependencia;
         }
-      } catch (e) {
-        console.error('Error resolviendo la dependencia del usuario:', e);
-      } finally {
-        setCargandoDependencias(false);
       }
-    }
 
-    if (codPropio) {
-      setDependenciaId(codPropio);
-      setUsuarioActual((prev) =>
-        prev
-          ? {
-              ...prev,
-              dependencia: {
-                ...(prev.dependencia || {}),
-                codDependencia: codPropio,
-                nomDependencia: nomPropio || prev.dependencia?.nomDependencia || '',
-              },
-            }
-          : prev,
-      );
+      if (puedeElegirDependencia()) {
+        if (data && data.length > 0) {
+          const existe = data.some(
+            (d) => d.codDependencia === dependenciaId || String(d.idDependencia) === String(dependenciaId),
+          );
+          if (!existe && !dependenciaId) {
+            setDependenciaId(codPropio || data[0].codDependencia);
+          }
+        }
+      } else if (codPropio) {
+        setDependenciaId(codPropio);
+        setUsuarioActual((prev) =>
+          prev
+            ? {
+                ...prev,
+                dependencia: {
+                  ...(prev.dependencia || {}),
+                  codDependencia: codPropio,
+                  nomDependencia: nomPropio || prev.dependencia?.nomDependencia || '',
+                },
+              }
+            : prev,
+        );
+      }
+    } catch (e) {
+      console.error('Error cargando dependencias:', e);
+      setDependencias([]);
+    } finally {
+      setCargandoDependencias(false);
     }
   };
 
@@ -466,14 +458,20 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         const bco = raw.entidad_bancaria || raw.entidadBancaria || raw.banco || '';
         const cta = raw.num_cuenta || raw.numeroCuenta || raw.numCuenta || raw.cuentaBancaria || '';
         const tip = raw.tipo_cuenta || raw.tipoCuenta || '';
+        const cargoEncontrado = raw.cargoEsap || raw.cargo || raw.cargoInstitucional || raw.cargoComisionado || solicitud.comisionado?.cargo || '';
+        if (cargoEncontrado) {
+          setCargoActualSeleccionado(cargoEncontrado);
+        }
         return {
           ...raw,
+          ...(cargoEncontrado ? { cargoEsap: cargoEncontrado, cargo: cargoEncontrado, cargoInstitucional: cargoEncontrado, cargoComisionado: cargoEncontrado } : {}),
           ...(bco ? { entidad_bancaria: bco, entidadBancaria: bco, banco: bco } : {}),
           ...(cta ? { num_cuenta: cta, numeroCuenta: cta, numCuenta: cta, cuentaBancaria: cta } : {}),
           ...(tip ? { tipo_cuenta: tip, tipoCuenta: tip } : {}),
         };
       })(),
       itinerario: solicitud.itinerario || [],
+      idDependencia: (solicitud as any).idDependencia ?? solicitud.comisionado?.idDependencia ?? undefined,
     });
     if (solicitud.comisionado) {
       setComisionado(solicitud.comisionado);
@@ -518,6 +516,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setTipoTransporte('AEREO');
       setMontoEstimadoTiquete(0);
       setDependenciaId('');
+      setCargoActualSeleccionado('');
+      setCargosDisponibles([]);
+      setCargandoCargos(false);
       setValidacionTiquete(null);
       setValidandoTiquete(false);
       setNumeroActoExcepcion('');
@@ -572,7 +573,18 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         ...(prev.camposAdicionales || {}),
         [clave]: valor,
       };
-      if (clave === 'entidad_bancaria' || clave === 'entidadBancaria' || clave === 'banco') {
+      if (
+        clave === 'cargoEsap' ||
+        clave === 'cargo' ||
+        clave === 'cargoInstitucional' ||
+        clave === 'cargoComisionado'
+      ) {
+        nextAdicionales.cargoEsap = valor;
+        nextAdicionales.cargo = valor;
+        nextAdicionales.cargoInstitucional = valor;
+        nextAdicionales.cargoComisionado = valor;
+        setCargoActualSeleccionado(String(valor || ''));
+      } else if (clave === 'entidad_bancaria' || clave === 'entidadBancaria' || clave === 'banco') {
         nextAdicionales.entidad_bancaria = valor;
         nextAdicionales.entidadBancaria = valor;
         nextAdicionales.banco = valor;
@@ -595,6 +607,122 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       return {
         ...prev,
         camposAdicionales: nextAdicionales,
+      };
+    });
+  };
+
+  /**
+   * Resuelve el id numérico de la dependencia activa para consultar cargos (N:M auth.dependencias_cargos).
+   */
+  const idDependenciaActual: number | null = useMemo(() => {
+    if (form.idDependencia != null && form.idDependencia !== '') {
+      const n = Number(form.idDependencia);
+      if (!isNaN(n) && n > 0) return n;
+    }
+    if (comisionado?.idDependencia != null) {
+      const n = Number(comisionado.idDependencia);
+      if (!isNaN(n) && n > 0) return n;
+    }
+    if (dependenciaId) {
+      const match = dependencias.find(
+        (d) =>
+          d.codDependencia === dependenciaId ||
+          String(d.idDependencia) === String(dependenciaId),
+      );
+      if (match?.idDependencia != null) return Number(match.idDependencia);
+      const parsed = parseInt(dependenciaId, 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    if (usuarioActual?.dependencia?.idDependencia != null) {
+      const n = Number(usuarioActual.dependencia.idDependencia);
+      if (!isNaN(n) && n > 0) return n;
+    }
+    return null;
+  }, [form.idDependencia, comisionado?.idDependencia, dependenciaId, dependencias, usuarioActual?.dependencia]);
+
+  // Cargar cargos asignados a la dependencia seleccionada (N:M auth.dependencias_cargos)
+  useEffect(() => {
+    if (!idDependenciaActual) {
+      setCargosDisponibles([]);
+      setCargandoCargos(false);
+      return;
+    }
+
+    let isSubscribed = true;
+    setCargandoCargos(true);
+
+    viaticosService
+      .obtenerCargosPorDependencia(idDependenciaActual)
+      .then((cargos) => {
+        if (isSubscribed) {
+          setCargosDisponibles(cargos || []);
+        }
+      })
+      .catch((err) => {
+        console.error('Error cargando cargos de la dependencia:', err);
+        if (isSubscribed) setCargosDisponibles([]);
+      })
+      .finally(() => {
+        if (isSubscribed) setCargandoCargos(false);
+      });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [idDependenciaActual]);
+
+  const cambiarDependencia = (idDep: number | string | null) => {
+    const numId = idDep ? Number(idDep) : null;
+    const depEncontrada = dependencias.find((d) => Number(d.idDependencia) === numId);
+
+    setForm((prev) => {
+      const prevAdic = { ...(prev.camposAdicionales || {}) };
+      delete prevAdic.cargoEsap;
+      delete prevAdic.cargo;
+      delete prevAdic.cargoInstitucional;
+      delete prevAdic.cargoComisionado;
+      delete prevAdic.idCargo;
+
+      return {
+        ...prev,
+        idDependencia: numId,
+        camposAdicionales: prevAdic,
+      };
+    });
+
+    if (depEncontrada?.codDependencia) {
+      setDependenciaId(depEncontrada.codDependencia);
+    } else if (numId) {
+      setDependenciaId(String(numId));
+    } else {
+      setDependenciaId('');
+    }
+
+    setCargoActualSeleccionado('');
+  };
+
+  const cambiarCargo = (cargoVal: string | null) => {
+    const nomCargo = (cargoVal || '').trim();
+    setCargoActualSeleccionado(nomCargo);
+
+    const cargoObj = cargosDisponibles.find(
+      (c) => c.nomCargo === nomCargo || String(c.idCargo) === nomCargo,
+    );
+    const nombreFinal = cargoObj ? cargoObj.nomCargo : nomCargo;
+    const idCargoFinal = cargoObj ? cargoObj.idCargo : undefined;
+
+    setForm((prev) => {
+      const nextAdic = {
+        ...(prev.camposAdicionales || {}),
+        cargoEsap: nombreFinal,
+        cargo: nombreFinal,
+        cargoInstitucional: nombreFinal,
+        cargoComisionado: nombreFinal,
+        ...(idCargoFinal ? { idCargo: idCargoFinal } : {}),
+      };
+      return {
+        ...prev,
+        camposAdicionales: nextAdic,
       };
     });
   };
@@ -785,6 +913,18 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           nuevosCamposAdicionales.numeroContrato =
             nuevosCamposAdicionales.numeroContrato || resAny.numeroContrato || resAny.contrato;
         }
+        const cargoComisionado =
+          resultado.cargo ||
+          resAny.cargoComisionado ||
+          resAny.cargoInstitucional ||
+          resAny.cargoEsap ||
+          '';
+        if (cargoComisionado) {
+          nuevosCamposAdicionales.cargoEsap = cargoComisionado;
+          nuevosCamposAdicionales.cargo = cargoComisionado;
+          nuevosCamposAdicionales.cargoInstitucional = cargoComisionado;
+          nuevosCamposAdicionales.cargoComisionado = cargoComisionado;
+        }
         return {
           ...prev,
           comisionadoId: resultado.id,
@@ -795,6 +935,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           camposAdicionales: nuevosCamposAdicionales,
         };
       });
+      if (resultado.cargo || (resultado as any).cargoComisionado) {
+        setCargoActualSeleccionado(resultado.cargo || (resultado as any).cargoComisionado);
+      }
+      if (resultado.idDependencia != null) {
+        const depEncontrada = dependencias.find((d) => Number(d.idDependencia) === Number(resultado.idDependencia));
+        if (depEncontrada?.codDependencia) {
+          setDependenciaId(depEncontrada.codDependencia);
+        }
+      }
       if (!resultado.autorizacionHabeasData) {
         setHabeasPendiente(true);
       }
@@ -1149,8 +1298,36 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     try {
       const { fechaInicio, fechaFin, diasComision } = sincronizarItinerarioFormulario(form.itinerario || []);
       const { origenCiudad, origenDepartamento, destinoCiudad, destinoDepartamento } = obtenerOrigenDestinoItinerario();
+      const cargoFinal =
+        cargoActualSeleccionado ||
+        form.camposAdicionales?.cargoEsap ||
+        form.camposAdicionales?.cargo ||
+        comisionado?.cargo ||
+        '';
+
       const payload = mapearARequestCreacion(
-        { ...form, fechaInicio, fechaFin, diasComision, origenCiudad, origenDepartamento, destinoCiudad, destinoDepartamento },
+        {
+          ...form,
+          idDependencia: form.idDependencia ?? comisionado?.idDependencia ?? (idDependenciaActual || undefined),
+          fechaInicio,
+          fechaFin,
+          diasComision,
+          origenCiudad,
+          origenDepartamento,
+          destinoCiudad,
+          destinoDepartamento,
+          camposAdicionales: {
+            ...(form.camposAdicionales || {}),
+            ...(cargoFinal
+              ? {
+                  cargoEsap: cargoFinal,
+                  cargo: cargoFinal,
+                  cargoInstitucional: cargoFinal,
+                  cargoComisionado: cargoFinal,
+                }
+              : {}),
+          },
+        },
         comisionado,
         usuarioActual?.userId || '',
         true,
@@ -1187,7 +1364,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 return 'TERRESTRE';
               })(),
             esInternacional: Boolean(form.esInternacional),
-            idDependencia: form.idDependencia ?? comisionado?.idDependencia ?? undefined,
+            idDependencia: form.idDependencia ?? comisionado?.idDependencia ?? (idDependenciaActual || undefined),
             diasPernoctados: form.diasPernoctados ?? undefined,
             tarifaDiaPernoctado: form.tarifaDiaPernoctado ?? undefined,
             totalPernoctados: form.totalPernoctados ?? undefined,
@@ -1221,6 +1398,14 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 '';
               return {
                 ...prevAdic,
+                ...(cargoFinal
+                  ? {
+                      cargoEsap: cargoFinal,
+                      cargo: cargoFinal,
+                      cargoInstitucional: cargoFinal,
+                      cargoComisionado: cargoFinal,
+                    }
+                  : {}),
                 ...(rawBanco ? { entidad_bancaria: rawBanco, entidadBancaria: rawBanco, banco: rawBanco } : {}),
                 ...(rawCuenta ? { num_cuenta: rawCuenta, numeroCuenta: rawCuenta, numCuenta: rawCuenta, cuentaBancaria: rawCuenta } : {}),
                 ...(rawTipo ? { tipo_cuenta: rawTipo, tipoCuenta: rawTipo } : {}),
@@ -1509,6 +1694,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       (comisionado as any)?.correo ||
       'No registrado';
     const cargo =
+      cargoActualSeleccionado ||
+      form.camposAdicionales?.cargoEsap ||
+      form.camposAdicionales?.cargo ||
+      form.camposAdicionales?.cargoInstitucional ||
       (comisionado as any)?.cargo ||
       (comisionado as any)?.cargoComisionado ||
       (form as any)?.cargoComisionado ||
@@ -1523,11 +1712,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     const depMatch =
       dependencias.find(
         (d) =>
+          (idDependenciaActual != null && Number(d.idDependencia) === Number(idDependenciaActual)) ||
           (dependenciaId &&
             (d.codDependencia === dependenciaId ||
               String(d.idDependencia) === String(dependenciaId))) ||
           (comisionado?.idDependencia &&
-            String(d.idDependencia) === String(comisionado.idDependencia))
+            Number(d.idDependencia) === Number(comisionado.idDependencia))
       ) ||
       (usuarioActual?.dependencia
         ? {
@@ -1586,7 +1776,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       fechaFinContrato,
       salarioBasico,
     };
-  }, [comisionado, form, dependencias, dependenciaId, usuarioActual]);
+  }, [comisionado, form, dependencias, dependenciaId, idDependenciaActual, cargoActualSeleccionado, usuarioActual]);
 
   const saldoDependenciaComisionado = useMemo(() => {
     if (!saldosPresupuesto || saldosPresupuesto.length === 0) return null;
@@ -1871,16 +2061,95 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         {infoComisionadoCompleta.esFacturador ? 'Facturador Electrónico' : 'Régimen Ordinario / RUT'}
                       </span>
                     </div>
-                    <div className="sm:col-span-2 lg:col-span-3 bg-white/90 p-2.5 rounded-xl border border-emerald-100 flex items-center justify-between flex-wrap gap-2">
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Dependencia Asignada</span>
-                        <span className="font-black text-slate-900">{infoComisionadoCompleta.depNombre}</span>
+                    {/* Selector interactivo: Dependencia x Cargo */}
+                    <div className="sm:col-span-2 lg:col-span-3 bg-white p-4 rounded-xl border border-emerald-200/90 shadow-2xs space-y-3 mt-1">
+                      <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-emerald-100">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-[#003DA5]" />
+                          <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                            Asignación Organizacional (Dependencia y Cargo)
+                          </span>
+                        </div>
+                        {infoComisionadoCompleta.depCodigo && (
+                          <span className="text-xs font-mono font-bold px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded">
+                            Cód. {infoComisionadoCompleta.depCodigo}
+                          </span>
+                        )}
                       </div>
-                      {infoComisionadoCompleta.depCodigo && (
-                        <span className="text-xs font-mono font-bold px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded">
-                          Cód. {infoComisionadoCompleta.depCodigo}
-                        </span>
-                      )}
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                            Dependencia Asignada <span className="text-red-500">*</span>
+                          </label>
+                          <SearchableSelect
+                            id="dependencia-asignada-select"
+                            options={dependencias.map((dep) => ({
+                              value: String(dep.idDependencia),
+                              label: dep.nomDependencia,
+                              sublabel: dep.codDependencia ? `Cód. ${dep.codDependencia}` : undefined,
+                            }))}
+                            value={idDependenciaActual != null ? String(idDependenciaActual) : ''}
+                            onChange={(val) => {
+                              cambiarDependencia(val ? Number(val) : null);
+                            }}
+                            placeholder={
+                              cargandoDependencias
+                                ? 'Cargando dependencias...'
+                                : 'Buscar o seleccionar dependencia...'
+                            }
+                            disabled={cargandoDependencias}
+                            loading={cargandoDependencias}
+                            allowClear={puedeElegirDependencia() || esSuperAdmin || esSuperAdminViaticos}
+                            emptyText="No se encontraron dependencias registradas"
+                          />
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            Los cargos disponibles se actualizarán según la dependencia seleccionada.
+                          </p>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                            Cargo Institucional <span className="text-red-500">*</span>
+                          </label>
+                          <SearchableSelect
+                            id="cargo-institucional-select"
+                            options={cargosDisponibles.map((c) => ({
+                              value: c.nomCargo,
+                              label: c.nomCargo,
+                              sublabel: `${c.codCargo ? `Cód. ${c.codCargo}` : ''}${
+                                c.nivelJerarquico ? ` • ${c.nivelJerarquico}` : ''
+                              }`.trim() || undefined,
+                            }))}
+                            value={cargoActualSeleccionado}
+                            onChange={(val) => cambiarCargo(val)}
+                            placeholder={
+                              !idDependenciaActual
+                                ? 'Primero seleccione una dependencia...'
+                                : cargandoCargos
+                                ? 'Cargando cargos...'
+                                : 'Buscar o seleccionar cargo...'
+                            }
+                            disabled={!idDependenciaActual || cargandoCargos}
+                            loading={cargandoCargos}
+                            allowClear
+                            emptyText={
+                              !idDependenciaActual
+                                ? 'Primero seleccione una dependencia'
+                                : 'No hay cargos asignados a esta dependencia en Configuración General'
+                            }
+                          />
+                          {idDependenciaActual && cargosDisponibles.length > 0 ? (
+                            <p className="text-[11px] text-emerald-700 font-medium mt-1">
+                              {cargosDisponibles.length} cargo(s) disponible(s) para esta dependencia.
+                            </p>
+                          ) : idDependenciaActual && !cargandoCargos ? (
+                            <p className="text-[11px] text-amber-700 font-medium mt-1">
+                              Sin cargos vinculados a esta dependencia en Configuración General.
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2304,6 +2573,57 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         {camposAdicionalesConfigurados.map((campo) => {
                           const valorActual = form.camposAdicionales?.[campo.clave] ?? '';
                           const obligatorio = esCampoObligatorio(campo.clave);
+
+                          const esCampoCargo =
+                            campo.clave === 'cargoEsap' ||
+                            campo.clave === 'cargo' ||
+                            campo.clave === 'cargoInstitucional' ||
+                            campo.clave === 'cargoComisionado';
+
+                          if (esCampoCargo) {
+                            return (
+                              <div key={campo.clave}>
+                                <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
+                                  {renderLabel(campo.clave, campo.etiqueta)}
+                                </label>
+                                <SearchableSelect
+                                  id={`campo_${campo.clave}`}
+                                  options={cargosDisponibles.map((c) => ({
+                                    value: c.nomCargo,
+                                    label: c.nomCargo,
+                                    sublabel: `${c.codCargo ? `Cód. ${c.codCargo}` : ''}${
+                                      c.nivelJerarquico ? ` • ${c.nivelJerarquico}` : ''
+                                    }`.trim() || undefined,
+                                  }))}
+                                  value={String(valorActual || cargoActualSeleccionado || '')}
+                                  onChange={(v) => {
+                                    actualizarCampoAdicional(campo.clave, v);
+                                    cambiarCargo(v);
+                                  }}
+                                  placeholder={
+                                    !idDependenciaActual
+                                      ? 'Primero seleccione una dependencia en Paso 1...'
+                                      : cargandoCargos
+                                      ? 'Cargando cargos de la dependencia...'
+                                      : 'Buscar o seleccionar cargo...'
+                                  }
+                                  disabled={!idDependenciaActual || cargandoCargos}
+                                  loading={cargandoCargos}
+                                  allowClear
+                                  emptyText={
+                                    !idDependenciaActual
+                                      ? 'Primero seleccione una dependencia en Paso 1'
+                                      : 'No hay cargos asignados a esta dependencia en Configuración General'
+                                  }
+                                />
+                                {idDependenciaActual && cargosDisponibles.length > 0 && (
+                                  <p className="text-[11px] text-emerald-700 font-medium mt-1">
+                                    {cargosDisponibles.length} cargo(s) asignado(s) a la dependencia.
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          }
 
                           if (campo.tipoCampo === 'TEXTAREA') {
                             return (

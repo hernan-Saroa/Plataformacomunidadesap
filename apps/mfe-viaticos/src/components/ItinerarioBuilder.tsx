@@ -839,9 +839,9 @@ function RutaForm({
                     </div>
 
                   <div>
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">
+                    <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">
                       Departamento de Origen <span className="text-red-500">*</span>
-                    </label>
+                    </span>
                     <SearchableSelect
                       options={deptOptions}
                       value={ruta.origenDepartamento}
@@ -853,9 +853,9 @@ function RutaForm({
                   </div>
 
                   <div>
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">
+                    <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">
                       Ciudad de Origen <span className="text-red-500">*</span>
-                    </label>
+                    </span>
                     <SearchableSelect
                       options={ciudadOrigenOptions}
                       value={ruta.origenCiudad}
@@ -889,10 +889,14 @@ function RutaForm({
                   </div>
 
                   <div>
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">
+                    <label
+                      htmlFor="destinoDepartamento"
+                      className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5"
+                    >
                       Departamento de Destino <span className="text-red-500">*</span>
                     </label>
                     <SearchableSelect
+                      id="destinoDepartamento"
                       options={deptOptions}
                       value={ruta.destinoDepartamento}
                       onChange={handleDestinoDeptoChange}
@@ -903,10 +907,14 @@ function RutaForm({
                   </div>
 
                   <div>
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">
+                    <label
+                      htmlFor="destinoCiudad"
+                      className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5"
+                    >
                       Ciudad de Destino <span className="text-red-500">*</span>
                     </label>
                     <SearchableSelect
+                      id="destinoCiudad"
                       options={ciudadDestinoOptions}
                       value={ruta.destinoCiudad}
                       onChange={(v) => update('destinoCiudad', v)}

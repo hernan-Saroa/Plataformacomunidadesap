@@ -61,7 +61,7 @@ import {
   DevolverFirmaPayload,
 } from '../../types/viaticos';
 
-import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
+import dependenciasService, { Dependencia, Cargo } from '../../../../shell/src/services/api/dependencias.service';
 import {
   ParametrizacionFormulario,
   ConfigTipoComisionado,
@@ -448,6 +448,40 @@ export class ViaticosService {
       return await dependenciasService.listar(options);
     } catch (error) {
       console.warn('[viaticos] dependencias auth no disponibles:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Obtiene los cargos vinculados a una dependencia específica (N:M auth.dependencias_cargos).
+   * Alimenta el selector de cargo dependiente de la dependencia en NuevaSolicitudModal.
+   */
+  async obtenerCargosPorDependencia(
+    idDependencia: number | string,
+  ): Promise<Cargo[]> {
+    try {
+      const idNum =
+        typeof idDependencia === 'string'
+          ? parseInt(idDependencia, 10)
+          : idDependencia;
+      if (!idNum || isNaN(idNum)) return [];
+      return await dependenciasService.obtenerCargosPorDependencia(idNum);
+    } catch (error) {
+      console.warn('[viaticos] cargos por dependencia no disponibles:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Lista todos los cargos institucionales disponibles (auth.cargos).
+   */
+  async listarCargos(
+    options: { includeInactive?: boolean; search?: string } = {},
+  ): Promise<Cargo[]> {
+    try {
+      return await dependenciasService.listarCargos(options);
+    } catch (error) {
+      console.warn('[viaticos] listarCargos no disponibles:', error);
       return [];
     }
   }
