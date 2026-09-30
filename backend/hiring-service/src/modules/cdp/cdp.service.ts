@@ -356,6 +356,9 @@ export class CdpService {
         aplica: !noAplica.has(a.numeral),
         estado: propia?.estado ?? null,
         actualizadoEn: propia?.updatedAt ?? null,
+        // El cargo que Configuración le puso, si le puso uno: manda sobre los
+        // roles del alcance para decir a quién le toca.
+        responsableCargo: a.responsableCargo,
       };
     });
   }

@@ -24,6 +24,7 @@ import { DocumentoProceso } from '../../entities/documento-proceso.entity';
 import { Trazabilidad, AccionTraza } from '../../entities/trazabilidad.entity';
 import { DecisionRevision, Revision } from '../../entities/revision.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
+import { Actividad } from '../../entities/actividad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { PermisosService } from '../../auth/permisos.service';
@@ -237,10 +238,7 @@ export class EstudioPrevioService implements OnModuleInit {
     });
     if (!proceso) throw new NotFoundException('Proceso no encontrado');
 
-    const loRadico =
-      !!proceso.createdBy &&
-      !!acceso.userName &&
-      proceso.createdBy.trim().toLowerCase() === acceso.userName.trim().toLowerCase();
+    const loRadico = this.loRadico(proceso, acceso);
 
     const enElProceso = (await this.participacion.procesosDe(acceso)).includes(procesoId);
 
@@ -251,6 +249,18 @@ export class EstudioPrevioService implements OnModuleInit {
         'Este estudio previo lo diligencia el área que radicó el proceso: tener permiso de editar no da acceso a los expedientes de otras áreas',
       );
     }
+  }
+
+  /**
+   * Si quien pregunta radicó el proceso: es el área que redacta el estudio
+   * previo, y la que tiene que corregirlo si se lo devuelven.
+   */
+  private loRadico(proceso: Pick<Proceso, 'createdBy'>, acceso?: HiringAccess): boolean {
+    return (
+      !!proceso.createdBy &&
+      !!acceso?.userName &&
+      proceso.createdBy.trim().toLowerCase() === acceso.userName.trim().toLowerCase()
+    );
   }
 
   private quienDecide(procesoId: string, acceso: HiringAccess) {
@@ -486,6 +496,17 @@ export class EstudioPrevioService implements OnModuleInit {
       (await this.dataSource.getRepository(Modalidad).find()).map((m) => [m.codigo, m.nombre]),
     );
 
+    /*
+     * El catálogo, también una sola vez: el listado dice en qué actividad va
+     * cada proceso y a quién le toca, y para eso necesita el nombre, la etapa
+     * y el orden de la matriz, no solo el numeral.
+     */
+    const catalogo = await this.dataSource
+      .getRepository(Actividad)
+      .find({ where: { activa: true }, order: { etapa: 'ASC', orden: 'ASC' } });
+    const posicion = new Map(catalogo.map((a, i) => [a.numeral, i]));
+    const delCatalogo = new Map(catalogo.map((a) => [a.numeral, a]));
+
     // Quién está en cada proceso, en una sola consulta para todo el listado.
     // Sin este dato la lista no puede distinguir un proceso que alguien lleva de
     // uno que sigue en la bandeja esperando que lo reciban.
@@ -506,7 +527,7 @@ export class EstudioPrevioService implements OnModuleInit {
         : obligatorios.length;
 
       const enElProceso = participantes.get(proceso.id) ?? [];
-      const quien = (papel: 'CONTRATACION' | 'ABOGADO') => {
+      const quien = (papel: 'CONTRATACION' | 'ABOGADO' | 'FINANCIERA') => {
         const p = enElProceso.find((x) => x.papel === papel);
         return p
           ? { nombre: p.nombre, usuarioNombre: p.usuarioNombre, esMio: acceso ? esSuya(p, acceso) : false }
@@ -524,9 +545,12 @@ export class EstudioPrevioService implements OnModuleInit {
          * llegó a la Dirección y que nadie ha recibido, y decirlo es lo único
          * que impide que se quede ahí semanas.
          */
+        /** Para que la lista le diga «te toca» al área cuando el estudio es suyo. */
+        radicadoPorMi: this.loRadico(proceso, acceso),
         participacion: {
           contratacion,
           abogado: quien('ABOGADO'),
+          financiera: quien('FINANCIERA'),
           enBandeja: !contratacion && estudioPrevio?.estado === 'EN_REVISION',
         },
         // Estado del numeral 3.1 y cuánto le falta para poder enviarse
@@ -539,7 +563,23 @@ export class EstudioPrevioService implements OnModuleInit {
               actualizadoEn: estudioPrevio.updatedAt,
             }
           : null,
-        actividades: propias.map((a) => ({ numeral: a.numeral, estado: a.estado })),
+        // En el orden de la matriz y con lo que hace falta para decir en qué
+        // punto va el proceso y a quién le toca. Las retiradas del catálogo no
+        // se listan: nadie puede trabajarlas.
+        actividades: propias
+          .filter((a) => delCatalogo.has(a.numeral))
+          .sort((x, y) => posicion.get(x.numeral)! - posicion.get(y.numeral)!)
+          .map((a) => {
+            const deLaMatriz = delCatalogo.get(a.numeral)!;
+            return {
+              numeral: a.numeral,
+              estado: a.estado,
+              nombre: deLaMatriz.nombre,
+              etapa: deLaMatriz.etapa,
+              actualizadoEn: a.updatedAt,
+              responsableCargo: deLaMatriz.responsableCargo,
+            };
+          }),
       };
     });
   }
@@ -571,6 +611,7 @@ export class EstudioPrevioService implements OnModuleInit {
         valorEstimado: proceso.valorEstimado,
         etapa: proceso.etapa,
         expediente: proceso.expediente?.numeroExpediente,
+        radicadoPorMi: this.loRadico(proceso, acceso),
       },
       estado: actividad.estado,
       version: actividad.version,

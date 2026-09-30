@@ -114,6 +114,27 @@ export class AlcanceAdminService {
   }
 
   /**
+   * Quién responde por cada punto: los roles que pueden trabajarlo, aprobarlo
+   * o decidirlo.
+   *
+   * Es lo que la ficha del proceso necesita para decir «le toca a la Dirección
+   * Financiera» cuando todavía no hay una persona a cargo. Sale de la misma
+   * matriz que el guard, así que cuando la entidad cambia quién hace qué, la
+   * pantalla lo dice sin desplegar nada.
+   *
+   * Solo los alcances cuya acción el backoffice le dio al rol: un alcance sin
+   * permiso no abre nada, y nombrar a ese rol mandaría a esperar a quien no
+   * puede actuar. «Ver» no cuenta: consultar no es responder por el punto.
+   */
+  async responsables(): Promise<{ rol: string; accion: Accion; lugar: string }[]> {
+    return (await this.roles()).flatMap((rol) =>
+      rol.alcances
+        .filter((a) => a.accion !== 'ver' && rol.acciones.includes(a.accion))
+        .map((a) => ({ rol: rol.nombre, accion: a.accion, lugar: a.lugar })),
+    );
+  }
+
+  /**
    * Reemplaza los alcances de un rol por los que se mandan.
    *
    * Lo que sobra se apaga (`activo = false`) y no se borra, con el criterio de
