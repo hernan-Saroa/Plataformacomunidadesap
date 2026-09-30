@@ -1,9 +1,11 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
+import { AlcanceService } from '../../auth/alcance.service';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { TOLERANCIA_CDP_SIN_ATENDER } from '../cdp/cdp.service';
+import { NOMBRE_TIPO } from '../modificaciones/reglas-por-tipo';
 import { Campana } from '../notificaciones/campana';
 import { ParticipacionService } from '../participacion/participacion.service';
 import { plazoDeActividad } from './plazos-actividad';
@@ -108,8 +110,15 @@ export type TipoAlerta =
 
 /** Algo que espera la decisión de quien consulta (bandeja «Por revisar»). */
 export interface ElementoPorRevisar {
-  /** El estudio previo lo decide el abogado; lo demás, quien aprueba la actividad. */
-  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD';
+  /**
+   * Qué se decide. El estudio previo y la modalidad los decide el abogado del
+   * proceso; la actividad, quien nombra su regla de aprobación; y las pólizas,
+   * las modificaciones y las cuentas de cobro se deciden una por una dentro de
+   * su actividad.
+   */
+  tipo: 'ESTUDIO_PREVIO' | 'MODALIDAD' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO';
+  /** Cuál de ellas, cuando la actividad tiene varias: «Póliza 123 · Seguros X». */
+  detalle: string | null;
   procesoId: string;
   radicado: string | null;
   objeto: string;
@@ -222,6 +231,11 @@ export class AlertasService {
      */
     private readonly participacion: ParticipacionService,
     @Optional() private readonly parametros?: ParametrosAlertaService,
+    /**
+     * Quién puede aprobar pólizas, decidir modificaciones o ratificar la
+     * modalidad: la matriz de permisos, la misma que consultan los guards.
+     */
+    @Optional() private readonly alcance?: AlcanceService,
   ) {}
 
   private hoy(): string {
@@ -491,6 +505,12 @@ export class AlertasService {
    *
    * La 3.1 no se toma de la primera fuente aunque tuviera regla: su decisión
    * es la del abogado, y listarla dos veces ofrecería dos caminos para lo mismo.
+   *
+   * Desde que solo se decide en la pantalla de revisión entran también las
+   * decisiones que no salen de una regla de aprobación: la modalidad (3.5), que
+   * ratifica el abogado como la 3.1, y las que se toman una por una dentro de
+   * su actividad —cada póliza (8.4), cada modificación (9.5), cada cuenta de
+   * cobro (9.4)—. Sin ellas, quien tenía que decidir no tenía cómo enterarse.
    */
   async porRevisar(acceso: HiringAccess): Promise<ElementoPorRevisar[]> {
     const nombre = (acceso.userName ?? '').trim();
@@ -519,7 +539,7 @@ export class AlertasService {
                     ON pp.proceso_id = p.id
                    AND pp.papel = 'ABOGADO'
                    AND pp.estado = 'VIGENTE'
-             WHERE pa.numeral = '3.1'
+             WHERE pa.numeral IN ('3.1', '3.5')
                AND pa.estado = 'EN_REVISION'
                AND (
                  ($1 <> '' AND LOWER(pp.usuario_nombre) = LOWER($1))
@@ -535,6 +555,7 @@ export class AlertasService {
       const desde = f.desde instanceof Date ? f.desde : new Date(f.desde);
       return {
         tipo,
+        detalle: f.detalle ?? null,
         procesoId: f.proceso_id,
         radicado: f.radicado,
         objeto: f.objeto,
@@ -549,12 +570,153 @@ export class AlertasService {
       };
     };
 
+    // La modalidad la ratifica el abogado del proceso si además tiene el
+    // permiso, como en `quienDecide`: ser el abogado no basta.
+    const ratificaModalidad = this.alcance
+      ? await this.alcance.puedeEn(acceso, 'aprobar', '3.5')
+      : true;
+    const [garantias, modificaciones, pagos] = await Promise.all([
+      this.garantiasPorAprobar(acceso),
+      this.modificacionesPorDecidir(acceso),
+      this.pagosPorAvalar(acceso),
+    ]);
+
     return [
-      ...estudios.map(aElemento('ESTUDIO_PREVIO')),
-      ...aprobaciones.filter((f: any) => f.numeral !== '3.1').map(aElemento('ACTIVIDAD')),
+      ...estudios.filter((f: any) => f.numeral !== '3.5').map(aElemento('ESTUDIO_PREVIO')),
+      ...(ratificaModalidad
+        ? estudios.filter((f: any) => f.numeral === '3.5').map(aElemento('MODALIDAD'))
+        : []),
+      ...aprobaciones
+        .filter((f: any) => f.numeral !== '3.1' && f.numeral !== '3.5')
+        .map(aElemento('ACTIVIDAD')),
+      ...garantias.map(aElemento('GARANTIA')),
+      ...modificaciones.map(aElemento('MODIFICACION')),
+      ...pagos.map(aElemento('PAGO')),
     ]
       // Lo que más lleva esperando, arriba.
       .sort((a, b) => b.diasEsperando - a.diasEsperando || a.desde.localeCompare(b.desde));
+  }
+
+  /**
+   * Pólizas cargadas que esperan aprobación (8.4).
+   *
+   * Las aprueba quien tiene el permiso en el punto, menos quien las cargó: es
+   * la regla de `LegalizacionService.aprobarGarantia`, que responde 403.
+   */
+  private async garantiasPorAprobar(acceso: HiringAccess): Promise<any[]> {
+    if (!this.alcance || !(await this.alcance.puedeEn(acceso, 'aprobar', '8.4'))) return [];
+
+    return this.dataSource.query(
+      `
+      SELECT p.id           AS proceso_id,
+             p.radicado     AS radicado,
+             p.objeto       AS objeto,
+             m.nombre       AS modalidad,
+             a.numeral      AS numeral,
+             a.nombre       AS actividad,
+             a.etapa        AS etapa,
+             NULL           AS version,
+             g.cargada_por  AS enviado_por,
+             g.created_at   AS desde,
+             'Póliza ' || g.numero_poliza || ' · ' || g.aseguradora AS detalle
+        FROM hiring.garantias g
+        JOIN hiring.contratos c ON c.id = g.contrato_id
+        JOIN hiring.procesos p ON p.id = c.proceso_id
+        JOIN hiring.actividades a ON a.numeral = '8.4'
+        LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
+       WHERE g.estado = 'CARGADA'
+         AND (g.cargada_por IS NULL OR g.cargada_por <> $1)
+      `,
+      [acceso.userName ?? ''],
+    );
+  }
+
+  /**
+   * Modificaciones en trámite que ya se pueden decidir (9.5).
+   *
+   * La adición no se aprueba sin su CDP y su RP expedidos
+   * (`ModificacionesService.respaldoPendiente`): mientras los espera la tiene
+   * Financiera y no quien decide, así que todavía no entra a su bandeja.
+   */
+  private async modificacionesPorDecidir(acceso: HiringAccess): Promise<any[]> {
+    if (!this.alcance || !(await this.alcance.puedeEn(acceso, 'decidir', '9.5'))) return [];
+
+    const filas = await this.dataSource.query(
+      `
+      SELECT p.id           AS proceso_id,
+             p.radicado     AS radicado,
+             p.objeto       AS objeto,
+             m.nombre       AS modalidad,
+             a.numeral      AS numeral,
+             a.nombre       AS actividad,
+             a.etapa        AS etapa,
+             NULL           AS version,
+             NULL           AS enviado_por,
+             mc.created_at  AS desde,
+             mc.tipo        AS tipo_modificacion
+        FROM hiring.modificaciones_contrato mc
+        JOIN hiring.contratos c ON c.id = mc.contrato_id
+        JOIN hiring.procesos p ON p.id = c.proceso_id
+        JOIN hiring.actividades a ON a.numeral = '9.5'
+        LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
+       WHERE mc.estado = 'EN_TRAMITE'
+         AND (
+           mc.tipo <> 'ADICION'
+           OR (
+             EXISTS (SELECT 1 FROM hiring.cdp x
+                      WHERE x.modificacion_id = mc.id AND x.estado = 'EXPEDIDO')
+             AND EXISTS (SELECT 1 FROM hiring.registros_presupuestales x
+                          WHERE x.modificacion_id = mc.id AND x.estado = 'EXPEDIDO')
+           )
+         )
+      `,
+    );
+    return filas.map((f: any) => ({
+      ...f,
+      detalle: NOMBRE_TIPO[f.tipo_modificacion as keyof typeof NOMBRE_TIPO] ?? f.tipo_modificacion,
+    }));
+  }
+
+  /**
+   * Cuentas de cobro radicadas que esperan el aval (9.4).
+   *
+   * Las avala el supervisor vigente del contrato, no un rol: es la regla de
+   * `PagosService.exigirSupervisor`, por persona o por nombre de cuenta.
+   */
+  private pagosPorAvalar(acceso: HiringAccess): Promise<any[]> {
+    const nombre = (acceso.userName ?? '').trim();
+    const id = (acceso.userId ?? '').trim();
+    if (!nombre && !id) return Promise.resolve([]);
+
+    return this.dataSource.query(
+      `
+      SELECT p.id            AS proceso_id,
+             p.radicado      AS radicado,
+             p.objeto        AS objeto,
+             m.nombre        AS modalidad,
+             a.numeral       AS numeral,
+             a.nombre        AS actividad,
+             a.etapa         AS etapa,
+             NULL            AS version,
+             pg.radicado_por AS enviado_por,
+             pg.radicado_at  AS desde,
+             'Cuenta de cobro N.º ' || pg.numero AS detalle
+        FROM hiring.pagos_contrato pg
+        JOIN hiring.contratos c ON c.id = pg.contrato_id
+        JOIN hiring.procesos p ON p.id = c.proceso_id
+        JOIN hiring.supervisiones_contrato s
+              ON s.contrato_id = c.id
+             AND s.estado = 'VIGENTE'
+        JOIN hiring.actividades a ON a.numeral = '9.4'
+        LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
+       WHERE pg.estado = 'RADICADO'
+         AND (
+           ($1 <> '' AND s.nombre = $1)
+           OR ($2 <> '' AND s.persona_id::text = $2)
+         )
+      `,
+      [nombre, id],
+    );
   }
 
   /**

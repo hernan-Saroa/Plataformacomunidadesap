@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { LugarDeDecision } from '../shared/LugarDeDecision';
 import { PanelModificaciones } from './PanelModificaciones';
 import { contratacionService } from '../../services/contratacionService';
 import { EstadoModificaciones } from '../../types';
@@ -86,6 +87,13 @@ const suspendido = (): EstadoModificaciones => ({
 });
 
 const pintar = () => render(<PanelModificaciones procesoId="p-1" />);
+/** En la pantalla de revisión, el único sitio donde se aprueba o se rechaza. */
+const pintarEnLaRevision = () =>
+  render(
+    <LugarDeDecision enLaRevision>
+      <PanelModificaciones procesoId="p-1" />
+    </LugarDeDecision>,
+  );
 
 describe('PanelModificaciones · qué tipo se puede tramitar', () => {
   beforeEach(() => {
@@ -304,14 +312,21 @@ describe('PanelModificaciones · aprobar lo que no es una adición', () => {
     servicio.modificaciones.mockResolvedValue(conProrrogaEnTramite());
   });
 
-  it('no le exige CDP ni RP a una prórroga', async () => {
+  it('fuera de la revisión no se aprueba: lleva a ella', async () => {
     pintar();
+    expect(await screen.findByText(/Te toca aprobarla o rechazarla en la pantalla de revisión/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Aprobar$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Rechazar$/ })).toBeNull();
+  });
+
+  it('no le exige CDP ni RP a una prórroga', async () => {
+    pintarEnLaRevision();
     expect(await screen.findByRole('button', { name: /^Aprobar$/ })).toBeEnabled();
     expect(screen.queryByText(/Dirección Financiera expida/)).toBeNull();
   });
 
   it('al aprobar dice lo que le hace al contrato, y no habla de dinero', async () => {
-    pintar();
+    pintarEnLaRevision();
     await userEvent.click(await screen.findByRole('button', { name: /^Aprobar$/ }));
 
     expect(screen.getByText(/el plazo del contrato crece en 30 días/)).toBeInTheDocument();

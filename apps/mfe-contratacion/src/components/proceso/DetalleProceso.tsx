@@ -38,9 +38,9 @@ import { etapaEnCurso } from '../procesos/etapaEnCurso';
 import { PanelExpediente } from '../estudio-previo/PanelExpediente';
 import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
-import { BurbujaDecision } from '../shared/BurbujaDecision';
 import { EncabezadoActividad } from '../shared/PiezasPanel';
 import { AvisoSoloLectura, SoloLectura } from '../shared/SoloLectura';
+import { LugarDeDecision } from '../shared/LugarDeDecision';
 import { Modal } from '../shared/Modal';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
 import { esSoloPresupuesto, useAlcance } from '../../auth/alcance';
@@ -270,22 +270,6 @@ export function DetalleProceso({
   const [tokenExpediente, setTokenExpediente] = useState(0);
   /** Los plazos que aprietan, releídos cuando algo cambia en el expediente. */
   const plazos = usePlazos(tokenExpediente);
-  /**
-   * Formatos requeridos sin cargar en la actividad abierta.
-   *
-   * Lo cuenta el bloque de documentos y lo necesita la decisión, que está en
-   * otra franja: sin el dato, Aprobar quedaba activo aunque la lista de arriba
-   * dijera «Falta 1 de 1».
-   */
-  const [faltanFormatos, setFaltanFormatos] = useState(0);
-  /**
-   * Si la actividad abierta espera una decisión de quien está mirando.
-   *
-   * Lo dice la propia pieza de aprobación, que es la que conoce el estado y el
-   * rol. El contenedor solo necesita el sí o el no para abrir la columna: sin
-   * el dato reservaría 17rem en las actividades que nadie tiene que aprobar.
-   */
-  const [hayDecision, setHayDecision] = useState(false);
 
   /**
    * Si la actividad abierta tiene aprobadores configurados.
@@ -298,14 +282,6 @@ export function DetalleProceso({
   /** Si la aprobacion la devolvio: el panel de abajo no la consulta y sin esto
       le seguia mostrando «Registrada» sin camino para corregirla. */
   const [fueDevuelta, setFueDevuelta] = useState(false);
-  /**
-   * La decisión apartada a la burbuja, por voluntad de quien mira.
-   *
-   * Se guarda por numeral y no como un booleano suelto: esconderla en una
-   * actividad no debe esconderla en la siguiente, que es otra decisión y otro
-   * expediente.
-   */
-  const [decisionEscondida, setDecisionEscondida] = useState<string | null>(null);
   /** Documentos por numeral, para mostrar el contador en cada actividad. */
   const [adjuntosPorNumeral, setAdjuntosPorNumeral] = useState<Record<string, number>>({});
   /**
@@ -736,11 +712,8 @@ export function DetalleProceso({
     // repite el aviso—, y la tarjeta caía al final del flujo.
     if (numeral === expandida) return;
 
-    // Al cambiar de actividad sí: el contador de formatos y la
-    // decisión son de la anterior, y arrastrarlos bloquearía o abriría
-    // esta por documentos que no son suyos.
-    setFaltanFormatos(0);
-    setHayDecision(false);
+    // Al cambiar de actividad sí: el estado de la aprobación es de la
+    // anterior, y arrastrarlo nombraría mal el botón de esta.
     setPideAprobacion(false);
     setFueDevuelta(false);
     setExpandida(numeral);
@@ -968,13 +941,6 @@ export function DetalleProceso({
       )}
 
       {/* Riel de actividades · superficie de trabajo · expediente a demanda. */}
-      {/* `con-decision` abre la tercera columna solo cuando hay algo que
-          resolver y nadie la ha apartado: en las demás actividades ese ancho
-          se lo queda el formulario, que es quien lo necesita.
-
-          Dónde acaba cayendo la tarjeta lo decide `layout.css` según el ancho
-          disponible: columna propia con sitio, o franja completa al final
-          cuando el expediente ya ocupa la tercera. */}
       {vista === 'seguimiento' ? (
         <>
           <FichaDelProceso
@@ -1000,11 +966,7 @@ export function DetalleProceso({
           )}
         </>
       ) : (
-      <div
-        className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''} ${
-          hayDecision && decisionEscondida !== expandida ? 'con-decision' : ''
-        }`}
-      >
+      <div className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''}`}>
         <RielActividades
           etapa={etapaVista}
           etapaActual={etapaActual}
@@ -1026,6 +988,9 @@ export function DetalleProceso({
               parte="aviso"
               onRequiereAprobacion={setPideAprobacion}
               onDevuelta={setFueDevuelta}
+              onRevisar={
+                onRevisar ? () => onRevisar(actividadSeleccionada.numeral) : undefined
+              }
               /* Sin esto el aviso se quedaba con el estado anterior: tras
                  corregir y reenviar seguía diciendo «devuelta» y volvía a
                  ofrecer corregir sobre un registro ya vigente. */
@@ -1048,6 +1013,9 @@ export function DetalleProceso({
               sesenta y tres. La decisión de aprobación queda fuera a propósito:
               es un acto sobre trabajo ya enviado, y por tanto sobre una
               actividad que la secuencia ya alcanzó. */}
+          {/* Aquí no se decide: los paneles que deciden dentro de sí llevan a
+              la revisión en vez de enseñar sus botones. */}
+          <LugarDeDecision abrirRevision={onRevisar}>
           <SoloLectura motivo={motivoSoloLectura}>
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
               {actividadSeleccionada ? (
@@ -1093,41 +1061,17 @@ export function DetalleProceso({
                   numeral={actividadSeleccionada.numeral}
                   recargarToken={tokenExpediente}
                   onCambio={() => setTokenExpediente((t) => t + 1)}
-                  onFaltantes={setFaltanFormatos}
                 />
               </div>
             ) : null}
           </SoloLectura>
+          </LugarDeDecision>
 
         </div>
 
-        {/* La decisión, en columna propia y a la altura del trabajo.
-            Aprobar o devolver es el acto que cierra la actividad, no un
-            documento más: dentro de la caja de adjuntos, bajo «Adjuntar otro
-            documento», se leía como un anexo. Y al final de la pila vertical
-            había que buscarla con desplazamiento, justo lo que el aprobador
-            viene a hacer.
-
-            Se monta aunque esté escondida: es la pieza la que sabe si hay algo
-            que decidir, y el contenedor lo necesita para pintar la burbuja. */}
-        {actividadSeleccionada &&
-        !NUMERALES_CON_APROBACION_PROPIA.includes(actividadSeleccionada.numeral) ? (
-          <div
-            className="panel-decision"
-            hidden={decisionEscondida === actividadSeleccionada.numeral}
-          >
-            <AprobacionDeLaActividad
-              procesoId={procesoId}
-              numeral={actividadSeleccionada.numeral}
-              onCambio={() => setTokenExpediente((t) => t + 1)}
-              parte="decision"
-              recargarToken={tokenExpediente}
-              faltanDocumentos={faltanFormatos}
-              onHayDecision={setHayDecision}
-              onEsconder={() => setDecisionEscondida(actividadSeleccionada.numeral)}
-            />
-          </div>
-        ) : null}
+        {/* Aquí ya no se decide: aprobar o devolver se hace en la pantalla de
+            revisión, que enseña lo enviado en solo lectura y la decisión al
+            lado. El aviso de arriba lleva a ella a quien le toca. */}
 
         {expedienteAbierto && (
           <div className="panel-expediente bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
@@ -1142,16 +1086,6 @@ export function DetalleProceso({
 
       )}
 
-      {/* La decisión apartada no desaparece: queda como burbuja, que dice que
-          sigue pendiente y la devuelve de un clic. Sin ella, esconder la
-          tarjeta sería una forma de perder de vista lo que hay que resolver. */}
-      {hayDecision && actividadSeleccionada && decisionEscondida === actividadSeleccionada.numeral ? (
-        <BurbujaDecision
-          numeral={actividadSeleccionada.numeral}
-          faltanDocumentos={faltanFormatos}
-          onAbrir={() => setDecisionEscondida(null)}
-        />
-      ) : null}
 
       {/* La guía paso a paso: se para a mitad de pantalla porque una esquina
           que desaparece sola no se nota, y el gestor se queda sin saber qué

@@ -3404,8 +3404,14 @@ export interface AlcanceMio {
 
 /** Algo que espera la decisión de quien mira: la bandeja «Por revisar». */
 export interface ElementoPorRevisar {
-  /** El estudio previo lo decide el abogado; lo demás, quien aprueba la actividad. */
-  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD';
+  /**
+   * Qué se decide. El estudio previo y la modalidad los decide el abogado; la
+   * actividad, quien nombra su regla de aprobación; y las pólizas, las
+   * modificaciones y las cuentas de cobro se deciden una por una.
+   */
+  tipo: 'ESTUDIO_PREVIO' | 'MODALIDAD' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO';
+  /** Cuál de ellas, cuando la actividad tiene varias: «Póliza 123 · Seguros X». */
+  detalle: string | null;
   procesoId: string;
   radicado: string | null;
   objeto: string;

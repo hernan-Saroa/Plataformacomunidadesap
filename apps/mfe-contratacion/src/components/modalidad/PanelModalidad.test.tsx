@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { LugarDeDecision } from '../shared/LugarDeDecision';
 import { PanelModalidad } from './PanelModalidad';
 import { contratacionService } from '../../services/contratacionService';
 
@@ -39,9 +40,17 @@ describe('PanelModalidad · ratificar la modalidad', () => {
     vi.spyOn(contratacionService, 'modalidades').mockResolvedValue(MODALIDADES as never);
   });
 
-  const pintar = (datos: Record<string, unknown>) => {
+  /** Dónde se pinta: en la revisión se decide, en el trabajo se lleva a ella. */
+  const pintar = (
+    datos: Record<string, unknown>,
+    lugar: { enLaRevision?: boolean; abrirRevision?: (numeral: string) => void } = {},
+  ) => {
     vi.spyOn(contratacionService, 'modalidadDelProceso').mockResolvedValue(datos as never);
-    render(<PanelModalidad procesoId="p-1" />);
+    render(
+      <LugarDeDecision {...lugar}>
+        <PanelModalidad procesoId="p-1" />
+      </LugarDeDecision>,
+    );
   };
 
   it('enseña la modalidad elegida y la cuantía contra la que se comprueba', async () => {
@@ -51,11 +60,21 @@ describe('PanelModalidad · ratificar la modalidad', () => {
     expect(screen.getByText(/Valor estimado/)).toBeInTheDocument();
   });
 
-  it('al abogado le ofrece ratificar o devolver', async () => {
-    pintar(estado({ puedeDecidir: true }));
+  it('en la revisión, al abogado le ofrece ratificar o devolver', async () => {
+    pintar(estado({ puedeDecidir: true }), { enLaRevision: true });
 
     expect(await screen.findByRole('button', { name: /Ratificar/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Devolver para corregir/ })).toBeInTheDocument();
+  });
+
+  it('fuera de la revisión no decide: lleva a ella', async () => {
+    const abrirRevision = vi.fn();
+    pintar(estado({ puedeDecidir: true }), { abrirRevision });
+
+    await userEvent.click(await screen.findByRole('button', { name: /Abrir la revisión/ }));
+    expect(abrirRevision).toHaveBeenCalledWith('3.5');
+    expect(screen.queryByRole('button', { name: /Ratificar/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Devolver para corregir/ })).toBeNull();
   });
 
   it('a quien no le toca decidir le dice de quién es', async () => {
@@ -67,7 +86,7 @@ describe('PanelModalidad · ratificar la modalidad', () => {
 
   it('devolver exige decir qué modalidad corresponde', async () => {
     // Sin decirlo el área repetiría la misma elección y el ciclo no acabaría.
-    pintar(estado({ puedeDecidir: true }));
+    pintar(estado({ puedeDecidir: true }), { enLaRevision: true });
 
     await userEvent.click(await screen.findByRole('button', { name: /Devolver para corregir/ }));
     expect(screen.getByRole('button', { name: /^Devolver$/ })).toBeDisabled();

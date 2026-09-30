@@ -61,4 +61,29 @@ describe('DecisionEstudioPrevio', () => {
 
     expect(screen.getAllByRole('button', { name: /^Devolver$/ }).at(-1)).toBeDisabled();
   });
+
+  it('ofrece las tres decisiones', () => {
+    render(<DecisionEstudioPrevio procesoId="p-1" onDecidido={vi.fn()} variante="tarjeta" />);
+
+    expect(screen.getByRole('button', { name: /Aprobar/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Devolver/ })).toBeInTheDocument();
+    // La tercera es la que faltaba: sin ella un proceso rechazado de plano se
+    // devolvía, y el área se quedaba esperando saber qué corregir.
+    expect(screen.getByRole('button', { name: /Negar/ })).toBeInTheDocument();
+  });
+
+  it('negar exige motivo antes de dejar confirmar', async () => {
+    const negar = vi.spyOn(contratacionService, 'negar');
+    render(<DecisionEstudioPrevio procesoId="p-1" onDecidido={vi.fn()} variante="tarjeta" />);
+
+    await userEvent.click(screen.getByRole('button', { name: /Negar/ }));
+
+    expect(screen.getByRole('button', { name: /Negar el proceso/ })).toBeDisabled();
+    await userEvent.type(
+      screen.getByLabelText(/Motivo de la negativa/),
+      'El objeto ya está cubierto por el contrato marco vigente.',
+    );
+    expect(screen.getByRole('button', { name: /Negar el proceso/ })).toBeEnabled();
+    expect(negar).not.toHaveBeenCalled();
+  });
 });

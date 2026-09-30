@@ -5,8 +5,10 @@ import { useSituacionDelProceso } from '../../hooks/useSituacionDelProceso';
 import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
 import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { SoloLectura } from '../shared/SoloLectura';
+import { LugarDeDecision } from '../shared/LugarDeDecision';
 import { EncabezadoActividad } from '../shared/PiezasPanel';
 import { PanelDeLaActividad } from '../proceso/PanelDeLaActividad';
+import { NUMERALES_CON_DECISION_EN_EL_PANEL } from '../proceso/actividadesConPanel';
 import { DecisionEstudioPrevio } from '../estudio-previo/DecisionEstudioPrevio';
 import { destinoDeLaSituacion } from '../proceso/situacionDelProceso';
 import { LecturaEstudioPrevio } from './LecturaEstudioPrevio';
@@ -71,6 +73,12 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
   const destino = pasaA(numeral);
   const modalidad = estudio.proceso.modalidadNombre ?? estudio.proceso.modalidad;
 
+  /**
+   * Se decide con los botones del propio panel. El panel sigue en solo
+   * lectura: `LugarDeDecision` enciende únicamente los de decidir.
+   */
+  const decideEnElPanel = NUMERALES_CON_DECISION_EN_EL_PANEL.includes(numeral);
+
   /** La 3.1 ya no espera decisión: se resolvió aquí o en otra parte. */
   const estudioResuelto = esEstudio && estudio.estado !== 'EN_REVISION';
 
@@ -124,12 +132,15 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
           {esEstudio ? (
             <LecturaEstudioPrevio estudio={estudio} procesoId={procesoId} />
           ) : (
+            <LugarDeDecision enLaRevision>
             <SoloLectura motivo="Estás revisando lo que se envió">
               <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
                 <EncabezadoActividad numeral={numeral} nombre={nombre} />
                 <p className="px-4 py-2.5 m-0 bg-slate-50 border-b border-gray-100 text-[12px] text-slate-600 flex items-start gap-2">
                   <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-slate-400" aria-hidden="true" />
-                  Así quedó la actividad al enviarla. Si hay que cambiar algo, devuélvela con tus observaciones.
+                  {decideEnElPanel
+                    ? 'Así quedó la actividad. Lo que espera tu decisión tiene sus botones aquí mismo; lo demás es para leer.'
+                    : 'Así quedó la actividad al enviarla. Si hay que cambiar algo, devuélvela con tus observaciones.'}
                 </p>
                 <PanelDeLaActividad
                   numeral={numeral}
@@ -151,6 +162,7 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
                 />
               </div>
             </SoloLectura>
+            </LugarDeDecision>
           )}
         </div>
 
@@ -206,6 +218,27 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
                 </div>
               </div>
             )
+          ) : decideEnElPanel ? (
+            // Sin esto la columna decía «Ahora: …» como si ya estuviera
+            // resuelta, mientras la decisión esperaba en el panel.
+            <div className="bg-white border border-emerald-200 rounded-xl p-4 space-y-2.5">
+              <p className="text-sm font-bold text-emerald-800 m-0">Tu decisión</p>
+              <p className="text-[12px] text-slate-600 m-0">
+                Se toma en el panel de la actividad, en cada elemento que la espera.
+              </p>
+              {situacion ? (
+                <p className="text-[12px] text-slate-600 m-0">
+                  Ahora: <strong className="text-slate-900">{destinoDeLaSituacion(situacion)}</strong>
+                </p>
+              ) : null}
+              <button
+                type="button"
+                onClick={onVolver}
+                className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-[12px] font-bold rounded-lg border border-gray-300 text-slate-700 hover:bg-slate-50"
+              >
+                Volver a {volverA}
+              </button>
+            </div>
           ) : (
             <>
               <AprobacionDeLaActividad

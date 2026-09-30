@@ -54,7 +54,7 @@ export function VistaPorRevisar({
   const visibles = useMemo(
     () =>
       elementos.filter((e) =>
-        filtro === 'todo' ? true : filtro === 'estudios' ? e.tipo === 'ESTUDIO_PREVIO' : e.tipo === 'ACTIVIDAD',
+        filtro === 'todo' ? true : filtro === 'estudios' ? e.tipo === 'ESTUDIO_PREVIO' : e.tipo !== 'ESTUDIO_PREVIO',
       ),
     [elementos, filtro],
   );
@@ -156,7 +156,9 @@ export function VistaPorRevisar({
             {visibles.map((e) => {
               const demorado = e.diasEsperando >= DIAS_DEMORA;
               return (
-                <li key={`${e.procesoId}-${e.numeral}`}>
+                // Una actividad puede traer varias: cada póliza o cuenta de
+                // cobro es su propia decisión.
+                <li key={`${e.procesoId}-${e.numeral}-${e.detalle ?? ''}`}>
                   <button
                     type="button"
                     onClick={() => onRevisar(e)}
@@ -182,6 +184,9 @@ export function VistaPorRevisar({
                           {' '}
                           · {e.numeral} {e.tipo === 'ESTUDIO_PREVIO' ? 'Estudio previo' : e.actividad}
                         </span>
+                        {e.detalle ? (
+                          <span className="font-bold text-slate-700"> · {e.detalle}</span>
+                        ) : null}
                       </span>
                       <span className="block text-[13px] text-slate-800 mt-0.5 leading-snug">{e.objeto}</span>
                       <span className="block text-[12px] text-slate-500 mt-1">

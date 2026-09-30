@@ -78,6 +78,19 @@ export const NUMERALES_CON_LISTA_PROPIA = ['3.1', '5.1'];
  */
 export const NUMERALES_CON_APROBACION_PROPIA = ['3.1'];
 
+/**
+ * Actividades cuya decisión son botones del propio panel, no el bloque
+ * genérico de aprobación.
+ *
+ * La 3.5 la ratifica el abogado desde `PanelModalidad`; en la 8.4 se aprueba
+ * cada póliza, en la 9.4 se avala cada cuenta de cobro y en la 9.5 se decide
+ * cada modificación. Solo se decide en la pantalla de revisión: ahí el panel
+ * sigue en solo lectura y `LugarDeDecision` enciende sus botones de decidir,
+ * y en el trabajo del proceso esos botones se cambian por el camino a la
+ * revisión.
+ */
+export const NUMERALES_CON_DECISION_EN_EL_PANEL = ['3.5', '8.4', '9.4', '9.5'];
+
 /** Elaboración de los documentos del proceso (EFDS-1149). */
 export const NUMERAL_DOCUMENTOS = '5.1';
 /** Publicación del proyecto de pliego, primera actividad publicada de la etapa 5. */

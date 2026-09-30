@@ -9,17 +9,31 @@ const acceso = { userId: 'u-1', userName: 'luis@esap.edu.co', roles: ['REVISOR_C
  * abogado asignado: la 3.4 no sale de una regla, sale del reparto, y la alerta
  * de aprobación no la veía.
  */
-function montar(filas: { aprobaciones: any[]; estudios: any[] }) {
+function montar(
+  filas: {
+    aprobaciones: any[];
+    estudios: any[];
+    garantias?: any[];
+    modificaciones?: any[];
+    pagos?: any[];
+  },
+  /** Lo que la matriz de permisos le deja a quien consulta. */
+  permite: (accion: string, numeral: string) => boolean = () => true,
+) {
   const consultas: string[] = [];
   const dataSource = {
     query: jest.fn(async (sql: string) => {
       consultas.push(sql);
       if (sql.includes('reglas_actividad')) return filas.aprobaciones;
+      if (sql.includes('FROM hiring.garantias')) return filas.garantias ?? [];
+      if (sql.includes('FROM hiring.modificaciones_contrato')) return filas.modificaciones ?? [];
+      if (sql.includes('FROM hiring.pagos_contrato')) return filas.pagos ?? [];
       if (sql.includes('participaciones_proceso')) return filas.estudios;
       return [];
     }),
   };
-  const service = new AlertasService(dataSource as never, {} as never, {} as never);
+  const alcance = { puedeEn: jest.fn(async (_a: unknown, accion: string, numeral: string) => permite(accion, numeral)) };
+  const service = new AlertasService(dataSource as never, {} as never, {} as never, alcance as never);
   return { service, consultas };
 }
 
@@ -79,5 +93,44 @@ describe('bandeja Por revisar', () => {
     await service.porRevisar({ ...acceso, userId: '', userName: '' });
 
     expect(consultas.some((c) => c.includes('participaciones_proceso'))).toBe(false);
+  });
+
+  it('la modalidad llega al abogado como la 3.1, y solo si tiene el permiso', async () => {
+    const filas = { aprobaciones: [], estudios: [fila('3.5', '2026-09-25')] };
+
+    const conPermiso = await montar(filas).service.porRevisar(acceso);
+    expect(conPermiso.map((e) => [e.tipo, e.numeral])).toEqual([['MODALIDAD', '3.5']]);
+
+    const sinPermiso = await montar(filas, () => false).service.porRevisar(acceso);
+    expect(sinPermiso).toEqual([]);
+  });
+
+  it('trae las pólizas, modificaciones y cuentas de cobro, cada una con su detalle', async () => {
+    const { service } = montar({
+      aprobaciones: [],
+      estudios: [],
+      garantias: [{ ...fila('8.4', '2026-09-20'), detalle: 'Póliza 123 · Seguros Andinos' }],
+      modificaciones: [{ ...fila('9.5', '2026-09-21'), tipo_modificacion: 'PRORROGA' }],
+      pagos: [{ ...fila('9.4', '2026-09-22'), detalle: 'Cuenta de cobro N.º 3' }],
+    });
+
+    const lista = await service.porRevisar(acceso);
+
+    expect(lista.map((e) => [e.tipo, e.numeral, e.detalle])).toEqual([
+      ['GARANTIA', '8.4', 'Póliza 123 · Seguros Andinos'],
+      ['MODIFICACION', '9.5', expect.any(String)],
+      ['PAGO', '9.4', 'Cuenta de cobro N.º 3'],
+    ]);
+  });
+
+  it('sin permiso de aprobar pólizas ni decidir modificaciones no las consulta', async () => {
+    const { service, consultas } = montar({ aprobaciones: [], estudios: [] }, () => false);
+
+    await service.porRevisar(acceso);
+
+    expect(consultas.some((c) => c.includes('FROM hiring.garantias'))).toBe(false);
+    expect(consultas.some((c) => c.includes('FROM hiring.modificaciones_contrato'))).toBe(false);
+    // El aval no es de permiso sino de persona: se consulta igual.
+    expect(consultas.some((c) => c.includes('FROM hiring.pagos_contrato'))).toBe(true);
   });
 });

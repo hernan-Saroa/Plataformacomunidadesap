@@ -17,7 +17,6 @@ import { CampoFormulario, RevisionEstudioPrevio } from '../../types';
 import { CampoDinamico } from './CampoDinamico';
 import { AlertaCamposFaltantes } from './AlertaCamposFaltantes';
 import { VerSoporte } from '../shared/VerSoporte';
-import { DecisionEstudioPrevio } from './DecisionEstudioPrevio';
 import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { RadicadoGestionDocumental } from './RadicadoGestionDocumental';
 import { usarAprobacion } from '../shared/usarAprobacion';
@@ -190,13 +189,6 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
       : quienResuelve?.motivo === 'NO_ES_TUYO'
         ? `Lo revisa ${quienResuelve.abogado?.nombre ?? 'otro abogado'}.`
         : null;
-
-  const refrescar = async () => {
-    await cargar();
-    await cargarAnexos();
-    setTokenLista((t) => t + 1);
-    onCambio?.();
-  };
 
   /**
    * Tras cargar o sustituir un documento de la lista.
@@ -457,22 +449,19 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
                 al que se le repartió el proceso. Comprobar aquí el permiso
                 suelto sería una condición más débil sobre lo mismo. */}
             {/* La decisión ya no se toma sobre el formulario de quien
-                redactó: se abre la revisión, que enseña el estudio para
+                redactó: solo en la revisión, que enseña el estudio para
                 leerlo y la decisión al lado. */}
-            {puedoDecidir &&
-              (onRevisar ? (
-                <button
-                  type="button"
-                  onClick={onRevisar}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[11.5px] font-extrabold
-                    rounded-md text-white bg-[#003DA5] shadow-sm active:scale-95 transition-all"
-                >
-                  <ClipboardCheck className="w-3.5 h-3.5" />
-                  Abrir la revisión
-                </button>
-              ) : (
-                <DecisionEstudioPrevio procesoId={procesoId} onDecidido={refrescar} />
-              ))}
+            {puedoDecidir && onRevisar && (
+              <button
+                type="button"
+                onClick={onRevisar}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[11.5px] font-extrabold
+                  rounded-md text-white bg-[#003DA5] shadow-sm active:scale-95 transition-all"
+              >
+                <ClipboardCheck className="w-3.5 h-3.5" />
+                Abrir la revisión
+              </button>
+            )}
           </>
         ) : (
           <>

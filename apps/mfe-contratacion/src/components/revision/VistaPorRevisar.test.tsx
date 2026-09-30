@@ -8,6 +8,7 @@ import { ElementoPorRevisar } from '../../types';
 
 const elemento = (cambios: Partial<ElementoPorRevisar>): ElementoPorRevisar => ({
   tipo: 'ACTIVIDAD',
+  detalle: null,
   procesoId: 'p-1',
   radicado: 'CTO-2026-0001',
   objeto: 'Servicio de vigilancia',
@@ -83,5 +84,32 @@ describe('VistaPorRevisar', () => {
     pintar([]);
 
     expect(screen.getByText('No tienes nada por revisar')).toBeInTheDocument();
+  });
+
+  it('cada póliza o cuenta de cobro es su propia fila, con su detalle', async () => {
+    const onRevisar = vi.fn();
+    pintar(
+      [
+        elemento({ tipo: 'GARANTIA', numeral: '8.4', actividad: 'Garantías', detalle: 'Póliza PO-1 · Seguros A' }),
+        elemento({ tipo: 'GARANTIA', numeral: '8.4', actividad: 'Garantías', detalle: 'Póliza PO-2 · Seguros B' }),
+      ],
+      onRevisar,
+    );
+
+    expect(screen.getByText(/Póliza PO-1 · Seguros A/)).toBeInTheDocument();
+    await userEvent.click(screen.getByText(/Póliza PO-2 · Seguros B/));
+    expect(onRevisar).toHaveBeenCalledWith(expect.objectContaining({ numeral: '8.4', detalle: 'Póliza PO-2 · Seguros B' }));
+  });
+
+  it('«Actividades» junta todo lo que no es estudio previo', async () => {
+    pintar([
+      elemento({ tipo: 'ESTUDIO_PREVIO', numeral: '3.1', objeto: 'Aseo de sedes' }),
+      elemento({ tipo: 'PAGO', numeral: '9.4', objeto: 'Vigilancia', detalle: 'Cuenta de cobro N.º 3' }),
+    ]);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Actividades' }));
+
+    expect(screen.getByText('Vigilancia')).toBeInTheDocument();
+    expect(screen.queryByText('Aseo de sedes')).toBeNull();
   });
 });
