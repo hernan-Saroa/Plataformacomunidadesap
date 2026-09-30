@@ -522,8 +522,8 @@ export default function DependenciasAdminPanel() {
       {/* MODAL: CREAR / EDITAR DEPENDENCIA (INCLUYE ASIGNACIÓN DE CARGOS Y CREACIÓN) */}
       {/* ========================================================================= */}
       {modalAbierto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 backdrop-blur-sm p-4 pt-20">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
               <div className="flex items-center gap-2">
@@ -860,8 +860,8 @@ export default function DependenciasAdminPanel() {
       {/* MODAL: ASIGNACIÓN RÁPIDA DE CARGOS A UNA DEPENDENCIA */}
       {/* ========================================================================= */}
       {depAsignarCargos && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 backdrop-blur-sm p-4 pt-20">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[75vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
               <div className="flex items-center gap-2">
                 <Briefcase className="w-5 h-5 text-[#003DA5]" />
@@ -986,8 +986,8 @@ export default function DependenciasAdminPanel() {
       {/* MODAL: CATÁLOGO COMPLETO DE CARGOS INSTITUCIONALES */}
       {/* ========================================================================= */}
       {modalCatalogoCargos && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 backdrop-blur-sm p-4 pt-20">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[75vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
               <div className="flex items-center gap-2">
                 <Briefcase className="w-5 h-5 text-[#003DA5]" />
