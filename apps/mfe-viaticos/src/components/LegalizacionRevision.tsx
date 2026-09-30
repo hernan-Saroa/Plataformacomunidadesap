@@ -45,6 +45,9 @@ const ACCION_TEXTO: Record<string, string> = {
   APROBACION: 'Revisión aprobada',
   EXPORTACION_SIIF: 'CSV exportado para SIIF',
   REGISTRO_SIIF_Y_CIERRE: 'Registrada en SIIF y cerrada',
+  REVERSION_SOLICITADA: 'Reversión de la aprobación solicitada',
+  REVERSION_APROBADA: 'Reversión aprobada: la revisión vuelve a empezar',
+  REVERSION_RECHAZADA: 'Reversión rechazada',
 };
 
 function mensajeDeError(err: unknown): string {
@@ -142,6 +145,7 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
   const [devolviendo, setDevolviendo] = useState(false);
   const [obsDevolucion, setObsDevolucion] = useState('');
   const [siif, setSiif] = useState({ numero: '', fecha: hoyColombia(), valor: '', dias: '', obs: '' });
+  const [reversion, setReversion] = useState<string | null>(null);
   const [confirmarCierre, setConfirmarCierre] = useState(false);
 
   const cargar = useCallback(async () => {
@@ -156,13 +160,13 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
     void cargar();
   }, [cargar]);
 
-  const ejecutar = async (fn: () => Promise<unknown>, ok?: string) => {
+  const ejecutar = async <T,>(fn: () => Promise<T>, ok?: string | ((r: T) => string)) => {
     setTrabajando(true);
     setError(null);
     setAviso(null);
     try {
-      await fn();
-      if (ok) setAviso(ok);
+      const r = await fn();
+      if (ok) setAviso(typeof ok === 'function' ? ok(r) : ok);
       await cargar();
     } catch (e) {
       setError(mensajeDeError(e));
@@ -183,6 +187,12 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
   const valorLegalizado = Number(siif.valor);
   const reintegroPrevio =
     siif.valor !== '' && Number.isFinite(valorLegalizado) ? Number(d.valorPagado ?? 0) - valorLegalizado : null;
+  // Un legalizado mayor que lo pagado no se registra: la legalización vuelve al comisionado.
+  const mayorQuePagado = (reintegroPrevio ?? 0) < 0;
+  // GF-FO-032: si el viaje fue más corto, lo legalizado no puede superar lo que permiten los días viajados.
+  const reintegroViajeCorto = d.viajeReal?.reintegroViajeCorto ?? null;
+  const superaMaximo =
+    !mayorQuePagado && siif.valor !== '' && d.maximoLegalizable != null && valorLegalizado > Number(d.maximoLegalizable);
 
   return (
     <div className="space-y-4">
@@ -203,6 +213,14 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
           <p className="mt-1 text-xs text-slate-600">
             Enviada el {formatearFechaLimite(d.fechaEnvio)} · plazo {formatearFechaLimite(d.fechaLimite)}
           </p>
+        )}
+        {d.cumplimiento?.registrado ? (
+          <p className="mt-1 text-xs text-slate-600">
+            GF-FO-032: cumplida del {d.cumplimiento.fechaInicioReal} al {d.cumplimiento.fechaFinReal}
+            {d.cumplimiento.comisionExterna ? ` · fuera de la ESAP: ${d.cumplimiento.entidadExterna}` : ' · en la ESAP'}
+          </p>
+        ) : (
+          <p className="mt-1 text-xs text-amber-700">Sin datos del GF-FO-032 (enviada antes de exigirlos).</p>
         )}
       </div>
 
@@ -334,15 +352,39 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
               <input inputMode="numeric" value={siif.valor} onChange={(e) => setSiif({ ...siif, valor: e.target.value.replace(/[^\d.]/g, '') })}
                 className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs" />
             </label>
-            <label className="text-xs text-slate-700">Días reales de la comisión (opcional)
-              <input inputMode="decimal" value={siif.dias} onChange={(e) => setSiif({ ...siif, dias: e.target.value.replace(/[^\d.]/g, '') })}
+            {d.viajeReal ? (
+              <p className="self-end text-xs text-slate-700">Días reales (GF-FO-032): <strong>{d.viajeReal.diasReales}</strong></p>
+            ) : (
+              <label className="text-xs text-slate-700">Días reales de la comisión (opcional)
+                <input inputMode="decimal" value={siif.dias} onChange={(e) => setSiif({ ...siif, dias: e.target.value.replace(/[^\d.]/g, '') })}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs" />
+              </label>
+            )}
+            <label className="text-xs text-slate-700 sm:col-span-2">Observaciones (opcional)
+              <textarea value={siif.obs} onChange={(e) => setSiif({ ...siif, obs: e.target.value })} rows={2} maxLength={500}
                 className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs" />
             </label>
           </div>
-          {reintegroPrevio !== null && (
-            <p className={`text-xs ${reintegroPrevio < 0 ? 'text-red-700' : 'text-slate-700'}`}>
-              {reintegroPrevio < 0
-                ? 'El valor legalizado no puede superar el pagado.'
+          {reintegroViajeCorto !== null && reintegroViajeCorto > 0 && (
+            <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
+              Viaje más corto según el GF-FO-032 ({d.viajeReal!.nochesReales} de {d.viajeReal!.nochesPlaneadas} noches):
+              reintegro de {formatearPesos(reintegroViajeCorto)}. Máximo legalizable: {formatearPesos(d.maximoLegalizable)}.
+            </p>
+          )}
+          {d.viajeReal && reintegroViajeCorto === null && (
+            <p className="text-xs text-slate-500">
+              La liquidación no tiene tarifas registradas: el reintegro por viaje más corto no se puede calcular automáticamente.
+            </p>
+          )}
+          {superaMaximo && (
+            <p role="alert" className="text-xs font-semibold text-red-700">
+              Lo legalizado no puede superar {formatearPesos(d.maximoLegalizable)}: los días no viajados se reintegran.
+            </p>
+          )}
+          {reintegroPrevio !== null && !superaMaximo && (
+            <p className={`text-xs ${mayorQuePagado ? 'font-semibold text-amber-800' : 'text-slate-700'}`}>
+              {mayorQuePagado
+                ? 'El valor legalizado supera el pagado: no se registra en SIIF, la legalización se devuelve al comisionado para que revise los soportes.'
                 : reintegroPrevio > 0
                   ? `Viaje menor: el comisionado deberá reintegrar ${formatearPesos(reintegroPrevio)}.`
                   : 'Sin diferencia con lo pagado: no hay reintegro.'}
@@ -350,33 +392,83 @@ function DetalleRevisionView({ solicitudId, onVolver }: { solicitudId: string; o
           )}
           {confirmarCierre ? (
             <div className="flex items-center justify-end gap-2">
-              <span className="text-xs text-slate-600">Al registrar, la comisión queda LEGALIZADO y el expediente se cierra sin posibilidad de cambios.</span>
+              <span className="text-xs text-slate-600">
+                {mayorQuePagado
+                  ? 'La legalización vuelve al comisionado; la aprobación de la revisión y la exportación a SIIF se deshacen.'
+                  : 'Al registrar, la comisión queda LEGALIZADO y el expediente se cierra sin posibilidad de cambios.'}
+              </span>
               <button type="button" onClick={() => setConfirmarCierre(false)}
                 className="rounded-lg px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100">Cancelar</button>
               <button type="button" disabled={trabajando}
                 onClick={() => ejecutar(async () => {
-                  await legalizacionService.registrarSiif(solicitudId, {
+                  const r = await legalizacionService.registrarSiif(solicitudId, {
                     numeroRegistroSiif: siif.numero.trim(),
                     fechaRegistroSiif: siif.fecha,
                     valorLegalizado: Number(siif.valor),
-                    diasReales: siif.dias === '' ? null : Number(siif.dias),
+                    diasReales: d.viajeReal || siif.dias === '' ? null : Number(siif.dias),
                     observaciones: siif.obs || undefined,
                   });
                   setConfirmarCierre(false);
-                }, 'Legalización registrada en SIIF. Comisión legalizada y expediente cerrado.')}
-                className="rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-bold text-white">
-                Confirmar registro y cierre
+                  return r;
+                }, (r) => r.devuelta
+                  ? 'Legalización devuelta al comisionado: el valor legalizado supera el pagado.'
+                  : 'Legalización registrada en SIIF. Comisión legalizada y expediente cerrado.')}
+                className={`rounded-lg px-3 py-1.5 text-xs font-bold text-white ${mayorQuePagado ? 'bg-amber-600' : 'bg-blue-700'}`}>
+                {mayorQuePagado ? 'Confirmar devolución' : 'Confirmar registro y cierre'}
               </button>
             </div>
           ) : (
             <div className="flex justify-end">
               <button type="button"
-                disabled={!siif.numero.trim() || !siif.fecha || siif.valor === '' || (reintegroPrevio ?? 0) < 0}
+                disabled={siif.valor === '' || superaMaximo || (!mayorQuePagado && (!siif.numero.trim() || !siif.fecha))}
                 onClick={() => setConfirmarCierre(true)}
-                className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-bold text-white disabled:bg-slate-300">
-                Registrar en SIIF y cerrar
+                className={`rounded-lg px-4 py-2 text-xs font-bold text-white disabled:bg-slate-300 ${mayorQuePagado ? 'bg-amber-600' : 'bg-blue-700'}`}>
+                {mayorQuePagado ? 'Devolver al comisionado por mayor valor' : 'Registrar en SIIF y cerrar'}
               </button>
             </div>
+          )}
+        </div>
+      )}
+
+      {d.reversionPendiente && (
+        <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
+          <p className="font-bold">Reversión de la aprobación pendiente</p>
+          <p className="mt-1">
+            Solicitada el {formatearFechaLimite(d.reversionPendiente.solicitadaEn)}: {d.reversionPendiente.motivo}
+          </p>
+          <p className="mt-1">Debe aprobarla o rechazarla otra persona. Mientras tanto no se puede registrar en SIIF.</p>
+        </div>
+      )}
+
+      {d.puedeSolicitarReversion && (
+        <div className="space-y-2 rounded-xl border border-slate-200 p-4">
+          {reversion === null ? (
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-slate-600">¿Aprobó la revisión por error? Otra persona debe autorizar la reversión, y solo antes del registro en SIIF.</p>
+              <button type="button" onClick={() => setReversion('')}
+                className="shrink-0 rounded-lg border border-amber-400 px-3 py-1.5 text-xs font-bold text-amber-800 hover:bg-amber-50">
+                Solicitar reversión de la aprobación
+              </button>
+            </div>
+          ) : (
+            <>
+              <label className="block text-xs text-slate-700">Motivo de la reversión
+                <textarea value={reversion} onChange={(e) => setReversion(e.target.value)} rows={2} maxLength={500}
+                  className="mt-1 w-full rounded-lg border border-slate-300 p-2 text-xs" />
+              </label>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setReversion(null)}
+                  className="rounded-lg px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100">Cancelar</button>
+                <button type="button" disabled={trabajando || reversion.trim().length < 10}
+                  onClick={() => ejecutar(async () => {
+                    await legalizacionService.solicitarReversion(solicitudId, reversion.trim());
+                    setReversion(null);
+                  }, 'Reversión solicitada. Queda pendiente de aprobación por otra persona.')}
+                  className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white disabled:bg-slate-300">
+                  Enviar solicitud de reversión
+                </button>
+              </div>
+            </>
           )}
         </div>
       )}

@@ -1,12 +1,10 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Put, Req } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { CausalContratacionService } from './causal-contratacion.service';
 import { ElegirCausalDto } from './dto/causal-contratacion.dto';
-import { PermisosGuard } from '../../auth/permisos.guard';
-import { Permisos } from '../../auth/permisos.decorator';
-import { PERMISO_PROCESO_VER } from '../../auth/permisos';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
 
 /**
  * Actividad 3.6 · Causal de contratación (3.5.1 de la matriz, RF-EST-04).
@@ -22,8 +20,7 @@ export class CausalContratacionController {
   constructor(private readonly service: CausalContratacionService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos(PERMISO_PROCESO_VER)
+  @Puede('ver', '3.6')
   @ApiOperation({
     summary: 'La causal del proceso y las que puede tener',
     description:

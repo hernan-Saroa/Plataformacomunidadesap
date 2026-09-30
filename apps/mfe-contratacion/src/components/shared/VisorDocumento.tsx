@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Download, FileText } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -27,13 +27,46 @@ interface Props {
   onClose: () => void;
 }
 
-/** Lo que el navegador sabe pintar sin ayuda de nadie. */
-const SE_VEN_EN_PANTALLA = ['.pdf'];
-const MIME_SE_VEN_EN_PANTALLA = ['application/pdf'];
+/** Cómo se muestra un archivo, según lo que es. */
+export type FormaDeVer = 'pdf' | 'imagen' | 'word' | 'ninguna';
+
+const POR_MIME: Record<string, FormaDeVer> = {
+  'application/pdf': 'pdf',
+  'image/png': 'imagen',
+  'image/jpeg': 'imagen',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'word',
+};
+
+const POR_EXTENSION: Record<string, FormaDeVer> = {
+  '.pdf': 'pdf',
+  '.png': 'imagen',
+  '.jpg': 'imagen',
+  '.jpeg': 'imagen',
+  '.docx': 'word',
+};
 
 function extension(nombre: string): string {
   const punto = nombre.lastIndexOf('.');
   return punto === -1 ? '' : nombre.slice(punto).toLowerCase();
+}
+
+/**
+ * Cómo se muestra el documento.
+ *
+ * Manda el tipo del archivo, y el primero que se conozca: el que declaró quien
+ * abre el visor, o el que trae la respuesta del servidor. El nombre es lo
+ * último, porque cuando el documento cubre un requisito lleva el título del
+ * requisito y no el del archivo.
+ *
+ * El Word antiguo (.doc) no entra: es un formato binario que nada en el
+ * navegador sabe leer, a diferencia del .docx, que es XML comprimido.
+ */
+export function formaDeVer(mimes: (string | null | undefined)[], nombre: string): FormaDeVer {
+  for (const mime of mimes) {
+    if (!mime || mime === 'application/octet-stream') continue;
+    return POR_MIME[mime.split(';')[0].trim().toLowerCase()] ?? 'ninguna';
+  }
+  return POR_EXTENSION[extension(nombre)] ?? 'ninguna';
 }
 
 /**
@@ -53,13 +86,17 @@ function extension(nombre: string): string {
  * Con el blob, la petición la hace el mismo `fetch` con `credentials` que el
  * resto del módulo y el visor pinta lo que ya está descargado.
  *
- * Word y Excel no se pintan: ningún navegador los sabe mostrar y no se va a
- * incrustar un visor de terceros para leerlos, que mandaría el documento fuera
- * de la entidad. Se dice y se ofrece la descarga, que es lo que hay.
+ * El Word (.docx) se convierte en el propio navegador —ver el efecto de
+ * `docx-preview` más abajo—. El Excel y el Word antiguo (.doc) no se pintan: no
+ * se va a incrustar un visor de terceros para leerlos, que mandaría el
+ * documento fuera de la entidad. Se dice y se ofrece la descarga.
  */
 export function VisorDocumento({ documento, onClose }: Props) {
   const [url, setUrl] = useState<string | null>(null);
+  const [archivo, setArchivo] = useState<Blob | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorWord, setErrorWord] = useState(false);
+  const hojaWord = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!documento) return;
@@ -68,7 +105,9 @@ export function VisorDocumento({ documento, onClose }: Props) {
     let creada: string | null = null;
 
     setUrl(null);
+    setArchivo(null);
     setError(null);
+    setErrorWord(false);
 
     contratacionService
       .contenidoDocumento(documento.descargaUrl)
@@ -81,6 +120,7 @@ export function VisorDocumento({ documento, onClose }: Props) {
           return;
         }
         setUrl(creada);
+        setArchivo(blob);
       })
       .catch((e: any) => {
         if (!cancelado) setError(e.message ?? 'No se pudo abrir el documento');
@@ -92,14 +132,42 @@ export function VisorDocumento({ documento, onClose }: Props) {
     };
   }, [documento]);
 
-  if (!documento) return null;
+  const forma = documento
+    ? formaDeVer([documento.mimeType, archivo?.type], documento.nombre)
+    : 'ninguna';
 
-  // El mime manda cuando se conoce: es del archivo, no del título que le
-  // puso el requisito. Sin él se cae a mirar la extensión del nombre, que es
-  // lo único que hay para los adjuntos que no vienen de un formato.
-  const seVe = documento.mimeType
-    ? MIME_SE_VEN_EN_PANTALLA.includes(documento.mimeType)
-    : SE_VEN_EN_PANTALLA.includes(extension(documento.nombre));
+  /**
+   * El Word se convierte a HTML aquí mismo, con `docx-preview`.
+   *
+   * Nada sale de la entidad: el archivo ya está descargado en el navegador y
+   * la conversión ocurre en él, que es lo que un visor de terceros no permitía.
+   * La librería se carga solo cuando se abre un Word, para no sumarle su peso
+   * a cada pantalla.
+   */
+  useEffect(() => {
+    if (forma !== 'word' || !archivo || !hojaWord.current) return;
+    const destino = hojaWord.current;
+    let cancelado = false;
+    destino.innerHTML = '';
+
+    import('docx-preview')
+      .then(({ renderAsync }) =>
+        renderAsync(archivo, destino, undefined, {
+          className: 'visor-word',
+          inWrapper: true,
+          breakPages: true,
+        }),
+      )
+      .catch(() => {
+        if (!cancelado) setErrorWord(true);
+      });
+
+    return () => {
+      cancelado = true;
+    };
+  }, [forma, archivo]);
+
+  if (!documento) return null;
 
   /**
    * Se baja desde el blob y no desde el enlace del gateway.
@@ -158,20 +226,28 @@ export function VisorDocumento({ documento, onClose }: Props) {
           <p role="alert" className="text-xs font-semibold text-red-600 m-0 px-5 py-4">
             {error}
           </p>
-        ) : !seVe ? (
+        ) : !url ? (
+          <p className="text-xs text-slate-500 m-0 px-5 py-4">Abriendo el documento…</p>
+        ) : forma === 'pdf' ? (
+          <iframe src={url} title={documento.nombre} className="visor-marco" />
+        ) : forma === 'imagen' ? (
+          <div className="visor-marco visor-imagen">
+            <img src={url} alt={documento.nombre} />
+          </div>
+        ) : forma === 'word' && !errorWord ? (
+          <div ref={hojaWord} className="visor-marco visor-hoja" aria-label={documento.nombre} />
+        ) : (
           <div className="px-5 py-8 text-center">
             <FileText className="w-9 h-9 mx-auto text-gray-300 mb-2" strokeWidth={1.5} />
             <p className="text-xs font-bold text-gray-600 m-0">
-              Este documento se lee en Word o Excel
+              {errorWord ? 'No se pudo mostrar este Word' : 'Este documento no se puede mostrar aquí'}
             </p>
             <p className="text-[11px] text-gray-400 m-0 mt-1 leading-snug">
-              El navegador no sabe mostrarlo. Descárgalo para revisarlo.
+              {errorWord
+                ? 'Puede estar dañado o protegido. Descárgalo para revisarlo.'
+                : 'El visor abre PDF, imágenes y Word (.docx). Los Excel y los Word antiguos (.doc) hay que descargarlos.'}
             </p>
           </div>
-        ) : !url ? (
-          <p className="text-xs text-slate-500 m-0 px-5 py-4">Abriendo el documento…</p>
-        ) : (
-          <iframe src={url} title={documento.nombre} className="visor-marco" />
         )}
       </div>
     </Modal>

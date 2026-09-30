@@ -33,7 +33,7 @@ function enter(doc = '12345678') {
   fireEvent.change(screen.getByLabelText(/Tipo de Documento/), { target: { value: 'CC' } });
   fireEvent.input(screen.getByLabelText(/Número de Documento/), { target: { value: doc } });
 }
-const functionsBox = () => screen.getByRole('checkbox', { name: 'Incluir las funciones de mi cargo' });
+const functionsBox = () => screen.getByRole('checkbox', { name: 'Incluir mis funciones laborales' });
 const submit = () => screen.getByRole('button', { name: 'Solicitar Certificado' });
 beforeEach(() => {
   vi.clearAllMocks();
@@ -86,7 +86,7 @@ describe('Per-employee functions eligibility in the public form', () => {
     await screen.findByRole('alert');
     await act(async () => { old.resolve({ ...response(), functions_count: 99 }); });
     expect(screen.queryByText(/99 funciones/)).toBeNull();
-    expect(screen.getByRole('alert')).toHaveTextContent('No cuentas con funciones laborales asociadas');
+    expect(screen.getByRole('alert')).toHaveTextContent('No hay funciones laborales asignadas a tu número de identificación');
     expect(api.verificarDocumento).toHaveBeenLastCalledWith('87654321');
   });
 

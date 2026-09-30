@@ -5,7 +5,9 @@
  * (>72.990 registros históricos), filtrable por período, territorial,
  * CETAP, programa y núcleo temático. Cubre también F022 (consultas
  * puntuales de entes de control: "¿qué dictó el docente X en el período
- * Y?") reutilizando el mismo listado — basta con fijar docente + período.
+ * Y?"): al fijar docente + período se usa el endpoint dedicado
+ * GET /macro-docente/consulta (sin paginar, universo naturalmente pequeño)
+ * en vez del listado general.
  *
  * El acceso de entes externos es temporal y controlado: solo GGP/Dirección
  * puede otorgarlo (con vigencia y motivo), y cada consulta queda auditada
@@ -136,6 +138,18 @@ async function fetchHistorial(filters: FiltrosMacroDocente, page: number, limit:
     total: raw?.total ?? 0,
     pages: raw?.pages ?? 1,
   };
+}
+
+/**
+ * REQ-RUND-F022: cuando la consulta fija docente + período, se usa el
+ * endpoint dedicado a consultas puntuales de entes de control (no pagina:
+ * el universo por docente+período es naturalmente pequeño) en vez del
+ * listado general.
+ */
+async function fetchConsultaPuntual(docenteId: string, periodo: string) {
+  const raw = await apiClient.get<any>(`${MD_BASE}/consulta`, { docenteId, periodo });
+  const items = Array.isArray(raw?.items) ? raw.items : [];
+  return { items, total: raw?.total ?? items.length, pages: 1 };
 }
 
 function DocenteSearchInput({
@@ -541,7 +555,9 @@ export function MacroDocenteReportView({ onClose }: { onClose?: () => void }) {
     setPage(1);
     setLoading(true);
     try {
-      const data = await fetchHistorial(filtros, 1, limit);
+      const data = (filtros.docenteId && filtros.periodo)
+        ? await fetchConsultaPuntual(filtros.docenteId, filtros.periodo)
+        : await fetchHistorial(filtros, 1, limit);
       setDetalle(data);
     } catch (error: any) {
       toast.error('Error al generar el Macro Docente', { description: error?.message });

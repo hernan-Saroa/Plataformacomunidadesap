@@ -105,6 +105,29 @@ export class LegalizacionComisionEntity {
   @Column({ name: 'observaciones_cierre', type: 'text', nullable: true })
   observacionesCierre: string | null;
 
+  // EFDS-1309/1310 — Datos del GF-FO-032 V2, registrados al legalizar (migración 501).
+  @Column({ name: 'fecha_inicio_real', type: 'date', nullable: true })
+  fechaInicioReal: string | null;
+
+  @Column({ name: 'fecha_fin_real', type: 'date', nullable: true })
+  fechaFinReal: string | null;
+
+  /** true: se cumplió fuera de la ESAP y exige el certificado de la entidad externa. null: no declarado. */
+  @Column({ name: 'comision_externa', type: 'boolean', nullable: true })
+  comisionExterna: boolean | null;
+
+  @Column({ name: 'entidad_externa', type: 'varchar', length: 200, nullable: true })
+  entidadExterna: string | null;
+
+  @Column({ name: 'cumplimiento_registrado_en', type: 'timestamptz', nullable: true })
+  cumplimientoRegistradoEn: Date | null;
+
+  @Column({ name: 'cumplimiento_registrado_por_id', type: 'uuid', nullable: true })
+  cumplimientoRegistradoPorId: string | null;
+
+  @Column({ name: 'reintegro_viaje_corto', type: 'numeric', precision: 14, scale: 2, nullable: true })
+  reintegroViajeCorto: string | null;
+
   /** Expediente cerrado: la fila y sus soportes quedan inmutables (triggers de la 451). */
   @Column({ name: 'cerrada_en', type: 'timestamptz', nullable: true })
   cerradaEn: Date | null;

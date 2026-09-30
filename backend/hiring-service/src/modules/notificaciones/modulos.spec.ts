@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 
+import { AlcanceService } from '../../auth/alcance.service';
 import { PermisosService } from '../../auth/permisos.service';
 import { ParticipacionModule } from '../participacion/participacion.module';
 import { ParticipacionService } from '../participacion/participacion.service';
@@ -26,13 +27,22 @@ describe('Módulos de alertas y notificaciones · arranque', () => {
   const baseFalsa = { subscribers: [] as unknown[], query: jest.fn().mockResolvedValue([]) };
 
   @Global()
-  // PermisosService lo aporta AuthModule, que es global en la aplicación real.
+  // PermisosService y AlcanceService los aporta AuthModule, que es global en la
+  // aplicación real.
   @Module({
     providers: [
       { provide: DataSource, useValue: baseFalsa },
       { provide: PermisosService, useValue: { permisosDeRoles: jest.fn().mockResolvedValue([]) } },
+      {
+        provide: AlcanceService,
+        useValue: {
+          deRoles: jest.fn().mockResolvedValue([]),
+          puedeEn: jest.fn().mockResolvedValue(false),
+          cuentasQuePueden: jest.fn().mockResolvedValue([]),
+        },
+      },
     ],
-    exports: [DataSource, PermisosService],
+    exports: [DataSource, PermisosService, AlcanceService],
   })
   class BaseFalsaModule {}
 

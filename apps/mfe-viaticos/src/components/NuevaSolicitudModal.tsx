@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
+  AlertTriangle,
   Calculator,
   Calendar,
   CheckCircle,
@@ -11,8 +12,10 @@ import {
   DollarSign,
   Eye,
   FileText,
+  MapPin,
   Plane,
   PlaneTakeoff,
+  Bus,
   Plus,
   Route,
   Search,
@@ -42,6 +45,7 @@ import {
   RutaItinerario,
   SaldoTiquete,
   SolicitudComisionResponse,
+  SolicitudPendiente023,
   TicketValidationResult,
   TipoTransporteTiquete,
 } from '../types/viaticos';
@@ -65,10 +69,12 @@ import {
   formatearDiasComision,
   formatearMoneda,
   formatearNombreComisionado,
+  getConfigEstado,
   hoyISO,
   inferirTipoMime,
   formInicialNuevaSolicitud,
   mapearARequestCreacion,
+  obtenerAyudaValidacionDocumento,
   sanitizeObjetoComision,
   soloNumeros,
   sincronizarItinerarioFormulario,
@@ -150,6 +156,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [paso, setPaso] = useState(1);
   const [form, setForm] = useState<FormNuevaSolicitud>(formInicialNuevaSolicitud());
   const [comisionado, setComisionado] = useState<Comisionado | null>(null);
+  const [solicitudesPendientes023, setSolicitudesPendientes023] = useState<SolicitudPendiente023[]>([]);
   const [consultando, setConsultando] = useState(false);
   const [errorConsulta, setErrorConsulta] = useState<string | null>(null);
   const [errorValidacion, setErrorValidacion] = useState<string | null>(null);
@@ -161,6 +168,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     extemporanea: boolean;
     diasHabiles: number;
     radicadoFueraJornada: boolean;
+  } | null>(null);
+  const [alertaSolapamiento, setAlertaSolapamiento] = useState<{
+    mensaje: string;
+    solicitudConflicto?: any | null;
+    claveFechas: string;
+    permitirContinuar: boolean;
   } | null>(null);
   const [departamentos, setDepartamentos] = useState<Geopolitica[]>([]);
   const [ciudades, setCiudades] = useState<Geopolitica[]>([]);
@@ -188,7 +201,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [cargandoParametrizacion, setCargandoParametrizacion] = useState(false);
   const [documentosFaltantes, setDocumentosFaltantes] = useState<string[]>([]);
   const [solicitudBorrador, setSolicitudBorrador] = useState<SolicitudComisionResponse | null>(null);
-  const [checklist, setChecklist] = useState<{ obligatorios: Array<{ codigo: string; nombre: string; descripcion: string | null }>; opcionales: Array<{ codigo: string; nombre: string; descripcion: string | null }> } | null>(null);
+  const [checklist, setChecklist] = useState<{
+    obligatorios: Array<{ codigo: string; nombre: string; descripcion: string | null; instruccionesValidacion?: string | null }>;
+    opcionales: Array<{ codigo: string; nombre: string; descripcion: string | null; instruccionesValidacion?: string | null }>;
+  } | null>(null);
   const [cargandoChecklist, setCargandoChecklist] = useState(false);
   const [subiendoDocs, setSubiendoDocs] = useState(false);
   const [errorDocumentos, setErrorDocumentos] = useState<string | null>(null);
@@ -462,6 +478,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setPaso(1);
       setForm(formInicialNuevaSolicitud());
       setComisionado(null);
+      setSolicitudesPendientes023([]);
       setConsultando(false);
       setErrorConsulta(null);
       setErrorValidacion(null);
@@ -469,6 +486,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setHabeasMarcado(false);
       setEnviando(false);
       setAlertaAnticipacion(null);
+      setAlertaSolapamiento(null);
       setDepartamentos([]);
       setCiudades([]);
       setCiudadesDepto('');
@@ -680,6 +698,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setConsultando(true);
     setErrorConsulta(null);
     setComisionado(null);
+    setSolicitudesPendientes023([]);
     setHabeasPendiente(false);
     setHabeasMarcado(false);
     try {
@@ -691,7 +710,16 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         return;
       }
       setComisionado(resultado);
-      setForm((prev) => ({ ...prev, comisionadoId: resultado.id }));
+      const pendientes = resultado.solicitudesPendientes || [];
+      setSolicitudesPendientes023(pendientes);
+      setForm((prev) => ({
+        ...prev,
+        comisionadoId: resultado.id,
+        idDependencia: resultado.idDependencia ?? prev.idDependencia,
+        salarioBasico: resultado.salarioBasico != null && Number(resultado.salarioBasico) > 0
+          ? Number(resultado.salarioBasico)
+          : prev.salarioBasico,
+      }));
       if (!resultado.autorizacionHabeasData) {
         setHabeasPendiente(true);
       }
@@ -766,6 +794,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           fechaInicio: sync.fechaInicio,
           fechaFin: sync.fechaFin,
           diasComision: sync.diasComision,
+          montoGastosViaje: sync.totalGastosDesplazamiento,
+          camposAdicionales: {
+            ...(prev.camposAdicionales || {}),
+            transporteTerminalAereo: sync.transporteTerminalesAereos,
+            transporteTerrestre: sync.transporteTerrestreOtros,
+          },
           requiereTiquetes: algunRequiereTiquete || prev.requiereTiquetes,
           tipoComision: prev.esInternacional ? 'INTERNACIONAL' : (prev.tipoComision === 'ACTO_ADMINISTRATIVO' ? 'ACTO_ADMINISTRATIVO' : 'TERRESTRE'),
         }));
@@ -874,6 +908,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     return { origenCiudad: sync.origenCiudad, origenDepartamento: sync.origenDepartamento, destinoCiudad: sync.destinoCiudad, destinoDepartamento: sync.destinoDepartamento };
   };
 
+  const validarCamposDinamicosObligatorios = (): string | null => {
+    const obligatorios = camposCatalogo.filter(
+      (c) => c.activo && !camposEstandar.has(c.clave) && !esCampoOculto(c.clave) && esCampoObligatorio(c.clave),
+    );
+    for (const campo of obligatorios) {
+      const val = form.camposAdicionales?.[campo.clave];
+      if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+        return `Por favor complete el campo obligatorio: "${campo.etiqueta}".`;
+      }
+    }
+    return null;
+  };
+
   const irPaso = (siguiente: number) => {
     if (siguiente === 2 && !tieneComisionadoAutorizado) return;
     if (siguiente === 3) {
@@ -899,6 +946,24 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         setErrorValidacion(error);
         return;
       }
+      // ── Validación: origen ≠ destino ──────────────────────────────────────
+      {
+        const { origenCiudad: oc, destinoCiudad: dc } = obtenerOrigenDestinoItinerario();
+        const normalizar = (s: string) =>
+          s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+        if (oc && dc && normalizar(oc) === normalizar(dc)) {
+          setErrorValidacion(
+            `La ciudad de destino ("${dc}") no puede ser la misma que la de origen ("${oc}"). ` +
+            'Si el itinerario tiene un tramo de regreso, el destino se calculará como el punto más alejado antes del retorno.',
+          );
+          return;
+        }
+      }
+      const errCamposDinamicos = validarCamposDinamicosObligatorios();
+      if (errCamposDinamicos) {
+        setErrorValidacion(errCamposDinamicos);
+        return;
+      }
       if (comisionado && parametrizacion) {
         const documentosObligatorios = parametrizacion.documentos
           .filter((d) => d.tipoRequisito === 'OBLIGATORIO')
@@ -915,7 +980,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setPaso(siguiente);
   };
 
-  const guardarYBorrador = async () => {
+  const guardarYBorrador = async (forzarContinuar = false) => {
     if (!form.itinerario || form.itinerario.length === 0) {
       setErrorValidacion('Debe registrar al menos un tramo en el itinerario.');
       return;
@@ -935,6 +1000,75 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setErrorValidacion('Debe consultar el comisionado antes de guardar.');
       return;
     }
+    // ── Validación: origen ≠ destino ────────────────────────────────────────
+    // La sincronización del itinerario ya aplica la lógica de ida-vuelta, pero
+    // se agrega esta guarda adicional para detectar casos donde la ciudad de
+    // destino calculada termina siendo igual a la de origen (p.ej. itinerarios
+    // incompletos o con rutas de retorno sin tramo intermedio registrado).
+    {
+      const { origenCiudad: oc, destinoCiudad: dc } = obtenerOrigenDestinoItinerario();
+      const normalizar = (s: string) =>
+        s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+      if (oc && dc && normalizar(oc) === normalizar(dc)) {
+        setErrorValidacion(
+          `La ciudad de destino ("${dc}") no puede ser la misma que la ciudad de origen ("${oc}"). ` +
+          'Verifique el itinerario: si hay un tramo de regreso, el destino se calculará como el punto más alejado antes del retorno.',
+        );
+        return;
+      }
+    }
+    const errCamposDinamicos = validarCamposDinamicosObligatorios();
+    if (errCamposDinamicos) {
+      setErrorValidacion(errCamposDinamicos);
+      return;
+    }
+
+    // ── Validación de duplicidad / solapamiento por cédula y fechas ──────────
+    // Al intentar guardar y continuar al cargue de soportes, se verifica duplicidad.
+    // Si se detecta solapamiento, se alerta al usuario y NO se le deja continuar la primera vez.
+    // Si el usuario decide continuar voluntariamente (segundo clic o botón explícito), puede continuar en borrador,
+    // pero al final en la radicación el backend bloqueará la terminación definitiva.
+    const claveFechasActual = `${comisionado.numeroDocumento}_${fechaInicio}_${fechaFin}`;
+    if (!forzarContinuar) {
+      const yaConfirmadoContinuar =
+        alertaSolapamiento &&
+        alertaSolapamiento.claveFechas === claveFechasActual &&
+        alertaSolapamiento.permitirContinuar;
+
+      if (!yaConfirmadoContinuar) {
+        setEnviando(true);
+        setErrorValidacion(null);
+        try {
+          const verif = await viaticosService.verificarSolapamiento(
+            comisionado.numeroDocumento,
+            fechaInicio,
+            fechaFin,
+            solicitudBorrador?.id,
+          );
+          if (verif.haySolapamiento) {
+            setAlertaSolapamiento({
+              mensaje:
+                verif.mensaje ||
+                'Se detectó duplicidad o solapamiento de fechas con otra solicitud del comisionado.',
+              solicitudConflicto: verif.solicitudConflicto,
+              claveFechas: claveFechasActual,
+              permitirContinuar: true,
+            });
+            setErrorValidacion(
+              verif.mensaje ||
+                'Se detectó duplicidad o solapamiento de fechas con otra comisión existente del comisionado. Por seguridad, no puede continuar la primera vez; revise las fechas o confirme si desea continuar en modo borrador.',
+            );
+            setEnviando(false);
+            return; // Bloquea y no deja continuar la primera vez
+          } else {
+            setAlertaSolapamiento(null);
+          }
+        } catch (eVerif) {
+          console.warn('Error al verificar solapamiento:', eVerif);
+        }
+      }
+    }
+
     setEnviando(true);
     setErrorValidacion(null);
     try {
@@ -978,18 +1112,59 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 return 'TERRESTRE';
               })(),
             esInternacional: Boolean(form.esInternacional),
-            camposAdicionales: form.camposAdicionales ?? {},
+            idDependencia: form.idDependencia ?? comisionado?.idDependencia ?? undefined,
+            diasPernoctados: form.diasPernoctados ?? undefined,
+            tarifaDiaPernoctado: form.tarifaDiaPernoctado ?? undefined,
+            totalPernoctados: form.totalPernoctados ?? undefined,
+            diasNoPernoctados: form.diasNoPernoctados ?? undefined,
+            tarifaDiaNoPernoctado: form.tarifaDiaNoPernoctado ?? undefined,
+            totalNoPernoctados: form.totalNoPernoctados ?? undefined,
+            tarifaDiariaBase: form.tarifaDiariaBase ?? undefined,
+            tarifaFinalAplicadaDia: form.tarifaFinalAplicadaDia ?? undefined,
+            salarioBaseAplicado: form.salarioBaseAplicado ?? undefined,
+            decretoAplicado: form.decretoAplicado ?? undefined,
+            factorComisionado: form.factorComisionado ?? undefined,
+            factorPernocta: form.factorPernocta ?? undefined,
+            desgloseCalculo: form.desgloseCalculo ?? undefined,
+            alertasLiquidacion: form.alertasLiquidacion ?? undefined,
+            camposAdicionales: {
+              ...(form.camposAdicionales ?? {}),
+              transporteTerminalAereo:
+                form.camposAdicionales?.transporteTerminalAereo ??
+                (form.itinerario || []).reduce(
+                  (acc, r) => acc + (r.tarifaTerminalAereo || 0),
+                  0,
+                ),
+              transporteTerrestre:
+                form.camposAdicionales?.transporteTerrestre ??
+                Math.max(
+                  0,
+                  (form.montoGastosViaje || 0) -
+                    (form.itinerario || []).reduce(
+                      (acc, r) => acc + (r.tarifaTerminalAereo || 0),
+                      0,
+                    ),
+                ),
+              fechaAutoliquidacion:
+                form.camposAdicionales?.fechaAutoliquidacion ||
+                new Date().toISOString().split('T')[0],
+            },
             itinerario: (form.itinerario || []).map((r) => {
               const {
                 guardada,
                 origenDepartamentoId,
                 destinoDepartamentoId,
-                horaEstimadaSalida,
-                horaEstimadaLlegada,
-                tarifaTerminalAereo,
                 ...cleanRuta
               } = r;
-              return cleanRuta;
+              const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
+              const horaLlegada = r.horaEstimadaLlegada || '';
+              return {
+                ...cleanRuta,
+                tarifaTerminalAereo: r.tarifaTerminalAereo,
+                horaEstimadaSalida: horaSalida,
+                horarioEstimadoMilitar: horaSalida || r.horarioEstimadoMilitar,
+                horaEstimadaLlegada: horaLlegada,
+              };
             }),
           },
         );
@@ -1010,9 +1185,16 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       const tipoChecklist = form.esInternacional ? 'INTERNACIONAL' : comisionado.tipoComisionado;
       await cargarChecklist(tipoChecklist);
       setPaso(3);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error guardando borrador:', e);
-      setErrorValidacion('No fue posible guardar el borrador. Verifique e intente nuevamente.');
+      const msg = e?.response?.data?.message || e?.message;
+      setErrorValidacion(
+        Array.isArray(msg)
+          ? msg.join(', ')
+          : typeof msg === 'string' && msg.length > 0
+            ? msg
+            : 'No fue posible guardar el borrador. Verifique e intente nuevamente.',
+      );
     } finally {
       setEnviando(false);
     }
@@ -1157,15 +1339,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setFinalizando(true);
     setErrorValidacion(null);
     try {
-      const radicada = await viaticosService.finalizarSolicitud(solicitudBorrador.id);
-      onSolicitudCreada(radicada as unknown as SolicitudComisionResponse);
+      // Iniciar formalmente el flujo de firmas de aprobación previo a la radicación (estado PENDIENTE_FIRMAS)
+      // El Enlace no firma: solo remite la solicitud a revisión y firma de los jefes
+      const conFirmas = await viaticosService.solicitarFirmasAprobacion(solicitudBorrador.id);
+      onSolicitudCreada(conFirmas);
       onCerrar();
     } catch (e: any) {
-      console.error('Error radicando solicitud:', e);
+      console.error('Error enviando a firmas de aprobación:', e);
       const mensaje =
         e?.response?.data?.message ||
         e?.message ||
-        'No fue posible radicar la solicitud. Verifique e intente nuevamente.';
+        'No fue posible iniciar el flujo de firmas de aprobación. Verifique e intente nuevamente.';
       setErrorValidacion(
         Array.isArray(mensaje) ? mensaje.join(' ') : mensaje,
       );
@@ -1277,6 +1461,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     const depUbicacion = (depMatch as any)?.dirDependencia || null;
     const depEmail = (depMatch as any)?.dirEmail || null;
 
+    const fechaInicioContrato = comisionado?.fechaInicioContrato
+      ? String(comisionado.fechaInicioContrato).split('T')[0]
+      : null;
+    const fechaFinContrato = comisionado?.fechaFinContrato
+      ? String(comisionado.fechaFinContrato).split('T')[0]
+      : null;
+    const salarioBasico =
+      comisionado?.salarioBasico != null
+        ? Number(comisionado.salarioBasico)
+        : null;
+
     return {
       nombre,
       cedula,
@@ -1291,6 +1486,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       depCodigo,
       depUbicacion,
       depEmail,
+      fechaInicioContrato,
+      fechaFinContrato,
+      salarioBasico,
     };
   }, [comisionado, form, dependencias, dependenciaId, usuarioActual]);
 
@@ -1398,6 +1596,88 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         <form onSubmit={onSubmitFormulario} className="space-y-4">
           {paso === 1 && (
             <div className="space-y-4">
+              {solicitudesPendientes023.length > 0 && (
+                <div
+                  className="rounded-2xl border-2 border-amber-300 bg-amber-50/95 dark:bg-amber-950/30 p-4 sm:p-5 shadow-xs space-y-3 transition-all animate-fadeIn"
+                  role="alert"
+                  aria-live="polite"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                      <AlertTriangle className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-amber-900 dark:text-amber-200 text-sm sm:text-base">
+                          Atención: El comisionado tiene solicitudes de Formato 023 pendientes
+                        </h4>
+                        <span className="px-2.5 py-0.5 text-xs font-black rounded-full bg-amber-200 dark:bg-amber-900/80 text-amber-900 dark:text-amber-100 border border-amber-400">
+                          {solicitudesPendientes023.length} {solicitudesPendientes023.length === 1 ? 'solicitud en trámite' : 'solicitudes en trámite'}
+                        </span>
+                      </div>
+                      <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
+                        Este comisionado ya cuenta con solicitudes de comisión (Formato GF-FO-023) registradas y en trámite. Por favor verifique que las nuevas fechas, trayectos y compromisos no generen solapamiento de fechas, duplicidad o incompatibilidad con las solicitudes listadas a continuación:
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 mt-2 pt-2 border-t border-amber-200/90 dark:border-amber-800/60">
+                    <p className="text-xs font-bold text-amber-950 dark:text-amber-200 uppercase tracking-wider flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-amber-700" />
+                      Solicitudes de Formato 023 pendientes / en trámite:
+                    </p>
+                    <div className="grid grid-cols-1 gap-2.5 max-h-64 overflow-y-auto pr-1">
+                      {solicitudesPendientes023.map((sol) => {
+                        const cfgEstado = getConfigEstado(sol.estadoSolicitud);
+                        const consecutivo = sol.codigoSolicitud || sol.consecutivoUnico || `SOL-${sol.id.slice(0, 8)}`;
+                        const total = Number(sol.totalGeneral ?? ((sol.montoViaticos || 0) + (sol.montoGastosViaje || 0)));
+                        return (
+                          <div
+                            key={sol.id}
+                            className="bg-white/95 dark:bg-slate-900/90 rounded-xl p-3.5 border border-amber-200 dark:border-amber-800/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:border-amber-300 transition-colors"
+                          >
+                            <div className="space-y-1.5 min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-extrabold text-[#003DA5] dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 text-xs">
+                                  {consecutivo}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${cfgEstado.bg} ${cfgEstado.text}`}>
+                                  {cfgEstado.label}
+                                </span>
+                                <span className="text-slate-500 font-medium text-[11px]">
+                                  Formato GF-FO-023
+                                </span>
+                              </div>
+                              <p className="text-slate-700 dark:text-slate-200 font-semibold line-clamp-2" title={sol.objetoComision}>
+                                {sol.objetoComision || 'Sin objeto registrado'}
+                              </p>
+                              <div className="flex items-center gap-4 text-slate-500 dark:text-slate-400 text-[11px] flex-wrap">
+                                <span className="inline-flex items-center gap-1 font-medium">
+                                  <MapPin className="w-3 h-3 text-slate-400" />
+                                  Destino: {sol.destinoCiudad || 'N/A'}{sol.destinoDepartamento ? `, ${sol.destinoDepartamento}` : ''}
+                                </span>
+                                <span className="inline-flex items-center gap-1 font-medium">
+                                  <Calendar className="w-3 h-3 text-slate-400" />
+                                  Periodo: {sol.fechaInicio || 'N/A'} al {sol.fechaFin || 'N/A'}
+                                </span>
+                              </div>
+                            </div>
+                            {total > 0 && (
+                              <div className="sm:text-right shrink-0 bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200/60">
+                                <span className="text-[10px] text-slate-500 font-medium block">Total Estimado</span>
+                                <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                                  {formatearMoneda(total)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
                 1. Datos del Funcionario Comisionado
               </h4>
@@ -1413,7 +1693,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     required={esCampoObligatorio('documentoComisionado')}
                     placeholder="Ej. 1019283746"
                     value={form.documentoComisionado}
-                    onChange={(e) => actualizar('documentoComisionado', soloNumeros(e.target.value))}
+                    onChange={(e) => {
+                      actualizar('documentoComisionado', soloNumeros(e.target.value));
+                      if (solicitudesPendientes023.length > 0) {
+                        setSolicitudesPendientes023([]);
+                      }
+                    }}
                     className={inputCls}
                   />
                   <button
@@ -1469,6 +1754,26 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     <div className="bg-white/90 p-2.5 rounded-xl border border-emerald-100">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Correo Electrónico</span>
                       <span className="font-bold text-slate-800 truncate block" title={infoComisionadoCompleta.correo}>{infoComisionadoCompleta.correo}</span>
+                    </div>
+                    {infoComisionadoCompleta.salarioBasico != null && infoComisionadoCompleta.salarioBasico > 0 && (
+                      <div className="bg-white/90 p-2.5 rounded-xl border border-emerald-100">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Salario Básico</span>
+                        <span className="font-bold text-slate-800">{formatearMoneda(infoComisionadoCompleta.salarioBasico)}</span>
+                      </div>
+                    )}
+                    {(infoComisionadoCompleta.fechaInicioContrato || infoComisionadoCompleta.fechaFinContrato) && (
+                      <div className="bg-white/90 p-2.5 rounded-xl border border-emerald-100">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Vigencia Contrato / Vinculación</span>
+                        <span className="font-bold text-slate-800">
+                          {infoComisionadoCompleta.fechaInicioContrato || 'Inicio'} al {infoComisionadoCompleta.fechaFinContrato || 'Indefinido / Vigente'}
+                        </span>
+                      </div>
+                    )}
+                    <div className="bg-white/90 p-2.5 rounded-xl border border-emerald-100">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Régimen DIAN / Facturación</span>
+                      <span className="font-bold text-slate-800">
+                        {infoComisionadoCompleta.esFacturador ? 'Facturador Electrónico' : 'Régimen Ordinario / RUT'}
+                      </span>
                     </div>
                     <div className="sm:col-span-2 lg:col-span-3 bg-white/90 p-2.5 rounded-xl border border-emerald-100 flex items-center justify-between flex-wrap gap-2">
                       <div>
@@ -1914,7 +2219,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                   id={`campo_${campo.clave}`}
                                   required={obligatorio}
                                   rows={2}
-                                  placeholder={campo.ayuda || ''}
+                                  placeholder={campo.placeholder || (campo as any).ayuda || ''}
                                   value={String(valorActual)}
                                   onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.value)}
                                   className={inputCls}
@@ -1923,7 +2228,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             );
                           }
 
-                          if (campo.tipoCampo === 'CHECKBOX') {
+                          if ((campo.tipoCampo as string) === 'CHECKBOX' || (campo.tipoCampo as string) === 'BOOLEAN') {
                             return (
                               <div key={campo.clave} className="col-span-1 sm:col-span-2 flex items-center pt-2">
                                 <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
@@ -1940,7 +2245,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             );
                           }
 
-                          if (campo.tipoCampo === 'SELECT') {
+                          if (campo.tipoCampo?.toUpperCase() === 'SELECT') {
+                            const opcionesSelect = (campo.opciones || [])
+                              .map((o: any) => {
+                                if (typeof o === 'string') return { value: o, label: o };
+                                if (o && typeof o === 'object' && !Array.isArray(o)) {
+                                  const val = o.value ?? o.valor ?? o.id ?? '';
+                                  const lab = o.label ?? o.nombre ?? o.etiqueta ?? val;
+                                  if (val || lab) return { value: String(val), label: String(lab) };
+                                }
+                                return null;
+                              })
+                              .filter((o): o is { value: string; label: string } => Boolean(o && (o.value || o.label)));
+
                             return (
                               <div key={campo.clave}>
                                 <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
@@ -1948,7 +2265,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                 </label>
                                 <SearchableSelect
                                   id={`campo_${campo.clave}`}
-                                  options={(campo.opciones || []).map((o) => ({ value: o.value, label: o.label }))}
+                                  options={opcionesSelect}
                                   value={String(valorActual)}
                                   onChange={(v) => actualizarCampoAdicional(campo.clave, v)}
                                   placeholder="Seleccione..."
@@ -1966,7 +2283,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                 id={`campo_${campo.clave}`}
                                 type={campo.tipoCampo === 'DATE' ? 'date' : 'text'}
                                 required={obligatorio}
-                                placeholder={campo.ayuda || ''}
+                                placeholder={campo.placeholder || (campo as any).ayuda || ''}
                                 value={campo.tipoCampo === 'CURRENCY' && typeof valorActual === 'number' ? formatearMoneda(valorActual) : String(valorActual)}
                                 onChange={(e) => {
                                   const val = campo.tipoCampo === 'CURRENCY' ? Number(soloNumeros(e.target.value)) || 0 : e.target.value;
@@ -2005,6 +2322,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 <ItinerarioBuilder
                   itinerario={form.itinerario || []}
                   onChange={(itinerario) => {
+                    if (alertaSolapamiento) {
+                      setAlertaSolapamiento(null);
+                    }
                     const sync = sincronizarItinerarioFormulario(itinerario.filter((r) => r.guardada));
                     setForm((prev) => ({
                       ...prev,
@@ -2043,14 +2363,42 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   categoriaInvestigador={categoriaInvestigador}
                   asignacionesBasicas={obtenerAsignacionesBasicasValidas()}
                   incluyeTransporteAereo={form.itinerario?.some((r) => r.tipoTransporte === 'AEREO')}
-                  montoTransporteTerrestre={0}
+                  montoTransporteTerrestre={(form.itinerario || []).reduce((acc, r) => r.tipoTransporte !== 'AEREO' ? acc + (Number(r.valorTransporte ?? r.montoTransporteTerrestre ?? 0) || 0) : acc, 0)}
                   itinerario={form.itinerario}
-                  onAplicarValor={(montoViaticos, dias, montoGastosDesplazamiento) => {
-                    actualizar('montoViaticos', montoViaticos);
-                    actualizar('diasComision', dias);
-                    if (montoGastosDesplazamiento !== undefined && montoGastosDesplazamiento > 0) {
-                      actualizar('montoGastosViaje', montoGastosDesplazamiento);
-                    }
+                  onAplicarValor={(montoViaticos, dias, montoGastosDesplazamiento, datosCompletos) => {
+                    const tarifasAereas = (form.itinerario || []).reduce((acc, r) => acc + (r.tarifaTerminalAereo || 0), 0);
+                    const transporteTerrestreTotal = (form.itinerario || []).reduce((acc, r) => r.tipoTransporte !== 'AEREO' ? acc + (Number(r.valorTransporte ?? r.montoTransporteTerrestre ?? 0) || 0) : acc, 0);
+                    const totalDesplazamiento = (montoGastosDesplazamiento !== undefined && montoGastosDesplazamiento > 0)
+                      ? montoGastosDesplazamiento
+                      : (tarifasAereas + transporteTerrestreTotal);
+
+                    setForm((prev) => ({
+                      ...prev,
+                      montoViaticos,
+                      diasComision: dias,
+                      montoGastosViaje: totalDesplazamiento,
+                      idDependencia: prev.idDependencia ?? comisionado?.idDependencia ?? null,
+                      diasPernoctados: datosCompletos?.diasPernoctados ?? prev.diasPernoctados,
+                      tarifaDiaPernoctado: datosCompletos?.tarifaDiaPernoctado ?? prev.tarifaDiaPernoctado,
+                      totalPernoctados: datosCompletos?.totalPernoctados ?? prev.totalPernoctados,
+                      diasNoPernoctados: datosCompletos?.diasNoPernoctados ?? prev.diasNoPernoctados,
+                      tarifaDiaNoPernoctado: datosCompletos?.tarifaDiaNoPernoctado ?? prev.tarifaDiaNoPernoctado,
+                      totalNoPernoctados: datosCompletos?.totalNoPernoctados ?? prev.totalNoPernoctados,
+                      tarifaDiariaBase: datosCompletos?.tarifaDiariaBase ?? prev.tarifaDiariaBase,
+                      tarifaFinalAplicadaDia: datosCompletos?.tarifaFinalAplicadaDia ?? prev.tarifaFinalAplicadaDia,
+                      salarioBaseAplicado: datosCompletos?.salarioBaseAplicado ?? prev.salarioBaseAplicado,
+                      decretoAplicado: datosCompletos?.decretoAplicado ?? prev.decretoAplicado,
+                      factorComisionado: datosCompletos?.factorComisionado ?? prev.factorComisionado,
+                      factorPernocta: datosCompletos?.factorPernocta ?? prev.factorPernocta,
+                      desgloseCalculo: datosCompletos?.desgloseCalculo ?? prev.desgloseCalculo,
+                      alertasLiquidacion: datosCompletos?.alertas ?? prev.alertasLiquidacion,
+                      camposAdicionales: {
+                        ...(prev.camposAdicionales || {}),
+                        transporteTerminalAereo: datosCompletos?.transporteTerminalesAereos ?? tarifasAereas,
+                        transporteTerrestre: datosCompletos?.transporteTerrestreFluvial ?? transporteTerrestreTotal,
+                        fechaAutoliquidacion: prev.camposAdicionales?.fechaAutoliquidacion || new Date().toISOString().split('T')[0],
+                      },
+                    }));
                   }}
                 />
 
@@ -2064,50 +2412,89 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {!esCampoOculto('montoViaticos') && (
-                        <div>
-                          <label className={labelCls} htmlFor="montoViaticos">
-                            {renderLabel('montoViaticos', 'Viáticos')}
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
-                            <input
-                              id="montoViaticos"
-                              type="text"
-                              inputMode="numeric"
-                              required={esCampoObligatorio('montoViaticos')}
-                              value={formatearMoneda(form.montoViaticos)}
-                              readOnly
-                              aria-readonly="true"
-                              title="Calculado automáticamente por el Autoliquidador (no editable)"
-                              className={`${inputCls} pl-7 text-right font-bold bg-slate-100 cursor-not-allowed`}
-                            />
+                      {/* Columna Izquierda: Viáticos y Días de comisión */}
+                      <div className="space-y-3">
+                        {!esCampoOculto('montoViaticos') && (
+                          <div>
+                            <label className={labelCls} htmlFor="montoViaticos">
+                              {renderLabel('montoViaticos', 'Viáticos')}
+                            </label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                              <input
+                                id="montoViaticos"
+                                type="text"
+                                inputMode="numeric"
+                                required={esCampoObligatorio('montoViaticos')}
+                                value={formatearMoneda(form.montoViaticos)}
+                                readOnly
+                                aria-readonly="true"
+                                title="Calculado automáticamente por el Autoliquidador (no editable)"
+                                className={`${inputCls} pl-7 text-right font-bold bg-slate-100 cursor-not-allowed`}
+                              />
+                            </div>
+                            <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
+                              <Calculator className="w-3 h-3" /> Automático (Autoliquidador)
+                            </span>
                           </div>
-                          <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
-                            <Calculator className="w-3 h-3" /> Automático (Autoliquidador)
-                          </span>
-                        </div>
-                      )}
+                        )}
+
+                        {!esCampoOculto('diasComision') && (
+                          <div>
+                            <label className={labelCls} htmlFor="diasComision">
+                              {renderLabel('diasComision', 'Días de comisión')}
+                            </label>
+                            <input
+                              type="hidden"
+                              id="diasComision"
+                              value={form.diasComision}
+                            />
+                            <div className="mt-1 flex items-center justify-between px-3.5 py-2.5 bg-slate-50 border border-slate-200/90 rounded-xl hover:bg-slate-100/60 transition-colors">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="p-1.5 bg-blue-50 text-[#003DA5] rounded-lg shrink-0">
+                                  <Calendar className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-slate-800 leading-tight">
+                                    {formatearDiasComision(Number(form.diasComision))}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 font-medium">
+                                    Calculado según itinerario
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md shrink-0">
+                                {Number(form.diasComision)} {Number(form.diasComision) === 1 ? 'día' : 'días'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Columna Derecha: Gastos de Desplazamiento y Transporte */}
                       {!esCampoOculto('montoGastosViaje') && (() => {
                           const tarifasAereas = (form.itinerario || []).reduce((acc, r) => acc + (r.tarifaTerminalAereo || 0), 0);
-                          const terrestreActual = Math.max(0, (form.montoGastosViaje || 0) - tarifasAereas);
+                          const transporteTerrestreOtrosTotal = (form.itinerario || []).reduce(
+                            (acc, r) => (r.tipoTransporte !== 'AEREO' ? acc + (Number(r.valorTransporte ?? r.montoTransporteTerrestre ?? 0) || 0) : acc),
+                            0,
+                          );
                           return (
-                            <div className="space-y-3">
+                            <div className="space-y-1.5">
                               <p className={labelCls}>
-                                {renderLabel('montoGastosViaje', '4. Gastos de Desplazamiento y Transporte')}
+                                {renderLabel('montoGastosViaje', 'Gastos de Desplazamiento y Transporte')}
                               </p>
                               {/* Desglose visual */}
                               <div className="rounded-xl border border-slate-200 bg-slate-50/50 divide-y divide-slate-100 overflow-hidden">
                                 {/* Fila: Terminales Aéreos */}
-                                <div className="grid grid-cols-2 items-center px-3 py-2.5 gap-2">
+                                <div className="grid grid-cols-2 items-center px-3 py-2 gap-2">
                                   <div>
                                     <p className="text-[11px] font-bold text-slate-700">
-                                      Transporte a terminales aéreos
+                                       Transporte a terminales aéreos
                                     </p>
                                     <p className="text-[10px] text-slate-400">
                                       {form.itinerario?.some((r) => r.tipoTransporte === 'AEREO')
-                                        ? 'Calculado por tarifa regulada (itinerario aéreo)'
-                                        : 'Sin rutas aéreas en el itinerario'}
+                                        ? 'Calculado por tarifa regulada'
+                                        : 'Sin rutas aéreas'}
                                     </p>
                                   </div>
                                   <div className="relative">
@@ -2129,31 +2516,37 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                   </div>
                                 </div>
                                 {/* Fila: Transporte Terrestre / Otros */}
-                                <div className="grid grid-cols-2 items-center px-3 py-2.5 gap-2">
+                                <div className="grid grid-cols-2 items-center px-3 py-2 gap-2">
                                   <div>
                                     <p className="text-[11px] font-bold text-slate-700">
                                       Transporte terrestre / fluvial / ferroviario / otros
                                     </p>
-                                    <p className="text-[10px] text-slate-400">Ingrese el costo de transporte adicional</p>
+                                    <p className="text-[10px] text-slate-400">
+                                      {transporteTerrestreOtrosTotal > 0
+                                        ? 'Totalizado desde itinerario'
+                                        : 'Calculado desde itinerario'}
+                                    </p>
                                   </div>
                                   <div className="relative">
                                     <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
                                     <input
                                       id="montoGastosViaje_terrestre"
                                       type="text"
-                                      inputMode="numeric"
-                                      placeholder="0"
-                                      value={formatearMoneda(terrestreActual || 0)}
-                                      onChange={(e) => {
-                                        const terrestre = Number(soloNumeros(e.target.value)) || 0;
-                                        actualizar('montoGastosViaje', tarifasAereas + terrestre);
-                                      }}
-                                      className={`${inputCls} pl-7 text-right font-bold`}
+                                      readOnly
+                                      aria-readonly="true"
+                                      value={formatearMoneda(transporteTerrestreOtrosTotal)}
+                                      title="Calculado automáticamente desde los tramos del itinerario"
+                                      className={`${inputCls} pl-7 text-right font-bold bg-slate-100 cursor-not-allowed`}
                                     />
+                                    {transporteTerrestreOtrosTotal > 0 && (
+                                      <span className="flex items-center gap-1 mt-1 text-[9px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded w-fit ml-auto">
+                                        <Bus className="w-2.5 h-2.5" /> Automático
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                                 {/* Total desplazamiento */}
-                                <div className="grid grid-cols-2 items-center px-3 py-2.5 gap-2 bg-blue-50/70 border-t border-blue-100">
+                                <div className="grid grid-cols-2 items-center px-3 py-2 gap-2 bg-blue-50/70 border-t border-blue-100">
                                   <span className="text-[11px] font-black text-blue-900 uppercase tracking-wide">
                                     Total Gastos de Desplazamiento
                                   </span>
@@ -2165,47 +2558,90 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             </div>
                           );
                         })()}
-
                     </div>
 
-                    {!esCampoOculto('diasComision') && (
-                      <div className="w-full sm:max-w-[260px]">
-                        <label className={labelCls} htmlFor="diasComision">
-                          {renderLabel('diasComision', 'Días de comisión')}
-                        </label>
-                        <div className="relative">
-                          <Calendar className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
-                          <input
-                            id="diasComision"
-                            type="text"
-                            readOnly
-                            aria-readonly="true"
-                            title="Calculado automáticamente desde el itinerario (no editable)"
-                            required={esCampoObligatorio('diasComision')}
-                            value={formatearDiasComision(Number(form.diasComision))}
-                            className={`${inputCls} pl-9 pr-14 font-bold bg-slate-100 text-slate-800 cursor-not-allowed`}
-                          />
-                          <span className="absolute right-2.5 top-2 text-[10px] font-bold text-slate-400">
-                            ({Number(form.diasComision)} d)
+                    {(form.montoViaticos > 0 || form.montoGastosViaje > 0) && (
+                      <div className="bg-[#003DA5] text-white rounded-xl px-6 py-5 shadow-sm border border-blue-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200">
+                            Total Estimado de la Comisión
+                          </p>
+                          <p className="text-2xl font-black text-white tracking-tight">
+                            {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
+                          </p>
+                          <p className="text-xs text-blue-100 font-medium">
+                            Viáticos ({formatearMoneda(form.montoViaticos)}) + Desplazamiento ({formatearMoneda(form.montoGastosViaje)})
+                          </p>
+                        </div>
+                        <div className="sm:text-right shrink-0">
+                          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white/15 text-white border border-white/20 shadow-xs">
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-300" />
+                            Total consolidado
                           </span>
                         </div>
-                        <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
-                          <Calculator className="w-3 h-3" /> Automático (Itinerario)
-                        </span>
-                      </div>
-                    )}
-
-                    {(form.montoViaticos > 0 || form.montoGastosViaje > 0) && (
-                      <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-slate-200">
-                        <span className="text-xs font-bold text-slate-600">Total estimado</span>
-                        <span className="text-sm font-black text-slate-800">
-                          {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
-                        </span>
                       </div>
                     )}
                   </div>
                 )}
               </div>
+
+              {alertaSolapamiento && (
+                <div className="rounded-xl border-2 border-amber-400 bg-amber-50/95 p-4 space-y-3 shadow-xs">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-xl bg-amber-100 text-amber-800 shrink-0">
+                      <AlertTriangle className="w-5 h-5 text-amber-700" />
+                    </div>
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-xs font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                          Alerta de Duplicidad / Solapamiento de Fechas
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-200 text-amber-900 border border-amber-300">
+                          Bloqueo preventivo
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-900 leading-relaxed font-semibold">
+                        {alertaSolapamiento.mensaje}
+                      </p>
+                      {alertaSolapamiento.solicitudConflicto && (
+                        <div className="bg-white/90 border border-amber-200 rounded-lg p-2.5 text-xs text-slate-800 space-y-1">
+                          <p className="font-semibold text-slate-900">
+                            Solicitud en conflicto:{' '}
+                            <span className="font-bold text-[#003DA5]">
+                              {alertaSolapamiento.solicitudConflicto.consecutivoUnico || alertaSolapamiento.solicitudConflicto.id}
+                            </span>{' '}
+                            <span className="text-[11px] text-slate-500 font-normal">
+                              ({alertaSolapamiento.solicitudConflicto.estadoSolicitud})
+                            </span>
+                          </p>
+                          <p className="text-slate-600 text-[11px]">
+                            Vigencia en conflicto:{' '}
+                            <strong>
+                              {alertaSolapamiento.solicitudConflicto.fechaInicio ? new Date(alertaSolapamiento.solicitudConflicto.fechaInicio).toLocaleDateString() : ''} al{' '}
+                              {alertaSolapamiento.solicitudConflicto.fechaFin ? new Date(alertaSolapamiento.solicitudConflicto.fechaFin).toLocaleDateString() : ''}
+                            </strong>{' '}
+                            {alertaSolapamiento.solicitudConflicto.destinoCiudad && `— Destino: ${alertaSolapamiento.solicitudConflicto.destinoCiudad}`}
+                          </p>
+                        </div>
+                      )}
+                      <div className="text-[11px] text-amber-800 font-medium bg-amber-100/70 rounded-md p-2 border border-amber-200/80">
+                        ⚠️ <strong>Primera advertencia:</strong> No se le permite continuar automáticamente para prevenir duplicidad. Si aún así desea continuar guardando el borrador y cargando soportes, puede pulsar nuevamente <em>"Guardar y Continuar"</em> o hacer clic en el botón a continuación. Tenga en cuenta que en la etapa final de radicación la validación del sistema no le permitirá culminar el proceso.
+                      </div>
+                      <div className="pt-1 flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          disabled={enviando}
+                          onClick={() => void guardarYBorrador(true)}
+                          className="px-3.5 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1.5 shadow-2xs"
+                        >
+                          {enviando && <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                          Continuar de todos modos al cargue de soportes <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {errorValidacion && (
                 <p className="text-xs text-red-600 font-semibold bg-red-50 border border-red-200 rounded-lg px-3 py-2" role="alert">
@@ -2240,6 +2676,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
               <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
                 3. Documentos de la Comisión
               </h4>
+              {alertaSolapamiento && (
+                <div className="rounded-xl border border-amber-300 bg-amber-50/90 p-3 flex items-start gap-2.5 text-xs text-amber-900 shadow-2xs">
+                  <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5 flex-1 min-w-0">
+                    <span className="font-bold text-[11px] uppercase tracking-wider text-amber-800 block">
+                      Aviso de Solapamiento de Fechas
+                    </span>
+                    <p className="text-[11px] leading-snug">
+                      Esta solicitud presenta cruce de fechas con otra comisión del comisionado ({alertaSolapamiento.solicitudConflicto?.consecutivoUnico || 'comisión existente'}). Puede completar el cargue de soportes en modo borrador, pero al radicarla definitivamente el sistema bloqueará la radicación hasta corregir las fechas.
+                    </p>
+                  </div>
+                </div>
+              )}
               {cargandoChecklist && (
                 <p className="text-xs text-slate-400 flex items-center gap-2">
                   <AlertCircle className="w-3.5 h-3.5" /> Cargando checklist de documentos...
@@ -2254,8 +2703,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     const cargados = documentosCargados(doc.codigo);
                     const faltan = cargados.length === 0;
                     const noPdf = cargados.some((d) => !esPdfMime(d.tipoMime || ''));
+                    const ayuda = obtenerAyudaValidacionDocumento(doc.codigo, doc.instruccionesValidacion, {
+                      form,
+                      comisionado,
+                    });
+                    const esAlerta = ayuda?.badgeTipo === 'alert';
+                    const esWarning = ayuda?.badgeTipo === 'warning';
+
                     return (
-                      <div key={doc.codigo} className="border border-slate-200 rounded-xl p-3">
+                      <div key={doc.codigo} className="border border-slate-200 rounded-xl p-3 bg-white shadow-2xs hover:border-blue-200 transition-colors">
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <p className="font-semibold text-slate-800 text-xs">{doc.nombre}</p>
@@ -2298,8 +2754,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             </div>
                           )}
                         </div>
+
                         {cargados.map((d) => (
-                          <div key={d.id} className="flex items-center justify-between gap-2 mt-1">
+                          <div key={d.id} className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-100">
                             <p className="text-[10px] text-slate-500 truncate">
                               {d.nombreArchivoOriginal} · {d.tipoMime}
                             </p>
@@ -2308,12 +2765,85 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                               title="Previsualizar PDF"
                               aria-label="Previsualizar documento"
                               onClick={() => abrirPrevisualizacion(d)}
-                              className="p-1 rounded-md text-[#003DA5] hover:bg-blue-50 transition-colors shrink-0"
+                              className="p-1 rounded-md text-[#003DA5] hover:bg-blue-50 transition-colors shrink-0 inline-flex items-center gap-1 text-[10px] font-medium"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5" /> Ver PDF
                             </button>
                           </div>
                         ))}
+
+                        {ayuda && (
+                          <div
+                            className={`mt-2.5 rounded-xl p-3 border text-xs transition-colors ${
+                              esAlerta
+                                ? 'bg-amber-50/70 border-amber-200/90 text-amber-950'
+                                : esWarning
+                                ? 'bg-sky-50/70 border-sky-200/90 text-slate-800'
+                                : 'bg-slate-50/90 border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <div
+                                className={`p-1.5 rounded-lg shrink-0 ${
+                                  esAlerta
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : esWarning
+                                    ? 'bg-sky-100 text-[#003DA5]'
+                                    : 'bg-slate-200 text-slate-700'
+                                }`}
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="space-y-1.5 flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <span className="font-bold text-[10px] uppercase tracking-wider text-slate-500">
+                                    Pauta de validación
+                                  </span>
+                                  {ayuda.notaAlerta && (
+                                    <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-300/60">
+                                      {ayuda.notaAlerta}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p className="text-[11px] text-slate-700 leading-snug">
+                                  {ayuda.instruccion}
+                                </p>
+
+                                {ayuda.datosAContrastar.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-slate-200/80">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1">
+                                      <Search className="w-3 h-3 text-[#003DA5]" />
+                                      Datos registrados en el sistema para contrastar:
+                                    </p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                      {ayuda.datosAContrastar.map((item, idx) => (
+                                        <div
+                                          key={idx}
+                                          className="bg-white/95 border border-slate-200/90 rounded-lg px-2.5 py-1.5 shadow-2xs flex flex-col"
+                                        >
+                                          <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-tight">
+                                            {item.etiqueta}
+                                          </span>
+                                          <span className="text-[11px] font-bold text-slate-800 truncate" title={item.valor}>
+                                            {item.valor}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {!faltan && (
+                                  <div className="mt-2 pt-1.5 border-t border-slate-200/70 flex items-center gap-1.5 text-[10px] text-emerald-700 font-medium">
+                                    <CheckCircle className="w-3 h-3 shrink-0" />
+                                    Soporte cargado. Verifica en la previsualización del PDF que los datos coincidan fielmente.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2327,12 +2857,22 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   {checklist.opcionales.map((doc) => {
                     const cargados = documentosCargados(doc.codigo);
                     const faltan = cargados.length === 0;
+                    const ayuda = obtenerAyudaValidacionDocumento(doc.codigo, doc.instruccionesValidacion, {
+                      form,
+                      comisionado,
+                    });
+                    const esAlerta = ayuda?.badgeTipo === 'alert';
+                    const esWarning = ayuda?.badgeTipo === 'warning';
+
                     return (
-                      <div key={doc.codigo} className="border border-slate-200 rounded-xl p-3">
+                      <div key={doc.codigo} className="border border-slate-200 rounded-xl p-3 bg-white shadow-2xs hover:border-blue-200 transition-colors">
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <p className="font-semibold text-slate-800 text-xs">{doc.nombre}</p>
                             <p className="text-[10px] text-slate-400">{doc.codigo}</p>
+                            {doc.descripcion && (
+                              <p className="text-[10px] text-slate-400">{doc.descripcion}</p>
+                            )}
                           </div>
                           {faltan ? (
                             <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shrink-0">
@@ -2365,8 +2905,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             </div>
                           )}
                         </div>
+
                         {cargados.map((d) => (
-                          <div key={d.id} className="flex items-center justify-between gap-2 mt-1">
+                          <div key={d.id} className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-100">
                             <p className="text-[10px] text-slate-500 truncate">
                               {d.nombreArchivoOriginal} · {d.tipoMime}
                             </p>
@@ -2375,12 +2916,85 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                               title="Previsualizar PDF"
                               aria-label="Previsualizar documento"
                               onClick={() => abrirPrevisualizacion(d)}
-                              className="p-1 rounded-md text-[#003DA5] hover:bg-blue-50 transition-colors shrink-0"
+                              className="p-1 rounded-md text-[#003DA5] hover:bg-blue-50 transition-colors shrink-0 inline-flex items-center gap-1 text-[10px] font-medium"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5" /> Ver PDF
                             </button>
                           </div>
                         ))}
+
+                        {ayuda && (
+                          <div
+                            className={`mt-2.5 rounded-xl p-3 border text-xs transition-colors ${
+                              esAlerta
+                                ? 'bg-amber-50/70 border-amber-200/90 text-amber-950'
+                                : esWarning
+                                ? 'bg-sky-50/70 border-sky-200/90 text-slate-800'
+                                : 'bg-slate-50/90 border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <div
+                                className={`p-1.5 rounded-lg shrink-0 ${
+                                  esAlerta
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : esWarning
+                                    ? 'bg-sky-100 text-[#003DA5]'
+                                    : 'bg-slate-200 text-slate-700'
+                                }`}
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="space-y-1.5 flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <span className="font-bold text-[10px] uppercase tracking-wider text-slate-500">
+                                    Pauta de validación
+                                  </span>
+                                  {ayuda.notaAlerta && (
+                                    <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-300/60">
+                                      {ayuda.notaAlerta}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p className="text-[11px] text-slate-700 leading-snug">
+                                  {ayuda.instruccion}
+                                </p>
+
+                                {ayuda.datosAContrastar.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-slate-200/80">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1">
+                                      <Search className="w-3 h-3 text-[#003DA5]" />
+                                      Datos registrados en el sistema para contrastar:
+                                    </p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                      {ayuda.datosAContrastar.map((item, idx) => (
+                                        <div
+                                          key={idx}
+                                          className="bg-white/95 border border-slate-200/90 rounded-lg px-2.5 py-1.5 shadow-2xs flex flex-col"
+                                        >
+                                          <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-tight">
+                                            {item.etiqueta}
+                                          </span>
+                                          <span className="text-[11px] font-bold text-slate-800 truncate" title={item.valor}>
+                                            {item.valor}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {!faltan && (
+                                  <div className="mt-2 pt-1.5 border-t border-slate-200/70 flex items-center gap-1.5 text-[10px] text-emerald-700 font-medium">
+                                    <CheckCircle className="w-3 h-3 shrink-0" />
+                                    Soporte cargado. Verifica en la previsualización del PDF que los datos coincidan fielmente.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2421,6 +3035,26 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
               <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
                 4. Confirmación de la Solicitud
               </h4>
+              {alertaSolapamiento && (
+                <div className="rounded-xl border border-red-300 bg-red-50/95 p-3.5 flex items-start gap-3 text-xs text-red-900 shadow-2xs">
+                  <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1 flex-1 min-w-0">
+                    <span className="font-bold text-xs uppercase tracking-wider text-red-800 block">
+                      ⚠️ Bloqueo por Cruce de Fechas / Duplicidad
+                    </span>
+                    <p className="text-[11px] leading-relaxed text-red-900">
+                      Esta solicitud tiene fechas que se cruzan con la comisión <strong>{alertaSolapamiento.solicitudConflicto?.consecutivoUnico || alertaSolapamiento.solicitudConflicto?.id || 'existente'}</strong>. Al presionar <em>"Enviar a Firmas de Aprobación"</em>, el sistema rechazará la radicación. Para poder radicarla, regrese al paso de <strong>Objeto y Destino</strong> y ajuste las fechas del itinerario.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => irPaso(2)}
+                      className="mt-1 px-3 py-1 bg-red-700 hover:bg-red-800 text-white rounded-lg text-[10px] font-bold inline-flex items-center gap-1 transition-colors"
+                    >
+                      <ChevronLeft className="w-3 h-3" /> Regresar y ajustar fechas
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 text-xs">
                 <div className="flex justify-between px-4 py-2.5">
                   <span className="text-slate-400 font-bold">Comisionado</span>
@@ -2538,9 +3172,14 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                       displayVal = val ? 'Sí' : 'No';
                     } else if (campo.tipoCampo === 'CURRENCY' && typeof val === 'number') {
                       displayVal = formatearMoneda(val);
-                    } else if (campo.tipoCampo === 'SELECT' && campo.opciones) {
-                      const matched = campo.opciones.find((o) => o.value === String(val));
-                      if (matched) displayVal = matched.label;
+                    } else if (campo.tipoCampo?.toUpperCase() === 'SELECT' && campo.opciones) {
+                      const matched = (campo.opciones as any[]).find((o) => {
+                        const v = typeof o === 'string' ? o : (o?.value ?? o?.valor);
+                        return String(v) === String(val);
+                      });
+                      if (matched) {
+                        displayVal = typeof matched === 'string' ? matched : (matched.label ?? matched.nombre ?? matched.value ?? displayVal);
+                      }
                     }
 
                     return (
@@ -2558,17 +3197,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         <span className="text-[10px] font-black uppercase tracking-wider text-[#003DA5] bg-blue-100/80 px-2 py-0.5 rounded">
                           Ruta General Consolidada
                         </span>
-                        {sync.horaEstimadaGeneral && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-900 bg-white border border-blue-200 px-2 py-0.5 rounded shadow-xs">
-                            <Clock className="w-3 h-3 text-[#003DA5]" /> Tiempo estimado completo: <strong>{sync.horaEstimadaGeneral}</strong>
-                          </span>
-                        )}
                       </div>
                       <div className="text-sm font-bold text-slate-800 mb-1">
                         {sync.rutaGeneral || `${sync.origenCiudad || '—'} → ${sync.destinoCiudad || '—'}`}
                       </div>
                       <div className="text-xs text-slate-600 mb-3">
-                        {sync.fechaInicio} al {sync.fechaFin} · {formatearDiasComision(sync.diasComision)} ({sync.diasComision} días)
+                        {sync.fechaInicio} al {sync.fechaFin}
                       </div>
 
                       <span className="text-slate-400 font-bold block mb-2 text-[11px] uppercase tracking-wider">
@@ -2588,7 +3222,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                               <Clock className="w-2.5 h-2.5 text-blue-600" /> Horario: {ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '—'} → {ruta.horaEstimadaLlegada || '—'}
                             </span>
                             <span className="text-slate-400">·</span>
-                            <span className="text-slate-600">{ruta.diasRuta} d</span>
                             <span className="inline-flex items-center px-1 py-0 rounded text-[8px] font-bold bg-slate-200 text-slate-600">
                               {ruta.tipoTrayecto === 'SOLO_IDA' ? 'IDA' : 'ID/VUELTA'}
                             </span>
@@ -2672,7 +3305,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   onClick={() => void finalizarSolicitud()}
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 transition-colors disabled:opacity-50"
                 >
-                  <Send className="w-4 h-4" /> {finalizando ? 'Radicando...' : 'Finalizar y Radicar'}
+                  <Send className="w-4 h-4" /> {finalizando ? 'Consolidando...' : 'Consolidar y Pasar a Firmas'}
                 </button>
               </div>
             </div>

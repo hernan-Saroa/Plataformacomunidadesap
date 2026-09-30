@@ -211,7 +211,7 @@ export function PTAWorldClassToolbar({
         <div className="pta-world-toolbar-tabs" style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 4,
+          gap: 8,
           overflowX: 'auto',
           flex: 1,
           minWidth: 0,
@@ -225,17 +225,19 @@ export function PTAWorldClassToolbar({
             return (
               <button
                 key={tab.id}
+                type="button"
+                aria-pressed={isActive}
                 onClick={() => setFiltroEstado(tab.id)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 5,
-                  padding: '5px 10px',
-                  borderRadius: 18,
-                  border: '1px solid',
-                  borderColor: isActive ? tab.color : 'transparent',
-                  background: isActive ? `${tab.color}15` : 'transparent',
-                  color: isActive ? tab.color : '#6B7280',
+                  gap: 6,
+                  padding: '9px 10px',
+                  borderRadius: 0,
+                  border: 'none',
+                  borderBottom: `2px solid ${isActive ? '#1D4ED8' : 'transparent'}`,
+                  background: 'transparent',
+                  color: isActive ? '#1D4ED8' : '#475569',
                   fontSize: '0.78rem',
                   fontWeight: isActive ? 700 : 500,
                   cursor: 'pointer',
@@ -252,7 +254,7 @@ export function PTAWorldClassToolbar({
                 onMouseLeave={e => {
                   if (!isActive) {
                     e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.color = '#6B7280';
+                    e.currentTarget.style.color = '#475569';
                   }
                 }}
               >

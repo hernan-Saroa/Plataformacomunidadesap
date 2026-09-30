@@ -9,6 +9,25 @@ const BASE = '/viaticos/api/v1/legalizaciones';
 
 export type SemaforoLegalizacion = 'VIGENTE' | 'POR_VENCER' | 'VENCIDA' | 'ENVIADA';
 
+/** GF-FO-032 V2: fechas en que realmente se cumplió la comisión y si fue fuera de la ESAP. */
+export interface DatosCumplimiento {
+  fechaInicioReal: string | null;
+  fechaFinReal: string | null;
+  comisionExterna: boolean | null;
+  entidadExterna: string | null;
+  registrado: boolean;
+}
+
+/** Reintegro por viaje más corto, calculado con las tarifas de la liquidación pagada. */
+export interface ViajeReal {
+  diasReales: number;
+  nochesPlaneadas: number | null;
+  nochesReales: number;
+  viaticosPlaneados: number | null;
+  viaticosReales: number | null;
+  reintegroViajeCorto: number | null;
+}
+
 export interface ResumenLegalizacion {
   legalizacionId: string;
   solicitudId: string;
@@ -39,6 +58,7 @@ export interface ResumenLegalizacion {
   valorPagado?: string | number | null;
   valorLegalizado?: string | number | null;
   valorReintegro?: string | number | null;
+  cumplimiento?: DatosCumplimiento;
 }
 
 export interface SoporteCargado {
@@ -118,8 +138,32 @@ export interface DetalleRevision extends DetalleLegalizacion {
   puedeRevisar: boolean;
   puedeAprobar: boolean;
   puedeRegistrarSiif: boolean;
+  puedeSolicitarReversion?: boolean;
+  viajeReal?: ViajeReal | null;
+  maximoLegalizable?: number | null;
+  reversionPendiente?: ReversionRevision | null;
   historialRevision: EntradaHistorialRevision[];
 }
+
+/** EFDS-1310 — Solicitud de reversión de una revisión aprobada. */
+export interface ReversionRevision {
+  id: string;
+  motivo: string;
+  solicitadaPorId: string;
+  solicitadaEn: string;
+}
+
+export interface ItemReversionPendiente extends ReversionRevision {
+  solicitudId: string;
+  consecutivoUnico: string;
+  comisionadoNombre: string;
+  valorPagado: number | null;
+  revisionAprobadaEn: string | null;
+  siifExportadoEn: string | null;
+}
+
+/** Permiso de quien aprueba las reversiones: CONTROL_VIATICOS (migraciones 454 y 500). */
+export const PERMISO_APROBAR_REVERSION = 'travel_expenses:legalizations.revert_approval';
 
 export interface RegistroSiifPayload {
   numeroRegistroSiif: string;
@@ -127,6 +171,31 @@ export interface RegistroSiifPayload {
   valorLegalizado: number;
   diasReales?: number | null;
   observaciones?: string;
+}
+
+export type RequisitoSoporte = 'OBLIGATORIO' | 'OPCIONAL';
+
+/** Condiciones que acepta el backend (CONDICIONES_SOPORTE). */
+export const CONDICIONES_SOPORTE_LEGALIZACION = [
+  { valor: 'TRANSPORTE_AEREO', etiqueta: 'Solo con transporte aéreo' },
+  { valor: 'COMISION_EXTERNA', etiqueta: 'Solo si fue fuera de la ESAP' },
+] as const;
+
+export interface ItemConfigChecklistLegalizacion {
+  tipo_comisionado: string;
+  codigo: string;
+  nombre: string;
+  tipo_requisito: RequisitoSoporte;
+  condicion: string | null;
+  orden: number;
+  activo: boolean;
+}
+
+export interface ItemChecklistPayload {
+  codigo: string;
+  tipoRequisito: RequisitoSoporte;
+  condicion?: string | null;
+  orden?: number;
 }
 
 class LegalizacionService {
@@ -147,6 +216,13 @@ class LegalizacionService {
 
   eliminarSoporte(solicitudId: string, soporteId: string): Promise<{ eliminado: boolean }> {
     return apiClient.delete(`${BASE}/${solicitudId}/soportes/${soporteId}`);
+  }
+
+  registrarCumplimiento(
+    solicitudId: string,
+    datos: { fechaInicioReal: string; fechaFinReal: string; comisionExterna: boolean; entidadExterna?: string | null },
+  ) {
+    return apiClient.put(`${BASE}/${solicitudId}/cumplimiento`, datos);
   }
 
   enviar(solicitudId: string): Promise<{ legalizacionId: string; fechaEnvio: string; totalSoportes: number }> {
@@ -209,10 +285,38 @@ class LegalizacionService {
   }
 
   registrarSiif(solicitudId: string, payload: RegistroSiifPayload) {
-    return apiClient.post<{ estadoSolicitud: string; valorReintegro: number; numeroRegistroSiif: string }>(
+    return apiClient.post<
+      | { devuelta: false; estadoSolicitud: string; valorReintegro: number; numeroRegistroSiif: string }
+      | { devuelta: true; estadoSolicitud: string; observacionDevolucion: string }
+    >(
       `${BASE}/revision/${solicitudId}/registrar-siif`,
       payload,
     );
+  }
+
+  // EFDS-1310 — reversión de una revisión aprobada.
+  solicitarReversion(solicitudId: string, motivo: string): Promise<ReversionRevision> {
+    return apiClient.post(`${BASE}/revision/${solicitudId}/solicitar-reversion`, { motivo });
+  }
+
+  reversionesPendientes(): Promise<ItemReversionPendiente[]> {
+    return apiClient.get(`${BASE}/reversiones/pendientes`);
+  }
+
+  resolverReversion(reversionId: string, decision: 'APROBAR' | 'RECHAZAR', observacion?: string) {
+    return apiClient.post<{ estado: string; solicitudId: string }>(`${BASE}/reversiones/${reversionId}/resolver`, {
+      decision,
+      ...(observacion ? { observacion } : {}),
+    });
+  }
+
+  // EFDS-1309 — soportes de legalización administrables.
+  obtenerConfig(): Promise<{ checklist: ItemConfigChecklistLegalizacion[] }> {
+    return apiClient.get(`${BASE}/config`);
+  }
+
+  reemplazarChecklist(tipoComisionado: string, items: ItemChecklistPayload[]) {
+    return apiClient.put(`${BASE}/config/checklist/${encodeURIComponent(tipoComisionado)}`, { items });
   }
 }
 

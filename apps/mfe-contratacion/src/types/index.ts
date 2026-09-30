@@ -739,48 +739,6 @@ export interface Expediente {
   documentos: DocumentoExpediente[];
 }
 
-/** Uno de los documentos que la actividad 5.1 exige (EFDS-1149). */
-export interface DocumentoRequerido {
-  codigo: string;
-  nombre: string;
-  descripcion: string | null;
-  obligatorio: boolean;
-  /** Null mientras no se haya cargado. */
-  cargado: {
-    id: string;
-    nombre: string;
-    archivoUrl: string;
-    cargadoPor: string | null;
-    cargadoAt: string;
-  } | null;
-}
-
-/**
- * Un documento de la lista de chequeo con la que el área radica (3.1).
- *
- * Misma forma que `DocumentoRequerido` de la 5.1 —son las mismas dos tablas—
- * más `confirmado`, que dice si el requisito sale del formato oficial o de la
- * lectura que el equipo hizo del procedimiento.
- */
-export interface DocumentoDeLaLista extends DocumentoRequerido {
-  confirmado: boolean;
-}
-
-/** El paquete de la radicación: qué exige la modalidad y qué ya está. */
-export interface EstadoListaChequeo {
-  modalidad: string | null;
-  modalidadNombre: string | null;
-  /**
-   * Consecutivo de Active Document con el que se remitió el paquete.
-   *
-   * Null cuando se remitió por correo o carpeta compartida, que el
-   * procedimiento admite y no generan radicado.
-   */
-  radicadoGestionDocumental: string | null;
-  documentos: DocumentoDeLaLista[];
-  /** Los obligatorios que todavía no están; si hay alguno, no se puede enviar. */
-  faltantes: { codigo: string; nombre: string }[];
-}
 
 /** Una adenda del proceso (actividad 5.6, EFDS-1154). */
 export interface Adenda {
@@ -895,7 +853,7 @@ export interface EstadoDocumentos {
   iniciada: boolean;
   estado: string;
   /** Los que pide esta modalidad: aviso y pliego, o acto de justificación. */
-  documentos: DocumentoRequerido[];
+  documentos: DocumentoDeLaActividad[];
   /** Todos los obligatorios están cargados. */
   completa: boolean;
 }
@@ -1049,36 +1007,116 @@ export interface DocumentoCargado {
   id: string;
   nombre: string;
   descargaUrl: string | null;
+  /** El tipo del archivo, para que el visor sepa si puede mostrarlo. */
+  mimeType?: string | null;
   subidoPor: string | null;
   cargadoAt: string;
 }
 
-/** Un documento que la actividad pide, con lo que se haya entregado de él. */
-export interface DocumentoRequeridoPorFormato {
-  plantillaId: string;
+/**
+ * Un documento que la actividad pide, con lo que se haya entregado de él
+ * (EFDS-2066).
+ *
+ * Es un ítem de la lista de chequeo de la actividad: sale del catálogo que
+ * Configuración administra, no del código, y sirve igual para la 3.1, la 5.1
+ * o cualquier otra de las sesenta y tres.
+ */
+export interface DocumentoDeLaActividad {
+  requisitoId: string;
   codigo: string;
   nombre: string;
-  version: string;
-  /** Ruta del formato en blanco; null mientras Contratación no lo suba. */
-  formatoUrl: string | null;
-  cargado: DocumentoCargado | null;
+  /** Qué debe contener o para qué sirve. */
+  descripcion: string | null;
+  /** Los opcionales se ofrecen, pero no traban el avance. */
+  obligatorio: boolean;
+  /**
+   * Si la exigencia es decisión del área o lectura del procedimiento que el
+   * equipo aún no ha contrastado con el formato oficial.
+   */
+  confirmado: boolean;
+  estado: 'PENDIENTE' | 'CARGADO';
+  /** La plantilla en blanco; null si el documento no tiene. */
+  plantilla: {
+    codigo: string;
+    nombre: string;
+    version: string;
+    /** Null mientras Contratación no suba el archivo a la biblioteca. */
+    descargaUrl: string | null;
+  } | null;
+  cargado: {
+    /** La entrega: es lo que se anula para sustituirla. */
+    id: string;
+    documentoId: string;
+    nombre: string;
+    descargaUrl: string | null;
+    mimeType?: string | null;
+    subidoPor: string | null;
+    cargadoAt: string;
+  } | null;
 }
 
 /**
  * Qué pide una actividad y qué se ha entregado ya.
  *
- * `requeridos` sale de los formatos asignados: cada uno es una fila que hay
- * que resolver. `adicionales` son los anexos que nadie exigió pero que el
- * gestor consideró parte del expediente.
+ * `documentos` es la lista de chequeo de la actividad. `adicionales` son los
+ * anexos que nadie exigió pero que el gestor consideró parte del expediente.
  */
 export interface EstadoDocumentosActividad {
   numeral: string;
   modalidad: string | null;
-  requeridos: DocumentoRequeridoPorFormato[];
+  tipologia: string | null;
+  documentos: DocumentoDeLaActividad[];
   adicionales: DocumentoCargado[];
+  /** Los obligatorios que todavía no están. */
+  faltantes: { codigo: string; nombre: string }[];
   completo: boolean;
   /** Si quien mira puede cargar y retirar; lo resuelve el servidor. */
   puedeCargar: boolean;
+}
+
+/**
+ * Un documento que una actividad pide, como lo administra Configuración
+ * (EFDS-2066).
+ */
+export interface DocumentoRequeridoConfig {
+  id: string;
+  numeral: string;
+  /** Lo arma el sistema al crearlo y ya no cambia: las entregas lo citan. */
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  obligatorio: boolean;
+  /** Modalidades a las que se pide; vacío = todas. */
+  modalidades: string[];
+  /** Tipologías contractuales (3.1) a las que se pide; vacío = todas. */
+  tipologias: string[];
+  orden: number;
+  activo: boolean;
+  confirmado: boolean;
+  notaFuente: string | null;
+  /** Código del formato de la biblioteca que se descarga para diligenciarlo. */
+  plantillaCodigo: string | null;
+  /** La versión que se ofrece hoy; null si el código no tiene ninguna activa. */
+  plantilla: {
+    id: string;
+    codigo: string;
+    nombre: string;
+    version: string;
+    tieneArchivo: boolean;
+  } | null;
+}
+
+/** Lo que se envía al crear o corregir un documento requerido. */
+export interface DatosDocumentoRequerido {
+  numeral?: string;
+  nombre?: string;
+  descripcion?: string | null;
+  plantillaCodigo?: string | null;
+  obligatorio?: boolean;
+  modalidades?: string[];
+  tipologias?: string[];
+  orden?: number;
+  activo?: boolean;
 }
 
 export interface PlantillaFormato {
@@ -1094,6 +1132,11 @@ export interface PlantillaFormato {
   /** Ruta de descarga; null mientras no se haya subido el archivo. */
   archivoUrl?: string | null;
   activo: boolean;
+  /**
+   * Actividades cuyos documentos requeridos citan este formato (EFDS-2066).
+   * Un formato no pertenece a una actividad: lo usan las que lo piden.
+   */
+  usadaEn?: string[];
 }
 
 export interface ActividadCatalogo {
@@ -1284,6 +1327,8 @@ export interface CampoConfigurable {
   orden: number;
   activo: boolean;
   soloLectura: boolean;
+  /** Las opciones de un campo de selección, en el orden en que se ofrecen. */
+  opciones?: string[] | null;
 }
 
 export type Operador = 'ES' | 'NO_ES' | 'MAYOR_QUE' | 'MENOR_QUE' | 'ESTA_VACIO' | 'TIENE_VALOR';
@@ -1669,6 +1714,7 @@ export interface ActoAdjudicacion {
   numeroActo: string;
   fechaActo: string;
   valorAdjudicado: number;
+  correoContratista: string | null;
   acto: { id: string; nombre: string; archivoUrl: string } | null;
   evidencia: { id: string; nombre: string; archivoUrl: string } | null;
   notificadoAt: string | null;
@@ -1758,6 +1804,8 @@ export interface Adjudicar {
   numeroActo: string;
   fechaActo: string;
   valorAdjudicado: number;
+  /** Para notificarle desde la plataforma: el contratista no tiene cuenta (088). */
+  correoContratista?: string;
   /** Obligatoria solo si el adjudicatario no es la ganadora del informe. */
   justificacion?: string;
   firma?: EvidenciaFirmaOtp;
@@ -2101,7 +2149,6 @@ export interface ReunionDeInicio {
   actaPactada: boolean;
   registradoPor: string | null;
   createdAt: string;
-  documento: { nombre: string; url: string | null } | null;
 }
 
 export interface EstadoActaInicio {
@@ -2121,6 +2168,29 @@ export interface EstadoActaInicio {
   };
   supervisor: { nombre: string; cargo: string | null } | null;
   acta: ReunionDeInicio | null;
+  /** Si la modalidad suscribe acta de inicio: lo dice la matriz para la 8.7. */
+  actaAplica: boolean;
+  /** El acta suscrita en la 8.7, que la reunión toma sin volver a pedirla. */
+  suscripcion: ActaSuscrita | null;
+}
+
+/** El acta de inicio firmada por las dos partes (actividad 8.7, migración 089). */
+export interface ActaSuscrita {
+  fechaSuscripcion: string;
+  registradoPor: string | null;
+  createdAt: string;
+  documento: { nombre: string; url: string; mimeType: string | null } | null;
+}
+
+/** Lo que la 8.7 sabe del acta de inicio del contrato. */
+export interface EstadoSuscripcionActa {
+  /** Si la modalidad la suscribe, según la matriz. */
+  aplica: boolean;
+  puedeRegistrar: boolean;
+  motivoNoPuede: string | null;
+  legalizado: boolean;
+  requiereArl: boolean;
+  suscripcion: ActaSuscrita | null;
 }
 
 /** Lo que la pantalla envia al registrar la reunion. */
@@ -3076,20 +3146,79 @@ export interface ConteoValor {
   valor: number;
 }
 
+/** Lo que hay que mirar de un contrato; el informe las cuenta, no avisa. */
+export type SituacionContrato =
+  | 'POR_VENCER'
+  | 'PLAZO_VENCIDO'
+  | 'SUSPENDIDO'
+  | 'SIN_SUPERVISOR'
+  | 'POR_LIQUIDAR'
+  | 'LIQUIDACION_VENCIDA';
+
+/** Una fila del listado de contratos del reporte. */
+export interface ContratoDelReporte {
+  procesoId: string;
+  radicado: string;
+  numero: string;
+  objeto: string;
+  contratista: string;
+  tipoPersona: string;
+  modalidad: string | null;
+  tipologia: string | null;
+  estado: EstadoDeGestion;
+  estadoCiclo: string;
+  /** Valor actual, con las adiciones aprobadas. */
+  valor: number;
+  valorInicial: number;
+  pagado: number;
+  porcentajePagado: number;
+  suscritoEl: string | null;
+  inicioEl: string | null;
+  plazoDias: number | null;
+  finDelPlazo: string | null;
+  diasParaVencer: number | null;
+  modificaciones: number;
+  supervisor: string | null;
+  situaciones: SituacionContrato[];
+}
+
+/** Cuánto tarda un tramo del ciclo, en días calendario. */
+export interface ResumenDias {
+  promedio: number | null;
+  mediana: number | null;
+  muestras: number;
+}
+
+export interface FiltrosEstadisticas {
+  vigencia: number | null;
+  modalidad: string | null;
+  tipologia: string | null;
+}
+
 export interface EstadisticasGestion {
   /** Momento del corte: un informe sin fecha no se puede citar. */
   generadoEn: string;
-  filtros: { vigencia: number | null; modalidad: string | null };
+  filtros: FiltrosEstadisticas;
   contratos: {
     total: number;
     valorTotal: number;
+    valorInicial: number;
+    valorPromedio: number;
     porEstado: ConteoValor[];
     porModalidad: ConteoValor[];
     porTipologia: ConteoValor[];
+    porTipoPersona: ConteoValor[];
+    /** Suscripciones por mes, cronológicas. La clave es `AAAA-MM`. */
+    porMes: ConteoValor[];
+    contratistasDistintos: number;
+    principalesContratistas: ConteoValor[];
   };
   procesos: {
     total: number;
+    valorEstimado: number;
     porDesenlace: ConteoValor[];
+    porModalidad: ConteoValor[];
+    enCursoPorEtapa: ConteoValor[];
   };
   presupuesto: {
     contratado: number;
@@ -3097,7 +3226,30 @@ export interface EstadisticasGestion {
     porPagar: number;
     /** Porcentaje de lo contratado que ya se pagó, con un decimal. */
     porcentajeEjecutado: number;
+    /** Cuentas radicadas o avaladas: plata que está por salir. */
+    enTramite: number;
+    cuentasPorEstado: ConteoValor[];
   };
+  modificaciones: {
+    total: number;
+    contratosModificados: number;
+    porTipo: ConteoValor[];
+    valorAdicionado: number;
+    porcentajeAdicionado: number;
+    diasProrrogados: number;
+  };
+  seguimiento: {
+    porSituacion: ConteoValor[];
+    /** Solo el número: el detalle del incumplimiento está bajo reserva (EFDS-1182). */
+    incumplimientosAbiertos: number;
+    contratosConIncumplimiento: number;
+    diasDeAnticipacion: number;
+  };
+  tiempos: {
+    radicacionASuscripcion: ResumenDias;
+    suscripcionAInicio: ResumenDias;
+  };
+  contratosDelReporte: ContratoDelReporte[];
   /** Los años en que hay contratos, para que la pantalla ofrezca solo esos. */
   vigenciasDisponibles: number[];
 }
@@ -3202,72 +3354,36 @@ export interface ExpedienteAuditoria {
   }[];
 }
 
-// ------------------------ matriz de roles y permisos (EFDS-1183) ----------
+// ------------------------------------- permisos por etapa, punto y acción (083)
 
-/** Una de las diez columnas de permiso del formato de roles. */
-export type ColumnaDelFormato =
-  | 'Radicar'
-  | 'Editar'
-  | 'Adjuntar'
-  | 'Visualizar todos los procesos'
-  | 'Asignar / Reasignar'
-  | 'Aprobar'
-  | 'Archivar'
-  | 'Borrar'
-  | 'Generar informes'
-  | 'Configurar';
+/** Lo que se puede hacer en un lugar del proceso. */
+export type AccionAlcance = 'ver' | 'editar' | 'aprobar' | 'decidir';
 
-/** Una columna de la rejilla: lo que se puede hacer. */
-export interface PermisoDelCatalogo {
-  codigo: string;
-  nombre: string;
-  descripcion: string;
-  /** El segmento central del código; agrupa la rejilla. */
-  recurso: string;
-  /** La columna de la Hoja1 que realiza, o `null` si el formato no la tenía. */
-  columna: ColumnaDelFormato | null;
+/** Una acción en un lugar: 'TODO', una etapa ('E3'), un punto ('7.2') o un trámite ('INC.1'). */
+export interface AlcanceVista {
+  accion: AccionAlcance;
+  lugar: string;
+  /** Si lo decidió una persona o viene de la siembra sin ratificar. */
+  confirmado?: boolean;
 }
 
-/** Una fila de la rejilla: quién puede hacerlo. */
-export interface RolDelCatalogo {
-  codigo: string;
-  nombre: string;
-  descripcion: string;
-  /** Quién lo ejerce en la ESAP, según la Hoja2 del formato. */
-  quienLoEjerce: string;
-  procedencia: 'INTERNA' | 'EXTERNA';
-  /** Si la fila sale del anexo o la fijaron las historias del módulo. */
-  origen: 'FORMATO' | 'MODULO';
-  /** Lo que el rol hace y la rejilla todavía no puede mostrar. */
-  nota?: string;
-  permisos: string[];
-}
-
-/** Una combinación de roles que se entrega armada (EFDS-1183). */
-export interface PerfilPorDefecto {
-  codigo: string;
-  nombre: string;
-  descripcion: string;
-  quienLoEjerce: string;
-  roles: string[];
-}
-
-export interface MatrizDeRoles {
-  /** Si la Dirección de Contratación ya la ratificó. */
-  confirmada: boolean;
-  /** Los cuatro que responden «¿qué le pongo a esta persona?». */
-  perfiles?: PerfilPorDefecto[];
-  permisos: PermisoDelCatalogo[];
-  roles: RolDelCatalogo[];
-  /** Los que lo otorgan todo sin ser del módulo. */
+/** Lo que puede hacer quien está mirando la pantalla, y dónde. */
+export interface AlcanceMio {
+  alcances: AlcanceVista[];
+  /** Los permisos que no son de ninguna etapa: configurar, informes, ver todos… */
   transversales: string[];
 }
 
-/** Lo que puede hacer quien está mirando la pantalla. */
-export interface MisPermisos {
-  roles: string[];
-  rolesDeContratacion: Omit<RolDelCatalogo, 'permisos'>[];
-  permisos: string[];
+/** Un rol en la matriz de permisos por etapa. */
+export interface RolConAlcance {
+  id: string;
+  codigo: string;
+  nombre: string;
+  descripcion: string | null;
+  /** Las acciones cuyo permiso le dio el backoffice de roles. */
+  acciones: AccionAlcance[];
+  transversales: string[];
+  alcances: AlcanceVista[];
 }
 
 // ------------------------------------------ los plazos de las alertas (EFDS-1183)
@@ -3324,6 +3440,27 @@ export interface AvisoEvento {
   personas: { id: string; nombre: string }[];
   /** Dependencias de la plataforma: el aviso llega a toda su gente. */
   dependencias: { id: string; nombre: string }[];
+  /** Texto propio con variables; `null` es el de siempre. */
+  titulo: string | null;
+  mensaje: string | null;
+  /** Cómo sale el de siempre, con datos de ejemplo. */
+  textoDeSiempre: { titulo: string; mensaje: string };
+  /** Correos de fuera de la plataforma: les llega solo por correo. */
+  correosExternos: string[];
+  /** Si llega también al correo del contratista del acto de adjudicación. */
+  alContratista: boolean;
+}
+
+/** Lo que se puede cambiar de un aviso; lo que no se manda se conserva. */
+export interface CambiosAviso {
+  activo?: boolean;
+  roles?: string[];
+  personas?: string[];
+  dependencias?: string[];
+  titulo?: string | null;
+  mensaje?: string | null;
+  correosExternos?: string[];
+  alContratista?: boolean;
 }
 
 /** Un aviso que sale siempre y no se configura, con a quién le llega. */
@@ -3340,6 +3477,8 @@ export interface ConfiguracionAvisos {
   /** Si los avisos de la actividad llegan también al correo. */
   porCorreo: boolean;
   siempre: AvisoSiempre[];
+  /** Lo que se puede escribir entre llaves en el texto de un aviso. */
+  variables: { clave: string; descripcion: string }[];
   avisos: AvisoEvento[];
 }
 

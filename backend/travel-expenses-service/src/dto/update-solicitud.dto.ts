@@ -100,12 +100,18 @@ export class UpdateSolicitudDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['TERRESTRE', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'])
+  @IsIn(['TERRESTRE', 'AEREO', 'MIXTO', 'INTERNACIONAL', 'ACTO_ADMINISTRATIVO'])
   tipoComision?: string;
 
   @IsOptional()
   @IsBoolean()
   esInternacional?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  idDependencia?: number;
 
   @IsOptional()
   @IsObject()
@@ -180,9 +186,7 @@ export class UpdateSolicitudDto {
 
   @IsOptional()
   @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => Object)
-  desgloseCalculo?: DesgloseCalculoDto[];
+  desgloseCalculo?: any[];
 
   @IsOptional()
   @IsArray()

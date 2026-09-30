@@ -126,8 +126,44 @@ describe('AvisosService', () => {
         '[]',
         '[]',
         '["7"]',
+        // Sin texto propio ni destinatarios de fuera (088): rige lo de siempre.
+        null,
+        null,
+        '[]',
+        false,
         'director@esap.edu.co',
       ]);
+    });
+
+    it('rechaza un texto con variables que no existen, que saldrían tal cual', async () => {
+      const { srv, query } = conFilas([]);
+
+      await expect(
+        srv.guardar('3.2', 'DOCUMENTO_ADJUNTO', { mensaje: 'Se adjuntó en {actvidad}' }, acceso),
+      ).rejects.toThrow('{actvidad}');
+      expect(query.mock.calls.some(([sql]) => String(sql).includes('INSERT'))).toBe(false);
+    });
+
+    it('un correo externo basta como destinatario para encenderlo', async () => {
+      const { srv, query } = conFilas([]);
+
+      await srv.guardar(
+        '1.1',
+        'HABILITADA',
+        { activo: true, correosExternos: [' Contratista@Empresa.co '] },
+        acceso,
+      );
+
+      const insert = query.mock.calls.find(([sql]) => String(sql).includes('INSERT'));
+      expect(insert?.[1][9]).toBe('["contratista@empresa.co"]');
+    });
+
+    it('no guarda un correo externo que no es correo', async () => {
+      const { srv } = conFilas([]);
+
+      await expect(
+        srv.guardar('3.2', 'DOCUMENTO_ADJUNTO', { correosExternos: ['contratista'] }, acceso),
+      ).rejects.toThrow('No parece un correo válido: contratista');
     });
 
     it('no ofrece avisos que no pueden pasar en esa actividad', async () => {

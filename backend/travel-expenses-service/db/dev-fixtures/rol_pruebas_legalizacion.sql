@@ -6,7 +6,7 @@
 --
 -- Crea el rol dedicado con el que las pruebas automatizadas (RUN_DB_TESTS=1)
 -- purgan los expedientes de legalización cerrados que ellas mismas crearon.
--- La inmutabilidad (migraciones 451 y 452) solo cede ante este rol, y solo
+-- La inmutabilidad (migraciones 451, 452 y 454) solo cede ante este rol, y solo
 -- con SET LOCAL travel_expenses.purga_pruebas = 'on' en la misma transacción.
 --
 -- Sin LOGIN: nadie se conecta como este rol; la limpieza hace SET LOCAL ROLE
@@ -24,6 +24,7 @@ END $$;
 
 GRANT USAGE ON SCHEMA travel_expenses TO travel_expenses_pruebas;
 GRANT SELECT, DELETE ON
+    travel_expenses.legalizacion_reversiones,
     travel_expenses.legalizacion_revisiones,
     travel_expenses.legalizacion_soportes,
     travel_expenses.legalizaciones_comision

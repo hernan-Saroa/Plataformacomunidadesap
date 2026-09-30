@@ -15,6 +15,7 @@ import { NotificationClientService } from '../../common/notification-client.serv
 import { LegalizacionComisionEntity } from './entities/legalizacion-comision.entity';
 import { LegalizacionSoporteEntity } from './entities/legalizacion-soporte.entity';
 import { AccionRevision, LegalizacionRevisionEntity } from './entities/legalizacion-revision.entity';
+import { LegalizacionReversionEntity } from './entities/legalizacion-reversion.entity';
 import {
   esSuperAdmin,
   LegalizacionService,
@@ -22,6 +23,7 @@ import {
   UsuarioAutenticado,
 } from './legalizacion.service';
 import { fechaColombia } from './plazo-legalizacion.util';
+import { calcularViajeReal, ViajeReal } from './viaje-real.util';
 
 /** Evento que consumirá EFDS-1308 (reintegros) cuando el viaje fue menor. */
 export const EVENTO_REINTEGRO = 'commission.reintegro_required';
@@ -36,6 +38,10 @@ export interface EventoReintegro {
   valorReintegro: number;
   diasComision: number | null;
   diasReales: number | null;
+  /** Parte del reintegro por los días no viajados (GF-FO-032). null si no se pudo calcular. */
+  reintegroViajeCorto: number | null;
+  fechaInicioReal: string | null;
+  fechaFinReal: string | null;
   usuarioId: string;
 }
 
@@ -47,6 +53,46 @@ export interface RegistrarSiifDto {
   valorLegalizado: number;
   diasReales?: number | null;
   observaciones?: string;
+}
+
+/**
+ * Resultado del registro en SIIF: cierre, o devolución al comisionado cuando el
+ * valor legalizado supera el pagado (no se registra ni se cierra).
+ */
+export type ResultadoRegistroSiif =
+  | {
+      devuelta: false;
+      legalizacionId: string;
+      estadoSolicitud: EstadoSolicitud;
+      cerradaEn: Date | null;
+      numeroRegistroSiif: string;
+      valorPagado: number;
+      valorLegalizado: number;
+      valorReintegro: number;
+    }
+  | {
+      devuelta: true;
+      legalizacionId: string;
+      estadoSolicitud: EstadoSolicitud;
+      observacionDevolucion: string;
+      valorPagado: number;
+      valorLegalizado: number;
+    };
+
+/**
+ * Viaje real según el GF-FO-032 V2, con las tarifas de la liquidación pagada.
+ * null si la legalización no tiene fechas reales (enviada antes de exigirlas).
+ */
+export function viajeRealDe(sol: SolicitudContexto, leg: LegalizacionComisionEntity): ViajeReal | null {
+  if (!leg.fechaInicioReal || !leg.fechaFinReal) return null;
+  return calcularViajeReal(String(leg.fechaInicioReal).slice(0, 10), String(leg.fechaFinReal).slice(0, 10), {
+    diasPernoctados: sol.dias_pernoctados as any,
+    tarifaDiaPernoctado: sol.tarifa_dia_pernoctado as any,
+    tarifaDiaNoPernoctado: sol.tarifa_dia_no_pernoctado as any,
+    totalPernoctados: sol.total_pernoctados as any,
+    totalNoPernoctados: sol.total_no_pernoctados as any,
+    valorPagado: (leg.valorPagado ?? sol.valor_pagado) as any,
+  });
 }
 
 const MIN_OBSERVACION = 10;
@@ -209,6 +255,9 @@ export class LegalizacionRevisionService {
       i.soportes.every((s) => s.revision !== null),
     );
     const hayRechazos = detalle.checklist.items.some((i) => i.soportes.some((s) => s.revision === 'RECHAZADO'));
+    const reversionPendiente = await this.reversionPendiente(this.dataSource, leg.id);
+    const viajeReal = viajeRealDe(sol, leg);
+    const pagado = sol.valor_pagado == null ? null : Number(sol.valor_pagado);
     return {
       ...detalle,
       puedeEditar: false,
@@ -224,7 +273,15 @@ export class LegalizacionRevisionService {
         detalle.checklist.completo &&
         todosRevisados &&
         !hayRechazos,
-      puedeRegistrarSiif: Boolean(leg.revisionAprobadaEn && !leg.cerradaEn),
+      puedeRegistrarSiif: Boolean(leg.revisionAprobadaEn && !leg.cerradaEn && !reversionPendiente),
+      puedeSolicitarReversion: Boolean(leg.revisionAprobadaEn && !leg.cerradaEn && !reversionPendiente),
+      reversionPendiente,
+      // GF-FO-032 V2: reintegro por viaje más corto y tope de lo legalizable.
+      viajeReal,
+      maximoLegalizable:
+        pagado !== null && viajeReal?.reintegroViajeCorto != null
+          ? Math.round((pagado - viajeReal.reintegroViajeCorto) * 100) / 100
+          : pagado,
       historialRevision: historial,
     };
   }
@@ -288,36 +345,59 @@ export class LegalizacionRevisionService {
 
     const leg = await this.dataSource.transaction(async (m) => {
       const l = await this.bloquearEnRevision(m, solicitudId);
-      l.devueltaEn = new Date();
-      l.devueltaPorId = user.userId;
-      l.observacionDevolucion = observacion;
-      l.numeroDevoluciones = (l.numeroDevoluciones ?? 0) + 1;
-      // Vuelve a quedar abierta para el comisionado.
-      l.fechaEnvio = null;
-      l.enviadaPorId = null;
-      await m.getRepository(LegalizacionComisionEntity).save(l);
-
-      await this.registrar(m, l.id, 'DEVOLUCION', user.userId, {
-        observacion,
-        detalle: { numeroDevolucion: l.numeroDevoluciones },
-      });
-      await m.getRepository(SolicitudHistorialEstadoEntity).save({
-        solicitudId,
-        estadoAnterior: sol.estado_solicitud,
-        estadoNuevo: sol.estado_solicitud,
-        usuarioId: user.userId,
-        comentarios: `[EFDS-1310] Legalización devuelta al comisionado: ${observacion}`.slice(0, 255),
-      });
+      await this.aplicarDevolucion(m, l, sol, user.userId, observacion);
       return l;
     });
 
-    await this.notificar(sol, {
+    await this.notificarDevolucion(sol, observacion);
+    return { legalizacionId: leg.id, devueltaEn: leg.devueltaEn, numeroDevoluciones: leg.numeroDevoluciones };
+  }
+
+  /**
+   * Devuelve la legalización al comisionado: queda abierta para que corrija y
+   * reenvíe. Si la revisión ya estaba aprobada, la aprobación y la exportación a
+   * SIIF se deshacen, porque lo que el comisionado cambie debe revisarse de nuevo.
+   */
+  private async aplicarDevolucion(
+    m: EntityManager,
+    l: LegalizacionComisionEntity,
+    sol: SolicitudContexto,
+    usuarioId: string,
+    observacion: string,
+    detalle: Record<string, unknown> = {},
+  ): Promise<void> {
+    l.devueltaEn = new Date();
+    l.devueltaPorId = usuarioId;
+    l.observacionDevolucion = observacion;
+    l.numeroDevoluciones = (l.numeroDevoluciones ?? 0) + 1;
+    l.fechaEnvio = null;
+    l.enviadaPorId = null;
+    l.revisionAprobadaEn = null;
+    l.revisionAprobadaPorId = null;
+    l.siifExportadoEn = null;
+    l.siifExportadoPorId = null;
+    await m.getRepository(LegalizacionComisionEntity).save(l);
+
+    await this.registrar(m, l.id, 'DEVOLUCION', usuarioId, {
+      observacion,
+      detalle: { numeroDevolucion: l.numeroDevoluciones, ...detalle },
+    });
+    await m.getRepository(SolicitudHistorialEstadoEntity).save({
+      solicitudId: l.solicitudId,
+      estadoAnterior: sol.estado_solicitud,
+      estadoNuevo: sol.estado_solicitud,
+      usuarioId,
+      comentarios: `[EFDS-1310] Legalización devuelta al comisionado: ${observacion}`.slice(0, 255),
+    });
+  }
+
+  private notificarDevolucion(sol: SolicitudContexto, observacion: string) {
+    return this.notificar(sol, {
       tipo: 'VIATICOS_LEGALIZACION_DEVUELTA',
       titulo: `Legalización devuelta: ${sol.consecutivo_unico}`,
       mensaje: `El analista devolvió la legalización de ${sol.consecutivo_unico}: ${observacion}`,
       color: '#dc2626',
     });
-    return { legalizacionId: leg.id, devueltaEn: leg.devueltaEn, numeroDevoluciones: leg.numeroDevoluciones };
   }
 
   // ---------------------------------------------------------------------------
@@ -404,18 +484,13 @@ export class LegalizacionRevisionService {
    * Registra la legalización en SIIF y cierra el expediente, en una sola
    * transacción: o queda LEGALIZADO y cerrado, o no cambia nada.
    */
-  async registrarYCerrar(solicitudId: string, dto: RegistrarSiifDto, user: UsuarioAutenticado) {
+  async registrarYCerrar(
+    solicitudId: string,
+    dto: RegistrarSiifDto,
+    user: UsuarioAutenticado,
+  ): Promise<ResultadoRegistroSiif> {
     const numero = dto?.numeroRegistroSiif?.trim() || '';
-    if (!numero || numero.length > 100) {
-      throw new BadRequestException('Digite el número del registro de la legalización en SIIF Nación (máximo 100 caracteres).');
-    }
     const fecha = dto?.fechaRegistroSiif?.trim() || '';
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(new Date(`${fecha}T00:00:00Z`).getTime())) {
-      throw new BadRequestException('La fecha del registro en SIIF debe tener el formato AAAA-MM-DD.');
-    }
-    if (fecha > fechaColombia(new Date())) {
-      throw new BadRequestException('La fecha del registro en SIIF no puede ser posterior a hoy.');
-    }
     const valorLegalizado = Number(dto?.valorLegalizado);
     if (!Number.isFinite(valorLegalizado) || valorLegalizado < 0) {
       throw new BadRequestException('El valor legalizado debe ser un número mayor o igual a cero.');
@@ -438,6 +513,11 @@ export class LegalizacionRevisionService {
       if (!leg.revisionAprobadaEn) {
         throw new BadRequestException('Apruebe la revisión de los soportes antes de registrar en SIIF.');
       }
+      if (await this.reversionPendiente(m, leg.id)) {
+        throw new BadRequestException(
+          'Hay una solicitud de reversión de la revisión pendiente: debe resolverse antes de registrar en SIIF.',
+        );
+      }
       if (bloqueada?.estado_solicitud !== EstadoSolicitud.PENDIENTE_LEGALIZACION) {
         throw new BadRequestException(
           `La comisión debe estar en PENDIENTE_LEGALIZACION para cerrarse (estado actual: ${bloqueada?.estado_solicitud}).`,
@@ -448,11 +528,38 @@ export class LegalizacionRevisionService {
       }
       const valorPagado = Number(bloqueada.valor_pagado);
       if (valorLegalizado > valorPagado) {
+        // No se registra en SIIF ni se cierra: vuelve al comisionado para corregir.
+        const observacion =
+          `El valor legalizado ($${valorLegalizado.toLocaleString('es-CO')}) supera el valor pagado ` +
+          `($${valorPagado.toLocaleString('es-CO')}). Revise los soportes de la legalización y reenvíela.` +
+          (dto.observaciones?.trim() ? ` Observación del analista: ${dto.observaciones.trim()}` : '');
+        await this.aplicarDevolucion(m, leg, sol, user.userId, observacion, {
+          motivo: 'VALOR_LEGALIZADO_SUPERA_PAGADO',
+          valorPagado,
+          valorLegalizado,
+        });
+        return { devuelta: true as const, leg, valorPagado, observacion };
+      }
+      if (!numero || numero.length > 100) {
+        throw new BadRequestException('Digite el número del registro de la legalización en SIIF Nación (máximo 100 caracteres).');
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || Number.isNaN(new Date(`${fecha}T00:00:00Z`).getTime())) {
+        throw new BadRequestException('La fecha del registro en SIIF debe tener el formato AAAA-MM-DD.');
+      }
+      if (fecha > fechaColombia(new Date())) {
+        throw new BadRequestException('La fecha del registro en SIIF no puede ser posterior a hoy.');
+      }
+      const viajeReal = viajeRealDe(sol, leg);
+      const reintegroViajeCorto = viajeReal?.reintegroViajeCorto ?? null;
+      if (reintegroViajeCorto && valorLegalizado > valorPagado - reintegroViajeCorto) {
+        const maximo = Math.round((valorPagado - reintegroViajeCorto) * 100) / 100;
         throw new BadRequestException(
-          `El valor legalizado ($${valorLegalizado.toLocaleString('es-CO')}) no puede superar el pagado ` +
-            `($${valorPagado.toLocaleString('es-CO')}): un mayor valor se tramita aparte.`,
+          `Según las fechas reales del GF-FO-032 el viaje fue más corto (${viajeReal!.nochesReales} de ${viajeReal!.nochesPlaneadas} noches): ` +
+            `el reintegro por viaje más corto es $${reintegroViajeCorto.toLocaleString('es-CO')} y lo legalizado no puede superar ` +
+            `$${maximo.toLocaleString('es-CO')}.`,
         );
       }
+      const diasRegistrados = viajeReal ? viajeReal.diasReales : diasReales;
       const valorReintegro = Math.round((valorPagado - valorLegalizado) * 100) / 100;
       const cierre = new Date();
 
@@ -463,7 +570,8 @@ export class LegalizacionRevisionService {
         valorPagado: valorPagado.toFixed(2),
         valorLegalizado: valorLegalizado.toFixed(2),
         valorReintegro: valorReintegro.toFixed(2),
-        diasReales: diasReales === null ? null : diasReales.toFixed(2),
+        diasReales: diasRegistrados === null ? null : diasRegistrados.toFixed(2),
+        reintegroViajeCorto: reintegroViajeCorto === null ? null : reintegroViajeCorto.toFixed(2),
         observacionesCierre: dto.observaciones?.trim() || null,
         cerradaEn: cierre,
         cerradaPorId: user.userId,
@@ -493,10 +601,26 @@ export class LegalizacionRevisionService {
       });
       await this.registrar(m, leg.id, 'REGISTRO_SIIF_Y_CIERRE', user.userId, {
         observacion: leg.observacionesCierre,
-        detalle: { numeroRegistroSiif: numero, fechaRegistroSiif: fecha, valorPagado, valorLegalizado, valorReintegro, diasReales },
+        detalle: {
+          numeroRegistroSiif: numero, fechaRegistroSiif: fecha, valorPagado, valorLegalizado, valorReintegro,
+          diasReales: diasRegistrados, reintegroViajeCorto,
+          fechaInicioReal: leg.fechaInicioReal, fechaFinReal: leg.fechaFinReal,
+        },
       });
-      return { leg, valorPagado, valorReintegro };
+      return { devuelta: false as const, leg, valorPagado, valorReintegro, diasRegistrados, reintegroViajeCorto };
     });
+
+    if (r.devuelta) {
+      await this.notificarDevolucion(sol, r.observacion);
+      return {
+        devuelta: true,
+        legalizacionId: r.leg.id,
+        estadoSolicitud: EstadoSolicitud.PENDIENTE_LEGALIZACION,
+        observacionDevolucion: r.observacion,
+        valorPagado: r.valorPagado,
+        valorLegalizado,
+      };
+    }
 
     // Después del commit: quien escuche lee datos ya confirmados.
     if (r.valorReintegro > 0) {
@@ -509,7 +633,10 @@ export class LegalizacionRevisionService {
         valorLegalizado,
         valorReintegro: r.valorReintegro,
         diasComision: sol.dias_comision == null ? null : Number(sol.dias_comision),
-        diasReales,
+        diasReales: r.diasRegistrados,
+        reintegroViajeCorto: r.reintegroViajeCorto,
+        fechaInicioReal: r.leg.fechaInicioReal,
+        fechaFinReal: r.leg.fechaFinReal,
         usuarioId: user.userId,
       };
       this.eventEmitter?.emit(EVENTO_REINTEGRO, evento);
@@ -527,6 +654,7 @@ export class LegalizacionRevisionService {
     });
 
     return {
+      devuelta: false,
       legalizacionId: r.leg.id,
       estadoSolicitud: EstadoSolicitud.LEGALIZADO,
       cerradaEn: r.leg.cerradaEn,
@@ -535,6 +663,123 @@ export class LegalizacionRevisionService {
       valorLegalizado,
       valorReintegro: r.valorReintegro,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reversión de una revisión aprobada (antes del registro en SIIF)
+  // ---------------------------------------------------------------------------
+
+  private reversionPendiente(m: EntityManager | DataSource, legalizacionId: string) {
+    return m.getRepository(LegalizacionReversionEntity).findOne({ where: { legalizacionId, estado: 'PENDIENTE' } });
+  }
+
+  /**
+   * El analista que revisa pide revertir la aprobación. No cambia nada hasta que
+   * otra persona, con el permiso de aprobar reversiones, la apruebe.
+   */
+  async solicitarReversion(solicitudId: string, dto: { motivo: string }, user: UsuarioAutenticado) {
+    const motivo = dto?.motivo?.trim() || '';
+    if (motivo.length < MIN_OBSERVACION) {
+      throw new BadRequestException(`Explique por qué se debe revertir la aprobación (mínimo ${MIN_OBSERVACION} caracteres).`);
+    }
+    const sol = await this.legalizaciones.cargarSolicitud(solicitudId);
+    await this.exigirRevisor(sol, user);
+
+    return this.dataSource.transaction(async (m) => {
+      const leg = await this.bloquearEnRevision(m, solicitudId, { permitirAprobada: true });
+      if (!leg.revisionAprobadaEn) {
+        throw new BadRequestException('La revisión no está aprobada: no hay nada que revertir.');
+      }
+      if (await this.reversionPendiente(m, leg.id)) {
+        throw new BadRequestException('Ya hay una solicitud de reversión pendiente para esta legalización.');
+      }
+      const repo = m.getRepository(LegalizacionReversionEntity);
+      const reversion = await repo.save(repo.create({ legalizacionId: leg.id, motivo, solicitadaPorId: user.userId }));
+      await this.registrar(m, leg.id, 'REVERSION_SOLICITADA', user.userId, {
+        observacion: motivo,
+        detalle: { reversionId: reversion.id },
+      });
+      return reversion;
+    });
+  }
+
+  /** Bandeja de quien aprueba: las solicitudes pendientes, salvo las propias. */
+  async reversionesPendientes(user: UsuarioAutenticado) {
+    return this.dataSource.query(
+      `SELECT r.id, r.motivo, r.solicitada_por_id AS "solicitadaPorId", r.solicitada_en AS "solicitadaEn",
+              l.solicitud_id AS "solicitudId", s.consecutivo_unico AS "consecutivoUnico",
+              TRIM(CONCAT_WS(' ', c.primer_nombre, c.segundo_nombre, c.primer_apellido, c.segundo_apellido)) AS "comisionadoNombre",
+              s.valor_pagado::float AS "valorPagado", l.revision_aprobada_en AS "revisionAprobadaEn",
+              l.siif_exportado_en AS "siifExportadoEn"
+         FROM travel_expenses.legalizacion_reversiones r
+         JOIN travel_expenses.legalizaciones_comision l ON l.id = r.legalizacion_id
+         JOIN travel_expenses.solicitudes_comision s ON s.id = l.solicitud_id
+         LEFT JOIN travel_expenses.comisionados c ON c.id = s.comisionado_id
+        WHERE r.estado = 'PENDIENTE' AND r.solicitada_por_id <> $1
+        ORDER BY r.solicitada_en`,
+      [user.userId],
+    );
+  }
+
+  /**
+   * Aprueba o rechaza una solicitud de reversión. Aprobar deshace la aprobación
+   * de la revisión y la exportación a SIIF: la legalización vuelve a revisión.
+   */
+  async resolverReversion(
+    reversionId: string,
+    dto: { decision: 'APROBAR' | 'RECHAZAR'; observacion?: string },
+    user: UsuarioAutenticado,
+  ) {
+    if (dto?.decision !== 'APROBAR' && dto?.decision !== 'RECHAZAR') {
+      throw new BadRequestException('La decisión debe ser APROBAR o RECHAZAR.');
+    }
+    const observacion = dto.observacion?.trim() || null;
+    if (dto.decision === 'RECHAZAR' && (observacion?.length ?? 0) < MIN_OBSERVACION) {
+      throw new BadRequestException(`El rechazo requiere una observación (mínimo ${MIN_OBSERVACION} caracteres).`);
+    }
+
+    return this.dataSource.transaction(async (m) => {
+      const filas: Array<{ solicitud_id: string }> = await m.query(
+        `SELECT l.solicitud_id
+           FROM travel_expenses.legalizacion_reversiones r
+           JOIN travel_expenses.legalizaciones_comision l ON l.id = r.legalizacion_id
+          WHERE r.id = $1
+          FOR UPDATE OF r`,
+        [reversionId],
+      );
+      if (!filas[0]) throw new NotFoundException('Solicitud de reversión no encontrada.');
+      const repo = m.getRepository(LegalizacionReversionEntity);
+      const reversion = await repo.findOneOrFail({ where: { id: reversionId } });
+      if (reversion.estado !== 'PENDIENTE') {
+        throw new BadRequestException(`La solicitud de reversión ya fue resuelta (${reversion.estado}).`);
+      }
+      if (reversion.solicitadaPorId === user.userId) {
+        throw new ForbiddenException('Quien solicitó la reversión no puede resolverla: debe hacerlo otra persona.');
+      }
+      // Cerrada, la legalización es inmutable: la reversión ya no procede.
+      const leg = await this.bloquearEnRevision(m, filas[0].solicitud_id, { permitirAprobada: true });
+
+      const aprobar = dto.decision === 'APROBAR';
+      if (aprobar) {
+        leg.revisionAprobadaEn = null;
+        leg.revisionAprobadaPorId = null;
+        leg.siifExportadoEn = null;
+        leg.siifExportadoPorId = null;
+        await m.getRepository(LegalizacionComisionEntity).save(leg);
+      }
+      Object.assign(reversion, {
+        estado: aprobar ? 'APROBADA' : 'RECHAZADA',
+        resueltaPorId: user.userId,
+        resueltaEn: new Date(),
+        observacionResolucion: observacion,
+      });
+      await repo.save(reversion);
+      await this.registrar(m, leg.id, aprobar ? 'REVERSION_APROBADA' : 'REVERSION_RECHAZADA', user.userId, {
+        observacion,
+        detalle: { reversionId, solicitadaPorId: reversion.solicitadaPorId },
+      });
+      return { reversionId, estado: reversion.estado, solicitudId: filas[0].solicitud_id, legalizacionId: leg.id };
+    });
   }
 
   private async notificar(

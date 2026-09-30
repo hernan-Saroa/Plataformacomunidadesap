@@ -66,10 +66,10 @@ export function sumarDiasHabiles(
 }
 
 export interface ParametrosPlazo {
-  /** Último día de la comisión (YYYY-MM-DD), leído como fecha, sin zona. */
+  /** Fecha de regreso de la comisión (YYYY-MM-DD), leída como fecha, sin zona. */
   fechaFinComisionYmd: string;
-  /** Momento en que se abre la legalización. */
-  fechaDisparo: Date;
+  /** Fecha de pago (YYYY-MM-DD). Nula si la legalización se abre antes del pago. */
+  fechaPagoYmd: string | null;
   plazoDiasHabiles: number;
   /** HH:MM en hora de Colombia. */
   horaCorte: string;
@@ -83,28 +83,25 @@ export interface PlazoCalculado {
 }
 
 /**
- * El plazo corre desde el más tardío entre el fin de la comisión y la apertura
- * de la legalización: una comisión pagada antes de viajar (AVANCE) no puede
- * vencer mientras el comisionado todavía está de viaje, y una pagada después de
- * terminada (RECONOCIMIENTO_POSTERIOR) no puede nacer vencida.
+ * El plazo corre desde lo más tardío entre la fecha de regreso y la de pago:
+ * GREATEST(fecha_fin, fecha_pago). En avance, el caso normal, se paga antes del
+ * viaje y el plazo corre desde el regreso (lo que pidió el Grupo de Viáticos).
+ * En reconocimiento posterior el pago llega después del regreso: contar desde
+ * el regreso haría nacer vencida casi toda comisión de esa modalidad.
+ *
+ * El regreso es el planeado (solicitudes_comision.fecha_fin): el real solo se
+ * conoce al legalizar, con el formato GF-FO-032.
  *
  * Vence el último día hábil del plazo a la hora de corte, en hora de Colombia.
+ * La migración 453 replica este cálculo en SQL para las legalizaciones abiertas.
  */
 export function calcularPlazo(p: ParametrosPlazo): PlazoCalculado {
-  const disparoYmd = fechaColombia(p.fechaDisparo);
-  const baseDesdeFin = p.fechaFinComisionYmd > disparoYmd;
-  const baseYmd = baseDesdeFin ? p.fechaFinComisionYmd : disparoYmd;
-
-  const { fecha, calendarioIncompleto } = sumarDiasHabiles(
-    baseYmd,
-    p.plazoDiasHabiles,
-    p.festivos,
-  );
+  const baseYmd =
+    p.fechaPagoYmd && p.fechaPagoYmd > p.fechaFinComisionYmd ? p.fechaPagoYmd : p.fechaFinComisionYmd;
+  const { fecha, calendarioIncompleto } = sumarDiasHabiles(baseYmd, p.plazoDiasHabiles, p.festivos);
 
   return {
-    fechaBasePlazo: baseDesdeFin
-      ? instanteColombia(baseYmd, '23:59', '59')
-      : p.fechaDisparo,
+    fechaBasePlazo: instanteColombia(baseYmd, '23:59', '59'),
     fechaLimite: instanteColombia(fecha, p.horaCorte),
     calendarioIncompleto,
   };

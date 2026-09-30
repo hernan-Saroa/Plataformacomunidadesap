@@ -21,6 +21,7 @@ import {
   ResumenLegalizacion,
   SemaforoLegalizacion,
 } from '../services/api/legalizacionService';
+import DatosCumplimiento032 from './DatosCumplimiento032';
 
 /**
  * EFDS-1309 — Legalización de comisiones, vista del comisionado / enlace.
@@ -352,6 +353,18 @@ function DetalleView({ solicitudId, onVolver }: { solicitudId: string; onVolver:
         </div>
       )}
 
+      <DatosCumplimiento032
+        solicitudId={solicitudId}
+        cumplimiento={detalle.cumplimiento}
+        fechaInicio={detalle.fechaInicio}
+        fechaFin={detalle.fechaFin}
+        puedeEditar={detalle.puedeEditar}
+        onGuardado={async () => {
+          setAviso('Datos del GF-FO-032 guardados.');
+          await cargar();
+        }}
+      />
+
       {checklist.sinConfiguracion ? (
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-center text-xs text-slate-500">
           No hay soportes de legalización configurados para este tipo de comisionado. Comuníquese con el Grupo de
@@ -375,11 +388,14 @@ function DetalleView({ solicitudId, onVolver }: { solicitudId: string; onVolver:
 
       {detalle.puedeEditar && !checklist.sinConfiguracion && (
         <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs text-slate-500">
-            {checklist.completo
-              ? 'Todos los soportes obligatorios están cargados.'
-              : `Faltan ${checklist.obligatoriosPendientes} soporte(s) obligatorio(s).`}
-          </p>
+          <div className="text-xs text-slate-500">
+            <p>
+              {checklist.completo
+                ? 'Todos los soportes obligatorios están cargados.'
+                : `Faltan ${checklist.obligatoriosPendientes} soporte(s) obligatorio(s).`}
+            </p>
+            {!detalle.cumplimiento?.registrado && <p className="text-amber-700">Falta registrar los datos del GF-FO-032.</p>}
+          </div>
           {confirmarEnvio ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-600">Después de enviarla no podrá cambiar los soportes.</span>
@@ -402,7 +418,7 @@ function DetalleView({ solicitudId, onVolver }: { solicitudId: string; onVolver:
           ) : (
             <button
               type="button"
-              disabled={!checklist.completo}
+              disabled={!checklist.completo || !detalle.cumplimiento?.registrado}
               onClick={() => setConfirmarEnvio(true)}
               className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-700 px-4 py-2 text-xs font-bold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300"
             >

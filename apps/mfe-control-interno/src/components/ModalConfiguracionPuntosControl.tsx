@@ -97,6 +97,38 @@ function sumarDias(fechaStr: string, dias: number): string {
   return `${y}-${m}-${d}`;
 }
 
+/**
+ * Fecha fin de un corte que empieza en `inicio`: el día anterior al inicio del
+ * periodo siguiente (semestral desde el 01/07 → 31/12), sin pasar del fin del plan.
+ * Antes se sumaban los meses completos y el corte de diciembre terminaba el 01/01
+ * del año siguiente (EFDS-2198).
+ */
+function finDelPeriodo(inicio: string, frecuencia: FrecuenciaPuntoControl, finPlan?: string): string {
+  if (!inicio) return '';
+  const fin = frecuencia === 'semanal'
+    ? sumarDias(inicio, 6)
+    : sumarDias(sumarMeses(inicio, frecuencia), -1);
+  return finPlan && fin > finPlan ? finPlan : fin;
+}
+
+const fechaDMY = (iso: string) => iso.split('-').reverse().join('/');
+
+/**
+ * La fecha fin de un corte queda dentro de la vigencia del plan y no antes de su
+ * inicio. La fecha de seguimiento de la tarea es otra: esa sí puede ser del año
+ * siguiente (EFDS-2198). Devuelve el mensaje de error, o null si está bien.
+ */
+function errorFechaFinCorte(inicio: string, fin: string | null | undefined, finPlan: string): string | null {
+  if (!fin) return null;
+  if (finPlan && fin > finPlan) {
+    return `La fecha fin del corte debe quedar dentro de la vigencia del plan (hasta el ${fechaDMY(finPlan)}). La fecha de seguimiento de la tarea sí puede ser del año siguiente.`;
+  }
+  if (inicio && fin < inicio) {
+    return 'La fecha fin del corte no puede ser anterior a su fecha de inicio.';
+  }
+  return null;
+}
+
 function toYYYYMMDD(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -325,6 +357,11 @@ export function ModalConfiguracionPuntosControl({
       toast.error('La fecha programada es obligatoria');
       return;
     }
+    const errorFinNuevo = errorFechaFinCorte(nuevoPunto.fechaProgramada, nuevoPunto.fechaSeguimiento, fechaCorteLocal);
+    if (errorFinNuevo) {
+      toast.error(errorFinNuevo);
+      return;
+    }
 
     const nuevo: PuntoControl = {
       id: `pc-${Date.now()}`,
@@ -379,6 +416,11 @@ export function ModalConfiguracionPuntosControl({
       toast.error('La fecha de corte es obligatoria');
       return;
     }
+    const errorFinEditado = errorFechaFinCorte(puntoEditandoData.fechaProgramada, puntoEditandoData.fechaSeguimiento, fechaCorteLocal);
+    if (errorFinEditado) {
+      toast.error(errorFinEditado);
+      return;
+    }
 
     setPuntosControl(
       puntosControl.map(p =>
@@ -395,7 +437,23 @@ export function ModalConfiguracionPuntosControl({
   };
 
   const handleCambiarFrecuencia = (nuevaFrecuencia: FrecuenciaPuntoControl) => {
-    if (nuevaFrecuencia === frecuenciaSeleccionada) return;
+    if (nuevaFrecuencia === frecuenciaSeleccionada) {
+      // Elegir de nuevo la misma periodicidad recalcula las fechas: así se corrigen cortes
+      // que quedaron mal guardados sin tener que pasar por otra periodicidad (EFDS-958).
+      if (nuevaFrecuencia !== 'personalizada') {
+        manualmenteEditado.current = false;
+        setPuntosControl(
+          generarPuntosControlAutomaticos(
+            nuevaFrecuencia,
+            fechaInicioActividad,
+            fechaCorteLocal || fechaFinActividad,
+            nombreActividad,
+            puntosControlExistentes
+          )
+        );
+      }
+      return;
+    }
     setFrecuenciaSeleccionada(nuevaFrecuencia);
   };
 
@@ -420,6 +478,11 @@ export function ModalConfiguracionPuntosControl({
       const fechaActual = new Date(`${puntosOrdenados[i].fechaProgramada}T00:00:00`);
       if (fechaActual < inicio || fechaActual > fin) {
         toast.error('Todas las fechas de corte deben estar dentro del periodo del plan');
+        return;
+      }
+      const errorFin = errorFechaFinCorte(puntosOrdenados[i].fechaProgramada, puntosOrdenados[i].fechaSeguimiento, fechaCorteLocal);
+      if (errorFin) {
+        toast.error(`${puntosOrdenados[i].nombre || `Corte ${i + 1}`}: ${errorFin}`);
         return;
       }
       if (i > 0) {
@@ -622,7 +685,7 @@ export function ModalConfiguracionPuntosControl({
                         <input
                           type="date"
                           value={nuevoPunto.fechaProgramada}
-                          onChange={(e) => setNuevoPunto({ ...nuevoPunto, fechaProgramada: e.target.value, fechaSeguimiento: sumarMeses(e.target.value, frecuenciaSeleccionada) })}
+                          onChange={(e) => setNuevoPunto({ ...nuevoPunto, fechaProgramada: e.target.value, fechaSeguimiento: finDelPeriodo(e.target.value, frecuenciaSeleccionada, fechaCorteLocal) })}
                           className="w-full px-2 py-1 bg-white border border-orange-200 rounded-md text-xs font-medium text-gray-700 focus:outline-none focus:border-orange-400"
                         />
                       </div>
@@ -634,6 +697,8 @@ export function ModalConfiguracionPuntosControl({
                         <input
                           type="date"
                           value={nuevoPunto.fechaSeguimiento}
+                          min={nuevoPunto.fechaProgramada || fechaInicioActividad}
+                          max={fechaCorteLocal}
                           onChange={(e) => setNuevoPunto({ ...nuevoPunto, fechaSeguimiento: e.target.value })}
                           className="w-full px-2 py-1 bg-white border border-purple-200 rounded-md text-xs font-medium text-gray-700 focus:outline-none focus:border-purple-400"
                         />
@@ -701,6 +766,8 @@ export function ModalConfiguracionPuntosControl({
                                 <input
                                   type="date"
                                   value={puntoEditandoData.fechaSeguimiento}
+                                  min={puntoEditandoData.fechaProgramada || fechaInicioActividad}
+                                  max={fechaCorteLocal}
                                   onChange={(e) => setPuntoEditandoData({ ...puntoEditandoData, fechaSeguimiento: e.target.value })}
                                   className="w-full px-3 py-2 bg-white border-2 border-purple-400 rounded-lg text-sm focus:outline-none focus:border-purple-600"
                                 />
@@ -790,7 +857,7 @@ export function ModalConfiguracionPuntosControl({
                                   onChange={(e) => {
                                     manualmenteEditado.current = true;
                                     const nuevaFecha = e.target.value;
-                                    const nuevaFechaSeguimiento = sumarMeses(nuevaFecha, frecuenciaSeleccionada);
+                                    const nuevaFechaSeguimiento = finDelPeriodo(nuevaFecha, frecuenciaSeleccionada, fechaCorteLocal);
                                     setPuntosControl(prev =>
                                       prev.map(p => p.id === punto.id
                                         ? { ...p, fechaProgramada: nuevaFecha, fechaSeguimiento: nuevaFechaSeguimiento }
@@ -808,6 +875,8 @@ export function ModalConfiguracionPuntosControl({
                                 <input
                                   type="date"
                                   value={punto.fechaSeguimiento || ''}
+                                  min={punto.fechaProgramada || fechaInicioActividad}
+                                  max={fechaCorteLocal}
                                   onChange={(e) => {
                                     manualmenteEditado.current = true;
                                     setPuntosControl(prev =>

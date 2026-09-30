@@ -15,6 +15,7 @@ import { contratacionService } from '../../services/contratacionService';
 import { Cargando } from '../shared/PiezasPanel';
 import { ProcesoResumen } from '../../types';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
+import { etapaEnCurso } from '../procesos/etapaEnCurso';
 
 const formatoPesos = new Intl.NumberFormat('es-CO', {
   style: 'currency',
@@ -46,9 +47,21 @@ type EstadoExpediente = 'ABIERTO' | 'EN_PROCESO' | 'CERRADO';
 
 const ETAPA_FINAL = 10;
 
+/** El archivo del expediente (10.4): lo último que le pasa a un proceso. */
+const NUMERAL_ARCHIVO = '10.4';
+
+/**
+ * Con la etapa en curso y no con `procesos.etapa`, que se queda en 5 después
+ * de la apertura: con ella ningún expediente llegaba nunca a cerrado. Y
+ * cerrado es el archivo aprobado, no haber llegado a la etapa 10 —en la 10
+ * todavía se liquida y se paga—.
+ */
 function estadoDe(p: ProcesoResumen): EstadoExpediente {
-  if (p.etapa >= ETAPA_FINAL) return 'CERRADO';
-  if (p.etapa > 1) return 'EN_PROCESO';
+  const archivado = p.actividades?.some(
+    (a) => a.numeral === NUMERAL_ARCHIVO && a.estado === 'APROBADO',
+  );
+  if (archivado) return 'CERRADO';
+  if (etapaEnCurso(p) > 1) return 'EN_PROCESO';
   return 'ABIERTO';
 }
 
@@ -355,7 +368,7 @@ function TarjetaExpediente({
                     proceso.valorEstimado ? formatoPesos.format(proceso.valorEstimado) : '—'
                   }
                 />
-                <Dato etiqueta="Etapa" valor={`${proceso.etapa} de ${ETAPA_FINAL}`} />
+                <Dato etiqueta="Etapa" valor={`${etapaEnCurso(proceso)} de ${ETAPA_FINAL}`} />
               </div>
             </div>
           </div>

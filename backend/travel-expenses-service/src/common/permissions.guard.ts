@@ -48,11 +48,13 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_siif_requested',
     'travel_expenses:double_check_request',
     'travel_expenses:return_to_analyst',
+    'travel_expenses:legalizations.revert_approval', // EFDS-1310: aprueba reversiones de revisión
   ],
   ROL_CONTROL_VIATICOS: [
     'travel_expenses:read_siif_requested',
     'travel_expenses:double_check_request',
     'travel_expenses:return_to_analyst',
+    'travel_expenses:legalizations.revert_approval', // EFDS-1310: aprueba reversiones de revisión
   ],
   ANALISTA: [
     'travel_expenses:read_assigned',
@@ -184,25 +186,79 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:authorize_expense',
     'travel_expenses:read_authorizations',
     'travel_expenses:return_authorization',
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
   ],
   ROL_SUBDIRECCION_GESTION_CORPORATIVA: [
     'travel_expenses:authorize_expense',
     'travel_expenses:read_authorizations',
     'travel_expenses:return_authorization',
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
   ],
   DIRECCION_NACIONAL: [
     'travel_expenses:authorize_extemporaneous',
     'travel_expenses:read_extemporaneous_authorizations',
     'travel_expenses:reject_extemporaneous',
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
   ],
   ROL_DIRECCION_NACIONAL: [
     'travel_expenses:authorize_extemporaneous',
     'travel_expenses:read_extemporaneous_authorizations',
     'travel_expenses:reject_extemporaneous',
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+  ],
+  JEFE_DEPENDENCIA: [
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:return_approval',
+    'travel_expenses:read_inbox',
+  ],
+  ROL_JEFE_DEPENDENCIA: [
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:return_approval',
+    'travel_expenses:read_inbox',
+  ],
+  GERENTE_PROYECTO: [
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:return_approval',
+    'travel_expenses:read_inbox',
+  ],
+  ROL_GERENTE_PROYECTO: [
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:return_approval',
+    'travel_expenses:read_inbox',
+  ],
+  DIRECTOR_TERRITORIAL: [
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:return_approval',
   ],
   RESPONSABLE_TIQUETES: [
     'travel_expenses:create_request',
     'travel_expenses:manage_tickets',
+  ],
+  COMISIONADO: [
+    'travel_expenses:read_own_requests',
+    'travel_expenses:read_requests',
+    'travel_expenses.general.es_comisionado',
+    'es_comisionado',
+  ],
+  ROL_COMISIONADO: [
+    'travel_expenses:read_own_requests',
+    'travel_expenses:read_requests',
+    'travel_expenses.general.es_comisionado',
+    'es_comisionado',
   ],
 };
 

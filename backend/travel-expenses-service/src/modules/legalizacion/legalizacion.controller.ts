@@ -22,7 +22,7 @@ import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/permissions.guard';
 import { Permissions } from '../../common/permissions.decorator';
 import { LegalizacionService } from './legalizacion.service';
-import type { UsuarioAutenticado } from './legalizacion.service';
+import type { DatosCumplimientoDto, UsuarioAutenticado } from './legalizacion.service';
 import { LegalizacionConfigService } from './legalizacion-config.service';
 import type { ActualizarModalidadDto, ItemChecklistConfigDto } from './legalizacion-config.service';
 import { LegalizacionCanarioService } from './legalizacion-canario.service';
@@ -31,6 +31,11 @@ import type { FiltroBandeja, RegistrarSiifDto } from './legalizacion-revision.se
 
 /** EFDS-1310 — El MFE ya consulta este permiso para la sección de legalizaciones. */
 const PERMISO_REVISAR = 'travel_expenses:legalizations.manage';
+/**
+ * EFDS-1310 — Aprobar la reversión de una revisión aprobada. Lo tiene
+ * CONTROL_VIATICOS (migración 500 y permissions.guard.ts), por segregación de funciones.
+ */
+const PERMISO_APROBAR_REVERSION = 'travel_expenses:legalizations.revert_approval';
 
 /**
  * Los tokens de auth-service no llevan permisos (solo roles), así que el guard
@@ -155,6 +160,35 @@ export class LegalizacionController {
     return this.revision.devolver(solicitudId, body, req.user!);
   }
 
+  @Post('revision/:solicitudId/solicitar-reversion')
+  @Permissions(PERMISO_REVISAR)
+  @ApiOperation({ summary: 'Pedir que otra persona revierta la aprobación de la revisión (antes de SIIF)' })
+  solicitarReversion(
+    @Param('solicitudId', new ParseUUIDPipe()) solicitudId: string,
+    @Body() body: { motivo: string },
+    @Req() req: RequestConUsuario,
+  ) {
+    return this.revision.solicitarReversion(solicitudId, body, req.user!);
+  }
+
+  @Get('reversiones/pendientes')
+  @Permissions(PERMISO_APROBAR_REVERSION)
+  @ApiOperation({ summary: 'Solicitudes de reversión pendientes (salvo las propias)' })
+  reversionesPendientes(@Req() req: RequestConUsuario) {
+    return this.revision.reversionesPendientes(req.user!);
+  }
+
+  @Post('reversiones/:reversionId/resolver')
+  @Permissions(PERMISO_APROBAR_REVERSION)
+  @ApiOperation({ summary: 'Aprobar o rechazar una reversión; quien la solicitó no puede resolverla' })
+  resolverReversion(
+    @Param('reversionId', new ParseUUIDPipe()) reversionId: string,
+    @Body() body: { decision: 'APROBAR' | 'RECHAZAR'; observacion?: string },
+    @Req() req: RequestConUsuario,
+  ) {
+    return this.revision.resolverReversion(reversionId, body, req.user!);
+  }
+
   @Post('revision/:solicitudId/aprobar')
   @Permissions(PERMISO_REVISAR)
   @ApiOperation({ summary: 'Aprobar la revisión: todos los soportes revisados y aprobados' })
@@ -235,6 +269,17 @@ export class LegalizacionController {
       type: 'application/pdf',
       disposition: `inline; filename*=UTF-8''${encodeURIComponent(nombre)}`,
     });
+  }
+
+  @Put(':solicitudId/cumplimiento')
+  @Permissions(...PERMISOS_LEGALIZAR)
+  @ApiOperation({ summary: 'Registrar los datos del GF-FO-032 V2: fechas reales y si fue fuera de la ESAP' })
+  registrarCumplimiento(
+    @Param('solicitudId', new ParseUUIDPipe()) solicitudId: string,
+    @Body() body: DatosCumplimientoDto,
+    @Req() req: RequestConUsuario,
+  ) {
+    return this.service.registrarCumplimiento(solicitudId, body, req.user!);
   }
 
   @Post(':solicitudId/enviar')

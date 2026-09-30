@@ -1,19 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { CalendarCheck, Eye, Paperclip, PlayCircle, Users } from 'lucide-react';
+import { CalendarCheck, Eye, FileSignature, PlayCircle, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { DatosActaInicio, EstadoActaInicio, EvidenciaFirmaOtp } from '../../types';
-import {
-  Aviso,
-  Ayuda,
-  Boton,
-  campo,
-  Marco,
-  Pendiente,
-  SelectorArchivo,
-  Titulo,
-} from '../shared/PiezasPanel';
+import { Aviso, Ayuda, Boton, campo, Marco, Pendiente, Titulo } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 import { useFirma } from '../shared/useFirma';
 
@@ -28,16 +19,16 @@ const VACIO = {
   fechaInicio: hoyEnBogota(),
   temasTratados: '',
   asistentes: '',
-  actaPactada: true,
 };
 
 /**
- * Actividad 9.1 · Reunión y acta de inicio (EFDS-1167).
+ * Actividad 9.1 · Reunión de inicio (EFDS-1167).
  *
- * Lo que arranca la ejecución es la reunión, no el papel: la matriz describe el
- * acta como «firmada por ambas partes, si fue pactada en el contrato». Por eso
- * el acta se pide solo cuando el contrato la pactó, y la casilla es lo primero
- * que se decide en el formulario.
+ * Lo que arranca la ejecución es la reunión, no el papel. El acta de inicio ya
+ * no se carga aquí: tiene su propia actividad, la 8.7 (migración 089), y la
+ * reunión la toma de allá. Si la modalidad no suscribe acta —lo dice la matriz
+ * SÍ/NO—, la reunión se registra sin ella; ya no hay casilla de «el contrato la
+ * pactó» que decidir en la pantalla.
  */
 export function PanelActaInicio({ procesoId, onCambio }: Props) {
   const firma = useFirma(NUMERAL, 'Suscribir el acta de inicio');
@@ -48,7 +39,6 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
 
   const [registrando, setRegistrando] = useState(false);
   const [datos, setDatos] = useState(VACIO);
-  const [acta, setActa] = useState<File | null>(null);
 
   const leer = () =>
     contratacionService
@@ -67,7 +57,6 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
 
   const limpiar = () => {
     setDatos(VACIO);
-    setActa(null);
     setRegistrando(false);
   };
 
@@ -75,14 +64,13 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
     const cuerpo: DatosActaInicio = {
       fechaInicio: datos.fechaInicio,
       temasTratados: datos.temasTratados.trim(),
-      actaPactada: datos.actaPactada,
       ...(datos.asistentes.trim() ? { asistentes: datos.asistentes.trim() } : {}),
       firma: firmaOtp,
     };
 
     setGuardando(true);
     try {
-      setEstado(await contratacionService.suscribirActaInicio(procesoId, cuerpo, acta));
+      setEstado(await contratacionService.suscribirActaInicio(procesoId, cuerpo));
       limpiar();
       toast.success('Reunión de inicio registrada; el contrato queda en ejecución');
       onCambio?.();
@@ -111,11 +99,19 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
     );
   }
 
-  // Con acta pactada el documento es obligatorio; sin pactar, basta la reunión.
-  const completo =
-    datos.fechaInicio &&
-    datos.temasTratados.trim().length >= 10 &&
-    (!datos.actaPactada || !!acta);
+  const completo = datos.fechaInicio && datos.temasTratados.trim().length >= 10;
+
+  /**
+   * Dónde se resuelve lo que falta. Con el contrato legalizado y con
+   * supervisor, lo único que puede faltar es el acta de la 8.7.
+   */
+  const falta = !estado.legalizado
+    ? estado.requiereArl
+      ? '8.5'
+      : '8.4'
+    : !estado.tieneSupervisor
+      ? '8.2'
+      : '8.7';
 
   return (
     <Marco>
@@ -131,8 +127,8 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
           // Las garantías (8.4) aplican siempre; la ARL (8.5) solo a persona
           // natural. Mandar a la 8.5 en un contrato que no la exige deja al
           // gestor sin saber qué hacer: ahí siempre es la 8.4 la que falta.
-          falta={estado.legalizado ? '8.2' : estado.requiereArl ? '8.5' : '8.4'}
-          texto={`La ejecución empieza sobre un contrato legalizado y con supervisor: ${estado.motivoNoPuede}.`}
+          falta={falta}
+          texto={`La ejecución empieza sobre un contrato legalizado, con supervisor y con su acta de inicio cuando la modalidad la suscribe: ${estado.motivoNoPuede}.`}
         />
       ) : null}
 
@@ -156,23 +152,13 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
                   En ejecución desde el {fechaLarga(estado.acta.fechaInicio)}
                 </p>
                 <p className="text-[11.5px] text-emerald-900 m-0 mt-0.5 leading-relaxed">
-                  {estado.acta.actaPactada
-                    ? 'Con acta firmada por ambas partes'
-                    : 'El contrato no pactó acta de inicio'}
+                  {/* El acta es de la 8.7: aquí se dice de dónde, sin repetir el documento. */}
+                  {estado.suscripcion
+                    ? `Acta de inicio suscrita el ${fechaLarga(estado.suscripcion.fechaSuscripcion)}, en la actividad 8.7`
+                    : 'Sin acta de inicio'}
                   {estado.acta.registradoPor ? ` · registró ${estado.acta.registradoPor}` : ''}
                   {estado.acta.createdAt ? ` el ${momento(estado.acta.createdAt)}` : ''}
                 </p>
-                {estado.acta.documento?.url ? (
-                  <a
-                    href={contratacionService.urlDescarga(estado.acta.documento.url)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 mt-1.5 text-[11.5px] font-bold text-[#003DA5] hover:underline"
-                  >
-                    <Paperclip className="w-3.5 h-3.5" />
-                    {estado.acta.documento.nombre}
-                  </a>
-                ) : null}
               </div>
             </div>
           </div>
@@ -206,6 +192,21 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
       {estado.puedeIniciar && registrando ? (
         <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
           <p className="text-[12.5px] font-bold text-slate-800 m-0">Reunión celebrada</p>
+
+          {/* El acta viene de la 8.7: se dice de dónde, en vez de pedirla otra vez. */}
+          {estado.suscripcion ? (
+            <div className="flex items-start gap-2 rounded-lg border border-gray-200 bg-slate-50 px-3 py-2">
+              <FileSignature className="w-3.5 h-3.5 text-slate-400 mt-0.5 flex-shrink-0" />
+              <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">
+                Acta de inicio suscrita el {fechaLarga(estado.suscripcion.fechaSuscripcion)}, registrada
+                en la actividad 8.7.
+              </p>
+            </div>
+          ) : !estado.actaAplica ? (
+            <Aviso tono="aviso" titulo="Sin acta de inicio">
+              Esta modalidad no suscribe acta de inicio: la reunión queda como soporte del arranque.
+            </Aviso>
+          ) : null}
 
           <div>
             <label htmlFor="acta-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
@@ -251,40 +252,6 @@ export function PanelActaInicio({ procesoId, onCambio }: Props) {
               className={campo}
             />
           </div>
-
-          {/* Se decide antes de pedir el archivo: de esta casilla depende que el
-              acta sea exigible, y preguntarla después dejaría al usuario
-              buscando un documento que quizá no existe. */}
-          <label className="flex items-start gap-2.5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={datos.actaPactada}
-              onChange={(e) => {
-                const pactada = e.target.checked;
-                setDatos((p) => ({ ...p, actaPactada: pactada }));
-                if (!pactada) setActa(null);
-              }}
-              className="mt-0.5 w-3.5 h-3.5 accent-[#003DA5]"
-            />
-            <span className="text-[11.5px] text-slate-600 leading-relaxed">
-              El contrato pactó acta de inicio firmada por ambas partes
-            </span>
-          </label>
-
-          {datos.actaPactada ? (
-            <SelectorArchivo
-              id="acta-archivo"
-              etiqueta="Acta firmada"
-              ayuda="La suscrita por la entidad y el contratista"
-              archivo={acta}
-              onElegir={setActa}
-            />
-          ) : (
-            <Aviso tono="aviso" titulo="Sin acta de inicio">
-              La reunión queda registrada como soporte del arranque. Marca la casilla si el
-              contrato sí la pactó.
-            </Aviso>
-          )}
 
           <div className="flex items-center gap-2 pt-1">
             <Boton

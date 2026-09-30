@@ -11,6 +11,7 @@ vi.mock('../services/api/legalizacionService', () => ({
     eliminarSoporte: vi.fn(),
     enviar: vi.fn(),
     abrirSoporte: vi.fn(),
+    registrarCumplimiento: vi.fn(),
   },
 }));
 
@@ -50,6 +51,7 @@ const item = (codigo: string, nombre: string, cargado: boolean) => ({
 const detalle = (items: ReturnType<typeof item>[], extra: Record<string, unknown> = {}) => ({
   ...RESUMEN,
   puedeEditar: true,
+  cumplimiento: { fechaInicioReal: '2026-09-01', fechaFinReal: '2026-09-05', comisionExterna: false, entidadExterna: null, registrado: true },
   checklist: {
     items,
     sinConfiguracion: items.length === 0,
@@ -133,6 +135,48 @@ describe('LegalizacionComisionado — EFDS-1309', () => {
     fireEvent.click(screen.getByRole('button', { name: /Confirmar envío/ }));
     await waitFor(() => expect(svc.enviar).toHaveBeenCalledWith('sol-1'));
     expect(await screen.findByText('Legalización enviada a revisión con 1 soporte(s).')).toBeInTheDocument();
+  });
+
+  it('GF-FO-032: sin sus datos no deja enviar aunque estén todos los soportes', async () => {
+    const sinDatos = { fechaInicioReal: null, fechaFinReal: null, comisionExterna: null, entidadExterna: null, registrado: false };
+    svc.detalle.mockResolvedValue(detalle([item('LEG_AGENDA_CUMPLIDA', 'Agenda cumplida', true)], { cumplimiento: sinDatos }));
+    render(<LegalizacionComisionado />);
+    fireEvent.click(await screen.findByText('COM-2026-0001'));
+    expect(await screen.findByText('Falta registrar los datos del GF-FO-032.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Enviar a revisión/ })).toBeDisabled();
+    // Arranca con las fechas planeadas.
+    expect(screen.getByLabelText('Fecha real de inicio')).toHaveValue('2026-09-01');
+    expect(screen.getByLabelText('Fecha real de regreso')).toHaveValue('2026-09-05');
+  });
+
+  it('GF-FO-032: registra fechas reales y la entidad externa, que exige nombre', async () => {
+    const sinDatos = { fechaInicioReal: null, fechaFinReal: null, comisionExterna: null, entidadExterna: null, registrado: false };
+    svc.detalle.mockResolvedValue(detalle([item('LEG_AGENDA_CUMPLIDA', 'Agenda cumplida', true)], { cumplimiento: sinDatos }));
+    svc.registrarCumplimiento.mockResolvedValue({});
+    render(<LegalizacionComisionado />);
+    fireEvent.click(await screen.findByText('COM-2026-0001'));
+    const guardar = await screen.findByRole('button', { name: /Guardar datos del GF-FO-032/ });
+    expect(guardar).toBeDisabled(); // falta decir si fue fuera de la ESAP
+
+    fireEvent.change(screen.getByLabelText('Fecha real de regreso'), { target: { value: '2026-09-03' } });
+    fireEvent.click(screen.getByLabelText('Sí'));
+    expect(guardar).toBeDisabled(); // falta la entidad
+    fireEvent.change(screen.getByLabelText(/Entidad donde se cumplió/), { target: { value: 'Gobernación del Cauca' } });
+    fireEvent.click(guardar);
+    await screen.findByText('Datos del GF-FO-032 guardados.');
+    expect(svc.registrarCumplimiento).toHaveBeenCalledWith('sol-1', {
+      fechaInicioReal: '2026-09-01', fechaFinReal: '2026-09-03', comisionExterna: true, entidadExterna: 'Gobernación del Cauca',
+    });
+  });
+
+  it('GF-FO-032: no acepta un regreso anterior al inicio', async () => {
+    const sinDatos = { fechaInicioReal: null, fechaFinReal: null, comisionExterna: false, entidadExterna: null, registrado: false };
+    svc.detalle.mockResolvedValue(detalle([], { cumplimiento: sinDatos }));
+    render(<LegalizacionComisionado />);
+    fireEvent.click(await screen.findByText('COM-2026-0001'));
+    fireEvent.change(await screen.findByLabelText('Fecha real de regreso'), { target: { value: '2026-08-30' } });
+    expect(screen.getByText('La fecha de regreso no puede ser anterior a la de inicio.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Guardar datos del GF-FO-032/ })).toBeDisabled();
   });
 
   it('enviada: no ofrece cargar, eliminar ni enviar', async () => {

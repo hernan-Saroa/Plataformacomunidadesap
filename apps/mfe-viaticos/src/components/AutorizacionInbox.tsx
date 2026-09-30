@@ -18,13 +18,16 @@ import {
   User,
   Award,
   Building2,
+  FileSignature,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import { SolicitudAutorizacion } from '../types/viaticos';
 import { formatearMoneda } from '../utils/viaticosUtils';
 import AutorizacionGastoModal from './AutorizacionGastoModal';
+import BandejaFirmasAprobacion from './BandejaFirmasAprobacion';
 
 export const AutorizacionInbox: React.FC = () => {
+  const [pestanaActiva, setPestanaActiva] = useState<'autorizaciones' | 'firmas-023'>('autorizaciones');
   const [solicitudes, setSolicitudes] = useState<SolicitudAutorizacion[]>([]);
   const [cargando, setCargando] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,20 +99,53 @@ export const AutorizacionInbox: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Banner Institucional con Estilo Garantizado (Protegido contra fallos de clases Tailwind dinámicas) */}
-      <div
-        className="rounded-2xl p-5 sm:p-7 shadow-lg relative overflow-hidden"
-        style={{
-          background: 'linear-gradient(135deg, #002266 0%, #003DA5 55%, #155DFC 100%)',
-          color: '#ffffff',
-        }}
-      >
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="space-y-2">
-            <div className="inline-flex items-center space-x-2 rounded-full px-3 py-1 text-xs font-semibold bg-white/15 text-blue-100 border border-white/20">
-              <ShieldCheck className="h-3.5 w-3.5 text-blue-200" />
-              <span>Autorización Corporativa</span>
-            </div>
+      {/* Selector de Flujo: Autorización Etapa 6 vs Firmas Previas Formato 023 */}
+      <div className="flex flex-wrap items-center gap-2 p-1 bg-slate-200/80 rounded-xl w-fit border border-slate-300 shadow-inner">
+        <button
+          type="button"
+          onClick={() => setPestanaActiva('autorizaciones')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            pestanaActiva === 'autorizaciones'
+              ? 'bg-white text-blue-900 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4 text-blue-600" />
+          <span>Autorizaciones de Gasto (Etapa 6)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setPestanaActiva('firmas-023')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            pestanaActiva === 'firmas-023'
+              ? 'bg-white text-amber-900 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <FileSignature className="w-4 h-4 text-amber-600" />
+          <span>Firmas de Aprobación — Formato 023 (Desplazamientos)</span>
+        </button>
+      </div>
+
+      {pestanaActiva === 'firmas-023' ? (
+        <BandejaFirmasAprobacion filtroReglaEspecial={true} />
+      ) : (
+        <>
+          {/* Banner Institucional con Estilo Garantizado (Protegido contra fallos de clases Tailwind dinámicas) */}
+          <div
+            className="rounded-2xl p-5 sm:p-7 shadow-lg relative overflow-hidden"
+            style={{
+              background: 'linear-gradient(135deg, #002266 0%, #003DA5 55%, #155DFC 100%)',
+              color: '#ffffff',
+            }}
+          >
+            <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="space-y-2">
+                <div className="inline-flex items-center space-x-2 rounded-full px-3 py-1 text-xs font-semibold bg-white/15 text-blue-100 border border-white/20">
+                  <ShieldCheck className="h-3.5 w-3.5 text-blue-200" />
+                  <span>Autorización Corporativa</span>
+                </div>
             <h1 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight text-white drop-shadow-sm">
               Bandeja de Autorizaciones
             </h1>
@@ -338,7 +374,7 @@ export const AutorizacionInbox: React.FC = () => {
                           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                             <Building2 className="w-2.5 h-2.5 text-slate-500 shrink-0" />
                             <span className="truncate">
-                              {viaticosService.resolverNombreDependencia(sol)}
+                              {viaticosService.resolverNombreDependencia?.(sol)}
                             </span>
                           </span>
                         </div>
@@ -462,8 +498,8 @@ export const AutorizacionInbox: React.FC = () => {
                           <div className="mt-1 flex items-center gap-1">
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                               <Building2 className="w-2.5 h-2.5 text-slate-500 shrink-0" />
-                              <span className="truncate max-w-[200px]" title={viaticosService.resolverNombreDependencia(sol)}>
-                                {viaticosService.resolverNombreDependencia(sol)}
+                              <span className="truncate max-w-[200px]" title={viaticosService.resolverNombreDependencia?.(sol)}>
+                                {viaticosService.resolverNombreDependencia?.(sol)}
                               </span>
                             </span>
                           </div>
@@ -588,6 +624,8 @@ export const AutorizacionInbox: React.FC = () => {
         onClose={() => setModalAbierta(false)}
         onSuccess={() => cargarSolicitudes(paginaActual)}
       />
+        </>
+      )}
     </div>
   );
 };

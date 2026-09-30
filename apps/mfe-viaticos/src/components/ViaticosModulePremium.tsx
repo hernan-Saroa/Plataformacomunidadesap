@@ -13,6 +13,7 @@ import {
   Calendar,
   Receipt,
   FileCheck,
+  FileSignature,
   Eye,
   ExternalLink,
   CreditCard,
@@ -48,8 +49,11 @@ import CancelarComisionModal from './CancelarComisionModal';
 import PresupuestoInbox from './PresupuestoInbox';
 import LegalizacionesSeccion from './LegalizacionesSeccion';
 import PazYSalvoCoordinadora from './paz-y-salvo/PazYSalvoCoordinadora';
+import ConfigSoportesLegalizacion from './ConfigSoportesLegalizacion';
 import VistaAnalistaViaticos from './VistaAnalistaViaticos';
 import ProcesarPagoModal from './ProcesarPagoModal';
+import ModalFirmasAprobacion from './ModalFirmasAprobacion';
+import BandejaFirmasAprobacion from './BandejaFirmasAprobacion';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
 import {
@@ -84,12 +88,31 @@ const Permissions = {
   VIATICOS_TIQUETES_MANAGE: 'travel_expenses:tickets.manage',
   VIATICOS_LEGALIZACIONES_VIEW: 'travel_expenses:legalizations.view',
   VIATICOS_LEGALIZACIONES_MANAGE: 'travel_expenses:legalizations.manage',
+  VIATICOS_LEGALIZACIONES_REVERTIR: 'travel_expenses:legalizations.revert_approval',
   VIATICOS_RESOLUCIONES_VIEW: 'travel_expenses:resolutions.view',
   VIATICOS_RESOLUCIONES_MANAGE: 'travel_expenses:resolutions.manage',
   VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
 } as const;
 
-type Seccion = 'paz-y-salvo' | 'solicitudes' | 'tiquetes' | 'legalizaciones' | 'resoluciones' | 'configuracion' | 'mis-solicitudes' | 'autorizaciones' | 'autorizaciones-direccion' | 'presupuesto' | 'tesoreria' | 'sst';
+type Seccion =
+  | 'paz-y-salvo'
+  | 'solicitudes'
+  | 'tiquetes'
+  | 'legalizaciones'
+  | 'resoluciones'
+  | 'configuracion'
+  | 'mis-solicitudes'
+  | 'autorizaciones'
+  | 'autorizaciones-direccion'
+  | 'presupuesto'
+  | 'tesoreria'
+  | 'sst'
+  | 'firmas-aprobacion';
+
+// Una comisión pagada pasa enseguida a PENDIENTE_LEGALIZACION (EFDS-1309) y luego a
+// LEGALIZADO: para Tesorería y SST sigue siendo una comisión pagada.
+const ESTADOS_PAGADA = ['PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'];
+const ESTADOS_TESORERIA_SST = ['OBLIGADA', ...ESTADOS_PAGADA];
 
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
   OBLIGADA: 1,
@@ -99,6 +122,7 @@ const ORDEN_ESTADOS_TABLA: Record<string, number> = {
   SOLICITADA_SIIF: 5,
   VERIFICADA: 6,
   AUTORIZADA: 7,
+  PENDIENTE_FIRMAS: 7.5,
   DEVUELTA: 8,
   RADICADA: 8,
   EXTEMPORANEA: 9,
@@ -134,6 +158,8 @@ export default function ViaticosModulePremium() {
   const [esPresupuesto, setEsPresupuesto] = useState(false);
   const [esTesoreria, setEsTesoreria] = useState(false);
   const [esSst, setEsSst] = useState(false);
+  const [esJefeDependencia, setEsJefeDependencia] = useState(false);
+  const [esGerenteProyecto, setEsGerenteProyecto] = useState(false);
   const [solicitudParaPagar, setSolicitudParaPagar] = useState<SolicitudViatico | null>(null);
   const [enviandoPresupuestoId, setEnviandoPresupuestoId] = useState<string | null>(null);
   const {
@@ -159,6 +185,7 @@ export default function ViaticosModulePremium() {
   const [solicitudControlViaticos, setSolicitudControlViaticos] = useState<SolicitudControlViaticosResponse | null>(null);
   const [cargandoControlViaticos, setCargandoControlViaticos] = useState(false);
   const [solicitudParaCancelar, setSolicitudParaCancelar] = useState<any | null>(null);
+  const [solicitudParaFirmas, setSolicitudParaFirmas] = useState<SolicitudViatico | null>(null);
 
   // Estados Notificación SST (RF-PAG-002)
   const [logsSst, setLogsSst] = useState<NotificacionSstLog[]>([]);
@@ -199,6 +226,13 @@ export default function ViaticosModulePremium() {
           subtitle: 'Solicitudes pendientes de revisión',
           icon: <UserCheck className="w-5 h-5" />,
           color: '#10B981',
+        },
+        {
+          id: 'firmas-aprobacion',
+          label: 'Firmas y Aprobaciones',
+          subtitle: 'Firma previa a radicación — Formato 023',
+          icon: <FileSignature className="w-5 h-5" />,
+          color: '#0284C7',
         },
         {
           id: 'tiquetes',
@@ -339,6 +373,10 @@ export default function ViaticosModulePremium() {
         const sst = authService.isSst();
         setEsTesoreria(tesoreria);
         setEsSst(sst);
+        const jefeDep = authService.isJefeDependencia();
+        const gerenteProy = authService.isGerenteProyecto();
+        setEsJefeDependencia(jefeDep);
+        setEsGerenteProyecto(gerenteProy);
         if (dirNac && !superAdmin && !subdir) {
           setSeccion('autorizaciones-direccion');
         } else if (subdir && !superAdmin) {
@@ -349,6 +387,8 @@ export default function ViaticosModulePremium() {
           setSeccion('tesoreria');
         } else if (sst && !superAdmin) {
           setSeccion('sst');
+        } else if ((jefeDep || gerenteProy) && !superAdmin) {
+          setSeccion('firmas-aprobacion');
         }
         setCargandoRol(false);
       }
@@ -381,7 +421,7 @@ export default function ViaticosModulePremium() {
         (filtroEstado === 'EXTEMPORANEA' ? esExt : sol.estado === filtroEstado);
       const cumpleSeccion =
         seccion === 'tesoreria' || seccion === 'sst'
-          ? ['OBLIGADA', 'PAGADA'].includes(sol.estado)
+          ? ESTADOS_TESORERIA_SST.includes(sol.estado)
           : true;
       return cumpleBusqueda && cumpleEstado && cumpleSeccion;
     })
@@ -402,7 +442,13 @@ export default function ViaticosModulePremium() {
 
   const handleSolicitudCreada = (solicitud: SolicitudComisionResponse) => {
     const ref = solicitud.consecutivoUnico || 'su solicitud';
-    setMensajeExito(`La solicitud ${ref} fue radicada correctamente.`);
+    if (solicitud.estadoSolicitud === 'PENDIENTE_FIRMAS' || (solicitud as any).estado === 'PENDIENTE_FIRMAS') {
+      setMensajeExito(
+        `La solicitud ${ref} fue enviada al flujo de firmas de aprobación (Formato 023 en estado PENDIENTE_FIRMAS). Queda en revisión del Jefe de Dependencia/Supervisor y Gerente de Proyecto antes de su radicación formal.`,
+      );
+    } else {
+      setMensajeExito(`La solicitud ${ref} fue radicada correctamente.`);
+    }
     cargarDatos();
   };
 
@@ -614,6 +660,7 @@ export default function ViaticosModulePremium() {
     authService.hasAnyPermission([
       Permissions.VIATICOS_LEGALIZACIONES_VIEW,
       Permissions.VIATICOS_LEGALIZACIONES_MANAGE,
+      Permissions.VIATICOS_LEGALIZACIONES_REVERTIR,
     ]);
   const puedeVerResoluciones =
     !tieneContextoAuth ||
@@ -679,6 +726,14 @@ export default function ViaticosModulePremium() {
     esSuperAdmin ||
     esPresupuesto ||
     authService.hasPermission(Permissions.VIATICOS_SST_RESEND);
+  const puedeFirmarAprobacion =
+    esSuperAdmin ||
+    esJefeDependencia ||
+    esGerenteProyecto ||
+    esSubdireccion ||
+    esDireccionNacional ||
+    authService.canFirmarAprobacion();
+  const puedeVerFirmasAprobacion = puedeFirmarAprobacion;
 
   const gruposFiltrados: MenuGroup[] = grupos
     .map((grupo) => {
@@ -688,6 +743,7 @@ export default function ViaticosModulePremium() {
           return puedeVerSolicitudes;
         }
         if (item.id === 'mis-solicitudes') return puedeVerSolicitudesAsignadas;
+        if (item.id === 'firmas-aprobacion') return puedeVerFirmasAprobacion;
         if (item.id === 'tiquetes') return puedeVerTiquetes;
         if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
         if (item.id === 'paz-y-salvo') return puedeEmitirPazYSalvo;
@@ -729,6 +785,12 @@ export default function ViaticosModulePremium() {
         items = [...items].sort((a, b) => {
           if (a.id === 'sst') return -1;
           if (b.id === 'sst') return 1;
+          return 0;
+        });
+      } else if ((esJefeDependencia || esGerenteProyecto) && !esSuperAdmin) {
+        items = [...items].sort((a, b) => {
+          if (a.id === 'firmas-aprobacion') return -1;
+          if (b.id === 'firmas-aprobacion') return 1;
           return 0;
         });
       }
@@ -823,7 +885,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pagadas (Desembolsadas)</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
-                        {solicitudes.filter((s) => s.estado === 'PAGADA').length}
+                        {solicitudes.filter((s) => ESTADOS_PAGADA.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-blue-600 font-medium mt-1">Giros formalizados</p>
                     </div>
@@ -836,7 +898,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Modalidad Avance</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
-                        {solicitudes.filter((s) => s.modalidadPago === 'AVANCE' && ['OBLIGADA', 'PAGADA'].includes(s.estado)).length}
+                        {solicitudes.filter((s) => s.modalidadPago === 'AVANCE' && ESTADOS_TESORERIA_SST.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-amber-600 font-medium mt-1">Giro previo al viaje</p>
                     </div>
@@ -851,7 +913,7 @@ export default function ViaticosModulePremium() {
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
                         {formatearMoneda(
                           solicitudes
-                            .filter((s) => s.estado === 'PAGADA')
+                            .filter((s) => ESTADOS_PAGADA.includes(s.estado))
                             .reduce((acc, s) => acc + (s.valorPagado || s.montoTotalEstimado || 0), 0)
                         )}
                       </h3>
@@ -868,7 +930,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Comisiones Formalizadas</p>
                       <h3 className="text-2xl font-black text-emerald-800 mt-1">
-                        {solicitudes.filter((s) => ['OBLIGADA', 'PAGADA'].includes(s.estado)).length}
+                        {solicitudes.filter((s) => ESTADOS_TESORERIA_SST.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-emerald-600 font-medium mt-1">Para cobertura y monitoreo SST</p>
                     </div>
@@ -894,7 +956,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pagadas / Desembolsadas</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
-                        {solicitudes.filter((s) => s.estado === 'PAGADA').length}
+                        {solicitudes.filter((s) => ESTADOS_PAGADA.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-blue-600 font-medium mt-1">Giro confirmado</p>
                     </div>
@@ -908,7 +970,7 @@ export default function ViaticosModulePremium() {
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Días Totales en Territorio</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
                         {solicitudes
-                          .filter((s) => ['OBLIGADA', 'PAGADA'].includes(s.estado))
+                          .filter((s) => ESTADOS_TESORERIA_SST.includes(s.estado))
                           .reduce((acc, s) => acc + (s.diasComision || 1), 0)}
                       </h3>
                       <p className="text-xs text-purple-600 font-medium mt-1">Exposición operativa</p>
@@ -1260,6 +1322,11 @@ export default function ViaticosModulePremium() {
                                   {sol.dependencia || 'Sede Central'}
                                 </span>
                               </div>
+                              {sol.fechaRadicacion && (
+                                <div className="text-[10px] text-slate-400 mt-1" title="Fecha de radicación">
+                                  Radicada: {new Date(sol.fechaRadicacion).toLocaleDateString('es-CO')}
+                                </div>
+                              )}
                             </td>
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-1.5 font-bold text-slate-800 flex-wrap">
@@ -1453,6 +1520,17 @@ export default function ViaticosModulePremium() {
                                     <FileText className="w-3.5 h-3.5" />
                                   </button>
                                 )}
+                                {sol.estado === 'PENDIENTE_FIRMAS' && puedeFirmarAprobacion && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSolicitudParaFirmas(sol)}
+                                    className="p-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 transition-colors shadow-xs"
+                                    title="Gestionar firmas de aprobación institucional (Formato 023)"
+                                    aria-label="Firmas de aprobación"
+                                  >
+                                    <FileSignature className="w-3.5 h-3.5 text-amber-800" />
+                                  </button>
+                                )}
                                 {puedeCrearSolicitud && ['RADICADA', 'DEVUELTA'].includes(sol.estado) && (
                                   <button
                                     type="button"
@@ -1573,6 +1651,13 @@ export default function ViaticosModulePremium() {
                 <SolicitudesAsignadasAnalista />
               )}
 
+              {/* ── BANDEJA DE FIRMAS DE APROBACIÓN (FORMATO 023) ── */}
+              {seccion === 'firmas-aprobacion' && puedeVerFirmasAprobacion && (
+                <BandejaFirmasAprobacion
+                  onVerDetalle={(sol) => setSolicitudSeleccionada(sol)}
+                />
+              )}
+
               {/* ── AUTORIZACIÓN CORPORATIVA (ETAPA 6) ── */}
               {seccion === 'autorizaciones' && puedeVerAutorizaciones && (
                 <AutorizacionInbox />
@@ -1604,6 +1689,9 @@ export default function ViaticosModulePremium() {
                </div>
                <div className="mt-4">
                  <ParametrizacionManager />
+               </div>
+               <div className="mt-6 pt-5 border-t border-slate-100">
+                 <ConfigSoportesLegalizacion />
                </div>
              </div>
            )}
@@ -1997,7 +2085,7 @@ export default function ViaticosModulePremium() {
                     {/* ========================================================================= */}
                     {/* HITO GRÁFICO SST (RF-PAG-002 — Etapa 8: Notificación Automática a SST)    */}
                     {/* ========================================================================= */}
-                    {Boolean(solicitudSeleccionada.notificadoSst || logsSst.length > 0 || ['COMPROMETIDA', 'OBLIGADA', 'PAGADA'].includes(solicitudSeleccionada.estado)) && (() => {
+                    {Boolean(solicitudSeleccionada.notificadoSst || logsSst.length > 0 || ['COMPROMETIDA', ...ESTADOS_TESORERIA_SST].includes(solicitudSeleccionada.estado)) && (() => {
                       const ultimoLogSst = logsSst[0];
                       const payloadSst = (ultimoLogSst?.payloadNotificado as any) || {
                         nombre_completo_comisionado: solicitudSeleccionada.nombreComisionado,
@@ -2175,7 +2263,7 @@ export default function ViaticosModulePremium() {
                     {/* ========================================================================= */}
                     {/* ETAPA 8: DETALLE DE DESEMBOLSO / PAGO REALIZADO (ESTADO PAGADA) */}
                     {/* ========================================================================= */}
-                    {solicitudSeleccionada.estado === 'PAGADA' && (
+                    {ESTADOS_PAGADA.includes(solicitudSeleccionada.estado) && (
                       <div className="mt-4 p-4 bg-emerald-50/90 rounded-xl border border-emerald-300 shadow-xs">
                         <div className="flex items-start gap-2.5">
                           <span className="p-2 rounded-lg bg-emerald-100 text-emerald-800 shrink-0 mt-0.5">
@@ -2236,6 +2324,41 @@ export default function ViaticosModulePremium() {
                             )}
                           </div>
                         </div>
+                      </div>
+                    )}
+
+                    {solicitudSeleccionada.estado === 'PENDIENTE_FIRMAS' && (
+                      <div className="mt-4 p-4 bg-amber-50/90 rounded-xl border border-amber-300 shadow-xs space-y-2.5">
+                        <div className="flex items-start gap-2.5">
+                          <span className="p-2 rounded-lg bg-amber-100 text-amber-800 shrink-0 mt-0.5">
+                            <FileSignature className="w-4 h-4 text-amber-800" />
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950">
+                              <span>Control Previo a Radicación · Pendiente de Firmas de Aprobación</span>
+                            </div>
+                            <p className="text-[11px] text-amber-900 mt-0.5">
+                              La solicitud incorpora el flujo de firmas de aprobación previo a su radicación: sin las firmas de aprobación la solicitud no se radica.
+                            </p>
+                          </div>
+                        </div>
+                        {puedeFirmarAprobacion ? (
+                          <button
+                            type="button"
+                            onClick={() => setSolicitudParaFirmas(solicitudSeleccionada)}
+                            className="w-full py-2.5 px-4 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2 transition-colors shadow-xs cursor-pointer"
+                          >
+                            <FileSignature className="w-4 h-4" />
+                            <span>Revisar y Gestionar Firmas de Aprobación (Formato 023)</span>
+                          </button>
+                        ) : (
+                          <div className="p-2.5 bg-white/90 rounded-lg border border-amber-200 text-xs text-amber-900 flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span className="text-[11px]">
+                              El expediente se encuentra en revisión de los jefes firmantes. El Enlace no suscribe firmas; se notificará una vez completadas las validaciones.
+                            </span>
+                          </div>
+                        )}
                       </div>
                     )}
                 </div>
@@ -2316,6 +2439,33 @@ export default function ViaticosModulePremium() {
           cargarDatos();
         }}
       />
+
+      {/* Modal de Firmas de Aprobación del Formato 023 (Previo a Radicación) */}
+      {solicitudParaFirmas && (
+        <ModalFirmasAprobacion
+          solicitudId={solicitudParaFirmas.id}
+          consecutivoUnico={solicitudParaFirmas.consecutivoUnico || solicitudParaFirmas.codigo}
+          abierta={Boolean(solicitudParaFirmas)}
+          onCerrar={() => setSolicitudParaFirmas(null)}
+          onFirmasCompletadas={(radicada) => {
+            setSolicitudParaFirmas(null);
+            setMensajeExito(
+              `Solicitud ${radicada.consecutivoUnico || 'actualizada'} radicada con éxito tras completar el flujo de firmas.`,
+            );
+            if (solicitudSeleccionada) {
+              setSolicitudSeleccionada(null);
+            }
+            cargarDatos();
+          }}
+          onSolicitudDevuelta={() => {
+            setSolicitudParaFirmas(null);
+            if (solicitudSeleccionada) {
+              setSolicitudSeleccionada(null);
+            }
+            cargarDatos();
+          }}
+        />
+      )}
 
       {/* Visor de documentos flotante y superponible para comparación */}
       <VisorDocumentosFlotante

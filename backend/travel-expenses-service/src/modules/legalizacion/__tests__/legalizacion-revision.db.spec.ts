@@ -56,7 +56,15 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
   const solicitudes: string[] = [];
 
   /** Una comisión pagada, con la legalización cargada y enviada por el enlace. */
-  async function legalizacionEnviada(valorPagado = 1_000_000): Promise<string> {
+  /**
+   * Una comisión pagada, con la legalización cargada y enviada por el enlace.
+   * conLiquidacion: 4 noches a 100.000 y el regreso a 50.000 (viáticos 450.000).
+   * fechasReales: las del GF-FO-032; por omisión, las planeadas (14 al 18).
+   */
+  async function legalizacionEnviada(
+    valorPagado = 1_000_000,
+    opciones: { conLiquidacion?: boolean; fechasReales?: [string, string] } = {},
+  ): Promise<string> {
     const id = randomUUID();
     await ds.query(
       `INSERT INTO travel_expenses.solicitudes_comision
@@ -68,7 +76,20 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
       [id, `COM-TEST-1310-${id.slice(0, 8)}`, COMISIONADO, ENLACE, ANALISTA, valorPagado],
     );
     solicitudes.push(id);
+    if (opciones.conLiquidacion) {
+      await ds.query(
+        `UPDATE travel_expenses.solicitudes_comision
+            SET dias_pernoctados = 4, tarifa_dia_pernoctado = 100000, tarifa_dia_no_pernoctado = 50000,
+                total_pernoctados = 400000, total_no_pernoctados = 50000
+          WHERE id = $1`,
+        [id],
+      );
+    }
     await disparador.evaluar(id);
+    const [inicioReal, finReal] = opciones.fechasReales ?? ['2026-09-14', '2026-09-18'];
+    await legalizaciones.registrarCumplimiento(
+      id, { fechaInicioReal: inicioReal, fechaFinReal: finReal, comisionExterna: false }, enlace,
+    );
     const d = await legalizaciones.detalle(id, enlace);
     for (const item of d.checklist.items) {
       await legalizaciones.subirSoporte(id, item.tipoDocumentoSoporteId, { buffer: PDF(item.codigo), originalname: `${item.codigo}.pdf` }, enlace);
@@ -138,6 +159,7 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
           await m.query(`SET LOCAL ROLE travel_expenses_pruebas`);
           await m.query(`SET LOCAL travel_expenses.purga_pruebas = 'on'`);
           const legs = `(SELECT id FROM travel_expenses.legalizaciones_comision WHERE solicitud_id = ANY($1::uuid[]))`;
+          await m.query(`DELETE FROM travel_expenses.legalizacion_reversiones WHERE legalizacion_id IN ${legs}`, [solicitudes]);
           await m.query(`DELETE FROM travel_expenses.legalizacion_revisiones WHERE legalizacion_id IN ${legs}`, [solicitudes]);
           // Explícito y no por cascada: la acción de la FK corre como dueño de la tabla y el
           // trigger no vería el rol de pruebas.
@@ -258,10 +280,7 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
       expect(fila).toContain('OBL-T-1310');
     });
 
-    it('rechaza un valor legalizado mayor que el pagado y una fecha futura', async () => {
-      await expect(
-        revision.registrarYCerrar(id, { numeroRegistroSiif: 'LEG-1', fechaRegistroSiif: '2026-09-25', valorLegalizado: 1_000_001 }, analista),
-      ).rejects.toThrow(/no puede superar el pagado/);
+    it('rechaza una fecha de registro futura', async () => {
       await expect(
         revision.registrarYCerrar(id, { numeroRegistroSiif: 'LEG-1', fechaRegistroSiif: '2099-01-01', valorLegalizado: 1 }, analista),
       ).rejects.toThrow(/posterior a hoy/);
@@ -286,7 +305,7 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
       expect(hist).toEqual([{ estado_anterior: 'PENDIENTE_LEGALIZACION', estado_nuevo: 'LEGALIZADO' }]);
 
       expect(eventos.length).toBe(antes + 1);
-      expect(eventos[eventos.length - 1]).toMatchObject({ solicitudId: id, valorPagado: 1_000_000, valorLegalizado: 800_000, valorReintegro: 200_000, diasReales: 4 });
+      expect(eventos[eventos.length - 1]).toMatchObject({ solicitudId: id, valorPagado: 1_000_000, valorLegalizado: 800_000, valorReintegro: 200_000, diasReales: 5 });
 
       const acciones = (await revision.detalle(id, analista)).historialRevision.map((h) => h.accion);
       expect(acciones).toEqual(expect.arrayContaining(['SOPORTE_APROBADO', 'APROBACION', 'EXPORTACION_SIIF', 'REGISTRO_SIIF_Y_CIERRE']));
@@ -352,13 +371,226 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
     });
   });
 
+  describe('legalizado mayor que lo pagado: se devuelve, no se rechaza', () => {
+    let id: string;
+    beforeAll(async () => {
+      id = await legalizacionEnviada(1_000_000);
+      await aprobarTodo(id);
+      await revision.exportarSiif(id, analista);
+    }, 60_000);
+
+    it('devuelve al comisionado sin registrar en SIIF ni cerrar, y deshace la aprobación', async () => {
+      const antes = eventos.length;
+      const r = await revision.registrarYCerrar(
+        id,
+        { numeroRegistroSiif: '', fechaRegistroSiif: '', valorLegalizado: 1_250_000, observaciones: 'Hay dos facturas del mismo hotel.' },
+        analista,
+      );
+      expect(r).toMatchObject({ devuelta: true, estadoSolicitud: 'PENDIENTE_LEGALIZACION', valorPagado: 1_000_000, valorLegalizado: 1_250_000 });
+
+      const [l] = await ds.query(
+        `SELECT l.devuelta_en, l.revision_aprobada_en, l.siif_exportado_en, l.fecha_envio, l.numero_registro_siif,
+                l.cerrada_en, l.observacion_devolucion, s.estado_solicitud
+           FROM travel_expenses.legalizaciones_comision l JOIN travel_expenses.solicitudes_comision s ON s.id = l.solicitud_id
+          WHERE l.solicitud_id = $1`,
+        [id],
+      );
+      expect(l).toMatchObject({
+        revision_aprobada_en: null, siif_exportado_en: null, fecha_envio: null, numero_registro_siif: null,
+        cerrada_en: null, estado_solicitud: 'PENDIENTE_LEGALIZACION',
+      });
+      expect(l.devuelta_en).not.toBeNull();
+      expect(l.observacion_devolucion).toContain('supera el valor pagado');
+      expect(l.observacion_devolucion).toContain('Hay dos facturas del mismo hotel.');
+      expect(eventos.length).toBe(antes);
+
+      const historial = (await revision.detalle(id, analista)).historialRevision;
+      expect(historial[historial.length - 1]).toMatchObject({ accion: 'DEVOLUCION' });
+      const [det] = await ds.query(
+        `SELECT r.detalle FROM travel_expenses.legalizacion_revisiones r
+           JOIN travel_expenses.legalizaciones_comision l ON l.id = r.legalizacion_id
+          WHERE l.solicitud_id = $1 AND r.accion = 'DEVOLUCION'`,
+        [id],
+      );
+      expect(det.detalle).toMatchObject({ motivo: 'VALOR_LEGALIZADO_SUPERA_PAGADO', valorPagado: 1_000_000, valorLegalizado: 1_250_000 });
+
+      const d = await legalizaciones.detalle(id, enlace);
+      expect(d.devuelta).toBe(true);
+    });
+
+    it('el comisionado reenvía y la revisión empieza de nuevo antes de poder cerrar', async () => {
+      await legalizaciones.enviar(id, enlace);
+      await expect(
+        revision.registrarYCerrar(id, { numeroRegistroSiif: 'LEG-SIIF-DEV', fechaRegistroSiif: '2026-09-25', valorLegalizado: 1_000_000 }, analista),
+      ).rejects.toThrow(/Apruebe la revisión/);
+      await revision.aprobar(id, analista);
+      const r = await revision.registrarYCerrar(
+        id,
+        { numeroRegistroSiif: 'LEG-SIIF-DEV', fechaRegistroSiif: '2026-09-25', valorLegalizado: 1_000_000 },
+        analista,
+      );
+      expect(r).toMatchObject({ devuelta: false, estadoSolicitud: 'LEGALIZADO', valorReintegro: 0 });
+    });
+  });
+
+  describe('reversión de una revisión aprobada: la pide el analista, la aprueba otra persona, solo antes de SIIF', () => {
+    // Quien aprueba: el permiso lo exige el controlador; el rol aún no está confirmado.
+    const aprobador = { userId: '74747474-7474-7474-7474-747474747474', roles: [] as string[] };
+    let id: string;
+    const estadoLegalizacion = async () => {
+      const [l] = await ds.query(
+        `SELECT revision_aprobada_en, siif_exportado_en, cerrada_en FROM travel_expenses.legalizaciones_comision WHERE solicitud_id = $1`,
+        [id],
+      );
+      return l;
+    };
+    const pendienteDe = async () => (await revision.detalle(id, analista)).reversionPendiente;
+
+    beforeAll(async () => {
+      id = await legalizacionEnviada(900_000);
+      await aprobarTodo(id);
+      await revision.exportarSiif(id, analista);
+    }, 60_000);
+
+    it('exige un motivo y solo procede sobre una revisión aprobada', async () => {
+      await expect(revision.solicitarReversion(id, { motivo: 'corto' }, analista)).rejects.toThrow(/mínimo 10/);
+      const otra = await legalizacionEnviada();
+      await expect(
+        revision.solicitarReversion(otra, { motivo: 'El soporte de hotel no correspondía.' }, analista),
+      ).rejects.toThrow(/no está aprobada/);
+    });
+
+    it('pendiente: no se puede registrar en SIIF ni pedir otra; la ve quien aprueba, no quien la pidió', async () => {
+      const r = await revision.solicitarReversion(id, { motivo: 'Aprobé por error el formato GF-FO-032 sin firma.' }, analista);
+      expect(r).toMatchObject({ estado: 'PENDIENTE', solicitadaPorId: ANALISTA });
+
+      const d = await revision.detalle(id, analista);
+      expect(d).toMatchObject({ puedeRegistrarSiif: false, puedeSolicitarReversion: false });
+      expect(d.reversionPendiente?.id).toBe(r.id);
+      await expect(
+        revision.registrarYCerrar(id, { numeroRegistroSiif: 'LEG-REV', fechaRegistroSiif: '2026-09-25', valorLegalizado: 900_000 }, analista),
+      ).rejects.toThrow(/reversión .*pendiente/);
+      await expect(
+        revision.solicitarReversion(id, { motivo: 'Otra solicitud para la misma legalización.' }, analista),
+      ).rejects.toThrow(/Ya hay una solicitud de reversión pendiente/);
+
+      expect((await revision.reversionesPendientes(aprobador)).map((x: any) => x.id)).toContain(r.id);
+      expect((await revision.reversionesPendientes(analista)).map((x: any) => x.id)).not.toContain(r.id);
+    });
+
+    it('quien la solicitó no puede resolverla, ni en la aplicación ni en la base', async () => {
+      const p = await pendienteDe();
+      await expect(revision.resolverReversion(p!.id, { decision: 'APROBAR' }, analista)).rejects.toThrow(/otra persona/);
+      await expect(
+        ds.query(
+          `UPDATE travel_expenses.legalizacion_reversiones
+              SET estado = 'APROBADA', resuelta_por_id = solicitada_por_id, resuelta_en = now() WHERE id = $1`,
+          [p!.id],
+        ),
+      ).rejects.toThrow(/personas_distintas/);
+      expect((await estadoLegalizacion()).revision_aprobada_en).not.toBeNull();
+    });
+
+    it('rechazada: exige observación, la revisión sigue aprobada y la solicitud queda inmutable', async () => {
+      const p = await pendienteDe();
+      await expect(revision.resolverReversion(p!.id, { decision: 'RECHAZAR', observacion: 'no' }, aprobador)).rejects.toThrow(/mínimo 10/);
+      const r = await revision.resolverReversion(
+        p!.id, { decision: 'RECHAZAR', observacion: 'El formato sí tiene la firma en la segunda página.' }, aprobador,
+      );
+      expect(r.estado).toBe('RECHAZADA');
+      const l = await estadoLegalizacion();
+      expect(l.revision_aprobada_en).not.toBeNull();
+      expect(l.siif_exportado_en).not.toBeNull();
+      await expect(
+        ds.query(`UPDATE travel_expenses.legalizacion_reversiones SET observacion_resolucion = 'cambio posterior' WHERE id = $1`, [p!.id]),
+      ).rejects.toThrow(/ya fue resuelta/);
+      await expect(revision.resolverReversion(p!.id, { decision: 'APROBAR' }, aprobador)).rejects.toThrow(/ya fue resuelta/);
+    });
+
+    it('aprobada: deshace la aprobación y la exportación a SIIF; la legalización vuelve a revisión', async () => {
+      const s = await revision.solicitarReversion(id, { motivo: 'El valor del tiquete no coincide con la factura.' }, analista);
+      const r = await revision.resolverReversion(s.id, { decision: 'APROBAR' }, aprobador);
+      expect(r).toMatchObject({ estado: 'APROBADA', solicitudId: id });
+
+      const l = await estadoLegalizacion();
+      expect(l).toMatchObject({ revision_aprobada_en: null, siif_exportado_en: null, cerrada_en: null });
+      const d = await revision.detalle(id, analista);
+      expect(d).toMatchObject({ enRevision: true, puedeRevisar: true, puedeRegistrarSiif: false, reversionPendiente: null });
+      const [st] = await ds.query(`SELECT estado_solicitud FROM travel_expenses.solicitudes_comision WHERE id = $1`, [id]);
+      expect(st.estado_solicitud).toBe('PENDIENTE_LEGALIZACION');
+      const acciones = d.historialRevision.map((h) => h.accion);
+      expect(acciones).toEqual(expect.arrayContaining(['REVERSION_SOLICITADA', 'REVERSION_RECHAZADA', 'REVERSION_APROBADA']));
+    });
+
+    it('después del registro en SIIF el expediente sigue inmutable: no admite reversión', async () => {
+      await revision.aprobar(id, analista);
+      await revision.registrarYCerrar(id, { numeroRegistroSiif: 'LEG-SIIF-REV', fechaRegistroSiif: '2026-09-25', valorLegalizado: 900_000 }, analista);
+      await expect(
+        revision.solicitarReversion(id, { motivo: 'Quiero revertir después de cerrar.' }, analista),
+      ).rejects.toThrow(/cerrado/);
+    });
+  });
+
+  describe('viaje más corto según las fechas reales del GF-FO-032', () => {
+    let id: string;
+    beforeAll(async () => {
+      // Planeada del 14 al 18 (4 noches); regresó el 16 (2 noches).
+      id = await legalizacionEnviada(1_000_000, { conLiquidacion: true, fechasReales: ['2026-09-14', '2026-09-16'] });
+      await aprobarTodo(id);
+    }, 60_000);
+
+    it('el analista ve el reintegro por viaje más corto y el tope de lo legalizable', async () => {
+      const d = await revision.detalle(id, analista);
+      expect(d.viajeReal).toMatchObject({
+        diasReales: 3, nochesPlaneadas: 4, nochesReales: 2, viaticosPlaneados: 450_000, viaticosReales: 250_000,
+        reintegroViajeCorto: 200_000,
+      });
+      expect(d.maximoLegalizable).toBe(800_000);
+    });
+
+    it('no deja legalizar más de lo que permiten los días realmente viajados', async () => {
+      await expect(
+        revision.registrarYCerrar(id, { numeroRegistroSiif: 'LEG-CORTO', fechaRegistroSiif: '2026-09-25', valorLegalizado: 900_000 }, analista),
+      ).rejects.toThrow(/viaje fue más corto \(2 de 4 noches\).*no puede superar \$800\.000/);
+    });
+
+    it('cierra con el reintegro calculado, los días reales del 032 y lo informa en el evento', async () => {
+      const antes = eventos.length;
+      const r = await revision.registrarYCerrar(
+        id,
+        // diasReales digitado se ignora: salen de las fechas del 032.
+        { numeroRegistroSiif: 'LEG-CORTO', fechaRegistroSiif: '2026-09-25', valorLegalizado: 800_000, diasReales: 9 },
+        analista,
+      );
+      expect(r).toMatchObject({ devuelta: false, estadoSolicitud: 'LEGALIZADO', valorReintegro: 200_000 });
+      const [l] = await ds.query(
+        `SELECT dias_reales::float AS dias, reintegro_viaje_corto::float AS corto, valor_reintegro::float AS reintegro
+           FROM travel_expenses.legalizaciones_comision WHERE solicitud_id = $1`,
+        [id],
+      );
+      expect(l).toEqual({ dias: 3, corto: 200_000, reintegro: 200_000 });
+      expect(eventos.length).toBe(antes + 1);
+      expect(eventos[eventos.length - 1]).toMatchObject({
+        solicitudId: id, valorReintegro: 200_000, reintegroViajeCorto: 200_000, diasReales: 3,
+        fechaInicioReal: '2026-09-14', fechaFinReal: '2026-09-16',
+      });
+    });
+
+    it('sin tarifas en la liquidación no hay tope: el analista decide, como antes', async () => {
+      const otra = await legalizacionEnviada(1_000_000, { fechasReales: ['2026-09-14', '2026-09-15'] });
+      const d = await revision.detalle(otra, analista);
+      expect(d.viajeReal).toMatchObject({ diasReales: 2, reintegroViajeCorto: null });
+      expect(d.maximoLegalizable).toBe(1_000_000);
+    });
+  });
+
   describe('viaje completo y canario', () => {
     it('sin diferencia no emite evento de reintegro', async () => {
       const id = await legalizacionEnviada(500_000);
       await aprobarTodo(id);
       const antes = eventos.length;
       const r = await revision.registrarYCerrar(id, { numeroRegistroSiif: 'LEG-SIIF-EXACTO', fechaRegistroSiif: '2026-09-25', valorLegalizado: 500_000 }, analista);
-      expect(r.valorReintegro).toBe(0);
+      expect(r).toMatchObject({ devuelta: false, valorReintegro: 0 });
       expect(eventos.length).toBe(antes);
     });
 
@@ -368,7 +600,7 @@ describirConBase('EFDS-1310 — revisión y cierre de la legalización (base rea
         expect(lista.filter((x) => solicitudes.includes(x))).toEqual([]);
       }
       // Estas son invariantes de datos cerrados, que no cambian por escrituras concurrentes.
-      expect(c.violaciones).toMatchObject({ reintegroInconsistente: 0, aprobadaConPendientes: 0 });
+      expect(c.violaciones).toMatchObject({ reintegroInconsistente: 0, aprobadaConPendientes: 0, reintegroMenorQueViajeCorto: 0 });
       expect(c.poblacion.legalizacionesPorEstadoSolicitud.LEGALIZADO).toBeGreaterThanOrEqual(2);
     });
   });

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
 import { resolve, sep } from 'path';
@@ -96,14 +96,9 @@ export type CorrectedCertificateData = {
   resolution_description?: string;
 };
 
-// En desarrollo/QA puede redirigirse todo correo a una cuenta segura. En el
-// ambiente productivo se habilita el destinatario real con
-// CERTIFICATION_EMAIL_SAFE_MODE=false.
-const CERTIFICATION_EMAIL_SAFE_MODE =
-  String(process.env.CERTIFICATION_EMAIL_SAFE_MODE ?? 'true').toLowerCase() !==
-  'false';
-const CERTIFICATION_EMAIL_SAFE_RECIPIENT =
-  process.env.CERTIFICATION_EMAIL_SAFE_RECIPIENT || 'pruebasesap@gmail.com';
+// El valor predeterminado protege los entornos sin configuracion explicita.
+// Los despliegues fijan true en desarrollo/QA/pre y false en produccion.
+const DEFAULT_CERTIFICATION_EMAIL_SAFE_RECIPIENT = 'pruebasesap@gmail.com';
 
 // Enlace directo a la bandeja de correcciones que se incluye en el aviso a los
 // revisores. Si no se configura, el correo se envía igual pero sin el botón.
@@ -1865,8 +1860,7 @@ export class CertificatesService {
    */
   private async enviarCodigoPorEmail(destinatario: string, codigo: string) {
     if (!destinatario) {
-      this.logger.warn('No se pudo enviar el código: destinatario vacío');
-      return;
+      throw new BadRequestException('No hay un correo registrado para enviar el código de validación.');
     }
 
     const destinatarioSeguro =
@@ -1905,13 +1899,20 @@ export class CertificatesService {
   }
 
   private resolveOutboundEmailRecipient(requestedRecipient: string): string {
-    if (!CERTIFICATION_EMAIL_SAFE_MODE) {
+    const safeMode =
+      String(process.env.CERTIFICATION_EMAIL_SAFE_MODE ?? 'true')
+        .trim()
+        .toLowerCase() !== 'false';
+    if (!safeMode) {
       return requestedRecipient;
     }
+    const safeRecipient =
+      process.env.CERTIFICATION_EMAIL_SAFE_RECIPIENT?.trim() ||
+      DEFAULT_CERTIFICATION_EMAIL_SAFE_RECIPIENT;
     this.logger.warn(
-      `Modo seguro de correo activo: destinatario redirigido a ${CERTIFICATION_EMAIL_SAFE_RECIPIENT}`,
+      `Modo seguro de correo activo: destinatario redirigido a ${safeRecipient}`,
     );
-    return CERTIFICATION_EMAIL_SAFE_RECIPIENT;
+    return safeRecipient;
   }
 
   private buildLaborEmailHtml(
@@ -4980,8 +4981,8 @@ export class CertificatesService {
     if (includeFunctions && !laborFunctions?.available) {
       const detail =
         laborFunctions?.reason === 'AMBIGUOUS'
-          ? 'Hay más de una matriz posible para el código del cargo. Talento Humano debe completar la dependencia o el grupo interno antes de emitirlo.'
-          : 'No hay una matriz de funciones asociada al código y grado de tu cargo.';
+          ? 'Hay más de un registro de funciones para tu identificación. Talento Humano debe revisar la asignación antes de emitirlo.'
+          : 'No hay funciones asignadas a tu número de identificación.';
       throw new BadRequestException(
         `${detail} No es posible incluir funciones en este certificado.`,
       );
@@ -4990,14 +4991,8 @@ export class CertificatesService {
     const functionsSnapshot = laborFunctions?.available
       ? {
           profile_id: laborFunctions.profile?.id,
+          id_number: laborFunctions.profile?.id_number,
           matched_at: new Date().toISOString(),
-          position_code: laborFunctions.profile?.position_code,
-          grade_code: laborFunctions.profile?.grade_code,
-          combined_code: laborFunctions.profile?.combined_code,
-          hierarchical_level: laborFunctions.profile?.hierarchical_level,
-          position_name: laborFunctions.profile?.position_name,
-          department_name: laborFunctions.profile?.department_name,
-          internal_group: laborFunctions.profile?.internal_group,
           functions: laborFunctions.functions,
         }
       : null;
@@ -5948,7 +5943,12 @@ export class CertificatesService {
     }
 
     const emailDestino = this.normalizarCorreo(verificacion.solicitud.email);
-    if (emailDestino && !this.tieneFormatoCorreoValido(emailDestino)) {
+    if (!emailDestino) {
+      throw new BadRequestException(
+        'No hay un correo registrado para enviar el código de validación.',
+      );
+    }
+    if (!this.tieneFormatoCorreoValido(emailDestino)) {
       throw new BadRequestException(
         'El correo registrado no tiene un formato valido. No fue enviado el codigo de validacion.',
       );
@@ -5974,7 +5974,9 @@ export class CertificatesService {
         normalizedDocumentType;
     }
 
-    // Enviar email si hay configuracion SMTP
+    // El portal solo puede anunciar que el codigo fue enviado si el servicio
+    // institucional acepto el correo. En caso contrario, invalidar este codigo
+    // sin borrar uno mas reciente creado por una solicitud concurrente.
     try {
       await this.enviarCodigoPorEmail(
         emailDestino,
@@ -5983,6 +5985,13 @@ export class CertificatesService {
     } catch (err) {
       this.logger.warn(
         `No se pudo enviar el codigo por email: ${err?.message || err}`,
+      );
+      await this.requestRepo.update(
+        { id: verificacion.solicitud.id, validation_code: codigoValidacion },
+        { validation_code: null, validation_expires_at: null },
+      );
+      throw new ServiceUnavailableException(
+        'No pudimos enviar el codigo de validacion al correo registrado. Intenta nuevamente mas tarde.',
       );
     }
 

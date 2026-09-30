@@ -32,6 +32,7 @@ import {
 import { PERMISO_PLAZO_TERMINAR } from '../../auth/permisos';
 import { Permisos } from '../../auth/permisos.decorator';
 import { PermisosGuard } from '../../auth/permisos.guard';
+import { Puede } from '../../auth/puede.guard';
 
 /**
  * Publicación del proyecto de pliego — actividad 5.2 (EFDS-1150).
@@ -46,8 +47,7 @@ export class PublicacionController {
   constructor(private readonly service: PublicacionService) {}
 
   @Get()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.proceso.view')
+  @Puede('ver', '5.2')
   @ApiOperation({
     summary: 'Estado de la publicación y del plazo de publicidad',
     description:
@@ -58,8 +58,7 @@ export class PublicacionController {
   }
 
   @Post()
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.2')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -101,8 +100,7 @@ export class PublicacionController {
   }
 
   @Post('anular')
-  @UseGuards(PermisosGuard)
-  @Permisos('contratacion.actividad.edit')
+  @Puede('editar', '5.2')
   @ApiOperation({
     summary: 'Anular la publicación registrada para corregirla',
     description:

@@ -33,6 +33,8 @@ export interface ResultadoCanario {
     reintegroInconsistente: number;
     /** EFDS-1310: revisión aprobada con algún soporte rechazado o sin revisar. */
     aprobadaConPendientes: number;
+    /** GF-FO-032: cerrada con un reintegro menor que el que exigen los días no viajados. */
+    reintegroMenorQueViajeCorto: number;
   };
   /**
    * Hasta 50 solicitudes por violación, para saber cuáles son. El total sigue en
@@ -129,7 +131,10 @@ export class LegalizacionCanarioService {
          (SELECT count(DISTINCT l.id) FROM travel_expenses.legalizaciones_comision l
             JOIN travel_expenses.legalizacion_soportes ls ON ls.legalizacion_id = l.id
            WHERE l.revision_aprobada_en IS NOT NULL
-             AND (ls.revision IS NULL OR ls.revision = 'RECHAZADO'))                 AS aprobada_con_pendientes`,
+             AND (ls.revision IS NULL OR ls.revision = 'RECHAZADO'))                 AS aprobada_con_pendientes,
+         (SELECT count(*) FROM travel_expenses.legalizaciones_comision l
+           WHERE l.cerrada_en IS NOT NULL
+             AND l.valor_reintegro < l.reintegro_viaje_corto)                        AS reintegro_menor_viaje_corto`,
       [EstadoSolicitud.LEGALIZADO],
     );
 
@@ -165,6 +170,7 @@ export class LegalizacionCanarioService {
       cierreFueraDeLegalizado: n(cierre.cierre_fuera),
       reintegroInconsistente: n(cierre.reintegro_inconsistente),
       aprobadaConPendientes: n(cierre.aprobada_con_pendientes),
+      reintegroMenorQueViajeCorto: n(cierre.reintegro_menor_viaje_corto),
     };
 
     const legalizacionesPorEstadoSolicitud = Object.fromEntries(

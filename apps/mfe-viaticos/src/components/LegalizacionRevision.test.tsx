@@ -13,6 +13,7 @@ vi.mock('../services/api/legalizacionService', () => ({
     exportarSiif: vi.fn(),
     registrarSiif: vi.fn(),
     abrirSoporte: vi.fn(),
+    solicitarReversion: vi.fn(),
   },
 }));
 
@@ -110,7 +111,7 @@ describe('LegalizacionRevision — EFDS-1310', () => {
       detalle({ puedeRevisar: false, puedeRegistrarSiif: true, revisionAprobadaEn: '2026-09-25T18:00:00Z' },
         [soporte('s1', 'APROBADO')]),
     );
-    svc.registrarSiif.mockResolvedValue({ estadoSolicitud: 'LEGALIZADO', valorReintegro: 300000 });
+    svc.registrarSiif.mockResolvedValue({ devuelta: false, estadoSolicitud: 'LEGALIZADO', valorReintegro: 300000 });
     await abrirDetalle();
     fireEvent.change(await screen.findByLabelText('Número del registro en SIIF'), { target: { value: 'LEG-SIIF-123' } });
     fireEvent.change(screen.getByLabelText('Valor legalizado (COP)'), { target: { value: '1200000' } });
@@ -126,13 +127,77 @@ describe('LegalizacionRevision — EFDS-1310', () => {
     );
   });
 
-  it('bloquea registrar si el valor legalizado supera el pagado', async () => {
-    svc.detalleRevision.mockResolvedValue(detalle({ puedeRevisar: false, puedeRegistrarSiif: true }));
+  it('legalizado mayor que lo pagado: no registra, devuelve al comisionado (sin exigir número SIIF)', async () => {
+    svc.detalleRevision.mockResolvedValue(
+      detalle({ puedeRevisar: false, puedeRegistrarSiif: true, revisionAprobadaEn: '2026-09-25T18:00:00Z' }),
+    );
+    svc.registrarSiif.mockResolvedValue({ devuelta: true, estadoSolicitud: 'PENDIENTE_LEGALIZACION', observacionDevolucion: 'x' });
     await abrirDetalle();
-    fireEvent.change(await screen.findByLabelText('Número del registro en SIIF'), { target: { value: 'LEG-1' } });
-    fireEvent.change(screen.getByLabelText('Valor legalizado (COP)'), { target: { value: '2000000' } });
-    expect(screen.getByText('El valor legalizado no puede superar el pagado.')).toBeInTheDocument();
+    fireEvent.change(await screen.findByLabelText('Valor legalizado (COP)'), { target: { value: '2000000' } });
+    fireEvent.change(screen.getByLabelText('Observaciones (opcional)'), { target: { value: 'Factura duplicada.' } });
+    expect(screen.getByText(/supera el pagado: no se registra en SIIF/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Registrar en SIIF y cerrar' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Devolver al comisionado por mayor valor' }));
+    expect(svc.registrarSiif).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar devolución' }));
+    await screen.findByText('Legalización devuelta al comisionado: el valor legalizado supera el pagado.');
+    expect(svc.registrarSiif).toHaveBeenCalledWith('sol-1', expect.objectContaining({
+      valorLegalizado: 2000000, observaciones: 'Factura duplicada.',
+    }));
+  });
+
+  it('revisión aprobada: el analista solicita la reversión con un motivo', async () => {
+    svc.detalleRevision.mockResolvedValue(
+      detalle({ puedeRevisar: false, puedeRegistrarSiif: true, puedeSolicitarReversion: true, revisionAprobadaEn: '2026-09-25T18:00:00Z' }),
+    );
+    svc.solicitarReversion.mockResolvedValue({ id: 'rev-1' });
+    await abrirDetalle();
+    fireEvent.click(await screen.findByRole('button', { name: 'Solicitar reversión de la aprobación' }));
+    const enviar = screen.getByRole('button', { name: 'Enviar solicitud de reversión' });
+    expect(enviar).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Motivo de la reversión'), { target: { value: 'Aprobé por error el formato sin firma.' } });
+    fireEvent.click(enviar);
+    await screen.findByText('Reversión solicitada. Queda pendiente de aprobación por otra persona.');
+    expect(svc.solicitarReversion).toHaveBeenCalledWith('sol-1', 'Aprobé por error el formato sin firma.');
+  });
+
+  it('reversión pendiente: lo avisa y no ofrece registrar en SIIF', async () => {
+    svc.detalleRevision.mockResolvedValue(
+      detalle({
+        puedeRevisar: false, puedeRegistrarSiif: false, puedeSolicitarReversion: false, revisionAprobadaEn: '2026-09-25T18:00:00Z',
+        reversionPendiente: { id: 'rev-1', motivo: 'Aprobé por error.', solicitadaPorId: 'a', solicitadaEn: '2026-09-26T15:00:00Z' },
+      }),
+    );
+    await abrirDetalle();
+    expect(await screen.findByText('Reversión de la aprobación pendiente')).toBeInTheDocument();
+    expect(screen.getByText(/Aprobé por error\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Registrar en SIIF/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Solicitar reversión de la aprobación' })).not.toBeInTheDocument();
+  });
+
+  it('GF-FO-032: muestra el viaje real y no deja legalizar por encima de los días viajados', async () => {
+    svc.detalleRevision.mockResolvedValue(
+      detalle({
+        puedeRevisar: false, puedeRegistrarSiif: true, revisionAprobadaEn: '2026-09-25T18:00:00Z',
+        cumplimiento: { fechaInicioReal: '2026-09-01', fechaFinReal: '2026-09-03', comisionExterna: true, entidadExterna: 'Gobernación del Cauca', registrado: true },
+        viajeReal: { diasReales: 3, nochesPlaneadas: 4, nochesReales: 2, viaticosPlaneados: 450000, viaticosReales: 250000, reintegroViajeCorto: 200000 },
+        maximoLegalizable: 1300000,
+      }),
+    );
+    await abrirDetalle();
+    expect(await screen.findByText(/GF-FO-032: cumplida del 2026-09-01 al 2026-09-03 · fuera de la ESAP: Gobernación del Cauca/)).toBeInTheDocument();
+    expect(screen.getByText(/Viaje más corto según el GF-FO-032 \(2 de 4 noches\)/)).toHaveTextContent('200.000');
+    expect(screen.queryByLabelText('Días reales de la comisión (opcional)')).not.toBeInTheDocument();
+    expect(screen.getByText(/Días reales \(GF-FO-032\)/)).toHaveTextContent('3');
+
+    fireEvent.change(screen.getByLabelText('Número del registro en SIIF'), { target: { value: 'LEG-1' } });
+    fireEvent.change(screen.getByLabelText('Valor legalizado (COP)'), { target: { value: '1400000' } });
+    expect(screen.getByRole('alert')).toHaveTextContent('no puede superar');
     expect(screen.getByRole('button', { name: 'Registrar en SIIF y cerrar' })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Valor legalizado (COP)'), { target: { value: '1300000' } });
+    expect(screen.getByRole('button', { name: 'Registrar en SIIF y cerrar' })).toBeEnabled();
   });
 
   it('cerrada: muestra el expediente sin ninguna acción', async () => {

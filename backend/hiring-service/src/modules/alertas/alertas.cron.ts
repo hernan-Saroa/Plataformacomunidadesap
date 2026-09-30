@@ -39,7 +39,6 @@ export class AlertasCron {
     userId: '',
     userName: 'Sistema',
     roles: [],
-    puedeEditar: false,
   };
 
   /**

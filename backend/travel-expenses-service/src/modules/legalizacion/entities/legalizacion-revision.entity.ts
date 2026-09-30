@@ -7,6 +7,9 @@ export const ACCIONES_REVISION = [
   'APROBACION',
   'EXPORTACION_SIIF',
   'REGISTRO_SIIF_Y_CIERRE',
+  'REVERSION_SOLICITADA',
+  'REVERSION_APROBADA',
+  'REVERSION_RECHAZADA',
 ] as const;
 export type AccionRevision = (typeof ACCIONES_REVISION)[number];
 

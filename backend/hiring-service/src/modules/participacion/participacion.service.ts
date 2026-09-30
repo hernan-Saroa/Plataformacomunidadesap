@@ -15,13 +15,9 @@ import {
 export const NUMERAL_RADICACION = '3.3';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import {
-  PERMISO_ACTIVIDAD_APROBAR,
-  PERMISO_PRESUPUESTO_GESTIONAR,
-  PERMISO_PROCESO_ASIGNAR,
-  PERMISO_PROCESO_TOMAR,
-  tienePermiso,
-} from '../../auth/permisos';
+import { PERMISO_PROCESO_ASIGNAR, tienePermiso } from '../../auth/permisos';
+import { Accion } from '../../auth/alcance';
+import { AlcanceService } from '../../auth/alcance.service';
 import { AsignarAbogadoDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
 import { CdpService } from '../cdp/cdp.service';
 
@@ -112,6 +108,8 @@ export class ParticipacionService {
      * corta, dejar la solicitud de CDP radicada.
      */
     private readonly cdp: CdpService,
+    /** Quién puede qué en cada punto (migración 083). */
+    private readonly alcance: AlcanceService,
   ) {}
 
   // ------------------------------------------------------------- consulta --
@@ -146,12 +144,12 @@ export class ParticipacionService {
      */
     const puedeTomarFinanciera =
       !financiera &&
-      tienePermiso(acceso, PERMISO_PRESUPUESTO_GESTIONAR) &&
+      (await this.alcance.puedeEn(acceso, 'editar', '4.2')) &&
       (await this.estaEnLaBandejaFinanciera(procesoId));
 
     return {
       /** Sin tomar: el proceso está en la bandeja y nadie responde por él. */
-      puedeTomar: !contratacion && tienePermiso(acceso, PERMISO_PROCESO_TOMAR),
+      puedeTomar: !contratacion && (await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION)),
       puedeRepartir,
       contratacion: contratacion ? this.aVista(contratacion, acceso) : null,
       abogado: abogado ? this.aVista(abogado, acceso) : null,
@@ -184,21 +182,20 @@ export class ParticipacionService {
   /**
    * Las cuentas a las que se les puede dar el papel de abogado.
    *
-   * Se resuelven por permiso y no por código de rol —quien pueda aprobar una
-   * actividad es quien puede revisar el proceso—, igual que hacen los
-   * endpoints. Nombrar aquí `REVISOR_CONTRATACION` ataría el reparto a un rol
+   * Se resuelven por alcance y no por código de rol —quien pueda aprobar la
+   * 3.4 es quien puede revisar el proceso—, igual que hacen los endpoints. Nombrar aquí `REVISOR_CONTRATACION` ataría el reparto a un rol
    * que el administrador puede renombrar o desdoblar mañana desde el
    * backoffice, que es justo lo que la migración 060 vino a quitar del código.
    */
   async abogados(termino = ''): Promise<CuentaCandidata[]> {
-    return this.cuentasCon(PERMISO_ACTIVIDAD_APROBAR, termino);
+    return this.cuentasCon('aprobar', '3.4', termino);
   }
 
   /**
    * Las cuentas de la Dirección Financiera que pueden resolver un CDP.
    *
-   * Por permiso y no por rol, igual que los abogados: quien pueda gestionar el
-   * presupuesto es quien verifica la disponibilidad y expide. Nombrar aquí
+   * Por alcance y no por rol, igual que los abogados: quien pueda editar la
+   * 4.2 es quien verifica la disponibilidad y expide. Nombrar aquí
    * `ESTRUCTURADOR_FINANCIERO` ataría la etapa 4 a un código de rol que el
    * administrador puede renombrar o desdoblar mañana desde el backoffice.
    *
@@ -207,7 +204,7 @@ export class ParticipacionService {
    * esta es la lista a la que se le manda.
    */
   async financieros(termino = ''): Promise<CuentaCandidata[]> {
-    return this.cuentasCon(PERMISO_PRESUPUESTO_GESTIONAR, termino);
+    return this.cuentasCon('editar', '4.2', termino);
   }
 
   // ------------------------------------------------------------ el proceso --
@@ -418,11 +415,14 @@ export class ParticipacionService {
    * Vive aquí y no en el estudio previo porque ya son dos las actividades que
    * lo preguntan —la revisión del estudio previo y la de la modalidad— y con
    * una copia en cada una acabarían discrepando sobre el mismo proceso.
+   *
+   * `numeral` es la actividad que se decide (3.4, 3.5, 3.6 o 3.7): el permiso
+   * de aprobar se mira con el alcance de ese punto, no en general.
    */
-  async quienDecide(procesoId: string, acceso: HiringAccess) {
+  async quienDecide(procesoId: string, acceso: HiringAccess, numeral: string) {
     const abogado = await this.vigente(procesoId, 'ABOGADO');
     const motivo = motivoParaNoDecidir(
-      tienePermiso(acceso, PERMISO_ACTIVIDAD_APROBAR),
+      await this.alcance.puedeEn(acceso, 'aprobar', numeral),
       !!abogado,
       !!abogado && esSuya(abogado, acceso),
     );
@@ -730,8 +730,23 @@ export class ParticipacionService {
     throw new NotFoundException('Esa cuenta no existe o está inactiva');
   }
 
-  /** Las cuentas cuyos roles otorgan ese permiso, para los desplegables. */
-  private cuentasCon(permiso: string, termino: string): Promise<CuentaCandidata[]> {
+  /**
+   * Las cuentas que pueden hacer esa acción en ese punto, para los
+   * desplegables.
+   *
+   * Quién puede lo decide `AlcanceService`, que es donde vive la regla de qué
+   * alcance cubre qué punto; aquí solo se les pone nombre y correo. Repetir
+   * esa regla en esta consulta haría que el desplegable y el guard pudieran
+   * discrepar sobre la misma persona.
+   */
+  private async cuentasCon(
+    accion: Accion,
+    numeral: string,
+    termino: string,
+  ): Promise<CuentaCandidata[]> {
+    const ids = await this.alcance.cuentasQuePueden(accion, numeral);
+    if (!ids.length) return [];
+
     // Parámetros ligados, nunca interpolados: el término viene del navegador.
     return this.dataSource.query(
       `SELECT DISTINCT
@@ -742,20 +757,14 @@ export class ParticipacionService {
               NULL::varchar                     AS cargo,
               COALESCE(p.dir_email, u.username) AS email
          FROM auth."user" u
-         LEFT JOIN auth.personas p     ON p.id_person = u.id_person
-         JOIN auth.user_roles ur       ON ur.id_user = u.id_user AND ur.is_active = true
-         JOIN auth.role r              ON r.id = ur.id_rol AND r.is_active = true
-         JOIN auth.role_permissions rp ON rp.id_rol = r.id AND rp.is_active = true
-         JOIN auth.permission perm     ON perm.id_permission = rp.id_permission
-                                      AND perm.is_active = true
-        WHERE u.is_active = true
-          AND perm.code = $1
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+        WHERE u.id_user::text = ANY($1::text[])
           AND ($2 = ''
                OR COALESCE(p.nom_largo, p.nom_tercero, u.username) ILIKE '%' || $2 || '%'
                OR u.username ILIKE '%' || $2 || '%')
         ORDER BY nombre
         LIMIT 50`,
-      [permiso, termino.trim()],
+      [ids, termino.trim()],
     );
   }
 
