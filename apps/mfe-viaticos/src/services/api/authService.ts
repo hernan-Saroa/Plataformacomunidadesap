@@ -281,7 +281,9 @@ export class AuthService {
   isSuperAdmin(): boolean {
     const user = this.getCurrentUserSync();
     if (!user) return false;
-    return user.esAdmin || user.roles.some((r) => /SUPER.*ADMIN|ADMIN/.test(r));
+    // Comparación exacta: un rol que solo contenga ADMIN (p. ej.
+    // COORDINADOR_ADMINISTRATIVO_FINANCIERO) no es superadministrador.
+    return user.esAdmin || user.roles.some((r) => (ROLES_ADMIN_VIATICOS as readonly string[]).includes(r));
   }
 
   /**
