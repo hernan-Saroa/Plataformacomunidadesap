@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Check, History, Inbox, Scale, Undo2, UserMinus, UserPlus } from 'lucide-react';
+import { Check, History, Inbox, UserMinus, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { CuentaCandidata, EstadoParticipacion } from '../../types';
 import { Aviso, Ayuda, Boton, BotonSecundario, Marco, Titulo, campo } from '../shared/PiezasPanel';
+import { PasoDeLaActividad, PasosDeLaActividad } from '../shared/PasosDeLaActividad';
 import { momento } from '../shared/fechas';
 
 interface Props {
@@ -187,107 +188,63 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
   const { contratacion, abogado, puedeTomar, puedeRepartir, sinAbogado, historial } = estado;
   const motivoValido = motivo.trim().length >= 10;
 
-  return (
-    <Marco>
-      <Titulo>Radicación en la Dirección</Titulo>
-      {/* La ayuda dice qué hacer ahora, no cómo funciona por dentro. La primera
-          versión hablaba de «la bandeja» y de «repartir el abogado» —palabras
-          nuestras, no del área— y de «la 3.4», que a quien mira la pantalla no
-          le dice nada. */}
-      <Ayuda>
-        {contratacion
-          ? 'El área ya entregó este proceso y la Dirección lo recibió. Elige el abogado que revisará el estudio previo.'
-          : 'El área solicitante entregó este proceso y todavía no lo lleva nadie. Cualquiera de la Dirección puede hacerse cargo; el primero que lo haga se lo queda.'}
-      </Ayuda>
+  // ------------------------------------------- paso 1 · hacerse cargo ----
+  const pasoCargo: PasoDeLaActividad = contratacion
+    ? {
+        titulo: 'Hacerse cargo del proceso',
+        estado: 'hecho',
+        detalle: `${contratacion.nombre}${contratacion.esMio ? ' (tú)' : ''} · desde el ${momento(
+          contratacion.asignadoAt,
+        )}`,
+      }
+    : puedeTomar
+      ? {
+          titulo: 'Hacerse cargo del proceso',
+          estado: 'te-toca',
+          detalle:
+            'El área entregó el proceso y todavía no lo lleva nadie. Quien se haga cargo queda como responsable en la Dirección y elige el abogado.',
+          children: (
+            <Boton
+              icono={<Inbox className="w-3.5 h-3.5" />}
+              disabled={guardando}
+              onClick={() =>
+                hacer(
+                  () => contratacionService.tomarProceso(procesoId),
+                  'Ya estás a cargo. Ahora elige quién lo revisa.',
+                )
+              }
+            >
+              Hacerme cargo
+            </Boton>
+          ),
+        }
+      : {
+          titulo: 'Hacerse cargo del proceso',
+          estado: 'le-toca',
+          detalle:
+            'Todavía no lo lleva nadie: está esperando a que alguien de la Dirección de Contratación se haga cargo.',
+        };
 
-      {/* ------------------------------------------------ quién lo recibió -- */}
-      {contratacion ? (
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-3">
-          <div className="flex items-start gap-2.5">
-            <Inbox className="w-4 h-4 mt-0.5 flex-shrink-0 text-emerald-900" />
-            <div className="min-w-0 flex-1">
-              <p className="text-[12.5px] font-bold text-emerald-900 m-0 break-words">
-                {contratacion.nombre}
-                {contratacion.esMio ? ' · estás a cargo' : ''}
-              </p>
-              <p className="text-[11.5px] text-emerald-900 m-0 mt-0.5 leading-relaxed">
-Se hizo cargo el {momento(contratacion.asignadoAt)}
-              </p>
-            </div>
-          </div>
+  // ------------------------------------------------ paso 2 · abogado -----
+  const formularioAbogado = (
+    <>
+      {!repartiendo && !quitando && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Boton icono={<UserPlus className="w-3.5 h-3.5" />} onClick={() => setRepartiendo(true)}>
+            {abogado ? 'Cambiar de abogado' : 'Elegir abogado'}
+          </Boton>
+          {abogado && (
+            <BotonSecundario
+              icono={<UserMinus className="w-3.5 h-3.5" />}
+              disabled={guardando}
+              onClick={() => setQuitando(true)}
+            >
+              Dejarlo sin abogado
+            </BotonSecundario>
+          )}
         </div>
-      ) : (
-        <Aviso tono="aviso" titulo="Todavía no lo lleva nadie">
-          {puedeTomar
-            ? 'Hazte cargo para poder trabajarlo y elegir quién lo revisa.'
-            : 'Está esperando a que alguien de la Dirección de Contratación se haga cargo.'}
-        </Aviso>
       )}
 
-      {puedeTomar && (
-        <Boton
-          icono={<Inbox className="w-3.5 h-3.5" />}
-          disabled={guardando}
-          onClick={() =>
-            hacer(
-              () => contratacionService.tomarProceso(procesoId),
-              'Ya estás a cargo. Ahora elige quién lo revisa.',
-            )
-          }
-        >
-          Hacerme cargo
-        </Boton>
-      )}
-
-      {/* ------------------------------------------------------ el abogado -- */}
-      {contratacion && (
-        <>
-          {abogado ? (
-            <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3">
-              <div className="flex items-start gap-2.5">
-                <Scale className="w-4 h-4 mt-0.5 flex-shrink-0 text-slate-600" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-[12.5px] font-bold text-slate-800 m-0 break-words">
-                    {abogado.nombre}
-                    {abogado.esMio ? ' · te toca revisarlo a ti' : ''}
-                  </p>
-                  <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed break-words">
-                    Revisa el estudio previo · desde el {momento(abogado.asignadoAt)}
-                    {abogado.asignadoPor ? ` por ${abogado.asignadoPor}` : ''}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            // Un proceso recibido y sin abogado no avanza: la 3.4 no la puede
-            // resolver nadie hasta que se reparta.
-            <Aviso tono="aviso" titulo="Falta elegir el abogado">
-              {sinAbogado
-                ? 'Se quitó al anterior y no se ha puesto otro. El estudio previo no se puede aprobar ni devolver mientras tanto.'
-                : 'Hasta que no elijas quién lo revisa, el estudio previo no se puede aprobar ni devolver.'}
-            </Aviso>
-          )}
-
-          {puedeRepartir && !repartiendo && !quitando && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <Boton icono={<UserPlus className="w-3.5 h-3.5" />} onClick={() => setRepartiendo(true)}>
-                {abogado ? 'Cambiar de abogado' : 'Elegir abogado'}
-              </Boton>
-              {abogado && (
-                <BotonSecundario
-                  icono={<UserMinus className="w-3.5 h-3.5" />}
-                  disabled={guardando}
-                  onClick={() => setQuitando(true)}
-                >
-                  Dejarlo sin abogado
-                </BotonSecundario>
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ---------------------------------------------------- repartir -- */}
       {repartiendo && (
         <div className="rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-3 space-y-3">
           <label htmlFor="rad-abogado" className="block text-xs font-bold text-gray-600">
@@ -351,14 +308,13 @@ Se hizo cargo el {momento(contratacion.asignadoAt)}
         </div>
       )}
 
-      {/* ------------------------------------------------------ quitar -- */}
       {quitando && abogado && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/40 px-3.5 py-3 space-y-3">
           <p className="text-[12.5px] font-bold text-slate-800 m-0">
             Quitar a {abogado.nombre} sin poner otro
           </p>
           <p className="text-[11.5px] text-slate-600 m-0 leading-relaxed">
-El estudio previo no se podrá aprobar ni devolver hasta que elijas a otro, y el
+            El estudio previo no se podrá aprobar ni devolver hasta que elijas a otro, y el
             proceso saldrá en las alertas. Lo normal es cambiarlo por otro en el mismo acto.
           </p>
           <div>
@@ -398,6 +354,65 @@ El estudio previo no se podrá aprobar ni devolver hasta que elijas a otro, y el
           </div>
         </div>
       )}
+    </>
+  );
+
+  // Un proceso recibido y sin abogado no avanza: la revisión del estudio
+  // previo no la puede resolver nadie hasta que se elija.
+  const sinQuienRevise = sinAbogado
+    ? 'Se quitó al anterior y no se ha puesto otro. El estudio previo no se puede aprobar ni devolver mientras tanto.'
+    : 'Mientras no haya abogado, el estudio previo no se puede aprobar ni devolver.';
+
+  const pasoAbogado: PasoDeLaActividad = !contratacion
+    ? {
+        titulo: 'Elegir el abogado que revisa',
+        estado: 'espera',
+        detalle: 'Lo elige quien se haga cargo del proceso.',
+      }
+    : abogado
+      ? {
+          titulo: 'Elegir el abogado que revisa',
+          estado: 'hecho',
+          detalle: `${abogado.nombre}${abogado.esMio ? ' (tú)' : ''} · desde el ${momento(
+            abogado.asignadoAt,
+          )}${abogado.asignadoPor ? ` por ${abogado.asignadoPor}` : ''}`,
+          children: puedeRepartir ? formularioAbogado : undefined,
+        }
+      : puedeRepartir
+        ? {
+            titulo: 'Elegir el abogado que revisa',
+            estado: 'te-toca',
+            detalle: sinQuienRevise,
+            children: formularioAbogado,
+          }
+        : {
+            titulo: 'Elegir el abogado que revisa',
+            estado: 'le-toca',
+            detalle: `Lo elige ${contratacion.nombre}. ${sinQuienRevise}`,
+          };
+
+  // ----------------------------------------- paso 3 · lo que sigue -------
+  const pasoRevision: PasoDeLaActividad = abogado
+    ? {
+        titulo: 'El abogado revisa el estudio previo',
+        estado: 'despues',
+        etiqueta: 'Sigue en 3.4',
+        detalle: abogado.esMio
+          ? 'Te toca a ti: apruébalo, devuélvelo o niégalo en la revisión del estudio previo.'
+          : `${abogado.nombre} lo aprueba, lo devuelve o lo niega.`,
+      }
+    : {
+        titulo: 'El abogado revisa el estudio previo',
+        estado: 'espera',
+        detalle: 'Empieza en cuanto haya abogado.',
+      };
+
+  return (
+    <Marco>
+      <Titulo>Radicación en la Dirección</Titulo>
+      <Ayuda>Recibir el proceso en la Dirección de Contratación y ponerle quién lo revise.</Ayuda>
+
+      <PasosDeLaActividad pasos={[pasoCargo, pasoAbogado, pasoRevision]} />
 
       {/* ---------------------------------------------------- historial -- */}
       {historial.length > 0 && (
@@ -450,15 +465,6 @@ El estudio previo no se podrá aprobar ni devolver hasta que elijas a otro, y el
             </ul>
           )}
         </div>
-      )}
-
-      {/* La 3.3 dejaba constancia con fecha y documento, y no hacía nada de lo
-          que su nombre dice. Se avisa una vez, para quien conocía la anterior. */}
-      {!contratacion && !puedeTomar && (
-        <p className="text-[11px] text-slate-400 m-0">
-          Esta actividad ya no se cumple registrando una fecha: se cumple cuando alguien de la
-          Dirección se hace cargo del proceso.
-        </p>
       )}
     </Marco>
   );

@@ -18,6 +18,7 @@ import {
   SinPermiso,
   Titulo,
 } from '../shared/PiezasPanel';
+import { PasoDeLaActividad, PasosDeLaActividad } from '../shared/PasosDeLaActividad';
 
 interface Props {
   /** Cuál de las cuatro actividades del ciclo se está viendo. */
@@ -138,6 +139,55 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
   const financiera = participacion?.financiera ?? null;
   const puedeTomarla = participacion?.puedeTomarFinanciera === true;
 
+  /*
+   * Hacerse cargo de la solicitud, el mismo paso en la 4.1 y en la 4.2.
+   *
+   * La 4.1 se aprueba sola al radicarse, así que al entrar al proceso se abre
+   * la 4.2; si el botón solo estuviera en la 4.1, la Financiera tendría que
+   * volver atrás a buscarlo.
+   */
+  const pasoCargo: PasoDeLaActividad = !cdp
+    ? {
+        titulo: 'Hacerse cargo en la Dirección Financiera',
+        estado: 'espera',
+        detalle: 'Cuando llegue la solicitud, alguien de la Dirección Financiera la toma.',
+      }
+    : financiera
+      ? {
+          titulo: 'Hacerse cargo en la Dirección Financiera',
+          estado: 'hecho',
+          detalle: `${financiera.nombre}${financiera.esMio ? ' (tú)' : ''} · desde el ${momento(
+            financiera.asignadoAt,
+          )}`,
+        }
+      : puedeTomarla
+        ? {
+            titulo: 'Hacerse cargo en la Dirección Financiera',
+            estado: 'te-toca',
+            detalle:
+              'La solicitud llegó y todavía no la lleva nadie. Quien se haga cargo verifica la disponibilidad y expide el CDP.',
+            children: (
+              <Boton
+                disabled={trabajando}
+                onClick={() =>
+                  ejecutar(
+                    () => contratacionService.tomarSolicitudCdp(procesoId),
+                    'Ya estás a cargo de esta solicitud.',
+                  )
+                }
+                icono={<Landmark className="w-3.5 h-3.5" />}
+              >
+                Hacerme cargo
+              </Boton>
+            ),
+          }
+        : {
+            titulo: 'Hacerse cargo en la Dirección Financiera',
+            estado: 'le-toca',
+            detalle:
+              'Todavía no la lleva nadie: está esperando a que alguien de la Dirección Financiera se haga cargo.',
+          };
+
   // ------------------------------------------------------------ 4.1 ------
   /*
    * Dejó de ser un formulario.
@@ -147,68 +197,63 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
    * lo que queda es ver qué se pidió y quién de la Financiera se hace cargo.
    */
   if (numeral === '4.1') {
-    if (!cdp) {
-      return (
-        <Marco>
-          <Pendiente
-            falta="la etapa 3"
-            texto="La solicitud de CDP se radica sola en cuanto se cierre la última actividad de la etapa 3 que aplique a esta modalidad."
-          />
-        </Marco>
-      );
-    }
+    // ---------------------------------------- paso 1 · la solicitud ----
+    const pasoSolicitud: PasoDeLaActividad = cdp
+      ? {
+          titulo: 'Radicar la solicitud de CDP',
+          estado: 'hecho',
+          // El rubro solo se nombra si lo hay: el automático nace sin él —lo
+          // pone la Financiera al expedir— y un «rubro —» se lee como un dato
+          // que falta por diligenciar, que es justo lo que ya no es.
+          detalle: `${cdp.solicitadoPor ? `${cdp.solicitadoPor} · ` : ''}por ${
+            cdp.valor !== null ? formatoPesos.format(cdp.valor) : '—'
+          }${cdp.rubro ? ` contra el rubro ${cdp.rubro}` : ''}`,
+        }
+      : {
+          titulo: 'Radicar la solicitud de CDP',
+          estado: 'espera',
+          detalle:
+            'Se radica sola al cerrarse la última actividad de la etapa 3 que aplique: el estudio previo aprobado es la solicitud.',
+        };
+
+    // ------------------------------------ paso 3 · lo que sigue --------
+    const verificada = estado === 'VERIFICADO' || estado === 'EXPEDIDO';
+    const pasoVerificacion: PasoDeLaActividad = verificada
+      ? {
+          titulo: 'Verificar la disponibilidad presupuestal',
+          estado: 'hecho',
+          detalle: `Confirmada${cdp?.rubro ? ` en el rubro ${cdp.rubro}` : ''}.`,
+        }
+      : estado === 'RECHAZADO'
+        ? {
+            titulo: 'Verificar la disponibilidad presupuestal',
+            estado: 'le-toca',
+            etiqueta: 'Rechazada',
+            detalle: cdp?.observaciones ?? 'La Dirección Financiera rechazó la solicitud.',
+          }
+        : financiera
+          ? {
+              titulo: 'Verificar la disponibilidad presupuestal',
+              estado: 'despues',
+              etiqueta: 'Sigue en 4.2',
+              detalle: financiera.esMio
+                ? 'Te toca a ti: indica el rubro y confirma que tiene saldo.'
+                : `${financiera.nombre} indica el rubro y confirma que tiene saldo.`,
+            }
+          : {
+              titulo: 'Verificar la disponibilidad presupuestal',
+              estado: 'espera',
+              detalle: 'Empieza en cuanto la solicitud tenga quien la lleve.',
+            };
 
     return (
       <Marco>
-        <Aviso tono="ok" titulo="Solicitud radicada">
-          {/* El rubro solo se nombra si lo hay: el automático nace sin él
-              —lo pone la Financiera al expedir— y un «Rubro —» se lee como un
-              dato que falta por diligenciar, que es justo lo que ya no es. */}
-          {cdp.solicitadoPor ? `Radicada por ${cdp.solicitadoPor}. ` : ''}
-          Por {cdp.valor !== null ? formatoPesos.format(cdp.valor) : '—'}
-          {cdp.rubro ? ` contra el rubro ${cdp.rubro}` : ''}.
-        </Aviso>
-
-        {/* ------------------------------------- quién la lleva en Financiera */}
-        {financiera ? (
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3.5 py-3">
-            <div className="flex items-start gap-2.5">
-              <Landmark className="w-4 h-4 mt-0.5 flex-shrink-0 text-emerald-900" />
-              <div className="min-w-0 flex-1">
-                <p className="text-[12.5px] font-bold text-emerald-900 m-0 break-words">
-                  {financiera.nombre}
-                  {financiera.esMio ? ' · estás a cargo' : ''}
-                </p>
-                <p className="text-[11.5px] text-emerald-900 m-0 mt-0.5 leading-relaxed">
-                  Dirección Financiera · se hizo cargo el {momento(financiera.asignadoAt)}
-                </p>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <Aviso tono="aviso" titulo="Todavía no la lleva nadie">
-            {puedeTomarla
-              ? 'Hazte cargo para verificar la disponibilidad y expedir el CDP.'
-              : 'Está esperando a que alguien de la Dirección Financiera se haga cargo.'}
-          </Aviso>
-        )}
-
-        {puedeTomarla && (
-          <Boton
-            disabled={trabajando}
-            onClick={() =>
-              ejecutar(
-                () => contratacionService.tomarSolicitudCdp(procesoId),
-                'Ya estás a cargo de esta solicitud.',
-              )
-            }
-            icono={<Landmark className="w-3.5 h-3.5" />}
-          >
-            Hacerme cargo
-          </Boton>
-        )}
-
-        <Siguiente texto="Continúa en 4.2, donde la Dirección Financiera verifica la disponibilidad." />
+        <Titulo>Solicitud de CDP</Titulo>
+        <Ayuda>
+          La solicitud la recibe la Dirección Financiera, que verifica la disponibilidad y expide
+          el certificado.
+        </Ayuda>
+        <PasosDeLaActividad pasos={[pasoSolicitud, pasoCargo, pasoVerificacion]} />
       </Marco>
     );
   }
@@ -232,6 +277,29 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
             La Dirección Financiera confirmó que hay saldo en el rubro {cdp.rubro}.
           </Aviso>
           <Siguiente texto="Continúa en 4.3, la expedición del certificado." />
+        </Marco>
+      );
+    }
+    // Mientras nadie la ha tomado, lo que toca es hacerse cargo: se ofrece
+    // aquí mismo y la verificación espera a que la solicitud tenga quien la
+    // lleve, como dice la 4.1.
+    if (!financiera) {
+      return (
+        <Marco>
+          <Titulo>Verificar la disponibilidad presupuestal</Titulo>
+          <Ayuda>
+            Antes de verificar, alguien de la Dirección Financiera se hace cargo de la solicitud.
+          </Ayuda>
+          <PasosDeLaActividad
+            pasos={[
+              pasoCargo,
+              {
+                titulo: 'Verificar la disponibilidad presupuestal',
+                estado: 'espera',
+                detalle: 'Se habilita en cuanto la solicitud tenga quien la lleve.',
+              },
+            ]}
+          />
         </Marco>
       );
     }

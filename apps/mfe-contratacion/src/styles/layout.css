@@ -680,3 +680,164 @@
 .ficha-linea {
   max-width: 45%;
 }
+
+/* ------------------------------------------ pasos de una actividad -------- */
+
+/*
+ * Hacerse cargo en la 3.3 y en la 4.1: la actividad como pasos numerados, con
+ * una línea que los une. Clases propias y no de Tailwind porque el shell solo
+ * genera las que encuentra en su código, y las nuevas fallarían en silencio.
+ */
+.pasos-actividad {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.paso-actividad {
+  position: relative;
+  display: flex;
+  gap: 0.75rem;
+  padding-bottom: 1rem;
+}
+
+.paso-actividad:last-child {
+  padding-bottom: 0;
+}
+
+/* La línea que baja de un paso al siguiente. */
+.paso-actividad:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 0.6875rem;
+  top: 1.625rem;
+  bottom: 0.25rem;
+  width: 2px;
+  background: #e2e8f0;
+}
+
+.paso-actividad--hecho:not(:last-child)::before {
+  background: #a7f3d0;
+}
+
+.paso-actividad-marca {
+  flex-shrink: 0;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  border: 2px solid #cbd5e1;
+  background: #fff;
+  color: #64748b;
+}
+
+.paso-actividad-cuerpo {
+  flex: 1;
+  min-width: 0;
+}
+
+.paso-actividad-cabeza {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 1.375rem;
+}
+
+.paso-actividad-titulo {
+  margin: 0;
+  padding-top: 0.125rem;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #334155;
+  line-height: 1.35;
+}
+
+.paso-actividad-estado {
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+  padding: 0.0625rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.paso-actividad-detalle {
+  margin: 0.125rem 0 0;
+  font-size: 11.5px;
+  color: #475569;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.paso-actividad-acciones {
+  margin-top: 0.625rem;
+}
+
+.paso-actividad-acciones > * + * {
+  margin-top: 0.625rem;
+}
+
+/* Hecho: verde, con la marca llena. */
+.paso-actividad--hecho .paso-actividad-marca {
+  border-color: #059669;
+  background: #059669;
+  color: #fff;
+}
+
+.paso-actividad--hecho .paso-actividad-estado {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+/* Te toca: el azul de la plataforma, que es donde hay que mirar. */
+.paso-actividad--te-toca .paso-actividad-marca {
+  border-color: #003da5;
+  background: #003da5;
+  color: #fff;
+}
+
+.paso-actividad--te-toca .paso-actividad-titulo {
+  color: #003da5;
+}
+
+.paso-actividad--te-toca .paso-actividad-estado {
+  background: #dbeafe;
+  color: #003da5;
+}
+
+/* Le toca a otro: ámbar, pendiente pero no de quien mira. */
+.paso-actividad--le-toca .paso-actividad-marca {
+  border-color: #d97706;
+  color: #b45309;
+}
+
+.paso-actividad--le-toca .paso-actividad-estado {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* En espera y después: apagados, se nombran pero no piden nada. */
+.paso-actividad--espera .paso-actividad-titulo,
+.paso-actividad--despues .paso-actividad-titulo {
+  color: #94a3b8;
+}
+
+.paso-actividad--espera .paso-actividad-detalle,
+.paso-actividad--despues .paso-actividad-detalle {
+  color: #94a3b8;
+}
+
+.paso-actividad--espera .paso-actividad-marca,
+.paso-actividad--despues .paso-actividad-marca {
+  border-color: #e2e8f0;
+  color: #94a3b8;
+}
