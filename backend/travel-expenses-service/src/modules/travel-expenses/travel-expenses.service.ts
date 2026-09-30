@@ -58,7 +58,11 @@ import {
 } from '../../common/sanitize.util';
 import { getClientIp } from '../../common/ip.util';
 import { getUploadRootDir } from '../../common/storage.util';
-import { aYMDUtc } from '../../common/dias-habiles.util';
+import {
+  aYMDUtc,
+  cargarFestivosAuth,
+  esRadicacionFueraDeJornada,
+} from '../../common/dias-habiles.util';
 import { ConfigService } from '../config/config.service';
 import {
   NotificationClientService,
@@ -1836,10 +1840,10 @@ export class TravelExpensesService {
         );
       }
 
-      const ahora = new Date();
-      const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
-      const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
-      radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
+      radicadoFueraJornada = esRadicacionFueraDeJornada(
+        new Date(),
+        await cargarFestivosAuth(this.dataSource),
+      );
 
       estadoSolicitud = EstadoSolicitud.RADICADA;
       extemporanea = false;
@@ -2464,10 +2468,10 @@ if (dto.costoEstimadoTiquete !== undefined) {
       );
     }
 
-    const ahora = new Date();
-    const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
-    const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
-    const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
+    const radicadoFueraJornada = esRadicacionFueraDeJornada(
+      new Date(),
+      await cargarFestivosAuth(this.dataSource),
+    );
 
     solicitud.estadoSolicitud = EstadoSolicitud.RADICADA;
     solicitud.extemporanea = false;
@@ -2928,10 +2932,10 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     if (todasFirmasCompletadas) {
       // – Surtido el flujo de firmas y las validaciones, la solicitud queda en estado RADICADA.
-      const ahora = new Date();
-      const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
-      const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
-      const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
+      const radicadoFueraJornada = esRadicacionFueraDeJornada(
+        new Date(),
+        await cargarFestivosAuth(this.dataSource),
+      );
 
       const estadoAnterior = solicitud.estadoSolicitud;
       solicitud.estadoSolicitud = EstadoSolicitud.RADICADA;
