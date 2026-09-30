@@ -140,3 +140,37 @@ describe('ContenidoEstudioPrevio · quién resuelve la 3.4', () => {
     expect(screen.queryByRole('button', { name: /Aprobar/ })).toBeNull();
   });
 });
+
+/**
+ * Con pantalla de revisión, el formulario no decide (reestructuración del flujo).
+ *
+ * El abogado aprobaba sobre el mismo formulario donde el área redactó; ahora
+ * se le ofrece abrir la revisión, que es donde se lee y se decide.
+ */
+describe('ContenidoEstudioPrevio · la decisión se toma en la revisión', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(contratacionService, 'revisiones').mockResolvedValue([] as never);
+    vi.spyOn(contratacionService, 'documentosDeActividad').mockResolvedValue({
+      numeral: '3.1',
+      documentos: [],
+      adicionales: [],
+      faltantes: [],
+      completo: true,
+      puedeCargar: false,
+    } as never);
+  });
+
+  it('ofrece abrir la revisión en vez de las tres decisiones', async () => {
+    vi.spyOn(contratacionService, 'obtenerEstudioPrevio').mockResolvedValue(
+      estudioPrevio({ revision: { abogado, puedeDecidir: true, motivo: null } }) as never,
+    );
+    const onRevisar = vi.fn();
+    render(<ContenidoEstudioPrevio procesoId="p-1" onRevisar={onRevisar} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Abrir la revisión/ }));
+
+    expect(onRevisar).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /^Aprobar$/ })).toBeNull();
+  });
+});

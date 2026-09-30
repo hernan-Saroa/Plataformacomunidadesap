@@ -1,10 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Check,
   Save,
   Send,
   Lock,
-  Undo2,
   FileText,
   RotateCcw,
   CircleCheck,
@@ -18,16 +16,24 @@ import { contratacionService } from '../../services/contratacionService';
 import { CampoFormulario, RevisionEstudioPrevio } from '../../types';
 import { CampoDinamico } from './CampoDinamico';
 import { AlertaCamposFaltantes } from './AlertaCamposFaltantes';
-import { Modal } from '../shared/Modal';
+import { VerSoporte } from '../shared/VerSoporte';
+import { DecisionEstudioPrevio } from './DecisionEstudioPrevio';
 import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { RadicadoGestionDocumental } from './RadicadoGestionDocumental';
 import { usarAprobacion } from '../shared/usarAprobacion';
 import { useFirma } from '../shared/useFirma';
-import { EvidenciaFirmaOtp } from '../../types';
 
 interface Props {
   procesoId: string;
   onCambio?: () => void;
+  /**
+   * Lleva a la pantalla de revisión (reestructuración del flujo).
+   *
+   * Con ella, a quien le toca decidir se le ofrece ir a revisar en vez de
+   * decidir aquí, sobre el formulario de quien redactó. Sin ella —donde
+   * todavía no se llega por la revisión— la decisión se sigue tomando al pie.
+   */
+  onRevisar?: () => void;
 }
 
 /**
@@ -40,7 +46,7 @@ interface Props {
 /** La actividad que este panel resuelve. */
 const NUMERAL = '3.1';
 
-export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
+export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props) {
   const {
     datos,
     valores,
@@ -71,10 +77,6 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
   const [faltanDeLaLista, setFaltanDeLaLista] = useState(0);
   /** Para que la lista se relea cuando el formulario guarda o se decide. */
   const [tokenLista, setTokenLista] = useState(0);
-  const [accion, setAccion] = useState<'aprobar' | 'devolver' | 'negar' | null>(null);
-  const [observaciones, setObservaciones] = useState('');
-  const [procesando, setProcesando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   // Si alguien revisa esta actividad, para no llamar «aprobado» a lo que se
   // cerró sin que nadie decidiera.
@@ -86,7 +88,6 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
    * solo si esa actividad quedó configurada para exigirlo.
    */
   const firmaEnvio = useFirma('3.1', 'Enviar el estudio previo a revisión');
-  const firmaAprobacion = useFirma('3.4', 'Aprobar el estudio previo');
 
   const cargarAnexos = () =>
     contratacionService
@@ -198,28 +199,6 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
         ? 'El estudio previo está en revisión. Si te lo devuelven, podrás cambiar los documentos'
         : null;
 
-  const decidir = async (firma?: EvidenciaFirmaOtp) => {
-    if (!accion) return;
-    setProcesando(true);
-    setError(null);
-    try {
-      if (accion === 'aprobar') {
-        await contratacionService.aprobar(procesoId, observaciones.trim() || undefined, firma);
-      } else if (accion === 'negar') {
-        await contratacionService.negar(procesoId, observaciones.trim());
-      } else {
-        await contratacionService.devolver(procesoId, observaciones.trim());
-      }
-      setAccion(null);
-      setObservaciones('');
-      await refrescar();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setProcesando(false);
-    }
-  };
-
   return (
     // El padding va aquí y no en quien lo monta: el contenedor de la actividad
     // es una tarjeta a ras de borde, y sin esto los campos quedan pegados.
@@ -258,6 +237,7 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
               {ultimaDevolucion.revisadoPor} ·{' '}
               {new Date(ultimaDevolucion.createdAt).toLocaleDateString('es-CO')}
             </p>
+            {ultimaDevolucion.soporte ? <VerSoporte soporte={ultimaDevolucion.soporte} /> : null}
           </div>
         </div>
       )}
@@ -404,6 +384,7 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
                         {r.observaciones}
                       </p>
                     )}
+                    {r.soporte ? <VerSoporte soporte={r.soporte} /> : null}
                     <p className="text-[10px] text-gray-400 m-0 mt-0.5 tabular-nums">
                       {r.revisadoPor} · {new Date(r.createdAt).toLocaleString('es-CO')}
                     </p>
@@ -413,12 +394,6 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
             })}
           </ul>
         </section>
-      )}
-
-      {error && (
-        <p role="alert" className="text-[11.5px] font-bold text-red-600 m-0">
-          {error}
-        </p>
       )}
 
       {/* Acciones */}
@@ -460,47 +435,23 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
                 devuelve SIN_PERMISO cuando falta— y además exige ser el abogado
                 al que se le repartió el proceso. Comprobar aquí el permiso
                 suelto sería una condición más débil sobre lo mismo. */}
-            {puedoDecidir && (
-              <>
+            {/* La decisión ya no se toma sobre el formulario de quien
+                redactó: se abre la revisión, que enseña el estudio para
+                leerlo y la decisión al lado. */}
+            {puedoDecidir &&
+              (onRevisar ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setAccion('negar');
-                    setObservaciones('');
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold
-                    rounded-md border border-red-300 bg-white text-red-700 hover:bg-red-50 transition-all"
-                >
-                  <Ban className="w-3.5 h-3.5" />
-                  Negar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAccion('devolver');
-                    setObservaciones('');
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold
-                    rounded-md border border-amber-300 bg-white text-amber-700 hover:bg-amber-50 transition-all"
-                >
-                  <Undo2 className="w-3.5 h-3.5" />
-                  Devolver
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAccion('aprobar');
-                    setObservaciones('');
-                  }}
+                  onClick={onRevisar}
                   className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-[11.5px] font-extrabold
-                    rounded-md text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm
-                    active:scale-95 transition-all"
+                    rounded-md text-white bg-[#003DA5] shadow-sm active:scale-95 transition-all"
                 >
-                  <Check className="w-3.5 h-3.5" strokeWidth={3} />
-                  Aprobar
+                  <ClipboardCheck className="w-3.5 h-3.5" />
+                  Abrir la revisión
                 </button>
-              </>
-            )}
+              ) : (
+                <DecisionEstudioPrevio procesoId={procesoId} onDecidido={refrescar} />
+              ))}
           </>
         ) : (
           <>
@@ -550,104 +501,8 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio }: Props) {
         )}
       </div>
 
-      <Modal
-        isOpen={accion !== null}
-        onClose={() => setAccion(null)}
-        title={
-          accion === 'aprobar'
-            ? 'Aprobar estudio previo'
-            : accion === 'negar'
-              ? 'Negar el proceso'
-              : 'Devolver para corrección'
-        }
-        description={
-          accion === 'aprobar'
-            ? 'El proceso podrá continuar a las etapas siguientes'
-            : accion === 'negar'
-              ? // Se dice lo que de verdad va a pasar, y que no tiene vuelta:
-                // es la única decisión de la pantalla que no se puede deshacer.
-                'La contratación no procede. El proceso termina aquí y no admite reenvío.'
-              : 'El área podrá corregirlo y volver a enviarlo'
-        }
-        icon={
-          accion === 'aprobar' ? (
-            <Check className="w-5 h-5 text-white" strokeWidth={3} />
-          ) : accion === 'negar' ? (
-            <Ban className="w-5 h-5 text-white" />
-          ) : (
-            <Undo2 className="w-5 h-5 text-white" />
-          )
-        }
-        color={accion === 'aprobar' ? '#059669' : accion === 'negar' ? '#B91C1C' : '#D97706'}
-        size="medium"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() =>
-                accion === 'aprobar' ? firmaAprobacion.conFirma(decidir) : decidir()
-              }
-              disabled={procesando || (accion !== 'aprobar' && !observaciones.trim())}
-              className={`px-3.5 py-2 text-xs font-extrabold rounded-lg text-white shadow-sm
-                active:scale-95 disabled:opacity-50 transition-all ${
-                  accion === 'aprobar'
-                    ? 'bg-emerald-600 hover:bg-emerald-700'
-                    : accion === 'negar'
-                      ? 'bg-red-700 hover:bg-red-800'
-                      : 'bg-amber-600 hover:bg-amber-700'
-                }`}
-            >
-              {procesando
-                ? 'Procesando…'
-                : accion === 'aprobar'
-                  ? 'Confirmar'
-                  : accion === 'negar'
-                    ? 'Negar el proceso'
-                    : 'Devolver'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setAccion(null)}
-              className="px-3.5 py-2 text-xs font-bold rounded-lg border border-slate-300 bg-white text-slate-700"
-            >
-              Cancelar
-            </button>
-          </>
-        }
-      >
-        <label htmlFor="obs" className="block text-xs font-bold text-gray-600 mb-1.5">
-          {accion === 'negar' ? 'Motivo de la negativa' : 'Observaciones'}
-          {accion !== 'aprobar' && <span className="text-red-600"> *</span>}
-        </label>
-        <textarea
-          id="obs"
-          value={observaciones}
-          onChange={(e) => setObservaciones(e.target.value)}
-          placeholder={
-            accion === 'aprobar'
-              ? 'Opcional: comentarios sobre la aprobación'
-              : accion === 'negar'
-                ? 'Explica por qué la contratación no procede'
-                : 'Indica qué debe corregirse'
-          }
-          className="w-full min-h-[110px] px-3 py-2 text-sm rounded-lg border border-gray-300
-            focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
-        />
-        {accion === 'devolver' && (
-          <p className="text-[11px] text-gray-500 mt-2 mb-0">
-            Sin observaciones el área no sabría qué corregir, por eso son obligatorias.
-          </p>
-        )}
-        {accion === 'negar' && (
-          <p className="text-[11px] text-red-700 mt-2 mb-0">
-            A quien le niegan un proceso hay que decirle por qué: no va a tener ocasión de
-            preguntarlo corrigiendo. La 3.1 y la 3.2 quedan cerradas y el proceso no se reabre.
-          </p>
-        )}
-      </Modal>
 
       {firmaEnvio.modal}
-      {firmaAprobacion.modal}
     </div>
   );
 }

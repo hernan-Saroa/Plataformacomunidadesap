@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, ClipboardCheck, Undo2, X } from 'lucide-react';
+import { ArrowRight, Check, ClipboardCheck, Paperclip, Undo2, X } from 'lucide-react';
 
 import { usarAprobacion } from './usarAprobacion';
 import { useFirma } from './useFirma';
@@ -57,6 +57,13 @@ interface Props {
   onDevuelta?: (devuelta: boolean) => void;
   /** Sube de valor cuando el panel de abajo cambia el tramite, para releerlo. */
   recargarToken?: number;
+  /**
+   * A dónde pasa el proceso si se aprueba, dicho en una línea.
+   *
+   * Como el «Radicador asignado» del módulo disciplinario: aprobar es un
+   * traspaso, y decir a quién le llega lo hace visible antes de confirmar.
+   */
+  pasaA?: string | null;
 }
 
 const boton =
@@ -93,10 +100,13 @@ export function AprobacionDeLaActividad({
   onRequiereAprobacion,
   onDevuelta,
   recargarToken,
+  pasaA = null,
 }: Props) {
   const a = usarAprobacion(procesoId, numeral, onCambio, recargarToken);
   const [motivo, setMotivo] = useState('');
   const [devolviendo, setDevolviendo] = useState(false);
+  /** Las correcciones marcadas que acompañan la devolución (migración 091). */
+  const [soporte, setSoporte] = useState<File | null>(null);
 
   /**
    * La firma es de quien aprueba, no de quien envió: cada quien firma su
@@ -231,6 +241,15 @@ export function AprobacionDeLaActividad({
                 : 'Revisa los documentos antes de resolver.'}
             </p>
 
+            {pasaA && !devolviendo ? (
+              <p className="text-[11.5px] text-slate-600 m-0 flex items-start gap-1.5">
+                <ArrowRight className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-emerald-700" aria-hidden="true" />
+                <span>
+                  Si la apruebas, pasa a: <strong className="text-slate-900">{pasaA}</strong>
+                </span>
+              </p>
+            ) : null}
+
             {devolviendo ? (
               <>
                 <textarea
@@ -241,11 +260,24 @@ export function AprobacionDeLaActividad({
                   aria-label="Observaciones de la devolución"
                   className={campo}
                 />
+                <label className="flex items-center gap-1.5 text-[11.5px] font-bold text-slate-600 cursor-pointer">
+                  <Paperclip className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 truncate">
+                    {soporte ? soporte.name : 'Adjuntar las correcciones (opcional)'}
+                  </span>
+                  <input
+                    type="file"
+                    className="sr-only"
+                    aria-label="Documento con las correcciones"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx"
+                    onChange={(e) => setSoporte(e.target.files?.[0] ?? null)}
+                  />
+                </label>
                 <div className="flex flex-col gap-1.5">
                   <button
                     type="button"
                     className={`${secundario} justify-center w-full`}
-                    onClick={() => a.devolver(motivo)}
+                    onClick={() => a.devolver(motivo, soporte)}
                     disabled={a.guardando || !motivo.trim()}
                   >
                     <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
