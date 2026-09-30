@@ -46,6 +46,10 @@ interface Props {
 /** La actividad que este panel resuelve. */
 const NUMERAL = '3.1';
 
+/** El área solicitante y su jefe: el segundo se elige entre la gente del primero. */
+const CAMPO_AREA = 'area_solicitante';
+const CAMPO_JEFE = 'responsable_area';
+
 export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props) {
   const {
     datos,
@@ -132,6 +136,22 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
     }
     return Array.from(mapa.entries());
   }, [datos?.definicionCampos]);
+
+  /**
+   * El área solicitante que acota a quién se puede nombrar jefe del área.
+   * `undefined` si la configuración no pide el área: entonces no hay con qué
+   * filtrar y el selector ofrece a todos, como antes.
+   */
+  const pideArea = datos?.definicionCampos?.some((c) => c.codigo === CAMPO_AREA) ?? false;
+  const areaElegida = pideArea ? String(valores[CAMPO_AREA] ?? '') : undefined;
+
+  /** Cambiar el área deja sin jefe: el de antes pertenece a otra dependencia. */
+  const cambiarCampo = (codigo: string, valor: any) => {
+    cambiar(codigo, valor);
+    if (codigo === CAMPO_AREA && valor !== valores[CAMPO_AREA] && valores[CAMPO_JEFE]) {
+      cambiar(CAMPO_JEFE, '');
+    }
+  };
 
   if (cargando) {
     return <p className="text-xs text-slate-500 m-0 px-4 py-3">Cargando…</p>;
@@ -314,7 +334,8 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
                   valor={valores[campo.codigo]}
                   error={errores[campo.codigo]}
                   disabled={bloqueado}
-                  onChange={(v) => cambiar(campo.codigo, v)}
+                  dependencia={areaElegida}
+                  onChange={(v) => cambiarCampo(campo.codigo, v)}
                 />
               ))}
             </div>

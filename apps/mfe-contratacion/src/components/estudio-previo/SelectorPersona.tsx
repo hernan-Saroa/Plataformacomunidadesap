@@ -20,6 +20,11 @@ interface Props {
   placeholder?: string;
   disabled?: boolean;
   invalido?: boolean;
+  /**
+   * Si llega, solo se ofrecen las personas que gestión de personas tiene
+   * asignadas a esa dependencia (por nombre, como la guarda el estudio previo).
+   */
+  dependencia?: string;
 }
 
 /** Iniciales de nombre y apellido, como en los equipos de Control Interno. */
@@ -51,6 +56,7 @@ export function SelectorPersona({
   placeholder = 'Busca por nombre…',
   disabled,
   invalido,
+  dependencia,
 }: Props) {
   const [abierto, setAbierto] = useState(false);
   const [termino, setTermino] = useState('');
@@ -78,7 +84,7 @@ export function SelectorPersona({
       setCargando(true);
       setError(null);
       try {
-        setPersonas(await contratacionService.personas(termino));
+        setPersonas(await contratacionService.personas(termino, dependencia ?? ''));
       } catch (err: any) {
         setError(err.message);
         setPersonas([]);
@@ -87,7 +93,7 @@ export function SelectorPersona({
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [termino, abierto]);
+  }, [termino, abierto, dependencia]);
 
   const vacio = useMemo(
     () => !cargando && !error && personas.length === 0,
@@ -182,7 +188,11 @@ export function SelectorPersona({
 
             {vacio && (
               <li className="px-3 py-2 text-[11.5px] text-gray-400">
-                {termino ? 'Sin coincidencias' : 'No hay personas registradas'}
+                {termino
+                  ? 'Sin coincidencias'
+                  : dependencia
+                    ? 'No hay personas registradas en esta dependencia'
+                    : 'No hay personas registradas'}
               </li>
             )}
 

@@ -241,7 +241,11 @@ export const contratacionService = {
   modalidades: () => pedir<Modalidad[]>('/modalidades'),
 
   /** Personas para los selectores; el termino filtra por nombre. */
-  personas: (q = '') => pedir<Persona[]>(`/personas?q=${encodeURIComponent(q)}`),
+  personas: (q = '', dependencia = '') =>
+    pedir<Persona[]>(
+      `/personas?q=${encodeURIComponent(q)}` +
+        (dependencia ? `&dependencia=${encodeURIComponent(dependencia)}` : ''),
+    ),
 
   /**
    * Modalidad que corresponde a una cuantía. Se consulta mientras se digita el
