@@ -37,7 +37,7 @@ import {
   RASGOS_DEL_MOMENTO,
   verboDeLaSituacion,
 } from '../proceso/rasgosDelMomento';
-import { TIENEN_PANEL } from '../proceso/DetalleProceso';
+import { TIENEN_PANEL } from '../proceso/actividadesConPanel';
 
 interface Props {
   /** Abre directamente el formulario del estudio previo. */
