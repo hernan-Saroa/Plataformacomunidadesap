@@ -22,6 +22,14 @@ interface Props {
  * pocas. Nombrar a una persona sin cuenta dejaría el proceso a cargo de alguien
  * que no puede abrirlo.
  */
+/** «3 procesos, 1 por revisar»: lo que lleva un abogado, dicho corto. */
+function cargaDe(a: CuentaCandidata): string {
+  const procesos = a.procesosACargo ?? 0;
+  const pendientes = a.revisionesPendientes ?? 0;
+  const lleva = procesos === 1 ? '1 proceso' : `${procesos} procesos`;
+  return pendientes ? `${lleva}, ${pendientes} por revisar` : lleva;
+}
+
 function SelectorAbogado({
   id,
   valor,
@@ -45,7 +53,20 @@ function SelectorAbogado({
       .catch((err: any) => setError(err.message));
   }, []);
 
-  const opciones = abogados.filter((a) => a.usuarioId !== excluir);
+  /*
+   * Los menos cargados primero, como la sección de profesionales del módulo
+   * disciplinario: quien reparte ve de un vistazo a quién le cabe otro
+   * proceso, en vez de repartir por orden alfabético.
+   */
+  const opciones = abogados
+    .filter((a) => a.usuarioId !== excluir)
+    .sort(
+      (x, y) =>
+        (x.revisionesPendientes ?? 0) - (y.revisionesPendientes ?? 0) ||
+        (x.procesosACargo ?? 0) - (y.procesosACargo ?? 0) ||
+        x.nombre.localeCompare(y.nombre),
+    );
+  const elegido = opciones.find((a) => a.usuarioId === valor);
 
   if (error) {
     return (
@@ -67,10 +88,16 @@ function SelectorAbogado({
         <option value="">Elige quién lo revisa…</option>
         {opciones.map((a) => (
           <option key={a.usuarioId} value={a.usuarioId}>
-            {a.nombre} · {a.usuarioNombre}
+            {a.nombre} · {cargaDe(a)}
           </option>
         ))}
       </select>
+
+      {elegido ? (
+        <p className="text-[11.5px] text-slate-500 m-0 mt-1.5">
+          {elegido.usuarioNombre} · lleva {cargaDe(elegido)}
+        </p>
+      ) : null}
 
       {abogados.length > 0 && opciones.length === 0 && (
         // Un desplegable vacío sin explicación deja sin saber si la consulta
