@@ -1,4 +1,6 @@
 export interface ContenidoPazYSalvo {
+  territorialId?: string;
+  cargoFirmante?: string;
   id: string;
   comisionadoId: string;
   nombre: string;

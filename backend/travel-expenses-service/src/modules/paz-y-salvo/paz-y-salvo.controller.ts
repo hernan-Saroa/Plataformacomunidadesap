@@ -17,7 +17,7 @@ export class PazYSalvoController {
   constructor(private readonly service: PazYSalvoService) {}
 
   @Get('personas')
-  buscar(@Query('q') q = '') { return this.service.buscarPersonas(q); }
+  buscar(@Req() req: Peticion, @Query('q') q = '') { return this.service.buscarPersonas(q, req.user); }
 
   @Get('personas/:id')
   persona(@Param('id', ParseUUIDPipe) id: string, @Req() req: Peticion) {

@@ -260,6 +260,10 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses.general.es_comisionado',
     'es_comisionado',
   ],
+  // EFDS-1311: emisores de paz y salvo (migración 463). El fallback solo abre la ruta;
+  // el servicio revalida en auth el rol activo y la territorial en cada operación.
+  COORDINADOR_COMISIONES_VIATICOS: ['travel_expenses:paz_y_salvo.manage'],
+  COORDINADOR_ADMINISTRATIVO_FINANCIERO: ['travel_expenses:paz_y_salvo.manage'],
 };
 
 @Injectable()

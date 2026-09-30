@@ -4,6 +4,8 @@ const service = path.resolve(__dirname, '../../../..');
 require(path.join(service, 'node_modules/dotenv')).config({ path: path.join(service, '.env') });
 process.env.AUTH_SERVICE_URL = 'http://127.0.0.1:3112';
 process.env.TRAVEL_EXPENSES_STORAGE_PATH = path.join(service, '.cache/efds1311/uploads');
+// Identificador FICTICIO sembrado por fixture_paz_y_salvo_territorial.sql.
+process.env.PAZ_Y_SALVO_SECCIONAL_CENTRAL_ID = '13119001';
 const { Module, ValidationPipe } = require(path.join(service, 'node_modules/@nestjs/common'));
 const { NestFactory } = require(path.join(service, 'node_modules/@nestjs/core'));
 const { TypeOrmModule } = require(path.join(service, 'node_modules/@nestjs/typeorm'));

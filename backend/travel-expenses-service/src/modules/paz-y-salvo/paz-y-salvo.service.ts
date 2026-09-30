@@ -9,6 +9,7 @@ import { PendientesService } from '../legalizacion/pendientes.service';
 import { FirmaOtpClient, CredencialesFirma } from './firma-otp.client';
 import { ContenidoPazYSalvo, PazYSalvo } from './paz-y-salvo.model';
 import { PazYSalvoPdfService } from './paz-y-salvo-pdf.service';
+import { TerritorialPazYSalvoService } from './territorial.service';
 
 export interface UsuarioFirma { userId: string; username?: string }
 export const sha256 = (data: string | Buffer) => createHash('sha256').update(data).digest('hex');
@@ -20,22 +21,27 @@ export class PazYSalvoService {
     private readonly pendientes: PendientesService,
     private readonly otp: FirmaOtpClient,
     private readonly pdf: PazYSalvoPdfService,
+    private readonly territorial: TerritorialPazYSalvoService,
   ) {}
 
-  buscarPersonas(texto: string) {
+  async buscarPersonas(texto: string, usuario: UsuarioFirma) {
+    const ambito = await this.territorial.emisor(this.db.manager, usuario.userId);
     if (texto.trim().length < 2) return [];
     return this.db.query(`SELECT id, numero_documento AS documento,
       concat_ws(' ', primer_nombre, segundo_nombre, primer_apellido, segundo_apellido) AS nombre
-      FROM travel_expenses.comisionados WHERE numero_documento ILIKE $1 OR
-      concat_ws(' ', primer_nombre, segundo_nombre, primer_apellido, segundo_apellido) ILIKE $1
-      ORDER BY primer_nombre, id LIMIT 30`, [`%${texto.trim().slice(0, 100)}%`]);
+      FROM travel_expenses.comisionados c WHERE (numero_documento ILIKE $1 OR
+      concat_ws(' ', primer_nombre, segundo_nombre, primer_apellido, segundo_apellido) ILIKE $1)
+      AND (SELECT count(*) FROM auth.personas p WHERE p.num_identificacion=c.numero_documento)=1
+      AND EXISTS (SELECT 1 FROM auth.personas p WHERE p.num_identificacion=c.numero_documento AND p.id_seccional=$2::bigint)
+      ORDER BY primer_nombre, id LIMIT 30`, [`%${texto.trim().slice(0, 100)}%`, ambito.territorialId]);
   }
 
   async consultarPersona(id: string, usuario: UsuarioFirma) {
+    const ambito = await this.territorial.autorizar(this.db.manager, usuario.userId, id);
     await this.persona(this.db.manager, id);
     const pendientes = await this.pendientes.tieneLegalizacionesPendientes(id);
     const documentos: PazYSalvo[] = await this.db.query(
-      'SELECT * FROM travel_expenses.paz_y_salvos WHERE comisionado_id = $1 ORDER BY creado_en DESC', [id]);
+      "SELECT * FROM travel_expenses.paz_y_salvos WHERE comisionado_id = $1 AND contenido->>'territorialId'=$2 ORDER BY creado_en DESC", [id, ambito.territorialId]);
     // La consulta de documentos también deja traza en el servidor.
     await this.db.transaction(async m => {
       for (const doc of documentos) await this.evento(m, doc.id, usuario.userId, 'CONSULTADO');
@@ -45,12 +51,14 @@ export class PazYSalvoService {
 
   async solicitar(comisionadoId: string, usuario: UsuarioFirma) {
     return this.db.transaction(async m => {
+      const ambito = await this.territorial.autorizar(m, usuario.userId, comisionadoId);
       const persona = await this.persona(m, comisionadoId);
       await this.sinPendientes(m, comisionadoId);
       const id = randomUUID();
       const contenido: ContenidoPazYSalvo = {
         id, comisionadoId, nombre: persona.nombre, documento: persona.documento,
-        coordinadoraId: usuario.userId, coordinadoraNombre: usuario.username || usuario.userId,
+        coordinadoraId: usuario.userId, coordinadoraNombre: ambito.nombreFirmante,
+        territorialId: ambito.territorialId, cargoFirmante: ambito.cargoFirmante,
         solicitadoEn: new Date().toISOString(),
       };
       const [doc] = await m.query(`INSERT INTO travel_expenses.paz_y_salvos
@@ -64,6 +72,7 @@ export class PazYSalvoService {
 
   async solicitarOtp(id: string, usuario: UsuarioFirma, credenciales: CredencialesFirma) {
     const doc = await this.documento(this.db.manager, id);
+    await this.territorial.autorizar(this.db.manager, usuario.userId, doc.comisionado_id, doc.contenido.territorialId ?? '');
     this.puedeFirmar(doc, usuario);
     await this.sinPendientes(this.db.manager, doc.comisionado_id);
     const result = await this.otp.solicitar(this.contexto(doc), credenciales);
@@ -73,6 +82,7 @@ export class PazYSalvoService {
 
   async firmar(id: string, code: string, usuario: UsuarioFirma, credenciales: CredencialesFirma) {
     const doc = await this.documento(this.db.manager, id);
+    await this.territorial.autorizar(this.db.manager, usuario.userId, doc.comisionado_id, doc.contenido.territorialId ?? '');
     this.puedeFirmar(doc, usuario);
     await this.sinPendientes(this.db.manager, doc.comisionado_id);
     // Verificación servidor a servidor: nunca se acepta evidencia enviada por el navegador.
@@ -90,6 +100,8 @@ export class PazYSalvoService {
         // Bloqueo breve exclusivamente durante consulta y commit, sin red ni generación PDF.
         // Impide que se pague/inserte una comisión entre la comprobación y la emisión.
         await m.query('LOCK TABLE travel_expenses.solicitudes_comision, travel_expenses.config_legalizacion IN SHARE MODE');
+        await m.query('LOCK TABLE auth."user", auth.personas, auth.seccionales, auth.user_roles, auth.role, auth.role_permissions, auth.permission, travel_expenses.comisionados IN SHARE MODE');
+        await this.territorial.autorizar(m, usuario.userId, actual.comisionado_id, actual.contenido.territorialId ?? '');
         await this.sinPendientes(m, actual.comisionado_id);
         const [filas] = await m.query(`UPDATE travel_expenses.paz_y_salvos
           SET firma=$2, firmado_en=$3, archivo_sha256=$4 WHERE id=$1 RETURNING *`,
@@ -108,6 +120,7 @@ export class PazYSalvoService {
 
   async detalle(id: string, usuario: UsuarioFirma) {
     const doc = await this.documento(this.db.manager, id);
+    await this.territorial.autorizar(this.db.manager, usuario.userId, doc.comisionado_id, doc.contenido.territorialId ?? '');
     await this.evento(this.db.manager, id, usuario.userId, 'CONSULTADO');
     const eventos = await this.db.query('SELECT * FROM travel_expenses.paz_y_salvo_eventos WHERE paz_y_salvo_id=$1 ORDER BY id', [id]);
     return { ...doc, eventos };
@@ -115,6 +128,7 @@ export class PazYSalvoService {
 
   async descargar(id: string, usuario: UsuarioFirma): Promise<Buffer> {
     const doc = await this.documento(this.db.manager, id);
+    await this.territorial.autorizar(this.db.manager, usuario.userId, doc.comisionado_id, doc.contenido.territorialId ?? '');
     if (!doc.firmado_en || !doc.archivo_sha256) throw new ConflictException('El documento aún no está firmado');
     let bytes: Buffer;
     try { bytes = await readFile(this.archivo(id, doc.archivo_sha256)); }
