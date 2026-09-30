@@ -875,3 +875,31 @@
     top: 1rem;
   }
 }
+
+/* --------------------------------------------- ficha del proceso ---------- */
+
+/*
+ * El recorrido y el equipo, uno al lado del otro desde 1100px. El equipo es
+ * corto y consultado de pasada; el recorrido es lo que se lee.
+ */
+.ficha-proceso {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.ficha-proceso > * {
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .ficha-proceso {
+    grid-template-columns: minmax(0, 1fr) 19rem;
+  }
+}
+
+/* Quién o cuándo, a la derecha de cada actividad: sin comerse el nombre. */
+.ficha-linea {
+  max-width: 45%;
+}

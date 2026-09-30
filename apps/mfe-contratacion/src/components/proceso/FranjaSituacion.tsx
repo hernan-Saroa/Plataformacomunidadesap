@@ -12,6 +12,11 @@ interface Props {
   /** La actividad que está abierta, para no ofrecer ir a donde ya se está. */
   abierta?: string | null;
   onIr?: (numeral: string) => void;
+  /**
+   * Abre la revisión. Si lo que le toca a quien mira es decidir, la franja lo
+   * lleva a la pantalla de revisión y no al formulario de quien redactó.
+   */
+  onRevisar?: (numeral: string) => void;
   /** Los plazos que aprietan en este proceso, el más urgente primero. */
   plazos?: PlazoDeActividad[];
 }
@@ -33,10 +38,11 @@ function haceCuanto(iso: string): string {
  * mismo en una línea —qué pasa, a quién le toca, por qué espera y desde
  * cuándo no se mueve— y lleva a la actividad con un clic.
  */
-export function FranjaSituacion({ situacion, abierta = null, onIr, plazos = [] }: Props) {
+export function FranjaSituacion({ situacion, abierta = null, onIr, onRevisar, plazos = [] }: Props) {
   const rasgos = RASGOS_DEL_MOMENTO[situacion.momento];
   const { Icono } = rasgos;
-  const puedeIr = !!onIr && !!situacion.numeral && situacion.numeral !== abierta;
+  const aRevisar = situacion.teToca && situacion.momento === 'revision' && !!onRevisar;
+  const puedeIr = aRevisar || (!!onIr && !!situacion.numeral && situacion.numeral !== abierta);
 
   return (
     <section
@@ -95,7 +101,7 @@ export function FranjaSituacion({ situacion, abierta = null, onIr, plazos = [] }
       {puedeIr ? (
         <button
           type="button"
-          onClick={() => onIr!(situacion.numeral!)}
+          onClick={() => (aRevisar ? onRevisar!(situacion.numeral!) : onIr!(situacion.numeral!))}
           className={`self-center inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-bold rounded-lg
             transition-colors ${
               situacion.teToca
@@ -103,7 +109,7 @@ export function FranjaSituacion({ situacion, abierta = null, onIr, plazos = [] }
                 : 'bg-white border border-gray-200 text-slate-700 hover:border-[#003DA5]/30 hover:text-[#003DA5]'
             }`}
         >
-          Ir a la actividad {situacion.numeral}
+          {aRevisar ? 'Revisar' : `Ir a la actividad ${situacion.numeral}`}
           <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
       ) : null}

@@ -45,8 +45,9 @@ import { Modal } from '../shared/Modal';
 import { PanelAuditoria } from '../auditoria/PanelAuditoria';
 import { esSoloPresupuesto, useAlcance } from '../../auth/alcance';
 import { useResponsables } from '../../auth/responsables';
-import { situacionDelProceso } from './situacionDelProceso';
+import { EntradaSituacion, situacionDelProceso } from './situacionDelProceso';
 import { FranjaSituacion } from './FranjaSituacion';
+import { FichaDelProceso } from './FichaDelProceso';
 import { usePlazos } from '../../hooks/usePlazos';
 
 /**
@@ -210,6 +211,16 @@ export function DetalleProceso({
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandida, setExpandida] = useState<string | null>(actividadInicial);
+  /**
+   * Seguir el proceso o trabajar una actividad (reestructuración del flujo).
+   *
+   * Se entra por la ficha, que dice cómo va y quién sigue. Quien llega a hacer
+   * algo concreto —desde «Mi trabajo», una alerta o la franja— entra directo a
+   * trabajar esa actividad.
+   */
+  const [vista, setVista] = useState<'seguimiento' | 'trabajo'>(
+    actividadInicial ? 'trabajo' : 'seguimiento',
+  );
   /**
    * Si ya se abrió la actividad en curso al entrar.
    *
@@ -556,7 +567,7 @@ export function DetalleProceso({
    * Se calcula aquí y no en la franja porque la franja no sabe del catálogo ni
    * del estado del estudio previo; esta pantalla ya los tiene.
    */
-  const situacion = situacionDelProceso({
+  const entradaSituacion: EntradaSituacion = {
     pasos: catalogoDelProceso.map((act: any, i: number) => ({
       ...flujo[i],
       nombre: act.nombre,
@@ -568,7 +579,8 @@ export function DetalleProceso({
     radicadoPorMi: datos.proceso.radicadoPorMi,
     responsables,
     puedo: alcanceCargado ? puede : undefined,
-  });
+  };
+  const situacion = situacionDelProceso(entradaSituacion);
 
   const delCatalogo: ActividadEtapa[] = catalogoDelProceso.map(
     (act: any) => {
@@ -734,6 +746,19 @@ export function DetalleProceso({
     setExpandida(numeral);
   };
 
+  /** Trabajar una actividad: cambia a la vista de trabajo y la abre. */
+  const trabajarEn = (numeral: string) => {
+    setVista('trabajo');
+    abrirActividad(numeral);
+  };
+
+  /** Por qué una actividad todavía no se puede trabajar, o `null`. */
+  const motivoDe = (numeral: string): string | null => {
+    const act = actividades.find((a) => a.numeral === numeral);
+    if (!act || act.disponible) return null;
+    return motivoDelBloqueo(numeral, flujo) ?? act.detalle ?? 'Esta actividad todavía no está habilitada';
+  };
+
   // La cuantía se muestra en la cabecera porque desde EFDS-1147 es dato del
   // proceso, no del estudio previo, y de ella depende la modalidad aplicable.
   // `numeric` puede llegar como string desde el driver, así que un
@@ -804,19 +829,47 @@ export function DetalleProceso({
 
           <FranjaSituacion
             situacion={situacion}
-            abierta={expandida}
-            onIr={abrirActividad}
+            abierta={vista === 'trabajo' ? expandida : null}
+            onIr={trabajarEn}
+            onRevisar={onRevisar}
             plazos={plazos.get(procesoId) ?? []}
           />
 
           <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
-            <LineaDeTiempoEtapas
-              etapaActual={etapaActual}
-              etapaSeleccionada={etapaVista}
-              onSeleccionar={elegirEtapa}
-              avance={avance}
-              soloEstas={recortado ? ETAPAS_DE_LA_FINANCIERA : undefined}
-            />
+            {/* Seguir o trabajar: dos formas de estar en el proceso. */}
+            <div className="inline-flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5" role="tablist" aria-label="Vista del proceso">
+              {(
+                [
+                  { id: 'seguimiento' as const, etiqueta: 'Seguimiento' },
+                  { id: 'trabajo' as const, etiqueta: 'Trabajar' },
+                ]
+              ).map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={vista === v.id}
+                  onClick={() => setVista(v.id)}
+                  className={`px-3 py-1 rounded-md text-[12px] font-bold transition-colors ${
+                    vista === v.id ? 'bg-white text-[#003DA5] shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {v.etiqueta}
+                </button>
+              ))}
+            </div>
+
+            {vista === 'trabajo' ? (
+              <LineaDeTiempoEtapas
+                etapaActual={etapaActual}
+                etapaSeleccionada={etapaVista}
+                onSeleccionar={elegirEtapa}
+                avance={avance}
+                soloEstas={recortado ? ETAPAS_DE_LA_FINANCIERA : undefined}
+              />
+            ) : (
+              <span className="flex-1" />
+            )}
 
             {/* Solo a quien se le recortó: para los demás sería un interruptor
                 que no apaga nada. */}
@@ -852,7 +905,7 @@ export function DetalleProceso({
             {modificaciones && (modificaciones.disponible || etapaVista >= 9) && (
               <button
                 type="button"
-                onClick={() => abrirActividad(NUMERAL_MODIFICACIONES)}
+                onClick={() => trabajarEn(NUMERAL_MODIFICACIONES)}
                 aria-pressed={expandida === NUMERAL_MODIFICACIONES}
                 title={
                   modificaciones.disponible
@@ -922,6 +975,31 @@ export function DetalleProceso({
           Dónde acaba cayendo la tarjeta lo decide `layout.css` según el ancho
           disponible: columna propia con sitio, o franja completa al final
           cuando el expediente ya ocupa la tercera. */}
+      {vista === 'seguimiento' ? (
+        <>
+          <FichaDelProceso
+            procesoId={procesoId}
+            actividades={actividades.filter((a) => a.numeral !== NUMERAL_MODIFICACIONES)}
+            entrada={entradaSituacion}
+            situacion={situacion}
+            etapaActual={etapaActual}
+            participacion={participacion}
+            plazos={plazos.get(procesoId) ?? []}
+            onAbrir={trabajarEn}
+            onCambio={() => setTokenExpediente((t) => t + 1)}
+            motivoDe={motivoDe}
+          />
+          {expedienteAbierto && (
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <PanelExpediente
+                procesoId={procesoId}
+                editable={!aprobado && !enRevision}
+                recargarToken={tokenExpediente}
+              />
+            </div>
+          )}
+        </>
+      ) : (
       <div
         className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''} ${
           hayDecision && decisionEscondida !== expandida ? 'con-decision' : ''
@@ -1061,6 +1139,8 @@ export function DetalleProceso({
           </div>
         )}
       </div>
+
+      )}
 
       {/* La decisión apartada no desaparece: queda como burbuja, que dice que
           sigue pendiente y la devuelve de un clic. Sin ella, esconder la
