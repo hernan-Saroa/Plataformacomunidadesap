@@ -20,6 +20,7 @@ import { Accion } from '../../auth/alcance';
 import { AlcanceService } from '../../auth/alcance.service';
 import { AsignarAbogadoDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
 import { CdpService } from '../cdp/cdp.service';
+import { respondeElAsignado } from './quien-responde';
 
 /** Una cuenta a la que se le puede dar un papel en un proceso. */
 export interface CuentaCandidata {
@@ -29,6 +30,14 @@ export interface CuentaCandidata {
   nombre: string;
   cargo: string | null;
   email: string | null;
+}
+
+/** Lo que lleva un abogado, para repartir con criterio. */
+export interface CargaDeAbogado {
+  /** Procesos en los que es el abogado vigente. */
+  procesosACargo: number;
+  /** De esos, cuántos tienen el estudio previo esperando su decisión. */
+  revisionesPendientes: number;
 }
 
 /**
@@ -187,8 +196,44 @@ export class ParticipacionService {
    * que el administrador puede renombrar o desdoblar mañana desde el
    * backoffice, que es justo lo que la migración 060 vino a quitar del código.
    */
-  async abogados(termino = ''): Promise<CuentaCandidata[]> {
-    return this.cuentasCon('aprobar', '3.4', termino);
+  async abogados(termino = ''): Promise<(CuentaCandidata & CargaDeAbogado)[]> {
+    const cuentas = await this.cuentasCon('aprobar', '3.4', termino);
+    const carga = await this.cargaDeAbogados();
+
+    /*
+     * Con su carga, como la sección «Profesionales» del módulo disciplinario:
+     * quien reparte elige mejor si ve que uno lleva diez procesos y otro dos,
+     * y cuántos estudios previos le esperan ahora mismo.
+     */
+    return cuentas.map((c) => {
+      const suya =
+        carga.get(`id:${c.usuarioId}`) ?? carga.get(`nombre:${c.usuarioNombre.trim().toLowerCase()}`);
+      return { ...c, procesosACargo: suya?.procesos ?? 0, revisionesPendientes: suya?.pendientes ?? 0 };
+    });
+  }
+
+  /** Cuántos procesos lleva cada abogado y cuántos estudios previos le esperan. */
+  private async cargaDeAbogados(): Promise<Map<string, { procesos: number; pendientes: number }>> {
+    const filas: { usuario_id: string | null; usuario_nombre: string; procesos: string; pendientes: string }[] =
+      await this.dataSource.query(
+        `SELECT pp.usuario_id::text AS usuario_id,
+                pp.usuario_nombre,
+                count(DISTINCT pp.proceso_id) AS procesos,
+                count(DISTINCT pp.proceso_id) FILTER (WHERE pa.estado = 'EN_REVISION') AS pendientes
+           FROM hiring.participaciones_proceso pp
+           LEFT JOIN hiring.proceso_actividades pa
+                  ON pa.proceso_id = pp.proceso_id AND pa.numeral = '3.1'
+          WHERE pp.papel = 'ABOGADO' AND pp.estado = 'VIGENTE'
+          GROUP BY pp.usuario_id, pp.usuario_nombre`,
+      );
+
+    const carga = new Map<string, { procesos: number; pendientes: number }>();
+    for (const f of filas) {
+      const valor = { procesos: Number(f.procesos), pendientes: Number(f.pendientes) };
+      if (f.usuario_id) carga.set(`id:${f.usuario_id}`, valor);
+      carga.set(`nombre:${f.usuario_nombre.trim().toLowerCase()}`, valor);
+    }
+    return carga;
   }
 
   /**
@@ -420,9 +465,16 @@ export class ParticipacionService {
    * de aprobar se mira con el alcance de ese punto, no en general.
    */
   async quienDecide(procesoId: string, acceso: HiringAccess, numeral: string) {
+    // La regla sale de `RESPONDE_EL_ASIGNADO`, que es también lo que la
+    // pantalla lee para decir a quién le toca: si una actividad decidiera por
+    // el abogado sin figurar ahí, la pantalla nombraría a otro.
+    const regla = respondeElAsignado(numeral);
+    if (regla?.papel !== 'ABOGADO') {
+      throw new Error(`La ${numeral} no figura en RESPONDE_EL_ASIGNADO como del abogado`);
+    }
     const abogado = await this.vigente(procesoId, 'ABOGADO');
     const motivo = motivoParaNoDecidir(
-      await this.alcance.puedeEn(acceso, 'aprobar', numeral),
+      await this.alcance.puedeEn(acceso, regla.accion, numeral),
       !!abogado,
       !!abogado && esSuya(abogado, acceso),
     );

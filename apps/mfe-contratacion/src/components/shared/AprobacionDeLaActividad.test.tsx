@@ -214,8 +214,8 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
     expect(avisar).not.toHaveBeenCalledWith(true);
   });
 
-  it('se puede esconder, y solo cuando alguien sabe recogerla', async () => {
-    const esconder = vi.fn();
+  it('al aprobador el aviso lo lleva a la revisión, sin botones de decidir', async () => {
+    const onRevisar = vi.fn();
     vi.spyOn(contratacionService, 'aprobadoresDeActividad').mockResolvedValue(
       estado({ estado: 'EN_REVISION', puedoAprobar: true }) as never,
     );
@@ -223,13 +223,16 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
       <AprobacionDeLaActividad
         procesoId={PROCESO}
         numeral="5.9"
-        parte="decision"
-        onEsconder={esconder}
+        parte="aviso"
+        onRevisar={onRevisar}
       />,
     );
 
-    await userEvent.click(await screen.findByRole('button', { name: /Esconder la decisión/ }));
-    expect(esconder).toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole('button', { name: /Abrir la revisión/ }));
+    expect(onRevisar).toHaveBeenCalled();
+    // Fuera de la revisión no se decide.
+    expect(screen.queryByRole('button', { name: /^Aprobar$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Devolver/ })).toBeNull();
   });
 
   it('muestra el recorrido completo, no solo la última decisión', async () => {
@@ -271,15 +274,6 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
 
     await screen.findByText(/Se envía sola al registrar la actividad/);
     expect(screen.queryByRole('button', { name: /Ver el historial|Ver la decisión/ })).toBeNull();
-  });
-
-  it('sin quien la recoja no se ofrece esconderla', async () => {
-    // El botón desaparecería la tarjeta sin dejar burbuja: sería una forma de
-    // perder de vista lo que hay que resolver.
-    montar(estado({ estado: 'EN_REVISION', puedoAprobar: true }), 'decision', 0);
-
-    await screen.findByRole('button', { name: /Aprobar/ });
-    expect(screen.queryByRole('button', { name: /Esconder/ })).toBeNull();
   });
 });
 
@@ -381,7 +375,7 @@ describe('AprobacionDeLaActividad · quien la trabajó también decide', () => {
   it('le ofrece resolverla aunque la haya enviado él', async () => {
     montar(estado({ estado: 'EN_REVISION', esMia: true, puedoAprobar: true }));
 
-    expect(await screen.findByText('Te toca resolverla.')).toBeInTheDocument();
+    expect(await screen.findByText('Te toca resolverla en la pantalla de revisión.')).toBeInTheDocument();
   });
 
   it('y le da los botones de decidir', async () => {

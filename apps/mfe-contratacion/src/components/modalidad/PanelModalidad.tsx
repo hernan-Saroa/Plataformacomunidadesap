@@ -6,6 +6,7 @@ import { contratacionService } from '../../services/contratacionService';
 import { EstadoModalidadProceso, Modalidad } from '../../types';
 import { Aviso, Ayuda, Boton, BotonSecundario, Marco, Titulo, campo } from '../shared/PiezasPanel';
 import { momento } from '../shared/fechas';
+import { IrALaRevision, useLugarDeDecision } from '../shared/LugarDeDecision';
 import { useFirma } from '../shared/useFirma';
 
 interface Props {
@@ -34,6 +35,8 @@ const formatoPesos = new Intl.NumberFormat('es-CO', {
  * correspondía.
  */
 export function PanelModalidad({ procesoId, onCambio }: Props) {
+  // Solo se ratifica o se devuelve en la pantalla de revisión.
+  const { enLaRevision } = useLugarDeDecision();
   const firma = useFirma(NUMERAL, 'Ratificar la modalidad de contratación');
   const [estado, setEstado] = useState<EstadoModalidadProceso | null>(null);
   const [modalidades, setModalidades] = useState<Modalidad[]>([]);
@@ -217,9 +220,15 @@ export function PanelModalidad({ procesoId, onCambio }: Props) {
       )}
 
       {/* ----------------------------------------------------- el abogado -- */}
-      {enRevision && estado.puedeDecidir && !devolviendo && (
+      {/* Fuera de la revisión no se decide: se lleva a ella. */}
+      {enRevision && estado.puedeDecidir && !enLaRevision && (
+        <IrALaRevision numeral={NUMERAL} que="ratificarla" />
+      )}
+
+      {enRevision && estado.puedeDecidir && enLaRevision && !devolviendo && (
         <div className="flex items-center gap-2 flex-wrap">
           <Boton
+            decision
             icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
             disabled={guardando}
             onClick={() =>
@@ -234,6 +243,7 @@ export function PanelModalidad({ procesoId, onCambio }: Props) {
             Ratificar
           </Boton>
           <BotonSecundario
+            decision
             icono={<Undo2 className="w-3.5 h-3.5" />}
             disabled={guardando}
             onClick={() => setDevolviendo(true)}
@@ -274,6 +284,7 @@ export function PanelModalidad({ procesoId, onCambio }: Props) {
 
           <div className="flex items-center gap-2">
             <BotonSecundario
+              decision
               icono={<Undo2 className="w-3.5 h-3.5" />}
               disabled={!motivoValido || guardando}
               onClick={() =>

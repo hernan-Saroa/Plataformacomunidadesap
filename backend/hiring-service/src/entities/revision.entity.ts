@@ -40,6 +40,13 @@ export class Revision {
   @Column({ name: 'revisado_por_id', length: 120, nullable: true })
   revisadoPorId: string;
 
+  /**
+   * El archivo que acompaña una devolución (migración 091): las correcciones
+   * marcadas sobre el documento. Es de esta vuelta, no de la actividad.
+   */
+  @Column({ name: 'soporte_documento_id', type: 'uuid', nullable: true })
+  soporteDocumentoId: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }
