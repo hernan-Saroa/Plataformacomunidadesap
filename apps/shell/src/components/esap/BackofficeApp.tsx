@@ -878,7 +878,14 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'rund':
         return (
           <Suspense fallback={<ModuleLoader />}>
-            <RundModulePremium />
+            <RundModulePremium
+              userPersonId={currentUser.personId}
+              userName={currentUser.name}
+              userEmail={currentUser.email}
+              userRoles={userData?.roles || userRoles || []}
+              userPermissions={userPermissionsList}
+              embedded
+            />
           </Suspense>
         );
 
