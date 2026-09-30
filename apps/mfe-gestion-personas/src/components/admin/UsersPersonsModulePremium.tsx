@@ -608,7 +608,9 @@ export function UsersPersonsModulePremium() {
       const principalAsignacion =
         userData.asignacionesSedes?.find((a: any) => a.esPrincipal) ||
         userData.asignacionesSedes?.[0];
-      const sedeIdSeleccionada = userData.idSede || userData.sedePrincipalId || principalAsignacion?.unidadId;
+      const sedeIdSeleccionada = 'idSede' in userData
+        ? userData.idSede
+        : userData.sedePrincipalId || principalAsignacion?.unidadId;
       const sedeIdNumerica = sedeIdSeleccionada ? Number(sedeIdSeleccionada) : undefined;
       let seccionalIdNumerica = userData.idSeccional ? Number(userData.idSeccional) : undefined;
 
@@ -663,8 +665,8 @@ export function UsersPersonsModulePremium() {
         roleIds: mappedRoleIds,
         status: userData.status,
         // Agregar seccional y sede si están definidos
-         idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
-         idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
+         idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : null,
+         idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : null,
          idDependencia: userData.idDependencia ? Number(userData.idDependencia) : null,
        };
 
@@ -690,6 +692,7 @@ export function UsersPersonsModulePremium() {
       toast.error('Error al actualizar usuario', {
         description: error?.message || 'No se pudo actualizar el usuario. Intente nuevamente.'
       });
+      throw error;
     } finally {
       setLoading(false);
     }

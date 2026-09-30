@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRoles } from '../../hooks/useRoles';
-import { TERRITORIALES_ESAP } from '../../data/territoriales-cetap-completo';
 import { PROGRAMAS_ESAP } from '../../../../mfe-programas-academicos/src/data/oferta-academica-esap';
 import { estructuraService } from '../../services/estructuraService';
 import { dependenciasService } from '../../services/api/dependencias.service';
@@ -68,14 +67,22 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
   const [isLoadingDependencias, setIsLoadingDependencias] = useState(false);
 
   useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
     setIsLoadingEstructura(true);
     estructuraService.obtenerEstructura().then(res => {
+      if (!active) return;
       setSeccionales(res.data?.seccionales || []);
       setSedes(res.data?.sedes || []);
     }).catch(err => {
       console.error('Error cargando estructura organizacional:', err);
+      if (active) {
+        setSeccionales([]);
+        setSedes([]);
+        toast.error('No se pudo cargar Estructura Organizacional');
+      }
     }).finally(() => {
-      setIsLoadingEstructura(false);
+      if (active) setIsLoadingEstructura(false);
     });
 
     setIsLoadingDependencias(true);
@@ -85,7 +92,8 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
     }).finally(() => {
       setIsLoadingDependencias(false);
     });
-  }, []);
+    return () => { active = false; };
+  }, [isOpen]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -244,9 +252,13 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
         newErrors.role = 'Requerido';
         errorMessage = 'Debe seleccionar un rol institucional.';
       }
-      if (!formData.idSeccional && !formData.idSede) {
-        newErrors.idSede = 'Requerido';
-        errorMessage = 'Debe seleccionar al menos la territorial o sede.';
+      if (formData.idSeccional && !seccionales.some(sec => Number(sec.idSeccional) === formData.idSeccional)) {
+        newErrors.idSeccional = 'Seleccione una territorial del catálogo';
+        errorMessage = 'La territorial seleccionada ya no está disponible en Estructura Organizacional.';
+      }
+      if (formData.idSede && !sedes.some(sede => Number(sede.idSede) === formData.idSede && Number(sede.idSeccional) === formData.idSeccional)) {
+        newErrors.idSede = 'Seleccione un CETAP de la territorial';
+        errorMessage = 'El CETAP seleccionado no pertenece a la territorial de la cuenta.';
       }
 
       if (formData.role === 'Estudiante' && !formData.program) {
@@ -467,18 +479,22 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
 
                       <div className="md:col-span-2">
                          <div className="border-t border-gray-200 pt-4 mt-2">
-                           <h4 className="font-semibold text-gray-800 mb-3 text-sm">Asignación de Sede <span className="text-red-500">*</span></h4>
+                           <h4 className="font-semibold text-gray-800 mb-3 text-sm">Asignación de Sede</h4>
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                              <div>
-                               <InputLabel label="Territorial (Seccional)" required />
+                               <InputLabel label="Territorial (Seccional)" />
                                <select 
                                  value={formData.idSeccional || ''} 
                                  onChange={(e) => {
-                                   handleChange('idSeccional', e.target.value ? Number(e.target.value) : undefined);
-                                   // Resetear la sede al cambiar territorial
-                                   handleChange('idSede', undefined);
+                                   const idSeccional = e.target.value ? Number(e.target.value) : undefined;
+                                   setFormData(prev => ({
+                                     ...prev, idSeccional, idSede: undefined,
+                                     sedePrincipalId: undefined, asignacionesSedes: [],
+                                     territorial: seccionales.find(sec => Number(sec.idSeccional) === idSeccional)?.nomSeccional || '',
+                                   }));
+                                   setErrors(prev => ({ ...prev, idSeccional: '', idSede: '' }));
                                  }} 
-                                 className={inputClass(!!errors.idSede)}
+                                 className={inputClass(!!errors.idSeccional)}
                                  disabled={isLoadingEstructura}
                                >
                                  <option value="">Seleccionar territorial...</option>
@@ -486,12 +502,17 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
                                    <option key={sec.idSeccional} value={sec.idSeccional}>{sec.nomSeccional}</option>
                                  ))}
                                </select>
+                               {errors.idSeccional && <p className="mt-1 text-xs text-red-500">{errors.idSeccional}</p>}
                              </div>
                              <div>
                                <InputLabel label="CETAP (Sede)" />
                                <select 
                                  value={formData.idSede || ''} 
-                                 onChange={(e) => handleChange('idSede', e.target.value ? Number(e.target.value) : undefined)} 
+                                 onChange={(e) => {
+                                   const idSede = e.target.value ? Number(e.target.value) : undefined;
+                                   setFormData(prev => ({ ...prev, idSede, sedePrincipalId: idSede ? String(idSede) : undefined, asignacionesSedes: [] }));
+                                   setErrors(prev => ({ ...prev, idSede: '' }));
+                                 }}
                                  className={inputClass(false)}
                                  disabled={isLoadingEstructura || !formData.idSeccional}
                                >
@@ -566,10 +587,11 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
                     <div><InputLabel label="Horas Asignables" /><input type="number" value={formData.horasAsignables} onChange={(e) => handleChange('horasAsignables', e.target.value)} className={inputClass(false)} /></div>
                     <div>
                       <InputLabel label="Territorial" />
-                      <select value={formData.territorial} onChange={(e) => handleChange('territorial', e.target.value)} className={inputClass(false)}>
+                      <select value={formData.idSeccional || ''} className={inputClass(false)} disabled>
                         <option value="">Seleccionar territorial...</option>
-                        {TERRITORIALES_ESAP.map(t => <option key={t.codigo} value={t.nombre}>{t.nombre}</option>)}
+                        {seccionales.map(sec => <option key={sec.idSeccional} value={sec.idSeccional}>{sec.nomSeccional}</option>)}
                       </select>
+                      <p className="mt-1 text-xs text-gray-500">Se define en Información Institucional.</p>
                     </div>
                     <div><InputLabel label="Pregrado" /><input type="text" value={formData.pregradoDetalle} onChange={(e) => handleChange('pregradoDetalle', e.target.value)} className={inputClass(false)} /></div>
                     <div><InputLabel label="Doctorado" /><input type="text" value={formData.doctoradoDetalle} onChange={(e) => handleChange('doctoradoDetalle', e.target.value)} className={inputClass(false)} /></div>
