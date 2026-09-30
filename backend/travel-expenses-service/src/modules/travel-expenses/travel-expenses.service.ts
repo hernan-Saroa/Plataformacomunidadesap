@@ -58,6 +58,7 @@ import {
 } from '../../common/sanitize.util';
 import { getClientIp } from '../../common/ip.util';
 import { getUploadRootDir } from '../../common/storage.util';
+import { aYMDUtc } from '../../common/dias-habiles.util';
 import { ConfigService } from '../config/config.service';
 import {
   NotificationClientService,
@@ -74,6 +75,27 @@ import {
   CategoriaInvestigador,
 } from '../../dto/liquidation/calcular-liquidacion.dto';
 import { TicketsService } from '../tickets/tickets.service';
+
+/**
+ * Estados que no corresponden a una comisión activa y, por tanto, no generan
+ * duplicidad para el mismo comisionado (EFDS-1284).
+ */
+const ESTADOS_NO_ACTIVOS_DUPLICIDAD = [
+  EstadoSolicitud.CANCELADA,
+  EstadoSolicitud.RECHAZADO,
+];
+
+/**
+ * Solapamiento por día calendario, incluyendo el último día de ambas comisiones
+ * (una comisión que termina el día en que otra inicia también se cruza).
+ */
+const CONDICION_SOLAPAMIENTO_DIAS =
+  's.fecha_inicio::date <= CAST(:fechaFin AS date) AND s.fecha_fin::date >= CAST(:fechaInicio AS date)';
+
+/** Parámetros de CONDICION_SOLAPAMIENTO_DIAS como fecha calendario (YYYY-MM-DD). */
+function rangoSolapamiento(inicio: Date | string, fin: Date | string) {
+  return { fechaInicio: aYMDUtc(inicio), fechaFin: aYMDUtc(fin) };
+}
 
 function esDiaHabil(fecha: Date): boolean {
   const dia = fecha.getDay();
@@ -1802,10 +1824,10 @@ export class TravelExpensesService {
         .where('s.comisionado_id = :comisionadoId', {
           comisionadoId: dto.comisionadoId,
         })
-        .andWhere(
-          `(s.fecha_inicio, s.fecha_fin) OVERLAPS (:fechaInicio, :fechaFin)`,
-          { fechaInicio, fechaFin },
-        )
+        .andWhere('s.estado_solicitud NOT IN (:...estadosNoActivos)', {
+          estadosNoActivos: ESTADOS_NO_ACTIVOS_DUPLICIDAD,
+        })
+        .andWhere(CONDICION_SOLAPAMIENTO_DIAS, rangoSolapamiento(fechaInicio, fechaFin))
         .getOne();
 
       if (solapamiento) {
@@ -2430,10 +2452,10 @@ if (dto.costoEstimadoTiquete !== undefined) {
         comisionadoId: solicitud.comisionadoId,
       })
       .andWhere('s.id <> :solicitudId', { solicitudId: solicitud.id })
-      .andWhere(
-        `(s.fecha_inicio, s.fecha_fin) OVERLAPS (:fechaInicio, :fechaFin)`,
-        { fechaInicio, fechaFin },
-      )
+      .andWhere('s.estado_solicitud NOT IN (:...estadosNoActivos)', {
+        estadosNoActivos: ESTADOS_NO_ACTIVOS_DUPLICIDAD,
+      })
+      .andWhere(CONDICION_SOLAPAMIENTO_DIAS, rangoSolapamiento(fechaInicio, fechaFin))
       .getOne();
 
     if (solapamiento) {
@@ -2740,10 +2762,10 @@ if (dto.costoEstimadoTiquete !== undefined) {
         comisionadoId: solicitud.comisionadoId,
       })
       .andWhere('s.id <> :solicitudId', { solicitudId: solicitud.id })
-      .andWhere(
-        `(s.fecha_inicio, s.fecha_fin) OVERLAPS (:fechaInicio, :fechaFin)`,
-        { fechaInicio: solicitud.fechaInicio, fechaFin: solicitud.fechaFin },
-      )
+      .andWhere('s.estado_solicitud NOT IN (:...estadosNoActivos)', {
+        estadosNoActivos: ESTADOS_NO_ACTIVOS_DUPLICIDAD,
+      })
+      .andWhere(CONDICION_SOLAPAMIENTO_DIAS, rangoSolapamiento(solicitud.fechaInicio, solicitud.fechaFin))
       .getOne();
 
     if (solapamiento) {
@@ -3146,10 +3168,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
       .where('s.comisionado_id = :comisionadoId', {
         comisionadoId: comisionado.id,
       })
-      .andWhere(
-        `(s.fecha_inicio, s.fecha_fin) OVERLAPS (:fechaInicio, :fechaFin)`,
-        { fechaInicio, fechaFin },
-      )
+      .andWhere(CONDICION_SOLAPAMIENTO_DIAS, rangoSolapamiento(fechaInicio, fechaFin))
       .andWhere('s.estado_solicitud NOT IN (:...estadosExcluidos)', {
         estadosExcluidos: [EstadoSolicitud.CANCELADA, EstadoSolicitud.RECHAZADO],
       });
