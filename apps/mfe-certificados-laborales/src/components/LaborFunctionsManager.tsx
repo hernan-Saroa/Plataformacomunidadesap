@@ -37,6 +37,7 @@ import {
   type LaborFunctionProfileApi,
   type LaborFunctionProfilePayloadApi,
 } from '../../services/api/certificados.service';
+import { splitFunctions } from './laborFunctionText';
 
 type EditorState = { id?: string; idNumber: string; functions: string };
 
@@ -137,25 +138,7 @@ const normalizeDocument = (value: unknown) => {
   const digits = raw.replace(/[.\s-]/g, '');
   return /^\d{1,50}$/.test(digits) ? digits : '';
 };
-const extractFunctionItems = (value: unknown): string[] => {
-  const values = Array.isArray(value) ? value : String(value ?? '').replace(/\r\n?/g, '\n').split(/\n+|[•]/);
-  return values.filter(item => typeof item === 'string').map(item => item
-    .replace(/^\s*(?:funci[oó]n\s*)?\d{1,3}[.)-]\s+/i, '')
-    .replace(/^[\s\u2022\-–—]+/, '').replace(/\s+/g, ' ').replace(/\s+([,.;:])/g, '$1').trim(),
-  ).filter(Boolean);
-};
-
-const splitFunctions = (value: unknown): string[] => {
-  const seen = new Set<string>();
-  return extractFunctionItems(value).filter((item) => {
-    const key = normalizeMatchText(item);
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-};
-
-const functionPreviewCount = (value: unknown) => extractFunctionItems(value).length;
+const functionPreviewCount = (value: unknown) => splitFunctions(value).length;
 
 const splitBulkRequestRows = (
   rows: LaborFunctionProfilePayloadApi[],
@@ -424,7 +407,7 @@ export function LaborFunctionsManager({ canManage = false }: LaborFunctionsManag
   const operationSuccessNoticeRef = React.useRef<HTMLDivElement | null>(null);
 
   const editorErrors = React.useMemo(() => editor ? validateEditor(editor) : {}, [editor]);
-  const editorFunctionCount = React.useMemo(() => extractFunctionItems(editor?.functions).length, [editor?.functions]);
+  const editorFunctionCount = React.useMemo(() => splitFunctions(editor?.functions).length, [editor?.functions]);
   const selectedProfilesList = React.useMemo(() => Array.from(selectedProfiles.values()), [selectedProfiles]);
   const selectedCount = selectedProfiles.size;
   const selectedFunctionCount = React.useMemo(

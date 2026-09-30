@@ -65,7 +65,7 @@ import {
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
 import { fechaSeguimientoTarea } from './services/fechaSeguimientoTarea';
 import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
-import { corteDeLaFecha, cortesComoPeriodos, estadoDelCorte, fechaEntregaDeTarea, fechaSeguimientoPorDefecto, tareasEnElAñoDeLosCortes } from './services/cortesPlanAnual';
+import { corteDeLaFecha, corteDelInicio, cortesComoPeriodos, esTareaDelProgramaAnual, estadoDelCorte, fechaEntregaDeTarea, fechaSeguimientoPorDefecto, tareasEnElAñoDeLosCortes } from './services/cortesPlanAnual';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
 import { idPersonaParaPlanAnual, type ReferenciaPersonaPlan } from '../utils/persona-id-plan-anual';
 
@@ -701,7 +701,11 @@ function enriquecerActividadDesdeBackend(act: any, vigencia: number) {
   const tareasOriginales = ((act as any).tareasSeguimiento || (act as any).tareas_seguimiento || []) as any[];
   const tareasConCorte = normalizarTareasConCortes(tareasOriginales, puntosControlActividad).map((t: any) => ({
     ...t,
-    fechaEntrega: fechaEntregaDeTarea(t), // EFDS-958: muchas solo traen fechaLimite
+    // EFDS-958: muchas solo traen fechaLimite. Las del Programa Anual toman siempre el
+    // fin de su auditoría, no una fecha de entrega que haya quedado guardada (EFDS-2237).
+    fechaEntrega: esTareaDelProgramaAnual(t)
+      ? fechaEntregaDeTarea({ fechaLimite: t.fechaLimite || t.fecha_limite, fechaEntrega: undefined }) ?? fechaEntregaDeTarea(t)
+      : fechaEntregaDeTarea(t),
     responsables: normalizarResponsablesTarea(t.responsables),
     adjuntosTarea: normalizarAdjuntosTareaDesdeBackend(t.adjuntosTarea || t.adjuntos_tarea || []),
   }));
@@ -780,7 +784,9 @@ function alinearTareasFechasEntregaAVigencia(
   añoActividad?: number,
 ): TareaSeguimiento[] | undefined {
   if (!tareas?.length) return tareas;
+  // Las tareas del Programa Anual llevan las fechas de su auditoría: no se mueven de año (EFDS-2237)
   const años = tareas
+    .filter((t) => !esTareaDelProgramaAnual(t))
     .map((t) => t.fechaEntrega?.slice(0, 4))
     .filter((y): y is string => !!y && /^\d{4}$/.test(y))
     .map((y) => parseInt(y, 10));
@@ -790,7 +796,7 @@ function alinearTareasFechasEntregaAVigencia(
   // Tareas heredadas de una vigencia anterior a la actividad: se traen a la vigencia
   if (minAño + delta < vigencia) delta = vigencia - minAño;
   if (delta === 0) return tareas;
-  return tareas.map((t) => ({
+  return tareas.map((t) => (esTareaDelProgramaAnual(t) ? t : {
     ...t,
     fechaEntrega: t.fechaEntrega ? sumarAniosIso(t.fechaEntrega, delta) : t.fechaEntrega,
   }));
@@ -4354,9 +4360,20 @@ function Paso2({
       [...puntosNuevos].sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada))[0].fechaProgramada.slice(0, 4),
       10,
     );
-    const tareasEnAño = tareasEnElAñoDeLosCortes(tareas || [], añoCortes, añoBaseDelPlan);
+    // Las tareas del Programa Anual no se mueven de año: llevan las fechas de su auditoría (EFDS-2237)
+    const tareasPlantilla = (tareas || []).filter((t) => !esTareaDelProgramaAnual(t));
+    const plantillaEnAño = tareasEnElAñoDeLosCortes(tareasPlantilla, añoCortes, añoBaseDelPlan);
+    let iPlantilla = 0;
+    const tareasEnAño = (tareas || []).map((t) => (esTareaDelProgramaAnual(t) ? t : plantillaEnAño[iPlantilla++]));
 
     return tareasEnAño.map((tarea, tIdx) => {
+      // Tarea del Programa Anual: al corte que contiene la fecha de inicio de su auditoría,
+      // y su fecha de entrega sigue siendo el fin de la auditoría (EFDS-2237).
+      if (esTareaDelProgramaAnual(tarea)) {
+        const destino = corteDelInicio((tarea as any).fechaInicio || (tarea as any).fechaLimite, puntosNuevos);
+        return destino ? { ...tarea, puntoControlId: destino.id } : tarea;
+      }
+
       const corteViejo = puntosViejos.find((p) => p.id === tarea.puntoControlId);
       const corteNuevo = puntosNuevos.find((p) => p.id === tarea.puntoControlId);
 
@@ -5012,14 +5029,14 @@ function Paso2({
                                         </div>
                                         <button
                                           type="button"
-                                          disabled={soloLectura || cortePorVigencia}
-                                          title={cortePorVigencia ? 'Las tareas de esta actividad vienen del Programa Anual' : undefined}
+                                          disabled={soloLectura}
+                                          title={cortePorVigencia ? 'Las tareas vienen del Programa Anual: al configurar cortes, cada auditoría queda en el corte de su fecha de inicio' : undefined}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, false);
                                           }}
                                           className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-colors ${
-                                            soloLectura || cortePorVigencia
+                                            soloLectura
                                               ? 'bg-slate-400 text-slate-100 cursor-default'
                                               : 'bg-blue-600 hover:bg-blue-700 text-white'
                                           }`}

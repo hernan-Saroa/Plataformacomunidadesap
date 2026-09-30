@@ -42,6 +42,69 @@ const tieneSeguimientoRegistrado = (t: TareaSeguimientoPlan) => {
   );
 };
 
+/** Corte de seguimiento de la actividad como periodo: del `inicio` al `fin` (YYYY-MM-DD). */
+export interface CortePeriodo {
+  id: string;
+  inicio: string;
+  fin: string;
+}
+
+const esUltimoDiaDelMes = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return d === new Date(y, m, 0).getDate();
+};
+
+const diaSiguiente = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  const f = new Date(y, m - 1, d + 1);
+  return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
+};
+
+/**
+ * Cortes guardados en la actividad como periodos. Un corte guarda su inicio en
+ * `fechaProgramada` y su fin en `fechaSeguimiento` (EFDS-958). Los planes armados
+ * con la plantilla vieja guardaban la fecha de cierre del periodo (siempre el último
+ * día de un mes) y la de entrega del informe: esos se leen como periodos que van del
+ * día siguiente al cierre anterior (o del 1 de enero) hasta su cierre, igual que en
+ * la pantalla.
+ */
+export function cortesComoPeriodos(
+  puntos: Array<{ id?: unknown; fechaProgramada?: unknown; fechaSeguimiento?: unknown }>,
+): CortePeriodo[] {
+  const fecha = (v: unknown) => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
+  const validos = puntos
+    .map((p) => ({ id: p?.id != null ? String(p.id) : '', programada: fecha(p?.fechaProgramada), seguimiento: fecha(p?.fechaSeguimiento) }))
+    .filter((p): p is { id: string; programada: string; seguimiento: string | null } => !!p.id && !!p.programada)
+    .sort((a, b) => a.programada.localeCompare(b.programada));
+  if (validos.length === 0) return [];
+
+  if (validos.every((p) => esUltimoDiaDelMes(p.programada))) {
+    return validos.map((p, i) => ({
+      id: p.id,
+      inicio: i === 0 ? `${p.programada.slice(0, 4)}-01-01` : diaSiguiente(validos[i - 1].programada),
+      fin: p.programada,
+    }));
+  }
+  return validos.map((p) => ({ id: p.id, inicio: p.programada, fin: p.seguimiento ?? p.programada }));
+}
+
+/**
+ * Corte al que va la tarea de una auditoría: el que contiene la fecha de inicio de
+ * la auditoría (EFDS-2237). Si la auditoría empieza antes del primer corte va al
+ * primero; si empieza después del último (por ejemplo, en enero del año siguiente),
+ * al último. Sin cortes, la tarea no lleva corte.
+ */
+export function corteDeLaAuditoria(fechaInicio: string, cortes: CortePeriodo[]): string | null {
+  if (cortes.length === 0) return null;
+  const f = fechaInicio.slice(0, 10);
+  const contiene = cortes.find((c) => c.inicio <= f && f <= c.fin);
+  if (contiene) return contiene.id;
+  if (f < cortes[0].inicio) return cortes[0].id;
+  if (f > cortes[cortes.length - 1].fin) return cortes[cortes.length - 1].id;
+  // Cae en un hueco entre dos cortes: el siguiente que empieza después.
+  return (cortes.find((c) => c.inicio > f) ?? cortes[cortes.length - 1]).id;
+}
+
 export interface TareaSeguimientoPlan {
   id: string;
   descripcion: string;
@@ -140,20 +203,29 @@ export class ProgramaAnualRol4TareaSyncService {
         (t) => !esTareaDelPrograma(t) && (!esTareaDelUniverso(t) || tieneSeguimientoRegistrado(t)),
       );
 
+      const cortes = cortesComoPeriodos(this.parseCortes(actividad.puntos_control));
+
       const delPrograma = auditorias.map((a): TareaSeguimientoPlan => {
         const previa = previas.get(String(a.id));
         const codigo = a.codigo?.trim() || 'S/C';
         const nombre = a.nombre?.trim() || 'Auditoría sin nombre';
+        const fechaInicio = a.fecha_inicio ?? `${vigencia}-01-01`;
+        const fechaFin = a.fecha_fin ?? `${vigencia}-12-31`;
         // Lo que registró el seguimiento (completada, responsables, observaciones,
         // adjuntos…) se conserva; lo que viene de la programación se actualiza.
+        // Las fechas y el corte salen siempre de la programación (EFDS-2237): la fecha
+        // de entrega, que es la que muestran el Excel y el PDF del Plan Anual, es el
+        // fin de la auditoría, y el corte es el que contiene su fecha de inicio.
         return {
           completada: false,
           ...previa,
           ...this.responsablesDeLaTarea(a, previa),
           id: `tarea-aud-${a.id}`,
           descripcion: `Realizar auditoría: ${codigo} – ${nombre}`,
-          fechaInicio: a.fecha_inicio ?? `${vigencia}-01-01`,
-          fechaLimite: a.fecha_fin ?? `${vigencia}-12-31`,
+          fechaInicio,
+          fechaLimite: fechaFin,
+          fechaEntrega: fechaFin,
+          puntoControlId: corteDeLaAuditoria(fechaInicio, cortes),
           origen: ORIGEN_TAREA_PROGRAMA_ANUAL,
           auditoriaId: String(a.id),
         };
@@ -180,7 +252,7 @@ export class ProgramaAnualRol4TareaSyncService {
   private async obtenerActividadAuditoriasRol4(
     manager: EntityManager,
     vigencia: number,
-  ): Promise<{ id: string; tareas_seguimiento: unknown } | null> {
+  ): Promise<{ id: string; tareas_seguimiento: unknown; puntos_control: unknown } | null> {
     const rows = await manager.query(
       `SELECT a.id
        FROM control_interno.actividad_plan_anual_5 a
@@ -206,13 +278,26 @@ export class ProgramaAnualRol4TareaSyncService {
     // Si alguien está guardando la actividad en este momento no se espera ni se
     // pisa su cambio: la siguiente consulta del plan termina de sincronizar.
     const bloqueada = await manager.query(
-      `SELECT id, tareas_seguimiento
+      `SELECT id, tareas_seguimiento, puntos_control
          FROM control_interno.actividad_plan_anual_5
         WHERE id = $1
         FOR UPDATE SKIP LOCKED`,
       [rows[0].id],
     );
     return bloqueada?.[0] ?? null;
+  }
+
+  private parseCortes(raw: unknown): Array<{ id?: unknown; fechaProgramada?: unknown; fechaSeguimiento?: unknown }> {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
   }
 
   private parseTareas(raw: unknown): TareaSeguimientoPlan[] {

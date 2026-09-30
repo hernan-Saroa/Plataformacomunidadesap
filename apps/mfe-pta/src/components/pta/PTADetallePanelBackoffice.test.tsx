@@ -233,6 +233,48 @@ describe('PTADetallePanelBackoffice — visibilidad de componentes ajenos (EFDS-
     await screen.findByText('Proyecto Ajeno de Investigación');
   });
 
+  it('muestra asignaturas de otra territorial en consulta y explica el alcance asignado', async () => {
+    vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce({ success: true, data: {
+      allowedComponents: ['academica_territorial'], allowedReviewSubsecciones: [],
+      personalTerritoriales: ['Meta'],
+      territorial: {
+        aprobar: { pairs: [{ territorialId: 'Meta', nivel: 'pregrado' }], reason: null },
+        revisar: { pairs: [], reason: null },
+      },
+    } } as any);
+    const pta = basePta({ asignaturas: [
+      { nombre: 'Asignatura Meta', territorial_id: 'Meta', componente_docencia: 'academica_territorial', total_horas: 40 },
+      { nombre: 'Asignatura Tolima', territorial_id: 'Tolima', territorial_nombre: 'Meta',
+        componente_docencia: 'academica_territorial', total_horas: 40 },
+    ] });
+    render(<PTADetallePanelBackoffice {...baseProps({ pta })} />);
+    screen.getByText('Aprobación').closest('button')!.click();
+
+    await screen.findByText('Asignatura Meta');
+    expect(screen.getByText('Asignatura Tolima')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain('no le permite revisar ni aprobar');
+  });
+
+  it('muestra actividades de investigación ajenas en consulta y bloquea la decisión', async () => {
+    vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce({ success: true, data: {
+      allowedComponents: [], allowedReviewSubsecciones: [],
+      personalTerritoriales: ['Meta'],
+      territorial: { aprobar: { pairs: [], reason: null }, revisar: { pairs: [], reason: null } },
+    } } as any);
+    const pta = basePta({ asignaturas: [], investigacion_actividades: [
+      { nombre: 'Proyecto Meta', territorial_id: 'Meta', horas_total: 20 },
+      { nombre: 'Proyecto Tolima', territorial_id: 'Tolima', horas_total: 20 },
+    ] });
+    render(<PTADetallePanelBackoffice {...baseProps({ pta })} />);
+    screen.getByText('Aprobación').closest('button')!.click();
+    const header = await screen.findByText('Componente Investigación');
+    header.closest('button')!.click();
+    await screen.findByText('Proyecto Meta');
+    expect(screen.getByText('Proyecto Tolima')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain('territorial asignada');
+    expect(screen.queryByRole('button', { name: 'Aprobar' })).toBeNull();
+  });
+
   it('mantiene bloqueada la acción de aprobar/devolver sobre los componentes ajenos', async () => {
     render(<PTADetallePanelBackoffice {...baseProps()} />);
     screen.getByText('Aprobación').closest('button')!.click();

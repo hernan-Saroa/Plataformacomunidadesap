@@ -10,6 +10,8 @@ import { ConfigTipoComisionadoEntity } from '../../../entities/config/config-tip
 import { TipoDocumentoSoporteEntity } from '../../../entities/config/tipo-documento-soporte.entity';
 import { ConfigTipoComisionadoDocumentoEntity } from '../../../entities/config/config-tipo-comisionado-documento.entity';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import { CreateCampoFormularioDto } from '../../../dto/config/campo-formulario.dto';
 
 describe('ConfigService — Gestión de Campos Dinámicos y Parametrización', () => {
   let service: ConfigService;
@@ -214,4 +216,106 @@ describe('ConfigService — Gestión de Campos Dinámicos y Parametrización', (
       );
     });
   });
+
+  describe('DTO Transformation — opciones para SELECT', () => {
+    it('debe transformar opciones como instancias OpcionCampoFormularioDto y serializar correctamente sin perder propiedades', () => {
+      const raw = {
+        clave: 'tipoCuenta',
+        etiqueta: 'Tipo de Cuenta',
+        tipoCampo: TipoCampoFormulario.SELECT,
+        opciones: [
+          { value: 'AHORROS', label: 'Cuenta de Ahorros' },
+          { value: 'CORRIENTE', label: 'Cuenta Corriente' },
+        ],
+      };
+
+      const dto = plainToInstance(CreateCampoFormularioDto, raw, {
+        enableImplicitConversion: true,
+      });
+
+      expect(dto.opciones).toHaveLength(2);
+      expect(dto.opciones![0].value).toBe('AHORROS');
+      expect(dto.opciones![0].label).toBe('Cuenta de Ahorros');
+
+      const jsonStr = JSON.stringify(dto.opciones);
+      const parsed = JSON.parse(jsonStr);
+      expect(parsed[0]).toEqual({ value: 'AHORROS', label: 'Cuenta de Ahorros' });
+      expect(parsed[1]).toEqual({ value: 'CORRIENTE', label: 'Cuenta Corriente' });
+    });
+  });
+
+  describe('Tipos de Documento Soporte — CRUD', () => {
+    it('debe listar tipos de documento soporte activos por defecto o todos si se solicita', async () => {
+      mockTipoDocRepo.find.mockResolvedValue([
+        { codigo: 'RUT', nombre: 'RUT', activo: true },
+      ]);
+
+      const resActivos = await service.obtenerTodosTiposDocumentoSoporte(false);
+      expect(mockTipoDocRepo.find).toHaveBeenCalledWith({
+        where: { activo: true },
+        order: { nombre: 'ASC' },
+      });
+      expect(resActivos).toHaveLength(1);
+
+      await service.obtenerTodosTiposDocumentoSoporte(true);
+      expect(mockTipoDocRepo.find).toHaveBeenCalledWith({
+        where: {},
+        order: { nombre: 'ASC' },
+      });
+    });
+
+    it('debe crear un nuevo tipo de documento soporte con código normalizado', async () => {
+      mockTipoDocRepo.findOne.mockResolvedValue(null);
+      mockTipoDocRepo.create.mockImplementation((ent) => ent);
+      mockTipoDocRepo.save.mockImplementation((ent) => Promise.resolve({ id: 'doc-1', ...ent }));
+
+      const res = await service.crearTipoDocumentoSoporte({
+        codigo: 'poliza_cumplimiento',
+        nombre: 'Póliza de Cumplimiento',
+        descripcion: 'Garantía del contrato',
+        instruccionesValidacion: 'Verificar que la vigencia cubra las fechas de la comisión',
+      });
+
+      expect(res.codigo).toBe('POLIZA_CUMPLIMIENTO');
+      expect(res.nombre).toBe('Póliza de Cumplimiento');
+      expect(res.instruccionesValidacion).toBe('Verificar que la vigencia cubra las fechas de la comisión');
+    });
+
+    it('debe actualizar un tipo de documento soporte existente', async () => {
+      const existente = {
+        id: 'doc-1',
+        codigo: 'FACTURA',
+        nombre: 'Factura',
+        descripcion: 'Desc',
+        instruccionesValidacion: 'Antigua instrucción',
+        activo: true,
+      };
+      mockTipoDocRepo.findOne.mockResolvedValue({ ...existente });
+      mockTipoDocRepo.save.mockImplementation((ent) => Promise.resolve(ent));
+
+      const actualizado = await service.actualizarTipoDocumentoSoporte('FACTURA', {
+        nombre: 'Factura Electrónica Validada',
+        instruccionesValidacion: 'Validar CUFE ante la DIAN',
+      });
+
+      expect(actualizado.nombre).toBe('Factura Electrónica Validada');
+      expect(actualizado.instruccionesValidacion).toBe('Validar CUFE ante la DIAN');
+    });
+
+    it('debe desactivar un tipo de documento soporte al eliminar', async () => {
+      const existente = {
+        id: 'doc-1',
+        codigo: 'CERT_BANCARIA',
+        activo: true,
+      };
+      mockTipoDocRepo.findOne.mockResolvedValue({ ...existente });
+      mockTipoDocRepo.save.mockImplementation((ent) => Promise.resolve(ent));
+
+      await service.eliminarTipoDocumentoSoporte('CERT_BANCARIA');
+      expect(mockTipoDocRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ codigo: 'CERT_BANCARIA', activo: false }),
+      );
+    });
+  });
 });
+

@@ -128,7 +128,38 @@ export function corteDeLaFecha<T extends CorteFechas>(fecha: string | undefined,
   return ordenados.find((c) => c.fechaProgramada.slice(0, 10) <= f && f <= fin(c)) ?? ordenados[0];
 }
 
-export type EstadoCorte = 'completado' | 'activo' | 'enSeguimiento' | 'vencido' | 'futuro';
+/**
+ * Tarea del Rol 4 que genera el Programa Anual, una por auditoría (EFDS-2133). Sus
+ * fechas y su corte salen de la programación de la auditoría (EFDS-2237): no se
+ * mueven de año ni se reparten entre cortes como las tareas de la plantilla.
+ */
+export function esTareaDelProgramaAnual(t: { id?: unknown; origen?: unknown } | null | undefined): boolean {
+  return !!t && (t.origen === 'programa_anual' || String(t.id ?? '').startsWith('tarea-aud-'));
+}
+
+/**
+ * Corte de una tarea del Programa Anual: el que contiene la fecha de inicio de su
+ * auditoría. Antes del primer corte va al primero y después del último, al último
+ * (una auditoría del programa puede empezar en enero del año siguiente). Mismo
+ * criterio que el backend (programa-anual-rol4-tarea-sync.service).
+ */
+export function corteDelInicio<T extends CorteFechas & { id: string }>(
+  fechaInicio: string | undefined,
+  cortes: T[],
+): T | undefined {
+  if (!cortes.length) return undefined;
+  const periodos = cortesComoPeriodos([...cortes]).sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada));
+  const f = (fechaInicio || '').slice(0, 10);
+  if (!f) return periodos[0];
+  const fin = (c: T) => (c.fechaSeguimiento || c.fechaProgramada).slice(0, 10);
+  const contiene = periodos.find((c) => c.fechaProgramada.slice(0, 10) <= f && f <= fin(c));
+  if (contiene) return contiene;
+  if (f < periodos[0].fechaProgramada.slice(0, 10)) return periodos[0];
+  if (f > fin(periodos[periodos.length - 1])) return periodos[periodos.length - 1];
+  return periodos.find((c) => c.fechaProgramada.slice(0, 10) > f) ?? periodos[periodos.length - 1];
+}
+
+export type EstadoCorte ='completado' | 'activo' | 'enSeguimiento' | 'vencido' | 'futuro';
 
 /**
  * Estado de un corte según su periodo. Después del fin, mientras alguna tarea del corte

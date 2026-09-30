@@ -18,6 +18,7 @@ import { PersonResponseDto } from './dto/person-response.dto';
 import { Seccional } from './seccional.entity';
 import { Sede } from './sede.entity';
 import { Dependencia } from './dependencia.entity';
+import { Cargo } from './cargo.entity';
 import { User } from './user.entity';
 import { InternalServiceAccess } from '../auth/decorators/internal-service.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -47,6 +48,7 @@ export class UsersController {
     const seccional = person?.seccional as Seccional | undefined;
     const sede = person?.sede as Sede | undefined;
     const dependencia = person?.dependencia as Dependencia | undefined;
+    const cargo = person?.cargo as Cargo | undefined;
     const responseUserId = exposeInternalIds ? user.id_user : user.public_id;
 
     return plainToClass(PersonResponseDto, {
@@ -78,6 +80,7 @@ export class UsersController {
              ubicacion: sede.geopolitica?.nomDivGeopolitica || null,
            }
          : null,
+       idDependencia: person?.idDependencia || null,
        dependencia: dependencia
          ? {
              idDependencia: dependencia.idDependencia,
@@ -85,7 +88,16 @@ export class UsersController {
              nomDependencia: dependencia.nomDependencia,
            }
          : null,
-   });
+       idCargo: person?.idCargo || null,
+       cargo: cargo
+         ? {
+             idCargo: cargo.idCargo,
+             codCargo: cargo.codCargo,
+             nomCargo: cargo.nomCargo,
+             nivelJerarquico: cargo.nivelJerarquico,
+           }
+         : null,
+    });
   }
 
   @Get()

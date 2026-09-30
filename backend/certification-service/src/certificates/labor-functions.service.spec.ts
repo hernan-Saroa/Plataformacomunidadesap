@@ -101,6 +101,18 @@ describe('Funciones asignadas por identificación', () => {
     ]);
     expect(result.results[0]).toMatchObject({ id_number: '1000000001' });
   });
+  it('valida una celda numerada con líneas de continuación cortas y cuenta funciones completas', async () => {
+    const result = await buildService([]).validateBulk([{
+      idNumber: '1000000001',
+      rowNumber: 22,
+      functions: '1. Revisar los pagos y verificar los descuentos\nlegales\n2. Consolidar los movimientos contables de manera\noportuna',
+    }]);
+    expect(result.results[0]).toMatchObject({
+      rowNumber: 22,
+      status: 'valid',
+      function_count: 2,
+    });
+  });
   it('exige identificación también a clientes con el contrato antiguo', async () => {
     await expect(
       buildService().create({
@@ -219,6 +231,40 @@ describe('Funciones asignadas por identificación', () => {
       }),
     ]);
     expect(result.action).toBe('created');
+  });
+  it('guarda completas las funciones numeradas que ocupan varios renglones', async () => {
+    const { service, functions } = persistence();
+    await service.create({
+      idNumber: '1000000001',
+      functions: '1. Revisar los pagos y verificar los descuentos\nlegales\n2. Consolidar los movimientos contables de manera\noportuna',
+    });
+    expect(functions.save).toHaveBeenCalledWith([
+      expect.objectContaining({
+        ordinal: 1,
+        description: 'Revisar los pagos y verificar los descuentos legales',
+      }),
+      expect.objectContaining({
+        ordinal: 2,
+        description: 'Consolidar los movimientos contables de manera oportuna',
+      }),
+    ]);
+  });
+  it('actualiza sin fragmentar las funciones numeradas que ocupan varios renglones', async () => {
+    const { service, functions } = persistence(profile);
+    await service.update(profile.id, {
+      idNumber: profile.id_number,
+      functions: '1. Revisar los pagos y verificar los descuentos\nlegales\n2. Presentar informes institucionales.',
+    });
+    expect(functions.save).toHaveBeenCalledWith([
+      expect.objectContaining({
+        ordinal: 1,
+        description: 'Revisar los pagos y verificar los descuentos legales',
+      }),
+      expect.objectContaining({
+        ordinal: 2,
+        description: 'Presentar informes institucionales.',
+      }),
+    ]);
   });
   it('asigna un registro heredado desde editar y reemplaza sus funciones', async () => {
     const { service, profiles, functions } = persistence({

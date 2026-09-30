@@ -395,6 +395,19 @@ export default function ModalFirmasAprobacion({
   const comisionadoData =
     solicitudDetalle?.comisionado || (solicitudDetalle as any)?.camposAdicionales?.comisionado || null;
 
+  // El comisionado tiene campos separados (primerNombre, primerApellido, etc.), construimos el nombre completo
+  const nombreComisionadoCompleto = comisionadoData
+    ? [
+        comisionadoData.primerNombre,
+        comisionadoData.segundoNombre,
+        comisionadoData.primerApellido,
+        comisionadoData.segundoApellido,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim() || comisionadoData.nombre
+    : solicitudDetalle?.nombreComisionado || 'Funcionario en Comisión';
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl border border-slate-200/90 max-h-[94vh] overflow-y-auto space-y-5">
@@ -494,14 +507,14 @@ export default function ModalFirmasAprobacion({
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
                       <div className="w-12 h-12 rounded-2xl bg-[#003DA5] text-white flex items-center justify-center font-black text-lg shadow-sm">
-                        {(comisionadoData?.nombre || solicitudDetalle?.nombreComisionado || 'F').charAt(0).toUpperCase()}
+                        {(nombreComisionadoCompleto || 'F').charAt(0).toUpperCase()}
                       </div>
                       <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                           Servidor Comisionado
                         </span>
                         <h4 className="text-sm sm:text-base font-black text-slate-900 leading-tight">
-                          {comisionadoData?.nombre || solicitudDetalle?.nombreComisionado || 'Funcionario en Comisión'}
+                          {nombreComisionadoCompleto}
                         </h4>
                         <p className="text-xs text-slate-500 mt-0.5">
                           C.C. {comisionadoData?.numeroDocumento || (solicitudDetalle as any)?.cedulaComisionado || '—'} · Cargo:{' '}

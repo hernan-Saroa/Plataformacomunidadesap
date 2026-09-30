@@ -7,11 +7,11 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRoles } from '../../hooks/useRoles';
-import { TERRITORIALES_ESAP } from '../../data/territoriales-cetap-completo';
 import { PROGRAMAS_ESAP } from '../../../../mfe-programas-academicos/src/data/oferta-academica-esap';
 import { estructuraService } from '../../services/estructuraService';
 import { dependenciasService } from '../../services/api/dependencias.service';
-import type { Dependencia } from '../../services/api/dependencias.service';
+import type { Dependencia, Cargo } from '../../services/api/dependencias.service';
+import { SearchableSelect } from '../shared/SearchableSelect';
 
 // Reusable Modal Header from the platform
 function ModalHeaderClean({ icono: Icon, titulo, subtitulo, onClose, colorIcono }: any) {
@@ -59,23 +59,34 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
     idSeccional: undefined as number | undefined,
     idSede: undefined as number | undefined,
     idDependencia: undefined as number | null,
+    idCargo: undefined as number | null,
   });
 
   const [seccionales, setSeccionales] = useState<any[]>([]);
   const [sedes, setSedes] = useState<any[]>([]);
   const [dependencias, setDependencias] = useState<Dependencia[]>([]);
+  const [cargosDisponibles, setCargosDisponibles] = useState<Cargo[]>([]);
   const [isLoadingEstructura, setIsLoadingEstructura] = useState(false);
   const [isLoadingDependencias, setIsLoadingDependencias] = useState(false);
+  const [isLoadingCargos, setIsLoadingCargos] = useState(false);
 
   useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
     setIsLoadingEstructura(true);
     estructuraService.obtenerEstructura().then(res => {
+      if (!active) return;
       setSeccionales(res.data?.seccionales || []);
       setSedes(res.data?.sedes || []);
     }).catch(err => {
       console.error('Error cargando estructura organizacional:', err);
+      if (active) {
+        setSeccionales([]);
+        setSedes([]);
+        toast.error('No se pudo cargar Estructura Organizacional');
+      }
     }).finally(() => {
-      setIsLoadingEstructura(false);
+      if (active) setIsLoadingEstructura(false);
     });
 
     setIsLoadingDependencias(true);
@@ -85,7 +96,39 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
     }).finally(() => {
       setIsLoadingDependencias(false);
     });
-  }, []);
+    return () => { active = false; };
+  }, [isOpen]);
+
+  // Cargar cargos asignados a la dependencia seleccionada (N:M auth.dependencias_cargos)
+  useEffect(() => {
+    if (!formData.idDependencia) {
+      setCargosDisponibles([]);
+      setIsLoadingCargos(false);
+      return;
+    }
+
+    let isSubscribed = true;
+    setIsLoadingCargos(true);
+
+    dependenciasService
+      .obtenerCargosPorDependencia(Number(formData.idDependencia))
+      .then((cargos) => {
+        if (isSubscribed) {
+          setCargosDisponibles(cargos || []);
+        }
+      })
+      .catch((err) => {
+        console.error('Error cargando cargos de la dependencia:', err);
+        if (isSubscribed) setCargosDisponibles([]);
+      })
+      .finally(() => {
+        if (isSubscribed) setIsLoadingCargos(false);
+      });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [formData.idDependencia]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -154,6 +197,9 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
         idSede: idSede ? Number(idSede) : undefined,
         idDependencia: initialData.idDependencia || initialData.person?.idDependencia
           ? Number(initialData.idDependencia || initialData.person?.idDependencia)
+          : null,
+        idCargo: initialData.idCargo || initialData.person?.idCargo
+          ? Number(initialData.idCargo || initialData.person?.idCargo)
           : null,
       });
       setPasoActual(1);
@@ -244,9 +290,13 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
         newErrors.role = 'Requerido';
         errorMessage = 'Debe seleccionar un rol institucional.';
       }
-      if (!formData.idSeccional && !formData.idSede) {
-        newErrors.idSede = 'Requerido';
-        errorMessage = 'Debe seleccionar al menos la territorial o sede.';
+      if (formData.idSeccional && !seccionales.some(sec => Number(sec.idSeccional) === formData.idSeccional)) {
+        newErrors.idSeccional = 'Seleccione una territorial del catálogo';
+        errorMessage = 'La territorial seleccionada ya no está disponible en Estructura Organizacional.';
+      }
+      if (formData.idSede && !sedes.some(sede => Number(sede.idSede) === formData.idSede && Number(sede.idSeccional) === formData.idSeccional)) {
+        newErrors.idSede = 'Seleccione un CETAP de la territorial';
+        errorMessage = 'El CETAP seleccionado no pertenece a la territorial de la cuenta.';
       }
 
       if (formData.role === 'Estudiante' && !formData.program) {
@@ -300,10 +350,10 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if (!open && !isSubmitting) onClose(); }}>
-      <DialogContent onInteractOutside={(e) => e.preventDefault()} hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-5xl max-h-[90vh] flex flex-col !p-0 border-0 bg-transparent overflow-hidden sm:!p-0 gap-0">
+      <DialogContent onInteractOutside={(e) => e.preventDefault()} hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-5xl max-h-[85vh] flex flex-col !p-0 border-0 bg-transparent overflow-hidden sm:!p-0 gap-0 !z-[9999] pointer-events-auto">
         
         {/* Fondo blanco real para todo el contenido dentro del dialog content que no tiene padding */}
-        <div className="flex flex-col bg-white rounded-2xl overflow-hidden shadow-2xl border-0">
+        <div className="flex flex-col bg-white rounded-2xl overflow-hidden shadow-2xl border border-gray-200/80 max-h-[85vh]">
           <DialogTitle className="sr-only">{editMode ? 'Editar Usuario' : 'Crear Nuevo Usuario'}</DialogTitle>
           <DialogDescription className="sr-only">Wizard de usuario - Paso {pasoActual}</DialogDescription>
 
@@ -344,7 +394,7 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
           </div>
 
           {/* BODY CONTENIDO */}
-          <div className="flex-1 overflow-y-auto px-6 py-6 bg-gray-50">
+          <div className="flex-1 overflow-y-auto px-6 py-6 bg-gray-50 min-h-0">
             <div className="w-full space-y-6">
               
               {pasoActual === 1 && (
@@ -467,42 +517,63 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
 
                       <div className="md:col-span-2">
                          <div className="border-t border-gray-200 pt-4 mt-2">
-                           <h4 className="font-semibold text-gray-800 mb-3 text-sm">Asignación de Sede <span className="text-red-500">*</span></h4>
+                           <h4 className="font-semibold text-gray-800 mb-3 text-sm">Asignación de Sede</h4>
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                              <div>
-                               <InputLabel label="Territorial (Seccional)" required />
-                               <select 
-                                 value={formData.idSeccional || ''} 
-                                 onChange={(e) => {
-                                   handleChange('idSeccional', e.target.value ? Number(e.target.value) : undefined);
-                                   // Resetear la sede al cambiar territorial
-                                   handleChange('idSede', undefined);
-                                 }} 
-                                 className={inputClass(!!errors.idSede)}
+                               <InputLabel label="Territorial (Seccional)" />
+                               <SearchableSelect
+                                 options={seccionales.map(sec => ({
+                                   value: sec.idSeccional,
+                                   label: sec.nomSeccional,
+                                   sublabel: sec.ubicacion?.nomDivGeopolitica || undefined,
+                                 }))}
+                                 value={formData.idSeccional || ''}
+                                 onChange={(val) => {
+                                   const idSeccional = val ? Number(val) : undefined;
+                                   setFormData(prev => ({
+                                     ...prev, idSeccional, idSede: undefined,
+                                     sedePrincipalId: undefined, asignacionesSedes: [],
+                                     territorial: seccionales.find(sec => Number(sec.idSeccional) === idSeccional)?.nomSeccional || '',
+                                   }));
+                                   setErrors(prev => ({ ...prev, idSeccional: '', idSede: '' }));
+                                 }}
+                                 placeholder="Buscar territorial..."
                                  disabled={isLoadingEstructura}
-                               >
-                                 <option value="">Seleccionar territorial...</option>
-                                 {seccionales.map(sec => (
-                                   <option key={sec.idSeccional} value={sec.idSeccional}>{sec.nomSeccional}</option>
-                                 ))}
-                               </select>
+                                 loading={isLoadingEstructura}
+                                 hasError={!!errors.idSeccional}
+                                 error={errors.idSeccional}
+                                 allowClear
+                               />
                              </div>
                              <div>
                                <InputLabel label="CETAP (Sede)" />
-                               <select 
-                                 value={formData.idSede || ''} 
-                                 onChange={(e) => handleChange('idSede', e.target.value ? Number(e.target.value) : undefined)} 
-                                 className={inputClass(false)}
+                               <SearchableSelect
+                                 options={sedes
+                                   .filter(s => s.idSeccional == formData.idSeccional)
+                                   .map(sede => ({
+                                     value: sede.idSede,
+                                     label: sede.nomSede,
+                                     sublabel: sede.geopolitica?.nomDivGeopolitica || undefined,
+                                   }))}
+                                 value={formData.idSede || ''}
+                                 onChange={(val) => {
+                                   const idSede = val ? Number(val) : undefined;
+                                   setFormData(prev => ({
+                                     ...prev, idSede, sedePrincipalId: idSede ? String(idSede) : undefined,
+                                     asignacionesSedes: [],
+                                   }));
+                                   setErrors(prev => ({ ...prev, idSede: '' }));
+                                 }}
+                                 placeholder={
+                                   !formData.idSeccional
+                                     ? 'Primero seleccione territorial...'
+                                     : 'Buscar CETAP/Sede...'
+                                 }
                                  disabled={isLoadingEstructura || !formData.idSeccional}
-                               >
-                                 <option value="">Seleccionar CETAP/Sede...</option>
-                                 {sedes
-                                  .filter(s => s.idSeccional == formData.idSeccional)
-                                  .map(sede => (
-                                   <option key={sede.idSede} value={sede.idSede}>{sede.nomSede}</option>
-                                 ))}
-                               </select>
-                               {errors.idSede && <p className="mt-1 text-xs text-red-500">{errors.idSede}</p>}
+                                 emptyText="No hay sedes registradas para esta territorial"
+                                 allowClear
+                               />
+                               {errors.idSede && <p className="mt-1 text-xs text-red-500 font-medium">{errors.idSede}</p>}
                              </div>
                            </div>
                          </div>
@@ -523,21 +594,68 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
                       <div><InputLabel label="Empresa Contratista" /><input type="text" value={formData.empresaContratista} onChange={(e) => handleChange('empresaContratista', e.target.value)} className={inputClass(false)} /></div>
                       <div>
                         <InputLabel label="Dependencia" required />
-                        <select
+                        <SearchableSelect
+                          options={dependencias.map(dep => ({
+                            value: dep.idDependencia,
+                            label: dep.nomDependencia,
+                            sublabel: dep.codDependencia,
+                          }))}
                           value={formData.idDependencia ?? ''}
-                          onChange={(e) => handleChange('idDependencia', e.target.value ? Number(e.target.value) : null)}
-                          className={inputClass(!!errors.idDependencia)}
+                          onChange={(val) => {
+                            const newDepId = val ? Number(val) : null;
+                            handleChange('idDependencia', newDepId);
+                            if (newDepId !== formData.idDependencia) {
+                              handleChange('idCargo', null);
+                              handleChange('cargoSemestre', '');
+                            }
+                          }}
+                          placeholder="Buscar dependencia..."
                           disabled={isLoadingDependencias}
-                        >
-                          <option value="">Seleccionar dependencia...</option>
-                          {dependencias.map(dep => (
-                            <option key={dep.idDependencia} value={dep.idDependencia}>
-                              {dep.codDependencia} - {dep.nomDependencia}
-                            </option>
-                          ))}
-                        </select>
+                          loading={isLoadingDependencias}
+                          hasError={!!errors.idDependencia}
+                          error={errors.idDependencia}
+                          allowClear
+                        />
                       </div>
-                      <div><InputLabel label="Cargo / Semestre" /><input type="text" value={formData.cargoSemestre} onChange={(e) => handleChange('cargoSemestre', e.target.value)} className={inputClass(false)} /></div>
+                      <div>
+                        <InputLabel label="Cargo Institucional" />
+                        <SearchableSelect
+                          options={cargosDisponibles.map(c => ({
+                            value: c.idCargo,
+                            label: c.nomCargo,
+                            sublabel: `${c.codCargo}${c.nivelJerarquico ? ` • ${c.nivelJerarquico}` : ''}`,
+                          }))}
+                          value={formData.idCargo ?? ''}
+                          onChange={(val) => {
+                            const idCargoNum = val ? Number(val) : null;
+                            handleChange('idCargo', idCargoNum);
+                            const matched = cargosDisponibles.find(c => Number(c.idCargo) === idCargoNum);
+                            if (matched) {
+                              handleChange('cargoSemestre', matched.nomCargo);
+                            } else if (!val) {
+                              handleChange('cargoSemestre', '');
+                            }
+                          }}
+                          placeholder={
+                            !formData.idDependencia
+                              ? 'Primero seleccione una dependencia...'
+                              : isLoadingCargos
+                              ? 'Cargando cargos...'
+                              : cargosDisponibles.length === 0
+                              ? 'Sin cargos en esta dependencia'
+                              : 'Buscar cargo institucional...'
+                          }
+                          disabled={!formData.idDependencia || isLoadingCargos || cargosDisponibles.length === 0}
+                          loading={isLoadingCargos}
+                          emptyText="No hay cargos asignados a esta dependencia"
+                          allowClear
+                        />
+                        {formData.idDependencia && !isLoadingCargos && cargosDisponibles.length === 0 && (
+                          <p className="text-[10px] text-amber-600 mt-1 leading-tight">
+                            Sin cargos vinculados a esta dependencia en configuración.
+                          </p>
+                        )}
+                      </div>
                       <div><InputLabel label="Contrato" /><input type="text" value={formData.contrato} onChange={(e) => handleChange('contrato', e.target.value)} className={inputClass(false)} /></div>
                       <div><InputLabel label="Fecha Ingreso" /><input type="date" value={formData.enrollmentDate} onChange={(e) => handleChange('enrollmentDate', e.target.value)} className={inputClass(false)} /></div>
                       <div><InputLabel label="Fecha Fin Retiro" /><input type="date" value={formData.fechaFinContrato} onChange={(e) => handleChange('fechaFinContrato', e.target.value)} className={inputClass(false)} /></div>
@@ -566,10 +684,11 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
                     <div><InputLabel label="Horas Asignables" /><input type="number" value={formData.horasAsignables} onChange={(e) => handleChange('horasAsignables', e.target.value)} className={inputClass(false)} /></div>
                     <div>
                       <InputLabel label="Territorial" />
-                      <select value={formData.territorial} onChange={(e) => handleChange('territorial', e.target.value)} className={inputClass(false)}>
+                      <select value={formData.idSeccional || ''} className={inputClass(false)} disabled>
                         <option value="">Seleccionar territorial...</option>
-                        {TERRITORIALES_ESAP.map(t => <option key={t.codigo} value={t.nombre}>{t.nombre}</option>)}
+                        {seccionales.map(sec => <option key={sec.idSeccional} value={sec.idSeccional}>{sec.nomSeccional}</option>)}
                       </select>
+                      <p className="mt-1 text-xs text-gray-500">Se define en Información Institucional.</p>
                     </div>
                     <div><InputLabel label="Pregrado" /><input type="text" value={formData.pregradoDetalle} onChange={(e) => handleChange('pregradoDetalle', e.target.value)} className={inputClass(false)} /></div>
                     <div><InputLabel label="Doctorado" /><input type="text" value={formData.doctoradoDetalle} onChange={(e) => handleChange('doctoradoDetalle', e.target.value)} className={inputClass(false)} /></div>

@@ -45,6 +45,11 @@ export class CreatePersonDto {
    @IsNumber()
    idDependencia?: number;
 
+   @IsOptional()
+   @Type(() => Number)
+   @IsNumber()
+   idCargo?: number;
+
    @IsDateString()
    birth_date?: string;
 
