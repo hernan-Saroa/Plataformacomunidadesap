@@ -335,10 +335,18 @@ export default function ContratacionModulePremium() {
         <RevisionDeActividad
           procesoId={revision.procesoId}
           numeral={revision.numeral}
-          volverA={revision.desde === 'bandeja' ? 'Mi trabajo' : 'Proceso'}
+          volverA={
+            revision.desde === 'proceso'
+              ? 'Proceso'
+              : seccion === 'mi-trabajo'
+                ? 'Mi trabajo'
+                : seccion === 'alertas'
+                  ? 'Alertas'
+                  : 'Procesos'
+          }
           onVolver={() => {
             setRevision(null);
-            if (revision.desde === 'bandeja') setPestanaTrabajo('revisar');
+            if (revision.desde === 'bandeja' && seccion === 'mi-trabajo') setPestanaTrabajo('revisar');
           }}
           onVerProceso={(numeral) => {
             setSeccion('estudios-previos');
@@ -514,7 +522,18 @@ export default function ContratacionModulePremium() {
     }
     return (
       <VistaProcesos
-        onAbrir={(id) => {
+        onAbrir={(id, numeral, revisar) => {
+          // Lo que dice el botón: revisar lleva a la revisión, trabajar a la
+          // actividad, y consultar a la ficha de seguimiento.
+          if (revisar && numeral) {
+            setRevision({ procesoId: id, numeral, desde: 'bandeja' });
+            return;
+          }
+          if (numeral) {
+            setProcesoId(id);
+            setActividad(numeral);
+            return;
+          }
           setProcesoId(id);
           /**
            * Sin forzar actividad: la abre el detalle (EFDS-1183).

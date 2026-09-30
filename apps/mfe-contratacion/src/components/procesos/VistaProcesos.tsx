@@ -40,8 +40,11 @@ import { ChipPlazo } from '../proceso/ChipPlazo';
 import { usePlazos } from '../../hooks/usePlazos';
 
 interface Props {
-  /** Abre directamente el formulario del estudio previo. */
-  onAbrir: (procesoId: string) => void;
+  /**
+   * Abre el proceso. Con numeral, a trabajar esa actividad; con `revisar`, en
+   * la pantalla de revisión; sin nada, en su ficha de seguimiento.
+   */
+  onAbrir: (procesoId: string, numeral?: string | null, revisar?: boolean) => void;
   /** Abre el detalle con las actividades de la etapa. */
   onVerEtapa?: (procesoId: string) => void;
 }
@@ -125,6 +128,9 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
       icono: <rasgos.Icono className="w-3.5 h-3.5" />,
       colorDetalle: rasgos.color,
       verbo: verboDeLaSituacion(situacion),
+      /** A dónde lleva el botón: la actividad que le toca, o la ficha. */
+      numeral: situacion.teToca ? situacion.numeral : null,
+      revisar: situacion.teToca && situacion.momento === 'revision',
       plazo: plazos.get(proceso.id)?.[0] ?? null,
     };
   };
@@ -198,7 +204,8 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
       setModalidad('');
       setValorTexto('');
       toast.success(`Proceso ${proceso.radicado} creado`);
-      onAbrir(proceso.id);
+      // Recién creado, lo que sigue es redactar el estudio previo.
+      onAbrir(proceso.id, '3.1');
     } catch (err: any) {
       // El modal sigue abierto con lo digitado, para que no haya que
       // reescribirlo si el guardado falla.
@@ -694,7 +701,7 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
                     )}
                     <button
                       type="button"
-                      onClick={() => onAbrir(p.id)}
+                      onClick={() => onAbrir(p.id, estado.numeral, estado.revisar)}
                       className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold
                         rounded-lg text-white bg-[#003DA5] hover:bg-[#002e7d] shadow-sm
                         active:scale-95 transition-all
