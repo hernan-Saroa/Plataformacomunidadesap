@@ -11,7 +11,7 @@ const puppeteer = require(path.join(repo, 'node_modules/puppeteer'));
 const jwt = require(path.join(travel, 'node_modules/jsonwebtoken'));
 const usuarioId = '13110000-0002-4000-8000-000000009001';
 const token = jwt.sign({ sub: usuarioId, username: 'Coordinadora prueba', email: 'efds1311-coordinadora@example.invalid',
-  permissions: ['travel_expenses:paz_y_salvo.manage'], roles: [] }, process.env.JWT_SECRET || 'esap-super-secret-jwt-key-2024', { expiresIn: '15m' });
+  roles: ['COORDINADOR_COMISIONES_VIATICOS'] }, process.env.JWT_SECRET || 'esap-super-secret-jwt-key-2024', { expiresIn: '15m' });
 (async () => {
   const browser = await puppeteer.launch({ headless: true });
   try {

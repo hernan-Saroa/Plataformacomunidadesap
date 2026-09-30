@@ -32,7 +32,7 @@ export class PazYSalvoPdfService {
       doc.moveDown().text('Esta certificación refleja la situación al momento de su emisión. Las comisiones posteriores se consultan en el sistema.');
       doc.moveDown(2).font('Helvetica-Bold').text('Firma verificada mediante código OTP');
       doc.font('Helvetica').fontSize(10)
-        .text(`Coordinación de Viáticos: ${contenido.coordinadoraNombre}`)
+        .text(`${contenido.cargoFirmante || 'Coordinación de Viáticos'}: ${contenido.coordinadoraNombre}`)
         .text(`Usuario: ${contenido.coordinadoraId}`)
         .text(`Correo: ${firma.email}`)
         .text(`Fecha: ${fechaColombia} (hora de Colombia)`)
