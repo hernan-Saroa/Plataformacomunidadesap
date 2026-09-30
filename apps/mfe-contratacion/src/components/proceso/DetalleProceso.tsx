@@ -47,6 +47,7 @@ import { esSoloPresupuesto, useAlcance } from '../../auth/alcance';
 import { useResponsables } from '../../auth/responsables';
 import { situacionDelProceso } from './situacionDelProceso';
 import { FranjaSituacion } from './FranjaSituacion';
+import { usePlazos } from '../../hooks/usePlazos';
 
 /**
  * Las 7 actividades de la etapa 3 (matriz de flujo, anexo A2).
@@ -241,6 +242,8 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   /** Actividades de la etapa, con su estado. Vacío mientras carga o si falla. */
   const [catalogo, setCatalogo] = useState<ActividadProceso[]>([]);
   const [tokenExpediente, setTokenExpediente] = useState(0);
+  /** Los plazos que aprietan, releídos cuando algo cambia en el expediente. */
+  const plazos = usePlazos(tokenExpediente);
   /**
    * Formatos requeridos sin cargar en la actividad abierta.
    *
@@ -784,7 +787,12 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
             </div>
           </div>
 
-          <FranjaSituacion situacion={situacion} abierta={expandida} onIr={abrirActividad} />
+          <FranjaSituacion
+            situacion={situacion}
+            abierta={expandida}
+            onIr={abrirActividad}
+            plazos={plazos.get(procesoId) ?? []}
+          />
 
           <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
             <LineaDeTiempoEtapas

@@ -36,6 +36,13 @@ export type EstadoActividad =
   | 'NO_APLICA'
   | 'NEGADO';
 
+/** El archivo que acompaña una devolución: las correcciones marcadas (migración 091). */
+export interface SoporteDeDevolucion {
+  nombre: string;
+  descargaUrl: string | null;
+  mimeType: string | null;
+}
+
 export interface RevisionEstudioPrevio {
   id: string;
   decision: 'APROBADO' | 'DEVUELTO' | 'NEGADO';
@@ -43,6 +50,7 @@ export interface RevisionEstudioPrevio {
   versionRevisada: number;
   revisadoPor: string;
   createdAt: string;
+  soporte?: SoporteDeDevolucion | null;
 }
 
 /** Definición de un campo del formulario; llega del backend, no está en código. */
@@ -628,6 +636,10 @@ export interface CuentaCandidata {
   nombre: string;
   cargo: string | null;
   email: string | null;
+  /** Solo en los abogados: procesos que lleva, para repartir con criterio. */
+  procesosACargo?: number;
+  /** De esos, cuántos estudios previos esperan su decisión ahora. */
+  revisionesPendientes?: number;
 }
 
 /** Quien ocupa un papel ahora mismo. */
@@ -3388,6 +3400,35 @@ export interface AlcanceMio {
   alcances: AlcanceVista[];
   /** Los permisos que no son de ninguna etapa: configurar, informes, ver todos… */
   transversales: string[];
+}
+
+/** Algo que espera la decisión de quien mira: la bandeja «Por revisar». */
+export interface ElementoPorRevisar {
+  /** El estudio previo lo decide el abogado; lo demás, quien aprueba la actividad. */
+  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD';
+  procesoId: string;
+  radicado: string | null;
+  objeto: string;
+  modalidad: string | null;
+  numeral: string;
+  actividad: string;
+  etapa: number;
+  version: number | null;
+  enviadoPor: string | null;
+  desde: string;
+  diasEsperando: number;
+}
+
+/** Una actividad cuyo plazo está por vencer o ya venció; los días son hábiles. */
+export interface PlazoDeActividad {
+  procesoId: string;
+  radicado: string | null;
+  numeral: string;
+  nombre: string;
+  vence: string;
+  /** Negativo cuando ya venció. */
+  restantes: number;
+  estado: 'VENCIDO' | 'POR_VENCER';
 }
 
 /** Un rol que puede trabajar, aprobar o decidir en un lugar del módulo. */

@@ -38,6 +38,8 @@ import {
   verboDeLaSituacion,
 } from '../proceso/rasgosDelMomento';
 import { TIENEN_PANEL } from '../proceso/actividadesConPanel';
+import { ChipPlazo } from '../proceso/ChipPlazo';
+import { usePlazos } from '../../hooks/usePlazos';
 
 interface Props {
   /** Abre directamente el formulario del estudio previo. */
@@ -90,6 +92,8 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
   const { puede, cargado } = useAlcance();
   const puedeCrear = puede('editar', '3.1');
   const responsables = useResponsables();
+  /** El plazo que más aprieta en cada proceso: el semáforo de la fila. */
+  const plazos = usePlazos();
 
   /**
    * En qué momento está cada proceso y a quién le toca.
@@ -129,6 +133,7 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
       icono: <rasgos.Icono className="w-3.5 h-3.5" />,
       colorDetalle: rasgos.color,
       verbo: verboDeLaSituacion(situacion),
+      plazo: plazos.get(proceso.id)?.[0] ?? null,
     };
   };
 
@@ -600,6 +605,11 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
                     >
                       {estado.detalle}
                     </span>
+                    {estado.plazo ? (
+                      <span className="solo-apilado mt-1">
+                        <ChipPlazo plazo={estado.plazo} />
+                      </span>
+                    ) : null}
 
                     {/* La modalidad decide qué actividades recorre el proceso;
                         sin verla, dos procesos distintos parecen el mismo. */}
@@ -668,6 +678,11 @@ export function VistaProcesos({ onAbrir, onVerEtapa }: Props) {
                     >
                       {estado.detalle}
                     </span>
+                    {estado.plazo ? (
+                      <span className="block mt-1">
+                        <ChipPlazo plazo={estado.plazo} />
+                      </span>
+                    ) : null}
                   </div>
 
                   {/* Acción principal directa al formulario; el detalle de la

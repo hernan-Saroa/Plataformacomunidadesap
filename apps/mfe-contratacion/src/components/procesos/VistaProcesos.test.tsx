@@ -17,10 +17,13 @@ vi.mock('../../services/contratacionService', () => ({
     sugerenciaModalidad: vi.fn(),
     // Quién responde por cada punto: la fila dice a quién le toca.
     responsables: vi.fn(async () => []),
+    // El semáforo de cada fila.
+    plazos: vi.fn(async () => []),
   },
 }));
 
 const servicio = contratacionService as unknown as {
+  plazos: ReturnType<typeof vi.fn>;
   listarProcesos: ReturnType<typeof vi.fn>;
   modalidades: ReturnType<typeof vi.fn>;
   crearProceso: ReturnType<typeof vi.fn>;
@@ -314,5 +317,41 @@ describe('VistaProcesos · a quién le toca', () => {
     ).toBeGreaterThan(0);
     // No le toca nada a quien mira: se consulta, no se «revisa».
     expect(screen.getByRole('button', { name: /Consultar/ })).toBeInTheDocument();
+  });
+});
+
+describe('VistaProcesos · semáforo de plazos', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    servicio.modalidades.mockResolvedValue(MODALIDADES);
+  });
+
+  it('marca el plazo vencido en la fila del proceso', async () => {
+    servicio.listarProcesos.mockResolvedValue([
+      {
+        id: 'p-9',
+        radicado: 'CTO-2026-0099',
+        objeto: 'Aseo',
+        etapa: 4,
+        fechaRadicacion: '2026-09-01T00:00:00.000Z',
+        estudioPrevio: null,
+        actividades: [],
+      },
+    ]);
+    servicio.plazos.mockResolvedValue([
+      {
+        procesoId: 'p-9',
+        radicado: 'CTO-2026-0099',
+        numeral: '4.2',
+        nombre: 'Verificar disponibilidad presupuestal',
+        vence: '2026-09-25',
+        restantes: -2,
+        estado: 'VENCIDO',
+      },
+    ]);
+
+    render(<VistaProcesos onAbrir={vi.fn()} />);
+
+    expect((await screen.findAllByText(/4\.2 · venció hace 2 días hábiles/)).length).toBeGreaterThan(0);
   });
 });
