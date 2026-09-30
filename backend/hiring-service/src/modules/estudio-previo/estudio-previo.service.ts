@@ -66,10 +66,8 @@ export function estadoTrasDecision(decision: DecisionRevision): EstadoActividad 
 /**
  * Por qué el envío no puede salir todavía, en una frase.
  *
- * Tres cosas pueden faltar y antes solo se nombraban dos, con un ternario que
- * elegía entre ellas: quien no había adjuntado el estudio previo **y** tenía
- * campos sin llenar solo se enteraba de lo segundo, corregía, reenviaba y se
- * chocaba con lo primero. Con la lista de chequeo encima serían tres viajes.
+ * Se nombra todo lo que falta a la vez: quien se entera de una cosa, la
+ * corrige y reenvía, y se choca con la siguiente, hace un viaje por cada una.
  *
  * Los documentos que faltan se nombran uno a uno y no se cuentan: «faltan dos
  * documentos» obliga a abrir la lista para saber cuáles, y el mensaje es justo
@@ -77,13 +75,11 @@ export function estadoTrasDecision(decision: DecisionRevision): EstadoActividad 
  */
 export function porQueNoSePuedeRadicar(
   camposFaltantes: number,
-  faltaElEstudioPrevio: boolean,
   documentosDeLaLista: string[],
 ): string {
   const motivos: string[] = [];
 
   if (camposFaltantes > 0) motivos.push('faltan datos obligatorios');
-  if (faltaElEstudioPrevio) motivos.push('falta el estudio previo diligenciado y firmado');
   if (documentosDeLaLista.length > 0) {
     motivos.push(`falta por remitir ${documentosDeLaLista.join(', ')}`);
   }
@@ -719,31 +715,25 @@ export class EstudioPrevioService implements OnModuleInit {
        * Desde EFDS-2066 el estudio previo firmado es un documento más de esa
        * lista —la fila de su formato—, así que una sola pregunta cubre lo que
        * antes se contaba por separado.
+       *
+       * Y solo esa pregunta: lo que se pide lo decide Configuración. Aquí se
+       * exigía además «al menos un adjunto» cuando la lista quedaba vacía, pero
+       * con la lista vacía la pantalla no tiene dónde subirlo, así que el área
+       * quedaba pidiéndosele un documento sin sitio para entregarlo. El aviso
+       * de una lista sin obligatorios va ahora en Configuración, que es donde
+       * se puede corregir.
        */
       const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
-      const requeridos = await this.documentos.requeridosDe(procesoId, NUMERAL_ESTUDIO_PREVIO, em);
       const sinRadicar = await this.documentos.faltantes(procesoId, NUMERAL_ESTUDIO_PREVIO, em);
 
-      /*
-       * Si Configuración no dejó ningún documento para esta modalidad, se sigue
-       * exigiendo al menos un adjunto: una lista vacía por descuido no puede
-       * volver el envío una radicación sin estudio previo.
-       */
-      const sinDocumento =
-        requeridos.length === 0 &&
-        (await em.count(Documento, {
-          where: { expedienteId: expediente.id, numeral: NUMERAL_ESTUDIO_PREVIO, tipo: 'ADJUNTO' },
-        })) === 0;
-
-      if (faltantes.length > 0 || sinDocumento || sinRadicar.length > 0) {
+      if (faltantes.length > 0 || sinRadicar.length > 0) {
         throw new UnprocessableEntityException({
           message: porQueNoSePuedeRadicar(
             faltantes.length,
-            sinDocumento,
             sinRadicar.map((r) => r.nombre),
           ),
           camposFaltantes: faltantes,
-          documentoFaltante: sinDocumento,
+          documentoFaltante: false,
           documentosDeLaLista: sinRadicar.map((r) => ({
             codigo: r.codigo,
             nombre: r.nombre,

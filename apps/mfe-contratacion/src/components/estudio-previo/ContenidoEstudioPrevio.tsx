@@ -334,9 +334,9 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
             titulo="Documentos para radicar"
             ayuda={
               <>
-                Carga el estudio previo firmado y los documentos que la modalidad exige enviar con
-                él. Para enviar el proceso a la Dirección de Contratación, todos los obligatorios
-                deben estar cargados.
+                Carga los documentos que la lista de chequeo de esta modalidad pide para radicar. Para
+                enviar el proceso a la Dirección de Contratación, todos los obligatorios deben estar
+                cargados.
               </>
             }
             bloqueo={motivoBloqueo}
