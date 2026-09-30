@@ -268,7 +268,7 @@ export const ReportesGestionView: React.FC = () => {
             type="button"
             onClick={descargarPdf}
             disabled={cargando}
-            className="flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-60"
+            className="flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-lg bg-red-500 text-white hover:bg-red-400 disabled:opacity-60"
           >
             <FileText className="w-3.5 h-3.5" /> Exportar PDF
           </button>

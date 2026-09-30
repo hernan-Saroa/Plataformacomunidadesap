@@ -11,7 +11,10 @@ vi.mock('../../services/estructuraService', () => ({
   estructuraService: { obtenerEstructura: vi.fn() },
 }));
 vi.mock('../../services/api/dependencias.service', () => ({
-  dependenciasService: { listar: vi.fn().mockResolvedValue([{ idDependencia: 1, codDependencia: 'DEP', nomDependencia: 'Planeación' }]) },
+  dependenciasService: {
+    listar: vi.fn().mockResolvedValue([{ idDependencia: 1, codDependencia: 'DEP', nomDependencia: 'Planeación' }]),
+    obtenerCargosPorDependencia: vi.fn().mockResolvedValue([]),
+  },
 }));
 
 afterEach(() => {
@@ -42,17 +45,19 @@ describe('asignación territorial del usuario', () => {
     render(<CreatePersonModal isOpen editMode initialData={initialData} onClose={vi.fn()} onCreate={onCreate} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
-    const territorial = screen.getByText('Territorial (Seccional)').parentElement!.querySelector('select')!;
-    const cetap = screen.getByText('CETAP (Sede)').parentElement!.querySelector('select')!;
-    await waitFor(() => expect(territorial.querySelectorAll('option')).toHaveLength(3));
-    expect((cetap as HTMLSelectElement).value).toBe('100');
+    const territorial = screen.getByText('Territorial (Seccional)').parentElement!.querySelector('button')!;
+    const cetap = screen.getByText('CETAP (Sede)').parentElement!.querySelector('button')!;
+    await waitFor(() => expect(territorial.textContent).toContain('Meta'));
+    expect(cetap.textContent).toContain('Granada');
 
-    fireEvent.change(territorial, { target: { value: '15' } });
-    expect((cetap as HTMLSelectElement).value).toBe('');
-    expect([...cetap.querySelectorAll('option')].map(option => option.textContent)).toEqual([
-      'Seleccionar CETAP/Sede...', 'Ibagué',
-    ]);
-    fireEvent.change(cetap, { target: { value: '150' } });
+    fireEvent.click(territorial);
+    expect(screen.getByRole('button', { name: 'Tolima' })).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Tolima' }));
+    expect(cetap.textContent).toContain('Buscar CETAP/Sede...');
+    fireEvent.click(cetap);
+    expect(screen.getByRole('button', { name: 'Ibagué' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Granada' })).toBeNull();
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Ibagué' }));
     fireEvent.click(screen.getByRole('button', { name: 'Guardar Cambios' }));
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
       idSeccional: 15, idSede: 150,
@@ -64,11 +69,12 @@ describe('asignación territorial del usuario', () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     render(<CreatePersonModal isOpen editMode initialData={initialData} onClose={vi.fn()} onCreate={onCreate} />);
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
-    const territorial = screen.getByText('Territorial (Seccional)').parentElement!.querySelector('select')!;
-    const cetap = screen.getByText('CETAP (Sede)').parentElement!.querySelector('select')!;
-    await waitFor(() => expect(territorial.querySelectorAll('option')).toHaveLength(3));
-    fireEvent.change(territorial, { target: { value: '' } });
-    expect((cetap as HTMLSelectElement).value).toBe('');
+    const territorialContainer = screen.getByText('Territorial (Seccional)').parentElement!;
+    const territorial = territorialContainer.querySelector('button')!;
+    const cetap = screen.getByText('CETAP (Sede)').parentElement!.querySelector('button')!;
+    await waitFor(() => expect(territorial.textContent).toContain('Meta'));
+    fireEvent.click(territorialContainer.querySelector('[role="button"]')!);
+    expect(cetap.textContent).toContain('Primero seleccione territorial...');
     expect(cetap.hasAttribute('disabled')).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Guardar Cambios' }));
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
@@ -83,8 +89,8 @@ describe('asignación territorial del usuario', () => {
     const onClose = vi.fn();
     render(<CreatePersonModal isOpen editMode initialData={initialData} onClose={onClose} onCreate={onCreate} />);
     fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
-    const territorial = screen.getByText('Territorial (Seccional)').parentElement!.querySelector('select')!;
-    await waitFor(() => expect(territorial.querySelectorAll('option')).toHaveLength(3));
+    const territorial = screen.getByText('Territorial (Seccional)').parentElement!.querySelector('button')!;
+    await waitFor(() => expect(territorial.textContent).toContain('Meta'));
     fireEvent.click(screen.getByRole('button', { name: 'Guardar Cambios' }));
     await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
     expect(onClose).not.toHaveBeenCalled();

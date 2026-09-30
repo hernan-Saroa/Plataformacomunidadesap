@@ -9,6 +9,8 @@ import { Geopolitica } from './geopolitica.entity';
 import { Sede } from './sede.entity';
 import { Seccional } from './seccional.entity';
 import { Dependencia } from './dependencia.entity';
+import { Cargo } from './cargo.entity';
+import { DependenciaCargo } from './dependencia-cargo.entity';
 import { UsersService } from './users.service';
 import { RolesService } from './roles.service';
 import { ModulesService } from './modules.service';
@@ -34,6 +36,8 @@ import { DatosMaestrosModule } from './datos-maestros.module';
       Sede,
       Seccional,
       Dependencia,
+      Cargo,
+      DependenciaCargo,
     ]),
     DatosMaestrosModule,
   ],

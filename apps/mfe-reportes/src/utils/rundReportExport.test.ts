@@ -20,6 +20,7 @@ vi.mock('xlsx', () => ({
 
 const pdfInstance = {
   internal: { pageSize: { width: 210, height: 297 } },
+  addImage: vi.fn(),
   setFillColor: vi.fn(),
   rect: vi.fn(),
   setFontSize: vi.fn(),
@@ -44,6 +45,9 @@ vi.mock('jspdf', () => ({
 }));
 vi.mock('jspdf-autotable', () => ({
   default: (...args: any[]) => autoTableMock(...args),
+}));
+vi.mock('../assets/esap-logo-institucional.b64?raw', () => ({
+  default: 'ZmFrZS1sb2dvLWJhc2U2NA==',
 }));
 
 const { exportRundReportToExcel, exportRundReportToPDF } = await import('./rundReportExport');
@@ -132,6 +136,17 @@ describe('exportRundReportToPDF — REQ-RUND-F021', () => {
 
     expect(pdfInstance.save).toHaveBeenCalledTimes(1);
     expect(pdfInstance.save.mock.calls[0][0]).toMatch(/^rund_planta_docente_detalle_\d{4}-\d{2}-\d{2}_\d{4}\.pdf$/);
+  });
+
+  it('dibuja el logo institucional real en el encabezado en vez del placeholder de caja azul + texto', () => {
+    exportRundReportToPDF(ROWS, COLUMNAS, { titulo: 'Reporte', filtros: {}, totalRegistros: 2 }, 'reporte');
+
+    expect(pdfInstance.addImage).toHaveBeenCalledTimes(1);
+    const [imageData, format] = pdfInstance.addImage.mock.calls[0];
+    expect(imageData).toBe('ZmFrZS1sb2dvLWJhc2U2NA==');
+    expect(format).toBe('PNG');
+    // Ya no dibuja el rectángulo azul de relleno que simulaba el logo.
+    expect(pdfInstance.rect).not.toHaveBeenCalled();
   });
 
   it('usa orientación portrait con pocas columnas y landscape cuando hay más de 6 (tablas anchas, ej. Macro Docente)', () => {

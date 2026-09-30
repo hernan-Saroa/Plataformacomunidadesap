@@ -16,6 +16,11 @@ import jsPDF from 'jspdf';
 // jspdf-autotable v5 ya no parchea jsPDF.prototype por efecto secundario (eso era v3/v4):
 // hay que llamar a la función exportada, no a doc.autoTable(...).
 import autoTable from 'jspdf-autotable';
+// Mismo logo institucional real que ya usa mfe-control-interno (exportarAuditoriasTemplate.ts)
+// en vez del placeholder de caja azul + texto "ESAP" que tenía este archivo antes.
+import logoEsapBase64 from '../assets/esap-logo-institucional.b64?raw';
+
+const LOGO_ESAP_ASPECT_RATIO = 86 / 248; // dimensiones reales del PNG fuente (248x86)
 
 export interface RundColumn {
   header: string;
@@ -139,12 +144,20 @@ export function exportRundReportToPDF(
 
 /** Dibuja el encabezado institucional y devuelve el Y a partir del cual es seguro seguir escribiendo (deja espacio para el subtítulo si lo hay). */
 function agregarEncabezadoInstitucional(doc: jsPDF, meta: RundExportMeta, pageWidth: number): number {
-  doc.setFillColor(...AZUL_ESAP);
-  doc.rect(14, 10, 22, 12, 'F');
-  doc.setFontSize(8);
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.text('ESAP', 25, 17, { align: 'center' });
+  const logoWidth = 22;
+  const logoHeight = logoWidth * LOGO_ESAP_ASPECT_RATIO;
+  try {
+    doc.addImage(logoEsapBase64, 'PNG', 14, 10, logoWidth, logoHeight);
+  } catch {
+    // Si el logo no se pudo decodificar (activo corrupto/no disponible), no se
+    // rompe el export: se cae al placeholder de marca anterior.
+    doc.setFillColor(...AZUL_ESAP);
+    doc.rect(14, 10, logoWidth, logoHeight, 'F');
+    doc.setFontSize(8);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.text('ESAP', 14 + logoWidth / 2, 10 + logoHeight / 2 + 2, { align: 'center' });
+  }
 
   doc.setFontSize(11);
   doc.setTextColor(...AZUL_ESAP);

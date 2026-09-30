@@ -262,6 +262,9 @@ export function UsersPersonsModulePremium() {
         idDependencia:
           item.idDependencia || item.person?.idDependencia || undefined,
         dependencia: item.dependencia,
+        idCargo:
+          item.idCargo || item.person?.idCargo || undefined,
+        cargo: item.cargo || item.person?.cargo || undefined,
         sedes: [], // Mantener para compatibilidad
         enrollmentMethod: 'manual' as 'qr' | 'manual' | 'massive'
       }));
@@ -668,6 +671,7 @@ export function UsersPersonsModulePremium() {
          idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : null,
          idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : null,
          idDependencia: userData.idDependencia ? Number(userData.idDependencia) : null,
+         idCargo: userData.idCargo ? Number(userData.idCargo) : null,
        };
 
        await usersService.updateUser(userId, updateUserData);
@@ -983,6 +987,7 @@ export function UsersPersonsModulePremium() {
          idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
          idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
          idDependencia: userData.idDependencia ? Number(userData.idDependencia) : null,
+         idCargo: userData.idCargo ? Number(userData.idCargo) : null,
        };
 
        const newUser = await usersService.createUser(createUserData);
@@ -2426,19 +2431,6 @@ export function UsersPersonsModulePremium() {
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onCreate={handleCreateUser}
-      />
-
-      {/* Modal Editar Usuario */}
-      <CreatePersonModal
-        key="edit-person-modal"
-        isOpen={isCreateModalOpen}
-        onClose={() => {
-          setIsCreateModalOpen(false);
-          setSelectedUser(null);
-        }}
-        onCreate={handleCreateUser}
-        editMode={true}
-        initialData={selectedUser}
       />
 
       {/* Modal Asignar Accesos */}
