@@ -16,7 +16,8 @@ import {
   QrCode,
   UserPlus,
   Upload,
-  Building2
+  Building2,
+  Briefcase
 } from 'lucide-react';
 import { Badge } from '@esap-mfe/shared-ui/badge';
 import { motion } from 'motion/react';
@@ -300,6 +301,24 @@ export function UserExpandedView({
                     <p className="text-sm font-semibold text-indigo-900 truncate" title={user.dependencia.nomDependencia}>{user.dependencia.nomDependencia}</p>
                     {user.dependencia.codDependencia && (
                       <p className="text-xs text-indigo-600/70 truncate">{user.dependencia.codDependencia}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Cargo Institucional */}
+              {user.cargo && (
+                <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-blue-100">
+                    <Briefcase className="w-4 h-4 text-blue-700" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-blue-600 font-medium">Cargo Institucional</p>
+                    <p className="text-sm font-semibold text-blue-900 truncate" title={user.cargo.nomCargo}>{user.cargo.nomCargo}</p>
+                    {user.cargo.codCargo && (
+                      <p className="text-xs text-blue-600/70 truncate">
+                        {user.cargo.codCargo}{user.cargo.nivelJerarquico ? ` • ${user.cargo.nivelJerarquico}` : ''}
+                      </p>
                     )}
                   </div>
                 </div>
