@@ -2664,7 +2664,7 @@ export class MantenimientoService implements OnModuleInit {
 
     // ============ JOINS ESPECÍFICOS SEGÚN AGRUPACIÓN ============
     if (por === 'categoria') {
-      qb.leftJoin(CatalogoItem, 'ci', 'ci.id = s.idCategoria AND ci.catalogo = :catCatalogo', {
+      qb.leftJoin(CatalogoItem, 'ci', 'ci.idCatalogo = s.idCategoria AND ci.catalogo = :catCatalogo', {
         catCatalogo: 'CATEGORIA_SERVICIO',
       });
     }
@@ -2926,7 +2926,7 @@ export class MantenimientoService implements OnModuleInit {
     // ---- B. porCategoria ----
     const catQb = this.mantenimientoRepo.createQueryBuilder('s');
     catQb.select([]);
-    catQb.leftJoin(CatalogoItem, 'ci', 'ci.id = s.idCategoria AND ci.catalogo = :catCatalogo', { catCatalogo: 'CATEGORIA_SERVICIO' });
+    catQb.leftJoin(CatalogoItem, 'ci', 'ci.idCatalogo = s.idCategoria AND ci.catalogo = :catCatalogo', { catCatalogo: 'CATEGORIA_SERVICIO' });
     aplicarFiltrosComunes(catQb, 's.fechaRadicacion', fDesde, fHasta);
     const catRaw = await catQb
       .addSelect('CAST(s.idCategoria AS TEXT)', 'idCategoria')
@@ -2998,7 +2998,7 @@ export class MantenimientoService implements OnModuleInit {
     // ---- D. tiemposAtencionVsMeta (vs SLA por categoría) ----
     const slaQb = this.mantenimientoRepo.createQueryBuilder('s');
     slaQb.select([]);
-    slaQb.leftJoin(CatalogoItem, 'ci', 'ci.id = s.idCategoria AND ci.catalogo = :catCatalogo', { catCatalogo: 'CATEGORIA_SERVICIO' });
+    slaQb.leftJoin(CatalogoItem, 'ci', 'ci.idCatalogo = s.idCategoria AND ci.catalogo = :catCatalogo', { catCatalogo: 'CATEGORIA_SERVICIO' });
     aplicarFiltrosComunes(slaQb, 's.fechaRadicacion', fDesde, fHasta);
     slaQb.andWhere('s.fechaCierreTecnico IS NOT NULL AND s.fechaRadicacion IS NOT NULL');
     const slaRaw = await slaQb
@@ -3063,7 +3063,7 @@ export class MantenimientoService implements OnModuleInit {
     // ---- F. rollupGeografico por sede + piso ----
     const sedeQb = this.mantenimientoRepo.createQueryBuilder('s');
     sedeQb.select([]);
-    sedeQb.leftJoin(CatalogoItem, 'sede', 'sede.id = s.idSede');
+    sedeQb.leftJoin(Sede, 'sede', 'sede.idSede = s.idSede');
     aplicarFiltrosComunes(sedeQb, 's.fechaRadicacion', fDesde, fHasta);
     const sedeRaw = await sedeQb
       .addSelect('CAST(s.idSede AS TEXT)', 'idSede')
@@ -3082,15 +3082,15 @@ export class MantenimientoService implements OnModuleInit {
       const pisos: Array<{ piso: string; cantidad: number }> = [];
       if (idSedeActual) {
         try {
-          const pisoQb = this.mantenimientoRepo.createQueryBuilder('s2');
+          const pisoQb = this.mantenimientoRepo.createQueryBuilder('s');
           pisoQb.select([]);
-          pisoQb.andWhere('s2.idSede = :idSede', { idSede: idSedeActual });
-          aplicarFiltrosComunes(pisoQb, 's2.fechaRadicacion', fDesde, fHasta);
-          pisoQb.andWhere("s2.piso IS NOT NULL AND TRIM(s2.piso) <> ''");
+          pisoQb.andWhere('s.idSede = :idSedeActualParam', { idSedeActualParam: idSedeActual });
+          aplicarFiltrosComunes(pisoQb, 's.fechaRadicacion', fDesde, fHasta);
+          pisoQb.andWhere("s.piso IS NOT NULL AND TRIM(s.piso) <> ''");
           const rows = await pisoQb
-            .addSelect('s2.piso', 'piso')
+            .addSelect('s.piso', 'piso')
             .addSelect('COUNT(*)::bigint', 'cantidad')
-            .groupBy('s2.piso')
+            .groupBy('s.piso')
             .orderBy('"cantidad"', 'DESC')
             .getRawMany();
           for (const p of rows || []) pisos.push({ piso: String(p.piso || ''), cantidad: Number(p.cantidad || 0) });
@@ -3132,7 +3132,8 @@ export class MantenimientoService implements OnModuleInit {
     const hoy = new Date();
     const fechaYYYYMMDD = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
     const filename = `Reporte_Gestion_Infraestructura_UMI_${fechaYYYYMMDD}.xlsx`;
-    const ExcelJS: any = await import('exceljs');
+    const ExcelJSMod: any = await import('exceljs');
+    const ExcelJS = ExcelJSMod.Workbook ? ExcelJSMod : (ExcelJSMod.default?.Workbook ? ExcelJSMod.default : (ExcelJSMod.default ?? ExcelJSMod));
     const workbook = new ExcelJS.Workbook();
     workbook.creator = user?.email || 'UMI-ESAP';
     workbook.created = hoy;
@@ -3306,18 +3307,17 @@ export class MantenimientoService implements OnModuleInit {
     const detalleSols = await qbDet.getMany();
     for (const sol of detalleSols) {
       const ubicTxt = [sol.piso, sol.salon].filter(Boolean).join(' / ') || (sol.espacio ? (sol.espacio as any).codigo || '' : '');
-      let evTxt = '';
+      let evCell: any = 'Sin evidencias';
       try {
         const evs = await this.getEvidenciasBySolicitud(sol.idSolicitud, 180);
-        const links: string[] = [];
-        for (let i = 0; i < Math.min(evs.length, 8); i++) {
-          const e = evs[i];
-          const url = e.urlPresigned || e.urlPublica || '';
-          if (!url) continue;
-          const label = `[Ev${i + 1}] ${e.nombreOriginal || 'adjunto'}`.slice(0, 120);
-          links.push(`=HYPERLINK("${url}", "${label.replace(/"/g, '""')}")`);
+        if (evs.length === 1 && (evs[0].urlPresigned || evs[0].urlPublica)) {
+          const url = evs[0].urlPresigned || evs[0].urlPublica || '';
+          const label = `[Ev1] ${evs[0].nombreOriginal || 'adjunto'}`.slice(0, 120);
+          evCell = { text: label, hyperlink: url };
+        } else if (evs.length > 1) {
+          const partes = evs.slice(0, 8).map((e, idx) => `[Ev${idx + 1}] ${e.nombreOriginal || 'adjunto'}: ${e.urlPresigned || e.urlPublica || ''}`);
+          evCell = partes.join(' ; ');
         }
-        evTxt = links.join(' ; ');
       } catch { /* ignore */ }
       wsDet.addRow({
         consecutivo: sol.consecutivo || sol.idSolicitud,
@@ -3331,7 +3331,7 @@ export class MantenimientoService implements OnModuleInit {
         fechaCierre: sol.fechaCierreTecnico ? new Date(sol.fechaCierreTecnico).toISOString() : '',
         calif: sol.calificacionServicio ?? '',
         costo: sol.costoFinalEfectivoCop ?? 0,
-        evidencias: { formula: evTxt || '' },
+        evidencias: evCell,
       });
     }
 
@@ -3349,15 +3349,17 @@ export class MantenimientoService implements OnModuleInit {
     const hoy = new Date();
     const fechaYYYYMMDD = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
     const filename = `Reporte_Gestion_Infraestructura_UMI_${fechaYYYYMMDD}.pdf`;
-    const PdfPrinterMod: any = await import('pdfmake');
+    const { createRequire } = await import('node:module');
+    const requireFn = typeof require !== 'undefined' ? require : createRequire(import.meta.url);
+    const PdfPrinterMod = requireFn('pdfmake');
     const PdfPrinter = PdfPrinterMod.default ?? PdfPrinterMod;
 
     const printer = new PdfPrinter({
-      Roboto: {
-        normal: Buffer.from('MCw9AAAAAEZBTAAAAAEAAAABAAABAAY8aW5mbz48c3RhcnR4cmVmPjwveGlmZj4KPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48IVRPQ1RZUEUgcGRmIFBVQkxJQyAiLS8vQWRvYmUvL0RURCBQREYgMS43Ly9FTiIgImh0dHA6Ly93d3cuYWRvYmUuY29tL3N0YW5kYXJkcy8yMDA0L21zb3RwZGYvZG93bmxvYWRzL1BERlJlZmVyZW5jZS5wZGYiPjxwZGY+PG9iamVjdD48L29iamVjdD48L3BkZj4='),
-        bold: Buffer.from('MCw9AAAAAEZBTAAAAAEAAAABAAABAAY8aW5mbz48c3RhcnR4cmVmPjwveGlmZj4KPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48IVRPQ1RZUEUgcGRmIFBVQkxJQyAiLS8vQWRvYmUvL0RURCBQREYgMS43Ly9FTiIgImh0dHA6Ly93d3cuYWRvYmUuY29tL3N0YW5kYXJkcy8yMDA0L21zb3RwZGYvZG93bmxvYWRzL1BERlJlZmVyZW5jZS5wZGYiPjxwZGY+PG9iamVjdD48L29iamVjdD48L3BkZj4='),
-        italics: Buffer.from('MCw9AAAAAEZBTAAAAAEAAAABAAABAAY8aW5mbz48c3RhcnR4cmVmPjwveGlmZj4KPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48IVRPQ1RZUEUgcGRmIFBVQkxJQyAiLS8vQWRvYmUvL0RURCBQREYgMS43Ly9FTiIgImh0dHA6Ly93d3cuYWRvYmUuY29tL3N0YW5kYXJkcy8yMDA0L21zb3RwZGYvZG93bmxvYWRzL1BERlJlZmVyZW5jZS5wZGYiPjxwZGY+PG9iamVjdD48L29iamVjdD48L3BkZj4='),
-        bolditalics: Buffer.from('MCw9AAAAAEZBTAAAAAEAAAABAAABAAY8aW5mbz48c3RhcnR4cmVmPjwveGlmZj4KPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz48IVRPQ1RZUEUgcGRmIFBVQkxJQyAiLS8vQWRvYmUvL0RURCBQREYgMS43Ly9FTiIgImh0dHA6Ly93d3cuYWRvYmUuY29tL3N0YW5kYXJkcy8yMDA0L21zb3RwZGYvZG93bmxvYWRzL1BERlJlZmVyZW5jZS5wZGYiPjxwZGY+PG9iamVjdD48L29iamVjdD48L3BkZj4='),
+      Helvetica: {
+        normal: 'Helvetica',
+        bold: 'Helvetica-Bold',
+        italics: 'Helvetica-Oblique',
+        bolditalics: 'Helvetica-BoldOblique',
       },
     });
 
@@ -3501,7 +3503,7 @@ export class MantenimientoService implements OnModuleInit {
         kpiSub: { fontSize: 9, color: '#64748B' },
       },
       defaultStyle: {
-        font: 'Roboto',
+        font: 'Helvetica',
         fontSize: 10,
       },
     };
@@ -3644,17 +3646,38 @@ export class MantenimientoService implements OnModuleInit {
     user: AuthUser | null | undefined,
   ): Promise<{ stream: PassThrough; filename: string; totalBytes: number }> {
     if (!isUuid(idSolicitud)) throw new BadRequestException('ID solicitud no tiene formato UUID válido.');
-    requirePermission('infraestructura.reportes.gestion', user);
     const sol = await this.findById(idSolicitud);
+    const esBypass = usuarioEsBypassConsolidados(user);
+    const tienePermiso = esBypass ||
+      userHasPermission('infraestructura.reportes.gestion', user) ||
+      userHasPermission('infraestructura.view_all', user) ||
+      userHasPermission('infraestructura.solicitud.view', user) ||
+      (user?.email && sol.solicitanteEmail && user.email.toLowerCase() === sol.solicitanteEmail.toLowerCase());
+    if (!tienePermiso) {
+      requirePermission('infraestructura.reportes.gestion', user);
+    }
     const evs = await this.getEvidenciasBySolicitud(sol.idSolicitud, 180);
-    const archiverMod: any = await import('archiver');
-    const archiver = archiverMod.default ?? archiverMod;
+    const { createRequire } = await import('node:module');
+    const requireFn = typeof require !== 'undefined' ? require : createRequire(import.meta.url);
+    const archiverMod = requireFn('archiver');
     const output = new PassThrough();
-    const zip = archiver('zip', { zlib: { level: 6 }, highWaterMark: 1024 * 1024 });
+    const zipOptions = { zlib: { level: 6 }, highWaterMark: 1024 * 1024 };
+    let zip: any;
+    if (archiverMod && typeof archiverMod.ZipArchive === 'function') {
+      zip = new archiverMod.ZipArchive(zipOptions);
+    } else if (archiverMod && archiverMod.default && typeof archiverMod.default.ZipArchive === 'function') {
+      zip = new archiverMod.default.ZipArchive(zipOptions);
+    } else if (typeof archiverMod === 'function') {
+      zip = archiverMod('zip', zipOptions);
+    } else if (archiverMod && typeof archiverMod.default === 'function') {
+      zip = archiverMod.default('zip', zipOptions);
+    } else if (archiverMod && typeof archiverMod.create === 'function') {
+      zip = archiverMod.create('zip', zipOptions);
+    } else {
+      throw new InternalServerErrorException('No se pudo inicializar la librería archiver para empaquetado ZIP.');
+    }
     zip.on('error', (err: any) => { try { output.destroy(err); } catch { /* ignore */ } });
     zip.pipe(output);
-    const fsMod = await import('fs');
-    const fs = fsMod.default ?? fsMod;
     let totalBytes = 0;
     const vistos = new Set<string>();
     for (let i = 0; i < evs.length; i++) {
@@ -3681,6 +3704,9 @@ export class MantenimientoService implements OnModuleInit {
       } catch (err: any) {
         zip.append(`NO SE PUDO DESCARGAR ESTA EVIDENCIA (${nombreZip}). Error: ${String(err?.message || err).slice(0, 500)}\n`, { name: nombreZip + '__FALLO.txt' });
       }
+    }
+    if (evs.length === 0) {
+      zip.append(`Solicitud: ${sol.consecutivo || sol.idSolicitud}\nNo registra evidencias adjuntas.\n`, { name: 'LEAME.txt' });
     }
     zip.finalize().catch(() => { try { output.end(); } catch { /* ignore */ } });
     const consecutivo = sol.consecutivo || sol.idSolicitud.slice(0, 10);
