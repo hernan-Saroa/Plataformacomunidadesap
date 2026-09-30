@@ -1,9 +1,6 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, OnModuleInit, Optional, Inject, forwardRef, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException, OnModuleInit, Optional, Inject, forwardRef, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, Between, In, IsNull, Not } from 'typeorm';
-import type ExcelJSType from 'exceljs';
-import type PdfPrinterType from 'pdfmake';
-import type archiverType from 'archiver';
 import { PassThrough, Readable } from 'node:stream';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
 import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto } from './dto/create-mantenimiento.dto.js';
@@ -3349,9 +3346,7 @@ export class MantenimientoService implements OnModuleInit {
     const hoy = new Date();
     const fechaYYYYMMDD = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
     const filename = `Reporte_Gestion_Infraestructura_UMI_${fechaYYYYMMDD}.pdf`;
-    const { createRequire } = await import('node:module');
-    const requireFn = typeof require !== 'undefined' ? require : createRequire(import.meta.url);
-    const PdfPrinterMod = requireFn('pdfmake');
+    const PdfPrinterMod: any = require('pdfmake');
     const PdfPrinter = PdfPrinterMod.default ?? PdfPrinterMod;
 
     const printer = new PdfPrinter({
@@ -3417,7 +3412,7 @@ export class MantenimientoService implements OnModuleInit {
       ]),
     ];
 
-    const dd: import('pdfmake').TDocumentDefinitions = {
+    const dd: any = {
       pageSize: 'LETTER',
       pageMargins: [40, 50, 40, 60],
       footer: (currentPage: number, pageCount: number) => ({
@@ -3657,9 +3652,7 @@ export class MantenimientoService implements OnModuleInit {
       requirePermission('infraestructura.reportes.gestion', user);
     }
     const evs = await this.getEvidenciasBySolicitud(sol.idSolicitud, 180);
-    const { createRequire } = await import('node:module');
-    const requireFn = typeof require !== 'undefined' ? require : createRequire(import.meta.url);
-    const archiverMod = requireFn('archiver');
+    const archiverMod: any = require('archiver');
     const output = new PassThrough();
     const zipOptions = { zlib: { level: 6 }, highWaterMark: 1024 * 1024 };
     let zip: any;
