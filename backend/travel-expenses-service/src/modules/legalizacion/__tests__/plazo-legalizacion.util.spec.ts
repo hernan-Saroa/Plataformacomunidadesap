@@ -57,40 +57,49 @@ describe('EFDS-1309 — plazo de legalización (días hábiles, hora Colombia)',
     });
   });
 
-  describe('calcularPlazo — corre desde la fecha de regreso', () => {
+  describe('calcularPlazo — corre desde GREATEST(regreso, pago)', () => {
     const base = { plazoDiasHabiles: 5, horaCorte: '16:30', festivos: FESTIVOS_2026 };
 
-    it('vence el quinto día hábil después del regreso, a la hora de corte', () => {
-      const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-09-05' }); // sábado
+    it('avance (pago antes del viaje): vence el quinto día hábil después del regreso', () => {
+      const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-09-05', fechaPagoYmd: '2026-08-28' }); // regreso sábado
       // 7, 8, 9, 10, 11 de septiembre.
       expect(r.fechaLimite.toISOString()).toBe(instanteColombia('2026-09-11', '16:30').toISOString());
       expect(r.fechaLimite.toISOString()).toBe('2026-09-11T21:30:00.000Z');
       expect(r.fechaBasePlazo.toISOString()).toBe(instanteColombia('2026-09-05', '23:59', '59').toISOString());
     });
 
-    it('pagada después de vencido el plazo: la legalización nace vencida', () => {
-      const pago = new Date('2026-09-24T15:00:00Z');
-      const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-09-05' });
-      expect(r.fechaLimite.getTime()).toBeLessThan(pago.getTime());
-      expect(calcularSemaforo({ fechaLimite: r.fechaLimite, fechaEnvio: null }, pago, 2, FESTIVOS_2026)).toBe('VENCIDA');
+    it('reconocimiento posterior (pago después del regreso): corre desde el pago y no nace vencida', () => {
+      const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-09-05', fechaPagoYmd: '2026-09-24' }); // pago jueves
+      expect(fechaColombia(r.fechaBasePlazo)).toBe('2026-09-24');
+      // 25, 28, 29, 30 de septiembre y 1 de octubre.
+      expect(fechaColombia(r.fechaLimite)).toBe('2026-10-01');
+      const alPagar = instanteColombia('2026-09-24', '15:00');
+      expect(calcularSemaforo({ fechaLimite: r.fechaLimite, fechaEnvio: null }, alPagar, 2, FESTIVOS_2026)).not.toBe('VENCIDA');
     });
 
-    it('pagada antes de viajar (avance): igual corre desde el regreso', () => {
-      const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-10-02' }); // viernes
+    it('pago el mismo día del regreso: da lo mismo cualquiera de las dos', () => {
+      const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-10-02', fechaPagoYmd: '2026-10-02' });
+      expect(fechaColombia(r.fechaLimite)).toBe('2026-10-09');
+    });
+
+    it('legalización abierta antes del pago (sin fecha de pago): corre desde el regreso', () => {
+      const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-10-02', fechaPagoYmd: null }); // viernes
       expect(fechaColombia(r.fechaBasePlazo)).toBe('2026-10-02');
       // 5, 6, 7, 8, 9 de octubre.
       expect(fechaColombia(r.fechaLimite)).toBe('2026-10-09');
     });
 
     it('salta festivos: regreso el viernes 9 de octubre y el lunes 12 es festivo', () => {
-      const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-10-09' });
+      const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-10-09', fechaPagoYmd: '2026-10-01' });
       // 13, 14, 15, 16, 19 de octubre.
       expect(fechaColombia(r.fechaLimite)).toBe('2026-10-19');
     });
 
     it('la fecha límite siempre es posterior a la base (CHECK de la migración 450)', () => {
       for (let plazo = 1; plazo <= 15; plazo++) {
-        const r = calcularPlazo({ ...base, fechaFinComisionYmd: '2026-09-05', plazoDiasHabiles: plazo, horaCorte: '00:00' });
+        const r = calcularPlazo({
+          ...base, fechaFinComisionYmd: '2026-09-05', fechaPagoYmd: '2026-09-20', plazoDiasHabiles: plazo, horaCorte: '00:00',
+        });
         expect(r.fechaLimite.getTime()).toBeGreaterThan(r.fechaBasePlazo.getTime());
       }
     });
@@ -101,7 +110,9 @@ describe('EFDS-1309 — plazo de legalización (días hábiles, hora Colombia)',
       try {
         for (const tz of ['UTC', 'America/Bogota', 'Asia/Tokyo', 'Pacific/Honolulu']) {
           process.env.TZ = tz;
-          resultados.push(calcularPlazo({ ...base, fechaFinComisionYmd: '2026-09-05' }).fechaLimite.toISOString());
+          resultados.push(
+            calcularPlazo({ ...base, fechaFinComisionYmd: '2026-09-05', fechaPagoYmd: '2026-09-24' }).fechaLimite.toISOString(),
+          );
         }
       } finally {
         process.env.TZ = original;

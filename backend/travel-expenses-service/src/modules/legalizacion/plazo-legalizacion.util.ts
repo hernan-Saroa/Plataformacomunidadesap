@@ -68,6 +68,8 @@ export function sumarDiasHabiles(
 export interface ParametrosPlazo {
   /** Fecha de regreso de la comisión (YYYY-MM-DD), leída como fecha, sin zona. */
   fechaFinComisionYmd: string;
+  /** Fecha de pago (YYYY-MM-DD). Nula si la legalización se abre antes del pago. */
+  fechaPagoYmd: string | null;
   plazoDiasHabiles: number;
   /** HH:MM en hora de Colombia. */
   horaCorte: string;
@@ -81,25 +83,25 @@ export interface PlazoCalculado {
 }
 
 /**
- * El plazo corre desde la fecha de regreso de la comisión (confirmado por el
- * Grupo de Viáticos), sin importar cuándo se pague: una comisión pagada después
- * de vencido su plazo abre su legalización ya vencida.
+ * El plazo corre desde lo más tardío entre la fecha de regreso y la de pago:
+ * GREATEST(fecha_fin, fecha_pago). En avance, el caso normal, se paga antes del
+ * viaje y el plazo corre desde el regreso (lo que pidió el Grupo de Viáticos).
+ * En reconocimiento posterior el pago llega después del regreso: contar desde
+ * el regreso haría nacer vencida casi toda comisión de esa modalidad.
  *
- * El modelo no registra una fecha de regreso real distinta de la planeada: se
- * usa solicitudes_comision.fecha_fin.
+ * El regreso es el planeado (solicitudes_comision.fecha_fin): el real solo se
+ * conoce al legalizar, con el formato GF-FO-032.
  *
  * Vence el último día hábil del plazo a la hora de corte, en hora de Colombia.
  * La migración 453 replica este cálculo en SQL para las legalizaciones abiertas.
  */
 export function calcularPlazo(p: ParametrosPlazo): PlazoCalculado {
-  const { fecha, calendarioIncompleto } = sumarDiasHabiles(
-    p.fechaFinComisionYmd,
-    p.plazoDiasHabiles,
-    p.festivos,
-  );
+  const baseYmd =
+    p.fechaPagoYmd && p.fechaPagoYmd > p.fechaFinComisionYmd ? p.fechaPagoYmd : p.fechaFinComisionYmd;
+  const { fecha, calendarioIncompleto } = sumarDiasHabiles(baseYmd, p.plazoDiasHabiles, p.festivos);
 
   return {
-    fechaBasePlazo: instanteColombia(p.fechaFinComisionYmd, '23:59', '59'),
+    fechaBasePlazo: instanteColombia(baseYmd, '23:59', '59'),
     fechaLimite: instanteColombia(fecha, p.horaCorte),
     calendarioIncompleto,
   };

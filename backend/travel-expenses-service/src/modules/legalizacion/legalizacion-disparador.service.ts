@@ -46,6 +46,7 @@ interface FilaSolicitud {
   estado_solicitud: string;
   modalidad_pago: string;
   fecha_fin_ymd: string;
+  fecha_pago_ymd: string | null;
   creado_por_usuario_id: string;
   comisionado_email: string | null;
 }
@@ -109,6 +110,7 @@ export class LegalizacionDisparadorService {
       const filas: FilaSolicitud[] = await m.query(
         `SELECT s.id, s.consecutivo_unico, s.estado_solicitud, s.modalidad_pago,
                 to_char(s.fecha_fin, 'YYYY-MM-DD') AS fecha_fin_ymd,
+                to_char(s.fecha_pago, 'YYYY-MM-DD') AS fecha_pago_ymd,
                 s.creado_por_usuario_id, c.email AS comisionado_email
            FROM travel_expenses.solicitudes_comision s
            LEFT JOIN travel_expenses.comisionados c ON c.id = s.comisionado_id
@@ -137,6 +139,7 @@ export class LegalizacionDisparadorService {
         const ahora = new Date();
         const plazo = calcularPlazo({
           fechaFinComisionYmd: sol.fecha_fin_ymd,
+          fechaPagoYmd: sol.fecha_pago_ymd,
           plazoDiasHabiles: config.plazoDiasHabiles,
           horaCorte: config.horaCorte,
           festivos,

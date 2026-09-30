@@ -1,6 +1,7 @@
 /**
  * EFDS-1309 — La migración 453 recalcula en SQL el plazo que calcularPlazo()
- * calcula en TypeScript. Esta prueba ejecuta la migración dentro de una
+ * calcula en TypeScript, desde GREATEST(regreso, pago).
+ * Esta prueba ejecuta la migración dentro de una
  * transacción que siempre se revierte y compara ambos cálculos día por día.
  * No deja cambios en la base.
  *
@@ -20,7 +21,7 @@ const MIGRACION = readFileSync(
   'utf8',
 );
 
-describirConBase('EFDS-1309 — migración 453: plazo desde el regreso (base real, con ROLLBACK)', () => {
+describirConBase('EFDS-1309 — migración 453: plazo desde GREATEST(regreso, pago) (base real, con ROLLBACK)', () => {
   let ds: DataSource;
   let qr: QueryRunner;
   let festivos: Set<string>;
@@ -49,25 +50,28 @@ describirConBase('EFDS-1309 — migración 453: plazo desde el regreso (base rea
     await ds?.destroy();
   });
 
-  it('SQL y TypeScript dan la misma base, fecha límite y marca de calendario para cada regreso de 2026', async () => {
+  it('SQL y TypeScript coinciden para cada regreso de 2026, con pago antes, el mismo día, después o sin pago', async () => {
     const diferencias: string[] = [];
+    // Desfase del pago respecto del regreso, en días; null = sin fecha de pago.
+    const desfases = [-10, 0, 3, 20, null];
     for (const [dias, horaCorte] of [[5, '16:30'], [1, '00:00'], [10, '17:00']] as const) {
-      const filas: { regreso: string; base: Date; limite: Date; incompleto: boolean }[] = await qr.query(
-        `SELECT to_char(r, 'YYYY-MM-DD') AS regreso, p.fecha_base_plazo AS base, p.fecha_limite AS limite,
-                p.calendario_incompleto AS incompleto
+      const filas: { regreso: string; pago: string | null; base: Date; limite: Date; incompleto: boolean }[] = await qr.query(
+        `SELECT to_char(r, 'YYYY-MM-DD') AS regreso, to_char(r::date + d.n, 'YYYY-MM-DD') AS pago,
+                p.fecha_base_plazo AS base, p.fecha_limite AS limite, p.calendario_incompleto AS incompleto
            FROM generate_series(DATE '2026-01-01', DATE '2026-12-31', INTERVAL '1 day') r
-          CROSS JOIN LATERAL pg_temp.plazo_legalizacion_desde_regreso(r::date, $1, $2) p`,
-        [dias, horaCorte],
+          CROSS JOIN unnest($3::int[]) AS d(n)
+          CROSS JOIN LATERAL pg_temp.plazo_legalizacion(GREATEST(r::date, r::date + d.n), $1, $2) p`,
+        [dias, horaCorte, desfases],
       );
-      expect(filas).toHaveLength(365);
+      expect(filas).toHaveLength(365 * desfases.length);
       for (const f of filas) {
-        const ts = calcularPlazo({ fechaFinComisionYmd: f.regreso, plazoDiasHabiles: dias, horaCorte, festivos });
+        const ts = calcularPlazo({ fechaFinComisionYmd: f.regreso, fechaPagoYmd: f.pago, plazoDiasHabiles: dias, horaCorte, festivos });
         if (
           ts.fechaBasePlazo.getTime() !== new Date(f.base).getTime() ||
           ts.fechaLimite.getTime() !== new Date(f.limite).getTime() ||
           ts.calendarioIncompleto !== f.incompleto
         ) {
-          diferencias.push(`${f.regreso}/${dias}: sql=${new Date(f.limite).toISOString()} ts=${ts.fechaLimite.toISOString()}`);
+          diferencias.push(`${f.regreso}+${f.pago}/${dias}: sql=${new Date(f.limite).toISOString()} ts=${ts.fechaLimite.toISOString()}`);
         }
       }
     }
@@ -76,9 +80,10 @@ describirConBase('EFDS-1309 — migración 453: plazo desde el regreso (base rea
 
   it('deja cada legalización abierta con el plazo que calcularPlazo() le daría; las cerradas no cambian', async () => {
     const filas: {
-      regreso: string; dias: number; hora: string; base: Date; limite: Date; incompleto: boolean; cerrada: boolean;
+      regreso: string; pago: string | null; dias: number; hora: string; base: Date; limite: Date; incompleto: boolean; cerrada: boolean;
     }[] = await qr.query(
-      `SELECT to_char(s.fecha_fin, 'YYYY-MM-DD') AS regreso, l.plazo_dias_habiles AS dias, l.hora_corte AS hora,
+      `SELECT to_char(s.fecha_fin, 'YYYY-MM-DD') AS regreso, to_char(s.fecha_pago, 'YYYY-MM-DD') AS pago,
+              l.plazo_dias_habiles AS dias, l.hora_corte AS hora,
               l.fecha_base_plazo AS base, l.fecha_limite AS limite, l.calendario_incompleto AS incompleto,
               l.cerrada_en IS NOT NULL AS cerrada
          FROM travel_expenses.legalizaciones_comision l
@@ -96,7 +101,7 @@ describirConBase('EFDS-1309 — migración 453: plazo desde el regreso (base rea
     const malas = filas
       .filter((f) => !f.cerrada)
       .filter((f) => {
-        const ts = calcularPlazo({ fechaFinComisionYmd: f.regreso, plazoDiasHabiles: f.dias, horaCorte: f.hora, festivos });
+        const ts = calcularPlazo({ fechaFinComisionYmd: f.regreso, fechaPagoYmd: f.pago, plazoDiasHabiles: f.dias, horaCorte: f.hora, festivos });
         return ts.fechaLimite.getTime() !== new Date(f.limite).getTime() ||
           ts.fechaBasePlazo.getTime() !== new Date(f.base).getTime() ||
           ts.calendarioIncompleto !== f.incompleto;
@@ -110,7 +115,7 @@ describirConBase('EFDS-1309 — migración 453: plazo desde el regreso (base rea
          SELECT l.id, p.fecha_limite
            FROM travel_expenses.legalizaciones_comision l
            JOIN travel_expenses.solicitudes_comision s ON s.id = l.solicitud_id
-          CROSS JOIN LATERAL pg_temp.plazo_legalizacion_desde_regreso(s.fecha_fin::date, l.plazo_dias_habiles, l.hora_corte) p
+          CROSS JOIN LATERAL pg_temp.plazo_legalizacion(GREATEST(s.fecha_fin::date, s.fecha_pago), l.plazo_dias_habiles, l.hora_corte) p
           WHERE l.cerrada_en IS NULL)
        SELECT COUNT(*)::int AS n FROM nuevo JOIN travel_expenses.legalizaciones_comision l USING (id)
         WHERE l.fecha_limite IS DISTINCT FROM nuevo.fecha_limite`,
