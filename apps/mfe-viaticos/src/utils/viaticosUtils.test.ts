@@ -579,6 +579,106 @@ describe('obtenerAyudaValidacionDocumento', () => {
 
     expect(ayuda?.instruccion).toBe('Instrucción personalizada desde base de datos');
   });
+
+  it('respeta los campos parametrizados (camposAValidar) configurados para cualquier documento', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const ayudaRut = obtenerAyudaValidacionDocumento(
+      'RUT',
+      null,
+      { form: mockForm, comisionado: mockComisionado },
+      ['nombreComisionado', 'numeroDocumento'],
+    );
+    expect(ayudaRut?.datosAContrastar).toHaveLength(2);
+    expect(ayudaRut?.datosAContrastar[0].etiqueta).toBe('Nombre / Titular Comisionado');
+    expect(ayudaRut?.datosAContrastar[0].valor).toBe('Ana María Gómez Pérez');
+    expect(ayudaRut?.datosAContrastar[1].etiqueta).toBe('Documento / Cédula');
+    expect(ayudaRut?.datosAContrastar[1].valor).toBe('10203040');
+
+    const ayudaSecop = obtenerAyudaValidacionDocumento(
+      'CONTRATO_SECOP',
+      null,
+      { form: mockForm, comisionado: mockComisionado },
+      ['nombreComisionado', 'numeroDocumento', 'numeroContrato', 'valorHonorarios'],
+    );
+    expect(ayudaSecop?.datosAContrastar.some((d) => d.etiqueta.includes('Contrato') && d.valor === 'CO1.PCONT.1234567')).toBe(true);
+
+    const ayudaCdp = obtenerAyudaValidacionDocumento(
+      'CDP',
+      null,
+      { form: mockForm, comisionado: mockComisionado },
+      ['numeroCdp', 'fechaCdp'],
+    );
+    expect(ayudaCdp?.datosAContrastar.some((d) => d.valor === 'CDP-2026-999')).toBe(true);
+    expect(ayudaCdp?.datosAContrastar.some((d) => d.valor === '2026-09-20')).toBe(true);
+  });
+
+  it('obtiene datos bancarios del comisionado cuando no están en el formulario', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const comisionadoConBanco: any = {
+      ...mockComisionado,
+      numeroCuenta: '1122334455',
+      banco: 'Bancolombia',
+      tipoCuenta: 'Corriente',
+    };
+    const formSinBanco: any = {
+      ...mockForm,
+      camposAdicionales: {},
+    };
+
+    const ayuda = obtenerAyudaValidacionDocumento(
+      'CERT_BANCARIA',
+      null,
+      { form: formSinBanco, comisionado: comisionadoConBanco },
+      ['nombreComisionado', 'numeroDocumento', 'tipoCuenta', 'numeroCuenta', 'entidadBancaria'],
+    );
+
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta === 'N° Cuenta Bancaria' && d.valor === '1122334455')).toBe(true);
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta === 'Entidad Bancaria' && d.valor === 'Bancolombia')).toBe(true);
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta === 'Tipo de Cuenta' && d.valor === 'Corriente')).toBe(true);
+  });
+
+  it('obtiene datos bancarios cuando están en form.camposAdicionales con claves snake_case (entidad_bancaria, num_cuenta, tipo_cuenta)', async () => {
+    const { obtenerAyudaValidacionDocumento, mapearARequestCreacion } = await import('./viaticosUtils');
+    const formConBancoSnake: any = {
+      ...mockForm,
+      camposAdicionales: {
+        entidad_bancaria: 'BANCOLOMBIA',
+        num_cuenta: '9876543210',
+        tipo_cuenta: 'AHORROS',
+      },
+    };
+
+    const ayuda = obtenerAyudaValidacionDocumento(
+      'CERT_BANCARIA',
+      null,
+      { form: formConBancoSnake, comisionado: mockComisionado },
+      ['nombreComisionado', 'numeroDocumento', 'tipoCuenta', 'numeroCuenta', 'entidadBancaria'],
+    );
+
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta === 'N° Cuenta Bancaria' && d.valor === '9876543210')).toBe(true);
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta === 'Entidad Bancaria' && d.valor === 'BANCOLOMBIA')).toBe(true);
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta === 'Tipo de Cuenta' && d.valor === 'Cuenta de Ahorros')).toBe(true);
+
+    // Verificar también el fallback cuando camposAValidar no viene parametrizado
+    const ayudaFallback = obtenerAyudaValidacionDocumento(
+      'CERT_BANCARIA',
+      null,
+      { form: formConBancoSnake, comisionado: mockComisionado },
+    );
+    expect(ayudaFallback?.datosAContrastar.some((d) => d.etiqueta === 'N° Cuenta registrado' && d.valor === '9876543210')).toBe(true);
+    expect(ayudaFallback?.datosAContrastar.some((d) => d.etiqueta === 'Banco registrado' && d.valor === 'BANCOLOMBIA')).toBe(true);
+    expect(ayudaFallback?.datosAContrastar.some((d) => d.etiqueta === 'Tipo de Cuenta' && d.valor === 'Cuenta de Ahorros')).toBe(true);
+
+    // Verificar que mapearARequestCreacion refleje las claves en ambos formatos
+    const payload = mapearARequestCreacion(formConBancoSnake, mockComisionado, 'usr-1');
+    expect(payload.camposAdicionales?.entidad_bancaria).toBe('BANCOLOMBIA');
+    expect(payload.camposAdicionales?.entidadBancaria).toBe('BANCOLOMBIA');
+    expect(payload.camposAdicionales?.num_cuenta).toBe('9876543210');
+    expect(payload.camposAdicionales?.numeroCuenta).toBe('9876543210');
+    expect(payload.camposAdicionales?.tipo_cuenta).toBe('AHORROS');
+    expect(payload.camposAdicionales?.tipoCuenta).toBe('AHORROS');
+  });
 });
+
 
 

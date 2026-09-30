@@ -202,8 +202,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [documentosFaltantes, setDocumentosFaltantes] = useState<string[]>([]);
   const [solicitudBorrador, setSolicitudBorrador] = useState<SolicitudComisionResponse | null>(null);
   const [checklist, setChecklist] = useState<{
-    obligatorios: Array<{ codigo: string; nombre: string; descripcion: string | null; instruccionesValidacion?: string | null }>;
-    opcionales: Array<{ codigo: string; nombre: string; descripcion: string | null; instruccionesValidacion?: string | null }>;
+    obligatorios: Array<{ codigo: string; nombre: string; descripcion: string | null; instruccionesValidacion?: string | null; camposAValidar?: string[] }>;
+    opcionales: Array<{ codigo: string; nombre: string; descripcion: string | null; instruccionesValidacion?: string | null; camposAValidar?: string[] }>;
   } | null>(null);
   const [cargandoChecklist, setCargandoChecklist] = useState(false);
   const [subiendoDocs, setSubiendoDocs] = useState(false);
@@ -461,7 +461,18 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         urlRepositorio: d.urlRepositorio,
         tipoMime: d.tipoMime,
       })),
-      camposAdicionales: (solicitud as any).camposAdicionales || {},
+      camposAdicionales: (() => {
+        const raw = (solicitud as any).camposAdicionales || (solicitud as any).campos_adicionales || {};
+        const bco = raw.entidad_bancaria || raw.entidadBancaria || raw.banco || '';
+        const cta = raw.num_cuenta || raw.numeroCuenta || raw.numCuenta || raw.cuentaBancaria || '';
+        const tip = raw.tipo_cuenta || raw.tipoCuenta || '';
+        return {
+          ...raw,
+          ...(bco ? { entidad_bancaria: bco, entidadBancaria: bco, banco: bco } : {}),
+          ...(cta ? { num_cuenta: cta, numeroCuenta: cta, numCuenta: cta, cuentaBancaria: cta } : {}),
+          ...(tip ? { tipo_cuenta: tip, tipoCuenta: tip } : {}),
+        };
+      })(),
       itinerario: solicitud.itinerario || [],
     });
     if (solicitud.comisionado) {
@@ -556,13 +567,36 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const actualizarCampoAdicional = (clave: string, valor: any) => {
-    setForm((prev) => ({
-      ...prev,
-      camposAdicionales: {
+    setForm((prev) => {
+      const nextAdicionales: Record<string, any> = {
         ...(prev.camposAdicionales || {}),
         [clave]: valor,
-      },
-    }));
+      };
+      if (clave === 'entidad_bancaria' || clave === 'entidadBancaria' || clave === 'banco') {
+        nextAdicionales.entidad_bancaria = valor;
+        nextAdicionales.entidadBancaria = valor;
+        nextAdicionales.banco = valor;
+      } else if (
+        clave === 'num_cuenta' ||
+        clave === 'numeroCuenta' ||
+        clave === 'numCuenta' ||
+        clave === 'cuentaBancaria' ||
+        clave === 'numero_cuenta'
+      ) {
+        nextAdicionales.num_cuenta = valor;
+        nextAdicionales.numeroCuenta = valor;
+        nextAdicionales.numCuenta = valor;
+        nextAdicionales.cuentaBancaria = valor;
+        nextAdicionales.numero_cuenta = valor;
+      } else if (clave === 'tipo_cuenta' || clave === 'tipoCuenta') {
+        nextAdicionales.tipo_cuenta = valor;
+        nextAdicionales.tipoCuenta = valor;
+      }
+      return {
+        ...prev,
+        camposAdicionales: nextAdicionales,
+      };
+    });
   };
 
   const esCampoActivo = (clave: string): boolean => {
@@ -712,14 +746,55 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setComisionado(resultado);
       const pendientes = resultado.solicitudesPendientes || [];
       setSolicitudesPendientes023(pendientes);
-      setForm((prev) => ({
-        ...prev,
-        comisionadoId: resultado.id,
-        idDependencia: resultado.idDependencia ?? prev.idDependencia,
-        salarioBasico: resultado.salarioBasico != null && Number(resultado.salarioBasico) > 0
-          ? Number(resultado.salarioBasico)
-          : prev.salarioBasico,
-      }));
+      setForm((prev) => {
+        const nuevosCamposAdicionales = { ...(prev.camposAdicionales || {}) };
+        const resAny = resultado as any;
+        const cta =
+          resAny.num_cuenta ||
+          resAny.numeroCuenta ||
+          resAny.numCuenta ||
+          resAny.NUM_CUENTA_1 ||
+          resAny.cuentaBancaria ||
+          resAny.cuenta;
+        if (cta) {
+          nuevosCamposAdicionales.num_cuenta = cta;
+          nuevosCamposAdicionales.numeroCuenta = cta;
+          nuevosCamposAdicionales.numCuenta = cta;
+          nuevosCamposAdicionales.cuentaBancaria = cta;
+        }
+        const bco =
+          resAny.entidad_bancaria ||
+          resAny.entidadBancaria ||
+          resAny.banco ||
+          resAny.COD_CUENTA_1 ||
+          resAny.nombreBanco;
+        if (bco) {
+          nuevosCamposAdicionales.entidad_bancaria = bco;
+          nuevosCamposAdicionales.entidadBancaria = bco;
+          nuevosCamposAdicionales.banco = bco;
+        }
+        const tip =
+          resAny.tipo_cuenta ||
+          resAny.tipoCuenta ||
+          resAny.TIP_CUENTA_1;
+        if (tip) {
+          nuevosCamposAdicionales.tipo_cuenta = tip;
+          nuevosCamposAdicionales.tipoCuenta = tip;
+        }
+        if (resAny.numeroContrato || resAny.contrato) {
+          nuevosCamposAdicionales.numeroContrato =
+            nuevosCamposAdicionales.numeroContrato || resAny.numeroContrato || resAny.contrato;
+        }
+        return {
+          ...prev,
+          comisionadoId: resultado.id,
+          idDependencia: resultado.idDependencia ?? prev.idDependencia,
+          salarioBasico: resultado.salarioBasico != null && Number(resultado.salarioBasico) > 0
+            ? Number(resultado.salarioBasico)
+            : prev.salarioBasico,
+          camposAdicionales: nuevosCamposAdicionales,
+        };
+      });
       if (!resultado.autorizacionHabeasData) {
         setHabeasPendiente(true);
       }
@@ -1127,28 +1202,49 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
             factorPernocta: form.factorPernocta ?? undefined,
             desgloseCalculo: form.desgloseCalculo ?? undefined,
             alertasLiquidacion: form.alertasLiquidacion ?? undefined,
-            camposAdicionales: {
-              ...(form.camposAdicionales ?? {}),
-              transporteTerminalAereo:
-                form.camposAdicionales?.transporteTerminalAereo ??
-                (form.itinerario || []).reduce(
-                  (acc, r) => acc + (r.tarifaTerminalAereo || 0),
-                  0,
-                ),
-              transporteTerrestre:
-                form.camposAdicionales?.transporteTerrestre ??
-                Math.max(
-                  0,
-                  (form.montoGastosViaje || 0) -
-                    (form.itinerario || []).reduce(
-                      (acc, r) => acc + (r.tarifaTerminalAereo || 0),
-                      0,
-                    ),
-                ),
-              fechaAutoliquidacion:
-                form.camposAdicionales?.fechaAutoliquidacion ||
-                new Date().toISOString().split('T')[0],
-            },
+            camposAdicionales: (() => {
+              const prevAdic = form.camposAdicionales ?? {};
+              const rawBanco =
+                prevAdic.entidad_bancaria ||
+                prevAdic.entidadBancaria ||
+                prevAdic.banco ||
+                '';
+              const rawCuenta =
+                prevAdic.num_cuenta ||
+                prevAdic.numeroCuenta ||
+                prevAdic.numCuenta ||
+                prevAdic.cuentaBancaria ||
+                '';
+              const rawTipo =
+                prevAdic.tipo_cuenta ||
+                prevAdic.tipoCuenta ||
+                '';
+              return {
+                ...prevAdic,
+                ...(rawBanco ? { entidad_bancaria: rawBanco, entidadBancaria: rawBanco, banco: rawBanco } : {}),
+                ...(rawCuenta ? { num_cuenta: rawCuenta, numeroCuenta: rawCuenta, numCuenta: rawCuenta, cuentaBancaria: rawCuenta } : {}),
+                ...(rawTipo ? { tipo_cuenta: rawTipo, tipoCuenta: rawTipo } : {}),
+                transporteTerminalAereo:
+                  prevAdic.transporteTerminalAereo ??
+                  (form.itinerario || []).reduce(
+                    (acc, r) => acc + (r.tarifaTerminalAereo || 0),
+                    0,
+                  ),
+                transporteTerrestre:
+                  prevAdic.transporteTerrestre ??
+                  Math.max(
+                    0,
+                    (form.montoGastosViaje || 0) -
+                      (form.itinerario || []).reduce(
+                        (acc, r) => acc + (r.tarifaTerminalAereo || 0),
+                        0,
+                      ),
+                  ),
+                fechaAutoliquidacion:
+                  prevAdic.fechaAutoliquidacion ||
+                  new Date().toISOString().split('T')[0],
+              };
+            })(),
             itinerario: (form.itinerario || []).map((r) => {
               const {
                 guardada,
@@ -2706,7 +2802,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     const ayuda = obtenerAyudaValidacionDocumento(doc.codigo, doc.instruccionesValidacion, {
                       form,
                       comisionado,
-                    });
+                    }, doc.camposAValidar);
                     const esAlerta = ayuda?.badgeTipo === 'alert';
                     const esWarning = ayuda?.badgeTipo === 'warning';
 
@@ -2814,7 +2910,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                   <div className="mt-2 pt-2 border-t border-slate-200/80">
                                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1">
                                       <Search className="w-3 h-3 text-[#003DA5]" />
-                                      Datos registrados en el sistema para contrastar:
+                                      Campos a validar según el documento:
                                     </p>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                                       {ayuda.datosAContrastar.map((item, idx) => (
@@ -2860,7 +2956,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     const ayuda = obtenerAyudaValidacionDocumento(doc.codigo, doc.instruccionesValidacion, {
                       form,
                       comisionado,
-                    });
+                    }, doc.camposAValidar);
                     const esAlerta = ayuda?.badgeTipo === 'alert';
                     const esWarning = ayuda?.badgeTipo === 'warning';
 
@@ -2965,7 +3061,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                   <div className="mt-2 pt-2 border-t border-slate-200/80">
                                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1">
                                       <Search className="w-3 h-3 text-[#003DA5]" />
-                                      Datos registrados en el sistema para contrastar:
+                                      Campos a validar según el documento:
                                     </p>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                                       {ayuda.datosAContrastar.map((item, idx) => (

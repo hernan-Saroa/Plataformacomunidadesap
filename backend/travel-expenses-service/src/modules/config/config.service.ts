@@ -225,6 +225,7 @@ export class ConfigService {
       nombre: dto.nombre.trim(),
       descripcion: dto.descripcion?.trim() || null,
       instruccionesValidacion: dto.instruccionesValidacion?.trim() || null,
+      camposAValidar: Array.isArray(dto.camposAValidar) ? dto.camposAValidar : [],
       activo: dto.activo !== undefined ? dto.activo : true,
     });
 
@@ -239,6 +240,7 @@ export class ConfigService {
         nombre: guardado.nombre,
         descripcion: guardado.descripcion,
         instruccionesValidacion: guardado.instruccionesValidacion,
+        camposAValidar: guardado.camposAValidar,
       },
       usuarioModificador,
     });
@@ -269,6 +271,11 @@ export class ConfigService {
         ? dto.instruccionesValidacion.trim()
         : null;
     }
+    if (dto.camposAValidar !== undefined) {
+      entity.camposAValidar = Array.isArray(dto.camposAValidar)
+        ? dto.camposAValidar
+        : [];
+    }
     if (dto.activo !== undefined) {
       entity.activo = dto.activo;
     }
@@ -284,6 +291,7 @@ export class ConfigService {
         nombre: guardado.nombre,
         activo: guardado.activo,
         instruccionesValidacion: guardado.instruccionesValidacion,
+        camposAValidar: guardado.camposAValidar,
       },
       usuarioModificador,
     });

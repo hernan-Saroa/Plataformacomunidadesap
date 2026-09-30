@@ -564,13 +564,13 @@ export function mapearARequestCreacion(
     factorPernocta: form.factorPernocta ?? undefined,
     desgloseCalculo: form.desgloseCalculo ?? undefined,
     alertasLiquidacion: form.alertasLiquidacion ?? undefined,
-    destinoCiudad: form.destinoCiudad.trim(),
-    destinoDepartamento: form.destinoDepartamento.trim(),
+    destinoCiudad: (form.destinoCiudad || '').trim(),
+    destinoDepartamento: (form.destinoDepartamento || '').trim(),
     fechaInicio: form.fechaInicio,
     fechaFin: form.fechaFin,
-    objetoComision: sanitizeObjetoComision(form.objetoComision).trim(),
+    objetoComision: sanitizeObjetoComision(form.objetoComision || '').trim(),
     prioridad: form.prioridad,
-    rubroPresupuestal: form.rubroPresupuestal.trim(),
+    rubroPresupuestal: (form.rubroPresupuestal || '').trim(),
     numeroCdp: form.numeroCdp?.trim() || undefined,
     fechaCdp: form.fechaCdp?.trim() || undefined,
     requiereTiquetes: form.requiereTiquetes,
@@ -586,16 +586,45 @@ export function mapearARequestCreacion(
     tipoComision: tipoComisionCalculado,
     esInternacional: Boolean(form.esInternacional),
     documentos,
-    camposAdicionales: {
-      ...(form.camposAdicionales ?? {}),
-      transporteTerminalAereo:
-        form.camposAdicionales?.transporteTerminalAereo ?? tarifasAereasItin,
-      transporteTerrestre:
-        form.camposAdicionales?.transporteTerrestre ?? transporteTerrestreItin,
-      fechaAutoliquidacion:
-        form.camposAdicionales?.fechaAutoliquidacion ||
-        new Date().toISOString().split('T')[0],
-    },
+    camposAdicionales: (() => {
+      const prevAdic = form.camposAdicionales ?? {};
+      const rawBanco =
+        prevAdic.entidad_bancaria ||
+        prevAdic.entidadBancaria ||
+        prevAdic.banco ||
+        (comisionado as any)?.entidad_bancaria ||
+        (comisionado as any)?.entidadBancaria ||
+        (comisionado as any)?.banco ||
+        '';
+      const rawCuenta =
+        prevAdic.num_cuenta ||
+        prevAdic.numeroCuenta ||
+        prevAdic.numCuenta ||
+        prevAdic.cuentaBancaria ||
+        (comisionado as any)?.num_cuenta ||
+        (comisionado as any)?.numeroCuenta ||
+        (comisionado as any)?.NUM_CUENTA_1 ||
+        '';
+      const rawTipo =
+        prevAdic.tipo_cuenta ||
+        prevAdic.tipoCuenta ||
+        (comisionado as any)?.tipo_cuenta ||
+        (comisionado as any)?.tipoCuenta ||
+        '';
+      return {
+        ...prevAdic,
+        ...(rawBanco ? { entidad_bancaria: rawBanco, entidadBancaria: rawBanco, banco: rawBanco } : {}),
+        ...(rawCuenta ? { num_cuenta: rawCuenta, numeroCuenta: rawCuenta, numCuenta: rawCuenta, cuentaBancaria: rawCuenta } : {}),
+        ...(rawTipo ? { tipo_cuenta: rawTipo, tipoCuenta: rawTipo } : {}),
+        transporteTerminalAereo:
+          prevAdic.transporteTerminalAereo ?? tarifasAereasItin,
+        transporteTerrestre:
+          prevAdic.transporteTerrestre ?? transporteTerrestreItin,
+        fechaAutoliquidacion:
+          prevAdic.fechaAutoliquidacion ||
+          new Date().toISOString().split('T')[0],
+      };
+    })(),
     itinerario: (form.itinerario || []).map((r) => {
       // Excluir únicamente campos auxiliares de UI interna
       const {
@@ -1003,11 +1032,367 @@ export interface AyudaValidacionDocumento {
   notaAlerta?: string;
 }
 
+export const DICCIONARIO_CAMPOS_VALIDACION: Record<
+  string,
+  {
+    etiqueta: string;
+    extractor: (ctx: { form?: FormNuevaSolicitud; comisionado?: Comisionado | null }) => string;
+  }
+> = {
+  nombreComisionado: {
+    etiqueta: 'Nombre / Titular Comisionado',
+    extractor: ({ comisionado, form }) => {
+      if (comisionado) {
+        const full = [
+          comisionado.primerNombre,
+          comisionado.segundoNombre,
+          comisionado.primerApellido,
+          comisionado.segundoApellido,
+        ]
+          .filter(Boolean)
+          .join(' ');
+        if (full) return full;
+        if ((comisionado as any).nombreCompleto) return String((comisionado as any).nombreCompleto);
+        if ((comisionado as any).nombre) return String((comisionado as any).nombre);
+      }
+      return (
+        (form as any)?.nombreComisionado ||
+        form?.camposAdicionales?.nombreComisionado ||
+        form?.camposAdicionales?.nombreTitular ||
+        ''
+      );
+    },
+  },
+  numeroDocumento: {
+    etiqueta: 'Documento / Cédula',
+    extractor: ({ comisionado, form }) =>
+      comisionado?.numeroDocumento ||
+      form?.documentoComisionado ||
+      form?.camposAdicionales?.numeroDocumento ||
+      (comisionado as any)?.cedula ||
+      (comisionado as any)?.docIdentidad ||
+      '',
+  },
+  tipoComisionado: {
+    etiqueta: 'Tipo de Comisionado',
+    extractor: ({ comisionado, form }) =>
+      (comisionado as any)?.tipoComisionado ||
+      form?.tipoComision ||
+      (form as any)?.tipoComisionado ||
+      (form?.camposAdicionales?.tipoComisionado as string) ||
+      '',
+  },
+  tipoCuenta: {
+    etiqueta: 'Tipo de Cuenta',
+    extractor: ({ form, comisionado }) => {
+      const v =
+        form?.camposAdicionales?.tipo_cuenta ||
+        form?.camposAdicionales?.tipoCuenta ||
+        form?.camposAdicionales?.tipoDeCuenta ||
+        (form as any)?.tipo_cuenta ||
+        (form as any)?.tipoCuenta ||
+        (comisionado as any)?.tipo_cuenta ||
+        (comisionado as any)?.tipoCuenta ||
+        (comisionado as any)?.TIP_CUENTA_1 ||
+        (comisionado as any)?.tipoCuentaBancaria ||
+        '';
+      if (!v) return '';
+      const str = String(v).trim();
+      if (str === 'AHORROS') return 'Cuenta de Ahorros';
+      if (str === 'CORRIENTE') return 'Cuenta Corriente';
+      return str;
+    },
+  },
+  tipo_cuenta: {
+    etiqueta: 'Tipo de Cuenta',
+    extractor: ({ form, comisionado }) => {
+      const v =
+        form?.camposAdicionales?.tipo_cuenta ||
+        form?.camposAdicionales?.tipoCuenta ||
+        form?.camposAdicionales?.tipoDeCuenta ||
+        (form as any)?.tipo_cuenta ||
+        (form as any)?.tipoCuenta ||
+        (comisionado as any)?.tipo_cuenta ||
+        (comisionado as any)?.tipoCuenta ||
+        (comisionado as any)?.TIP_CUENTA_1 ||
+        (comisionado as any)?.tipoCuentaBancaria ||
+        '';
+      if (!v) return '';
+      const str = String(v).trim();
+      if (str === 'AHORROS') return 'Cuenta de Ahorros';
+      if (str === 'CORRIENTE') return 'Cuenta Corriente';
+      return str;
+    },
+  },
+  numeroCuenta: {
+    etiqueta: 'N° Cuenta Bancaria',
+    extractor: ({ form, comisionado }) =>
+      form?.camposAdicionales?.num_cuenta ||
+      form?.camposAdicionales?.numeroCuenta ||
+      form?.camposAdicionales?.numero_cuenta ||
+      form?.camposAdicionales?.numCuenta ||
+      form?.camposAdicionales?.cuentaBancaria ||
+      form?.camposAdicionales?.cuenta ||
+      (form as any)?.num_cuenta ||
+      (form as any)?.numeroCuenta ||
+      (comisionado as any)?.num_cuenta ||
+      (comisionado as any)?.numeroCuenta ||
+      (comisionado as any)?.NUM_CUENTA_1 ||
+      (comisionado as any)?.numero_cuenta ||
+      (comisionado as any)?.cuentaBancaria ||
+      (comisionado as any)?.cuenta ||
+      '',
+  },
+  num_cuenta: {
+    etiqueta: 'N° Cuenta Bancaria',
+    extractor: ({ form, comisionado }) =>
+      form?.camposAdicionales?.num_cuenta ||
+      form?.camposAdicionales?.numeroCuenta ||
+      form?.camposAdicionales?.numero_cuenta ||
+      form?.camposAdicionales?.numCuenta ||
+      form?.camposAdicionales?.cuentaBancaria ||
+      form?.camposAdicionales?.cuenta ||
+      (form as any)?.num_cuenta ||
+      (form as any)?.numeroCuenta ||
+      (comisionado as any)?.num_cuenta ||
+      (comisionado as any)?.numeroCuenta ||
+      (comisionado as any)?.NUM_CUENTA_1 ||
+      (comisionado as any)?.numero_cuenta ||
+      (comisionado as any)?.cuentaBancaria ||
+      (comisionado as any)?.cuenta ||
+      '',
+  },
+  numCuenta: {
+    etiqueta: 'N° Cuenta Bancaria',
+    extractor: ({ form, comisionado }) =>
+      form?.camposAdicionales?.num_cuenta ||
+      form?.camposAdicionales?.numeroCuenta ||
+      form?.camposAdicionales?.numero_cuenta ||
+      form?.camposAdicionales?.numCuenta ||
+      form?.camposAdicionales?.cuentaBancaria ||
+      form?.camposAdicionales?.cuenta ||
+      (form as any)?.num_cuenta ||
+      (form as any)?.numeroCuenta ||
+      (comisionado as any)?.num_cuenta ||
+      (comisionado as any)?.numeroCuenta ||
+      (comisionado as any)?.NUM_CUENTA_1 ||
+      (comisionado as any)?.numero_cuenta ||
+      (comisionado as any)?.cuentaBancaria ||
+      (comisionado as any)?.cuenta ||
+      '',
+  },
+  entidadBancaria: {
+    etiqueta: 'Entidad Bancaria',
+    extractor: ({ form, comisionado }) =>
+      form?.camposAdicionales?.entidad_bancaria ||
+      form?.camposAdicionales?.entidadBancaria ||
+      form?.camposAdicionales?.banco ||
+      (form as any)?.entidad_bancaria ||
+      (form as any)?.entidadBancaria ||
+      (form as any)?.banco ||
+      (comisionado as any)?.entidad_bancaria ||
+      (comisionado as any)?.entidadBancaria ||
+      (comisionado as any)?.banco ||
+      (comisionado as any)?.COD_CUENTA_1 ||
+      (comisionado as any)?.nombreBanco ||
+      '',
+  },
+  entidad_bancaria: {
+    etiqueta: 'Entidad Bancaria',
+    extractor: ({ form, comisionado }) =>
+      form?.camposAdicionales?.entidad_bancaria ||
+      form?.camposAdicionales?.entidadBancaria ||
+      form?.camposAdicionales?.banco ||
+      (form as any)?.entidad_bancaria ||
+      (form as any)?.entidadBancaria ||
+      (form as any)?.banco ||
+      (comisionado as any)?.entidad_bancaria ||
+      (comisionado as any)?.entidadBancaria ||
+      (comisionado as any)?.banco ||
+      (comisionado as any)?.COD_CUENTA_1 ||
+      (comisionado as any)?.nombreBanco ||
+      '',
+  },
+  banco: {
+    etiqueta: 'Entidad Bancaria',
+    extractor: ({ form, comisionado }) =>
+      form?.camposAdicionales?.entidad_bancaria ||
+      form?.camposAdicionales?.entidadBancaria ||
+      form?.camposAdicionales?.banco ||
+      (form as any)?.entidad_bancaria ||
+      (form as any)?.entidadBancaria ||
+      (form as any)?.banco ||
+      (comisionado as any)?.entidad_bancaria ||
+      (comisionado as any)?.entidadBancaria ||
+      (comisionado as any)?.banco ||
+      (comisionado as any)?.COD_CUENTA_1 ||
+      (comisionado as any)?.nombreBanco ||
+      '',
+  },
+  numeroContrato: {
+    etiqueta: 'N° Contrato SECOP',
+    extractor: ({ form, comisionado }) =>
+      form?.camposAdicionales?.numeroContrato ||
+      form?.camposAdicionales?.contrato ||
+      form?.camposAdicionales?.num_contrato ||
+      form?.camposAdicionales?.numero_contrato ||
+      (comisionado as any)?.numeroContrato ||
+      (comisionado as any)?.contrato ||
+      (comisionado as any)?.numContrato ||
+      (comisionado as any)?.num_contrato ||
+      '',
+  },
+  num_contrato: {
+    etiqueta: 'N° Contrato SECOP',
+    extractor: ({ form, comisionado }) =>
+      form?.camposAdicionales?.numeroContrato ||
+      form?.camposAdicionales?.contrato ||
+      form?.camposAdicionales?.num_contrato ||
+      form?.camposAdicionales?.numero_contrato ||
+      (comisionado as any)?.numeroContrato ||
+      (comisionado as any)?.contrato ||
+      (comisionado as any)?.numContrato ||
+      (comisionado as any)?.num_contrato ||
+      '',
+  },
+  valorHonorarios: {
+    etiqueta: 'Valor de Honorarios / Salario',
+    extractor: ({ form, comisionado }) => {
+      const val =
+        form?.camposAdicionales?.valorHonorarios ||
+        form?.camposAdicionales?.valor_honorarios ||
+        form?.salarioBasico ||
+        (comisionado as any)?.salarioBasico ||
+        (comisionado as any)?.honorarios ||
+        (comisionado as any)?.valorHonorarios ||
+        (comisionado as any)?.valor_honorarios;
+      return val ? `$ ${Number(val).toLocaleString('es-CO')}` : '';
+    },
+  },
+  valor_honorarios: {
+    etiqueta: 'Valor de Honorarios / Salario',
+    extractor: ({ form, comisionado }) => {
+      const val =
+        form?.camposAdicionales?.valorHonorarios ||
+        form?.camposAdicionales?.valor_honorarios ||
+        form?.salarioBasico ||
+        (comisionado as any)?.salarioBasico ||
+        (comisionado as any)?.honorarios ||
+        (comisionado as any)?.valorHonorarios ||
+        (comisionado as any)?.valor_honorarios;
+      return val ? `$ ${Number(val).toLocaleString('es-CO')}` : '';
+    },
+  },
+  salarioBasico: {
+    etiqueta: 'Salario Básico Mensual',
+    extractor: ({ form, comisionado }) => {
+      const val = form?.salarioBasico || comisionado?.salarioBasico || (comisionado as any)?.salario_basico;
+      return val ? `$ ${Number(val).toLocaleString('es-CO')}` : '';
+    },
+  },
+  salario_basico: {
+    etiqueta: 'Salario Básico Mensual',
+    extractor: ({ form, comisionado }) => {
+      const val = form?.salarioBasico || comisionado?.salarioBasico || (comisionado as any)?.salario_basico;
+      return val ? `$ ${Number(val).toLocaleString('es-CO')}` : '';
+    },
+  },
+  numeroCdp: {
+    etiqueta: 'N° CDP',
+    extractor: ({ form }) =>
+      form?.numeroCdp ||
+      (form?.camposAdicionales as any)?.numeroCdp ||
+      (form?.camposAdicionales as any)?.numero_cdp ||
+      (form?.camposAdicionales as any)?.num_cdp ||
+      '',
+  },
+  numero_cdp: {
+    etiqueta: 'N° CDP',
+    extractor: ({ form }) =>
+      form?.numeroCdp ||
+      (form?.camposAdicionales as any)?.numeroCdp ||
+      (form?.camposAdicionales as any)?.numero_cdp ||
+      (form?.camposAdicionales as any)?.num_cdp ||
+      '',
+  },
+  fechaCdp: {
+    etiqueta: 'Fecha Expedición CDP',
+    extractor: ({ form }) =>
+      form?.fechaCdp ||
+      (form?.camposAdicionales as any)?.fechaCdp ||
+      (form?.camposAdicionales as any)?.fecha_cdp ||
+      '',
+  },
+  fecha_cdp: {
+    etiqueta: 'Fecha Expedición CDP',
+    extractor: ({ form }) =>
+      form?.fechaCdp ||
+      (form?.camposAdicionales as any)?.fechaCdp ||
+      (form?.camposAdicionales as any)?.fecha_cdp ||
+      '',
+  },
+  destinoCiudad: {
+    etiqueta: 'Ciudad Destino',
+    extractor: ({ form }) => form?.destinoCiudad || form?.itinerario?.[0]?.destinoCiudad || '',
+  },
+  destinoDepartamento: {
+    etiqueta: 'Departamento Destino',
+    extractor: ({ form }) => form?.destinoDepartamento || form?.itinerario?.[0]?.destinoDepartamento || '',
+  },
+  fechaInicio: {
+    etiqueta: 'Fecha Inicio Viaje',
+    extractor: ({ form }) => form?.fechaInicio || form?.itinerario?.[0]?.fechaSalida || '',
+  },
+  fechaFin: {
+    etiqueta: 'Fecha Fin Viaje',
+    extractor: ({ form }) => form?.fechaFin || form?.itinerario?.[(form.itinerario?.length || 1) - 1]?.fechaLlegada || '',
+  },
+  periodoComision: {
+    etiqueta: 'Periodo de Comisión',
+    extractor: ({ form }) => {
+      const ini = form?.fechaInicio || form?.itinerario?.[0]?.fechaSalida || '';
+      const fin = form?.fechaFin || form?.itinerario?.[(form?.itinerario?.length || 1) - 1]?.fechaLlegada || '';
+      if (ini && fin) {
+        return `${ini} al ${fin} (${form?.diasComision || 0} día(s))`;
+      }
+      return '';
+    },
+  },
+  diasComision: {
+    etiqueta: 'Días de Comisión',
+    extractor: ({ form }) => (form?.diasComision ? `${form.diasComision} día(s)` : ''),
+  },
+  montoViaticos: {
+    etiqueta: 'Monto Viáticos',
+    extractor: ({ form }) =>
+      form?.montoViaticos ? `$ ${Number(form.montoViaticos).toLocaleString('es-CO')}` : '',
+  },
+  montoGastosViaje: {
+    etiqueta: 'Gastos de Viaje',
+    extractor: ({ form }) =>
+      form?.montoGastosViaje ? `$ ${Number(form.montoGastosViaje).toLocaleString('es-CO')}` : '',
+  },
+  costoEstimadoTiquete: {
+    etiqueta: 'Costo Estimado Tiquete',
+    extractor: ({ form }) =>
+      form?.costoEstimadoTiquete ? `$ ${Number(form.costoEstimadoTiquete).toLocaleString('es-CO')}` : '',
+  },
+  objetoComision: {
+    etiqueta: 'Objeto de la Comisión',
+    extractor: ({ form }) => form?.objetoComision || '',
+  },
+  rubroPresupuestal: {
+    etiqueta: 'Rubro Presupuestal',
+    extractor: ({ form }) => form?.rubroPresupuestal || '',
+  },
+};
+
 /**
  * Genera la ayuda visual de validación y los datos ingresados en el formulario
  * para contrastar y validar un soporte documental (Paso 3 de la solicitud).
  *
- * Utiliza las recomendaciones parametrizadas en backend (`instruccionesValidacion`)
+ * Utiliza las recomendaciones parametrizadas en backend (`instruccionesValidacion`),
+ * los campos parametrizados a contrastar (`camposAValidar`)
  * o las reglas canónicas de la ESAP por tipo de documento.
  */
 export function obtenerAyudaValidacionDocumento(
@@ -1017,6 +1402,7 @@ export function obtenerAyudaValidacionDocumento(
     form?: FormNuevaSolicitud;
     comisionado?: Comisionado | null;
   },
+  camposAValidarConfigurados?: string[],
 ): AyudaValidacionDocumento | null {
   const c = codigoDoc?.trim().toUpperCase();
   const com = contexto?.comisionado;
@@ -1027,15 +1413,96 @@ export function obtenerAyudaValidacionDocumento(
     : '';
   const numDocumento = com?.numeroDocumento || f?.documentoComisionado || '';
 
+  const tieneCamposParametrizados =
+    Array.isArray(camposAValidarConfigurados) && camposAValidarConfigurados.length > 0;
+
+  const extraerDatosParametrizados = (claves: string[]) => {
+    const list: Array<{ etiqueta: string; valor: string }> = [];
+    for (const rawClave of claves) {
+      const clave = String(rawClave || '').trim();
+      if (!clave) continue;
+
+      // Normalizaciones snakeToCamel y camelToSnake para máxima flexibilidad
+      const claveCamel = clave.replace(/_([a-z0-9])/g, (_, l) => l.toUpperCase());
+      const claveSnake = clave.replace(/([A-Z])/g, '_$1').toLowerCase();
+
+      const def =
+        DICCIONARIO_CAMPOS_VALIDACION[clave] ||
+        DICCIONARIO_CAMPOS_VALIDACION[claveCamel] ||
+        DICCIONARIO_CAMPOS_VALIDACION[claveSnake];
+
+      if (def) {
+        const val = def.extractor(contexto || {});
+        list.push({ etiqueta: def.etiqueta, valor: val || 'No registrado en formulario' });
+      } else {
+        const val =
+          f?.camposAdicionales?.[clave] ??
+          f?.camposAdicionales?.[claveCamel] ??
+          f?.camposAdicionales?.[claveSnake] ??
+          (f as any)?.[clave] ??
+          (f as any)?.[claveCamel] ??
+          (f as any)?.[claveSnake] ??
+          '';
+        const etiquetaAmigable = clave
+          .replace(/_/g, ' ')
+          .replace(/([A-Z])/g, ' $1')
+          .replace(/^./, (str) => str.toUpperCase())
+          .trim();
+        list.push({
+          etiqueta: etiquetaAmigable,
+          valor:
+            val !== undefined && val !== null && String(val).trim() !== ''
+              ? String(val)
+              : 'No registrado en formulario',
+        });
+      }
+    }
+    return list;
+  };
+
   if (c === 'CERT_BANCARIA') {
-    const cuenta = f?.camposAdicionales?.cuentaBancaria || f?.camposAdicionales?.numeroCuenta || '';
-    const banco = f?.camposAdicionales?.banco || f?.camposAdicionales?.entidadBancaria || '';
-    const datos: Array<{ etiqueta: string; valor: string }> = [];
-    if (nombreComisionado) datos.push({ etiqueta: 'Titular de la cuenta', valor: nombreComisionado });
-    if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
-    if (banco) datos.push({ etiqueta: 'Banco registrado', valor: String(banco) });
-    if (cuenta) datos.push({ etiqueta: 'N° Cuenta registrado', valor: String(cuenta) });
-    datos.push({ etiqueta: 'Vigencia permitida', valor: 'Máximo 90 días desde expedición' });
+    const cuenta =
+      f?.camposAdicionales?.num_cuenta ||
+      f?.camposAdicionales?.numeroCuenta ||
+      f?.camposAdicionales?.numCuenta ||
+      f?.camposAdicionales?.cuentaBancaria ||
+      (com as any)?.num_cuenta ||
+      (com as any)?.numeroCuenta ||
+      (com as any)?.NUM_CUENTA_1 ||
+      '';
+    const banco =
+      f?.camposAdicionales?.entidad_bancaria ||
+      f?.camposAdicionales?.entidadBancaria ||
+      f?.camposAdicionales?.banco ||
+      (com as any)?.entidad_bancaria ||
+      (com as any)?.entidadBancaria ||
+      (com as any)?.banco ||
+      '';
+    const tipoCta =
+      f?.camposAdicionales?.tipo_cuenta ||
+      f?.camposAdicionales?.tipoCuenta ||
+      (com as any)?.tipo_cuenta ||
+      (com as any)?.tipoCuenta ||
+      '';
+    let datos: Array<{ etiqueta: string; valor: string }> = [];
+
+    if (tieneCamposParametrizados) {
+      datos = extraerDatosParametrizados(camposAValidarConfigurados!);
+      if (!datos.some((d) => d.etiqueta.toLowerCase().includes('vigencia'))) {
+        datos.push({ etiqueta: 'Vigencia permitida', valor: 'Máximo 90 días desde expedición' });
+      }
+    } else {
+      if (nombreComisionado) datos.push({ etiqueta: 'Titular de la cuenta', valor: nombreComisionado });
+      if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
+      if (banco) datos.push({ etiqueta: 'Banco registrado', valor: String(banco) });
+      if (tipoCta) {
+        const nomTipo =
+          tipoCta === 'AHORROS' ? 'Cuenta de Ahorros' : tipoCta === 'CORRIENTE' ? 'Cuenta Corriente' : tipoCta;
+        datos.push({ etiqueta: 'Tipo de Cuenta', valor: String(nomTipo) });
+      }
+      if (cuenta) datos.push({ etiqueta: 'N° Cuenta registrado', valor: String(cuenta) });
+      datos.push({ etiqueta: 'Vigencia permitida', valor: 'Máximo 90 días desde expedición' });
+    }
 
     return {
       titulo: 'Pauta de Validación',
@@ -1050,10 +1517,15 @@ export function obtenerAyudaValidacionDocumento(
 
   if (c === 'RUT') {
     const anioActual = new Date().getFullYear();
-    const datos: Array<{ etiqueta: string; valor: string }> = [];
-    if (nombreComisionado) datos.push({ etiqueta: 'Nombre / Razón Social', valor: nombreComisionado });
-    if (numDocumento) datos.push({ etiqueta: 'NIT / Cédula', valor: numDocumento });
-    datos.push({ etiqueta: 'Año de vigencia exigido', valor: `${anioActual} (fecha de generación en pie de página)` });
+    let datos: Array<{ etiqueta: string; valor: string }> = [];
+
+    if (tieneCamposParametrizados) {
+      datos = extraerDatosParametrizados(camposAValidarConfigurados!);
+    } else {
+      if (nombreComisionado) datos.push({ etiqueta: 'Nombre / Razón Social', valor: nombreComisionado });
+      if (numDocumento) datos.push({ etiqueta: 'NIT / Cédula', valor: numDocumento });
+      datos.push({ etiqueta: 'Año de vigencia exigido', valor: `${anioActual} (fecha de generación en pie de página)` });
+    }
 
     return {
       titulo: 'Pauta de Validación',
@@ -1067,14 +1539,19 @@ export function obtenerAyudaValidacionDocumento(
   }
 
   if (c === 'SEGURIDAD_SOCIAL') {
-    const datos: Array<{ etiqueta: string; valor: string }> = [];
-    if (nombreComisionado) datos.push({ etiqueta: 'Afiliado cotizante', valor: nombreComisionado });
-    if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
-    if (f?.fechaInicio && f?.fechaFin) {
-      datos.push({
-        etiqueta: 'Periodo de comisión a cubrir',
-        valor: `${f.fechaInicio} al ${f.fechaFin} (${f.diasComision || 0} día(s))`,
-      });
+    let datos: Array<{ etiqueta: string; valor: string }> = [];
+
+    if (tieneCamposParametrizados) {
+      datos = extraerDatosParametrizados(camposAValidarConfigurados!);
+    } else {
+      if (nombreComisionado) datos.push({ etiqueta: 'Afiliado cotizante', valor: nombreComisionado });
+      if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
+      if (f?.fechaInicio && f?.fechaFin) {
+        datos.push({
+          etiqueta: 'Periodo de comisión a cubrir',
+          valor: `${f.fechaInicio} al ${f.fechaFin} (${f.diasComision || 0} día(s))`,
+        });
+      }
     }
 
     return {
@@ -1089,14 +1566,19 @@ export function obtenerAyudaValidacionDocumento(
   }
 
   if (c === 'CONTRATO_SECOP') {
-    const numContrato = f?.camposAdicionales?.numeroContrato || f?.camposAdicionales?.contrato || '';
-    const datos: Array<{ etiqueta: string; valor: string }> = [];
-    datos.push({
-      etiqueta: 'N° Contrato registrado',
-      valor: numContrato ? String(numContrato) : 'Pendiente o registrado en formulario',
-    });
-    if (nombreComisionado) datos.push({ etiqueta: 'Contratista comisionado', valor: nombreComisionado });
-    if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
+    let datos: Array<{ etiqueta: string; valor: string }> = [];
+
+    if (tieneCamposParametrizados) {
+      datos = extraerDatosParametrizados(camposAValidarConfigurados!);
+    } else {
+      const numContrato = f?.camposAdicionales?.numeroContrato || f?.camposAdicionales?.contrato || (com as any)?.numeroContrato || '';
+      datos.push({
+        etiqueta: 'N° Contrato registrado',
+        valor: numContrato ? String(numContrato) : 'Pendiente o registrado en formulario',
+      });
+      if (nombreComisionado) datos.push({ etiqueta: 'Contratista comisionado', valor: nombreComisionado });
+      if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
+    }
 
     return {
       titulo: 'Pauta de Validación',
@@ -1110,9 +1592,14 @@ export function obtenerAyudaValidacionDocumento(
   }
 
   if (c === 'CDP') {
-    const datos: Array<{ etiqueta: string; valor: string }> = [];
-    datos.push({ etiqueta: 'N° CDP registrado', valor: f?.numeroCdp || 'No registrado' });
-    datos.push({ etiqueta: 'Fecha de expedición CDP', valor: f?.fechaCdp || 'No registrada' });
+    let datos: Array<{ etiqueta: string; valor: string }> = [];
+
+    if (tieneCamposParametrizados) {
+      datos = extraerDatosParametrizados(camposAValidarConfigurados!);
+    } else {
+      datos.push({ etiqueta: 'N° CDP registrado', valor: f?.numeroCdp || 'No registrado' });
+      datos.push({ etiqueta: 'Fecha de expedición CDP', valor: f?.fechaCdp || 'No registrada' });
+    }
 
     return {
       titulo: 'Pauta de Validación',
@@ -1126,10 +1613,15 @@ export function obtenerAyudaValidacionDocumento(
   }
 
   if (c === 'PASAPORTE') {
-    const datos: Array<{ etiqueta: string; valor: string }> = [];
-    if (nombreComisionado) datos.push({ etiqueta: 'Titular pasaporte', valor: nombreComisionado });
-    if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
-    if (f?.fechaFin) datos.push({ etiqueta: 'Fecha fin de viaje', valor: f.fechaFin });
+    let datos: Array<{ etiqueta: string; valor: string }> = [];
+
+    if (tieneCamposParametrizados) {
+      datos = extraerDatosParametrizados(camposAValidarConfigurados!);
+    } else {
+      if (nombreComisionado) datos.push({ etiqueta: 'Titular pasaporte', valor: nombreComisionado });
+      if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
+      if (f?.fechaFin) datos.push({ etiqueta: 'Fecha fin de viaje', valor: f.fechaFin });
+    }
 
     return {
       titulo: 'Pauta de Validación',
@@ -1143,13 +1635,18 @@ export function obtenerAyudaValidacionDocumento(
   }
 
   if (c === 'CARTA_INVITACION') {
-    const datos: Array<{ etiqueta: string; valor: string }> = [];
-    if (nombreComisionado) datos.push({ etiqueta: 'Comisionado invitado', valor: nombreComisionado });
-    if (f?.destinoCiudad || f?.destinoDepartamento) {
-      datos.push({ etiqueta: 'Destino de comisión', valor: `${f.destinoCiudad || ''}, ${f.destinoDepartamento || ''}` });
-    }
-    if (f?.fechaInicio && f?.fechaFin) {
-      datos.push({ etiqueta: 'Fechas del evento', valor: `${f.fechaInicio} al ${f.fechaFin}` });
+    let datos: Array<{ etiqueta: string; valor: string }> = [];
+
+    if (tieneCamposParametrizados) {
+      datos = extraerDatosParametrizados(camposAValidarConfigurados!);
+    } else {
+      if (nombreComisionado) datos.push({ etiqueta: 'Comisionado invitado', valor: nombreComisionado });
+      if (f?.destinoCiudad || f?.destinoDepartamento) {
+        datos.push({ etiqueta: 'Destino de comisión', valor: `${f?.destinoCiudad || ''}, ${f?.destinoDepartamento || ''}` });
+      }
+      if (f?.fechaInicio && f?.fechaFin) {
+        datos.push({ etiqueta: 'Fechas del evento', valor: `${f.fechaInicio} al ${f.fechaFin}` });
+      }
     }
 
     return {
@@ -1163,15 +1660,32 @@ export function obtenerAyudaValidacionDocumento(
   }
 
   if (c === 'RESOLUCION_ACTO') {
-    const datos: Array<{ etiqueta: string; valor: string }> = [];
-    if (nombreComisionado) datos.push({ etiqueta: 'Comisionado autorizado', valor: nombreComisionado });
-    if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
+    let datos: Array<{ etiqueta: string; valor: string }> = [];
+
+    if (tieneCamposParametrizados) {
+      datos = extraerDatosParametrizados(camposAValidarConfigurados!);
+    } else {
+      if (nombreComisionado) datos.push({ etiqueta: 'Comisionado autorizado', valor: nombreComisionado });
+      if (numDocumento) datos.push({ etiqueta: 'Documento / Cédula', valor: numDocumento });
+    }
 
     return {
       titulo: 'Pauta de Validación',
       instruccion:
         instruccionesBackend ||
         'Verificar firma de la autoridad competente y coincidencia del nombre del comisionado.',
+      badgeTipo: 'info',
+      datosAContrastar: datos,
+    };
+  }
+
+  if (tieneCamposParametrizados) {
+    const datos = extraerDatosParametrizados(camposAValidarConfigurados!);
+    return {
+      titulo: 'Pauta de Validación',
+      instruccion:
+        instruccionesBackend ||
+        'Verificar que los datos del documento soporte coincidan exactamente con la información registrada en el formulario.',
       badgeTipo: 'info',
       datosAContrastar: datos,
     };

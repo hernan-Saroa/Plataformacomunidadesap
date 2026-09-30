@@ -581,6 +581,7 @@ export interface ChecklistDocumento {
   nombre: string;
   descripcion: string | null;
   instruccionesValidacion?: string | null;
+  camposAValidar?: string[];
 }
 
 export interface ChecklistDocumentosResponse {

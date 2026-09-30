@@ -858,7 +858,21 @@ function obtenerValorCampoFormato(
     return valorDirecto;
   }
   if (expediente.camposAdicionales && typeof expediente.camposAdicionales === 'object') {
-    return (expediente.camposAdicionales as Record<string, unknown>)[clave];
+    const adicionales = expediente.camposAdicionales as Record<string, unknown>;
+    const valDirecto = adicionales[clave];
+    if (valDirecto !== undefined && valDirecto !== null && valDirecto !== '') {
+      return valDirecto;
+    }
+    const claveCamel = clave.replace(/_([a-z0-9])/g, (_, l) => l.toUpperCase());
+    const valCamel = adicionales[claveCamel];
+    if (valCamel !== undefined && valCamel !== null && valCamel !== '') {
+      return valCamel;
+    }
+    const claveSnake = clave.replace(/([A-Z])/g, '_$1').toLowerCase();
+    const valSnake = adicionales[claveSnake];
+    if (valSnake !== undefined && valSnake !== null && valSnake !== '') {
+      return valSnake;
+    }
   }
   return undefined;
 }

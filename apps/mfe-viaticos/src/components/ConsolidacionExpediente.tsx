@@ -562,7 +562,7 @@ function ItinerarioDesglose({ rutas }: { rutas: RutaItinerario[] }) {
                 <span className="font-semibold text-slate-700">{ruta.fechaSalida} – {ruta.fechaLlegada}</span>
               </div>
               <div>
-                <span className="text-slate-500">Tiempo estimado:</span>{' '}
+                <span className="text-slate-500">Hora estimada del viaje:</span>{' '}
                 <span className="font-semibold text-slate-700 inline-flex items-center gap-1">
                   <Clock className="w-3 h-3 text-[#003DA5]" />
                   {ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '—'}

@@ -2339,12 +2339,14 @@ if (dto.costoEstimadoTiquete !== undefined) {
       nombre: string;
       descripcion: string | null;
       instruccionesValidacion?: string | null;
+      camposAValidar?: string[];
     }>;
     opcionales: Array<{
       codigo: string;
       nombre: string;
       descripcion: string | null;
       instruccionesValidacion?: string | null;
+      camposAValidar?: string[];
     }>;
   }> {
     const config =
@@ -2362,6 +2364,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
         nombre: d.nombre,
         descripcion: d.descripcion,
         instruccionesValidacion: (d as any).instruccionesValidacion ?? null,
+        camposAValidar: (d as any).camposAValidar ?? [],
       }));
 
     const opcionales = config.documentos
@@ -2373,6 +2376,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
         nombre: d.nombre,
         descripcion: d.descripcion,
         instruccionesValidacion: (d as any).instruccionesValidacion ?? null,
+        camposAValidar: (d as any).camposAValidar ?? [],
       }));
 
     return { obligatorios, opcionales };
@@ -3714,17 +3718,20 @@ if (dto.costoEstimadoTiquete !== undefined) {
       salarioContrato > 0 ? formatCurrencyCOP(salarioContrato) : '';
 
     const entidadBancaria = (
+      solicitud.camposAdicionales?.entidad_bancaria ||
       solicitud.camposAdicionales?.entidadBancaria ||
       solicitud.camposAdicionales?.banco ||
       ''
     ).toUpperCase();
     const tipoCuenta =
-      solicitud.camposAdicionales?.tipoCuenta ||
       solicitud.camposAdicionales?.tipo_cuenta ||
+      solicitud.camposAdicionales?.tipoCuenta ||
       '';
     const numeroCuenta =
+      solicitud.camposAdicionales?.num_cuenta ||
       solicitud.camposAdicionales?.numeroCuenta ||
       solicitud.camposAdicionales?.numCuenta ||
+      solicitud.camposAdicionales?.numero_cuenta ||
       solicitud.camposAdicionales?.cuenta ||
       '';
 
@@ -4384,14 +4391,12 @@ if (itinerarioGeneral) {
       doc.text('Origen', 60, yRutas + 2.5, { width: 108, align: 'center' });
       doc.text('Destino', 168, yRutas + 2.5, { width: 108, align: 'center' });
       doc.text('Medio Transporte', 276, yRutas + 2.5, { width: 72, align: 'center' });
-      doc.text('Salida (Fecha / Hora militar)', 348, yRutas + 2.5, { width: 118, align: 'center' });
-      doc.text('Llegada (Fecha / Hora militar)', 466, yRutas + 2.5, { width: 118, align: 'center' });
+      doc.text('Fechas y hora del viaje', 348, yRutas + 2.5, { width: 236, align: 'center' });
 
       doc.moveTo(60, yRutas).lineTo(60, yRutas + 11).strokeColor('#CBD5E1').lineWidth(0.5).stroke();
       doc.moveTo(168, yRutas).lineTo(168, yRutas + 11).strokeColor('#CBD5E1').lineWidth(0.5).stroke();
       doc.moveTo(276, yRutas).lineTo(276, yRutas + 11).strokeColor('#CBD5E1').lineWidth(0.5).stroke();
       doc.moveTo(348, yRutas).lineTo(348, yRutas + 11).strokeColor('#CBD5E1').lineWidth(0.5).stroke();
-      doc.moveTo(466, yRutas).lineTo(466, yRutas + 11).strokeColor('#CBD5E1').lineWidth(0.5).stroke();
 
       yRutas += 11;
 
@@ -4408,7 +4413,6 @@ if (itinerarioGeneral) {
           doc.moveTo(168, yRutas).lineTo(168, yRutas + hFilaRuta).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
           doc.moveTo(276, yRutas).lineTo(276, yRutas + hFilaRuta).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
           doc.moveTo(348, yRutas).lineTo(348, yRutas + hFilaRuta).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
-          doc.moveTo(466, yRutas).lineTo(466, yRutas + hFilaRuta).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
 
           const labelRuta = `R${idx + 1}`;
           const orig = r.origenCiudad || ciudadOrigen || '—';
@@ -4427,23 +4431,22 @@ if (itinerarioGeneral) {
           const trayectoExtra = r.tipoTrayecto === 'IDA_Y_VUELTA' ? ' (Ida y vta)' : '';
 
           const fSalida = formatFechaSlash(r.fechaSalida || solicitud.fechaInicio);
-          const hSalida = r.horaEstimadaSalida || r.horaSalida || r.horarioEstimadoMilitar || '';
-          const hSalidaStr = hSalida ? (hSalida.endsWith('h') ? hSalida : `${hSalida} h`) : '';
-          const salidaTexto = [fSalida, hSalidaStr].filter(Boolean).join(' · ') || '—';
-
           const fLlegada = formatFechaSlash(r.fechaLlegada || r.fechaSalida || solicitud.fechaFin);
-          const hLlegada = r.horaEstimadaLlegada || r.horaLlegada || '';
-          const hLlegadaStr = hLlegada ? (hLlegada.endsWith('h') ? hLlegada : `${hLlegada} h`) : '';
-          const llegadaTexto = [fLlegada, hLlegadaStr].filter(Boolean).join(' · ') || '—';
+          const fRango = (fSalida && fLlegada && fSalida !== fLlegada)
+            ? `Del ${fSalida} al ${fLlegada}`
+            : (fSalida || '—');
 
-          doc.fontSize(6).font('Helvetica-Bold').fillColor('#000000');
+          const hViaje = r.horaEstimadaSalida || r.horarioEstimadoMilitar || r.horaSalida || '';
+          const hViajeStr = hViaje ? (hViaje.endsWith('h') ? hViaje : `${hViaje} h`) : '';
+          const fechasYHoraTexto = [fRango, hViajeStr].filter(Boolean).join(' · ') || '—';
+
+          doc.fontSize(6).font('Helvetica-Bold').fillColor('#003DA5');
           doc.text(labelRuta, 28, yRutas + 2.5, { width: 32, align: 'center' });
-          doc.font('Helvetica');
+          doc.font('Helvetica').fillColor('#000000');
           doc.text(orig, 62, yRutas + 2.5, { width: 104, align: 'center' });
           doc.text(dest, 170, yRutas + 2.5, { width: 104, align: 'center' });
           doc.text(`${medio}${trayectoExtra}`, 278, yRutas + 2.5, { width: 68, align: 'center' });
-          doc.text(salidaTexto, 350, yRutas + 2.5, { width: 114, align: 'center' });
-          doc.text(llegadaTexto, 468, yRutas + 2.5, { width: 114, align: 'center' });
+          doc.text(fechasYHoraTexto, 350, yRutas + 2.5, { width: 232, align: 'center' });
 
           yRutas += hFilaRuta;
         });
@@ -4453,22 +4456,23 @@ if (itinerarioGeneral) {
         doc.moveTo(168, yRutas).lineTo(168, yRutas + hFilaRuta).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
         doc.moveTo(276, yRutas).lineTo(276, yRutas + hFilaRuta).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
         doc.moveTo(348, yRutas).lineTo(348, yRutas + hFilaRuta).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
-        doc.moveTo(466, yRutas).lineTo(466, yRutas + hFilaRuta).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
 
         const orig = ciudadOrigen || 'Origen';
         const dest = solicitud.destinoCiudad || 'Destino';
         const medio = solicitud.requiereTiquetes ? 'Aéreo' : 'Terrestre';
-        const salidaTexto = [fechaInicioStr, horaVueloIda].filter(Boolean).join(' - ') || '—';
-        const llegadaTexto = [fechaFinStr, horaVueloRegreso].filter(Boolean).join(' - ') || '—';
+        const fIni = formatFechaSlash(solicitud.fechaInicio);
+        const fFin = formatFechaSlash(solicitud.fechaFin);
+        const fRango = (fIni && fFin && fIni !== fFin) ? `Del ${fIni} al ${fFin}` : (fIni || '—');
+        const hViaje = horaVueloIda ? (horaVueloIda.endsWith('h') ? horaVueloIda : `${horaVueloIda} h`) : '';
+        const fechasYHoraTexto = [fRango, hViaje].filter(Boolean).join(' · ') || '—';
 
-        doc.fontSize(6).font('Helvetica-Bold').fillColor('#000000');
+        doc.fontSize(6).font('Helvetica-Bold').fillColor('#003DA5');
         doc.text('R1', 28, yRutas + 2.5, { width: 32, align: 'center' });
-        doc.font('Helvetica');
+        doc.font('Helvetica').fillColor('#000000');
         doc.text(orig, 62, yRutas + 2.5, { width: 104, align: 'center' });
         doc.text(dest, 170, yRutas + 2.5, { width: 104, align: 'center' });
         doc.text(medio, 278, yRutas + 2.5, { width: 68, align: 'center' });
-        doc.text(salidaTexto, 350, yRutas + 2.5, { width: 114, align: 'center' });
-        doc.text(llegadaTexto, 468, yRutas + 2.5, { width: 114, align: 'center' });
+        doc.text(fechasYHoraTexto, 350, yRutas + 2.5, { width: 232, align: 'center' });
 
         yRutas += hFilaRuta;
       }
@@ -7694,23 +7698,23 @@ if (itinerarioGeneral) {
 
       if (Array.isArray(solicitud.itinerario) && solicitud.itinerario.length > 0) {
         doc.moveDown(0.3);
-        doc.font('Helvetica-Bold').fontSize(9).fillColor('#003DA5').text('Desglose de Rutas y Horarios Militares Estimados:');
+        doc.font('Helvetica-Bold').fontSize(9).fillColor('#003DA5').text('Desglose de Rutas — Fechas y Hora del Viaje:');
         doc.moveDown(0.2);
         solicitud.itinerario.forEach((tramo: any, idx: number) => {
           const trayectoStr = tramo.tipoTrayecto === 'IDA_Y_VUELTA' ? 'Ida y Vuelta' : 'Solo Ida';
-          const horaSalida = tramo.horaEstimadaSalida || tramo.horarioEstimadoMilitar;
-          const horaLlegada = tramo.horaEstimadaLlegada;
-          const horarioStr = horaSalida && horaLlegada
-            ? ` · Horario: ${horaSalida} → ${horaLlegada}`
-            : (horaSalida ? ` · Salida: ${horaSalida}` : (horaLlegada ? ` · Llegada: ${horaLlegada}` : ''));
+          const horaViaje = tramo.horaEstimadaSalida || tramo.horarioEstimadoMilitar || tramo.horaSalida;
+          const horarioStr = horaViaje ? ` · Hora: ${horaViaje} h` : '';
           const diasStr = tramo.diasRuta ? ` (${tramo.diasRuta} d)` : '';
           const transporteStr = tramo.tipoTransporte ? ` [${tramo.tipoTransporte}]` : '';
+          const fSalida = tramo.fechaSalida || 'N/A';
+          const fLlegada = tramo.fechaLlegada || tramo.fechaSalida || 'N/A';
+          const fechasStr = fSalida === fLlegada ? fSalida : `Del ${fSalida} al ${fLlegada}`;
           doc
             .font('Helvetica')
             .fontSize(8.5)
             .fillColor('#334155')
             .text(
-              `  Tramo ${idx + 1}: ${tramo.origenCiudad || 'Origen'} -> ${tramo.destinoCiudad || 'Destino'} (${trayectoStr}) | Del ${tramo.fechaSalida || 'N/A'} al ${tramo.fechaLlegada || 'N/A'}${diasStr}${horarioStr}${transporteStr}`,
+              `  Tramo ${idx + 1}: ${tramo.origenCiudad || 'Origen'} -> ${tramo.destinoCiudad || 'Destino'} (${trayectoStr}) | Fechas y hora del viaje: ${fechasStr}${horarioStr}${diasStr}${transporteStr}`,
             );
         });
       }

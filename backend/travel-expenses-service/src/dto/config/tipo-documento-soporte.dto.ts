@@ -3,6 +3,7 @@ import {
   Length,
   IsOptional,
   IsBoolean,
+  IsArray,
   Matches,
 } from 'class-validator';
 
@@ -28,6 +29,10 @@ export class CreateTipoDocumentoSoporteDto {
   instruccionesValidacion?: string;
 
   @IsOptional()
+  @IsArray()
+  camposAValidar?: string[];
+
+  @IsOptional()
   @IsBoolean()
   activo?: boolean;
 }
@@ -46,6 +51,10 @@ export class UpdateTipoDocumentoSoporteDto {
   @IsOptional()
   @IsString()
   instruccionesValidacion?: string;
+
+  @IsOptional()
+  @IsArray()
+  camposAValidar?: string[];
 
   @IsOptional()
   @IsBoolean()
