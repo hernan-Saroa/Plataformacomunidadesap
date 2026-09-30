@@ -352,3 +352,57 @@ export function situacionDelProceso(entrada: EntradaSituacion): Situacion {
     espera: null,
   };
 }
+
+/**
+ * El flujo a partir del catálogo del proceso (`GET /procesos/:id/actividades`).
+ *
+ * La 3.1 lleva el estado del estudio previo, igual que en el riel. `construida`
+ * llega de fuera por lo mismo que en el listado: es el `TIENEN_PANEL` del
+ * riel, y la secuencia tiene que saltar lo mismo en todas partes.
+ */
+export function pasosDelCatalogo(
+  catalogo: {
+    numeral: string;
+    nombre: string;
+    etapa: number;
+    aplica?: boolean;
+    estado?: string | null;
+    actualizadoEn?: string | null;
+    responsableCargo?: string | null;
+  }[],
+  estadoDelEstudio: string | null | undefined,
+  construida: (numeral: string) => boolean,
+): PasoConDatos[] {
+  return catalogo.map((act) => ({
+    numeral: act.numeral,
+    nombre: act.nombre,
+    etapa: act.etapa,
+    estado: act.numeral === ESTUDIO_PREVIO ? (estadoDelEstudio ?? act.estado ?? null) : (act.estado ?? null),
+    aplica: act.aplica !== false,
+    construida: construida(act.numeral),
+    actualizadoEn: act.actualizadoEn ?? null,
+    responsableCargo: act.responsableCargo ?? null,
+  }));
+}
+
+/**
+ * A dónde pasa el proceso si se aprueba esa actividad.
+ *
+ * Es el «Radicador asignado: X» del módulo disciplinario, pero sin tener que
+ * elegirlo: la secuencia ya sabe qué sigue y a quién le toca. Decirlo antes de
+ * confirmar convierte la aprobación en un traspaso visible, en vez de un botón
+ * después del cual el trabajo desaparece.
+ */
+export function situacionTrasAprobar(entrada: EntradaSituacion, numeral: string): Situacion {
+  return situacionDelProceso({
+    ...entrada,
+    pasos: entrada.pasos.map((p) => (p.numeral === numeral ? { ...p, estado: 'APROBADO' } : p)),
+  });
+}
+
+/** «Verificar disponibilidad presupuestal · Dirección Financiera», o el fin. */
+export function destinoDeLaSituacion(s: Situacion): string {
+  if (s.momento === 'terminado') return 'El proceso queda sin pasos pendientes';
+  if (s.momento === 'negado') return 'El proceso termina';
+  return s.quien ? `${s.titulo} · ${s.quien}` : s.titulo;
+}

@@ -845,3 +845,33 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* ------------------------------------------------ pantalla de revisión ---- */
+
+/*
+ * Lo que se revisa a la izquierda y la decisión a la derecha, fija mientras
+ * se lee: quien revisa baja por veinte páginas de estudio previo y no debería
+ * tener que volver arriba a buscar los botones. Apilado por debajo de 1100px,
+ * con la decisión al final.
+ */
+.revision-actividad {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.revision-actividad > * {
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .revision-actividad {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+  }
+
+  .revision-actividad > .revision-decision {
+    position: sticky;
+    top: 1rem;
+  }
+}

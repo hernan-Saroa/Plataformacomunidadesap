@@ -188,9 +188,21 @@ interface Props {
   onVolver: () => void;
   /** Numeral que debe quedar desplegado al entrar. */
   actividadInicial?: string | null;
+  /**
+   * Lleva a la pantalla de revisión de esa actividad.
+   *
+   * Quien tiene que decidir no decide sobre el formulario de quien redactó:
+   * desde aquí se le ofrece abrir la revisión.
+   */
+  onRevisar?: (numeral: string) => void;
 }
 
-export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }: Props) {
+export function DetalleProceso({
+  procesoId,
+  onVolver,
+  actividadInicial = null,
+  onRevisar,
+}: Props) {
   const [datos, setDatos] = useState<EstudioPrevio | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -984,6 +996,7 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
                 requiereAprobacion={pideAprobacion}
                 devuelta={fueDevuelta}
                 recargarToken={tokenExpediente}
+                onRevisar={onRevisar}
               />
             </div>
 

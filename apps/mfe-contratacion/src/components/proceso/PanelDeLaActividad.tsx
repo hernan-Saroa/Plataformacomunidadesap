@@ -1,40 +1,40 @@
-import React from "react";
-import { ClipboardList } from "lucide-react";
+import React from 'react';
+import { ClipboardList } from 'lucide-react';
 
-import { ContenidoEstudioPrevio } from "../estudio-previo/ContenidoEstudioPrevio";
-import { PanelCdp } from "../cdp/PanelCdp";
-import { PanelPublicacionPliego } from "../publicacion/PanelPublicacionPliego";
-import { PanelObservaciones } from "../observaciones/PanelObservaciones";
-import { PanelMipyme } from "../mipyme/PanelMipyme";
-import { PanelDocumentosProceso } from "../documentos/PanelDocumentosProceso";
-import { PanelApertura } from "../apertura/PanelApertura";
-import { PanelAudienciaRiesgos } from "../riesgos/PanelAudienciaRiesgos";
-import { PanelAdendas } from "../adendas/PanelAdendas";
-import { PanelOfertas } from "../ofertas/PanelOfertas";
-import { PanelComite } from "../comite/PanelComite";
-import { PanelEvaluacion } from "../evaluacion/PanelEvaluacion";
-import { PanelTraslado } from "../traslado/PanelTraslado";
-import { PanelAdjudicacion } from "../adjudicacion/PanelAdjudicacion";
-import { PanelPagos } from "../pagos/PanelPagos";
-import { PanelInformeFinal } from "../informe-final/PanelInformeFinal";
-import { PanelLiquidacion } from "../liquidacion/PanelLiquidacion";
-import { PanelCierreFinanciero } from "../cierre-financiero/PanelCierreFinanciero";
-import { PanelArchivoExpediente } from "../archivo-expediente/PanelArchivoExpediente";
-import { PanelModificaciones } from "../modificaciones/PanelModificaciones";
-import { PanelContrato } from "../contrato/PanelContrato";
-import { PanelLegalizacion } from "../legalizacion/PanelLegalizacion";
-import { PanelSupervision } from "../supervision/PanelSupervision";
-import { PanelRegistroPresupuestal } from "../registro-presupuestal/PanelRegistroPresupuestal";
-import { PanelPublicacionContrato } from "../publicacion-contrato/PanelPublicacionContrato";
-import { PanelActaInicio } from "../acta-inicio/PanelActaInicio";
-import { PanelSuscripcionActa } from "../acta-inicio/PanelSuscripcionActa";
-import { PanelSeguimiento } from "../seguimiento/PanelSeguimiento";
-import { PanelRegistroActividad } from "../actividades/PanelRegistroActividad";
-import { PanelIncumplimiento } from "../incumplimiento/PanelIncumplimiento";
-import { PanelRadicacion } from "../participacion/PanelRadicacion";
-import { PanelModalidad } from "../modalidad/PanelModalidad";
-import { PanelCausal } from "../causal/PanelCausal";
-import { PanelComiteContratacion } from "../comite-contratacion/PanelComiteContratacion";
+import { ContenidoEstudioPrevio } from '../estudio-previo/ContenidoEstudioPrevio';
+import { PanelCdp } from '../cdp/PanelCdp';
+import { PanelPublicacionPliego } from '../publicacion/PanelPublicacionPliego';
+import { PanelObservaciones } from '../observaciones/PanelObservaciones';
+import { PanelMipyme } from '../mipyme/PanelMipyme';
+import { PanelDocumentosProceso } from '../documentos/PanelDocumentosProceso';
+import { PanelApertura } from '../apertura/PanelApertura';
+import { PanelAudienciaRiesgos } from '../riesgos/PanelAudienciaRiesgos';
+import { PanelAdendas } from '../adendas/PanelAdendas';
+import { PanelOfertas } from '../ofertas/PanelOfertas';
+import { PanelComite } from '../comite/PanelComite';
+import { PanelEvaluacion } from '../evaluacion/PanelEvaluacion';
+import { PanelTraslado } from '../traslado/PanelTraslado';
+import { PanelAdjudicacion } from '../adjudicacion/PanelAdjudicacion';
+import { PanelPagos } from '../pagos/PanelPagos';
+import { PanelInformeFinal } from '../informe-final/PanelInformeFinal';
+import { PanelLiquidacion } from '../liquidacion/PanelLiquidacion';
+import { PanelCierreFinanciero } from '../cierre-financiero/PanelCierreFinanciero';
+import { PanelArchivoExpediente } from '../archivo-expediente/PanelArchivoExpediente';
+import { PanelModificaciones } from '../modificaciones/PanelModificaciones';
+import { PanelContrato } from '../contrato/PanelContrato';
+import { PanelLegalizacion } from '../legalizacion/PanelLegalizacion';
+import { PanelSupervision } from '../supervision/PanelSupervision';
+import { PanelRegistroPresupuestal } from '../registro-presupuestal/PanelRegistroPresupuestal';
+import { PanelPublicacionContrato } from '../publicacion-contrato/PanelPublicacionContrato';
+import { PanelActaInicio } from '../acta-inicio/PanelActaInicio';
+import { PanelSuscripcionActa } from '../acta-inicio/PanelSuscripcionActa';
+import { PanelSeguimiento } from '../seguimiento/PanelSeguimiento';
+import { PanelRegistroActividad } from '../actividades/PanelRegistroActividad';
+import { PanelIncumplimiento } from '../incumplimiento/PanelIncumplimiento';
+import { PanelRadicacion } from '../participacion/PanelRadicacion';
+import { PanelModalidad } from '../modalidad/PanelModalidad';
+import { PanelCausal } from '../causal/PanelCausal';
+import { PanelComiteContratacion } from '../comite-contratacion/PanelComiteContratacion';
 import {
   NUMERALES_ADJUDICACION,
   NUMERALES_CDP,
@@ -69,7 +69,7 @@ import {
   NUMERAL_RIESGOS,
   NUMERAL_RP,
   NUMERAL_SEGUIMIENTO,
-} from "./actividadesConPanel";
+} from './actividadesConPanel';
 
 interface Props {
   numeral: string | null;
@@ -83,6 +83,8 @@ interface Props {
   requiereAprobacion?: boolean;
   devuelta?: boolean;
   recargarToken?: number;
+  /** Lleva a la pantalla de revisión, para quien tiene que decidir. */
+  onRevisar?: (numeral: string) => void;
 }
 
 /**
@@ -103,6 +105,7 @@ export function PanelDeLaActividad({
   requiereAprobacion = false,
   devuelta = false,
   recargarToken,
+  onRevisar,
 }: Props) {
   return (
     <>
@@ -194,7 +197,7 @@ export function PanelDeLaActividad({
       ) : numeral === NUMERAL_GARANTIAS || numeral === NUMERAL_ARL ? (
         <PanelLegalizacion
           procesoId={procesoId}
-          numeral={numeral as "8.4" | "8.5"}
+          numeral={numeral as '8.4' | '8.5'}
           onCambio={onCambio}
         />
       ) : numeral === NUMERAL_CONTRATO ? (
@@ -211,27 +214,25 @@ export function PanelDeLaActividad({
         <PanelObservaciones procesoId={procesoId} onCambio={onCambio} />
       ) : numeral === NUMERAL_MIPYME ? (
         <PanelMipyme procesoId={procesoId} onCambio={onCambio} />
-      ) : numeral === "3.1" ? (
+      ) : numeral === '3.1' ? (
         <ContenidoEstudioPrevio
           procesoId={procesoId}
           onCambio={onCambioEstudio}
+          onRevisar={onRevisar ? () => onRevisar('3.1') : undefined}
         />
       ) : (
         /* El riel deja pulsar solo lo disponible, pero al entrar sin
          actividad elegida hay que decir qué hacer. Sin marco propio:
          el del contenedor ya lo envuelve. */
         <div className="p-10 text-center">
-          <ClipboardList
-            className="w-10 h-10 mx-auto text-gray-300 mb-3"
-            aria-hidden="true"
-          />
+          <ClipboardList className="w-10 h-10 mx-auto text-gray-300 mb-3" aria-hidden="true" />
           <p className="text-sm font-bold text-gray-600 m-0">
-            {numeral ? nombre : "Elige una actividad"}
+            {numeral ? nombre : 'Elige una actividad'}
           </p>
           <p className="text-xs text-gray-400 m-0 mt-1">
             {numeral
-              ? "Esta actividad aún no está habilitada en la plataforma."
-              : "Selecciona una actividad del panel izquierdo para trabajar en ella."}
+              ? 'Esta actividad aún no está habilitada en la plataforma.'
+              : 'Selecciona una actividad del panel izquierdo para trabajar en ella.'}
           </p>
         </div>
       )}

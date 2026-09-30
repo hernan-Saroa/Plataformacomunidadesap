@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { ResponsableDeLugar } from '../../types';
-import { PasoConDatos, rolesQuePueden, situacionDelProceso } from './situacionDelProceso';
+import {
+  destinoDeLaSituacion,
+  PasoConDatos,
+  pasosDelCatalogo,
+  rolesQuePueden,
+  situacionDelProceso,
+  situacionTrasAprobar,
+} from './situacionDelProceso';
 
 const paso = (numeral: string, cambios: Partial<PasoConDatos> = {}): PasoConDatos => ({
   numeral,
@@ -190,5 +197,42 @@ describe('rolesQuePueden', () => {
     expect(rolesQuePueden(responsables, 'editar', '4.2')).toEqual(['Dirección Financiera']);
     expect(rolesQuePueden(responsables, 'editar', '3.5')).toEqual(['Gestor de contratación']);
     expect(rolesQuePueden(responsables, 'editar', '7.1')).toEqual(['Administrador']);
+  });
+});
+
+describe('a dónde pasa al aprobar', () => {
+  it('aprobar el estudio previo lo lleva a lo que sigue, con su responsable', () => {
+    const entrada = {
+      pasos: flujo({ '3.1': 'EN_REVISION', '3.3': 'APROBADO' }),
+      participacion: { contratacion: { nombre: 'Ana Gestora' }, abogado: { nombre: 'Luis' } },
+      responsables,
+    };
+
+    const despues = situacionTrasAprobar(entrada, '3.1');
+
+    expect(despues).toMatchObject({ numeral: '3.5', quien: 'Gestor de contratación' });
+    expect(destinoDeLaSituacion(despues)).toBe('Actividad 3.5 · Gestor de contratación');
+  });
+
+  it('aprobar lo último deja el proceso sin pendientes', () => {
+    const pasos = [paso('3.1', { estado: 'APROBADO' }), paso('4.1', { estado: 'EN_REVISION' })];
+
+    expect(destinoDeLaSituacion(situacionTrasAprobar({ pasos }, '4.1'))).toBe(
+      'El proceso queda sin pasos pendientes',
+    );
+  });
+
+  it('arma los pasos del catálogo con el estado del estudio previo', () => {
+    const pasos = pasosDelCatalogo(
+      [
+        { numeral: '3.1', nombre: 'Estudio', etapa: 3, estado: 'BORRADOR' },
+        { numeral: '5.9', nombre: 'Manifestación', etapa: 5, aplica: false, estado: 'NO_APLICA' },
+      ],
+      'EN_REVISION',
+      (n) => n !== '5.9',
+    );
+
+    expect(pasos[0]).toMatchObject({ estado: 'EN_REVISION', construida: true });
+    expect(pasos[1]).toMatchObject({ aplica: false, construida: false });
   });
 });
