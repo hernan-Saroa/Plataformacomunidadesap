@@ -22,7 +22,7 @@ import {
 import viaticosService from '../services/api/viaticosService';
 import authService from '../services/api/authService';
 import { SolicitudViatico } from '../types/viaticos';
-import { formatearMoneda } from '../utils/viaticosUtils';
+import { formatearMoneda, formatearNombreComisionado } from '../utils/viaticosUtils';
 import ModalFirmasAprobacion from './ModalFirmasAprobacion';
 
 interface Props {
@@ -109,7 +109,10 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
       s.camposAdicionales.firmasAprobacion.length === 1,
   ).length;
   const montoAcumulado = solicitudes.reduce(
-    (acc, curr) => acc + (Number(curr.montoTotalEstimado || curr.montoTotal || 0) || 0),
+    (acc, curr) =>
+      acc +
+      (Number(curr.montoViaticos || 0) || 0) +
+      (Number(curr.montoGastosViaje || 0) || 0),
     0,
   );
 
@@ -444,7 +447,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                   <div className="space-y-3 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-bold text-slate-900 bg-slate-100 px-3 py-1 rounded-lg border border-slate-200">
-                        {sol.codigoSolicitud || sol.codigo || 'SIN CÓDIGO'}
+                        {sol.consecutivoUnico || sol.codigoSolicitud || sol.codigo || 'SIN CÓDIGO'}
                       </span>
                       {obtenerBadgeRegla(sol)}
                       <span
@@ -458,10 +461,13 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
 
                     {/* Fila de Comisionado */}
                     {(() => {
-                      const nombreFuncionario = comisionado.nombre || sol.nombreComisionado || 'Funcionario sin nombre';
+                      // El backend devuelve los nombres en campos separados (primerNombre, primerApellido, etc.)
+                      const nombreFuncionario =
+                        (comisionado.primerNombre
+                          ? formatearNombreComisionado(comisionado)
+                          : comisionado.nombre || sol.nombreComisionado) || 'Funcionario sin nombre';
                       const cedulaFuncionario = comisionado.numeroDocumento || sol.cedulaComisionado || 'N/D';
                       const cargoFuncionario = comisionado.cargo || sol.cargoComisionado || 'Funcionario';
-                      const dependenciaFuncionario = comisionado.dependencia || sol.dependencia || 'Sede Central';
 
                       return (
                         <div className="flex items-start gap-3 pt-1">
@@ -474,22 +480,21 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                             </p>
                             <p className="text-xs text-slate-600">
                               C.C. {cedulaFuncionario} · Cargo:{' '}
-                              <span className="font-medium text-slate-800">{cargoFuncionario}</span> ·{' '}
-                              {dependenciaFuncionario}
+                              <span className="font-medium text-slate-800">{cargoFuncionario}</span>
                             </p>
                           </div>
                         </div>
                       );
                     })()}
 
-                    {/* Detalle del Itinerario y Objeto */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-2 text-xs text-slate-600 border-t border-slate-100">
-                      <div className="flex items-center gap-1.5">
+                    {/* Detalle del It                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-2 text-xs text-slate-600 border-t border-slate-100">
+                       <div className="flex items-center gap-1.5">
                         <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         <span>
                           Destino:{' '}
                           <strong className="text-slate-800">
-                            {sol.ciudadDestino || sol.lugarDestino || 'N/D'}
+                            {sol.destinoCiudad || sol.ciudadDestino || sol.lugarDestino || 'N/D'}
+                            {(sol.destinoDepartamento) ? `, ${sol.destinoDepartamento}` : ''}
                           </strong>
                         </span>
                       </div>
@@ -508,11 +513,15 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                         <span>
                           Monto Estimado:{' '}
                           <strong className="text-emerald-700">
-                            {formatearMoneda(sol.montoTotalEstimado || sol.montoTotal || 0)}
+                            {formatearMoneda(
+                              (Number(sol.montoViaticos) || 0) +
+                              (Number(sol.montoGastosViaje) || 0) ||
+                              sol.montoTotalEstimado || sol.montoTotal || 0
+                            )}
                           </strong>
                         </span>
                       </div>
-                    </div>
+                    </div>                 </div>
 
                     {/* Objeto de Comisión */}
                     {sol.objetoComision && (

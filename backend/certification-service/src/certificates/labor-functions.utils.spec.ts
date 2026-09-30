@@ -45,6 +45,26 @@ describe('labor functions normalization', () => {
     ).toHaveLength(3);
   });
 
+  it('une los renglones de continuación de funciones numeradas antes de validarlas', () => {
+    const text = '1. Revisar los pagos y verificar los descuentos\r\nlegales\r\n2. Consolidar los movimientos contables de manera\noportuna';
+    expect(parseLaborFunctionsRaw(text)).toEqual([
+      'Revisar los pagos y verificar los descuentos legales',
+      'Consolidar los movimientos contables de manera oportuna',
+    ]);
+  });
+
+  it('conserva funciones sin numerar por línea y las entradas del arreglo completas', () => {
+    expect(parseLaborFunctionsRaw('Atender las solicitudes.\nPresentar informes.')).toEqual([
+      'Atender las solicitudes.', 'Presentar informes.',
+    ]);
+    expect(parseLaborFunctionsRaw(['Atender las\nsolicitudes.'])).toEqual([
+      'Atender las solicitudes.',
+    ]);
+    expect(parseLaborFunctionsRaw('• Atender las solicitudes.\n• Presentar informes.')).toEqual([
+      'Atender las solicitudes.', 'Presentar informes.',
+    ]);
+  });
+
   it('identifies which function repeats an earlier one', () => {
     const items = parseLaborFunctionsRaw(
       '1. Preparar las clases del curso.\n2. Evaluar a los estudiantes.\n3. Preparar las clases del curso.\n4. Evaluar a los estudiantes.',

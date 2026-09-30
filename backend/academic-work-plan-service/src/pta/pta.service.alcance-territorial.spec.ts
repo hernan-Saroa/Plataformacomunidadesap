@@ -81,4 +81,53 @@ describe('PtaService - alcance territorial tolerante (EFDS-1535)', () => {
 
     await expect(llamar(service, auth([CHOCO]))).rejects.toThrow(/su propia territorial y nivel/i);
   });
+
+  it('un permiso Global no permite aprobar Tolima si Personas asigna Meta', async () => {
+    const service = montarServicio([{ territorialId: 'Tolima', nivel: 'pregrado' }]);
+    service.ptaRepo = { findOne: jest.fn().mockResolvedValue({ id: 'pta-1' }) };
+    const actor = {
+      ...auth(['Meta']),
+      userId: 'aprobador-meta',
+      allowedComponents: ['academica_territorial'],
+      territorialDecisionGrants: {
+        aprobar: [{ nivel: 'pregrado', territorial: 'todas' }],
+        revisar: [],
+      },
+    };
+    await expect(service.aprobarComponente('pta-1', {
+      componente: 'academica_territorial', estado: 'aprobado', territorialId: 'Tolima',
+    }, actor)).rejects.toThrow(/territorial/i);
+    expect(service.ptaRepo.findOne).toHaveBeenCalledTimes(1);
+  });
+
+  it('también bloquea decisiones de Docencia por nivel cuando la actividad declara otra territorial', async () => {
+    const service = montarServicio([]);
+    service.ptaRepo = { findOne: jest.fn().mockResolvedValue({
+      id: 'pta-1', datosEstructurados: { asignaturas: [{ territorial_id: 'Tolima' }] },
+    }) };
+    service.clasificarAsignaturasDocencia = jest.fn().mockResolvedValue({
+      academica_pregrado: [{ territorial_id: 'Tolima' }],
+      academica_posgrado: [], academica_territorial: [],
+    });
+    const actor = { ...auth(['Meta']), userId: 'aprobador-meta', allowedComponents: ['academica_pregrado'] };
+    await expect(service.aprobarComponente('pta-1', {
+      componente: 'academica_pregrado', estado: 'aprobado',
+    }, actor)).rejects.toThrow(/alcance territorial/i);
+  });
+
+  it.each(['Aprobado', 'APROBADO', ' aprobado '])('la ruta heredada de estado no acepta aprobar un PTA ajeno con estado %j', async estado => {
+    const service = montarServicio([{ territorialId: 'Tolima', nivel: 'pregrado' }]);
+    service.ptaRepo = { findOne: jest.fn().mockResolvedValue({
+      id: 'pta-1', estado: 'Pendiente Jefatura', datosEstructurados: {},
+    }) };
+    service.solicitudRepo = { findOne: jest.fn().mockResolvedValue(null) };
+    const actor = {
+      ...auth(['Meta']), userId: 'aprobador-meta', approvesAll: true,
+      territorialDecisionGrants: {
+        aprobar: [{ nivel: 'pregrado', territorial: 'todas' }], revisar: [],
+      },
+    };
+    await expect(service.updatePTAStatus('pta-1', { estado }, actor))
+      .rejects.toThrow(/territorial/i);
+  });
 });

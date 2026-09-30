@@ -145,6 +145,22 @@ export type TipoDocumentoSoporte =
   | 'FACTURA'
   | 'FACTURA_ELECTRONICA';
 
+export interface SolicitudPendiente023 {
+  id: string;
+  consecutivoUnico: string;
+  codigoSolicitud?: string;
+  estadoSolicitud: EstadoSolicitudViatico | string;
+  destinoCiudad: string;
+  destinoDepartamento: string;
+  fechaInicio: string;
+  fechaFin: string;
+  objetoComision: string;
+  montoViaticos?: number;
+  montoGastosViaje?: number;
+  totalGeneral?: number;
+  creadoEn: string;
+}
+
 /** Comisionado tal como lo serializa `ComisionadoEntity` (camelCase). */
 export interface Comisionado {
   id: string;
@@ -162,6 +178,11 @@ export interface Comisionado {
   fechaAutorizacionHabeasData?: Date;
   ipRegistroHabeasData?: string;
   idDependencia?: number | null;
+  fechaInicioContrato?: string | Date | null;
+  fechaFinContrato?: string | Date | null;
+  salarioBasico?: number | null;
+  cargo?: string | null;
+  solicitudesPendientes?: SolicitudPendiente023[];
 }
 
 export interface DocumentoSoporte {

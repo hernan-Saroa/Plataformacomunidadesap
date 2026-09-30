@@ -5,6 +5,8 @@ import { Geopolitica } from './geopolitica.entity';
 import { Sede } from './sede.entity';
 import { Seccional } from './seccional.entity';
 import { Dependencia } from './dependencia.entity';
+import { Cargo } from './cargo.entity';
+import { DependenciaCargo } from './dependencia-cargo.entity';
 import {
   CreateSeccionalDto,
   UpdateSeccionalDto,
@@ -12,6 +14,8 @@ import {
   UpdateSedeDto,
   CreateDependenciaDto,
   UpdateDependenciaDto,
+  CreateCargoDto,
+  AssignCargosDto,
 } from './estructura-organizacional.dto';
 import * as xlsx from 'xlsx';
 import * as fs from 'fs';
@@ -78,6 +82,10 @@ export class EstructuraOrganizacionalService {
     private readonly seccionalRepo: Repository<Seccional>,
     @InjectRepository(Dependencia)
     private readonly dependenciaRepo: Repository<Dependencia>,
+    @InjectRepository(Cargo)
+    private readonly cargoRepo: Repository<Cargo>,
+    @InjectRepository(DependenciaCargo)
+    private readonly depCargoRepo: Repository<DependenciaCargo>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -2009,8 +2017,10 @@ export class EstructuraOrganizacionalService {
    */
   async findAllDependencias(
     filters: { includeInactive?: boolean; search?: string; codigo?: string } = {},
-  ): Promise<Dependencia[]> {
-    const qb = this.dependenciaRepo.createQueryBuilder('d');
+  ): Promise<any[]> {
+    const qb = this.dependenciaRepo.createQueryBuilder('d')
+      .leftJoinAndSelect('d.dependenciasCargos', 'dc', 'dc.activo = TRUE')
+      .leftJoinAndSelect('dc.cargo', 'c', 'c.activo = TRUE');
     if (!filters.includeInactive) {
       qb.where('d.activo = TRUE');
     }
@@ -2027,24 +2037,33 @@ export class EstructuraOrganizacionalService {
       );
     }
     qb.orderBy('d.nom_dependencia', 'ASC');
-    return qb.getMany();
+    const list = await qb.getMany();
+    return list.map((d) => ({
+      ...d,
+      cargos: (d.dependenciasCargos || []).map((dc) => dc.cargo).filter(Boolean),
+    }));
   }
 
-  async findDependenciaById(id: number): Promise<Dependencia> {
+  async findDependenciaById(id: number): Promise<any> {
     const dep = await this.dependenciaRepo.findOne({
       where: { idDependencia: id },
+      relations: ['dependenciasCargos', 'dependenciasCargos.cargo'],
     });
     if (!dep) {
       throw new NotFoundException(`Dependencia con id ${id} no encontrada.`);
     }
-    return dep;
+    return {
+      ...dep,
+      cargos: (dep.dependenciasCargos || []).map((dc) => dc.cargo).filter(Boolean),
+    };
   }
 
   /**
    * Crea una dependencia nueva. Valida que el código no exista y que
    * la FK a Geopolitica (si se envía) apunte a un registro válido.
+   * Permite asociar cargos inmediatamente vía cargosIds.
    */
-  async createDependencia(dto: CreateDependenciaDto): Promise<Dependencia> {
+  async createDependencia(dto: CreateDependenciaDto): Promise<any> {
     const codigo = dto.codDependencia.trim().toUpperCase();
     const existe = await this.dependenciaRepo.findOne({
       where: { codDependencia: codigo },
@@ -2088,7 +2107,22 @@ export class EstructuraOrganizacionalService {
         activo: dto.activo ?? true,
         genTipUnidad: dto.genTipUnidad ?? 'TIUORG',
       });
-      return await queryRunner.manager.save(Dependencia, entity);
+      const saved = await queryRunner.manager.save(Dependencia, entity);
+
+      if (dto.cargosIds && dto.cargosIds.length > 0) {
+        for (const idCargo of dto.cargosIds) {
+          await queryRunner.query(
+            `INSERT INTO auth.dependencias_cargos (id_dependencia, id_cargo, activo)
+             VALUES ($1, $2, true)
+             ON CONFLICT (id_dependencia, id_cargo) 
+             DO UPDATE SET activo = true, actualizado_en = CURRENT_TIMESTAMP`,
+            [nextId, idCargo],
+          );
+        }
+      }
+
+      await queryRunner.commitTransaction();
+      return this.findDependenciaById(nextId);
     } catch (err) {
       await queryRunner.rollbackTransaction();
       throw err;
@@ -2100,7 +2134,7 @@ export class EstructuraOrganizacionalService {
   async updateDependencia(
     id: number,
     dto: UpdateDependenciaDto,
-  ): Promise<Dependencia> {
+  ): Promise<any> {
     const dep = await this.findDependenciaById(id);
     if (dto.codDependencia) {
       const codigo = dto.codDependencia.trim().toUpperCase();
@@ -2108,7 +2142,7 @@ export class EstructuraOrganizacionalService {
         const duplicado = await this.dependenciaRepo.findOne({
           where: { codDependencia: codigo },
         });
-        if (duplicado && duplicado.idDependencia !== id) {
+        if (duplicado && Number(duplicado.idDependencia) !== Number(id)) {
           throw new ConflictException(
             `Ya existe una dependencia con el código ${codigo}.`,
           );
@@ -2126,8 +2160,16 @@ export class EstructuraOrganizacionalService {
         );
       }
     }
-    Object.assign(dep, dto);
-    return this.dependenciaRepo.save(dep);
+
+    const { cargosIds, ...depData } = dto;
+    Object.assign(dep, depData);
+    await this.dependenciaRepo.save(dep);
+
+    if (cargosIds !== undefined) {
+      await this.syncCargosForDependencia(id, cargosIds);
+    }
+
+    return this.findDependenciaById(id);
   }
 
   /**
@@ -2140,5 +2182,94 @@ export class EstructuraOrganizacionalService {
     dep.activo = false;
     await this.dependenciaRepo.save(dep);
     return { message: `Dependencia ${dep.codDependencia} desactivada correctamente.` };
+  }
+
+  // ==================== CARGOS (transversal) ====================
+
+  async findAllCargos(options: { activoOnly?: boolean; search?: string } = {}): Promise<Cargo[]> {
+    const qb = this.cargoRepo.createQueryBuilder('c');
+    if (options.activoOnly !== false) {
+      qb.where('c.activo = TRUE');
+    }
+    if (options.search) {
+      const like = `%${options.search.toUpperCase()}%`;
+      qb.andWhere('(UPPER(c.nom_cargo) LIKE :like OR UPPER(c.cod_cargo) LIKE :like)', { like });
+    }
+    qb.orderBy('c.nom_cargo', 'ASC');
+    return qb.getMany();
+  }
+
+  async createCargo(dto: CreateCargoDto): Promise<Cargo> {
+    const codigo = dto.codCargo.trim().toUpperCase();
+    const existe = await this.cargoRepo.findOne({ where: { codCargo: codigo } });
+    if (existe) {
+      throw new ConflictException(`Ya existe un cargo con el código ${codigo}.`);
+    }
+
+    const [maxRow] = await this.dataSource.query(
+      `SELECT COALESCE(MAX(id_cargo), 0) + 1 AS next_id FROM auth.cargos`,
+    );
+    const nextId = Number(maxRow?.next_id || 1);
+
+    const cargo = this.cargoRepo.create({
+      idCargo: nextId,
+      codCargo: codigo,
+      nomCargo: dto.nomCargo.trim(),
+      descripcion: dto.descripcion?.trim() || null,
+      nivelJerarquico: dto.nivelJerarquico || 'Profesional',
+      activo: dto.activo ?? true,
+    });
+
+    const saved = await this.cargoRepo.save(cargo);
+    await this.dataSource.query(
+      `SELECT setval('auth.cargos_id_cargo_seq', COALESCE((SELECT MAX(id_cargo) FROM auth.cargos), 0) + 1, false)`,
+    );
+    return saved;
+  }
+
+  async findCargosByDependencia(idDependencia: number): Promise<Cargo[]> {
+    const depCargos = await this.depCargoRepo.find({
+      where: { idDependencia, activo: true },
+      relations: ['cargo'],
+      order: { idCargo: 'ASC' },
+    });
+    return depCargos.map((dc) => dc.cargo).filter(Boolean);
+  }
+
+  async syncCargosForDependencia(
+    idDependencia: number,
+    cargosIds: number[],
+  ): Promise<Cargo[]> {
+    // Validar existencia de la dependencia
+    await this.findDependenciaById(idDependencia);
+
+    if (cargosIds.length === 0) {
+      await this.depCargoRepo.delete({ idDependencia });
+      return [];
+    }
+
+    // Eliminar las asociaciones que ya no pertenecen
+    await this.depCargoRepo
+      .createQueryBuilder()
+      .delete()
+      .from(DependenciaCargo)
+      .where('id_dependencia = :idDep AND id_cargo NOT IN (:...cargosIds)', {
+        idDep: idDependencia,
+        cargosIds,
+      })
+      .execute();
+
+    // Insertar o reactivar las asignadas
+    for (const idCargo of cargosIds) {
+      await this.dataSource.query(
+        `INSERT INTO auth.dependencias_cargos (id_dependencia, id_cargo, activo)
+         VALUES ($1, $2, true)
+         ON CONFLICT (id_dependencia, id_cargo) 
+         DO UPDATE SET activo = true, actualizado_en = CURRENT_TIMESTAMP`,
+        [idDependencia, idCargo],
+      );
+    }
+
+    return this.findCargosByDependencia(idDependencia);
   }
 }

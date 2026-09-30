@@ -4,6 +4,7 @@ import {
   SolicitudViatico,
   ResumenEstadisticoViaticos,
   Comisionado,
+  SolicitudPendiente023,
   CreateSolicitudRequest,
   SolicitudComisionResponse,
   DocumentoSoporte,
@@ -70,6 +71,8 @@ import {
   ActualizarCampoFormularioDTO,
   CrearConfigTipoComisionadoDTO,
   ActualizarConfigTipoComisionadoDTO,
+  CrearTipoDocumentoSoporteDTO,
+  ActualizarTipoDocumentoSoporteDTO,
   EscalaViatico,
   TarifaInvestigador,
   TarifaRegionalExcepcion,
@@ -451,7 +454,15 @@ export class ViaticosService {
 
   async consultarComisionado(documento: string): Promise<Comisionado | null> {
     try {
-      return await apiClient.get<Comisionado>(`/viaticos/api/v1/comisionados/${documento}`);
+      const comisionado = await apiClient.get<Comisionado>(`/viaticos/api/v1/comisionados/${documento}`);
+      if (comisionado && (!comisionado.solicitudesPendientes || !Array.isArray(comisionado.solicitudesPendientes))) {
+        try {
+          comisionado.solicitudesPendientes = await this.obtenerSolicitudesPendientesComisionado(documento);
+        } catch {
+          comisionado.solicitudesPendientes = [];
+        }
+      }
+      return comisionado;
     } catch (error: any) {
       // 404: el documento no existe ni en comisionados ni en auth.personas
       // (origen ESAP). Se propaga para que la UI bloquee el flujo.
@@ -463,6 +474,33 @@ export class ViaticosService {
       }
       console.error('[viaticos] Error consultando comisionado:', error);
       throw error;
+    }
+  }
+
+  async obtenerSolicitudesPendientesComisionado(documento: string): Promise<SolicitudPendiente023[]> {
+    try {
+      return await apiClient.get<SolicitudPendiente023[]>(`/viaticos/api/v1/comisionados/${encodeURIComponent(documento)}/solicitudes-pendientes`);
+    } catch (error) {
+      console.warn('[viaticos] Error obteniendo solicitudes pendientes del comisionado:', error);
+      return [];
+    }
+  }
+
+  async verificarSolapamiento(
+    documento: string,
+    fechaInicio: string,
+    fechaFin: string,
+    solicitudId?: string,
+  ): Promise<{ haySolapamiento: boolean; mensaje: string | null; solicitudConflicto?: any | null }> {
+    try {
+      const params = new URLSearchParams({ fechaInicio, fechaFin });
+      if (solicitudId) params.append('solicitudId', solicitudId);
+      return await apiClient.get<{ haySolapamiento: boolean; mensaje: string | null; solicitudConflicto?: any | null }>(
+        `/viaticos/api/v1/comisionados/${encodeURIComponent(documento)}/verificar-solapamiento?${params.toString()}`,
+      );
+    } catch (error: any) {
+      console.warn('[viaticos] Error verificando solapamiento de fechas:', error?.message);
+      return { haySolapamiento: false, mensaje: null };
     }
   }
 
@@ -544,12 +582,50 @@ export class ViaticosService {
     }
   }
 
-  async obtenerTiposDocumentoSoporte(): Promise<TipoDocumentoSoporte[]> {
+  async obtenerTiposDocumentoSoporte(incluirInactivos: boolean = false): Promise<TipoDocumentoSoporte[]> {
     try {
-      return await apiClient.get<TipoDocumentoSoporte[]>('/viaticos/api/v1/parametrizacion/tipos-documento-soporte');
+      const url = incluirInactivos
+        ? '/viaticos/api/v1/parametrizacion/tipos-documento-soporte?incluirInactivos=true'
+        : '/viaticos/api/v1/parametrizacion/tipos-documento-soporte';
+      return await apiClient.get<TipoDocumentoSoporte[]>(url);
     } catch (error) {
       console.error('Error obteniendo tipos de documento soporte:', error);
       return [];
+    }
+  }
+
+  async crearTipoDocumentoSoporte(dto: CrearTipoDocumentoSoporteDTO): Promise<TipoDocumentoSoporte | null> {
+    try {
+      return await apiClient.post<TipoDocumentoSoporte>('/viaticos/api/v1/parametrizacion/tipos-documento-soporte', dto);
+    } catch (error) {
+      console.error('Error creando tipo de documento soporte:', error);
+      throw error;
+    }
+  }
+
+  async actualizarTipoDocumentoSoporte(
+    codigo: string,
+    dto: ActualizarTipoDocumentoSoporteDTO,
+  ): Promise<TipoDocumentoSoporte | null> {
+    try {
+      return await apiClient.put<TipoDocumentoSoporte>(
+        `/viaticos/api/v1/parametrizacion/tipos-documento-soporte/${encodeURIComponent(codigo)}`,
+        dto,
+      );
+    } catch (error) {
+      console.error('Error actualizando tipo de documento soporte:', error);
+      throw error;
+    }
+  }
+
+  async eliminarTipoDocumentoSoporte(codigo: string): Promise<void> {
+    try {
+      await apiClient.delete(
+        `/viaticos/api/v1/parametrizacion/tipos-documento-soporte/${encodeURIComponent(codigo)}`,
+      );
+    } catch (error) {
+      console.error('Error eliminando tipo de documento soporte:', error);
+      throw error;
     }
   }
 

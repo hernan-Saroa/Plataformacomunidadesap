@@ -6,6 +6,7 @@ import { CampoFormularioEntity } from '../../entities/config/campo-formulario.en
 import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
 import { TipoDocumentoSoporteEntity } from '../../entities/config/tipo-documento-soporte.entity';
 import { ConfigTipoComisionadoDocumentoEntity } from '../../entities/config/config-tipo-comisionado-documento.entity';
+import { CommonModule } from '../../common/common.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { ConfigTipoComisionadoDocumentoEntity } from '../../entities/config/conf
       TipoDocumentoSoporteEntity,
       ConfigTipoComisionadoDocumentoEntity,
     ]),
+    CommonModule,
   ],
   controllers: [ConfigController],
   providers: [ConfigService],

@@ -12,6 +12,8 @@ import { AuthSystemSettingEntity } from '../../entities/auth-system-setting.enti
 
 import { TarifaTransporteTerminalEntity } from '../../entities/liquidation/tarifa-transporte-terminal.entity';
 
+import { CommonModule } from '../../common/common.module';
+
 /**
  * Módulo de autoliquidación de viáticos.
  * Agrupa entidades, DTOs, servicio y controlador para el cálculo de viáticos
@@ -19,6 +21,7 @@ import { TarifaTransporteTerminalEntity } from '../../entities/liquidation/tarif
  */
 @Module({
   imports: [
+    CommonModule,
     TypeOrmModule.forFeature([
       EscalaViaticoEntity,
       TarifaInvestigadorEntity,

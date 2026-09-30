@@ -243,6 +243,18 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:create_request',
     'travel_expenses:manage_tickets',
   ],
+  COMISIONADO: [
+    'travel_expenses:read_own_requests',
+    'travel_expenses:read_requests',
+    'travel_expenses.general.es_comisionado',
+    'es_comisionado',
+  ],
+  ROL_COMISIONADO: [
+    'travel_expenses:read_own_requests',
+    'travel_expenses:read_requests',
+    'travel_expenses.general.es_comisionado',
+    'es_comisionado',
+  ],
 };
 
 @Injectable()

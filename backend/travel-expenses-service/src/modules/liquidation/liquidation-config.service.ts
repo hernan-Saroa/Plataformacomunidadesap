@@ -15,6 +15,7 @@ import {
   UpdateTarifaTransporteTerminalDto,
 } from '../../dto/liquidation/tarifa-transporte-terminal.dto';
 import { Optional } from '@nestjs/common';
+import { NotificationClientService } from '../../common/notification-client.service';
 import {
   CreateEscalaViaticoDto,
   UpdateEscalaViaticoDto,
@@ -42,7 +43,27 @@ export class LiquidationConfigService {
     @Optional()
     @InjectRepository(AuthSystemSettingEntity)
     private readonly authSettingRepo?: Repository<AuthSystemSettingEntity>,
+    @Optional()
+    private readonly notificationClient?: NotificationClientService,
   ) {}
+
+  private notificarCambioParametro(params: {
+    tipoConfiguracion: string;
+    operacion: string;
+    descripcionAjuste: string;
+    detalle?: Record<string, any>;
+    usuarioModificador?: string;
+  }) {
+    if (!this.notificationClient) return;
+    this.notificationClient
+      .notifyTravelExpensesConfigChange({
+        ...params,
+        usuarioModificador: params.usuarioModificador || 'Administrador del Sistema',
+      })
+      .catch(() => {
+        // Silencioso ante contingencia
+      });
+  }
 
   // ==================== ESCALAS ====================
 
@@ -57,7 +78,10 @@ export class LiquidationConfigService {
     return this.escalaRepo.findOne({ where: { id } });
   }
 
-  async crearEscala(dto: CreateEscalaViaticoDto): Promise<EscalaViaticoEntity> {
+  async crearEscala(
+    dto: CreateEscalaViaticoDto,
+    usuarioModificador?: string,
+  ): Promise<EscalaViaticoEntity> {
     const solapada = await this.escalaRepo.findOne({
       where: { anoVigencia: dto.anoVigencia, activo: true },
     });
@@ -71,12 +95,29 @@ export class LiquidationConfigService {
       ...dto,
       activo: true,
     });
-    return this.escalaRepo.save(entity);
+    const guardada = await this.escalaRepo.save(entity);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Escala de Viáticos (Decreto 314)',
+      operacion: 'Creación de Escala',
+      descripcionAjuste: `Se configuró una nueva escala de viáticos para el año de vigencia ${guardada.anoVigencia}. Rango: $${guardada.rangoMinimo} - $${guardada.rangoMaximo}, Tarifa diaria: $${guardada.tarifaDiaria}.`,
+      detalle: {
+        id: guardada.id,
+        anoVigencia: guardada.anoVigencia,
+        rangoMinimo: guardada.rangoMinimo,
+        rangoMaximo: guardada.rangoMaximo,
+        tarifaDiaria: guardada.tarifaDiaria,
+      },
+      usuarioModificador,
+    });
+
+    return guardada;
   }
 
   async actualizarEscala(
     id: number,
     dto: UpdateEscalaViaticoDto,
+    usuarioModificador?: string,
   ): Promise<EscalaViaticoEntity> {
     const entity = await this.escalaRepo.findOne({ where: { id } });
     if (!entity) {
@@ -95,16 +136,45 @@ export class LiquidationConfigService {
     }
 
     Object.assign(entity, dto);
-    return this.escalaRepo.save(entity);
+    const guardada = await this.escalaRepo.save(entity);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Escala de Viáticos (Decreto 314)',
+      operacion: 'Actualización de Escala',
+      descripcionAjuste: `Se actualizó la escala de viáticos ID #${id} (Vigencia: ${guardada.anoVigencia}). Tarifa diaria: $${guardada.tarifaDiaria}, Rango: $${guardada.rangoMinimo} - $${guardada.rangoMaximo}.`,
+      detalle: {
+        id,
+        anoVigencia: guardada.anoVigencia,
+        rangoMinimo: guardada.rangoMinimo,
+        rangoMaximo: guardada.rangoMaximo,
+        tarifaDiaria: guardada.tarifaDiaria,
+        activo: guardada.activo,
+      },
+      usuarioModificador,
+    });
+
+    return guardada;
   }
 
-  async eliminarEscala(id: number): Promise<{ message: string }> {
+  async eliminarEscala(
+    id: number,
+    usuarioModificador?: string,
+  ): Promise<{ message: string }> {
     const entity = await this.escalaRepo.findOne({ where: { id } });
     if (!entity) {
       throw new NotFoundException(`Escala con id ${id} no encontrada`);
     }
     entity.activo = false;
     await this.escalaRepo.save(entity);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Escala de Viáticos (Decreto 314)',
+      operacion: 'Desactivación/Eliminación de Escala',
+      descripcionAjuste: `Se desactivó la escala de viáticos ID #${id} correspondiente al año de vigencia ${entity.anoVigencia}.`,
+      detalle: { id, anoVigencia: entity.anoVigencia, activo: false },
+      usuarioModificador,
+    });
+
     return { message: 'Escala eliminada correctamente' };
   }
 
@@ -125,6 +195,7 @@ export class LiquidationConfigService {
 
   async crearTarifaInvestigador(
     dto: CreateTarifaInvestigadorDto,
+    usuarioModificador?: string,
   ): Promise<TarifaInvestigadorEntity> {
     const existente = await this.investigadorRepo.findOne({
       where: {
@@ -143,12 +214,27 @@ export class LiquidationConfigService {
       tarifaDiaria: dto.tarifaDiaria,
       activo: true,
     });
-    return this.investigadorRepo.save(entity);
+    const guardada = await this.investigadorRepo.save(entity);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Tarifas de Investigador',
+      operacion: 'Creación de Tarifa',
+      descripcionAjuste: `Se configuró la tarifa para investigadores de categoría [${guardada.categoriaInvestigador}] con valor diario de $${guardada.tarifaDiaria}.`,
+      detalle: {
+        id: guardada.id,
+        categoriaInvestigador: guardada.categoriaInvestigador,
+        tarifaDiaria: guardada.tarifaDiaria,
+      },
+      usuarioModificador,
+    });
+
+    return guardada;
   }
 
   async actualizarTarifaInvestigador(
     id: number,
     dto: UpdateTarifaInvestigadorDto,
+    usuarioModificador?: string,
   ): Promise<TarifaInvestigadorEntity> {
     const entity = await this.investigadorRepo.findOne({ where: { id } });
     if (!entity) {
@@ -176,10 +262,28 @@ export class LiquidationConfigService {
       entity.tarifaDiaria = dto.tarifaDiaria;
     }
 
-    return this.investigadorRepo.save(entity);
+    const guardada = await this.investigadorRepo.save(entity);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Tarifas de Investigador',
+      operacion: 'Actualización de Tarifa',
+      descripcionAjuste: `Se actualizó la tarifa diaria para investigadores de categoría [${guardada.categoriaInvestigador}] a $${guardada.tarifaDiaria}.`,
+      detalle: {
+        id,
+        categoriaInvestigador: guardada.categoriaInvestigador,
+        tarifaDiaria: guardada.tarifaDiaria,
+        activo: guardada.activo,
+      },
+      usuarioModificador,
+    });
+
+    return guardada;
   }
 
-  async eliminarTarifaInvestigador(id: number): Promise<{ message: string }> {
+  async eliminarTarifaInvestigador(
+    id: number,
+    usuarioModificador?: string,
+  ): Promise<{ message: string }> {
     const entity = await this.investigadorRepo.findOne({ where: { id } });
     if (!entity) {
       throw new NotFoundException(
@@ -188,6 +292,19 @@ export class LiquidationConfigService {
     }
     entity.activo = false;
     await this.investigadorRepo.save(entity);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Tarifas de Investigador',
+      operacion: 'Desactivación/Eliminación de Tarifa',
+      descripcionAjuste: `Se desactivó la tarifa para investigadores de categoría [${entity.categoriaInvestigador}].`,
+      detalle: {
+        id,
+        categoriaInvestigador: entity.categoriaInvestigador,
+        activo: false,
+      },
+      usuarioModificador,
+    });
+
     return { message: 'Tarifa de investigador eliminada correctamente' };
   }
 
@@ -315,6 +432,7 @@ export class LiquidationConfigService {
 
   async actualizarParametrosLote(
     params: UpdateLiquidationParamsDto,
+    usuarioModificador?: string,
   ): Promise<LiquidationParamEntity[]> {
     const resultados: LiquidationParamEntity[] = [];
 
@@ -391,6 +509,21 @@ export class LiquidationConfigService {
     });
 
     await this.liquidationService.recargarParametros();
+
+    const detallesAjuste: Record<string, any> = {};
+    if (params.factorContratista !== undefined) detallesAjuste['Factor Contratista'] = params.factorContratista;
+    if (params.factorSinPernocta !== undefined) detallesAjuste['Factor Sin Pernocta'] = params.factorSinPernocta;
+    if (params.tarifaTerminalAereo !== undefined) detallesAjuste['Tarifa Terminal Aéreo Base'] = params.tarifaTerminalAereo;
+    if (params.cacheTtlMinutes !== undefined) detallesAjuste['TTL Caché (min)'] = params.cacheTtlMinutes;
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Parámetros Globales de Liquidación',
+      operacion: 'Actualización de Parámetros Globales',
+      descripcionAjuste: `Se actualizaron las variables globales de cálculo de viáticos (${Object.keys(detallesAjuste).join(', ')}).`,
+      detalle: detallesAjuste,
+      usuarioModificador,
+    });
+
     return resultados;
   }
 
@@ -410,6 +543,7 @@ export class LiquidationConfigService {
 
   async crearTarifaTransporteTerminal(
     dto: CreateTarifaTransporteTerminalDto,
+    usuarioModificador?: string,
   ): Promise<TarifaTransporteTerminalEntity> {
     const depto = dto.departamento || dto.ciudad || '';
     const ciudadVal = dto.ciudad || dto.departamento || '';
@@ -432,12 +566,26 @@ export class LiquidationConfigService {
     });
     const guardada = await this.terminalRepo.save(entity);
     this.liquidationService.invalidarCache();
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Tarifas de Transporte Terminal',
+      operacion: 'Creación de Tarifa Terminal',
+      descripcionAjuste: `Se creó la tarifa de transporte terminal para [${guardada.ciudad || guardada.departamento} - ${guardada.ciudadAeropuerto}] con valor máximo de $${guardada.valorMaximo}.`,
+      detalle: {
+        id: guardada.id,
+        origenDestino: `${guardada.ciudad || guardada.departamento} - ${guardada.ciudadAeropuerto}`,
+        valorMaximo: guardada.valorMaximo,
+      },
+      usuarioModificador,
+    });
+
     return guardada;
   }
 
   async actualizarTarifaTransporteTerminal(
     id: number,
     dto: UpdateTarifaTransporteTerminalDto,
+    usuarioModificador?: string,
   ): Promise<TarifaTransporteTerminalEntity> {
     const entity = await this.terminalRepo.findOne({ where: { id } });
     if (!entity) {
@@ -448,11 +596,26 @@ export class LiquidationConfigService {
     Object.assign(entity, dto);
     const guardada = await this.terminalRepo.save(entity);
     this.liquidationService.invalidarCache();
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Tarifas de Transporte Terminal',
+      operacion: 'Actualización de Tarifa Terminal',
+      descripcionAjuste: `Se actualizó la tarifa de transporte terminal ID #${id} ([${guardada.ciudad || guardada.departamento} - ${guardada.ciudadAeropuerto}]). Valor máximo: $${guardada.valorMaximo}.`,
+      detalle: {
+        id,
+        origenDestino: `${guardada.ciudad || guardada.departamento} - ${guardada.ciudadAeropuerto}`,
+        valorMaximo: guardada.valorMaximo,
+        activo: guardada.activo,
+      },
+      usuarioModificador,
+    });
+
     return guardada;
   }
 
   async eliminarTarifaTransporteTerminal(
     id: number,
+    usuarioModificador?: string,
   ): Promise<{ message: string }> {
     const entity = await this.terminalRepo.findOne({ where: { id } });
     if (!entity) {
@@ -462,6 +625,18 @@ export class LiquidationConfigService {
     }
     await this.terminalRepo.remove(entity);
     this.liquidationService.invalidarCache();
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Tarifas de Transporte Terminal',
+      operacion: 'Eliminación de Tarifa Terminal',
+      descripcionAjuste: `Se eliminó la tarifa de transporte terminal ID #${id} ([${entity.ciudad || entity.departamento} - ${entity.ciudadAeropuerto}]).`,
+      detalle: {
+        id,
+        origenDestino: `${entity.ciudad || entity.departamento} - ${entity.ciudadAeropuerto}`,
+      },
+      usuarioModificador,
+    });
+
     return {
       message: `Tarifa de transporte terminal con id ${id} eliminada exitosamente`,
     };

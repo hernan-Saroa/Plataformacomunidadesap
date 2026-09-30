@@ -8,7 +8,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, EntityManager, In } from 'typeorm';
+import { Repository, DataSource, EntityManager, In, Brackets } from 'typeorm';
 import { existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { ComisionadoEntity } from '../../entities/comisionado.entity';
@@ -58,6 +58,11 @@ import {
 } from '../../common/sanitize.util';
 import { getClientIp } from '../../common/ip.util';
 import { getUploadRootDir } from '../../common/storage.util';
+import {
+  aYMDUtc,
+  cargarFestivosAuth,
+  esRadicacionFueraDeJornada,
+} from '../../common/dias-habiles.util';
 import { ConfigService } from '../config/config.service';
 import {
   NotificationClientService,
@@ -74,6 +79,27 @@ import {
   CategoriaInvestigador,
 } from '../../dto/liquidation/calcular-liquidacion.dto';
 import { TicketsService } from '../tickets/tickets.service';
+
+/**
+ * Estados que no corresponden a una comisión activa y, por tanto, no generan
+ * duplicidad para el mismo comisionado (EFDS-1284).
+ */
+const ESTADOS_NO_ACTIVOS_DUPLICIDAD = [
+  EstadoSolicitud.CANCELADA,
+  EstadoSolicitud.RECHAZADO,
+];
+
+/**
+ * Solapamiento por día calendario, incluyendo el último día de ambas comisiones
+ * (una comisión que termina el día en que otra inicia también se cruza).
+ */
+const CONDICION_SOLAPAMIENTO_DIAS =
+  's.fecha_inicio::date <= CAST(:fechaFin AS date) AND s.fecha_fin::date >= CAST(:fechaInicio AS date)';
+
+/** Parámetros de CONDICION_SOLAPAMIENTO_DIAS como fecha calendario (YYYY-MM-DD). */
+function rangoSolapamiento(inicio: Date | string, fin: Date | string) {
+  return { fechaInicio: aYMDUtc(inicio), fechaFin: aYMDUtc(fin) };
+}
 
 function esDiaHabil(fecha: Date): boolean {
   const dia = fecha.getDay();
@@ -341,6 +367,34 @@ export class TravelExpensesService {
     return this.dependenciasMapCache;
   }
 
+  async obtenerDatosPersonaPorUsuarioId(
+    usuarioId: string,
+  ): Promise<{ numIdentificacion?: string; dirEmail?: string; username?: string } | null> {
+    if (!usuarioId) return null;
+    try {
+      const rows = await this.solicitudRepo.query(
+        `SELECT p.num_identificacion, p.dir_email, u.username
+         FROM auth."user" u
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.id_user::text = $1
+         LIMIT 1`,
+        [usuarioId],
+      );
+      if (rows && rows.length > 0) {
+        return {
+          numIdentificacion: rows[0].num_identificacion || undefined,
+          dirEmail: rows[0].dir_email || undefined,
+          username: rows[0].username || undefined,
+        };
+      }
+    } catch (e: any) {
+      this.logger.warn(
+        `[obtenerDatosPersonaPorUsuarioId] Error consultando persona para usuario ${usuarioId}: ${e?.message}`,
+      );
+    }
+    return null;
+  }
+
   async obtenerSolicitudes(
     usuarioId?: string,
     isSuperAdmin = false,
@@ -351,6 +405,7 @@ export class TravelExpensesService {
     isSecretario = false,
     isTesoreria = false,
     isSst = false,
+    isComisionado = false,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     console.log(
       '[travel-expenses] service obtenerSolicitudes usuarioId=',
@@ -367,6 +422,8 @@ export class TravelExpensesService {
       isTesoreria,
       'isSst=',
       isSst,
+      'isComisionado=',
+      isComisionado,
       'page=',
       page,
       'limit=',
@@ -391,6 +448,24 @@ export class TravelExpensesService {
         });
       } else if (isAnalista && usuarioId) {
         query.andWhere('s.analistaAsignadoId = :usuarioId', { usuarioId });
+      } else if (isComisionado && usuarioId) {
+        const datosPersona = await this.obtenerDatosPersonaPorUsuarioId(usuarioId);
+        const docs = [datosPersona?.numIdentificacion].filter(Boolean) as string[];
+        const emails = [datosPersona?.dirEmail, datosPersona?.username]
+          .filter(Boolean)
+          .map((e) => (e as string).toLowerCase().trim()) as string[];
+
+        query.andWhere(
+          new Brackets((qb) => {
+            qb.where('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
+            if (docs.length > 0) {
+              qb.orWhere('comisionado.numero_documento IN (:...docs)', { docs });
+            }
+            if (emails.length > 0) {
+              qb.orWhere('LOWER(comisionado.email) IN (:...emails)', { emails });
+            }
+          }),
+        );
       } else if (usuarioId) {
         query.andWhere('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
       }
@@ -887,6 +962,56 @@ export class TravelExpensesService {
    *         * Si existe en `auth.personas`: se materializa en `travel_expenses.comisionados` (origenDatos: 'ESAP').
    *         * Si tampoco existe: se arroja NotFoundException.
    */
+  /**
+   * Determina si una fecha de fin de contrato se encuentra vencida respecto a hoy.
+   */
+  private esContratoVencido(fechaFin: Date | string | null | undefined): boolean {
+    if (!fechaFin) return false;
+    try {
+      const hoyStr = new Date().toISOString().split('T')[0];
+      const finStr = typeof fechaFin === 'string'
+        ? fechaFin.split('T')[0]
+        : (fechaFin instanceof Date ? fechaFin.toISOString().split('T')[0] : String(fechaFin).split('T')[0]);
+      if (!finStr || finStr.length < 10) return false;
+      return finStr < hoyStr;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Determina si la fecha de fin de contrato está próxima a vencer (<= diasUmbral días) o si no tiene fecha registrada.
+   */
+  private esContratoProximoAVencer(fechaFin: Date | string | null | undefined, diasUmbral = 30): boolean {
+    if (!fechaFin) return true; // Si no tiene fecha fin en tabla local, conviene consultar Humanos para actualizar
+    try {
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      const fin = new Date(fechaFin);
+      fin.setHours(0, 0, 0, 0);
+      if (isNaN(fin.getTime())) return false;
+      const diffMs = fin.getTime() - hoy.getTime();
+      const diffDias = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      return diffDias <= diasUmbral;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Consulta y validación de comisionado con lógica de prioridad en tabla local:
+   * 1. Busca PRIMERO en la tabla interna `travel_expenses.comisionados`.
+   *    - Si lo encuentra, analiza su fecha de fin de contrato (`fechaFinContrato`).
+   *    - Si la fecha fin está próxima a vencerse (o nula): consulta en Talento Humano / Nómina para actualizar
+   *      fechas de prórroga, salario, cargo y dependencia.
+   *    - Si tras esto la fecha fin está vencida: no puede generar la solicitud y arroja BadRequestException.
+   * 2. Si NO lo encuentra en comisionados locales:
+   *    - Consulta en Talento Humano / Nómina (API Nómina Oracle FNC).
+   *    - Si existe en Talento Humano:
+   *      * Si su fecha fin en Nómina está vencida: arroja BadRequestException impidiendo generar la solicitud.
+   *      * Si está vigente: se materializa en la tabla `travel_expenses.comisionados` y se retorna.
+   *    - Si NO existe tampoco en Talento Humano: arroja NotFoundException ("no es un comisionado").
+   */
   async consultarComisionado(documento: string): Promise<ComisionadoEntity> {
     const doc = (documento || '').trim();
     if (!doc) {
@@ -895,140 +1020,154 @@ export class TravelExpensesService {
       );
     }
 
-    // =========================================================================
-    // PASO 1: Consulta primaria a la API de Nómina / Talento Humano
-    // (Integración Oracle FNC / VW_INTEGRACIONFNC vía certification-service).
-    // =========================================================================
-    let funcionarioFnc: HumanResourcesSuggestedPerson | null = null;
-    let huboErrorNomina = false;
-
-    if (this.humanResourcesClient) {
+    const adjuntarSolicitudesPendientes = async (com: ComisionadoEntity) => {
       try {
-        funcionarioFnc =
-          await this.humanResourcesClient.consultarFuncionarioPorDocumento(doc);
+        const pendientes = await this.obtenerSolicitudesPendientesPorComisionado(com.id);
+        (com as any).solicitudesPendientes = pendientes;
+      } catch (e) {
+        (com as any).solicitudesPendientes = [];
+      }
+      return com;
+    };
+
+    const consultarApiHumanos = async (): Promise<HumanResourcesSuggestedPerson | null> => {
+      if (!this.humanResourcesClient) return null;
+      try {
+        return await this.humanResourcesClient.consultarFuncionarioPorDocumento(doc);
       } catch (err: any) {
-        huboErrorNomina = true;
         this.logger.warn(
-          `[consultarComisionado] Error consultando API Nómina / Talento Humano para doc ${doc}: ${err?.message || err}. Se procederá con fallback en tabla comisionados.`,
+          `[consultarComisionado] Error consultando API Nómina / Talento Humano para doc ${doc}: ${err?.message || err}.`,
         );
+        return null;
       }
-    } else {
-      this.logger.debug?.(
-        `[consultarComisionado] HumanResourcesClientService no disponible. Procediendo con fallback en tabla comisionados.`,
-      );
-    }
-
-    // -------------------------------------------------------------------------
-    // CASO 1: La API Nómina encontró al funcionario exitosamente
-    // -------------------------------------------------------------------------
-    if (funcionarioFnc && funcionarioFnc.id_number) {
-      const { primerNombre, segundoNombre, primerApellido, segundoApellido } =
-        this.parsearNombreFuncionario(funcionarioFnc.full_name || '');
-
-      const idDependenciaFnc = await this.resolverIdDependenciaPorNombre(
-        funcionarioFnc.organization_department || funcionarioFnc.cost_center,
-      );
-
-      const emailFnc = (
-        funcionarioFnc.email ||
-        funcionarioFnc.personal_email ||
-        ''
-      ).trim();
-      const phoneFnc = (funcionarioFnc.phone || '').trim();
-
-      // Buscar si el comisionado ya está registrado en la tabla local comisionados
-      const existente = await this.comisionadoRepo.findOne({
-        where: { numeroDocumento: doc },
-      });
-
-      if (!existente) {
-        // Sub-caso A: No está registrado en comisionados -> AGREGAR
-        this.logger.log(
-          `[consultarComisionado] Registrando nuevo comisionado ${doc} desde API Nómina`,
-        );
-        const nuevo = this.comisionadoRepo.create({
-          numeroDocumento: doc,
-          primerNombre,
-          segundoNombre,
-          primerApellido,
-          segundoApellido,
-          email: emailFnc || 'sin-correo@esap.edu.co',
-          telefonoContacto: phoneFnc || '0000000000',
-          tipoComisionado: 'FUNCIONARIO',
-          origenDatos: 'HUMANO',
-          autorizacionHabeasData: false,
-          idDependencia: idDependenciaFnc,
-        } as Partial<ComisionadoEntity>);
-
-        return await this.comisionadoRepo.save(nuevo);
-      }
-
-      // Sub-caso B: Ya está registrado en comisionados -> ACTUALIZAR DATOS SI SE REQUIERE
-      let requiereActualizacion = false;
-
-      if (primerNombre !== 'SIN NOMBRE' && existente.primerNombre !== primerNombre) {
-        existente.primerNombre = primerNombre;
-        requiereActualizacion = true;
-      }
-      if (segundoNombre !== existente.segundoNombre) {
-        existente.segundoNombre = segundoNombre;
-        requiereActualizacion = true;
-      }
-      if (primerApellido !== 'SIN APELLIDO' && existente.primerApellido !== primerApellido) {
-        existente.primerApellido = primerApellido;
-        requiereActualizacion = true;
-      }
-      if (segundoApellido !== existente.segundoApellido) {
-        existente.segundoApellido = segundoApellido;
-        requiereActualizacion = true;
-      }
-      if (emailFnc && emailFnc !== 'sin-correo@esap.edu.co' && existente.email !== emailFnc) {
-        existente.email = emailFnc;
-        requiereActualizacion = true;
-      }
-      if (phoneFnc && phoneFnc !== '0000000000' && existente.telefonoContacto !== phoneFnc) {
-        existente.telefonoContacto = phoneFnc;
-        requiereActualizacion = true;
-      }
-      if (idDependenciaFnc != null && existente.idDependencia !== idDependenciaFnc) {
-        existente.idDependencia = idDependenciaFnc;
-        requiereActualizacion = true;
-      }
-      if (existente.origenDatos !== 'HUMANO') {
-        existente.origenDatos = 'HUMANO';
-        requiereActualizacion = true;
-      }
-
-      if (requiereActualizacion) {
-        this.logger.log(
-          `[consultarComisionado] Actualizando datos de comisionado ${doc} con información reciente de API Nómina`,
-        );
-        return await this.comisionadoRepo.save(existente);
-      }
-
-      return existente;
-    }
+    };
 
     // =========================================================================
-    // PASO 2 (Fallback local): Si la API Nómina NO trae datos o sale errores,
-    // se busca el comisionado en la tabla `comisionados` de travel-expenses-service.
+    // PASO 1: Buscar PRIMERO en la tabla interna travel_expenses.comisionados
     // =========================================================================
-    const comisionadoLocal = await this.comisionadoRepo.findOne({
+    let comisionadoLocal = await this.comisionadoRepo.findOne({
       where: { numeroDocumento: doc },
     });
 
     if (comisionadoLocal) {
       this.logger.log(
-        `[consultarComisionado] Comisionado ${doc} encontrado en tabla local comisionados (fallback por ${
-          huboErrorNomina ? 'error' : 'ausencia de datos'
-        } en API Nómina)`,
+        `[consultarComisionado] Comisionado ${doc} encontrado en tabla local comisionados`,
       );
-      return comisionadoLocal;
+
+      // Si la fecha fin está próxima a vencer o no está registrada, consultar en Humanos para actualizar
+      const proximaAVencer = this.esContratoProximoAVencer(comisionadoLocal.fechaFinContrato);
+
+      if (proximaAVencer && this.humanResourcesClient) {
+        this.logger.log(
+          `[consultarComisionado] Fecha fin de contrato para doc ${doc} (${comisionadoLocal.fechaFinContrato || 'sin registrar'}) próxima a vencer o ausente. Consultando Talento Humano para verificar actualización...`,
+        );
+        const funcionarioFnc = await consultarApiHumanos();
+        if (funcionarioFnc && funcionarioFnc.id_number) {
+          const { primerNombre, segundoNombre, primerApellido, segundoApellido } =
+            this.parsearNombreFuncionario(funcionarioFnc.full_name || '');
+          const idDependenciaFnc = await this.resolverIdDependenciaPorNombre(
+            funcionarioFnc.organization_department || funcionarioFnc.cost_center,
+          );
+          const emailFnc = (funcionarioFnc.email || funcionarioFnc.personal_email || '').trim();
+          const phoneFnc = (funcionarioFnc.phone || '').trim();
+
+          if (primerNombre && primerNombre !== 'SIN NOMBRE') comisionadoLocal.primerNombre = primerNombre;
+          if (segundoNombre !== undefined) comisionadoLocal.segundoNombre = segundoNombre;
+          if (primerApellido && primerApellido !== 'SIN APELLIDO') comisionadoLocal.primerApellido = primerApellido;
+          if (segundoApellido !== undefined) comisionadoLocal.segundoApellido = segundoApellido;
+          if (emailFnc && emailFnc !== 'sin-correo@esap.edu.co') comisionadoLocal.email = emailFnc;
+          if (phoneFnc && phoneFnc !== '0000000000') comisionadoLocal.telefonoContacto = phoneFnc;
+          if (idDependenciaFnc != null) comisionadoLocal.idDependencia = idDependenciaFnc;
+          if (funcionarioFnc.monthly_salary != null) comisionadoLocal.salarioBasico = Number(funcionarioFnc.monthly_salary);
+          if (funcionarioFnc.position_name || funcionarioFnc.career_category) {
+            comisionadoLocal.cargo = funcionarioFnc.position_name || funcionarioFnc.career_category || null;
+          }
+          if (funcionarioFnc.hiring_date) comisionadoLocal.fechaInicioContrato = funcionarioFnc.hiring_date;
+          if (funcionarioFnc.contract_end_date) comisionadoLocal.fechaFinContrato = funcionarioFnc.contract_end_date;
+          comisionadoLocal.origenDatos = 'HUMANO';
+
+          comisionadoLocal = await this.comisionadoRepo.save(comisionadoLocal);
+          this.logger.log(
+            `[consultarComisionado] Comisionado ${doc} actualizado exitosamente con datos de Talento Humano`,
+          );
+        }
+      }
+
+      // Validar si la fecha fin de contrato está vencida
+      if (this.esContratoVencido(comisionadoLocal.fechaFinContrato)) {
+        const nombreCompleto = `${comisionadoLocal.primerNombre} ${comisionadoLocal.primerApellido}`.trim();
+        const fechaFinFormateada = typeof comisionadoLocal.fechaFinContrato === 'string'
+          ? comisionadoLocal.fechaFinContrato.split('T')[0]
+          : comisionadoLocal.fechaFinContrato instanceof Date
+          ? comisionadoLocal.fechaFinContrato.toISOString().split('T')[0]
+          : String(comisionadoLocal.fechaFinContrato);
+
+        throw new BadRequestException(
+          `No es posible generar la solicitud de comisión. El comisionado ${nombreCompleto} (Doc. ${doc}) tiene su contrato o vinculación laboral vencida con fecha ${fechaFinFormateada}. Por favor regularice su situación en Talento Humano antes de tramitar comisiones.`,
+        );
+      }
+
+      return await adjuntarSolicitudesPendientes(comisionadoLocal);
     }
 
     // =========================================================================
-    // PASO 3 (Fallback terciario institucional ESAP): auth.personas.
-    // Si tampoco está en comisionados locales, se busca en auth.personas y se materializa.
+    // PASO 2: NO se encontró en comisionados locales -> Consultar en Humanos
+    // =========================================================================
+    this.logger.log(
+      `[consultarComisionado] Comisionado ${doc} no encontrado en tabla local. Consultando en Talento Humano...`,
+    );
+    const funcionarioFnc = await consultarApiHumanos();
+
+    if (funcionarioFnc && funcionarioFnc.id_number) {
+      const { primerNombre, segundoNombre, primerApellido, segundoApellido } =
+        this.parsearNombreFuncionario(funcionarioFnc.full_name || '');
+      const idDependenciaFnc = await this.resolverIdDependenciaPorNombre(
+        funcionarioFnc.organization_department || funcionarioFnc.cost_center,
+      );
+      const emailFnc = (funcionarioFnc.email || funcionarioFnc.personal_email || '').trim();
+      const phoneFnc = (funcionarioFnc.phone || '').trim();
+      const fechaFin = funcionarioFnc.contract_end_date || null;
+      const fechaInicio = funcionarioFnc.hiring_date || null;
+      const salario = funcionarioFnc.monthly_salary != null ? Number(funcionarioFnc.monthly_salary) : null;
+      const cargo = funcionarioFnc.position_name || funcionarioFnc.career_category || null;
+
+      // Si la fecha de fin de contrato de Talento Humano ya está vencida:
+      if (this.esContratoVencido(fechaFin)) {
+        const nombreCompleto = funcionarioFnc.full_name || `${primerNombre} ${primerApellido}`.trim();
+        const fechaFinFormateada = String(fechaFin).split('T')[0];
+        throw new BadRequestException(
+          `No es posible generar la solicitud de comisión. La persona ${nombreCompleto} (Doc. ${doc}) figura en Talento Humano pero su vinculación laboral/contractual está vencida desde el ${fechaFinFormateada}. No se pueden tramitar viáticos para personal inactivo o desvinculado.`,
+        );
+      }
+
+      this.logger.log(
+        `[consultarComisionado] Registrando nuevo comisionado ${doc} desde Talento Humano con contrato vigente`,
+      );
+      const nuevo = this.comisionadoRepo.create({
+        numeroDocumento: doc,
+        primerNombre,
+        segundoNombre,
+        primerApellido,
+        segundoApellido,
+        email: emailFnc || 'sin-correo@esap.edu.co',
+        telefonoContacto: phoneFnc || '0000000000',
+        tipoComisionado: 'FUNCIONARIO',
+        origenDatos: 'HUMANO',
+        autorizacionHabeasData: false,
+        idDependencia: idDependenciaFnc,
+        salarioBasico: salario,
+        cargo: cargo,
+        fechaInicioContrato: fechaInicio,
+        fechaFinContrato: fechaFin,
+        esFacturadorElectronico: false,
+      } as Partial<ComisionadoEntity>);
+
+      const guardado = await this.comisionadoRepo.save(nuevo);
+      return await adjuntarSolicitudesPendientes(guardado);
+    }
+
+    // =========================================================================
+    // PASO 3: Fallback auth.personas / Tampoco existe en Humanos -> No es comisionado
     // =========================================================================
     const persona: AuthPersonaRow | undefined = await this.dataSource
       .query(
@@ -1055,7 +1194,7 @@ export class TravelExpensesService {
 
     if (!persona) {
       throw new NotFoundException(
-        `No se encontró un comisionado con documento ${doc} en la API de Nómina, ni en la tabla comisionados, ni en ESAP. Verifique el número o contacte al administrador.`,
+        `No se encontró un comisionado con documento ${doc}. La persona no existe en el registro local de comisionados ni se encuentra registrada en el sistema de Talento Humano / Nómina de la ESAP.`,
       );
     }
 
@@ -1084,7 +1223,73 @@ export class TravelExpensesService {
       idDependencia,
     } as Partial<ComisionadoEntity>);
 
-    return await this.comisionadoRepo.save(nuevo);
+    const guardado = await this.comisionadoRepo.save(nuevo);
+    return await adjuntarSolicitudesPendientes(guardado);
+  }
+
+
+  /**
+   * Consulta las solicitudes de comisión (Formato 023) que se encuentran en trámite o pendientes
+   * para un comisionado específico (excluyendo estados cerrados: PAGADA, LEGALIZADO, RECHAZADO, CANCELADA).
+   */
+  async obtenerSolicitudesPendientesPorComisionado(
+    comisionadoId: string,
+  ): Promise<any[]> {
+    if (!comisionadoId) return [];
+
+    const estadosFinales = [
+      EstadoSolicitud.CANCELADA,
+      EstadoSolicitud.RECHAZADO,
+      EstadoSolicitud.PAGADA,
+      EstadoSolicitud.LEGALIZADO,
+    ];
+
+    try {
+      const solicitudes = await this.solicitudRepo
+        .createQueryBuilder('s')
+        .where('s.comisionado_id = :comisionadoId', { comisionadoId })
+        .andWhere('s.estado_solicitud NOT IN (:...estadosFinales)', { estadosFinales })
+        .orderBy('s.creado_en', 'DESC')
+        .getMany();
+
+      return solicitudes.map((s) => ({
+        id: s.id,
+        consecutivoUnico: s.consecutivoUnico,
+        codigoSolicitud: s.consecutivoUnico,
+        estadoSolicitud: s.estadoSolicitud,
+        destinoCiudad: s.destinoCiudad,
+        destinoDepartamento: s.destinoDepartamento,
+        fechaInicio: s.fechaInicio,
+        fechaFin: s.fechaFin,
+        objetoComision: s.objetoComision,
+        montoViaticos: Number(s.montoViaticos || 0),
+        montoGastosViaje: Number(s.montoGastosViaje || 0),
+        totalGeneral: Number(s.montoViaticos || 0) + Number(s.montoGastosViaje || 0),
+        creadoEn: s.creadoEn,
+      }));
+    } catch (err: any) {
+      this.logger.error?.(
+        `[obtenerSolicitudesPendientesPorComisionado] Error: ${err?.message}`,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Consulta las solicitudes de comisión (Formato 023) pendientes a partir del documento de identidad.
+   */
+  async obtenerSolicitudesPendientesPorDocumento(
+    documento: string,
+  ): Promise<any[]> {
+    const doc = (documento || '').trim();
+    if (!doc) return [];
+
+    const comisionado = await this.comisionadoRepo.findOne({
+      where: { numeroDocumento: doc },
+    });
+
+    if (!comisionado) return [];
+    return this.obtenerSolicitudesPendientesPorComisionado(comisionado.id);
   }
 
   /**
@@ -1623,10 +1828,10 @@ export class TravelExpensesService {
         .where('s.comisionado_id = :comisionadoId', {
           comisionadoId: dto.comisionadoId,
         })
-        .andWhere(
-          `(s.fecha_inicio, s.fecha_fin) OVERLAPS (:fechaInicio, :fechaFin)`,
-          { fechaInicio, fechaFin },
-        )
+        .andWhere('s.estado_solicitud NOT IN (:...estadosNoActivos)', {
+          estadosNoActivos: ESTADOS_NO_ACTIVOS_DUPLICIDAD,
+        })
+        .andWhere(CONDICION_SOLAPAMIENTO_DIAS, rangoSolapamiento(fechaInicio, fechaFin))
         .getOne();
 
       if (solapamiento) {
@@ -1635,10 +1840,10 @@ export class TravelExpensesService {
         );
       }
 
-      const ahora = new Date();
-      const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
-      const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
-      radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
+      radicadoFueraJornada = esRadicacionFueraDeJornada(
+        new Date(),
+        await cargarFestivosAuth(this.dataSource),
+      );
 
       estadoSolicitud = EstadoSolicitud.RADICADA;
       extemporanea = false;
@@ -1809,6 +2014,14 @@ export class TravelExpensesService {
     const response: any = saved;
     if (radicadoFueraJornada) {
       response.warningMessage = 'El trámite iniciará el día hábil siguiente.';
+    }
+
+    if (saved.estadoSolicitud === EstadoSolicitud.PENDIENTE_FIRMAS) {
+      this.notificarEnvioAFirmas023(saved).catch((err) =>
+        this.logger.warn(
+          `[notify] Error enviando notificaciones Formato 023 para solicitud ${saved.id}: ${err?.message}`,
+        ),
+      );
     }
 
     return response;
@@ -2243,10 +2456,10 @@ if (dto.costoEstimadoTiquete !== undefined) {
         comisionadoId: solicitud.comisionadoId,
       })
       .andWhere('s.id <> :solicitudId', { solicitudId: solicitud.id })
-      .andWhere(
-        `(s.fecha_inicio, s.fecha_fin) OVERLAPS (:fechaInicio, :fechaFin)`,
-        { fechaInicio, fechaFin },
-      )
+      .andWhere('s.estado_solicitud NOT IN (:...estadosNoActivos)', {
+        estadosNoActivos: ESTADOS_NO_ACTIVOS_DUPLICIDAD,
+      })
+      .andWhere(CONDICION_SOLAPAMIENTO_DIAS, rangoSolapamiento(fechaInicio, fechaFin))
       .getOne();
 
     if (solapamiento) {
@@ -2255,10 +2468,10 @@ if (dto.costoEstimadoTiquete !== undefined) {
       );
     }
 
-    const ahora = new Date();
-    const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
-    const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
-    const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
+    const radicadoFueraJornada = esRadicacionFueraDeJornada(
+      new Date(),
+      await cargarFestivosAuth(this.dataSource),
+    );
 
     solicitud.estadoSolicitud = EstadoSolicitud.RADICADA;
     solicitud.extemporanea = false;
@@ -2553,10 +2766,10 @@ if (dto.costoEstimadoTiquete !== undefined) {
         comisionadoId: solicitud.comisionadoId,
       })
       .andWhere('s.id <> :solicitudId', { solicitudId: solicitud.id })
-      .andWhere(
-        `(s.fecha_inicio, s.fecha_fin) OVERLAPS (:fechaInicio, :fechaFin)`,
-        { fechaInicio: solicitud.fechaInicio, fechaFin: solicitud.fechaFin },
-      )
+      .andWhere('s.estado_solicitud NOT IN (:...estadosNoActivos)', {
+        estadosNoActivos: ESTADOS_NO_ACTIVOS_DUPLICIDAD,
+      })
+      .andWhere(CONDICION_SOLAPAMIENTO_DIAS, rangoSolapamiento(solicitud.fechaInicio, solicitud.fechaFin))
       .getOne();
 
     if (solapamiento) {
@@ -2590,7 +2803,46 @@ if (dto.costoEstimadoTiquete !== undefined) {
       comentarios: `Solicitud consolidada y enviada al flujo de firmas de aprobación previo a radicación (${estadoFirmas.descripcionRegla}).`,
     });
 
+    // Despacho de notificaciones Formato 023 por correo y vía app (Jefe, Gerente y Comisionado)
+    this.notificarEnvioAFirmas023(saved).catch((err) =>
+      this.logger.warn(
+        `[notify] Error enviando notificaciones Formato 023 para solicitud ${saved.id}: ${err?.message}`,
+      ),
+    );
+
     return saved;
+  }
+
+  /**
+   * Envía las notificaciones institucionales (correo y vía app) cuando una solicitud
+   * Formato 023 pasa al flujo de firmas de aprobación:
+   * - Al Jefe y Gerente (roles con permiso general jefe y gerente):
+   *   "Solicitud pendiente de revisión y firma de aprobación"
+   * - Al Comisionado:
+   *   "Proceso de solicitud viáticos según formato 023 generado, en la plataforma puede consultar su estado..."
+   */
+  async notificarEnvioAFirmas023(solicitud: SolicitudComisionEntity): Promise<void> {
+    try {
+      let comisionado = solicitud.comisionado;
+      if (!comisionado && solicitud.comisionadoId) {
+        comisionado = (await this.comisionadoRepo.findOne({
+          where: { id: solicitud.comisionadoId },
+        })) as any;
+      }
+      if (
+        this.notificationClient &&
+        typeof (this.notificationClient as any).notifyEnvioAFirmas023 === 'function'
+      ) {
+        await (this.notificationClient as any).notifyEnvioAFirmas023({
+          solicitud,
+          comisionado: (comisionado as any) || {},
+        });
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `[notificarEnvioAFirmas023] Error al disparar notificaciones Formato 023: ${err?.message}`,
+      );
+    }
   }
 
   /**
@@ -2680,10 +2932,10 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     if (todasFirmasCompletadas) {
       // – Surtido el flujo de firmas y las validaciones, la solicitud queda en estado RADICADA.
-      const ahora = new Date();
-      const horaActual = ahora.getHours() * 60 + ahora.getMinutes();
-      const esFinDeSemana = ahora.getDay() === 0 || ahora.getDay() === 6;
-      const radicadoFueraJornada = horaActual >= 16 * 60 + 30 || esFinDeSemana;
+      const radicadoFueraJornada = esRadicacionFueraDeJornada(
+        new Date(),
+        await cargarFestivosAuth(this.dataSource),
+      );
 
       const estadoAnterior = solicitud.estadoSolicitud;
       solicitud.estadoSolicitud = EstadoSolicitud.RADICADA;
@@ -2796,7 +3048,13 @@ if (dto.costoEstimadoTiquete !== undefined) {
     if (busqueda && busqueda.trim()) {
       const term = `%${busqueda.trim().toLowerCase()}%`;
       query.andWhere(
-        '(LOWER(s.codigo_solicitud) LIKE :term OR LOWER(comisionado.nombre) LIKE :term OR LOWER(comisionado.numeroDocumento) LIKE :term OR LOWER(s.objeto_comision) LIKE :term OR LOWER(s.ciudad_destino) LIKE :term)',
+        `(LOWER(s.consecutivo_unico) LIKE :term
+          OR LOWER(comisionado.primer_nombre) LIKE :term
+          OR LOWER(comisionado.primer_apellido) LIKE :term
+          OR LOWER(comisionado.segundo_nombre) LIKE :term
+          OR LOWER(comisionado.numero_documento) LIKE :term
+          OR LOWER(s.objeto_comision) LIKE :term
+          OR LOWER(s.destino_ciudad) LIKE :term)`,
         { term },
       );
     }
@@ -2869,6 +3127,88 @@ if (dto.costoEstimadoTiquete !== undefined) {
       `se cruzan con la solicitud ${referencia} (${estado}, ${this.formatearFecha(solapada.fechaInicio)} a ${this.formatearFecha(solapada.fechaFin)}). ` +
       `Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.`
     );
+  }
+
+  /**
+   * Verifica si las fechas propuestas para un comisionado se cruzan con otra solicitud existente
+   * (sin bloquear la persistencia en modo borrador, pero alertando al usuario antes de pasar al cargue de soportes).
+   */
+  async verificarSolapamientoFechas(
+    comisionadoIdOrDocumento: string,
+    fechaInicioStr: string,
+    fechaFinStr: string,
+    solicitudId?: string,
+  ): Promise<{
+    haySolapamiento: boolean;
+    mensaje: string | null;
+    solicitudConflicto: any | null;
+  }> {
+    if (!comisionadoIdOrDocumento || !fechaInicioStr || !fechaFinStr) {
+      return { haySolapamiento: false, mensaje: null, solicitudConflicto: null };
+    }
+
+    const fechaInicio = new Date(fechaInicioStr);
+    const fechaFin = new Date(fechaFinStr);
+    if (isNaN(fechaInicio.getTime()) || isNaN(fechaFin.getTime())) {
+      return { haySolapamiento: false, mensaje: null, solicitudConflicto: null };
+    }
+
+    // Localizar comisionado por ID o número de documento
+    let comisionado = await this.comisionadoRepo.findOne({
+      where: { id: comisionadoIdOrDocumento },
+    });
+    if (!comisionado) {
+      comisionado = await this.comisionadoRepo.findOne({
+        where: { numeroDocumento: comisionadoIdOrDocumento },
+      });
+    }
+
+    if (!comisionado) {
+      return { haySolapamiento: false, mensaje: null, solicitudConflicto: null };
+    }
+
+    const qb = this.solicitudRepo
+      .createQueryBuilder('s')
+      .where('s.comisionado_id = :comisionadoId', {
+        comisionadoId: comisionado.id,
+      })
+      .andWhere(CONDICION_SOLAPAMIENTO_DIAS, rangoSolapamiento(fechaInicio, fechaFin))
+      .andWhere('s.estado_solicitud NOT IN (:...estadosExcluidos)', {
+        estadosExcluidos: [EstadoSolicitud.CANCELADA, EstadoSolicitud.RECHAZADO],
+      });
+
+    if (solicitudId) {
+      qb.andWhere('s.id <> :solicitudId', { solicitudId });
+    }
+
+    const solapamiento = await qb.getOne();
+
+    if (solapamiento) {
+      const mensaje = this.mensajeConflictoFechas(
+        solapamiento,
+        fechaInicio,
+        fechaFin,
+      );
+      return {
+        haySolapamiento: true,
+        mensaje,
+        solicitudConflicto: {
+          id: solapamiento.id,
+          consecutivoUnico: solapamiento.consecutivoUnico || solapamiento.id,
+          estadoSolicitud: solapamiento.estadoSolicitud,
+          fechaInicio: solapamiento.fechaInicio,
+          fechaFin: solapamiento.fechaFin,
+          destinoCiudad: solapamiento.destinoCiudad,
+          destinoDepartamento: solapamiento.destinoDepartamento,
+        },
+      };
+    }
+
+    return {
+      haySolapamiento: false,
+      mensaje: null,
+      solicitudConflicto: null,
+    };
   }
 
   private async validarChecklistCompleto(
@@ -3731,28 +4071,82 @@ if (dto.costoEstimadoTiquete !== undefined) {
       };
 
       // ========== ENCABEZADO OFICIAL (y: 24, h: 44) ==========
-      // 1. Caja Izquierda: Logo ESAP
+      // 1. Caja Izquierda: Logo Oficial ESAP (Triángulo de ESAP)
       drawBox(28, 24, 85, 44, null);
-      const cx = 70.5;
-      const cy = 36.5;
-      const rDot = 2.0;
-      const rRing = 7.5;
-      for (let i = 0; i < 8; i++) {
-        const angle = (i * Math.PI) / 4;
-        const dotX = cx + rRing * Math.cos(angle);
-        const dotY = cy + rRing * Math.sin(angle);
-        doc.circle(dotX, dotY, rDot).fillColor('#003DA5').fill();
-      }
-      doc.circle(cx, cy, rDot).fillColor('#003DA5').fill();
 
-      doc.fillColor('#003DA5').fontSize(7).font('Helvetica-Bold');
-      doc.text('ESAP', 28, 47, { width: 85, align: 'center' });
-      doc.fillColor('#000000').fontSize(4.5).font('Helvetica');
-      doc.text('Escuela Superior de', 28, 55, { width: 85, align: 'center' });
-      doc.text('Administración Pública', 28, 60.5, {
-        width: 85,
-        align: 'center',
-      });
+      let logoCargado = false;
+      try {
+        const path = require('path');
+        const fs = require('fs');
+        const posiblesRutas = [
+          path.resolve(__dirname, '../../assets/logo-esap.png'),
+          path.resolve(__dirname, '../../../src/assets/logo-esap.png'),
+          path.resolve(process.cwd(), 'src/assets/logo-esap.png'),
+          path.resolve(process.cwd(), 'dist/assets/logo-esap.png'),
+          path.resolve(process.cwd(), 'backend/travel-expenses-service/src/assets/logo-esap.png'),
+          path.resolve(process.cwd(), '../internal-disciplinary-control-service/src/templates/indice-electronico/logo-esap.png'),
+          path.resolve(process.cwd(), '../../apps/mfe-control-interno/src/assets/esap-logo-institucional.png'),
+        ];
+
+        for (const ruta of posiblesRutas) {
+          if (fs.existsSync(ruta)) {
+            doc.image(ruta, 31, 26, {
+              fit: [79, 40],
+              align: 'center',
+              valign: 'center',
+            });
+            logoCargado = true;
+            break;
+          }
+        }
+      } catch {}
+
+      // Fallback vectorial: Pirámide de 10 círculos oficial de la ESAP
+      if (!logoCargado) {
+        const cx = 70.5; // Centro de la caja (28 + 85/2)
+        const topY = 27.5;
+        const rDot = 2.0;
+        const dx = 5.0;
+        const dy = 4.3;
+
+        // Fila 0: 1 círculo en la cúspide
+        doc.circle(cx, topY, rDot).fillColor('#003DA5').fill();
+
+        // Fila 1: 2 círculos
+        doc.circle(cx - dx / 2, topY + dy, rDot).fillColor('#003DA5').fill();
+        doc.circle(cx + dx / 2, topY + dy, rDot).fillColor('#003DA5').fill();
+
+        // Fila 2: 3 círculos
+        doc.circle(cx - dx, topY + dy * 2, rDot).fillColor('#003DA5').fill();
+        doc.circle(cx, topY + dy * 2, rDot).fillColor('#003DA5').fill();
+        doc.circle(cx + dx, topY + dy * 2, rDot).fillColor('#003DA5').fill();
+
+        // Fila 3: 4 círculos en la base con letras E S A P
+        const baseRowY = topY + dy * 3;
+        const baseXs = [cx - dx * 1.5, cx - dx * 0.5, cx + dx * 0.5, cx + dx * 1.5];
+        const letrasEsap = ['E', 'S', 'A', 'P'];
+        for (let i = 0; i < 4; i++) {
+          doc.circle(baseXs[i], baseRowY, rDot + 0.3).fillColor('#003DA5').fill();
+          doc
+            .fillColor('#FFFFFF')
+            .fontSize(2.8)
+            .font('Helvetica-Bold')
+            .text(letrasEsap[i], baseXs[i] - 1.5, baseRowY - 1.4, {
+              width: 3,
+              align: 'center',
+            });
+        }
+
+        // Tipografía institucional
+        doc.fillColor('#003DA5').fontSize(6).font('Helvetica-Bold');
+        doc.text('ESAP', 28, 46.5, { width: 85, align: 'center' });
+        doc.fillColor('#000000').fontSize(4.2).font('Helvetica');
+        doc.text('Escuela Superior de', 28, 54, { width: 85, align: 'center' });
+        doc.text('Administración Pública', 28, 59.5, {
+          width: 85,
+          align: 'center',
+        });
+      }
 
       // 2. Caja Central: Título Oficial Formato
       drawBox(113, 24, 330, 44, null);

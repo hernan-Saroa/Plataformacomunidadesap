@@ -13,6 +13,13 @@ export class ComisionadoResponseDto {
   fechaAutorizacionHabeasData?: Date;
   ipRegistroHabeasData?: string;
   idDependencia?: number | null;
+  fechaInicioContrato?: Date | string | null;
+  fechaFinContrato?: Date | string | null;
+  salarioBasico?: number | null;
+  cargo?: string | null;
+  esFacturadorElectronico?: boolean;
+  solicitudesPendientes?: any[];
   creadoEn: Date;
   actualizadoEn: Date;
 }
+

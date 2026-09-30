@@ -1,4 +1,5 @@
 import {
+  AfterLoad,
   Entity,
   Column,
   PrimaryGeneratedColumn,
@@ -92,9 +93,67 @@ export class ComisionadoEntity {
   @Index('idx_comisionados_id_dependencia')
   idDependencia: number | null;
 
+  @Column({
+    name: 'fecha_inicio_contrato',
+    type: 'date',
+    nullable: true,
+  })
+  fechaInicioContrato: Date | string | null;
+
+  @Column({
+    name: 'fecha_fin_contrato',
+    type: 'date',
+    nullable: true,
+  })
+  fechaFinContrato: Date | string | null;
+
+  @Column({
+    name: 'salario_basico',
+    type: 'numeric',
+    precision: 15,
+    scale: 2,
+    nullable: true,
+  })
+  salarioBasico: number | null;
+
+  @Column({
+    name: 'cargo',
+    type: 'varchar',
+    length: 150,
+    nullable: true,
+  })
+  cargo: string | null;
+
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;
 
   @UpdateDateColumn({ name: 'actualizado_en' })
   actualizadoEn: Date;
+
+  // ============================================================
+  // Campos virtuales (no son columnas de BD).
+  // Se calculan en @AfterLoad para que TypeORM los incluya en la
+  // serialización JSON al llamar getMany() / findOne() etc.
+  // ============================================================
+
+  /** Nombre completo concatenado: PrimerNombre [SegundoNombre] PrimerApellido [SegundoApellido] */
+  nombre: string;
+
+  /** Alias de nombre para compatibilidad con componentes que usan nombreCompleto */
+  nombreCompleto: string;
+
+  @AfterLoad()
+  calcularNombres(): void {
+    this.nombreCompleto = [
+      this.primerNombre,
+      this.segundoNombre,
+      this.primerApellido,
+      this.segundoApellido,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    this.nombre = this.nombreCompleto;
+  }
 }
+

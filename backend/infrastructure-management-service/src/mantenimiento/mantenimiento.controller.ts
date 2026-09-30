@@ -921,7 +921,6 @@ export class MantenimientoController {
     const safe = encodeURIComponent(filename).replace(/['()]/g, escape).replace(/\*/g, '%2A');
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${safe}`);
-    if (totalBytes > 0) res.setHeader('Content-Length', String(totalBytes));
     stream.on('error', () => { try { if (!res.headersSent) res.status(500).end(); } catch { /* ignore */ } });
     stream.pipe(res);
   }
