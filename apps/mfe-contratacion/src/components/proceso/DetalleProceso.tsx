@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
-import { ActividadProceso, EstudioPrevio } from '../../types';
+import { ActividadProceso, EstadoParticipacion, EstudioPrevio } from '../../types';
 import { AvanceEtapa, LineaDeTiempoEtapas } from './Etapas';
 import { ActividadEtapa } from './ListaActividades';
 import { estadoDeActividad } from './estadoActividad';
@@ -68,6 +68,9 @@ import { PanelModalidad } from '../modalidad/PanelModalidad';
 import { PanelCausal } from '../causal/PanelCausal';
 import { PanelComiteContratacion } from '../comite-contratacion/PanelComiteContratacion';
 import { esSoloPresupuesto, useAlcance } from '../../auth/alcance';
+import { useResponsables } from '../../auth/responsables';
+import { situacionDelProceso } from './situacionDelProceso';
+import { FranjaSituacion } from './FranjaSituacion';
 
 /** Actividad 3.3: la radicación en la Dirección, que reparte el proceso. */
 const NUMERAL_RADICACION = '3.3';
@@ -535,8 +538,17 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
    * trabajo. Mientras el alcance no llega responde que no, así que la duda cae
    * del lado de enseñarlo todo.
    */
-  const { puede } = useAlcance();
+  const { puede, cargado: alcanceCargado } = useAlcance();
   const soloPresupuesto = esSoloPresupuesto(puede);
+  /** Qué roles responden por cada punto, para decir a quién le toca. */
+  const responsables = useResponsables();
+  /**
+   * Quién lleva el proceso: la Dirección, el abogado y la Financiera.
+   *
+   * Nulo mientras llega o si no se pudo leer: la franja cae entonces a los
+   * roles, que es menos preciso pero no dice nada falso.
+   */
+  const [participacion, setParticipacion] = useState<EstadoParticipacion | null>(null);
   /**
    * Y puede pedir el proceso entero.
    *
@@ -713,6 +725,19 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
     }
   }, [tokenExpediente, expandida, catalogo, datos]);
 
+  // Con el mismo token que el expediente: tomar el proceso o asignar el abogado
+  // cambia a quién le toca, y la franja tiene que enterarse sin recargar.
+  useEffect(() => {
+    let vigente = true;
+    Promise.resolve()
+      .then(() => contratacionService.participacion(procesoId))
+      .then((p) => vigente && setParticipacion(p))
+      .catch(() => undefined);
+    return () => {
+      vigente = false;
+    };
+  }, [procesoId, tokenExpediente]);
+
   useEffect(() => {
     // Si falla se sigue con la lista de la etapa 3 que había antes: el riel no
     // puede quedarse vacío por una consulta caída.
@@ -827,6 +852,26 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
   }));
 
   const disponibles = actividadesDisponibles(flujo);
+
+  /**
+   * Dónde está el proceso y a quién le toca, con la misma secuencia del riel.
+   *
+   * Se calcula aquí y no en la franja porque la franja no sabe del catálogo ni
+   * del estado del estudio previo; esta pantalla ya los tiene.
+   */
+  const situacion = situacionDelProceso({
+    pasos: catalogoDelProceso.map((act: any, i: number) => ({
+      ...flujo[i],
+      nombre: act.nombre,
+      etapa: act.etapa ?? 3,
+      actualizadoEn: act.actualizadoEn ?? null,
+      responsableCargo: act.responsableCargo ?? null,
+    })),
+    participacion: participacion ?? undefined,
+    radicadoPorMi: datos.proceso.radicadoPorMi,
+    responsables,
+    puedo: alcanceCargado ? puede : undefined,
+  });
 
   const delCatalogo: ActividadEtapa[] = catalogoDelProceso.map(
     (act: any) => {
@@ -1059,6 +1104,8 @@ export function DetalleProceso({ procesoId, onVolver, actividadInicial = null }:
               )}
             </div>
           </div>
+
+          <FranjaSituacion situacion={situacion} abierta={expandida} onIr={abrirActividad} />
 
           <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-3 flex-wrap">
             <LineaDeTiempoEtapas
