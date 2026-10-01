@@ -323,7 +323,7 @@ export class AuditoriasService {
       .filter(Boolean)
       .join(', ');
 
-    return `No se puede programar la auditoria porque ${nombres || 'uno o mas auditores adicionales'} ya tiene asignacion en otra auditoria durante las fechas seleccionadas. Ajuste las fechas o retire esas personas del Equipo Auditor Adicional.`;
+    return `Cruce de auditores: ${nombres || 'uno o más auditores adicionales'} ya tiene asignación en otra auditoría durante las fechas seleccionadas. Puede continuar con la programación; revise si conviene ajustar las fechas o el Equipo Auditor Adicional.`;
   }
 
   private async consultarConflictosEquipoAuditor(
@@ -419,21 +419,29 @@ export class AuditoriasService {
     };
   }
 
-  private async asegurarDisponibilidadEquipoAuditorOrThrow(
+  /**
+   * Cruce del Equipo Auditor Adicional con otras auditorías: es una advertencia, no
+   * impide programar (EFDS-2257). La pantalla la muestra con validar-disponibilidad-equipo;
+   * aquí solo queda registrada en el log.
+   */
+  private async registrarCrucesEquipoAuditor(
     personaIds: string[],
     fechaInicio: Date,
     fechaFin: Date,
     excludeAuditoriaId?: string,
   ): Promise<void> {
-    const conflictos = await this.consultarConflictosEquipoAuditor(
-      personaIds,
-      fechaInicio,
-      fechaFin,
-      excludeAuditoriaId,
-    );
-
-    if (conflictos.length > 0) {
-      throw new BadRequestException(this.construirMensajeConflictosEquipoAuditor(conflictos));
+    try {
+      const conflictos = await this.consultarConflictosEquipoAuditor(
+        personaIds,
+        fechaInicio,
+        fechaFin,
+        excludeAuditoriaId,
+      );
+      if (conflictos.length > 0) {
+        console.warn(`[Auditorias] Programada con cruce de auditores (advertencia): ${this.construirMensajeConflictosEquipoAuditor(conflictos)}`);
+      }
+    } catch (error) {
+      console.warn('[Auditorias] No se pudo revisar el cruce del equipo auditor:', (error as Error).message);
     }
   }
 
@@ -1458,7 +1466,7 @@ export class AuditoriasService {
 
     // Generar código automático
     const equipoAuditorPersonaIds = await this.resolverEquipoAuditorIds(createDto.equipoAuditores);
-    await this.asegurarDisponibilidadEquipoAuditorOrThrow(
+    await this.registrarCrucesEquipoAuditor(
       equipoAuditorPersonaIds,
       fechaInicio,
       fechaFin,
@@ -1820,7 +1828,7 @@ export class AuditoriasService {
           .filter((equipo) => equipo.activo && equipo.personaId)
           .map((equipo) => String(equipo.personaId));
 
-      await this.asegurarDisponibilidadEquipoAuditorOrThrow(
+      await this.registrarCrucesEquipoAuditor(
         equipoValidacion,
         fechaInicioValidacion,
         fechaFinValidacion,

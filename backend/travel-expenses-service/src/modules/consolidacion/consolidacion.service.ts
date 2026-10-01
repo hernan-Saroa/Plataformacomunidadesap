@@ -24,7 +24,11 @@ import {
   NotificationClientService,
   buildTravelExpenseEmailHtml,
 } from '../../common/notification-client.service';
-import { cargarFestivosAuth, contarDiasHabiles } from '../../common/dias-habiles.util';
+import {
+  cargarFestivosAuth,
+  contarDiasHabiles,
+  fechaEfectivaRadicacion,
+} from '../../common/dias-habiles.util';
 
 /**
  * Estado al que se transiciona el expediente consolidado (RF-LIQ-004).
@@ -246,13 +250,16 @@ export class ConsolidacionService {
       }
 
       // 4) Evaluar anticipación y transición a EXTEMPORANEA o SOLICITADO (RF-EXT-001).
+      // Los 14 días hábiles se cuentan entre la fecha de radicación (el siguiente día
+      // hábil si se radica después de las 4:30 p. m. o en día no hábil, hora Colombia)
+      // y el inicio del viaje, con festivos (EFDS-1285).
       const ahora = new Date();
       const festivosSet = await cargarFestivosAuth(this.dataSource);
       const diasHabilesAnticipacion = contarDiasHabiles(
-        ahora,
+        fechaEfectivaRadicacion(ahora, festivosSet),
         expediente.fechaInicio,
         festivosSet,
-        'rango_completo',
+        'previos',
       );
       const esExtemporanea = diasHabilesAnticipacion < 14;
 

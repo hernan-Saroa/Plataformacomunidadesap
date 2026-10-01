@@ -30,7 +30,8 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { apiClient } from '../../../services/api/apiClient';
-import { exportToCSV, exportToExcel, exportToPDF } from '../../utils/reportExport';
+import { exportToCSV } from '../../utils/reportExport';
+import { exportRundReportToExcel, exportRundReportToPDF, type RundColumn } from '../utils/rundReportExport';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Download, RefreshCw, Filter, Calendar, Search,
@@ -839,21 +840,20 @@ export function ReportsModuleV2() {
       try {
         const response = await apiClient.get<any[]>(`/legal/api/v1/reportes/data/${report.id}`);
         const data = response.data || response; // manejar si apiClient devuelve data o el objeto directo
-        
-        const reportConfig = {
-          name: report.nombre,
-          description: report.descripcion,
-          source: 'Gestión Legal',
-          fields: report.campos,
-          filters: [],
-          exportFormat: format,
-          dateRange: 'Todo el historial',
-        };
 
-        if (format === 'csv') exportToCSV(data, reportConfig.name);
-        else if (format === 'excel') exportToExcel(data, reportConfig.name);
-        else if (format === 'pdf') exportToPDF(data, reportConfig.name, reportConfig as any);
-        
+        if (format === 'csv') {
+          exportToCSV(data, report.nombre);
+        } else {
+          // El backend ya devuelve cada fila con las mismas claves que report.campos
+          // (ver legal-management-service/src/services/reportes.service.ts), así que
+          // el mapeo columna→campo es directo, sin adivinar nombres.
+          const columnas: RundColumn[] = report.campos.map((campo) => ({ header: campo, key: campo }));
+          const meta = { titulo: report.nombre, filtros: {}, totalRegistros: data.length };
+          const prefix = `Gestion_Legal_${report.id}`;
+          if (format === 'excel') exportRundReportToExcel(data, columnas, meta, prefix);
+          else if (format === 'pdf') exportRundReportToPDF(data, columnas, meta, prefix);
+        }
+
         // Simulando que json no está soportado en los botones directos, pero si llegara
         toast.success('✅ Reporte descargado exitosamente', { id: toastId });
       } catch (error) {

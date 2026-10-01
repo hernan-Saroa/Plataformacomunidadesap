@@ -2593,8 +2593,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     toast.success('Prioridad actualizada', { description: 'El orden se guardará automáticamente' });
   }, []);
 
-  const filtroTerritorialEfectivo = decisionListScope?.configured ? decisionListScope.territoriales : permisos.filtroTerritorial;
-  const filtroProgramaEfectivo = decisionListScope?.configured ? decisionListScope.programas : permisos.filtroPrograma;
+  // El alcance territorial limita las decisiones, no la consulta de actividades.
   const scopedPtas = useMemo(() => {
     let result = ptas;
     // Defensa adicional: aun durante una recarga/cambio rápido, la tabla solo
@@ -2602,41 +2601,16 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     if (filtroPeriodo) {
       result = result.filter((p: any) => String(p?.periodo || '') === filtroPeriodo);
     }
-    // Apply territorial filter for Jefatura role — filtra por territoriales de las ASIGNATURAS del PTA
-    if (filtroTerritorialEfectivo && filtroTerritorialEfectivo.length > 0) {
-      result = result.filter((p: any) => {
-        if (Array.isArray(p.componentes_en_alcance)) return p.componentes_en_alcance.length > 0;
-        const norm = (value: unknown) => String(value ?? '').normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-        const scope = new Set(filtroTerritorialEfectivo.map(norm));
-        const assignmentTokens = [
-          ...(Array.isArray(p.territoriales_docencia_ids) ? p.territoriales_docencia_ids : []),
-          ...(Array.isArray(p.territorialesAsignaturas) ? p.territorialesAsignaturas : []),
-        ];
-        if (assignmentTokens.length) return assignmentTokens.some(t => scope.has(norm(t)));
-        return [p.territorial_id, p.territorial].some(t => t && scope.has(norm(t)));
-      });
-    }
-    // Apply program filter for Decanatura role
-    if (filtroProgramaEfectivo && filtroProgramaEfectivo.length > 0) {
-      result = result.filter((p: any) =>
-        (Array.isArray(p.componentes_en_alcance) ? p.componentes_en_alcance.length > 0 :
-        filtroProgramaEfectivo.includes(p.programa_id) ||
-        filtroProgramaEfectivo.some(pid =>
-          [p.programa, ...(p.programasAsignaturas || [])].some(value => value?.toLowerCase().includes(pid.toLowerCase()))
-        ))
-      );
-    }
     if (shouldRestrictByComponentPermission) {
+      // /gestion ya seleccionó los PTAs consultables. Un alcance vacío indica
+      // que el componente se puede consultar, pero no decidir en esta territorial.
       result = result.filter((p: any) => Array.isArray(p.componentes_en_alcance)
-        ? p.componentes_en_alcance.length > 0 : hasAnyComponentApprovalData(p, visibleComponentKeys));
-    }
-    if (decisionListScope?.configured && decisionListScope.cetaps) {
-      result = result.filter(p => Array.isArray(p.componentes_en_alcance) ? p.componentes_en_alcance.length > 0 : decisionListScope.cetaps!.some(cetap =>
-        [p.cetap, ...(p.cetapsAsignaturas || [])].some(value => String(value || '').toLowerCase() === cetap.toLowerCase())));
+        || (Array.isArray(p.componentes_con_datos)
+          ? p.componentes_con_datos.some((key: string) => visibleComponentKeySet.has(key))
+          : hasAnyComponentApprovalData(p, visibleComponentKeys)));
     }
     return result;
-  }, [ptas, filtroPeriodo, filtroTerritorialEfectivo, filtroProgramaEfectivo, decisionListScope, shouldRestrictByComponentPermission, visibleComponentKeys]);
+  }, [ptas, filtroPeriodo, shouldRestrictByComponentPermission, visibleComponentKeys, visibleComponentKeySet]);
 
   const baseFilteredPtas = useMemo(() => {
     let result = scopedPtas;
@@ -3722,8 +3696,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       ) : (
         /* ═══ GESTIÓN — Vista principal ═══ */
         <div className="py-6 px-2 max-w-none mx-auto flex flex-col gap-6 w-full">
-          {/* Territorial/Program Filter Banner */}
-          {(filtroTerritorialEfectivo || filtroProgramaEfectivo || decisionListScope?.cetaps) && (
+          {/* Territorial asignada: limita decisiones, no la consulta. */}
+          {Boolean(decisionListScope?.territoriales?.length) && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -3738,12 +3712,9 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 <Filter style={{ width: 13, height: 13, color: '#92400E' }} />
               </div>
               <div>
-                <span style={{ fontWeight: 700 }}>Vista filtrada por su rol</span>
+                <span style={{ fontWeight: 700 }}>Alcance de revisión y aprobación</span>
                 <div style={{ fontSize: '0.72rem', color: '#B45309', marginTop: 2 }}>
-                  {filtroTerritorialEfectivo && <span>Territoriales: <strong>{filtroTerritorialEfectivo.join(', ')}</strong> · </span>}
-                  {filtroProgramaEfectivo && <span>Programas: <strong>{filtroProgramaEfectivo.join(', ')}</strong> · </span>}
-                  {decisionListScope?.configured && decisionListScope.cetaps && <span>CETAPs: <strong>{decisionListScope.cetaps.join(', ')}</strong> · </span>}
-                  Mostrando {filteredPtas.length} de {scopedPtas.length} PTAs
+                  Territorial asignada: <strong>{decisionListScope?.territoriales?.join(', ')}</strong>. Puede consultar las demás actividades, pero solo revisar o aprobar las que correspondan a su territorial y permisos.
                 </div>
               </div>
             </motion.div>

@@ -505,7 +505,7 @@ describe('listado y contadores del backoffice', () => {
     expect(tab('Todos').textContent).toContain('2');
   });
 
-  it('compara el alcance territorial con los IDs de las asignaturas y cuenta solo los registros visibles', async () => {
+  it('no infiere el alcance de decisiones desde el filtro del perfil asociado al rol', async () => {
     sync.permissions.filtroTerritorial = ['900014'];
     vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [
       { ...pendientes[0], territoriales_docencia_ids: ['900014'], territorialesAsignaturas: ['Santander'] },
@@ -513,29 +513,36 @@ describe('listado y contadores del backoffice', () => {
     ] });
     render(<PtaBackofficeModule />);
     await screen.findByText('Docente uno');
-    expect(screen.queryByText('Docente dos')).toBeNull();
-    expect(tab('Todos').textContent).toContain('1');
-    expect(tab('Por aprobar').textContent).toContain('1');
+    expect(screen.getByText('Docente dos')).toBeTruthy();
+    expect(tab('Todos').textContent).toContain('2');
+    expect(tab('Por aprobar').textContent).toContain('2');
   });
 
-  it('el alcance vigente del servidor prevalece sobre el filtro local y actualiza los contadores', async () => {
+  it('la territorial del servidor limita acciones sin ocultar PTAs consultables', async () => {
+    sync.permissions.componentesAprobables = ['academica_territorial'];
     sync.permissions.filtroTerritorial = ['900014'];
-    vi.mocked(getPTADecisionListScope).mockResolvedValue({ success: true, data: { configured: true, territoriales: null, programas: null, cetaps: null } });
+    vi.mocked(getPTADecisionListScope).mockResolvedValue({ success: true, data: { configured: true, territoriales: ['Nariño'], programas: null, cetaps: null } });
     vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [
-      { ...pendientes[0], territoriales_docencia_ids: ['900014'], territorialesAsignaturas: ['Santander'] },
-      { ...pendientes[1], territoriales_docencia_ids: ['900015'], territorialesAsignaturas: ['Nariño'] },
+      { ...pendientes[0], componentes_con_datos: ['academica_territorial'],
+        componentes_en_alcance: [], componentes_aprobacion_usuario: [],
+        territoriales_docencia_ids: ['900014'], territorialesAsignaturas: ['Santander'] },
+      { ...pendientes[1], componentes_con_datos: ['academica_territorial'],
+        componentes_en_alcance: ['academica_territorial'],
+        componentes_aprobacion_usuario: [{ componente: 'academica_territorial', estado: 'pendiente' }],
+        territoriales_docencia_ids: ['900015'], territorialesAsignaturas: ['Nariño'] },
     ] });
     render(<PtaBackofficeModule />);
     await screen.findByText('Docente dos');
     expect(screen.getByText('Docente uno')).toBeTruthy();
     expect(tab('Todos').textContent).toContain('2');
-    expect(tab('Por aprobar').textContent).toContain('2');
-    vi.mocked(getPTADecisionListScope).mockResolvedValue({ success: true, data: { configured: true, territoriales: ['Nariño'], programas: null, cetaps: null } });
-    await act(async () => { await sync.options.onRefresh(); });
+    expect(tab('Por aprobar').textContent).toContain('1');
+    expect((screen.getByText('Docente uno').closest('[draggable]')
+      ?.querySelector('input[type="checkbox"]') as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByText('Docente dos').closest('[draggable]')
+      ?.querySelector('input[type="checkbox"]') as HTMLInputElement).disabled).toBe(false);
+    fireEvent.click(tab('Por aprobar'));
     expect(screen.getByText('Docente dos')).toBeTruthy();
     expect(screen.queryByText('Docente uno')).toBeNull();
-    expect(tab('Todos').textContent).toContain('1');
-    expect(tab('Por aprobar').textContent).toContain('1');
   });
 
   it('un revisor puro de docencia no ve PTA de otros componentes ni botones de aprobación masiva', async () => {
