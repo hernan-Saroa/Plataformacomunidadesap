@@ -59,6 +59,10 @@ import {
   EstadoFirmasResponse,
   FirmarSolicitudPayload,
   DevolverFirmaPayload,
+  SolicitarOtpFirmaPayload,
+  SolicitarOtpFirmaResponse,
+  VerificarOtpFirmaPayload,
+  SolicitarFirmasPayload,
 } from '../../types/viaticos';
 
 import dependenciasService, { Dependencia, Cargo } from '../../../../shell/src/services/api/dependencias.service';
@@ -917,14 +921,55 @@ export class ViaticosService {
   }
 
   /**
-   * Consolida formalmente la solicitud e inicia el flujo de firmas de aprobación
-   * previo a la radicación (estado PENDIENTE_FIRMAS).
+   * Solicita un código OTP enviado al correo institucional para firma digital en viáticos.
    */
-  async solicitarFirmasAprobacion(solicitudId: string): Promise<SolicitudComisionResponse> {
+  async solicitarOtpFirma(
+    solicitudId: string,
+    payload?: SolicitarOtpFirmaPayload,
+  ): Promise<SolicitarOtpFirmaResponse> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/firmas/solicitar-otp`,
+        payload || {},
+      );
+      return (res as any)?.data || res;
+    } catch (error) {
+      console.error('Error solicitando código OTP de firma:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Verifica la validez del código OTP ingresado por el usuario.
+   */
+  async verificarOtpFirma(
+    solicitudId: string,
+    payload: VerificarOtpFirmaPayload,
+  ): Promise<{ success: boolean; verified: boolean }> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/firmas/verificar-otp`,
+        payload,
+      );
+      return (res as any)?.data || res;
+    } catch (error) {
+      console.error('Error verificando código OTP de firma:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Consolida formalmente la solicitud e inicia el flujo de firmas de aprobación
+   * previo a la radicación (estado PENDIENTE_FIRMAS). Puede incluir la firma digital de elaboración del Enlace.
+   */
+  async solicitarFirmasAprobacion(
+    solicitudId: string,
+    payload?: SolicitarFirmasPayload,
+  ): Promise<SolicitudComisionResponse> {
     try {
       const res = await apiClient.post<any>(
         `/viaticos/api/v1/requests/${solicitudId}/solicitar-firmas`,
-        {},
+        payload || {},
       );
       return (res as any)?.data || res;
     } catch (error) {

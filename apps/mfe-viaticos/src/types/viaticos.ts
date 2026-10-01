@@ -1180,7 +1180,11 @@ export interface BandejaPresupuestoResponse {
 // Firmas de Aprobación del Formato 023 (Previo a Radicación)
 // =========================================================================
 
-export type TipoFirmaAprobacion = 'JEFE_DEPENDENCIA' | 'GERENTE_PROYECTO';
+export type TipoFirmaAprobacion =
+  | 'JEFE_DEPENDENCIA'
+  | 'GERENTE_PROYECTO'
+  | 'ENLACE_ELABORO'
+  | 'ANALISTA';
 
 export interface FirmaAprobacionRegistrada {
   tipo: TipoFirmaAprobacion;
@@ -1193,6 +1197,10 @@ export interface FirmaAprobacionRegistrada {
   fechaFirma: string;
   usuarioId?: string | null;
   estado: 'FIRMADO' | 'RECHAZADO';
+  certificadoId?: string;
+  hashSha256?: string;
+  firmadoDigitalmente?: boolean;
+  otpVerificado?: boolean;
 }
 
 export interface FirmanteRequerido {
@@ -1225,10 +1233,42 @@ export interface FirmarSolicitudPayload {
   esAusencia?: boolean;
   motivoAusencia?: string;
   comentarios?: string;
+  otp?: string;
+  verificationId?: string;
+  certificadoId?: string;
+  hashSha256?: string;
 }
 
 export interface DevolverFirmaPayload {
   motivo: string;
+}
+
+export interface SolicitarOtpFirmaPayload {
+  tipoFirma?: string;
+  etapaLabel?: string;
+}
+
+export interface SolicitarOtpFirmaResponse {
+  success?: boolean;
+  verificationId: string;
+  expiresAt: string;
+  email: string;
+  emailEnviadoA?: string;
+  devCode?: string;
+}
+
+export interface VerificarOtpFirmaPayload {
+  verificationId: string;
+  code: string;
+}
+
+export interface SolicitarFirmasPayload {
+  otp?: string;
+  verificationId?: string;
+  certificadoId?: string;
+  hashSha256?: string;
+  nombreFirmante?: string;
+  cargoFirmante?: string;
 }
 
 

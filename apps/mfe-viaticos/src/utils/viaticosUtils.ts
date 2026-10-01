@@ -356,19 +356,8 @@ export function sincronizarItinerarioFormulario(
     }
   }
 
-  const horaSalida = primeraRuta.horaEstimadaSalida || primeraRuta.horarioEstimadoMilitar || '';
-  const horaLlegada = itinerario.length === 1
-    ? (primeraRuta.horaEstimadaLlegada || '')
-    : (ultimaRuta.horaEstimadaLlegada || ultimaRuta.horarioEstimadoMilitar || '');
-
-  let horaGeneral = '';
-  if (horaSalida && horaLlegada) {
-    horaGeneral = `${formatearHorarioMilitar(horaSalida)} → ${formatearHorarioMilitar(horaLlegada)}`;
-  } else if (horaSalida) {
-    horaGeneral = formatearHorarioMilitar(horaSalida);
-  } else if (horaLlegada) {
-    horaGeneral = formatearHorarioMilitar(horaLlegada);
-  }
+  const horaViaje = primeraRuta.horaEstimadaSalida || primeraRuta.horarioEstimadoMilitar || '';
+  const horaGeneral = horaViaje ? formatearHorarioMilitar(horaViaje) : '';
 
   // ── Detección de viaje de ida y vuelta ───────────────────────────────────
   // Si hay más de un tramo y el destino del último tramo coincide con el
@@ -403,8 +392,7 @@ export function sincronizarItinerarioFormulario(
     destinoCiudad: destinoCiudadFinal,
     destinoDepartamento: destinoDepartamentoFinal,
     rutaGeneral: construirRutaGeneral(itinerario),
-    horaEstimadaSalida: horaSalida,
-    horaEstimadaLlegada: horaLlegada,
+    horaEstimadaSalida: horaViaje,
     horaEstimadaGeneral: horaGeneral,
     transporteTerminalesAereos: totalTerminalesAereos,
     transporteTerrestreOtros: totalTransporteTerrestreOtros,
@@ -631,15 +619,14 @@ export function mapearARequestCreacion(
         guardada,
         origenDepartamentoId,
         destinoDepartamentoId,
+        horaEstimadaLlegada,
         ...cleanRuta
       } = r;
-      const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
-      const horaLlegada = r.horaEstimadaLlegada || '';
+      const horaViaje = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
       return {
         ...cleanRuta,
-        horaEstimadaSalida: horaSalida,
-        horarioEstimadoMilitar: horaSalida || r.horarioEstimadoMilitar,
-        horaEstimadaLlegada: horaLlegada,
+        horaEstimadaSalida: horaViaje,
+        horarioEstimadoMilitar: horaViaje,
       };
     }),
   };

@@ -86,7 +86,7 @@ describe('sincronizarItinerarioFormulario', () => {
     expect(sync.origenCiudad).toBe('Bogotá D.C.');
     expect(sync.destinoCiudad).toBe('Cali');
     expect(sync.rutaGeneral).toBe('Bogotá D.C. → Medellín → Cali');
-    expect(sync.horaEstimadaGeneral).toBe('08:00 h → 14:30 h');
+    expect(sync.horaEstimadaGeneral).toBe('08:00 h');
   });
 
   it('calcula horaEstimadaGeneral para un único tramo', () => {
@@ -334,8 +334,8 @@ describe('sincronizarItinerarioFormulario con transporte aéreo', () => {
   });
 });
 
-describe('Preservación de hora de salida y llegada en itinerario', () => {
-  it('sincronizarItinerarioFormulario incluye horaEstimadaSalida y horaEstimadaLlegada', () => {
+describe('Preservación de hora de viaje en itinerario (Formato GF-FO-023)', () => {
+  it('sincronizarItinerarioFormulario incluye horaEstimadaSalida como hora de viaje', () => {
     const itinerario: RutaItinerario[] = [
       {
         id: 'r-1',
@@ -350,17 +350,15 @@ describe('Preservación de hora de salida y llegada en itinerario', () => {
         diasRuta: 1.5,
         horarioEstimadoMilitar: '07:30',
         horaEstimadaSalida: '07:30',
-        horaEstimadaLlegada: '09:00',
       },
     ];
 
     const sync = sincronizarItinerarioFormulario(itinerario);
     expect(sync.horaEstimadaSalida).toBe('07:30');
-    expect(sync.horaEstimadaLlegada).toBe('09:00');
-    expect(sync.horaEstimadaGeneral).toBe('07:30 h → 09:00 h');
+    expect(sync.horaEstimadaGeneral).toBe('07:30 h');
   });
 
-  it('mapearARequestCreacion conserva horaEstimadaSalida y horaEstimadaLlegada en el payload', () => {
+  it('mapearARequestCreacion conserva horaEstimadaSalida y horarioEstimadoMilitar en el payload', () => {
     const form: any = {
       objetoComision: 'Auditoría Territorial',
       origenCiudad: 'Bogotá D.C.',
@@ -390,7 +388,6 @@ describe('Preservación de hora de salida y llegada en itinerario', () => {
           diasRuta: 2,
           horarioEstimadoMilitar: '08:00',
           horaEstimadaSalida: '08:00',
-          horaEstimadaLlegada: '14:30',
           guardada: true,
           tarifaTerminalAereo: 0,
         },
@@ -407,8 +404,8 @@ describe('Preservación de hora de salida y llegada en itinerario', () => {
     expect(payload.itinerario).toBeDefined();
     expect(payload.itinerario!.length).toBe(1);
     expect(payload.itinerario![0].horaEstimadaSalida).toBe('08:00');
-    expect(payload.itinerario![0].horaEstimadaLlegada).toBe('14:30');
     expect(payload.itinerario![0].horarioEstimadoMilitar).toBe('08:00');
+    expect((payload.itinerario![0] as any).horaEstimadaLlegada).toBeUndefined();
     // Verifica que los auxiliares de UI fueron eliminados
     expect((payload.itinerario![0] as any).guardada).toBeUndefined();
     expect((payload.itinerario![0] as any).tarifaTerminalAereo).toBe(0);

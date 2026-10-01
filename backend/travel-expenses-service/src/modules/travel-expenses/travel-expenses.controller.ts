@@ -65,6 +65,9 @@ import { ProcesarPagoDto } from '../../dto/procesar-pago.dto';
 import {
   FirmarSolicitudDto,
   DevolverFirmaDto,
+  SolicitarOtpFirmaDto,
+  VerificarOtpFirmaDto,
+  SolicitarFirmasDto,
 } from '../../dto/firmar-solicitud.dto';
 
 import { getClientIp } from '../../common/ip.util';
@@ -545,25 +548,67 @@ export class TravelExpensesController {
     return this.service.obtenerEstadoFirmas(id);
   }
 
+  @Post('requests/:id/firmas/solicitar-otp')
+  @ApiOperation({
+    summary: 'Solicita un código de validación OTP enviado al correo institucional para firma digital de viáticos',
+    description:
+      'Genera un código OTP de 6 dígitos numéricos con validez de 5 minutos y lo envía al correo institucional del usuario firmante.',
+  })
+  @Permissions(
+    'travel_expenses:sign_approval',
+    'travel_expenses:create_request',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+  )
+  solicitarOtpFirma(
+    @Param('id') id: string,
+    @Body() dto: SolicitarOtpFirmaDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.service.solicitarOtpFirma(id, dto || {}, req.user?.userId || '');
+  }
+
+  @Post('requests/:id/firmas/verificar-otp')
+  @ApiOperation({
+    summary: 'Verifica la validez de un código OTP para la sesión de firma digital',
+  })
+  @Permissions(
+    'travel_expenses:sign_approval',
+    'travel_expenses:create_request',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+  )
+  verificarOtpFirma(
+    @Body() dto: VerificarOtpFirmaDto,
+  ) {
+    const verified = this.service.verificarOtpFirma({
+      verificationId: dto.verificationId,
+      code: dto.code,
+      consume: false,
+    });
+    return { success: true, verified };
+  }
+
   @Post('requests/:id/solicitar-firmas')
   @ApiOperation({
     summary: 'Consolida la solicitud e inicia el flujo de firmas de aprobación previo a la radicación',
     description:
-      'Valida que el expediente esté completo (checklist y datos) y transiciona el estado a PENDIENTE_FIRMAS.',
+      'Valida que el expediente esté completo (checklist y datos) y transiciona el estado a PENDIENTE_FIRMAS. Certifica la elaboración del enlace.',
   })
   @Permissions('travel_expenses:create_request')
   solicitarFirmasAprobacion(
     @Param('id') id: string,
+    @Body() dto: SolicitarFirmasDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.service.solicitarFirmasAprobacion(id, req.user?.userId);
+    return this.service.solicitarFirmasAprobacion(id, req.user?.userId, dto);
   }
 
   @Post('requests/:id/firmar')
   @ApiOperation({
-    summary: 'Registra la firma de aprobación de la solicitud (Jefe de Dependencia/Supervisor o Gerente de Proyecto)',
+    summary: 'Registra la firma digital con OTP de la solicitud (Jefe de Dependencia/Supervisor o Gerente de Proyecto)',
     description:
-      'Sin las firmas de aprobación la solicitud no se radica. Surtido el flujo de firmas y validaciones, la solicitud queda en estado RADICADA.',
+      'Valida OTP, emite certificado criptográfico y si se completan ambas firmas la solicitud queda formalmente en estado RADICADA.',
   })
   @Permissions(
     'travel_expenses:sign_approval',

@@ -21,6 +21,7 @@ const { mockViaticosService, mockAuthService } = vi.hoisted(() => {
     isGerenteProyecto: vi.fn(),
     isSubdireccionGestionCorporativa: vi.fn(),
     isDireccionNacional: vi.fn(),
+    isAnalista: vi.fn().mockReturnValue(false),
     canFirmarAprobacion: vi.fn(),
     hasPermission: vi.fn(),
   };

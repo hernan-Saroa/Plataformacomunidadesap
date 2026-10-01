@@ -36,6 +36,7 @@ import {
 } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
+import FirmaDigitalViaticosModal, { FirmaDigitalData } from './FirmaDigitalViaticosModal';
 
 interface Props {
   solicitudId: string;
@@ -96,6 +97,15 @@ export default function ModalFirmasAprobacion({
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
 
+  // Firma Digital OTP (estándar institucional ESAP)
+  const [modalFirmaDigitalAbierta, setModalFirmaDigitalAbierta] = useState(false);
+  const [solicitandoOtp, setSolicitandoOtp] = useState(false);
+  const [otpData, setOtpData] = useState<{
+    verificationId?: string;
+    emailEnviadoA?: string;
+    devCode?: string;
+  } | null>(null);
+
   // Modo devolución
   const [modoDevolucion, setModoDevolucion] = useState(Boolean(modoInicialDevolucion));
   const [motivoDevolucion, setMotivoDevolucion] = useState('');
@@ -131,8 +141,8 @@ export default function ModalFirmasAprobacion({
       }
 
       // Pre-llenar datos de usuario autenticado
-      const user = authService.getCurrentUser();
-      if (user) {
+      const user = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
+      if (user && typeof (user as any).then !== 'function') {
         const nombreCompleto =
           `${user.primerNombre || ''} ${user.segundoNombre || ''} ${user.primerApellido || ''} ${user.segundoApellido || ''}`.trim() ||
           user.nombre ||
@@ -166,6 +176,8 @@ export default function ModalFirmasAprobacion({
       const f = estadoFirmas.firmantes.find((item) => item.tipo === firmanteSeleccionado);
       if (f && f.cargo) {
         setCargoFirmante(f.cargo);
+      } else if (firmanteSeleccionado === 'ANALISTA') {
+        setCargoFirmante('Analista de Viáticos / Grupo de Gestión Financiera');
       }
     }
   }, [firmanteSeleccionado, estadoFirmas]);
@@ -259,24 +271,24 @@ export default function ModalFirmasAprobacion({
     return canvas.toDataURL('image/png');
   };
 
-  // Enviar firma
-  const handleFirmar = async () => {
+  // Preparar datos base de la firma
+  const prepararPayloadBase = (): FirmarSolicitudPayload | null => {
     setErrorAccion(null);
     setMensajeExito(null);
 
     if (!nombreFirmante.trim()) {
       setErrorAccion('Debe ingresar el nombre del firmante.');
-      return;
+      return null;
     }
 
     if (!cargoFirmante.trim()) {
       setErrorAccion('Debe ingresar el cargo oficial del firmante.');
-      return;
+      return null;
     }
 
     if (esAusencia && !motivoAusencia.trim()) {
       setErrorAccion('Debe especificar el motivo o justificación de la ausencia/desplazamiento.');
-      return;
+      return null;
     }
 
     let firmaImagen: string | undefined = undefined;
@@ -285,14 +297,13 @@ export default function ModalFirmasAprobacion({
       if (canvas && haDibujado) {
         firmaImagen = canvas.toDataURL('image/png');
       } else {
-        // Si no dibujó trazo, genera estampa electrónica
         firmaImagen = generarEstampaDigital(nombreFirmante, cargoFirmante);
       }
     } else {
       firmaImagen = generarEstampaDigital(nombreFirmante, cargoFirmante);
     }
 
-    const payload: FirmarSolicitudPayload = {
+    return {
       tipoFirma: firmanteSeleccionado,
       nombreFirmante: nombreFirmante.trim(),
       cargoFirmante: cargoFirmante.trim(),
@@ -300,6 +311,49 @@ export default function ModalFirmasAprobacion({
       esAusencia,
       motivoAusencia: esAusencia ? motivoAusencia.trim() : undefined,
       comentarios: comentarios.trim() || undefined,
+    };
+  };
+
+  // Solicitar OTP e iniciar modal de firma digital
+  const handleIniciarFirmaOtp = async () => {
+    const base = prepararPayloadBase();
+    if (!base) return;
+
+    setSolicitandoOtp(true);
+    setErrorAccion(null);
+    try {
+      const resp = await viaticosService.solicitarOtpFirma(solicitudId, {
+        tipoFirma: firmanteSeleccionado,
+      });
+      setOtpData({
+        verificationId: resp.verificationId,
+        emailEnviadoA: resp.emailEnviadoA || resp.email,
+        devCode: resp.devCode,
+      });
+      setModalFirmaDigitalAbierta(true);
+    } catch (e: any) {
+      console.error('Error solicitando OTP de firma:', e);
+      setErrorAccion(
+        e?.response?.data?.message ||
+          e?.message ||
+          'No fue posible solicitar el código OTP de verificación. Intente nuevamente.',
+      );
+    } finally {
+      setSolicitandoOtp(false);
+    }
+  };
+
+  // Confirmar firma digital tras verificación del OTP y hash criptográfico
+  const handleFirmaDigitalCompleta = async (firma: FirmaDigitalData) => {
+    const base = prepararPayloadBase();
+    if (!base) return false;
+
+    const payload: FirmarSolicitudPayload = {
+      ...base,
+      otp: firma.codigoOtp,
+      verificationId: otpData?.verificationId,
+      certificadoId: firma.certificado_id,
+      hashSha256: firma.hash,
     };
 
     setProcesandoFirma(true);
@@ -313,17 +367,22 @@ export default function ModalFirmasAprobacion({
       if (resp.radicada) {
         onFirmasCompletadas?.(resp.solicitud);
       }
+      return true;
     } catch (e: any) {
-      console.error('Error registrando firma:', e);
+      console.error('Error registrando firma digital:', e);
       setErrorAccion(
         e?.response?.data?.message ||
           e?.message ||
-          'No fue posible registrar la firma de aprobación.',
+          'No fue posible registrar la firma digital de aprobación.',
       );
+      throw e;
     } finally {
       setProcesandoFirma(false);
     }
   };
+
+  // Fallback de firma directa si se requiere
+  const handleFirmar = handleIniciarFirmaOtp;
 
   // Devolver solicitud
   const handleDevolver = async () => {
@@ -379,14 +438,21 @@ export default function ModalFirmasAprobacion({
 
   const firmante1 = estadoFirmas?.firmantes.find((f) => f.tipo === 'JEFE_DEPENDENCIA');
   const firmante2 = estadoFirmas?.firmantes.find((f) => f.tipo === 'GERENTE_PROYECTO');
+  const firmante3 = estadoFirmas?.firmantes.find(
+    (f) => f.tipo === 'ANALISTA' || (f.tipo as string) === 'ANALISTA_VIATICOS',
+  );
   const esReglaEspecial = estadoFirmas?.reglaDesplazamiento && estadoFirmas.reglaDesplazamiento !== 'REGULAR';
   const todasFirmadas = Boolean(estadoFirmas?.completado);
 
   const currentUser = authService.getCurrentUserSync();
-  const puedeFirmar = authService.canFirmarAprobacion() || authService.isJefeDependencia() || authService.isGerenteProyecto();
-  const esJefe = authService.isJefeDependencia() || authService.isSubdireccionGestionCorporativa() || authService.isDireccionNacional() || Boolean(currentUser?.esAdmin);
-  const esGerente = authService.isGerenteProyecto() || Boolean(currentUser?.esAdmin);
-  const firmasRegistradasCount = (firmante1?.firmado ? 1 : 0) + (firmante2?.firmado ? 1 : 0);
+  const esJefe = Boolean(authService.isJefeDependencia?.()) || Boolean(authService.isSubdireccionGestionCorporativa?.()) || Boolean(authService.isDireccionNacional?.()) || Boolean(currentUser?.esAdmin);
+  const esGerente = Boolean(authService.isGerenteProyecto?.()) || Boolean(currentUser?.esAdmin);
+  const esAnalista = Boolean(authService.isAnalista?.()) || Boolean(currentUser?.esAdmin);
+  const puedeFirmar = Boolean(authService.canFirmarAprobacion?.()) || esJefe || esGerente || esAnalista;
+  const firmasRegistradasCount =
+    (firmante1?.firmado ? 1 : 0) +
+    (firmante2?.firmado ? 1 : 0) +
+    (firmante3?.firmado ? 1 : 0);
 
   const formatearMonedaLocal = (valor: number | undefined | null) => {
     return `$ ${(Number(valor) || 0).toLocaleString('es-CO')}`;
@@ -611,7 +677,6 @@ export default function ModalFirmasAprobacion({
                             {(tramo.horaEstimadaSalida || tramo.horarioEstimadoMilitar) && (
                               <span className="font-mono text-[10px] text-slate-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded">
                                 {tramo.horaEstimadaSalida || tramo.horarioEstimadoMilitar} h
-                                {tramo.horaEstimadaLlegada ? ` → ${tramo.horaEstimadaLlegada} h` : ''}
                               </span>
                             )}
                           </div>
@@ -1058,9 +1123,82 @@ export default function ModalFirmasAprobacion({
                   </div>
                 )}
               </div>
+
+              {/* Firmante 3: Analista de Viáticos (Revisión y Control Técnico) */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  firmante3?.firmado
+                    ? 'bg-emerald-50/60 border-emerald-300'
+                    : firmanteSeleccionado === 'ANALISTA'
+                    ? 'bg-blue-50/40 border-[#003DA5] shadow-xs ring-2 ring-blue-500/20'
+                    : 'bg-slate-50 border-slate-200'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-white border border-slate-200 text-[#003DA5] font-black text-xs flex items-center justify-center shrink-0">
+                      3
+                    </span>
+                    <div>
+                      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        {firmante3?.titulo || 'Analista de Viáticos'}
+                      </p>
+                      <h4 className="text-xs sm:text-sm font-black text-slate-900">
+                        {firmante3?.cargo || 'Analista de Viáticos / Grupo Financiero'}
+                      </h4>
+                    </div>
+                  </div>
+                  {firmante3?.firmado ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      <CheckCircle2 className="w-3 h-3" /> Firmado
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                      <Clock className="w-3 h-3" /> Pendiente
+                    </span>
+                  )}
+                </div>
+
+                {firmante3?.firmado && firmante3.firma ? (
+                  <div className="mt-2 p-2.5 bg-white rounded-xl border border-emerald-200 text-[11px] space-y-1">
+                    <p className="font-bold text-slate-900">{firmante3.firma.nombreFirmante}</p>
+                    <p className="text-[10px] text-slate-500">{firmante3.firma.cargoFirmante}</p>
+                    <p className="text-[10px] text-slate-400">
+                      Fecha: {new Date(firmante3.firma.fechaFirma).toLocaleString('es-CO')}
+                    </p>
+                    {firmante3.firma.certificadoId && (
+                      <p className="text-[9px] font-mono text-blue-700">
+                        Certificado: {firmante3.firma.certificadoId}
+                      </p>
+                    )}
+                    {firmante3.firma.comentarios && (
+                      <p className="text-[10px] italic text-slate-600 bg-slate-50 p-1.5 rounded">
+                        "{firmante3.firma.comentarios}"
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+                    <p className="italic">{firmante3?.descripcion || 'Revisión y firma de control técnico del Analista de Viáticos.'}</p>
+                    {!todasFirmadas && puedeFirmar && esAnalista && (
+                      <button
+                        type="button"
+                        onClick={() => setFirmanteSeleccionado('ANALISTA')}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                          firmanteSeleccionado === 'ANALISTA'
+                            ? 'bg-[#003DA5] text-white shadow-xs'
+                            : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                        }`}
+                      >
+                        Firmar como Analista de Viáticos
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Panel de Éxito cuando ambas firmas están listas */}
+            {/* Panel de Éxito cuando todas las firmas están listas */}
             {todasFirmadas && (
               <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl text-emerald-900 space-y-2">
                 <div className="flex items-center gap-2 font-black text-sm">
@@ -1103,7 +1241,9 @@ export default function ModalFirmasAprobacion({
                       <span className="text-[#003DA5]">
                         {firmanteSeleccionado === 'JEFE_DEPENDENCIA'
                           ? firmante1?.titulo || 'Jefe de Dependencia / Supervisor'
-                          : firmante2?.titulo || 'Gerente de Proyecto'}
+                          : firmanteSeleccionado === 'GERENTE_PROYECTO'
+                          ? firmante2?.titulo || 'Gerente de Proyecto'
+                          : firmante3?.titulo || 'Analista de Viáticos'}
                       </span>
                     </h4>
                   </div>
@@ -1289,12 +1429,16 @@ export default function ModalFirmasAprobacion({
                     </button>
                     <button
                       type="button"
-                      disabled={procesandoFirma}
-                      onClick={() => void handleFirmar()}
+                      disabled={procesandoFirma || solicitandoOtp}
+                      onClick={() => void handleIniciarFirmaOtp()}
                       className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black inline-flex items-center gap-2 transition-colors disabled:opacity-50 shadow-md shadow-emerald-600/20"
                     >
-                      <BadgeCheck className="w-4 h-4" />
-                      {procesandoFirma ? 'Firmando y validando…' : 'Firmar y Registrar Aprobación'}
+                      <ShieldCheck className="w-4 h-4" />
+                      {solicitandoOtp
+                        ? 'Enviando OTP…'
+                        : procesandoFirma
+                        ? 'Firmando y validando…'
+                        : 'Firmar con Validación OTP'}
                     </button>
                   </div>
                 </div>
@@ -1377,6 +1521,42 @@ export default function ModalFirmasAprobacion({
           </>
         )}
       </div>
+
+      {/* Modal Institucional de Firma Digital con Validación OTP */}
+      {modalFirmaDigitalAbierta && (
+        <FirmaDigitalViaticosModal
+          isOpen={modalFirmaDigitalAbierta}
+          solicitudId={solicitudId}
+          consecutivo={consecutivoUnico || estadoFirmas?.consecutivoUnico || codigo || '023'}
+          comisionadoNombre={nombreComisionadoCompleto}
+          destino={solicitudDetalle?.destino || solicitudDetalle?.lugarComision || ''}
+          fechas={
+            solicitudDetalle?.fechaInicio && solicitudDetalle?.fechaFin
+              ? `${solicitudDetalle.fechaInicio} al ${solicitudDetalle.fechaFin}`
+              : ''
+          }
+          firmanteNombre={nombreFirmante.trim()}
+          firmanteCargo={cargoFirmante.trim()}
+          etapaLabel={
+            firmanteSeleccionado === 'JEFE_DEPENDENCIA'
+              ? 'Aprobación Jefe de Dependencia / Supervisor'
+              : firmanteSeleccionado === 'GERENTE_PROYECTO'
+              ? 'Aprobación Gerente de Proyecto / Convenio'
+              : 'Revisión y Control Analista de Viáticos'
+          }
+          correoDestino={otpData?.emailEnviadoA}
+          devCode={otpData?.devCode}
+          onVerifyCodigo={async (codigoOtp: string) => {
+            await viaticosService.verificarOtpFirma(solicitudId, {
+              tipoFirma: firmanteSeleccionado,
+              otp: codigoOtp,
+              consume: false,
+            });
+          }}
+          onFirmaCompleta={handleFirmaDigitalCompleta}
+          onCancelar={() => setModalFirmaDigitalAbierta(false)}
+        />
+      )}
     </div>
   );
 }

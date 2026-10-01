@@ -421,7 +421,6 @@ function crearRutaVacia(
     diasRuta: 1,
     horarioEstimadoMilitar: '08:00',
     horaEstimadaSalida: '08:00',
-    horaEstimadaLlegada: '',
     tipoTransporte: 'TERRESTRE',
     valorTransporte: 0,
     montoTransporteTerrestre: 0,
@@ -547,15 +546,7 @@ function RutaForm({
   const diasCalculados = calcularDiasRuta(ruta.fechaSalida, ruta.fechaLlegada);
   const horarioValido = esHorarioMilitarValido(ruta.horarioEstimadoMilitar);
 
-  const opcionesSalida = useMemo(
-    () => generarOpcionesHorarioMilitar(ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar),
-    [ruta.horaEstimadaSalida, ruta.horarioEstimadoMilitar],
-  );
 
-  const opcionesLlegada = useMemo(
-    () => generarOpcionesHorarioMilitar(ruta.horaEstimadaLlegada),
-    [ruta.horaEstimadaLlegada],
-  );
 
   const validate = (): ValidationErrors => {
     const newErrors: ValidationErrors = {};
@@ -1371,7 +1362,6 @@ export default function ItinerarioBuilder({
       diasRuta: 1,
       horarioEstimadoMilitar: '14:00',
       horaEstimadaSalida: '14:00',
-      horaEstimadaLlegada: '16:00',
       tipoTransporte: ultimoTramo.tipoTransporte || 'TERRESTRE',
       valorTransporte: ultimoTramo.valorTransporte || 0,
       montoTransporteTerrestre: ultimoTramo.montoTransporteTerrestre || 0,

@@ -59,6 +59,7 @@ import LiquidacionPanel from './LiquidacionPanel';
 import TicketBudgetWidget from './TicketBudgetWidget';
 import ConsolidacionExpediente from './ConsolidacionExpediente';
 import ItinerarioBuilder from './ItinerarioBuilder';
+import FirmaDigitalViaticosModal, { FirmaDigitalData } from './FirmaDigitalViaticosModal';
 import { useFestivos } from '../hooks/useFestivos';
 import {
   AYUDA_OBJETO_SIIF,
@@ -220,6 +221,14 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     cerrarTodosVisores,
   } = useVisorDocumentos();
   const [finalizando, setFinalizando] = useState(false);
+  // Firma Digital OTP Enlace (estándar institucional ESAP)
+  const [modalFirmaEnlaceAbierta, setModalFirmaEnlaceAbierta] = useState(false);
+  const [solicitandoOtpEnlace, setSolicitandoOtpEnlace] = useState(false);
+  const [otpDataEnlace, setOtpDataEnlace] = useState<{
+    verificationId?: string;
+    emailEnviadoA?: string;
+    devCode?: string;
+  } | null>(null);
   const [categoriaInvestigador, setCategoriaInvestigador] = useState<string>('ASOCIADO');
   const [asignacionesBasicasText, setAsignacionesBasicasText] = useState('');
   const [asignacionesBasicas, setAsignacionesBasicas] = useState<number[]>([]);
@@ -1435,16 +1444,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 guardada,
                 origenDepartamentoId,
                 destinoDepartamentoId,
+                horaEstimadaLlegada,
                 ...cleanRuta
               } = r;
-              const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
-              const horaLlegada = r.horaEstimadaLlegada || '';
+              const horaViaje = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
               return {
                 ...cleanRuta,
                 tarifaTerminalAereo: r.tarifaTerminalAereo,
-                horaEstimadaSalida: horaSalida,
-                horarioEstimadoMilitar: horaSalida || r.horarioEstimadoMilitar,
-                horaEstimadaLlegada: horaLlegada,
+                horaEstimadaSalida: horaViaje,
+                horarioEstimadoMilitar: horaViaje,
               };
             }),
           },
@@ -1591,6 +1599,21 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     }
   };
 
+  const obtenerNombreEnlace = () => {
+    const user = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
+    const resolvedUser = user && typeof (user as any).then !== 'function' ? user : null;
+    const nombre = [
+      resolvedUser?.primerNombre,
+      resolvedUser?.segundoNombre,
+      resolvedUser?.primerApellido,
+      resolvedUser?.segundoApellido,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    return nombre || resolvedUser?.nombre || usuarioActual?.username || 'Enlace de Dependencia';
+  };
+
   const finalizarSolicitud = async () => {
     const valSecuencia = validarSecuenciaItinerario(form.itinerario || []);
     if (!valSecuencia.valida) {
@@ -1617,23 +1640,61 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       );
       return;
     }
-    setFinalizando(true);
+
+    // Solicitar OTP para firma digital de elaboración del Enlace de Dependencia
+    setSolicitandoOtpEnlace(true);
     setErrorValidacion(null);
     try {
-      // Iniciar formalmente el flujo de firmas de aprobación previo a la radicación (estado PENDIENTE_FIRMAS)
-      // El Enlace no firma: solo remite la solicitud a revisión y firma de los jefes
-      const conFirmas = await viaticosService.solicitarFirmasAprobacion(solicitudBorrador.id);
-      onSolicitudCreada(conFirmas);
-      onCerrar();
+      const resp = await viaticosService.solicitarOtpFirma(solicitudBorrador.id, {
+        tipoFirma: 'ENLACE_ELABORO',
+      });
+      setOtpDataEnlace({
+        verificationId: resp.verificationId,
+        emailEnviadoA: resp.emailEnviadoA || resp.email,
+        devCode: resp.devCode,
+      });
+      setModalFirmaEnlaceAbierta(true);
     } catch (e: any) {
-      console.error('Error enviando a firmas de aprobación:', e);
+      console.error('Error solicitando OTP de elaboración:', e);
       const mensaje =
         e?.response?.data?.message ||
         e?.message ||
-        'No fue posible iniciar el flujo de firmas de aprobación. Verifique e intente nuevamente.';
+        'No fue posible solicitar el código OTP de verificación. Verifique e intente nuevamente.';
       setErrorValidacion(
         Array.isArray(mensaje) ? mensaje.join(' ') : mensaje,
       );
+    } finally {
+      setSolicitandoOtpEnlace(false);
+    }
+  };
+
+  // Manejo de firma digital completada por el Enlace (OTP validado + hash generado)
+  const handleFirmaEnlaceCompleta = async (firma: FirmaDigitalData) => {
+    if (!solicitudBorrador) return false;
+    setFinalizando(true);
+    setErrorValidacion(null);
+    try {
+      const conFirmas = await viaticosService.solicitarFirmasAprobacion(solicitudBorrador.id, {
+        otp: firma.codigoOtp,
+        verificationId: otpDataEnlace?.verificationId,
+        certificadoId: firma.certificado_id,
+        hashSha256: firma.hash,
+        nombreFirmante: firma.firmante,
+        cargoFirmante: firma.cargo,
+      });
+      onSolicitudCreada(conFirmas);
+      onCerrar();
+      return true;
+    } catch (e: any) {
+      console.error('Error remitiendo con firma digital de elaboración:', e);
+      const mensaje =
+        e?.response?.data?.message ||
+        e?.message ||
+        'No fue posible registrar la firma digital de elaboración de la solicitud.';
+      setErrorValidacion(
+        Array.isArray(mensaje) ? mensaje.join(' ') : mensaje,
+      );
+      throw e;
     } finally {
       setFinalizando(false);
     }
@@ -2067,7 +2128,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         <div className="flex items-center gap-2">
                           <Building2 className="w-4 h-4 text-[#003DA5]" />
                           <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                            Asignación Organizacional (Dependencia y Cargo)
+                            Información Organizacional (Dependencia y Cargo)
                           </span>
                         </div>
                         {infoComisionadoCompleta.depCodigo && (
@@ -2082,27 +2143,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                           <label className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
                             Dependencia Asignada <span className="text-red-500">*</span>
                           </label>
-                          <SearchableSelect
-                            id="dependencia-asignada-select"
-                            options={dependencias.map((dep) => ({
-                              value: String(dep.idDependencia),
-                              label: dep.nomDependencia,
-                              sublabel: dep.codDependencia ? `Cód. ${dep.codDependencia}` : undefined,
-                            }))}
-                            value={idDependenciaActual != null ? String(idDependenciaActual) : ''}
-                            onChange={(val) => {
-                              cambiarDependencia(val ? Number(val) : null);
-                            }}
-                            placeholder={
-                              cargandoDependencias
-                                ? 'Cargando dependencias...'
-                                : 'Buscar o seleccionar dependencia...'
-                            }
-                            disabled={cargandoDependencias}
-                            loading={cargandoDependencias}
-                            allowClear={puedeElegirDependencia() || esSuperAdmin || esSuperAdminViaticos}
-                            emptyText="No se encontraron dependencias registradas"
-                          />
+                          {infoComisionadoCompleta.depNombre && (
+                            <p className="text-[11px] text-slate-500 mt-1">
+                              {infoComisionadoCompleta.depNombre}
+                            </p>
+                          )}
                           <p className="text-[11px] text-slate-500 mt-1">
                             Los cargos disponibles se actualizarán según la dependencia seleccionada.
                           </p>
@@ -3635,7 +3680,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             <span className="text-slate-600">{ruta.fechaSalida} al {ruta.fechaLlegada}</span>
                             <span className="text-slate-400">·</span>
                             <span className="inline-flex items-center gap-0.5 text-slate-700 font-semibold">
-                              <Clock className="w-2.5 h-2.5 text-blue-600" /> Horario: {ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '—'} → {ruta.horaEstimadaLlegada || '—'}
+                              <Clock className="w-2.5 h-2.5 text-blue-600" /> Hora del viaje: {ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '—'}
                             </span>
                             <span className="text-slate-400">·</span>
                             <span className="inline-flex items-center px-1 py-0 rounded text-[8px] font-bold bg-slate-200 text-slate-600">
@@ -3717,17 +3762,52 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 </button>
                 <button
                   type="button"
-                  disabled={!checklistCompleto() || finalizando}
+                  disabled={!checklistCompleto() || finalizando || solicitandoOtpEnlace}
                   onClick={() => void finalizarSolicitud()}
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 transition-colors disabled:opacity-50"
                 >
-                  <Send className="w-4 h-4" /> {finalizando ? 'Consolidando...' : 'Consolidar y Pasar a Firmas'}
+                  <ShieldCheck className="w-4 h-4" />
+                  {solicitandoOtpEnlace
+                    ? 'Enviando OTP...'
+                    : finalizando
+                    ? 'Consolidando...'
+                    : 'Firmar y Pasar a Firmas'}
                 </button>
               </div>
             </div>
           )}
         </form>
       </div>
+
+      {/* Modal Institucional de Firma Digital OTP para Enlace de Dependencia */}
+      {modalFirmaEnlaceAbierta && solicitudBorrador && (
+        <FirmaDigitalViaticosModal
+          isOpen={modalFirmaEnlaceAbierta}
+          solicitudId={solicitudBorrador.id}
+          consecutivo={solicitudBorrador.codigoSolicitud || 'Borrador'}
+          comisionadoNombre={formatearNombreComisionado(comisionado)}
+          destino={form.destinoCiudad || ''}
+          fechas={
+            obtenerFechasItinerario().fechaInicio && obtenerFechasItinerario().fechaFin
+              ? `${obtenerFechasItinerario().fechaInicio} al ${obtenerFechasItinerario().fechaFin}`
+              : ''
+          }
+          firmanteNombre={obtenerNombreEnlace()}
+          firmanteCargo="Enlace de Dependencia"
+          etapaLabel="Firma de Elaboración y Remisión a Firmas"
+          correoDestino={otpDataEnlace?.emailEnviadoA}
+          devCode={otpDataEnlace?.devCode}
+          onVerifyCodigo={async (codigoOtp: string) => {
+            await viaticosService.verificarOtpFirma(solicitudBorrador.id, {
+              tipoFirma: 'ENLACE_ELABORO',
+              otp: codigoOtp,
+              consume: false,
+            });
+          }}
+          onFirmaCompleta={handleFirmaEnlaceCompleta}
+          onCancelar={() => setModalFirmaEnlaceAbierta(false)}
+        />
+      )}
 
       {habeasPendiente && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">

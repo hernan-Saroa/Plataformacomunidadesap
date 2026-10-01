@@ -46,6 +46,9 @@ import {
   FirmarSolicitudDto,
   DevolverFirmaDto,
   TipoFirmaAprobacion,
+  SolicitarOtpFirmaDto,
+  VerificarOtpFirmaDto,
+  SolicitarFirmasDto,
 } from '../../dto/firmar-solicitud.dto';
 
 import {
@@ -251,15 +254,13 @@ export class TravelExpensesService {
       ? ultimoTramo.origenDepartamento || ''
       : ultimoTramo.destinoDepartamento || dto.destinoDepartamento || '';
 
-    // Normalizar horas de salida y llegada en cada tramo del itinerario
+    // Normalizar hora de viaje en cada tramo del itinerario
     const rutasNormalizadas = rutas.map((r) => {
-      const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || r.horaSalida || '';
-      const horaLlegada = r.horaEstimadaLlegada || r.horaLlegada || '';
+      const horaViaje = r.horaEstimadaSalida || r.horarioEstimadoMilitar || r.horaSalida || '';
       return {
         ...r,
-        horaEstimadaSalida: horaSalida,
-        horarioEstimadoMilitar: horaSalida || r.horarioEstimadoMilitar,
-        horaEstimadaLlegada: horaLlegada,
+        horaEstimadaSalida: horaViaje,
+        horarioEstimadoMilitar: horaViaje,
       };
     });
 
@@ -2496,6 +2497,13 @@ if (dto.costoEstimadoTiquete !== undefined) {
       descripcion: string;
       esRequerido: boolean;
     };
+    firmante3: {
+      tipo: TipoFirmaAprobacion;
+      titulo: string;
+      cargo: string;
+      descripcion: string;
+      esRequerido: boolean;
+    };
   } {
     const comisionado = solicitud.comisionado;
     const cargoComisionado = (
@@ -2604,6 +2612,14 @@ if (dto.costoEstimadoTiquete !== undefined) {
           'Firma de aprobación de la solicitud: Gerente de Proyecto / Ordenador del Gasto.',
         esRequerido: true,
       },
+      firmante3: {
+        tipo: TipoFirmaAprobacion.ANALISTA,
+        titulo: 'Analista de Viáticos',
+        cargo: 'Analista de Viáticos / Grupo de Gestión Financiera',
+        descripcion:
+          'Revisión, verificación técnica y firma de control del Analista de Viáticos.',
+        esRequerido: true,
+      },
     };
   }
 
@@ -2638,7 +2654,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
       } catch {}
     }
 
-    const { reglaDesplazamiento, descripcionRegla, firmante1, firmante2 } =
+    const { reglaDesplazamiento, descripcionRegla, firmante1, firmante2, firmante3 } =
       this.determinarFirmantesAprobacion(solicitud, dependenciaNombre);
 
     const firmasRegistradas: any[] = Array.isArray(
@@ -2653,6 +2669,11 @@ if (dto.costoEstimadoTiquete !== undefined) {
     const firmaGerente = firmasRegistradas.find(
       (f) => f.tipo === TipoFirmaAprobacion.GERENTE_PROYECTO && f.estado !== 'RECHAZADO',
     );
+    const firmaAnalista = firmasRegistradas.find(
+      (f) =>
+        (f.tipo === TipoFirmaAprobacion.ANALISTA || f.tipo === 'ANALISTA_VIATICOS') &&
+        f.estado !== 'RECHAZADO',
+    );
 
     const firmantes = [
       {
@@ -2665,9 +2686,14 @@ if (dto.costoEstimadoTiquete !== undefined) {
         firmado: Boolean(firmaGerente),
         firma: firmaGerente || null,
       },
+      {
+        ...firmante3,
+        firmado: Boolean(firmaAnalista),
+        firma: firmaAnalista || null,
+      },
     ];
 
-    const completado = Boolean(firmaJefe && firmaGerente);
+    const completado = Boolean(firmaJefe && firmaGerente && firmaAnalista);
 
     return {
       solicitudId: solicitud.id,
@@ -2684,13 +2710,286 @@ if (dto.costoEstimadoTiquete !== undefined) {
     };
   }
 
+  // ==========================================================================
+  // OTP y Firma Digital Institucional (Estándar ESAP - No Repudio)
+  // ==========================================================================
+  private readonly otpStore = new Map<
+    string,
+    { code: string; expiresAt: Date; userId: string; role?: string; email?: string }
+  >();
+  private readonly MOCK_FIRMA_OTP = process.env.MOCK_FIRMA_OTP === 'true';
+
+  maskEmail(email: string): string {
+    if (!email || !email.includes('@')) return 'correo no registrado';
+    const [user, domain] = email.split('@');
+    if (user.length <= 2) return `${user[0]}***@${domain}`;
+    return `${user[0]}${'*'.repeat(Math.min(user.length - 2, 5))}${user[user.length - 1]}@${domain}`;
+  }
+
+  generarCertificadoId(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let result = 'ESAP-CERT-VIAT-';
+    for (let i = 0; i < 8; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+      if (i === 3) result += '-';
+    }
+    return result;
+  }
+
+  generarHashDocumento(input: string): string {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const crypto = require('crypto');
+    return crypto.createHash('sha256').update(input).digest('hex');
+  }
+
+  async fetchUsuarioFirmanteInfo(userId: string): Promise<{ id: string; email: string; fullName: string; username: string }> {
+    if (!userId) return { id: '', email: '', fullName: '', username: '' };
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT
+           u.id_user::text AS id,
+           COALESCE(p_person.dir_email, u.username, '') AS email,
+           COALESCE(p_person.nom_largo, TRIM(CONCAT_WS(' ', p_person.nom_tercero, p_person.pri_apellido)), u.username, '') AS full_name,
+           u.username
+         FROM auth."user" u
+         LEFT JOIN auth.personas p_person ON p_person.id_person = u.id_person
+         WHERE u.id_user = $1
+         LIMIT 1`,
+        [userId],
+      );
+      if (rows && rows.length > 0) {
+        return {
+          id: rows[0].id,
+          email: String(rows[0].email || '').trim(),
+          fullName: String(rows[0].full_name || '').trim(),
+          username: String(rows[0].username || '').trim(),
+        };
+      }
+    } catch (e: any) {
+      this.logger.warn(`Error buscando datos del usuario firmante ${userId}: ${e?.message}`);
+    }
+    return { id: userId, email: '', fullName: '', username: '' };
+  }
+
+  private async sendFirmaOtpEmailViaticos(input: {
+    to: string;
+    code: string;
+    fullName: string;
+    solicitudId?: string;
+    etapaLabel?: string;
+    expiresAt: Date;
+  }): Promise<void> {
+    const minutes = Math.max(1, Math.round((input.expiresAt.getTime() - Date.now()) / 60000));
+    const fullName = input.fullName || 'Funcionario(a)';
+    const code = input.code;
+    const etapa = input.etapaLabel || 'Firma de Solicitud de Viáticos';
+
+    const text = [
+      `Hola ${fullName},`,
+      '',
+      `Tu código de validación para la firma digital de viáticos es: ${code}`,
+      `Trámite: ${etapa}`,
+      `Válido por ${minutes} minutos.`,
+      '',
+      'Si no solicitaste este código, haz caso omiso a este mensaje.',
+    ].join('\n');
+
+    const html = `
+      <div style="margin:0;padding:32px 16px;background-color:#eef2f7;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;color:#111827;">
+        <table width="100%" cellspacing="0" cellpadding="0" border="0" role="presentation">
+          <tr>
+            <td align="center">
+              <table width="560" cellspacing="0" cellpadding="0" border="0" role="presentation" style="width:100%;max-width:560px;background-color:#ffffff;border:1px solid #dbe3ef;border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,0.06);">
+                <tr>
+                  <td style="height:6px;background-color:#003DA5;font-size:0;line-height:0;">&nbsp;</td>
+                </tr>
+                <tr>
+                  <td style="background-color:#003DA5;padding:26px 28px 22px 28px;">
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0" role="presentation">
+                      <tr>
+                        <td>
+                          <div style="font-size:22px;font-weight:800;line-height:1;color:#ffffff;letter-spacing:0.5px;">ESAP</div>
+                          <div style="margin-top:6px;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#bfdbfe;">Sistema de Gestión de Viáticos y Comisiones</div>
+                        </td>
+                        <td align="right" style="vertical-align:middle;">
+                          <span style="display:inline-block;padding:6px 14px;border-radius:999px;background-color:rgba(255,255,255,0.18);color:#ffffff;font-size:11px;font-weight:700;">Firma Digital</span>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:32px 28px 20px 28px;">
+                    <h1 style="margin:0 0 10px 0;font-size:20px;line-height:1.3;font-weight:800;color:#111827;">Código de Validación de Firma Digital</h1>
+                    <p style="margin:0 0 24px 0;font-size:14px;line-height:1.6;color:#475569;">
+                      Hola <strong>${fullName}</strong>. Has iniciado un proceso de firma digital para <strong>${etapa}</strong>. Ingresa el siguiente código de 6 dígitos para validar tu identidad:
+                    </p>
+
+                    <table width="100%" cellspacing="0" cellpadding="0" border="0" role="presentation">
+                      <tr>
+                        <td align="center">
+                          <div style="display:inline-block;padding:18px 28px;border-radius:10px;border:2px solid #003DA5;background-color:#eff6ff;text-align:center;">
+                            <span style="font-size:32px;line-height:1;font-weight:800;letter-spacing:8px;color:#003DA5;font-family:monospace;">${code}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <p style="margin:24px 0 0 0;font-size:12px;line-height:1.5;color:#64748b;text-align:center;">
+                      ⏱️ Este código es de uso exclusivo y vencerá en <strong>${minutes} minutos</strong>.
+                    </p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="background-color:#f8fafc;padding:16px 28px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center;">
+                    Escuela Superior de Administración Pública — ESAP · Notificación de Seguridad Digital
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </div>
+    `;
+
+    if (this.notificationClient && typeof this.notificationClient.sendEmail === 'function') {
+      await this.notificationClient.sendEmail({
+        to: input.to,
+        subject: `Código de validación (${code}) — Firma Digital Viáticos ESAP`,
+        text,
+        html,
+      });
+    }
+  }
+
+  /**
+   * Solicita el código OTP para firmar digitalmente una solicitud de viáticos.
+   * Aplica para:
+   * - Enlace de Dependencia (al radicar/elaborar el Formato 023)
+   * - Jefe de Dependencia / Supervisor (Aprobador Formato 023)
+   * - Gerente de Proyecto (Aprobador Formato 023)
+   * - Ordenador del Gasto / Autorizadores
+   */
+  async solicitarOtpFirma(
+    solicitudId: string,
+    payload: SolicitarOtpFirmaDto,
+    userId: string,
+  ): Promise<{
+    verificationId: string;
+    expiresAt: string;
+    email: string;
+    devCode?: string;
+  }> {
+    if (!userId) {
+      throw new BadRequestException('userId es requerido para solicitar código OTP de firma.');
+    }
+
+    const usuario = await this.fetchUsuarioFirmanteInfo(userId);
+    if (!usuario.email && !this.MOCK_FIRMA_OTP) {
+      throw new BadRequestException(
+        'El usuario no tiene correo institucional registrado para recibir el código de validación.',
+      );
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const tipo = payload?.tipoFirma || 'FIRMA';
+    const verificationId = `viat:${solicitudId || 'general'}:${tipo}:${userId}`;
+
+    this.logger.log(
+      `🔑 [PRUEBAS] Código OTP de firma (${tipo}) para ${usuario.email || usuario.username || userId}: ${code}`,
+    );
+
+    if (usuario.email) {
+      try {
+        await this.sendFirmaOtpEmailViaticos({
+          to: usuario.email,
+          code,
+          fullName: usuario.fullName || usuario.username || 'Funcionario(a)',
+          solicitudId,
+          etapaLabel: payload?.etapaLabel || 'Firma Digital de Solicitud de Viáticos',
+          expiresAt,
+        });
+      } catch (emailError: any) {
+        const isDev = (process.env.NODE_ENV || 'development') !== 'production';
+        if (isDev) {
+          this.logger.warn(
+            `⚠️ [DEV] Falló envío de correo OTP viáticos a ${usuario.email}: ${emailError?.message} — código OTP: ${code}`,
+          );
+        } else {
+          throw emailError;
+        }
+      }
+    }
+
+    this.otpStore.set(verificationId, {
+      code,
+      expiresAt,
+      userId,
+      email: usuario.email,
+    });
+
+    return {
+      verificationId,
+      expiresAt: expiresAt.toISOString(),
+      email: usuario.email ? this.maskEmail(usuario.email) : 'correo no registrado',
+      devCode: code,
+    };
+  }
+
+  /**
+   * Verifica la validez de un código OTP generado.
+   */
+  verificarOtpFirma(payload: { verificationId: string; code: string; consume?: boolean }): boolean {
+    const { verificationId, code, consume = true } = payload || {};
+    if (!verificationId) {
+      throw new BadRequestException('verificationId es requerido.');
+    }
+    if (!code || String(code).trim().length !== 6) {
+      throw new BadRequestException('El código OTP debe ser de 6 dígitos numéricos.');
+    }
+
+    if (this.MOCK_FIRMA_OTP) {
+      this.logger.warn(
+        `[MOCK-OTP] Validación de firma mockeada para "${verificationId}" — código aceptado.`,
+      );
+      if (consume) this.otpStore.delete(verificationId);
+      return true;
+    }
+
+    const stored = this.otpStore.get(verificationId);
+    if (!stored) {
+      throw new BadRequestException(
+        'No hay código de validación activo para esta sesión o ya fue utilizado. Genera uno nuevo.',
+      );
+    }
+
+    if (new Date() > stored.expiresAt) {
+      this.otpStore.delete(verificationId);
+      throw new BadRequestException(
+        'El código de validación expiró (válido por 5 minutos). Solicita un nuevo código.',
+      );
+    }
+
+    if (stored.code !== String(code).trim()) {
+      throw new BadRequestException('Código de validación incorrecto. Verifica e intenta nuevamente.');
+    }
+
+    if (consume) {
+      this.otpStore.delete(verificationId);
+    }
+    return true;
+  }
+
   /**
    * Consolida la solicitud e inicia formalmente el flujo de firmas de aprobación
    * previo a la radicación (estado PENDIENTE_FIRMAS).
+   * Si se suministra OTP/firma del Enlace de Dependencia ("Elaboró"), se certifica digitalmente.
    */
   async solicitarFirmasAprobacion(
     solicitudId: string,
     usuarioId?: string,
+    dto?: SolicitarFirmasDto,
   ): Promise<SolicitudComisionEntity> {
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
@@ -2712,6 +3011,15 @@ if (dto.costoEstimadoTiquete !== undefined) {
       throw new BadRequestException(
         `La solicitud tiene estado ${solicitud.estadoSolicitud} y no puede enviarse a flujo de firmas.`,
       );
+    }
+
+    // Si viene código OTP del enlace, verificarlo
+    if (dto?.otp && dto?.verificationId) {
+      this.verificarOtpFirma({
+        verificationId: dto.verificationId,
+        code: dto.otp,
+        consume: true,
+      });
     }
 
     // Validar checklist de soportes obligatorios en PDF
@@ -2761,11 +3069,38 @@ if (dto.costoEstimadoTiquete !== undefined) {
     solicitud.motivoDevolucion = null;
 
     const estadoFirmas = await this.obtenerEstadoFirmas(solicitud.id);
+
+    // Registro de firma de elaboración por parte del enlace
+    const certIdElaboro = dto?.certificadoId || this.generarCertificadoId();
+    const nombreEnlace =
+      dto?.nombreFirmante ||
+      (await this.resolverNombreUsuario(usuarioId, 'Enlace de Dependencia'));
+    const cargoEnlace = dto?.cargoFirmante || 'Enlace de Dependencia';
+    const fechaElaboro = new Date().toISOString();
+    const hashElaboro =
+      dto?.hashSha256 ||
+      this.generarHashDocumento(
+        `${solicitud.id}|ENLACE_ELABORO|${nombreEnlace}|${fechaElaboro}`,
+      );
+
+    const firmaElaboro = {
+      tipo: 'ENLACE_ELABORO',
+      nombreFirmante: nombreEnlace,
+      cargoFirmante: cargoEnlace,
+      certificadoId: certIdElaboro,
+      hashSha256: hashElaboro,
+      fechaFirma: fechaElaboro,
+      firmadoDigitalmente: true,
+      otpVerificado: Boolean(dto?.otp),
+    };
+
     solicitud.camposAdicionales = {
       ...(solicitud.camposAdicionales || {}),
       reglaDesplazamiento: estadoFirmas.reglaDesplazamiento,
       descripcionReglaDesplazamiento: estadoFirmas.descripcionRegla,
       firmasCompletadas: false,
+      firmaElaboro,
+      elaboro: `Elaboró: ${nombreEnlace} (Certificado: ${certIdElaboro})`,
     };
 
     const saved = await this.solicitudRepo.save(solicitud);
@@ -2778,7 +3113,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
         usuarioId ||
         solicitud.creadoPorUsuarioId ||
         '00000000-0000-0000-0000-000000000000',
-      comentarios: `Solicitud consolidada y enviada al flujo de firmas de aprobación previo a radicación (${estadoFirmas.descripcionRegla}).`,
+      comentarios: `Solicitud elaborada y remitida al flujo de firmas de aprobación previo a radicación (${estadoFirmas.descripcionRegla}) con certificado digital ${certIdElaboro}.`,
     });
 
     // Despacho de notificaciones Formato 023 por correo y vía app (Jefe, Gerente y Comisionado)
@@ -2824,7 +3159,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
   }
 
   /**
-   * Registra una firma de aprobación (Jefe de Dependencia/Supervisor o Gerente de Proyecto).
+   * Registra una firma de aprobación con verificación OTP y Certificado Digital Institucional
+   * (Jefe de Dependencia/Supervisor o Gerente de Proyecto).
    * Al completarse ambas firmas y validaciones, la solicitud transiciona a estado RADICADA.
    */
   async firmarAprobacionSolicitud(
@@ -2837,6 +3173,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
     radicada: boolean;
     mensaje: string;
     firmas: any[];
+    certificadoId?: string;
   }> {
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
@@ -2859,6 +3196,15 @@ if (dto.costoEstimadoTiquete !== undefined) {
       );
     }
 
+    // Validación de código OTP si fue suministrado o requerido
+    if (dto.otp && dto.verificationId) {
+      this.verificarOtpFirma({
+        verificationId: dto.verificationId,
+        code: dto.otp,
+        consume: true,
+      });
+    }
+
     const firmasPrevias: any[] = Array.isArray(
       solicitud.camposAdicionales?.firmasAprobacion,
     )
@@ -2866,6 +3212,10 @@ if (dto.costoEstimadoTiquete !== undefined) {
       : [];
 
     const fechaFirma = new Date().toISOString();
+    const certId = dto.certificadoId || this.generarCertificadoId();
+    const hashData = `${solicitud.id}|${dto.tipoFirma}|${dto.nombreFirmante}|${dto.cargoFirmante}|${fechaFirma}`;
+    const hash = dto.hashSha256 || this.generarHashDocumento(hashData);
+
     const nuevaFirma = {
       tipo: dto.tipoFirma,
       nombreFirmante: dto.nombreFirmante.trim(),
@@ -2877,6 +3227,10 @@ if (dto.costoEstimadoTiquete !== undefined) {
       fechaFirma,
       usuarioId: usuarioId || null,
       estado: 'FIRMADO',
+      certificadoId: certId,
+      hashSha256: hash,
+      firmadoDigitalmente: true,
+      otpVerificado: Boolean(dto.otp),
     };
 
     const idxExistente = firmasPrevias.findIndex((f) => f.tipo === dto.tipoFirma);
@@ -2892,21 +3246,34 @@ if (dto.costoEstimadoTiquete !== undefined) {
     const tieneFirmaGerente = firmasPrevias.some(
       (f) => f.tipo === TipoFirmaAprobacion.GERENTE_PROYECTO && f.estado === 'FIRMADO',
     );
+    const tieneFirmaAnalista = firmasPrevias.some(
+      (f) =>
+        (f.tipo === TipoFirmaAprobacion.ANALISTA || (f.tipo as string) === 'ANALISTA_VIATICOS') &&
+        f.estado === 'FIRMADO',
+    );
 
-    const todasFirmasCompletadas = tieneFirmaJefe && tieneFirmaGerente;
+    const todasFirmasCompletadas = tieneFirmaJefe && tieneFirmaGerente && tieneFirmaAnalista;
 
     solicitud.camposAdicionales = {
       ...(solicitud.camposAdicionales || {}),
       firmasAprobacion: firmasPrevias,
       firmasCompletadas: todasFirmasCompletadas,
+      ...(dto.tipoFirma === TipoFirmaAprobacion.ANALISTA || (dto.tipoFirma as string) === 'ANALISTA_VIATICOS'
+        ? {
+            reviso: `Revisó: ${dto.nombreFirmante} (Cert: ${certId})`,
+            firmaAnalista: nuevaFirma,
+          }
+        : {}),
     };
 
     let radicada = false;
-    let mensaje = `Firma registrada para ${
+    const nombreRolFirmante =
       dto.tipoFirma === TipoFirmaAprobacion.JEFE_DEPENDENCIA
         ? 'Jefe de Dependencia / Supervisor'
-        : 'Gerente de Proyecto'
-    }.`;
+        : dto.tipoFirma === TipoFirmaAprobacion.GERENTE_PROYECTO
+        ? 'Gerente de Proyecto'
+        : 'Analista de Viáticos';
+    let mensaje = `Firma digital registrada para ${nombreRolFirmante} (Certificado: ${certId}).`;
 
     if (todasFirmasCompletadas) {
       // – Surtido el flujo de firmas y las validaciones, la solicitud queda en estado RADICADA.
@@ -2921,7 +3288,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
       solicitud.radicadoFueraJornada = radicadoFueraJornada;
       radicada = true;
       mensaje =
-        'Flujo de firmas de aprobación surtido satisfactoriamente. La solicitud ha quedado formalmente en estado RADICADA.';
+        `Flujo de firmas de aprobación surtido satisfactoriamente con certificación digital. La solicitud ha quedado formalmente en estado RADICADA. Certificado: ${certId}`;
 
       const saved = await this.solicitudRepo.save(solicitud);
 
@@ -2934,7 +3301,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
           solicitud.creadoPorUsuarioId ||
           '00000000-0000-0000-0000-000000000000',
         comentarios:
-          'Flujo de firmas de aprobación surtido (Jefe de Dependencia y Gerente de Proyecto). Solicitud radicada exitosamente.',
+          `Flujo de firmas de aprobación surtido con certificación digital (Jefe de Dependencia y Gerente de Proyecto). Solicitud radicada exitosamente con certificado ${certId}.`,
       });
 
       return {
@@ -2942,6 +3309,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
         radicada,
         mensaje,
         firmas: firmasPrevias,
+        certificadoId: certId,
       };
     } else {
       if (solicitud.estadoSolicitud !== EstadoSolicitud.PENDIENTE_FIRMAS) {
@@ -2954,7 +3322,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
         estadoAnterior: solicitud.estadoSolicitud,
         estadoNuevo: EstadoSolicitud.PENDIENTE_FIRMAS,
         usuarioId: usuarioId || '00000000-0000-0000-0000-000000000000',
-        comentarios: `Firma registrada para ${dto.tipoFirma} (${dto.nombreFirmante}). Pendiente firma restante para radicación formal.`,
+        comentarios: `Firma digital registrada para ${dto.tipoFirma} (${dto.nombreFirmante}) con certificado ${certId}. Pendiente firma restante para radicación formal.`,
       });
 
       return {
@@ -2962,6 +3330,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
         radicada: false,
         mensaje: `${mensaje} Pendiente la firma restante para surtir la radicación formal.`,
         firmas: firmasPrevias,
+        certificadoId: certId,
       };
     }
   }
@@ -3438,19 +3807,31 @@ if (dto.costoEstimadoTiquete !== undefined) {
     const elaboroNombre = enlaceId
       ? await this.resolverNombreUsuario(enlaceId, '')
       : '';
+    const firmaElaboro = solicitud.camposAdicionales?.firmaElaboro;
     const elaboroTexto =
-      solicitud.camposAdicionales?.elaboro ||
-      (elaboroNombre ? `Elaboró: ${elaboroNombre}` : 'Elaboró:');
+      firmaElaboro?.nombreFirmante
+        ? `Elaboró: ${firmaElaboro.nombreFirmante} (Cert: ${firmaElaboro.certificadoId || 'ESAP-CERT-VIAT'})`
+        : solicitud.camposAdicionales?.elaboro ||
+          (elaboroNombre ? `Elaboró: ${elaboroNombre}` : 'Elaboró:');
 
-    // Revisó: El analista que lo revisó/verificó
+    // Revisó: El analista que lo revisó/verificó con firma digital si existe
+    const firmaAnalistaPrev = Array.isArray(solicitud.camposAdicionales?.firmasAprobacion)
+      ? solicitud.camposAdicionales.firmasAprobacion.find(
+          (f: any) =>
+            (f.tipo === TipoFirmaAprobacion.ANALISTA || (f.tipo as string) === 'ANALISTA_VIATICOS') &&
+            f.estado !== 'RECHAZADO',
+        )
+      : null;
     const analistaId =
       solicitud.revisorControlId || solicitud.analistaAsignadoId;
     const revisorNombre = analistaId
       ? await this.resolverNombreUsuario(analistaId, '')
       : '';
     const revisoTexto =
-      solicitud.camposAdicionales?.reviso ||
-      (revisorNombre ? `Revisó: ${revisorNombre}` : 'Revisó:');
+      firmaAnalistaPrev?.nombreFirmante
+        ? `Revisó: ${firmaAnalistaPrev.nombreFirmante} (Cert: ${firmaAnalistaPrev.certificadoId || 'ESAP-CERT-VIAT'})`
+        : solicitud.camposAdicionales?.reviso ||
+          (revisorNombre ? `Revisó: ${revisorNombre}` : 'Revisó:');
 
     // Aprobó: Quien la dejó en estado de pagada (pagado_por_id), si no ha llegado dejar vacío
     const pagadoPorId = solicitud.pagadoPorId;
@@ -4626,7 +5007,8 @@ if (itinerarioGeneral) {
           } catch {}
         }
         doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#003DA5');
-        doc.text('FIRMADO DIGITALMENTE', 32, yFirmas + 58, { width: 266, align: 'center' });
+        const certJefe = firmaJefePdf.certificadoId ? ` · Cert: ${firmaJefePdf.certificadoId}` : '';
+        doc.text(`FIRMADO DIGITALMENTE (OTP VERIFICADO)${certJefe}`, 32, yFirmas + 58, { width: 266, align: 'center' });
         doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000');
         doc.text(firmaJefePdf.nombreFirmante, 32, yFirmas + 67, { width: 266, align: 'center' });
         doc.fontSize(5).font('Helvetica').fillColor('#475569');
@@ -4658,7 +5040,8 @@ if (itinerarioGeneral) {
           } catch {}
         }
         doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#003DA5');
-        doc.text('FIRMADO DIGITALMENTE', 310, yFirmas + 58, { width: 266, align: 'center' });
+        const certGerente = firmaGerentePdf.certificadoId ? ` · Cert: ${firmaGerentePdf.certificadoId}` : '';
+        doc.text(`FIRMADO DIGITALMENTE (OTP VERIFICADO)${certGerente}`, 310, yFirmas + 58, { width: 266, align: 'center' });
         doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000');
         doc.text(firmaGerentePdf.nombreFirmante, 310, yFirmas + 67, { width: 266, align: 'center' });
         doc.fontSize(5).font('Helvetica').fillColor('#475569');

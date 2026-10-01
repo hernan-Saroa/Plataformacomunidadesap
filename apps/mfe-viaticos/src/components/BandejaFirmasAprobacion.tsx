@@ -50,7 +50,15 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
   const esGerente = authService.isGerenteProyecto();
   const esSubdir = authService.isSubdireccionGestionCorporativa();
   const esDirNac = authService.isDireccionNacional();
-  const puedeFirmar = esSuperAdmin || esJefe || esGerente || esSubdir || esDirNac || authService.canFirmarAprobacion();
+  const esAnalista = Boolean(authService.isAnalista?.());
+  const puedeFirmar =
+    esSuperAdmin ||
+    esJefe ||
+    esGerente ||
+    esSubdir ||
+    esDirNac ||
+    esAnalista ||
+    authService.canFirmarAprobacion?.();
 
   const cargarSolicitudes = async () => {
     setCargando(true);
@@ -84,10 +92,16 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
         return regla === 'REGULAR';
       }
       if (filtroRegla === 'MIS_PENDIENTES') {
-        // Si el usuario es gerente, filtrar donde falta la firma de gerente
+        // Filtrar pendientes según el rol del usuario
         const firmas = Array.isArray(s.camposAdicionales?.firmasAprobacion)
           ? s.camposAdicionales.firmasAprobacion
           : [];
+        if (esAnalista && !esJefe && !esGerente && !esSubdir && !esDirNac) {
+          return !firmas.some(
+            (f: any) =>
+              f.tipo === 'ANALISTA' || (f.tipo as string) === 'ANALISTA_VIATICOS',
+          );
+        }
         if (esGerente && !esJefe && !esSubdir && !esDirNac) {
           return !firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO');
         }
@@ -97,7 +111,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
       }
       return true;
     });
-  }, [solicitudes, filtroRegla, esGerente, esJefe, esSubdir, esDirNac]);
+  }, [solicitudes, filtroRegla, esGerente, esJefe, esSubdir, esDirNac, esAnalista]);
 
   const pendientesTotales = solicitudes.length;
   const conReglaEspecial = solicitudes.filter(
