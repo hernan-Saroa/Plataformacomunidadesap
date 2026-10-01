@@ -2460,23 +2460,30 @@ export function ModalDetallesProceso({
             : autoEstadoRaw === 'DEVUELTO' ? 'devuelto'
             : autoEstadoRaw === 'BORRADOR' ? 'borrador'
             : 'aprobado';
+          const docUrl = autoItem.documentUrl || autoItem.archivoUrl || null;
+          const docName = autoItem.documentName || autoItem.titulo || `${autoItem.tipo}.docx`;
+          const ext = ((docName.split('.').pop() || 'docx').toLowerCase()) as Extension;
+          const esDocx = ext === 'docx' || ext === 'doc';
           mapped.push({
             id: autoItem.id,
-            nombre: autoItem.titulo || autoItem.tipo || 'Auto',
+            nombre: autoItem.documentName || autoItem.titulo || autoItem.tipo || 'Auto',
             numero: autoItem.numero || undefined,
             tipo: 'auto',
             fecha: autoItem.createdAt ? autoItem.createdAt.split('T')[0] : '',
             firmante: autoItem.profesional?.nombreCompleto || 'Sistema',
             estado,
-            tamaño: '0 B',
-            extension: 'pdf',
-            version: autoItem.versionActual || 1,
+            tamaño: autoItem.documentSize ? formatBytes(autoItem.documentSize) : '0 B',
+            extension: ext,
+            version: autoItem.currentVersion || autoItem.versionActual || 1,
             etapaProceso: autoItem.etapaActual || autoItem.etapa || '',
-            downloadUrl: autoItem.archivoUrl || null,
-            urlExterna: autoItem.archivoUrl || null,
-            archivoNombre: autoItem.titulo || `${autoItem.tipo}.pdf`,
-            fileType: 'application/pdf',
+            downloadUrl: docUrl,
+            urlExterna: docUrl,
+            archivoNombre: docName,
+            fileType: autoItem.documentType || (esDocx ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/pdf'),
             tipoAuto: autoItem.tipo || undefined,
+            observacionesDevolucion: autoEstadoRaw === 'DEVUELTO' ? (autoItem.rejection_comments || autoItem.comentarios || undefined) : undefined,
+            archivoDevolucionUrl: autoEstadoRaw === 'DEVUELTO' ? (autoItem.rejectionDocumentUrl || undefined) : undefined,
+            archivoDevolucionNombre: autoEstadoRaw === 'DEVUELTO' ? (autoItem.rejectionDocumentName || undefined) : undefined,
             radicadorAsignadoId: autoItem.radicadorAsignadoId || undefined,
             radicadorAsignadoNombre: autoItem.radicadorAsignadoId ? (radicadoresNombres[autoItem.radicadorAsignadoId] || 'Radicador asignado') : undefined,
           });

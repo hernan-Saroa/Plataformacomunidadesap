@@ -129,13 +129,40 @@ export class StorageService {
     if (processMatch) {
       const processFolder = decodeURIComponent(processMatch[1]);
       const storedFilename = decodeURIComponent(path.basename(processMatch[2]));
-      return path.resolve(
+      const candidate = path.resolve(
         this.uploadDir,
         getProcessStorageRelativePath(processFolder, storedFilename),
       );
+      if (existsSync(candidate)) {
+        return candidate;
+      }
     }
 
-    return path.resolve(this.uploadDir, normalizedFilename);
+    // 1. Verificar en this.uploadDir (ej. ./uploads/expedientes)
+    const inUploadDir = path.resolve(this.uploadDir, normalizedFilename);
+    if (existsSync(inUploadDir)) {
+      return inUploadDir;
+    }
+
+    // 2. Verificar directamente en raíz de uploads (ej. ./uploads/auto-xxx.docx)
+    const inBaseUploads = path.resolve(process.cwd(), 'uploads', normalizedFilename);
+    if (existsSync(inBaseUploads)) {
+      return inBaseUploads;
+    }
+
+    // 3. Fallback por nombre base
+    const safeBase = path.basename(normalizedFilename);
+    const candidateDirs = [this.uploadDir, path.resolve(process.cwd(), 'uploads')];
+    for (const dir of candidateDirs) {
+      if (existsSync(dir)) {
+        const inDir = path.resolve(dir, safeBase);
+        if (existsSync(inDir)) {
+          return inDir;
+        }
+      }
+    }
+
+    return inUploadDir;
   }
 
   async deleteFile(filename: string): Promise<void> {
