@@ -6,7 +6,9 @@ import {
   type SemanaVigencia,
 } from './calendarioVigencia';
 
-const COL_PRIMERA_SEMANA = 3; // A: unidad auditada, B: responsable
+// A: unidad auditada, B: responsable (Auditor Líder), C: equipo auditor (EFDS-2257)
+const COL_EQUIPO = 3;
+const COL_PRIMERA_SEMANA = 4;
 
 export async function exportarAuditoriasTemplate(
   auditorias: any[],
@@ -64,6 +66,7 @@ export async function exportarAuditoriasTemplate(
     // Anchos de columnas
     worksheet.getColumn(1).width = 78.29; // A
     worksheet.getColumn(2).width = 40.71; // B
+    worksheet.getColumn(COL_EQUIPO).width = 40.71; // C
     for (let i = COL_PRIMERA_SEMANA; i <= colUltimaSemana; i++) {
       worksheet.getColumn(i).width = 8.71; // una por semana
     }
@@ -133,6 +136,10 @@ export async function exportarAuditoriasTemplate(
     worksheet.getCell('B6').value = 'RESPONSABLE';
     worksheet.getCell('B6').font = { name: 'Arial', size: 16, bold: true };
 
+    worksheet.mergeCells(6, COL_EQUIPO, 7, COL_EQUIPO);
+    worksheet.getCell(6, COL_EQUIPO).value = 'EQUIPO AUDITOR';
+    worksheet.getCell(6, COL_EQUIPO).font = { name: 'Arial', size: 16, bold: true };
+
     // Un merge por mes, con las semanas que ese mes tenga en la vigencia
     const NOMBRES_MESES = [
       'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
@@ -160,7 +167,7 @@ export async function exportarAuditoriasTemplate(
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorMeses } };
       cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
       cell.border = { top: {style:'thin'}, bottom: {style:'thin'}, left: {style:'thin'}, right: {style:'thin'} };
-      if (c === 1 || c === 2) {
+      if (c <= COL_EQUIPO) {
          worksheet.getCell(7, c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colorMeses } };
          worksheet.getCell(7, c).border = { top: {style:'thin'}, bottom: {style:'thin'}, left: {style:'thin'}, right: {style:'thin'} };
       }
@@ -274,7 +281,17 @@ export async function exportarAuditoriasTemplate(
       lista.forEach(a => {
         const row = worksheet.getRow(currentRow);
         const nameClean = cleanName(a.titulo || a.nombre);
-        const resps = formatResponsables(a.responsables || a.responsableArea || a.responsable);
+        // Responsable = Auditor Líder; Equipo Auditor = integrantes del equipo adicional (EFDS-2257).
+        // Las versiones viejas no traen el líder: se usa lo que traían.
+        const lider = typeof a.auditorLider === 'string' ? a.auditorLider : a.auditorLider?.nombre;
+        // Sin líder la celda queda vacía; solo las versiones viejas (sin el dato) muestran lo que traían
+        const resps = a.auditorLider !== undefined
+          ? String(lider || '').trim()
+          : formatResponsables(a.responsables || a.responsableArea || a.responsable);
+        const equipoRaw = a.equipoAuditor ?? a.equipo;
+        const equipo = Array.isArray(equipoRaw)
+          ? equipoRaw.map((e: any) => (typeof e === 'string' ? e : e?.nombre)).filter(Boolean).join('\n')
+          : String(equipoRaw || '');
 
         const cA = row.getCell(1);
         cA.value = nameClean;
@@ -285,6 +302,11 @@ export async function exportarAuditoriasTemplate(
         cB.value = resps;
         cB.font = { name: 'Arial', size: 12, bold: false };
         cB.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+
+        const cC = row.getCell(COL_EQUIPO);
+        cC.value = equipo;
+        cC.font = { name: 'Arial', size: 12, bold: false };
+        cC.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
 
         worksheet.mergeCells(currentRow, colObsIni, currentRow, colObsFin);
         const cObs = worksheet.getCell(currentRow, colObsIni);
@@ -433,7 +455,7 @@ export async function exportarAuditoriasTemplate(
 
     // Filas Convenciones
     const renderConvencion = (texto: string, letra: string, color?: string) => {
-       worksheet.mergeCells(currentRow, COL_PRIMERA_SEMANA, currentRow, totalCols);
+       worksheet.mergeCells(currentRow, COL_EQUIPO, currentRow, totalCols);
        const cA = worksheet.getCell(`A${currentRow}`);
        cA.value = texto;
        cA.font = { name: 'Arial', size: 14, bold: false };

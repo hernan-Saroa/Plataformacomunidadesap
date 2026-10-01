@@ -22,6 +22,7 @@ describe('AutoController', () => {
     registerNotification: jest.fn(),
     getVersions: jest.fn(),
     delete: jest.fn(),
+    uploadDocumentoDuranteRevision: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -264,6 +265,61 @@ describe('AutoController', () => {
 
       expect(mockAutoService.delete).toHaveBeenCalledWith('auto-123');
       expect(result).toBeUndefined();
+    });
+  });
+
+  describe('uploadDocumento', () => {
+    it('should upload replacement document during review or devolution', async () => {
+      const mockAuto: LegalAuto = {
+        id: 'auto-123',
+        estado: AutoStatus.DEVUELTO,
+        tipo: 'AUTO_APERTURA',
+        numero: 'AUTO-001',
+        contenido: 'Contenido',
+        processId: 'process-123',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        currentVersion: 2,
+      };
+
+      const mockFile: Express.Multer.File = {
+        fieldname: 'file',
+        originalname: 'auto-corregido.docx',
+        encoding: '7bit',
+        mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        size: 2048,
+        destination: '/uploads',
+        filename: 'auto-123-12345.docx',
+        path: '/uploads/auto-123-12345.docx',
+        buffer: Buffer.from('test'),
+        stream: null as any,
+      };
+
+      mockAutoService.uploadDocumentoDuranteRevision.mockResolvedValue(mockAuto);
+
+      const result = await controller.uploadDocumento(
+        'auto-123',
+        mockFile,
+        'Recarga de archivo corregido',
+        'user-123',
+      );
+
+      expect(mockAutoService.uploadDocumentoDuranteRevision).toHaveBeenCalledWith(
+        'auto-123',
+        '/files/auto-123-12345.docx',
+        'auto-corregido.docx',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        2048,
+        'Recarga de archivo corregido',
+        'user-123',
+      );
+      expect(result).toEqual(mockAuto);
+    });
+
+    it('should throw BadRequestException if no file is provided', async () => {
+      await expect(
+        controller.uploadDocumento('auto-123', undefined as any, 'comentario', 'user-123'),
+      ).rejects.toThrow('No se ha subido ningún archivo');
     });
   });
 

@@ -9,6 +9,10 @@ export interface FilaProgramaAnual {
   tipo: 'Regular' | 'Territorial' | 'Especial';
   territorial: string | null;
   responsableArea: string;
+  /** Columna "Responsable": Auditor Líder, o el asignado si no hay líder (EFDS-2257). Opcional en versiones viejas. */
+  auditorLider?: string | null;
+  /** Columna "Equipo Auditor": integrantes del equipo adicional (EFDS-2257). Opcional en versiones viejas. */
+  equipoAuditor?: string[];
   observaciones: string;
   fechaInicio: string | null;
   fechaFinPlaneacion: string | null;
