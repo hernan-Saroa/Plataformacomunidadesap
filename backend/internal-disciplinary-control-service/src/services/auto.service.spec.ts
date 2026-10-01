@@ -687,4 +687,115 @@ describe('AutoService', () => {
       expect(result.estado).toBe(AutoStatus.FIRMADO);
     });
   });
+
+  describe('uploadDocumentoDuranteRevision', () => {
+    it('should successfully upload new document version for an auto in DEVUELTO status and sanitize non-UUID userId', async () => {
+      const mockAuto = {
+        id: 'auto-returned-1',
+        estado: AutoStatus.DEVUELTO,
+        processId: 'process-123',
+        process: { id: 'process-123' },
+        currentVersion: 2,
+        contenido: null, // Test null contenido fallback to ''
+        tipo: 'AUTO_APERTURA_INVESTIGACION',
+        documentUrl: '/files/previous-template.docx',
+        documentName: 'previous-template.docx',
+        documentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        documentSize: 15000,
+      };
+
+      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
+      mockAutoRepository.save.mockImplementation((entity: any) => Promise.resolve(entity));
+
+      const updatedAuto = await service.uploadDocumentoDuranteRevision(
+        'auto-returned-1',
+        '/files/new-corrected-template.docx',
+        'new-corrected-template.docx',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        18500,
+        'Plantilla corregida por profesional',
+        'non-uuid-user-id', // Non-UUID should become null for createdBy
+      );
+
+      // Verify version repository received snapshot with safe fallbacks
+      expect(mockVersionRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          auto: { id: 'auto-returned-1' },
+          contenido: '',
+          versionNumber: 2,
+          createdBy: null,
+          changeReason: 'Corrección de auto devuelto cargada por Profesional',
+          documentUrl: '/files/previous-template.docx',
+          documentName: 'previous-template.docx',
+        }),
+      );
+
+      // Verify auto currentVersion incremented and new document attributes saved
+      expect(updatedAuto.currentVersion).toBe(3);
+      expect(updatedAuto.documentUrl).toBe('/files/new-corrected-template.docx');
+      expect(updatedAuto.documentName).toBe('new-corrected-template.docx');
+      expect(updatedAuto.documentSize).toBe(18500);
+      expect(updatedAuto.comentarios).toContain('Plantilla corregida por profesional');
+    });
+
+    it('should allow valid UUID for createdBy when saving auto version', async () => {
+      const validUuid = '123e4567-e89b-12d3-a456-426614174000';
+      const mockAuto = {
+        id: 'auto-revision-1',
+        estado: AutoStatus.REVISION_JEFE,
+        processId: 'process-123',
+        process: { id: 'process-123' },
+        currentVersion: 1,
+        contenido: '<p>Contenido</p>',
+        tipo: 'AUTO_ARCHIVO',
+        documentUrl: '/files/v1.docx',
+        documentName: 'v1.docx',
+        documentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        documentSize: 12000,
+      };
+
+      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
+      mockAutoRepository.save.mockImplementation((entity: any) => Promise.resolve(entity));
+
+      await service.uploadDocumentoDuranteRevision(
+        'auto-revision-1',
+        '/files/v2.docx',
+        'v2.docx',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        14000,
+        'Nueva versión durante revisión',
+        validUuid,
+      );
+
+      expect(mockVersionRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          createdBy: validUuid,
+          changeReason: 'Actualización de documento durante revisión',
+        }),
+      );
+    });
+
+    it('should throw BadRequestException if auto is not in BORRADOR, DEVUELTO, or REVISION_JEFE', async () => {
+      const mockAuto = {
+        id: 'auto-approved-1',
+        estado: AutoStatus.APROBADO,
+        processId: 'process-123',
+        process: { id: 'process-123' },
+        currentVersion: 1,
+      };
+
+      mockAutoRepository.findOne.mockResolvedValue(mockAuto);
+
+      await expect(
+        service.uploadDocumentoDuranteRevision(
+          'auto-approved-1',
+          '/files/new.docx',
+          'new.docx',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          10000,
+        ),
+      ).rejects.toThrow('Solo se puede cargar/actualizar el documento en borrador, devuelto o durante la revisión');
+    });
+  });
 });
+
