@@ -147,19 +147,8 @@ export class NewsService {
 
       const noticiaGuardada = await this.newsRepository.save(noticia) as unknown as DisciplinaryNews;
 
-      this.notificationClient.notifyByRole('JEFE_DE_LA_OCID', {
-        tipo_notificacion: 'NUEVA_NOTICIA',
-        titulo: 'Nueva noticia disciplinaria radicada',
-        mensaje: `Se ha radicado una nueva noticia con número ${radicado}. Está pendiente de revisión.`,
-        descripcion_corta: `Noticia ${radicado} pendiente de revisión`,
-        icono: 'FileText',
-        color: '#2563EB',
-        prioridad: 'Media',
-        categoria: 'DISCIPLINARIO',
-        tiene_accion: true,
-        texto_boton_accion: 'Ver noticia',
-        datos_adicionales: { noticiaId: noticiaGuardada.id, radicado },
-      }).catch(() => {});
+      // Notificar a los Jefes OCID (in-app y correo institucional ESAP)
+      await this.notificarJefesNoticia(noticiaGuardada, 'CREACION');
 
       const diasHabilesRestantes = await this.calcularDiasHabilesRestantesRecepcion(noticiaGuardada.fechaRecepcion);
       return { ...noticiaGuardada, diasHabilesRestantes } as unknown as DisciplinaryNews;
@@ -522,21 +511,8 @@ export class NewsService {
 
     const noticiaGuardada = await this.newsRepository.save(noticia);
 
-    this.notificationClient.notifyByRole('JEFE_DE_LA_OCID', {
-      tipo_notificacion: 'NOTICIA_REENVIADA',
-      titulo: 'Noticia disciplinaria corregida reenviada',
-      mensaje: observaciones?.trim()
-        ? `La noticia ${noticia.radicado} fue corregida y reenviada para valoracion. Observacion: ${observaciones.trim()}`
-        : `La noticia ${noticia.radicado} fue corregida y reenviada para valoracion.`,
-      descripcion_corta: `Noticia ${noticia.radicado} reenviada`,
-      icono: 'RefreshCw',
-      color: '#2563EB',
-      prioridad: 'Alta',
-      categoria: 'DISCIPLINARIO',
-      tiene_accion: true,
-      texto_boton_accion: 'Ver noticia',
-      datos_adicionales: { noticiaId: noticia.id, radicado: noticia.radicado },
-    }).catch(() => {});
+    // Notificar a los Jefes OCID que la noticia corregida fue reenviada (in-app y correo institucional ESAP)
+    await this.notificarJefesNoticia(noticiaGuardada, 'REENVIO', observaciones);
 
     return noticiaGuardada;
   }
@@ -606,8 +582,10 @@ export class NewsService {
         { label: 'Estado', valor: 'DEVUELTA' },
         { label: 'Fecha de Devolución', valor: fechaStr },
         { label: 'Observaciones / Motivo', valor: returnNewsDto.observaciones || 'Sin observaciones' },
+        { label: 'Disciplinable(s)', valor: this.formatearPersonas(noticia.disciplinable) },
+        { label: 'Dependencia del Denunciado', valor: noticia.dependenciaDenunciado || 'No registrada' },
       ],
-      'Por favor ingrese al sistema para revisar las observaciones indicadas, subsanar la información de la noticia y proceder a su reenvío para valoración del Jefe OCID.',
+      'Por favor ingrese al sistema para revisar las observaciones indicadas por el Jefe OCID, subsanar la información de la noticia y proceder a su reenvío para valoración.',
       radicadorIdDestino,
     );
 
@@ -1279,6 +1257,27 @@ export class NewsService {
   }
 
   /**
+   * Extrae y formatea nombres e identificaciones legibles desde campos denunciante o disciplinable
+   */
+  formatearPersonas(personaInfo: any): string {
+    if (!personaInfo) return 'No registrado';
+    const list = Array.isArray(personaInfo) ? personaInfo : [personaInfo];
+    if (!list.length) return 'No registrado';
+    return (
+      list
+        .map((p) => {
+          if (typeof p === 'string') return p;
+          const nombre = p?.nombre || p?.nombreCompleto || p?.full_name || '';
+          const id = p?.cedula || p?.identificacion || p?.numeroIdentificacion || '';
+          if (nombre && id) return `${nombre} (${id})`;
+          return nombre || id || 'Sin identificar';
+        })
+        .filter(Boolean)
+        .join(', ') || 'No registrado'
+    );
+  }
+
+  /**
    * Obtiene la lista completa de radicadores asociados a la noticia y usuarios activos con rol/permiso Radicador
    */
   async obtenerRadicadores(
@@ -1333,18 +1332,21 @@ export class NewsService {
          JOIN auth.role r ON r.id = ur.id_rol
          LEFT JOIN auth.personas p ON p.id_person = u.id_person
          WHERE u.is_active = true
-           AND (r.code IN ('SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO')
+           AND (r.code IN ('SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO', 'SECRETARIO_RADICADOR', 'RADICADOR')
                 OR UPPER(r.code) LIKE '%RADICADOR%'
                 OR UPPER(r.name) LIKE '%RADICADOR%')`,
       );
-      for (const r of roleUsers) {
+      for (const r of roleUsers || []) {
         if (r.id_user) {
           const email = (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim();
-          radicadoresMap.set(r.id_user, {
-            id: r.id_user,
-            nombre: r.nom_largo || r.username || 'Radicador',
-            email,
-          });
+          const existing = radicadoresMap.get(r.id_user);
+          if (!existing || (!existing.email && email)) {
+            radicadoresMap.set(r.id_user, {
+              id: r.id_user,
+              nombre: r.nom_largo || r.username || existing?.nombre || 'Radicador',
+              email: email || existing?.email || '',
+            });
+          }
         }
       }
     } catch (err) {
@@ -1361,17 +1363,21 @@ export class NewsService {
          JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
          LEFT JOIN auth.personas per ON per.id_person = u.id_person
          WHERE u.is_active = true
-           AND p.code = $1`,
-        ['control-disciplinario.general.es_radicador'],
+           AND (
+             p.code IN ('control-disciplinario.general.es_radicador', 'control-disciplinario.es_radicador', 'general.is_radicador', 'control-disciplinario.general.is_radicador')
+             OR p.code LIKE '%is_radicador%'
+             OR p.code LIKE '%es_radicador%'
+           )`,
       );
-      for (const r of permUsers) {
+      for (const r of permUsers || []) {
         if (r.id_user) {
           const email = (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim();
-          if (!radicadoresMap.has(r.id_user)) {
+          const existing = radicadoresMap.get(r.id_user);
+          if (!existing || (!existing.email && email)) {
             radicadoresMap.set(r.id_user, {
               id: r.id_user,
-              nombre: r.nom_largo || r.username || 'Radicador',
-              email,
+              nombre: r.nom_largo || r.username || existing?.nombre || 'Radicador',
+              email: email || existing?.email || '',
             });
           }
         }
@@ -1383,8 +1389,233 @@ export class NewsService {
     return Array.from(radicadoresMap.values());
   }
 
+  /**
+   * Obtiene la lista completa de usuarios con rol o permiso de Jefe OCID
+   */
+  async obtenerJefesOcid(): Promise<Array<{ id: string; nombre: string; email: string }>> {
+    const jefesMap = new Map<string, { id: string; nombre: string; email: string }>();
+
+    // 1. Por rol: JEFE_DE_LA_OCID, JEFE_OCID, etc.
+    try {
+      const roleUsers: any[] = await this.connection.query(
+        `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
+         FROM auth.user u
+         JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         JOIN auth.role r ON r.id = ur.id_rol
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.is_active = true
+           AND (r.code IN ('JEFE_DE_LA_OCID', 'JEFE_OCID', 'JEFE_OFICINA_INTERNO', 'JEFE_DE_LA_OFICINA_DISCIPLINARIA')
+                OR UPPER(r.code) LIKE '%JEFE%OCID%'
+                OR UPPER(r.name) LIKE '%JEFE%OCID%'
+                OR UPPER(r.name) LIKE '%JEFE%DISCIPLINAR%')`,
+      );
+      for (const r of roleUsers || []) {
+        if (r.id_user) {
+          const email = (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim();
+          jefesMap.set(r.id_user, {
+            id: r.id_user,
+            nombre: r.nom_largo || r.username || 'Jefe OCID',
+            email,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Error consultando usuarios con rol Jefe OCID en NewsService:', err);
+    }
+
+    // 2. Por permiso: control-disciplinario.general.es_jefe_ocid o control-disciplinario.es_jefe_ocid
+    try {
+      const permUsers: any[] = await this.connection.query(
+        `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
+         FROM auth.user u
+         JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
+         JOIN auth.permission perm ON perm.id_permission = rp.id_permission AND perm.is_active = true
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.is_active = true
+           AND (
+             perm.code IN ('control-disciplinario.general.es_jefe_ocid', 'control-disciplinario.es_jefe_ocid', 'general.es_jefe_ocid', 'general.is_jefe_ocid')
+             OR perm.code LIKE '%es_jefe_ocid%'
+             OR perm.code LIKE '%is_jefe_ocid%'
+           )`,
+      );
+      for (const r of permUsers || []) {
+        if (r.id_user) {
+          const email = (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim();
+          const existing = jefesMap.get(r.id_user);
+          if (!existing || (!existing.email && email)) {
+            jefesMap.set(r.id_user, {
+              id: r.id_user,
+              nombre: r.nom_largo || r.username || existing?.nombre || 'Jefe OCID',
+              email: email || existing?.email || '',
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Error consultando usuarios con permiso de Jefe OCID en NewsService:', err);
+    }
+
+    return Array.from(jefesMap.values());
+  }
+
+  /**
+   * Notifica a los Jefes OCID (in-app y correo electrónico institucional ESAP) ante:
+   * - 'CREACION': Radicación de una nueva noticia pendiente de revisión.
+   * - 'REENVIO': Noticia corregida reenviada por el Radicador con observaciones.
+   */
+  async notificarJefesNoticia(
+    noticia: DisciplinaryNews,
+    evento: 'CREACION' | 'REENVIO',
+    observacionesRadicador?: string,
+  ): Promise<void> {
+    try {
+      const jefes = await this.obtenerJefesOcid();
+      const baseUrl = this.getFrontendBaseUrl();
+      const urlAcceso = `${baseUrl}/?module=control-disciplinario&noticiaId=${encodeURIComponent(noticia.id)}&radicado=${encodeURIComponent(noticia.radicado || '')}`;
+
+      const fechaStr = new Date().toLocaleDateString('es-CO', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+
+      const disciplinablesStr = this.formatearPersonas(noticia.disciplinable);
+      const denunciantesStr = this.formatearPersonas(noticia.denunciante);
+
+      let tipoNotificacion: string;
+      let titulo: string;
+      let asunto: string;
+      let mensaje: string;
+      let badge: string;
+      let badgeBg: string;
+      let accionesRequeridas: string;
+      let detalles: Array<{ label: string; valor: string }>;
+
+      if (evento === 'CREACION') {
+        tipoNotificacion = 'NUEVA_NOTICIA';
+        titulo = 'Nueva noticia disciplinaria radicada';
+        asunto = `[NUEVA NOTICIA] Noticia disciplinaria radicada: ${noticia.radicado}`;
+        mensaje = `Se ha radicado una nueva noticia disciplinaria con radicado ${noticia.radicado}. Se encuentra disponible para su revisión y valoración inicial por parte del Jefe OCID.`;
+        badge = 'Pendiente de Revisión';
+        badgeBg = '#003DA5';
+        accionesRequeridas =
+          'Se requiere ingresar a la plataforma para revisar los antecedentes de la noticia disciplinaria, evaluar su mérito y proceder con la asignación a un profesional o la actuación que corresponda.';
+        detalles = [
+          { label: 'Radicado de la Noticia', valor: noticia.radicado },
+          { label: 'Estado', valor: 'RADICADA' },
+          { label: 'Fecha de Radicación', valor: fechaStr },
+          { label: 'Origen de la Noticia', valor: noticia.origen || 'No especificado' },
+          { label: 'Disciplinable(s)', valor: disciplinablesStr },
+          { label: 'Denunciante(s)', valor: denunciantesStr },
+          { label: 'Dependencia del Denunciado', valor: noticia.dependenciaDenunciado || 'No registrada' },
+          {
+            label: 'Hechos (Resumen)',
+            valor: noticia.hechos
+              ? (noticia.hechos.length > 280 ? noticia.hechos.substring(0, 280) + '...' : noticia.hechos)
+              : 'Sin hechos especificados',
+          },
+        ];
+      } else {
+        tipoNotificacion = 'NOTICIA_REENVIADA';
+        titulo = 'Noticia disciplinaria corregida reenviada';
+        asunto = `[NOTICIA CORREGIDA] Noticia disciplinaria reenviada para revisión: ${noticia.radicado}`;
+        mensaje = `El Radicador ha corregido y reenviado la noticia disciplinaria ${noticia.radicado} tras subsanar las observaciones indicadas. Se encuentra nuevamente disponible para su revisión y valoración.`;
+        badge = 'Noticia Corregida';
+        badgeBg = '#059669';
+        accionesRequeridas =
+          'La noticia corregida se encuentra disponible para su revisión. Por favor ingrese a la plataforma para valorar la información subsanada y continuar con el trámite correspondiente.';
+        detalles = [
+          { label: 'Radicado de la Noticia', valor: noticia.radicado },
+          { label: 'Estado', valor: 'EN VALORACIÓN' },
+          { label: 'Fecha de Reenvío', valor: fechaStr },
+          {
+            label: 'Observaciones de Corrección',
+            valor: observacionesRadicador?.trim() || 'Noticia corregida y reenviada para valoración',
+          },
+          { label: 'Disciplinable(s)', valor: disciplinablesStr },
+          { label: 'Dependencia del Denunciado', valor: noticia.dependenciaDenunciado || 'No registrada' },
+        ];
+      }
+
+      // 1. Notificación in-app
+      if (jefes.length > 0) {
+        const notificaciones: import('./notification-client.service').SendNotificationDto[] = jefes.map((jefe) => ({
+          id_usuario_destinatario: jefe.id,
+          tipo_notificacion: tipoNotificacion,
+          titulo,
+          mensaje:
+            evento === 'REENVIO' && observacionesRadicador?.trim()
+              ? `La noticia ${noticia.radicado} fue corregida y reenviada para valoración. Observación: ${observacionesRadicador.trim()}`
+              : mensaje,
+          descripcion_corta: `Noticia ${noticia.radicado} - ${badge}`,
+          icono: evento === 'CREACION' ? 'FileText' : 'RefreshCw',
+          color: badgeBg,
+          prioridad: 'Alta' as const,
+          categoria: 'DISCIPLINARIO',
+          tiene_accion: true,
+          texto_boton_accion: 'Ver noticia',
+          url_accion: urlAcceso,
+          datos_adicionales: {
+            noticiaId: noticia.id,
+            radicado: noticia.radicado,
+          },
+        }));
+        await this.notificationClient.sendMany(notificaciones).catch(() => {});
+      } else {
+        // Fallback por rol si aún no hay usuarios sincronizados con permisos específicos
+        this.notificationClient
+          .notifyByRole('JEFE_DE_LA_OCID', {
+            tipo_notificacion: tipoNotificacion,
+            titulo,
+            mensaje,
+            descripcion_corta: `Noticia ${noticia.radicado} - ${badge}`,
+            icono: evento === 'CREACION' ? 'FileText' : 'RefreshCw',
+            color: badgeBg,
+            prioridad: 'Alta' as const,
+            categoria: 'DISCIPLINARIO',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver noticia',
+            url_accion: urlAcceso,
+            datos_adicionales: { noticiaId: noticia.id, radicado: noticia.radicado },
+          })
+          .catch(() => {});
+      }
+
+      // 2. Correo electrónico institucional estilo ESAP
+      const html = this.buildEmailTemplateNoticiaESAP(
+        titulo,
+        mensaje,
+        detalles,
+        badge,
+        badgeBg,
+        accionesRequeridas,
+        urlAcceso,
+        'Revisar Noticia en Plataforma',
+      );
+
+      const jefesConEmail = jefes.filter((j) => j.email && j.email.trim().length > 0);
+      if (jefesConEmail.length > 0) {
+        await Promise.all(
+          jefesConEmail.map((jefe) =>
+            this.enviarEmailDirecto(jefe.email.trim(), asunto, html, mensaje).catch((err) =>
+              console.error(`[NewsService] Error enviando correo a Jefe ${jefe.email}:`, err),
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      console.error('[NewsService] Error en notificarJefesNoticia:', error);
+    }
+  }
+
   private async enviarEmailDirecto(to: string, subject: string, html: string, text?: string): Promise<void> {
-    const notificationsUrl = process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3009';
+    const notificationsUrl =
+      process.env.NOTIFICATION_SERVICE_URL ||
+      process.env.NOTIFICATIONS_SERVICE_URL ||
+      'http://localhost:3009';
     try {
       await firstValueFrom(
         this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
@@ -1394,6 +1625,7 @@ export class NewsService {
           ...(text ? { text } : {}),
         }),
       );
+      console.log(`[NewsService] Correo enviado exitosamente a: ${to} (asunto: ${subject})`);
     } catch (error: any) {
       console.warn(`[NewsService] No se pudo enviar correo a ${to}:`, error?.message || error);
     }
@@ -1426,11 +1658,18 @@ export class NewsService {
       )
       .join('');
 
+    const isDevolucion = badgeBg.toLowerCase().includes('dc2626');
+    const isCorregida = badgeBg.toLowerCase().includes('059669') || badgeBg.toLowerCase().includes('10b981');
+    const alertBg = isDevolucion ? '#fef2f2' : (isCorregida ? '#f0fdf4' : '#eff6ff');
+    const alertBorder = isDevolucion ? '#dc2626' : (isCorregida ? '#059669' : '#2563eb');
+    const alertTitleColor = isDevolucion ? '#991b1b' : (isCorregida ? '#166534' : '#1e40af');
+    const alertTextColor = isDevolucion ? '#7f1d1d' : (isCorregida ? '#14532d' : '#1e3a8a');
+
     const seccionAcciones = accionesRequeridas
       ? `
-      <div style="margin-top: 20px; padding: 16px; background-color: #fef2f2; border-left: 4px solid ${badgeBg}; border-radius: 4px;">
-        <p style="margin: 0 0 6px 0; font-size: 13px; font-weight: 700; color: #991b1b; text-transform: uppercase; letter-spacing: 0.5px;">Acciones Requeridas</p>
-        <p style="margin: 0; font-size: 13px; color: #7f1d1d; line-height: 1.5;">${accionesRequeridas}</p>
+      <div style="margin-top: 20px; padding: 16px; background-color: ${alertBg}; border-left: 4px solid ${alertBorder}; border-radius: 4px;">
+        <p style="margin: 0 0 6px 0; font-size: 13px; font-weight: 700; color: ${alertTitleColor}; text-transform: uppercase; letter-spacing: 0.5px;">Acciones Requeridas</p>
+        <p style="margin: 0; font-size: 13px; color: ${alertTextColor}; line-height: 1.5;">${accionesRequeridas}</p>
       </div>`
       : '';
 
