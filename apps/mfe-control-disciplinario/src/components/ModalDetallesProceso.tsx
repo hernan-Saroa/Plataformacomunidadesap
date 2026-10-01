@@ -3919,9 +3919,9 @@ export function ModalDetallesProceso({
     const nuevoArchivo = e.target.files[0];
     const extension = `.${nuevoArchivo.name.split('.').pop()?.toLowerCase() || ''}`;
 
-    if (!['.doc', '.docx'].includes(extension)) {
+    if (!['.doc', '.docx', '.pdf'].includes(extension)) {
       toast.error('Formato no permitido para autos', {
-        description: 'Solo se permiten archivos Word (.doc, .docx) para recargar autos.',
+        description: 'Solo se permiten archivos Word (.doc, .docx) o PDF (.pdf) para recargar autos.',
       });
       setAutoRecargar(null);
       if (inputRecargarRef.current) inputRecargarRef.current.value = '';
@@ -3938,6 +3938,7 @@ export function ModalDetallesProceso({
         success: (data) => {
           // Recargar los documentos del expediente desde el backend
           void cargarDocumentosExpediente();
+          onActualizarProceso?.();
           
           setAutoRecargar(null);
           if (inputRecargarRef.current) inputRecargarRef.current.value = '';
@@ -3948,11 +3949,11 @@ export function ModalDetallesProceso({
           console.error('Error al recargar auto:', err);
           setAutoRecargar(null);
           if (inputRecargarRef.current) inputRecargarRef.current.value = '';
-          return 'Error al subir la nueva versión del documento';
+          return err?.message || 'Error al subir la nueva versión del documento';
         }
       }
     );
-  }, [autoRecargar, cargarDocumentosExpediente]);
+  }, [autoRecargar, cargarDocumentosExpediente, onActualizarProceso]);
 
   // ── Helper: Renderizar fila de archivo ────────────────────────────────────────
   const renderArchivoFila = (archivo: Archivo, ocultarBadgeEtapa = false) => {
@@ -6508,7 +6509,7 @@ export function ModalDetallesProceso({
       <input
         ref={inputRecargarRef}
         type="file"
-        accept=".doc,.docx"
+        accept=".doc,.docx,.pdf"
         className="hidden"
         onChange={handleArchivoReemplazado}
       />
