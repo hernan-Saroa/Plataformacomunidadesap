@@ -303,6 +303,45 @@ export class TravelExpensesController {
     return this.service.consultarComisionado(documento);
   }
 
+  @Post('comisionados/:documento/cuentas-bancarias')
+  @ApiOperation({
+    summary: 'Registrar o actualizar una cuenta bancaria en el perfil del comisionado',
+  })
+  agregarCuentaBancaria(
+    @Param('documento') documento: string,
+    @Body()
+    body: {
+      banco: string;
+      tipoCuenta: string;
+      numeroCuenta: string;
+      urlCertificadoBancario?: string;
+      nombreArchivoCertificado?: string;
+      esPrincipal?: boolean;
+    },
+  ) {
+    return this.service.agregarCuentaBancariaComisionado(documento, body);
+  }
+
+  @Post('comisionados/:documento/cargos')
+  @ApiOperation({
+    summary: 'Registrar o actualizar un cargo y su salario relacional en el comisionado',
+  })
+  agregarCargo(
+    @Param('documento') documento: string,
+    @Body()
+    body: {
+      idCargo?: number;
+      cargo: string;
+      salario: number;
+      idDependencia?: number;
+      fechaInicio?: string;
+      fechaFin?: string;
+      esPrincipal?: boolean;
+    },
+  ) {
+    return this.service.agregarCargoComisionado(documento, body);
+  }
+
   @Get('comisionados/:documento/solicitudes-pendientes')
   @Public()
   @ApiOperation({

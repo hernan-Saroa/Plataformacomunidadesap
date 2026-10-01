@@ -393,6 +393,7 @@ export function sincronizarItinerarioFormulario(
     destinoDepartamento: destinoDepartamentoFinal,
     rutaGeneral: construirRutaGeneral(itinerario),
     horaEstimadaSalida: horaViaje,
+    horaEstimadaLlegada: ultimaRuta.horaEstimadaLlegada || (ultimaRuta as any).horaLlegada || '',
     horaEstimadaGeneral: horaGeneral,
     transporteTerminalesAereos: totalTerminalesAereos,
     transporteTerrestreOtros: totalTransporteTerrestreOtros,
@@ -580,6 +581,7 @@ export function mapearARequestCreacion(
         prevAdic.entidad_bancaria ||
         prevAdic.entidadBancaria ||
         prevAdic.banco ||
+        form.cuentaBancariaSeleccionada?.banco ||
         (comisionado as any)?.entidad_bancaria ||
         (comisionado as any)?.entidadBancaria ||
         (comisionado as any)?.banco ||
@@ -589,6 +591,7 @@ export function mapearARequestCreacion(
         prevAdic.numeroCuenta ||
         prevAdic.numCuenta ||
         prevAdic.cuentaBancaria ||
+        form.cuentaBancariaSeleccionada?.numeroCuenta ||
         (comisionado as any)?.num_cuenta ||
         (comisionado as any)?.numeroCuenta ||
         (comisionado as any)?.NUM_CUENTA_1 ||
@@ -596,14 +599,33 @@ export function mapearARequestCreacion(
       const rawTipo =
         prevAdic.tipo_cuenta ||
         prevAdic.tipoCuenta ||
+        form.cuentaBancariaSeleccionada?.tipoCuenta ||
         (comisionado as any)?.tipo_cuenta ||
         (comisionado as any)?.tipoCuenta ||
         '';
+      const certDoc = (documentos || []).find(
+        (d) => d.tipoDocumento === 'CERT_BANCARIA' || d.tipoDocumento === 'CERTIFICACION_BANCARIA',
+      );
+      const rawUrlCert =
+        form.cuentaBancariaSeleccionada?.urlCertificadoBancario ||
+        prevAdic.urlCertificadoBancario ||
+        certDoc?.urlRepositorio ||
+        '';
+      const rawCargo =
+        prevAdic.cargoEsap ||
+        prevAdic.cargo ||
+        prevAdic.cargoInstitucional ||
+        form.cargoSeleccionado?.cargo ||
+        (comisionado as any)?.cargo ||
+        '';
+
       return {
         ...prevAdic,
         ...(rawBanco ? { entidad_bancaria: rawBanco, entidadBancaria: rawBanco, banco: rawBanco } : {}),
         ...(rawCuenta ? { num_cuenta: rawCuenta, numeroCuenta: rawCuenta, numCuenta: rawCuenta, cuentaBancaria: rawCuenta } : {}),
         ...(rawTipo ? { tipo_cuenta: rawTipo, tipoCuenta: rawTipo } : {}),
+        ...(rawUrlCert ? { urlCertificadoBancario: rawUrlCert } : {}),
+        ...(rawCargo ? { cargoEsap: rawCargo, cargo: rawCargo, cargoInstitucional: rawCargo, cargoComisionado: rawCargo } : {}),
         transporteTerminalAereo:
           prevAdic.transporteTerminalAereo ?? tarifasAereasItin,
         transporteTerrestre:
@@ -613,6 +635,22 @@ export function mapearARequestCreacion(
           new Date().toISOString().split('T')[0],
       };
     })(),
+    cuentaBancariaSeleccionada: form.cuentaBancariaSeleccionada || undefined,
+    cargoSeleccionado: form.cargoSeleccionado || undefined,
+    cargo:
+      form.cargo ||
+      form.cargoSeleccionado?.cargo ||
+      form.camposAdicionales?.cargoEsap ||
+      form.camposAdicionales?.cargo ||
+      form.camposAdicionales?.cargoInstitucional ||
+      form.camposAdicionales?.cargoComisionado ||
+      comisionado.cargo ||
+      undefined,
+    idCargo:
+      form.idCargo ??
+      form.cargoSeleccionado?.idCargo ??
+      form.camposAdicionales?.idCargo ??
+      undefined,
     itinerario: (form.itinerario || []).map((r) => {
       // Excluir únicamente campos auxiliares de UI interna
       const {

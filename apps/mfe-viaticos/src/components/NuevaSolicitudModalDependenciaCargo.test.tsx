@@ -187,6 +187,14 @@ describe('NuevaSolicitudModal — Dependencia x Cargo', () => {
       expect(viaticosService.obtenerCargosPorDependencia).toHaveBeenCalledWith(1);
     });
 
+    // En el Paso 1 es informativo; avanzar al Paso 2 para configurar y cambiar el cargo
+    const btnContinuar = screen.getByRole('button', { name: /Guardar y Continuar/i });
+    fireEvent.click(btnContinuar);
+
+    // En el Paso 2, abrir el selector de cargo/dependencia
+    const btnCambiarCargo = screen.getByRole('button', { name: /Cambiar cargo/i });
+    fireEvent.click(btnCambiarCargo);
+
     // Abrir el selector de dependencia y cambiar a Subdirección Académica (id 2)
     const depSelectBtn = document.getElementById('dependencia-asignada-select');
     expect(depSelectBtn).not.toBeNull();

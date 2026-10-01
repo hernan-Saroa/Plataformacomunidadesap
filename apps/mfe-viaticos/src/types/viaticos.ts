@@ -109,6 +109,32 @@ export interface FormNuevaSolicitud {
   alertasLiquidacion?: string[];
   camposAdicionales?: Record<string, any>;
   itinerario?: RutaItinerario[];
+  cuentaBancariaSeleccionada?: CuentaBancariaComisionado | null;
+  cargoSeleccionado?: CargoComisionado | null;
+  cargo?: string;
+  idCargo?: number;
+}
+
+export interface CuentaBancariaComisionado {
+  id?: string;
+  banco: string;
+  tipoCuenta: string; // 'AHORROS' | 'CORRIENTE' | string
+  numeroCuenta: string;
+  urlCertificadoBancario?: string | null;
+  nombreArchivoCertificado?: string | null;
+  fechaRegistro?: string;
+  esPrincipal?: boolean;
+}
+
+export interface CargoComisionado {
+  id?: string;
+  idCargo?: number;
+  cargo: string;
+  salario: number;
+  idDependencia?: number | null;
+  fechaInicio?: string | null;
+  fechaFin?: string | null;
+  esPrincipal?: boolean;
 }
 
 export type TipoComisionado = 'FUNCIONARIO' | 'CONTRATISTA' | 'DOCENTE' | 'ESTUDIANTE' | 'INVESTIGADOR';
@@ -137,6 +163,7 @@ export type TipoDocumentoSoporte =
   | 'CDP'
   | 'RUT'
   | 'CERT_BANCARIA'
+  | 'CERTIFICACION_BANCARIA'
   | 'SEGURIDAD_SOCIAL'
   | 'CONTRATO_SECOP'
   | 'PASAPORTE'
@@ -182,6 +209,8 @@ export interface Comisionado {
   fechaFinContrato?: string | Date | null;
   salarioBasico?: number | null;
   cargo?: string | null;
+  cuentasBancarias?: CuentaBancariaComisionado[];
+  cargos?: CargoComisionado[];
   solicitudesPendientes?: SolicitudPendiente023[];
 }
 
@@ -314,6 +343,10 @@ export interface CreateSolicitudRequest {
   }[];
   camposAdicionales?: Record<string, any>;
   itinerario?: RutaItinerario[];
+  cuentaBancariaSeleccionada?: CuentaBancariaComisionado | null;
+  cargoSeleccionado?: CargoComisionado | null;
+  cargo?: string;
+  idCargo?: number;
 }
 
 /**
@@ -374,6 +407,8 @@ export interface SolicitudListaResponse {
   fechaRevision?: string | null;
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
+  cargo?: string | null;
+  idCargo?: number | null;
   analistaAsignadoId?: string | null;
   idDependencia?: number | string | null;
   dependencia?: string;

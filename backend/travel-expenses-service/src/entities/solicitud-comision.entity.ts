@@ -278,6 +278,13 @@ export class SolicitudComisionEntity {
   @Column({ name: 'id_dependencia', type: 'bigint', nullable: true })
   idDependencia: number | null;
 
+  @Column({ name: 'cargo', type: 'varchar', length: 150, nullable: true })
+  @Index('idx_solicitudes_comision_cargo')
+  cargo: string | null;
+
+  @Column({ name: 'id_cargo', type: 'bigint', nullable: true })
+  idCargo: number | null;
+
   @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'analista_asignado_id' })
   analistaAsignado: UsuarioEntity;

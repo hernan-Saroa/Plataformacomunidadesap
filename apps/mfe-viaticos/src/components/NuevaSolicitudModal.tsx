@@ -31,11 +31,19 @@ import {
   Mail,
   Phone,
   Wallet,
+  Landmark,
+  CreditCard,
+  Coins,
+  Check,
+  Upload,
+  ArrowLeftRight,
   X,
 } from 'lucide-react';
 import {
   Cargo,
+  CargoComisionado,
   Comisionado,
+  CuentaBancariaComisionado,
   Dependencia,
   DocumentoFormItem,
   DocumentoSoporte,
@@ -154,6 +162,26 @@ const puedeElegirDependencia = (): boolean => {
   return authService.hasPermission('travel_expenses:manage_config');
 };
 
+const LISTA_BANCOS_COLOMBIA = [
+  'BANCOLOMBIA',
+  'BANCO DE BOGOTÁ',
+  'DAVIVIENDA',
+  'BBVA COLOMBIA',
+  'BANCO DE OCCIDENTE',
+  'BANCO POPULAR',
+  'BANCO AGRARIO DE COLOMBIA',
+  'BANCO CAJA SOCIAL',
+  'BANCO AV VILLAS',
+  'SCOTIABANK COLPATRIA',
+  'BANCO ITAÚ',
+  'BANCO PICHINCHA',
+  'BANCOOMEVA',
+  'BANCO FALABELLA',
+  'NEQUI',
+  'DAVIPLATA',
+  'DALE',
+];
+
 export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCreada, onSolicitudConsolidada, solicitudAResumir, esSuperAdmin }: Props) {
   const [paso, setPaso] = useState(1);
   const [form, setForm] = useState<FormNuevaSolicitud>(formInicialNuevaSolicitud());
@@ -166,6 +194,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [habeasMarcado, setHabeasMarcado] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const { festivos } = useFestivos();
+  // Historial de cuentas bancarias y selección
+  const [cuentaBancariaSeleccionadaId, setCuentaBancariaSeleccionadaId] = useState<string>('nueva');
+  const [modoNuevaCuenta, setModoNuevaCuenta] = useState<boolean>(false);
+  const [guardarCuentaEnPerfil, setGuardarCuentaEnPerfil] = useState<boolean>(true);
+  const [subiendoCertificadoBancarioDirecto, setSubiendoCertificadoBancarioDirecto] = useState<boolean>(false);
   const [alertaAnticipacion, setAlertaAnticipacion] = useState<{
     extemporanea: boolean;
     diasHabiles: number;
@@ -184,6 +217,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [cargosDisponibles, setCargosDisponibles] = useState<Cargo[]>([]);
   const [cargandoCargos, setCargandoCargos] = useState(false);
   const [cargoActualSeleccionado, setCargoActualSeleccionado] = useState<string>('');
+  const [modoCambiarCargo, setModoCambiarCargo] = useState<boolean>(false);
   // Departamento al que pertenecen las ciudades cargadas (evita recargarlas al
   // navegar de vuelta o reanudar; garantiza que se carguen cuando hacen falta).
   const [ciudadesDepto, setCiudadesDepto] = useState('');
@@ -714,11 +748,22 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     const nomCargo = (cargoVal || '').trim();
     setCargoActualSeleccionado(nomCargo);
 
+    // Buscar si el cargo está en los cargos registrados del comisionado con su salario relacional
+    const cargoComisionado = (comisionado?.cargos || []).find(
+      (c) => c.cargo?.trim().toLowerCase() === nomCargo.toLowerCase(),
+    );
+
     const cargoObj = cargosDisponibles.find(
       (c) => c.nomCargo === nomCargo || String(c.idCargo) === nomCargo,
     );
     const nombreFinal = cargoObj ? cargoObj.nomCargo : nomCargo;
     const idCargoFinal = cargoObj ? cargoObj.idCargo : undefined;
+
+    // Salario relacional asociado: si el cargo tiene salario registrado en el comisionado, usarlo
+    let salarioAsociado = form.salarioBasico || 0;
+    if (cargoComisionado && cargoComisionado.salario > 0) {
+      salarioAsociado = Number(cargoComisionado.salario);
+    }
 
     setForm((prev) => {
       const nextAdic = {
@@ -731,7 +776,112 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       };
       return {
         ...prev,
+        salarioBasico: salarioAsociado,
+        cargoSeleccionado: {
+          idCargo: idCargoFinal,
+          cargo: nombreFinal,
+          salario: salarioAsociado,
+        },
         camposAdicionales: nextAdic,
+      };
+    });
+  };
+
+  const seleccionarCuentaBancaria = (cta: CuentaBancariaComisionado) => {
+    setCuentaBancariaSeleccionadaId(cta.id || 'cta-sel');
+    setModoNuevaCuenta(false);
+
+    setForm((prev) => {
+      const adic = {
+        ...(prev.camposAdicionales || {}),
+        entidad_bancaria: cta.banco,
+        entidadBancaria: cta.banco,
+        banco: cta.banco,
+        tipo_cuenta: cta.tipoCuenta,
+        tipoCuenta: cta.tipoCuenta,
+        num_cuenta: cta.numeroCuenta,
+        numeroCuenta: cta.numeroCuenta,
+        numCuenta: cta.numeroCuenta,
+        cuentaBancaria: cta.numeroCuenta,
+        ...(cta.urlCertificadoBancario ? { urlCertificadoBancario: cta.urlCertificadoBancario } : {}),
+      };
+
+      let docsActualizados = [...(prev.documentos || [])];
+      if (cta.urlCertificadoBancario) {
+        const tieneDocCert = docsActualizados.some((d) => d.tipoDocumento === 'CERT_BANCARIA');
+        if (!tieneDocCert) {
+          docsActualizados.push({
+            id: `doc-cert-${Date.now()}`,
+            tipoDocumento: 'CERT_BANCARIA',
+            nombreArchivoOriginal: cta.nombreArchivoCertificado || `certificacion_bancaria_${cta.banco}.pdf`,
+            nombreArchivoSeguro: `cert_${Date.now()}.pdf`,
+            urlRepositorio: cta.urlCertificadoBancario,
+            tipoMime: 'application/pdf',
+          });
+        }
+      }
+
+      return {
+        ...prev,
+        cuentaBancariaSeleccionada: cta,
+        camposAdicionales: adic,
+        documentos: docsActualizados,
+      };
+    });
+  };
+
+  const activarModoNuevaCuenta = () => {
+    setCuentaBancariaSeleccionadaId('nueva');
+    setModoNuevaCuenta(true);
+    setForm((prev) => {
+      const adic = { ...(prev.camposAdicionales || {}) };
+      delete adic.entidad_bancaria;
+      delete adic.entidadBancaria;
+      delete adic.banco;
+      delete adic.tipo_cuenta;
+      delete adic.tipoCuenta;
+      delete adic.num_cuenta;
+      delete adic.numeroCuenta;
+      delete adic.numCuenta;
+      delete adic.cuentaBancaria;
+      delete adic.urlCertificadoBancario;
+      return {
+        ...prev,
+        cuentaBancariaSeleccionada: null,
+        camposAdicionales: adic,
+      };
+    });
+  };
+
+  const actualizarDatosNuevaCuenta = (campo: 'banco' | 'tipoCuenta' | 'numeroCuenta', valor: string) => {
+    setForm((prev) => {
+      const adic = { ...(prev.camposAdicionales || {}) };
+      if (campo === 'banco') {
+        adic.entidad_bancaria = valor;
+        adic.entidadBancaria = valor;
+        adic.banco = valor;
+      } else if (campo === 'tipoCuenta') {
+        adic.tipo_cuenta = valor;
+        adic.tipoCuenta = valor;
+      } else if (campo === 'numeroCuenta') {
+        adic.num_cuenta = valor;
+        adic.numeroCuenta = valor;
+        adic.numCuenta = valor;
+        adic.cuentaBancaria = valor;
+      }
+
+      const ctaActual: CuentaBancariaComisionado = {
+        banco: adic.banco || '',
+        tipoCuenta: adic.tipoCuenta || 'AHORROS',
+        numeroCuenta: adic.numCuenta || '',
+        urlCertificadoBancario: adic.urlCertificadoBancario || null,
+        nombreArchivoCertificado: adic.nombreArchivoCertificado || null,
+      };
+
+      return {
+        ...prev,
+        cuentaBancariaSeleccionada: ctaActual,
+        camposAdicionales: adic,
       };
     });
   };
@@ -883,69 +1033,165 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setComisionado(resultado);
       const pendientes = resultado.solicitudesPendientes || [];
       setSolicitudesPendientes023(pendientes);
+
+      // Cuentas bancarias del comisionado
+      const cuentas: CuentaBancariaComisionado[] = Array.isArray(resultado.cuentasBancarias)
+        ? [...resultado.cuentasBancarias]
+        : [];
+
+      const resAny = resultado as any;
+      const ctaPlana =
+        resAny.num_cuenta ||
+        resAny.numeroCuenta ||
+        resAny.numCuenta ||
+        resAny.NUM_CUENTA_1 ||
+        resAny.cuentaBancaria ||
+        resAny.cuenta;
+      const bcoPlano =
+        resAny.entidad_bancaria ||
+        resAny.entidadBancaria ||
+        resAny.banco ||
+        resAny.COD_CUENTA_1 ||
+        resAny.nombreBanco;
+      const tipPlano =
+        resAny.tipo_cuenta ||
+        resAny.tipoCuenta ||
+        resAny.TIP_CUENTA_1 ||
+        'AHORROS';
+      const certPlano =
+        resAny.urlCertificadoBancario ||
+        resAny.url_certificado_bancario ||
+        null;
+
+      if (cuentas.length === 0 && ctaPlana && bcoPlano) {
+        cuentas.push({
+          id: 'cta-default',
+          banco: bcoPlano,
+          tipoCuenta: tipPlano,
+          numeroCuenta: ctaPlana,
+          urlCertificadoBancario: certPlano,
+          esPrincipal: true,
+        });
+      }
+
+      let ctaInicial: CuentaBancariaComisionado | null = null;
+      if (cuentas.length > 0) {
+        ctaInicial = cuentas.find((c) => c.esPrincipal) || cuentas[0];
+        setCuentaBancariaSeleccionadaId(ctaInicial.id || 'cta-0');
+        setModoNuevaCuenta(false);
+      } else {
+        setCuentaBancariaSeleccionadaId('nueva');
+        setModoNuevaCuenta(true);
+      }
+
+      // Cargos e historial de salario relacional
+      const cargosCom: CargoComisionado[] = Array.isArray(resultado.cargos)
+        ? [...resultado.cargos]
+        : [];
+
+      const cargoComisionado =
+        resultado.cargo ||
+        resAny.cargoComisionado ||
+        resAny.cargoInstitucional ||
+        resAny.cargoEsap ||
+        (cargosCom.length > 0 ? cargosCom[0].cargo : '') ||
+        '';
+
+      const cargoObj = cargosCom.find(
+        (c) => c.cargo?.trim().toLowerCase() === cargoComisionado?.trim().toLowerCase(),
+      ) || (cargosCom.length > 0 ? cargosCom[0] : null);
+
+      let salarioInicial =
+        resultado.salarioBasico != null && Number(resultado.salarioBasico) > 0
+          ? Number(resultado.salarioBasico)
+          : 0;
+
+      if (cargoObj && cargoObj.salario > 0) {
+        salarioInicial = Number(cargoObj.salario);
+      }
+
+      if (salarioInicial > 0) {
+        setAsignacionesBasicas([salarioInicial]);
+      }
+
       setForm((prev) => {
         const nuevosCamposAdicionales = { ...(prev.camposAdicionales || {}) };
-        const resAny = resultado as any;
-        const cta =
-          resAny.num_cuenta ||
-          resAny.numeroCuenta ||
-          resAny.numCuenta ||
-          resAny.NUM_CUENTA_1 ||
-          resAny.cuentaBancaria ||
-          resAny.cuenta;
-        if (cta) {
-          nuevosCamposAdicionales.num_cuenta = cta;
-          nuevosCamposAdicionales.numeroCuenta = cta;
-          nuevosCamposAdicionales.numCuenta = cta;
-          nuevosCamposAdicionales.cuentaBancaria = cta;
+        if (ctaInicial) {
+          nuevosCamposAdicionales.num_cuenta = ctaInicial.numeroCuenta;
+          nuevosCamposAdicionales.numeroCuenta = ctaInicial.numeroCuenta;
+          nuevosCamposAdicionales.numCuenta = ctaInicial.numeroCuenta;
+          nuevosCamposAdicionales.cuentaBancaria = ctaInicial.numeroCuenta;
+          nuevosCamposAdicionales.entidad_bancaria = ctaInicial.banco;
+          nuevosCamposAdicionales.entidadBancaria = ctaInicial.banco;
+          nuevosCamposAdicionales.banco = ctaInicial.banco;
+          nuevosCamposAdicionales.tipo_cuenta = ctaInicial.tipoCuenta;
+          nuevosCamposAdicionales.tipoCuenta = ctaInicial.tipoCuenta;
+          if (ctaInicial.urlCertificadoBancario) {
+            nuevosCamposAdicionales.urlCertificadoBancario = ctaInicial.urlCertificadoBancario;
+          }
+        } else if (ctaPlana) {
+          nuevosCamposAdicionales.num_cuenta = ctaPlana;
+          nuevosCamposAdicionales.numeroCuenta = ctaPlana;
+          nuevosCamposAdicionales.numCuenta = ctaPlana;
+          nuevosCamposAdicionales.cuentaBancaria = ctaPlana;
+          if (bcoPlano) {
+            nuevosCamposAdicionales.entidad_bancaria = bcoPlano;
+            nuevosCamposAdicionales.entidadBancaria = bcoPlano;
+            nuevosCamposAdicionales.banco = bcoPlano;
+          }
+          if (tipPlano) {
+            nuevosCamposAdicionales.tipo_cuenta = tipPlano;
+            nuevosCamposAdicionales.tipoCuenta = tipPlano;
+          }
         }
-        const bco =
-          resAny.entidad_bancaria ||
-          resAny.entidadBancaria ||
-          resAny.banco ||
-          resAny.COD_CUENTA_1 ||
-          resAny.nombreBanco;
-        if (bco) {
-          nuevosCamposAdicionales.entidad_bancaria = bco;
-          nuevosCamposAdicionales.entidadBancaria = bco;
-          nuevosCamposAdicionales.banco = bco;
-        }
-        const tip =
-          resAny.tipo_cuenta ||
-          resAny.tipoCuenta ||
-          resAny.TIP_CUENTA_1;
-        if (tip) {
-          nuevosCamposAdicionales.tipo_cuenta = tip;
-          nuevosCamposAdicionales.tipoCuenta = tip;
-        }
+
         if (resAny.numeroContrato || resAny.contrato) {
           nuevosCamposAdicionales.numeroContrato =
             nuevosCamposAdicionales.numeroContrato || resAny.numeroContrato || resAny.contrato;
         }
-        const cargoComisionado =
-          resultado.cargo ||
-          resAny.cargoComisionado ||
-          resAny.cargoInstitucional ||
-          resAny.cargoEsap ||
-          '';
+
         if (cargoComisionado) {
           nuevosCamposAdicionales.cargoEsap = cargoComisionado;
           nuevosCamposAdicionales.cargo = cargoComisionado;
           nuevosCamposAdicionales.cargoInstitucional = cargoComisionado;
           nuevosCamposAdicionales.cargoComisionado = cargoComisionado;
         }
+
+        const docsActualizados = [...(prev.documentos || [])];
+        if (ctaInicial?.urlCertificadoBancario) {
+          const tieneDocCert = docsActualizados.some((d) => d.tipoDocumento === 'CERT_BANCARIA');
+          if (!tieneDocCert) {
+            docsActualizados.push({
+              id: `doc-cert-${Date.now()}`,
+              tipoDocumento: 'CERT_BANCARIA',
+              nombreArchivoOriginal: ctaInicial.nombreArchivoCertificado || `certificacion_bancaria_${ctaInicial.banco}.pdf`,
+              nombreArchivoSeguro: `cert_${Date.now()}.pdf`,
+              urlRepositorio: ctaInicial.urlCertificadoBancario,
+              tipoMime: 'application/pdf',
+            });
+          }
+        }
+
         return {
           ...prev,
           comisionadoId: resultado.id,
           idDependencia: resultado.idDependencia ?? prev.idDependencia,
-          salarioBasico: resultado.salarioBasico != null && Number(resultado.salarioBasico) > 0
-            ? Number(resultado.salarioBasico)
-            : prev.salarioBasico,
+          salarioBasico: salarioInicial > 0 ? salarioInicial : prev.salarioBasico,
+          cargoSeleccionado: cargoComisionado
+            ? {
+                idCargo: cargoObj?.idCargo,
+                cargo: cargoComisionado,
+                salario: salarioInicial,
+              }
+            : prev.cargoSeleccionado,
+          cuentaBancariaSeleccionada: ctaInicial,
           camposAdicionales: nuevosCamposAdicionales,
+          documentos: docsActualizados,
         };
       });
-      if (resultado.cargo || (resultado as any).cargoComisionado) {
-        setCargoActualSeleccionado(resultado.cargo || (resultado as any).cargoComisionado);
+
+      if (cargoComisionado) {
+        setCargoActualSeleccionado(cargoComisionado);
       }
       if (resultado.idDependencia != null) {
         const depEncontrada = dependencias.find((d) => Number(d.idDependencia) === Number(resultado.idDependencia));
@@ -1815,8 +2061,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       ? String(comisionado.fechaFinContrato).split('T')[0]
       : null;
     const salarioBasico =
-      comisionado?.salarioBasico != null
+      form.salarioBasico != null && Number(form.salarioBasico) > 0
+        ? Number(form.salarioBasico)
+        : comisionado?.salarioBasico != null
         ? Number(comisionado.salarioBasico)
+        : (comisionado?.cargos?.[0]?.salario != null && Number(comisionado.cargos[0].salario) > 0)
+        ? Number(comisionado.cargos[0].salario)
         : null;
 
     return {
@@ -2122,81 +2372,193 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         {infoComisionadoCompleta.esFacturador ? 'Facturador Electrónico' : 'Régimen Ordinario / RUT'}
                       </span>
                     </div>
-                    {/* Selector interactivo: Dependencia x Cargo */}
+                    {/* Asignación Organizacional: Información del Comisionado (Paso 1 - Solo Lectura / Informativo) */}
                     <div className="sm:col-span-2 lg:col-span-3 bg-white p-4 rounded-xl border border-emerald-200/90 shadow-2xs space-y-3 mt-1">
                       <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-emerald-100">
                         <div className="flex items-center gap-2">
                           <Building2 className="w-4 h-4 text-[#003DA5]" />
                           <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                            Información Organizacional (Dependencia y Cargo)
+                            Asignación Organizacional (Dependencia y Cargo)
                           </span>
                         </div>
-                        {infoComisionadoCompleta.depCodigo && (
-                          <span className="text-xs font-mono font-bold px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded">
-                            Cód. {infoComisionadoCompleta.depCodigo}
-                          </span>
-                        )}
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                          Informativo · Paso 1
+                        </span>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
-                            Dependencia Asignada <span className="text-red-500">*</span>
-                          </label>
-                          {infoComisionadoCompleta.depNombre && (
-                            <p className="text-[11px] text-slate-500 mt-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                        {/* Dependencia */}
+                        <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Dependencia Institucional
+                          </span>
+                          {infoComisionadoCompleta.depNombre ? (
+                            <span className="font-extrabold text-slate-800 block mt-0.5">
                               {infoComisionadoCompleta.depNombre}
-                            </p>
+                              {infoComisionadoCompleta.depCodigo && (
+                                <span className="ml-1 text-[11px] font-mono text-[#003DA5] font-bold">
+                                  (Cód. {infoComisionadoCompleta.depCodigo})
+                                </span>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Falta información de dependencia (se asignará en Paso 2)
+                            </span>
                           )}
-                          <p className="text-[11px] text-slate-500 mt-1">
-                            Los cargos disponibles se actualizarán según la dependencia seleccionada.
-                          </p>
                         </div>
 
-                        <div>
-                          <label className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
-                            Cargo Institucional <span className="text-red-500">*</span>
-                          </label>
-                          <SearchableSelect
-                            id="cargo-institucional-select"
-                            options={cargosDisponibles.map((c) => ({
-                              value: c.nomCargo,
-                              label: c.nomCargo,
-                              sublabel: `${c.codCargo ? `Cód. ${c.codCargo}` : ''}${
-                                c.nivelJerarquico ? ` • ${c.nivelJerarquico}` : ''
-                              }`.trim() || undefined,
-                            }))}
-                            value={cargoActualSeleccionado}
-                            onChange={(val) => cambiarCargo(val)}
-                            placeholder={
-                              !idDependenciaActual
-                                ? 'Primero seleccione una dependencia...'
-                                : cargandoCargos
-                                ? 'Cargando cargos...'
-                                : 'Buscar o seleccionar cargo...'
-                            }
-                            disabled={!idDependenciaActual || cargandoCargos}
-                            loading={cargandoCargos}
-                            allowClear
-                            emptyText={
-                              !idDependenciaActual
-                                ? 'Primero seleccione una dependencia'
-                                : 'No hay cargos asignados a esta dependencia en Configuración General'
-                            }
-                          />
-                          {idDependenciaActual && cargosDisponibles.length > 0 ? (
-                            <p className="text-[11px] text-emerald-700 font-medium mt-1">
-                              {cargosDisponibles.length} cargo(s) disponible(s) para esta dependencia.
-                            </p>
-                          ) : idDependenciaActual && !cargandoCargos ? (
-                            <p className="text-[11px] text-amber-700 font-medium mt-1">
-                              Sin cargos vinculados a esta dependencia en Configuración General.
-                            </p>
-                          ) : null}
+                        {/* Cargo principal */}
+                        <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Cargo Institucional Registrado
+                          </span>
+                          {infoComisionadoCompleta.cargo ? (
+                            <span className="font-extrabold text-slate-800 block mt-0.5">
+                              {infoComisionadoCompleta.cargo}
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Falta información de cargo (se seleccionará en Paso 2)
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Salario */}
+                        <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Salario Básico Registrado
+                          </span>
+                          {infoComisionadoCompleta.salarioBasico != null && infoComisionadoCompleta.salarioBasico > 0 ? (
+                            <span className="font-extrabold text-slate-800 block mt-0.5">
+                              {formatearMoneda(infoComisionadoCompleta.salarioBasico)}
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Falta salario (se completará en Paso 2)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Mensaje de completado en Paso 2 */}
+                      <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2.5">
+                        <AlertCircle className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          <p className="font-bold">
+                            Selección, Cambio y Asignación de Cargo en el Paso 2:
+                          </p>
+                          <p className="text-[11px] text-blue-800 leading-relaxed">
+                            {infoComisionadoCompleta.cargo
+                              ? 'Este funcionario ya cuenta con cargo registrado. En el Paso 2 (Objeto y Destino) podrá confirmar con cuál cargo se realizará esta comisión (o cambiarlo si tiene múltiples cargos) y verificar su salario relacional.'
+                              : 'Este funcionario no tiene cargo registrado. En el Paso 2 (Objeto y Destino) podrá seleccionar la dependencia, elegir el cargo institucional correspondiente y fijar su salario relacional para la liquidación de viáticos.'}
+                          </p>
                         </div>
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* HISTORIAL Y CONSULTA DE CUENTAS BANCARIAS DEL COMISIONADO (PASO 1 INFORMATIVO) */}
+              {/* ========================================================================= */}
+              {comisionado && !habeasPendiente && (
+                <div className="border border-blue-200 bg-white rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-blue-100 text-[#003DA5] flex items-center justify-center font-bold">
+                        <CreditCard className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h5 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-2">
+                          Cuentas Bancarias Registradas
+                          {comisionado.cuentasBancarias && comisionado.cuentasBancarias.length > 0 && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-[#003DA5] border border-blue-200 font-extrabold">
+                              {comisionado.cuentasBancarias.length} guardada(s)
+                            </span>
+                          )}
+                        </h5>
+                        <p className="text-[11px] text-slate-500">
+                          Información de cuentas bancarias asociadas al funcionario (Modo solo consulta e informativo).
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                      Informativo · Paso 1
+                    </span>
+                  </div>
+
+                  {comisionado.cuentasBancarias && comisionado.cuentasBancarias.length > 0 ? (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {comisionado.cuentasBancarias.map((cta, idx) => (
+                          <div
+                            key={cta.id || `cta-info-${idx}`}
+                            className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 space-y-1.5"
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-extrabold text-slate-900 text-xs truncate">
+                                {cta.banco}
+                              </span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 uppercase">
+                                  {cta.tipoCuenta || 'AHORROS'}
+                                </span>
+                                {cta.esPrincipal && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                                    Principal
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-[11px] text-slate-600 font-mono">
+                              No. <span className="font-bold text-slate-800">{cta.numeroCuenta}</span>
+                            </div>
+                            <div className="pt-1 border-t border-slate-200/60 text-[10px]">
+                              {cta.urlCertificadoBancario ? (
+                                <a
+                                  href={cta.urlCertificadoBancario}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 inline-flex items-center gap-1"
+                                >
+                                  <BadgeCheck className="w-3 h-3 text-emerald-600" /> Certificado registrado
+                                </a>
+                              ) : (
+                                <span className="text-slate-400 italic">
+                                  Sin certificación adjunta
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-[#003DA5] shrink-0" />
+                        <span className="text-[11px]">
+                          En el <strong>Paso 2 (Objeto y Destino)</strong> seleccionará la cuenta específica para el desembolso de esta comisión o podrá registrar y ajustar una nueva cuenta.
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    /* Si no hay cuenta indica que no se ha registrado */
+                    <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-amber-950">
+                          No se ha registrado cuenta bancaria para este comisionado
+                        </p>
+                        <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                          El comisionado no cuenta con cuentas bancarias registradas en su historial. En el <strong>Paso 2 (Objeto y Destino)</strong> podrá ingresar los datos de la cuenta bancaria y adjuntar la certificación correspondiente para el desembolso de los viáticos.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2405,12 +2767,695 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 </div>
               </div>
 
+              {/* ========== ASIGNACIÓN ORGANIZACIONAL: CARGO Y SALARIO DE LA COMISIÓN (FORMATO 023 - PASO 2) ========== */}
+              <div className="rounded-2xl border border-emerald-200 bg-white p-4 sm:p-5 space-y-3.5 shadow-2xs">
+                <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-emerald-100">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-[#003DA5]" />
+                    <div>
+                      <h5 className="text-xs sm:text-sm font-black text-slate-800 uppercase tracking-wider">
+                        Asignación Organizacional (Dependencia y Cargo para la Comisión)
+                      </h5>
+                      <p className="text-[11px] text-slate-500">
+                        Seleccione o confirme el cargo y salario relacional con el que se realizará la comisión (Formato GF-FO-023) para trazabilidad y KPIs.
+                      </p>
+                    </div>
+                  </div>
+                  {infoComisionadoCompleta.depCodigo && (
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded">
+                      Cód. {infoComisionadoCompleta.depCodigo}
+                    </span>
+                  )}
+                </div>
+
+                {/* SI EL COMISIONADO TIENE CARGO REGISTRADO O SELECCIONADO */}
+                {((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo) || Boolean(cargoActualSeleccionado)) && (
+                  <div className="bg-gradient-to-r from-blue-50/70 via-slate-50/50 to-emerald-50/70 p-4 rounded-xl border border-blue-200 shadow-2xs space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-blue-100 text-[#003DA5] flex items-center justify-center shrink-0 mt-0.5">
+                          <Briefcase className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 bg-blue-100 text-[#003DA5] rounded-full border border-blue-200">
+                              Cargo Seleccionado para la Comisión
+                            </span>
+                            {infoComisionadoCompleta.depNombre && (
+                              <span className="text-[11px] text-slate-500 truncate">
+                                • {infoComisionadoCompleta.depNombre}
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5 truncate">
+                            {cargoActualSeleccionado || comisionado?.cargo || comisionado?.cargos?.[0]?.cargo || 'Cargo Institucional'}
+                          </h4>
+                          <p className="text-[11px] text-slate-500">
+                            Este cargo quedará registrado en la solicitud para trazabilidad y KPIs analíticos de gasto por cargo.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 sm:self-center shrink-0">
+                        <div className="text-right px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                          <span className="text-[10px] uppercase font-bold text-emerald-800 block">Salario Relacional</span>
+                          <span className="text-xs sm:text-sm font-extrabold text-emerald-900">
+                            ${(form.salarioBasico || 0).toLocaleString('es-CO')} COP
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          id="btn-cambiar-cargo-comision"
+                          onClick={() => setModoCambiarCargo((prev) => !prev)}
+                          className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 shadow-2xs ${
+                            modoCambiarCargo
+                              ? 'bg-slate-200 text-slate-800 border-slate-300'
+                              : 'bg-[#003DA5] text-white hover:bg-[#002D7A] border-[#003DA5]'
+                          }`}
+                        >
+                          <ArrowLeftRight className="w-3.5 h-3.5" />
+                          {modoCambiarCargo ? 'Cerrar selector' : 'Cambiar cargo'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Chips de otros cargos que ya tiene el comisionado guardados */}
+                    {comisionado?.cargos && comisionado.cargos.length > 1 && (
+                      <div className="pt-2 border-t border-slate-200/80 flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                          Cargos previos: Cambiar a otro cargo registrado:
+                        </span>
+                        {comisionado.cargos.map((c, i) => {
+                          const esActivo = cargoActualSeleccionado.toLowerCase() === c.cargo.trim().toLowerCase();
+                          return (
+                            <button
+                              key={c.id || i}
+                              type="button"
+                              onClick={() => {
+                                cambiarCargo(c.cargo);
+                                setModoCambiarCargo(false);
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+                                esActivo
+                                  ? 'bg-blue-600 text-white border-blue-600 font-bold shadow-2xs'
+                                  : 'bg-white hover:bg-blue-50 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              {c.cargo} {c.salario > 0 ? `(${formatearMoneda(c.salario)})` : ''}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* SELECTOR INTERACTIVO: Para cambiar cargo o para completar cuando falta info */}
+                <div className={
+                  modoCambiarCargo || (!((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo)))
+                    ? 'space-y-4 pt-2'
+                    : 'hidden'
+                }>
+                  <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Plus className="w-3.5 h-3.5 text-blue-600" />
+                      {!((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo))
+                        ? 'Completar información requerida de cargo y salario'
+                        : 'Seleccionar o registrar nuevo cargo para la comisión'}
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Cargos parametrizados según dependencia institucional
+                    </span>
+                  </div>
+
+                  {!((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo)) && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>
+                        El funcionario no tiene cargo asignado. Por favor seleccione la dependencia, elija o ingrese el cargo y defina su salario relacional para la liquidación.
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                        Dependencia Asignada <span className="text-red-500">*</span>
+                      </label>
+                      <SearchableSelect
+                        id="dependencia-asignada-select"
+                        options={dependencias.map((d) => ({
+                          value: String(d.idDependencia),
+                          label: d.nomDependencia,
+                          sublabel: d.codDependencia ? `Cód. ${d.codDependencia}` : undefined,
+                        }))}
+                        value={idDependenciaActual ? String(idDependenciaActual) : ''}
+                        onChange={(val) => cambiarDependencia(val)}
+                        placeholder="Seleccionar dependencia..."
+                        disabled={!puedeElegirDependencia() && Boolean(comisionado?.idDependencia)}
+                        emptyText="No hay dependencias registradas"
+                      />
+                      {infoComisionadoCompleta.depNombre && (
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          {infoComisionadoCompleta.depNombre}
+                        </p>
+                      )}
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Los cargos disponibles se actualizarán según la dependencia seleccionada.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                        Cargo Institucional <span className="text-red-500">*</span>
+                      </label>
+                      <SearchableSelect
+                        id="cargo-institucional-select"
+                        options={(() => {
+                          const listaOpciones: { value: string; label: string; sublabel?: string }[] = [];
+                          const agregados = new Set<string>();
+
+                          // 1. Cargos disponibles de la dependencia
+                          cargosDisponibles.forEach((c) => {
+                            const nom = c.nomCargo?.trim();
+                            if (nom && !agregados.has(nom.toLowerCase())) {
+                              agregados.add(nom.toLowerCase());
+                              listaOpciones.push({
+                                value: nom,
+                                label: nom,
+                                sublabel: `${c.codCargo ? `Cód. ${c.codCargo}` : ''}${
+                                  c.nivelJerarquico ? ` • ${c.nivelJerarquico}` : ''
+                                }`.trim() || undefined,
+                              });
+                            }
+                          });
+
+                          // 2. Cargos registrados previamente en el comisionado
+                          (comisionado?.cargos || []).forEach((c) => {
+                            const nom = c.cargo?.trim();
+                            if (nom && !agregados.has(nom.toLowerCase())) {
+                              agregados.add(nom.toLowerCase());
+                              listaOpciones.push({
+                                value: nom,
+                                label: nom,
+                                sublabel: `Registrado en perfil • Salario: ${formatearMoneda(c.salario)}`,
+                              });
+                            }
+                          });
+
+                          // 3. Cargo actual del comisionado si no está
+                          if (comisionado?.cargo && !agregados.has(comisionado.cargo.trim().toLowerCase())) {
+                            const nom = comisionado.cargo.trim();
+                            listaOpciones.push({
+                              value: nom,
+                              label: nom,
+                              sublabel: 'Cargo actual en ESAP',
+                            });
+                          }
+
+                          return listaOpciones;
+                        })()}
+                        value={cargoActualSeleccionado}
+                        onChange={(val) => cambiarCargo(val)}
+                        placeholder={
+                          !idDependenciaActual
+                            ? 'Primero seleccione una dependencia...'
+                            : cargandoCargos
+                            ? 'Cargando cargos...'
+                            : 'Buscar o seleccionar cargo...'
+                        }
+                        disabled={!idDependenciaActual || cargandoCargos}
+                        loading={cargandoCargos}
+                        allowClear
+                        emptyText={
+                          !idDependenciaActual
+                            ? 'Primero seleccione una dependencia'
+                            : 'No hay cargos asignados a esta dependencia en Configuración General'
+                        }
+                      />
+
+                      {idDependenciaActual && cargosDisponibles.length > 0 ? (
+                        <p className="text-[11px] text-emerald-700 font-medium mt-1">
+                          {cargosDisponibles.length} cargo(s) disponible(s) para esta dependencia.
+                        </p>
+                      ) : idDependenciaActual && !cargandoCargos ? (
+                        <p className="text-[11px] text-amber-700 font-medium mt-1">
+                          Sin cargos vinculados a esta dependencia en Configuración General.
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* Salario básico relacional al cargo */}
+                  <div className="pt-3 border-t border-emerald-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-50/40 p-3 rounded-xl">
+                    <div className="min-w-0">
+                      <label htmlFor="salario-cargo-relacional" className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Coins className="w-4 h-4 text-emerald-700" />
+                        Salario Básico Relacional del Cargo <span className="text-red-500">*</span>
+                      </label>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Asignación salarial vinculada directamente al cargo seleccionado para el cálculo y liquidación de viáticos.
+                      </p>
+                    </div>
+                    <div className="w-full sm:w-56 shrink-0">
+                      <div className="relative rounded-xl shadow-2xs">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 font-bold text-xs">$</span>
+                        <input
+                          id="salario-cargo-relacional"
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="0"
+                          value={form.salarioBasico ? form.salarioBasico.toLocaleString('es-CO') : ''}
+                          onChange={(e) => {
+                            const num = Number(e.target.value.replace(/\D/g, '')) || 0;
+                            setForm((prev) => ({
+                              ...prev,
+                              salarioBasico: num,
+                              cargoSeleccionado: prev.cargoSeleccionado
+                                ? { ...prev.cargoSeleccionado, salario: num }
+                                : cargoActualSeleccionado
+                                ? { cargo: cargoActualSeleccionado, salario: num }
+                                : undefined,
+                            }));
+                            setAsignacionesBasicas(num > 0 ? [num] : []);
+                          }}
+                          className="block w-full pl-8 pr-3 py-2 text-sm font-bold text-slate-900 bg-white border border-emerald-200 rounded-xl focus:ring-2 focus:ring-[#003DA5] focus:border-transparent transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Botón de confirmar cargo y mensaje informativo */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                    <p className="text-[11px] text-slate-500 italic">
+                      ✓ Al fijar este cargo, se vinculará a la solicitud GF-FO-023 y se agregará al perfil del comisionado.
+                    </p>
+                    {((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo)) && (
+                      <button
+                        type="button"
+                        id="btn-fijar-cargo-comision"
+                        onClick={() => setModoCambiarCargo(false)}
+                        className="px-3 py-1.5 bg-[#003DA5] text-white rounded-xl text-xs font-bold hover:bg-[#002D7A] transition-all flex items-center justify-center gap-1.5 self-end shrink-0"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Fijar este cargo para la comisión
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ========== CUENTAS BANCARIAS PARA DESEMBOLSO DE VIÁTICOS (CONFIGURACIÓN Y AJUSTE - PASO 2) ========== */}
+              {comisionado && (
+                <div className="border border-blue-200 bg-white rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
+                  <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-blue-100 text-[#003DA5] flex items-center justify-center font-bold">
+                        <CreditCard className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h5 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                          Cuentas Bancarias para Desembolso de Viáticos
+                          {comisionado.cuentasBancarias && comisionado.cuentasBancarias.length > 0 && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-[#003DA5] border border-blue-200 font-extrabold">
+                              {comisionado.cuentasBancarias.length} guardada(s)
+                            </span>
+                          )}
+                        </h5>
+                        <p className="text-[11px] text-slate-500">
+                          Seleccione la cuenta bancaria donde se consignará el valor de los viáticos o registre y ajuste una nueva cuenta para esta comisión.
+                        </p>
+                      </div>
+                    </div>
+
+                    {!modoNuevaCuenta && comisionado.cuentasBancarias && comisionado.cuentasBancarias.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={activarModoNuevaCuenta}
+                        className="text-xs font-bold px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#003DA5] border border-blue-200 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Landmark className="w-3.5 h-3.5" />
+                        + Registrar otra cuenta bancaria
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Listado interactivo de cuentas registradas */}
+                  {!modoNuevaCuenta && comisionado.cuentasBancarias && comisionado.cuentasBancarias.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {comisionado.cuentasBancarias.map((cta, idx) => {
+                        const idActual = cta.id || `cta-${idx}`;
+                        const seleccionada = cuentaBancariaSeleccionadaId === idActual;
+                        return (
+                          <div
+                            key={idActual}
+                            onClick={() => seleccionarCuentaBancaria(cta)}
+                            className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer relative ${
+                              seleccionada
+                                ? 'border-[#003DA5] bg-blue-50/50 shadow-xs ring-2 ring-[#003DA5]/20'
+                                : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50/50'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                                    seleccionada
+                                      ? 'border-[#003DA5] bg-[#003DA5] text-white'
+                                      : 'border-slate-300 bg-white'
+                                  }`}
+                                >
+                                  {seleccionada && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                </div>
+                                <span className="font-extrabold text-slate-900 text-xs sm:text-sm">
+                                  {cta.banco}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 uppercase">
+                                  {cta.tipoCuenta || 'AHORROS'}
+                                </span>
+                                {cta.esPrincipal && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                                    Principal
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="mt-2.5 flex items-center justify-between text-xs flex-wrap gap-2">
+                              <span className="text-slate-500 font-mono font-medium">
+                                No. <span className="font-bold text-slate-800">{cta.numeroCuenta}</span>
+                              </span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {cta.urlCertificadoBancario ? (
+                                  <a
+                                    href={cta.urlCertificadoBancario}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-flex items-center gap-1"
+                                  >
+                                    <BadgeCheck className="w-3 h-3 text-emerald-600" />
+                                    Certificación PDF
+                                  </a>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 italic">
+                                    Sin certificado PDF adjunto
+                                  </span>
+                                )}
+
+                                {seleccionada && (
+                                  <label
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-[10px] font-bold text-[#003DA5] hover:text-[#002b75] bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                    title="Cargar nuevo certificado bancario para actualizar esta cuenta"
+                                  >
+                                    <Upload className="w-2.5 h-2.5" />
+                                    {cta.urlCertificadoBancario ? 'Cambiar PDF' : 'Adjuntar PDF'}
+                                    <input
+                                      type="file"
+                                      accept="application/pdf"
+                                      className="hidden"
+                                      onChange={async (e) => {
+                                        const archivo = e.target.files?.[0];
+                                        if (!archivo) return;
+                                        if (!archivo.type.includes('pdf') && !archivo.name.toLowerCase().endsWith('.pdf')) {
+                                          setErrorConsulta('El certificado bancario debe estar en formato PDF.');
+                                          return;
+                                        }
+                                        let urlCert = '';
+                                        if (solicitudBorrador?.id) {
+                                          setSubiendoCertificadoBancarioDirecto(true);
+                                          try {
+                                            const doc = await viaticosService.subirDocumento(
+                                              solicitudBorrador.id,
+                                              'CERT_BANCARIA',
+                                              archivo,
+                                              'application/pdf',
+                                            );
+                                            urlCert = doc.urlRepositorio;
+                                            setForm((prev) => ({
+                                              ...prev,
+                                              documentos: [...(prev.documentos || []), doc],
+                                            }));
+                                          } catch (err) {
+                                            console.error('Error subiendo certificado bancario:', err);
+                                          } finally {
+                                            setSubiendoCertificadoBancarioDirecto(false);
+                                          }
+                                        } else {
+                                          urlCert = URL.createObjectURL(archivo);
+                                          const docItem: DocumentoFormItem = {
+                                            id: `cert-${Date.now()}`,
+                                            tipoDocumento: 'CERT_BANCARIA',
+                                            nombreArchivoOriginal: archivo.name,
+                                            nombreArchivoSeguro: `cert_${Date.now()}.pdf`,
+                                            urlRepositorio: urlCert,
+                                            tipoMime: 'application/pdf',
+                                          };
+                                          setForm((prev) => ({
+                                            ...prev,
+                                            documentos: [
+                                              ...(prev.documentos || []).filter((d) => d.tipoDocumento !== 'CERT_BANCARIA'),
+                                              docItem,
+                                            ],
+                                          }));
+                                        }
+
+                                        if (urlCert) {
+                                          cta.urlCertificadoBancario = urlCert;
+                                          cta.nombreArchivoCertificado = archivo.name;
+                                          setForm((prev) => ({
+                                            ...prev,
+                                            camposAdicionales: {
+                                              ...(prev.camposAdicionales || {}),
+                                              urlCertificadoBancario: urlCert,
+                                              nombreArchivoCertificado: archivo.name,
+                                            },
+                                            cuentaBancariaSeleccionada: {
+                                              ...cta,
+                                              urlCertificadoBancario: urlCert,
+                                              nombreArchivoCertificado: archivo.name,
+                                            },
+                                          }));
+                                        }
+                                      }}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    /* Formulario interactivo de Registro / Ajuste de Cuenta Bancaria */
+                    <div className="border border-blue-200 bg-blue-50/30 rounded-xl p-4 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                          <Landmark className="w-4 h-4 text-[#003DA5]" />
+                          Nueva Cuenta Bancaria del Comisionado
+                        </span>
+                        {comisionado.cuentasBancarias && comisionado.cuentasBancarias.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const primera = comisionado.cuentasBancarias![0];
+                              seleccionarCuentaBancaria(primera);
+                            }}
+                            className="text-xs text-slate-600 hover:text-slate-900 font-bold underline cursor-pointer"
+                          >
+                            Cancelar y usar cuenta guardada
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 mb-1 block">
+                            Entidad Bancaria <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            list="bancos-colombia-list"
+                            type="text"
+                            placeholder="Ej. Bancolombia, Banco de Bogotá..."
+                            value={form.camposAdicionales?.banco || form.camposAdicionales?.entidad_bancaria || ''}
+                            onChange={(e) => actualizarDatosNuevaCuenta('banco', e.target.value.toUpperCase())}
+                            className={inputCls}
+                          />
+                          <datalist id="bancos-colombia-list">
+                            {LISTA_BANCOS_COLOMBIA.map((b) => (
+                              <option key={b} value={b} />
+                            ))}
+                          </datalist>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 mb-1 block">
+                            Tipo de Cuenta <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            value={form.camposAdicionales?.tipo_cuenta || form.camposAdicionales?.tipoCuenta || 'AHORROS'}
+                            onChange={(e) => actualizarDatosNuevaCuenta('tipoCuenta', e.target.value)}
+                            className={inputCls}
+                          >
+                            <option value="AHORROS">Cuenta de Ahorros</option>
+                            <option value="CORRIENTE">Cuenta Corriente</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-bold text-slate-700 mb-1 block">
+                            Número de Cuenta <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            placeholder="Ej. 1234567890"
+                            value={form.camposAdicionales?.num_cuenta || form.camposAdicionales?.numeroCuenta || ''}
+                            onChange={(e) => actualizarDatosNuevaCuenta('numeroCuenta', soloNumeros(e.target.value))}
+                            className={inputCls}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Subida o adjunto directo de Certificación Bancaria */}
+                      <div className="pt-3 border-t border-blue-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-blue-100">
+                        <div>
+                          <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                            <FileText className="w-3.5 h-3.5 text-[#003DA5]" />
+                            Certificación Bancaria (Soporte PDF)
+                          </label>
+                          <p className="text-[11px] text-slate-500">
+                            Adjunte la certificación bancaria expedida por el banco (máx. 90 días).
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {form.camposAdicionales?.urlCertificadoBancario ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-200 inline-flex items-center gap-1">
+                                <Check className="w-3 h-3 text-emerald-600" /> Certificado cargado
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const adic = { ...(form.camposAdicionales || {}) };
+                                  delete adic.urlCertificadoBancario;
+                                  setForm((prev) => ({ ...prev, camposAdicionales: adic }));
+                                }}
+                                className="text-xs text-red-600 hover:text-red-800 font-bold"
+                              >
+                                Quitar
+                              </button>
+                            </div>
+                          ) : (
+                            <label className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#003DA5] border border-blue-200 rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 transition-colors">
+                              <Upload className="w-3.5 h-3.5" />
+                              {subiendoCertificadoBancarioDirecto ? 'Subiendo...' : 'Seleccionar PDF'}
+                              <input
+                                type="file"
+                                accept="application/pdf"
+                                className="hidden"
+                                disabled={subiendoCertificadoBancarioDirecto}
+                                onChange={async (e) => {
+                                  const archivo = e.target.files?.[0];
+                                  if (!archivo) return;
+                                  if (!archivo.type.includes('pdf') && !archivo.name.toLowerCase().endsWith('.pdf')) {
+                                    setErrorConsulta('La certificación bancaria debe ser un archivo PDF.');
+                                    return;
+                                  }
+                                  if (solicitudBorrador?.id) {
+                                    setSubiendoCertificadoBancarioDirecto(true);
+                                    try {
+                                      const doc = await viaticosService.subirDocumento(
+                                        solicitudBorrador.id,
+                                        'CERT_BANCARIA',
+                                        archivo,
+                                        'application/pdf',
+                                      );
+                                      setForm((prev) => ({
+                                        ...prev,
+                                        camposAdicionales: {
+                                          ...(prev.camposAdicionales || {}),
+                                          urlCertificadoBancario: doc.urlRepositorio,
+                                          nombreArchivoCertificado: archivo.name,
+                                        },
+                                        cuentaBancariaSeleccionada: prev.cuentaBancariaSeleccionada
+                                          ? {
+                                              ...prev.cuentaBancariaSeleccionada,
+                                              urlCertificadoBancario: doc.urlRepositorio,
+                                              nombreArchivoCertificado: archivo.name,
+                                            }
+                                          : null,
+                                        documentos: [...(prev.documentos || []), doc],
+                                      }));
+                                    } catch (err) {
+                                      console.error('Error subiendo certificado bancario:', err);
+                                    } finally {
+                                      setSubiendoCertificadoBancarioDirecto(false);
+                                    }
+                                  } else {
+                                    const docItem: DocumentoFormItem = {
+                                      id: `cert-${Date.now()}`,
+                                      tipoDocumento: 'CERT_BANCARIA',
+                                      nombreArchivoOriginal: archivo.name,
+                                      nombreArchivoSeguro: `cert_${Date.now()}.pdf`,
+                                      urlRepositorio: URL.createObjectURL(archivo),
+                                      tipoMime: 'application/pdf',
+                                    };
+                                    setForm((prev) => ({
+                                      ...prev,
+                                      camposAdicionales: {
+                                        ...(prev.camposAdicionales || {}),
+                                        urlCertificadoBancario: docItem.urlRepositorio,
+                                        nombreArchivoCertificado: archivo.name,
+                                      },
+                                      cuentaBancariaSeleccionada: prev.cuentaBancariaSeleccionada
+                                        ? {
+                                            ...prev.cuentaBancariaSeleccionada,
+                                            urlCertificadoBancario: docItem.urlRepositorio,
+                                            nombreArchivoCertificado: archivo.name,
+                                          }
+                                        : null,
+                                      documentos: [
+                                        ...(prev.documentos || []).filter((d) => d.tipoDocumento !== 'CERT_BANCARIA'),
+                                        docItem,
+                                      ],
+                                    }));
+                                  }
+                                }}
+                              />
+                            </label>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          id="guardar-cuenta-perfil"
+                          type="checkbox"
+                          checked={guardarCuentaEnPerfil}
+                          onChange={(e) => setGuardarCuentaEnPerfil(e.target.checked)}
+                          className="w-4 h-4 rounded text-[#003DA5] border-slate-300 focus:ring-[#003DA5]"
+                        />
+                        <label htmlFor="guardar-cuenta-perfil" className="text-xs font-semibold text-slate-700 cursor-pointer">
+                          Guardar esta cuenta bancaria en el perfil del funcionario para futuras solicitudes
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* ========== BLOQUE 1: DATOS REQUERIDOS DE LA COMISIÓN Y SALARIO ========== */}
               <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4 shadow-2xs">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
                   <FileText className="w-4 h-4 text-[#003DA5]" />
                   <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    Datos Requeridos de la Comisión y Salario
+                    Datos Requeridos de la Comisión
                   </h5>
                 </div>
 
@@ -2502,80 +3547,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     </div>
                   )}
                 </div>
-
-                {/* Asignaciones básicas y salario comisionado */}
-                {comisionado?.tipoComisionado && !esCampoOculto('montoViaticos') && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Wallet className="w-4 h-4 text-slate-500" />
-                      <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                        Asignaciones Básicas Mensuales (Salario)
-                      </p>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mb-3">
-                      Ingrese el salario básico del comisionado. Para doble rol, agregue ambos salarios (se usará el mayor para la autoliquidación).
-                    </p>
-
-                    <div className="space-y-2">
-                      {(asignacionesBasicas.length === 0 ? [0] : asignacionesBasicas).map((valor, idx) => (
-                        <div key={idx} className="w-full sm:max-w-xs">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                            {asignacionesBasicas.length > 1
-                              ? idx === 0
-                                ? 'Salario básico mensual'
-                                : `Salario ${idx + 1} (doble rol)`
-                              : 'Salario básico mensual'}
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              placeholder="0"
-                              value={valor ? formatearMoneda(valor) : ''}
-                              onChange={(e) => {
-                                const val = Number(soloNumeros(e.target.value)) || 0;
-                                actualizarAsignacionBasica(idx, val);
-                              }}
-                              className={`${inputCls} pl-7 pr-8 text-right font-bold`}
-                            />
-                            {asignacionesBasicas.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => eliminarAsignacionBasica(idx)}
-                                className="absolute right-2 top-2 text-slate-400 hover:text-red-500"
-                                title="Eliminar salario"
-                                aria-label="Eliminar salario"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-
-                      <div className="flex items-center gap-2 pt-1 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={agregarAsignacionBasica}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 rounded-lg text-[11px] font-bold transition-colors"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          Agregar salario (doble rol)
-                        </button>
-
-                        {obtenerAsignacionesBasicasValidas().length > 1 && (
-                          <div className="flex items-center gap-1.5 text-[11px] text-slate-600 bg-white rounded-lg px-2.5 py-1.5 border border-slate-200">
-                            <Calculator className="w-3.5 h-3.5 text-slate-400" />
-                            <span>
-                              Mayor salario: <strong>{formatearMoneda(Math.max(...obtenerAsignacionesBasicasValidas()))}</strong>
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {/* Categoría investigador y excepción regional si aplica */}
                 {comisionado?.tipoComisionado === 'INVESTIGADOR' && (

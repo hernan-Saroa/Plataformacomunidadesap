@@ -17,6 +17,8 @@ export class ComisionadoResponseDto {
   fechaFinContrato?: Date | string | null;
   salarioBasico?: number | null;
   cargo?: string | null;
+  cuentasBancarias?: any[];
+  cargos?: any[];
   esFacturadorElectronico?: boolean;
   solicitudesPendientes?: any[];
   creadoEn: Date;

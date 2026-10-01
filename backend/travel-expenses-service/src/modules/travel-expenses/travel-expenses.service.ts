@@ -1028,6 +1028,23 @@ export class TravelExpensesService {
       } catch (e) {
         (com as any).solicitudesPendientes = [];
       }
+      if (!Array.isArray(com.cuentasBancarias)) {
+        com.cuentasBancarias = [];
+      }
+      if (!Array.isArray(com.cargos)) {
+        com.cargos = [];
+      }
+      if (com.cargos.length === 0 && com.cargo) {
+        com.cargos = [
+          {
+            id: 'c-default',
+            cargo: com.cargo,
+            salario: com.salarioBasico != null ? Number(com.salarioBasico) : 0,
+            idDependencia: com.idDependencia,
+            esPrincipal: true,
+          },
+        ];
+      }
       return com;
     };
 
@@ -1156,8 +1173,18 @@ export class TravelExpensesService {
         origenDatos: 'HUMANO',
         autorizacionHabeasData: false,
         idDependencia: idDependenciaFnc,
-        salarioBasico: salario,
-        cargo: cargo,
+        cuentasBancarias: [],
+        cargos: cargo
+          ? [
+              {
+                id: `crg-${Date.now()}`,
+                cargo,
+                salario: salario || 0,
+                idDependencia: idDependenciaFnc,
+                esPrincipal: true,
+              },
+            ]
+          : [],
         fechaInicioContrato: fechaInicio,
         fechaFinContrato: fechaFin,
         esFacturadorElectronico: false,
@@ -1291,6 +1318,123 @@ export class TravelExpensesService {
 
     if (!comisionado) return [];
     return this.obtenerSolicitudesPendientesPorComisionado(comisionado.id);
+  }
+
+  /**
+   * Agrega o actualiza una cuenta bancaria en el historial del comisionado.
+   */
+  async agregarCuentaBancariaComisionado(
+    documento: string,
+    cuentaData: {
+      banco: string;
+      tipoCuenta: string;
+      numeroCuenta: string;
+      urlCertificadoBancario?: string | null;
+      nombreArchivoCertificado?: string | null;
+      esPrincipal?: boolean;
+    },
+  ): Promise<ComisionadoEntity> {
+    const doc = (documento || '').trim();
+    const comisionado = await this.comisionadoRepo.findOne({
+      where: { numeroDocumento: doc },
+    });
+    if (!comisionado) {
+      throw new NotFoundException(`Comisionado con documento ${doc} no encontrado.`);
+    }
+
+    if (!Array.isArray(comisionado.cuentasBancarias)) {
+      comisionado.cuentasBancarias = [];
+    }
+
+    const numCta = (cuentaData.numeroCuenta || '').trim();
+    const bco = (cuentaData.banco || '').trim();
+
+    const idx = comisionado.cuentasBancarias.findIndex(
+      (c) =>
+        c.numeroCuenta?.trim() === numCta &&
+        c.banco?.trim().toLowerCase() === bco.toLowerCase(),
+    );
+
+    if (cuentaData.esPrincipal) {
+      comisionado.cuentasBancarias.forEach((c) => (c.esPrincipal = false));
+    }
+
+    if (idx >= 0) {
+      comisionado.cuentasBancarias[idx] = {
+        ...comisionado.cuentasBancarias[idx],
+        ...cuentaData,
+        tipoCuenta: cuentaData.tipoCuenta || comisionado.cuentasBancarias[idx].tipoCuenta,
+      };
+    } else {
+      comisionado.cuentasBancarias.push({
+        id: `cta-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        ...cuentaData,
+        fechaRegistro: new Date().toISOString(),
+        esPrincipal: cuentaData.esPrincipal ?? (comisionado.cuentasBancarias.length === 0),
+      });
+    }
+
+    return await this.comisionadoRepo.save(comisionado);
+  }
+
+  /**
+   * Agrega o actualiza un cargo y su correspondiente salario relacional en el perfil del comisionado.
+   */
+  async agregarCargoComisionado(
+    documento: string,
+    cargoData: {
+      idCargo?: number;
+      cargo: string;
+      salario: number;
+      idDependencia?: number | null;
+      fechaInicio?: string | null;
+      fechaFin?: string | null;
+      esPrincipal?: boolean;
+    },
+  ): Promise<ComisionadoEntity> {
+    const doc = (documento || '').trim();
+    const comisionado = await this.comisionadoRepo.findOne({
+      where: { numeroDocumento: doc },
+    });
+    if (!comisionado) {
+      throw new NotFoundException(`Comisionado con documento ${doc} no encontrado.`);
+    }
+
+    if (!Array.isArray(comisionado.cargos)) {
+      comisionado.cargos = [];
+    }
+
+    const nomCargo = (cargoData.cargo || '').trim();
+    const idx = comisionado.cargos.findIndex(
+      (c) => c.cargo?.trim().toLowerCase() === nomCargo.toLowerCase(),
+    );
+
+    if (cargoData.esPrincipal) {
+      comisionado.cargos.forEach((c) => (c.esPrincipal = false));
+    }
+
+    if (idx >= 0) {
+      comisionado.cargos[idx] = {
+        ...comisionado.cargos[idx],
+        ...cargoData,
+      };
+    } else {
+      comisionado.cargos.push({
+        id: `crg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        ...cargoData,
+        fechaInicio: cargoData.fechaInicio || new Date().toISOString().split('T')[0],
+        esPrincipal: cargoData.esPrincipal ?? (comisionado.cargos.length === 0),
+      });
+    }
+
+    if (cargoData.esPrincipal || comisionado.cargos.length === 1) {
+      comisionado.cargo = nomCargo;
+      if (cargoData.salario > 0) {
+        comisionado.salarioBasico = cargoData.salario;
+      }
+    }
+
+    return await this.comisionadoRepo.save(comisionado);
   }
 
   /**
@@ -1941,10 +2085,190 @@ export class TravelExpensesService {
       }
     }
 
+    // =========================================================================
+    // Sincronizar Historial de Cuentas Bancarias del Comisionado
+    // =========================================================================
+    const ctaBancaria = dto.cuentaBancariaSeleccionada;
+    const rawBanco = (
+      ctaBancaria?.banco ||
+      dto.camposAdicionales?.entidad_bancaria ||
+      dto.camposAdicionales?.entidadBancaria ||
+      dto.camposAdicionales?.banco ||
+      ''
+    ).trim();
+    const rawTipoCta = (
+      ctaBancaria?.tipoCuenta ||
+      dto.camposAdicionales?.tipo_cuenta ||
+      dto.camposAdicionales?.tipoCuenta ||
+      ''
+    ).trim();
+    const rawNumCta = (
+      ctaBancaria?.numeroCuenta ||
+      dto.camposAdicionales?.num_cuenta ||
+      dto.camposAdicionales?.numeroCuenta ||
+      dto.camposAdicionales?.numCuenta ||
+      dto.camposAdicionales?.cuentaBancaria ||
+      ''
+    ).trim();
+
+    const certDoc = dto.documentos?.find(
+      (d) =>
+        d.tipoDocumento === 'CERT_BANCARIA' ||
+        d.tipoDocumento === 'CERTIFICACION_BANCARIA',
+    );
+    const rawUrlCert =
+      ctaBancaria?.urlCertificadoBancario ||
+      dto.camposAdicionales?.urlCertificadoBancario ||
+      certDoc?.urlRepositorio ||
+      null;
+    const rawNombreCert =
+      ctaBancaria?.nombreArchivoCertificado ||
+      certDoc?.nombreArchivoOriginal ||
+      null;
+
+    let comisionadoModificado = false;
+    if (!Array.isArray(comisionado.cuentasBancarias)) {
+      comisionado.cuentasBancarias = [];
+    }
+
+    if (rawNumCta && rawBanco) {
+      const idxCta = comisionado.cuentasBancarias.findIndex(
+        (c) =>
+          c.numeroCuenta?.trim() === rawNumCta &&
+          c.banco?.trim().toLowerCase() === rawBanco.toLowerCase(),
+      );
+      if (idxCta >= 0) {
+        const ctaExistente = comisionado.cuentasBancarias[idxCta];
+        // Si no cambió de cuenta, solo actualizar a excepción de si se carga un nuevo certificado bancario
+        const nuevoCertificado =
+          Boolean(rawUrlCert) &&
+          rawUrlCert.trim() !== '' &&
+          rawUrlCert !== ctaExistente.urlCertificadoBancario;
+
+        if (nuevoCertificado) {
+          ctaExistente.urlCertificadoBancario = rawUrlCert;
+          if (rawNombreCert) {
+            ctaExistente.nombreArchivoCertificado = rawNombreCert;
+          }
+          comisionadoModificado = true;
+        }
+      } else {
+        // Primera vez o cuenta nueva: se añade al historial del comisionado
+        comisionado.cuentasBancarias.push({
+          id: `cta-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          banco: rawBanco,
+          tipoCuenta: rawTipoCta || 'AHORROS',
+          numeroCuenta: rawNumCta,
+          urlCertificadoBancario: rawUrlCert || null,
+          nombreArchivoCertificado: rawNombreCert || null,
+          fechaRegistro: new Date().toISOString(),
+          esPrincipal: comisionado.cuentasBancarias.length === 0,
+        });
+        comisionadoModificado = true;
+      }
+
+      camposAdicionalesCompletos.entidad_bancaria = rawBanco;
+      camposAdicionalesCompletos.entidadBancaria = rawBanco;
+      camposAdicionalesCompletos.banco = rawBanco;
+      camposAdicionalesCompletos.tipo_cuenta = rawTipoCta;
+      camposAdicionalesCompletos.tipoCuenta = rawTipoCta;
+      camposAdicionalesCompletos.num_cuenta = rawNumCta;
+      camposAdicionalesCompletos.numeroCuenta = rawNumCta;
+      camposAdicionalesCompletos.numCuenta = rawNumCta;
+      camposAdicionalesCompletos.cuentaBancaria = rawNumCta;
+      if (rawUrlCert) {
+        camposAdicionalesCompletos.urlCertificadoBancario = rawUrlCert;
+      }
+    }
+
+    // =========================================================================
+    // Sincronizar Historial de Cargos y Salario Relacional del Comisionado
+    // =========================================================================
+    if (!Array.isArray(comisionado.cargos)) {
+      comisionado.cargos = [];
+    }
+
+    const rawCargo = (
+      dto.cargo ||
+      dto.cargoSeleccionado?.cargo ||
+      dto.camposAdicionales?.cargoEsap ||
+      dto.camposAdicionales?.cargo ||
+      dto.camposAdicionales?.cargoInstitucional ||
+      dto.camposAdicionales?.cargoComisionado ||
+      comisionado.cargo ||
+      ''
+    ).trim();
+
+    const rawIdCargo = dto.idCargo ?? dto.cargoSeleccionado?.idCargo ?? null;
+
+    const rawSalario = Number(
+      dto.cargoSeleccionado?.salario ??
+      dto.salarioBasico ??
+      comisionado.salarioBasico ??
+      0,
+    );
+
+    if (rawCargo) {
+      const idxCrg = comisionado.cargos.findIndex(
+        (c) => c.cargo?.trim().toLowerCase() === rawCargo.toLowerCase(),
+      );
+      if (idxCrg >= 0) {
+        const cargoActual = comisionado.cargos[idxCrg];
+        if (rawSalario > 0 && cargoActual.salario !== rawSalario) {
+          cargoActual.salario = rawSalario;
+          comisionadoModificado = true;
+        }
+        if (dto.idDependencia && cargoActual.idDependencia !== dto.idDependencia) {
+          cargoActual.idDependencia = dto.idDependencia;
+          comisionadoModificado = true;
+        }
+        if (rawIdCargo && cargoActual.idCargo !== rawIdCargo) {
+          cargoActual.idCargo = rawIdCargo;
+          comisionadoModificado = true;
+        }
+      } else {
+        comisionado.cargos.push({
+          id: `crg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          idCargo: rawIdCargo ?? undefined,
+          cargo: rawCargo,
+          salario: rawSalario,
+          idDependencia: dto.idDependencia ?? comisionado.idDependencia ?? null,
+          fechaInicio: new Date().toISOString().split('T')[0],
+          esPrincipal: comisionado.cargos.length === 0,
+        });
+        comisionadoModificado = true;
+      }
+      if (comisionado.cargo !== rawCargo) {
+        comisionado.cargo = rawCargo;
+        comisionadoModificado = true;
+      }
+      if (rawSalario > 0 && comisionado.salarioBasico !== rawSalario) {
+        comisionado.salarioBasico = rawSalario;
+        comisionadoModificado = true;
+      }
+      camposAdicionalesCompletos.cargoEsap = rawCargo;
+      camposAdicionalesCompletos.cargo = rawCargo;
+      camposAdicionalesCompletos.cargoInstitucional = rawCargo;
+      camposAdicionalesCompletos.cargoComisionado = rawCargo;
+      if (rawIdCargo) {
+        camposAdicionalesCompletos.idCargo = rawIdCargo;
+      }
+    }
+
+    if (comisionadoModificado) {
+      try {
+        await this.comisionadoRepo.save(comisionado);
+      } catch (err: any) {
+        this.logger.warn(`[crearSolicitud] No se pudo guardar historial del comisionado: ${err?.message}`);
+      }
+    }
+
     const solicitud = this.solicitudRepo.create({
       comisionadoId: dto.comisionadoId,
       idDependencia:
         dto.idDependencia ?? (comisionado as any)?.idDependencia ?? null,
+      cargo: rawCargo || null,
+      idCargo: rawIdCargo,
       destinoCiudad: sincronizacion.destinoCiudad,
       destinoDepartamento: sincronizacion.destinoDepartamento,
       fechaInicio: sincronizacion.fechaInicio,
@@ -2119,6 +2443,12 @@ if (dto.costoEstimadoTiquete !== undefined) {
     }
     if (dto.esInternacional !== undefined) {
       solicitud.esInternacional = dto.esInternacional;
+    }
+    if (dto.cargo !== undefined) {
+      solicitud.cargo = dto.cargo ?? null;
+    }
+    if (dto.idCargo !== undefined) {
+      solicitud.idCargo = dto.idCargo != null ? Number(dto.idCargo) : null;
     }
     if (dto.idDependencia !== undefined) {
       solicitud.idDependencia =
@@ -3278,7 +3608,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
         f.estado === 'FIRMADO',
     );
 
-    const todasFirmasCompletadas = tieneFirmaJefe && tieneFirmaGerente && tieneFirmaAnalista;
+    const todasFirmasCompletadas = tieneFirmaJefe && tieneFirmaGerente;
 
     solicitud.camposAdicionales = {
       ...(solicitud.camposAdicionales || {}),
