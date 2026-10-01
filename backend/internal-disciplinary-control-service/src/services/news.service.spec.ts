@@ -200,6 +200,7 @@ describe('NewsService', () => {
           subject: expect.stringContaining('ND-2026-0099'),
           html: expect.stringContaining('Falta información del quejoso'),
         }),
+        expect.objectContaining({ timeout: expect.any(Number) }),
       );
     });
   });
@@ -249,6 +250,7 @@ describe('NewsService', () => {
           subject: expect.stringContaining('ND-2026-0001'),
           html: expect.stringContaining('Pendiente de Revisión'),
         }),
+        expect.objectContaining({ timeout: expect.any(Number) }),
       );
     });
   });
@@ -288,6 +290,7 @@ describe('NewsService', () => {
           subject: expect.stringContaining('ND-2026-0088'),
           html: expect.stringContaining('Se adjunta prueba documental solicitada'),
         }),
+        expect.objectContaining({ timeout: expect.any(Number) }),
       );
     });
   });

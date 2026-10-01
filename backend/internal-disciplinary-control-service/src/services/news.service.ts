@@ -74,6 +74,7 @@ export class NewsService {
     createNewsDto: CreateDisciplinaryNewsDto,
     files?: FileData[],
     userId?: string,
+    userEmail?: string,
   ): Promise<DisciplinaryNews> {
     try {
       console.log('[DEBUG] NewsService.create - DTO received:', JSON.stringify(createNewsDto, null, 2));
@@ -98,7 +99,9 @@ export class NewsService {
       const initialHistory = [{
         id: Date.now().toString(),
         tipo: 'radicacion',
-        usuario: 'Sistema', // TODO: Get actual user
+        usuario: userEmail || (userId ? `Usuario ${userId}` : 'Radicador'),
+        userId: userId || undefined,
+        userEmail: userEmail || undefined,
         fecha: new Date().toISOString(),
         observaciones: 'Radicación exitosa en el sistema',
       }];
@@ -494,25 +497,37 @@ export class NewsService {
    * El Radicador reenvia al Jefe una noticia previamente devuelta, ya corregida.
    * Registra la observacion (opcional) en el historial y notifica al Jefe.
    */
-  async resubmitNews(id: string, observaciones?: string): Promise<DisciplinaryNews> {
+  /**
+   * El Radicador reenvia al Jefe una noticia previamente devuelta, ya corregida.
+   * Registra la observacion (opcional) en el historial y notifica al Jefe.
+   */
+  async resubmitNews(
+    id: string,
+    observaciones?: string,
+    userId?: string,
+    userEmail?: string,
+  ): Promise<DisciplinaryNews> {
     const noticia = await this.findById(id);
     noticia.estado = NewsStatus.EN_VALORACION;
 
+    const obsTexto = observaciones?.trim() || '';
     const historyEntry = {
       id: Date.now().toString(),
       tipo: 'reenvio',
-      usuario: 'Radicador',
+      usuario: userEmail || (userId ? `Usuario ${userId}` : 'Radicador'),
+      userId: userId || undefined,
+      userEmail: userEmail || undefined,
       fecha: new Date().toISOString(),
-      observaciones: observaciones?.trim()
-        ? `Noticia corregida reenviada al Jefe. Observacion: ${observaciones.trim()}`
-        : 'Noticia corregida reenviada al Jefe',
+      observaciones: obsTexto
+        ? `Noticia corregida reenviada al Jefe. Observaciones: ${obsTexto}`
+        : 'Noticia corregida reenviada al Jefe para revisión',
     };
     noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
 
     const noticiaGuardada = await this.newsRepository.save(noticia);
 
     // Notificar a los Jefes OCID que la noticia corregida fue reenviada (in-app y correo institucional ESAP)
-    await this.notificarJefesNoticia(noticiaGuardada, 'REENVIO', observaciones);
+    await this.notificarJefesNoticia(noticiaGuardada, 'REENVIO', obsTexto);
 
     return noticiaGuardada;
   }
@@ -520,7 +535,12 @@ export class NewsService {
   /**
    * Devuelve una noticia con observaciones
    */
-  async returnNews(id: string, returnNewsDto: ReturnNewsDto): Promise<DisciplinaryNews> {
+  async returnNews(
+    id: string,
+    returnNewsDto: ReturnNewsDto,
+    userId?: string,
+    userEmail?: string,
+  ): Promise<DisciplinaryNews> {
     const noticia = await this.findById(id);
     noticia.estado = NewsStatus.DEVUELTA;
     noticia.observaciones = returnNewsDto.observaciones;
@@ -529,7 +549,9 @@ export class NewsService {
     const historyEntry = {
       id: Date.now().toString(),
       tipo: 'devolucion',
-      usuario: 'Sistema',
+      usuario: userEmail || (userId ? `Usuario ${userId}` : 'Jefe OCID'),
+      userId: userId || undefined,
+      userEmail: userEmail || undefined,
       fecha: new Date().toISOString(),
       observaciones: returnNewsDto.observaciones,
     };
@@ -542,7 +564,7 @@ export class NewsService {
     // Notificación directa de compatibilidad
     if (radicadorIdDestino) {
       this.notificationClient.send({
-        id_usuario_destinatario: radicadorIdDestino,
+        id_usuario_destinatario: String(radicadorIdDestino),
         tipo_notificacion: 'NOTICIA_DEVUELTA',
         titulo: 'Noticia devuelta por el Jefe OCID',
         mensaje: `La noticia ${noticia.radicado} ha sido devuelta. Observaciones: ${returnNewsDto.observaciones}`,
@@ -557,7 +579,7 @@ export class NewsService {
       }).catch(() => {});
     }
 
-    // Notificación en plataforma y correo institucional a TODOS los radicadores
+    // Notificación en plataforma y correo institucional a los radicadores
     const fechaStr = new Date().toLocaleDateString('es-CO', {
       year: 'numeric',
       month: 'long',
@@ -567,7 +589,7 @@ export class NewsService {
     });
 
     const asunto = `[DEVOLUCIÓN NOTICIA] Noticia disciplinaria devuelta: ${noticia.radicado}`;
-    const mensaje = `La noticia disciplinaria ${noticia.radicado} ha sido devuelta por el Jefe OCID con observaciones.`;
+    const mensaje = `La noticia disciplinaria con radicado ${noticia.radicado} ha sido devuelta por el Jefe OCID para su corrección y subsanación. Observaciones registradas: ${returnNewsDto.observaciones || 'Sin observaciones'}`;
 
     await this.notificarRadicadoresNoticia(
       noticiaGuardada,
@@ -581,11 +603,12 @@ export class NewsService {
         { label: 'Radicado de la Noticia', valor: noticia.radicado },
         { label: 'Estado', valor: 'DEVUELTA' },
         { label: 'Fecha de Devolución', valor: fechaStr },
-        { label: 'Observaciones / Motivo', valor: returnNewsDto.observaciones || 'Sin observaciones' },
+        { label: 'Observaciones del Jefe OCID', valor: returnNewsDto.observaciones || 'Sin observaciones' },
         { label: 'Disciplinable(s)', valor: this.formatearPersonas(noticia.disciplinable) },
+        { label: 'Denunciante(s)', valor: this.formatearPersonas(noticia.denunciante) },
         { label: 'Dependencia del Denunciado', valor: noticia.dependenciaDenunciado || 'No registrada' },
       ],
-      'Por favor ingrese al sistema para revisar las observaciones indicadas por el Jefe OCID, subsanar la información de la noticia y proceder a su reenvío para valoración.',
+      `El Jefe de la OCID ha devuelto la noticia disciplinaria con las siguientes observaciones: "${returnNewsDto.observaciones || 'Sin observaciones'}". Por favor ingrese a la plataforma para revisar las observaciones indicadas por el Jefe OCID, subsanar la información de la noticia y proceder a su reenvío para valoración.`,
       radicadorIdDestino,
     );
 
@@ -1278,6 +1301,29 @@ export class NewsService {
   }
 
   /**
+   * Helper para resolver email institucional o directo de un usuario o persona
+   */
+  private resolveEmailFromUserRow(r: {
+    dir_email?: string;
+    username?: string;
+    email?: string;
+  }): string {
+    const direct = (r.dir_email || r.email || '').trim();
+    if (direct && direct.includes('@')) {
+      return direct;
+    }
+    const username = (r.username || '').trim();
+    if (username.includes('@')) {
+      return username;
+    }
+    // Si el username no es puramente numérico (cédula) y no contiene espacios
+    if (username && !/^\d+$/.test(username) && !/\s/.test(username)) {
+      return `${username.toLowerCase()}@esap.edu.co`;
+    }
+    return '';
+  }
+
+  /**
    * Obtiene la lista completa de radicadores asociados a la noticia y usuarios activos con rol/permiso Radicador
    */
   async obtenerRadicadores(
@@ -1293,137 +1339,183 @@ export class NewsService {
         const rows: any[] = await this.connection.query(
           `SELECT u.id_user, u.username, p.nom_largo, p.dir_email
            FROM auth.user u
-           LEFT JOIN auth.personas p ON p.id_person = u.id_person
-           WHERE u.id_user = $1
+           LEFT JOIN auth.personas p ON (p.id_person = u.id_person OR p.num_identificacion = u.username)
+           WHERE u.id_user::text = $1::text OR u.username = $1
            LIMIT 1`,
           [directoId],
         );
         if (rows && rows.length > 0) {
           const r = rows[0];
-          const email = (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim();
-          radicadoresMap.set(r.id_user, {
-            id: r.id_user,
+          let email = this.resolveEmailFromUserRow(r);
+          if (!email && r.username && /^\d+$/.test(r.username)) {
+            const pers: any[] = await this.connection.query(
+              `SELECT dir_email, nom_largo FROM auth.personas WHERE num_identificacion = $1 LIMIT 1`,
+              [r.username],
+            ).catch(() => []);
+            if (pers?.[0]?.dir_email) {
+              email = pers[0].dir_email.trim();
+            }
+          }
+          radicadoresMap.set(String(r.id_user || directoId), {
+            id: String(r.id_user || directoId),
             nombre: r.nom_largo || r.username || 'Radicador',
             email,
           });
-        } else {
-          radicadoresMap.set(directoId, {
-            id: directoId,
-            nombre: 'Radicador',
-            email: '',
-          });
         }
-      } catch (err) {
-        console.warn('Error resolviendo radicador directo en NewsService:', err);
-        radicadoresMap.set(directoId, {
-          id: directoId,
-          nombre: 'Radicador',
-          email: '',
-        });
+      } catch (err: any) {
+        console.warn('[NewsService] Error resolviendo radicador directo en auth.user:', err?.message || err);
       }
     }
 
-    // 2. Todos los usuarios activos con rol SECRETARIA_RADICADOR, RADICADOR_DISCIPLINARIO o afines
-    try {
-      const roleUsers: any[] = await this.connection.query(
-        `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
-         FROM auth.user u
-         JOIN auth.user_roles ur ON ur.id_user = u.id_user
-         JOIN auth.role r ON r.id = ur.id_rol
-         LEFT JOIN auth.personas p ON p.id_person = u.id_person
-         WHERE u.is_active = true
-           AND (r.code IN ('SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO', 'SECRETARIO_RADICADOR', 'RADICADOR')
-                OR UPPER(r.code) LIKE '%RADICADOR%'
-                OR UPPER(r.name) LIKE '%RADICADOR%')`,
-      );
-      for (const r of roleUsers || []) {
-        if (r.id_user) {
-          const email = (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim();
-          const existing = radicadoresMap.get(r.id_user);
-          if (!existing || (!existing.email && email)) {
-            radicadoresMap.set(r.id_user, {
-              id: r.id_user,
-              nombre: r.nom_largo || r.username || existing?.nombre || 'Radicador',
-              email: email || existing?.email || '',
+    // 1.1 Si aún no hay email para directoId, buscar en historialAuditoria de la noticia
+    if (noticia?.historialAuditoria && Array.isArray(noticia.historialAuditoria)) {
+      for (const h of noticia.historialAuditoria) {
+        if (h?.userEmail && h.userEmail.includes('@')) {
+          const uid = String(h.userId || directoId || 'radicador-historial');
+          const existing = radicadoresMap.get(uid);
+          if (!existing || !existing.email) {
+            radicadoresMap.set(uid, {
+              id: uid,
+              nombre: h.usuario || existing?.nombre || 'Radicador',
+              email: h.userEmail.trim(),
             });
+            break;
           }
         }
       }
-    } catch (err) {
-      console.warn('Error consultando usuarios con rol Radicador en NewsService:', err);
     }
 
-    // 3. Usuarios con permiso de radicación (es_radicador)
+    // 2. Criterio Principal: Usuarios con permiso general de radicación (general.is_radicador / control-disciplinario.general.es_radicador)
     try {
       const permUsers: any[] = await this.connection.query(
-        `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
+        `SELECT DISTINCT u.id_user, u.username, per.nom_largo, per.dir_email
          FROM auth.user u
          JOIN auth.user_roles ur ON ur.id_user = u.id_user
          JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
          JOIN auth.permission p ON p.id_permission = rp.id_permission AND p.is_active = true
-         LEFT JOIN auth.personas per ON per.id_person = u.id_person
+         LEFT JOIN auth.personas per ON (per.id_person = u.id_person OR per.num_identificacion = u.username)
          WHERE u.is_active = true
            AND (
-             p.code IN ('control-disciplinario.general.es_radicador', 'control-disciplinario.es_radicador', 'general.is_radicador', 'control-disciplinario.general.is_radicador')
-             OR p.code LIKE '%is_radicador%'
-             OR p.code LIKE '%es_radicador%'
+             p.code IN (
+               'control-disciplinario.general.es_radicador',
+               'general.is_radicador',
+               'general.es_radicador',
+               'control-disciplinario.general.is_radicador',
+               'control-disciplinario.es_radicador',
+               'control-disciplinario.noticias.radicar',
+               'control-disciplinario.noticias.crear'
+             )
+             OR p.code ILIKE '%is_radicador%'
+             OR p.code ILIKE '%es_radicador%'
            )`,
       );
       for (const r of permUsers || []) {
         if (r.id_user) {
-          const email = (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim();
-          const existing = radicadoresMap.get(r.id_user);
+          const email = this.resolveEmailFromUserRow(r);
+          const existing = radicadoresMap.get(String(r.id_user));
           if (!existing || (!existing.email && email)) {
-            radicadoresMap.set(r.id_user, {
-              id: r.id_user,
+            radicadoresMap.set(String(r.id_user), {
+              id: String(r.id_user),
               nombre: r.nom_largo || r.username || existing?.nombre || 'Radicador',
               email: email || existing?.email || '',
             });
           }
         }
       }
-    } catch (err) {
-      console.warn('Error consultando usuarios con permiso Radicador en NewsService:', err);
+    } catch (err: any) {
+      console.warn('[NewsService] Error consultando usuarios con permiso Radicador:', err?.message || err);
+    }
+
+    // 3. Fallback: Si no se encontraron por permiso, buscar en disciplinary_professional
+    if (radicadoresMap.size === 0) {
+      try {
+        const profs: any[] = await this.connection.query(
+          `SELECT id, id_user, nombre_completo, email, cargo
+           FROM internal_disciplinary_control.disciplinary_professional
+           WHERE (UPPER(cargo) LIKE '%RADICADOR%' OR UPPER(cargo) LIKE '%SECRETAR%')
+             AND UPPER(estado) = 'ACTIVO'`,
+        );
+        for (const p of profs || []) {
+          const uid = String(p.id_user || p.id);
+          const email = (p.email || '').trim();
+          const existing = radicadoresMap.get(uid);
+          if (!existing || (!existing.email && email)) {
+            radicadoresMap.set(uid, {
+              id: uid,
+              nombre: p.nombre_completo || existing?.nombre || 'Radicador',
+              email: email || existing?.email || '',
+            });
+          }
+        }
+      } catch (err: any) {
+        console.warn('[NewsService] Error consultando disciplinary_professional para radicadores:', err?.message || err);
+      }
+    }
+
+    // 4. Fallback secundario: Roles de radicación si aún no hay ninguno
+    if (radicadoresMap.size === 0) {
+      try {
+        const roleUsers: any[] = await this.connection.query(
+          `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
+           FROM auth.user u
+           JOIN auth.user_roles ur ON ur.id_user = u.id_user
+           JOIN auth.role r ON r.id = ur.id_rol
+           LEFT JOIN auth.personas p ON (p.id_person = u.id_person OR p.num_identificacion = u.username)
+           WHERE u.is_active = true
+             AND (r.code IN ('SECRETARIA_RADICADOR', 'RADICADOR_DISCIPLINARIO', 'SECRETARIO_RADICADOR', 'RADICADOR')
+                  OR UPPER(r.code) LIKE '%RADICADOR%'
+                  OR UPPER(r.name) LIKE '%RADICADOR%')`,
+        );
+        for (const r of roleUsers || []) {
+          if (r.id_user) {
+            const email = this.resolveEmailFromUserRow(r);
+            const existing = radicadoresMap.get(String(r.id_user));
+            if (!existing || (!existing.email && email)) {
+              radicadoresMap.set(String(r.id_user), {
+                id: String(r.id_user),
+                nombre: r.nom_largo || r.username || existing?.nombre || 'Radicador',
+                email: email || existing?.email || '',
+              });
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn('[NewsService] Error consultando usuarios con rol Radicador:', err?.message || err);
+      }
+    }
+
+    // 5. Garantizar que los radicadores tengan correo y al menos uno exista
+    const fallbackRadicadorEmail =
+      process.env.RADICADOR_DEFAULT_EMAIL ||
+      process.env.DISCIPLINARIO_NOTIFICACIONES_EMAIL ||
+      'radicacion.disciplinario@esap.edu.co';
+
+    for (const [key, item] of radicadoresMap.entries()) {
+      if (!item.email || item.email.trim().length === 0) {
+        item.email = fallbackRadicadorEmail;
+        radicadoresMap.set(key, item);
+      }
+    }
+
+    if (radicadoresMap.size === 0) {
+      radicadoresMap.set(String(directoId || 'radicador-default'), {
+        id: String(directoId || 'radicador-default'),
+        nombre: 'Radicador de Control Disciplinario',
+        email: fallbackRadicadorEmail,
+      });
     }
 
     return Array.from(radicadoresMap.values());
   }
 
   /**
-   * Obtiene la lista completa de usuarios con rol o permiso de Jefe OCID
+   * Obtiene la lista completa de usuarios con rol o permiso de Jefe OCID.
+   * Criterio rector: Permiso general (control-disciplinario.general.es_jefe_ocid / general.is_jefe_ocid).
    */
   async obtenerJefesOcid(): Promise<Array<{ id: string; nombre: string; email: string }>> {
     const jefesMap = new Map<string, { id: string; nombre: string; email: string }>();
 
-    // 1. Por rol: JEFE_DE_LA_OCID, JEFE_OCID, etc.
-    try {
-      const roleUsers: any[] = await this.connection.query(
-        `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
-         FROM auth.user u
-         JOIN auth.user_roles ur ON ur.id_user = u.id_user
-         JOIN auth.role r ON r.id = ur.id_rol
-         LEFT JOIN auth.personas p ON p.id_person = u.id_person
-         WHERE u.is_active = true
-           AND (r.code IN ('JEFE_DE_LA_OCID', 'JEFE_OCID', 'JEFE_OFICINA_INTERNO', 'JEFE_DE_LA_OFICINA_DISCIPLINARIA')
-                OR UPPER(r.code) LIKE '%JEFE%OCID%'
-                OR UPPER(r.name) LIKE '%JEFE%OCID%'
-                OR UPPER(r.name) LIKE '%JEFE%DISCIPLINAR%')`,
-      );
-      for (const r of roleUsers || []) {
-        if (r.id_user) {
-          const email = (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim();
-          jefesMap.set(r.id_user, {
-            id: r.id_user,
-            nombre: r.nom_largo || r.username || 'Jefe OCID',
-            email,
-          });
-        }
-      }
-    } catch (err) {
-      console.warn('Error consultando usuarios con rol Jefe OCID en NewsService:', err);
-    }
-
-    // 2. Por permiso: control-disciplinario.general.es_jefe_ocid o control-disciplinario.es_jefe_ocid
+    // 1. Criterio Principal: Permiso general de Jefe OCID (general.is_jefe_ocid / control-disciplinario.general.es_jefe_ocid)
     try {
       const permUsers: any[] = await this.connection.query(
         `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email
@@ -1431,29 +1523,141 @@ export class NewsService {
          JOIN auth.user_roles ur ON ur.id_user = u.id_user
          JOIN auth.role_permissions rp ON rp.id_rol = ur.id_rol
          JOIN auth.permission perm ON perm.id_permission = rp.id_permission AND perm.is_active = true
-         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         LEFT JOIN auth.personas p ON (p.id_person = u.id_person OR p.num_identificacion = u.username)
          WHERE u.is_active = true
            AND (
-             perm.code IN ('control-disciplinario.general.es_jefe_ocid', 'control-disciplinario.es_jefe_ocid', 'general.es_jefe_ocid', 'general.is_jefe_ocid')
-             OR perm.code LIKE '%es_jefe_ocid%'
-             OR perm.code LIKE '%is_jefe_ocid%'
+             perm.code IN (
+               'control-disciplinario.general.es_jefe_ocid',
+               'general.is_jefe_ocid',
+               'general.es_jefe_ocid',
+               'control-disciplinario.general.is_jefe_ocid',
+               'control-disciplinario.es_jefe_ocid',
+               'control-disciplinario.revision-aprobacion.aprobar',
+               'control-disciplinario.noticias.asignar',
+               'control-disciplinario.procesos.manage'
+             )
+             OR perm.code ILIKE '%is_jefe_ocid%'
+             OR perm.code ILIKE '%es_jefe_ocid%'
            )`,
       );
       for (const r of permUsers || []) {
         if (r.id_user) {
-          const email = (r.dir_email || (r.username?.includes('@') ? r.username : '') || '').trim();
-          const existing = jefesMap.get(r.id_user);
+          const email = this.resolveEmailFromUserRow(r);
+          const existing = jefesMap.get(String(r.id_user));
           if (!existing || (!existing.email && email)) {
-            jefesMap.set(r.id_user, {
-              id: r.id_user,
+            jefesMap.set(String(r.id_user), {
+              id: String(r.id_user),
               nombre: r.nom_largo || r.username || existing?.nombre || 'Jefe OCID',
               email: email || existing?.email || '',
             });
           }
         }
       }
-    } catch (err) {
-      console.warn('Error consultando usuarios con permiso de Jefe OCID en NewsService:', err);
+    } catch (err: any) {
+      console.warn('[NewsService] Error consultando usuarios con permiso de Jefe OCID:', err?.message || err);
+    }
+
+    // 2. Fallback: Si no se encontraron por permiso, buscar en disciplinary_professional
+    if (jefesMap.size === 0) {
+      try {
+        const profs: any[] = await this.connection.query(
+          `SELECT id, id_user, nombre_completo, email, cargo
+           FROM internal_disciplinary_control.disciplinary_professional
+           WHERE (UPPER(cargo) LIKE '%JEFE%' OR UPPER(cargo) LIKE '%DIRECTOR%')
+             AND UPPER(estado) = 'ACTIVO'`,
+        );
+        for (const p of profs || []) {
+          const uid = String(p.id_user || p.id);
+          const email = (p.email || '').trim();
+          const existing = jefesMap.get(uid);
+          if (!existing || (!existing.email && email)) {
+            jefesMap.set(uid, {
+              id: uid,
+              nombre: p.nombre_completo || existing?.nombre || 'Jefe OCID',
+              email: email || existing?.email || '',
+            });
+          }
+        }
+      } catch (err: any) {
+        console.warn('[NewsService] Error consultando disciplinary_professional para Jefe OCID:', err?.message || err);
+      }
+    }
+
+    // 3. Fallback secundario: Por roles conocidos si aún no hay jefes
+    if (jefesMap.size === 0) {
+      try {
+        const roleUsers: any[] = await this.connection.query(
+          `SELECT DISTINCT u.id_user, u.username, p.nom_largo, p.dir_email, r.code as role_code
+           FROM auth.user u
+           JOIN auth.user_roles ur ON ur.id_user = u.id_user
+           JOIN auth.role r ON r.id = ur.id_rol
+           LEFT JOIN auth.personas p ON (p.id_person = u.id_person OR p.num_identificacion = u.username)
+           WHERE u.is_active = true
+             AND (r.code IN ('JEFE_DE_LA_OCID', 'JEFE_OCID', 'JEFE_OFICINA_INTERNO', 'JEFE_DE_LA_OFICINA_DISCIPLINARIA', 'SUPER_ADMIN', 'ADMIN', 'JEFE_CONTROL_INTERNO')
+                  OR UPPER(r.code) LIKE '%JEFE%OCID%'
+                  OR UPPER(r.name) LIKE '%JEFE%OCID%'
+                  OR UPPER(r.name) LIKE '%JEFE%DISCIPLINAR%'
+                  OR UPPER(r.name) LIKE '%CONTROL%DISCIPLINARIO%')`,
+        );
+        for (const r of roleUsers || []) {
+          if (r.id_user) {
+            const email = this.resolveEmailFromUserRow(r);
+            jefesMap.set(String(r.id_user), {
+              id: String(r.id_user),
+              nombre: r.nom_largo || r.username || 'Jefe OCID',
+              email,
+            });
+          }
+        }
+      } catch (err: any) {
+        console.warn('[NewsService] Error consultando usuarios con rol Jefe OCID:', err?.message || err);
+      }
+    }
+
+    // 4. Fallback si no hay jefes o ninguno tiene email
+    const fallbackJefeEmail =
+      process.env.OCID_JEFE_EMAIL ||
+      process.env.DISCIPLINARIO_NOTIFICACIONES_EMAIL ||
+      'control.disciplinario@esap.edu.co';
+
+    // Si aún no se encontró ningún jefe, buscar en auth.user algún admin o usuario jefe
+    if (jefesMap.size === 0) {
+      try {
+        const adminUsers: any[] = await this.connection.query(
+          `SELECT u.id_user, u.username, p.nom_largo, p.dir_email
+           FROM auth.user u
+           LEFT JOIN auth.personas p ON (p.id_person = u.id_person OR p.num_identificacion = u.username)
+           WHERE u.is_active = true AND (u.username ILIKE '%jefe%' OR u.username ILIKE '%admin%')
+           LIMIT 3`,
+        );
+        for (const r of adminUsers || []) {
+          const email = this.resolveEmailFromUserRow(r) || fallbackJefeEmail;
+          jefesMap.set(String(r.id_user), {
+            id: String(r.id_user),
+            nombre: r.nom_largo || r.username || 'Jefe OCID',
+            email,
+          });
+        }
+      } catch (err: any) {
+        console.warn('[NewsService] Error buscando adminUsers fallback para Jefe OCID:', err?.message || err);
+      }
+    }
+
+    // Rellenar correos vacíos
+    for (const [key, item] of jefesMap.entries()) {
+      if (!item.email || item.email.trim().length === 0) {
+        item.email = fallbackJefeEmail;
+        jefesMap.set(key, item);
+      }
+    }
+
+    // Si tras todo sigue vacío, registrar entrada institucional de fallback
+    if (jefesMap.size === 0) {
+      jefesMap.set('jefe-ocid-default', {
+        id: 'jefe-ocid-default',
+        nombre: 'Jefe de la Oficina de Control Interno Disciplinario',
+        email: fallbackJefeEmail,
+      });
     }
 
     return Array.from(jefesMap.values());
@@ -1597,6 +1801,7 @@ export class NewsService {
       );
 
       const jefesConEmail = jefes.filter((j) => j.email && j.email.trim().length > 0);
+      console.log(`[NewsService] notificarJefesNoticia (${evento}): ${jefes.length} jefe(s) encontrado(s), ${jefesConEmail.length} con email válido.`);
       if (jefesConEmail.length > 0) {
         await Promise.all(
           jefesConEmail.map((jefe) =>
@@ -1611,24 +1816,69 @@ export class NewsService {
     }
   }
 
-  private async enviarEmailDirecto(to: string, subject: string, html: string, text?: string): Promise<void> {
+  private async enviarEmailDirecto(to: string, subject: string, html: string, text?: string): Promise<boolean> {
+    const rawTo = (to || '').trim();
+    if (!rawTo) {
+      console.warn('[NewsService] enviarEmailDirecto: Destinatario vacío, se omite envío.');
+      return false;
+    }
+
+    // Normalizar y validar email para cumplir @IsEmail() de SendEmailDto en notifications-service
+    let finalTo = rawTo;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(finalTo)) {
+      if (finalTo.includes('@')) {
+        console.warn(`[NewsService] Destinatario con formato de correo inválido: "${finalTo}"`);
+        return false;
+      }
+      finalTo = `${finalTo.replace(/[^a-zA-Z0-9._-]/g, '')}@esap.edu.co`;
+      console.log(`[NewsService] Normalizando destinatario "${rawTo}" a email "${finalTo}"`);
+    }
+
     const notificationsUrl =
       process.env.NOTIFICATION_SERVICE_URL ||
       process.env.NOTIFICATIONS_SERVICE_URL ||
       'http://localhost:3009';
-    try {
-      await firstValueFrom(
-        this.httpService.post(`${notificationsUrl}/api/v1/emails/send`, {
-          to,
-          subject,
-          html,
-          ...(text ? { text } : {}),
-        }),
-      );
-      console.log(`[NewsService] Correo enviado exitosamente a: ${to} (asunto: ${subject})`);
-    } catch (error: any) {
-      console.warn(`[NewsService] No se pudo enviar correo a ${to}:`, error?.message || error);
+
+    const gatewayUrl = process.env.API_GATEWAY_URL || 'http://localhost:3000';
+
+    const candidateUrls = [
+      `${notificationsUrl}/api/v1/emails/send`,
+      `${notificationsUrl}/notificaciones/api/v1/emails/send`,
+      `${gatewayUrl}/notificaciones/api/v1/emails/send`,
+    ];
+
+    const urlsToTry = Array.from(new Set(candidateUrls));
+    const plainText = text && text.trim().length > 0 ? text.trim() : subject;
+
+    for (const url of urlsToTry) {
+      try {
+        await firstValueFrom(
+          this.httpService.post(
+            url,
+            {
+              to: finalTo,
+              subject,
+              html,
+              text: plainText,
+            },
+            { timeout: 7000 },
+          ),
+        );
+        console.log(`[NewsService] Correo enviado exitosamente a: ${finalTo} vía ${url} (asunto: "${subject}")`);
+        return true;
+      } catch (error: any) {
+        const status = error?.response?.status;
+        const respData = error?.response?.data;
+        console.warn(
+          `[NewsService] Intento fallido enviando correo a ${finalTo} vía ${url} [status: ${status || 'ERR'}]:`,
+          respData || error?.message || error,
+        );
+      }
     }
+
+    console.error(`[NewsService] Fallaron todos los endpoints de envío de correo para destinatario: ${finalTo}`);
+    return false;
   }
 
   private getFrontendBaseUrl(): string {
@@ -1775,17 +2025,18 @@ export class NewsService {
         'Ver Noticia en Plataforma',
       );
 
+      const radicadoresConEmail = radicadores.filter((rad) => rad.email && rad.email.trim().length > 0);
+      console.log(`[NewsService] notificarRadicadoresNoticia (${tipoNotificacion}): ${radicadores.length} radicador(es) encontrado(s), ${radicadoresConEmail.length} con email válido.`);
+
       await Promise.all(
-        radicadores
-          .filter((rad) => rad.email && rad.email.trim().length > 0)
-          .map((rad) =>
-            this.enviarEmailDirecto(rad.email.trim(), asunto, html, mensaje).catch((err) =>
-              console.error(`Error enviando correo de noticia a ${rad.email}:`, err),
-            ),
+        radicadoresConEmail.map((rad) =>
+          this.enviarEmailDirecto(rad.email.trim(), asunto, html, mensaje).catch((err) =>
+            console.error(`[NewsService] Error enviando correo de noticia a Radicador ${rad.email}:`, err),
           ),
+        ),
       );
     } catch (error) {
-      console.error('Error en notificarRadicadoresNoticia:', error);
+      console.error('[NewsService] Error en notificarRadicadoresNoticia:', error);
     }
   }
 }
