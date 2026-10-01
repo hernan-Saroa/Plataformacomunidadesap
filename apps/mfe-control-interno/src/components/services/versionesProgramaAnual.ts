@@ -18,6 +18,10 @@ export function filasParaDocumento(filas: FilaProgramaAnual[]) {
     tipo: f.tipo,
     territorial: f.territorial || 'Sede Central',
     responsable: f.responsableArea,
+    // Columnas "Responsable" (Auditor Líder) y "Equipo Auditor" (EFDS-2257)
+    // undefined en versiones guardadas antes de EFDS-2257: la plantilla usa lo que traían
+    auditorLider: f.auditorLider,
+    equipoAuditor: f.equipoAuditor || [],
     observaciones: f.observaciones || '',
     fechaInicioRaw: f.fechaInicio,
     fechaFinRaw: f.fechaFin,

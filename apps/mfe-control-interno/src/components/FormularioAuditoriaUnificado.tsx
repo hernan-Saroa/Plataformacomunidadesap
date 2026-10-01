@@ -1242,21 +1242,17 @@ export function FormularioAuditoriaUnificado({
             excludeAuditoriaId: auditoriaActualId,
           });
 
+          // El cruce de auditores es una advertencia: se informa y se continúa (EFDS-2257)
           if (!disponibilidad.disponible) {
             setDisponibilidadEquipoAuditor(disponibilidad);
-            toast.error('Equipo auditor adicional no disponible', {
-              description: disponibilidad.mensaje || 'Uno o mas auditores adicionales tienen cruces de fechas.',
+            toast.warning('Cruce de auditores', {
+              description: disponibilidad.mensaje || 'Uno o más auditores adicionales tienen cruces de fechas con otra auditoría.',
             });
-            setPasoActual(mode === 'create' ? 2 : 3);
-            return;
+          } else {
+            setDisponibilidadEquipoAuditor(null);
           }
-
-          setDisponibilidadEquipoAuditor(null);
         } catch (error) {
           console.error('[FormularioAuditoria] Error validando disponibilidad del equipo auditor:', error);
-          toast.error('No se pudo validar la disponibilidad del equipo auditor adicional');
-          setPasoActual(mode === 'create' ? 2 : 3);
-          return;
         } finally {
           setValidandoDisponibilidadEquipo(false);
         }
@@ -1324,14 +1320,7 @@ export function FormularioAuditoriaUnificado({
   };
 
   const handleSiguiente = () => {
-    const pasoProg = mode === 'create' ? 3 : 4;
-    if (pasoActual >= pasoProg && disponibilidadEquipoAuditor?.disponible === false) {
-      toast.error('Equipo auditor adicional no disponible', {
-        description: disponibilidadEquipoAuditor.mensaje || 'Ajuste las fechas o el equipo adicional antes de continuar.',
-      });
-      return;
-    }
-
+    // El cruce de auditores ya no detiene el avance: queda el aviso en el paso del equipo (EFDS-2257)
     if (pasoActual < TOTAL_PASOS) {
       setPasoActual(pasoActual + 1);
     }
@@ -1667,9 +1656,9 @@ export function FormularioAuditoriaUnificado({
                     </Badge>
                   )}
                   {disponibilidadEquipoAuditor?.disponible === false && (
-                    <Badge className="bg-red-100 text-red-800 border-red-300 px-3 py-1.5 text-xs font-bold">
+                    <Badge className="bg-amber-100 text-amber-800 border-amber-300 px-3 py-1.5 text-xs font-bold">
                       <AlertTriangle className="w-3 h-3 mr-1 inline" />
-                      Equipo adicional con cruce
+                      Cruce de auditores (advertencia)
                     </Badge>
                   )}
                   {validandoDisponibilidadEquipo && formData.equipoAuditores.length > 0 && (
@@ -1693,7 +1682,7 @@ export function FormularioAuditoriaUnificado({
                   ) : (
                     <Button
                       onClick={handleSubmit}
-                      disabled={isSubmitting || ((puedeEditarPaso(3) || puedeEditarPaso(4)) && validandoDisponibilidadEquipo) || ((puedeEditarPaso(3) || puedeEditarPaso(4)) && disponibilidadEquipoAuditor?.disponible === false)}
+                      disabled={isSubmitting || ((puedeEditarPaso(3) || puedeEditarPaso(4)) && validandoDisponibilidadEquipo)}
                       style={{ background: '#10B981' }}
                       className="gap-2"
                     >
@@ -2602,13 +2591,13 @@ function EquipoAuditorDisponibilidadAlert({ disponibilidad, validando }: Disponi
   const conflictos = disponibilidad.conflictos || [];
 
   return (
-    <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
       <div className="flex items-start gap-2">
         <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
         <div className="space-y-2">
-          <p className="font-bold">Equipo auditor adicional no disponible</p>
+          <p className="font-bold">Cruce de auditores</p>
           <p className="text-xs leading-relaxed">
-            {disponibilidad.mensaje || 'Uno o mas auditores adicionales tienen cruces de fechas con otra auditoria.'}
+            {disponibilidad.mensaje || 'Uno o más auditores adicionales tienen cruces de fechas con otra auditoría. Puede continuar con la programación.'}
           </p>
           {conflictos.length > 0 && (
             <ul className="space-y-1 text-xs">
