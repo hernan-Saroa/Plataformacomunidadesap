@@ -129,12 +129,128 @@ export function corteDeLaFecha<T extends CorteFechas>(fecha: string | undefined,
 }
 
 /**
- * Tarea del Rol 4 que genera el Programa Anual, una por auditoría (EFDS-2133). Sus
- * fechas y su corte salen de la programación de la auditoría (EFDS-2237): no se
- * mueven de año ni se reparten entre cortes como las tareas de la plantilla.
+ * Tarea del Rol 4 que genera el Programa Anual (EFDS-2133): una por cada corte que
+ * cubre la auditoría (EFDS-2237). Sus fechas salen de la programación de la auditoría:
+ * no se mueven de año ni se reparten entre cortes como las tareas de la plantilla.
  */
 export function esTareaDelProgramaAnual(t: { id?: unknown; origen?: unknown } | null | undefined): boolean {
   return !!t && (t.origen === 'programa_anual' || String(t.id ?? '').startsWith('tarea-aud-'));
+}
+
+/** Tarea del Rol 4 que se crea sola por cada plan de mejoramiento (una por corte, EFDS-2237). */
+export function esTareaDePlanMejoramiento(t: { id?: unknown; origen?: unknown } | null | undefined): boolean {
+  return !!t && (t.origen === 'plan_mejoramiento' || String(t.id ?? '').startsWith('tarea-pm-'));
+}
+
+/** Tareas del Rol 4 que se alimentan solas: auditorías del Programa Anual y planes de mejoramiento. */
+export function esTareaAutomaticaDelRol4(t: { id?: unknown; origen?: unknown } | null | undefined): boolean {
+  return esTareaDelProgramaAnual(t) || esTareaDePlanMejoramiento(t);
+}
+
+/**
+ * Datos con los que el backend reconoce y reparte por corte las tareas automáticas del
+ * Rol 4. Al guardar el plan se envían tal cual: sin ellos la tarea perdía su auditoría,
+ * su periodo y la fecha de seguimiento puesta a mano. La fecha límite (fin de la
+ * auditoría o del plan) va aparte de la de seguimiento (EFDS-2237).
+ */
+export function camposDeSincronizacion(t: Record<string, any>): Record<string, unknown> {
+  if (!esTareaAutomaticaDelRol4(t)) return {};
+  const campos: Record<string, unknown> = {};
+  for (const k of ['origen', 'auditoriaId', 'planMejoramientoId', 'fechaInicio', 'periodoInicio', 'periodoFin', 'fechaEntregaAuto', 'responsablesAuditoria', 'areaResponsable']) {
+    if (t[k] !== undefined && t[k] !== null) campos[k] = t[k];
+  }
+  campos.fechaEntrega = t.fechaEntrega || null;
+  campos.fechaLimite = t.fechaLimite || t.fecha_limite || t.fechaEntrega || null;
+  return campos;
+}
+
+const SEPARADOR_CORTE = '-c-';
+
+/** Auditoría o plan que generó la tarea (`tarea-aud-<id>-c-<corte>` → `tarea-aud-<id>`). */
+function fuenteDeLaTarea(t: Record<string, any>): string | null {
+  const id = String(t.id ?? '');
+  const prefijo = id.startsWith('tarea-aud-') ? 'tarea-aud-' : id.startsWith('tarea-pm-') ? 'tarea-pm-' : null;
+  const propio = esTareaDelProgramaAnual(t) ? t.auditoriaId : t.planMejoramientoId;
+  if (propio) return `${esTareaDelProgramaAnual(t) ? 'tarea-aud-' : 'tarea-pm-'}${propio}`;
+  if (!prefijo) return null;
+  const corte = id.indexOf(SEPARADOR_CORTE, prefijo.length);
+  return corte >= 0 ? id.slice(0, corte) : id;
+}
+
+const conSeguimiento = (t: Record<string, any>) =>
+  !!t.completada ||
+  (Array.isArray(t.adjuntosTarea) && t.adjuntosTarea.length > 0) ||
+  (typeof t.observaciones === 'string' ? t.observaciones.trim() !== '' : Array.isArray(t.observaciones) && t.observaciones.length > 0);
+
+/**
+ * Reparte las tareas automáticas del Rol 4 en los cortes, una por cada corte que cubre
+ * su auditoría o plan, igual que lo hace el backend al consultar el plan
+ * (rol4-tareas-por-corte.ts). Se usa al cambiar los cortes en el asistente para que la
+ * pantalla quede igual a lo que guardará el backend. Lo registrado (cumplimiento,
+ * evidencias, observaciones) pasa al corte nuevo que contiene su periodo; la fecha de
+ * seguimiento se recalcula con el corte.
+ */
+export function repartirTareasAutomaticasEnCortes<T extends Record<string, any>>(
+  tareas: T[],
+  cortes: Array<CorteFechas & { id: string }>,
+): T[] {
+  const periodos = cortesComoPeriodos([...cortes]).sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada));
+  if (!periodos.length) return tareas;
+  const fin = (c: CorteFechas) => (c.fechaSeguimiento || c.fechaProgramada).slice(0, 10);
+
+  const grupos = new Map<string, T[]>();
+  const resultado: T[] = [];
+  for (const t of tareas) {
+    const fuente = esTareaAutomaticaDelRol4(t) ? fuenteDeLaTarea(t) : null;
+    if (!fuente) {
+      resultado.push(t);
+      continue;
+    }
+    grupos.set(fuente, [...(grupos.get(fuente) ?? []), t]);
+  }
+
+  for (const [fuente, grupo] of grupos) {
+    const ref = grupo[0];
+    const inicio = String(ref.fechaInicio || ref.periodoInicio || periodos[0].fechaProgramada).slice(0, 10);
+    const limite = String(ref.fechaLimite || ref.fecha_limite || inicio).slice(0, 10);
+    let destinos = periodos.filter((c) => c.fechaProgramada.slice(0, 10) <= limite && inicio <= fin(c));
+    if (!destinos.length) {
+      const cercano = corteDelInicio(inicio, periodos);
+      destinos = cercano ? [cercano] : [];
+    }
+    for (const corte of destinos) {
+      const previas = grupo.filter((t) => {
+        if (t.puntoControlId === corte.id) return true;
+        if (destinos.some((d) => d.id === t.puntoControlId)) return false;
+        const desde = String(t.periodoInicio || t.fechaInicio || inicio).slice(0, 10);
+        // Lo registrado va al corte nuevo que contiene su periodo
+        if (conSeguimiento(t)) return corteDelInicio(desde, destinos)?.id === corte.id;
+        // Sin nada registrado solo cuenta si su periodo cae en este corte (para el cumplimiento)
+        const hasta = String(t.periodoFin || '').slice(0, 10);
+        return !!t.periodoInicio && !!hasta && corte.fechaProgramada.slice(0, 10) <= hasta && desde <= fin(corte);
+      });
+      const misma = previas.length === 1 && previas[0].puntoControlId === corte.id ? previas[0] : null;
+      const auto = fechaSeguimientoPorDefecto(corte);
+      const manual = misma?.fechaEntrega && misma.fechaEntregaAuto && misma.fechaEntrega !== misma.fechaEntregaAuto
+        ? misma.fechaEntrega
+        : undefined;
+      const textos = previas.map((t) => (typeof t.observaciones === 'string' ? t.observaciones.trim() : '')).filter(Boolean);
+      resultado.push({
+        ...ref,
+        ...(previas[0] ?? {}),
+        id: `${fuente}${SEPARADOR_CORTE}${corte.id}`,
+        puntoControlId: corte.id,
+        periodoInicio: corte.fechaProgramada.slice(0, 10),
+        periodoFin: fin(corte),
+        fechaEntrega: manual ?? auto,
+        fechaEntregaAuto: auto,
+        completada: previas.length > 0 && previas.every((t) => !!t.completada),
+        observaciones: textos.join('\n\n'),
+        adjuntosTarea: previas.flatMap((t) => (Array.isArray(t.adjuntosTarea) ? t.adjuntosTarea : [])),
+      } as T);
+    }
+  }
+  return resultado;
 }
 
 /**
