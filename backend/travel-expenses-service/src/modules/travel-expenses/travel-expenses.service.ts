@@ -3342,25 +3342,63 @@ if (dto.costoEstimadoTiquete !== undefined) {
         f.estado !== 'RECHAZADO',
     );
 
+    let nombreJefe = firmaJefe?.nombreFirmante || null;
+    let docJefe = firmaJefe?.documentoIdentidad || null;
+    let cargoJefe = firmaJefe?.cargoFirmante || firmante1.cargo;
+    if (firmaJefe && (firmaJefe.usuarioId || (firmaJefe.nombreFirmante && firmaJefe.nombreFirmante.includes('@')))) {
+      const d = await this.resolverDatosUsuario(firmaJefe.usuarioId || firmaJefe.nombreFirmante);
+      if (d.nombre && (!nombreJefe || nombreJefe.includes('@'))) nombreJefe = d.nombre;
+      if (d.documento && !docJefe) docJefe = d.documento;
+      if (d.cargo && (!cargoJefe || cargoJefe === firmante1.cargo)) cargoJefe = d.cargo;
+    }
+
+    let nombreGerente = firmaGerente?.nombreFirmante || null;
+    let docGerente = firmaGerente?.documentoIdentidad || null;
+    let cargoGerente = firmaGerente?.cargoFirmante || firmante2.cargo;
+    if (firmaGerente && (firmaGerente.usuarioId || (firmaGerente.nombreFirmante && firmaGerente.nombreFirmante.includes('@')))) {
+      const d = await this.resolverDatosUsuario(firmaGerente.usuarioId || firmaGerente.nombreFirmante);
+      if (d.nombre && (!nombreGerente || nombreGerente.includes('@'))) nombreGerente = d.nombre;
+      if (d.documento && !docGerente) docGerente = d.documento;
+      if (d.cargo && (!cargoGerente || cargoGerente === firmante2.cargo)) cargoGerente = d.cargo;
+    }
+
     const firmantes = [
       {
         ...firmante1,
         firmado: Boolean(firmaJefe),
-        firma: firmaJefe || null,
+        nombreFirmante: nombreJefe,
+        cargoFirmante: cargoJefe,
+        documentoIdentidad: docJefe,
+        fechaFirma: firmaJefe?.fechaFirma || null,
+        certificadoId: firmaJefe?.certificadoId || null,
+        hashSha256: firmaJefe?.hashSha256 || null,
+        firma: firmaJefe ? { ...firmaJefe, nombreFirmante: nombreJefe, documentoIdentidad: docJefe } : null,
       },
       {
         ...firmante2,
         firmado: Boolean(firmaGerente),
-        firma: firmaGerente || null,
+        nombreFirmante: nombreGerente,
+        cargoFirmante: cargoGerente,
+        documentoIdentidad: docGerente,
+        fechaFirma: firmaGerente?.fechaFirma || null,
+        certificadoId: firmaGerente?.certificadoId || null,
+        hashSha256: firmaGerente?.hashSha256 || null,
+        firma: firmaGerente ? { ...firmaGerente, nombreFirmante: nombreGerente, documentoIdentidad: docGerente } : null,
       },
       {
         ...firmante3,
         firmado: Boolean(firmaAnalista),
+        nombreFirmante: firmaAnalista?.nombreFirmante || null,
+        cargoFirmante: firmaAnalista?.cargoFirmante || firmante3.cargo,
+        documentoIdentidad: firmaAnalista?.documentoIdentidad || null,
+        fechaFirma: firmaAnalista?.fechaFirma || null,
+        certificadoId: firmaAnalista?.certificadoId || null,
+        hashSha256: firmaAnalista?.hashSha256 || null,
         firma: firmaAnalista || null,
       },
     ];
 
-    const completado = Boolean(firmaJefe && firmaGerente && firmaAnalista);
+    const completado = Boolean(firmaJefe && firmaGerente);
 
     return {
       solicitudId: solicitud.id,
@@ -3369,6 +3407,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
       reglaDesplazamiento,
       descripcionRegla,
       firmantes,
+      firmaElaboro: solicitud.camposAdicionales?.firmaElaboro || null,
+      elaboro: solicitud.camposAdicionales?.elaboro || null,
       completado,
       requiereFirmasParaRadicar: true,
       mensaje: completado
@@ -3742,10 +3782,13 @@ if (dto.costoEstimadoTiquete !== undefined) {
     const datosUsuario = usuarioId
       ? await this.resolverDatosUsuario(usuarioId, 'Enlace de Dependencia')
       : { nombre: 'Enlace de Dependencia', documento: '', cargo: '' };
-    const nombreEnlace =
-      dto?.nombreFirmante ||
-      datosUsuario.nombre ||
-      'Enlace de Dependencia';
+    let nombreEnlace = dto?.nombreFirmante?.trim() || '';
+    if (!nombreEnlace || nombreEnlace.includes('@')) {
+      nombreEnlace =
+        datosUsuario.nombre && !datosUsuario.nombre.includes('@')
+          ? datosUsuario.nombre
+          : 'Enlace de Dependencia';
+    }
     const cargoEnlace = dto?.cargoFirmante || datosUsuario.cargo || 'Enlace de Dependencia';
     const docEnlace = dto?.documentoIdentidad?.trim() || datosUsuario.documento || '';
     const fechaElaboro = new Date().toISOString();
@@ -3895,17 +3938,33 @@ if (dto.costoEstimadoTiquete !== undefined) {
     const fechaFirma = new Date().toISOString();
     const certId = dto.certificadoId || this.generarCertificadoId();
     let docFirmante = dto.documentoIdentidad?.trim() || '';
-    if (!docFirmante && usuarioId) {
+    let nombreFirmante = dto.nombreFirmante?.trim() || '';
+    let cargoFirmante = dto.cargoFirmante?.trim() || '';
+    let emailFirmante = (dto.nombreFirmante?.includes('@') ? dto.nombreFirmante : '').trim();
+
+    if (usuarioId) {
       const datosFirmante = await this.resolverDatosUsuario(usuarioId);
-      docFirmante = datosFirmante.documento || '';
+      if (datosFirmante.documento && !docFirmante) {
+        docFirmante = datosFirmante.documento;
+      }
+      if (datosFirmante.nombre && (!nombreFirmante || nombreFirmante.includes('@'))) {
+        nombreFirmante = datosFirmante.nombre;
+      }
+      if (datosFirmante.cargo && !cargoFirmante) {
+        cargoFirmante = datosFirmante.cargo;
+      }
+      if (datosFirmante.email && !emailFirmante) {
+        emailFirmante = datosFirmante.email;
+      }
     }
-    const hashData = `${solicitud.id}|${dto.tipoFirma}|${dto.nombreFirmante}|${docFirmante}|${dto.cargoFirmante}|${fechaFirma}`;
+    const hashData = `${solicitud.id}|${dto.tipoFirma}|${nombreFirmante || dto.nombreFirmante}|${docFirmante}|${cargoFirmante || dto.cargoFirmante}|${fechaFirma}`;
     const hash = dto.hashSha256 || this.generarHashDocumento(hashData);
 
     const nuevaFirma = {
       tipo: dto.tipoFirma,
-      nombreFirmante: dto.nombreFirmante.trim(),
-      cargoFirmante: dto.cargoFirmante.trim(),
+      nombreFirmante: (nombreFirmante || dto.nombreFirmante).trim(),
+      emailFirmante: emailFirmante || null,
+      cargoFirmante: (cargoFirmante || dto.cargoFirmante).trim(),
       documentoIdentidad: docFirmante,
       firmaImagen: dto.firmaImagen || null,
       esAusencia: Boolean(dto.esAusencia),
@@ -4061,6 +4120,90 @@ if (dto.costoEstimadoTiquete !== undefined) {
     });
 
     return saved;
+  }
+
+  /**
+   * Envía una alerta y recordatorio prioritario de firma de aprobación pendiente al rol correspondiente.
+   */
+  async notificarFirmaPendiente(
+    solicitudId: string,
+    tipoFirmaPendiente?: string,
+    usuarioSolicitaId?: string,
+  ): Promise<{ ok: boolean; mensaje: string }> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    const consecutivo =
+      solicitud.consecutivoUnico ||
+      solicitud.camposAdicionales?.consecutivoUnico ||
+      solicitud.id;
+    const destino = solicitud.destinoCiudad || 'Territorio Nacional';
+    const comisionadoNombre = solicitud.comisionado
+      ? `${solicitud.comisionado.primerNombre || ''} ${solicitud.comisionado.primerApellido || ''}`.trim()
+      : 'Funcionario en comisión';
+
+    const esJefe = tipoFirmaPendiente === TipoFirmaAprobacion.JEFE_DEPENDENCIA;
+    const nombreRol = esJefe
+      ? 'Jefe de Dependencia / Supervisor'
+      : 'Gerente de Proyecto';
+
+    const permissions = esJefe
+      ? ['travel_expenses.general.es_jefe_dependencia']
+      : ['travel_expenses.general.es_gerente_proyecto'];
+
+    const roles = esJefe
+      ? ['JEFE_DEPENDENCIA']
+      : ['GERENTE_PROYECTO'];
+
+    try {
+      let destinatarios = await this.notificationClient.getRecipientsByPermissions(
+        permissions,
+        roles,
+      );
+      if (!destinatarios.length) {
+        destinatarios = await this.notificationClient.getRecipientsByPermission(
+          'travel_expenses:sign_approval',
+          'SUPER_ADMIN',
+        );
+      }
+
+      if (destinatarios.length > 0) {
+        const appBaseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
+        const notificaciones = destinatarios.map((d) => ({
+          id_usuario_destinatario: d.id,
+          tipo_notificacion: 'RECORDATORIO_FIRMA_PENDIENTE',
+          titulo: `Recordatorio: Firma pendiente en solicitud ${consecutivo}`,
+          mensaje: `Se le recuerda que la solicitud de viáticos ${consecutivo} para ${comisionadoNombre} (${destino}) se encuentra pendiente de su revisión y firma de aprobación como ${nombreRol}.`,
+          descripcion_corta: `Firma pendiente: ${consecutivo}`,
+          icono: 'bell',
+          color: '#F59E0B',
+          prioridad: 'Alta' as const,
+          categoria: 'VIATICOS' as const,
+          tiene_accion: true,
+          texto_boton_accion: 'Revisar y Firmar',
+          url_accion: `${appBaseUrl}/viaticos`,
+          datos_adicionales: {
+            solicitudId: solicitud.id,
+            consecutivo,
+            tipoFirma: tipoFirmaPendiente,
+          },
+        }));
+        await this.notificationClient.sendMany(notificaciones);
+      }
+    } catch (e) {
+      this.logger.warn(`Error enviando notificación de firma pendiente: ${e}`);
+    }
+
+    return {
+      ok: true,
+      mensaje: `Alerta y recordatorio de firma enviado exitosamente a ${nombreRol}.`,
+    };
   }
 
   /**
@@ -4424,28 +4567,85 @@ if (dto.costoEstimadoTiquete !== undefined) {
   async resolverDatosUsuario(
     usuarioId?: string | null,
     fallbackNombre: string = '',
-  ): Promise<{ nombre: string; documento: string; cargo: string }> {
-    const result = { nombre: fallbackNombre, documento: '', cargo: '' };
+  ): Promise<{ nombre: string; documento: string; cargo: string; email: string }> {
+    const result = { nombre: fallbackNombre, documento: '', cargo: '', email: '' };
     if (!usuarioId) return result;
+    const cleanId = String(usuarioId).trim();
+    if (!cleanId) return result;
+
     if (typeof this.dataSource?.query === 'function') {
       try {
         const rows: any[] = await this.dataSource.query(
-          `SELECT u.username, p.nom_tercero, p.pri_apellido, p.nom_largo, p.num_identificacion, p.cargo
+          `SELECT 
+             u.id_user,
+             u.username,
+             p.nom_tercero,
+             p.pri_apellido,
+             p.seg_apellido,
+             p.nom_largo,
+             p.num_identificacion,
+             c.nom_cargo AS cargo,
+             p.dir_email
            FROM auth."user" u
            LEFT JOIN auth.personas p ON p.id_person = u.id_person
-           WHERE u.id_user = $1
+           LEFT JOIN auth.cargos c ON c.id_cargo = p.id_cargo
+           WHERE u.id_user::text = $1 
+              OR LOWER(u.username) = LOWER($1) 
+              OR LOWER(SPLIT_PART($1, '@', 1)) = LOWER(u.username)
+              OR (p.dir_email IS NOT NULL AND LOWER(p.dir_email) = LOWER($1))
+              OR p.num_identificacion = $1
            LIMIT 1`,
-          [usuarioId],
+          [cleanId],
         );
-        if (Array.isArray(rows) && rows[0]) {
-          const r = rows[0];
-          const nombre =
-            r.nom_largo ||
-            [r.nom_tercero, r.pri_apellido].filter(Boolean).join(' ') ||
-            r.username;
-          if (nombre) result.nombre = String(nombre).trim();
+
+        let r = Array.isArray(rows) && rows[0] ? rows[0] : null;
+
+        // Si no encontró relación por auth."user", intentar directamente en auth.personas
+        if (!r || (!r.nom_largo && !r.nom_tercero)) {
+          const pRows: any[] = await this.dataSource.query(
+            `SELECT 
+               p.nom_tercero,
+               p.pri_apellido,
+               p.seg_apellido,
+               p.nom_largo,
+               p.num_identificacion,
+               c.nom_cargo AS cargo,
+               p.dir_email
+             FROM auth.personas p
+             LEFT JOIN auth.cargos c ON c.id_cargo = p.id_cargo
+             WHERE LOWER(p.dir_email) = LOWER($1)
+                OR p.num_identificacion = $1
+                OR LOWER(SPLIT_PART(p.dir_email, '@', 1)) = LOWER(SPLIT_PART($1, '@', 1))
+             LIMIT 1`,
+            [cleanId],
+          );
+          if (Array.isArray(pRows) && pRows[0]) {
+            r = { ...(r || {}), ...pRows[0] };
+          }
+        }
+
+        if (r) {
+          const partes = [r.nom_tercero, r.pri_apellido, r.seg_apellido].filter(Boolean).join(' ').trim();
+          let nombreHumano = (r.nom_largo || partes || '').trim();
+          if (nombreHumano && !nombreHumano.includes('@')) {
+            // Capitalizar palabras si está en minúsculas (ej. "jefe planeacion" -> "Jefe Planeación")
+            if (nombreHumano === nombreHumano.toLowerCase()) {
+              nombreHumano = nombreHumano
+                .split(/\s+/)
+                .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                .join(' ');
+            }
+            result.nombre = nombreHumano;
+          } else if (r.username && !r.username.includes('@')) {
+            result.nombre = String(r.username).trim();
+          }
           if (r.num_identificacion) result.documento = String(r.num_identificacion).trim();
           if (r.cargo) result.cargo = String(r.cargo).trim();
+          if (r.dir_email) {
+            result.email = String(r.dir_email).trim();
+          } else if (r.username && r.username.includes('@')) {
+            result.email = String(r.username).trim();
+          }
         }
       } catch (e) {
         this.logger.warn(`Error resolviendo datos de usuario ${usuarioId}: ${e}`);
@@ -4534,26 +4734,74 @@ if (dto.costoEstimadoTiquete !== undefined) {
     );
     const firmaElaboro = solicitud.camposAdicionales?.firmaElaboro;
 
-    // Elaboró: Nombre del enlace que lo generó (creadoPorUsuarioId o usuarioRadicacionId)
+    // Elaboró: Nombre del enlace que lo generó (creadoPorUsuarioId, usuarioRadicacionId, firmaElaboro, camposAdicionales)
     const enlaceId =
       solicitud.creadoPorUsuarioId || (solicitud as any).usuarioRadicacionId;
     let elaboroNombre = '';
     let elaboroDoc = '';
+    let elaboroEmail = '';
     if (enlaceId) {
       const dEnlace = await this.resolverDatosUsuario(enlaceId, '');
       elaboroNombre = dEnlace.nombre;
       elaboroDoc = dEnlace.documento;
+      elaboroEmail = dEnlace.email;
     }
-    if (firmaElaboro && !firmaElaboro.documentoIdentidad && elaboroDoc) {
-      firmaElaboro.documentoIdentidad = elaboroDoc;
+
+    let nombreEnlaceFinal =
+      (firmaElaboro?.nombreFirmante && !firmaElaboro.nombreFirmante.includes('@') ? firmaElaboro.nombreFirmante : '') ||
+      solicitud.camposAdicionales?.nombreEnlace ||
+      solicitud.camposAdicionales?.enlaceNombre ||
+      elaboroNombre ||
+      '';
+
+    let emailEnlaceFinal =
+      (firmaElaboro?.nombreFirmante?.includes('@') ? firmaElaboro.nombreFirmante : '') ||
+      elaboroEmail ||
+      solicitud.camposAdicionales?.emailEnlace ||
+      '';
+
+    // Si viene como correo o vacío, intentar resolver con resolverDatosUsuario
+    if (!nombreEnlaceFinal || nombreEnlaceFinal.includes('@')) {
+      const idParaResolver =
+        (firmaElaboro?.nombreFirmante?.includes('@') ? firmaElaboro.nombreFirmante : null) ||
+        enlaceId ||
+        (solicitud as any).creadoPor ||
+        (req?.user?.email);
+      if (idParaResolver) {
+        const d = await this.resolverDatosUsuario(idParaResolver, '');
+        if (d.nombre && !d.nombre.includes('@')) {
+          nombreEnlaceFinal = d.nombre;
+        }
+        if (d.documento && !elaboroDoc) {
+          elaboroDoc = d.documento;
+        }
+        if (d.email && !emailEnlaceFinal) {
+          emailEnlaceFinal = d.email;
+        }
+      }
     }
-    const docElaboroStr = firmaElaboro?.documentoIdentidad ? ` · C.C. ${firmaElaboro.documentoIdentidad}` : '';
+
+    if ((!nombreEnlaceFinal || nombreEnlaceFinal.includes('@')) && elaboroNombre && !elaboroNombre.includes('@')) {
+      nombreEnlaceFinal = elaboroNombre;
+    }
+    if ((!nombreEnlaceFinal || nombreEnlaceFinal.includes('@')) && req?.user?.fullName && !req.user.fullName.includes('@')) {
+      nombreEnlaceFinal = req.user.fullName;
+    }
+    if (!nombreEnlaceFinal || nombreEnlaceFinal.includes('@')) {
+      nombreEnlaceFinal = 'Enlace de Dependencia';
+    }
+
+    const docEnlaceFinal =
+      firmaElaboro?.documentoIdentidad ||
+      solicitud.camposAdicionales?.documentoEnlace ||
+      elaboroDoc ||
+      '';
+    const emailEnlaceStr = emailEnlaceFinal ? ` (${emailEnlaceFinal})` : '';
+    const docElaboroStr = docEnlaceFinal ? ` · C.C. ${docEnlaceFinal}` : '';
     const fElaboroStr = firmaElaboro?.fechaFirma ? ` · Fecha: ${formatFechaHoraSegura(firmaElaboro.fechaFirma)}` : '';
-    const elaboroTexto =
-      firmaElaboro?.nombreFirmante
-        ? `Elaboró: ${firmaElaboro.nombreFirmante}${docElaboroStr}${fElaboroStr} · ✓ Firma Digital Verificada (Cert: ${firmaElaboro.certificadoId || 'ESAP-CERT-VIAT'})`
-        : solicitud.camposAdicionales?.elaboro ||
-          (elaboroNombre ? `Elaboró: ${elaboroNombre}${elaboroDoc ? ` · C.C. ${elaboroDoc}` : ''}` : 'Elaboró:');
+    const certElaboroStr = firmaElaboro?.certificadoId ? ` · ✓ Firma Digital Verificada (Cert: ${firmaElaboro.certificadoId})` : '';
+
+    const elaboroTexto = `Elaboró: ${nombreEnlaceFinal}${emailEnlaceStr}${docElaboroStr}${fElaboroStr}${certElaboroStr}`;
 
     // Revisó: El analista que lo revisó/verificó con firma digital si existe
     const analistaId =
@@ -4568,35 +4816,78 @@ if (dto.costoEstimadoTiquete !== undefined) {
     if (firmaAnalistaPrev && !firmaAnalistaPrev.documentoIdentidad && revisorDoc) {
       firmaAnalistaPrev.documentoIdentidad = revisorDoc;
     }
-    const docRevisoStr = firmaAnalistaPrev?.documentoIdentidad ? ` · C.C. ${firmaAnalistaPrev.documentoIdentidad}` : '';
-    const fRevisoStr = firmaAnalistaPrev?.fechaFirma ? ` · Fecha: ${formatFechaHoraSegura(firmaAnalistaPrev.fechaFirma)}` : '';
-    const revisoTexto =
-      firmaAnalistaPrev?.nombreFirmante
-        ? `Revisó: ${firmaAnalistaPrev.nombreFirmante}${docRevisoStr}${fRevisoStr} · ✓ Firma Digital Verificada (Cert: ${firmaAnalistaPrev.certificadoId || 'ESAP-CERT-VIAT'})`
-        : solicitud.camposAdicionales?.reviso ||
-          (revisorNombre ? `Revisó: ${revisorNombre}${revisorDoc ? ` · C.C. ${revisorDoc}` : ''}` : 'Revisó:');
+    const nombreRevisoFinal =
+      firmaAnalistaPrev?.nombreFirmante ||
+      solicitud.camposAdicionales?.nombreAnalista ||
+      revisorNombre;
+    const docRevisoStr = (firmaAnalistaPrev?.documentoIdentidad || revisorDoc) ? ` · C.C. ${firmaAnalistaPrev?.documentoIdentidad || revisorDoc}` : '';
+    const fRevisoStr = (firmaAnalistaPrev?.fechaFirma || solicitud.fechaRevision) ? ` · Fecha: ${formatFechaHoraSegura(firmaAnalistaPrev?.fechaFirma || solicitud.fechaRevision)}` : '';
+    const certRevisoStr = firmaAnalistaPrev?.certificadoId ? ` · ✓ Firma Digital Verificada (Cert: ${firmaAnalistaPrev.certificadoId})` : '';
 
-    // Aprobó: Quien la dejó en estado de pagada (pagado_por_id), si no ha llegado dejar vacío
-    const pagadoPorId = solicitud.pagadoPorId;
-    let pagadorNombre = '';
-    let pagadorDoc = '';
-    if (pagadoPorId) {
-      const dPagador = await this.resolverDatosUsuario(pagadoPorId, '');
-      pagadorNombre = dPagador.nombre;
-      pagadorDoc = dPagador.documento;
-    }
-    const aproboTexto =
-      solicitud.camposAdicionales?.aprobo ||
-      (pagadorNombre ? `Aprobó: ${pagadorNombre}${pagadorDoc ? ` · C.C. ${pagadorDoc}` : ''}` : 'Aprobó:');
+    const revisoTexto = nombreRevisoFinal
+      ? `Revisó: ${nombreRevisoFinal}${docRevisoStr}${fRevisoStr}${certRevisoStr}`
+      : 'Revisó: Pendiente revisión técnica y documental (Analista de Viáticos)';
 
-    // Enriquecer datos de firmantes con C.C. si no vienen explícitos
-    if (firmaJefePdf && !firmaJefePdf.documentoIdentidad && firmaJefePdf.usuarioId) {
-      const d = await this.resolverDatosUsuario(firmaJefePdf.usuarioId);
-      if (d.documento) firmaJefePdf.documentoIdentidad = d.documento;
+    // Aprobó: La aprobación formal de la comisión la otorga el Director Nacional / Ordenador del Gasto
+    // (NO el jefe de dependencia ni el gerente de proyecto, quienes otorgan la autorización previa de desplazamiento)
+    const autorizadorId =
+      solicitud.autorizadorDireccionId ||
+      solicitud.autorizadorId;
+    let autorizadorNombre = '';
+    let autorizadorDoc = '';
+    if (solicitud.autorizadorDireccion) {
+      autorizadorNombre = (solicitud.autorizadorDireccion as any).nombreCompleto || (solicitud.autorizadorDireccion as any).nomLargo || '';
+    } else if (solicitud.autorizador) {
+      autorizadorNombre = (solicitud.autorizador as any).nombreCompleto || (solicitud.autorizador as any).nomLargo || '';
     }
-    if (firmaGerentePdf && !firmaGerentePdf.documentoIdentidad && firmaGerentePdf.usuarioId) {
-      const d = await this.resolverDatosUsuario(firmaGerentePdf.usuarioId);
-      if (d.documento) firmaGerentePdf.documentoIdentidad = d.documento;
+    if (!autorizadorNombre && autorizadorId) {
+      const dAutorizador = await this.resolverDatosUsuario(autorizadorId, '');
+      autorizadorNombre = dAutorizador.nombre;
+      autorizadorDoc = dAutorizador.documento;
+    }
+    const fechaAprobacion =
+      solicitud.fechaAutorizacionDireccion || solicitud.fechaAutorizacion;
+    const fAproboStr = fechaAprobacion ? ` · Fecha: ${formatFechaHoraSegura(fechaAprobacion)}` : '';
+    const docAproboStr = autorizadorDoc ? ` · C.C. ${autorizadorDoc}` : '';
+
+    const aproboTexto = autorizadorNombre
+      ? `Aprobó: ${autorizadorNombre}${docAproboStr}${fAproboStr} · ✓ Aprobación Institucional de la Comisión`
+      : 'Aprobó: Pendiente de aprobación institucional (Director Nacional / Ordenador del Gasto)';
+
+    // Enriquecer datos de firmantes con C.C., correo institucional y nombre si vienen registrados o con usuarioId o correo
+    if (firmaJefePdf) {
+      const idParaResolverJefe =
+        firmaJefePdf.usuarioId ||
+        (firmaJefePdf.nombreFirmante?.includes('@') ? firmaJefePdf.nombreFirmante : null);
+      if (idParaResolverJefe) {
+        const d = await this.resolverDatosUsuario(idParaResolverJefe);
+        if (d.documento && !firmaJefePdf.documentoIdentidad) firmaJefePdf.documentoIdentidad = d.documento;
+        if (d.email) (firmaJefePdf as any).emailFirmante = d.email;
+        if (firmaJefePdf.nombreFirmante?.includes('@')) {
+          (firmaJefePdf as any).emailFirmante = (firmaJefePdf as any).emailFirmante || firmaJefePdf.nombreFirmante;
+        }
+        if (d.nombre && (!firmaJefePdf.nombreFirmante || firmaJefePdf.nombreFirmante.includes('@'))) {
+          firmaJefePdf.nombreFirmante = d.nombre;
+        }
+        if (d.cargo && !firmaJefePdf.cargoFirmante) firmaJefePdf.cargoFirmante = d.cargo;
+      }
+    }
+    if (firmaGerentePdf) {
+      const idParaResolverGerente =
+        firmaGerentePdf.usuarioId ||
+        (firmaGerentePdf.nombreFirmante?.includes('@') ? firmaGerentePdf.nombreFirmante : null);
+      if (idParaResolverGerente) {
+        const d = await this.resolverDatosUsuario(idParaResolverGerente);
+        if (d.documento && !firmaGerentePdf.documentoIdentidad) firmaGerentePdf.documentoIdentidad = d.documento;
+        if (d.email) (firmaGerentePdf as any).emailFirmante = d.email;
+        if (firmaGerentePdf.nombreFirmante?.includes('@')) {
+          (firmaGerentePdf as any).emailFirmante = (firmaGerentePdf as any).emailFirmante || firmaGerentePdf.nombreFirmante;
+        }
+        if (d.nombre && (!firmaGerentePdf.nombreFirmante || firmaGerentePdf.nombreFirmante.includes('@'))) {
+          firmaGerentePdf.nombreFirmante = d.nombre;
+        }
+        if (d.cargo && !firmaGerentePdf.cargoFirmante) firmaGerentePdf.cargoFirmante = d.cargo;
+      }
     }
 
     // Búsqueda de datos complementarios en auth.personas (fecha_nacimiento, etc.)
@@ -5786,18 +6077,32 @@ if (itinerarioGeneral) {
           });
 
           // 2. Nombre del aprobador en negrilla centrada
-          const nombreAprobador = this.sanitizarTextoPdf(firma.nombreFirmante || 'Servidor Autorizado').toUpperCase();
+          let nombreAprobador = (firma.nombreFirmante || '').trim();
+          let correoAprobador = ((firma as any).emailFirmante || '').trim();
+          if (nombreAprobador.includes('@')) {
+            if (!correoAprobador) correoAprobador = nombreAprobador;
+            nombreAprobador = cargoOficial || fallbackTitulo || 'Servidor Autorizado';
+          }
+          const nombreAprobadorFinal = this.sanitizarTextoPdf(nombreAprobador || 'Servidor Autorizado').toUpperCase();
           doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#111827');
-          doc.text(nombreAprobador, cardX + 8, cardY + 18, {
+          doc.text(nombreAprobadorFinal, cardX + 8, cardY + 18, {
             width: cardW - 16,
             align: 'center',
           });
 
-          // 3. Documento de Identidad (C.C.)
+          // 3. Documento de Identidad (C.C.) y correo institucional del aprobador
+          const partesSecundarias: string[] = [];
           if (firma.documentoIdentidad) {
-            doc.fontSize(5.5).font('Helvetica').fillColor('#64748B');
-            doc.text(`C.C. ${firma.documentoIdentidad}`, cardX, cardY + 28, {
-              width: cardW,
+            partesSecundarias.push(`C.C. ${firma.documentoIdentidad}`);
+          }
+          if (correoAprobador) {
+            partesSecundarias.push(correoAprobador.toLowerCase());
+          }
+          if (partesSecundarias.length > 0) {
+            const textoSecundario = this.sanitizarTextoPdf(partesSecundarias.join(' · '));
+            doc.fontSize(5.2).font('Helvetica').fillColor('#64748B');
+            doc.text(textoSecundario, cardX + 4, cardY + 28, {
+              width: cardW - 8,
               align: 'center',
             });
           }
@@ -5814,7 +6119,7 @@ if (itinerarioGeneral) {
              .fillAndStroke();
 
           doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#065F46');
-          doc.text('✓ Aprobado', pillX, pillY + 3.2, {
+          doc.text('✓ Autorizado', pillX, pillY + 3.2, {
             width: pillW,
             align: 'center',
           });
@@ -5836,15 +6141,6 @@ if (itinerarioGeneral) {
             width: cardW,
             align: 'center',
           });
-
-          // Imagen opcional de rúbrica si existiera
-          if (firma.firmaImagen && typeof firma.firmaImagen === 'string') {
-            try {
-              const rawBase64 = firma.firmaImagen.replace(/^data:image\/\w+;base64,/, '');
-              const imgBuf = Buffer.from(rawBase64, 'base64');
-              doc.image(imgBuf, cardX + cardW - 48, cardY + 6, { fit: [42, 18], align: 'right' });
-            } catch {}
-          }
 
           // Si es firma por ausencia
           if (firma.esAusencia && firma.motivoAusencia) {
@@ -5871,7 +6167,7 @@ if (itinerarioGeneral) {
             align: 'center',
           });
 
-          // 2. Línea horizontal o guion como en la foto
+          // 2. Línea horizontal o guion
           doc.fontSize(10).font('Helvetica-Bold').fillColor('#9CA3AF');
           doc.text('—', cardX, cardY + 20, {
             width: cardW,
@@ -5912,8 +6208,8 @@ if (itinerarioGeneral) {
       // Firma izquierda: Jefe de Dependencia / Supervisor / Director Nacional / Subdirector
       renderFirmaBox(firmaJefePdf, cargoJefe, 33, 268, 'Jefe de Dependencia / Supervisor');
 
-      // Firma derecha: Gerente de Proyecto / Ordenador
-      renderFirmaBox(firmaGerentePdf, cargoGerente, 311, 268, 'Gerente de Proyecto');
+      // Firma derecha: Gerente de Proyecto / Convenio
+      renderFirmaBox(firmaGerentePdf, cargoGerente, 311, 268, 'Gerente de Proyecto / Convenio');
 
       // ========== PIE DE PÁGINA: ELABORÓ, REVISÓ, APROBÓ Y LEY 1581 ==========
       const yFooter = yFirmas + hFirmas;
@@ -5925,21 +6221,8 @@ if (itinerarioGeneral) {
       doc.moveTo(28, yFooter + hFilaFooter).lineTo(398, yFooter + hFilaFooter).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
       doc.moveTo(28, yFooter + hFilaFooter * 2).lineTo(398, yFooter + hFilaFooter * 2).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
 
-      const firmasAprobadas = [firmaJefePdf, firmaGerentePdf].filter((f: any) => f && (f.estado === 'FIRMADO' || f.firmadoDigitalmente));
-      let aproboTextoFinal = '';
-      if (firmasAprobadas.length > 0) {
-        const parts = firmasAprobadas.map((f: any) => {
-          const cc = f.documentoIdentidad ? ` (C.C. ${f.documentoIdentidad})` : '';
-          const fStr = f.fechaFirma ? ` ${formatFechaHoraSegura(f.fechaFirma)}` : '';
-          return `${f.nombreFirmante}${cc} · ✓ Verificada${fStr}`;
-        });
-        aproboTextoFinal = `Aprobó: ${parts.join(' / ')}`;
-      } else {
-        const nombresAprobadores = [firmaJefePdf?.nombreFirmante, firmaGerentePdf?.nombreFirmante].filter(Boolean).join(' / ');
-        aproboTextoFinal =
-          solicitud.camposAdicionales?.aprobo ||
-          (nombresAprobadores ? `Aprobó: ${nombresAprobadores}` : aproboTexto);
-      }
+      // Fila Aprobó: La aprobación definitiva de la comisión la otorga el Director Nacional / Ordenador del Gasto
+      const aproboTextoFinal = aproboTexto;
 
       doc.fontSize(5.5).font('Helvetica').fillColor('#000000');
       doc.text(elaboroTexto, 32, yFooter + 3.5, { width: 362 });

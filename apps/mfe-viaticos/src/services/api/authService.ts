@@ -64,6 +64,7 @@ export interface DependenciaUsuario {
 export interface UsuarioActual {
   userId: string;
   username: string;
+  fullName?: string;
   email?: string;
   /** Códigos de rol normalizados a forma canónica (ej. 'SUPER_ADMIN'). */
   roles: string[];
@@ -230,16 +231,24 @@ export class AuthService {
       cached?.sub ||
       '';
 
+    const fullName =
+      cached?.fullName ||
+      cached?.full_name ||
+      data?.fullName ||
+      data?.full_name ||
+      (persona?.first_name && persona?.last_name ? `${persona.first_name} ${persona.last_name}` : '') ||
+      persona?.full_name ||
+      '';
+
     return {
       userId,
       username:
         data?.username ||
-        data?.email ||
         cached?.username ||
-        cached?.fullName ||
-        cached?.full_name ||
-        persona?.full_name ||
+        data?.email ||
+        cached?.email ||
         '',
+      fullName: fullName && !fullName.includes('@') ? fullName : undefined,
       email: data?.email || cached?.email || persona?.email,
       roles,
       permissions,
@@ -646,14 +655,26 @@ export class AuthService {
       const esAdmin = roles.some((r) =>
       (ROLES_ADMIN_VIATICOS as readonly string[]).includes(r),
     );
+      const personObj = cached?.person || cached?.user?.person;
+      const fullName =
+        cached?.fullName ||
+        cached?.full_name ||
+        (cached?.firstName && cached?.lastName ? `${cached.firstName} ${cached.lastName}` : '') ||
+        personObj?.full_name ||
+        personObj?.fullName ||
+        personObj?.nom_largo ||
+        [personObj?.nom_tercero, personObj?.pri_apellido, personObj?.seg_apellido].filter(Boolean).join(' ') ||
+        '';
+
       return {
         userId: cached?.id_user || cached?.userId || cached?.id || '',
-        username: cached?.username || cached?.fullName || cached?.full_name || '',
+        username: cached?.username || '',
+        fullName: fullName && !fullName.includes('@') ? fullName.trim() : undefined,
         email: cached?.email,
         roles,
         permissions,
         esAdmin,
-        person: cached?.person || cached?.user?.person,
+        person: personObj,
       };
     } catch {
       return null;

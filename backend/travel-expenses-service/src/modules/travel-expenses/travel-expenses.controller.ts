@@ -689,6 +689,22 @@ export class TravelExpensesController {
     return this.service.devolverFirmaAprobacion(id, dto.motivo, req.user?.userId);
   }
 
+  @Post('requests/:id/firmas/notificar-pendiente')
+  @ApiOperation({
+    summary: 'Envía alerta y recordatorio de firma de aprobación pendiente al rol que aún no ha firmado',
+  })
+  @Permissions(
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+  )
+  notificarFirmaPendiente(
+    @Param('id') id: string,
+    @Body('tipoFirmaPendiente') tipoFirmaPendiente: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.service.notificarFirmaPendiente(id, tipoFirmaPendiente, req.user?.userId);
+  }
+
   @Get('requests/:id')
   @Permissions(
     'travel_expenses:sign_approval',

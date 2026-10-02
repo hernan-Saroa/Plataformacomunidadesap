@@ -1859,16 +1859,33 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const obtenerNombreEnlace = () => {
     const user = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
     const resolvedUser = user && typeof (user as any).then !== 'function' ? user : null;
-    const nombre = [
-      resolvedUser?.primerNombre,
-      resolvedUser?.segundoNombre,
-      resolvedUser?.primerApellido,
-      resolvedUser?.segundoApellido,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .trim();
-    return nombre || resolvedUser?.nombre || usuarioActual?.username || 'Enlace de Dependencia';
+    const nombre =
+      (resolvedUser as any)?.fullName ||
+      (resolvedUser as any)?.full_name ||
+      [(resolvedUser as any)?.firstName, (resolvedUser as any)?.lastName].filter(Boolean).join(' ') ||
+      [
+        resolvedUser?.primerNombre,
+        resolvedUser?.segundoNombre,
+        resolvedUser?.primerApellido,
+        resolvedUser?.segundoApellido,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim() ||
+      resolvedUser?.person?.full_name ||
+      (resolvedUser?.person as any)?.nom_largo ||
+      [
+        (resolvedUser?.person as any)?.nom_tercero,
+        (resolvedUser?.person as any)?.pri_apellido,
+        (resolvedUser?.person as any)?.seg_apellido,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim() ||
+      resolvedUser?.nombre ||
+      '';
+    if (nombre && !nombre.includes('@')) return nombre.trim();
+    return 'Enlace de Dependencia';
   };
 
   const finalizarSolicitud = async () => {
