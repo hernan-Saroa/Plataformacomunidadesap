@@ -7900,20 +7900,6 @@ function SeccionGestionYSeguimiento({
     return false;
   };
 
-  // Requisitos de una tarea (observaciones / adjuntos), igual que en el asistente (EFDS-2237)
-  const cambiarRequisitoTarea = async (
-    rolNumero: number,
-    actividadId: string | number,
-    tareaId: string,
-    campo: 'requiereObservaciones' | 'requiereAdjuntos',
-  ) => {
-    const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
-    if (!actividadActual) return;
-    const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
-    const tareasActualizadas = tareasActuales.map(t => (t.id === tareaId ? { ...t, [campo]: !t[campo] } : t));
-    await persistirTareasYRecalcularAvance(rolNumero, actividadId, tareasActualizadas);
-  };
-
   // Toggle completar tarea (verifica requisitos)
   const toggleCompletarTarea = async (rolNumero: number, actividadId: string | number, tareaId: string) => {
     const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
@@ -10137,30 +10123,9 @@ function SeccionGestionYSeguimiento({
                                                     </span>
                                                   )}
                                                 </div>
-                                                {/* Requisitos y fecha de seguimiento, como en el asistente del plan (EFDS-2237) */}
+                                                {/* Fecha de seguimiento a la derecha, como en el asistente del plan (EFDS-2237) */}
                                                 <div className="ml-7 mt-2 pt-1.5 border-t border-gray-100 flex items-center gap-4 flex-wrap">
-                                                  {(['requiereObservaciones', 'requiereAdjuntos'] as const).map((campo) => {
-                                                    const activo = !!tarea[campo];
-                                                    const editableReq = puedeGestionarTareas(rol) && !tarea.completada;
-                                                    const color = campo === 'requiereObservaciones' ? '#3b82f6' : '#a855f7';
-                                                    return (
-                                                      <button
-                                                        key={campo}
-                                                        type="button"
-                                                        disabled={!editableReq}
-                                                        onClick={() => editableReq && cambiarRequisitoTarea(rol.numero, actividad.id, tarea.id, campo)}
-                                                        className={`flex items-center gap-1.5 ${editableReq ? 'cursor-pointer' : 'cursor-default'}`}
-                                                        title={campo === 'requiereObservaciones' ? 'Requiere observaciones al completar' : 'Requiere archivos adjuntos'}
-                                                      >
-                                                        <span className="w-7 h-4 rounded-full relative transition-colors" style={{ background: activo ? color : '#d1d5db' }}>
-                                                          <span className="w-3 h-3 bg-white rounded-full absolute transition-all shadow-sm" style={{ top: 2, left: activo ? 14 : 2 }} />
-                                                        </span>
-                                                        <span className="text-[11px]" style={{ color: activo ? color : '#6b7280', fontWeight: activo ? 600 : 400 }}>
-                                                          {campo === 'requiereObservaciones' ? '📝 Observaciones' : '📎 Adjuntos'}
-                                                        </span>
-                                                      </button>
-                                                    );
-                                                  })}
+                                                  <span className="text-[10px] text-gray-500">Fecha de seguimiento</span>
                                                   <div className="ml-auto flex items-center gap-1" title="Fecha de seguimiento">
                                                     <FechaSeguimientoTareaChip
                                                       fecha={tarea.fechaEntrega || (tarea as any).fechaLimite}
@@ -10282,22 +10247,15 @@ function SeccionGestionYSeguimiento({
                                               descripcion: input.value.trim(),
                                               responsable: '',
                                               fechaLimite: sel('aprob-fecha')?.value || fechaSeguimientoPorDefecto(pc) || '',
-                                              requiereObservaciones: !!sel('aprob-obs')?.checked,
-                                              requiereAdjuntos: !!sel('aprob-adj')?.checked,
+                                              requiereObservaciones: false,
+                                              requiereAdjuntos: false,
                                             });
                                             if (ok) input.value = '';
                                           };
                                           return (
                                             <div className="border-t border-dashed border-gray-200 pt-2 mt-2 space-y-1.5" onClick={(e) => e.stopPropagation()}>
                                               <div className="flex items-center gap-3 px-1">
-                                                <label className="flex items-center gap-1.5 cursor-pointer" title="La nueva tarea requiere observaciones">
-                                                  <input type="checkbox" data-aprob-obs={formKey} className="w-3.5 h-3.5 rounded border-gray-300" />
-                                                  <span className="text-[10px] text-gray-500">📝 Observaciones</span>
-                                                </label>
-                                                <label className="flex items-center gap-1.5 cursor-pointer" title="La nueva tarea requiere adjuntos">
-                                                  <input type="checkbox" data-aprob-adj={formKey} className="w-3.5 h-3.5 rounded border-gray-300" />
-                                                  <span className="text-[10px] text-gray-500">📎 Adjuntos</span>
-                                                </label>
+                                                <span className="text-[10px] text-gray-500">Fecha de seguimiento de la nueva tarea</span>
                                                 <div className="ml-auto">
                                                   <input
                                                     type="date"
