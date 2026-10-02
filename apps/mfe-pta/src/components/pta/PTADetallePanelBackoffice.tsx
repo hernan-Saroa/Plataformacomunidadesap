@@ -1403,6 +1403,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const isConcertacion = pta.estado === 'EN_CONCERTACION';
 
   const horasDisp = pta.horas_asignables ?? pta.horas_a_programar ?? 0;
+  const territorialesPersona = decisionPermissions?.personalTerritoriales;
+  const actividadFueraDeTerritorial = (actividad: any): boolean => {
+    if (!territorialesPersona?.length) return false;
+    const id = actividad?.territorial_id || actividad?.territorialId || actividad?.territorial?.id;
+    const tokens = (id ? [id] : [actividad?.territorial_nombre, actividad?.territorial_nombre_actual,
+      actividad?.territorialNombre, actividad?.territorial?.nombre, actividad?.territorial])
+      .map(normalizeTerritorialToken).filter(Boolean);
+    return !tokens.length || !tokens.some(token => territorialesPersona.some(t => normalizeTerritorialToken(t) === token));
+  };
   const asignaturas = Array.isArray(pta.asignaturas) ? pta.asignaturas : [];
   
   const investigacion = {
@@ -1429,6 +1438,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // Todo es "Actividades Complementarias": ambas secciones (a la docencia + académico-
   // administrativas) se muestran juntas como un solo componente.
   const complementarias = { actividades: [..._compSplit.docencia, ..._compSplit.aadm] };
+  const hayActividadesFueraDeAlcance = Boolean(decisionPermissions && territorialesPersona?.length && (
+    asignaturas.some(actividadFueraDeTerritorial)
+    || investigacion.proyectos.some(actividadFueraDeTerritorial)
+    || investigacion.actividades.some(actividadFueraDeTerritorial)
+    || extActsRaw.some(actividadFueraDeTerritorial)
+    || complementarias.actividades.some(actividadFueraDeTerritorial)
+  ));
   const tieneTotalidadAcadAdmin = _compSplit.aadm.some((a: any) => a?.consumeTotalidad === true);
   const programaResumen = pta.programa_academico || pta.programa || pta.programa_nombre || pta.programaAcademico;
   const territorialResumen = pta.territorial || pta.territorial_nombre;
@@ -1437,7 +1453,9 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   // Risaralda puede tener asignaturas en Chocó.
   const territorialesAsignaturas: string[] = useMemo(() => {
     const delBackend = Array.isArray(pta?.territorialesAsignaturas) ? pta.territorialesAsignaturas : [];
-    if (delBackend.length > 0) return delBackend.map(String).filter(Boolean);
+    if (delBackend.length > 0) {
+      return delBackend.map(String).filter(Boolean);
+    }
     return [...new Set(
       asignaturas
         .map((a: any) => a?.territorial_nombre || a?.territorialNombre || a?.territorial)
@@ -1632,9 +1650,13 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       setFirmaCorreoDestino(res.data.email || 'tu correo institucional');
       if (res.data.devCode) {
         console.log('🔑 [PRUEBAS] Código OTP de firma (aprobador):', res.data.devCode);
-        toast.info(`[PRUEBAS] Código de validación: ${res.data.devCode}`, { duration: Infinity });
+        toast.info(`[PRUEBAS] Código de validación: ${res.data.devCode}`, {
+          id: 'pta-firma-otp',
+          duration: 20000,
+        });
+      } else {
+        toast.success('Código de validación enviado a tu correo registrado.');
       }
-      toast.success('Código de validación enviado a tu correo registrado.');
       return true;
     } catch (error: any) {
       setFirmaVerificationId('');
@@ -1701,6 +1723,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   };
 
   const handleFirmaCompleta = async (firmaData: FirmaData) => {
+    toast.dismiss('pta-firma-otp');
     setShowFirmaDigital(false);
     setFirmaVerificationId('');
     setFirmaCorreoDestino('');
@@ -2838,13 +2861,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
             <span>
               {territorialSinPendientesPropios
                 ? (() => {
-                    const pendientes = aprobacionTerritorial.filter(t => t.estado !== 'aprobado');
-                    const nombres = Array.from(new Set(
-                      pendientes.map(t => `${t.territorialNombre} (${t.nivel === 'posgrado' ? 'Posgrado' : 'Pregrado'})`)
-                    ));
-                    return nombres.length > 0
-                      ? `Ya registraste tu decisión sobre la(s) territorial(es) que te corresponden. Falta la decisión de: ${nombres.join(', ')}.`
-                      : 'Ya registraste tu decisión sobre la(s) territorial(es) que te corresponden.';
+                    return 'Ya registraste tu decisión sobre la territorial que te corresponde. Quedan decisiones pendientes de otros responsables.';
                   })()
                 : !componentAuthorized
                 ? ((key === 'academica_territorial' && (decisionPermissions?.territorial.aprobar.reason || decisionPermissions?.territorial.revisar.reason)) || 'No tienes los permisos para aprobar este componente.')
@@ -3815,7 +3832,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                   ...(territorialesAsignaturas.length > 0
                     ? [{ label: 'Territoriales de las asignaturas', value: territorialesAsignaturas.join(', '), icon: MapPin }]
                     : []),
-                  { label: 'Asignaturas', value: `${pta.num_asignaturas ?? (Array.isArray(pta.asignaturas) ? asignaturas.length : 'No registrado')}${tieneTotalidadAcadAdmin && !asignaturas.length ? ' (No aplica)' : ''}`, icon: BookOpen },
+                  { label: 'Asignaturas', value: `${pta.num_asignaturas ?? asignaturas.length}${tieneTotalidadAcadAdmin && !asignaturas.length ? ' (No aplica)' : ''}`, icon: BookOpen },
                   { label: 'Dedicación', value: ptaDato(formatPtaDedicacion(pta.dedicacion)), icon: Clock },
                   { label: 'Vinculación', value: ptaDato(formatPtaVinculacion(pta.tipo_vinculacion)), icon: Award },
                   { label: 'Escalafón', value: pta.escalafon || 'No registrado', icon: TrendingUp },
@@ -3870,6 +3887,12 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           {/* ═══ TAB: Concertación (detalle por componente + aprobar/devolver) ═══ */}
           {activeTab === 'componentes' && (
             <div>
+              {hayActividadesFueraDeAlcance && (
+                <div role="status" style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 10,
+                  background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF', fontSize: '0.78rem' }}>
+                  Puede consultar estas actividades, pero su territorial asignada no le permite revisar ni aprobar las de otras territoriales.
+                </div>
+              )}
               {/* Header + traza de aprobación granular (antes tab "Aprobación") */}
               <div style={{
                 background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
@@ -4898,6 +4921,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       {preparandoDecision && <PTADecisionLoading firma={preparandoDecision === 'firma'} />}
       {showFirmaDigital && createPortal(
         <FirmaDigitalPTA
+          showSuccessToast={false}
           ptaId={pta.id}
           docenteNombre={pta.docente_nombre || pta.nombre_docente || ''}
           periodo={pta.periodo || ''}
@@ -4917,7 +4941,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           correoDestino={firmaCorreoDestino}
           onVerifyCodigo={verificarCodigoFirmaAprobador}
           onFirmaCompleta={handleFirmaCompleta}
-          onCancelar={() => { setShowFirmaDigital(false); setFirmaVerificationId(''); setFirmaCorreoDestino(''); setFirmaAccion(null); }}
+          onCancelar={() => { toast.dismiss('pta-firma-otp'); setShowFirmaDigital(false); setFirmaVerificationId(''); setFirmaCorreoDestino(''); setFirmaAccion(null); }}
         />,
         document.body
       )}

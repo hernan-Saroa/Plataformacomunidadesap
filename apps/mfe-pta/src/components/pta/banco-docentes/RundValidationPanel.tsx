@@ -11,7 +11,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { sanitizeText } from '../../../utils/textSanitizer';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
 import { RundDocumentManager } from './RundDocumentManager';
-import { RundExtractionPanel, type RundSuggestion } from './RundExtractionPanel';
+import { RundExtractionPanel } from './RundExtractionPanel';
 import { RundDatosCargaOriginal } from './RundDatosCargaOriginal';
 import { canUploadRundField } from '../../../utils/rundEvidenceData';
 
@@ -355,7 +355,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     };
   }, [viewingDoc?.displayUrl]);
   const [isEditing, setIsEditing] = useState(false);
-  const [extractionSuggestion, setExtractionSuggestion] = useState<RundSuggestion | null>(null);
+  const [extractionPendingByBlock, setExtractionPendingByBlock] = useState<Record<string, number | undefined>>({});
   const auth = useAuth();
 
   const requestSequence = useRef(0);
@@ -486,6 +486,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
     setDevolverRundBloque(null);
     setIsEditing(false);
     setSelectedRundBloque('IDENTIDAD');
+    setExtractionPendingByBlock({});
     void fetchRundData();
     return () => { requestSequence.current += 1; };
   }, [fetchRundData]);
@@ -493,6 +494,10 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
   const toggleRundBloque = (bloque: string) => {
     setSelectedRundBloque(bloque);
   };
+
+  const handleExtractionPendingChange = useCallback((bloque: string, count: number) => {
+    setExtractionPendingByBlock(current => current[bloque] === count ? current : { ...current, [bloque]: count });
+  }, []);
 
   const handleUploadFile = async (file: File, tipoSoporte: string, campo: string) => {
     if (rundActionLoading || loadingRund || loadError) return;
@@ -575,6 +580,11 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
 
   const handleAprobarRund = async (bloque: string) => {
     if (rundActionLoading || loadingRund || loadError || !tarjetaRund?.docenteId) return;
+    const extractionReviewAvailable = canEditRund && tarjetaRund.proteccion_datos?.acceso_completo === true;
+    if (extractionReviewAvailable && extractionPendingByBlock[bloque] !== 0) {
+      toast.error(extractionPendingByBlock[bloque] === undefined ? 'Espere mientras se verifican las sugerencias OCR.' : 'Confirme o rechace las sugerencias OCR antes de aprobar el bloque.');
+      return;
+    }
     setRundActionLoading(bloque);
     try {
       const res = await apiClient.post<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/aprobar`, {
@@ -714,7 +724,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
             Validación Integral RUND
             {canEditRund && (
               <button 
-                onClick={() => { setExtractionSuggestion(null); setIsEditing(true); }}
+                onClick={() => setIsEditing(true)}
                 style={{ marginLeft: 16, padding: '4px 12px', borderRadius: 6, background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, transition: 'all 0.2s' }}
                 onMouseEnter={(e) => e.currentTarget.style.background = '#DBEAFE'}
                 onMouseLeave={(e) => e.currentTarget.style.background = '#EFF6FF'}
@@ -766,10 +776,6 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       />
 
       {/* Horizontal Tabs Layout */}
-      {canEditRund && tarjetaRund.proteccion_datos?.acceso_completo === true && !loadError && (
-        <RundExtractionPanel key={tarjetaRund.docenteId} docenteId={tarjetaRund.docenteId} revision={documentRevision}
-          onView={openDocViewer} onUse={suggestion => { setExtractionSuggestion(suggestion); setIsEditing(true); }} />
-      )}
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 450 }}>
         
         {/* Top Tabs: Categories List */}
@@ -826,6 +832,10 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
             if (!b) return null;
             const cfg = CATALOGO_BR039[b.bloque];
             const canApprove = b.estado !== 'Aprobado' && !loadError;
+            const pendingOcr = extractionPendingByBlock[b.bloque];
+            const extractionReviewAvailable = canEditRund && tarjetaRund.proteccion_datos?.acceso_completo === true;
+            const checkingOcr = extractionReviewAvailable && pendingOcr === undefined;
+            const hasPendingOcr = extractionReviewAvailable && (pendingOcr ?? 0) > 0;
             const hasAllRequired = cfg.campos.filter(c => c.obligatorio === 'Sí' || (c.obligatorio === 'Si aplica' && !['', 'no', 'no aplica', 'n/a', 'ninguno', 'ninguna'].includes(String(getDatoExtraido(b.bloque, c.campo, tarjetaRund) ?? '').trim().toLowerCase()))).every(c => !c.tipoSoporte || findRundSoporte(b.soportes || [], c.tipoSoporte));
             const allReviewed = (b.soportes || []).filter((s: any) => !['soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(s.tipo_soporte)).every((s: any) => s.estado === 'Aprobado') && cfg.campos.filter(c => c.tipoSoporte && findRundSoporte(b.soportes || [], c.tipoSoporte)).every(c => getFieldDecision(findRundSoporte(b.soportes || [], c.tipoSoporte), c).estado === 'Aprobado');
             const isDevolverOpen = devolverRundBloque === b.bloque;
@@ -839,6 +849,12 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                   </h4>
                   <p style={{ margin: 0, fontSize: 13, color: '#64748B', marginTop: 4 }}>{cfg.subtitle}</p>
                 </div>
+
+                {canEditRund && tarjetaRund.proteccion_datos?.acceso_completo === true && !loadError && (
+                  <RundExtractionPanel key={tarjetaRund.docenteId} docenteId={tarjetaRund.docenteId} revision={documentRevision}
+                    activeBlock={b.bloque} activeBlockLabel={cfg.label} activeBlockColor={cfg.color}
+                    onView={openDocViewer} onConfirmed={fetchRundData} onPendingChange={handleExtractionPendingChange} />
+                )}
 
                 {b.estado === 'Aprobado' && (
                   <div style={{ padding: 16, marginBottom: 20, borderRadius: 12, background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#047857', display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -866,6 +882,9 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                   <div style={{ fontSize: 13, fontWeight: 800, color: '#0F172A', textTransform: 'uppercase', marginBottom: 16, letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Shield size={18} color="#003DA5" /> Puntos de Control y Evidencia
                   </div>
+                  <p style={{ margin: '-8px 0 16px', fontSize: 12, lineHeight: 1.5, color: '#64748B' }}>
+                    Aquí se valida que el soporte respalde el dato actual del perfil. Las propuestas OCR se confirman o rechazan en el asistente anterior.
+                  </p>
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {cfg.campos.map((c, idx) => {
@@ -1010,7 +1029,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                                         onClick={() => reviewField(c.campo, 'Aprobado')}
                                         style={{ padding: '6px 12px', borderRadius: 6, background: 'white', border: '1px solid #10B981', color: '#10B981', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.2s' }}
                                       >
-                                        <CheckCircle size={14} /> Aprobar
+                                        <CheckCircle size={14} /> Validar soporte
                                       </button>
                                     )}
                                     {canValidateRund && (
@@ -1019,7 +1038,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                                         onClick={() => reviewField(c.campo, 'Rechazado')}
                                         style={{ padding: '6px 12px', borderRadius: 6, background: 'white', border: '1px solid #EF4444', color: '#EF4444', fontSize: 11, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, transition: 'all 0.2s' }}
                                       >
-                                        <ShieldAlert size={14} /> Devolver
+                                        <ShieldAlert size={14} /> Devolver soporte
                                       </button>
                                     )}
                                  </div>
@@ -1070,15 +1089,17 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
                       
                       {canApprove && !allReviewed && <span style={{ fontSize: 12, color: '#92400E' }}>Revise cada fila pendiente antes de aprobar el espacio.</span>}
                       {canApprove && !hasAllRequired && <span style={{ fontSize: 12, color: '#B91C1C' }}>Faltan soportes obligatorios.</span>}
+                      {canApprove && checkingOcr && <span style={{ fontSize: 12, color: '#64748B' }}>Comprobando sugerencias OCR…</span>}
+                      {canApprove && hasPendingOcr && <span style={{ fontSize: 12, color: '#6D28D9' }}>Resuelva {pendingOcr === 1 ? 'la sugerencia OCR pendiente' : `las ${pendingOcr} sugerencias OCR pendientes`} antes de aprobar el bloque.</span>}
                       {canApprove && (
                         <>
                           {canValidateRund && (
                             <button onClick={() => setDevolverRundBloque(b.bloque)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: '1px solid #FECACA', background: '#FEF2F2', color: '#DC2626', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s' }}>
-                              <ShieldAlert size={16} /> Devolver
+                              <ShieldAlert size={16} /> Devolver bloque
                             </button>
                           )}
                           {canValidateRund && (
-                            <button onClick={() => handleAprobarRund(b.bloque)} disabled={!!rundActionLoading || !allReviewed || !hasAllRequired || loadError} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 4px 10px rgba(0, 61, 165, 0.3)' }}>
+                            <button onClick={() => handleAprobarRund(b.bloque)} disabled={!!rundActionLoading || !allReviewed || !hasAllRequired || loadError || checkingOcr || hasPendingOcr} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: 13, fontWeight: 700, cursor: checkingOcr || hasPendingOcr ? 'not-allowed' : 'pointer', opacity: checkingOcr || hasPendingOcr ? 0.55 : 1, transition: 'all 0.2s', boxShadow: '0 4px 10px rgba(0, 61, 165, 0.3)' }}>
                               <CheckCircle size={16} /> Aprobar bloque
                             </button>
                           )}
@@ -1177,7 +1198,6 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
       )}
       {isEditing && (
         <BancoDocenteEditModal
-          suggestion={extractionSuggestion || undefined}
           docente={{
             id: tarjetaRund.docenteId,
             ...docente, // Usar datos del docente para prellenar si están disponibles

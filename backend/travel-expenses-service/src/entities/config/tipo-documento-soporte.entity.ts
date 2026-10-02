@@ -22,6 +22,12 @@ export class TipoDocumentoSoporteEntity {
   @Column({ name: 'descripcion', type: 'varchar', length: 255, nullable: true })
   descripcion: string | null;
 
+  @Column({ name: 'instrucciones_validacion', type: 'text', nullable: true })
+  instruccionesValidacion: string | null;
+
+  @Column({ name: 'campos_a_validar', type: 'jsonb', default: [] })
+  camposAValidar: string[];
+
   @Column({ name: 'activo', type: 'boolean', default: true })
   activo: boolean;
 

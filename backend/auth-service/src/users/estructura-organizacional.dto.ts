@@ -195,6 +195,11 @@ export class CreateDependenciaDto {
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  cargosIds?: number[];
 }
 
 export class UpdateDependenciaDto {
@@ -256,6 +261,41 @@ export class UpdateDependenciaDto {
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  cargosIds?: number[];
+}
+
+export class CreateCargoDto {
+  @IsString()
+  @MaxLength(50, { message: 'El código de cargo no puede exceder 50 caracteres' })
+  codCargo: string;
+
+  @IsString()
+  @MaxLength(250, { message: 'El nombre de cargo no puede exceder 250 caracteres' })
+  nomCargo: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  descripcion?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  nivelJerarquico?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  activo?: boolean;
+}
+
+export class AssignCargosDto {
+  @IsArray()
+  @IsNumber({}, { each: true })
+  cargosIds: number[];
 }
 
 export class AsignarUsuariosDto {

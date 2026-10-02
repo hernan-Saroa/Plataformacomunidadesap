@@ -1,3 +1,4 @@
+import { ServiceUnavailableException } from '@nestjs/common';
 import { CertificatesService } from './certificates.service';
 import { CertificateRequest } from './certificate-request.entity';
 import { Certificate } from './certificate.entity';
@@ -529,8 +530,10 @@ describe('CertificatesService', () => {
   });
 
   it('redirige los codigos de validacion al correo seguro del microservicio', async () => {
+    const originalSafeMode = process.env.CERTIFICATION_EMAIL_SAFE_MODE;
     const originalFetch = global.fetch;
     const fetchMock = jest.fn().mockResolvedValue({ ok: true });
+    process.env.CERTIFICATION_EMAIL_SAFE_MODE = 'true';
     global.fetch = fetchMock as any;
     (service as any).logger = {
       debug: jest.fn(),
@@ -555,12 +558,19 @@ describe('CertificatesService', () => {
       );
     } finally {
       global.fetch = originalFetch;
+      if (originalSafeMode === undefined) {
+        delete process.env.CERTIFICATION_EMAIL_SAFE_MODE;
+      } else {
+        process.env.CERTIFICATION_EMAIL_SAFE_MODE = originalSafeMode;
+      }
     }
   });
 
   it('redirige los certificados adjuntos al correo seguro del microservicio', async () => {
+    const originalSafeMode = process.env.CERTIFICATION_EMAIL_SAFE_MODE;
     const originalFetch = global.fetch;
     const fetchMock = jest.fn().mockResolvedValue({ ok: true });
+    process.env.CERTIFICATION_EMAIL_SAFE_MODE = 'true';
     global.fetch = fetchMock as any;
     (service as any).logger = {
       debug: jest.fn(),
@@ -595,7 +605,108 @@ describe('CertificatesService', () => {
       expect(result.to).toBe('pruebasesap@gmail.com');
     } finally {
       global.fetch = originalFetch;
+      if (originalSafeMode === undefined) {
+        delete process.env.CERTIFICATION_EMAIL_SAFE_MODE;
+      } else {
+        process.env.CERTIFICATION_EMAIL_SAFE_MODE = originalSafeMode;
+      }
     }
+  });
+
+  it('envia codigos, certificados y respuestas de correccion a sus destinatarios reales en produccion', async () => {
+    const originalSafeMode = process.env.CERTIFICATION_EMAIL_SAFE_MODE;
+    const originalFetch = global.fetch;
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true });
+    process.env.CERTIFICATION_EMAIL_SAFE_MODE = 'false';
+    global.fetch = fetchMock as any;
+    (service as any).logger = {
+      debug: jest.fn(),
+      log: jest.fn(),
+      warn: jest.fn(),
+    };
+    (service as any).laborPdfService = {
+      generateCertificatePdf: jest.fn().mockResolvedValue({
+        filename: 'certificado.pdf',
+        buffer: Buffer.from('pdf-de-prueba'),
+      }),
+    };
+
+    try {
+      await service['enviarCodigoPorEmail']('empleado@esap.edu.co', '123456');
+      await service['enviarCertificadoLaboralPorEmail']({
+        full_name: 'Persona de Prueba',
+        certificate_number: 'CERT-PRUEBA',
+        include_salary: true,
+        include_technical_bonus: false,
+        request: { email: 'empleado@esap.edu.co' },
+      } as any);
+      await service['sendCorrectionRejectionEmail']({
+        request_number: 'COR-PRUEBA-001',
+        requester_name: 'Persona de Prueba',
+        requester_email: 'solicitante@esap.edu.co',
+        resolution_description: 'La informacion coincide con los soportes.',
+        certificate: { certificate_number: 'CERT-PRUEBA' },
+      } as any);
+
+      const recipients = fetchMock.mock.calls.map(([, options]) =>
+        JSON.parse(options.body).to,
+      );
+      expect(recipients).toEqual([
+        'empleado@esap.edu.co',
+        'empleado@esap.edu.co',
+        'solicitante@esap.edu.co',
+      ]);
+      expect(service['buildCorrectionReviewerAlerts']([
+        { email: 'revisor@esap.edu.co', name: 'Revisor' },
+      ])[0].to).toBe('revisor@esap.edu.co');
+    } finally {
+      global.fetch = originalFetch;
+      if (originalSafeMode === undefined) {
+        delete process.env.CERTIFICATION_EMAIL_SAFE_MODE;
+      } else {
+        process.env.CERTIFICATION_EMAIL_SAFE_MODE = originalSafeMode;
+      }
+    }
+  });
+
+  it('no genera un codigo cuando la persona no tiene correo registrado', async () => {
+    const update = jest.fn();
+    (service as any).requestRepo = { update };
+    jest.spyOn(service, 'verificarDocumentoPorSolicitud').mockResolvedValue({
+      existe: true,
+      solicitud: { id: 'solicitud-1', email: '' } as CertificateRequest,
+    } as any);
+    jest.spyOn(service as any, 'resolveEmploymentStatus').mockReturnValue('ACTIVO');
+
+    await expect(service.generarCodigoValidacion('53062883')).rejects.toThrow(
+      'No hay un correo registrado',
+    );
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('invalida el codigo y reporta el fallo cuando notificaciones rechaza el envio', async () => {
+    const update = jest.fn().mockResolvedValue(undefined);
+    (service as any).requestRepo = { update };
+    (service as any).logger = { warn: jest.fn() };
+    (service as any).emailFormatRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    jest.spyOn(service, 'verificarDocumentoPorSolicitud').mockResolvedValue({
+      existe: true,
+      solicitud: { id: 'solicitud-1', email: 'empleado@esap.edu.co' } as CertificateRequest,
+    } as any);
+    jest.spyOn(service as any, 'resolveEmploymentStatus').mockReturnValue('ACTIVO');
+    jest.spyOn(service as any, 'enviarCodigoPorEmail').mockRejectedValue(
+      new Error('notifications-service no disponible'),
+    );
+
+    await expect(service.generarCodigoValidacion('53062883')).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    expect(update).toHaveBeenCalledTimes(2);
+    const generatedCode = update.mock.calls[0][1].validation_code;
+    expect(update.mock.calls[1]).toEqual([
+      { id: 'solicitud-1', validation_code: generatedCode },
+      { validation_code: null, validation_expires_at: null },
+    ]);
   });
 
   it('construye el correo de aprobación con PDF, descripción y evidencias', async () => {

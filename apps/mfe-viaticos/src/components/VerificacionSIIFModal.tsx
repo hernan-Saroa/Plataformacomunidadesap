@@ -31,11 +31,13 @@ import {
   esPdfMime,
   formatearMoneda,
   formatearNombreComisionado,
+  obtenerAyudaValidacionDocumento,
   sanitizeParaSIIF,
   sanitizeDocumento,
   sanitizeNombre,
   sanitizeTextoPlano,
 } from '../utils/viaticosUtils';
+import { TipoDocumentoSoporte } from '../types/parametrizacion';
 
 const DEPENDENCIA_LOOKUP = new Map<number, string>();
 
@@ -210,6 +212,16 @@ export default function VerificacionSIIFModal({
     cerrarTodosVisores,
   } = useVisorDocumentos();
   const [descargandoFormato023, setDescargandoFormato023] = useState(false);
+  const [tiposDocSoporte, setTiposDocSoporte] = useState<TipoDocumentoSoporte[]>([]);
+
+  useEffect(() => {
+    if (abierta && typeof viaticosService.obtenerTiposDocumentoSoporte === 'function') {
+      viaticosService
+        .obtenerTiposDocumentoSoporte()
+        .then((data) => setTiposDocSoporte(data || []))
+        .catch(() => {});
+    }
+  }, [abierta]);
 
   useEffect(() => {
     if (abierta) {
@@ -835,6 +847,38 @@ export default function VerificacionSIIFModal({
                         label: doc.tipoDocumento || 'Documento adjunto',
                         badge: 'bg-slate-100 text-slate-700',
                       };
+                      const tipoDoc = tiposDocSoporte?.find(
+                        (t) => t.codigo.toUpperCase() === tipoUpper,
+                      );
+                      const camposAdic =
+                        (solicitud as any)?.camposAdicionales ||
+                        (solicitud as any)?.campos_adicionales ||
+                        {};
+                      const bco = camposAdic.entidad_bancaria || camposAdic.entidadBancaria || camposAdic.banco || '';
+                      const cta = camposAdic.num_cuenta || camposAdic.numeroCuenta || camposAdic.numCuenta || camposAdic.cuentaBancaria || '';
+                      const tip = camposAdic.tipo_cuenta || camposAdic.tipoCuenta || '';
+                      const camposAdicNormalizados = {
+                        ...camposAdic,
+                        ...(bco ? { entidad_bancaria: bco, entidadBancaria: bco, banco: bco } : {}),
+                        ...(cta ? { num_cuenta: cta, numeroCuenta: cta, numCuenta: cta, cuentaBancaria: cta } : {}),
+                        ...(tip ? { tipo_cuenta: tip, tipoCuenta: tip } : {}),
+                      };
+                      const ayuda = obtenerAyudaValidacionDocumento(
+                        doc.tipoDocumento,
+                        tipoDoc?.instruccionesValidacion,
+                        {
+                          form: {
+                            ...(solicitud as any),
+                            camposAdicionales: camposAdicNormalizados,
+                            documentoComisionado: solicitud?.comisionado?.numeroDocumento,
+                          } as any,
+                          comisionado: {
+                            ...(solicitud?.comisionado as any),
+                            ...camposAdicNormalizados,
+                          },
+                        },
+                        tipoDoc?.camposAValidar,
+                      );
 
                       return (
                         <div
@@ -858,6 +902,36 @@ export default function VerificacionSIIFModal({
                                 {doc.nombreArchivoOriginal || 'Documento sin nombre'}
                               </span>
                             </div>
+
+                            {/* Pauta y Campos a validar según el documento */}
+                            {ayuda && (
+                              <div className="mt-2.5 pt-2 border-t border-slate-200/80">
+                                {ayuda.instruccion && (
+                                  <p className="text-[10px] text-slate-600 mb-1.5 leading-snug">
+                                    <span className="font-semibold text-slate-700">Pauta: </span>
+                                    {ayuda.instruccion}
+                                  </p>
+                                )}
+                                {ayuda.datosAContrastar && ayuda.datosAContrastar.length > 0 && (
+                                  <div>
+                                    <div className="flex items-center gap-1 text-[9px] font-bold text-slate-500 uppercase tracking-tight mb-1">
+                                      <ShieldCheck className="w-3 h-3 text-[#003DA5]" />
+                                      <span>Campos a validar según el documento:</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 bg-white p-2 rounded-md border border-slate-200/80 shadow-2xs">
+                                      {ayuda.datosAContrastar.map((item, i) => (
+                                        <div key={i} className="flex flex-col text-[11px] leading-tight">
+                                          <span className="text-[9px] text-slate-400 font-medium">{item.etiqueta}:</span>
+                                          <span className="font-semibold text-slate-800 truncate" title={item.valor}>
+                                            {item.valor}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-200/60 justify-end">

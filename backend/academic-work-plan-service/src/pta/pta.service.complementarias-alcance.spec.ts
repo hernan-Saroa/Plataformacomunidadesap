@@ -27,12 +27,15 @@ describe('alcance independiente de Complementarias territoriales', () => {
     expect(result.propios).toEqual([{ territorialId: 'Meta', nivel: 'pregrado' }]);
   });
 
-  it.each(['aprobar', 'revisar'])('no mezcla un rol de Docencia global con Complementarias ajenas al %s', async action => {
+  it.each(['aprobar', 'revisar'])('el alcance de Complementarias depende de la cuenta para %s', async action => {
     const permission = action === 'aprobar' ? 'approve' : 'review';
     const { service, auth, pta } = await setup([
       row(permission, 'pregrado', 'Caldas'),
       { ...row(permission, 'pregrado', 'Todas', 'academica'), role_scope: { tipo: 'Global' } },
     ]);
+    expect((await service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, action)).propios)
+      .toEqual([{ territorialId: 'Meta', nivel: 'pregrado' }]);
+    auth.territorialIds = ['Caldas'];
     await expect(service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, action)).rejects.toThrow('No tiene alcance');
   });
 
@@ -52,8 +55,8 @@ describe('alcance independiente de Complementarias territoriales', () => {
     ]);
     await expect(service.aprobarComponente('pta', { componente: 'complementarias_territorial', estado: 'aprobado' }, auth))
       .rejects.toThrow('No tiene alcance');
-    auth.territorialDecisionGrantsByComponent.complementarias_territorial.aprobar.push({ nivel: 'pregrado', territorial: 'seleccionada', territorialId: 'Caldas' });
-    expect((await service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, 'aprobar')).propios).toHaveLength(2);
+    await expect(service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, 'aprobar'))
+      .rejects.toThrow('No tiene alcance');
   });
 
   // Regresión del bloqueo sin salida: una complementaria de Decanatura sin
@@ -73,7 +76,7 @@ describe('alcance independiente de Complementarias territoriales', () => {
   // con alcance Filtrado que además acota la sede quedaba sin poder aprobar
   // ninguna complementaria territorial: el filtro se comparaba contra un dato que
   // el ítem nunca trae. La territorial, en cambio, sigue siendo estricta.
-  it('acota por territorial pero ignora la sede del rol, que la actividad no captura', async () => {
+  it('usa la territorial de la cuenta independientemente de la sede y alcance del rol', async () => {
     const conSede = (territorial: string) => ({
       ...row('approve'), role_scope: { tipo: 'Filtrado', territorial, cetap: 'Granada', programa: 'APT' },
     });
@@ -83,6 +86,9 @@ describe('alcance independiente de Complementarias territoriales', () => {
       .toEqual([{ territorialId: 'Meta', nivel: 'pregrado' }]);
 
     const ajena = await setup([conSede('Caldas')]);
+    expect((await ajena.service.assertAlcanceTerritorial('complementarias_territorial', ajena.pta, ajena.auth, 'aprobar')).propios)
+      .toEqual([{ territorialId: 'Meta', nivel: 'pregrado' }]);
+    ajena.auth.territorialIds = ['Caldas'];
     await expect(ajena.service.assertAlcanceTerritorial('complementarias_territorial', ajena.pta, ajena.auth, 'aprobar'))
       .rejects.toThrow('No tiene alcance');
   });
@@ -94,5 +100,13 @@ describe('alcance independiente de Complementarias territoriales', () => {
     expect((await service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, 'aprobar')).propios).toHaveLength(1);
     pta.datosEstructurados.complementarias[0].actividad_id = 'pos';
     await expect(service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, 'aprobar')).rejects.toThrow();
+  });
+
+  it('sin territorial personal no limita el listado por el alcance del rol', async () => {
+    const { service, auth } = await setup([row('approve', 'pregrado', 'Meta')]);
+    auth.territorialIds = [];
+    expect(await service.getDecisionListScope(auth)).toEqual({
+      configured: true, territoriales: null, programas: null, cetaps: null,
+    });
   });
 });

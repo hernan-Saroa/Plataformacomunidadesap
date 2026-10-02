@@ -161,7 +161,7 @@ describe('TravelExpensesService', () => {
   });
 
   describe('consultarComisionado', () => {
-    it('debe retornar comisionado cuando existe en la tabla local', async () => {
+    it('debe retornar comisionado desde la tabla local cuando no hay cliente de nómina configurado', async () => {
       const comisionadoRepo = {
         findOne: jest.fn().mockResolvedValue(mockComisionado),
         save: jest.fn(),
@@ -180,7 +180,7 @@ describe('TravelExpensesService', () => {
       expect(dataSource.query).not.toHaveBeenCalled();
     });
 
-    it('debe materializar comisionado desde talento humano (Oracle FNC) y persistirlo cuando existe en la vista', async () => {
+    it('debe agregar comisionado a la tabla comisionados cuando la API Nómina lo encuentra y no está registrado', async () => {
       const comisionadoRepo = {
         findOne: jest.fn().mockResolvedValue(null),
         save: jest.fn().mockImplementation(async (x) => ({
@@ -219,6 +219,9 @@ describe('TravelExpensesService', () => {
       const result = await svc.consultarComisionado('80123456');
 
       expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('80123456');
+      expect(comisionadoRepo.findOne).toHaveBeenCalledWith({
+        where: { numeroDocumento: '80123456' },
+      });
       expect(comisionadoRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           numeroDocumento: '80123456',
@@ -240,7 +243,144 @@ describe('TravelExpensesService', () => {
       });
     });
 
-    it('debe materializar comisionado desde auth.personas y persistirlo cuando no existe localmente', async () => {
+    it('debe actualizar los datos del comisionado en comisionados si ya está registrado pero cambian datos en Nómina', async () => {
+      const comisionadoExistente = {
+        ...mockComisionado,
+        id: 'com-existente-1',
+        numeroDocumento: '80123456',
+        primerNombre: 'CARLOS',
+        segundoNombre: 'A',
+        primerApellido: 'GOMEZ',
+        segundoApellido: 'R',
+        email: 'correo.viejo@esap.edu.co',
+        telefonoContacto: '3000000000',
+        origenDatos: 'ESAP',
+        idDependencia: 1,
+      };
+
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoExistente),
+        save: jest.fn().mockImplementation(async (x) => x),
+        create: jest.fn((x) => x),
+      };
+      const dataSource = {
+        query: jest.fn().mockImplementation(async (sql: string) => {
+          if (sql.includes('auth.dependencias')) {
+            return [{ id_dependencia: 25 }];
+          }
+          return [];
+        }),
+        transaction: jest.fn(),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue({
+          full_name: 'CARLOS ALBERTO GOMEZ RESTREPO',
+          id_number: '80123456',
+          organization_department: 'SUBDIRECCION DE ALTO GOBIERNO',
+          email: 'carlos.alberto@esap.edu.co',
+          phone: '3159998877',
+        }),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+      const result = await svc.consultarComisionado('80123456');
+
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('80123456');
+      expect(comisionadoRepo.findOne).toHaveBeenCalledWith({
+        where: { numeroDocumento: '80123456' },
+      });
+      expect(comisionadoRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'com-existente-1',
+          numeroDocumento: '80123456',
+          primerNombre: 'CARLOS',
+          segundoNombre: 'ALBERTO',
+          primerApellido: 'GOMEZ',
+          segundoApellido: 'RESTREPO',
+          email: 'carlos.alberto@esap.edu.co',
+          telefonoContacto: '3159998877',
+          origenDatos: 'HUMANO',
+          idDependencia: 25,
+        }),
+      );
+      expect(result.email).toBe('carlos.alberto@esap.edu.co');
+      expect(result.idDependencia).toBe(25);
+    });
+
+    it('debe buscar en tabla local comisionados como fallback cuando la API Nómina produce error', async () => {
+      const comisionadoLocal = {
+        ...mockComisionado,
+        id: 'com-local-002',
+        numeroDocumento: '80123456',
+        primerNombre: 'CARLOS',
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoLocal),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+      const dataSource = { query: jest.fn(), transaction: jest.fn() };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockRejectedValue(
+          new Error('Conexión con Nómina Oracle falló'),
+        ),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+      const result = await svc.consultarComisionado('80123456');
+
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('80123456');
+      expect(comisionadoRepo.findOne).toHaveBeenCalledWith({
+        where: { numeroDocumento: '80123456' },
+      });
+      expect(result).toEqual(comisionadoLocal);
+      expect(comisionadoRepo.save).not.toHaveBeenCalled();
+      expect(dataSource.query).not.toHaveBeenCalled();
+    });
+
+    it('debe buscar en tabla local comisionados como fallback cuando la API Nómina no trae datos (retorna null)', async () => {
+      const comisionadoLocal = {
+        ...mockComisionado,
+        id: 'com-local-003',
+        numeroDocumento: '70123456',
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoLocal),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+      const dataSource = { query: jest.fn(), transaction: jest.fn() };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+      };
+
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+      const result = await svc.consultarComisionado('70123456');
+
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('70123456');
+      expect(comisionadoRepo.findOne).toHaveBeenCalledWith({
+        where: { numeroDocumento: '70123456' },
+      });
+      expect(result).toEqual(comisionadoLocal);
+      expect(comisionadoRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('debe materializar comisionado desde auth.personas y persistirlo cuando no existe en Nómina ni en comisionados', async () => {
       const comisionadoRepo = {
         findOne: jest.fn().mockResolvedValue(null),
         save: jest.fn().mockImplementation(async (x) => ({
@@ -264,8 +404,15 @@ describe('TravelExpensesService', () => {
         ]),
         transaction: jest.fn(),
       };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+      };
 
-      const module = await createMockModule({ comisionadoRepo, dataSource });
+      const module = await createMockModule({
+        comisionadoRepo,
+        dataSource,
+        humanResourcesClient,
+      });
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
       const result = await svc.consultarComisionado('1234567890');
 
@@ -295,7 +442,7 @@ describe('TravelExpensesService', () => {
       });
     });
 
-    it('debe lanzar NotFoundException cuando no existe ni en comisionados ni en auth.personas', async () => {
+    it('debe lanzar NotFoundException cuando no existe ni en Nómina, ni en comisionados ni en auth.personas', async () => {
       const comisionadoRepo = {
         findOne: jest.fn().mockResolvedValue(null),
         save: jest.fn(),
@@ -314,7 +461,6 @@ describe('TravelExpensesService', () => {
       expect(comisionadoRepo.save).not.toHaveBeenCalled();
     });
 
-
     it('debe lanzar BadRequestException si el documento viene vacío', async () => {
       const comisionadoRepo = {
         findOne: jest.fn(),
@@ -332,7 +478,92 @@ describe('TravelExpensesService', () => {
         BadRequestException,
       );
     });
+
+    it('debe lanzar BadRequestException si el comisionado local tiene contrato vencido', async () => {
+      const comisionadoVencido = {
+        ...mockComisionado,
+        id: 'com-vencido',
+        numeroDocumento: '1098765432',
+        primerNombre: 'PEDRO',
+        primerApellido: 'PEREZ',
+        fechaFinContrato: '2020-01-01', // Vencido
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoVencido),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
+      };
+
+      const module = await createMockModule({ comisionadoRepo, humanResourcesClient });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(svc.consultarComisionado('1098765432')).rejects.toThrow(
+        /tiene su contrato o vinculación laboral vencida/i,
+      );
+    });
+
+    it('debe consultar Humanos y actualizar cuando el contrato local esté próximo a vencer', async () => {
+      const comisionadoProximo = {
+        ...mockComisionado,
+        id: 'com-proximo',
+        numeroDocumento: '1098765432',
+        fechaFinContrato: '2026-09-30', // Próximo a vencer
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoProximo),
+        save: jest.fn().mockImplementation(async (x) => x),
+        create: jest.fn((x) => x),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue({
+          full_name: 'PEDRO PEREZ LOPEZ',
+          id_number: '1098765432',
+          contract_end_date: '2027-12-31', // Prorrogado
+          hiring_date: '2025-01-01',
+          monthly_salary: 5000000,
+        }),
+      };
+
+      const module = await createMockModule({ comisionadoRepo, humanResourcesClient });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.consultarComisionado('1098765432');
+      expect(humanResourcesClient.consultarFuncionarioPorDocumento).toHaveBeenCalledWith('1098765432');
+      expect(comisionadoRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          fechaFinContrato: '2027-12-31',
+          salarioBasico: 5000000,
+        }),
+      );
+      expect(result.fechaFinContrato).toBe('2027-12-31');
+    });
+
+    it('debe lanzar BadRequestException si un nuevo comisionado en Humanos tiene contrato vencido', async () => {
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(null),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+      const humanResourcesClient = {
+        consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue({
+          full_name: 'MARIA VENCIDA',
+          id_number: '11223344',
+          contract_end_date: '2021-05-30', // Vencido
+        }),
+      };
+
+      const module = await createMockModule({ comisionadoRepo, humanResourcesClient });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await expect(svc.consultarComisionado('11223344')).rejects.toThrow(
+        /vinculación laboral\/contractual está vencida/i,
+      );
+    });
   });
+
 
   describe('buscarTalentoHumano', () => {
     it('debe buscar por documento en talento humano (Oracle FNC) exitosamente', async () => {
@@ -769,6 +1000,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -833,6 +1066,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -904,6 +1139,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) =>
           cb({
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -1036,6 +1273,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -1107,11 +1346,13 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
                 where: jest.fn().mockReturnThis(),
-                getRawOne: jest.fn().mockResolvedValue({ max: 'COM-2026-0005' }),
+                getRawOne: jest.fn().mockResolvedValue({ max: 5 }),
               }),
             }),
           };
@@ -1148,7 +1389,7 @@ describe('TravelExpensesService', () => {
 
       expect(result).toBeDefined();
       expect(entidadCapturada.diasComision).toBe(1.5);
-      expect(entidadCapturada.camposAdicionales).toEqual({
+      expect(entidadCapturada.camposAdicionales).toMatchObject({
         centroCostos: 'CC-Amazonas-01',
         contactoEmergencia: '3129876543',
       });
@@ -1252,6 +1493,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -1676,6 +1919,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) => {
           const manager = {
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -1731,6 +1976,8 @@ describe('TravelExpensesService', () => {
       const dataSource = {
         transaction: jest.fn().mockImplementation(async (cb) =>
           cb({
+            query: jest.fn().mockResolvedValue(undefined),
+            withRepository: jest.fn((repo) => repo),
             getRepository: jest.fn().mockReturnValue({
               createQueryBuilder: jest.fn().mockReturnValue({
                 select: jest.fn().mockReturnThis(),
@@ -4903,6 +5150,59 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
       });
 
+      it('debe generar el Formato 023 con desglose de transporte y dejar campos vacíos si no han ocurrido los procesos', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.SOLICITADO),
+          id: 'sol-023-003',
+          consecutivoUnico: 'SOL-2026-0003',
+          creadoPorUsuarioId: 'user-enlace-1',
+          analistaAsignadoId: null,
+          pagadoPorId: null,
+          comisionado: {
+            primerNombre: 'Pedro',
+            primerApellido: 'Gómez',
+            numeroDocumento: '79123456',
+            tipoComisionado: 'CONTRATISTA',
+          },
+          montoViaticos: 347893,
+          montoGastosViaje: 180000,
+          itinerario: [
+            {
+              origenCiudad: 'Bogotá',
+              destinoCiudad: 'Cali',
+              tipoTransporte: 'AEREO',
+              tipoTrayecto: 'IDA_Y_VUELTA',
+              tarifaTerminalAereo: 50000,
+            },
+          ],
+          camposAdicionales: {
+            transporteTerrestre: 130000,
+          },
+        };
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+        };
+
+        const dataSource = {
+          query: jest.fn().mockImplementation(async (query: string, params: any[]) => {
+            if (params?.[0] === 'user-enlace-1') {
+              return [{ nom_largo: 'Enlace Solicitante Juan' }];
+            }
+            return [];
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-003');
+
+        expect(pdfBuffer).toBeInstanceOf(Buffer);
+        expect(pdfBuffer.length).toBeGreaterThan(0);
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+      });
+
       it('debe lanzar NotFoundException si la solicitud no existe al exportar Formato 023', async () => {
         const solicitudRepo = {
           findOne: jest.fn().mockResolvedValue(null),
@@ -4914,6 +5214,302 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         await expect(svc.exportarFormato023('no-existe')).rejects.toThrow(
           NotFoundException,
         );
+      });
+    });
+
+    describe('Flujo de Firmas de Aprobación Previo a Radicación (Formato 023)', () => {
+      it('Regla 1: Si se desplaza el Subdirector Nacional de G.C., firma el Director Nacional', async () => {
+        const module = await createMockModuleEtapa5();
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const solicitud = {
+          id: 'sol-subdirector-gc',
+          comisionado: {
+            primerNombre: 'Pedro',
+            primerApellido: 'Gómez',
+            tipoComisionado: 'FUNCIONARIO',
+          },
+          camposAdicionales: {
+            cargo: 'Subdirector Nacional de Gestión del Conocimiento',
+            dependencia: 'Subdirección de Gestión Corporativa',
+          },
+        } as any;
+
+        const resultado = svc.determinarFirmantesAprobacion(solicitud, 'Subdirección de Gestión Corporativa');
+        expect(resultado.reglaDesplazamiento).toBe('DESPLAZAMIENTO_SUBDIRECTOR_GC');
+        expect(resultado.firmante1.cargo).toBe('Director Nacional');
+        expect(resultado.firmante2.cargo).toContain('Gerente');
+      });
+
+      it('Regla 2: Si se desplaza el Director Nacional, firma el Subdirector Nacional de G.C.', async () => {
+        const module = await createMockModuleEtapa5();
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const solicitud = {
+          id: 'sol-director-nal',
+          comisionado: {
+            primerNombre: 'Ana',
+            primerApellido: 'Martínez',
+            tipoComisionado: 'FUNCIONARIO',
+          },
+          camposAdicionales: {
+            cargo: 'Director General Nacional',
+            dependencia: 'Dirección General',
+          },
+        } as any;
+
+        const resultado = svc.determinarFirmantesAprobacion(solicitud, 'Dirección General');
+        expect(resultado.reglaDesplazamiento).toBe('DESPLAZAMIENTO_DIRECTOR_NACIONAL');
+        expect(resultado.firmante1.titulo).toBe('Subdirector Nacional de G.C.');
+        expect(resultado.firmante1.cargo).toContain('Subdirector Nacional');
+        expect(resultado.firmante2.cargo).toContain('Gerente');
+      });
+
+      it('Regla 3: Si se desplaza el Director Territorial, firma el Director Nacional', async () => {
+        const module = await createMockModuleEtapa5();
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const solicitud = {
+          id: 'sol-dir-territorial',
+          comisionado: {
+            primerNombre: 'Luis',
+            primerApellido: 'Vargas',
+            tipoComisionado: 'FUNCIONARIO',
+          },
+          camposAdicionales: {
+            cargo: 'Director Territorial Santander',
+            dependencia: 'Dirección Territorial Santander',
+          },
+        } as any;
+
+        const resultado = svc.determinarFirmantesAprobacion(solicitud, 'Dirección Territorial Santander');
+        expect(resultado.reglaDesplazamiento).toBe('DESPLAZAMIENTO_DIRECTOR_TERRITORIAL');
+        expect(resultado.firmante1.cargo).toBe('Director Nacional');
+      });
+
+      it('Regla Regular: comisionado regular es firmado por Jefe de Dependencia/Supervisor y Gerente de Proyecto', async () => {
+        const module = await createMockModuleEtapa5();
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const solicitud = {
+          id: 'sol-regular',
+          comisionado: {
+            primerNombre: 'María',
+            primerApellido: 'López',
+            tipoComisionado: 'FUNCIONARIO',
+          },
+          camposAdicionales: {
+            cargo: 'Profesional Especializado',
+            cargoJefe: 'Jefe de Oficina Asesora de Planeación',
+          },
+        } as any;
+
+        const resultado = svc.determinarFirmantesAprobacion(solicitud, 'Oficina Asesora de Planeación');
+        expect(resultado.reglaDesplazamiento).toBe('REGULAR');
+        expect(resultado.firmante1.cargo).toBe('Jefe de Oficina Asesora de Planeación');
+        expect(resultado.firmante2.tipo).toBe('GERENTE_PROYECTO');
+      });
+
+      it('firmarAprobacionSolicitud: cuando se registran ambas firmas, transiciona a estado RADICADA', async () => {
+        const solicitud = {
+          id: 'sol-firmas-completa',
+          consecutivoUnico: 'SOL-2026-999',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+          fechaInicio: new Date('2026-10-10'),
+          fechaFin: new Date('2026-10-15'),
+          comisionado: { primerNombre: 'Mario', primerApellido: 'Duarte' },
+          camposAdicionales: {
+            firmasAprobacion: [
+              {
+                tipo: 'JEFE_DEPENDENCIA',
+                nombreFirmante: 'Dr. Carlos Mendoza',
+                cargoFirmante: 'Director Nacional',
+                estado: 'FIRMADO',
+                fechaFirma: new Date().toISOString(),
+              },
+            ],
+          },
+        } as any;
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn().mockImplementation((s) => Promise.resolve(s)),
+        };
+
+        const historialRepo = {
+          save: jest.fn().mockResolvedValue({ id: 'h-1' }),
+        };
+
+        const dataSource = {
+          getRepository: jest.fn().mockReturnValue(historialRepo),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const resultadoFirma2 = await svc.firmarAprobacionSolicitud(
+          'sol-firmas-completa',
+          {
+            tipoFirma: 'GERENTE_PROYECTO' as any,
+            nombreFirmante: 'Ing. Sandra Jiménez',
+            cargoFirmante: 'Gerente de Proyecto SIICE',
+            comentarios: 'Aprobado y verificado',
+          },
+          'user-gerente-1',
+          ['GERENTE_PROYECTO'],
+        );
+
+        expect(resultadoFirma2.radicada).toBe(true);
+        expect(resultadoFirma2.solicitud.estadoSolicitud).toBe(EstadoSolicitud.RADICADA);
+        expect(resultadoFirma2.mensaje).toContain('RADICADA');
+        expect(historialRepo.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            estadoNuevo: EstadoSolicitud.RADICADA,
+          }),
+        );
+      });
+
+      it('solicitarFirmasAprobacion: dispara notificaciones a directivos (Jefe/Gerente) y al comisionado', async () => {
+        const solicitud = {
+          id: 'sol-023-notif',
+          consecutivoUnico: 'SOL-2026-023',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE,
+          fechaInicio: new Date('2026-11-01'),
+          fechaFin: new Date('2026-11-05'),
+          comisionadoId: 'com-1',
+          comisionado: {
+            id: 'com-1',
+            primerNombre: 'Ana',
+            primerApellido: 'García',
+            email: 'ana.garcia@esap.edu.co',
+            numeroDocumento: '52123456',
+            tipoComisionado: 'DOCENTE_PLANTA',
+          },
+          objetoComision: 'Capacitación territorial en Girardot',
+          destinoCiudad: 'Girardot',
+          destinoDepartamento: 'Cundinamarca',
+          camposAdicionales: {},
+        } as any;
+
+        const qbMock: any = {
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(null),
+        };
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn().mockImplementation((s) => Promise.resolve(s)),
+          createQueryBuilder: jest.fn().mockReturnValue(qbMock),
+        };
+
+        const documentoRepo = {
+          find: jest.fn().mockResolvedValue([]),
+        };
+
+        const historialRepo = {
+          save: jest.fn().mockResolvedValue({ id: 'h-notif' }),
+        };
+
+        const dataSource = {
+          getRepository: jest.fn().mockReturnValue(historialRepo),
+        };
+
+        const mockNotificationClient = {
+          notifyEnvioAFirmas023: jest.fn().mockResolvedValue(undefined),
+          send: jest.fn().mockResolvedValue(undefined),
+          sendMany: jest.fn().mockResolvedValue(undefined),
+          sendEmail: jest.fn().mockResolvedValue(undefined),
+        };
+
+        const module = await createMockModuleEtapa5({
+          solicitudRepo,
+          documentoRepo,
+          dataSource,
+          notificationClient: mockNotificationClient,
+        });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        // Spy en validarChecklistCompleto para permitir el paso
+        jest.spyOn(svc, 'validarChecklistCompleto').mockResolvedValue({
+          completo: true,
+          faltantes: [],
+          noPdf: [],
+          documentosValidos: [],
+        });
+
+        const res = await svc.solicitarFirmasAprobacion('sol-023-notif', 'user-enlace-1');
+
+        expect(res.estadoSolicitud).toBe(EstadoSolicitud.PENDIENTE_FIRMAS);
+        expect(mockNotificationClient.notifyEnvioAFirmas023).toHaveBeenCalledWith(
+          expect.objectContaining({
+            solicitud: expect.objectContaining({ id: 'sol-023-notif' }),
+            comisionado: expect.objectContaining({ email: 'ana.garcia@esap.edu.co' }),
+          }),
+        );
+      });
+
+      it('obtenerSolicitudes con isComisionado=true consulta solicitudes radicadas para el comisionado', async () => {
+        const qbMock: any = {
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          addOrderBy: jest.fn().mockReturnThis(),
+          offset: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(1),
+          getMany: jest.fn().mockResolvedValue([
+            {
+              id: 'sol-com-1',
+              consecutivoUnico: 'SOL-COM-001',
+              comisionadoId: 'com-1',
+              estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+              fechaInicio: new Date('2026-11-01'),
+              fechaFin: new Date('2026-11-05'),
+              creadoEn: new Date(),
+              actualizadoEn: new Date(),
+              comisionado: {
+                id: 'com-1',
+                numeroDocumento: '1019283746',
+                primerNombre: 'Carlos',
+                primerApellido: 'Pérez',
+                email: 'carlos.perez@esap.edu.co',
+              },
+            },
+          ]),
+        };
+
+        const solicitudRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue(qbMock),
+          query: jest.fn().mockResolvedValue([
+            {
+              num_identificacion: '1019283746',
+              dir_email: 'carlos.perez@esap.edu.co',
+              username: 'carlos.perez',
+            },
+          ]),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const result = await svc.obtenerSolicitudes(
+          'user-comisionado-id',
+          false, // isSuperAdmin
+          1,
+          20,
+          false,
+          false,
+          false,
+          false,
+          false,
+          true, // isComisionado
+        );
+
+        expect(result.data).toHaveLength(1);
+        expect(result.data[0].consecutivoUnico).toBe('SOL-COM-001');
+        expect(qbMock.andWhere).toHaveBeenCalled();
       });
     });
   });

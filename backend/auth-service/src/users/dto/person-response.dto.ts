@@ -106,4 +106,15 @@ export class PersonResponseDto {
      codDependencia: string;
      nomDependencia: string;
    } | null;
+
+   @Expose()
+   idCargo: number | null;
+
+   @Expose()
+   cargo?: {
+     idCargo: number;
+     codCargo: string;
+     nomCargo: string;
+     nivelJerarquico?: string | null;
+   } | null;
 }

@@ -5,7 +5,9 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  OneToMany,
 } from 'typeorm';
+import { DependenciaCargo } from './dependencia-cargo.entity';
 
 /**
  * Entidad que representa la tabla maestra de dependencias ESAP en el
@@ -94,4 +96,7 @@ export class Dependencia {
 
   @UpdateDateColumn({ name: 'actualizado_en' })
   actualizadoEn: Date;
+
+  @OneToMany(() => DependenciaCargo, (dc) => dc.dependencia)
+  dependenciasCargos: DependenciaCargo[];
 }

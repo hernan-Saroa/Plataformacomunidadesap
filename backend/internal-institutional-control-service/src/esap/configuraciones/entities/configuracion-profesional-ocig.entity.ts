@@ -7,14 +7,8 @@ import {
   Index,
 } from 'typeorm';
 
-// Catálogo operativo (combo paso 2 — Profesionales OCI)
-export const ROLES_OCIG_SUGERIDOS = [
-  'Jefe OCIG',
-  'Auditor Líder',
-  'Auditor',
-  'Auditor Júnior',
-  'Apoyo Técnico',
-];
+// Catálogo operativo (combo paso 2 — Profesionales OCI). Fuente: roles-ocig-operativos.constants.ts
+export const ROLES_OCIG_SUGERIDOS = ['Jefe OCI', 'Auditor', 'Aprobador Plan Anual'];
 
 @Entity('configuracion_profesionales_ocig', { schema: 'control_interno' })
 @Index(['idTercero'], { unique: true })

@@ -125,3 +125,56 @@ export function contarDiasHabiles(
 
   return habiles;
 }
+
+/** Colombia no tiene horario de verano: UTC-5 todo el año. */
+const DESFASE_COLOMBIA_MS = 5 * 60 * 60 * 1000;
+
+/** Corte de la jornada laboral para radicar: 4:30 p. m. (RF-VAL-002). */
+const MINUTOS_CORTE_JORNADA = 16 * 60 + 30;
+
+/**
+ * Fecha ('YYYY-MM-DD') y minutos del día de un instante en hora de Colombia,
+ * sin depender de la zona horaria del servidor.
+ */
+export function fechaHoraColombia(instante: Date = new Date()): { ymd: string; minutos: number } {
+  const local = new Date(instante.getTime() - DESFASE_COLOMBIA_MS);
+  return {
+    ymd: local.toISOString().slice(0, 10),
+    minutos: local.getUTCHours() * 60 + local.getUTCMinutes(),
+  };
+}
+
+/**
+ * Radicación fuera de jornada: después de las 4:30 p. m. (hora Colombia) o en día
+ * no hábil (fin de semana o festivo).
+ */
+export function esRadicacionFueraDeJornada(
+  instante: Date,
+  festivosSet?: ReadonlySet<string>,
+): boolean {
+  const { ymd, minutos } = fechaHoraColombia(instante);
+  return minutos >= MINUTOS_CORTE_JORNADA || !esDiaHabil(ymd, festivosSet);
+}
+
+/** Primer día hábil posterior a la fecha indicada ('YYYY-MM-DD'). */
+export function siguienteDiaHabil(ymd: string, festivosSet?: ReadonlySet<string>): string {
+  const cursor = aFechaUtc(ymd);
+  do {
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  } while (!esDiaHabil(cursor, festivosSet));
+  return cursor.toISOString().slice(0, 10);
+}
+
+/**
+ * Fecha desde la que corre el trámite: el mismo día si se radica en jornada, o el
+ * siguiente día hábil si se radica después de las 4:30 p. m. o en día no hábil.
+ */
+export function fechaEfectivaRadicacion(
+  instante: Date,
+  festivosSet?: ReadonlySet<string>,
+): string {
+  const { ymd } = fechaHoraColombia(instante);
+  return esRadicacionFueraDeJornada(instante, festivosSet)
+    ? siguienteDiaHabil(ymd, festivosSet)
+    : ymd;
+}

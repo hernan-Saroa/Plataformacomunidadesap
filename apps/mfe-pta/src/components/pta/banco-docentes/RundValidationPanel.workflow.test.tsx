@@ -39,12 +39,12 @@ beforeEach(() => {
 afterEach(cleanup);
 
 async function approveRemainingRows() {
-  await waitFor(() => expect(screen.getAllByRole('button', { name: 'Aprobar', exact: true })).toHaveLength(4));
+  await waitFor(() => expect(screen.getAllByRole('button', { name: 'Validar soporte', exact: true })).toHaveLength(4));
   for (let remaining = 4; remaining > 0; remaining--) {
-    const button = screen.getAllByRole('button', { name: 'Aprobar', exact: true })[0];
+    const button = screen.getAllByRole('button', { name: 'Validar soporte', exact: true })[0];
     await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(button);
-    await waitFor(() => expect(screen.queryAllByRole('button', { name: 'Aprobar', exact: true })).toHaveLength(remaining - 1));
+    await waitFor(() => expect(screen.queryAllByRole('button', { name: 'Validar soporte', exact: true })).toHaveLength(remaining - 1));
   }
 }
 
@@ -52,7 +52,7 @@ async function approveRemainingRows() {
 describe('Revisión documental persistida en el panel RUND', () => {
   it('registra la decisión con la versión vigente y después aprueba el espacio', async () => {
     render(<RundValidationPanel docenteId="docente-1" />);
-    const approve = (await screen.findAllByRole('button', { name: 'Aprobar', exact: true }))[0];
+    const approve = (await screen.findAllByRole('button', { name: 'Validar soporte', exact: true }))[0];
     expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(approve);
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/soportes/soporte-1/revision'), expect.objectContaining({ estado: 'Aprobado', campo: 'DOCUMENTO_IDENTIDAD', documentoVersionId: 'version-1' })));
@@ -65,7 +65,7 @@ describe('Revisión documental persistida en el panel RUND', () => {
 
   it('exige motivo antes de devolver y muestra la corrección solicitada', async () => {
     render(<RundValidationPanel docenteId="docente-1" />);
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Devolver', exact: true }))[0]);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Devolver soporte', exact: true }))[0]);
     const confirm = screen.getByRole('button', { name: 'Confirmar devolución' }) as HTMLButtonElement;
     expect(confirm.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Motivo y corrección requerida'), { target: { value: 'Adjunte el documento de la persona registrada.' } });
@@ -84,9 +84,9 @@ describe('Revisión documental persistida en el panel RUND', () => {
     blocks[0].estado = 'En revisión';
     blocks[0].soportes[0] = { ...blocks[0].soportes[0], estado: 'Pendiente', documento_perfil_id: 'version-2', documento_carpeta_id: '/pta/documento-2' };
     fireEvent.click(screen.getByRole('button', { name: 'Recargar expediente' }));
-    await screen.findAllByRole('button', { name: 'Aprobar', exact: true });
+    await screen.findAllByRole('button', { name: 'Validar soporte', exact: true });
     expect(screen.queryByText('Espacio aprobado')).toBeNull();
-    fireEvent.click(screen.getAllByRole('button', { name: 'Aprobar', exact: true })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Validar soporte', exact: true })[0]);
     await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/revision'), expect.objectContaining({ documentoVersionId: 'version-2' })));
   });
 
@@ -99,7 +99,7 @@ describe('Revisión documental persistida en el panel RUND', () => {
   });
   it('recupera las aprobaciones del servidor al montar una pantalla nueva', async () => {
     const first = render(<RundValidationPanel docenteId="docente-1" />);
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Aprobar', exact: true }))[0]);
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Validar soporte', exact: true }))[0]);
     await approveRemainingRows();
     await waitFor(() => expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', { name: 'Aprobar bloque' }));
@@ -109,6 +109,28 @@ describe('Revisión documental persistida en el panel RUND', () => {
     render(<RundValidationPanel docenteId="docente-1" />);
     await screen.findByText('Espacio aprobado');
     expect(apiClient.get).toHaveBeenCalledWith(expect.stringContaining('/docente-1/bloques'));
+  });
+
+  it('no aprueba el bloque mientras exista una sugerencia OCR sin decidir', async () => {
+    vi.mocked(apiClient.get).mockImplementation(async (url: string) => {
+      if (url.includes('/extracciones')) return { enabled: true, documents: [], jobs: [{
+        id: 'job-1', documento_id: 'pdf-1', nombre_archivo: 'identidad.pdf', version: 1,
+        estado: 'COMPLETADO', documento_estado: 'ACTIVO', sugerencias: [{
+          id: 'suggestion-1', campo: 'nombreCompleto', label: 'Nombre completo', valor: 'PERSONA CORRECTA',
+          valor_previo: 'PERSONA ANTERIOR', pagina: 1, evidencia: 'NOMBRES PERSONA CORRECTA', estado: 'PENDIENTE', baja_confianza: false,
+        }],
+      }] };
+      if (url.includes('/bloques')) return JSON.parse(JSON.stringify(blocks));
+      if (url.includes('/auditoria')) return [];
+      return { docenteId: 'docente-1', idRund: 'RUND-PRUEBA', proteccion_datos: { acceso_completo: true }, bloques: profileBlocks };
+    });
+    render(<RundValidationPanel docenteId="docente-1" />);
+    const first = (await screen.findAllByRole('button', { name: 'Validar soporte', exact: true }))[0];
+    fireEvent.click(first);
+    await approveRemainingRows();
+    expect(await screen.findByText('Resuelva la sugerencia OCR pendiente antes de aprobar el bloque.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(vi.mocked(apiClient.post).mock.calls.some(([url]) => url.endsWith('/aprobar'))).toBe(false);
   });
 
   it('ante un fallo del servidor no inventa estados usando los datos de la tabla', async () => {
@@ -154,11 +176,11 @@ describe('Independencia de filas que comparten un documento', () => {
     const view = render(<RundValidationPanel docenteId="docente-1" />);
     await screen.findByText('RUND-PRUEBA');
     if (blockName !== 'IDENTIDAD') fireEvent.click(screen.getByText('Vinculaci\u00f3n'));
-    fireEvent.click((await screen.findAllByRole('button', { name: 'Aprobar', exact: true }))[1]);
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Aprobar', exact: true })).toHaveLength(Number(count) - 1));
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Validar soporte', exact: true }))[1]);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Validar soporte', exact: true })).toHaveLength(Number(count) - 1));
     expect(apiClient.post).toHaveBeenCalledWith(expect.stringContaining('/shared/revision'), expect.objectContaining({ campo: secondField }));
     expect((screen.getByRole('button', { name: 'Aprobar bloque' }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Devolver', exact: true })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Devolver soporte', exact: true })[0]);
     fireEvent.change(screen.getByLabelText('Motivo y correcci\u00f3n requerida'), { target: { value: 'Corregir solo esta fila.' } });
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar devoluci\u00f3n' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -169,7 +191,7 @@ describe('Independencia de filas que comparten un documento', () => {
     await screen.findByText('RUND-PRUEBA');
     if (blockName !== 'IDENTIDAD') fireEvent.click(screen.getByText('Vinculaci\u00f3n'));
     expect(await screen.findByText('Corregir solo esta fila.')).toBeTruthy();
-    expect(screen.queryAllByRole('button', { name: 'Aprobar', exact: true })).toHaveLength(Number(count) - 2);
+    expect(screen.queryAllByRole('button', { name: 'Validar soporte', exact: true })).toHaveLength(Number(count) - 2);
   });
 });
 
