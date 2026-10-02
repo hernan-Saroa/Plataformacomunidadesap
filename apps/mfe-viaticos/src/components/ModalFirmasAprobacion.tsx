@@ -1548,8 +1548,10 @@ export default function ModalFirmasAprobacion({
           devCode={otpData?.devCode}
           onVerifyCodigo={async (codigoOtp: string) => {
             await viaticosService.verificarOtpFirma(solicitudId, {
-              tipoFirma: firmanteSeleccionado,
+              verificationId: otpData?.verificationId || '',
+              code: codigoOtp,
               otp: codigoOtp,
+              tipoFirma: firmanteSeleccionado,
               consume: false,
             });
           }}

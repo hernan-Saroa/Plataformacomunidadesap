@@ -1438,6 +1438,268 @@ export class TravelExpensesService {
   }
 
   /**
+   * Sincroniza en el perfil e historial del comisionado los cambios de cargo
+   * (si es diferente al actual), información bancaria (si el número de cuenta
+   * es diferente o tiene nuevo certificado soporte adjunto) y estado de facturación.
+   */
+  async sincronizarComisionadoDesdeSolicitud(
+    comisionadoInput: ComisionadoEntity | null | undefined,
+    solicitud: SolicitudComisionEntity,
+    documentosSoporte?: DocumentoSoporteEntity[],
+  ): Promise<boolean> {
+    let comisionado = comisionadoInput;
+    const comisionadoId = comisionado?.id || solicitud.comisionadoId;
+    if (comisionadoId) {
+      try {
+        const fresco = await this.comisionadoRepo.findOne({
+          where: { id: comisionadoId },
+        });
+        if (fresco) {
+          comisionado = fresco;
+        }
+      } catch {
+        // En tests o mocks que no implementen findOne con comisionadoId, se mantiene comisionadoInput
+      }
+    }
+    if (!comisionado) return false;
+
+    let comisionadoModificado = false;
+    const camposAdic = solicitud.camposAdicionales || {};
+
+    // ── 1. Información bancaria (si el número de cuenta es diferente) ─────────
+    if (!Array.isArray(comisionado.cuentasBancarias)) {
+      comisionado.cuentasBancarias = [];
+    }
+
+    const ctaSel =
+      camposAdic.cuentaBancariaSeleccionada ||
+      (solicitud as any).cuentaBancariaSeleccionada ||
+      {};
+
+    const rawNumCta = String(
+      camposAdic.num_cuenta ??
+      camposAdic.numeroCuenta ??
+      camposAdic.numCuenta ??
+      camposAdic.cuentaBancaria ??
+      camposAdic.numero_cuenta ??
+      ctaSel.numeroCuenta ??
+      ctaSel.numCuenta ??
+      ctaSel.cuentaBancaria ??
+      ''
+    ).trim();
+
+    const rawBanco = String(
+      camposAdic.entidad_bancaria ??
+      camposAdic.entidadBancaria ??
+      camposAdic.banco ??
+      ctaSel.banco ??
+      ctaSel.entidadBancaria ??
+      (comisionado as any)?.entidadBancaria ??
+      (comisionado as any)?.banco ??
+      ''
+    ).trim();
+
+    const rawTipoCta = String(
+      camposAdic.tipo_cuenta ??
+      camposAdic.tipoCuenta ??
+      ctaSel.tipoCuenta ??
+      'AHORROS'
+    ).trim();
+
+    // Soportes: buscar si se adjuntó certificado bancario
+    let docs = documentosSoporte;
+    if ((!docs || docs.length === 0) && solicitud.id) {
+      try {
+        docs = await this.documentoRepo.find({
+          where: { solicitudId: solicitud.id },
+        });
+      } catch {
+        docs = [];
+      }
+    }
+    const docCert = (docs || []).find(
+      (d) =>
+        d.tipoDocumento === 'CERT_BANCARIA' ||
+        d.tipoDocumento === 'CERTIFICACION_BANCARIA' ||
+        d.tipoDocumento === 'CERTIFICADO_BANCARIO' ||
+        d.tipoDocumento?.toUpperCase().includes('BANC'),
+    );
+    const rawUrlCert =
+      docCert?.urlRepositorio ||
+      (docCert as any)?.urlArchivo ||
+      camposAdic.urlCertificadoBancario ||
+      ctaSel.urlCertificadoBancario ||
+      null;
+    const rawNombreCert =
+      docCert?.nombreArchivoOriginal ||
+      (docCert as any)?.nombreArchivo ||
+      camposAdic.nombreArchivoCertificado ||
+      ctaSel.nombreArchivoCertificado ||
+      null;
+
+    const normalizarCuenta = (num: string) => num.replace(/\D/g, '');
+
+    if (rawNumCta) {
+      const rawNumLimpio = normalizarCuenta(rawNumCta);
+      const idxCta = comisionado.cuentasBancarias.findIndex((c) => {
+        const ctaReg = String(c.numeroCuenta || '').trim();
+        return (
+          ctaReg === rawNumCta ||
+          (rawNumLimpio.length > 0 && normalizarCuenta(ctaReg) === rawNumLimpio)
+        );
+      });
+
+      if (idxCta >= 0) {
+        // La cuenta ya existe por número: actualizar banco/tipo si cambiaron,
+        // o adjuntar el certificado bancario si fue cargado en la solicitud
+        const ctaExistente = comisionado.cuentasBancarias[idxCta];
+        if (rawBanco && ctaExistente.banco !== rawBanco) {
+          ctaExistente.banco = rawBanco;
+          comisionadoModificado = true;
+        }
+        if (rawTipoCta && ctaExistente.tipoCuenta !== rawTipoCta) {
+          ctaExistente.tipoCuenta = rawTipoCta;
+          comisionadoModificado = true;
+        }
+        const nuevoCert =
+          Boolean(rawUrlCert) &&
+          rawUrlCert.trim() !== '' &&
+          rawUrlCert !== ctaExistente.urlCertificadoBancario;
+        if (nuevoCert) {
+          ctaExistente.urlCertificadoBancario = rawUrlCert;
+          if (rawNombreCert) {
+            ctaExistente.nombreArchivoCertificado = rawNombreCert;
+          }
+          comisionadoModificado = true;
+        }
+        // Actualizar en camposAdicionales de la solicitud también
+        if (rawUrlCert) {
+          camposAdic.urlCertificadoBancario = rawUrlCert;
+          if (rawNombreCert) {
+            camposAdic.nombreArchivoCertificado = rawNombreCert;
+          }
+        }
+      } else {
+        // El número de cuenta es DIFERENTE a las registradas: agregar al historial
+        comisionado.cuentasBancarias.push({
+          id: `cta-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          banco: rawBanco || 'BANCO',
+          tipoCuenta: rawTipoCta || 'AHORROS',
+          numeroCuenta: rawNumCta,
+          urlCertificadoBancario: rawUrlCert || null,
+          nombreArchivoCertificado: rawNombreCert || null,
+          fechaRegistro: new Date().toISOString(),
+          esPrincipal: comisionado.cuentasBancarias.length === 0,
+        });
+        comisionadoModificado = true;
+      }
+    }
+
+    // ── 2. Cargo (si es diferente al actual) y salario relacional ─────────────
+    if (!Array.isArray(comisionado.cargos)) {
+      comisionado.cargos = [];
+    }
+
+    const rawCargo = (
+      solicitud.cargo ||
+      camposAdic.cargoEsap ||
+      camposAdic.cargo ||
+      camposAdic.cargoInstitucional ||
+      camposAdic.cargoComisionado ||
+      ''
+    ).trim();
+
+    const rawIdCargo =
+      solicitud.idCargo ??
+      (camposAdic.idCargo ? Number(camposAdic.idCargo) : null);
+
+    const rawSalario = Number(
+      solicitud.salarioBasico ||
+      camposAdic.salarioBasico ||
+      comisionado.salarioBasico ||
+      0,
+    );
+
+    const depId =
+      solicitud.idDependencia ?? comisionado.idDependencia ?? null;
+
+    if (rawCargo) {
+      const idxCrg = comisionado.cargos.findIndex(
+        (c) => c.cargo?.trim().toLowerCase() === rawCargo.toLowerCase(),
+      );
+
+      if (idxCrg >= 0) {
+        const cargoActual = comisionado.cargos[idxCrg];
+        if (rawSalario > 0 && cargoActual.salario !== rawSalario) {
+          cargoActual.salario = rawSalario;
+          comisionadoModificado = true;
+        }
+        if (depId && cargoActual.idDependencia !== depId) {
+          cargoActual.idDependencia = depId;
+          comisionadoModificado = true;
+        }
+        if (rawIdCargo && cargoActual.idCargo !== rawIdCargo) {
+          cargoActual.idCargo = rawIdCargo;
+          comisionadoModificado = true;
+        }
+      } else {
+        // Cargo nuevo: registrar en el historial
+        comisionado.cargos.push({
+          id: `crg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          idCargo: rawIdCargo ?? undefined,
+          cargo: rawCargo,
+          salario: rawSalario,
+          idDependencia: depId,
+          fechaInicio: new Date().toISOString().split('T')[0],
+          esPrincipal: comisionado.cargos.length === 0,
+        });
+        comisionadoModificado = true;
+      }
+
+      // Si el cargo es diferente al actual registrado en el comisionado
+      if (comisionado.cargo?.trim().toLowerCase() !== rawCargo.toLowerCase()) {
+        comisionado.cargo = rawCargo;
+        comisionadoModificado = true;
+      }
+      if (rawSalario > 0 && comisionado.salarioBasico !== rawSalario) {
+        comisionado.salarioBasico = rawSalario;
+        comisionadoModificado = true;
+      }
+      if (depId && comisionado.idDependencia !== depId) {
+        comisionado.idDependencia = depId;
+        comisionadoModificado = true;
+      }
+    }
+
+    // ── 3. Obligación de facturación / Régimen tributario ──────────────────────
+    const rawFacturador =
+      camposAdic.obligacion_tributaria ??
+      camposAdic.esFacturadorElectronico;
+    if (rawFacturador !== undefined && rawFacturador !== null) {
+      const boolFacturador = Boolean(rawFacturador);
+      if (comisionado.esFacturadorElectronico !== boolFacturador) {
+        comisionado.esFacturadorElectronico = boolFacturador;
+        comisionadoModificado = true;
+      }
+      if (solicitud.consultaRutFacturador !== boolFacturador) {
+        solicitud.consultaRutFacturador = boolFacturador;
+      }
+    }
+
+    if (comisionadoModificado) {
+      try {
+        await this.comisionadoRepo.save(comisionado);
+      } catch (err: any) {
+        this.logger.warn(
+          `[sincronizarComisionadoDesdeSolicitud] No se pudo guardar historial del comisionado: ${err?.message}`,
+        );
+      }
+    }
+
+    return comisionadoModificado;
+  }
+
+  /**
    * Consulta general o específica de talento humano.
    * Se consulta exclusivamente a través de HumanResourcesClientService (Oracle FNC / VW_INTEGRACIONFNC
    * vía certification-service / nómina y financieros humanos) como fuente oficial única de talento humano.
@@ -2134,8 +2396,7 @@ export class TravelExpensesService {
     if (rawNumCta && rawBanco) {
       const idxCta = comisionado.cuentasBancarias.findIndex(
         (c) =>
-          c.numeroCuenta?.trim() === rawNumCta &&
-          c.banco?.trim().toLowerCase() === rawBanco.toLowerCase(),
+          c.numeroCuenta?.trim() === rawNumCta,
       );
       if (idxCta >= 0) {
         const ctaExistente = comisionado.cuentasBancarias[idxCta];
@@ -2253,6 +2514,20 @@ export class TravelExpensesService {
       if (rawIdCargo) {
         camposAdicionalesCompletos.idCargo = rawIdCargo;
       }
+    }
+
+    const rawFacturador =
+      camposAdicionalesCompletos.obligacion_tributaria ??
+      camposAdicionalesCompletos.esFacturadorElectronico;
+    if (rawFacturador !== undefined && rawFacturador !== null) {
+      const boolFacturador = Boolean(rawFacturador);
+      if (comisionado.esFacturadorElectronico !== boolFacturador) {
+        comisionado.esFacturadorElectronico = boolFacturador;
+        comisionadoModificado = true;
+      }
+      camposAdicionalesCompletos.obligacion_tributaria = boolFacturador;
+    } else {
+      camposAdicionalesCompletos.obligacion_tributaria = Boolean(comisionado.esFacturadorElectronico ?? false);
     }
 
     if (comisionadoModificado) {
@@ -2582,7 +2857,12 @@ if (dto.costoEstimadoTiquete !== undefined) {
     }
     solicitud.camposAdicionales = mergedCampos;
 
-    return this.solicitudRepo.save(solicitud);
+    const saved = await this.solicitudRepo.save(solicitud);
+    await this.sincronizarComisionadoDesdeSolicitud(
+      solicitud.comisionado,
+      saved,
+    );
+    return saved;
   }
 
   async subirDocumento(
@@ -2633,7 +2913,31 @@ if (dto.costoEstimadoTiquete !== undefined) {
       tipoMime,
     });
 
-    return this.documentoRepo.save(entity);
+    const guardado = await this.documentoRepo.save(entity);
+
+    // Si el documento cargado es certificación bancaria, asociar de inmediato
+    // el soporte a la cuenta bancaria del comisionado (por número de cuenta)
+    const esCertBancario =
+      dto.tipoDocumento === 'CERT_BANCARIA' ||
+      dto.tipoDocumento === 'CERTIFICACION_BANCARIA' ||
+      dto.tipoDocumento === 'CERTIFICADO_BANCARIO' ||
+      dto.tipoDocumento?.toUpperCase().includes('BANC');
+
+    if (esCertBancario) {
+      try {
+        await this.sincronizarComisionadoDesdeSolicitud(
+          solicitud.comisionado,
+          solicitud,
+          [guardado],
+        );
+      } catch (errSync: any) {
+        this.logger.warn(
+          `[subirDocumento] No se pudo sincronizar de inmediato el certificado bancario: ${errSync?.message}`,
+        );
+      }
+    }
+
+    return guardado;
   }
 
   /**
@@ -2811,6 +3115,13 @@ if (dto.costoEstimadoTiquete !== undefined) {
     solicitud.estadoSolicitud = EstadoSolicitud.RADICADA;
     solicitud.extemporanea = false;
     solicitud.radicadoFueraJornada = radicadoFueraJornada;
+
+    // Sincronizar en el comisionado: cargo si es diferente al actual, e información bancaria si el número de cuenta es diferente
+    await this.sincronizarComisionadoDesdeSolicitud(
+      solicitud.comisionado,
+      solicitud,
+      documentos,
+    );
 
     const saved = await this.solicitudRepo.save(solicitud);
     const response: any = {
@@ -3458,6 +3769,13 @@ if (dto.costoEstimadoTiquete !== undefined) {
       firmaElaboro,
       elaboro: `Elaboró: ${nombreEnlace} (Certificado: ${certIdElaboro})`,
     };
+
+    // Sincronizar en el comisionado: cargo si es diferente al actual, e información bancaria si el número de cuenta es diferente
+    await this.sincronizarComisionadoDesdeSolicitud(
+      solicitud.comisionado,
+      solicitud,
+      documentos,
+    );
 
     const saved = await this.solicitudRepo.save(solicitud);
 

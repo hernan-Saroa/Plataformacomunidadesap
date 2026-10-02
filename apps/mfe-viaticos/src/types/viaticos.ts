@@ -1293,8 +1293,11 @@ export interface SolicitarOtpFirmaResponse {
 }
 
 export interface VerificarOtpFirmaPayload {
-  verificationId: string;
-  code: string;
+  verificationId?: string;
+  code?: string;
+  otp?: string;
+  tipoFirma?: string;
+  consume?: boolean;
 }
 
 export interface SolicitarFirmasPayload {

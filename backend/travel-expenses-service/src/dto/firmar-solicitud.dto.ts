@@ -125,21 +125,45 @@ export class SolicitarOtpFirmaDto {
 }
 
 export class VerificarOtpFirmaDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Identificador de la sesión de verificación OTP',
     example: 'viat:sol-123:JEFE_DEPENDENCIA:usr-456',
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  verificationId: string;
+  verificationId?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Código numérico OTP de 6 dígitos ingresado por el usuario',
     example: '123456',
   })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  code: string;
+  code?: string;
+
+  @ApiPropertyOptional({
+    description: 'Código numérico OTP ingresado por el usuario (alias de code)',
+    example: '123456',
+  })
+  @IsOptional()
+  @IsString()
+  otp?: string;
+
+  @ApiPropertyOptional({
+    description: 'Rol o etapa de la firma digital (ej. ENLACE_ELABORO, JEFE_DEPENDENCIA)',
+    example: 'ENLACE_ELABORO',
+  })
+  @IsOptional()
+  @IsString()
+  tipoFirma?: string;
+
+  @ApiPropertyOptional({
+    description: 'Indica si se debe consumir el código OTP de inmediato',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  consume?: boolean;
 }
 
 export class SolicitarFirmasDto {

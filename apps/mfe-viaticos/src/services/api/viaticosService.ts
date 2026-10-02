@@ -947,9 +947,17 @@ export class ViaticosService {
     payload: VerificarOtpFirmaPayload,
   ): Promise<{ success: boolean; verified: boolean }> {
     try {
+      const code = (payload.code || payload.otp || '').trim();
+      const body = {
+        verificationId: payload.verificationId || undefined,
+        code,
+        otp: code,
+        tipoFirma: payload.tipoFirma,
+        consume: payload.consume ?? false,
+      };
       const res = await apiClient.post<any>(
         `/viaticos/api/v1/requests/${solicitudId}/firmas/verificar-otp`,
-        payload,
+        body,
       );
       return (res as any)?.data || res;
     } catch (error) {
