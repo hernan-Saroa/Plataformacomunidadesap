@@ -1,7 +1,6 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { territorialGrantsFromRoles, PtaTerritorialDecisionGrants } from './pta-territorial-role-scope';
 import {
   PTAComponentKey,
   PTA_COMPONENT_KEYS,
@@ -18,15 +17,13 @@ import {
   PTANivelDocencia,
   TERRITORIAL_NIVEL_APPROVE_PERMISSION,
   TERRITORIAL_NIVEL_REVIEW_PERMISSION,
-  TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT,
 } from './pta-permissions.constants';
 
 const NIVELES_DOCENCIA: PTANivelDocencia[] = ['pregrado', 'posgrado'];
 
 export interface PtaAuthContext {
-  /** Alcance del rol que concede cada permiso territorial, separado por etapa y nivel. */
-  territorialDecisionGrants?: PtaTerritorialDecisionGrants;
-  territorialDecisionGrantsByComponent?: Record<string, PtaTerritorialDecisionGrants>;
+  /** Uso interno al devolver un componente en la etapa de revisión. */
+  delegatedReviewComponent?: string;
   /** Superusuario del sistema (rol SUPER_ADMIN): aprueba todo. */
   isSuperUser: boolean;
   /**
@@ -86,8 +83,8 @@ export class PtaPermissionsService {
   /** Permisos vigentes de la cuenta: una sesión abierta puede contener roles antiguos. */
   async resolveForUser(userId: string): Promise<PtaAuthContext & { roles: string[] }> {
     try {
-      const rows: Array<{ role_code: string; permission_code: string | null; role_scope?: unknown }> = await this.dataSource.query(
-        `SELECT DISTINCT r.code AS role_code, r.alcance AS role_scope, p.code AS permission_code
+      const rows: Array<{ role_code: string; permission_code: string | null }> = await this.dataSource.query(
+        `SELECT DISTINCT r.code AS role_code, p.code AS permission_code
            FROM auth."user" u
            JOIN auth.user_roles ur ON ur.id_user = u.id_user AND COALESCE(ur.is_active, true) = true
            JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true
@@ -99,16 +96,13 @@ export class PtaPermissionsService {
       );
       const roles = [...new Set(rows.map(row => row.role_code).filter(Boolean))];
       const permissions = new Set(rows.map(row => row.permission_code).filter((code): code is string => Boolean(code)));
-      return { ...this.buildContext(roles.some(code => SUPER_ADMIN_ROLE_CODES.includes(code)), permissions),
-        roles, territorialDecisionGrants: territorialGrantsFromRoles(rows),
-        territorialDecisionGrantsByComponent: Object.fromEntries(Object.keys(TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT)
-          .map(componente => [componente, territorialGrantsFromRoles(rows, componente)])),
-      };
+      return { ...this.buildContext(roles.some(code => SUPER_ADMIN_ROLE_CODES.includes(code)), permissions), roles };
     } catch (error: any) {
       this.logger.error(`No se pudieron verificar los permisos vigentes del usuario: ${error?.message}`);
       throw new ForbiddenException('No fue posible verificar sus permisos. Intente nuevamente.');
     }
   }
+
 
   private buildContext(isSuperUser: boolean, permissions: Set<string>): PtaAuthContext {
     const approvesAll = isSuperUser || permissions.has(PTA_APPROVE_ALL);

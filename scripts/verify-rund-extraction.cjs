@@ -22,7 +22,7 @@ const engineResponses=[];
   try{
     await client.query('BEGIN');
     await client.query('CREATE TEMP TABLE "Docente" (id uuid PRIMARY KEY,"personaId" uuid,pregrado text) ON COMMIT DROP');
-    await client.query('CREATE TEMP TABLE personas (id_person uuid PRIMARY KEY,nom_largo text,fec_nacimiento date) ON COMMIT DROP');
+    await client.query('CREATE TEMP TABLE personas (id_person uuid PRIMARY KEY,nom_largo text,num_identificacion text,tip_identificacion text,gen_tercero text,fec_nacimiento date) ON COMMIT DROP');
     await client.query(`CREATE TEMP TABLE "RundDocumentoPerfil" (id uuid PRIMARY KEY, docente_id uuid, categoria_codigo text, tipo_soporte text,
       nombre_archivo text,version int,estado text,creado_por text,"createdAt" timestamptz,proveedor_almacenamiento text,almacenamiento_ruta text,checksum_sha256 text) ON COMMIT DROP`);
     await client.query(`CREATE TEMP TABLE "RundAccesoDatosLog" (id uuid,actor_id text,roles text[],endpoint text,recurso_id text,docentes text[],campos text[],resultado text,ip text) ON COMMIT DROP`);
@@ -43,10 +43,10 @@ const engineResponses=[];
       pdf=Buffer.from(synthetic.output('arraybuffer'));fs.mkdirSync(artifacts,{recursive:true});fs.writeFileSync(path.join(artifacts,'diploma-ficticio.pdf'),pdf);
     }
     await db.query('INSERT INTO academic_work_plan."Docente" VALUES($1,$2,$3)',[docente,person,'Título anterior']);
-    await client.query('INSERT INTO pg_temp.personas VALUES($1,$2,$3)',[person,'DOCENTE FICTICIO','1980-01-01']);
+    await client.query('INSERT INTO pg_temp.personas VALUES($1,$2,$3,$4,$5,$6)',[person,'DOCENTE FICTICIO','1000000000','CC','N','1980-01-01']);
     await db.query(`INSERT INTO academic_work_plan."RundDocumentoPerfil" VALUES($1,$2,'TITULOS','diploma_pregrado','prueba.pdf',1,'ACTIVO','TEST',now(),'MEMORY','test', $3)`,[document,docente,createHash('sha256').update(pdf).digest('hex')]);
     process.env.RUND_OCR_ENABLED='true';process.env.RUND_OCR_TOKEN='local-test-token-only-0000000000000000';
-    process.env.RUND_OCR_URL='http://localhost:8091';process.env.RUND_OLLAMA_URL='http://localhost:11435';process.env.RUND_OLLAMA_MODEL='gemma4:e2b';
+    process.env.RUND_OCR_URL='http://localhost:8091';process.env.RUND_OLLAMA_URL='http://localhost:11435';process.env.RUND_OLLAMA_MODEL='qwen3.5:4b';
     if(realEngines){
       const env=require(path.join(root,'node_modules/dotenv')).parse(fs.readFileSync(path.resolve(__dirname,'../.env.rund-ocr.local')));
       for(const key of ['RUND_OCR_TOKEN','RUND_OCR_URL','RUND_OLLAMA_URL','RUND_OLLAMA_MODEL'])process.env[key]=env[key];
@@ -123,7 +123,7 @@ const engineResponses=[];
     }
     assert.deepEqual((await db.query('SELECT estado,intentos FROM academic_work_plan."RundExtraccionTrabajo" WHERE documento_id=$1',[legacy]))[0],{estado:'ERROR',intentos:3});
     assert.equal((await db.query('SELECT pregrado FROM academic_work_plan."Docente"'))[0].pregrado,'Administración Pública');
-    console.log(`F014: cola, extracción ${realEngines?'REAL PaddleOCR + Gemma/Ollama':'simulada'}, revisión humana, rollback, reanálisis, obsolescencia, nuevas cargas tras reinicio y reintentos acotados verificados en PostgreSQL TEMP.`);
+    console.log(`F014: cola, extracción ${realEngines?'REAL PP-OCRv6 + Qwen 3.5/Ollama':'simulada'}, revisión humana, rollback, reanálisis, obsolescencia, nuevas cargas tras reinicio y reintentos acotados verificados en PostgreSQL TEMP.`);
   }finally{
     global.fetch=originalFetch;
     localHttp.postLocalJson=originalPost;

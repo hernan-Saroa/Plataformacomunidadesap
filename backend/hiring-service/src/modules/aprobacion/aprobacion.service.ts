@@ -11,6 +11,7 @@ import { HiringAccess } from '../../auth/hiring-access';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
 import { Revision } from '../../entities/revision.entity';
+import { soportesDeDevolucion } from '../documentos-actividad/documentos-actividad.service';
 import { Proceso } from '../../entities/proceso.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { CdpService } from '../cdp/cdp.service';
@@ -133,6 +134,10 @@ export class AprobacionService {
         })
       : [];
     const revision = revisiones[0] ?? null;
+    const soportes = await soportesDeDevolucion(
+      em,
+      revisiones.map((r) => r.soporteDocumentoId),
+    );
 
     const enviadoPorId = actividad?.enviadoPorId;
     const esMia =
@@ -177,6 +182,7 @@ export class AprobacionService {
         revisadoPor: r.revisadoPor,
         versionRevisada: r.versionRevisada,
         fecha: r.createdAt,
+        soporte: r.soporteDocumentoId ? (soportes.get(r.soporteDocumentoId) ?? null) : null,
       })),
     };
   }

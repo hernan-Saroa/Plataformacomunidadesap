@@ -72,8 +72,11 @@ describe('PanelRadicacion · recibir y repartir', () => {
   it('en la bandeja, quien puede recibirlo ve el botón de tomar', async () => {
     pintar(estado({ puedeTomar: true }));
 
-    expect(await screen.findByText(/Todavía no lo lleva nadie/)).toBeInTheDocument();
+    expect(await screen.findByText(/todavía no lo lleva nadie/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Hacerme cargo/ })).toBeInTheDocument();
+    // El primer paso es suyo; los otros dos esperan a que alguien lo tome.
+    expect(screen.getByText('Te toca')).toBeInTheDocument();
+    expect(screen.getAllByText('En espera')).toHaveLength(2);
   });
 
   it('quien no es de la Dirección lo ve, pero no puede recibirlo', async () => {
@@ -95,17 +98,16 @@ describe('PanelRadicacion · recibir y repartir', () => {
       }),
     );
 
-    expect(await screen.findByText(/Laura Pineda · estás a cargo/)).toBeInTheDocument();
-    expect(
-      screen.getByText(/Hasta que no elijas quién lo revisa/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Laura Pineda \(tú\) · desde el/)).toBeInTheDocument();
+    expect(screen.getByText('Hecho')).toBeInTheDocument();
+    expect(screen.getByText(/Mientras no haya abogado/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Elegir abogado/ })).toBeInTheDocument();
   });
 
   it('quien no lo tomó no reparte: eso lo decide quien lo recibió', async () => {
     pintar(estado({ contratacion: participante('Laura Pineda') }));
 
-    expect(await screen.findByText(/Laura Pineda/)).toBeInTheDocument();
+    expect(await screen.findByText(/Lo elige Laura Pineda/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Elegir abogado/ })).toBeNull();
   });
 

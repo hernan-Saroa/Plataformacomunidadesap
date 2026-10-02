@@ -309,13 +309,12 @@ export class AutoController {
     return await this.autoService.registerNotification(id, registerNotificationDto);
   }
 
-   /**
-    * Subir/reemplazar documento de un auto durante revisión (con control de versiones)
-    */
-   @Post(':id/upload-document')
-   @Patch(':id/upload-document')
+  /**
+   * Subir/reemplazar documento de un auto durante revisión (con control de versiones) - PATCH
+   */
+  @Patch(':id/upload-document')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reemplazar documento del auto durante revisión' })
+  @ApiOperation({ summary: 'Reemplazar documento del auto durante revisión (PATCH)' })
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -349,6 +348,58 @@ export class AutoController {
     @UploadedFile() file: Express.Multer.File,
     @Body('comentario') comentario: string,
     @Body('userId') userId: string,
+  ): Promise<LegalAuto> {
+    return this.executeUploadDocumento(id, file, comentario, userId);
+  }
+
+  /**
+   * Subir/reemplazar documento de un auto durante revisión (con control de versiones) - POST
+   */
+  @Post(':id/upload-document')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reemplazar documento del auto durante revisión (POST)' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req, file, cb) => {
+          const uploadPath = join(process.cwd(), 'uploads');
+          if (!existsSync(uploadPath)) {
+            mkdirSync(uploadPath, { recursive: true });
+          }
+          cb(null, uploadPath);
+        },
+        filename: (req, file, cb) => {
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const ext = extname(file.originalname);
+          cb(null, `auto-${req.params.id}-${uniqueSuffix}${ext}`);
+        },
+      }),
+      fileFilter: (req, file, cb) => {
+        const allowed = ['.pdf', '.doc', '.docx'];
+        const ext = extname(file.originalname).toLowerCase();
+        if (allowed.includes(ext)) {
+          cb(null, true);
+        } else {
+          cb(new BadRequestException('Solo se permiten archivos PDF o Word'), false);
+        }
+      },
+      limits: { fileSize: 20 * 1024 * 1024 },
+    }),
+  )
+  async uploadDocumentoPost(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('comentario') comentario: string,
+    @Body('userId') userId: string,
+  ): Promise<LegalAuto> {
+    return this.executeUploadDocumento(id, file, comentario, userId);
+  }
+
+  private async executeUploadDocumento(
+    id: string,
+    file: Express.Multer.File,
+    comentario: string,
+    userId: string,
   ): Promise<LegalAuto> {
     if (!file) {
       throw new BadRequestException('No se ha subido ningún archivo');

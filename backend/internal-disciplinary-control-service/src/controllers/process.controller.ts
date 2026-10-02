@@ -1198,28 +1198,43 @@ export class ProcessController {
 
     let rutaCompleta = this.storageService.getFullPath(documento.url);
 
-    // Verificar que el archivo existe; si no, buscar por nombre en subdirectorios
+    // Verificar que el archivo existe; si no, buscar por nombre en uploads base o en subdirectorios
     if (!fs.existsSync(rutaCompleta)) {
       const safeFilename = path.basename(documento.url || documento.filename || '');
-      const uploadsRoot = path.resolve(getUploadRootDir());
-      let fallback: string | null = null;
-      if (safeFilename && fs.existsSync(uploadsRoot)) {
-        outer: for (const entry of fs.readdirSync(uploadsRoot, { withFileTypes: true })) {
-          if (!entry.isDirectory()) continue;
-          const l1 = path.join(uploadsRoot, entry.name, safeFilename);
-          if (fs.existsSync(l1)) { fallback = l1; break; }
-          const l1dir = path.join(uploadsRoot, entry.name);
-          for (const sub of fs.readdirSync(l1dir, { withFileTypes: true })) {
-            if (!sub.isDirectory()) continue;
-            const l2 = path.join(l1dir, sub.name, safeFilename);
-            if (fs.existsSync(l2)) { fallback = l2; break outer; }
+      const cwdUploads = path.resolve(process.cwd(), 'uploads', safeFilename);
+      if (fs.existsSync(cwdUploads)) {
+        rutaCompleta = cwdUploads;
+      } else {
+        const uploadsRoot = path.resolve(getUploadRootDir());
+        let fallback: string | null = null;
+        const candidateRoots = [uploadsRoot, path.resolve(process.cwd(), 'uploads')];
+        for (const root of candidateRoots) {
+          if (!safeFilename || !fs.existsSync(root)) continue;
+          const directFile = path.join(root, safeFilename);
+          if (fs.existsSync(directFile)) {
+            fallback = directFile;
+            break;
           }
+          outer: for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+            if (!entry.isDirectory()) continue;
+            const l1 = path.join(root, entry.name, safeFilename);
+            if (fs.existsSync(l1)) { fallback = l1; break; }
+            const l1dir = path.join(root, entry.name);
+            try {
+              for (const sub of fs.readdirSync(l1dir, { withFileTypes: true })) {
+                if (!sub.isDirectory()) continue;
+                const l2 = path.join(l1dir, sub.name, safeFilename);
+                if (fs.existsSync(l2)) { fallback = l2; break outer; }
+              }
+            } catch (_) {}
+          }
+          if (fallback) break;
         }
+        if (!fallback) {
+          throw new HttpException('Archivo no encontrado en el servidor', HttpStatus.NOT_FOUND);
+        }
+        rutaCompleta = fallback;
       }
-      if (!fallback) {
-        throw new HttpException('Archivo no encontrado en el servidor', HttpStatus.NOT_FOUND);
-      }
-      rutaCompleta = fallback;
     }
 
     // Obtener el nombre original del archivo para la cabecera Content-Disposition

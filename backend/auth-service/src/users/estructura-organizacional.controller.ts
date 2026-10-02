@@ -25,6 +25,8 @@ import {
   BulkToggleSedePeriodStatusDto,
   CreateDependenciaDto,
   UpdateDependenciaDto,
+  CreateCargoDto,
+  AssignCargosDto,
 } from './estructura-organizacional.dto';
 
 @Controller('estructura-organizacional')
@@ -350,5 +352,59 @@ export class EstructuraOrganizacionalController {
   async deleteDependencia(@Param('id') id: string) {
     const res = await this.estructuraService.deleteDependencia(Number(id));
     return res;
+  }
+
+  // ==================== CARGOS (transversal) ====================
+
+  @Public()
+  @Get('cargos')
+  async findAllCargos(
+    @Query('search') search?: string,
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    const cargos = await this.estructuraService.findAllCargos({
+      search,
+      activoOnly: includeInactive !== 'true',
+    });
+    return { data: cargos, meta: { total: cargos.length } };
+  }
+
+  @Post('cargos')
+  async createCargo(@Body() dto: CreateCargoDto) {
+    const cargo = await this.estructuraService.createCargo(dto);
+    return { data: cargo, message: 'Cargo creado exitosamente' };
+  }
+
+  @Public()
+  @Get('dependencias/:id/cargos')
+  async findCargosByDependencia(@Param('id') id: string) {
+    const cargos = await this.estructuraService.findCargosByDependencia(
+      Number(id),
+    );
+    return { data: cargos, meta: { total: cargos.length } };
+  }
+
+  @Post('dependencias/:id/cargos')
+  async assignCargosToDependencia(
+    @Param('id') id: string,
+    @Body() dto: AssignCargosDto,
+  ) {
+    const cargos = await this.estructuraService.syncCargosForDependencia(
+      Number(id),
+      dto.cargosIds || [],
+    );
+    return { data: cargos, message: 'Cargos asignados exitosamente' };
+  }
+
+  @Put('dependencias/:id/cargos')
+  async updateCargosForDependencia(
+    @Param('id') id: string,
+    @Body() dto: AssignCargosDto,
+  ) {
+    const cargos = await this.estructuraService.syncCargosForDependencia(
+      Number(id),
+      dto.cargosIds || [],
+    );
+    return { data: cargos, message: 'Cargos actualizados exitosamente' };
   }
 }

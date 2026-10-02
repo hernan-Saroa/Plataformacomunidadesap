@@ -2,6 +2,21 @@ import React from 'react';
 import { AlertTriangle, Check, FileText, Lock, Paperclip } from 'lucide-react';
 
 import { useSoloLectura } from './SoloLectura';
+import { useLugarDeDecision } from './LugarDeDecision';
+
+/**
+ * El bloqueo que le aplica a una pieza que escribe.
+ *
+ * La revisión pinta el panel en solo lectura, pero sus botones de decidir
+ * —marcados con `decision`— tienen que funcionar ahí, que es el único sitio
+ * donde se decide. Todo lo demás sigue apagado: quien revisa no carga pólizas
+ * ni radica cuentas.
+ */
+function useBloqueo(decision?: boolean): string | null {
+  const soloLectura = useSoloLectura();
+  const { enLaRevision } = useLugarDeDecision();
+  return decision && enLaRevision ? null : soloLectura;
+}
 
 /**
  * Piezas comunes de los paneles de actividad.
@@ -137,9 +152,10 @@ export const Aviso = ({
 export const Boton = ({
   children,
   icono,
+  decision,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { icono: React.ReactNode }) => {
-  const soloLectura = useSoloLectura();
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { icono: React.ReactNode; decision?: boolean }) => {
+  const soloLectura = useBloqueo(decision);
 
   return (
     <button
@@ -159,9 +175,10 @@ export const Boton = ({
 export const BotonSecundario = ({
   children,
   icono,
+  decision,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { icono: React.ReactNode }) => {
-  const soloLectura = useSoloLectura();
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { icono: React.ReactNode; decision?: boolean }) => {
+  const soloLectura = useBloqueo(decision);
 
   return (
     <button
@@ -209,17 +226,20 @@ export const SelectorArchivo = ({
   ayuda,
   obligatorio = true,
   id,
+  decision,
 }: {
   etiqueta: string;
   archivo: File | null;
   onElegir: (archivo: File | null) => void;
+  /** Adjunto de una decisión (el otrosí al aprobar): se elige en la revisión. */
+  decision?: boolean;
   ayuda?: string;
   obligatorio?: boolean;
   id?: string;
 }) => {
   const input = React.useRef<HTMLInputElement>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const soloLectura = useSoloLectura();
+  const soloLectura = useBloqueo(decision);
 
   const elegir = (elegido: File | null) => {
     if (!elegido) return;

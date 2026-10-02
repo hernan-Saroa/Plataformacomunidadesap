@@ -6,6 +6,7 @@ import {
   findDuplicateLaborFunctions,
   parseLaborFunctions,
   parseLaborFunctionsRaw,
+  normalizeLaborFunctionDocument,
 } from './labor-functions.utils';
 
 describe('labor functions normalization', () => {
@@ -26,7 +27,7 @@ describe('labor functions normalization', () => {
   it('separates numbered functions stored in one Excel cell', () => {
     expect(
       parseLaborFunctions(
-        '1. Diseñar el programa institucional. 2. Proponer políticas de docencia. 3. Evaluar los resultados.',
+        '1. Diseñar el programa institucional.\n2. Proponer políticas de docencia.\n3. Evaluar los resultados.',
       ),
     ).toEqual([
       'Diseñar el programa institucional.',
@@ -44,9 +45,29 @@ describe('labor functions normalization', () => {
     ).toHaveLength(3);
   });
 
+  it('une los renglones de continuación de funciones numeradas antes de validarlas', () => {
+    const text = '1. Revisar los pagos y verificar los descuentos\r\nlegales\r\n2. Consolidar los movimientos contables de manera\noportuna';
+    expect(parseLaborFunctionsRaw(text)).toEqual([
+      'Revisar los pagos y verificar los descuentos legales',
+      'Consolidar los movimientos contables de manera oportuna',
+    ]);
+  });
+
+  it('conserva funciones sin numerar por línea y las entradas del arreglo completas', () => {
+    expect(parseLaborFunctionsRaw('Atender las solicitudes.\nPresentar informes.')).toEqual([
+      'Atender las solicitudes.', 'Presentar informes.',
+    ]);
+    expect(parseLaborFunctionsRaw(['Atender las\nsolicitudes.'])).toEqual([
+      'Atender las solicitudes.',
+    ]);
+    expect(parseLaborFunctionsRaw('• Atender las solicitudes.\n• Presentar informes.')).toEqual([
+      'Atender las solicitudes.', 'Presentar informes.',
+    ]);
+  });
+
   it('identifies which function repeats an earlier one', () => {
     const items = parseLaborFunctionsRaw(
-      '1. Preparar las clases del curso. 2. Evaluar a los estudiantes. 3. Preparar las clases del curso. 4. Evaluar a los estudiantes.',
+      '1. Preparar las clases del curso.\n2. Evaluar a los estudiantes.\n3. Preparar las clases del curso.\n4. Evaluar a los estudiantes.',
     );
 
     expect(findDuplicateLaborFunctions(items)).toEqual([
@@ -63,6 +84,16 @@ describe('labor functions normalization', () => {
     ]);
   });
 
+  it('preserva números, numerales y puntos dentro de una función', () => {
+    const text = 'Aplicar el numeral 2. Revisar los expedientes institucionales.';
+    expect(parseLaborFunctions(text)).toEqual([text]);
+    expect(parseLaborFunctions([text])).toEqual([text]);
+    expect(parseLaborFunctions('1. '+text+'\n2. Presentar los informes.')).toEqual([text, 'Presentar los informes.']);
+  });
+  it('normaliza separadores y conserva ceros sin aceptar letras ni números inseguros', () => {
+    expect(normalizeLaborFunctionDocument('00.123-456 78')).toBe('0012345678');
+    for (const value of ['abc123', '', '1e8', -123, 9007199254740992]) expect(normalizeLaborFunctionDocument(value)).toBe('');
+  });
   it('normalizes accents and spacing in the association key', () => {
     expect(
       buildLaborFunctionMatchKey({

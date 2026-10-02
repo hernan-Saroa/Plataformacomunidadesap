@@ -181,16 +181,16 @@ export class AuditService {
 
     // Filtros de fecha
     if (queryDto.startDate && queryDto.endDate) {
-      queryBuilder.andWhere('log.timestamp BETWEEN :startDate AND :endDate', {
+      queryBuilder.andWhere('log.created_at BETWEEN :startDate AND :endDate', {
         startDate: queryDto.startDate,
         endDate: queryDto.endDate,
       });
     } else if (queryDto.startDate) {
-      queryBuilder.andWhere('log.timestamp >= :startDate', {
+      queryBuilder.andWhere('log.created_at >= :startDate', {
         startDate: queryDto.startDate,
       });
     } else if (queryDto.endDate) {
-      queryBuilder.andWhere('log.timestamp <= :endDate', {
+      queryBuilder.andWhere('log.created_at <= :endDate', {
         endDate: queryDto.endDate,
       });
     }
@@ -267,7 +267,7 @@ export class AuditService {
     const total = await queryBuilder.getCount();
 
     queryBuilder
-      .orderBy('log.timestamp', 'DESC')
+      .orderBy('log.created_at', 'DESC')
       .addOrderBy('log.id', 'DESC')
       .take(limit)
       .skip(offset);

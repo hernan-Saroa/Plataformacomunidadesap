@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  X, ThumbsUp, ThumbsDown, AlertCircle, CheckCircle2, Clock, FileText,
+  X, ThumbsUp, ThumbsDown, AlertCircle, CheckCircle2, Clock, FileText, Star,
 } from 'lucide-react';
 import {
   infraestructuraService,
@@ -8,6 +8,16 @@ import {
 } from '../services/infraestructuraService';
 
 export type ModoConformidad = 'confirmar' | 'rechazar';
+// OQ-1 default: rating opcional. Si mañana aprobamos obligatorio, cambiar a false.
+const CALIFICACION_SERVICIO_OPCIONAL = true as const;
+const CALIFICACION_VALORES: readonly (1 | 2 | 3 | 4 | 5)[] = [1, 2, 3, 4, 5] as const;
+const ETIQUETA_CALIFICACION: Record<1 | 2 | 3 | 4 | 5, string> = {
+  1: 'Muy mala',
+  2: 'Mala',
+  3: 'Regular',
+  4: 'Buena',
+  5: 'Muy buena',
+};
 
 export interface DetalleConformidadFormProps {
   open: boolean;
@@ -31,6 +41,9 @@ export const DetalleConformidadForm: React.FC<DetalleConformidadFormProps> = ({
   onSaved,
 }) => {
   const [observaciones, setObservaciones] = useState('');
+  // EFDS-1738 RF-INF-009 Calificación servicio 1-5 editable solo en modo confirmar
+  const [ratingSeleccionado, setRatingSeleccionado] = useState<1 | 2 | 3 | 4 | 5 | null>(null);
+  const [ratingHover, setRatingHover] = useState<1 | 2 | 3 | 4 | 5 | 0>(0);
   const [enviando, setEnviando] = useState(false);
   const [errorForm, setErrorForm] = useState<string>('');
   const [toast, setToast] = useState<{ tipo: 'ok' | 'warn' | 'err'; texto: string } | null>(null);
@@ -38,6 +51,8 @@ export const DetalleConformidadForm: React.FC<DetalleConformidadFormProps> = ({
   useEffect(() => {
     if (!open) return;
     setObservaciones('');
+    setRatingSeleccionado(null);
+    setRatingHover(0);
     setErrorForm('');
     setToast(null);
   }, [open, modo]);
@@ -74,11 +89,24 @@ export const DetalleConformidadForm: React.FC<DetalleConformidadFormProps> = ({
       setToast({ tipo: 'err', texto: err });
       return;
     }
+    // EFDS-1738 OQ-1 guardia rating obligatorio (solo modo confirmar)
+    if (modo === 'confirmar' && !CALIFICACION_SERVICIO_OPCIONAL && ratingSeleccionado === null) {
+      const msg = 'Calificación del servicio es requerida para confirmar conformidad (1 a 5 estrellas).';
+      setErrorForm(msg);
+      setToast({ tipo: 'err', texto: msg });
+      return;
+    }
     setEnviando(true);
     try {
       let res: SolicitudMantenimiento;
-      const payload = { observacionesConformidad: observaciones.trim() || undefined };
       if (modo === 'confirmar') {
+        const payload: {
+          observacionesConformidad?: string;
+          calificacionServicio?: 1 | 2 | 3 | 4 | 5;
+        } = { observacionesConformidad: observaciones.trim() || undefined };
+        if (ratingSeleccionado !== null) {
+          payload.calificacionServicio = ratingSeleccionado;
+        }
         res = await infraestructuraService.confirmarConformidad(idSolicitud, payload);
         setToast({ tipo: 'ok', texto: 'Conformidad confirmada. Solicitud cerrada exitosamente.' });
       } else {
@@ -158,7 +186,10 @@ export const DetalleConformidadForm: React.FC<DetalleConformidadFormProps> = ({
           ? 'text-emerald-600'
           : 'text-amber-600'
         : 'text-emerald-600';
-  const submitDisabled = enviando || (modo === 'rechazar' && observaciones.trim().length < MIN_RECHAZO_LEN);
+  const submitDisabled =
+    enviando ||
+    (modo === 'rechazar' && observaciones.trim().length < MIN_RECHAZO_LEN) ||
+    (modo === 'confirmar' && !CALIFICACION_SERVICIO_OPCIONAL && ratingSeleccionado === null);
 
   return (
     <>
@@ -233,6 +264,110 @@ export const DetalleConformidadForm: React.FC<DetalleConformidadFormProps> = ({
                 </p>
               </div>
             </section>
+
+            {/* EFDS-1738 RF-INF-009 Calificación servicio recibido 1-5 (solo modo confirmar) */}
+            {modo === 'confirmar' && (
+              <section aria-label="Calificación del servicio recibido">
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                      <Star className="w-3.5 h-3.5 text-amber-500" />
+                      Califica el servicio recibido
+                      <span className="text-[11px] font-normal text-slate-500 ml-1">
+                        ({CALIFICACION_SERVICIO_OPCIONAL ? 'opcional' : '* obligatorio'})
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Marca 1 (muy mala) a 5 (muy buena) estrellas según la calidad de la atención recibida por el técnico.
+                    </p>
+                  </div>
+                </div>
+                <div
+                  className="rounded-lg border border-slate-200 bg-slate-50/60 p-3"
+                  role="radiogroup"
+                  aria-label="Calificación del servicio recibido de 1 a 5 estrellas"
+                  aria-required={!CALIFICACION_SERVICIO_OPCIONAL}
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {CALIFICACION_VALORES.map((i) => {
+                      const activo = (ratingHover || ratingSeleccionado || 0) >= i;
+                      const isChecked = ratingSeleccionado === i;
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          role="radio"
+                          aria-checked={isChecked}
+                          aria-label={`Calificación ${i} de 5: ${ETIQUETA_CALIFICACION[i]}`}
+                          tabIndex={isChecked || (!ratingSeleccionado && i === 3) ? 0 : -1}
+                          onClick={() => setRatingSeleccionado(i)}
+                          onMouseEnter={() => setRatingHover(i)}
+                          onMouseLeave={() => setRatingHover(0)}
+                          onFocus={() => setRatingHover(i)}
+                          onBlur={() => setRatingHover(0)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'ArrowRight') {
+                              e.preventDefault();
+                              const sig = Math.min(5, (ratingSeleccionado || 0) + 1) as 1 | 2 | 3 | 4 | 5;
+                              setRatingSeleccionado(sig);
+                              setRatingHover(sig);
+                              return;
+                            }
+                            if (e.key === 'ArrowLeft') {
+                              e.preventDefault();
+                              const ant = Math.max(1, (ratingSeleccionado || 1) - 1) as 1 | 2 | 3 | 4 | 5;
+                              setRatingSeleccionado(ant);
+                              setRatingHover(ant);
+                              return;
+                            }
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setRatingSeleccionado(i);
+                            }
+                          }}
+                          className={`group p-1.5 rounded-md ring-1 transition-all ${
+                            activo
+                              ? 'ring-amber-300 bg-amber-50 hover:bg-amber-100'
+                              : 'ring-slate-200 bg-white hover:bg-slate-50'
+                          } ${isChecked ? 'ring-2 ring-amber-400 bg-amber-50' : ''}`}
+                        >
+                          <Star
+                            className={`w-6 h-6 transition-colors ${
+                              activo ? 'text-amber-500 fill-amber-400' : 'text-slate-300'
+                            }`}
+                            strokeWidth={activo ? 1.8 : 2}
+                          />
+                          <span className="sr-only">
+                            {i} estrella{i > 1 ? 's' : ''} - {ETIQUETA_CALIFICACION[i]}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    <div className="ml-2 min-h-6 flex items-center">
+                      {(ratingSeleccionado || ratingHover) ? (
+                        <span className="text-[11px] font-medium text-slate-700 bg-white px-2 py-1 rounded-md ring-1 ring-slate-200">
+                          {ETIQUETA_CALIFICACION[
+                            ((ratingHover || ratingSeleccionado) as 1 | 2 | 3 | 4 | 5)
+                          ]} · {ratingHover || ratingSeleccionado}/5
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-slate-400">
+                          {CALIFICACION_SERVICIO_OPCIONAL
+                            ? 'Puedes omitir esta calificación'
+                            : 'Debes seleccionar una calificación'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {!CALIFICACION_SERVICIO_OPCIONAL && ratingSeleccionado === null && (
+                    <p className="mt-2 text-[11px] text-rose-600 inline-flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5" />
+                      Calificación requerida para confirmar conformidad.
+                    </p>
+                  )}
+                </div>
+              </section>
+            )}
 
             {/* Observaciones */}
             <section>

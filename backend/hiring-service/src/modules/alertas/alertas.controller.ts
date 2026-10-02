@@ -55,6 +55,30 @@ export class AlertasController {
     return this.service.listar(leerDias(dias), getHiringAccess(req));
   }
 
+  @Get('por-revisar')
+  @Puede('ver')
+  @ApiOperation({
+    summary: 'Lo que espera la decisión de quien consulta',
+    description:
+      'Las actividades enviadas que puede aprobar y los estudios previos cuyo abogado es él. ' +
+      'Alimenta la bandeja «Por revisar»; lo que más lleva esperando va primero.',
+  })
+  porRevisar(@Req() req: any) {
+    return this.service.porRevisar(getHiringAccess(req));
+  }
+
+  @Get('plazos')
+  @Puede('ver')
+  @ApiOperation({
+    summary: 'Plazos de actividades por vencer o vencidos',
+    description:
+      'Por proceso y actividad, en días hábiles. Es lo que pinta el semáforo del listado y del proceso; ' +
+      'cada quien ve los de los procesos donde participa, o todos si puede verlos todos.',
+  })
+  plazos(@Req() req: any) {
+    return this.service.plazosDeActividades(getHiringAccess(req));
+  }
+
   @Post('notificar')
   @Puede('ver')
   @ApiQuery({ name: 'dias', required: false })

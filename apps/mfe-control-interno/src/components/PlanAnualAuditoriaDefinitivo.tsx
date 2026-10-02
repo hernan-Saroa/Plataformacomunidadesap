@@ -44,7 +44,7 @@ import { WizardCreacion, DashboardPlan } from './PlanAnualWizardDashboard';
 import { PlanAnualRol4Integrado } from './PlanAnualRol4Integrado';
 import { IntegracionRol4Provider } from './IntegracionRol4Context';
 import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
-import { cortesComoPeriodos } from './services/cortesPlanAnual';
+import { camposDeSincronizacion, cortesComoPeriodos } from './services/cortesPlanAnual';
 import {
   ConfiguracionEvidencias,
   ObservacionHistorica,
@@ -1490,6 +1490,9 @@ function mapTareasSeguimientoDesdeBackend(
 ): any[] {
   const lista = Array.isArray(tareasRaw) ? tareasRaw : [];
   return normalizarTareasConCortes(lista, puntosControl).map((t: any) => ({
+    // Tareas automáticas del Rol 4: auditoría/plan, periodo del corte y fecha de seguimiento
+    // automática, para que al guardar no se pierdan ni se pise la fecha puesta a mano (EFDS-2237)
+    ...camposDeSincronizacion(t),
     id: t.id,
     descripcion: t.descripcion || '',
     completada: !!t.completada,
@@ -2708,6 +2711,9 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                     observaciones: t.observaciones || '',
                     adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
                     puntoControlId: t.puntoControlId || t.punto_control_id || null,
+                    // Tareas automáticas del Rol 4: no perder su auditoría, su corte ni la
+                    // fecha de seguimiento puesta a mano (EFDS-2237)
+                    ...camposDeSincronizacion(t),
                   }))
                 : [],
             };
@@ -2995,6 +3001,7 @@ export function PlanAnualAuditoriaDefinitivo({ onNavegarModulo }: { onNavegarMod
                     observaciones: t.observaciones || '',
                     adjuntosTarea: t.adjuntosTarea || t.adjuntos_tarea || [],
                     puntoControlId: t.puntoControlId || t.punto_control_id || null,
+                    ...camposDeSincronizacion(t),
                   }))
                 : undefined,
             });

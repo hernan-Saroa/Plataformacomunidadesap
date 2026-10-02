@@ -1,7 +1,10 @@
 import { createHash } from 'crypto';
 
 export const normalizeLaborFunctionText = (value: unknown): string => {
-  const base = String(value ?? '').replace(/\u00a0/g, ' ').trim().toLowerCase();
+  const base = String(value ?? '')
+    .replace(/\u00a0/g, ' ')
+    .trim()
+    .toLowerCase();
   const normalized =
     typeof base.normalize === 'function' ? base.normalize('NFD') : base;
   return normalized
@@ -39,20 +42,24 @@ export const normalizeCombinedPositionCode = (
     return `${base}${grade}`;
   }
 
-  const positionCode =
-    digits.length <= 4 ? digits.padStart(4, '0') : digits;
-  return grade && digits.length <= 4
-    ? `${positionCode}${grade}`
-    : positionCode;
+  const positionCode = digits.length <= 4 ? digits.padStart(4, '0') : digits;
+  return grade && digits.length <= 4 ? `${positionCode}${grade}` : positionCode;
 };
 
 // CENTROCOSTO is the legacy source name for Grupo Interno de Trabajo.
 // An explicit group takes precedence; placeholders do not hide a legacy value.
-export const resolveLaborInternalGroup = (...values: unknown[]): string | null => {
+export const resolveLaborInternalGroup = (
+  ...values: unknown[]
+): string | null => {
   for (const value of values) {
-    const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+    const text = String(value ?? '')
+      .replace(/\s+/g, ' ')
+      .trim();
     const key = normalizeLaborFunctionText(text);
-    if (key && !['n a', 'na', 'no aplica', 'no aplica ninguno', 'ninguno'].includes(key)) {
+    if (
+      key &&
+      !['n a', 'na', 'no aplica', 'no aplica ninguno', 'ninguno'].includes(key)
+    ) {
       return text;
     }
   }
@@ -71,7 +78,9 @@ export const buildLaborFunctionMatchKey = (input: {
     normalizeLaborFunctionText(input.hierarchicalLevel),
     normalizeLaborFunctionText(input.positionName),
     normalizeLaborFunctionText(input.department),
-    normalizeLaborFunctionText(resolveLaborInternalGroup(input.internalGroup, input.costCenter)),
+    normalizeLaborFunctionText(
+      resolveLaborInternalGroup(input.internalGroup, input.costCenter),
+    ),
   ].join('|');
   const fingerprint = createHash('sha256')
     .update(normalizedContext, 'utf8')
@@ -86,35 +95,55 @@ const cleanFunctionDescription = (value: string): string =>
     .replace(/\s+([,.;:])/g, '$1')
     .trim();
 
+const NUMBERED_FUNCTION = /^\s*(?:funci[oó]n\s*)?\d{1,3}[.)-]\s+/i;
+
+const functionLines = (value: string): Array<{ text: string; bullet: boolean }> =>
+  value
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .flatMap((line) =>
+      line.split('\u2022').map((text, index) => ({
+        text: text.trim(),
+        bullet: index > 0,
+      })),
+    )
+    .filter(({ text }) => Boolean(text));
+
+// Match the numeric documents used by labor self-service, preserving leading zeros.
+export const normalizeLaborFunctionDocument = (value: unknown): string => {
+  if (typeof value === 'number' && (!Number.isSafeInteger(value) || value < 0))
+    return '';
+  const raw = String(value ?? '').trim();
+  if (!/^[0-9.\s-]+$/.test(raw)) return '';
+  const digits = raw.replace(/[.\s-]/g, '');
+  return /^\d{1,50}$/.test(digits) ? digits : '';
+};
+
 export const parseLaborFunctionsRaw = (value: unknown): string[] => {
+  // Array entries are already individual functions: do not split their content.
   if (Array.isArray(value)) {
-    return value.flatMap((item) => parseLaborFunctionsRaw(item));
+    return value
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => cleanFunctionDescription(item.replace(NUMBERED_FUNCTION, '')))
+      .filter(Boolean);
   }
 
-  const text = String(value ?? '').replace(/\r\n?/g, '\n').trim();
-  if (!text) return [];
+  const lines = functionLines(String(value ?? ''));
+  if (!lines.length) return [];
 
-  const marker = /(?:^|[\s;])(?:funci[oó]n\s*)?(\d{1,3})\s*[.)-]\s*/gi;
-  const matches = Array.from(text.matchAll(marker));
-  const numbered: string[] = [];
-
-  if (matches.length) {
-    matches.forEach((match, index) => {
-      const start = (match.index || 0) + match[0].length;
-      const end =
-        index + 1 < matches.length ? matches[index + 1].index : text.length;
-      const description = cleanFunctionDescription(text.slice(start, end));
-      if (description) numbered.push(description);
-    });
+  const entries: string[] = [];
+  if (NUMBERED_FUNCTION.test(lines[0].text)) {
+    for (const { text, bullet } of lines) {
+      if (NUMBERED_FUNCTION.test(text) || bullet || !entries.length)
+        entries.push(text);
+      else entries[entries.length - 1] += ` ${text}`;
+    }
+  } else {
+    entries.push(...lines.map(({ text }) => text));
   }
-
-  const fallback = text
-    .split(/\n+|\s*[•]\s*|\s*;\s*(?=[A-ZÁÉÍÓÚÑ])/)
-    .map((item) => item.replace(/^\s*\d{1,3}\s*[.)-]\s*/, ''))
-    .map(cleanFunctionDescription)
+  return entries
+    .map((item) => cleanFunctionDescription(item.replace(NUMBERED_FUNCTION, '')))
     .filter(Boolean);
-
-  return numbered.length ? numbered : fallback;
 };
 
 export const parseLaborFunctions = (value: unknown): string[] =>

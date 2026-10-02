@@ -217,25 +217,6 @@ export class SolicitudComisionEntity {
   decretoAplicado: string | null;
 
   @Column({
-    name: 'desglose_calculo',
-    type: 'jsonb',
-    nullable: true,
-  })
-  desgloseCalculo: Array<{
-    dia: number;
-    fecha: string;
-    valor: number;
-    pernocta: boolean;
-  }> | null;
-
-  @Column({
-    name: 'alertas_liquidacion',
-    type: 'jsonb',
-    nullable: true,
-  })
-  alertasLiquidacion: string[] | null;
-
-  @Column({
     name: 'estado_solicitud',
     type: 'varchar',
     length: 50,
@@ -255,6 +236,9 @@ export class SolicitudComisionEntity {
 
   @Column({ name: 'fecha_revision', type: 'timestamp', nullable: true })
   fechaRevision: Date | null;
+
+  @Column({ name: 'fecha_radicacion', type: 'timestamp', nullable: true })
+  fechaRadicacion: Date | null;
 
   @Column({
     name: 'tipo_comision',
@@ -293,6 +277,13 @@ export class SolicitudComisionEntity {
 
   @Column({ name: 'id_dependencia', type: 'bigint', nullable: true })
   idDependencia: number | null;
+
+  @Column({ name: 'cargo', type: 'varchar', length: 150, nullable: true })
+  @Index('idx_solicitudes_comision_cargo')
+  cargo: string | null;
+
+  @Column({ name: 'id_cargo', type: 'bigint', nullable: true })
+  idCargo: number | null;
 
   @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
   @JoinColumn({ name: 'analista_asignado_id' })
@@ -417,24 +408,11 @@ export class SolicitudComisionEntity {
   @Column({ name: 'rubro_rp', type: 'varchar', length: 100, nullable: true })
   rubroRp: string | null;
 
-  @Column({ name: 'rubro_presupuestal_rp', type: 'varchar', length: 100, nullable: true })
-  rubroPresupuestalRp: string | null;
-
   @Column({ name: 'soporte_rp_path', type: 'varchar', length: 255, nullable: true })
   soporteRpPath: string | null;
 
   @Column({ name: 'codigo_rp', type: 'varchar', length: 150, nullable: true })
   codigoRp: string | null;
-
-  @Column({ name: 'usuario_presupuesto_id', type: 'uuid', nullable: true })
-  usuarioPresupuestoId: string | null;
-
-  @ManyToOne(() => UsuarioEntity, { onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'usuario_presupuesto_id' })
-  usuarioPresupuesto: UsuarioEntity;
-
-  @Column({ name: 'fecha_registro_rp', type: 'timestamp with time zone', nullable: true })
-  fechaRegistroRp: Date | null;
 
   @Column({ name: 'expedido_rp_por_id', type: 'uuid', nullable: true })
   expedidoRpPorId: string | null;

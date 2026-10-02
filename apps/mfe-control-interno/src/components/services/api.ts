@@ -713,7 +713,7 @@ export const informesLeyApi = {
 export interface ConfiguracionProfesionalOCI {
   id: string;
   idTercero: string;
-  rolOcig: 'Jefe OCIG' | 'Auditor Líder' | 'Auditor' | 'Auditor Júnior' | 'Profesional OCI' | 'Apoyo Técnico' | 'Aprobador PAI';
+  /** Rol en Asignar Profesional (EFDS-2197) */ rolOcig: 'Jefe OCI' | 'Auditor' | 'Aprobador Plan Anual';
   /** @deprecated use rolOcig */ rolOCI?: string;
   especialidades: string[];
   capacidadMaximaAuditorias: number;

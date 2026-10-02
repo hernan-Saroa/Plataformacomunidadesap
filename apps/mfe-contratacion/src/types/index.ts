@@ -36,6 +36,13 @@ export type EstadoActividad =
   | 'NO_APLICA'
   | 'NEGADO';
 
+/** El archivo que acompaña una devolución: las correcciones marcadas (migración 091). */
+export interface SoporteDeDevolucion {
+  nombre: string;
+  descargaUrl: string | null;
+  mimeType: string | null;
+}
+
 export interface RevisionEstudioPrevio {
   id: string;
   decision: 'APROBADO' | 'DEVUELTO' | 'NEGADO';
@@ -43,6 +50,7 @@ export interface RevisionEstudioPrevio {
   versionRevisada: number;
   revisadoPor: string;
   createdAt: string;
+  soporte?: SoporteDeDevolucion | null;
 }
 
 /** Definición de un campo del formulario; llega del backend, no está en código. */
@@ -396,6 +404,25 @@ export interface ActividadProceso {
   aplica: boolean;
   estado: EstadoActividad | null;
   actualizadoEn: string | null;
+  /** El cargo que Configuración le puso; si no hay, responden los roles del alcance. */
+  responsableCargo?: string | null;
+  /** Si de ella responde una persona del proceso y no los roles (lo dice el backend). */
+  responde?: RespondeElAsignado | null;
+}
+
+/**
+ * Una actividad de la que responde quien ocupa un papel en el proceso
+ * (`RESPONDE_EL_ASIGNADO` en el backend): el abogado de la 3.7, por ejemplo,
+ * aunque el Gestor tenga el alcance de editarla.
+ */
+export interface RespondeElAsignado {
+  papel: 'CONTRATACION' | 'ABOGADO' | 'FINANCIERA';
+  /** Lo que esa persona hace ahí; sin nadie en el papel, la hacen los roles con ella. */
+  accion: Exclude<AccionAlcance, 'ver'>;
+  /** Solo mientras la actividad espera decisión. */
+  soloEnRevision: boolean;
+  /** El papel se toma de una bandeja: sin nadie en él, quien tenga el alcance puede tomarlo. */
+  seToma: boolean;
 }
 
 export type UnidadUmbral = 'SMMLV' | 'PESOS';
@@ -458,9 +485,20 @@ export interface ProcesoResumen {
     camposObligatorios: number;
     actualizadoEn: string;
   } | null;
-  actividades?: { numeral: string; estado: EstadoActividad }[];
+  /** En el orden de la matriz, con lo que hace falta para decir a quién le toca. */
+  actividades?: {
+    numeral: string;
+    estado: EstadoActividad;
+    nombre?: string;
+    etapa?: number;
+    actualizadoEn?: string | null;
+    responsableCargo?: string | null;
+    responde?: RespondeElAsignado | null;
+  }[];
   /** Quién lleva el proceso y si sigue en la bandeja (EFDS-1183). */
   participacion?: ParticipacionEnLista;
+  /** Quien mira radicó el proceso: es el área que redacta el estudio previo. */
+  radicadoPorMi?: boolean;
 }
 
 /**
@@ -616,6 +654,10 @@ export interface CuentaCandidata {
   nombre: string;
   cargo: string | null;
   email: string | null;
+  /** Solo en los abogados: procesos que lleva, para repartir con criterio. */
+  procesosACargo?: number;
+  /** De esos, cuántos estudios previos esperan su decisión ahora. */
+  revisionesPendientes?: number;
 }
 
 /** Quien ocupa un papel ahora mismo. */
@@ -670,6 +712,8 @@ export interface EstadoParticipacion {
 export interface ParticipacionEnLista {
   contratacion: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
   abogado: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
+  /** Quién atiende el CDP en la Financiera, si alguien lo tomó. */
+  financiera?: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
   /** Llegó a la Dirección y nadie lo ha recibido. */
   enBandeja: boolean;
 }
@@ -685,6 +729,8 @@ export interface EstudioPrevio {
     valorEstimado?: number | null;
     etapa: number;
     expediente?: string;
+    /** Quien mira radicó el proceso: es el área que redacta el estudio previo. */
+    radicadoPorMi?: boolean;
   };
   estado: EstadoActividad;
   version: number;
@@ -3372,6 +3418,48 @@ export interface AlcanceMio {
   alcances: AlcanceVista[];
   /** Los permisos que no son de ninguna etapa: configurar, informes, ver todos… */
   transversales: string[];
+}
+
+/** Algo que espera la decisión de quien mira: la bandeja «Por revisar». */
+export interface ElementoPorRevisar {
+  /**
+   * Qué se decide. El estudio previo y la modalidad los decide el abogado; la
+   * actividad, quien nombra su regla de aprobación; y las pólizas, las
+   * modificaciones y las cuentas de cobro se deciden una por una.
+   */
+  tipo: 'ESTUDIO_PREVIO' | 'MODALIDAD' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO';
+  /** Cuál de ellas, cuando la actividad tiene varias: «Póliza 123 · Seguros X». */
+  detalle: string | null;
+  procesoId: string;
+  radicado: string | null;
+  objeto: string;
+  modalidad: string | null;
+  numeral: string;
+  actividad: string;
+  etapa: number;
+  version: number | null;
+  enviadoPor: string | null;
+  desde: string;
+  diasEsperando: number;
+}
+
+/** Una actividad cuyo plazo está por vencer o ya venció; los días son hábiles. */
+export interface PlazoDeActividad {
+  procesoId: string;
+  radicado: string | null;
+  numeral: string;
+  nombre: string;
+  vence: string;
+  /** Negativo cuando ya venció. */
+  restantes: number;
+  estado: 'VENCIDO' | 'POR_VENCER';
+}
+
+/** Un rol que puede trabajar, aprobar o decidir en un lugar del módulo. */
+export interface ResponsableDeLugar {
+  rol: string;
+  accion: Exclude<AccionAlcance, 'ver'>;
+  lugar: string;
 }
 
 /** Un rol en la matriz de permisos por etapa. */

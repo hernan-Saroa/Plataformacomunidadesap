@@ -7,11 +7,24 @@ import {
   IsBoolean,
   Min,
   Max,
+  IsArray,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import {
   TipoCampoFormulario,
   GrupoCampoFormulario,
 } from '../../entities/config/campo-formulario.entity';
+
+export class OpcionCampoFormularioDto {
+  @IsString()
+  @Length(1, 100)
+  value: string;
+
+  @IsString()
+  @Length(1, 200)
+  label: string;
+}
 
 export class CreateCampoFormularioDto {
   @IsString()
@@ -32,7 +45,10 @@ export class CreateCampoFormularioDto {
   placeholder?: string;
 
   @IsOptional()
-  opciones?: Array<{ value: string; label: string }>;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OpcionCampoFormularioDto)
+  opciones?: OpcionCampoFormularioDto[];
 
   @IsOptional()
   @IsIn(Object.values(GrupoCampoFormulario))
@@ -66,7 +82,10 @@ export class UpdateCampoFormularioDto {
   placeholder?: string;
 
   @IsOptional()
-  opciones?: Array<{ value: string; label: string }>;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OpcionCampoFormularioDto)
+  opciones?: OpcionCampoFormularioDto[];
 
   @IsOptional()
   @IsIn(Object.values(GrupoCampoFormulario))
@@ -82,3 +101,4 @@ export class UpdateCampoFormularioDto {
   @IsBoolean()
   activo?: boolean;
 }
+

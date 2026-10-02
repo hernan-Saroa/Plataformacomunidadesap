@@ -36,6 +36,7 @@ import { ModalFirmaOTP, type FirmaElectronicaMetadata } from './ModalFirmaOTP';
 
 // a️ IMPORTACIN OBLIGATORIA DE REGLAS DE NEGOCIO Y CUMPLIMIENTO NORMATIVO
 import { REGLAS_NEGOCIO_OCIG } from '../config/reglas-negocio-ocig';
+import { normalizarRolOcigOperativo } from '../config/roles-ocig-operativos';
 import { createPortal } from 'react-dom';
 // Hook para sincronizar evidencias con backend y API de auditores
 import {
@@ -64,7 +65,7 @@ import {
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
 import { fechaSeguimientoTarea } from './services/fechaSeguimientoTarea';
 import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
-import { corteDeLaFecha, cortesComoPeriodos, estadoDelCorte, fechaEntregaDeTarea, fechaSeguimientoPorDefecto, tareasEnElAñoDeLosCortes } from './services/cortesPlanAnual';
+import { camposDeSincronizacion, corteDeLaFecha, cortesComoPeriodos, esTareaAutomaticaDelRol4, esTareaDelProgramaAnual, estadoDelCorte, fechaEntregaDeTarea, fechaSeguimientoPorDefecto, repartirTareasAutomaticasEnCortes, tareasEnElAñoDeLosCortes } from './services/cortesPlanAnual';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
 import { idPersonaParaPlanAnual, type ReferenciaPersonaPlan } from '../utils/persona-id-plan-anual';
 
@@ -217,7 +218,7 @@ function mapearProfesionalesOCIGDesdeApi(data: any[]): Auditor[] {
       idPerson: id,
       idTercero: id,
       nombre: String(config.nombre).trim(),
-      cargo: config.rolOcig || config.rolOCI || config.cargo || 'Auditor',
+      cargo: String(normalizarRolOcigOperativo(config.rolOcig || config.rolOCI || config.cargo)),
       email: config.email || '',
       configId: config.id,
     });
@@ -700,7 +701,9 @@ function enriquecerActividadDesdeBackend(act: any, vigencia: number) {
   const tareasOriginales = ((act as any).tareasSeguimiento || (act as any).tareas_seguimiento || []) as any[];
   const tareasConCorte = normalizarTareasConCortes(tareasOriginales, puntosControlActividad).map((t: any) => ({
     ...t,
-    fechaEntrega: fechaEntregaDeTarea(t), // EFDS-958: muchas solo traen fechaLimite
+    // EFDS-958: muchas solo traen fechaLimite. Las automáticas del Rol 4 traen su fecha de
+    // seguimiento del corte; la fecha límite es el fin de su auditoría o plan (EFDS-2237).
+    fechaEntrega: fechaEntregaDeTarea(t),
     responsables: normalizarResponsablesTarea(t.responsables),
     adjuntosTarea: normalizarAdjuntosTareaDesdeBackend(t.adjuntosTarea || t.adjuntos_tarea || []),
   }));
@@ -779,7 +782,9 @@ function alinearTareasFechasEntregaAVigencia(
   añoActividad?: number,
 ): TareaSeguimiento[] | undefined {
   if (!tareas?.length) return tareas;
+  // Las tareas automáticas del Rol 4 llevan las fechas de su auditoría o plan: no se mueven de año (EFDS-2237)
   const años = tareas
+    .filter((t) => !esTareaAutomaticaDelRol4(t))
     .map((t) => t.fechaEntrega?.slice(0, 4))
     .filter((y): y is string => !!y && /^\d{4}$/.test(y))
     .map((y) => parseInt(y, 10));
@@ -789,7 +794,7 @@ function alinearTareasFechasEntregaAVigencia(
   // Tareas heredadas de una vigencia anterior a la actividad: se traen a la vigencia
   if (minAño + delta < vigencia) delta = vigencia - minAño;
   if (delta === 0) return tareas;
-  return tareas.map((t) => ({
+  return tareas.map((t) => (esTareaAutomaticaDelRol4(t) ? t : {
     ...t,
     fechaEntrega: t.fechaEntrega ? sumarAniosIso(t.fechaEntrega, delta) : t.fechaEntrega,
   }));
@@ -1262,8 +1267,57 @@ function generarCortesOficiales(
 }
 
 /**
- * Rol 4: auditorías (universo) y planes de mejoramiento generan tareas_seguimiento en backend.
- * No precargar 12 cortes mensuales ni cortes trimestrales vacíos al crear el plan.
+ * Fecha de seguimiento de una tarea en el plan aprobado. Por defecto es el último día
+ * del mes siguiente al cierre de su corte; quien gestiona las tareas la puede cambiar
+ * ahí mismo (EFDS-2237). Se guarda al salir del campo para no guardar fechas a medio escribir.
+ */
+function FechaSeguimientoTareaChip({
+  fecha,
+  editable,
+  onCambiar,
+}: {
+  fecha?: string | null;
+  editable: boolean;
+  onCambiar: (fecha: string) => void;
+}) {
+  const valor = fecha ? String(fecha).slice(0, 10) : '';
+  const [borrador, setBorrador] = useState(valor);
+  useEffect(() => setBorrador(valor), [valor]);
+  const texto = valor ? new Date(`${valor}T00:00:00`).toLocaleDateString('es-CO') : 'Sin fecha';
+  const clases = 'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200';
+  if (!editable) {
+    return <span className={clases} title="Fecha de seguimiento de la tarea">📅 Seguimiento: {texto}</span>;
+  }
+  return (
+    <label
+      className={clases}
+      title="Fecha de seguimiento: por defecto el último día del mes siguiente al corte. Puede cambiarla."
+      onClick={(e) => e.stopPropagation()}
+    >
+      📅 Seguimiento:
+      <input
+        type="date"
+        value={borrador}
+        aria-label="Fecha de seguimiento de la tarea"
+        onChange={(e) => setBorrador(e.target.value)}
+        onBlur={() => {
+          if (borrador && borrador !== valor) onCambiar(borrador);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+        }}
+        className="bg-transparent border-0 p-0 text-[11px] font-semibold text-purple-700 focus:outline-none"
+        style={{ width: 112 }}
+      />
+    </label>
+  );
+}
+
+/**
+ * Rol 4: auditorías del Programa Anual y planes de mejoramiento generan sus tareas en el
+ * backend. Desde EFDS-2237 se crean con sus cortes (mensual / trimestral según el
+ * "Control"); esto solo se usa para mostrar un corte con el periodo del plan en planes
+ * viejos que todavía no los tienen (el backend los crea al consultar el plan).
  */
 function actividadRol4SinCortesPrecargados(
   rolNumero: number,
@@ -2145,20 +2199,8 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
         const uniqueId = `rol-${rol.numero}-act-${idx}`;
         const año = Number(vigencia || new Date().getFullYear());
 
-        if (actividadRol4SinCortesPrecargados(rol.numero, act)) {
-          return {
-            ...act,
-            id: uniqueId,
-            tipoEvidencia: 'SOLO_CHECK' as const,
-            fechaInicio: act.fechaInicio || `${año}-01-01`,
-            fechaFin: act.fechaFin || `${año}-12-31`,
-            fechaCorte: act.fechaFin || `${año}-12-31`,
-            puntosControl: [],
-            frecuenciaPuntosControl: undefined,
-            tareasSeguimiento: [],
-          };
-        }
-
+        // Las actividades del Rol 4 que se alimentan solas (auditorías y planes de
+        // mejoramiento) también llevan sus cortes según el "Control": mensual o trimestral (EFDS-2237).
         const mkPC = (pcId: string, orden: number, fi: string, ff: string): PuntoControl => ({
           id: pcId, orden, nombre: `Corte ${orden}`, descripcion: '',
           fechaProgramada: fi, fechaSeguimiento: ff,
@@ -2285,29 +2327,6 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
         ...rol,
         actividadesSeleccionadas: rol.actividadesSeleccionadas.map((act) => {
           const año = vigencia;
-          if (actividadRol4SinCortesPrecargados(rol.numero, act)) {
-            return {
-              ...act,
-              fechaInicio: act.fechaInicio
-                ? reemplazarAnioEnFechaIso(act.fechaInicio, año)
-                : act.fechaInicio,
-              fechaFin: act.fechaFin
-                ? reemplazarAnioEnFechaIso(act.fechaFin, año)
-                : act.fechaFin,
-              fechaCorte: act.fechaCorte
-                ? seguimientoDespuesDelCorte(
-                    reemplazarAnioEnFechaIso(act.fechaCorte, año),
-                    act.fechaInicio ? reemplazarAnioEnFechaIso(act.fechaInicio, año) : undefined,
-                  )
-                : resolverFechaCorteActividad(act, vigencia),
-              puntosControl: [],
-              tareasSeguimiento: alinearTareasFechasEntregaAVigencia(
-                act.tareasSeguimiento,
-                vigencia,
-                añoProgramadoActividad(act),
-              ),
-            };
-          }
           const puntos = cortesComoPeriodos(act.puntosControl || []);
           // Para actividades con periodicidad definida regeneramos cortes oficiales
           // para no romper fechas que caen en año+1 (p.ej. 31/01 del año siguiente).
@@ -3374,6 +3393,8 @@ export function WizardCreacion({ planAEditar, pasoInicial, soloLectura = false, 
                 jefeOCI={jefeSeleccionado}
                 soloLectura={enModoSoloConsulta}
                 setRolAEliminar={setRolAEliminar}
+                // Al editar o ver un plan ya creado los roles arrancan cerrados (EFDS-2237)
+                rolInicialAbierto={planAEditar || enModoSoloConsulta ? null : 1}
               />
             )}
             {paso === 3 && (
@@ -3791,7 +3812,7 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
             return opcionesResponsable.length === 0 ? (
               <div className="flex items-center gap-2 px-4 py-3 border-2 border-orange-300 rounded-lg bg-orange-50">
                 <AlertCircle className="w-5 h-5 text-orange-600" />
-                <span className="text-orange-700">No hay profesionales con rol Jefe OCIG o Auditor Líder configurados. Configure uno en Profesionales OCI.</span>
+                <span className="text-orange-700">No hay profesionales con rol Jefe OCI o Auditor configurados. Configure uno en Profesionales OCI.</span>
               </div>
             ) : (
               <select 
@@ -3802,12 +3823,12 @@ function Paso1({ vigencia, onVigenciaChange, jefeOCI, onJefeChange, fechaInicio,
               >
                 <option value="">Seleccionar responsable...</option>
                 {opcionesResponsable.map((a: any) => (
-                  <option key={a.id} value={a.id}>{a.nombre} - {a.cargo || 'Jefe OCIG'}</option>
+                  <option key={a.id} value={a.id}>{a.nombre} - {String(normalizarRolOcigOperativo(a.cargo || 'Jefe OCI'))}</option>
                 ))}
               </select>
             );
           })()}
-          <p className="text-xs text-gray-500 mt-1">Solo profesionales con rol Jefe OCIG o Auditor Líder pueden ser responsables del Plan Anual</p>
+          <p className="text-xs text-gray-500 mt-1">Solo profesionales con rol Jefe OCI o Auditor pueden ser responsables del Plan Anual</p>
         </div>
       </div>
     </motion.div>
@@ -3824,8 +3845,9 @@ function Paso2({
   jefeOCI,
   soloLectura = false,
   setRolAEliminar,
-}: { 
-  rolesConfig: RolConfig[]; 
+  rolInicialAbierto = 1,
+}: {
+  rolesConfig: RolConfig[];
   onRolesChange: (config: RolConfig[]) => void;
   fechaInicio: string;
   fechaFin: string;
@@ -3833,8 +3855,10 @@ function Paso2({
   jefeOCI?: Auditor | null;
   soloLectura?: boolean;
   setRolAEliminar: (rol: RolConfig) => void;
+  /** Rol desplegado al entrar: el 1 al crear un plan; ninguno al editarlo o consultarlo */
+  rolInicialAbierto?: number | null;
 }) {
-  const [rolExpandido, setRolExpandido] = useState<number | string | null>(1);
+  const [rolExpandido, setRolExpandido] = useState<number | string | null>(rolInicialAbierto);
   const [mostrarFormActividad, setMostrarFormActividad] = useState<number | string | null>(null);
   const [nuevaActividad, setNuevaActividad] = useState<ActividadBase>({
     nombre: '',
@@ -4034,23 +4058,7 @@ function Paso2({
 
       const año = Number(fechaInicio ? fechaInicio.split('-')[0] : new Date().getFullYear());
 
-      if (actividadRol4SinCortesPrecargados(numeroRol, actividadBase)) {
-        return {
-          ...rol,
-          actividadesSeleccionadas: [...rol.actividadesSeleccionadas, {
-            ...actividadBase,
-            id: actId,
-            incluidaEnPlan: true,
-            tipoEvidencia: 'SOLO_CHECK' as const,
-            fechaCorte: actividadBase.fechaFin || `${año}-12-31`,
-            responsables: [],
-            puntosControl: [],
-            frecuenciaPuntosControl: undefined,
-            tareasSeguimiento: [],
-          }],
-        };
-      }
-
+      // También las actividades automáticas del Rol 4 llevan cortes según su "Control" (EFDS-2237)
       const mkPC = (pcId: string, orden: number, fi: string, ff: string): PuntoControl => ({
         id: pcId, orden, nombre: `Corte ${orden}`, descripcion: '',
         fechaProgramada: fi, fechaSeguimiento: ff,
@@ -4353,9 +4361,18 @@ function Paso2({
       [...puntosNuevos].sort((a, b) => a.fechaProgramada.localeCompare(b.fechaProgramada))[0].fechaProgramada.slice(0, 4),
       10,
     );
-    const tareasEnAño = tareasEnElAñoDeLosCortes(tareas || [], añoCortes, añoBaseDelPlan);
+    // Las tareas automáticas del Rol 4 (auditorías del Programa Anual y planes de
+    // mejoramiento) no se mueven de año: van una por cada corte que cubre su auditoría o
+    // plan, con la fecha de seguimiento del corte, igual que las arma el backend (EFDS-2237).
+    const automaticas = repartirTareasAutomaticasEnCortes(
+      (tareas || []).filter((t) => esTareaAutomaticaDelRol4(t)) as any[],
+      puntosNuevos,
+    ) as TareaSeguimiento[];
+    const tareasPlantilla = (tareas || []).filter((t) => !esTareaAutomaticaDelRol4(t));
+    const tareasEnAño = tareasEnElAñoDeLosCortes(tareasPlantilla, añoCortes, añoBaseDelPlan);
 
-    return tareasEnAño.map((tarea, tIdx) => {
+    const remapeadas = tareasEnAño.map((tarea, tIdx) => {
+
       const corteViejo = puntosViejos.find((p) => p.id === tarea.puntoControlId);
       const corteNuevo = puntosNuevos.find((p) => p.id === tarea.puntoControlId);
 
@@ -4387,6 +4404,7 @@ function Paso2({
       const fallbackPunto = puntosNuevos[tIdx % puntosNuevos.length];
       return { ...tarea, puntoControlId: fallbackPunto.id };
     });
+    return [...remapeadas, ...automaticas];
   };
 
   const guardarPuntosControl = (puntos: PuntoControl[], frecuencia: FrecuenciaPuntoControl, fechaCorteModal: string) => {
@@ -5011,14 +5029,14 @@ function Paso2({
                                         </div>
                                         <button
                                           type="button"
-                                          disabled={soloLectura || cortePorVigencia}
-                                          title={cortePorVigencia ? 'Las tareas de esta actividad vienen del Programa Anual' : undefined}
+                                          disabled={soloLectura}
+                                          title={cortePorVigencia ? 'Las tareas vienen del Programa Anual: al configurar cortes, cada auditoría queda en el corte de su fecha de inicio' : undefined}
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             abrirConfiguracionPuntosControl(rol.numero, actividad.nombre, false);
                                           }}
                                           className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-colors ${
-                                            soloLectura || cortePorVigencia
+                                            soloLectura
                                               ? 'bg-slate-400 text-slate-100 cursor-default'
                                               : 'bg-blue-600 hover:bg-blue-700 text-white'
                                           }`}
@@ -6425,7 +6443,7 @@ function Paso3({
                   />
                 </div>
                 <p className="text-[10px] text-gray-500 leading-tight bg-white/50 p-2 rounded border border-blue-100">
-                  <span className="font-semibold text-blue-600">Tip:</span> Solo aparecen profesionales configurados con rol <code className="text-[9px]">Aprobador PAI</code>. El orden importa si el flujo es secuencial.
+                  <span className="font-semibold text-blue-600">Tip:</span> Solo aparecen profesionales configurados con rol <code className="text-[9px]">Aprobador Plan Anual</code>. El orden importa si el flujo es secuencial.
                 </p>
               </div>
               )}
@@ -6463,7 +6481,7 @@ function Paso3({
                         if (r.includes('líder') || r.includes('lider') || r.includes('senior') || r.includes('sénior')) return 'bg-cyan-100 text-cyan-700';
                         if (r.includes('junior') || r.includes('júnior')) return 'bg-green-100 text-green-700';
                         if (r.includes('auditado')) return 'bg-amber-100 text-amber-700';
-                        if (r.includes('aprobador pai')) return 'bg-orange-100 text-orange-700';
+                        if (r.includes('aprobador')) return 'bg-orange-100 text-orange-700';
                         return 'bg-blue-100 text-blue-700';
                       };
 
@@ -6501,7 +6519,7 @@ function Paso3({
                           </div>
 
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${getRoleBadgeColor(miembro.cargo || 'Funcionario')}`}>
-                            {miembro.cargo || 'Funcionario'}
+                            {miembro.cargo ? String(normalizarRolOcigOperativo(miembro.cargo)) : 'Funcionario'}
                           </span>
 
                           {!soloLectura && (
@@ -7802,6 +7820,9 @@ function SeccionGestionYSeguimiento({
         }))
         .filter((a) => a.id && a.url),
       puntoControlId: t.puntoControlId || null,
+      // Tareas automáticas del Rol 4: auditoría/plan, periodo del corte y la fecha de
+      // seguimiento aparte de la fecha límite (EFDS-2237)
+      ...camposDeSincronizacion(t as any),
     }));
 
   // Verificar si el usuario actual puede gestionar tareas de seguimiento
@@ -7953,6 +7974,22 @@ function SeccionGestionYSeguimiento({
         .catch(e => console.error('Error persistiendo tarea:', e));
     }
     toast.success(tareasActualizadas.find(t => t.id === tareaId)?.completada ? 'Tarea completada' : 'Tarea reabierta');
+  };
+
+  // Fecha de seguimiento de una tarea: viene por defecto del corte y se puede cambiar (EFDS-2237)
+  const cambiarFechaSeguimientoTarea = async (
+    rolNumero: number,
+    actividadId: string | number,
+    tareaId: string,
+    fecha: string,
+  ) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return;
+    const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
+    if (!actividadActual) return;
+    const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
+    const tareasActualizadas = tareasActuales.map(t => (t.id === tareaId ? { ...t, fechaEntrega: fecha } : t));
+    await persistirTareasYRecalcularAvance(rolNumero, actividadId, tareasActualizadas);
+    toast.success('Fecha de seguimiento actualizada');
   };
 
   const persistirTareasYRecalcularAvance = async (
@@ -9792,7 +9829,7 @@ function SeccionGestionYSeguimiento({
                                     <>
                                       {(rol as any).responsables.slice(0, 1).map((resp: Auditor) => (
                                         <div key={resp.id} className="flex items-center gap-1.5 bg-teal-50 border border-teal-200 rounded-full px-3 py-1">
-                                          <div className="w-5 h-5 rounded-full bg-teal-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                                          <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ background: '#0d9488' }}>
                                             {resp.nombre.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}
                                           </div>
                                           <span className="text-sm font-medium text-gray-900 whitespace-nowrap">{resp.nombre}</span>
@@ -10033,6 +10070,19 @@ function SeccionGestionYSeguimiento({
                                                     {tarea.descripcion}
                                                   </p>
                                                 </div>
+                                                {/* Fecha de seguimiento de la tarea (editable) y, en las automáticas del Rol 4, el fin de su auditoría o plan (EFDS-2237) */}
+                                                <div className="ml-7 mt-1.5 flex flex-wrap items-center gap-1.5">
+                                                  <FechaSeguimientoTareaChip
+                                                    fecha={tarea.fechaEntrega || (tarea as any).fechaLimite}
+                                                    editable={puedeGestionarTareas(rol)}
+                                                    onCambiar={(f) => cambiarFechaSeguimientoTarea(rol.numero, actividad.id, tarea.id, f)}
+                                                  />
+                                                  {esTareaAutomaticaDelRol4(tarea) && (tarea as any).fechaLimite && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-gray-100 text-gray-600" title={esTareaDelProgramaAnual(tarea) ? 'Fin de la auditoría' : 'Fecha límite del plan de mejoramiento'}>
+                                                      ⏰ Límite: {new Date(`${String((tarea as any).fechaLimite).slice(0, 10)}T00:00:00`).toLocaleDateString('es-CO')}
+                                                    </span>
+                                                  )}
+                                                </div>
                                                 <div className="ml-7 mt-2 flex flex-wrap gap-1.5">
                                                   <button
                                                     type="button"
@@ -10143,6 +10193,16 @@ function SeccionGestionYSeguimiento({
                                                 placeholder="Descripción de la tarea *"
                                                 className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md"
                                               />
+                                              {/* Fecha de seguimiento: por defecto el mes siguiente al corte, editable (EFDS-2237) */}
+                                              <label className="flex items-center gap-2 text-[11px] text-gray-700">
+                                                <span className="font-semibold">Fecha de seguimiento</span>
+                                                <input
+                                                  type="date"
+                                                  value={nuevaTarea.fechaLimite}
+                                                  onChange={(e) => setNuevaTarea({ ...nuevaTarea, fechaLimite: e.target.value })}
+                                                  className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white"
+                                                />
+                                              </label>
                                               <div className="flex justify-end gap-2">
                                                 <button
                                                   type="button"
@@ -10150,15 +10210,17 @@ function SeccionGestionYSeguimiento({
                                                     setFormTareaCorteKey(null);
                                                     setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false });
                                                   }}
-                                                  className="px-2 py-1 text-xs border border-gray-300 rounded"
+                                                  className="px-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-700"
                                                 >
                                                   Cancelar
                                                 </button>
+                                                {/* Color fijo: la clase de Tailwind no venía en los estilos del módulo y el botón quedaba blanco (EFDS-2237) */}
                                                 <button
                                                   type="button"
                                                   disabled={guardandoTarea}
                                                   onClick={() => agregarTareaSeguimiento(rol.numero, actividad.id, pc.id)}
-                                                  className="px-2 py-1 text-xs font-bold text-white bg-teal-600 rounded disabled:opacity-50"
+                                                  className="px-2 py-1 text-xs font-bold rounded disabled:opacity-50"
+                                                  style={{ background: '#0d9488', color: '#ffffff' }}
                                                 >
                                                   {guardandoTarea ? 'Guardando...' : 'Guardar tarea'}
                                                 </button>
@@ -10171,6 +10233,7 @@ function SeccionGestionYSeguimiento({
                                                 e.stopPropagation();
                                                 setFormTareaCorteKey(formKey);
                                                 setFormTareaActividadId(null);
+                                                setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: fechaSeguimientoPorDefecto(pc) || '', requiereAdjuntos: false, requiereObservaciones: false });
                                               }}
                                               className="mt-2 text-[10px] font-semibold text-teal-700 hover:text-teal-900"
                                             >
@@ -10481,8 +10544,10 @@ function SeccionGestionYSeguimiento({
                                           className={`px-4 py-1.5 text-xs font-bold rounded-md transition-colors ${
                                             guardandoTarea || !nuevaTarea.descripcion.trim()
                                               ? 'bg-gray-300 text-gray-500 border border-gray-400 cursor-not-allowed'
-                                              : 'bg-teal-700 text-white border border-teal-800 hover:bg-teal-800 shadow-sm'
+                                              : 'shadow-sm'
                                           }`}
+                                          // Color fijo: bg-teal-700 no venía en los estilos del módulo y el botón quedaba blanco (EFDS-2237)
+                                          style={guardandoTarea || !nuevaTarea.descripcion.trim() ? undefined : { background: '#0f766e', color: '#ffffff', border: '1px solid #115e59' }}
                                         >{guardandoTarea ? 'Guardando...' : '+ Agregar tarea'}</button>
                                       </div>
                                     </div>
