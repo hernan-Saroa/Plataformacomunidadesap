@@ -29,7 +29,11 @@ export class PersonasController {
   @Get()
   @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({ summary: 'Personas para los selectores del estudio previo' })
-  async listar(@Query('q') q?: string, @Query('limit') limit?: string) {
+  async listar(
+    @Query('q') q?: string,
+    @Query('limit') limit?: string,
+    @Query('dependencia') dependencia?: string,
+  ) {
     const solicitado = limit ? parseInt(limit, 10) : LIMITE_POR_DEFECTO;
     const tope = Number.isNaN(solicitado) || solicitado <= 0
       ? LIMITE_POR_DEFECTO
@@ -37,17 +41,24 @@ export class PersonasController {
 
     const busqueda = (q ?? '').trim();
 
+    // La dependencia llega por nombre y no por id porque así la guarda el
+    // estudio previo (ver SelectorDependencia): el jefe del área se busca
+    // entre quienes gestión de personas tiene asignados a esa dependencia.
+    const area = (dependencia ?? '').trim();
+
     // Parámetros ligados, nunca interpolados: el término viene del navegador.
     const filas = await this.dataSource.query(
       `SELECT p.id_person       AS id,
               COALESCE(p.nom_largo, p.nom_tercero) AS nombre,
               p.dir_email       AS email
          FROM auth.personas p
+         LEFT JOIN auth.dependencias d ON d.id_dependencia = p.id_dependencia
         WHERE COALESCE(p.nom_largo, p.nom_tercero) IS NOT NULL
           AND ($1 = '' OR COALESCE(p.nom_largo, p.nom_tercero) ILIKE '%' || $1 || '%')
+          AND ($3 = '' OR d.nom_dependencia = $3)
         ORDER BY nombre
         LIMIT $2`,
-      [busqueda, tope],
+      [busqueda, tope, area],
     );
 
     return filas;

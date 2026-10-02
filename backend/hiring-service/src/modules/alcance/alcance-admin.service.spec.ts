@@ -141,3 +141,44 @@ describe('AlcanceAdminService · mio', () => {
     });
   });
 });
+
+describe('AlcanceAdminService · responsables', () => {
+  const servicio = (roles: any[]) => {
+    const service = new AlcanceAdminService({} as never, {} as never, {} as never);
+    jest.spyOn(service, 'roles').mockResolvedValue(roles);
+    return service;
+  };
+
+  it('nombra a los roles que pueden trabajar, aprobar o decidir cada punto', async () => {
+    const service = servicio([
+      {
+        nombre: 'Dirección Financiera',
+        acciones: ['ver', 'editar', 'decidir'],
+        alcances: [
+          { accion: 'ver', lugar: 'E4', confirmado: false },
+          { accion: 'editar', lugar: '4.2', confirmado: false },
+          { accion: 'decidir', lugar: '8.3', confirmado: false },
+        ],
+      },
+    ]);
+
+    await expect(service.responsables()).resolves.toEqual([
+      { rol: 'Dirección Financiera', accion: 'editar', lugar: '4.2' },
+      { rol: 'Dirección Financiera', accion: 'decidir', lugar: '8.3' },
+    ]);
+  });
+
+  it('no nombra a quien tiene el alcance pero no el permiso de la acción', async () => {
+    // El backoffice le quitó «aprobar»: el alcance sigue sembrado, pero no abre
+    // nada, y mandar a esperarlo sería mandar a esperar a quien no puede actuar.
+    const service = servicio([
+      {
+        nombre: 'Revisor',
+        acciones: ['ver'],
+        alcances: [{ accion: 'aprobar', lugar: 'E3', confirmado: false }],
+      },
+    ]);
+
+    await expect(service.responsables()).resolves.toEqual([]);
+  });
+});

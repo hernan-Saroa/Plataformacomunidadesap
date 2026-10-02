@@ -21,6 +21,12 @@ interface Props {
   valor: any;
   error?: string;
   disabled?: boolean;
+  /**
+   * El área solicitante elegida en el mismo formulario. Los campos de
+   * `CAMPOS_DE_PERSONA` solo ofrecen gente de esa dependencia; `undefined`
+   * cuando el formulario no pide área y no hay con qué filtrar.
+   */
+  dependencia?: string;
   onChange: (valor: any) => void;
 }
 
@@ -37,7 +43,7 @@ function formatearMoneda(valor: number | string | undefined): string {
  * Pinta un campo según su `tipo`. Los tipos vienen de la configuración en base
  * de datos, así que agregar un campo al estudio previo no toca este archivo.
  */
-export function CampoDinamico({ campo, valor, error, disabled, onChange }: Props) {
+export function CampoDinamico({ campo, valor, error, disabled, dependencia, onChange }: Props) {
   // Los campos de solo lectura se muestran siempre inertes, aunque el estudio
   // previo esté en borrador: su valor se define al crear el proceso.
   const soloLectura = campo.soloLectura === true;
@@ -59,13 +65,18 @@ export function CampoDinamico({ campo, valor, error, disabled, onChange }: Props
     // escriben: con texto libre la misma persona queda registrada de varias
     // formas y el expediente deja de servir para filtrar por responsable.
     if (CAMPOS_DE_PERSONA.includes(campo.codigo)) {
+      // Sin área elegida no hay de dónde sacar al jefe: se pide primero el
+      // área en vez de ofrecer a toda la entidad.
+      const sinArea = dependencia !== undefined && !dependencia;
       return (
         <SelectorPersona
           id={id}
           value={valor ?? ''}
-          disabled={disabled}
+          disabled={disabled || sinArea}
           invalido={!!error}
           onChange={onChange}
+          dependencia={dependencia || undefined}
+          placeholder={sinArea ? 'Primero elige el área solicitante' : undefined}
         />
       );
     }

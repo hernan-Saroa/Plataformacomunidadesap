@@ -127,6 +127,25 @@ export function DocumentosQuePide({ numeral, modalidades }: Props) {
   const activos = filas.filter((f) => f.activo);
   const retirados = filas.filter((f) => !f.activo);
 
+  /**
+   * Modalidades en las que la 3.1 se radicaría sin ningún documento obligatorio.
+   *
+   * El envío pide exactamente lo que dice esta lista (opción A de la
+   * reestructuración): ya no hay un adjunto exigido por defecto. Si alguien
+   * retira todos los formatos de una modalidad, el estudio previo se radica
+   * sin soporte, y el único sitio donde eso se puede ver y corregir es aquí.
+   * Una fila sin modalidades aplica a todas.
+   */
+  const sinObligatorios =
+    numeral === '3.1'
+      ? modalidades.filter(
+          (m) =>
+            !activos.some(
+              (f) => f.obligatorio && (f.modalidades.length === 0 || f.modalidades.includes(m.codigo)),
+            ),
+        )
+      : [];
+
   const guardar = async (id: string | 'nueva', b: Borrador) => {
     const datos: DatosDocumentoRequerido = {
       nombre: b.nombre.trim(),
@@ -238,6 +257,23 @@ export function DocumentosQuePide({ numeral, modalidades }: Props) {
           </button>
         )}
       </div>
+
+      {sinObligatorios.length > 0 && (
+        <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3.5 py-2.5">
+          <p className="text-[12.5px] font-bold text-amber-800 m-0">
+            {sinObligatorios.length === modalidades.length
+              ? 'El estudio previo se radicaría sin ningún documento obligatorio'
+              : 'En algunas modalidades el estudio previo se radicaría sin documentos obligatorios'}
+          </p>
+          <p className="text-[12px] text-amber-900 m-0 mt-0.5 leading-relaxed">
+            El envío de la 3.1 pide solo lo que está en esta lista.
+            {sinObligatorios.length === modalidades.length
+              ? ' Hoy no hay ningún obligatorio activo.'
+              : ` Sin obligatorios: ${sinObligatorios.map((m) => m.nombre).join(', ')}.`}{' '}
+            Agrega el formato del estudio previo o reactiva uno retirado.
+          </p>
+        </div>
+      )}
 
       {editando === 'nueva' && (
         <Formulario
