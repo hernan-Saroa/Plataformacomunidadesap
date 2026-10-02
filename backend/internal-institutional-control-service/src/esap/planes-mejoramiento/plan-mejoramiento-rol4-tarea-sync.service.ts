@@ -11,6 +11,17 @@ import {
   PlanMejoramientoEstado,
 } from './entities/plan-mejoramiento.entity';
 import type { TareaSeguimientoPlan } from '../plan-anual-5-roles/programa-anual-rol4-tarea-sync.service';
+import {
+  cortesComoPeriodos,
+  cortesPorDefecto,
+  frecuenciaDeLaActividad,
+  fuenteDeLaTarea,
+  tareasDeLaFuentePorCorte,
+} from '../plan-anual-5-roles/rol4-tareas-por-corte';
+
+/** La tarea es de este plan, venga con o sin corte en el id (`tarea-pm-<plan>-c-<corte>`). */
+const esDelPlan = (t: TareaSeguimientoPlan, planId: string) =>
+  t.planMejoramientoId === planId || fuenteDeLaTarea(t.id, 'tarea-pm-') === planId;
 
 export const ORIGEN_TAREA_PLAN_MEJORAMIENTO = 'plan_mejoramiento';
 
@@ -104,62 +115,64 @@ export class PlanMejoramientoRol4TareaSyncService {
     const tareaId = `tarea-pm-${plan.id}`;
 
     const tareasActuales = this.parseTareas(actividad.tareas_seguimiento);
+    const previas = tareasActuales.filter((t) => esDelPlan(t, plan.id));
+    const sinAuto = tareasActuales.filter((t) => !esDelPlan(t, plan.id));
 
-    const previa = tareasActuales.find(
-      (t) =>
-        t.planMejoramientoId === plan.id ||
-        t.id === tareaId ||
-        (t.origen === ORIGEN_TAREA_PLAN_MEJORAMIENTO &&
-          t.planMejoramientoId === plan.id),
-    );
+    // Las fechas salen del plan: desde que se aprueba hasta su fecha límite
+    const fechaLimiteStr = this.formatFecha(plan.fechaLimite) ?? `${vigencia}-12-31`;
+    const fechaInicioStr = this.formatFecha(plan.fechaAprobacion) ?? `${vigencia}-01-01`;
 
-    const sinAuto = tareasActuales.filter(
-      (t) =>
-        t.planMejoramientoId !== plan.id &&
-        t.id !== tareaId &&
-        !(
-          t.origen === ORIGEN_TAREA_PLAN_MEJORAMIENTO &&
-          t.planMejoramientoId === plan.id
-        ),
-    );
+    const responsablesPorDefecto =
+      resp !== 'Sin asignar'
+        ? [{ id: `resp-pm-${plan.id}`, nombre: resp, cargo: 'Responsable implementación' }]
+        : [];
 
-    const fechaLimiteStr = this.formatFecha(plan.fechaLimite);
-    const fechaInicioStr =
-      this.formatFecha(plan.fechaAprobacion) ?? `${vigencia}-01-01`;
+    // Cortes de la actividad; si no tiene, se crean según su "Control" (EFDS-2237)
+    let puntos = this.parseLista(actividad.puntos_control);
+    const cortesCreados = puntos.length === 0;
+    if (cortesCreados) {
+      puntos = cortesPorDefecto(
+        frecuenciaDeLaActividad(actividad.control, actividad.frecuencia_puntos_control),
+        vigencia,
+        `pc-${actividad.id}`,
+      );
+    }
 
-    const responsables =
-      previa?.responsables?.length
-        ? previa.responsables
-        : resp !== 'Sin asignar'
-          ? [
-              {
-                id: `resp-pm-${plan.id}`,
-                nombre: resp,
-                cargo: 'Responsable implementación',
-              },
-            ]
-          : [];
+    // Una tarea por cada corte que cubre el plan, conservando lo registrado en cada una
+    const nuevas = tareasDeLaFuentePorCorte({
+      prefijo: tareaId,
+      inicio: fechaInicioStr,
+      fin: fechaLimiteStr,
+      cortes: cortesComoPeriodos(puntos),
+      previas,
+      base: (previa) => ({
+        descripcion,
+        responsables: (previa?.responsables as TareaSeguimientoPlan['responsables'])?.length
+          ? (previa?.responsables as TareaSeguimientoPlan['responsables'])
+          : responsablesPorDefecto,
+        fechaInicio: fechaInicioStr,
+        fechaLimite: fechaLimiteStr,
+        origen: ORIGEN_TAREA_PLAN_MEJORAMIENTO,
+        planMejoramientoId: plan.id,
+        auditoriaId: plan.auditoriaId ?? undefined,
+        areaResponsable: area,
+      }),
+    });
 
-    const nuevaTarea: TareaSeguimientoPlan = {
-      id: tareaId,
-      descripcion,
-      completada: previa?.completada ?? false,
-      responsables,
-      fechaInicio: previa?.fechaInicio ?? fechaInicioStr,
-      fechaLimite: previa?.fechaLimite ?? fechaLimiteStr ?? `${vigencia}-12-31`,
-      fechaCompletada: previa?.fechaCompletada,
-      completadaPor: previa?.completadaPor,
-      origen: ORIGEN_TAREA_PLAN_MEJORAMIENTO,
-      planMejoramientoId: plan.id,
-      auditoriaId: plan.auditoriaId ?? undefined,
-      areaResponsable: area,
-    };
+    if (cortesCreados) {
+      await this.dataSource.query(
+        `UPDATE control_interno.actividad_plan_anual_5
+         SET puntos_control = $1::jsonb, frecuencia_puntos_control = $2, updated_at = NOW()
+         WHERE id = $3`,
+        [JSON.stringify(puntos), frecuenciaDeLaActividad(actividad.control, actividad.frecuencia_puntos_control), actividad.id],
+      );
+    }
 
     await this.dataSource.query(
       `UPDATE control_interno.actividad_plan_anual_5
        SET tareas_seguimiento = $1::jsonb, updated_at = NOW()
        WHERE id = $2`,
-      [JSON.stringify([...sinAuto, nuevaTarea]), actividad.id],
+      [JSON.stringify([...sinAuto, ...nuevas]), actividad.id],
     );
 
     this.logger.log(
@@ -174,15 +187,7 @@ export class PlanMejoramientoRol4TareaSyncService {
 
     const tareasActuales = this.parseTareas(actividad.tareas_seguimiento);
     const tareaId = `tarea-pm-${plan.id}`;
-    const filtradas = tareasActuales.filter(
-      (t) =>
-        t.planMejoramientoId !== plan.id &&
-        t.id !== tareaId &&
-        !(
-          t.origen === ORIGEN_TAREA_PLAN_MEJORAMIENTO &&
-          t.planMejoramientoId === plan.id
-        ),
-    );
+    const filtradas = tareasActuales.filter((t) => t.id !== tareaId && !esDelPlan(t, plan.id));
 
     if (filtradas.length === tareasActuales.length) return;
 
@@ -234,9 +239,15 @@ export class PlanMejoramientoRol4TareaSyncService {
 
   private async obtenerActividadPlanesMejoramientoRol4(
     vigencia: number,
-  ): Promise<{ id: string; tareas_seguimiento: unknown } | null> {
+  ): Promise<{
+    id: string;
+    tareas_seguimiento: unknown;
+    puntos_control: unknown;
+    control: string | null;
+    frecuencia_puntos_control: string | null;
+  } | null> {
     const rows = await this.dataSource.query(
-      `SELECT a.id, a.tareas_seguimiento
+      `SELECT a.id, a.tareas_seguimiento, a.puntos_control, a.control, a.frecuencia_puntos_control
        FROM control_interno.actividad_plan_anual_5 a
        INNER JOIN control_interno.rol_plan_anual_5 r ON a.rol_id = r.id
        INNER JOIN control_interno.plan_anual_5_roles p ON r.plan_id = p.id
@@ -268,7 +279,7 @@ export class PlanMejoramientoRol4TareaSyncService {
 
     // Fallback: 2.ª actividad del Rol 4 (plantilla: 1 auditorías, 2 planes de mejoramiento)
     const fallback = await this.dataSource.query(
-      `SELECT a.id, a.tareas_seguimiento
+      `SELECT a.id, a.tareas_seguimiento, a.puntos_control, a.control, a.frecuencia_puntos_control
        FROM control_interno.actividad_plan_anual_5 a
        INNER JOIN control_interno.rol_plan_anual_5 r ON a.rol_id = r.id
        INNER JOIN control_interno.plan_anual_5_roles p ON r.plan_id = p.id
@@ -288,6 +299,19 @@ export class PlanMejoramientoRol4TareaSyncService {
     );
 
     return fallback?.[0] ?? null;
+  }
+
+  private parseLista(raw: unknown): Array<{ id?: unknown; fechaProgramada?: unknown; fechaSeguimiento?: unknown }> {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
   }
 
   private parseTareas(raw: unknown): TareaSeguimientoPlan[] {
