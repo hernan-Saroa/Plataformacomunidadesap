@@ -37,10 +37,16 @@ beforeEach(() => {
   leg.reemplazarChecklist.mockResolvedValue([]);
 });
 
+/**
+ * La lista se llena en un render posterior al título (useEffect sobre config/tipo):
+ * esperar el título deja una carrera que bajo la carga de la suite completa falla.
+ */
+const esperarLista = () => screen.findAllByRole('listitem');
+
 describe('EFDS-1309 — soportes de legalización administrables', () => {
   it('muestra solo los soportes activos del tipo de comisionado, en su orden', async () => {
     render(<ConfigSoportesLegalizacion />);
-    await screen.findByText('Soportes de legalización');
+    await esperarLista();
     const nombres = screen.getAllByRole('listitem').map((li) => li.textContent);
     expect(nombres[0]).toContain('1. Formato GF-FO-031');
     expect(nombres[1]).toContain('2. Agenda cumplida');
@@ -49,7 +55,7 @@ describe('EFDS-1309 — soportes de legalización administrables', () => {
 
   it('modifica requisito, condición y orden, agrega del catálogo y guarda el checklist completo', async () => {
     render(<ConfigSoportesLegalizacion />);
-    await screen.findByText('Soportes de legalización');
+    await esperarLista();
     const guardar = screen.getByRole('button', { name: /Guardar soportes de legalización/ });
     expect(guardar).toBeDisabled();
 
@@ -70,7 +76,7 @@ describe('EFDS-1309 — soportes de legalización administrables', () => {
 
   it('quitar un soporte lo saca del checklist enviado', async () => {
     render(<ConfigSoportesLegalizacion />);
-    await screen.findByText('Soportes de legalización');
+    await esperarLista();
     fireEvent.click(screen.getByRole('button', { name: 'Quitar Agenda cumplida' }));
     fireEvent.click(screen.getByRole('button', { name: /Guardar soportes de legalización/ }));
     await waitFor(() => expect(leg.reemplazarChecklist).toHaveBeenCalledWith('FUNCIONARIO', [
@@ -81,7 +87,7 @@ describe('EFDS-1309 — soportes de legalización administrables', () => {
   it('crea un documento nuevo en el catálogo y lo agrega al checklist de legalización', async () => {
     via.crearTipoDocumentoSoporte.mockResolvedValue(doc('LEG_CERT_ASISTENCIA', 'Certificado de asistencia'));
     render(<ConfigSoportesLegalizacion />);
-    await screen.findByText('Soportes de legalización');
+    await esperarLista();
     fireEvent.change(screen.getByLabelText('Código'), { target: { value: 'leg_cert_asistencia' } });
     fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Certificado de asistencia' } });
     fireEvent.click(screen.getByRole('button', { name: /Crear y agregar/ }));
@@ -92,7 +98,7 @@ describe('EFDS-1309 — soportes de legalización administrables', () => {
 
   it('rechaza un código inválido sin llamar al servicio', async () => {
     render(<ConfigSoportesLegalizacion />);
-    await screen.findByText('Soportes de legalización');
+    await esperarLista();
     fireEvent.change(screen.getByLabelText('Código'), { target: { value: 'X' } });
     fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Algo' } });
     fireEvent.click(screen.getByRole('button', { name: /Crear y agregar/ }));
@@ -102,7 +108,7 @@ describe('EFDS-1309 — soportes de legalización administrables', () => {
 
   it('cambiar de tipo de comisionado muestra su propio checklist', async () => {
     render(<ConfigSoportesLegalizacion />);
-    await screen.findByText('Soportes de legalización');
+    await esperarLista();
     fireEvent.change(screen.getByLabelText('Tipo de comisionado'), { target: { value: 'CONTRATISTA' } });
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
   });
