@@ -65,6 +65,9 @@ import { ProcesarPagoDto } from '../../dto/procesar-pago.dto';
 import {
   FirmarSolicitudDto,
   DevolverFirmaDto,
+  SolicitarOtpFirmaDto,
+  VerificarOtpFirmaDto,
+  SolicitarFirmasDto,
 } from '../../dto/firmar-solicitud.dto';
 
 import { getClientIp } from '../../common/ip.util';
@@ -298,6 +301,45 @@ export class TravelExpensesController {
   })
   consultarComisionado(@Param('documento') documento: string) {
     return this.service.consultarComisionado(documento);
+  }
+
+  @Post('comisionados/:documento/cuentas-bancarias')
+  @ApiOperation({
+    summary: 'Registrar o actualizar una cuenta bancaria en el perfil del comisionado',
+  })
+  agregarCuentaBancaria(
+    @Param('documento') documento: string,
+    @Body()
+    body: {
+      banco: string;
+      tipoCuenta: string;
+      numeroCuenta: string;
+      urlCertificadoBancario?: string;
+      nombreArchivoCertificado?: string;
+      esPrincipal?: boolean;
+    },
+  ) {
+    return this.service.agregarCuentaBancariaComisionado(documento, body);
+  }
+
+  @Post('comisionados/:documento/cargos')
+  @ApiOperation({
+    summary: 'Registrar o actualizar un cargo y su salario relacional en el comisionado',
+  })
+  agregarCargo(
+    @Param('documento') documento: string,
+    @Body()
+    body: {
+      idCargo?: number;
+      cargo: string;
+      salario: number;
+      idDependencia?: number;
+      fechaInicio?: string;
+      fechaFin?: string;
+      esPrincipal?: boolean;
+    },
+  ) {
+    return this.service.agregarCargoComisionado(documento, body);
   }
 
   @Get('comisionados/:documento/solicitudes-pendientes')
@@ -545,25 +587,77 @@ export class TravelExpensesController {
     return this.service.obtenerEstadoFirmas(id);
   }
 
+  @Post('requests/:id/firmas/solicitar-otp')
+  @ApiOperation({
+    summary: 'Solicita un código de validación OTP enviado al correo institucional para firma digital de viáticos',
+    description:
+      'Genera un código OTP de 6 dígitos numéricos con validez de 5 minutos y lo envía al correo institucional del usuario firmante.',
+  })
+  @Permissions(
+    'travel_expenses:sign_approval',
+    'travel_expenses:create_request',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+  )
+  solicitarOtpFirma(
+    @Param('id') id: string,
+    @Body() dto: SolicitarOtpFirmaDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    return this.service.solicitarOtpFirma(id, dto || {}, req.user?.userId || '');
+  }
+
+  @Post('requests/:id/firmas/verificar-otp')
+  @ApiOperation({
+    summary: 'Verifica la validez de un código OTP para la sesión de firma digital',
+  })
+  @Permissions(
+    'travel_expenses:sign_approval',
+    'travel_expenses:create_request',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+  )
+  verificarOtpFirma(
+    @Param('id') id: string,
+    @Body() dto: VerificarOtpFirmaDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const code = (dto.code || dto.otp || '').trim();
+    if (!code) {
+      throw new BadRequestException('El código OTP es requerido.');
+    }
+    const verificationId =
+      dto.verificationId?.trim() ||
+      `viat:${id || 'general'}:${dto.tipoFirma || 'general'}:${req?.user?.userId || ''}`;
+
+    const verified = this.service.verificarOtpFirma({
+      verificationId,
+      code,
+      consume: dto.consume ?? false,
+    });
+    return { success: true, verified };
+  }
+
   @Post('requests/:id/solicitar-firmas')
   @ApiOperation({
     summary: 'Consolida la solicitud e inicia el flujo de firmas de aprobación previo a la radicación',
     description:
-      'Valida que el expediente esté completo (checklist y datos) y transiciona el estado a PENDIENTE_FIRMAS.',
+      'Valida que el expediente esté completo (checklist y datos) y transiciona el estado a PENDIENTE_FIRMAS. Certifica la elaboración del enlace.',
   })
   @Permissions('travel_expenses:create_request')
   solicitarFirmasAprobacion(
     @Param('id') id: string,
+    @Body() dto: SolicitarFirmasDto,
     @Req() req: AuthenticatedRequest,
   ) {
-    return this.service.solicitarFirmasAprobacion(id, req.user?.userId);
+    return this.service.solicitarFirmasAprobacion(id, req.user?.userId, dto);
   }
 
   @Post('requests/:id/firmar')
   @ApiOperation({
-    summary: 'Registra la firma de aprobación de la solicitud (Jefe de Dependencia/Supervisor o Gerente de Proyecto)',
+    summary: 'Registra la firma digital con OTP de la solicitud (Jefe de Dependencia/Supervisor o Gerente de Proyecto)',
     description:
-      'Sin las firmas de aprobación la solicitud no se radica. Surtido el flujo de firmas y validaciones, la solicitud queda en estado RADICADA.',
+      'Valida OTP, emite certificado criptográfico y si se completan ambas firmas la solicitud queda formalmente en estado RADICADA.',
   })
   @Permissions(
     'travel_expenses:sign_approval',

@@ -297,9 +297,9 @@ export function SelectorHoraMilitar({
               value={texto}
               onChange={handleInputChange}
               onBlur={handleBlur}
-              placeholder="08:00"
+              placeholder="00:00"
               className="w-16 font-mono font-black text-slate-900 text-base sm:text-lg tracking-wider text-center bg-transparent focus:outline-none"
-              title="Escriba la hora militar (ej: 08:30 o 14:00)"
+              title="Puede digitar o escribir la hora militar (ej: 08:30) o usar las flechas seleccionadoras"
             />
             <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider pr-1">h</span>
 
@@ -309,7 +309,7 @@ export function SelectorHoraMilitar({
                 type="button"
                 onClick={() => stepHora(1)}
                 className="text-slate-400 hover:text-[#003DA5] hover:bg-blue-50 rounded px-1 text-[9px] font-black transition-colors leading-none py-0.5 cursor-pointer"
-                title="Avanzar 1 hora"
+                title="Avanzar 1 hora (▲)"
               >
                 ▲
               </button>
@@ -317,7 +317,7 @@ export function SelectorHoraMilitar({
                 type="button"
                 onClick={() => stepHora(-1)}
                 className="text-slate-400 hover:text-[#003DA5] hover:bg-blue-50 rounded px-1 text-[9px] font-black transition-colors leading-none py-0.5 cursor-pointer"
-                title="Retroceder 1 hora"
+                title="Retroceder 1 hora (▼)"
               >
                 ▼
               </button>
@@ -329,7 +329,7 @@ export function SelectorHoraMilitar({
                 type="button"
                 onClick={() => stepMinuto(15)}
                 className="text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded px-1 text-[8px] font-black transition-colors leading-none py-0.5 cursor-pointer"
-                title="+15 min"
+                title="Avanzar 15 minutos (+15)"
               >
                 +15
               </button>
@@ -337,7 +337,7 @@ export function SelectorHoraMilitar({
                 type="button"
                 onClick={() => stepMinuto(-15)}
                 className="text-slate-400 hover:text-red-700 hover:bg-red-50 rounded px-1 text-[8px] font-black transition-colors leading-none py-0.5 cursor-pointer"
-                title="-15 min"
+                title="Retroceder 15 minutos (-15)"
               >
                 -15
               </button>
@@ -380,9 +380,9 @@ export function SelectorHoraMilitar({
         <div className="flex items-center justify-between text-[10px] text-slate-500 font-medium px-1">
           <span className="flex items-center gap-1">
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            Horario militar (24h) · Tipee directamente o use ▲▼
+            Puede digitar o escribir la hora directamente o usar las flechas seleccionadoras (▲▼ / ±15)
           </span>
-          <span className="text-slate-400">Sin fechas</span>
+          <span className="text-slate-400">24 horas</span>
         </div>
       )}
     </div>
@@ -421,7 +421,6 @@ function crearRutaVacia(
     diasRuta: 1,
     horarioEstimadoMilitar: '08:00',
     horaEstimadaSalida: '08:00',
-    horaEstimadaLlegada: '14:30',
     tipoTransporte: 'TERRESTRE',
     valorTransporte: 0,
     montoTransporteTerrestre: 0,
@@ -547,15 +546,7 @@ function RutaForm({
   const diasCalculados = calcularDiasRuta(ruta.fechaSalida, ruta.fechaLlegada);
   const horarioValido = esHorarioMilitarValido(ruta.horarioEstimadoMilitar);
 
-  const opcionesSalida = useMemo(
-    () => generarOpcionesHorarioMilitar(ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar),
-    [ruta.horaEstimadaSalida, ruta.horarioEstimadoMilitar],
-  );
 
-  const opcionesLlegada = useMemo(
-    () => generarOpcionesHorarioMilitar(ruta.horaEstimadaLlegada),
-    [ruta.horaEstimadaLlegada],
-  );
 
   const validate = (): ValidationErrors => {
     const newErrors: ValidationErrors = {};
@@ -567,12 +558,9 @@ function RutaForm({
     if (!ruta.fechaSalida) newErrors.fechaSalida = 'Requerida';
     if (!ruta.fechaLlegada) newErrors.fechaLlegada = 'Requerida';
 
-    const hSalida = ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar;
-    if (!hSalida) newErrors.horaEstimadaSalida = 'Seleccione hora de salida en formato militar';
-    else if (!esHorarioMilitarValido(hSalida)) newErrors.horaEstimadaSalida = 'Formato militar HH:mm inválido (ej: 08:00)';
-
-    if (!ruta.horaEstimadaLlegada) newErrors.horaEstimadaLlegada = 'Seleccione hora de llegada en formato militar';
-    else if (!esHorarioMilitarValido(ruta.horaEstimadaLlegada)) newErrors.horaEstimadaLlegada = 'Formato militar HH:mm inválido (ej: 14:30)';
+    const hViaje = ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar;
+    if (!hViaje) newErrors.horaEstimadaSalida = 'Digite o seleccione la hora estimada del viaje en formato militar';
+    else if (!esHorarioMilitarValido(hViaje)) newErrors.horaEstimadaSalida = 'Formato militar HH:mm inválido (ej: 08:00)';
 
     if (ruta.fechaSalida && ruta.fechaLlegada) {
       if (ruta.fechaLlegada < ruta.fechaSalida) {
@@ -842,9 +830,9 @@ function RutaForm({
                     </div>
 
                   <div>
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">
+                    <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">
                       Departamento de Origen <span className="text-red-500">*</span>
-                    </label>
+                    </span>
                     <SearchableSelect
                       options={deptOptions}
                       value={ruta.origenDepartamento}
@@ -856,9 +844,9 @@ function RutaForm({
                   </div>
 
                   <div>
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">
+                    <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">
                       Ciudad de Origen <span className="text-red-500">*</span>
-                    </label>
+                    </span>
                     <SearchableSelect
                       options={ciudadOrigenOptions}
                       value={ruta.origenCiudad}
@@ -892,10 +880,14 @@ function RutaForm({
                   </div>
 
                   <div>
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">
+                    <label
+                      htmlFor="destinoDepartamento"
+                      className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5"
+                    >
                       Departamento de Destino <span className="text-red-500">*</span>
                     </label>
                     <SearchableSelect
+                      id="destinoDepartamento"
                       options={deptOptions}
                       value={ruta.destinoDepartamento}
                       onChange={handleDestinoDeptoChange}
@@ -906,10 +898,14 @@ function RutaForm({
                   </div>
 
                   <div>
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5">
+                    <label
+                      htmlFor="destinoCiudad"
+                      className="text-xs font-bold text-slate-600 uppercase tracking-wider block mb-1.5"
+                    >
                       Ciudad de Destino <span className="text-red-500">*</span>
                     </label>
                     <SearchableSelect
+                      id="destinoCiudad"
                       options={ciudadDestinoOptions}
                       value={ruta.destinoCiudad}
                       onChange={(v) => update('destinoCiudad', v)}
@@ -1023,83 +1019,42 @@ function RutaForm({
                   </div>
                 </div>
 
-                {/* Aviso Destacado de Horario Militar */}
+                {/* Aviso Destacado de Horario Militar y Selector Único de Hora Estimada del Viaje */}
                 <div className="flex items-center gap-2.5 px-3 py-2 bg-blue-50/70 border border-blue-200/80 rounded-xl text-xs text-slate-700 shadow-2xs">
                   <Clock className="w-4 h-4 text-[#003DA5] shrink-0" />
                   <span className="leading-snug text-[11px] sm:text-xs">
-                    <strong className="text-slate-900">Aviso: Horario de Rutas en Formato Militar (24 Horas)</strong> · Registro exclusivo de hora (no sugiere ni admite fechas).
+                    <strong className="text-slate-900">Aviso: Horario de Rutas en Formato Militar (24 Horas)</strong> · Registro exclusivo de hora (no sugiere ni admite fechas). Puede digitar o escribir la hora del viaje directamente o usar las flechas seleccionadoras.
                   </span>
                 </div>
 
-                {/* Subsección 2: Selectores de Horario Militar y Duración Estimada */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                {/* Subsección 2: Selector Único de Hora Estimada del Viaje */}
+                <div className="pt-1">
                   <div>
-                    <label className="text-xs sm:text-sm font-bold text-slate-700 flex items-center gap-1.5 mb-1.5">
-                      <Clock className="w-3.5 h-3.5 text-[#003DA5]" /> Hora estimada salida <span className="text-red-500">*</span>
+                    <label className="text-xs sm:text-sm font-bold text-slate-700 flex items-center gap-1.5 mb-1">
+                      <Clock className="w-3.5 h-3.5 text-[#003DA5]" /> Hora estimada del viaje <span className="text-red-500">*</span>
                     </label>
-                    <SelectorHoraMilitar
-                      ariaLabel="Hora estimada salida"
-                      valor={ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '08:00'}
-                      onChange={(val) => {
-                        onChange({
-                          ...ruta,
-                          horaEstimadaSalida: val,
-                          horarioEstimadoMilitar: val,
-                          guardada: false,
-                        });
-                        setSaved(false);
-                        setErrors((prev) => ({ ...prev, horaEstimadaSalida: undefined, horarioEstimadoMilitar: undefined }));
-                      }}
-                      error={errors.horaEstimadaSalida}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs sm:text-sm font-bold text-slate-700 flex items-center gap-1.5 mb-1.5">
-                      <Clock className="w-3.5 h-3.5 text-[#003DA5]" /> Hora estimada llegada <span className="text-red-500">*</span>
-                    </label>
-                    <SelectorHoraMilitar
-                      ariaLabel="Hora estimada llegada"
-                      valor={ruta.horaEstimadaLlegada || '14:30'}
-                      onChange={(val) => {
-                        onChange({
-                          ...ruta,
-                          horaEstimadaLlegada: val,
-                          guardada: false,
-                        });
-                        setSaved(false);
-                        setErrors((prev) => ({ ...prev, horaEstimadaLlegada: undefined }));
-                      }}
-                      error={errors.horaEstimadaLlegada}
-                    />
+                    <p className="text-[11px] text-slate-500 mb-2 leading-snug">
+                      ℹ️ Puede <strong>digitar o escribir</strong> directamente la hora en formato militar (ej: <span className="font-mono font-semibold text-slate-800">08:00</span> o <span className="font-mono font-semibold text-slate-800">14:30</span>) o usar las <strong>flechas seleccionadoras</strong> (▲/▼ para horas y +15/-15 para minutos).
+                    </p>
+                    <div className="max-w-md">
+                      <SelectorHoraMilitar
+                        ariaLabel="Hora estimada del viaje"
+                        valor={ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '08:00'}
+                        onChange={(val) => {
+                          onChange({
+                            ...ruta,
+                            horaEstimadaSalida: val,
+                            horarioEstimadoMilitar: val,
+                            guardada: false,
+                          });
+                          setSaved(false);
+                          setErrors((prev) => ({ ...prev, horaEstimadaSalida: undefined, horarioEstimadoMilitar: undefined }));
+                        }}
+                        error={errors.horaEstimadaSalida}
+                      />
+                    </div>
                   </div>
                 </div>
-
-                {/* Duración estimada del trayecto */}
-                {(() => {
-                  const hSalida = ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar;
-                  const hLlegada = ruta.horaEstimadaLlegada;
-                  const duracion = calcularDuracionEstimada(hSalida, hLlegada);
-                  if (!duracion) return null;
-                  return (
-                    <div className="p-3 bg-gradient-to-r from-blue-50/90 via-indigo-50/40 to-slate-50 border border-blue-200/80 rounded-xl space-y-1.5 shadow-2xs">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5 text-[#003DA5]" />
-                          Tiempo estimado de desplazamiento:
-                        </span>
-                        <span className="font-black text-[#003DA5] bg-white px-2.5 py-0.5 rounded-lg border border-blue-200 shadow-2xs">
-                          ⏱️ {duracion}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium pt-1 border-t border-blue-100/80">
-                        <span>Salida: <strong className="text-slate-900">{hSalida} h</strong> ({convertirA12h(hSalida || '')})</span>
-                        <span className="text-slate-300 font-bold text-xs">──────▶</span>
-                        <span>Llegada: <strong className="text-slate-900">{hLlegada} h</strong> ({convertirA12h(hLlegada || '')})</span>
-                      </div>
-                    </div>
-                  );
-                })()}
               </div>
 
               {/* Bloque 3: Modalidad de Transporte */}
@@ -1259,10 +1214,9 @@ function RutaForm({
                   <span className="font-bold text-slate-800 block">{ruta.fechaSalida} al {ruta.fechaLlegada}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Horas Estimadas (Militar)</span>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase block">Hora Estimada del Viaje</span>
                   <span className="font-bold text-[#003DA5] block">
                     {formatearHorarioMilitar(ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar)}
-                    {ruta.horaEstimadaLlegada ? ` → ${formatearHorarioMilitar(ruta.horaEstimadaLlegada)}` : ''}
                   </span>
                   <span className="text-[10px] text-slate-500 block truncate">
                     {getLabelTransporte(ruta.tipoTransporte)}
@@ -1408,7 +1362,6 @@ export default function ItinerarioBuilder({
       diasRuta: 1,
       horarioEstimadoMilitar: '14:00',
       horaEstimadaSalida: '14:00',
-      horaEstimadaLlegada: '16:00',
       tipoTransporte: ultimoTramo.tipoTransporte || 'TERRESTRE',
       valorTransporte: ultimoTramo.valorTransporte || 0,
       montoTransporteTerrestre: ultimoTramo.montoTransporteTerrestre || 0,

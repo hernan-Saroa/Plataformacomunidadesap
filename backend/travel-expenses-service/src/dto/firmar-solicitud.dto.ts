@@ -4,6 +4,8 @@ import { IsEnum, IsNotEmpty, IsOptional, IsString, IsBoolean } from 'class-valid
 export enum TipoFirmaAprobacion {
   JEFE_DEPENDENCIA = 'JEFE_DEPENDENCIA',
   GERENTE_PROYECTO = 'GERENTE_PROYECTO',
+  ENLACE_ELABORO = 'ENLACE_ELABORO',
+  ANALISTA = 'ANALISTA',
 }
 
 export class FirmarSolicitudDto {
@@ -62,6 +64,45 @@ export class FirmarSolicitudDto {
   @IsOptional()
   @IsString()
   comentarios?: string;
+
+  @ApiPropertyOptional({
+    description: 'Código OTP de 6 dígitos verificado para la firma',
+    example: '654321',
+  })
+  @IsOptional()
+  @IsString()
+  otp?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador de la verificación OTP generada previamente',
+    example: 'viat:sol-123:JEFE_DEPENDENCIA:usr-456',
+  })
+  @IsOptional()
+  @IsString()
+  verificationId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador único del certificado digital ESAP emitido',
+    example: 'ESAP-CERT-VIAT-AB12-CD34',
+  })
+  @IsOptional()
+  @IsString()
+  certificadoId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hash SHA-256 criptográfico del documento / solicitud',
+  })
+  @IsOptional()
+  @IsString()
+  hashSha256?: string;
+
+  @ApiPropertyOptional({
+    description: 'Número de documento de identidad / cédula del firmante',
+    example: '1023456789',
+  })
+  @IsOptional()
+  @IsString()
+  documentoIdentidad?: string;
 }
 
 export class DevolverFirmaDto {
@@ -73,3 +114,116 @@ export class DevolverFirmaDto {
   @IsNotEmpty()
   motivo: string;
 }
+
+export class SolicitarOtpFirmaDto {
+  @ApiPropertyOptional({
+    description: 'Tipo de firma para la cual se solicita el OTP (JEFE_DEPENDENCIA, GERENTE_PROYECTO, ENLACE_ELABORO)',
+  })
+  @IsOptional()
+  @IsString()
+  tipoFirma?: string;
+
+  @ApiPropertyOptional({
+    description: 'Etiqueta o nombre descriptivo de la etapa de firma',
+    example: 'Aprobación de la Solicitud de Comisión (Formato 023)',
+  })
+  @IsOptional()
+  @IsString()
+  etapaLabel?: string;
+}
+
+export class VerificarOtpFirmaDto {
+  @ApiPropertyOptional({
+    description: 'Identificador de la sesión de verificación OTP',
+    example: 'viat:sol-123:JEFE_DEPENDENCIA:usr-456',
+  })
+  @IsOptional()
+  @IsString()
+  verificationId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Código numérico OTP de 6 dígitos ingresado por el usuario',
+    example: '123456',
+  })
+  @IsOptional()
+  @IsString()
+  code?: string;
+
+  @ApiPropertyOptional({
+    description: 'Código numérico OTP ingresado por el usuario (alias de code)',
+    example: '123456',
+  })
+  @IsOptional()
+  @IsString()
+  otp?: string;
+
+  @ApiPropertyOptional({
+    description: 'Rol o etapa de la firma digital (ej. ENLACE_ELABORO, JEFE_DEPENDENCIA)',
+    example: 'ENLACE_ELABORO',
+  })
+  @IsOptional()
+  @IsString()
+  tipoFirma?: string;
+
+  @ApiPropertyOptional({
+    description: 'Indica si se debe consumir el código OTP de inmediato',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  consume?: boolean;
+}
+
+export class SolicitarFirmasDto {
+  @ApiPropertyOptional({
+    description: 'Código OTP del enlace de dependencia al radicar/enviar a firmas',
+    example: '654321',
+  })
+  @IsOptional()
+  @IsString()
+  otp?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador de la verificación OTP del enlace',
+  })
+  @IsOptional()
+  @IsString()
+  verificationId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador del certificado digital de elaboración',
+  })
+  @IsOptional()
+  @IsString()
+  certificadoId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hash SHA-256 criptográfico de la elaboración',
+  })
+  @IsOptional()
+  @IsString()
+  hashSha256?: string;
+
+  @ApiPropertyOptional({
+    description: 'Nombre del enlace firmante',
+  })
+  @IsOptional()
+  @IsString()
+  nombreFirmante?: string;
+
+  @ApiPropertyOptional({
+    description: 'Cargo del enlace firmante',
+  })
+  @IsOptional()
+  @IsString()
+  cargoFirmante?: string;
+
+  @ApiPropertyOptional({
+    description: 'Número de documento de identidad / cédula del enlace firmante',
+    example: '1023456789',
+  })
+  @IsOptional()
+  @IsString()
+  documentoIdentidad?: string;
+}
+

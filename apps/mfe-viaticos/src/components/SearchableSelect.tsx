@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 export interface SearchableSelectOption {
   value: string;
   label: string;
+  sublabel?: string;
 }
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
   emptyText?: string;
   id?: string;
   error?: string;
+  allowClear?: boolean;
 }
 
 export default function SearchableSelect({
@@ -27,6 +29,7 @@ export default function SearchableSelect({
   emptyText = 'Sin resultados',
   id,
   error,
+  allowClear = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -41,7 +44,8 @@ export default function SearchableSelect({
 
   const filtered = validOptions.filter((o) =>
     (o.label || '').toLowerCase().includes(query.toLowerCase()) ||
-    (o.value || '').toLowerCase().includes(query.toLowerCase())
+    (o.value || '').toLowerCase().includes(query.toLowerCase()) ||
+    (o.sublabel || '').toLowerCase().includes(query.toLowerCase())
   );
 
   useEffect(() => {
@@ -76,10 +80,35 @@ export default function SearchableSelect({
         onClick={() => !disabled && setOpen(!open)}
         className={`${inputCls} flex items-center justify-between ${disabled ? 'opacity-50 cursor-not-allowed bg-slate-50' : 'cursor-pointer'} ${error ? 'border-red-300 bg-red-50' : ''}`}
       >
-        <span className={`truncate text-left ${selected || value ? 'text-slate-800 font-medium' : 'text-slate-400'}`}>
+        <span className={`truncate text-left flex-1 ${selected || value ? 'text-slate-800 font-medium' : 'text-slate-400'}`}>
           {displayLabel}
         </span>
         <div className="flex items-center gap-1.5 shrink-0 ml-2">
+          {allowClear && Boolean(value) && !disabled && (
+            <span
+              role="button"
+              tabIndex={0}
+              title="Limpiar selección"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange('');
+                setQuery('');
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.stopPropagation();
+                  onChange('');
+                  setQuery('');
+                }
+              }}
+              className="text-slate-400 hover:text-slate-600 p-0.5 rounded cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </span>
+          )}
           {loading && (
             <div className="w-3 h-3 border-2 border-slate-300 border-t-[#003DA5] rounded-full animate-spin" />
           )}
@@ -107,10 +136,16 @@ export default function SearchableSelect({
                 <button
                   key={option.value}
                   type="button"
-                  onMouseDown={(e) => { e.preventDefault(); handleSelect(option.value); }} onClick={() => handleSelect(option.value)}
-                  className={`w-full text-left px-3.5 py-2.5 text-sm hover:bg-blue-50 transition-colors ${option.value === value ? 'bg-blue-50 text-[#003DA5] font-bold' : 'text-slate-700'}`}
+                  onMouseDown={(e) => { e.preventDefault(); handleSelect(option.value); }}
+                  onClick={() => handleSelect(option.value)}
+                  className={`w-full text-left px-3.5 py-2 text-sm hover:bg-blue-50 transition-colors ${option.value === value ? 'bg-blue-50 text-[#003DA5] font-bold' : 'text-slate-700'}`}
                 >
-                  {option.label || option.value}
+                  <div className="leading-snug">{option.label || option.value}</div>
+                  {option.sublabel && (
+                    <div className="text-[11px] text-slate-400 font-normal leading-tight mt-0.5 truncate">
+                      {option.sublabel}
+                    </div>
+                  )}
                 </button>
               ))
             )}

@@ -24,6 +24,7 @@ import { DocumentoProceso } from '../../entities/documento-proceso.entity';
 import { Trazabilidad, AccionTraza } from '../../entities/trazabilidad.entity';
 import { DecisionRevision, Revision } from '../../entities/revision.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
+import { Actividad } from '../../entities/actividad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { PermisosService } from '../../auth/permisos.service';
@@ -39,8 +40,12 @@ import {
   ParticipacionService,
   esSuya,
 } from '../participacion/participacion.service';
+import { respondeElAsignado } from '../participacion/quien-responde';
 import { CdpService } from '../cdp/cdp.service';
-import { DocumentosActividadService } from '../documentos-actividad/documentos-actividad.service';
+import {
+  DocumentosActividadService,
+  soportesDeDevolucion,
+} from '../documentos-actividad/documentos-actividad.service';
 
 const ETAPA_ESTUDIOS_PREVIOS = 3;
 
@@ -62,10 +67,8 @@ export function estadoTrasDecision(decision: DecisionRevision): EstadoActividad 
 /**
  * Por qué el envío no puede salir todavía, en una frase.
  *
- * Tres cosas pueden faltar y antes solo se nombraban dos, con un ternario que
- * elegía entre ellas: quien no había adjuntado el estudio previo **y** tenía
- * campos sin llenar solo se enteraba de lo segundo, corregía, reenviaba y se
- * chocaba con lo primero. Con la lista de chequeo encima serían tres viajes.
+ * Se nombra todo lo que falta a la vez: quien se entera de una cosa, la
+ * corrige y reenvía, y se choca con la siguiente, hace un viaje por cada una.
  *
  * Los documentos que faltan se nombran uno a uno y no se cuentan: «faltan dos
  * documentos» obliga a abrir la lista para saber cuáles, y el mensaje es justo
@@ -73,13 +76,11 @@ export function estadoTrasDecision(decision: DecisionRevision): EstadoActividad 
  */
 export function porQueNoSePuedeRadicar(
   camposFaltantes: number,
-  faltaElEstudioPrevio: boolean,
   documentosDeLaLista: string[],
 ): string {
   const motivos: string[] = [];
 
   if (camposFaltantes > 0) motivos.push('faltan datos obligatorios');
-  if (faltaElEstudioPrevio) motivos.push('falta el estudio previo diligenciado y firmado');
   if (documentosDeLaLista.length > 0) {
     motivos.push(`falta por remitir ${documentosDeLaLista.join(', ')}`);
   }
@@ -237,10 +238,7 @@ export class EstudioPrevioService implements OnModuleInit {
     });
     if (!proceso) throw new NotFoundException('Proceso no encontrado');
 
-    const loRadico =
-      !!proceso.createdBy &&
-      !!acceso.userName &&
-      proceso.createdBy.trim().toLowerCase() === acceso.userName.trim().toLowerCase();
+    const loRadico = this.loRadico(proceso, acceso);
 
     const enElProceso = (await this.participacion.procesosDe(acceso)).includes(procesoId);
 
@@ -251,6 +249,18 @@ export class EstudioPrevioService implements OnModuleInit {
         'Este estudio previo lo diligencia el área que radicó el proceso: tener permiso de editar no da acceso a los expedientes de otras áreas',
       );
     }
+  }
+
+  /**
+   * Si quien pregunta radicó el proceso: es el área que redacta el estudio
+   * previo, y la que tiene que corregirlo si se lo devuelven.
+   */
+  private loRadico(proceso: Pick<Proceso, 'createdBy'>, acceso?: HiringAccess): boolean {
+    return (
+      !!proceso.createdBy &&
+      !!acceso?.userName &&
+      proceso.createdBy.trim().toLowerCase() === acceso.userName.trim().toLowerCase()
+    );
   }
 
   private quienDecide(procesoId: string, acceso: HiringAccess) {
@@ -486,6 +496,17 @@ export class EstudioPrevioService implements OnModuleInit {
       (await this.dataSource.getRepository(Modalidad).find()).map((m) => [m.codigo, m.nombre]),
     );
 
+    /*
+     * El catálogo, también una sola vez: el listado dice en qué actividad va
+     * cada proceso y a quién le toca, y para eso necesita el nombre, la etapa
+     * y el orden de la matriz, no solo el numeral.
+     */
+    const catalogo = await this.dataSource
+      .getRepository(Actividad)
+      .find({ where: { activa: true }, order: { etapa: 'ASC', orden: 'ASC' } });
+    const posicion = new Map(catalogo.map((a, i) => [a.numeral, i]));
+    const delCatalogo = new Map(catalogo.map((a) => [a.numeral, a]));
+
     // Quién está en cada proceso, en una sola consulta para todo el listado.
     // Sin este dato la lista no puede distinguir un proceso que alguien lleva de
     // uno que sigue en la bandeja esperando que lo reciban.
@@ -506,7 +527,7 @@ export class EstudioPrevioService implements OnModuleInit {
         : obligatorios.length;
 
       const enElProceso = participantes.get(proceso.id) ?? [];
-      const quien = (papel: 'CONTRATACION' | 'ABOGADO') => {
+      const quien = (papel: 'CONTRATACION' | 'ABOGADO' | 'FINANCIERA') => {
         const p = enElProceso.find((x) => x.papel === papel);
         return p
           ? { nombre: p.nombre, usuarioNombre: p.usuarioNombre, esMio: acceso ? esSuya(p, acceso) : false }
@@ -524,9 +545,12 @@ export class EstudioPrevioService implements OnModuleInit {
          * llegó a la Dirección y que nadie ha recibido, y decirlo es lo único
          * que impide que se quede ahí semanas.
          */
+        /** Para que la lista le diga «te toca» al área cuando el estudio es suyo. */
+        radicadoPorMi: this.loRadico(proceso, acceso),
         participacion: {
           contratacion,
           abogado: quien('ABOGADO'),
+          financiera: quien('FINANCIERA'),
           enBandeja: !contratacion && estudioPrevio?.estado === 'EN_REVISION',
         },
         // Estado del numeral 3.1 y cuánto le falta para poder enviarse
@@ -539,7 +563,24 @@ export class EstudioPrevioService implements OnModuleInit {
               actualizadoEn: estudioPrevio.updatedAt,
             }
           : null,
-        actividades: propias.map((a) => ({ numeral: a.numeral, estado: a.estado })),
+        // En el orden de la matriz y con lo que hace falta para decir en qué
+        // punto va el proceso y a quién le toca. Las retiradas del catálogo no
+        // se listan: nadie puede trabajarlas.
+        actividades: propias
+          .filter((a) => delCatalogo.has(a.numeral))
+          .sort((x, y) => posicion.get(x.numeral)! - posicion.get(y.numeral)!)
+          .map((a) => {
+            const deLaMatriz = delCatalogo.get(a.numeral)!;
+            return {
+              numeral: a.numeral,
+              estado: a.estado,
+              nombre: deLaMatriz.nombre,
+              etapa: deLaMatriz.etapa,
+              actualizadoEn: a.updatedAt,
+              responsableCargo: deLaMatriz.responsableCargo,
+              responde: respondeElAsignado(a.numeral),
+            };
+          }),
       };
     });
   }
@@ -571,6 +612,7 @@ export class EstudioPrevioService implements OnModuleInit {
         valorEstimado: proceso.valorEstimado,
         etapa: proceso.etapa,
         expediente: proceso.expediente?.numeroExpediente,
+        radicadoPorMi: this.loRadico(proceso, acceso),
       },
       estado: actividad.estado,
       version: actividad.version,
@@ -675,31 +717,25 @@ export class EstudioPrevioService implements OnModuleInit {
        * Desde EFDS-2066 el estudio previo firmado es un documento más de esa
        * lista —la fila de su formato—, así que una sola pregunta cubre lo que
        * antes se contaba por separado.
+       *
+       * Y solo esa pregunta: lo que se pide lo decide Configuración. Aquí se
+       * exigía además «al menos un adjunto» cuando la lista quedaba vacía, pero
+       * con la lista vacía la pantalla no tiene dónde subirlo, así que el área
+       * quedaba pidiéndosele un documento sin sitio para entregarlo. El aviso
+       * de una lista sin obligatorios va ahora en Configuración, que es donde
+       * se puede corregir.
        */
       const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
-      const requeridos = await this.documentos.requeridosDe(procesoId, NUMERAL_ESTUDIO_PREVIO, em);
       const sinRadicar = await this.documentos.faltantes(procesoId, NUMERAL_ESTUDIO_PREVIO, em);
 
-      /*
-       * Si Configuración no dejó ningún documento para esta modalidad, se sigue
-       * exigiendo al menos un adjunto: una lista vacía por descuido no puede
-       * volver el envío una radicación sin estudio previo.
-       */
-      const sinDocumento =
-        requeridos.length === 0 &&
-        (await em.count(Documento, {
-          where: { expedienteId: expediente.id, numeral: NUMERAL_ESTUDIO_PREVIO, tipo: 'ADJUNTO' },
-        })) === 0;
-
-      if (faltantes.length > 0 || sinDocumento || sinRadicar.length > 0) {
+      if (faltantes.length > 0 || sinRadicar.length > 0) {
         throw new UnprocessableEntityException({
           message: porQueNoSePuedeRadicar(
             faltantes.length,
-            sinDocumento,
             sinRadicar.map((r) => r.nombre),
           ),
           camposFaltantes: faltantes,
-          documentoFaltante: sinDocumento,
+          documentoFaltante: false,
           documentosDeLaLista: sinRadicar.map((r) => ({
             codigo: r.codigo,
             nombre: r.nombre,
@@ -1047,10 +1083,20 @@ export class EstudioPrevioService implements OnModuleInit {
   /** Historial de revisiones del estudio previo, de la más reciente a la más antigua. */
   async revisiones(procesoId: string) {
     const actividad = await this.obtenerActividad(this.dataSource.manager, procesoId);
-    return this.dataSource.getRepository(Revision).find({
+    const revisiones = await this.dataSource.getRepository(Revision).find({
       where: { procesoActividadId: actividad.id },
       order: { createdAt: 'DESC' },
     });
+    // El archivo de cada devolución, para que el área abra las correcciones
+    // marcadas desde el aviso sin buscarlas en el expediente.
+    const soportes = await soportesDeDevolucion(
+      this.dataSource.manager,
+      revisiones.map((r) => r.soporteDocumentoId),
+    );
+    return revisiones.map((r) => ({
+      ...r,
+      soporte: r.soporteDocumentoId ? (soportes.get(r.soporteDocumentoId) ?? null) : null,
+    }));
   }
 
   // ----------------------------------------------------------- expediente ---

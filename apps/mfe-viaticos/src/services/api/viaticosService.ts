@@ -59,9 +59,13 @@ import {
   EstadoFirmasResponse,
   FirmarSolicitudPayload,
   DevolverFirmaPayload,
+  SolicitarOtpFirmaPayload,
+  SolicitarOtpFirmaResponse,
+  VerificarOtpFirmaPayload,
+  SolicitarFirmasPayload,
 } from '../../types/viaticos';
 
-import dependenciasService, { Dependencia } from '../../../../shell/src/services/api/dependencias.service';
+import dependenciasService, { Dependencia, Cargo } from '../../../../shell/src/services/api/dependencias.service';
 import {
   ParametrizacionFormulario,
   ConfigTipoComisionado,
@@ -448,6 +452,40 @@ export class ViaticosService {
       return await dependenciasService.listar(options);
     } catch (error) {
       console.warn('[viaticos] dependencias auth no disponibles:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Obtiene los cargos vinculados a una dependencia específica (N:M auth.dependencias_cargos).
+   * Alimenta el selector de cargo dependiente de la dependencia en NuevaSolicitudModal.
+   */
+  async obtenerCargosPorDependencia(
+    idDependencia: number | string,
+  ): Promise<Cargo[]> {
+    try {
+      const idNum =
+        typeof idDependencia === 'string'
+          ? parseInt(idDependencia, 10)
+          : idDependencia;
+      if (!idNum || isNaN(idNum)) return [];
+      return await dependenciasService.obtenerCargosPorDependencia(idNum);
+    } catch (error) {
+      console.warn('[viaticos] cargos por dependencia no disponibles:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Lista todos los cargos institucionales disponibles (auth.cargos).
+   */
+  async listarCargos(
+    options: { includeInactive?: boolean; search?: string } = {},
+  ): Promise<Cargo[]> {
+    try {
+      return await dependenciasService.listarCargos(options);
+    } catch (error) {
+      console.warn('[viaticos] listarCargos no disponibles:', error);
       return [];
     }
   }
@@ -883,14 +921,63 @@ export class ViaticosService {
   }
 
   /**
-   * Consolida formalmente la solicitud e inicia el flujo de firmas de aprobación
-   * previo a la radicación (estado PENDIENTE_FIRMAS).
+   * Solicita un código OTP enviado al correo institucional para firma digital en viáticos.
    */
-  async solicitarFirmasAprobacion(solicitudId: string): Promise<SolicitudComisionResponse> {
+  async solicitarOtpFirma(
+    solicitudId: string,
+    payload?: SolicitarOtpFirmaPayload,
+  ): Promise<SolicitarOtpFirmaResponse> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/firmas/solicitar-otp`,
+        payload || {},
+      );
+      return (res as any)?.data || res;
+    } catch (error) {
+      console.error('Error solicitando código OTP de firma:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Verifica la validez del código OTP ingresado por el usuario.
+   */
+  async verificarOtpFirma(
+    solicitudId: string,
+    payload: VerificarOtpFirmaPayload,
+  ): Promise<{ success: boolean; verified: boolean }> {
+    try {
+      const code = (payload.code || payload.otp || '').trim();
+      const body = {
+        verificationId: payload.verificationId || undefined,
+        code,
+        otp: code,
+        tipoFirma: payload.tipoFirma,
+        consume: payload.consume ?? false,
+      };
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/firmas/verificar-otp`,
+        body,
+      );
+      return (res as any)?.data || res;
+    } catch (error) {
+      console.error('Error verificando código OTP de firma:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Consolida formalmente la solicitud e inicia el flujo de firmas de aprobación
+   * previo a la radicación (estado PENDIENTE_FIRMAS). Puede incluir la firma digital de elaboración del Enlace.
+   */
+  async solicitarFirmasAprobacion(
+    solicitudId: string,
+    payload?: SolicitarFirmasPayload,
+  ): Promise<SolicitudComisionResponse> {
     try {
       const res = await apiClient.post<any>(
         `/viaticos/api/v1/requests/${solicitudId}/solicitar-firmas`,
-        {},
+        payload || {},
       );
       return (res as any)?.data || res;
     } catch (error) {

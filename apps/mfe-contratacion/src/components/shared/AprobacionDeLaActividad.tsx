@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, ClipboardCheck, Undo2, X } from 'lucide-react';
+import { ArrowRight, Check, ClipboardCheck, Paperclip, Undo2 } from 'lucide-react';
 
 import { usarAprobacion } from './usarAprobacion';
 import { useFirma } from './useFirma';
@@ -29,14 +29,13 @@ interface Props {
    */
   faltanDocumentos?: number;
   /**
-   * Cierra la tarjeta de decisión y la deja como burbuja.
+   * Lleva a la pantalla de revisión, que es el único sitio donde se decide.
    *
-   * Quien no va a resolver ahora —el gestor que solo viene a cargar un
-   * documento— puede quitarla de en medio sin perderla de vista: la burbuja
-   * sigue diciendo que hay algo pendiente.
+   * El aviso se lo ofrece a quien le toca aprobar: fuera de la revisión ya no
+   * hay botones de aprobar ni devolver.
    */
-  onEsconder?: () => void;
-  /** Avisa de si hay decisión que tomar, para pintar la burbuja. */
+  onRevisar?: () => void;
+  /** Avisa de si hay decisión que tomar, a quien monta la columna. */
   onHayDecision?: (hay: boolean) => void;
   /**
    * Si la actividad tiene aprobadores configurados, hacia el contenedor.
@@ -57,6 +56,13 @@ interface Props {
   onDevuelta?: (devuelta: boolean) => void;
   /** Sube de valor cuando el panel de abajo cambia el tramite, para releerlo. */
   recargarToken?: number;
+  /**
+   * A dónde pasa el proceso si se aprueba, dicho en una línea.
+   *
+   * Como el «Radicador asignado» del módulo disciplinario: aprobar es un
+   * traspaso, y decir a quién le llega lo hace visible antes de confirmar.
+   */
+  pasaA?: string | null;
 }
 
 const boton =
@@ -88,15 +94,18 @@ export function AprobacionDeLaActividad({
   onCambio,
   parte,
   faltanDocumentos = 0,
-  onEsconder,
+  onRevisar,
   onHayDecision,
   onRequiereAprobacion,
   onDevuelta,
   recargarToken,
+  pasaA = null,
 }: Props) {
   const a = usarAprobacion(procesoId, numeral, onCambio, recargarToken);
   const [motivo, setMotivo] = useState('');
   const [devolviendo, setDevolviendo] = useState(false);
+  /** Las correcciones marcadas que acompañan la devolución (migración 091). */
+  const [soporte, setSoporte] = useState<File | null>(null);
 
   /**
    * La firma es de quien aprueba, no de quien envió: cada quien firma su
@@ -107,9 +116,8 @@ export function AprobacionDeLaActividad({
   /**
    * Si hay algo que decidir aquí, hacia quien monta el bloque.
    *
-   * Lo necesita el contenedor para saber si abre la columna y si pinta la
-   * burbuja: sin el aviso reservaría sitio para una decisión que quizá no
-   * existe, o dejaría una burbuja flotando sin nada detrás.
+   * Lo necesita la revisión para saber si dice en qué quedó: sin el aviso
+   * pintaría «Ahora: …» junto a una decisión que todavía está pendiente.
    */
   const hayDecision =
     parte === 'decision' && !a.cargando && a.requiereAprobacion &&
@@ -200,20 +208,6 @@ export function AprobacionDeLaActividad({
                 Sobre la actividad {numeral}
               </p>
             </div>
-
-            {/* Esconderla es reversible y la burbuja la devuelve: el gestor que
-                solo viene a cargar un documento no necesita el bloque encima. */}
-            {onEsconder ? (
-              <button
-                type="button"
-                onClick={onEsconder}
-                aria-label="Esconder la decisión"
-                title="Esconder"
-                className="flex-shrink-0 -mt-0.5 -mr-1 p-1 rounded-md text-[#003DA5]/60 hover:text-[#003DA5] hover:bg-[#003DA5]/10 transition-colors"
-              >
-                <X className="w-3.5 h-3.5" aria-hidden="true" />
-              </button>
-            ) : null}
           </div>
 
           <div className="px-4 py-3.5 space-y-2.5">
@@ -231,6 +225,15 @@ export function AprobacionDeLaActividad({
                 : 'Revisa los documentos antes de resolver.'}
             </p>
 
+            {pasaA && !devolviendo ? (
+              <p className="text-[11.5px] text-slate-600 m-0 flex items-start gap-1.5">
+                <ArrowRight className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-emerald-700" aria-hidden="true" />
+                <span>
+                  Si la apruebas, pasa a: <strong className="text-slate-900">{pasaA}</strong>
+                </span>
+              </p>
+            ) : null}
+
             {devolviendo ? (
               <>
                 <textarea
@@ -241,11 +244,24 @@ export function AprobacionDeLaActividad({
                   aria-label="Observaciones de la devolución"
                   className={campo}
                 />
+                <label className="flex items-center gap-1.5 text-[11.5px] font-bold text-slate-600 cursor-pointer">
+                  <Paperclip className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 truncate">
+                    {soporte ? soporte.name : 'Adjuntar las correcciones (opcional)'}
+                  </span>
+                  <input
+                    type="file"
+                    className="sr-only"
+                    aria-label="Documento con las correcciones"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx"
+                    onChange={(e) => setSoporte(e.target.files?.[0] ?? null)}
+                  />
+                </label>
                 <div className="flex flex-col gap-1.5">
                   <button
                     type="button"
                     className={`${secundario} justify-center w-full`}
-                    onClick={() => a.devolver(motivo)}
+                    onClick={() => a.devolver(motivo, soporte)}
                     disabled={a.guardando || !motivo.trim()}
                   >
                     <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
@@ -305,15 +321,20 @@ export function AprobacionDeLaActividad({
         {encabezado(
           'En revisión · pendiente de aprobación',
           a.puedoAprobar
-            ? // Ya no se dice dónde está la decisión: la tarjeta la acompaña
-              // a la vista, y si la esconde, la burbuja se la devuelve.
-              // Aquí cae también quien la trabajó, si tiene el rol: aprobar lo
+            ? // Aquí cae también quien la trabajó, si tiene el rol: aprobar lo
               // propio dejó de estar bloqueado.
-              'Te toca resolverla.'
+              'Te toca resolverla en la pantalla de revisión.'
             : a.quienAprueba.length
               ? `Espera a ${a.quienAprueba.join(' o ')}.`
               : undefined,
         )}
+
+        {a.puedoAprobar && onRevisar ? (
+          <button type="button" className={primario} onClick={onRevisar}>
+            <ClipboardCheck className="w-3.5 h-3.5" aria-hidden="true" />
+            Abrir la revisión
+          </button>
+        ) : null}
 
         {/* Quien la envió puede retirarla mientras nadie la ha resuelto: sin
             esto tendría que pedirle al aprobador que se la devuelva para

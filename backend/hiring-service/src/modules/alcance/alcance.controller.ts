@@ -3,6 +3,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Permisos } from '../../auth/permisos.decorator';
+import { Puede } from '../../auth/puede.guard';
 import { PermisosGuard } from '../../auth/permisos.guard';
 import { PERMISO_CONFIG_ADMINISTRAR } from '../../auth/permisos';
 import { AlcanceAdminService } from './alcance-admin.service';
@@ -29,6 +30,22 @@ export class AlcanceController {
   })
   mio(@Req() req: any) {
     return this.service.mio(req.user);
+  }
+
+  /**
+   * Sin `config.manage`: saber a quién le toca un punto no es administrar la
+   * matriz, y lo necesita cualquiera que siga un proceso.
+   */
+  @Get('responsables')
+  @Puede('ver')
+  @ApiOperation({
+    summary: 'Quién responde por cada punto',
+    description:
+      'Los roles que pueden editar, aprobar o decidir en cada lugar, con el permiso de la acción ya comprobado. ' +
+      'Lo usa la ficha del proceso para decir a quién le toca el paso siguiente cuando aún no hay una persona a cargo.',
+  })
+  responsables() {
+    return this.service.responsables();
   }
 
   @Get('roles')

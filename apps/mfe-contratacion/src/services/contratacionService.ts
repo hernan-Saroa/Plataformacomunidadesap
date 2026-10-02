@@ -4,6 +4,10 @@ import {
   AlcanceMio,
   AlcanceVista,
   RolConAlcance,
+  ResponsableDeLugar,
+  ElementoPorRevisar,
+  PlazoDeActividad,
+  SoporteDeDevolucion,
   CamposFaltantesError,
   EstadoAdendas,
   EstadoApertura,
@@ -237,7 +241,11 @@ export const contratacionService = {
   modalidades: () => pedir<Modalidad[]>('/modalidades'),
 
   /** Personas para los selectores; el termino filtra por nombre. */
-  personas: (q = '') => pedir<Persona[]>(`/personas?q=${encodeURIComponent(q)}`),
+  personas: (q = '', dependencia = '') =>
+    pedir<Persona[]>(
+      `/personas?q=${encodeURIComponent(q)}` +
+        (dependencia ? `&dependencia=${encodeURIComponent(dependencia)}` : ''),
+    ),
 
   /**
    * Modalidad que corresponde a una cuantía. Se consulta mientras se digita el
@@ -1995,6 +2003,9 @@ export const contratacionService = {
    */
   alcanceMio: () => pedir<AlcanceMio>('/alcance/mio'),
 
+  /** Qué roles responden por cada punto, para decir a quién le toca. */
+  responsables: () => pedir<ResponsableDeLugar[]>('/alcance/responsables'),
+
   /** La matriz de permisos por etapa de todos los roles del módulo. */
   alcanceRoles: () => pedir<RolConAlcance[]>('/alcance/roles'),
 
@@ -2751,6 +2762,24 @@ export const contratacionService = {
       method: 'POST',
       body: JSON.stringify({ observaciones, firma }),
     }),
+
+  /** Lo que espera la decisión de quien mira: la bandeja «Por revisar». */
+  porRevisar: () => pedir<ElementoPorRevisar[]>('/alertas/por-revisar'),
+
+  /** Plazos de actividades por vencer o vencidos, para el semáforo. */
+  plazos: () => pedir<PlazoDeActividad[]>('/alertas/plazos'),
+
+  /**
+   * El archivo con las correcciones de una devolución (migración 091).
+   *
+   * Va después de devolver y aparte: la devolución no puede quedar a medias
+   * porque el archivo falle, y el servidor solo lo acepta de quien devolvió.
+   */
+  subirSoporteDevolucion: (procesoId: string, numeral: string, archivo: File) =>
+    pedir<SoporteDeDevolucion & { id: string }>(
+      `/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/documentos/soporte-devolucion`,
+      { method: 'POST', body: conArchivo({}, archivo) },
+    ),
 
   devolverActividad: (procesoId: string, numeral: string, observaciones: string) =>
     pedir(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/devolver`, {

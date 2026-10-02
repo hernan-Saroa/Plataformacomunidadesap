@@ -274,11 +274,13 @@ describe('ConfigService — Gestión de Campos Dinámicos y Parametrización', (
         nombre: 'Póliza de Cumplimiento',
         descripcion: 'Garantía del contrato',
         instruccionesValidacion: 'Verificar que la vigencia cubra las fechas de la comisión',
+        camposAValidar: ['nombreComisionado', 'numeroDocumento'],
       });
 
       expect(res.codigo).toBe('POLIZA_CUMPLIMIENTO');
       expect(res.nombre).toBe('Póliza de Cumplimiento');
       expect(res.instruccionesValidacion).toBe('Verificar que la vigencia cubra las fechas de la comisión');
+      expect(res.camposAValidar).toEqual(['nombreComisionado', 'numeroDocumento']);
     });
 
     it('debe actualizar un tipo de documento soporte existente', async () => {
@@ -288,6 +290,7 @@ describe('ConfigService — Gestión de Campos Dinámicos y Parametrización', (
         nombre: 'Factura',
         descripcion: 'Desc',
         instruccionesValidacion: 'Antigua instrucción',
+        camposAValidar: [],
         activo: true,
       };
       mockTipoDocRepo.findOne.mockResolvedValue({ ...existente });
@@ -296,10 +299,12 @@ describe('ConfigService — Gestión de Campos Dinámicos y Parametrización', (
       const actualizado = await service.actualizarTipoDocumentoSoporte('FACTURA', {
         nombre: 'Factura Electrónica Validada',
         instruccionesValidacion: 'Validar CUFE ante la DIAN',
+        camposAValidar: ['entidadBancaria', 'numeroCuenta'],
       });
 
       expect(actualizado.nombre).toBe('Factura Electrónica Validada');
       expect(actualizado.instruccionesValidacion).toBe('Validar CUFE ante la DIAN');
+      expect(actualizado.camposAValidar).toEqual(['entidadBancaria', 'numeroCuenta']);
     });
 
     it('debe desactivar un tipo de documento soporte al eliminar', async () => {

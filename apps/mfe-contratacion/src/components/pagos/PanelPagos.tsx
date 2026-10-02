@@ -32,6 +32,7 @@ import {
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 import { useFirma } from '../shared/useFirma';
+import { IrALaRevision, useLugarDeDecision } from '../shared/LugarDeDecision';
 import { useDialogo } from '../shared/useDialogo';
 
 interface Props {
@@ -497,6 +498,7 @@ function CuentaDeCobro({
   onGuardarSoporte,
   onCancelarSoporte,
 }: CuentaProps) {
+  const { enLaRevision } = useLugarDeDecision();
   const tono = TONO[pago.estado];
   const cerrada = pago.estado === 'TRAMITADO' || pago.estado === 'ANULADO';
 
@@ -580,18 +582,21 @@ function CuentaDeCobro({
         <div className="flex flex-wrap gap-2 pt-1">
           {/* Avalar y devolver solo para quien puede: un botón que siempre
               falla es peor que no mostrarlo. */}
-          {esSupervisor && (pago.estado === 'RADICADO' || pago.estado === 'AVALADO') ? (
+          {/* La cuenta recién radicada se avala o se devuelve solo en la
+              pantalla de revisión. Devolver una ya avalada es corregir un aval
+              dado, no la decisión pendiente, y se queda aquí. */}
+          {esSupervisor && pago.estado === 'RADICADO' && enLaRevision ? (
             <>
-              {pago.estado === 'RADICADO' ? (
-                <BotonSecundario
-                  icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
-                  disabled={guardando}
-                  onClick={onAvalar}
-                >
-                  Avalar
-                </BotonSecundario>
-              ) : null}
               <BotonSecundario
+                decision
+                icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
+                disabled={guardando}
+                onClick={onAvalar}
+              >
+                Avalar
+              </BotonSecundario>
+              <BotonSecundario
+                decision
                 icono={<Undo2 className="w-3.5 h-3.5" />}
                 disabled={guardando}
                 onClick={onDevolver}
@@ -599,6 +604,16 @@ function CuentaDeCobro({
                 Devolver
               </BotonSecundario>
             </>
+          ) : esSupervisor && pago.estado === 'RADICADO' ? (
+            <IrALaRevision numeral="9.4" que="avalarla o devolverla" />
+          ) : esSupervisor && pago.estado === 'AVALADO' ? (
+            <BotonSecundario
+              icono={<Undo2 className="w-3.5 h-3.5" />}
+              disabled={guardando}
+              onClick={onDevolver}
+            >
+              Devolver
+            </BotonSecundario>
           ) : null}
 
           {pago.estado === 'AVALADO' ? (
