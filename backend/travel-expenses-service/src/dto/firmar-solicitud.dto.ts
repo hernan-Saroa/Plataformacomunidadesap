@@ -95,6 +95,14 @@ export class FirmarSolicitudDto {
   @IsOptional()
   @IsString()
   hashSha256?: string;
+
+  @ApiPropertyOptional({
+    description: 'Número de documento de identidad / cédula del firmante',
+    example: '1023456789',
+  })
+  @IsOptional()
+  @IsString()
+  documentoIdentidad?: string;
 }
 
 export class DevolverFirmaDto {
@@ -209,5 +217,13 @@ export class SolicitarFirmasDto {
   @IsOptional()
   @IsString()
   cargoFirmante?: string;
+
+  @ApiPropertyOptional({
+    description: 'Número de documento de identidad / cédula del enlace firmante',
+    example: '1023456789',
+  })
+  @IsOptional()
+  @IsString()
+  documentoIdentidad?: string;
 }
 

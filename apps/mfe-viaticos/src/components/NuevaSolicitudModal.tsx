@@ -1931,6 +1931,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setFinalizando(true);
     setErrorValidacion(null);
     try {
+      const user = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
+      const userDoc =
+        (user as any)?.cedula ||
+        (user as any)?.numeroDocumento ||
+        (user as any)?.num_identificacion ||
+        (user as any)?.person?.num_identificacion ||
+        (user as any)?.person?.numeroDocumento ||
+        undefined;
+
       const conFirmas = await viaticosService.solicitarFirmasAprobacion(solicitudBorrador.id, {
         otp: firma.codigoOtp,
         verificationId: otpDataEnlace?.verificationId,
@@ -1938,6 +1947,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         hashSha256: firma.hash,
         nombreFirmante: firma.firmante,
         cargoFirmante: firma.cargo,
+        documentoIdentidad: userDoc ? String(userDoc).trim() : undefined,
       });
       onSolicitudCreada(conFirmas);
       onCerrar();
