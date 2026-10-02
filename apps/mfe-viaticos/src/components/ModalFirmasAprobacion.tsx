@@ -456,8 +456,10 @@ export default function ModalFirmasAprobacion({
   const currentUser = authService.getCurrentUserSync();
   const esJefe = Boolean(authService.isJefeDependencia?.()) || Boolean(authService.isSubdireccionGestionCorporativa?.()) || Boolean(authService.isDireccionNacional?.()) || Boolean(currentUser?.esAdmin);
   const esGerente = Boolean(authService.isGerenteProyecto?.()) || Boolean(currentUser?.esAdmin);
-  const esAnalista = Boolean(authService.isAnalista?.()) || Boolean(currentUser?.esAdmin);
-  const puedeFirmar = Boolean(authService.canFirmarAprobacion?.()) || esJefe || esGerente || esAnalista;
+  const esEnlace = Boolean(authService.isEnlaceDependencia?.());
+  const puedeFirmar =
+    !esEnlace &&
+    (Boolean(authService.canFirmarAprobacion?.()) || esJefe || esGerente || esAnalista);
   const firmasRegistradasCount =
     (firmante1?.firmado ? 1 : 0) +
     (firmante2?.firmado ? 1 : 0) +

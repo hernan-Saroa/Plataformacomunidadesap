@@ -2126,8 +2126,10 @@ export class ViaticosService {
       );
       const data = res?.data?.data || res?.data || res;
       return Array.isArray(data) ? data : [];
-    } catch (error) {
-      console.error('[viaticos] Error consultando logs de SST:', error);
+    } catch (error: any) {
+      if (error?.status !== 403 && error?.status !== 404) {
+        console.warn('[viaticos] No se pudieron consultar logs de SST:', error?.message || error);
+      }
       return [];
     }
   }

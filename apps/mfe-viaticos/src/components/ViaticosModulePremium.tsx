@@ -52,6 +52,7 @@ import ModalFirmasAprobacion from './ModalFirmasAprobacion';
 import BandejaFirmasAprobacion from './BandejaFirmasAprobacion';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
+import AprobacionPorComponente from './AprobacionPorComponente';
 import {
   SolicitudViatico,
   ResumenEstadisticoViaticos,
@@ -61,6 +62,7 @@ import {
   ResultadoConsolidacion,
   NotificacionSstLog,
   SaldoTiquete,
+  EstadoFirmasResponse,
 } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
@@ -134,6 +136,9 @@ export default function ViaticosModulePremium() {
   const [modalNuevaAbierta, setModalNuevaAbierta] = useState(false);
   const [solicitudAResumir, setSolicitudAResumir] = useState<SolicitudComisionResponse | null>(null);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudViatico | null>(null);
+  const [solicitudCompletaDetalle, setSolicitudCompletaDetalle] = useState<SolicitudComisionResponse | null>(null);
+  const [estadoFirmasDetalle, setEstadoFirmasDetalle] = useState<EstadoFirmasResponse | null>(null);
+  const [cargandoFirmasDetalle, setCargandoFirmasDetalle] = useState(false);
   const [documentosSoporte, setDocumentosSoporte] = useState<DocumentoSoporte[]>([]);
   const [cargandoDocumentos, setCargandoDocumentos] = useState(false);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
@@ -458,17 +463,31 @@ export default function ViaticosModulePremium() {
 
   const handleVerDetalle = async (sol: SolicitudViatico) => {
     setSolicitudSeleccionada(sol);
+    setSolicitudCompletaDetalle(null);
+    setEstadoFirmasDetalle(null);
+    setCargandoFirmasDetalle(true);
     setPrioridadSeleccionada(sol.prioridad || 'MEDIA');
     setAnalistaSeleccionadoId(sol.analistaAsignadoId || null);
     setMotivoDevolucion('');
     setCargandoDocumentos(true);
     setDocumentosSoporte([]);
 
-    // Cargar logs de notificación formal a SST (RF-PAG-002)
+    // Cargar estado de firmas institucional en paralelo para el visualizador
+    viaticosService
+      .obtenerEstadoFirmas(sol.id)
+      .then((data) => setEstadoFirmasDetalle(data))
+      .catch(() => setEstadoFirmasDetalle(null))
+      .finally(() => setCargandoFirmasDetalle(false));
+
+    // Cargar logs de notificación formal a SST (RF-PAG-002) solo si aplica a la etapa
     setLogsSst([]);
     setExpandirSst(false);
     setMensajeSst(null);
-    if (typeof viaticosService.obtenerLogsSst === 'function') {
+    const aplicaSst = Boolean(
+      sol.notificadoSst ||
+      ['COMPROMETIDA', 'OBLIGADA', 'PAGADA'].includes(sol.estado)
+    );
+    if (aplicaSst && typeof viaticosService.obtenerLogsSst === 'function') {
       viaticosService
         .obtenerLogsSst(sol.id)
         .then((logs) => setLogsSst(logs))
@@ -480,6 +499,7 @@ export default function ViaticosModulePremium() {
 
     try {
       const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
+      setSolicitudCompletaDetalle(completa);
       setDocumentosSoporte(completa.documentosSoporte || []);
       if (completa.analistaAsignadoId) {
         setAnalistaSeleccionadoId(completa.analistaAsignadoId);
@@ -709,13 +729,15 @@ export default function ViaticosModulePremium() {
     esSuperAdmin ||
     esPresupuesto ||
     authService.hasPermission(Permissions.VIATICOS_SST_RESEND);
+  const esEnlace = authService.isEnlaceDependencia();
   const puedeFirmarAprobacion =
-    esSuperAdmin ||
-    esJefeDependencia ||
-    esGerenteProyecto ||
-    esSubdireccion ||
-    esDireccionNacional ||
-    authService.canFirmarAprobacion();
+    !esEnlace &&
+    (esSuperAdmin ||
+      esJefeDependencia ||
+      esGerenteProyecto ||
+      esSubdireccion ||
+      esDireccionNacional ||
+      authService.canFirmarAprobacion());
   const puedeVerFirmasAprobacion = puedeFirmarAprobacion;
 
   const gruposFiltrados: MenuGroup[] = grupos
@@ -1465,7 +1487,7 @@ export default function ViaticosModulePremium() {
                                   type="button"
                                   onClick={() => handleVerDetalle(sol)}
                                   className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
-                                  title="Ver Detalle"
+                                  title={sol.estado === 'PENDIENTE_FIRMAS' ? 'Ver detalles y gestión de firmas (Formato 023)' : 'Ver Detalle'}
                                   aria-label="Ver Detalle"
                                 >
                                   <Eye className="w-3.5 h-3.5 text-slate-500" />
@@ -1502,7 +1524,7 @@ export default function ViaticosModulePremium() {
                                     <FileText className="w-3.5 h-3.5" />
                                   </button>
                                 )}
-                                {sol.estado === 'PENDIENTE_FIRMAS' && puedeFirmarAprobacion && (
+                                {sol.estado === 'PENDIENTE_FIRMAS' && puedeFirmarAprobacion && !esEnlace && (
                                   <button
                                     type="button"
                                     onClick={() => setSolicitudParaFirmas(sol)}
@@ -1690,69 +1712,99 @@ export default function ViaticosModulePremium() {
 
           {/* ── MODAL DETALLE DE SOLICITUD ── */}
           {solicitudSeleccionada && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-start sm:items-center justify-center p-4 pt-20 sm:pt-4 overflow-y-auto">
-              <div className="bg-white rounded-2xl max-w-xl w-full my-auto shadow-2xl border border-slate-200 flex flex-col max-h-[calc(100vh-6rem)]">
-                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0 bg-gradient-to-r from-slate-50 to-white rounded-t-2xl">
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[9999] flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto">
+              <div className="bg-white rounded-2xl max-w-4xl w-full my-auto shadow-2xl border border-slate-200 flex flex-col h-[88vh] max-h-[88vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-100 shrink-0 bg-gradient-to-r from-slate-50 via-white to-blue-50/20">
                   <div className="min-w-0 flex-1 pr-3">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-[10px] text-slate-400 tracking-wide truncate">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="font-mono text-xs font-bold text-blue-900 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
                         {solicitudSeleccionada.codigo}
                       </span>
+                      <span>{getBadgeEstado(solicitudSeleccionada.estado)}</span>
                       {authService.isSuperAdmin() && solicitudSeleccionada.esCreadoPorMi && (
-                        <span className="inline-flex items-center text-blue-500" title="Radicada por mí">
-                          <UserCheck className="w-3 h-3" />
+                        <span className="inline-flex items-center gap-1 text-[11px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 font-semibold" title="Radicada por mí">
+                          <UserCheck className="w-3 h-3" /> Radicada por mí
                         </span>
                       )}
                     </div>
-                    <h3 className="text-sm font-black text-slate-900 truncate">
+                    <h3 className="text-sm sm:text-base font-black text-slate-900 truncate">
                       {solicitudSeleccionada.nombreComisionado}
                     </h3>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setSolicitudSeleccionada(null)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
-                    aria-label="Cerrar detalle"
-                    title="Cerrar"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleExportarPDF(solicitudSeleccionada)}
+                      disabled={exportando}
+                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#003DA5] border border-blue-200/80 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                      title="Exportar Formato 023"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Exportar 023</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSolicitudSeleccionada(null);
+                        setSolicitudCompletaDetalle(null);
+                      }}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
+                      aria-label="Cerrar detalle"
+                      title="Cerrar"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
-                <div className="px-5 py-4 space-y-2.5 text-xs overflow-y-auto flex-1 min-h-0 scrollbar-thin">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-slate-50 rounded-lg px-3 py-2">
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Cargo</span>
-                      <span className="font-semibold text-slate-800 text-xs">{solicitudSeleccionada.cargoComisionado}</span>
+                <div 
+                  className="px-6 py-4 space-y-4 text-xs overflow-y-auto flex-1 min-h-0 scrollbar-thin"
+                  style={{ maxHeight: 'calc(88vh - 120px)', overscrollBehavior: 'contain' }}
+                >
+                  {/* Grid de Datos Generales */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Cargo Comisionado</span>
+                      <span className="font-bold text-slate-800 text-xs block truncate">{solicitudSeleccionada.cargoComisionado || '—'}</span>
+                      <span className="text-[10px] text-slate-500 font-mono mt-0.5 block truncate">C.C. {solicitudSeleccionada.cedulaComisionado || '—'}</span>
                     </div>
-                    <div className="bg-slate-50 rounded-lg px-3 py-2">
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Dependencia</span>
-                      <span className="font-semibold text-slate-800 text-xs">{solicitudSeleccionada.dependencia}</span>
+                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Dependencia</span>
+                      <span className="font-bold text-slate-800 text-xs block truncate">{solicitudSeleccionada.dependencia || '—'}</span>
                     </div>
-                    <div className="bg-slate-50 rounded-lg px-3 py-2">
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Origen</span>
-                      <span className="font-semibold text-slate-800 text-xs">
-                        {solicitudSeleccionada.ciudadOrigen || solicitudSeleccionada.sedeOrigen || 'Bogotá D.C.'}
-                      </span>
-                    </div>
-                    <div className="bg-slate-50 rounded-lg px-3 py-2">
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Destino</span>
-                      <span className="font-semibold text-slate-800 text-xs">
+                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Ruta de Comisión</span>
+                      <span className="font-bold text-slate-800 text-xs block truncate">
                         {solicitudSeleccionada.ciudadDestino} ({solicitudSeleccionada.departamentoDestino})
                       </span>
+                      <span className="text-[10px] text-slate-500 block truncate mt-0.5">
+                        Origen: {solicitudSeleccionada.ciudadOrigen || solicitudSeleccionada.sedeOrigen || 'Bogotá D.C.'}
+                      </span>
                     </div>
-                    <div className="bg-slate-50 rounded-lg px-3 py-2 col-span-2">
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Itinerario / Fechas</span>
-                      <div className="font-semibold text-slate-800 text-xs flex items-center gap-1.5 flex-wrap mt-0.5">
-                        <span>{solicitudSeleccionada.fechaInicio} al {solicitudSeleccionada.fechaFin}</span>
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
-                          {formatearDiasComision(Number(solicitudSeleccionada.diasComision || 1))}
-                        </span>
+                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Itinerario / Fechas</span>
+                      <div className="font-bold text-slate-800 text-xs block truncate">
+                        {solicitudSeleccionada.fechaInicio} al {solicitudSeleccionada.fechaFin}
                       </div>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-100 mt-1">
+                        {formatearDiasComision(Number(solicitudSeleccionada.diasComision || 1))}
+                      </span>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
-                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Estado</span>
-                    <span>{getBadgeEstado(solicitudSeleccionada.estado)}</span>
+
+                  {/* Resumen Financiero Compacto */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-600">Monto Viáticos:</span>
+                      <span className="font-mono font-bold text-slate-900">{formatearMoneda(solicitudSeleccionada.montoSolicitadoViaticos || 0)}</span>
+                    </div>
+                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-600">Gastos de Viaje:</span>
+                      <span className="font-mono font-bold text-slate-900">{formatearMoneda(solicitudSeleccionada.montoSolicitadoGastosViaje || 0)}</span>
+                    </div>
+                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-2.5 flex items-center justify-between">
+                      <span className="text-xs font-bold text-blue-900">Total Estimado:</span>
+                      <span className="font-mono font-black text-blue-900">{formatearMoneda(solicitudSeleccionada.montoTotalEstimado || 0)}</span>
+                    </div>
                   </div>
                   {(solicitudSeleccionada.motivoDevolucion || solicitudSeleccionada.observacionesSegundaRevision) && (
                     <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl">
@@ -2319,22 +2371,20 @@ export default function ViaticosModulePremium() {
                       </div>
                     )}
 
-                    {solicitudSeleccionada.estado === 'PENDIENTE_FIRMAS' && (
-                      <div className="mt-4 p-4 bg-amber-50/90 rounded-xl border border-amber-300 shadow-xs space-y-2.5">
-                        <div className="flex items-start gap-2.5">
-                          <span className="p-2 rounded-lg bg-amber-100 text-amber-800 shrink-0 mt-0.5">
-                            <FileSignature className="w-4 h-4 text-amber-800" />
-                          </span>
-                          <div>
-                            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950">
-                              <span>Control Previo a Radicación · Pendiente de Firmas de Aprobación</span>
-                            </div>
-                            <p className="text-[11px] text-amber-900 mt-0.5">
-                              La solicitud incorpora el flujo de firmas de aprobación previo a su radicación: sin las firmas de aprobación la solicitud no se radica.
-                            </p>
-                          </div>
-                        </div>
-                        {puedeFirmarAprobacion ? (
+                    {/* ========================================================================= */}
+                    {/* GESTIÓN DE FIRMAS INSTITUCIONALES — APROBACIÓN POR COMPONENTE (FORMATO 023) */}
+                    {/* ========================================================================= */}
+                    <div className="mt-4 pt-4 border-t border-slate-200">
+                      <AprobacionPorComponente
+                        solicitud={solicitudSeleccionada}
+                        solicitudCompleta={solicitudCompletaDetalle}
+                        estadoFirmas={estadoFirmasDetalle}
+                        cargandoFirmas={cargandoFirmasDetalle}
+                      />
+
+                      {/* Botón de firma directa para Jefes/Gerentes (excluyendo Enlace) */}
+                      {solicitudSeleccionada.estado === 'PENDIENTE_FIRMAS' && puedeFirmarAprobacion && !esEnlace && (
+                        <div className="mt-3">
                           <button
                             type="button"
                             onClick={() => setSolicitudParaFirmas(solicitudSeleccionada)}
@@ -2343,34 +2393,35 @@ export default function ViaticosModulePremium() {
                             <FileSignature className="w-4 h-4" />
                             <span>Revisar y Gestionar Firmas de Aprobación (Formato 023)</span>
                           </button>
-                        ) : (
-                          <div className="p-2.5 bg-white/90 rounded-lg border border-amber-200 text-xs text-amber-900 flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                            <span className="text-[11px]">
-                              El expediente se encuentra en revisión de los jefes firmantes. El Enlace no suscribe firmas; se notificará una vez completadas las validaciones.
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                        </div>
+                      )}
+                    </div>
                 </div>
-                <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 shrink-0 bg-white rounded-b-2xl">
-                  <button
-                    type="button"
-                    onClick={() => solicitudSeleccionada && handleExportarPDF(solicitudSeleccionada)}
-                    disabled={exportando}
-                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs inline-flex items-center gap-1.5 disabled:opacity-50 transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    {exportando ? 'Exportando...' : 'Exportar PDF'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSolicitudSeleccionada(null)}
-                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition-colors"
-                  >
-                    Cerrar
-                  </button>
+                <div className="px-6 py-3.5 border-t border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/60 rounded-b-2xl">
+                  <div className="text-[11px] text-slate-500 font-medium">
+                    Expediente: <span className="font-mono font-bold text-slate-700">{solicitudSeleccionada.codigo}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => solicitudSeleccionada && handleExportarPDF(solicitudSeleccionada)}
+                      disabled={exportando}
+                      className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs inline-flex items-center gap-1.5 disabled:opacity-50 transition-colors cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      {exportando ? 'Exportando...' : 'Exportar PDF'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSolicitudSeleccionada(null);
+                        setSolicitudCompletaDetalle(null);
+                      }}
+                      className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition-colors cursor-pointer"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
