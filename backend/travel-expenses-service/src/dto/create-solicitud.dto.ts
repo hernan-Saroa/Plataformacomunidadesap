@@ -94,6 +94,14 @@ export class CreateSolicitudDto {
   @Min(0)
   costoEstimadoTiquete?: number;
 
+  @IsOptional()
+  @IsString()
+  cargo?: string;
+
+  @IsOptional()
+  @IsNumber()
+  idCargo?: number;
+
   @IsString()
   comisionadoId: string;
 
@@ -208,6 +216,28 @@ export class CreateSolicitudDto {
   @IsOptional()
   @IsObject()
   camposAdicionales?: Record<string, any>;
+
+  @IsOptional()
+  @IsObject()
+  cuentaBancariaSeleccionada?: {
+    id?: string;
+    banco?: string;
+    tipoCuenta?: string;
+    numeroCuenta?: string;
+    urlCertificadoBancario?: string;
+    nombreArchivoCertificado?: string;
+    guardarEnHistorial?: boolean;
+  };
+
+  @IsOptional()
+  @IsObject()
+  cargoSeleccionado?: {
+    id?: string;
+    idCargo?: number;
+    cargo?: string;
+    salario?: number;
+    guardarEnHistorial?: boolean;
+  };
 
   @IsOptional()
   @IsArray()

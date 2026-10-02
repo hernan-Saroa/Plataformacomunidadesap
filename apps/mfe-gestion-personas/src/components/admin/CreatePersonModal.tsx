@@ -1,5 +1,6 @@
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@esap-mfe/shared-ui/dialog';
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   X, User, Mail, Phone, MapPin, Calendar, FileText, GraduationCap,
   Briefcase, Check, CheckCircle, Save, IdCard,
@@ -206,6 +207,57 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
     }
   }, [editMode, initialData, isOpen]);
 
+  // Reset al abrir en modo creación
+  useEffect(() => {
+    if (!editMode && isOpen) {
+      setFormData({
+        firstName: '', lastName: '', documentType: 'CC', documentNumber: '', birthDate: '', gender: '',
+        email: '', phone: '', address: '', city: '',
+        role: 'Estudiante', program: '',
+        empresaContratista: '', dependenciaGrupoPrograma: '', cargoSemestre: '', contrato: '', enrollmentDate: '', fechaFinContrato: '', observaciones: '',
+        tipoVinculacion: '', horasAsignables: '', pregradoDetalle: '', doctoradoDetalle: '', puntajeSalarial: '', territorial: '', cetap: '',
+        status: 'active',
+        asignacionesSedes: [] as any[],
+        sedePrincipalId: undefined,
+        idSeccional: undefined,
+        idSede: undefined,
+        idDependencia: null,
+        idCargo: null,
+      });
+      setPasoActual(1);
+      setErrors({});
+    }
+  }, [editMode, isOpen]);
+
+  // Bloqueo de scroll y eventos de puntero en el body
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.pointerEvents = 'auto';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.pointerEvents = '';
+    };
+  }, [isOpen]);
+
+  // Cerrar con Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen && !isSubmitting) {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, isSubmitting, onClose]);
+
   const totalPasos = formData.role === 'Docente' ? 3 : 2;
   const porcentajeProgreso = (pasoActual / totalPasos) * 100;
 
@@ -348,18 +400,34 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
     pasoActual === 2 ? 'Rol y vinculación con la institución' :
     'Información adicional del docente';
 
-  return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if (!open && !isSubmitting) onClose(); }}>
-      <DialogContent onInteractOutside={(e) => e.preventDefault()} hideCloseButton className="w-[95vw] max-w-[900px] lg:max-w-5xl max-h-[85vh] flex flex-col !p-0 border-0 bg-transparent overflow-hidden sm:!p-0 gap-0 !z-[9999] pointer-events-auto">
-        
-        {/* Fondo blanco real para todo el contenido dentro del dialog content que no tiene padding */}
-        <div className="flex flex-col bg-white rounded-2xl overflow-hidden shadow-2xl border border-gray-200/80 max-h-[85vh]">
-          <DialogTitle className="sr-only">{editMode ? 'Editar Usuario' : 'Crear Nuevo Usuario'}</DialogTitle>
-          <DialogDescription className="sr-only">Wizard de usuario - Paso {pasoActual}</DialogDescription>
+  if (!isOpen || typeof document === 'undefined') return null;
 
-          <ModalHeaderClean
-            icono={UsersIcon}
-            titulo={editMode ? 'Editar Usuario' : 'Crear Nuevo Usuario'}
+  return createPortal(
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[99998] flex items-center justify-center p-2 sm:p-4 md:p-6" style={{ margin: 0 }}>
+          {/* Backdrop Blur & Dark detrás del modal */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={isSubmitting ? undefined : onClose}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+          />
+
+          {/* Contenedor del Modal con z-index superior al backdrop */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+            transition={{ duration: 0.2 }}
+            className="relative z-10 w-[95vw] max-w-[900px] lg:max-w-5xl max-h-[88vh] flex flex-col bg-white rounded-2xl overflow-hidden shadow-2xl border border-gray-200/80 pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col h-full max-h-[88vh] overflow-hidden">
+              <ModalHeaderClean
+                icono={UsersIcon}
+                titulo={editMode ? 'Editar Usuario' : 'Crear Nuevo Usuario'}
             subtitulo={subtituloHeader}
             colorIcono="blue"
             onClose={onClose}
@@ -723,7 +791,10 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
             )}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
-  );
+      </motion.div>
+    </div>
+  )}
+</AnimatePresence>,
+document.body
+);
 }

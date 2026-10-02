@@ -28,6 +28,7 @@ export interface TipoDocumentoSoporte {
   nombre: string;
   descripcion: string | null;
   instruccionesValidacion?: string | null;
+  camposAValidar?: string[];
   activo: boolean;
 }
 
@@ -103,6 +104,7 @@ export interface CrearTipoDocumentoSoporteDTO {
   nombre: string;
   descripcion?: string;
   instruccionesValidacion?: string;
+  camposAValidar?: string[];
   activo?: boolean;
 }
 
@@ -110,6 +112,7 @@ export interface ActualizarTipoDocumentoSoporteDTO {
   nombre?: string;
   descripcion?: string;
   instruccionesValidacion?: string;
+  camposAValidar?: string[];
   activo?: boolean;
 }
 

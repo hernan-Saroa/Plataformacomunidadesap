@@ -70,6 +70,7 @@ interface TipoDocumentoSoporteEstado {
   nombre: string;
   descripcion: string;
   instruccionesValidacion: string;
+  camposAValidar: string[];
   activo: boolean;
 }
 
@@ -78,6 +79,7 @@ const docVacio = (): TipoDocumentoSoporteEstado => ({
   nombre: '',
   descripcion: '',
   instruccionesValidacion: '',
+  camposAValidar: [],
   activo: true,
 });
 
@@ -457,6 +459,7 @@ export default function ParametrizacionManager() {
         nombre: doc.nombre,
         descripcion: doc.descripcion || '',
         instruccionesValidacion: doc.instruccionesValidacion || '',
+        camposAValidar: Array.isArray(doc.camposAValidar) ? [...doc.camposAValidar] : [],
         activo: doc.activo,
       });
       setDocEsNuevo(false);
@@ -508,6 +511,7 @@ export default function ParametrizacionManager() {
           nombre: docEditando.nombre.trim(),
           descripcion: docEditando.descripcion.trim() || undefined,
           instruccionesValidacion: docEditando.instruccionesValidacion.trim() || undefined,
+          camposAValidar: docEditando.camposAValidar,
           activo: docEditando.activo,
         };
         await viaticosService.crearTipoDocumentoSoporte(dto);
@@ -517,6 +521,7 @@ export default function ParametrizacionManager() {
           nombre: docEditando.nombre.trim(),
           descripcion: docEditando.descripcion.trim() || undefined,
           instruccionesValidacion: docEditando.instruccionesValidacion.trim() || undefined,
+          camposAValidar: docEditando.camposAValidar,
           activo: docEditando.activo,
         };
         await viaticosService.actualizarTipoDocumentoSoporte(docEditando.codigo, dto);
@@ -1072,6 +1077,19 @@ export default function ParametrizacionManager() {
                                       <HelpCircle className="w-3 h-3 text-amber-500" />
                                       Sin instrucciones
                                     </span>
+                                  )}
+                                  {Array.isArray(doc.camposAValidar) && doc.camposAValidar.length > 0 && (
+                                    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                                      <span className="text-[10px] text-slate-400 font-semibold mr-0.5">Validar:</span>
+                                      {doc.camposAValidar.map((c) => (
+                                        <span
+                                          key={c}
+                                          className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-[#003DA5] text-[9px] font-mono font-medium border border-blue-200/80"
+                                        >
+                                          {c}
+                                        </span>
+                                      ))}
+                                    </div>
                                   )}
                                 </td>
                                 <td className="px-4 py-3 text-center">
@@ -2071,6 +2089,159 @@ export default function ParametrizacionManager() {
                   placeholder="Escribe las instrucciones detalladas de campo o utiliza los botones de sugerencia..."
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500 leading-relaxed font-sans"
                 />
+              </div>
+
+              {/* CAMPOS A VALIDAR CONTRA EL SOPORTE */}
+              <div className="space-y-2 border-t border-slate-100 pt-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800">
+                      Campos del formulario a validar con el soporte
+                    </label>
+                    <p className="text-[11px] text-slate-500 leading-snug">
+                      Selecciona qué campos del formulario deben ser contrastados con este documento adjunto (ej. titular, documento, cuenta bancaria, banco, contrato).
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-[#003DA5] shrink-0">
+                    {docEditando.camposAValidar.length} seleccionado(s)
+                  </span>
+                </div>
+
+                {/* Botones de selección rápida / presets */}
+                <div className="flex flex-wrap items-center gap-1.5 py-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">
+                    Plantillas rápidas:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const bancarios = ['nombreComisionado', 'numeroDocumento', 'tipoCuenta', 'numeroCuenta', 'entidadBancaria'];
+                      const combinados = Array.from(new Set([...docEditando.camposAValidar, ...bancarios]));
+                      setDocEditando({ ...docEditando, camposAValidar: combinados });
+                    }}
+                    className="text-[10px] font-semibold px-2 py-1 rounded-md bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 transition-colors"
+                  >
+                    + 🏦 Certificado Bancario
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const tributarios = ['nombreComisionado', 'numeroDocumento'];
+                      const combinados = Array.from(new Set([...docEditando.camposAValidar, ...tributarios]));
+                      setDocEditando({ ...docEditando, camposAValidar: combinados });
+                    }}
+                    className="text-[10px] font-semibold px-2 py-1 rounded-md bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-200 transition-colors"
+                  >
+                    + 📄 RUT / Identidad
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const contrato = ['nombreComisionado', 'numeroDocumento', 'numeroContrato', 'valorHonorarios'];
+                      const combinados = Array.from(new Set([...docEditando.camposAValidar, ...contrato]));
+                      setDocEditando({ ...docEditando, camposAValidar: combinados });
+                    }}
+                    className="text-[10px] font-semibold px-2 py-1 rounded-md bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 transition-colors"
+                  >
+                    + 📑 Contrato SECOP
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cdp = ['numeroCdp', 'fechaCdp'];
+                      const combinados = Array.from(new Set([...docEditando.camposAValidar, ...cdp]));
+                      setDocEditando({ ...docEditando, camposAValidar: combinados });
+                    }}
+                    className="text-[10px] font-semibold px-2 py-1 rounded-md bg-indigo-50 text-indigo-800 hover:bg-indigo-100 border border-indigo-200 transition-colors"
+                  >
+                    + 💰 CDP Presupuestal
+                  </button>
+                  {docEditando.camposAValidar.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setDocEditando({ ...docEditando, camposAValidar: [] })}
+                      className="text-[10px] font-medium px-2 py-1 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors ml-auto"
+                    >
+                      Limpiar selección
+                    </button>
+                  )}
+                </div>
+
+                {/* Cuadrícula interactiva de campos seleccionables */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-1.5 max-h-48 overflow-y-auto p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                  {[
+                    { clave: 'nombreComisionado', etiqueta: 'Titular / Comisionado' },
+                    { clave: 'numeroDocumento', etiqueta: 'Documento / Cédula' },
+                    { clave: 'tipoCuenta', etiqueta: 'Tipo de Cuenta' },
+                    { clave: 'numeroCuenta', etiqueta: 'Número de Cuenta' },
+                    { clave: 'entidadBancaria', etiqueta: 'Entidad Bancaria' },
+                    { clave: 'tipoComisionado', etiqueta: 'Tipo de Comisionado' },
+                    { clave: 'numeroContrato', etiqueta: 'N° Contrato SECOP' },
+                    { clave: 'valorHonorarios', etiqueta: 'Valor Honorarios' },
+                    { clave: 'numeroCdp', etiqueta: 'Número de CDP' },
+                    { clave: 'fechaCdp', etiqueta: 'Fecha Expedición CDP' },
+                    { clave: 'destinoCiudad', etiqueta: 'Ciudad Destino' },
+                    { clave: 'destinoDepartamento', etiqueta: 'Departamento Destino' },
+                    { clave: 'fechaInicio', etiqueta: 'Fecha Inicio Viaje' },
+                    { clave: 'fechaFin', etiqueta: 'Fecha Fin Viaje' },
+                    { clave: 'diasComision', etiqueta: 'Días de Comisión' },
+                    { clave: 'montoViaticos', etiqueta: 'Monto Viáticos' },
+                    { clave: 'montoGastosViaje', etiqueta: 'Gastos de Viaje' },
+                    { clave: 'costoEstimadoTiquete', etiqueta: 'Costo Tiquete' },
+                    ...campos
+                      .filter(
+                        (cf) =>
+                          ![
+                            'nombreComisionado',
+                            'numeroDocumento',
+                            'tipoCuenta',
+                            'numeroCuenta',
+                            'entidadBancaria',
+                            'tipoComisionado',
+                            'numeroContrato',
+                            'valorHonorarios',
+                            'numeroCdp',
+                            'fechaCdp',
+                            'destinoCiudad',
+                            'destinoDepartamento',
+                            'fechaInicio',
+                            'fechaFin',
+                            'diasComision',
+                            'montoViaticos',
+                            'montoGastosViaje',
+                            'costoEstimadoTiquete',
+                          ].includes(cf.clave),
+                      )
+                      .map((cf) => ({ clave: cf.clave, etiqueta: cf.etiqueta })),
+                  ].map((campoItem) => {
+                    const seleccionado = docEditando.camposAValidar.includes(campoItem.clave);
+                    return (
+                      <label
+                        key={campoItem.clave}
+                        className={`flex items-center gap-2 p-1.5 rounded-md border text-[11px] cursor-pointer transition-colors ${
+                          seleccionado
+                            ? 'bg-blue-50 border-blue-300 text-blue-900 font-semibold'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={seleccionado}
+                          onChange={(e) => {
+                            const nuevaLista = e.target.checked
+                              ? [...docEditando.camposAValidar, campoItem.clave]
+                              : docEditando.camposAValidar.filter((c) => c !== campoItem.clave);
+                            setDocEditando({ ...docEditando, camposAValidar: nuevaLista });
+                          }}
+                          className="rounded text-[#003DA5] focus:ring-blue-500 h-3.5 w-3.5"
+                        />
+                        <span className="truncate" title={campoItem.etiqueta}>
+                          {campoItem.etiqueta}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="flex items-center gap-2 pt-1">

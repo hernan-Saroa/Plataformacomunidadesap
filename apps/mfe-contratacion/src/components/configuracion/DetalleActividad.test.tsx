@@ -8,9 +8,9 @@ import { contratacionService } from '../../services/contratacionService';
 import { FilaMatriz } from '../../types';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-// La ficha solo usa del detalle del proceso las listas de paneles; montar el
-// detalle entero en la prueba no aporta nada.
-vi.mock('../proceso/DetalleProceso', () => ({
+// La ficha solo usa las listas de paneles; se fijan para que la prueba no
+// dependa de qué actividades estén construidas hoy.
+vi.mock('../proceso/actividadesConPanel', () => ({
   ACTIVIDADES_CON_REGISTRO: { '3.2': 'Análisis del sector' },
   TIENEN_PANEL: (n: string) => ['3.1', '3.2', '5.2'].includes(n),
 }));

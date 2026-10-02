@@ -36,6 +36,7 @@ import {
 } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
+import FirmaDigitalViaticosModal, { FirmaDigitalData } from './FirmaDigitalViaticosModal';
 
 interface Props {
   solicitudId: string;
@@ -96,6 +97,15 @@ export default function ModalFirmasAprobacion({
   const [errorAccion, setErrorAccion] = useState<string | null>(null);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
 
+  // Firma Digital OTP (estándar institucional ESAP)
+  const [modalFirmaDigitalAbierta, setModalFirmaDigitalAbierta] = useState(false);
+  const [solicitandoOtp, setSolicitandoOtp] = useState(false);
+  const [otpData, setOtpData] = useState<{
+    verificationId?: string;
+    emailEnviadoA?: string;
+    devCode?: string;
+  } | null>(null);
+
   // Modo devolución
   const [modoDevolucion, setModoDevolucion] = useState(Boolean(modoInicialDevolucion));
   const [motivoDevolucion, setMotivoDevolucion] = useState('');
@@ -131,8 +141,8 @@ export default function ModalFirmasAprobacion({
       }
 
       // Pre-llenar datos de usuario autenticado
-      const user = authService.getCurrentUser();
-      if (user) {
+      const user = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
+      if (user && typeof (user as any).then !== 'function') {
         const nombreCompleto =
           `${user.primerNombre || ''} ${user.segundoNombre || ''} ${user.primerApellido || ''} ${user.segundoApellido || ''}`.trim() ||
           user.nombre ||
@@ -166,6 +176,8 @@ export default function ModalFirmasAprobacion({
       const f = estadoFirmas.firmantes.find((item) => item.tipo === firmanteSeleccionado);
       if (f && f.cargo) {
         setCargoFirmante(f.cargo);
+      } else if (firmanteSeleccionado === 'ANALISTA') {
+        setCargoFirmante('Analista de Viáticos / Grupo de Gestión Financiera');
       }
     }
   }, [firmanteSeleccionado, estadoFirmas]);
@@ -259,24 +271,24 @@ export default function ModalFirmasAprobacion({
     return canvas.toDataURL('image/png');
   };
 
-  // Enviar firma
-  const handleFirmar = async () => {
+  // Preparar datos base de la firma
+  const prepararPayloadBase = (): FirmarSolicitudPayload | null => {
     setErrorAccion(null);
     setMensajeExito(null);
 
     if (!nombreFirmante.trim()) {
       setErrorAccion('Debe ingresar el nombre del firmante.');
-      return;
+      return null;
     }
 
     if (!cargoFirmante.trim()) {
       setErrorAccion('Debe ingresar el cargo oficial del firmante.');
-      return;
+      return null;
     }
 
     if (esAusencia && !motivoAusencia.trim()) {
       setErrorAccion('Debe especificar el motivo o justificación de la ausencia/desplazamiento.');
-      return;
+      return null;
     }
 
     let firmaImagen: string | undefined = undefined;
@@ -285,21 +297,72 @@ export default function ModalFirmasAprobacion({
       if (canvas && haDibujado) {
         firmaImagen = canvas.toDataURL('image/png');
       } else {
-        // Si no dibujó trazo, genera estampa electrónica
         firmaImagen = generarEstampaDigital(nombreFirmante, cargoFirmante);
       }
     } else {
       firmaImagen = generarEstampaDigital(nombreFirmante, cargoFirmante);
     }
 
-    const payload: FirmarSolicitudPayload = {
+    const userDoc =
+      (currentUser as any)?.cedula ||
+      (currentUser as any)?.numeroDocumento ||
+      (currentUser as any)?.num_identificacion ||
+      (currentUser as any)?.person?.num_identificacion ||
+      (currentUser as any)?.person?.numeroDocumento ||
+      undefined;
+
+    return {
       tipoFirma: firmanteSeleccionado,
       nombreFirmante: nombreFirmante.trim(),
       cargoFirmante: cargoFirmante.trim(),
+      documentoIdentidad: userDoc ? String(userDoc).trim() : undefined,
       firmaImagen,
       esAusencia,
       motivoAusencia: esAusencia ? motivoAusencia.trim() : undefined,
       comentarios: comentarios.trim() || undefined,
+    };
+  };
+
+  // Solicitar OTP e iniciar modal de firma digital
+  const handleIniciarFirmaOtp = async () => {
+    const base = prepararPayloadBase();
+    if (!base) return;
+
+    setSolicitandoOtp(true);
+    setErrorAccion(null);
+    try {
+      const resp = await viaticosService.solicitarOtpFirma(solicitudId, {
+        tipoFirma: firmanteSeleccionado,
+      });
+      setOtpData({
+        verificationId: resp.verificationId,
+        emailEnviadoA: resp.emailEnviadoA || resp.email,
+        devCode: resp.devCode,
+      });
+      setModalFirmaDigitalAbierta(true);
+    } catch (e: any) {
+      console.error('Error solicitando OTP de firma:', e);
+      setErrorAccion(
+        e?.response?.data?.message ||
+          e?.message ||
+          'No fue posible solicitar el código OTP de verificación. Intente nuevamente.',
+      );
+    } finally {
+      setSolicitandoOtp(false);
+    }
+  };
+
+  // Confirmar firma digital tras verificación del OTP y hash criptográfico
+  const handleFirmaDigitalCompleta = async (firma: FirmaDigitalData) => {
+    const base = prepararPayloadBase();
+    if (!base) return false;
+
+    const payload: FirmarSolicitudPayload = {
+      ...base,
+      otp: firma.codigoOtp,
+      verificationId: otpData?.verificationId,
+      certificadoId: firma.certificado_id,
+      hashSha256: firma.hash,
     };
 
     setProcesandoFirma(true);
@@ -313,17 +376,22 @@ export default function ModalFirmasAprobacion({
       if (resp.radicada) {
         onFirmasCompletadas?.(resp.solicitud);
       }
+      return true;
     } catch (e: any) {
-      console.error('Error registrando firma:', e);
+      console.error('Error registrando firma digital:', e);
       setErrorAccion(
         e?.response?.data?.message ||
           e?.message ||
-          'No fue posible registrar la firma de aprobación.',
+          'No fue posible registrar la firma digital de aprobación.',
       );
+      throw e;
     } finally {
       setProcesandoFirma(false);
     }
   };
+
+  // Fallback de firma directa si se requiere
+  const handleFirmar = handleIniciarFirmaOtp;
 
   // Devolver solicitud
   const handleDevolver = async () => {
@@ -379,17 +447,35 @@ export default function ModalFirmasAprobacion({
 
   const firmante1 = estadoFirmas?.firmantes.find((f) => f.tipo === 'JEFE_DEPENDENCIA');
   const firmante2 = estadoFirmas?.firmantes.find((f) => f.tipo === 'GERENTE_PROYECTO');
+  const firmante3 = estadoFirmas?.firmantes.find(
+    (f) => f.tipo === 'ANALISTA' || (f.tipo as string) === 'ANALISTA_VIATICOS',
+  );
   const esReglaEspecial = estadoFirmas?.reglaDesplazamiento && estadoFirmas.reglaDesplazamiento !== 'REGULAR';
   const todasFirmadas = Boolean(estadoFirmas?.completado);
 
   const currentUser = authService.getCurrentUserSync();
-  const puedeFirmar = authService.canFirmarAprobacion() || authService.isJefeDependencia() || authService.isGerenteProyecto();
-  const esJefe = authService.isJefeDependencia() || authService.isSubdireccionGestionCorporativa() || authService.isDireccionNacional() || Boolean(currentUser?.esAdmin);
-  const esGerente = authService.isGerenteProyecto() || Boolean(currentUser?.esAdmin);
-  const firmasRegistradasCount = (firmante1?.firmado ? 1 : 0) + (firmante2?.firmado ? 1 : 0);
+  const esJefe = Boolean(authService.isJefeDependencia?.()) || Boolean(authService.isSubdireccionGestionCorporativa?.()) || Boolean(authService.isDireccionNacional?.()) || Boolean(currentUser?.esAdmin);
+  const esGerente = Boolean(authService.isGerenteProyecto?.()) || Boolean(currentUser?.esAdmin);
+  const esAnalista = Boolean(authService.isAnalista?.()) || Boolean(currentUser?.esAdmin);
+  const puedeFirmar = Boolean(authService.canFirmarAprobacion?.()) || esJefe || esGerente || esAnalista;
+  const firmasRegistradasCount =
+    (firmante1?.firmado ? 1 : 0) +
+    (firmante2?.firmado ? 1 : 0) +
+    (firmante3?.firmado ? 1 : 0);
 
   const formatearMonedaLocal = (valor: number | undefined | null) => {
     return `$ ${(Number(valor) || 0).toLocaleString('es-CO')}`;
+  };
+
+  const formatearFechaAmigable = (val?: string | Date | null) => {
+    if (!val) return '—';
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return '—';
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const dia = d.getDate().toString().padStart(2, '0');
+    const mes = meses[d.getMonth()];
+    const anio = d.getFullYear();
+    return `${dia} de ${mes} de ${anio}`;
   };
 
   const comisionadoData =
@@ -611,7 +697,6 @@ export default function ModalFirmasAprobacion({
                             {(tramo.horaEstimadaSalida || tramo.horarioEstimadoMilitar) && (
                               <span className="font-mono text-[10px] text-slate-700 bg-white border border-slate-200 px-1.5 py-0.5 rounded">
                                 {tramo.horaEstimadaSalida || tramo.horarioEstimadoMilitar} h
-                                {tramo.horaEstimadaLlegada ? ` → ${tramo.horaEstimadaLlegada} h` : ''}
                               </span>
                             )}
                           </div>
@@ -916,151 +1001,237 @@ export default function ModalFirmasAprobacion({
                   </div>
                 </div>
 
-            {/* Tarjetas de Firmantes Requeridos */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Firmante 1: Jefe / Supervisor / Director */}
-              <div
-                className={`p-4 rounded-2xl border transition-all ${
-                  firmante1?.firmado
-                    ? 'bg-emerald-50/60 border-emerald-300'
-                    : firmanteSeleccionado === 'JEFE_DEPENDENCIA'
-                    ? 'bg-blue-50/40 border-[#003DA5] shadow-xs ring-2 ring-blue-500/20'
-                    : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-white border border-slate-200 text-[#003DA5] font-black text-xs flex items-center justify-center shrink-0">
-                      1
-                    </span>
-                    <div>
-                      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                        {firmante1?.titulo || 'Jefe de Dependencia / Supervisor'}
-                      </p>
-                      <h4 className="text-xs sm:text-sm font-black text-slate-900">
-                        {firmante1?.cargo || 'Jefe Inmediato o Autoridad Designada'}
-                      </h4>
-                    </div>
-                  </div>
-                  {firmante1?.firmado ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                      <CheckCircle2 className="w-3 h-3" /> Firmado
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                      <Clock className="w-3 h-3" /> Pendiente
-                    </span>
-                  )}
-                </div>
+            {/* Tarjetas de Firmantes Requeridos al estilo amigable PTA */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs sm:text-sm font-bold text-slate-700">
+                  Aprobación por Componente
+                </h4>
+                <span className="text-[11px] font-medium text-slate-500">
+                  {todasFirmadas ? '2 de 2 aprobadas' : firmasRegistradasCount === 1 ? '1 de 2 aprobadas' : '0 de 2 aprobadas'}
+                </span>
+              </div>
 
-                {firmante1?.firmado && firmante1.firma ? (
-                  <div className="mt-2 p-2.5 bg-white rounded-xl border border-emerald-200 text-[11px] space-y-1">
-                    <p className="font-bold text-slate-900">{firmante1.firma.nombreFirmante}</p>
-                    <p className="text-[10px] text-slate-500">{firmante1.firma.cargoFirmante}</p>
-                    <p className="text-[10px] text-slate-400">
-                      Fecha: {new Date(firmante1.firma.fechaFirma).toLocaleString('es-CO')}
-                    </p>
-                    {firmante1.firma.esAusencia && (
-                      <p className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">
-                        En ausencia/desplazamiento: {firmante1.firma.motivoAusencia}
-                      </p>
-                    )}
-                    {firmante1.firma.comentarios && (
-                      <p className="text-[10px] italic text-slate-600 bg-slate-50 p-1.5 rounded">
-                        "{firmante1.firma.comentarios}"
-                      </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Firmante 1: Jefe / Supervisor / Director */}
+                <div
+                  className={`p-4 rounded-xl border text-center transition-all ${
+                    firmante1?.firmado
+                      ? 'bg-[#F0FDF4] border-[#BBF7D0] shadow-xs'
+                      : 'bg-white border-slate-200'
+                  }`}
+                >
+                  <div className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">
+                    {firmante1?.titulo || 'JEFE DE DEPENDENCIA — SUPERVISOR'}
+                  </div>
+
+                  <div className={`text-sm font-bold mb-1 min-h-[20px] ${
+                    firmante1?.firmado ? 'text-[#111827]' : 'text-[#9CA3AF]'
+                  }`}>
+                    {firmante1?.firmado ? (firmante1.firma?.nombreFirmante || 'Servidor Autorizado') : '—'}
+                  </div>
+
+                  {firmante1?.firmado && firmante1.firma?.documentoIdentidad ? (
+                    <div className="text-[11px] font-medium text-slate-500 mb-2">
+                      C.C. {firmante1.firma.documentoIdentidad}
+                    </div>
+                  ) : null}
+
+                  <div className="flex items-center justify-center my-2">
+                    {firmante1?.firmado ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#D1FAE5] text-[#065F46] text-xs font-semibold">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Aprobado
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-[#F3F4F6] text-[#9CA3AF] text-xs font-semibold">
+                        Pendiente por firmar
+                      </span>
                     )}
                   </div>
-                ) : (
-                  <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
-                    <p className="italic">{firmante1?.descripcion}</p>
-                    {!todasFirmadas && puedeFirmar && esJefe && (
+
+                  <div className="text-xs text-[#9CA3AF] mt-1">
+                    {firmante1?.firmado && firmante1.firma?.fechaFirma
+                      ? formatearFechaAmigable(firmante1.firma.fechaFirma)
+                      : '—'}
+                  </div>
+
+                  {firmante1?.firmado && firmante1.firma && (
+                    <div className="mt-3 pt-2 border-t border-emerald-100 text-[10px] text-slate-400 space-y-0.5">
+                      <p className="font-mono text-[9px] text-[#003DA5]">
+                        Cert: {firmante1.firma.certificadoId || 'ESAP-CERT-VIAT'}
+                      </p>
+                      {firmante1.firma.esAusencia && (
+                        <p className="text-amber-800 bg-amber-50 px-2 py-0.5 rounded text-[9px]">
+                          En ausencia: {firmante1.firma.motivoAusencia}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {!firmante1?.firmado && !todasFirmadas && puedeFirmar && esJefe && (
+                    <div className="mt-3 pt-2 border-t border-slate-100">
                       <button
                         type="button"
                         onClick={() => setFirmanteSeleccionado('JEFE_DEPENDENCIA')}
-                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                        className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold transition-all ${
                           firmanteSeleccionado === 'JEFE_DEPENDENCIA'
                             ? 'bg-[#003DA5] text-white shadow-xs'
-                            : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                         }`}
                       >
                         Firmar como {firmante1?.titulo}
                       </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Firmante 2: Gerente de Proyecto */}
-              <div
-                className={`p-4 rounded-2xl border transition-all ${
-                  firmante2?.firmado
-                    ? 'bg-emerald-50/60 border-emerald-300'
-                    : firmanteSeleccionado === 'GERENTE_PROYECTO'
-                    ? 'bg-blue-50/40 border-[#003DA5] shadow-xs ring-2 ring-blue-500/20'
-                    : 'bg-slate-50 border-slate-200'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-white border border-slate-200 text-[#003DA5] font-black text-xs flex items-center justify-center shrink-0">
-                      2
-                    </span>
-                    <div>
-                      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                        {firmante2?.titulo || 'Gerente de Proyecto'}
-                      </p>
-                      <h4 className="text-xs sm:text-sm font-black text-slate-900">
-                        {firmante2?.cargo || 'Gerente de Proyecto / Supervisor de Convenio'}
-                      </h4>
                     </div>
-                  </div>
-                  {firmante2?.firmado ? (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                      <CheckCircle2 className="w-3 h-3" /> Firmado
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                      <Clock className="w-3 h-3" /> Pendiente
-                    </span>
                   )}
                 </div>
 
-                {firmante2?.firmado && firmante2.firma ? (
-                  <div className="mt-2 p-2.5 bg-white rounded-xl border border-emerald-200 text-[11px] space-y-1">
-                    <p className="font-bold text-slate-900">{firmante2.firma.nombreFirmante}</p>
-                    <p className="text-[10px] text-slate-500">{firmante2.firma.cargoFirmante}</p>
-                    <p className="text-[10px] text-slate-400">
-                      Fecha: {new Date(firmante2.firma.fechaFirma).toLocaleString('es-CO')}
-                    </p>
-                    {firmante2.firma.comentarios && (
-                      <p className="text-[10px] italic text-slate-600 bg-slate-50 p-1.5 rounded">
-                        "{firmante2.firma.comentarios}"
-                      </p>
+                {/* Firmante 2: Gerente de Proyecto */}
+                <div
+                  className={`p-4 rounded-xl border text-center transition-all ${
+                    firmante2?.firmado
+                      ? 'bg-[#F0FDF4] border-[#BBF7D0] shadow-xs'
+                      : 'bg-white border-slate-200'
+                  }`}
+                >
+                  <div className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">
+                    {firmante2?.titulo || 'GERENTE DE PROYECTO / CONVENIO'}
+                  </div>
+
+                  <div className={`text-sm font-bold mb-1 min-h-[20px] ${
+                    firmante2?.firmado ? 'text-[#111827]' : 'text-[#9CA3AF]'
+                  }`}>
+                    {firmante2?.firmado ? (firmante2.firma?.nombreFirmante || 'Servidor Autorizado') : '—'}
+                  </div>
+
+                  {firmante2?.firmado && firmante2.firma?.documentoIdentidad ? (
+                    <div className="text-[11px] font-medium text-slate-500 mb-2">
+                      C.C. {firmante2.firma.documentoIdentidad}
+                    </div>
+                  ) : null}
+
+                  <div className="flex items-center justify-center my-2">
+                    {firmante2?.firmado ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#D1FAE5] text-[#065F46] text-xs font-semibold">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Aprobado
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-[#F3F4F6] text-[#9CA3AF] text-xs font-semibold">
+                        Pendiente por firmar
+                      </span>
                     )}
                   </div>
-                ) : (
-                  <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
-                    <p className="italic">{firmante2?.descripcion}</p>
-                    {!todasFirmadas && puedeFirmar && esGerente && (
+
+                  <div className="text-xs text-[#9CA3AF] mt-1">
+                    {firmante2?.firmado && firmante2.firma?.fechaFirma
+                      ? formatearFechaAmigable(firmante2.firma.fechaFirma)
+                      : '—'}
+                  </div>
+
+                  {firmante2?.firmado && firmante2.firma && (
+                    <div className="mt-3 pt-2 border-t border-emerald-100 text-[10px] text-slate-400 space-y-0.5">
+                      <p className="font-mono text-[9px] text-[#003DA5]">
+                        Cert: {firmante2.firma.certificadoId || 'ESAP-CERT-VIAT'}
+                      </p>
+                      {firmante2.firma.esAusencia && (
+                        <p className="text-amber-800 bg-amber-50 px-2 py-0.5 rounded text-[9px]">
+                          En ausencia: {firmante2.firma.motivoAusencia}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {!firmante2?.firmado && !todasFirmadas && puedeFirmar && esGerente && (
+                    <div className="mt-3 pt-2 border-t border-slate-100">
                       <button
                         type="button"
                         onClick={() => setFirmanteSeleccionado('GERENTE_PROYECTO')}
-                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                        className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold transition-all ${
                           firmanteSeleccionado === 'GERENTE_PROYECTO'
                             ? 'bg-[#003DA5] text-white shadow-xs'
-                            : 'bg-slate-200 hover:bg-slate-300 text-slate-700'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                         }`}
                       >
                         Firmar como Gerente de Proyecto
                       </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Firmante 3: Analista de Viáticos (opcional) */}
+                {firmante3 && (
+                  <div
+                    className={`p-4 rounded-xl border text-center transition-all ${
+                      firmante3.firmado
+                        ? 'bg-[#F0FDF4] border-[#BBF7D0] shadow-xs'
+                        : 'bg-white border-slate-200'
+                    }`}
+                  >
+                    <div className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">
+                      {firmante3.titulo || 'ANALISTA DE VIÁTICOS'}
+                    </div>
+
+                    <div className={`text-sm font-bold mb-1 min-h-[20px] ${
+                      firmante3.firmado ? 'text-[#111827]' : 'text-[#9CA3AF]'
+                    }`}>
+                      {firmante3.firmado ? (firmante3.firma?.nombreFirmante || 'Servidor Autorizado') : '—'}
+                    </div>
+
+                    {firmante3.firmado && firmante3.firma?.documentoIdentidad ? (
+                      <div className="text-[11px] font-medium text-slate-500 mb-2">
+                        C.C. {firmante3.firma.documentoIdentidad}
+                      </div>
+                    ) : null}
+
+                    <div className="flex items-center justify-center my-2">
+                      {firmante3.firmado ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-[#D1FAE5] text-[#065F46] text-xs font-semibold">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Aprobado
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-md bg-[#F3F4F6] text-[#9CA3AF] text-xs font-semibold">
+                          Pendiente por firmar
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="text-xs text-[#9CA3AF] mt-1">
+                      {firmante3.firmado && firmante3.firma?.fechaFirma
+                        ? formatearFechaAmigable(firmante3.firma.fechaFirma)
+                        : '—'}
+                    </div>
+
+                    {firmante3.firmado && firmante3.firma && (
+                      <div className="mt-3 pt-2 border-t border-emerald-100 text-[10px] text-slate-400 space-y-0.5">
+                        <p className="font-mono text-[9px] text-[#003DA5]">
+                          Cert: {firmante3.firma.certificadoId || 'ESAP-CERT-VIAT'}
+                        </p>
+                      </div>
+                    )}
+
+                    {!firmante3.firmado && !todasFirmadas && puedeFirmar && esAnalista && (
+                      <div className="mt-3 pt-2 border-t border-slate-100">
+                        <button
+                          type="button"
+                          onClick={() => setFirmanteSeleccionado('ANALISTA')}
+                          className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold transition-all ${
+                            firmanteSeleccionado === 'ANALISTA'
+                              ? 'bg-[#003DA5] text-white shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          Firmar como Analista
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Panel de Éxito cuando ambas firmas están listas */}
+            {/* Panel de Éxito cuando todas las firmas están listas */}
             {todasFirmadas && (
               <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl text-emerald-900 space-y-2">
                 <div className="flex items-center gap-2 font-black text-sm">
@@ -1103,7 +1274,9 @@ export default function ModalFirmasAprobacion({
                       <span className="text-[#003DA5]">
                         {firmanteSeleccionado === 'JEFE_DEPENDENCIA'
                           ? firmante1?.titulo || 'Jefe de Dependencia / Supervisor'
-                          : firmante2?.titulo || 'Gerente de Proyecto'}
+                          : firmanteSeleccionado === 'GERENTE_PROYECTO'
+                          ? firmante2?.titulo || 'Gerente de Proyecto'
+                          : firmante3?.titulo || 'Analista de Viáticos'}
                       </span>
                     </h4>
                   </div>
@@ -1289,12 +1462,16 @@ export default function ModalFirmasAprobacion({
                     </button>
                     <button
                       type="button"
-                      disabled={procesandoFirma}
-                      onClick={() => void handleFirmar()}
+                      disabled={procesandoFirma || solicitandoOtp}
+                      onClick={() => void handleIniciarFirmaOtp()}
                       className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black inline-flex items-center gap-2 transition-colors disabled:opacity-50 shadow-md shadow-emerald-600/20"
                     >
-                      <BadgeCheck className="w-4 h-4" />
-                      {procesandoFirma ? 'Firmando y validando…' : 'Firmar y Registrar Aprobación'}
+                      <ShieldCheck className="w-4 h-4" />
+                      {solicitandoOtp
+                        ? 'Enviando OTP…'
+                        : procesandoFirma
+                        ? 'Firmando y validando…'
+                        : 'Firmar con Validación OTP'}
                     </button>
                   </div>
                 </div>
@@ -1377,6 +1554,44 @@ export default function ModalFirmasAprobacion({
           </>
         )}
       </div>
+
+      {/* Modal Institucional de Firma Digital con Validación OTP */}
+      {modalFirmaDigitalAbierta && (
+        <FirmaDigitalViaticosModal
+          isOpen={modalFirmaDigitalAbierta}
+          solicitudId={solicitudId}
+          consecutivo={consecutivoUnico || estadoFirmas?.consecutivoUnico || codigo || '023'}
+          comisionadoNombre={nombreComisionadoCompleto}
+          destino={solicitudDetalle?.destino || solicitudDetalle?.lugarComision || ''}
+          fechas={
+            solicitudDetalle?.fechaInicio && solicitudDetalle?.fechaFin
+              ? `${solicitudDetalle.fechaInicio} al ${solicitudDetalle.fechaFin}`
+              : ''
+          }
+          firmanteNombre={nombreFirmante.trim()}
+          firmanteCargo={cargoFirmante.trim()}
+          etapaLabel={
+            firmanteSeleccionado === 'JEFE_DEPENDENCIA'
+              ? 'Aprobación Jefe de Dependencia / Supervisor'
+              : firmanteSeleccionado === 'GERENTE_PROYECTO'
+              ? 'Aprobación Gerente de Proyecto / Convenio'
+              : 'Revisión y Control Analista de Viáticos'
+          }
+          correoDestino={otpData?.emailEnviadoA}
+          devCode={otpData?.devCode}
+          onVerifyCodigo={async (codigoOtp: string) => {
+            await viaticosService.verificarOtpFirma(solicitudId, {
+              verificationId: otpData?.verificationId || '',
+              code: codigoOtp,
+              otp: codigoOtp,
+              tipoFirma: firmanteSeleccionado,
+              consume: false,
+            });
+          }}
+          onFirmaCompleta={handleFirmaDigitalCompleta}
+          onCancelar={() => setModalFirmaDigitalAbierta(false)}
+        />
+      )}
     </div>
   );
 }

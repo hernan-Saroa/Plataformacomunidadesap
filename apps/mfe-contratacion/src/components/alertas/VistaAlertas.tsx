@@ -56,7 +56,7 @@ interface Props {
    * Abre el proceso de la alerta. El numeral llega cuando es una aprobación
    * pendiente, para caer directamente en la actividad que hay que resolver.
    */
-  onAbrir?: (procesoId: string, numeral?: string) => void;
+  onAbrir?: (procesoId: string, numeral?: string, tipo?: AlertaVencimiento['tipo']) => void;
 }
 
 export function VistaAlertas({ onAbrir }: Props = {}) {
@@ -220,7 +220,7 @@ function Fila({
   onAbrir,
 }: {
   a: AlertaVencimiento;
-  onAbrir?: (procesoId: string, numeral?: string) => void;
+  onAbrir?: (procesoId: string, numeral?: string, tipo?: AlertaVencimiento['tipo']) => void;
 }) {
   const rasgo = RASGOS[a.tipo];
   const vencido = a.estado === 'VENCIDO';
@@ -246,7 +246,7 @@ function Fila({
 
   return (
     <li
-      onClick={() => onAbrir?.(a.procesoId, numeral)}
+      onClick={() => onAbrir?.(a.procesoId, numeral, a.tipo)}
       className={`flex items-center gap-3 px-4 py-3 ${
         onAbrir ? 'cursor-pointer hover:bg-slate-50 transition-colors' : ''
       }`}

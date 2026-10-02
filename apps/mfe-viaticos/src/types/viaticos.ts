@@ -109,6 +109,32 @@ export interface FormNuevaSolicitud {
   alertasLiquidacion?: string[];
   camposAdicionales?: Record<string, any>;
   itinerario?: RutaItinerario[];
+  cuentaBancariaSeleccionada?: CuentaBancariaComisionado | null;
+  cargoSeleccionado?: CargoComisionado | null;
+  cargo?: string;
+  idCargo?: number;
+}
+
+export interface CuentaBancariaComisionado {
+  id?: string;
+  banco: string;
+  tipoCuenta: string; // 'AHORROS' | 'CORRIENTE' | string
+  numeroCuenta: string;
+  urlCertificadoBancario?: string | null;
+  nombreArchivoCertificado?: string | null;
+  fechaRegistro?: string;
+  esPrincipal?: boolean;
+}
+
+export interface CargoComisionado {
+  id?: string;
+  idCargo?: number;
+  cargo: string;
+  salario: number;
+  idDependencia?: number | null;
+  fechaInicio?: string | null;
+  fechaFin?: string | null;
+  esPrincipal?: boolean;
 }
 
 export type TipoComisionado = 'FUNCIONARIO' | 'CONTRATISTA' | 'DOCENTE' | 'ESTUDIANTE' | 'INVESTIGADOR';
@@ -131,12 +157,13 @@ export interface Geopolitica {
   idPadre?: number;
 }
 
-export type { Dependencia } from '../../../shell/src/services/api/dependencias.service';
+export type { Dependencia, Cargo } from '../../../shell/src/services/api/dependencias.service';
 
 export type TipoDocumentoSoporte =
   | 'CDP'
   | 'RUT'
   | 'CERT_BANCARIA'
+  | 'CERTIFICACION_BANCARIA'
   | 'SEGURIDAD_SOCIAL'
   | 'CONTRATO_SECOP'
   | 'PASAPORTE'
@@ -182,6 +209,8 @@ export interface Comisionado {
   fechaFinContrato?: string | Date | null;
   salarioBasico?: number | null;
   cargo?: string | null;
+  cuentasBancarias?: CuentaBancariaComisionado[];
+  cargos?: CargoComisionado[];
   solicitudesPendientes?: SolicitudPendiente023[];
 }
 
@@ -314,6 +343,10 @@ export interface CreateSolicitudRequest {
   }[];
   camposAdicionales?: Record<string, any>;
   itinerario?: RutaItinerario[];
+  cuentaBancariaSeleccionada?: CuentaBancariaComisionado | null;
+  cargoSeleccionado?: CargoComisionado | null;
+  cargo?: string;
+  idCargo?: number;
 }
 
 /**
@@ -374,6 +407,8 @@ export interface SolicitudListaResponse {
   fechaRevision?: string | null;
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
+  cargo?: string | null;
+  idCargo?: number | null;
   analistaAsignadoId?: string | null;
   idDependencia?: number | string | null;
   dependencia?: string;
@@ -581,6 +616,7 @@ export interface ChecklistDocumento {
   nombre: string;
   descripcion: string | null;
   instruccionesValidacion?: string | null;
+  camposAValidar?: string[];
 }
 
 export interface ChecklistDocumentosResponse {
@@ -1179,12 +1215,17 @@ export interface BandejaPresupuestoResponse {
 // Firmas de Aprobación del Formato 023 (Previo a Radicación)
 // =========================================================================
 
-export type TipoFirmaAprobacion = 'JEFE_DEPENDENCIA' | 'GERENTE_PROYECTO';
+export type TipoFirmaAprobacion =
+  | 'JEFE_DEPENDENCIA'
+  | 'GERENTE_PROYECTO'
+  | 'ENLACE_ELABORO'
+  | 'ANALISTA';
 
 export interface FirmaAprobacionRegistrada {
   tipo: TipoFirmaAprobacion;
   nombreFirmante: string;
   cargoFirmante: string;
+  documentoIdentidad?: string;
   firmaImagen?: string | null;
   esAusencia?: boolean;
   motivoAusencia?: string | null;
@@ -1192,6 +1233,10 @@ export interface FirmaAprobacionRegistrada {
   fechaFirma: string;
   usuarioId?: string | null;
   estado: 'FIRMADO' | 'RECHAZADO';
+  certificadoId?: string;
+  hashSha256?: string;
+  firmadoDigitalmente?: boolean;
+  otpVerificado?: boolean;
 }
 
 export interface FirmanteRequerido {
@@ -1220,14 +1265,51 @@ export interface FirmarSolicitudPayload {
   tipoFirma: TipoFirmaAprobacion;
   nombreFirmante: string;
   cargoFirmante: string;
+  documentoIdentidad?: string;
   firmaImagen?: string;
   esAusencia?: boolean;
   motivoAusencia?: string;
   comentarios?: string;
+  otp?: string;
+  verificationId?: string;
+  certificadoId?: string;
+  hashSha256?: string;
 }
 
 export interface DevolverFirmaPayload {
   motivo: string;
+}
+
+export interface SolicitarOtpFirmaPayload {
+  tipoFirma?: string;
+  etapaLabel?: string;
+}
+
+export interface SolicitarOtpFirmaResponse {
+  success?: boolean;
+  verificationId: string;
+  expiresAt: string;
+  email: string;
+  emailEnviadoA?: string;
+  devCode?: string;
+}
+
+export interface VerificarOtpFirmaPayload {
+  verificationId?: string;
+  code?: string;
+  otp?: string;
+  tipoFirma?: string;
+  consume?: boolean;
+}
+
+export interface SolicitarFirmasPayload {
+  otp?: string;
+  verificationId?: string;
+  certificadoId?: string;
+  hashSha256?: string;
+  nombreFirmante?: string;
+  cargoFirmante?: string;
+  documentoIdentidad?: string;
 }
 
 

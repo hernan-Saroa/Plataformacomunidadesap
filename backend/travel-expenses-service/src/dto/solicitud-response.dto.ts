@@ -23,6 +23,8 @@ export class SolicitudResponseDto {
   warningMessage?: string;
   salarioBasico?: number;
   costoEstimadoTiquete?: number;
+  cargo?: string | null;
+  idCargo?: number | null;
   camposAdicionales?: Record<string, any>;
   itinerario?: RutaItinerarioDto[];
 }

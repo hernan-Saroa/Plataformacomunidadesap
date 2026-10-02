@@ -31,10 +31,19 @@ import {
   Mail,
   Phone,
   Wallet,
+  Landmark,
+  CreditCard,
+  Coins,
+  Check,
+  Upload,
+  ArrowLeftRight,
   X,
 } from 'lucide-react';
 import {
+  Cargo,
+  CargoComisionado,
   Comisionado,
+  CuentaBancariaComisionado,
   Dependencia,
   DocumentoFormItem,
   DocumentoSoporte,
@@ -58,6 +67,7 @@ import LiquidacionPanel from './LiquidacionPanel';
 import TicketBudgetWidget from './TicketBudgetWidget';
 import ConsolidacionExpediente from './ConsolidacionExpediente';
 import ItinerarioBuilder from './ItinerarioBuilder';
+import FirmaDigitalViaticosModal, { FirmaDigitalData } from './FirmaDigitalViaticosModal';
 import { useFestivos } from '../hooks/useFestivos';
 import {
   AYUDA_OBJETO_SIIF,
@@ -152,6 +162,26 @@ const puedeElegirDependencia = (): boolean => {
   return authService.hasPermission('travel_expenses:manage_config');
 };
 
+const LISTA_BANCOS_COLOMBIA = [
+  'BANCOLOMBIA',
+  'BANCO DE BOGOTÁ',
+  'DAVIVIENDA',
+  'BBVA COLOMBIA',
+  'BANCO DE OCCIDENTE',
+  'BANCO POPULAR',
+  'BANCO AGRARIO DE COLOMBIA',
+  'BANCO CAJA SOCIAL',
+  'BANCO AV VILLAS',
+  'SCOTIABANK COLPATRIA',
+  'BANCO ITAÚ',
+  'BANCO PICHINCHA',
+  'BANCOOMEVA',
+  'BANCO FALABELLA',
+  'NEQUI',
+  'DAVIPLATA',
+  'DALE',
+];
+
 export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCreada, onSolicitudConsolidada, solicitudAResumir, esSuperAdmin }: Props) {
   const [paso, setPaso] = useState(1);
   const [form, setForm] = useState<FormNuevaSolicitud>(formInicialNuevaSolicitud());
@@ -164,6 +194,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [habeasMarcado, setHabeasMarcado] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const { festivos } = useFestivos();
+  // Historial de cuentas bancarias y selección
+  const [cuentaBancariaSeleccionadaId, setCuentaBancariaSeleccionadaId] = useState<string>('');
   const [alertaAnticipacion, setAlertaAnticipacion] = useState<{
     extemporanea: boolean;
     diasHabiles: number;
@@ -179,6 +211,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [ciudades, setCiudades] = useState<Geopolitica[]>([]);
   const [dependencias, setDependencias] = useState<Dependencia[]>([]);
   const [cargandoDependencias, setCargandoDependencias] = useState(false);
+  const [cargosDisponibles, setCargosDisponibles] = useState<Cargo[]>([]);
+  const [cargandoCargos, setCargandoCargos] = useState(false);
+  const [cargoActualSeleccionado, setCargoActualSeleccionado] = useState<string>('');
+  const [modoCambiarCargo, setModoCambiarCargo] = useState<boolean>(false);
   // Departamento al que pertenecen las ciudades cargadas (evita recargarlas al
   // navegar de vuelta o reanudar; garantiza que se carguen cuando hacen falta).
   const [ciudadesDepto, setCiudadesDepto] = useState('');
@@ -202,8 +238,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [documentosFaltantes, setDocumentosFaltantes] = useState<string[]>([]);
   const [solicitudBorrador, setSolicitudBorrador] = useState<SolicitudComisionResponse | null>(null);
   const [checklist, setChecklist] = useState<{
-    obligatorios: Array<{ codigo: string; nombre: string; descripcion: string | null; instruccionesValidacion?: string | null }>;
-    opcionales: Array<{ codigo: string; nombre: string; descripcion: string | null; instruccionesValidacion?: string | null }>;
+    obligatorios: Array<{ codigo: string; nombre: string; descripcion: string | null; instruccionesValidacion?: string | null; camposAValidar?: string[] }>;
+    opcionales: Array<{ codigo: string; nombre: string; descripcion: string | null; instruccionesValidacion?: string | null; camposAValidar?: string[] }>;
   } | null>(null);
   const [cargandoChecklist, setCargandoChecklist] = useState(false);
   const [subiendoDocs, setSubiendoDocs] = useState(false);
@@ -216,6 +252,14 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     cerrarTodosVisores,
   } = useVisorDocumentos();
   const [finalizando, setFinalizando] = useState(false);
+  // Firma Digital OTP Enlace (estándar institucional ESAP)
+  const [modalFirmaEnlaceAbierta, setModalFirmaEnlaceAbierta] = useState(false);
+  const [solicitandoOtpEnlace, setSolicitandoOtpEnlace] = useState(false);
+  const [otpDataEnlace, setOtpDataEnlace] = useState<{
+    verificationId?: string;
+    emailEnviadoA?: string;
+    devCode?: string;
+  } | null>(null);
   const [categoriaInvestigador, setCategoriaInvestigador] = useState<string>('ASOCIADO');
   const [asignacionesBasicasText, setAsignacionesBasicasText] = useState('');
   const [asignacionesBasicas, setAsignacionesBasicas] = useState<number[]>([]);
@@ -280,65 +324,53 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const cargarDependencias = async (depUsuario?: { codDependencia?: string; nomDependencia?: string; idDependencia?: number } | null) => {
-    if (puedeElegirDependencia()) {
-      setCargandoDependencias(true);
-      try {
-        const data = await viaticosService.obtenerDependencias();
-        setDependencias(data);
-        if (data.length > 0) {
-          const existe = data.some((d) => d.codDependencia === dependenciaId);
-          if (!existe) {
-            setDependenciaId(data[0].codDependencia);
-          }
-        }
-      } catch (e) {
-        console.error('Error cargando dependencias:', e);
-        setDependencias([]);
-      } finally {
-        setCargandoDependencias(false);
-      }
-      return;
-    }
+    setCargandoDependencias(true);
+    try {
+      const data = await viaticosService.obtenerDependencias();
+      setDependencias(data || []);
 
-    setDependencias([]);
-    setCargandoDependencias(false);
-    const dep = depUsuario || usuarioActual?.dependencia;
-    let codPropio = dep?.codDependencia || '';
-    let nomPropio = dep?.nomDependencia || '';
-    const idPropio = dep?.idDependencia;
+      const dep = depUsuario || usuarioActual?.dependencia;
+      let codPropio = dep?.codDependencia || '';
+      let nomPropio = dep?.nomDependencia || '';
+      const idPropio = dep?.idDependencia;
 
-    if (!codPropio && idPropio != null) {
-      setCargandoDependencias(true);
-      try {
-        const catalogo = await viaticosService.obtenerDependencias();
-        const match = catalogo.find(
-          (d) => Number(d.idDependencia) === Number(idPropio),
-        );
+      if (!codPropio && idPropio != null && data && data.length > 0) {
+        const match = data.find((d) => Number(d.idDependencia) === Number(idPropio));
         if (match) {
           codPropio = match.codDependencia;
           nomPropio = match.nomDependencia;
         }
-      } catch (e) {
-        console.error('Error resolviendo la dependencia del usuario:', e);
-      } finally {
-        setCargandoDependencias(false);
       }
-    }
 
-    if (codPropio) {
-      setDependenciaId(codPropio);
-      setUsuarioActual((prev) =>
-        prev
-          ? {
-              ...prev,
-              dependencia: {
-                ...(prev.dependencia || {}),
-                codDependencia: codPropio,
-                nomDependencia: nomPropio || prev.dependencia?.nomDependencia || '',
-              },
-            }
-          : prev,
-      );
+      if (puedeElegirDependencia()) {
+        if (data && data.length > 0) {
+          const existe = data.some(
+            (d) => d.codDependencia === dependenciaId || String(d.idDependencia) === String(dependenciaId),
+          );
+          if (!existe && !dependenciaId) {
+            setDependenciaId(codPropio || data[0].codDependencia);
+          }
+        }
+      } else if (codPropio) {
+        setDependenciaId(codPropio);
+        setUsuarioActual((prev) =>
+          prev
+            ? {
+                ...prev,
+                dependencia: {
+                  ...(prev.dependencia || {}),
+                  codDependencia: codPropio,
+                  nomDependencia: nomPropio || prev.dependencia?.nomDependencia || '',
+                },
+              }
+            : prev,
+        );
+      }
+    } catch (e) {
+      console.error('Error cargando dependencias:', e);
+      setDependencias([]);
+    } finally {
+      setCargandoDependencias(false);
     }
   };
 
@@ -381,6 +413,22 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       if (data) {
         if (data.campos) {
           setCamposCatalogo(data.campos);
+          // Inicializar cualquier campo BOOLEAN / CHECKBOX en false si aún no tiene valor en el form
+          setForm((prev) => {
+            const nuevosAdic = { ...(prev.camposAdicionales || {}) };
+            let huboCambio = false;
+            data.campos.forEach((c) => {
+              const tipo = (c.tipoCampo || '').toUpperCase();
+              if (
+                (tipo === 'BOOLEAN' || tipo === 'CHECKBOX') &&
+                (nuevosAdic[c.clave] === undefined || nuevosAdic[c.clave] === null)
+              ) {
+                nuevosAdic[c.clave] = false;
+                huboCambio = true;
+              }
+            });
+            return huboCambio ? { ...prev, camposAdicionales: nuevosAdic } : prev;
+          });
         }
         if (comisionado?.tipoComisionado) {
           const config = data.configuraciones?.[comisionado.tipoComisionado];
@@ -461,8 +509,25 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         urlRepositorio: d.urlRepositorio,
         tipoMime: d.tipoMime,
       })),
-      camposAdicionales: (solicitud as any).camposAdicionales || {},
+      camposAdicionales: (() => {
+        const raw = (solicitud as any).camposAdicionales || (solicitud as any).campos_adicionales || {};
+        const bco = raw.entidad_bancaria || raw.entidadBancaria || raw.banco || '';
+        const cta = raw.num_cuenta || raw.numeroCuenta || raw.numCuenta || raw.cuentaBancaria || '';
+        const tip = raw.tipo_cuenta || raw.tipoCuenta || '';
+        const cargoEncontrado = raw.cargoEsap || raw.cargo || raw.cargoInstitucional || raw.cargoComisionado || solicitud.comisionado?.cargo || '';
+        if (cargoEncontrado) {
+          setCargoActualSeleccionado(cargoEncontrado);
+        }
+        return {
+          ...raw,
+          ...(cargoEncontrado ? { cargoEsap: cargoEncontrado, cargo: cargoEncontrado, cargoInstitucional: cargoEncontrado, cargoComisionado: cargoEncontrado } : {}),
+          ...(bco ? { entidad_bancaria: bco, entidadBancaria: bco, banco: bco } : {}),
+          ...(cta ? { num_cuenta: cta, numeroCuenta: cta, numCuenta: cta, cuentaBancaria: cta } : {}),
+          ...(tip ? { tipo_cuenta: tip, tipoCuenta: tip } : {}),
+        };
+      })(),
       itinerario: solicitud.itinerario || [],
+      idDependencia: (solicitud as any).idDependencia ?? solicitud.comisionado?.idDependencia ?? undefined,
     });
     if (solicitud.comisionado) {
       setComisionado(solicitud.comisionado);
@@ -507,6 +572,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setTipoTransporte('AEREO');
       setMontoEstimadoTiquete(0);
       setDependenciaId('');
+      setCargoActualSeleccionado('');
+      setCargosDisponibles([]);
+      setCargandoCargos(false);
       setValidacionTiquete(null);
       setValidandoTiquete(false);
       setNumeroActoExcepcion('');
@@ -556,13 +624,244 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const actualizarCampoAdicional = (clave: string, valor: any) => {
-    setForm((prev) => ({
-      ...prev,
-      camposAdicionales: {
+    setForm((prev) => {
+      const campoDef = camposCatalogo.find((c) => c.clave === clave);
+      const tipo = (campoDef?.tipoCampo || '').toUpperCase();
+      const esBool =
+        tipo === 'BOOLEAN' ||
+        tipo === 'CHECKBOX' ||
+        clave === 'obligacion_tributaria' ||
+        clave === 'esFacturadorElectronico';
+      const valorFinal = esBool ? Boolean(valor) : valor;
+
+      const nextAdicionales: Record<string, any> = {
         ...(prev.camposAdicionales || {}),
-        [clave]: valor,
-      },
-    }));
+        [clave]: valorFinal,
+      };
+      if (
+        clave === 'cargoEsap' ||
+        clave === 'cargo' ||
+        clave === 'cargoInstitucional' ||
+        clave === 'cargoComisionado'
+      ) {
+        nextAdicionales.cargoEsap = valor;
+        nextAdicionales.cargo = valor;
+        nextAdicionales.cargoInstitucional = valor;
+        nextAdicionales.cargoComisionado = valor;
+        setCargoActualSeleccionado(String(valor || ''));
+      } else if (clave === 'entidad_bancaria' || clave === 'entidadBancaria' || clave === 'banco') {
+        nextAdicionales.entidad_bancaria = valor;
+        nextAdicionales.entidadBancaria = valor;
+        nextAdicionales.banco = valor;
+      } else if (
+        clave === 'num_cuenta' ||
+        clave === 'numeroCuenta' ||
+        clave === 'numCuenta' ||
+        clave === 'cuentaBancaria' ||
+        clave === 'numero_cuenta'
+      ) {
+        nextAdicionales.num_cuenta = valor;
+        nextAdicionales.numeroCuenta = valor;
+        nextAdicionales.numCuenta = valor;
+        nextAdicionales.cuentaBancaria = valor;
+        nextAdicionales.numero_cuenta = valor;
+      } else if (clave === 'tipo_cuenta' || clave === 'tipoCuenta') {
+        nextAdicionales.tipo_cuenta = valor;
+        nextAdicionales.tipoCuenta = valor;
+      }
+
+      const ctaSync: CuentaBancariaComisionado | undefined =
+        nextAdicionales.entidadBancaria && nextAdicionales.numeroCuenta
+          ? {
+              banco: nextAdicionales.entidadBancaria,
+              tipoCuenta: nextAdicionales.tipoCuenta || 'AHORROS',
+              numeroCuenta: nextAdicionales.numeroCuenta,
+              urlCertificadoBancario: nextAdicionales.urlCertificadoBancario || null,
+              nombreArchivoCertificado: nextAdicionales.nombreArchivoCertificado || null,
+            }
+          : undefined;
+
+      return {
+        ...prev,
+        cuentaBancariaSeleccionada: ctaSync !== undefined ? ctaSync : prev.cuentaBancariaSeleccionada,
+        camposAdicionales: nextAdicionales,
+      };
+    });
+  };
+
+  /**
+   * Resuelve el id numérico de la dependencia activa para consultar cargos (N:M auth.dependencias_cargos).
+   */
+  const idDependenciaActual: number | null = useMemo(() => {
+    if (form.idDependencia != null && form.idDependencia !== '') {
+      const n = Number(form.idDependencia);
+      if (!isNaN(n) && n > 0) return n;
+    }
+    if (comisionado?.idDependencia != null) {
+      const n = Number(comisionado.idDependencia);
+      if (!isNaN(n) && n > 0) return n;
+    }
+    if (dependenciaId) {
+      const match = dependencias.find(
+        (d) =>
+          d.codDependencia === dependenciaId ||
+          String(d.idDependencia) === String(dependenciaId),
+      );
+      if (match?.idDependencia != null) return Number(match.idDependencia);
+      const parsed = parseInt(dependenciaId, 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    if (usuarioActual?.dependencia?.idDependencia != null) {
+      const n = Number(usuarioActual.dependencia.idDependencia);
+      if (!isNaN(n) && n > 0) return n;
+    }
+    return null;
+  }, [form.idDependencia, comisionado?.idDependencia, dependenciaId, dependencias, usuarioActual?.dependencia]);
+
+  // Cargar cargos asignados a la dependencia seleccionada (N:M auth.dependencias_cargos)
+  useEffect(() => {
+    if (!idDependenciaActual) {
+      setCargosDisponibles([]);
+      setCargandoCargos(false);
+      return;
+    }
+
+    let isSubscribed = true;
+    setCargandoCargos(true);
+
+    viaticosService
+      .obtenerCargosPorDependencia(idDependenciaActual)
+      .then((cargos) => {
+        if (isSubscribed) {
+          setCargosDisponibles(cargos || []);
+        }
+      })
+      .catch((err) => {
+        console.error('Error cargando cargos de la dependencia:', err);
+        if (isSubscribed) setCargosDisponibles([]);
+      })
+      .finally(() => {
+        if (isSubscribed) setCargandoCargos(false);
+      });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [idDependenciaActual]);
+
+  const cambiarDependencia = (idDep: number | string | null) => {
+    const numId = idDep ? Number(idDep) : null;
+    const depEncontrada = dependencias.find((d) => Number(d.idDependencia) === numId);
+
+    setForm((prev) => {
+      const prevAdic = { ...(prev.camposAdicionales || {}) };
+      delete prevAdic.cargoEsap;
+      delete prevAdic.cargo;
+      delete prevAdic.cargoInstitucional;
+      delete prevAdic.cargoComisionado;
+      delete prevAdic.idCargo;
+
+      return {
+        ...prev,
+        idDependencia: numId,
+        camposAdicionales: prevAdic,
+      };
+    });
+
+    if (depEncontrada?.codDependencia) {
+      setDependenciaId(depEncontrada.codDependencia);
+    } else if (numId) {
+      setDependenciaId(String(numId));
+    } else {
+      setDependenciaId('');
+    }
+
+    setCargoActualSeleccionado('');
+  };
+
+  const cambiarCargo = (cargoVal: string | null) => {
+    const nomCargo = (cargoVal || '').trim();
+    setCargoActualSeleccionado(nomCargo);
+
+    // Buscar si el cargo está en los cargos registrados del comisionado con su salario relacional
+    const cargoComisionado = (comisionado?.cargos || []).find(
+      (c) => c.cargo?.trim().toLowerCase() === nomCargo.toLowerCase(),
+    );
+
+    const cargoObj = cargosDisponibles.find(
+      (c) => c.nomCargo === nomCargo || String(c.idCargo) === nomCargo,
+    );
+    const nombreFinal = cargoObj ? cargoObj.nomCargo : nomCargo;
+    const idCargoFinal = cargoObj ? cargoObj.idCargo : undefined;
+
+    // Salario relacional asociado: si el cargo tiene salario registrado en el comisionado, usarlo
+    let salarioAsociado = form.salarioBasico || 0;
+    if (cargoComisionado && cargoComisionado.salario > 0) {
+      salarioAsociado = Number(cargoComisionado.salario);
+    }
+
+    setForm((prev) => {
+      const nextAdic = {
+        ...(prev.camposAdicionales || {}),
+        cargoEsap: nombreFinal,
+        cargo: nombreFinal,
+        cargoInstitucional: nombreFinal,
+        cargoComisionado: nombreFinal,
+        ...(idCargoFinal ? { idCargo: idCargoFinal } : {}),
+      };
+      return {
+        ...prev,
+        salarioBasico: salarioAsociado,
+        cargoSeleccionado: {
+          idCargo: idCargoFinal,
+          cargo: nombreFinal,
+          salario: salarioAsociado,
+        },
+        camposAdicionales: nextAdic,
+      };
+    });
+  };
+
+  const seleccionarCuentaBancaria = (cta: CuentaBancariaComisionado) => {
+    setCuentaBancariaSeleccionadaId(cta.id || 'cta-sel');
+
+    setForm((prev) => {
+      const adic = {
+        ...(prev.camposAdicionales || {}),
+        entidad_bancaria: cta.banco,
+        entidadBancaria: cta.banco,
+        banco: cta.banco,
+        tipo_cuenta: cta.tipoCuenta,
+        tipoCuenta: cta.tipoCuenta,
+        num_cuenta: cta.numeroCuenta,
+        numeroCuenta: cta.numeroCuenta,
+        numCuenta: cta.numeroCuenta,
+        cuentaBancaria: cta.numeroCuenta,
+        ...(cta.urlCertificadoBancario ? { urlCertificadoBancario: cta.urlCertificadoBancario } : {}),
+      };
+
+      let docsActualizados = [...(prev.documentos || [])];
+      if (cta.urlCertificadoBancario) {
+        const tieneDocCert = docsActualizados.some((d) => d.tipoDocumento === 'CERT_BANCARIA');
+        if (!tieneDocCert) {
+          docsActualizados.push({
+            id: `doc-cert-${Date.now()}`,
+            tipoDocumento: 'CERT_BANCARIA',
+            nombreArchivoOriginal: cta.nombreArchivoCertificado || `certificacion_bancaria_${cta.banco}.pdf`,
+            nombreArchivoSeguro: `cert_${Date.now()}.pdf`,
+            urlRepositorio: cta.urlCertificadoBancario,
+            tipoMime: 'application/pdf',
+          });
+        }
+      }
+
+      return {
+        ...prev,
+        cuentaBancariaSeleccionada: cta,
+        camposAdicionales: adic,
+        documentos: docsActualizados,
+      };
+    });
   };
 
   const esCampoActivo = (clave: string): boolean => {
@@ -712,14 +1011,194 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setComisionado(resultado);
       const pendientes = resultado.solicitudesPendientes || [];
       setSolicitudesPendientes023(pendientes);
-      setForm((prev) => ({
-        ...prev,
-        comisionadoId: resultado.id,
-        idDependencia: resultado.idDependencia ?? prev.idDependencia,
-        salarioBasico: resultado.salarioBasico != null && Number(resultado.salarioBasico) > 0
+
+      // Cuentas bancarias del comisionado
+      const cuentas: CuentaBancariaComisionado[] = Array.isArray(resultado.cuentasBancarias)
+        ? [...resultado.cuentasBancarias]
+        : [];
+
+      const resAny = resultado as any;
+      const ctaPlana =
+        resAny.num_cuenta ||
+        resAny.numeroCuenta ||
+        resAny.numCuenta ||
+        resAny.NUM_CUENTA_1 ||
+        resAny.cuentaBancaria ||
+        resAny.cuenta;
+      const bcoPlano =
+        resAny.entidad_bancaria ||
+        resAny.entidadBancaria ||
+        resAny.banco ||
+        resAny.COD_CUENTA_1 ||
+        resAny.nombreBanco;
+      const tipPlano =
+        resAny.tipo_cuenta ||
+        resAny.tipoCuenta ||
+        resAny.TIP_CUENTA_1 ||
+        'AHORROS';
+      const certPlano =
+        resAny.urlCertificadoBancario ||
+        resAny.url_certificado_bancario ||
+        null;
+
+      if (cuentas.length === 0 && ctaPlana && bcoPlano) {
+        cuentas.push({
+          id: 'cta-default',
+          banco: bcoPlano,
+          tipoCuenta: tipPlano,
+          numeroCuenta: ctaPlana,
+          urlCertificadoBancario: certPlano,
+          esPrincipal: true,
+        });
+      }
+
+      let ctaInicial: CuentaBancariaComisionado | null = null;
+      if (cuentas.length > 0) {
+        ctaInicial = cuentas.find((c) => c.esPrincipal) || cuentas[0];
+        setCuentaBancariaSeleccionadaId(ctaInicial.id || 'cta-0');
+      } else {
+        setCuentaBancariaSeleccionadaId('');
+      }
+
+      // Cargos e historial de salario relacional
+      const cargosCom: CargoComisionado[] = Array.isArray(resultado.cargos)
+        ? [...resultado.cargos]
+        : [];
+
+      const cargoComisionado =
+        resultado.cargo ||
+        resAny.cargoComisionado ||
+        resAny.cargoInstitucional ||
+        resAny.cargoEsap ||
+        (cargosCom.length > 0 ? cargosCom[0].cargo : '') ||
+        '';
+
+      const cargoObj = cargosCom.find(
+        (c) => c.cargo?.trim().toLowerCase() === cargoComisionado?.trim().toLowerCase(),
+      ) || (cargosCom.length > 0 ? cargosCom[0] : null);
+
+      let salarioInicial =
+        resultado.salarioBasico != null && Number(resultado.salarioBasico) > 0
           ? Number(resultado.salarioBasico)
-          : prev.salarioBasico,
-      }));
+          : 0;
+
+      if (cargoObj && cargoObj.salario > 0) {
+        salarioInicial = Number(cargoObj.salario);
+      }
+
+      if (salarioInicial > 0) {
+        setAsignacionesBasicas([salarioInicial]);
+      }
+
+      setForm((prev) => {
+        const nuevosCamposAdicionales = { ...(prev.camposAdicionales || {}) };
+        if (ctaInicial) {
+          nuevosCamposAdicionales.num_cuenta = ctaInicial.numeroCuenta;
+          nuevosCamposAdicionales.numeroCuenta = ctaInicial.numeroCuenta;
+          nuevosCamposAdicionales.numCuenta = ctaInicial.numeroCuenta;
+          nuevosCamposAdicionales.cuentaBancaria = ctaInicial.numeroCuenta;
+          nuevosCamposAdicionales.entidad_bancaria = ctaInicial.banco;
+          nuevosCamposAdicionales.entidadBancaria = ctaInicial.banco;
+          nuevosCamposAdicionales.banco = ctaInicial.banco;
+          nuevosCamposAdicionales.tipo_cuenta = ctaInicial.tipoCuenta;
+          nuevosCamposAdicionales.tipoCuenta = ctaInicial.tipoCuenta;
+          if (ctaInicial.urlCertificadoBancario) {
+            nuevosCamposAdicionales.urlCertificadoBancario = ctaInicial.urlCertificadoBancario;
+          }
+        } else if (ctaPlana) {
+          nuevosCamposAdicionales.num_cuenta = ctaPlana;
+          nuevosCamposAdicionales.numeroCuenta = ctaPlana;
+          nuevosCamposAdicionales.numCuenta = ctaPlana;
+          nuevosCamposAdicionales.cuentaBancaria = ctaPlana;
+          if (bcoPlano) {
+            nuevosCamposAdicionales.entidad_bancaria = bcoPlano;
+            nuevosCamposAdicionales.entidadBancaria = bcoPlano;
+            nuevosCamposAdicionales.banco = bcoPlano;
+          }
+          if (tipPlano) {
+            nuevosCamposAdicionales.tipo_cuenta = tipPlano;
+            nuevosCamposAdicionales.tipoCuenta = tipPlano;
+          }
+        }
+
+        if (resAny.numeroContrato || resAny.contrato) {
+          nuevosCamposAdicionales.numeroContrato =
+            nuevosCamposAdicionales.numeroContrato || resAny.numeroContrato || resAny.contrato;
+        }
+
+        if (cargoComisionado) {
+          nuevosCamposAdicionales.cargoEsap = cargoComisionado;
+          nuevosCamposAdicionales.cargo = cargoComisionado;
+          nuevosCamposAdicionales.cargoInstitucional = cargoComisionado;
+          nuevosCamposAdicionales.cargoComisionado = cargoComisionado;
+        }
+
+        // Sincronizar régimen de facturación electrónica del comisionado
+        const facturadorInicial = Boolean(resultado.esFacturadorElectronico ?? false);
+        nuevosCamposAdicionales.obligacion_tributaria = facturadorInicial;
+        nuevosCamposAdicionales.esFacturadorElectronico = facturadorInicial;
+
+        // Asegurar que todos los campos booleanos del catálogo tengan valor booleano explícito
+        camposCatalogo.forEach((c) => {
+          const tipo = (c.tipoCampo || '').toUpperCase();
+          if (tipo === 'BOOLEAN' || tipo === 'CHECKBOX') {
+            if (
+              c.clave === 'obligacion_tributaria' ||
+              c.clave === 'esFacturadorElectronico' ||
+              c.clave.toLowerCase().includes('factura')
+            ) {
+              nuevosCamposAdicionales[c.clave] = facturadorInicial;
+            } else if (
+              nuevosCamposAdicionales[c.clave] === undefined ||
+              nuevosCamposAdicionales[c.clave] === null
+            ) {
+              nuevosCamposAdicionales[c.clave] = false;
+            }
+          }
+        });
+
+        const docsActualizados = [...(prev.documentos || [])];
+        if (ctaInicial?.urlCertificadoBancario) {
+          const tieneDocCert = docsActualizados.some((d) => d.tipoDocumento === 'CERT_BANCARIA');
+          if (!tieneDocCert) {
+            docsActualizados.push({
+              id: `doc-cert-${Date.now()}`,
+              tipoDocumento: 'CERT_BANCARIA',
+              nombreArchivoOriginal: ctaInicial.nombreArchivoCertificado || `certificacion_bancaria_${ctaInicial.banco}.pdf`,
+              nombreArchivoSeguro: `cert_${Date.now()}.pdf`,
+              urlRepositorio: ctaInicial.urlCertificadoBancario,
+              tipoMime: 'application/pdf',
+            });
+          }
+        }
+
+        return {
+          ...prev,
+          comisionadoId: resultado.id,
+          idDependencia: resultado.idDependencia ?? prev.idDependencia,
+          salarioBasico: salarioInicial > 0 ? salarioInicial : prev.salarioBasico,
+          cargoSeleccionado: cargoComisionado
+            ? {
+                idCargo: cargoObj?.idCargo,
+                cargo: cargoComisionado,
+                salario: salarioInicial,
+              }
+            : prev.cargoSeleccionado,
+          cuentaBancariaSeleccionada: ctaInicial,
+          camposAdicionales: nuevosCamposAdicionales,
+          documentos: docsActualizados,
+        };
+      });
+
+      if (cargoComisionado) {
+        setCargoActualSeleccionado(cargoComisionado);
+      }
+      if (resultado.idDependencia != null) {
+        const depEncontrada = dependencias.find((d) => Number(d.idDependencia) === Number(resultado.idDependencia));
+        if (depEncontrada?.codDependencia) {
+          setDependenciaId(depEncontrada.codDependencia);
+        }
+      }
       if (!resultado.autorizacionHabeasData) {
         setHabeasPendiente(true);
       }
@@ -1074,8 +1553,41 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     try {
       const { fechaInicio, fechaFin, diasComision } = sincronizarItinerarioFormulario(form.itinerario || []);
       const { origenCiudad, origenDepartamento, destinoCiudad, destinoDepartamento } = obtenerOrigenDestinoItinerario();
+      const cargoFinal =
+        cargoActualSeleccionado ||
+        form.camposAdicionales?.cargoEsap ||
+        form.camposAdicionales?.cargo ||
+        comisionado?.cargo ||
+        '';
+
       const payload = mapearARequestCreacion(
-        { ...form, fechaInicio, fechaFin, diasComision, origenCiudad, origenDepartamento, destinoCiudad, destinoDepartamento },
+        {
+          ...form,
+          idDependencia: form.idDependencia ?? comisionado?.idDependencia ?? (idDependenciaActual || undefined),
+          fechaInicio,
+          fechaFin,
+          diasComision,
+          origenCiudad,
+          origenDepartamento,
+          destinoCiudad,
+          destinoDepartamento,
+          camposAdicionales: {
+            ...(form.camposAdicionales || {}),
+            obligacion_tributaria:
+              form.camposAdicionales?.obligacion_tributaria !== undefined &&
+              form.camposAdicionales?.obligacion_tributaria !== null
+                ? Boolean(form.camposAdicionales.obligacion_tributaria)
+                : Boolean(comisionado?.esFacturadorElectronico ?? false),
+            ...(cargoFinal
+              ? {
+                  cargoEsap: cargoFinal,
+                  cargo: cargoFinal,
+                  cargoInstitucional: cargoFinal,
+                  cargoComisionado: cargoFinal,
+                }
+              : {}),
+          },
+        },
         comisionado,
         usuarioActual?.userId || '',
         true,
@@ -1102,6 +1614,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
             diasComision,
             salarioBasico: form.salarioBasico,
             costoEstimadoTiquete: form.costoEstimadoTiquete,
+            cargo: cargoFinal || undefined,
+            idCargo: cargoObj?.idCargo ?? undefined,
             tipoComision: (() => {
                 if (form.esInternacional) return 'INTERNACIONAL';
                 const tramos = form.itinerario || [];
@@ -1112,7 +1626,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 return 'TERRESTRE';
               })(),
             esInternacional: Boolean(form.esInternacional),
-            idDependencia: form.idDependencia ?? comisionado?.idDependencia ?? undefined,
+            idDependencia: form.idDependencia ?? comisionado?.idDependencia ?? (idDependenciaActual || undefined),
             diasPernoctados: form.diasPernoctados ?? undefined,
             tarifaDiaPernoctado: form.tarifaDiaPernoctado ?? undefined,
             totalPernoctados: form.totalPernoctados ?? undefined,
@@ -1127,43 +1641,75 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
             factorPernocta: form.factorPernocta ?? undefined,
             desgloseCalculo: form.desgloseCalculo ?? undefined,
             alertasLiquidacion: form.alertasLiquidacion ?? undefined,
-            camposAdicionales: {
-              ...(form.camposAdicionales ?? {}),
-              transporteTerminalAereo:
-                form.camposAdicionales?.transporteTerminalAereo ??
-                (form.itinerario || []).reduce(
-                  (acc, r) => acc + (r.tarifaTerminalAereo || 0),
-                  0,
-                ),
-              transporteTerrestre:
-                form.camposAdicionales?.transporteTerrestre ??
-                Math.max(
-                  0,
-                  (form.montoGastosViaje || 0) -
-                    (form.itinerario || []).reduce(
-                      (acc, r) => acc + (r.tarifaTerminalAereo || 0),
-                      0,
-                    ),
-                ),
-              fechaAutoliquidacion:
-                form.camposAdicionales?.fechaAutoliquidacion ||
-                new Date().toISOString().split('T')[0],
-            },
+            camposAdicionales: (() => {
+              const prevAdic = form.camposAdicionales ?? {};
+              const rawBanco =
+                prevAdic.entidad_bancaria ||
+                prevAdic.entidadBancaria ||
+                prevAdic.banco ||
+                '';
+              const rawCuenta =
+                prevAdic.num_cuenta ||
+                prevAdic.numeroCuenta ||
+                prevAdic.numCuenta ||
+                prevAdic.cuentaBancaria ||
+                '';
+              const rawTipo =
+                prevAdic.tipo_cuenta ||
+                prevAdic.tipoCuenta ||
+                '';
+              return {
+                ...prevAdic,
+                ...(cargoFinal
+                  ? {
+                      cargoEsap: cargoFinal,
+                      cargo: cargoFinal,
+                      cargoInstitucional: cargoFinal,
+                      cargoComisionado: cargoFinal,
+                    }
+                  : {}),
+                ...(rawBanco ? { entidad_bancaria: rawBanco, entidadBancaria: rawBanco, banco: rawBanco } : {}),
+                ...(rawCuenta ? { num_cuenta: rawCuenta, numeroCuenta: rawCuenta, numCuenta: rawCuenta, cuentaBancaria: rawCuenta } : {}),
+                ...(rawTipo ? { tipo_cuenta: rawTipo, tipoCuenta: rawTipo } : {}),
+                obligacion_tributaria:
+                  prevAdic.obligacion_tributaria !== undefined && prevAdic.obligacion_tributaria !== null
+                    ? Boolean(prevAdic.obligacion_tributaria)
+                    : Boolean(comisionado?.esFacturadorElectronico ?? false),
+                transporteTerminalAereo:
+                  prevAdic.transporteTerminalAereo ??
+                  (form.itinerario || []).reduce(
+                    (acc, r) => acc + (r.tarifaTerminalAereo || 0),
+                    0,
+                  ),
+                transporteTerrestre:
+                  prevAdic.transporteTerrestre ??
+                  Math.max(
+                    0,
+                    (form.montoGastosViaje || 0) -
+                      (form.itinerario || []).reduce(
+                        (acc, r) => acc + (r.tarifaTerminalAereo || 0),
+                        0,
+                      ),
+                  ),
+                fechaAutoliquidacion:
+                  prevAdic.fechaAutoliquidacion ||
+                  new Date().toISOString().split('T')[0],
+              };
+            })(),
             itinerario: (form.itinerario || []).map((r) => {
               const {
                 guardada,
                 origenDepartamentoId,
                 destinoDepartamentoId,
+                horaEstimadaLlegada,
                 ...cleanRuta
               } = r;
-              const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
-              const horaLlegada = r.horaEstimadaLlegada || '';
+              const horaViaje = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
               return {
                 ...cleanRuta,
                 tarifaTerminalAereo: r.tarifaTerminalAereo,
-                horaEstimadaSalida: horaSalida,
-                horarioEstimadoMilitar: horaSalida || r.horarioEstimadoMilitar,
-                horaEstimadaLlegada: horaLlegada,
+                horaEstimadaSalida: horaViaje,
+                horarioEstimadoMilitar: horaViaje,
               };
             }),
           },
@@ -1310,6 +1856,21 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     }
   };
 
+  const obtenerNombreEnlace = () => {
+    const user = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
+    const resolvedUser = user && typeof (user as any).then !== 'function' ? user : null;
+    const nombre = [
+      resolvedUser?.primerNombre,
+      resolvedUser?.segundoNombre,
+      resolvedUser?.primerApellido,
+      resolvedUser?.segundoApellido,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
+    return nombre || resolvedUser?.nombre || usuarioActual?.username || 'Enlace de Dependencia';
+  };
+
   const finalizarSolicitud = async () => {
     const valSecuencia = validarSecuenciaItinerario(form.itinerario || []);
     if (!valSecuencia.valida) {
@@ -1336,23 +1897,71 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       );
       return;
     }
-    setFinalizando(true);
+
+    // Solicitar OTP para firma digital de elaboración del Enlace de Dependencia
+    setSolicitandoOtpEnlace(true);
     setErrorValidacion(null);
     try {
-      // Iniciar formalmente el flujo de firmas de aprobación previo a la radicación (estado PENDIENTE_FIRMAS)
-      // El Enlace no firma: solo remite la solicitud a revisión y firma de los jefes
-      const conFirmas = await viaticosService.solicitarFirmasAprobacion(solicitudBorrador.id);
-      onSolicitudCreada(conFirmas);
-      onCerrar();
+      const resp = await viaticosService.solicitarOtpFirma(solicitudBorrador.id, {
+        tipoFirma: 'ENLACE_ELABORO',
+      });
+      setOtpDataEnlace({
+        verificationId: resp.verificationId,
+        emailEnviadoA: resp.emailEnviadoA || resp.email,
+        devCode: resp.devCode,
+      });
+      setModalFirmaEnlaceAbierta(true);
     } catch (e: any) {
-      console.error('Error enviando a firmas de aprobación:', e);
+      console.error('Error solicitando OTP de elaboración:', e);
       const mensaje =
         e?.response?.data?.message ||
         e?.message ||
-        'No fue posible iniciar el flujo de firmas de aprobación. Verifique e intente nuevamente.';
+        'No fue posible solicitar el código OTP de verificación. Verifique e intente nuevamente.';
       setErrorValidacion(
         Array.isArray(mensaje) ? mensaje.join(' ') : mensaje,
       );
+    } finally {
+      setSolicitandoOtpEnlace(false);
+    }
+  };
+
+  // Manejo de firma digital completada por el Enlace (OTP validado + hash generado)
+  const handleFirmaEnlaceCompleta = async (firma: FirmaDigitalData) => {
+    if (!solicitudBorrador) return false;
+    setFinalizando(true);
+    setErrorValidacion(null);
+    try {
+      const user = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
+      const userDoc =
+        (user as any)?.cedula ||
+        (user as any)?.numeroDocumento ||
+        (user as any)?.num_identificacion ||
+        (user as any)?.person?.num_identificacion ||
+        (user as any)?.person?.numeroDocumento ||
+        undefined;
+
+      const conFirmas = await viaticosService.solicitarFirmasAprobacion(solicitudBorrador.id, {
+        otp: firma.codigoOtp,
+        verificationId: otpDataEnlace?.verificationId,
+        certificadoId: firma.certificado_id,
+        hashSha256: firma.hash,
+        nombreFirmante: firma.firmante,
+        cargoFirmante: firma.cargo,
+        documentoIdentidad: userDoc ? String(userDoc).trim() : undefined,
+      });
+      onSolicitudCreada(conFirmas);
+      onCerrar();
+      return true;
+    } catch (e: any) {
+      console.error('Error remitiendo con firma digital de elaboración:', e);
+      const mensaje =
+        e?.response?.data?.message ||
+        e?.message ||
+        'No fue posible registrar la firma digital de elaboración de la solicitud.';
+      setErrorValidacion(
+        Array.isArray(mensaje) ? mensaje.join(' ') : mensaje,
+      );
+      throw e;
     } finally {
       setFinalizando(false);
     }
@@ -1413,6 +2022,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       (comisionado as any)?.correo ||
       'No registrado';
     const cargo =
+      cargoActualSeleccionado ||
+      form.camposAdicionales?.cargoEsap ||
+      form.camposAdicionales?.cargo ||
+      form.camposAdicionales?.cargoInstitucional ||
       (comisionado as any)?.cargo ||
       (comisionado as any)?.cargoComisionado ||
       (form as any)?.cargoComisionado ||
@@ -1427,11 +2040,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     const depMatch =
       dependencias.find(
         (d) =>
+          (idDependenciaActual != null && Number(d.idDependencia) === Number(idDependenciaActual)) ||
           (dependenciaId &&
             (d.codDependencia === dependenciaId ||
               String(d.idDependencia) === String(dependenciaId))) ||
           (comisionado?.idDependencia &&
-            String(d.idDependencia) === String(comisionado.idDependencia))
+            Number(d.idDependencia) === Number(comisionado.idDependencia))
       ) ||
       (usuarioActual?.dependencia
         ? {
@@ -1468,8 +2082,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       ? String(comisionado.fechaFinContrato).split('T')[0]
       : null;
     const salarioBasico =
-      comisionado?.salarioBasico != null
+      form.salarioBasico != null && Number(form.salarioBasico) > 0
+        ? Number(form.salarioBasico)
+        : comisionado?.salarioBasico != null
         ? Number(comisionado.salarioBasico)
+        : (comisionado?.cargos?.[0]?.salario != null && Number(comisionado.cargos[0].salario) > 0)
+        ? Number(comisionado.cargos[0].salario)
         : null;
 
     return {
@@ -1490,7 +2108,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       fechaFinContrato,
       salarioBasico,
     };
-  }, [comisionado, form, dependencias, dependenciaId, usuarioActual]);
+  }, [comisionado, form, dependencias, dependenciaId, idDependenciaActual, cargoActualSeleccionado, usuarioActual]);
 
   const saldoDependenciaComisionado = useMemo(() => {
     if (!saldosPresupuesto || saldosPresupuesto.length === 0) return null;
@@ -1775,18 +2393,193 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         {infoComisionadoCompleta.esFacturador ? 'Facturador Electrónico' : 'Régimen Ordinario / RUT'}
                       </span>
                     </div>
-                    <div className="sm:col-span-2 lg:col-span-3 bg-white/90 p-2.5 rounded-xl border border-emerald-100 flex items-center justify-between flex-wrap gap-2">
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Dependencia Asignada</span>
-                        <span className="font-black text-slate-900">{infoComisionadoCompleta.depNombre}</span>
-                      </div>
-                      {infoComisionadoCompleta.depCodigo && (
-                        <span className="text-xs font-mono font-bold px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded">
-                          Cód. {infoComisionadoCompleta.depCodigo}
+                    {/* Asignación Organizacional: Información del Comisionado (Paso 1 - Solo Lectura / Informativo) */}
+                    <div className="sm:col-span-2 lg:col-span-3 bg-white p-4 rounded-xl border border-emerald-200/90 shadow-2xs space-y-3 mt-1">
+                      <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-emerald-100">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-[#003DA5]" />
+                          <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                            Asignación Organizacional (Dependencia y Cargo)
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                          Informativo · Paso 1
                         </span>
-                      )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                        {/* Dependencia */}
+                        <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Dependencia Institucional
+                          </span>
+                          {infoComisionadoCompleta.depNombre ? (
+                            <span className="font-extrabold text-slate-800 block mt-0.5">
+                              {infoComisionadoCompleta.depNombre}
+                              {infoComisionadoCompleta.depCodigo && (
+                                <span className="ml-1 text-[11px] font-mono text-[#003DA5] font-bold">
+                                  (Cód. {infoComisionadoCompleta.depCodigo})
+                                </span>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Falta información de dependencia (se asignará en Paso 2)
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Cargo principal */}
+                        <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Cargo Institucional Registrado
+                          </span>
+                          {infoComisionadoCompleta.cargo ? (
+                            <span className="font-extrabold text-slate-800 block mt-0.5">
+                              {infoComisionadoCompleta.cargo}
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Falta información de cargo (se seleccionará en Paso 2)
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Salario */}
+                        <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Salario Básico Registrado
+                          </span>
+                          {infoComisionadoCompleta.salarioBasico != null && infoComisionadoCompleta.salarioBasico > 0 ? (
+                            <span className="font-extrabold text-slate-800 block mt-0.5">
+                              {formatearMoneda(infoComisionadoCompleta.salarioBasico)}
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Falta salario (se completará en Paso 2)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Mensaje de completado en Paso 2 */}
+                      <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2.5">
+                        <AlertCircle className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          <p className="font-bold">
+                            Selección, Cambio y Asignación de Cargo en el Paso 2:
+                          </p>
+                          <p className="text-[11px] text-blue-800 leading-relaxed">
+                            {infoComisionadoCompleta.cargo
+                              ? 'Este funcionario ya cuenta con cargo registrado. En el Paso 2 (Objeto y Destino) podrá confirmar con cuál cargo se realizará esta comisión (o cambiarlo si tiene múltiples cargos) y verificar su salario relacional.'
+                              : 'Este funcionario no tiene cargo registrado. En el Paso 2 (Objeto y Destino) podrá seleccionar la dependencia, elegir el cargo institucional correspondiente y fijar su salario relacional para la liquidación de viáticos.'}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* HISTORIAL Y CONSULTA DE CUENTAS BANCARIAS DEL COMISIONADO (PASO 1 INFORMATIVO) */}
+              {/* ========================================================================= */}
+              {comisionado && !habeasPendiente && (
+                <div className="border border-blue-200 bg-white rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-blue-100 text-[#003DA5] flex items-center justify-center font-bold">
+                        <CreditCard className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h5 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-2">
+                          Cuentas Bancarias Registradas
+                          {comisionado.cuentasBancarias && comisionado.cuentasBancarias.length > 0 && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-[#003DA5] border border-blue-200 font-extrabold">
+                              {comisionado.cuentasBancarias.length} guardada(s)
+                            </span>
+                          )}
+                        </h5>
+                        <p className="text-[11px] text-slate-500">
+                          Información de cuentas bancarias asociadas al funcionario (Modo solo consulta e informativo).
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                      Informativo · Paso 1
+                    </span>
+                  </div>
+
+                  {comisionado.cuentasBancarias && comisionado.cuentasBancarias.length > 0 ? (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {comisionado.cuentasBancarias.map((cta, idx) => (
+                          <div
+                            key={cta.id || `cta-info-${idx}`}
+                            className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 space-y-1.5"
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-extrabold text-slate-900 text-xs truncate">
+                                {cta.banco}
+                              </span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 uppercase">
+                                  {cta.tipoCuenta || 'AHORROS'}
+                                </span>
+                                {cta.esPrincipal && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                                    Principal
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-[11px] text-slate-600 font-mono">
+                              No. <span className="font-bold text-slate-800">{cta.numeroCuenta}</span>
+                            </div>
+                            <div className="pt-1 border-t border-slate-200/60 text-[10px]">
+                              {cta.urlCertificadoBancario ? (
+                                <a
+                                  href={cta.urlCertificadoBancario}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 inline-flex items-center gap-1"
+                                >
+                                  <BadgeCheck className="w-3 h-3 text-emerald-600" /> Certificado registrado
+                                </a>
+                              ) : (
+                                <span className="text-slate-400 italic">
+                                  Sin certificación adjunta
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-[#003DA5] shrink-0" />
+                        <span className="text-[11px]">
+                          En el <strong>Paso 2 (Objeto y Destino)</strong> puede verificar o modificar los datos de la cuenta en los campos adicionales paramétricos, y en el <strong>Paso 3 (Documentos)</strong> gestionar sus soportes.
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    /* Si no hay cuenta indica que no se ha registrado */
+                    <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-amber-950">
+                          No se ha registrado cuenta bancaria para este comisionado
+                        </p>
+                        <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                          El comisionado no cuenta con cuentas bancarias registradas en su historial. En el <strong>Paso 2 (Objeto y Destino)</strong> podrá ingresar los datos de la cuenta en los campos adicionales paramétricos, y en el <strong>Paso 3 (Documentos)</strong> adjuntar la certificación bancaria correspondiente.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1995,12 +2788,312 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 </div>
               </div>
 
+              {/* ========== ASIGNACIÓN ORGANIZACIONAL: CARGO Y SALARIO DE LA COMISIÓN (FORMATO 023 - PASO 2) ========== */}
+              <div className="rounded-2xl border border-emerald-200 bg-white p-4 sm:p-5 space-y-3.5 shadow-2xs">
+                <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-emerald-100">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-[#003DA5]" />
+                    <div>
+                      <h5 className="text-xs sm:text-sm font-black text-slate-800 uppercase tracking-wider">
+                        Asignación Organizacional (Dependencia y Cargo para la Comisión)
+                      </h5>
+                      <p className="text-[11px] text-slate-500">
+                        Seleccione o confirme el cargo y salario relacional con el que se realizará la comisión (Formato GF-FO-023) para trazabilidad y KPIs.
+                      </p>
+                    </div>
+                  </div>
+                  {infoComisionadoCompleta.depCodigo && (
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded">
+                      Cód. {infoComisionadoCompleta.depCodigo}
+                    </span>
+                  )}
+                </div>
+
+                {/* SI EL COMISIONADO TIENE CARGO REGISTRADO O SELECCIONADO */}
+                {((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo) || Boolean(cargoActualSeleccionado)) && (
+                  <div className="bg-gradient-to-r from-blue-50/70 via-slate-50/50 to-emerald-50/70 p-4 rounded-xl border border-blue-200 shadow-2xs space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-blue-100 text-[#003DA5] flex items-center justify-center shrink-0 mt-0.5">
+                          <Briefcase className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 bg-blue-100 text-[#003DA5] rounded-full border border-blue-200">
+                              Cargo Seleccionado para la Comisión
+                            </span>
+                            {infoComisionadoCompleta.depNombre && (
+                              <span className="text-[11px] text-slate-500 truncate">
+                                • {infoComisionadoCompleta.depNombre}
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5 truncate">
+                            {cargoActualSeleccionado || comisionado?.cargo || comisionado?.cargos?.[0]?.cargo || 'Cargo Institucional'}
+                          </h4>
+                          <p className="text-[11px] text-slate-500">
+                            Este cargo quedará registrado en la solicitud para trazabilidad y KPIs analíticos de gasto por cargo.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 sm:self-center shrink-0">
+                        <div className="text-right px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                          <span className="text-[10px] uppercase font-bold text-emerald-800 block">Salario Relacional</span>
+                          <span className="text-xs sm:text-sm font-extrabold text-emerald-900">
+                            ${(form.salarioBasico || 0).toLocaleString('es-CO')} COP
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          id="btn-cambiar-cargo-comision"
+                          onClick={() => setModoCambiarCargo((prev) => !prev)}
+                          className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 shadow-2xs ${
+                            modoCambiarCargo
+                              ? 'bg-slate-200 text-slate-800 border-slate-300'
+                              : 'bg-[#003DA5] text-white hover:bg-[#002D7A] border-[#003DA5]'
+                          }`}
+                        >
+                          <ArrowLeftRight className="w-3.5 h-3.5" />
+                          {modoCambiarCargo ? 'Cerrar selector' : 'Cambiar cargo'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Chips de otros cargos que ya tiene el comisionado guardados */}
+                    {comisionado?.cargos && comisionado.cargos.length > 1 && (
+                      <div className="pt-2 border-t border-slate-200/80 flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                          Cargos previos: Cambiar a otro cargo registrado:
+                        </span>
+                        {comisionado.cargos.map((c, i) => {
+                          const esActivo = cargoActualSeleccionado.toLowerCase() === c.cargo.trim().toLowerCase();
+                          return (
+                            <button
+                              key={c.id || i}
+                              type="button"
+                              onClick={() => {
+                                cambiarCargo(c.cargo);
+                                setModoCambiarCargo(false);
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+                                esActivo
+                                  ? 'bg-blue-600 text-white border-blue-600 font-bold shadow-2xs'
+                                  : 'bg-white hover:bg-blue-50 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              {c.cargo} {c.salario > 0 ? `(${formatearMoneda(c.salario)})` : ''}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* SELECTOR INTERACTIVO: Para cambiar cargo o para completar cuando falta info */}
+                <div className={
+                  modoCambiarCargo || (!((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo)))
+                    ? 'space-y-4 pt-2'
+                    : 'hidden'
+                }>
+                  <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Plus className="w-3.5 h-3.5 text-blue-600" />
+                      {!((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo))
+                        ? 'Completar información requerida de cargo y salario'
+                        : 'Seleccionar o registrar nuevo cargo para la comisión'}
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Cargos parametrizados según dependencia institucional
+                    </span>
+                  </div>
+
+                  {!((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo)) && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>
+                        El funcionario no tiene cargo asignado. Por favor seleccione la dependencia, elija o ingrese el cargo y defina su salario relacional para la liquidación.
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                        Dependencia Asignada <span className="text-red-500">*</span>
+                      </label>
+                      <SearchableSelect
+                        id="dependencia-asignada-select"
+                        options={dependencias.map((d) => ({
+                          value: String(d.idDependencia),
+                          label: d.nomDependencia,
+                          sublabel: d.codDependencia ? `Cód. ${d.codDependencia}` : undefined,
+                        }))}
+                        value={idDependenciaActual ? String(idDependenciaActual) : ''}
+                        onChange={(val) => cambiarDependencia(val)}
+                        placeholder="Seleccionar dependencia..."
+                        disabled={!puedeElegirDependencia() && Boolean(comisionado?.idDependencia)}
+                        emptyText="No hay dependencias registradas"
+                      />
+                      {infoComisionadoCompleta.depNombre && (
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          {infoComisionadoCompleta.depNombre}
+                        </p>
+                      )}
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Los cargos disponibles se actualizarán según la dependencia seleccionada.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                        Cargo Institucional <span className="text-red-500">*</span>
+                      </label>
+                      <SearchableSelect
+                        id="cargo-institucional-select"
+                        options={(() => {
+                          const listaOpciones: { value: string; label: string; sublabel?: string }[] = [];
+                          const agregados = new Set<string>();
+
+                          // 1. Cargos disponibles de la dependencia
+                          cargosDisponibles.forEach((c) => {
+                            const nom = c.nomCargo?.trim();
+                            if (nom && !agregados.has(nom.toLowerCase())) {
+                              agregados.add(nom.toLowerCase());
+                              listaOpciones.push({
+                                value: nom,
+                                label: nom,
+                                sublabel: `${c.codCargo ? `Cód. ${c.codCargo}` : ''}${
+                                  c.nivelJerarquico ? ` • ${c.nivelJerarquico}` : ''
+                                }`.trim() || undefined,
+                              });
+                            }
+                          });
+
+                          // 2. Cargos registrados previamente en el comisionado
+                          (comisionado?.cargos || []).forEach((c) => {
+                            const nom = c.cargo?.trim();
+                            if (nom && !agregados.has(nom.toLowerCase())) {
+                              agregados.add(nom.toLowerCase());
+                              listaOpciones.push({
+                                value: nom,
+                                label: nom,
+                                sublabel: `Registrado en perfil • Salario: ${formatearMoneda(c.salario)}`,
+                              });
+                            }
+                          });
+
+                          // 3. Cargo actual del comisionado si no está
+                          if (comisionado?.cargo && !agregados.has(comisionado.cargo.trim().toLowerCase())) {
+                            const nom = comisionado.cargo.trim();
+                            listaOpciones.push({
+                              value: nom,
+                              label: nom,
+                              sublabel: 'Cargo actual en ESAP',
+                            });
+                          }
+
+                          return listaOpciones;
+                        })()}
+                        value={cargoActualSeleccionado}
+                        onChange={(val) => cambiarCargo(val)}
+                        placeholder={
+                          !idDependenciaActual
+                            ? 'Primero seleccione una dependencia...'
+                            : cargandoCargos
+                            ? 'Cargando cargos...'
+                            : 'Buscar o seleccionar cargo...'
+                        }
+                        disabled={!idDependenciaActual || cargandoCargos}
+                        loading={cargandoCargos}
+                        allowClear
+                        emptyText={
+                          !idDependenciaActual
+                            ? 'Primero seleccione una dependencia'
+                            : 'No hay cargos asignados a esta dependencia en Configuración General'
+                        }
+                      />
+
+                      {idDependenciaActual && cargosDisponibles.length > 0 ? (
+                        <p className="text-[11px] text-emerald-700 font-medium mt-1">
+                          {cargosDisponibles.length} cargo(s) disponible(s) para esta dependencia.
+                        </p>
+                      ) : idDependenciaActual && !cargandoCargos ? (
+                        <p className="text-[11px] text-amber-700 font-medium mt-1">
+                          Sin cargos vinculados a esta dependencia en Configuración General.
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* Salario básico relacional al cargo */}
+                  <div className="pt-3 border-t border-emerald-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-50/40 p-3 rounded-xl">
+                    <div className="min-w-0">
+                      <label htmlFor="salario-cargo-relacional" className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Coins className="w-4 h-4 text-emerald-700" />
+                        Salario Básico Relacional del Cargo <span className="text-red-500">*</span>
+                      </label>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Asignación salarial vinculada directamente al cargo seleccionado para el cálculo y liquidación de viáticos.
+                      </p>
+                    </div>
+                    <div className="w-full sm:w-56 shrink-0">
+                      <div className="relative rounded-xl shadow-2xs">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 font-bold text-xs">$</span>
+                        <input
+                          id="salario-cargo-relacional"
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="0"
+                          value={form.salarioBasico ? form.salarioBasico.toLocaleString('es-CO') : ''}
+                          onChange={(e) => {
+                            const num = Number(e.target.value.replace(/\D/g, '')) || 0;
+                            setForm((prev) => ({
+                              ...prev,
+                              salarioBasico: num,
+                              cargoSeleccionado: prev.cargoSeleccionado
+                                ? { ...prev.cargoSeleccionado, salario: num }
+                                : cargoActualSeleccionado
+                                ? { cargo: cargoActualSeleccionado, salario: num }
+                                : undefined,
+                            }));
+                            setAsignacionesBasicas(num > 0 ? [num] : []);
+                          }}
+                          className="block w-full pl-8 pr-3 py-2 text-sm font-bold text-slate-900 bg-white border border-emerald-200 rounded-xl focus:ring-2 focus:ring-[#003DA5] focus:border-transparent transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Botón de confirmar cargo y mensaje informativo */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                    <p className="text-[11px] text-slate-500 italic">
+                      ✓ Al fijar este cargo, se vinculará a la solicitud GF-FO-023 y se agregará al perfil del comisionado.
+                    </p>
+                    {((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo)) && (
+                      <button
+                        type="button"
+                        id="btn-fijar-cargo-comision"
+                        onClick={() => setModoCambiarCargo(false)}
+                        className="px-3 py-1.5 bg-[#003DA5] text-white rounded-xl text-xs font-bold hover:bg-[#002D7A] transition-all flex items-center justify-center gap-1.5 self-end shrink-0"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Fijar este cargo para la comisión
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+
               {/* ========== BLOQUE 1: DATOS REQUERIDOS DE LA COMISIÓN Y SALARIO ========== */}
               <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4 shadow-2xs">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
                   <FileText className="w-4 h-4 text-[#003DA5]" />
                   <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    Datos Requeridos de la Comisión y Salario
+                    Datos Requeridos de la Comisión
                   </h5>
                 </div>
 
@@ -2093,80 +3186,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   )}
                 </div>
 
-                {/* Asignaciones básicas y salario comisionado */}
-                {comisionado?.tipoComisionado && !esCampoOculto('montoViaticos') && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Wallet className="w-4 h-4 text-slate-500" />
-                      <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                        Asignaciones Básicas Mensuales (Salario)
-                      </p>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mb-3">
-                      Ingrese el salario básico del comisionado. Para doble rol, agregue ambos salarios (se usará el mayor para la autoliquidación).
-                    </p>
-
-                    <div className="space-y-2">
-                      {(asignacionesBasicas.length === 0 ? [0] : asignacionesBasicas).map((valor, idx) => (
-                        <div key={idx} className="w-full sm:max-w-xs">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                            {asignacionesBasicas.length > 1
-                              ? idx === 0
-                                ? 'Salario básico mensual'
-                                : `Salario ${idx + 1} (doble rol)`
-                              : 'Salario básico mensual'}
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              placeholder="0"
-                              value={valor ? formatearMoneda(valor) : ''}
-                              onChange={(e) => {
-                                const val = Number(soloNumeros(e.target.value)) || 0;
-                                actualizarAsignacionBasica(idx, val);
-                              }}
-                              className={`${inputCls} pl-7 pr-8 text-right font-bold`}
-                            />
-                            {asignacionesBasicas.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => eliminarAsignacionBasica(idx)}
-                                className="absolute right-2 top-2 text-slate-400 hover:text-red-500"
-                                title="Eliminar salario"
-                                aria-label="Eliminar salario"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-
-                      <div className="flex items-center gap-2 pt-1 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={agregarAsignacionBasica}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 rounded-lg text-[11px] font-bold transition-colors"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          Agregar salario (doble rol)
-                        </button>
-
-                        {obtenerAsignacionesBasicasValidas().length > 1 && (
-                          <div className="flex items-center gap-1.5 text-[11px] text-slate-600 bg-white rounded-lg px-2.5 py-1.5 border border-slate-200">
-                            <Calculator className="w-3.5 h-3.5 text-slate-400" />
-                            <span>
-                              Mayor salario: <strong>{formatearMoneda(Math.max(...obtenerAsignacionesBasicasValidas()))}</strong>
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {/* Categoría investigador y excepción regional si aplica */}
                 {comisionado?.tipoComisionado === 'INVESTIGADOR' && (
                   <div>
@@ -2193,7 +3212,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     .filter((c) => c.activo && !camposEstandar.has(c.clave) && !esCampoOculto(c.clave))
                     .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
 
-                  if (camposAdicionalesConfigurados.length === 0) return null;
+                  const tieneCuentasMultiples = Boolean(comisionado?.cuentasBancarias && comisionado.cuentasBancarias.length > 1);
+
+                  if (camposAdicionalesConfigurados.length === 0 && !tieneCuentasMultiples) return null;
 
                   return (
                     <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-4">
@@ -2204,10 +3225,102 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         </p>
                       </div>
 
+                      {/* Selector rápido para comisionados con múltiples cuentas registradas */}
+                      {comisionado?.cuentasBancarias && comisionado.cuentasBancarias.length > 1 && (
+                        <div className="p-3 rounded-xl bg-blue-50/80 border border-blue-200 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="w-4 h-4 text-[#003DA5] shrink-0" />
+                            <span className="text-xs font-bold text-slate-800">
+                              Cuentas registradas del comisionado:
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              (Haga clic para autocompletar los campos adicionales bancarios)
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {comisionado.cuentasBancarias.map((cta, idx) => {
+                              const idActual = cta.id || `cta-${idx}`;
+                              const esSeleccionada = cuentaBancariaSeleccionadaId === idActual;
+                              return (
+                                <button
+                                  key={idActual}
+                                  type="button"
+                                  onClick={() => seleccionarCuentaBancaria(cta)}
+                                  className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-all inline-flex items-center gap-1.5 cursor-pointer ${
+                                    esSeleccionada
+                                      ? 'bg-[#003DA5] text-white border-[#003DA5] shadow-xs'
+                                      : 'bg-white text-slate-700 border-slate-300 hover:border-[#003DA5] hover:text-[#003DA5]'
+                                  }`}
+                                >
+                                  <Landmark className="w-3.5 h-3.5" />
+                                  <span>{cta.banco} ({cta.tipoCuenta || 'AHORROS'} - {cta.numeroCuenta})</span>
+                                  {cta.esPrincipal && (
+                                    <span className={`text-[9px] font-bold px-1 rounded ${esSeleccionada ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+                                      Principal
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {camposAdicionalesConfigurados.map((campo) => {
                           const valorActual = form.camposAdicionales?.[campo.clave] ?? '';
                           const obligatorio = esCampoObligatorio(campo.clave);
+
+                          const esCampoCargo =
+                            campo.clave === 'cargoEsap' ||
+                            campo.clave === 'cargo' ||
+                            campo.clave === 'cargoInstitucional' ||
+                            campo.clave === 'cargoComisionado';
+
+                          if (esCampoCargo) {
+                            return (
+                              <div key={campo.clave}>
+                                <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
+                                  {renderLabel(campo.clave, campo.etiqueta)}
+                                </label>
+                                <SearchableSelect
+                                  id={`campo_${campo.clave}`}
+                                  options={cargosDisponibles.map((c) => ({
+                                    value: c.nomCargo,
+                                    label: c.nomCargo,
+                                    sublabel: `${c.codCargo ? `Cód. ${c.codCargo}` : ''}${
+                                      c.nivelJerarquico ? ` • ${c.nivelJerarquico}` : ''
+                                    }`.trim() || undefined,
+                                  }))}
+                                  value={String(valorActual || cargoActualSeleccionado || '')}
+                                  onChange={(v) => {
+                                    actualizarCampoAdicional(campo.clave, v);
+                                    cambiarCargo(v);
+                                  }}
+                                  placeholder={
+                                    !idDependenciaActual
+                                      ? 'Primero seleccione una dependencia en Paso 1...'
+                                      : cargandoCargos
+                                      ? 'Cargando cargos de la dependencia...'
+                                      : 'Buscar o seleccionar cargo...'
+                                  }
+                                  disabled={!idDependenciaActual || cargandoCargos}
+                                  loading={cargandoCargos}
+                                  allowClear
+                                  emptyText={
+                                    !idDependenciaActual
+                                      ? 'Primero seleccione una dependencia en Paso 1'
+                                      : 'No hay cargos asignados a esta dependencia en Configuración General'
+                                  }
+                                />
+                                {idDependenciaActual && cargosDisponibles.length > 0 && (
+                                  <p className="text-[11px] text-emerald-700 font-medium mt-1">
+                                    {cargosDisponibles.length} cargo(s) asignado(s) a la dependencia.
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          }
 
                           if (campo.tipoCampo === 'TEXTAREA') {
                             return (
@@ -2229,13 +3342,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                           }
 
                           if ((campo.tipoCampo as string) === 'CHECKBOX' || (campo.tipoCampo as string) === 'BOOLEAN') {
+                            const estaCheckeado =
+                              valorActual !== '' && valorActual !== null && valorActual !== undefined
+                                ? Boolean(valorActual)
+                                : false;
                             return (
                               <div key={campo.clave} className="col-span-1 sm:col-span-2 flex items-center pt-2">
                                 <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
                                   <input
                                     type="checkbox"
                                     id={`campo_${campo.clave}`}
-                                    checked={Boolean(valorActual)}
+                                    checked={estaCheckeado}
                                     onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.checked)}
                                     className="w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5]"
                                   />
@@ -2274,6 +3391,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             );
                           }
 
+                          const esCampoBanco =
+                            campo.clave === 'entidadBancaria' ||
+                            campo.clave === 'entidad_bancaria' ||
+                            campo.clave === 'banco';
+
                           return (
                             <div key={campo.clave}>
                               <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
@@ -2282,6 +3404,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                               <input
                                 id={`campo_${campo.clave}`}
                                 type={campo.tipoCampo === 'DATE' ? 'date' : 'text'}
+                                list={esCampoBanco ? 'bancos-colombia-list' : undefined}
                                 required={obligatorio}
                                 placeholder={campo.placeholder || (campo as any).ayuda || ''}
                                 value={campo.tipoCampo === 'CURRENCY' && typeof valorActual === 'number' ? formatearMoneda(valorActual) : String(valorActual)}
@@ -2291,6 +3414,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                 }}
                                 className={inputCls}
                               />
+                              {esCampoBanco && (
+                                <datalist id="bancos-colombia-list">
+                                  {LISTA_BANCOS_COLOMBIA.map((b) => (
+                                    <option key={b} value={b} />
+                                  ))}
+                                </datalist>
+                              )}
                             </div>
                           );
                         })}
@@ -2706,7 +3836,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     const ayuda = obtenerAyudaValidacionDocumento(doc.codigo, doc.instruccionesValidacion, {
                       form,
                       comisionado,
-                    });
+                    }, doc.camposAValidar);
                     const esAlerta = ayuda?.badgeTipo === 'alert';
                     const esWarning = ayuda?.badgeTipo === 'warning';
 
@@ -2814,7 +3944,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                   <div className="mt-2 pt-2 border-t border-slate-200/80">
                                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1">
                                       <Search className="w-3 h-3 text-[#003DA5]" />
-                                      Datos registrados en el sistema para contrastar:
+                                      Campos a validar según el documento:
                                     </p>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                                       {ayuda.datosAContrastar.map((item, idx) => (
@@ -2860,7 +3990,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     const ayuda = obtenerAyudaValidacionDocumento(doc.codigo, doc.instruccionesValidacion, {
                       form,
                       comisionado,
-                    });
+                    }, doc.camposAValidar);
                     const esAlerta = ayuda?.badgeTipo === 'alert';
                     const esWarning = ayuda?.badgeTipo === 'warning';
 
@@ -2965,7 +4095,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                   <div className="mt-2 pt-2 border-t border-slate-200/80">
                                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1">
                                       <Search className="w-3 h-3 text-[#003DA5]" />
-                                      Datos registrados en el sistema para contrastar:
+                                      Campos a validar según el documento:
                                     </p>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                                       {ayuda.datosAContrastar.map((item, idx) => (
@@ -3219,7 +4349,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             <span className="text-slate-600">{ruta.fechaSalida} al {ruta.fechaLlegada}</span>
                             <span className="text-slate-400">·</span>
                             <span className="inline-flex items-center gap-0.5 text-slate-700 font-semibold">
-                              <Clock className="w-2.5 h-2.5 text-blue-600" /> Horario: {ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '—'} → {ruta.horaEstimadaLlegada || '—'}
+                              <Clock className="w-2.5 h-2.5 text-blue-600" /> Hora del viaje: {ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '—'}
                             </span>
                             <span className="text-slate-400">·</span>
                             <span className="inline-flex items-center px-1 py-0 rounded text-[8px] font-bold bg-slate-200 text-slate-600">
@@ -3301,17 +4431,54 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 </button>
                 <button
                   type="button"
-                  disabled={!checklistCompleto() || finalizando}
+                  disabled={!checklistCompleto() || finalizando || solicitandoOtpEnlace}
                   onClick={() => void finalizarSolicitud()}
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 transition-colors disabled:opacity-50"
                 >
-                  <Send className="w-4 h-4" /> {finalizando ? 'Consolidando...' : 'Consolidar y Pasar a Firmas'}
+                  <ShieldCheck className="w-4 h-4" />
+                  {solicitandoOtpEnlace
+                    ? 'Enviando OTP...'
+                    : finalizando
+                    ? 'Consolidando...'
+                    : 'Firmar y Pasar a Firmas'}
                 </button>
               </div>
             </div>
           )}
         </form>
       </div>
+
+      {/* Modal Institucional de Firma Digital OTP para Enlace de Dependencia */}
+      {modalFirmaEnlaceAbierta && solicitudBorrador && (
+        <FirmaDigitalViaticosModal
+          isOpen={modalFirmaEnlaceAbierta}
+          solicitudId={solicitudBorrador.id}
+          consecutivo={solicitudBorrador.codigoSolicitud || 'Borrador'}
+          comisionadoNombre={formatearNombreComisionado(comisionado)}
+          destino={form.destinoCiudad || ''}
+          fechas={
+            obtenerFechasItinerario().fechaInicio && obtenerFechasItinerario().fechaFin
+              ? `${obtenerFechasItinerario().fechaInicio} al ${obtenerFechasItinerario().fechaFin}`
+              : ''
+          }
+          firmanteNombre={obtenerNombreEnlace()}
+          firmanteCargo="Enlace de Dependencia"
+          etapaLabel="Firma de Elaboración y Remisión a Firmas"
+          correoDestino={otpDataEnlace?.emailEnviadoA}
+          devCode={otpDataEnlace?.devCode}
+          onVerifyCodigo={async (codigoOtp: string) => {
+            await viaticosService.verificarOtpFirma(solicitudBorrador.id, {
+              verificationId: otpDataEnlace?.verificationId || '',
+              code: codigoOtp,
+              otp: codigoOtp,
+              tipoFirma: 'ENLACE_ELABORO',
+              consume: false,
+            });
+          }}
+          onFirmaCompleta={handleFirmaEnlaceCompleta}
+          onCancelar={() => setModalFirmaEnlaceAbierta(false)}
+        />
+      )}
 
       {habeasPendiente && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">

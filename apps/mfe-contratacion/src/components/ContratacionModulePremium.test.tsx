@@ -16,6 +16,10 @@ import ContratacionModulePremium from './ContratacionModulePremium';
 vi.mock('./procesos/VistaProcesos', () => ({
   VistaProcesos: () => <div>listado de procesos</div>,
 }));
+// La entrada de quien trabaja procesos (reestructuración del flujo).
+vi.mock('./trabajo/VistaMiTrabajo', () => ({
+  VistaMiTrabajo: () => <div>mi trabajo</div>,
+}));
 vi.mock('./expedientes/VistaExpedientes', () => ({
   VistaExpedientes: () => <div>vista de expedientes</div>,
 }));
@@ -111,7 +115,7 @@ describe('ContratacionModulePremium · menú según el alcance', () => {
 });
 
 /**
- * La Dirección Financiera entra por su cola, no por la lista de procesos.
+ * La Dirección Financiera entra por su cola; los demás, por «Mi trabajo».
  *
  * Su trabajo en el módulo no es un expediente sino las solicitudes de CDP que
  * esperan.
@@ -122,13 +126,13 @@ describe('ContratacionModulePremium · la bandeja de la Financiera', () => {
     render(<ContratacionModulePremium />);
 
     expect(screen.getByText('bandeja de solicitudes de CDP')).toBeInTheDocument();
-    expect(screen.queryByText('listado de procesos')).toBeNull();
+    expect(screen.queryByText('mi trabajo')).toBeNull();
   });
 
   it('también si su alcance llega después de abrir el módulo', () => {
     // El alcance viene del servicio: al montar todavía no se sabe quién entra.
     render(<ContratacionModulePremium />);
-    expect(screen.getByText('listado de procesos')).toBeInTheDocument();
+    expect(screen.getByText('mi trabajo')).toBeInTheDocument();
 
     act(() => conAlcance(FINANCIERA));
 
@@ -142,13 +146,13 @@ describe('ContratacionModulePremium · la bandeja de la Financiera', () => {
     expect(screen.getByText('Solicitudes de CDP')).toBeInTheDocument();
   });
 
-  it('quien además diligencia procesos sigue entrando por la lista', () => {
-    // Un mismo usuario puede tener los dos papeles. Entonces la lista sí es su
-    // trabajo, y mandarlo a la bandeja le escondería la mitad de lo que hace.
+  it('quien además diligencia procesos entra por «Mi trabajo»', () => {
+    // Un mismo usuario puede tener los dos papeles. Entonces los procesos sí
+    // son su trabajo, y mandarlo a la bandeja le escondería la mitad.
     conAlcance([...FINANCIERA, ['editar', '3.1']]);
     render(<ContratacionModulePremium />);
 
-    expect(screen.getByText('listado de procesos')).toBeInTheDocument();
+    expect(screen.getByText('mi trabajo')).toBeInTheDocument();
     expect(screen.getByText('Solicitudes de CDP')).toBeInTheDocument();
   });
 
@@ -157,14 +161,23 @@ describe('ContratacionModulePremium · la bandeja de la Financiera', () => {
     render(<ContratacionModulePremium />);
 
     expect(screen.queryByText('Solicitudes de CDP')).toBeNull();
-    expect(screen.getByText('listado de procesos')).toBeInTheDocument();
+    expect(screen.getByText('mi trabajo')).toBeInTheDocument();
   });
 
-  it('sin alcance se entra por la lista, como siempre', () => {
+  it('sin alcance se entra por «Mi trabajo»', () => {
     // Ante la duda todo responde que sí, así que sin este cuidado cualquiera
     // aterrizaría en la bandeja.
     render(<ContratacionModulePremium />);
 
-    expect(screen.getByText('listado de procesos')).toBeInTheDocument();
+    expect(screen.getByText('mi trabajo')).toBeInTheDocument();
+  });
+
+  it('«Mi trabajo» está en el menú de quien ve procesos', () => {
+    conAlcance(GESTOR);
+    render(<ContratacionModulePremium />);
+
+    expect(screen.getByText('Mi trabajo')).toBeInTheDocument();
+    // El listado sigue ahí, para buscar un proceso que no es de uno.
+    expect(screen.getByText('Procesos')).toBeInTheDocument();
   });
 });

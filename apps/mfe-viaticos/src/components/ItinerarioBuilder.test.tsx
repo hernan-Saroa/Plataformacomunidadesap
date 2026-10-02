@@ -85,7 +85,7 @@ describe('ItinerarioBuilder — Selector de Horario Militar y Aviso (Formato 023
     expect(screen.getByText(/no sugiere ni admite fechas/i)).toBeDefined();
   });
 
-  it('renderiza los selectores de tipo select para hora estimada de salida y llegada en horario militar', () => {
+  it('renderiza el selector de horario militar para la hora estimada del viaje con soporte para digitar y flechas', () => {
     const onChange = vi.fn();
     const itinerarioInicial: RutaItinerario[] = [
       {
@@ -100,7 +100,6 @@ describe('ItinerarioBuilder — Selector de Horario Militar y Aviso (Formato 023
         diasRuta: 1.5,
         horarioEstimadoMilitar: '08:00',
         horaEstimadaSalida: '08:00',
-        horaEstimadaLlegada: '14:30',
         tipoTransporte: 'TERRESTRE',
         guardada: false,
       },
@@ -114,31 +113,22 @@ describe('ItinerarioBuilder — Selector de Horario Militar y Aviso (Formato 023
       />
     );
 
-    // Debe tener los selectores de salida y llegada por aria-label
-    const selectSalida = screen.getByLabelText(/Hora estimada salida/i) as HTMLSelectElement;
-    const selectLlegada = screen.getByLabelText(/Hora estimada llegada/i) as HTMLSelectElement;
+    // Debe mostrar la instrucción clara para digitar o usar flechas seleccionadoras
+    expect(screen.getAllByText(/flechas seleccionadoras/i).length).toBeGreaterThan(0);
 
-    expect(selectSalida).toBeDefined();
-    expect(selectLlegada).toBeDefined();
-    expect(selectSalida.tagName).toBe('SELECT');
-    expect(selectLlegada.tagName).toBe('SELECT');
+    // Debe tener el selector de hora estimada del viaje por aria-label
+    const selectHoraViaje = screen.getByLabelText(/Hora estimada del viaje/i) as HTMLSelectElement;
 
-    // Cambiar la hora de salida a las 09:30 militar
-    fireEvent.change(selectSalida, { target: { value: '09:30' } });
+    expect(selectHoraViaje).toBeDefined();
+    expect(selectHoraViaje.tagName).toBe('SELECT');
+
+    // Cambiar la hora del viaje a las 09:30 militar
+    fireEvent.change(selectHoraViaje, { target: { value: '09:30' } });
 
     expect(onChange).toHaveBeenCalledWith([
       expect.objectContaining({
         horaEstimadaSalida: '09:30',
         horarioEstimadoMilitar: '09:30',
-      }),
-    ]);
-
-    // Cambiar la hora de llegada a las 16:00 militar
-    fireEvent.change(selectLlegada, { target: { value: '16:00' } });
-
-    expect(onChange).toHaveBeenCalledWith([
-      expect.objectContaining({
-        horaEstimadaLlegada: '16:00',
       }),
     ]);
   });

@@ -5322,10 +5322,11 @@ export function DashboardKanbanOperativo({
   }) => {
     const noticiaId = itemSeleccionado.id;
     const noticiaNumero = itemSeleccionado.numero;
+    const radicadorIdDestino = itemSeleccionado?.radicadorId || (itemSeleccionado as any)?.radicadorId;
     setModalActivo(null);
     setItemSeleccionado(null);
     try {
-      await disciplinaryService.returnNews(noticiaId, datos.observaciones);
+      await disciplinaryService.returnNews(noticiaId, datos.observaciones, radicadorIdDestino);
       // Solo actualizar estado local si el backend confirmó
       setItems(prev => prev.map(item => {
         if (item.id === noticiaId && item.tipo === 'noticia') {

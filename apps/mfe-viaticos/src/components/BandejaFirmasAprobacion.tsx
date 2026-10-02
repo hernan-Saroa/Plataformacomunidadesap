@@ -50,7 +50,15 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
   const esGerente = authService.isGerenteProyecto();
   const esSubdir = authService.isSubdireccionGestionCorporativa();
   const esDirNac = authService.isDireccionNacional();
-  const puedeFirmar = esSuperAdmin || esJefe || esGerente || esSubdir || esDirNac || authService.canFirmarAprobacion();
+  const esAnalista = Boolean(authService.isAnalista?.());
+  const puedeFirmar =
+    esSuperAdmin ||
+    esJefe ||
+    esGerente ||
+    esSubdir ||
+    esDirNac ||
+    esAnalista ||
+    authService.canFirmarAprobacion?.();
 
   const cargarSolicitudes = async () => {
     setCargando(true);
@@ -84,10 +92,16 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
         return regla === 'REGULAR';
       }
       if (filtroRegla === 'MIS_PENDIENTES') {
-        // Si el usuario es gerente, filtrar donde falta la firma de gerente
+        // Filtrar pendientes según el rol del usuario
         const firmas = Array.isArray(s.camposAdicionales?.firmasAprobacion)
           ? s.camposAdicionales.firmasAprobacion
           : [];
+        if (esAnalista && !esJefe && !esGerente && !esSubdir && !esDirNac) {
+          return !firmas.some(
+            (f: any) =>
+              f.tipo === 'ANALISTA' || (f.tipo as string) === 'ANALISTA_VIATICOS',
+          );
+        }
         if (esGerente && !esJefe && !esSubdir && !esDirNac) {
           return !firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO');
         }
@@ -97,7 +111,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
       }
       return true;
     });
-  }, [solicitudes, filtroRegla, esGerente, esJefe, esSubdir, esDirNac]);
+  }, [solicitudes, filtroRegla, esGerente, esJefe, esSubdir, esDirNac, esAnalista]);
 
   const pendientesTotales = solicitudes.length;
   const conReglaEspecial = solicitudes.filter(
@@ -538,53 +552,57 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                     </p>
 
                     {/* Firma 1 */}
-                    <div className="p-2.5 rounded-lg border text-xs space-y-1 bg-slate-50 border-slate-200">
+                    <div className={`p-2.5 rounded-lg border text-xs space-y-1 transition-all ${
+                      tieneFirma1 ? 'bg-[#F0FDF4] border-[#BBF7D0]' : 'bg-slate-50 border-slate-200'
+                    }`}>
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-slate-700">
                           1. Jefe de Dependencia / Desplazamiento:
                         </span>
                         {tieneFirma1 ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-700 font-bold text-[11px]">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            Firmado
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#D1FAE5] text-[#065F46] font-bold text-[10px]">
+                            <CheckCircle2 className="w-3 h-3 text-[#065F46]" />
+                            Aprobado
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-amber-700 font-semibold text-[11px]">
-                            <Clock className="w-3.5 h-3.5 text-amber-600" />
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold text-[10px]">
+                            <Clock className="w-3 h-3 text-slate-400" />
                             Pendiente
                           </span>
                         )}
                       </div>
                       {tieneFirma1 && (
-                        <p className="text-[11px] text-slate-500">
-                          {firmaJefe.nombreFirmante} ({firmaJefe.cargoFirmante}) ·{' '}
-                          {new Date(firmaJefe.fechaFirma).toLocaleDateString('es-CO')}
+                        <p className="text-[11px] text-slate-600">
+                          <strong>{firmaJefe.nombreFirmante}</strong> ({firmaJefe.cargoFirmante}) ·{' '}
+                          <span className="text-slate-500">{new Date(firmaJefe.fechaFirma).toLocaleDateString('es-CO')}</span>
                         </p>
                       )}
                     </div>
 
                     {/* Firma 2 */}
-                    <div className="p-2.5 rounded-lg border text-xs space-y-1 bg-slate-50 border-slate-200">
+                    <div className={`p-2.5 rounded-lg border text-xs space-y-1 transition-all ${
+                      tieneFirma2 ? 'bg-[#F0FDF4] border-[#BBF7D0]' : 'bg-slate-50 border-slate-200'
+                    }`}>
                       <div className="flex items-center justify-between">
                         <span className="font-semibold text-slate-700">
                           2. Gerente de Proyecto:
                         </span>
                         {tieneFirma2 ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-700 font-bold text-[11px]">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            Firmado
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#D1FAE5] text-[#065F46] font-bold text-[10px]">
+                            <CheckCircle2 className="w-3 h-3 text-[#065F46]" />
+                            Aprobado
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-amber-700 font-semibold text-[11px]">
-                            <Clock className="w-3.5 h-3.5 text-amber-600" />
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold text-[10px]">
+                            <Clock className="w-3 h-3 text-slate-400" />
                             Pendiente
                           </span>
                         )}
                       </div>
                       {tieneFirma2 && (
-                        <p className="text-[11px] text-slate-500">
-                          {firmaGerente.nombreFirmante} ({firmaGerente.cargoFirmante}) ·{' '}
-                          {new Date(firmaGerente.fechaFirma).toLocaleDateString('es-CO')}
+                        <p className="text-[11px] text-slate-600">
+                          <strong>{firmaGerente.nombreFirmante}</strong> ({firmaGerente.cargoFirmante}) ·{' '}
+                          <span className="text-slate-500">{new Date(firmaGerente.fechaFirma).toLocaleDateString('es-CO')}</span>
                         </p>
                       )}
                     </div>

@@ -245,6 +245,12 @@ export class FilesController {
       return res.sendFile(filePath);
     }
 
+    // 1.1 Coincidencia exacta en la raíz de uploads (ej. uploads/auto-xxx.docx)
+    const baseUploadsPath = resolve(process.cwd(), 'uploads', safeFilename);
+    if (existsSync(baseUploadsPath)) {
+      return res.sendFile(baseUploadsPath);
+    }
+
     // 2. Plantillas fijas
     const templateFolders = ['plantillas-autos', 'plantillas-oficios', 'plantillas-actas'];
     for (const folder of templateFolders) {

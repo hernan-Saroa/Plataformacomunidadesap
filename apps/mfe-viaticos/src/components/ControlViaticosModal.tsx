@@ -24,7 +24,9 @@ import {
   formatearNombreComisionado,
   formatearHorarioMilitar,
   sincronizarItinerarioFormulario,
+  obtenerAyudaValidacionDocumento,
 } from '../utils/viaticosUtils';
+import { TipoDocumentoSoporte } from '../types/parametrizacion';
 import TicketBudgetWidget from './TicketBudgetWidget';
 import VisorDocumentosFlotante, { useVisorDocumentos } from './VisorDocumentosFlotante';
 
@@ -234,9 +236,13 @@ function LiquidacionSection({
 
 function DocumentosSoporteSection({
   documentos,
+  solicitud,
+  tiposDocumentoSoporte,
   onPrevisualizar,
 }: {
   documentos: SolicitudControlViaticosResponse['documentosSoporte'];
+  solicitud?: SolicitudControlViaticosResponse | null;
+  tiposDocumentoSoporte?: TipoDocumentoSoporte[];
   onPrevisualizar?: (doc: { url: string; nombre: string; tipo: string; mime?: string }) => void;
 }) {
   const documentosPdf = (documentos || []).filter((d) => esPdfMime(d.tipoMime));
@@ -250,53 +256,108 @@ function DocumentosSoporteSection({
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
       {documentosPdf.map((doc) => {
         const url = viaticosService.obtenerUrlArchivo(doc.urlRepositorio);
+        const tipoDoc = tiposDocumentoSoporte?.find(
+          (t) => t.codigo.toUpperCase() === doc.tipoDocumento?.toUpperCase(),
+        );
+        const camposAdic =
+          (solicitud as any)?.camposAdicionales ||
+          (solicitud as any)?.campos_adicionales ||
+          {};
+        const bco = camposAdic.entidad_bancaria || camposAdic.entidadBancaria || camposAdic.banco || '';
+        const cta = camposAdic.num_cuenta || camposAdic.numeroCuenta || camposAdic.numCuenta || camposAdic.cuentaBancaria || '';
+        const tip = camposAdic.tipo_cuenta || camposAdic.tipoCuenta || '';
+        const camposAdicNormalizados = {
+          ...camposAdic,
+          ...(bco ? { entidad_bancaria: bco, entidadBancaria: bco, banco: bco } : {}),
+          ...(cta ? { num_cuenta: cta, numeroCuenta: cta, numCuenta: cta, cuentaBancaria: cta } : {}),
+          ...(tip ? { tipo_cuenta: tip, tipoCuenta: tip } : {}),
+        };
+        const ayuda = obtenerAyudaValidacionDocumento(
+          doc.tipoDocumento,
+          tipoDoc?.instruccionesValidacion,
+          {
+            form: {
+              ...(solicitud as any),
+              camposAdicionales: camposAdicNormalizados,
+              documentoComisionado: solicitud?.comisionado?.numeroDocumento,
+            } as any,
+            comisionado: {
+              ...(solicitud?.comisionado as any),
+              ...camposAdicNormalizados,
+            },
+          },
+          tipoDoc?.camposAValidar,
+        );
+
         return (
           <div
             key={doc.id}
-            className="flex items-center justify-between gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors"
+            className="flex flex-col gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg hover:bg-slate-100/90 transition-colors"
           >
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <FileText className="w-4 h-4 text-slate-400 shrink-0" />
-              <div className="min-w-0 flex-1">
-                <span className="text-xs text-slate-700 truncate block font-medium">
-                  {doc.nombreArchivoOriginal}
-                </span>
-                <span className="text-[10px] text-slate-400">
-                  {doc.tipoDocumento}
-                </span>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <FileText className="w-4 h-4 text-[#003DA5] shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <span className="text-xs text-slate-700 truncate block font-medium" title={doc.nombreArchivoOriginal}>
+                    {doc.nombreArchivoOriginal}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {doc.tipoDocumento}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {onPrevisualizar && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onPrevisualizar({
+                        url,
+                        nombre: doc.nombreArchivoOriginal || 'Documento de Soporte',
+                        tipo: doc.tipoDocumento,
+                        mime: doc.tipoMime,
+                      })
+                    }
+                    className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-[#003DA5] hover:border-blue-300 transition-colors cursor-pointer"
+                    title="Previsualizar documento en visor flotante"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <a
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
+                  title="Abrir en pestaña nueva"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
               </div>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
-              {onPrevisualizar && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    onPrevisualizar({
-                      url,
-                      nombre: doc.nombreArchivoOriginal || 'Documento de Soporte',
-                      tipo: doc.tipoDocumento,
-                      mime: doc.tipoMime,
-                    })
-                  }
-                  className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-[#003DA5] hover:border-blue-300 transition-colors cursor-pointer"
-                  title="Previsualizar documento en visor flotante"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                </button>
-              )}
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-1.5 rounded-md bg-white border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
-                title="Abrir en pestaña nueva"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            </div>
+
+            {/* Datos a contrastar parametrizados */}
+            {ayuda && ayuda.datosAContrastar && ayuda.datosAContrastar.length > 0 && (
+              <div className="mt-1 pt-2 border-t border-slate-200/80">
+                <div className="flex items-center gap-1 text-[9px] font-bold text-slate-500 uppercase tracking-tight mb-1">
+                  <ShieldCheck className="w-3 h-3 text-[#003DA5]" />
+                  <span>Campos a validar según el documento:</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 bg-white p-2 rounded-md border border-slate-200/80 shadow-2xs">
+                  {ayuda.datosAContrastar.map((item, idx) => (
+                    <div key={idx} className="flex flex-col text-[11px] leading-tight">
+                      <span className="text-[9px] text-slate-400 font-medium">{item.etiqueta}:</span>
+                      <span className="font-semibold text-slate-800 truncate" title={item.valor}>
+                        {item.valor}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
@@ -411,11 +472,10 @@ function ItinerarioDesglose({ rutas }: { rutas: RutaItinerario[] }) {
                 <span className="font-semibold text-slate-700">{ruta.fechaSalida} – {ruta.fechaLlegada}</span>
               </div>
               <div>
-                <span className="text-slate-500">Tiempo estimado:</span>{' '}
+                <span className="text-slate-500">Hora estimada del viaje:</span>{' '}
                 <span className="font-semibold text-slate-700 inline-flex items-center gap-1">
                   <Clock className="w-3 h-3 text-[#003DA5]" />
                   {ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '—'}
-                  {ruta.horaEstimadaLlegada ? ` → ${ruta.horaEstimadaLlegada}` : ''}
                 </span>
               </div>
               <div>
@@ -467,6 +527,17 @@ export default function ControlViaticosModal({
   const [motivoDevolucion, setMotivoDevolucion] = useState('');
   const [devolviendo, setDevolviendo] = useState(false);
   const [errorDevolucion, setErrorDevolucion] = useState<string | null>(null);
+  const [tiposDocSoporte, setTiposDocSoporte] = useState<TipoDocumentoSoporte[]>([]);
+
+  useEffect(() => {
+    if (abierta && typeof viaticosService.obtenerTiposDocumentoSoporte === 'function') {
+      viaticosService
+        .obtenerTiposDocumentoSoporte()
+        .then((data) => setTiposDocSoporte(data || []))
+        .catch(() => {});
+    }
+  }, [abierta]);
+
   const {
     documentosVisor,
     abrirDocumentoVisor,
@@ -751,6 +822,8 @@ export default function ControlViaticosModal({
                 <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
                   <DocumentosSoporteSection
                     documentos={solicitud.documentosSoporte}
+                    solicitud={solicitud}
+                    tiposDocumentoSoporte={tiposDocSoporte}
                     onPrevisualizar={abrirDocumentoVisor}
                   />
                 </div>

@@ -93,6 +93,48 @@ export class DocumentosActividadController {
     }
   }
 
+  /**
+   * Sin lugar en el guard: quien devuelve la 3.1 aprueba en la 3.4, no en la
+   * 3.1, y lo que de verdad importa —que sea quien devolvió— lo comprueba el
+   * servicio contra la decisión.
+   */
+  @Post('soporte-devolucion')
+  @Puede(['aprobar', 'decidir'])
+  @UseInterceptors(
+    FileInterceptor(
+      'file',
+      opcionesDeCarga(MIME_DOCUMENTOS, 'El soporte se carga en PDF, Word o Excel'),
+    ),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Adjuntar el soporte de una devolución',
+    description:
+      'Las correcciones marcadas sobre el documento. Solo quien devolvió, sobre su última devolución y antes de que el área la reenvíe.',
+  })
+  async soporteDevolucion(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Param('numeral') numeral: string,
+    @UploadedFile() file: any,
+    @Req() req: any,
+  ) {
+    if (!file) throw new BadRequestException('Adjunta el archivo con las correcciones');
+
+    const ruta = join(STORAGE_PATH, file.filename);
+    try {
+      return await this.service.cargarSoporteDeDevolucion(
+        procesoId,
+        numeral,
+        file,
+        await sha256Archivo(ruta),
+        getHiringAccess(req),
+      );
+    } catch (error) {
+      await unlink(ruta).catch(() => undefined);
+      throw error;
+    }
+  }
+
   @Post(':documentoProcesoId/anular')
   @Puede('editar', { param: 'numeral' })
   @ApiOperation({

@@ -413,4 +413,32 @@ describe('VerificacionSIIFModal', () => {
     // No debe dar la opción de devolver a enlace
     expect(screen.queryByText('Devolver a Enlace')).toBeNull();
   });
+
+  it('muestra la sección de "Campos a validar según el documento" con los datos a contrastar en los soportes presentados', async () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({
+        camposAdicionales: {
+          entidad_bancaria: 'BANCOLOMBIA',
+          num_cuenta: '9876543210',
+          tipo_cuenta: 'AHORROS',
+        },
+        documentosSoporte: [
+          {
+            id: 'doc-cert',
+            tipoDocumento: 'CERT_BANCARIA',
+            nombreArchivoOriginal: 'certificacion_bancaria.pdf',
+            nombreArchivoSeguro: 'cert_123.pdf',
+            urlRepositorio: '/files/cert.pdf',
+            tipoMime: 'application/pdf',
+          },
+        ],
+      }),
+    });
+
+    expect(screen.getByText(/Campos a validar según el documento:/i)).toBeDefined();
+    expect(screen.getByText('BANCOLOMBIA')).toBeDefined();
+    expect(screen.getByText('9876543210')).toBeDefined();
+    expect(screen.getByText('Cuenta de Ahorros')).toBeDefined();
+  });
 });
