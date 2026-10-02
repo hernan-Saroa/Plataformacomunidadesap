@@ -343,4 +343,197 @@ describe('TravelExpensesService — Cuentas Bancarias y Cargos con Salario Relac
       expect(comisionado.cuentasBancarias[0].urlCertificadoBancario).toBe('https://storage/cert-nuevo-2026.pdf');
     });
   });
+
+  describe('sincronizarComisionadoDesdeSolicitud', () => {
+    it('guarda cargo si es diferente al actual, guarda cuenta si número es diferente, y sincroniza obligacion_tributaria', async () => {
+      const comisionado = new ComisionadoEntity();
+      comisionado.id = 'com-1';
+      comisionado.cargo = 'PROFESIONAL UNIVERSITARIO';
+      comisionado.salarioBasico = 3500000;
+      comisionado.esFacturadorElectronico = false;
+      comisionado.cuentasBancarias = [
+        {
+          id: 'cta-1',
+          banco: 'BANCOLOMBIA',
+          tipoCuenta: 'AHORROS',
+          numeroCuenta: '11112222',
+          esPrincipal: true,
+        },
+      ];
+      comisionado.cargos = [
+        {
+          id: 'crg-1',
+          cargo: 'PROFESIONAL UNIVERSITARIO',
+          salario: 3500000,
+          esPrincipal: true,
+        },
+      ];
+
+      const solicitud: any = {
+        cargo: 'ASESOR DE DIRECCION',
+        salarioBasico: 8000000,
+        idDependencia: 15,
+        camposAdicionales: {
+          banco: 'DAVIVIENDA',
+          tipoCuenta: 'CORRIENTE',
+          numeroCuenta: '99998888',
+          obligacion_tributaria: true,
+        },
+      };
+
+      const documentos: any[] = [
+        {
+          tipoDocumento: 'CERT_BANCARIA',
+          urlArchivo: 'https://storage/cert-davivienda.pdf',
+          nombreArchivo: 'cert-davivienda.pdf',
+        },
+      ];
+
+      const modificado = await service.sincronizarComisionadoDesdeSolicitud(
+        comisionado,
+        solicitud,
+        documentos,
+      );
+
+      expect(modificado).toBe(true);
+      expect(comisionado.cargo).toBe('ASESOR DE DIRECCION');
+      expect(comisionado.salarioBasico).toBe(8000000);
+      expect(comisionado.idDependencia).toBe(15);
+      expect(comisionado.cargos).toHaveLength(2);
+      expect(comisionado.cargos.find((c) => c.cargo === 'ASESOR DE DIRECCION')).toBeDefined();
+
+      expect(comisionado.cuentasBancarias).toHaveLength(2);
+      const nuevaCta = comisionado.cuentasBancarias.find((c) => c.numeroCuenta === '99998888');
+      expect(nuevaCta).toBeDefined();
+      expect(nuevaCta?.banco).toBe('DAVIVIENDA');
+      expect(nuevaCta?.tipoCuenta).toBe('CORRIENTE');
+      expect(nuevaCta?.urlCertificadoBancario).toBe('https://storage/cert-davivienda.pdf');
+
+      expect(comisionado.esFacturadorElectronico).toBe(true);
+      expect(comisionadoRepo.save).toHaveBeenCalledWith(comisionado);
+    });
+
+    it('no duplica cuenta bancaria ni cargo si coinciden exactamente y no cambia nada', async () => {
+      const comisionado = new ComisionadoEntity();
+      comisionado.id = 'com-1';
+      comisionado.cargo = 'PROFESIONAL ESPECIALIZADO';
+      comisionado.salarioBasico = 4500000;
+      comisionado.esFacturadorElectronico = false;
+      comisionado.cuentasBancarias = [
+        {
+          id: 'cta-1',
+          banco: 'BANCOLOMBIA',
+          tipoCuenta: 'AHORROS',
+          numeroCuenta: '11112222',
+          urlCertificadoBancario: 'https://storage/cert1.pdf',
+          esPrincipal: true,
+        },
+      ];
+      comisionado.cargos = [
+        {
+          id: 'crg-1',
+          cargo: 'PROFESIONAL ESPECIALIZADO',
+          salario: 4500000,
+          esPrincipal: true,
+        },
+      ];
+
+      const solicitud: any = {
+        cargo: 'PROFESIONAL ESPECIALIZADO',
+        salarioBasico: 4500000,
+        camposAdicionales: {
+          banco: 'BANCOLOMBIA',
+          tipoCuenta: 'AHORROS',
+          numeroCuenta: '11112222',
+          obligacion_tributaria: false,
+        },
+      };
+
+      comisionadoRepo.save.mockClear();
+
+      const modificado = await service.sincronizarComisionadoDesdeSolicitud(
+        comisionado,
+        solicitud,
+        [],
+      );
+
+      expect(modificado).toBe(false);
+      expect(comisionado.cuentasBancarias).toHaveLength(1);
+      expect(comisionado.cargos).toHaveLength(1);
+      expect(comisionadoRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('actualiza la cuenta existente cuando el certificado bancario llega en null inicialmente y se completa en paso 3/firmas sin generar duplicados', async () => {
+      const comisionado = new ComisionadoEntity();
+      comisionado.id = 'com-1';
+      comisionado.cargo = 'PROFESIONAL ESPECIALIZADO';
+      comisionado.salarioBasico = 4500000;
+      comisionado.cuentasBancarias = [
+        {
+          id: 'cta-1790907817914-01mjc',
+          banco: 'BANCOLOMBIA',
+          tipoCuenta: 'AHORROS',
+          esPrincipal: true,
+          numeroCuenta: '2930303033',
+          fechaRegistro: '2026-10-02T02:23:37.915Z',
+          urlCertificadoBancario: null,
+          nombreArchivoCertificado: null,
+        },
+      ];
+      comisionado.cargos = [
+        {
+          id: 'crg-1',
+          cargo: 'PROFESIONAL ESPECIALIZADO',
+          salario: 4500000,
+          esPrincipal: true,
+        },
+      ];
+
+      const solicitud: any = {
+        id: 'sol-023',
+        comisionadoId: 'com-1',
+        comisionado,
+        cargo: 'PROFESIONAL ESPECIALIZADO',
+        camposAdicionales: {
+          banco: 'BANCOLOMBIA',
+          tipoCuenta: 'AHORROS',
+          numeroCuenta: '2930303033',
+        },
+      };
+
+      const documentos: any[] = [
+        {
+          tipoDocumento: 'CERT_BANCARIA',
+          urlRepositorio: '/uploads/sol-023/certificacion_2930303033.pdf',
+          nombreArchivoOriginal: 'certificacion_2930303033.pdf',
+        },
+      ];
+
+      comisionadoRepo.save.mockClear();
+
+      const modificado = await service.sincronizarComisionadoDesdeSolicitud(
+        comisionado,
+        solicitud,
+        documentos,
+      );
+
+      // Debe haber modificado la entidad para adjuntar el certificado
+      expect(modificado).toBe(true);
+
+      // DEBE tener exactamente 1 cuenta (NO generar un segundo registro)
+      expect(comisionado.cuentasBancarias).toHaveLength(1);
+      expect(comisionado.cuentasBancarias[0].id).toBe('cta-1790907817914-01mjc');
+      expect(comisionado.cuentasBancarias[0].numeroCuenta).toBe('2930303033');
+      expect(comisionado.cuentasBancarias[0].urlCertificadoBancario).toBe(
+        '/uploads/sol-023/certificacion_2930303033.pdf',
+      );
+      expect(comisionado.cuentasBancarias[0].nombreArchivoCertificado).toBe(
+        'certificacion_2930303033.pdf',
+      );
+
+      expect(comisionadoRepo.save).toHaveBeenCalledWith(comisionado);
+    });
+  });
 });
+
+

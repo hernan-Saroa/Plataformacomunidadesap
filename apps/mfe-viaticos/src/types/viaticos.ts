@@ -1256,6 +1256,7 @@ export interface FirmaAprobacionRegistrada {
   tipo: TipoFirmaAprobacion;
   nombreFirmante: string;
   cargoFirmante: string;
+  documentoIdentidad?: string;
   firmaImagen?: string | null;
   esAusencia?: boolean;
   motivoAusencia?: string | null;
@@ -1295,6 +1296,7 @@ export interface FirmarSolicitudPayload {
   tipoFirma: TipoFirmaAprobacion;
   nombreFirmante: string;
   cargoFirmante: string;
+  documentoIdentidad?: string;
   firmaImagen?: string;
   esAusencia?: boolean;
   motivoAusencia?: string;
@@ -1324,8 +1326,11 @@ export interface SolicitarOtpFirmaResponse {
 }
 
 export interface VerificarOtpFirmaPayload {
-  verificationId: string;
-  code: string;
+  verificationId?: string;
+  code?: string;
+  otp?: string;
+  tipoFirma?: string;
+  consume?: boolean;
 }
 
 export interface SolicitarFirmasPayload {
@@ -1335,6 +1340,7 @@ export interface SolicitarFirmasPayload {
   hashSha256?: string;
   nombreFirmante?: string;
   cargoFirmante?: string;
+  documentoIdentidad?: string;
 }
 
 

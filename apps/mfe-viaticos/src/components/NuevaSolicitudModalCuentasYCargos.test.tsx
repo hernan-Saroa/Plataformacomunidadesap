@@ -162,28 +162,21 @@ describe('NuevaSolicitudModal — Cuentas Bancarias y Cargos con Salario Relacio
     const btnContinuar = screen.getByRole('button', { name: /Guardar y Continuar/i });
     fireEvent.click(btnContinuar);
 
-    // En Paso 2 se despliega el selector interactivo y la opción de registrar otra cuenta
+    // En Paso 2 se despliegan los chips de cuentas registradas del comisionado para autocompletar
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /\+ Registrar otra cuenta bancaria/i })).toBeDefined();
+      expect(screen.getByText(/Cuentas registradas del comisionado:/i)).toBeDefined();
     });
 
-    // Cambiar a la otra cuenta (Davivienda) en Paso 2 al hacer clic
-    const daviviendaCards = screen.getAllByText('DAVIVIENDA');
-    const daviviendaCard = daviviendaCards[daviviendaCards.length - 1].closest('div');
-    expect(daviviendaCard).not.toBeNull();
-    fireEvent.click(daviviendaCard!);
+    // En Paso 2 NO se debe solicitar la certificación bancaria como soporte (se solicita en Paso 3)
+    expect(screen.queryByText(/Certificación Bancaria \(Soporte PDF\)/i)).toBeNull();
 
-    // Permitir registrar una nueva cuenta en Paso 2
-    const btnRegistrarOtra = screen.getByRole('button', { name: /\+ Registrar otra cuenta bancaria/i });
-    fireEvent.click(btnRegistrarOtra);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Nueva Cuenta Bancaria del Comisionado/i)).toBeDefined();
-      expect(screen.getByText(/Guardar esta cuenta bancaria en el perfil del funcionario/i)).toBeDefined();
-    });
+    // Cambiar a la otra cuenta (Davivienda) en Paso 2 al hacer clic en el botón de cuenta
+    const btnDavivienda = screen.getByRole('button', { name: /DAVIVIENDA/i });
+    expect(btnDavivienda).toBeDefined();
+    fireEvent.click(btnDavivienda);
   });
 
-  it('si no hay cuenta bancaria registrada, Paso 1 indica que no se ha registrado y en Paso 2 se ajusta y completa', async () => {
+  it('si no hay cuenta bancaria registrada, Paso 1 indica que no se ha registrado y en Paso 2 no se duplican formularios ni se pide certificado', async () => {
     vi.mocked(viaticosService.consultarComisionado).mockResolvedValue({
       id: 'com-sin-cuenta',
       numeroDocumento: '77889900',
@@ -232,12 +225,12 @@ describe('NuevaSolicitudModal — Cuentas Bancarias y Cargos con Salario Relacio
     const btnContinuar = screen.getByRole('button', { name: /Guardar y Continuar/i });
     fireEvent.click(btnContinuar);
 
-    // En Paso 2 se abre el formulario de registro y ajuste de cuenta bancaria
+    // En Paso 2 NO se debe pedir el certificado soporte (se solicita en Paso 3)
     await waitFor(() => {
-      expect(screen.getByText(/Nueva Cuenta Bancaria del Comisionado/i)).toBeDefined();
-      expect(screen.getByPlaceholderText(/Ej\. 1234567890/i)).toBeDefined();
-      expect(screen.getByText(/Guardar esta cuenta bancaria en el perfil del funcionario/i)).toBeDefined();
+      expect(screen.queryByText(/Certificación Bancaria \(Soporte PDF\)/i)).toBeNull();
     });
+    // No hay formulario duplicado de registro de cuenta
+    expect(screen.queryByText(/Nueva Cuenta Bancaria del Comisionado/i)).toBeNull();
   });
 
   it('permite cambiar entre los cargos históricos y sincroniza el salario relacional', async () => {
@@ -309,4 +302,83 @@ describe('NuevaSolicitudModal — Cuentas Bancarias y Cargos con Salario Relacio
     fireEvent.change(salarioInput, { target: { value: '5200000' } });
     expect(salarioInput.value).toBe('5.200.000');
   });
+
+  it('inicializa obligacion_tributaria en false por defecto sin requerir click y deseleccionar, evitando null', async () => {
+    vi.mocked(viaticosService.obtenerParametrizacionFormulario).mockResolvedValue({
+      campos: [
+        {
+          id: 1,
+          nombreCampo: 'obligacion_tributaria',
+          etiqueta: 'Esta obligado a facturación electronica',
+          tipoCampo: 'BOOLEAN',
+          seccion: 'comision',
+          requerido: false,
+          orden: 1,
+          activo: true,
+        },
+      ],
+      configuraciones: {},
+    });
+
+    vi.mocked(viaticosService.consultarComisionado).mockResolvedValue({
+      id: 'com-1',
+      numeroDocumento: '1098765432',
+      primerNombre: 'Ana',
+      primerApellido: 'Martínez',
+      email: 'ana.martinez@esap.edu.co',
+      telefonoContacto: '3110000000',
+      tipoComisionado: 'FUNCIONARIO',
+      origenDatos: 'ESAP',
+      autorizacionHabeasData: true,
+      esFacturadorElectronico: false,
+      idDependencia: 1,
+      cargo: 'DIRECTOR TÉCNICO',
+      salarioBasico: 7500000,
+      cuentasBancarias: [],
+      cargos: [],
+    });
+
+    vi.mocked(viaticosService.actualizarSolicitud).mockResolvedValue({
+      id: 'sol-123',
+    } as any);
+
+    render(
+      <NuevaSolicitudModal
+        abierta={true}
+        solicitudId="sol-123"
+        onCerrar={vi.fn()}
+        onSolicitudCreada={vi.fn()}
+      />,
+    );
+
+    const inputDoc = screen.getByPlaceholderText(/1019283746/i);
+    fireEvent.change(inputDoc, { target: { value: '1098765432' } });
+    fireEvent.click(screen.getByRole('button', { name: /consultar/i }));
+
+    // Paso 1: Al dar Guardar y Continuar avanza a Paso 2
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Guardar y Continuar/i })).toBeDefined();
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar y Continuar/i }));
+
+    // Paso 2: Verificar el checkbox de facturación electrónica
+    await waitFor(() => {
+      expect(screen.getByText(/Esta obligado a facturación electronica/i)).toBeDefined();
+    });
+
+    const checkbox = screen.getByRole('checkbox', {
+      name: /Esta obligado a facturación electronica/i,
+    }) as HTMLInputElement;
+
+    // El checkbox debe estar en false por defecto sin requerir seleccionarlo y deseleccionarlo
+    expect(checkbox.checked).toBe(false);
+
+    // Al interactuar con el checkbox
+    fireEvent.click(checkbox);
+    expect(checkbox.checked).toBe(true);
+
+    fireEvent.click(checkbox);
+    expect(checkbox.checked).toBe(false);
+  });
 });
+
