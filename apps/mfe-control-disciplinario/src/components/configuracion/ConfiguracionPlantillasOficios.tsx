@@ -15,7 +15,7 @@ import disciplinaryService, {
   UpdateOficioConfigurationDto 
 } from '../../../../services/api/disciplinary.service';
 import { useOficiosConfiguration } from '../../../../hooks/useOficiosConfiguration';
-import { SeccionPlantillasOficiosUnificada, type TipoOficio, type PlantillaArchivo, CATEGORIAS_OFICIOS, type CategoriaOficioId } from './SeccionPlantillasOficiosUnificada';
+import { SeccionPlantillasOficiosUnificada, type TipoOficio, type PlantillaArchivo, CATEGORIAS_OFICIOS, type CategoriaOficioId, type NuevoTipoOficioData } from './SeccionPlantillasOficiosUnificada';
 import { ModalNuevoTipoOficio } from './ModalNuevoTipoOficio';
 import { ModalGestionarPlantillasOficio } from './ModalGestionarPlantillasOficio';
 import { ModalConfirmacion } from './ModalConfirmacion';
@@ -113,30 +113,25 @@ export function ConfiguracionPlantillasOficios() {
       setCargandoDatos(true);
       console.log('🔵 [ConfiguracionPlantillasOficios] Cargando configuraciones del backend...');
       
-      // Llamar directamente al servicio para obtener datos
       const configs = await disciplinaryService.getOficiosConfiguration();
-      
       console.log('🔵 [ConfiguracionPlantillasOficios] Configuraciones recibidas:', configs);
       
-      if (configs && configs.length > 0) {
-        // Mapear del formato backend al formato frontend
-        const tiposMapeados = configs.map(mapBackendToFrontend);
-        console.log('🔵 [ConfiguracionPlantillasOficios] Datos mapeados:', tiposMapeados);
-        console.log('🔵 [ConfiguracionPlantillasOficios] Primera categoria:', tiposMapeados[0]?.categoria);
-        console.log('🔵 [ConfiguracionPlantillasOficios] CATEGORIAS_OFICIOS keys:', Object.keys(CATEGORIAS_OFICIOS));
-        console.log('🔵 [ConfiguracionPlantillasOficios] CATEGORIAS_OFICIOS[TRAMITE]:', CATEGORIAS_OFICIOS['TRAMITE']);
-        setTiposOficios(tiposMapeados);
+      if (configs && Array.isArray(configs)) {
         setDatosDesdeBackend(true);
-        console.log('✅ [ConfiguracionPlantillasOficios] Datos cargados desde BD:', tiposMapeados.length);
+        if (configs.length > 0) {
+          const tiposMapeados = configs.map(mapBackendToFrontend);
+          setTiposOficios(tiposMapeados);
+          console.log('✅ [ConfiguracionPlantillasOficios] Datos cargados desde BD:', tiposMapeados.length);
+        } else {
+          setTiposOficios([]);
+          console.log('⚠️ [ConfiguracionPlantillasOficios] BD vacía, esperando registros');
+        }
       } else {
-        // No hay datos en BD - mostrar estado vacío, NO datos quemados
-        console.log('⚠️ [ConfiguracionPlantillasOficios] No hay datos en BD, mostrando estado vacío');
         setTiposOficios([]);
         setDatosDesdeBackend(false);
       }
     } catch (error) {
       console.error('❌ [ConfiguracionPlantillasOficios] Error cargando configuración:', error);
-      // En caso de error, mostrar estado vacío
       setTiposOficios([]);
       setDatosDesdeBackend(false);
       toast.error('Error al cargar configuración de oficios', {
@@ -162,10 +157,10 @@ export function ConfiguracionPlantillasOficios() {
     setMostrarModalTipoOficio(true);
   };
 
-  const guardarTipoOficio = (nuevoTipo: Omit<TipoOficio, 'id' | 'plantilla' | 'fechaCreacion' | 'fechaModificacion'>) => {
-    if (tipoOficioEdicion) {
-      // Actualizar existente en el backend si vienen de BD
-      if (datosDesdeBackend && tipoOficioEdicion.id && !tipoOficioEdicion.id.startsWith('tipo-oficio-')) {
+  const guardarTipoOficio = async (nuevoTipo: NuevoTipoOficioData) => {
+    try {
+      if (tipoOficioEdicion) {
+        const targetId = tipoOficioEdicion.id;
         const updateDto: UpdateOficioConfigurationDto = {
           nombre: nuevoTipo.nombre,
           tipo: nuevoTipo.categoria,
@@ -173,69 +168,109 @@ export function ConfiguracionPlantillasOficios() {
           estado: nuevoTipo.activo ? 'activo' : 'inactivo',
           orden: nuevoTipo.orden
         };
-        
-        updateConfiguration(tipoOficioEdicion.id, updateDto)
-          .then(() => {
-            setTiposOficios(tiposOficios.map(t => 
-              t.id === tipoOficioEdicion.id 
-                ? { ...t, ...nuevoTipo, fechaModificacion: new Date().toISOString() }
-                : t
-            ));
-            toast.success('Tipo de oficio actualizado correctamente');
-          })
-          .catch((err) => {
-            console.error('Error actualizando en backend:', err);
-            toast.error('Error al actualizar en el servidor');
-          });
-      } else {
-        // Solo actualizar estado local
-        setTiposOficios(tiposOficios.map(t => 
-          t.id === tipoOficioEdicion.id 
-            ? { ...t, ...nuevoTipo, fechaModificacion: new Date().toISOString() }
-            : t
-        ));
-        toast.success('Tipo de oficio actualizado correctamente');
-      }
-    } else {
-      // Crear nuevo
-      const nuevoDto: CreateOficioConfigurationDto = {
-        nombre: nuevoTipo.nombre,
-        tipo: nuevoTipo.categoria,
-        codigo: `OFIC-${Date.now()}`,
-        descripcion: nuevoTipo.descripcion,
-        estado: nuevoTipo.activo ? 'activo' : 'inactivo',
-        orden: nuevoTipo.orden || tiposOficios.length + 1
-      };
 
-      if (datosDesdeBackend) {
-        // Guardar en backend
-        createConfiguration(nuevoDto)
-          .then((nuevo) => {
-            const tipoCompleto: TipoOficio = mapBackendToFrontend(nuevo);
-            setTiposOficios([...tiposOficios, tipoCompleto]);
-            toast.success('Tipo de oficio creado correctamente');
-          })
-          .catch((err) => {
-            console.error('Error creando en backend:', err);
-            toast.error('Error al crear en el servidor');
-          });
+        if (datosDesdeBackend && targetId && !targetId.startsWith('tipo-oficio-')) {
+          await updateConfiguration(targetId, updateDto);
+
+          if (nuevoTipo.plantillaFile) {
+            await disciplinaryService.uploadOficioPlantilla(
+              targetId,
+              nuevoTipo.plantillaFile,
+              nuevoTipo.nombre,
+              nuevoTipo.descripcion,
+              tipoOficioEdicion.plantilla?.version || '1.0',
+              nuevoTipo.activo ? 'activo' : 'inactivo'
+            );
+          }
+          await cargarConfiguracion();
+          toast.success('Tipo de oficio actualizado correctamente');
+        } else {
+          setTiposOficios(tiposOficios.map(t => 
+            t.id === targetId 
+              ? { 
+                  ...t, 
+                  ...nuevoTipo, 
+                  plantilla: nuevoTipo.plantillaFile ? {
+                    id: t.plantilla?.id || `plantilla-${Date.now()}`,
+                    nombre: nuevoTipo.nombre,
+                    nombreArchivo: nuevoTipo.plantillaFile.name,
+                    descripcion: nuevoTipo.descripcion,
+                    url: URL.createObjectURL(nuevoTipo.plantillaFile),
+                    tamano: nuevoTipo.plantillaFile.size,
+                    version: t.plantilla?.version || '1.0',
+                    fechaCreacion: t.plantilla?.fechaCreacion || new Date().toISOString(),
+                    fechaModificacion: new Date().toISOString(),
+                    activo: true,
+                    file: nuevoTipo.plantillaFile
+                  } : t.plantilla,
+                  fechaModificacion: new Date().toISOString() 
+                }
+              : t
+          ));
+          toast.success('Tipo de oficio actualizado correctamente');
+        }
       } else {
-        // Solo crear localmente
-        const tipoCompleto: TipoOficio = {
-          id: `tipo-oficio-${Date.now()}`,
-          ...nuevoTipo,
-          plantilla: null,
-          fechaCreacion: new Date().toISOString(),
-          fechaModificacion: new Date().toISOString()
+        const nuevoDto: CreateOficioConfigurationDto = {
+          nombre: nuevoTipo.nombre,
+          tipo: nuevoTipo.categoria,
+          codigo: `OFIC-${Date.now()}`,
+          descripcion: nuevoTipo.descripcion,
+          estado: nuevoTipo.activo ? 'activo' : 'inactivo',
+          orden: nuevoTipo.orden || tiposOficios.length + 1
         };
-        setTiposOficios([...tiposOficios, tipoCompleto]);
-        toast.success('Tipo de oficio creado correctamente');
+
+        if (datosDesdeBackend) {
+          const nuevo = await disciplinaryService.createOficioConfiguration(nuevoDto);
+          const createdId = nuevo?.id || (nuevo as any)?.data?.id;
+
+          if (createdId && nuevoTipo.plantillaFile) {
+            try {
+              await disciplinaryService.uploadOficioPlantilla(
+                createdId,
+                nuevoTipo.plantillaFile,
+                nuevoTipo.nombre,
+                nuevoTipo.descripcion,
+                '1.0',
+                nuevoTipo.activo ? 'activo' : 'inactivo'
+              );
+            } catch (errUpload) {
+              console.error('Error subiendo plantilla tras crear oficio:', errUpload);
+              toast.error('Oficio creado, pero falló la carga de la plantilla');
+            }
+          }
+          await cargarConfiguracion();
+          toast.success('Tipo de oficio creado correctamente');
+        } else {
+          const tipoCompleto: TipoOficio = {
+            id: `tipo-oficio-${Date.now()}`,
+            ...nuevoTipo,
+            plantilla: nuevoTipo.plantillaFile ? {
+              id: `plantilla-${Date.now()}`,
+              nombre: nuevoTipo.nombre,
+              nombreArchivo: nuevoTipo.plantillaFile.name,
+              descripcion: nuevoTipo.descripcion,
+              url: URL.createObjectURL(nuevoTipo.plantillaFile),
+              tamano: nuevoTipo.plantillaFile.size,
+              version: '1.0',
+              fechaCreacion: new Date().toISOString(),
+              fechaModificacion: new Date().toISOString(),
+              activo: true,
+              file: nuevoTipo.plantillaFile
+            } : null,
+            fechaCreacion: new Date().toISOString(),
+            fechaModificacion: new Date().toISOString()
+          };
+          setTiposOficios([...tiposOficios, tipoCompleto]);
+          toast.success('Tipo de oficio creado correctamente');
+        }
       }
+      setCambiosPendientes(true);
+      setMostrarModalTipoOficio(false);
+      setTipoOficioEdicion(null);
+    } catch (error) {
+      console.error('Error en guardarTipoOficio:', error);
+      toast.error('Error al guardar el tipo de oficio');
     }
-    
-    setCambiosPendientes(true);
-    setMostrarModalTipoOficio(false);
-    setTipoOficioEdicion(null);
   };
 
   const eliminarTipoOficio = async (tipoId: string) => {
@@ -249,7 +284,6 @@ export function ConfiguracionPlantillasOficios() {
   const confirmarEliminacionTipoOficio = async () => {
     if (!tipoOficioAEliminar) return;
 
-    // Si viene del backend, eliminar también allí
     if (datosDesdeBackend && !tipoOficioAEliminar.id.startsWith('tipo-oficio-')) {
       try {
         await deleteConfiguration(tipoOficioAEliminar.id);
@@ -267,7 +301,6 @@ export function ConfiguracionPlantillasOficios() {
   };
 
   const toggleActivoTipoOficio = async (tipoId: string, activo: boolean) => {
-    // Si viene del backend, actualizar también allí
     if (datosDesdeBackend && !tipoId.startsWith('tipo-oficio-')) {
       try {
         await toggleEstado(tipoId);
@@ -288,86 +321,47 @@ export function ConfiguracionPlantillasOficios() {
     setMostrarModalGestionarPlantillas(true);
   };
 
-  // El modal maneja un array de plantillas, pero el tipo solo acepta una
-  // Tomamos la primera del array para compatibilidad con el tipo TipoOficio
   const actualizarPlantillasTipoOficio = async (tipoOficioId: string, plantillas: PlantillaArchivo[]) => {
-    console.log('🔵 [actualizarPlantillasTipoOficio] Iniciando...');
-    console.log('🔵 [actualizarPlantillasTipoOficio] tipoOficioId:', tipoOficioId);
-    console.log('🔵 [actualizarPlantillasTipoOficio] plantillas:', plantillas);
-    console.log('🔵 [actualizarPlantillasTipoOficio] datosDesdeBackend:', datosDesdeBackend);
-    
     const plantilla = plantillas[0];
-    const esArchivoNuevo = plantilla?.url?.startsWith('blob:') || false;
-    console.log('🔵 [actualizarPlantillasTipoOficio] esArchivoNuevo:', esArchivoNuevo);
-    console.log('🔵 [actualizarPlantillasTipoOficio] plantilla:', plantilla);
     
-    // Si hay datos desde backend, actualizar en el backend
-    if (datosDesdeBackend && plantilla) {
-      console.log('🔵 [actualizarPlantillasTipoOficio] Entrando al if de datosDesdeBackend');
-      
-      if (esArchivoNuevo) {
-        console.log('🔵 [actualizarPlantillasTipoOficio] Subiendo nuevo archivo...');
-        // Subir nuevo archivo
-        try {
-          const response = await fetch(plantilla.url);
-          const blob = await response.blob();
-          const file = new globalThis.File([blob], plantilla.nombreArchivo, { 
-            type: blob.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
-          });
-          
-          console.log('🔵 [actualizarPlantillasTipoOficio] Archivo creado, subiendo...');
-          
-          await uploadPlantilla(
-            tipoOficioId,
-            file,
-            plantilla.nombre,
-            plantilla.descripcion,
-            plantilla.version,
-            plantilla.activo ? 'activo' : 'inactivo'
-          );
-          console.log('✅ [actualizarPlantillasTipoOficio] Archivo subido correctamente');
-          toast.success('Plantilla actualizada correctamente');
-        } catch (error) {
-          console.error('❌ [actualizarPlantillasTipoOficio] Error subiendo plantilla:', error);
-          toast.error('Error al subir la plantilla');
-        }
-      } else {
-        console.log('🔵 [actualizarPlantillasTipoOficio] Actualizando solo metadatos...');
-        // Solo actualizar metadatos (nombre, descripcion, version, estado) sin subir archivo
-        try {
-          const updateDto: UpdateOficioConfigurationDto = {
-            nombre_plantilla: plantilla.nombre,
-            descripcion_plantilla: plantilla.descripcion,
-            version_plantilla: plantilla.version,
-            estado_plantilla: plantilla.activo ? 'activo' : 'inactivo'
-          };
-          console.log('🔵 [actualizarPlantillasTipoOficio] DTO a enviar:', updateDto);
-          
-          await updateConfiguration(tipoOficioId, updateDto);
-          console.log('✅ [actualizarPlantillasTipoOficio] Metadatos actualizados correctamente');
-          toast.success('Plantilla actualizada correctamente');
-        } catch (error) {
-          console.error('❌ [actualizarPlantillasTipoOficio] Error actualizando plantilla:', error);
-          toast.error('Error al actualizar la plantilla');
+    if (datosDesdeBackend && tipoOficioId && !tipoOficioId.startsWith('tipo-oficio-')) {
+      if (plantilla) {
+        if (plantilla.file) {
+          try {
+            await disciplinaryService.uploadOficioPlantilla(
+              tipoOficioId,
+              plantilla.file,
+              plantilla.nombre,
+              plantilla.descripcion,
+              plantilla.version,
+              plantilla.activo ? 'activo' : 'inactivo'
+            );
+            toast.success('Plantilla actualizada correctamente');
+          } catch (error) {
+            console.error('❌ Error subiendo plantilla:', error);
+            toast.error('Error al subir la plantilla');
+          }
+        } else if (!plantilla.url?.startsWith('blob:')) {
+          try {
+            const updateDto: UpdateOficioConfigurationDto = {
+              nombre_plantilla: plantilla.nombre,
+              descripcion_plantilla: plantilla.descripcion,
+              version_plantilla: plantilla.version,
+              estado_plantilla: plantilla.activo ? 'activo' : 'inactivo'
+            };
+            await updateConfiguration(tipoOficioId, updateDto);
+            toast.success('Plantilla actualizada correctamente');
+          } catch (error) {
+            console.error('❌ Error actualizando metadatos de plantilla:', error);
+            toast.error('Error al actualizar la plantilla');
+          }
         }
       }
+      await cargarConfiguracion();
     } else {
-      console.log('⚠️ [actualizarPlantillasTipoOficio] NO se cumplen las condiciones para actualizar en backend');
-      console.log('   - datosDesdeBackend:', datosDesdeBackend);
-      console.log('   - plantilla:', plantilla);
-    }
-    
-    // Recargar la configuración completa desde el backend para obtener datos actualizados
-    try {
-      console.log('🔵 [actualizarPlantillasTipoOficio] Recargando configuración...');
-      const configs = await disciplinaryService.getOficiosConfiguration();
-      if (configs && configs.length > 0) {
-        const tiposMapeados = configs.map(mapBackendToFrontend);
-        setTiposOficios(tiposMapeados);
-        console.log('✅ Configuración recargada desde BD:', tiposMapeados.length);
-      }
-    } catch (error) {
-      console.error('Error recargando configuración:', error);
+      setTiposOficios(tiposOficios.map(t => 
+        t.id === tipoOficioId ? { ...t, plantilla: plantilla || null } : t
+      ));
     }
     
     setCambiosPendientes(true);

@@ -618,12 +618,22 @@ export class TravelExpensesController {
     'travel_expenses:read_requests',
   )
   verificarOtpFirma(
+    @Param('id') id: string,
     @Body() dto: VerificarOtpFirmaDto,
+    @Req() req: AuthenticatedRequest,
   ) {
+    const code = (dto.code || dto.otp || '').trim();
+    if (!code) {
+      throw new BadRequestException('El código OTP es requerido.');
+    }
+    const verificationId =
+      dto.verificationId?.trim() ||
+      `viat:${id || 'general'}:${dto.tipoFirma || 'general'}:${req?.user?.userId || ''}`;
+
     const verified = this.service.verificarOtpFirma({
-      verificationId: dto.verificationId,
-      code: dto.code,
-      consume: false,
+      verificationId,
+      code,
+      consume: dto.consume ?? false,
     });
     return { success: true, verified };
   }

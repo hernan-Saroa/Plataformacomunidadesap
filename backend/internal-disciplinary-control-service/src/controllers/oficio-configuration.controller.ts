@@ -158,12 +158,12 @@ export class OficiosConfigurationController {
         },
       }),
       fileFilter: (req, file, cb) => {
-        const allowedExtensions = ['.docx', '.doc', '.dotx', '.rtf'];
+        const allowedExtensions = ['.docx', '.doc', '.dotx', '.rtf', '.pdf'];
         const ext = extname(file.originalname).toLowerCase();
         if (allowedExtensions.includes(ext)) {
           cb(null, true);
         } else {
-          cb(new BadRequestException('Solo se permiten archivos Word (.docx, .doc, .dotx, .rtf)'), false);
+          cb(new BadRequestException('Solo se permiten archivos Word (.docx, .doc, .dotx, .rtf) o PDF (.pdf)'), false);
         }
       },
       limits: {

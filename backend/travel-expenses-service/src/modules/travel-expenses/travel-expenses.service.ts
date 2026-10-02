@@ -1438,6 +1438,268 @@ export class TravelExpensesService {
   }
 
   /**
+   * Sincroniza en el perfil e historial del comisionado los cambios de cargo
+   * (si es diferente al actual), información bancaria (si el número de cuenta
+   * es diferente o tiene nuevo certificado soporte adjunto) y estado de facturación.
+   */
+  async sincronizarComisionadoDesdeSolicitud(
+    comisionadoInput: ComisionadoEntity | null | undefined,
+    solicitud: SolicitudComisionEntity,
+    documentosSoporte?: DocumentoSoporteEntity[],
+  ): Promise<boolean> {
+    let comisionado = comisionadoInput;
+    const comisionadoId = comisionado?.id || solicitud.comisionadoId;
+    if (comisionadoId) {
+      try {
+        const fresco = await this.comisionadoRepo.findOne({
+          where: { id: comisionadoId },
+        });
+        if (fresco) {
+          comisionado = fresco;
+        }
+      } catch {
+        // En tests o mocks que no implementen findOne con comisionadoId, se mantiene comisionadoInput
+      }
+    }
+    if (!comisionado) return false;
+
+    let comisionadoModificado = false;
+    const camposAdic = solicitud.camposAdicionales || {};
+
+    // ── 1. Información bancaria (si el número de cuenta es diferente) ─────────
+    if (!Array.isArray(comisionado.cuentasBancarias)) {
+      comisionado.cuentasBancarias = [];
+    }
+
+    const ctaSel =
+      camposAdic.cuentaBancariaSeleccionada ||
+      (solicitud as any).cuentaBancariaSeleccionada ||
+      {};
+
+    const rawNumCta = String(
+      camposAdic.num_cuenta ??
+      camposAdic.numeroCuenta ??
+      camposAdic.numCuenta ??
+      camposAdic.cuentaBancaria ??
+      camposAdic.numero_cuenta ??
+      ctaSel.numeroCuenta ??
+      ctaSel.numCuenta ??
+      ctaSel.cuentaBancaria ??
+      ''
+    ).trim();
+
+    const rawBanco = String(
+      camposAdic.entidad_bancaria ??
+      camposAdic.entidadBancaria ??
+      camposAdic.banco ??
+      ctaSel.banco ??
+      ctaSel.entidadBancaria ??
+      (comisionado as any)?.entidadBancaria ??
+      (comisionado as any)?.banco ??
+      ''
+    ).trim();
+
+    const rawTipoCta = String(
+      camposAdic.tipo_cuenta ??
+      camposAdic.tipoCuenta ??
+      ctaSel.tipoCuenta ??
+      'AHORROS'
+    ).trim();
+
+    // Soportes: buscar si se adjuntó certificado bancario
+    let docs = documentosSoporte;
+    if ((!docs || docs.length === 0) && solicitud.id) {
+      try {
+        docs = await this.documentoRepo.find({
+          where: { solicitudId: solicitud.id },
+        });
+      } catch {
+        docs = [];
+      }
+    }
+    const docCert = (docs || []).find(
+      (d) =>
+        d.tipoDocumento === 'CERT_BANCARIA' ||
+        d.tipoDocumento === 'CERTIFICACION_BANCARIA' ||
+        d.tipoDocumento === 'CERTIFICADO_BANCARIO' ||
+        d.tipoDocumento?.toUpperCase().includes('BANC'),
+    );
+    const rawUrlCert =
+      docCert?.urlRepositorio ||
+      (docCert as any)?.urlArchivo ||
+      camposAdic.urlCertificadoBancario ||
+      ctaSel.urlCertificadoBancario ||
+      null;
+    const rawNombreCert =
+      docCert?.nombreArchivoOriginal ||
+      (docCert as any)?.nombreArchivo ||
+      camposAdic.nombreArchivoCertificado ||
+      ctaSel.nombreArchivoCertificado ||
+      null;
+
+    const normalizarCuenta = (num: string) => num.replace(/\D/g, '');
+
+    if (rawNumCta) {
+      const rawNumLimpio = normalizarCuenta(rawNumCta);
+      const idxCta = comisionado.cuentasBancarias.findIndex((c) => {
+        const ctaReg = String(c.numeroCuenta || '').trim();
+        return (
+          ctaReg === rawNumCta ||
+          (rawNumLimpio.length > 0 && normalizarCuenta(ctaReg) === rawNumLimpio)
+        );
+      });
+
+      if (idxCta >= 0) {
+        // La cuenta ya existe por número: actualizar banco/tipo si cambiaron,
+        // o adjuntar el certificado bancario si fue cargado en la solicitud
+        const ctaExistente = comisionado.cuentasBancarias[idxCta];
+        if (rawBanco && ctaExistente.banco !== rawBanco) {
+          ctaExistente.banco = rawBanco;
+          comisionadoModificado = true;
+        }
+        if (rawTipoCta && ctaExistente.tipoCuenta !== rawTipoCta) {
+          ctaExistente.tipoCuenta = rawTipoCta;
+          comisionadoModificado = true;
+        }
+        const nuevoCert =
+          Boolean(rawUrlCert) &&
+          rawUrlCert.trim() !== '' &&
+          rawUrlCert !== ctaExistente.urlCertificadoBancario;
+        if (nuevoCert) {
+          ctaExistente.urlCertificadoBancario = rawUrlCert;
+          if (rawNombreCert) {
+            ctaExistente.nombreArchivoCertificado = rawNombreCert;
+          }
+          comisionadoModificado = true;
+        }
+        // Actualizar en camposAdicionales de la solicitud también
+        if (rawUrlCert) {
+          camposAdic.urlCertificadoBancario = rawUrlCert;
+          if (rawNombreCert) {
+            camposAdic.nombreArchivoCertificado = rawNombreCert;
+          }
+        }
+      } else {
+        // El número de cuenta es DIFERENTE a las registradas: agregar al historial
+        comisionado.cuentasBancarias.push({
+          id: `cta-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          banco: rawBanco || 'BANCO',
+          tipoCuenta: rawTipoCta || 'AHORROS',
+          numeroCuenta: rawNumCta,
+          urlCertificadoBancario: rawUrlCert || null,
+          nombreArchivoCertificado: rawNombreCert || null,
+          fechaRegistro: new Date().toISOString(),
+          esPrincipal: comisionado.cuentasBancarias.length === 0,
+        });
+        comisionadoModificado = true;
+      }
+    }
+
+    // ── 2. Cargo (si es diferente al actual) y salario relacional ─────────────
+    if (!Array.isArray(comisionado.cargos)) {
+      comisionado.cargos = [];
+    }
+
+    const rawCargo = (
+      solicitud.cargo ||
+      camposAdic.cargoEsap ||
+      camposAdic.cargo ||
+      camposAdic.cargoInstitucional ||
+      camposAdic.cargoComisionado ||
+      ''
+    ).trim();
+
+    const rawIdCargo =
+      solicitud.idCargo ??
+      (camposAdic.idCargo ? Number(camposAdic.idCargo) : null);
+
+    const rawSalario = Number(
+      solicitud.salarioBasico ||
+      camposAdic.salarioBasico ||
+      comisionado.salarioBasico ||
+      0,
+    );
+
+    const depId =
+      solicitud.idDependencia ?? comisionado.idDependencia ?? null;
+
+    if (rawCargo) {
+      const idxCrg = comisionado.cargos.findIndex(
+        (c) => c.cargo?.trim().toLowerCase() === rawCargo.toLowerCase(),
+      );
+
+      if (idxCrg >= 0) {
+        const cargoActual = comisionado.cargos[idxCrg];
+        if (rawSalario > 0 && cargoActual.salario !== rawSalario) {
+          cargoActual.salario = rawSalario;
+          comisionadoModificado = true;
+        }
+        if (depId && cargoActual.idDependencia !== depId) {
+          cargoActual.idDependencia = depId;
+          comisionadoModificado = true;
+        }
+        if (rawIdCargo && cargoActual.idCargo !== rawIdCargo) {
+          cargoActual.idCargo = rawIdCargo;
+          comisionadoModificado = true;
+        }
+      } else {
+        // Cargo nuevo: registrar en el historial
+        comisionado.cargos.push({
+          id: `crg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          idCargo: rawIdCargo ?? undefined,
+          cargo: rawCargo,
+          salario: rawSalario,
+          idDependencia: depId,
+          fechaInicio: new Date().toISOString().split('T')[0],
+          esPrincipal: comisionado.cargos.length === 0,
+        });
+        comisionadoModificado = true;
+      }
+
+      // Si el cargo es diferente al actual registrado en el comisionado
+      if (comisionado.cargo?.trim().toLowerCase() !== rawCargo.toLowerCase()) {
+        comisionado.cargo = rawCargo;
+        comisionadoModificado = true;
+      }
+      if (rawSalario > 0 && comisionado.salarioBasico !== rawSalario) {
+        comisionado.salarioBasico = rawSalario;
+        comisionadoModificado = true;
+      }
+      if (depId && comisionado.idDependencia !== depId) {
+        comisionado.idDependencia = depId;
+        comisionadoModificado = true;
+      }
+    }
+
+    // ── 3. Obligación de facturación / Régimen tributario ──────────────────────
+    const rawFacturador =
+      camposAdic.obligacion_tributaria ??
+      camposAdic.esFacturadorElectronico;
+    if (rawFacturador !== undefined && rawFacturador !== null) {
+      const boolFacturador = Boolean(rawFacturador);
+      if (comisionado.esFacturadorElectronico !== boolFacturador) {
+        comisionado.esFacturadorElectronico = boolFacturador;
+        comisionadoModificado = true;
+      }
+      if (solicitud.consultaRutFacturador !== boolFacturador) {
+        solicitud.consultaRutFacturador = boolFacturador;
+      }
+    }
+
+    if (comisionadoModificado) {
+      try {
+        await this.comisionadoRepo.save(comisionado);
+      } catch (err: any) {
+        this.logger.warn(
+          `[sincronizarComisionadoDesdeSolicitud] No se pudo guardar historial del comisionado: ${err?.message}`,
+        );
+      }
+    }
+
+    return comisionadoModificado;
+  }
+
+  /**
    * Consulta general o específica de talento humano.
    * Se consulta exclusivamente a través de HumanResourcesClientService (Oracle FNC / VW_INTEGRACIONFNC
    * vía certification-service / nómina y financieros humanos) como fuente oficial única de talento humano.
@@ -2134,8 +2396,7 @@ export class TravelExpensesService {
     if (rawNumCta && rawBanco) {
       const idxCta = comisionado.cuentasBancarias.findIndex(
         (c) =>
-          c.numeroCuenta?.trim() === rawNumCta &&
-          c.banco?.trim().toLowerCase() === rawBanco.toLowerCase(),
+          c.numeroCuenta?.trim() === rawNumCta,
       );
       if (idxCta >= 0) {
         const ctaExistente = comisionado.cuentasBancarias[idxCta];
@@ -2253,6 +2514,20 @@ export class TravelExpensesService {
       if (rawIdCargo) {
         camposAdicionalesCompletos.idCargo = rawIdCargo;
       }
+    }
+
+    const rawFacturador =
+      camposAdicionalesCompletos.obligacion_tributaria ??
+      camposAdicionalesCompletos.esFacturadorElectronico;
+    if (rawFacturador !== undefined && rawFacturador !== null) {
+      const boolFacturador = Boolean(rawFacturador);
+      if (comisionado.esFacturadorElectronico !== boolFacturador) {
+        comisionado.esFacturadorElectronico = boolFacturador;
+        comisionadoModificado = true;
+      }
+      camposAdicionalesCompletos.obligacion_tributaria = boolFacturador;
+    } else {
+      camposAdicionalesCompletos.obligacion_tributaria = Boolean(comisionado.esFacturadorElectronico ?? false);
     }
 
     if (comisionadoModificado) {
@@ -2582,7 +2857,12 @@ if (dto.costoEstimadoTiquete !== undefined) {
     }
     solicitud.camposAdicionales = mergedCampos;
 
-    return this.solicitudRepo.save(solicitud);
+    const saved = await this.solicitudRepo.save(solicitud);
+    await this.sincronizarComisionadoDesdeSolicitud(
+      solicitud.comisionado,
+      saved,
+    );
+    return saved;
   }
 
   async subirDocumento(
@@ -2633,7 +2913,31 @@ if (dto.costoEstimadoTiquete !== undefined) {
       tipoMime,
     });
 
-    return this.documentoRepo.save(entity);
+    const guardado = await this.documentoRepo.save(entity);
+
+    // Si el documento cargado es certificación bancaria, asociar de inmediato
+    // el soporte a la cuenta bancaria del comisionado (por número de cuenta)
+    const esCertBancario =
+      dto.tipoDocumento === 'CERT_BANCARIA' ||
+      dto.tipoDocumento === 'CERTIFICACION_BANCARIA' ||
+      dto.tipoDocumento === 'CERTIFICADO_BANCARIO' ||
+      dto.tipoDocumento?.toUpperCase().includes('BANC');
+
+    if (esCertBancario) {
+      try {
+        await this.sincronizarComisionadoDesdeSolicitud(
+          solicitud.comisionado,
+          solicitud,
+          [guardado],
+        );
+      } catch (errSync: any) {
+        this.logger.warn(
+          `[subirDocumento] No se pudo sincronizar de inmediato el certificado bancario: ${errSync?.message}`,
+        );
+      }
+    }
+
+    return guardado;
   }
 
   /**
@@ -2811,6 +3115,13 @@ if (dto.costoEstimadoTiquete !== undefined) {
     solicitud.estadoSolicitud = EstadoSolicitud.RADICADA;
     solicitud.extemporanea = false;
     solicitud.radicadoFueraJornada = radicadoFueraJornada;
+
+    // Sincronizar en el comisionado: cargo si es diferente al actual, e información bancaria si el número de cuenta es diferente
+    await this.sincronizarComisionadoDesdeSolicitud(
+      solicitud.comisionado,
+      solicitud,
+      documentos,
+    );
 
     const saved = await this.solicitudRepo.save(solicitud);
     const response: any = {
@@ -3428,21 +3739,27 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     // Registro de firma de elaboración por parte del enlace
     const certIdElaboro = dto?.certificadoId || this.generarCertificadoId();
+    const datosUsuario = usuarioId
+      ? await this.resolverDatosUsuario(usuarioId, 'Enlace de Dependencia')
+      : { nombre: 'Enlace de Dependencia', documento: '', cargo: '' };
     const nombreEnlace =
       dto?.nombreFirmante ||
-      (await this.resolverNombreUsuario(usuarioId, 'Enlace de Dependencia'));
-    const cargoEnlace = dto?.cargoFirmante || 'Enlace de Dependencia';
+      datosUsuario.nombre ||
+      'Enlace de Dependencia';
+    const cargoEnlace = dto?.cargoFirmante || datosUsuario.cargo || 'Enlace de Dependencia';
+    const docEnlace = dto?.documentoIdentidad?.trim() || datosUsuario.documento || '';
     const fechaElaboro = new Date().toISOString();
     const hashElaboro =
       dto?.hashSha256 ||
       this.generarHashDocumento(
-        `${solicitud.id}|ENLACE_ELABORO|${nombreEnlace}|${fechaElaboro}`,
+        `${solicitud.id}|ENLACE_ELABORO|${nombreEnlace}|${docEnlace}|${fechaElaboro}`,
       );
 
     const firmaElaboro = {
       tipo: 'ENLACE_ELABORO',
       nombreFirmante: nombreEnlace,
       cargoFirmante: cargoEnlace,
+      documentoIdentidad: docEnlace,
       certificadoId: certIdElaboro,
       hashSha256: hashElaboro,
       fechaFirma: fechaElaboro,
@@ -3450,14 +3767,22 @@ if (dto.costoEstimadoTiquete !== undefined) {
       otpVerificado: Boolean(dto?.otp),
     };
 
+    const docStr = docEnlace ? ` (C.C. ${docEnlace})` : '';
     solicitud.camposAdicionales = {
       ...(solicitud.camposAdicionales || {}),
       reglaDesplazamiento: estadoFirmas.reglaDesplazamiento,
       descripcionReglaDesplazamiento: estadoFirmas.descripcionRegla,
       firmasCompletadas: false,
       firmaElaboro,
-      elaboro: `Elaboró: ${nombreEnlace} (Certificado: ${certIdElaboro})`,
+      elaboro: `Elaboró: ${nombreEnlace}${docStr} (Certificado: ${certIdElaboro})`,
     };
+
+    // Sincronizar en el comisionado: cargo si es diferente al actual, e información bancaria si el número de cuenta es diferente
+    await this.sincronizarComisionadoDesdeSolicitud(
+      solicitud.comisionado,
+      solicitud,
+      documentos,
+    );
 
     const saved = await this.solicitudRepo.save(solicitud);
 
@@ -3569,13 +3894,19 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     const fechaFirma = new Date().toISOString();
     const certId = dto.certificadoId || this.generarCertificadoId();
-    const hashData = `${solicitud.id}|${dto.tipoFirma}|${dto.nombreFirmante}|${dto.cargoFirmante}|${fechaFirma}`;
+    let docFirmante = dto.documentoIdentidad?.trim() || '';
+    if (!docFirmante && usuarioId) {
+      const datosFirmante = await this.resolverDatosUsuario(usuarioId);
+      docFirmante = datosFirmante.documento || '';
+    }
+    const hashData = `${solicitud.id}|${dto.tipoFirma}|${dto.nombreFirmante}|${docFirmante}|${dto.cargoFirmante}|${fechaFirma}`;
     const hash = dto.hashSha256 || this.generarHashDocumento(hashData);
 
     const nuevaFirma = {
       tipo: dto.tipoFirma,
       nombreFirmante: dto.nombreFirmante.trim(),
       cargoFirmante: dto.cargoFirmante.trim(),
+      documentoIdentidad: docFirmante,
       firmaImagen: dto.firmaImagen || null,
       esAusencia: Boolean(dto.esAusencia),
       motivoAusencia: dto.motivoAusencia?.trim() || null,
@@ -4087,18 +4418,19 @@ if (dto.costoEstimadoTiquete !== undefined) {
   }
 
   /**
-   * Resuelve el nombre y apellidos de un usuario a partir de su ID consultando
+   * Resuelve nombre completo, cédula/documento y cargo de un usuario a partir de su ID consultando
    * auth."user" y auth.personas. Si no se encuentra, retorna fallbackNombre.
    */
-  async resolverNombreUsuario(
+  async resolverDatosUsuario(
     usuarioId?: string | null,
     fallbackNombre: string = '',
-  ): Promise<string> {
-    if (!usuarioId) return fallbackNombre;
+  ): Promise<{ nombre: string; documento: string; cargo: string }> {
+    const result = { nombre: fallbackNombre, documento: '', cargo: '' };
+    if (!usuarioId) return result;
     if (typeof this.dataSource?.query === 'function') {
       try {
         const rows: any[] = await this.dataSource.query(
-          `SELECT u.username, p.nom_tercero, p.pri_apellido, p.nom_largo
+          `SELECT u.username, p.nom_tercero, p.pri_apellido, p.nom_largo, p.num_identificacion, p.cargo
            FROM auth."user" u
            LEFT JOIN auth.personas p ON p.id_person = u.id_person
            WHERE u.id_user = $1
@@ -4111,13 +4443,27 @@ if (dto.costoEstimadoTiquete !== undefined) {
             r.nom_largo ||
             [r.nom_tercero, r.pri_apellido].filter(Boolean).join(' ') ||
             r.username;
-          if (nombre) return String(nombre).trim();
+          if (nombre) result.nombre = String(nombre).trim();
+          if (r.num_identificacion) result.documento = String(r.num_identificacion).trim();
+          if (r.cargo) result.cargo = String(r.cargo).trim();
         }
       } catch (e) {
-        this.logger.warn(`Error resolviendo nombre de usuario ${usuarioId}: ${e}`);
+        this.logger.warn(`Error resolviendo datos de usuario ${usuarioId}: ${e}`);
       }
     }
-    return fallbackNombre;
+    return result;
+  }
+
+  /**
+   * Resuelve el nombre y apellidos de un usuario a partir de su ID consultando
+   * auth."user" y auth.personas. Si no se encuentra, retorna fallbackNombre.
+   */
+  async resolverNombreUsuario(
+    usuarioId?: string | null,
+    fallbackNombre: string = '',
+  ): Promise<string> {
+    const datos = await this.resolverDatosUsuario(usuarioId, fallbackNombre);
+    return datos.nombre || fallbackNombre;
   }
 
   async exportarFormato023(solicitudId: string, req?: any): Promise<Buffer> {
@@ -4154,46 +4500,104 @@ if (dto.costoEstimadoTiquete !== undefined) {
         .join(' '),
     );
 
+    // Helper fechas y horas en formato dd/mm/aaaa hh:mm:ss sin desfasaje de zona horaria
+    const formatFechaHoraSegura = (d: any): string => {
+      if (!d) return '';
+      const date = d instanceof Date ? d : new Date(d);
+      if (isNaN(date.getTime())) return String(d);
+      try {
+        return date.toLocaleString('es-CO', {
+          timeZone: 'America/Bogota',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false,
+        });
+      } catch {
+        return date.toISOString().replace('T', ' ').substring(0, 19);
+      }
+    };
+
+    // Firmas registradas en la solicitud
+    const firmasRegistradasPdf: any[] = Array.isArray(solicitud.camposAdicionales?.firmasAprobacion)
+      ? [...solicitud.camposAdicionales.firmasAprobacion]
+      : [];
+    const firmaJefePdf = firmasRegistradasPdf.find((f: any) => f.tipo === TipoFirmaAprobacion.JEFE_DEPENDENCIA && f.estado !== 'RECHAZADO');
+    const firmaGerentePdf = firmasRegistradasPdf.find((f: any) => f.tipo === TipoFirmaAprobacion.GERENTE_PROYECTO && f.estado !== 'RECHAZADO');
+    const firmaAnalistaPrev = firmasRegistradasPdf.find(
+      (f: any) =>
+        (f.tipo === TipoFirmaAprobacion.ANALISTA || (f.tipo as string) === 'ANALISTA_VIATICOS') &&
+        f.estado !== 'RECHAZADO',
+    );
+    const firmaElaboro = solicitud.camposAdicionales?.firmaElaboro;
+
     // Elaboró: Nombre del enlace que lo generó (creadoPorUsuarioId o usuarioRadicacionId)
     const enlaceId =
       solicitud.creadoPorUsuarioId || (solicitud as any).usuarioRadicacionId;
-    const elaboroNombre = enlaceId
-      ? await this.resolverNombreUsuario(enlaceId, '')
-      : '';
-    const firmaElaboro = solicitud.camposAdicionales?.firmaElaboro;
+    let elaboroNombre = '';
+    let elaboroDoc = '';
+    if (enlaceId) {
+      const dEnlace = await this.resolverDatosUsuario(enlaceId, '');
+      elaboroNombre = dEnlace.nombre;
+      elaboroDoc = dEnlace.documento;
+    }
+    if (firmaElaboro && !firmaElaboro.documentoIdentidad && elaboroDoc) {
+      firmaElaboro.documentoIdentidad = elaboroDoc;
+    }
+    const docElaboroStr = firmaElaboro?.documentoIdentidad ? ` · C.C. ${firmaElaboro.documentoIdentidad}` : '';
+    const fElaboroStr = firmaElaboro?.fechaFirma ? ` · Fecha: ${formatFechaHoraSegura(firmaElaboro.fechaFirma)}` : '';
     const elaboroTexto =
       firmaElaboro?.nombreFirmante
-        ? `Elaboró: ${firmaElaboro.nombreFirmante} (Cert: ${firmaElaboro.certificadoId || 'ESAP-CERT-VIAT'})`
+        ? `Elaboró: ${firmaElaboro.nombreFirmante}${docElaboroStr}${fElaboroStr} · ✓ Firma Digital Verificada (Cert: ${firmaElaboro.certificadoId || 'ESAP-CERT-VIAT'})`
         : solicitud.camposAdicionales?.elaboro ||
-          (elaboroNombre ? `Elaboró: ${elaboroNombre}` : 'Elaboró:');
+          (elaboroNombre ? `Elaboró: ${elaboroNombre}${elaboroDoc ? ` · C.C. ${elaboroDoc}` : ''}` : 'Elaboró:');
 
     // Revisó: El analista que lo revisó/verificó con firma digital si existe
-    const firmaAnalistaPrev = Array.isArray(solicitud.camposAdicionales?.firmasAprobacion)
-      ? solicitud.camposAdicionales.firmasAprobacion.find(
-          (f: any) =>
-            (f.tipo === TipoFirmaAprobacion.ANALISTA || (f.tipo as string) === 'ANALISTA_VIATICOS') &&
-            f.estado !== 'RECHAZADO',
-        )
-      : null;
     const analistaId =
       solicitud.revisorControlId || solicitud.analistaAsignadoId;
-    const revisorNombre = analistaId
-      ? await this.resolverNombreUsuario(analistaId, '')
-      : '';
+    let revisorNombre = '';
+    let revisorDoc = '';
+    if (analistaId) {
+      const dAnalista = await this.resolverDatosUsuario(analistaId, '');
+      revisorNombre = dAnalista.nombre;
+      revisorDoc = dAnalista.documento;
+    }
+    if (firmaAnalistaPrev && !firmaAnalistaPrev.documentoIdentidad && revisorDoc) {
+      firmaAnalistaPrev.documentoIdentidad = revisorDoc;
+    }
+    const docRevisoStr = firmaAnalistaPrev?.documentoIdentidad ? ` · C.C. ${firmaAnalistaPrev.documentoIdentidad}` : '';
+    const fRevisoStr = firmaAnalistaPrev?.fechaFirma ? ` · Fecha: ${formatFechaHoraSegura(firmaAnalistaPrev.fechaFirma)}` : '';
     const revisoTexto =
       firmaAnalistaPrev?.nombreFirmante
-        ? `Revisó: ${firmaAnalistaPrev.nombreFirmante} (Cert: ${firmaAnalistaPrev.certificadoId || 'ESAP-CERT-VIAT'})`
+        ? `Revisó: ${firmaAnalistaPrev.nombreFirmante}${docRevisoStr}${fRevisoStr} · ✓ Firma Digital Verificada (Cert: ${firmaAnalistaPrev.certificadoId || 'ESAP-CERT-VIAT'})`
         : solicitud.camposAdicionales?.reviso ||
-          (revisorNombre ? `Revisó: ${revisorNombre}` : 'Revisó:');
+          (revisorNombre ? `Revisó: ${revisorNombre}${revisorDoc ? ` · C.C. ${revisorDoc}` : ''}` : 'Revisó:');
 
     // Aprobó: Quien la dejó en estado de pagada (pagado_por_id), si no ha llegado dejar vacío
     const pagadoPorId = solicitud.pagadoPorId;
-    const pagadorNombre = pagadoPorId
-      ? await this.resolverNombreUsuario(pagadoPorId, '')
-      : '';
+    let pagadorNombre = '';
+    let pagadorDoc = '';
+    if (pagadoPorId) {
+      const dPagador = await this.resolverDatosUsuario(pagadoPorId, '');
+      pagadorNombre = dPagador.nombre;
+      pagadorDoc = dPagador.documento;
+    }
     const aproboTexto =
       solicitud.camposAdicionales?.aprobo ||
-      (pagadorNombre ? `Aprobó: ${pagadorNombre}` : 'Aprobó:');
+      (pagadorNombre ? `Aprobó: ${pagadorNombre}${pagadorDoc ? ` · C.C. ${pagadorDoc}` : ''}` : 'Aprobó:');
+
+    // Enriquecer datos de firmantes con C.C. si no vienen explícitos
+    if (firmaJefePdf && !firmaJefePdf.documentoIdentidad && firmaJefePdf.usuarioId) {
+      const d = await this.resolverDatosUsuario(firmaJefePdf.usuarioId);
+      if (d.documento) firmaJefePdf.documentoIdentidad = d.documento;
+    }
+    if (firmaGerentePdf && !firmaGerentePdf.documentoIdentidad && firmaGerentePdf.usuarioId) {
+      const d = await this.resolverDatosUsuario(firmaGerentePdf.usuarioId);
+      if (d.documento) firmaGerentePdf.documentoIdentidad = d.documento;
+    }
 
     // Búsqueda de datos complementarios en auth.personas (fecha_nacimiento, etc.)
     let fechaNacimientoPersona: string | null = null;
@@ -4745,11 +5149,6 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     // Cargos de los jefes para el bloque de firmas (dinámicos según reglas de desplazamiento)
     const { firmante1: fReq1, firmante2: fReq2 } = this.determinarFirmantesAprobacion(solicitud, dependenciaNombre);
-    const firmasRegistradasPdf: any[] = Array.isArray(solicitud.camposAdicionales?.firmasAprobacion)
-      ? solicitud.camposAdicionales.firmasAprobacion
-      : [];
-    const firmaJefePdf = firmasRegistradasPdf.find((f: any) => f.tipo === TipoFirmaAprobacion.JEFE_DEPENDENCIA && f.estado !== 'RECHAZADO');
-    const firmaGerentePdf = firmasRegistradasPdf.find((f: any) => f.tipo === TipoFirmaAprobacion.GERENTE_PROYECTO && f.estado !== 'RECHAZADO');
 
     const cargoJefe =
       firmaJefePdf?.cargoFirmante ||
@@ -5350,67 +5749,171 @@ if (itinerarioGeneral) {
       drawBox(28, yFirmas, 556, hFirmas, null);
       doc.moveTo(306, yFirmas).lineTo(306, yFirmas + hFirmas).strokeColor('#000000').lineWidth(0.6).stroke();
 
+      const formatFechaAmigable = (val?: any): string => {
+        if (!val) return '';
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return '';
+        const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+        const dia = d.getDate().toString().padStart(2, '0');
+        const mes = meses[d.getMonth()];
+        const anio = d.getFullYear();
+        return `${dia} de ${mes} de ${anio}`;
+      };
+
+      const renderFirmaBox = (
+        firma: any,
+        cargoOficial: string,
+        cardX: number,
+        cardW: number,
+        fallbackTitulo: string,
+      ) => {
+        const cardY = yFirmas + 5;
+        const cardH = 80;
+
+        if (firma && (firma.estado === 'FIRMADO' || firma.firmadoDigitalmente)) {
+          // Fondo tarjeta amigable con estilo verde idéntico al componente PTA (foto)
+          doc.roundedRect(cardX, cardY, cardW, cardH, 6)
+             .fillColor('#F0FDF4')
+             .strokeColor('#BBF7D0')
+             .lineWidth(0.8)
+             .fillAndStroke();
+
+          // 1. Título superior en gris sutil en mayúsculas
+          doc.fontSize(6.2).font('Helvetica-Bold').fillColor('#9CA3AF');
+          doc.text(fallbackTitulo.toUpperCase(), cardX, cardY + 7, {
+            width: cardW,
+            align: 'center',
+          });
+
+          // 2. Nombre del aprobador en negrilla centrada
+          const nombreAprobador = this.sanitizarTextoPdf(firma.nombreFirmante || 'Servidor Autorizado').toUpperCase();
+          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#111827');
+          doc.text(nombreAprobador, cardX + 8, cardY + 18, {
+            width: cardW - 16,
+            align: 'center',
+          });
+
+          // 3. Documento de Identidad (C.C.)
+          if (firma.documentoIdentidad) {
+            doc.fontSize(5.5).font('Helvetica').fillColor('#64748B');
+            doc.text(`C.C. ${firma.documentoIdentidad}`, cardX, cardY + 28, {
+              width: cardW,
+              align: 'center',
+            });
+          }
+
+          // 4. Pill verde con check "Aprobado"
+          const pillW = 74;
+          const pillH = 13.5;
+          const pillX = cardX + (cardW - pillW) / 2;
+          const pillY = cardY + 38;
+          doc.roundedRect(pillX, pillY, pillW, pillH, 6.75)
+             .fillColor('#D1FAE5')
+             .strokeColor('#A7F3D0')
+             .lineWidth(0.5)
+             .fillAndStroke();
+
+          doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#065F46');
+          doc.text('✓ Aprobado', pillX, pillY + 3.2, {
+            width: pillW,
+            align: 'center',
+          });
+
+          // 5. Fecha en formato amigable centrado: "01 de oct de 2026"
+          const fechaAmigable = formatFechaAmigable(firma.fechaFirma);
+          if (fechaAmigable) {
+            doc.fontSize(6.2).font('Helvetica').fillColor('#9CA3AF');
+            doc.text(fechaAmigable, cardX, cardY + 54, {
+              width: cardW,
+              align: 'center',
+            });
+          }
+
+          // 6. Certificado digital OTP institucional al pie de la tarjeta
+          const certId = firma.certificadoId || 'ESAP-CERT-VIAT';
+          doc.fontSize(4.6).font('Helvetica').fillColor('#94A3B8');
+          doc.text(`Firma Digital Verificada · Cert: ${certId}`, cardX, cardY + 66, {
+            width: cardW,
+            align: 'center',
+          });
+
+          // Imagen opcional de rúbrica si existiera
+          if (firma.firmaImagen && typeof firma.firmaImagen === 'string') {
+            try {
+              const rawBase64 = firma.firmaImagen.replace(/^data:image\/\w+;base64,/, '');
+              const imgBuf = Buffer.from(rawBase64, 'base64');
+              doc.image(imgBuf, cardX + cardW - 48, cardY + 6, { fit: [42, 18], align: 'right' });
+            } catch {}
+          }
+
+          // Si es firma por ausencia
+          if (firma.esAusencia && firma.motivoAusencia) {
+            doc.fontSize(4.3).font('Helvetica-Oblique').fillColor('#B45309');
+            doc.text(
+              `* En ausencia: ${this.sanitizarTextoPdf(firma.motivoAusencia)}`,
+              cardX + 6,
+              cardY + 72,
+              { width: cardW - 12, align: 'center' },
+            );
+          }
+        } else {
+          // Tarjeta en estado pendiente / no firmado
+          doc.roundedRect(cardX, cardY, cardW, cardH, 6)
+             .fillColor('#FFFFFF')
+             .strokeColor('#E5E7EB')
+             .lineWidth(0.8)
+             .fillAndStroke();
+
+          // 1. Título superior en gris sutil en mayúsculas
+          doc.fontSize(6.2).font('Helvetica-Bold').fillColor('#9CA3AF');
+          doc.text(fallbackTitulo.toUpperCase(), cardX, cardY + 7, {
+            width: cardW,
+            align: 'center',
+          });
+
+          // 2. Línea horizontal o guion como en la foto
+          doc.fontSize(10).font('Helvetica-Bold').fillColor('#9CA3AF');
+          doc.text('—', cardX, cardY + 20, {
+            width: cardW,
+            align: 'center',
+          });
+
+          // 3. Pill gris "Pendiente por firmar"
+          const pendPillW = 86;
+          const pendPillH = 13.5;
+          const pendPillX = cardX + (cardW - pendPillW) / 2;
+          const pendPillY = cardY + 38;
+          doc.roundedRect(pendPillX, pendPillY, pendPillW, pendPillH, 6.75)
+             .fillColor('#F3F4F6')
+             .strokeColor('#E5E7EB')
+             .lineWidth(0.5)
+             .fillAndStroke();
+
+          doc.fontSize(6).font('Helvetica-Bold').fillColor('#9CA3AF');
+          doc.text('Pendiente por firmar', pendPillX, pendPillY + 3.5, {
+            width: pendPillW,
+            align: 'center',
+          });
+
+          // 4. Fecha guion
+          doc.fontSize(6.2).font('Helvetica').fillColor('#CBD5E1');
+          doc.text('—', cardX, cardY + 54, {
+            width: cardW,
+            align: 'center',
+          });
+        }
+
+        // Línea y cargo del firmante al pie del bloque
+        doc.moveTo(cardX + 15, yFirmas + 94).lineTo(cardX + cardW - 15, yFirmas + 94).strokeColor('#000000').lineWidth(0.6).stroke();
+        doc.fontSize(6).font('Helvetica').fillColor('#000000');
+        doc.text(cargoOficial, cardX, yFirmas + 98, { width: cardW, align: 'center' });
+      };
+
       // Firma izquierda: Jefe de Dependencia / Supervisor / Director Nacional / Subdirector
-      if (firmaJefePdf) {
-        if (firmaJefePdf.firmaImagen && typeof firmaJefePdf.firmaImagen === 'string') {
-          try {
-            const rawBase64 = firmaJefePdf.firmaImagen.replace(/^data:image\/\w+;base64,/, '');
-            const imgBuf = Buffer.from(rawBase64, 'base64');
-            doc.image(imgBuf, 75, yFirmas + 8, { fit: [160, 48], align: 'center' });
-          } catch {}
-        }
-        doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#003DA5');
-        const certJefe = firmaJefePdf.certificadoId ? ` · Cert: ${firmaJefePdf.certificadoId}` : '';
-        doc.text(`FIRMADO DIGITALMENTE (OTP VERIFICADO)${certJefe}`, 32, yFirmas + 58, { width: 266, align: 'center' });
-        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000');
-        doc.text(firmaJefePdf.nombreFirmante, 32, yFirmas + 67, { width: 266, align: 'center' });
-        doc.fontSize(5).font('Helvetica').fillColor('#475569');
-        const fStr = firmaJefePdf.fechaFirma ? formatFechaSlash(firmaJefePdf.fechaFirma) : '';
-        doc.text(
-          [firmaJefePdf.cargoFirmante, fStr ? `Fecha: ${fStr}` : ''].filter(Boolean).join(' · '),
-          32,
-          yFirmas + 76,
-          { width: 266, align: 'center' },
-        );
-        if (firmaJefePdf.esAusencia && firmaJefePdf.motivoAusencia) {
-          doc.fontSize(4.5).font('Helvetica-Oblique').fillColor('#D97706');
-          doc.text(`(En ausencia del titular: ${firmaJefePdf.motivoAusencia})`, 32, yFirmas + 84, { width: 266, align: 'center' });
-        }
-      }
+      renderFirmaBox(firmaJefePdf, cargoJefe, 33, 268, 'Jefe de Dependencia / Supervisor');
 
-      // Línea y cargo izquierdo (Jefe de Dependencia / Supervisor)
-      doc.moveTo(55, yFirmas + 94).lineTo(275, yFirmas + 94).strokeColor('#000000').lineWidth(0.6).stroke();
-      doc.fontSize(6).font('Helvetica').fillColor('#000000');
-      doc.text(cargoJefe, 32, yFirmas + 99, { width: 266, align: 'center' });
-
-      // Firma derecha: Gerente de Proyecto
-      if (firmaGerentePdf) {
-        if (firmaGerentePdf.firmaImagen && typeof firmaGerentePdf.firmaImagen === 'string') {
-          try {
-            const rawBase64 = firmaGerentePdf.firmaImagen.replace(/^data:image\/\w+;base64,/, '');
-            const imgBuf = Buffer.from(rawBase64, 'base64');
-            doc.image(imgBuf, 355, yFirmas + 8, { fit: [160, 48], align: 'center' });
-          } catch {}
-        }
-        doc.fontSize(5.5).font('Helvetica-Bold').fillColor('#003DA5');
-        const certGerente = firmaGerentePdf.certificadoId ? ` · Cert: ${firmaGerentePdf.certificadoId}` : '';
-        doc.text(`FIRMADO DIGITALMENTE (OTP VERIFICADO)${certGerente}`, 310, yFirmas + 58, { width: 266, align: 'center' });
-        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000');
-        doc.text(firmaGerentePdf.nombreFirmante, 310, yFirmas + 67, { width: 266, align: 'center' });
-        doc.fontSize(5).font('Helvetica').fillColor('#475569');
-        const fStr = firmaGerentePdf.fechaFirma ? formatFechaSlash(firmaGerentePdf.fechaFirma) : '';
-        doc.text(
-          [firmaGerentePdf.cargoFirmante, fStr ? `Fecha: ${fStr}` : ''].filter(Boolean).join(' · '),
-          310,
-          yFirmas + 76,
-          { width: 266, align: 'center' },
-        );
-      }
-
-      // Línea y cargo derecho (Gerente de Proyecto / Ordenador)
-      doc.moveTo(335, yFirmas + 94).lineTo(555, yFirmas + 94).strokeColor('#000000').lineWidth(0.6).stroke();
-      doc.fontSize(6).font('Helvetica').fillColor('#000000');
-      doc.text(cargoGerente, 310, yFirmas + 99, { width: 266, align: 'center' });
+      // Firma derecha: Gerente de Proyecto / Ordenador
+      renderFirmaBox(firmaGerentePdf, cargoGerente, 311, 268, 'Gerente de Proyecto');
 
       // ========== PIE DE PÁGINA: ELABORÓ, REVISÓ, APROBÓ Y LEY 1581 ==========
       const yFooter = yFirmas + hFirmas;
@@ -5422,10 +5925,21 @@ if (itinerarioGeneral) {
       doc.moveTo(28, yFooter + hFilaFooter).lineTo(398, yFooter + hFilaFooter).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
       doc.moveTo(28, yFooter + hFilaFooter * 2).lineTo(398, yFooter + hFilaFooter * 2).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
 
-      const nombresAprobadores = [firmaJefePdf?.nombreFirmante, firmaGerentePdf?.nombreFirmante].filter(Boolean).join(' / ');
-      const aproboTextoFinal =
-        solicitud.camposAdicionales?.aprobo ||
-        (nombresAprobadores ? `Aprobó: ${nombresAprobadores}` : aproboTexto);
+      const firmasAprobadas = [firmaJefePdf, firmaGerentePdf].filter((f: any) => f && (f.estado === 'FIRMADO' || f.firmadoDigitalmente));
+      let aproboTextoFinal = '';
+      if (firmasAprobadas.length > 0) {
+        const parts = firmasAprobadas.map((f: any) => {
+          const cc = f.documentoIdentidad ? ` (C.C. ${f.documentoIdentidad})` : '';
+          const fStr = f.fechaFirma ? ` ${formatFechaHoraSegura(f.fechaFirma)}` : '';
+          return `${f.nombreFirmante}${cc} · ✓ Verificada${fStr}`;
+        });
+        aproboTextoFinal = `Aprobó: ${parts.join(' / ')}`;
+      } else {
+        const nombresAprobadores = [firmaJefePdf?.nombreFirmante, firmaGerentePdf?.nombreFirmante].filter(Boolean).join(' / ');
+        aproboTextoFinal =
+          solicitud.camposAdicionales?.aprobo ||
+          (nombresAprobadores ? `Aprobó: ${nombresAprobadores}` : aproboTexto);
+      }
 
       doc.fontSize(5.5).font('Helvetica').fillColor('#000000');
       doc.text(elaboroTexto, 32, yFooter + 3.5, { width: 362 });

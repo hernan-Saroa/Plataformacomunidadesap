@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import { FileText, ArrowRight } from 'lucide-react';
 
-import { ProcesoResumen } from '../../types';
+import { PlazoDeActividad, ProcesoResumen } from '../../types';
+import { ChipPlazo } from '../proceso/ChipPlazo';
 import { ETAPAS } from '../proceso/Etapas';
 import { etapaEnCurso } from './etapaEnCurso';
 
@@ -9,6 +10,10 @@ interface EstadoVisual {
   texto: string;
   clase: string;
   icono: React.ReactNode;
+  /** Qué pasa y a quién le toca, en una línea. */
+  detalle?: string;
+  /** El plazo que más aprieta, si alguno aprieta. */
+  plazo?: PlazoDeActividad | null;
 }
 
 interface Props {
@@ -131,6 +136,20 @@ export function TableroProcesos({ procesos, estadoDe, onAbrir }: Props) {
                           {estado.icono}
                           {estado.texto}
                         </span>
+
+                        {/* A quién le toca y el semáforo, como en el tablero
+                            disciplinario: la tarjeta dice qué atender primero
+                            sin tener que abrirla. */}
+                        {estado.detalle ? (
+                          <p className="text-[11.5px] text-slate-500 m-0 mt-1.5 leading-snug">
+                            {estado.detalle}
+                          </p>
+                        ) : null}
+                        {estado.plazo ? (
+                          <span className="block mt-1.5">
+                            <ChipPlazo plazo={estado.plazo} />
+                          </span>
+                        ) : null}
                       </button>
                     );
                   })

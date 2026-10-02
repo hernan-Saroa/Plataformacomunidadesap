@@ -195,10 +195,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [enviando, setEnviando] = useState(false);
   const { festivos } = useFestivos();
   // Historial de cuentas bancarias y selección
-  const [cuentaBancariaSeleccionadaId, setCuentaBancariaSeleccionadaId] = useState<string>('nueva');
-  const [modoNuevaCuenta, setModoNuevaCuenta] = useState<boolean>(false);
-  const [guardarCuentaEnPerfil, setGuardarCuentaEnPerfil] = useState<boolean>(true);
-  const [subiendoCertificadoBancarioDirecto, setSubiendoCertificadoBancarioDirecto] = useState<boolean>(false);
+  const [cuentaBancariaSeleccionadaId, setCuentaBancariaSeleccionadaId] = useState<string>('');
   const [alertaAnticipacion, setAlertaAnticipacion] = useState<{
     extemporanea: boolean;
     diasHabiles: number;
@@ -416,6 +413,22 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       if (data) {
         if (data.campos) {
           setCamposCatalogo(data.campos);
+          // Inicializar cualquier campo BOOLEAN / CHECKBOX en false si aún no tiene valor en el form
+          setForm((prev) => {
+            const nuevosAdic = { ...(prev.camposAdicionales || {}) };
+            let huboCambio = false;
+            data.campos.forEach((c) => {
+              const tipo = (c.tipoCampo || '').toUpperCase();
+              if (
+                (tipo === 'BOOLEAN' || tipo === 'CHECKBOX') &&
+                (nuevosAdic[c.clave] === undefined || nuevosAdic[c.clave] === null)
+              ) {
+                nuevosAdic[c.clave] = false;
+                huboCambio = true;
+              }
+            });
+            return huboCambio ? { ...prev, camposAdicionales: nuevosAdic } : prev;
+          });
         }
         if (comisionado?.tipoComisionado) {
           const config = data.configuraciones?.[comisionado.tipoComisionado];
@@ -612,9 +625,18 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
   const actualizarCampoAdicional = (clave: string, valor: any) => {
     setForm((prev) => {
+      const campoDef = camposCatalogo.find((c) => c.clave === clave);
+      const tipo = (campoDef?.tipoCampo || '').toUpperCase();
+      const esBool =
+        tipo === 'BOOLEAN' ||
+        tipo === 'CHECKBOX' ||
+        clave === 'obligacion_tributaria' ||
+        clave === 'esFacturadorElectronico';
+      const valorFinal = esBool ? Boolean(valor) : valor;
+
       const nextAdicionales: Record<string, any> = {
         ...(prev.camposAdicionales || {}),
-        [clave]: valor,
+        [clave]: valorFinal,
       };
       if (
         clave === 'cargoEsap' ||
@@ -647,8 +669,21 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         nextAdicionales.tipo_cuenta = valor;
         nextAdicionales.tipoCuenta = valor;
       }
+
+      const ctaSync: CuentaBancariaComisionado | undefined =
+        nextAdicionales.entidadBancaria && nextAdicionales.numeroCuenta
+          ? {
+              banco: nextAdicionales.entidadBancaria,
+              tipoCuenta: nextAdicionales.tipoCuenta || 'AHORROS',
+              numeroCuenta: nextAdicionales.numeroCuenta,
+              urlCertificadoBancario: nextAdicionales.urlCertificadoBancario || null,
+              nombreArchivoCertificado: nextAdicionales.nombreArchivoCertificado || null,
+            }
+          : undefined;
+
       return {
         ...prev,
+        cuentaBancariaSeleccionada: ctaSync !== undefined ? ctaSync : prev.cuentaBancariaSeleccionada,
         camposAdicionales: nextAdicionales,
       };
     });
@@ -789,7 +824,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
   const seleccionarCuentaBancaria = (cta: CuentaBancariaComisionado) => {
     setCuentaBancariaSeleccionadaId(cta.id || 'cta-sel');
-    setModoNuevaCuenta(false);
 
     setForm((prev) => {
       const adic = {
@@ -826,62 +860,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         cuentaBancariaSeleccionada: cta,
         camposAdicionales: adic,
         documentos: docsActualizados,
-      };
-    });
-  };
-
-  const activarModoNuevaCuenta = () => {
-    setCuentaBancariaSeleccionadaId('nueva');
-    setModoNuevaCuenta(true);
-    setForm((prev) => {
-      const adic = { ...(prev.camposAdicionales || {}) };
-      delete adic.entidad_bancaria;
-      delete adic.entidadBancaria;
-      delete adic.banco;
-      delete adic.tipo_cuenta;
-      delete adic.tipoCuenta;
-      delete adic.num_cuenta;
-      delete adic.numeroCuenta;
-      delete adic.numCuenta;
-      delete adic.cuentaBancaria;
-      delete adic.urlCertificadoBancario;
-      return {
-        ...prev,
-        cuentaBancariaSeleccionada: null,
-        camposAdicionales: adic,
-      };
-    });
-  };
-
-  const actualizarDatosNuevaCuenta = (campo: 'banco' | 'tipoCuenta' | 'numeroCuenta', valor: string) => {
-    setForm((prev) => {
-      const adic = { ...(prev.camposAdicionales || {}) };
-      if (campo === 'banco') {
-        adic.entidad_bancaria = valor;
-        adic.entidadBancaria = valor;
-        adic.banco = valor;
-      } else if (campo === 'tipoCuenta') {
-        adic.tipo_cuenta = valor;
-        adic.tipoCuenta = valor;
-      } else if (campo === 'numeroCuenta') {
-        adic.num_cuenta = valor;
-        adic.numeroCuenta = valor;
-        adic.numCuenta = valor;
-        adic.cuentaBancaria = valor;
-      }
-
-      const ctaActual: CuentaBancariaComisionado = {
-        banco: adic.banco || '',
-        tipoCuenta: adic.tipoCuenta || 'AHORROS',
-        numeroCuenta: adic.numCuenta || '',
-        urlCertificadoBancario: adic.urlCertificadoBancario || null,
-        nombreArchivoCertificado: adic.nombreArchivoCertificado || null,
-      };
-
-      return {
-        ...prev,
-        cuentaBancariaSeleccionada: ctaActual,
-        camposAdicionales: adic,
       };
     });
   };
@@ -1078,10 +1056,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       if (cuentas.length > 0) {
         ctaInicial = cuentas.find((c) => c.esPrincipal) || cuentas[0];
         setCuentaBancariaSeleccionadaId(ctaInicial.id || 'cta-0');
-        setModoNuevaCuenta(false);
       } else {
-        setCuentaBancariaSeleccionadaId('nueva');
-        setModoNuevaCuenta(true);
+        setCuentaBancariaSeleccionadaId('');
       }
 
       // Cargos e historial de salario relacional
@@ -1156,6 +1132,30 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           nuevosCamposAdicionales.cargoInstitucional = cargoComisionado;
           nuevosCamposAdicionales.cargoComisionado = cargoComisionado;
         }
+
+        // Sincronizar régimen de facturación electrónica del comisionado
+        const facturadorInicial = Boolean(resultado.esFacturadorElectronico ?? false);
+        nuevosCamposAdicionales.obligacion_tributaria = facturadorInicial;
+        nuevosCamposAdicionales.esFacturadorElectronico = facturadorInicial;
+
+        // Asegurar que todos los campos booleanos del catálogo tengan valor booleano explícito
+        camposCatalogo.forEach((c) => {
+          const tipo = (c.tipoCampo || '').toUpperCase();
+          if (tipo === 'BOOLEAN' || tipo === 'CHECKBOX') {
+            if (
+              c.clave === 'obligacion_tributaria' ||
+              c.clave === 'esFacturadorElectronico' ||
+              c.clave.toLowerCase().includes('factura')
+            ) {
+              nuevosCamposAdicionales[c.clave] = facturadorInicial;
+            } else if (
+              nuevosCamposAdicionales[c.clave] === undefined ||
+              nuevosCamposAdicionales[c.clave] === null
+            ) {
+              nuevosCamposAdicionales[c.clave] = false;
+            }
+          }
+        });
 
         const docsActualizados = [...(prev.documentos || [])];
         if (ctaInicial?.urlCertificadoBancario) {
@@ -1573,6 +1573,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           destinoDepartamento,
           camposAdicionales: {
             ...(form.camposAdicionales || {}),
+            obligacion_tributaria:
+              form.camposAdicionales?.obligacion_tributaria !== undefined &&
+              form.camposAdicionales?.obligacion_tributaria !== null
+                ? Boolean(form.camposAdicionales.obligacion_tributaria)
+                : Boolean(comisionado?.esFacturadorElectronico ?? false),
             ...(cargoFinal
               ? {
                   cargoEsap: cargoFinal,
@@ -1609,6 +1614,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
             diasComision,
             salarioBasico: form.salarioBasico,
             costoEstimadoTiquete: form.costoEstimadoTiquete,
+            cargo: cargoFinal || undefined,
+            idCargo: cargoObj?.idCargo ?? undefined,
             tipoComision: (() => {
                 if (form.esInternacional) return 'INTERNACIONAL';
                 const tramos = form.itinerario || [];
@@ -1664,6 +1671,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 ...(rawBanco ? { entidad_bancaria: rawBanco, entidadBancaria: rawBanco, banco: rawBanco } : {}),
                 ...(rawCuenta ? { num_cuenta: rawCuenta, numeroCuenta: rawCuenta, numCuenta: rawCuenta, cuentaBancaria: rawCuenta } : {}),
                 ...(rawTipo ? { tipo_cuenta: rawTipo, tipoCuenta: rawTipo } : {}),
+                obligacion_tributaria:
+                  prevAdic.obligacion_tributaria !== undefined && prevAdic.obligacion_tributaria !== null
+                    ? Boolean(prevAdic.obligacion_tributaria)
+                    : Boolean(comisionado?.esFacturadorElectronico ?? false),
                 transporteTerminalAereo:
                   prevAdic.transporteTerminalAereo ??
                   (form.itinerario || []).reduce(
@@ -1920,6 +1931,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setFinalizando(true);
     setErrorValidacion(null);
     try {
+      const user = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
+      const userDoc =
+        (user as any)?.cedula ||
+        (user as any)?.numeroDocumento ||
+        (user as any)?.num_identificacion ||
+        (user as any)?.person?.num_identificacion ||
+        (user as any)?.person?.numeroDocumento ||
+        undefined;
+
       const conFirmas = await viaticosService.solicitarFirmasAprobacion(solicitudBorrador.id, {
         otp: firma.codigoOtp,
         verificationId: otpDataEnlace?.verificationId,
@@ -1927,6 +1947,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         hashSha256: firma.hash,
         nombreFirmante: firma.firmante,
         cargoFirmante: firma.cargo,
+        documentoIdentidad: userDoc ? String(userDoc).trim() : undefined,
       });
       onSolicitudCreada(conFirmas);
       onCerrar();
@@ -2541,7 +2562,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                       <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center gap-2">
                         <AlertCircle className="w-4 h-4 text-[#003DA5] shrink-0" />
                         <span className="text-[11px]">
-                          En el <strong>Paso 2 (Objeto y Destino)</strong> seleccionará la cuenta específica para el desembolso de esta comisión o podrá registrar y ajustar una nueva cuenta.
+                          En el <strong>Paso 2 (Objeto y Destino)</strong> puede verificar o modificar los datos de la cuenta en los campos adicionales paramétricos, y en el <strong>Paso 3 (Documentos)</strong> gestionar sus soportes.
                         </span>
                       </div>
                     </>
@@ -2554,7 +2575,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                           No se ha registrado cuenta bancaria para este comisionado
                         </p>
                         <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
-                          El comisionado no cuenta con cuentas bancarias registradas en su historial. En el <strong>Paso 2 (Objeto y Destino)</strong> podrá ingresar los datos de la cuenta bancaria y adjuntar la certificación correspondiente para el desembolso de los viáticos.
+                          El comisionado no cuenta con cuentas bancarias registradas en su historial. En el <strong>Paso 2 (Objeto y Destino)</strong> podrá ingresar los datos de la cuenta en los campos adicionales paramétricos, y en el <strong>Paso 3 (Documentos)</strong> adjuntar la certificación bancaria correspondiente.
                         </p>
                       </div>
                     </div>
@@ -3066,389 +3087,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 </div>
               </div>
 
-              {/* ========== CUENTAS BANCARIAS PARA DESEMBOLSO DE VIÁTICOS (CONFIGURACIÓN Y AJUSTE - PASO 2) ========== */}
-              {comisionado && (
-                <div className="border border-blue-200 bg-white rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
-                  <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-blue-100 text-[#003DA5] flex items-center justify-center font-bold">
-                        <CreditCard className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h5 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                          Cuentas Bancarias para Desembolso de Viáticos
-                          {comisionado.cuentasBancarias && comisionado.cuentasBancarias.length > 0 && (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-[#003DA5] border border-blue-200 font-extrabold">
-                              {comisionado.cuentasBancarias.length} guardada(s)
-                            </span>
-                          )}
-                        </h5>
-                        <p className="text-[11px] text-slate-500">
-                          Seleccione la cuenta bancaria donde se consignará el valor de los viáticos o registre y ajuste una nueva cuenta para esta comisión.
-                        </p>
-                      </div>
-                    </div>
-
-                    {!modoNuevaCuenta && comisionado.cuentasBancarias && comisionado.cuentasBancarias.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={activarModoNuevaCuenta}
-                        className="text-xs font-bold px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#003DA5] border border-blue-200 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-                      >
-                        <Landmark className="w-3.5 h-3.5" />
-                        + Registrar otra cuenta bancaria
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Listado interactivo de cuentas registradas */}
-                  {!modoNuevaCuenta && comisionado.cuentasBancarias && comisionado.cuentasBancarias.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {comisionado.cuentasBancarias.map((cta, idx) => {
-                        const idActual = cta.id || `cta-${idx}`;
-                        const seleccionada = cuentaBancariaSeleccionadaId === idActual;
-                        return (
-                          <div
-                            key={idActual}
-                            onClick={() => seleccionarCuentaBancaria(cta)}
-                            className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer relative ${
-                              seleccionada
-                                ? 'border-[#003DA5] bg-blue-50/50 shadow-xs ring-2 ring-[#003DA5]/20'
-                                : 'border-slate-200 hover:border-blue-300 hover:bg-slate-50/50'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                                    seleccionada
-                                      ? 'border-[#003DA5] bg-[#003DA5] text-white'
-                                      : 'border-slate-300 bg-white'
-                                  }`}
-                                >
-                                  {seleccionada && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-                                </div>
-                                <span className="font-extrabold text-slate-900 text-xs sm:text-sm">
-                                  {cta.banco}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 uppercase">
-                                  {cta.tipoCuenta || 'AHORROS'}
-                                </span>
-                                {cta.esPrincipal && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
-                                    Principal
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="mt-2.5 flex items-center justify-between text-xs flex-wrap gap-2">
-                              <span className="text-slate-500 font-mono font-medium">
-                                No. <span className="font-bold text-slate-800">{cta.numeroCuenta}</span>
-                              </span>
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                {cta.urlCertificadoBancario ? (
-                                  <a
-                                    href={cta.urlCertificadoBancario}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-flex items-center gap-1"
-                                  >
-                                    <BadgeCheck className="w-3 h-3 text-emerald-600" />
-                                    Certificación PDF
-                                  </a>
-                                ) : (
-                                  <span className="text-[10px] text-slate-400 italic">
-                                    Sin certificado PDF adjunto
-                                  </span>
-                                )}
-
-                                {seleccionada && (
-                                  <label
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="text-[10px] font-bold text-[#003DA5] hover:text-[#002b75] bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded border border-blue-200 inline-flex items-center gap-1 cursor-pointer transition-colors"
-                                    title="Cargar nuevo certificado bancario para actualizar esta cuenta"
-                                  >
-                                    <Upload className="w-2.5 h-2.5" />
-                                    {cta.urlCertificadoBancario ? 'Cambiar PDF' : 'Adjuntar PDF'}
-                                    <input
-                                      type="file"
-                                      accept="application/pdf"
-                                      className="hidden"
-                                      onChange={async (e) => {
-                                        const archivo = e.target.files?.[0];
-                                        if (!archivo) return;
-                                        if (!archivo.type.includes('pdf') && !archivo.name.toLowerCase().endsWith('.pdf')) {
-                                          setErrorConsulta('El certificado bancario debe estar en formato PDF.');
-                                          return;
-                                        }
-                                        let urlCert = '';
-                                        if (solicitudBorrador?.id) {
-                                          setSubiendoCertificadoBancarioDirecto(true);
-                                          try {
-                                            const doc = await viaticosService.subirDocumento(
-                                              solicitudBorrador.id,
-                                              'CERT_BANCARIA',
-                                              archivo,
-                                              'application/pdf',
-                                            );
-                                            urlCert = doc.urlRepositorio;
-                                            setForm((prev) => ({
-                                              ...prev,
-                                              documentos: [...(prev.documentos || []), doc],
-                                            }));
-                                          } catch (err) {
-                                            console.error('Error subiendo certificado bancario:', err);
-                                          } finally {
-                                            setSubiendoCertificadoBancarioDirecto(false);
-                                          }
-                                        } else {
-                                          urlCert = URL.createObjectURL(archivo);
-                                          const docItem: DocumentoFormItem = {
-                                            id: `cert-${Date.now()}`,
-                                            tipoDocumento: 'CERT_BANCARIA',
-                                            nombreArchivoOriginal: archivo.name,
-                                            nombreArchivoSeguro: `cert_${Date.now()}.pdf`,
-                                            urlRepositorio: urlCert,
-                                            tipoMime: 'application/pdf',
-                                          };
-                                          setForm((prev) => ({
-                                            ...prev,
-                                            documentos: [
-                                              ...(prev.documentos || []).filter((d) => d.tipoDocumento !== 'CERT_BANCARIA'),
-                                              docItem,
-                                            ],
-                                          }));
-                                        }
-
-                                        if (urlCert) {
-                                          cta.urlCertificadoBancario = urlCert;
-                                          cta.nombreArchivoCertificado = archivo.name;
-                                          setForm((prev) => ({
-                                            ...prev,
-                                            camposAdicionales: {
-                                              ...(prev.camposAdicionales || {}),
-                                              urlCertificadoBancario: urlCert,
-                                              nombreArchivoCertificado: archivo.name,
-                                            },
-                                            cuentaBancariaSeleccionada: {
-                                              ...cta,
-                                              urlCertificadoBancario: urlCert,
-                                              nombreArchivoCertificado: archivo.name,
-                                            },
-                                          }));
-                                        }
-                                      }}
-                                    />
-                                  </label>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    /* Formulario interactivo de Registro / Ajuste de Cuenta Bancaria */
-                    <div className="border border-blue-200 bg-blue-50/30 rounded-xl p-4 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                          <Landmark className="w-4 h-4 text-[#003DA5]" />
-                          Nueva Cuenta Bancaria del Comisionado
-                        </span>
-                        {comisionado.cuentasBancarias && comisionado.cuentasBancarias.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const primera = comisionado.cuentasBancarias![0];
-                              seleccionarCuentaBancaria(primera);
-                            }}
-                            className="text-xs text-slate-600 hover:text-slate-900 font-bold underline cursor-pointer"
-                          >
-                            Cancelar y usar cuenta guardada
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                          <label className="text-xs font-bold text-slate-700 mb-1 block">
-                            Entidad Bancaria <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            list="bancos-colombia-list"
-                            type="text"
-                            placeholder="Ej. Bancolombia, Banco de Bogotá..."
-                            value={form.camposAdicionales?.banco || form.camposAdicionales?.entidad_bancaria || ''}
-                            onChange={(e) => actualizarDatosNuevaCuenta('banco', e.target.value.toUpperCase())}
-                            className={inputCls}
-                          />
-                          <datalist id="bancos-colombia-list">
-                            {LISTA_BANCOS_COLOMBIA.map((b) => (
-                              <option key={b} value={b} />
-                            ))}
-                          </datalist>
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-bold text-slate-700 mb-1 block">
-                            Tipo de Cuenta <span className="text-red-500">*</span>
-                          </label>
-                          <select
-                            value={form.camposAdicionales?.tipo_cuenta || form.camposAdicionales?.tipoCuenta || 'AHORROS'}
-                            onChange={(e) => actualizarDatosNuevaCuenta('tipoCuenta', e.target.value)}
-                            className={inputCls}
-                          >
-                            <option value="AHORROS">Cuenta de Ahorros</option>
-                            <option value="CORRIENTE">Cuenta Corriente</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-bold text-slate-700 mb-1 block">
-                            Número de Cuenta <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            placeholder="Ej. 1234567890"
-                            value={form.camposAdicionales?.num_cuenta || form.camposAdicionales?.numeroCuenta || ''}
-                            onChange={(e) => actualizarDatosNuevaCuenta('numeroCuenta', soloNumeros(e.target.value))}
-                            className={inputCls}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Subida o adjunto directo de Certificación Bancaria */}
-                      <div className="pt-3 border-t border-blue-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-blue-100">
-                        <div>
-                          <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                            <FileText className="w-3.5 h-3.5 text-[#003DA5]" />
-                            Certificación Bancaria (Soporte PDF)
-                          </label>
-                          <p className="text-[11px] text-slate-500">
-                            Adjunte la certificación bancaria expedida por el banco (máx. 90 días).
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {form.camposAdicionales?.urlCertificadoBancario ? (
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-200 inline-flex items-center gap-1">
-                                <Check className="w-3 h-3 text-emerald-600" /> Certificado cargado
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const adic = { ...(form.camposAdicionales || {}) };
-                                  delete adic.urlCertificadoBancario;
-                                  setForm((prev) => ({ ...prev, camposAdicionales: adic }));
-                                }}
-                                className="text-xs text-red-600 hover:text-red-800 font-bold"
-                              >
-                                Quitar
-                              </button>
-                            </div>
-                          ) : (
-                            <label className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#003DA5] border border-blue-200 rounded-xl text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 transition-colors">
-                              <Upload className="w-3.5 h-3.5" />
-                              {subiendoCertificadoBancarioDirecto ? 'Subiendo...' : 'Seleccionar PDF'}
-                              <input
-                                type="file"
-                                accept="application/pdf"
-                                className="hidden"
-                                disabled={subiendoCertificadoBancarioDirecto}
-                                onChange={async (e) => {
-                                  const archivo = e.target.files?.[0];
-                                  if (!archivo) return;
-                                  if (!archivo.type.includes('pdf') && !archivo.name.toLowerCase().endsWith('.pdf')) {
-                                    setErrorConsulta('La certificación bancaria debe ser un archivo PDF.');
-                                    return;
-                                  }
-                                  if (solicitudBorrador?.id) {
-                                    setSubiendoCertificadoBancarioDirecto(true);
-                                    try {
-                                      const doc = await viaticosService.subirDocumento(
-                                        solicitudBorrador.id,
-                                        'CERT_BANCARIA',
-                                        archivo,
-                                        'application/pdf',
-                                      );
-                                      setForm((prev) => ({
-                                        ...prev,
-                                        camposAdicionales: {
-                                          ...(prev.camposAdicionales || {}),
-                                          urlCertificadoBancario: doc.urlRepositorio,
-                                          nombreArchivoCertificado: archivo.name,
-                                        },
-                                        cuentaBancariaSeleccionada: prev.cuentaBancariaSeleccionada
-                                          ? {
-                                              ...prev.cuentaBancariaSeleccionada,
-                                              urlCertificadoBancario: doc.urlRepositorio,
-                                              nombreArchivoCertificado: archivo.name,
-                                            }
-                                          : null,
-                                        documentos: [...(prev.documentos || []), doc],
-                                      }));
-                                    } catch (err) {
-                                      console.error('Error subiendo certificado bancario:', err);
-                                    } finally {
-                                      setSubiendoCertificadoBancarioDirecto(false);
-                                    }
-                                  } else {
-                                    const docItem: DocumentoFormItem = {
-                                      id: `cert-${Date.now()}`,
-                                      tipoDocumento: 'CERT_BANCARIA',
-                                      nombreArchivoOriginal: archivo.name,
-                                      nombreArchivoSeguro: `cert_${Date.now()}.pdf`,
-                                      urlRepositorio: URL.createObjectURL(archivo),
-                                      tipoMime: 'application/pdf',
-                                    };
-                                    setForm((prev) => ({
-                                      ...prev,
-                                      camposAdicionales: {
-                                        ...(prev.camposAdicionales || {}),
-                                        urlCertificadoBancario: docItem.urlRepositorio,
-                                        nombreArchivoCertificado: archivo.name,
-                                      },
-                                      cuentaBancariaSeleccionada: prev.cuentaBancariaSeleccionada
-                                        ? {
-                                            ...prev.cuentaBancariaSeleccionada,
-                                            urlCertificadoBancario: docItem.urlRepositorio,
-                                            nombreArchivoCertificado: archivo.name,
-                                          }
-                                        : null,
-                                      documentos: [
-                                        ...(prev.documentos || []).filter((d) => d.tipoDocumento !== 'CERT_BANCARIA'),
-                                        docItem,
-                                      ],
-                                    }));
-                                  }
-                                }}
-                              />
-                            </label>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 pt-1">
-                        <input
-                          id="guardar-cuenta-perfil"
-                          type="checkbox"
-                          checked={guardarCuentaEnPerfil}
-                          onChange={(e) => setGuardarCuentaEnPerfil(e.target.checked)}
-                          className="w-4 h-4 rounded text-[#003DA5] border-slate-300 focus:ring-[#003DA5]"
-                        />
-                        <label htmlFor="guardar-cuenta-perfil" className="text-xs font-semibold text-slate-700 cursor-pointer">
-                          Guardar esta cuenta bancaria en el perfil del funcionario para futuras solicitudes
-                        </label>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* ========== BLOQUE 1: DATOS REQUERIDOS DE LA COMISIÓN Y SALARIO ========== */}
               <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4 shadow-2xs">
@@ -3574,7 +3212,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     .filter((c) => c.activo && !camposEstandar.has(c.clave) && !esCampoOculto(c.clave))
                     .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
 
-                  if (camposAdicionalesConfigurados.length === 0) return null;
+                  const tieneCuentasMultiples = Boolean(comisionado?.cuentasBancarias && comisionado.cuentasBancarias.length > 1);
+
+                  if (camposAdicionalesConfigurados.length === 0 && !tieneCuentasMultiples) return null;
 
                   return (
                     <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-4">
@@ -3584,6 +3224,47 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                           Información Adicional de la Comisión
                         </p>
                       </div>
+
+                      {/* Selector rápido para comisionados con múltiples cuentas registradas */}
+                      {comisionado?.cuentasBancarias && comisionado.cuentasBancarias.length > 1 && (
+                        <div className="p-3 rounded-xl bg-blue-50/80 border border-blue-200 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="w-4 h-4 text-[#003DA5] shrink-0" />
+                            <span className="text-xs font-bold text-slate-800">
+                              Cuentas registradas del comisionado:
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              (Haga clic para autocompletar los campos adicionales bancarios)
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {comisionado.cuentasBancarias.map((cta, idx) => {
+                              const idActual = cta.id || `cta-${idx}`;
+                              const esSeleccionada = cuentaBancariaSeleccionadaId === idActual;
+                              return (
+                                <button
+                                  key={idActual}
+                                  type="button"
+                                  onClick={() => seleccionarCuentaBancaria(cta)}
+                                  className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-all inline-flex items-center gap-1.5 cursor-pointer ${
+                                    esSeleccionada
+                                      ? 'bg-[#003DA5] text-white border-[#003DA5] shadow-xs'
+                                      : 'bg-white text-slate-700 border-slate-300 hover:border-[#003DA5] hover:text-[#003DA5]'
+                                  }`}
+                                >
+                                  <Landmark className="w-3.5 h-3.5" />
+                                  <span>{cta.banco} ({cta.tipoCuenta || 'AHORROS'} - {cta.numeroCuenta})</span>
+                                  {cta.esPrincipal && (
+                                    <span className={`text-[9px] font-bold px-1 rounded ${esSeleccionada ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+                                      Principal
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {camposAdicionalesConfigurados.map((campo) => {
@@ -3661,13 +3342,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                           }
 
                           if ((campo.tipoCampo as string) === 'CHECKBOX' || (campo.tipoCampo as string) === 'BOOLEAN') {
+                            const estaCheckeado =
+                              valorActual !== '' && valorActual !== null && valorActual !== undefined
+                                ? Boolean(valorActual)
+                                : false;
                             return (
                               <div key={campo.clave} className="col-span-1 sm:col-span-2 flex items-center pt-2">
                                 <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
                                   <input
                                     type="checkbox"
                                     id={`campo_${campo.clave}`}
-                                    checked={Boolean(valorActual)}
+                                    checked={estaCheckeado}
                                     onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.checked)}
                                     className="w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5]"
                                   />
@@ -3706,6 +3391,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             );
                           }
 
+                          const esCampoBanco =
+                            campo.clave === 'entidadBancaria' ||
+                            campo.clave === 'entidad_bancaria' ||
+                            campo.clave === 'banco';
+
                           return (
                             <div key={campo.clave}>
                               <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
@@ -3714,6 +3404,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                               <input
                                 id={`campo_${campo.clave}`}
                                 type={campo.tipoCampo === 'DATE' ? 'date' : 'text'}
+                                list={esCampoBanco ? 'bancos-colombia-list' : undefined}
                                 required={obligatorio}
                                 placeholder={campo.placeholder || (campo as any).ayuda || ''}
                                 value={campo.tipoCampo === 'CURRENCY' && typeof valorActual === 'number' ? formatearMoneda(valorActual) : String(valorActual)}
@@ -3723,6 +3414,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                 }}
                                 className={inputCls}
                               />
+                              {esCampoBanco && (
+                                <datalist id="bancos-colombia-list">
+                                  {LISTA_BANCOS_COLOMBIA.map((b) => (
+                                    <option key={b} value={b} />
+                                  ))}
+                                </datalist>
+                              )}
                             </div>
                           );
                         })}
@@ -4770,8 +4468,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           devCode={otpDataEnlace?.devCode}
           onVerifyCodigo={async (codigoOtp: string) => {
             await viaticosService.verificarOtpFirma(solicitudBorrador.id, {
-              tipoFirma: 'ENLACE_ELABORO',
+              verificationId: otpDataEnlace?.verificationId || '',
+              code: codigoOtp,
               otp: codigoOtp,
+              tipoFirma: 'ENLACE_ELABORO',
               consume: false,
             });
           }}

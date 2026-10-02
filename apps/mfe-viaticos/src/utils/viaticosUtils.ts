@@ -44,7 +44,9 @@ export function formInicialNuevaSolicitud(): FormNuevaSolicitud {
     aceptaHabeasData: false,
     tipoComision: 'TERRESTRE',
     esInternacional: false,
-    camposAdicionales: {},
+    camposAdicionales: {
+      obligacion_tributaria: false,
+    },
     itinerario: [],
   };
 }
@@ -626,6 +628,10 @@ export function mapearARequestCreacion(
         ...(rawTipo ? { tipo_cuenta: rawTipo, tipoCuenta: rawTipo } : {}),
         ...(rawUrlCert ? { urlCertificadoBancario: rawUrlCert } : {}),
         ...(rawCargo ? { cargoEsap: rawCargo, cargo: rawCargo, cargoInstitucional: rawCargo, cargoComisionado: rawCargo } : {}),
+        obligacion_tributaria:
+          prevAdic.obligacion_tributaria !== undefined && prevAdic.obligacion_tributaria !== null
+            ? Boolean(prevAdic.obligacion_tributaria)
+            : Boolean((comisionado as any)?.esFacturadorElectronico ?? false),
         transporteTerminalAereo:
           prevAdic.transporteTerminalAereo ?? tarifasAereasItin,
         transporteTerrestre:
