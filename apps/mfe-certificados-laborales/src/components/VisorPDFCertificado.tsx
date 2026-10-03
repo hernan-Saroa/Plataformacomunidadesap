@@ -13,6 +13,7 @@ import html2canvas from 'html2canvas';
 import { certificadosService } from '../../services/api/certificados.service';
 import { buildServiceAssetUrl, getPublicBaseUrl } from '../../config/environment';
 import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
+import { prepararVariablesPlantilla } from '../../utils/plantillaVariables';
 import { QRCodeCanvas } from 'qrcode.react';
 
 /**
@@ -1430,7 +1431,9 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
   const contenidoNormalizado = plantillaConfig.certificateContentHtml
     ? limpiarSeccionesSalario(
         reemplazarVariables(
-          prepararBloqueFuncionesPlantilla(plantillaConfig.certificateContentHtml),
+          prepararBloqueFuncionesPlantilla(
+            prepararVariablesPlantilla(plantillaConfig.certificateContentHtml),
+          ),
         ),
       )
     : '';
