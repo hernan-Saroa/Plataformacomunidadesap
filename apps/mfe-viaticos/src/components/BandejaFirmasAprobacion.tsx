@@ -88,6 +88,56 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
     cargarSolicitudes();
   }, [busqueda]);
 
+  // Determina si una solicitud está pendiente de la firma del usuario actual
+  const faltaMiFirma = (s: any): boolean => {
+    const firmas = Array.isArray(s.camposAdicionales?.firmasAprobacion)
+      ? s.camposAdicionales.firmasAprobacion
+      : [];
+    if (esSuperAdmin) {
+      const tieneJefe = firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO');
+      const tieneGerente = firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO');
+      return !tieneJefe || !tieneGerente;
+    }
+    if (esAnalista && !esJefe && !esGerente && !esSubdir && !esDirNac) {
+      return !firmas.some(
+        (f: any) => (f.tipo === 'ANALISTA' || (f.tipo as string) === 'ANALISTA_VIATICOS') && f.estado !== 'RECHAZADO',
+      );
+    }
+    if (esGerente && !esJefe && !esSubdir && !esDirNac) {
+      return !firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO');
+    }
+    if (esJefe || esSubdir || esDirNac) {
+      return !firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO');
+    }
+    return false;
+  };
+
+  // Determina si el usuario actual ya registró su firma en la solicitud
+  const yaFirme = (s: any): boolean => {
+    const firmas = Array.isArray(s.camposAdicionales?.firmasAprobacion)
+      ? s.camposAdicionales.firmasAprobacion
+      : [];
+    if (esGerente && firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO')) {
+      return true;
+    }
+    if ((esJefe || esSubdir || esDirNac) && firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO')) {
+      return true;
+    }
+    if (esAnalista && firmas.some((f: any) => (f.tipo === 'ANALISTA' || (f.tipo as string) === 'ANALISTA_VIATICOS') && f.estado !== 'RECHAZADO')) {
+      return true;
+    }
+    return false;
+  };
+
+  // Determina si la solicitud tiene 1 firma registrada y está esperando la restante
+  const estaEnEsperaOtraFirma = (s: any): boolean => {
+    const firmas = Array.isArray(s.camposAdicionales?.firmasAprobacion)
+      ? s.camposAdicionales.firmasAprobacion
+      : [];
+    const validas = firmas.filter((f: any) => f.estado !== 'RECHAZADO');
+    return validas.length === 1;
+  };
+
   const solicitudesFiltradas = useMemo(() => {
     return solicitudes.filter((s) => {
       const regla = s.camposAdicionales?.reglaDesplazamiento || 'REGULAR';
@@ -97,27 +147,21 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
       if (filtroRegla === 'REGULAR') {
         return regla === 'REGULAR';
       }
+      if (filtroRegla === 'POR_FIRMAR') {
+        return faltaMiFirma(s);
+      }
+      if (filtroRegla === 'EN_ESPERA') {
+        return estaEnEsperaOtraFirma(s);
+      }
       if (filtroRegla === 'MIS_PENDIENTES') {
-        // Filtrar pendientes según el rol del usuario
-        const firmas = Array.isArray(s.camposAdicionales?.firmasAprobacion)
-          ? s.camposAdicionales.firmasAprobacion
-          : [];
-        if (esAnalista && !esJefe && !esGerente && !esSubdir && !esDirNac) {
-          return !firmas.some(
-            (f: any) =>
-              f.tipo === 'ANALISTA' || (f.tipo as string) === 'ANALISTA_VIATICOS',
-          );
-        }
-        if (esGerente && !esJefe && !esSubdir && !esDirNac) {
-          return !firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO');
-        }
-        if (esJefe || esSubdir || esDirNac) {
-          return !firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA');
-        }
+        // En Mis Pendientes se muestran tanto las que le faltan su firma
+        // como las que el usuario ya firmó pero siguen esperando la otra firma
+        // hasta que formalicen y pasen a estado SOLICITADO
+        return faltaMiFirma(s) || (yaFirme(s) && estaEnEsperaOtraFirma(s));
       }
       return true;
     });
-  }, [solicitudes, filtroRegla, esGerente, esJefe, esSubdir, esDirNac, esAnalista]);
+  }, [solicitudes, filtroRegla, esGerente, esJefe, esSubdir, esDirNac, esAnalista, esSuperAdmin]);
 
   const pendientesTotales = solicitudes.length;
   const conReglaEspecial = solicitudes.filter(
@@ -126,8 +170,13 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
   const conUnaFirma = solicitudes.filter(
     (s) =>
       Array.isArray(s.camposAdicionales?.firmasAprobacion) &&
-      s.camposAdicionales.firmasAprobacion.length === 1,
+      s.camposAdicionales.firmasAprobacion.filter((f: any) => f.estado !== 'RECHAZADO').length === 1,
   ).length;
+  const enEsperaCount = conUnaFirma;
+  const porFirmarCount = useMemo(
+    () => solicitudes.filter(faltaMiFirma).length,
+    [solicitudes, esSuperAdmin, esGerente, esJefe, esSubdir, esDirNac, esAnalista],
+  );
   const montoAcumulado = solicitudes.reduce(
     (acc, curr) =>
       acc +
@@ -393,10 +442,10 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-500 uppercase">Filtrar:</span>
-          <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50">
+          <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50 flex-wrap">
             <button
               onClick={() => setFiltroRegla('TODAS')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                 filtroRegla === 'TODAS'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -406,17 +455,39 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
             </button>
             <button
               onClick={() => setFiltroRegla('MIS_PENDIENTES')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                 filtroRegla === 'MIS_PENDIENTES'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
+              title="Solicitudes que requieren su firma o que ya firmó y están en espera de la otra firma"
             >
-              Mis Pendientes
+              Mis Solicitudes
+            </button>
+            <button
+              onClick={() => setFiltroRegla('POR_FIRMAR')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                filtroRegla === 'POR_FIRMAR'
+                  ? 'bg-white text-amber-700 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Pendientes de Mi Firma ({porFirmarCount})
+            </button>
+            <button
+              onClick={() => setFiltroRegla('EN_ESPERA')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                filtroRegla === 'EN_ESPERA'
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Solicitudes con 1 de 2 firmas que esperan la firma restante para pasar a SOLICITADO"
+            >
+              En Espera de Otra Firma ({enEsperaCount})
             </button>
             <button
               onClick={() => setFiltroRegla('REGLA_ESPECIAL')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                 filtroRegla === 'REGLA_ESPECIAL'
                   ? 'bg-white text-purple-900 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -426,7 +497,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
             </button>
             <button
               onClick={() => setFiltroRegla('REGULAR')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
                 filtroRegla === 'REGULAR'
                   ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -459,9 +530,17 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
       ) : solicitudesFiltradas.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-sm">
           <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto mb-3" />
-          <h3 className="text-base font-semibold text-slate-800">No hay comisiones pendientes de firma</h3>
+          <h3 className="text-base font-semibold text-slate-800">
+            {filtroRegla === 'POR_FIRMAR'
+              ? 'No tiene firmas pendientes por realizar'
+              : filtroRegla === 'EN_ESPERA'
+              ? 'No hay solicitudes en espera de otra firma'
+              : 'No hay comisiones en este criterio de búsqueda'}
+          </h3>
           <p className="text-sm text-slate-500 max-w-md mx-auto mt-1">
-            Todas las solicitudes en curso cuentan con sus firmas de aprobación debidamente suscritas o no coinciden con los criterios de búsqueda actuales.
+            {filtroRegla === 'POR_FIRMAR'
+              ? 'Todas las comisiones asignadas a su rol cuentan con su firma estampada. Puede consultar las solicitudes en espera de la otra firma en la pestaña correspondiente o ver la lista general en "Todas".'
+              : 'Las solicitudes suscritas avanzan automáticamente a estado SOLICITADO una vez completadas las dos firmas de aprobación.'}
           </p>
         </div>
       ) : (
@@ -490,14 +569,44 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                         {sol.consecutivoUnico || sol.codigoSolicitud || sol.codigo || 'SIN CÓDIGO'}
                       </span>
                       {obtenerBadgeRegla(sol)}
-                      <span
-                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold"
-                        style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A' }}
-                      >
-                        <Clock className="w-3 h-3" />
-                        PENDIENTE_FIRMAS
-                      </span>
+                      {tieneFirma1 && tieneFirma2 ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          2 de 2 Firmas · COMPLETADO
+                        </span>
+                      ) : tieneFirma1 ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                          <Clock className="w-3 h-3 text-blue-600" />
+                          1 de 2 Firmas · Pendiente Gerente de Proyecto
+                        </span>
+                      ) : tieneFirma2 ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                          <Clock className="w-3 h-3 text-blue-600" />
+                          1 de 2 Firmas · Pendiente Jefe de Dependencia
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold"
+                          style={{ background: '#FEF3C7', color: '#B45309', border: '1px solid #FDE68A' }}
+                        >
+                          <Clock className="w-3 h-3" />
+                          0 de 2 Firmas · Pendiente de Aprobación
+                        </span>
+                      )}
                     </div>
+
+                    {/* Banner informativo si el usuario ya firmó pero sigue esperando la otra firma */}
+                    {yaFirme(sol) && estaEnEsperaOtraFirma(sol) && (
+                      <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl px-3.5 py-2 text-xs text-emerald-950 flex flex-wrap items-center justify-between gap-2 shadow-xs">
+                        <span className="inline-flex items-center gap-1.5 font-bold">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          Usted ya registró su firma institucional en esta comisión.
+                        </span>
+                        <span className="text-[11px] text-emerald-800">
+                          Visible en bandeja hasta que {tieneFirma2 ? 'el Jefe de Dependencia' : 'el Gerente de Proyecto'} firme y avance a <strong>SOLICITADO</strong>.
+                        </span>
+                      </div>
+                    )}
 
                     {/* Fila de Comisionado */}
                     {(() => {

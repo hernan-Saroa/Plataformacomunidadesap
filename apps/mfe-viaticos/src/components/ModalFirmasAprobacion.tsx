@@ -136,37 +136,53 @@ export default function ModalFirmasAprobacion({
         setSolicitudDetalle(completa);
       }
 
-      // Asignar el rol que corresponde al usuario autenticado (sin permitir firmar por el otro rol)
+      // Asignar el rol que corresponde al usuario autenticado (priorizando el rol que falte por firmar)
       const esGerenteUser = Boolean(authService.isGerenteProyecto?.());
       const esJefeUser = Boolean(authService.isJefeDependencia?.());
       const esAnalistaUser = Boolean(authService.isAnalista?.());
       const esAdminUser = Boolean(authService.getCurrentUserSync()?.esAdmin) || Boolean(authService.isSuperAdmin?.());
 
-      const fJefe = data.firmantes.find((f) => f.tipo === 'JEFE_DEPENDENCIA');
-      const fGerente = data.firmantes.find((f) => f.tipo === 'GERENTE_PROYECTO');
+      const fJefe = data.firmantes.find((f: any) => f.tipo === 'JEFE_DEPENDENCIA');
+      const fGerente = data.firmantes.find((f: any) => f.tipo === 'GERENTE_PROYECTO');
+      const faltaJefe = Boolean(fJefe && !fJefe.firmado);
+      const faltaGerente = Boolean(fGerente && !fGerente.firmado);
 
       let miRol: TipoFirmaAprobacion = 'JEFE_DEPENDENCIA';
-      if (esGerenteUser && (!esJefeUser || fJefe?.firmado)) {
-        miRol = 'GERENTE_PROYECTO';
-      } else if (esJefeUser && (!esGerenteUser || !fJefe?.firmado)) {
-        miRol = 'JEFE_DEPENDENCIA';
-      } else if (esAnalistaUser && !esJefeUser && !esGerenteUser) {
-        miRol = 'ANALISTA';
-      } else if (esAdminUser) {
-        if (fJefe && !fJefe.firmado) {
+      if (esAdminUser) {
+        if (faltaJefe && !faltaGerente) {
           miRol = 'JEFE_DEPENDENCIA';
-        } else if (fGerente && !fGerente.firmado) {
+        } else if (faltaGerente && !faltaJefe) {
+          miRol = 'GERENTE_PROYECTO';
+        } else if (faltaJefe) {
+          miRol = 'JEFE_DEPENDENCIA';
+        } else if (faltaGerente) {
           miRol = 'GERENTE_PROYECTO';
         } else {
-          const p = data.firmantes.find((f) => !f.firmado);
-          if (p) miRol = p.tipo;
+          miRol = data.firmantes.find((f: any) => !f.firmado)?.tipo || 'JEFE_DEPENDENCIA';
         }
+      } else if (esGerenteUser && esJefeUser) {
+        // Usuario con ambos roles: priorizar el que falte por firmar
+        if (faltaGerente && !faltaJefe) {
+          miRol = 'GERENTE_PROYECTO';
+        } else if (faltaJefe && !faltaGerente) {
+          miRol = 'JEFE_DEPENDENCIA';
+        } else if (faltaJefe) {
+          miRol = 'JEFE_DEPENDENCIA';
+        } else {
+          miRol = 'GERENTE_PROYECTO';
+        }
+      } else if (esGerenteUser) {
+        miRol = 'GERENTE_PROYECTO';
+      } else if (esJefeUser) {
+        miRol = 'JEFE_DEPENDENCIA';
+      } else if (esAnalistaUser) {
+        miRol = 'ANALISTA';
       } else {
-        const p = data.firmantes.find((f) => !f.firmado);
+        const p = data.firmantes.find((f: any) => !f.firmado);
         if (p) miRol = p.tipo;
       }
       setFirmanteSeleccionado(miRol);
-      const firmanteObj = data.firmantes.find((f) => f.tipo === miRol);
+      const firmanteObj = data.firmantes.find((f: any) => f.tipo === miRol);
       if (firmanteObj?.cargo) {
         setCargoFirmante(firmanteObj.cargo);
       }
@@ -486,9 +502,9 @@ export default function ModalFirmasAprobacion({
     miRolFirmante = 'JEFE_DEPENDENCIA';
   } else if (miRolFirmante === 'JEFE_DEPENDENCIA' && !puedeFirmarComoJefe && puedeFirmarComoGerente) {
     miRolFirmante = 'GERENTE_PROYECTO';
-  } else if (!esAdmin && esGerente && !esJefe) {
+  } else if (!esAdmin && esGerente && !esJefe && !puedeFirmarComoJefe) {
     miRolFirmante = 'GERENTE_PROYECTO';
-  } else if (!esAdmin && esJefe && !esGerente) {
+  } else if (!esAdmin && esJefe && !esGerente && !puedeFirmarComoGerente) {
     miRolFirmante = 'JEFE_DEPENDENCIA';
   } else if (!esAdmin && esAnalista && !esJefe && !esGerente) {
     miRolFirmante = 'ANALISTA';
@@ -1599,33 +1615,64 @@ export default function ModalFirmasAprobacion({
                   );
                 })()}
 
-                {/* Si el otro rol aún tiene su firma pendiente, mostrar botón para enviar alerta */}
+                {/* Si el otro rol aún tiene su firma pendiente */}
                 {otroFirmantePendiente && !todasFirmadas && (
-                  <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-                    <div className="flex items-center gap-2.5 text-xs text-amber-950">
-                      <div className="p-2 bg-amber-100 text-amber-800 rounded-xl shrink-0">
-                        <Clock className="w-4 h-4" />
+                  <div className="space-y-3">
+                    <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                      <div className="flex items-center gap-2.5 text-xs text-amber-950">
+                        <div className="p-2 bg-amber-100 text-amber-800 rounded-xl shrink-0">
+                          <Clock className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="font-extrabold">Firma pendiente por: {otroFirmanteTitulo}</p>
+                          <p className="text-[11px] text-amber-800">
+                            La solicitud se mantendrá en estado <strong>PENDIENTE_FIRMAS</strong> en su bandeja hasta que se complete esta firma para avanzar a <strong>SOLICITADO</strong>.
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-extrabold">Firma pendiente por: {otroFirmanteTitulo}</p>
-                        <p className="text-[11px] text-amber-800">
-                          Puede enviar una alerta y recordatorio prioritario para que complete la firma requerida.
-                        </p>
+                      <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 flex-wrap justify-end">
+                        {((miRolFirmante === 'GERENTE_PROYECTO' && puedeFirmarComoJefe) ||
+                          (miRolFirmante === 'JEFE_DEPENDENCIA' && puedeFirmarComoGerente)) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFirmanteSeleccionado(otroFirmanteTipo);
+                              if (otroFirmanteObj?.cargo) setCargoFirmante(otroFirmanteObj.cargo);
+                            }}
+                            className="w-full sm:w-auto px-4 py-2 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-xs font-black inline-flex items-center justify-center gap-1.5 transition-colors shadow-md shadow-blue-900/20 cursor-pointer"
+                          >
+                            <FileSignature className="w-3.5 h-3.5" />
+                            <span>Firmar como {otroFirmanteTitulo}</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={enviandoAlerta}
+                          onClick={() => void handleEnviarAlerta()}
+                          className="w-full sm:w-auto px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-black inline-flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 shadow-md shadow-amber-500/20 cursor-pointer"
+                        >
+                          <Bell className="w-3.5 h-3.5" />
+                          <span>
+                            {enviandoAlerta
+                              ? 'Enviando alerta…'
+                              : `Enviar Alerta`}
+                          </span>
+                        </button>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      disabled={enviandoAlerta}
-                      onClick={() => void handleEnviarAlerta()}
-                      className="w-full sm:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-black inline-flex items-center justify-center gap-2 transition-colors disabled:opacity-50 shadow-md shadow-amber-500/20 cursor-pointer shrink-0"
-                    >
-                      <Bell className="w-4 h-4" />
-                      <span>
-                        {enviandoAlerta
-                          ? 'Enviando alerta…'
-                          : `Enviar Alerta al ${otroFirmanteTitulo}`}
+
+                    <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-200">
+                      <span className="text-[11px] text-slate-500 font-medium text-center sm:text-left">
+                        Podrá seguir consultando este expediente en la bandeja de firmas con el badge de espera hasta que pase a <strong>SOLICITADO</strong>.
                       </span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={cerrar}
+                        className="w-full sm:w-auto px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        Aceptar y Volver a la Bandeja
+                      </button>
+                    </div>
                   </div>
                 )}
 
