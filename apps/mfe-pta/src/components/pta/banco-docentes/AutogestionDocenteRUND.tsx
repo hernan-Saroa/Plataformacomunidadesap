@@ -53,6 +53,13 @@ const SOPORTES_CATALOGO: { bloque: string; label: string; tipos: { key: string; 
 // `Field` y React desmonta/remonta los inputs → se pierde el foco tras cada tecla.
 const inputStyle = { padding: '10px 14px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: '0.9rem', width: '100%', boxSizing: 'border-box' as const };
 
+// Compatibilidad con el backend anterior mientras se despliegan ambos servicios.
+// Nunca sustituye un aviso que el backend sí haya enviado.
+const LEGACY_PRIVACY_NOTICE = {
+  texto: 'Autorizo de manera voluntaria, previa, explícita e informada a la Escuela Superior de Administración Pública (ESAP) para el tratamiento de mis datos personales de acuerdo con la Ley 1581 de 2012.',
+  url: '',
+};
+
 const Field = ({ label, children, required }: any) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
     <label style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
@@ -70,6 +77,7 @@ export function AutogestionDocenteRUND() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [privacyPolicy, setPrivacyPolicy] = useState<{ texto: string; url: string; huella?: string } | null>(null);
   const [draftSaved, setDraftSaved] = useState(false);
   const [isExistingDocente, setIsExistingDocente] = useState(false);
   /** REQ-RUND-F002 — Perfil RUND persistido, fuente del cabezote de solo lectura. */
@@ -178,6 +186,12 @@ export function AutogestionDocenteRUND() {
       const sToken = res.sessionToken || res.data?.sessionToken;
 
       if (isSuccess && sToken) {
+        const policy = Object.prototype.hasOwnProperty.call(res, 'politicaTratamiento')
+          ? res.politicaTratamiento : res.data?.politicaTratamiento;
+        if (policy !== undefined && (typeof policy?.texto !== 'string' || !policy.texto.trim()
+          || typeof policy?.huella !== 'string' || !policy.huella.trim()
+          || typeof policy?.url !== 'string')) throw new Error('No se pudo consultar la política de tratamiento. Inténtalo nuevamente.');
+        setPrivacyPolicy(policy === undefined ? LEGACY_PRIVACY_NOTICE : policy);
         setSessionToken(sToken);
         // Check if docente already exists in banco
         await checkExistingDocente(sToken);
@@ -200,7 +214,7 @@ export function AutogestionDocenteRUND() {
       const res = await apiClient.get(`/pta/api/v1/banco-docentes/drafts/${sToken}`);
       const draft = res?.draft || res?.data?.draft || res?.data?.data?.draft;
       if (draft) {
-        setForm((previous: any) => ({ ...previous, ...draft, puntajeSalarial: '' }));
+        setForm((previous: any) => ({ ...previous, ...draft, puntajeSalarial: '', terminosAceptados: false }));
       }
     } catch (e) {
       console.warn('Error loading draft', e);
@@ -319,7 +333,7 @@ export function AutogestionDocenteRUND() {
   //   2) sube cada soporte retenido al bloque correspondiente usando el docenteId devuelto
   //   3) asegura la Carpeta Digital y muestra el éxito
   const handleFinalSubmit = async () => {
-    if (!form.terminosAceptados) {
+    if (!form.terminosAceptados || !privacyPolicy) {
       setError('Debes aceptar los términos de Habeas Data antes de enviar.');
       return;
     }
@@ -328,6 +342,7 @@ export function AutogestionDocenteRUND() {
     try {
       const payload = {
         ...form,
+        politicaTratamientoHuella: privacyPolicy.huella,
         documentNumber: form.documento_identidad,
         // El correo institucional se valida al pedir el OTP; si el docente no lo
         // re-escribió en el form, usamos el del paso TOKEN como respaldo.
@@ -846,7 +861,8 @@ export function AutogestionDocenteRUND() {
                 <div style={{ background: '#f8fafc', padding: '16px 20px', borderRadius: 10, border: '1px solid #e2e8f0', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                   <input type="checkbox" checked={form.terminosAceptados} onChange={set('terminosAceptados')} style={{ marginTop: 4, width: 18, height: 18, accentColor: '#2563EB' }} />
                   <p style={{ margin: 0, fontSize: '0.8rem', color: '#475569', lineHeight: 1.5 }}>
-                    <strong>Aceptación de Habeas Data:</strong> Autorizo de manera voluntaria, previa, explícita e informada a la Escuela Superior de Administración Pública (ESAP) para el tratamiento de mis datos personales de acuerdo con la Ley 1581 de 2012.
+                    <strong>Aceptación de Habeas Data:</strong> {privacyPolicy?.texto}
+                    {privacyPolicy?.url && <> <a href={privacyPolicy.url} target="_blank" rel="noopener noreferrer">Consultar la política de tratamiento</a></>}
                   </p>
                 </div>
               </div>

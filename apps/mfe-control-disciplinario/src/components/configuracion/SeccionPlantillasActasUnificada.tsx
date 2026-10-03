@@ -86,6 +86,16 @@ export interface PlantillaArchivo {
   fechaCreacion: string;
   fechaModificacion: string;
   activo: boolean;
+  file?: File;
+}
+
+export interface NuevoTipoActaData {
+  nombre: string;
+  descripcion: string;
+  tipo: TipoActaId;
+  orden: number;
+  activo: boolean;
+  plantillaFile?: File;
 }
 
 export interface TipoActa {
@@ -93,6 +103,7 @@ export interface TipoActa {
   nombre: string;
   descripcion: string;
   tipo: TipoActaId;
+  plantilla?: PlantillaArchivo | null;
   plantillas: PlantillaArchivo[];
   activo: boolean;
   orden: number;

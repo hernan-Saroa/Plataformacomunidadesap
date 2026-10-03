@@ -66,14 +66,19 @@ describe('ContenidoEstudioPrevio · quién resuelve la 3.4', () => {
     render(<ContenidoEstudioPrevio procesoId="p-1" />);
   };
 
-  it('al abogado asignado le ofrece las tres decisiones', async () => {
-    pintar(estudioPrevio({ revision: { abogado, puedeDecidir: true, motivo: null } }));
+  it('al abogado asignado lo lleva a la revisión, sin decidir aquí', async () => {
+    // La decisión solo se toma en la pantalla de revisión: aquí queda el
+    // formulario de quien redactó, en solo lectura.
+    const onRevisar = vi.fn();
+    vi.spyOn(contratacionService, 'obtenerEstudioPrevio').mockResolvedValue(
+      estudioPrevio({ revision: { abogado, puedeDecidir: true, motivo: null } }) as never,
+    );
+    render(<ContenidoEstudioPrevio procesoId="p-1" onRevisar={onRevisar} />);
 
-    expect(await screen.findByRole('button', { name: /Aprobar/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Devolver/ })).toBeInTheDocument();
-    // La tercera es la que faltaba: sin ella un proceso rechazado de plano se
-    // devolvía, y el área se quedaba esperando saber qué corregir.
-    expect(screen.getByRole('button', { name: /Negar/ })).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: /Abrir la revisión/ }));
+    expect(onRevisar).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /Aprobar/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Negar/ })).toBeNull();
   });
 
   it('a otro abogado no le ofrece ninguna, y le dice de quién es', async () => {
@@ -102,21 +107,6 @@ describe('ContenidoEstudioPrevio · quién resuelve la 3.4', () => {
     expect(screen.queryByRole('button', { name: /Aprobar/ })).toBeNull();
   });
 
-  it('negar exige motivo antes de dejar confirmar', async () => {
-    pintar(estudioPrevio({ revision: { abogado, puedeDecidir: true, motivo: null } }));
-    const negar = vi.spyOn(contratacionService, 'negar');
-
-    await userEvent.click(await screen.findByRole('button', { name: /Negar/ }));
-
-    expect(screen.getByRole('button', { name: /Negar el proceso/ })).toBeDisabled();
-    await userEvent.type(
-      screen.getByLabelText(/Motivo de la negativa/),
-      'El objeto ya está cubierto por el contrato marco vigente.',
-    );
-    expect(screen.getByRole('button', { name: /Negar el proceso/ })).toBeEnabled();
-    expect(negar).not.toHaveBeenCalled();
-  });
-
   it('un proceso negado enseña el motivo y no ofrece nada más', async () => {
     vi.spyOn(contratacionService, 'revisiones').mockResolvedValue([
       {
@@ -138,5 +128,39 @@ describe('ContenidoEstudioPrevio · quién resuelve la 3.4', () => {
     expect(await screen.findByText(/Negado · el proceso terminó/)).toBeInTheDocument();
     expect(screen.getByText(/contrato marco vigente/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Aprobar/ })).toBeNull();
+  });
+});
+
+/**
+ * Con pantalla de revisión, el formulario no decide (reestructuración del flujo).
+ *
+ * El abogado aprobaba sobre el mismo formulario donde el área redactó; ahora
+ * se le ofrece abrir la revisión, que es donde se lee y se decide.
+ */
+describe('ContenidoEstudioPrevio · la decisión se toma en la revisión', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(contratacionService, 'revisiones').mockResolvedValue([] as never);
+    vi.spyOn(contratacionService, 'documentosDeActividad').mockResolvedValue({
+      numeral: '3.1',
+      documentos: [],
+      adicionales: [],
+      faltantes: [],
+      completo: true,
+      puedeCargar: false,
+    } as never);
+  });
+
+  it('ofrece abrir la revisión en vez de las tres decisiones', async () => {
+    vi.spyOn(contratacionService, 'obtenerEstudioPrevio').mockResolvedValue(
+      estudioPrevio({ revision: { abogado, puedeDecidir: true, motivo: null } }) as never,
+    );
+    const onRevisar = vi.fn();
+    render(<ContenidoEstudioPrevio procesoId="p-1" onRevisar={onRevisar} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Abrir la revisión/ }));
+
+    expect(onRevisar).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /^Aprobar$/ })).toBeNull();
   });
 });

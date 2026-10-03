@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { CampoConfigurable, CeldaMatriz, FilaMatriz, Modalidad } from '../../types';
-import { ACTIVIDADES_CON_REGISTRO, TIENEN_PANEL } from '../proceso/DetalleProceso';
+import { ACTIVIDADES_CON_REGISTRO, TIENEN_PANEL } from '../proceso/actividadesConPanel';
 
 import { AprobacionActividad } from './AprobacionActividad';
 import { FirmaActividad } from './FirmaActividad';
