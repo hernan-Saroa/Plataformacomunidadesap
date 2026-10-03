@@ -582,6 +582,11 @@ export class TravelExpensesController {
     'travel_expenses:create_request',
     'travel_expenses:read_requests',
     'travel_expenses:read_inbox',
+    'travel_expenses:verify_request',
+    'travel_expenses:read_assigned',
+    'travel_expenses:view_assigned_requests',
+    'travel_expenses:double_check_request',
+    'travel_expenses:read_siif_requested',
   )
   obtenerEstadoFirmas(@Param('id') id: string) {
     return this.service.obtenerEstadoFirmas(id);
@@ -598,6 +603,11 @@ export class TravelExpensesController {
     'travel_expenses:create_request',
     'travel_expenses:read_approvals',
     'travel_expenses:read_requests',
+    'travel_expenses:verify_request',
+    'travel_expenses:read_assigned',
+    'travel_expenses:view_assigned_requests',
+    'travel_expenses:double_check_request',
+    'travel_expenses:read_siif_requested',
   )
   solicitarOtpFirma(
     @Param('id') id: string,
@@ -616,6 +626,11 @@ export class TravelExpensesController {
     'travel_expenses:create_request',
     'travel_expenses:read_approvals',
     'travel_expenses:read_requests',
+    'travel_expenses:verify_request',
+    'travel_expenses:read_assigned',
+    'travel_expenses:view_assigned_requests',
+    'travel_expenses:double_check_request',
+    'travel_expenses:read_siif_requested',
   )
   verificarOtpFirma(
     @Param('id') id: string,

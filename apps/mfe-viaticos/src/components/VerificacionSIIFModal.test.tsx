@@ -8,6 +8,12 @@ vi.mock('../services/api/viaticosService', () => ({
     exportarSIIF: vi.fn(),
     devolverAnalista: vi.fn(),
     obtenerUrlArchivo: vi.fn((url: string) => url),
+    solicitarOtpFirma: vi.fn().mockResolvedValue({
+      verificationId: 'v-123',
+      devCode: '123456',
+      emailEnviadoA: 'analista@esap.edu.co',
+    }),
+    verificarOtpFirma: vi.fn().mockResolvedValue({ success: true, verified: true }),
   },
 }));
 
@@ -71,13 +77,13 @@ describe('VerificacionSIIFModal', () => {
     expect(screen.getByText(/Datos limpios y homologados para SIIF Nación/i)).toBeDefined();
   });
 
-  it('los checkboxes controlan el estado del botón Registrar Verificación', async () => {
+  it('los checkboxes controlan el estado del botón Enviar a Firma OTP', async () => {
     renderModal({
       abierta: true,
       solicitud: solicitudMock(),
     });
 
-    const registrarBtn = screen.getByText('Registrar Verificación');
+    const registrarBtn = screen.getByText('Enviar a Firma OTP');
     expect(registrarBtn).toBeDisabled();
 
     const checkboxes = screen.getAllByRole('checkbox');
@@ -87,12 +93,7 @@ describe('VerificacionSIIFModal', () => {
     await waitFor(() => expect(registrarBtn).toBeEnabled());
   });
 
-  it('llama a verificarAuditoria al registrar, refresca la vista y cierra el modal', async () => {
-    (viaticosService.verificarAuditoria as any).mockResolvedValue({
-      success: true,
-      data: { id: 'sol-001', estadoSolicitud: 'VERIFICADO' },
-    });
-
+  it('llama a solicitarOtpFirma al enviar a firma OTP y abre el modal', async () => {
     const onRefrescar = vi.fn();
     const onClosing = vi.fn();
     renderModal({
@@ -107,15 +108,13 @@ describe('VerificacionSIIFModal', () => {
       fireEvent.click(cb);
     }
 
-    fireEvent.click(screen.getByText('Registrar Verificación'));
+    fireEvent.click(screen.getByText('Enviar a Firma OTP'));
 
     await waitFor(() => {
-      expect(viaticosService.verificarAuditoria).toHaveBeenCalledWith(
+      expect(viaticosService.solicitarOtpFirma).toHaveBeenCalledWith(
         'sol-001',
-        expect.any(Object),
+        expect.objectContaining({ tipoFirma: 'ANALISTA' }),
       );
-      expect(onRefrescar).toHaveBeenCalled();
-      expect(onClosing).toHaveBeenCalled();
     });
   });
 
@@ -223,8 +222,8 @@ describe('VerificacionSIIFModal', () => {
     // Banner de advertencia informativo
     expect(screen.getByText(/En Segunda Revisión · Control Viáticos/i)).toBeDefined();
 
-    // El botón 'Registrar Verificación' NO debe existir
-    expect(screen.queryByText('Registrar Verificación')).toBeNull();
+    // El botón 'Enviar a Firma OTP' NO debe existir
+    expect(screen.queryByText('Enviar a Firma OTP')).toBeNull();
 
     // Mensaje de verificación completada
     expect(screen.getByText(/Verificación de analista completada/i)).toBeDefined();
@@ -407,8 +406,8 @@ describe('VerificacionSIIFModal', () => {
     // Mensaje de solo lectura en el checklist
     expect(screen.getByText(/Comisión AUTORIZADA — Ha superado todas las etapas de verificación/i)).toBeDefined();
 
-    // No debe dar la opción de registrar verificación
-    expect(screen.queryByText('Registrar Verificación')).toBeNull();
+    // No debe dar la opción de enviar a firma OTP
+    expect(screen.queryByText('Enviar a Firma OTP')).toBeNull();
 
     // No debe dar la opción de devolver a enlace
     expect(screen.queryByText('Devolver a Enlace')).toBeNull();

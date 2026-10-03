@@ -6567,26 +6567,57 @@ if (itinerarioGeneral) {
         );
       }
 
+      // Validación de firma OTP si fue provista
+      if (dto.otp) {
+        const verificationId =
+          dto.verificationId?.trim() ||
+          `viat:${solicitud.id}:ANALISTA:${usuarioId}`;
+        const isVerified = this.verificarOtpFirma({
+          verificationId,
+          code: dto.otp,
+          consume: true,
+        });
+        if (!isVerified) {
+          throw new BadRequestException(
+            'Código OTP inválido o expirado para la firma de verificación del analista.',
+          );
+        }
+      }
+
       const comentarioChecklist = JSON.stringify({
         tipo: 'VERIFICACION_ANALISTA',
         seguridad_social_vigente: dto.seguridadSocialVigente ?? null,
         consulta_rut_facturador: dto.consultaRutFacturador ?? false,
+        certificado_id: dto.certificadoId ?? null,
+        hash_sha256: dto.hashSha256 ?? null,
       });
 
       const estadoAnterior = solicitud.estadoSolicitud;
-      solicitud.estadoSolicitud = EstadoSolicitud.VERIFICADA;
+      solicitud.estadoSolicitud = EstadoSolicitud.SOLICITADA_SIIF;
+      solicitud.analistaAsignadoId = usuarioId;
       solicitud.motivoDevolucion = null;
       solicitud.observacionesSegundaRevision = null;
+
+      // Registrar estampa y certificado de firma del analista en campos adicionales
+      if (dto.certificadoId || dto.hashSha256 || dto.firmaImagen) {
+        solicitud.camposAdicionales = {
+          ...(solicitud.camposAdicionales || {}),
+          firmaAnalista: {
+            usuarioId,
+            fechaFirma: new Date().toISOString(),
+            certificadoId: dto.certificadoId || `CERT-ANALISTA-${Date.now()}`,
+            hashSha256: dto.hashSha256,
+            firmaImagen: dto.firmaImagen,
+          },
+        };
+      }
 
       await manager.getRepository(SolicitudHistorialEstadoEntity).save({
         solicitudId: solicitud.id,
         estadoAnterior,
-        estadoNuevo: EstadoSolicitud.VERIFICADA,
+        estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
         usuarioId: usuarioId,
-        comentarios:
-          comentarioChecklist.length > 255
-            ? comentarioChecklist.slice(0, 252) + '...'
-            : comentarioChecklist,
+        comentarios: `Verificación del analista completada y firmada con OTP (Certificado: ${dto.certificadoId || 'N/A'}). Solicitud transferida a Control de Viáticos para segunda revisión.`,
       });
 
       solicitud.consultaRutFacturador = dto.consultaRutFacturador ?? false;
@@ -6612,7 +6643,7 @@ if (itinerarioGeneral) {
         .save(solicitud);
 
       this.logger.log(
-        `[etapa5] Verificacion registrada para solicitud ${solicitud.consecutivoUnico} por usuario ${usuarioId}`,
+        `[etapa5] Verificacion registrada con firma OTP para solicitud ${solicitud.consecutivoUnico} por usuario ${usuarioId}`,
       );
 
       return saved;
@@ -6631,11 +6662,11 @@ if (itinerarioGeneral) {
           'travel_expenses.general.es_control_viaticos',
           {
             tipo_notificacion: 'VIATICOS_PENDIENTE_SEGUNDA_REVISION',
-            titulo: `Comisión verificada para control: ${consecutivo}`,
-            mensaje: `El analista ha verificado la comisión ${consecutivo} hacia ${destino}. Se encuentra lista para segunda revisión técnica (Control Cruzado).`,
-            descripcion_corta: `Segunda Revisión · ${consecutivo}`,
+            titulo: `Comisión en espera de Control de Viáticos: ${consecutivo}`,
+            mensaje: `El analista ha verificado y firmado con OTP la comisión ${consecutivo} hacia ${destino}. Se encuentra en la bandeja de Control de Viáticos para segunda revisión técnica (Control Cruzado).`,
+            descripcion_corta: `Control Cruzado · ${consecutivo}`,
             icono: 'CheckSquare',
-            color: '#2563EB',
+            color: '#003DA5',
             prioridad: 'Media',
             categoria: 'VIATICOS',
             tiene_accion: true,
@@ -6647,20 +6678,20 @@ if (itinerarioGeneral) {
             },
           },
           {
-            subject: `[Viáticos ESAP] Comisión Verificada para Control Técnico: ${consecutivo}`,
+            subject: `[Viáticos ESAP] Solicitud Lista para Control de Viáticos: ${consecutivo}`,
             html: buildTravelExpenseEmailHtml({
               destinatarioNombre: 'Revisor de Control de Viáticos',
               tituloHeader: 'ESAP — Grupo de Viáticos',
               subtituloHeader: 'Segunda Revisión Técnica (Control Cruzado)',
-              mensajePrincipal: `La comisión de servicios <strong>${consecutivo}</strong> ha completado la verificación por analista y está pendiente de su segunda revisión técnica:`,
+              mensajePrincipal: `La comisión de servicios <strong>${consecutivo}</strong> ha completado la verificación por analista con firma digital OTP y está pendiente de su segunda revisión técnica en la bandeja de Control de Viáticos:`,
               consecutivo,
               destino,
               fechas: fechasStr,
-              nuevoEstado: 'VERIFICADA',
+              nuevoEstado: 'SOLICITADA_SIIF',
               tipoNovedad: 'INFO',
               textoBoton: 'Ver en Bandeja de Control',
             }),
-            text: `La comisión ${consecutivo} ha sido verificada por el analista y está pendiente de segunda revisión técnica.`,
+            text: `La comisión ${consecutivo} ha sido verificada por el analista con firma OTP y remitida a Control de Viáticos para segunda revisión técnica.`,
           },
           'CONTROL_VIATICOS',
         )
@@ -6984,51 +7015,17 @@ if (itinerarioGeneral) {
       const fechaCorta = new Date().toISOString().slice(0, 10);
       const fileName = `SIIF_${solicitud.consecutivoUnico}_${fechaCorta}.csv`;
 
-      const estadosAvanzadosSoloLectura = [
-        EstadoSolicitud.AUTORIZADA,
-        EstadoSolicitud.COMPROMETIDA,
-        EstadoSolicitud.OBLIGADA,
-        EstadoSolicitud.RESOLUCION_EMITIDA,
-        EstadoSolicitud.TIQUETES_COMPRADOS,
-        EstadoSolicitud.EN_COMISION,
-        EstadoSolicitud.PENDIENTE_LEGALIZACION,
-        EstadoSolicitud.LEGALIZADO,
-      ];
-      const esEstadoAvanzado = estadosAvanzadosSoloLectura.includes(solicitud.estadoSolicitud);
-
-      const estadoAnterior = solicitud.estadoSolicitud;
       solicitud.siifExportado = true;
       solicitud.fechaExportacionSiif = new Date();
       solicitud.usuarioExportadorId = usuarioId;
-
-      if (!esEstadoAvanzado) {
-        solicitud.estadoSolicitud = EstadoSolicitud.SOLICITADA_SIIF;
-      }
 
       const saved = await manager
         .getRepository(SolicitudComisionEntity)
         .save(solicitud);
 
-      if (!esEstadoAvanzado) {
-        await manager.getRepository(SolicitudHistorialEstadoEntity).save({
-          solicitudId: solicitud.id,
-          estadoAnterior,
-          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
-          usuarioId: usuarioId,
-          comentarios:
-            estadoAnterior === EstadoSolicitud.SOLICITADA_SIIF
-              ? 'Re-exportado a SIIF Nacion'
-              : 'Exportado a SIIF Nacion',
-        });
-
-        this.logger.log(
-          `[etapa5] Solicitud ${solicitud.consecutivoUnico} exportada a SIIF por usuario ${usuarioId}`,
-        );
-      } else {
-        this.logger.log(
-          `[consulta-siif] Solicitud ${solicitud.consecutivoUnico} (${estadoAnterior}) descargada como copia CSV por usuario ${usuarioId}`,
-        );
-      }
+      this.logger.log(
+        `[exportarSIIF] Archivo plano CSV descargado para ${solicitud.consecutivoUnico} (${solicitud.estadoSolicitud}) por usuario ${usuarioId}`,
+      );
 
       return { csvContent, fileName, solicitud: saved };
     });
