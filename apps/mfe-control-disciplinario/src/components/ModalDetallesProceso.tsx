@@ -2460,23 +2460,30 @@ export function ModalDetallesProceso({
             : autoEstadoRaw === 'DEVUELTO' ? 'devuelto'
             : autoEstadoRaw === 'BORRADOR' ? 'borrador'
             : 'aprobado';
+          const docUrl = autoItem.documentUrl || autoItem.archivoUrl || null;
+          const docName = autoItem.documentName || autoItem.titulo || `${autoItem.tipo}.docx`;
+          const ext = ((docName.split('.').pop() || 'docx').toLowerCase()) as Extension;
+          const esDocx = ext === 'docx' || ext === 'doc';
           mapped.push({
             id: autoItem.id,
-            nombre: autoItem.titulo || autoItem.tipo || 'Auto',
+            nombre: autoItem.documentName || autoItem.titulo || autoItem.tipo || 'Auto',
             numero: autoItem.numero || undefined,
             tipo: 'auto',
             fecha: autoItem.createdAt ? autoItem.createdAt.split('T')[0] : '',
             firmante: autoItem.profesional?.nombreCompleto || 'Sistema',
             estado,
-            tamaño: '0 B',
-            extension: 'pdf',
-            version: autoItem.versionActual || 1,
+            tamaño: autoItem.documentSize ? formatBytes(autoItem.documentSize) : '0 B',
+            extension: ext,
+            version: autoItem.currentVersion || autoItem.versionActual || 1,
             etapaProceso: autoItem.etapaActual || autoItem.etapa || '',
-            downloadUrl: autoItem.archivoUrl || null,
-            urlExterna: autoItem.archivoUrl || null,
-            archivoNombre: autoItem.titulo || `${autoItem.tipo}.pdf`,
-            fileType: 'application/pdf',
+            downloadUrl: docUrl,
+            urlExterna: docUrl,
+            archivoNombre: docName,
+            fileType: autoItem.documentType || (esDocx ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/pdf'),
             tipoAuto: autoItem.tipo || undefined,
+            observacionesDevolucion: autoEstadoRaw === 'DEVUELTO' ? (autoItem.rejection_comments || autoItem.comentarios || undefined) : undefined,
+            archivoDevolucionUrl: autoEstadoRaw === 'DEVUELTO' ? (autoItem.rejectionDocumentUrl || undefined) : undefined,
+            archivoDevolucionNombre: autoEstadoRaw === 'DEVUELTO' ? (autoItem.rejectionDocumentName || undefined) : undefined,
             radicadorAsignadoId: autoItem.radicadorAsignadoId || undefined,
             radicadorAsignadoNombre: autoItem.radicadorAsignadoId ? (radicadoresNombres[autoItem.radicadorAsignadoId] || 'Radicador asignado') : undefined,
           });
@@ -3919,9 +3926,9 @@ export function ModalDetallesProceso({
     const nuevoArchivo = e.target.files[0];
     const extension = `.${nuevoArchivo.name.split('.').pop()?.toLowerCase() || ''}`;
 
-    if (!['.doc', '.docx'].includes(extension)) {
+    if (!['.doc', '.docx', '.pdf'].includes(extension)) {
       toast.error('Formato no permitido para autos', {
-        description: 'Solo se permiten archivos Word (.doc, .docx) para recargar autos.',
+        description: 'Solo se permiten archivos Word (.doc, .docx) o PDF (.pdf) para recargar autos.',
       });
       setAutoRecargar(null);
       if (inputRecargarRef.current) inputRecargarRef.current.value = '';
@@ -3938,6 +3945,7 @@ export function ModalDetallesProceso({
         success: (data) => {
           // Recargar los documentos del expediente desde el backend
           void cargarDocumentosExpediente();
+          onActualizarProceso?.();
           
           setAutoRecargar(null);
           if (inputRecargarRef.current) inputRecargarRef.current.value = '';
@@ -3948,11 +3956,11 @@ export function ModalDetallesProceso({
           console.error('Error al recargar auto:', err);
           setAutoRecargar(null);
           if (inputRecargarRef.current) inputRecargarRef.current.value = '';
-          return 'Error al subir la nueva versión del documento';
+          return err?.message || 'Error al subir la nueva versión del documento';
         }
       }
     );
-  }, [autoRecargar, cargarDocumentosExpediente]);
+  }, [autoRecargar, cargarDocumentosExpediente, onActualizarProceso]);
 
   // ── Helper: Renderizar fila de archivo ────────────────────────────────────────
   const renderArchivoFila = (archivo: Archivo, ocultarBadgeEtapa = false) => {
@@ -6508,7 +6516,7 @@ export function ModalDetallesProceso({
       <input
         ref={inputRecargarRef}
         type="file"
-        accept=".doc,.docx"
+        accept=".doc,.docx,.pdf"
         className="hidden"
         onChange={handleArchivoReemplazado}
       />

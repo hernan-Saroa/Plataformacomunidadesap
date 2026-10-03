@@ -62,18 +62,51 @@ export function puede(alcances: AlcanceVista[], accion: AccionAlcance, destino?:
 
 let actual: AlcanceMio | null = null;
 let pedido: Promise<AlcanceMio | null> | null = null;
+/** De quién es lo leído: la sesión que había cuando se pidió. */
+let de: string | null = null;
 const oyentes = new Set<() => void>();
 
 const avisar = () => oyentes.forEach((o) => o());
 
-/** Lee el alcance de quien mira, una sola vez por carga del módulo. */
+/**
+ * Quién tiene la sesión en el shell.
+ *
+ * El módulo no se vuelve a cargar al cerrar sesión y entrar con otra cuenta:
+ * sin esto seguía respondiendo con el alcance de la primera persona, y al
+ * abogado que entraba después de la gestora le decía «te toca» en lo que solo
+ * ella puede diligenciar.
+ */
+function quienMira(): string | null {
+  try {
+    const sesion = (window as unknown as { __esap_auth_cache?: { id?: string; email?: string } })
+      .__esap_auth_cache;
+    return sesion?.id ?? sesion?.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Lo leído, si sigue siendo de quien mira. */
+function vigente(): AlcanceMio | null {
+  return de === quienMira() ? actual : null;
+}
+
+/** Lee el alcance de quien mira, una vez por sesión. */
 export function cargarAlcance(): Promise<AlcanceMio | null> {
+  if (pedido && de !== quienMira()) {
+    actual = null;
+    pedido = null;
+  }
   if (!pedido) {
+    const para = quienMira();
+    de = para;
     // Dentro de la promesa y no antes: si pedirlo falla de forma síncrona, es
     // el mismo caso que un fallo de red y no debe tumbar el componente.
     pedido = Promise.resolve()
       .then(() => contratacionService.alcanceMio())
       .then((datos) => {
+        // Si la sesión cambió mientras llegaba, ya no es de quien mira.
+        if (de !== para) return null;
         actual = datos;
         avisar();
         return datos;
@@ -88,15 +121,27 @@ export function cargarAlcance(): Promise<AlcanceMio | null> {
   return pedido;
 }
 
-/** Para las pruebas, y para el día que el shell avise de un cambio de sesión. */
+/** Para las pruebas y para cuando el shell avisa de un cambio de sesión. */
 export function olvidarAlcance(): void {
   actual = null;
   pedido = null;
   avisar();
 }
 
+/*
+ * El shell avisa cuando entra o sale alguien. Se olvida lo leído y, si hay
+ * alguien, se pide el suyo: las pantallas abiertas se repintan con él.
+ */
+if (typeof window !== 'undefined') {
+  window.addEventListener('esap:auth-user-changed', (evento) => {
+    olvidarAlcance();
+    if ((evento as CustomEvent<{ user?: unknown }>).detail?.user) void cargarAlcance();
+  });
+}
+
 /** Para las pruebas: fija el alcance sin pedirlo. */
 export function fijarAlcance(datos: AlcanceMio | null): void {
+  de = quienMira();
   actual = datos;
   pedido = Promise.resolve(datos);
   avisar();
@@ -104,8 +149,9 @@ export function fijarAlcance(datos: AlcanceMio | null): void {
 
 /** Si quien mira puede hacer la acción en el destino. Ante la duda, sí. */
 export function puedeEn(accion: AccionAlcance, destino?: string): boolean {
-  if (!actual) return true;
-  return puede(actual.alcances, accion, destino);
+  const suyo = vigente();
+  if (!suyo) return true;
+  return puede(suyo.alcances, accion, destino);
 }
 
 /**
@@ -115,8 +161,9 @@ export function puedeEn(accion: AccionAlcance, destino?: string): boolean {
  * los permisos: esos cinco no cambiaron de código.
  */
 export function tieneTransversal(permiso: string): boolean {
-  if (!actual) return tienePermiso(permiso);
-  return actual.transversales.includes(permiso);
+  const suyo = vigente();
+  if (!suyo) return tienePermiso(permiso);
+  return suyo.transversales.includes(permiso);
 }
 
 /**
@@ -131,9 +178,11 @@ export function useAlcance() {
       oyentes.add(oyente);
       return () => oyentes.delete(oyente);
     },
-    () => actual,
+    vigente,
   );
 
+  // Cada vez que se monta, y no solo la primera: si la sesión cambió sin
+  // aviso, `cargarAlcance` lo nota y pide el de quien mira ahora.
   useEffect(() => {
     void cargarAlcance();
   }, []);

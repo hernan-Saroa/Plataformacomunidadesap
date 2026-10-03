@@ -9,7 +9,7 @@ describe('PTA: alcance vigente desde Personas', () => {
   ];
 
   async function setup(persona: any, scope: any = null) {
-    const query = jest.fn().mockImplementation(async (sql: string) => sql.includes('role_scope') ? [
+    const query = jest.fn().mockImplementation(async (sql: string) => sql.includes('permission_code') ? [
       { role_code: 'APROBADOR', permission_code: 'pta.approve.academica.territorial.pregrado', role_scope: scope },
       { role_code: 'REVISOR', permission_code: 'pta.review.academica.territorial.posgrado', role_scope: scope },
     ] : [persona]);
@@ -22,9 +22,6 @@ describe('PTA: alcance vigente desde Personas', () => {
     service.getTerritorialNivelPairsDelComponente = jest.fn().mockResolvedValue(pairs);
     service.resolveNombrePorSeccionalId = jest.fn().mockResolvedValue(new Map());
     service.resolveNombresSeccionales = jest.fn().mockResolvedValue(['Meta', 'Caldas']);
-    service.getTerritorialScopeSubjects = jest.fn().mockResolvedValue(pairs.map(p => ({
-      ...p, programas: [], cetaps: ['granada', '169', 'cet0169'],
-    })));
     return { service, auth, resolver, query };
   }
 
@@ -38,28 +35,24 @@ describe('PTA: alcance vigente desde Personas', () => {
       expect((await service.assertAlcanceTerritorial('academica_territorial', {}, auth, action)).propios).toEqual([pair]);
     }
     expect(await service.getDecisionListScope(auth)).toEqual({
-      configured: true, territoriales: ['Meta'], programas: null, cetaps: ['169', 'Granada'],
+      configured: true, territoriales: ['Meta'], programas: null, cetaps: null,
     });
   });
 
-  it.each(['aprobar', 'revisar'])('bloquea %s si la sede personal no corresponde', async action => {
+  it.each(['aprobar', 'revisar'])('permite %s dentro de la territorial aunque la sede sea distinta', async action => {
     const { service, auth } = await setup({ id_seccional: 'Meta', id_sede: 170, nombre_sede: 'Otra sede' });
-    await expect(service.assertAlcanceTerritorial('academica_territorial', {}, auth, action)).rejects.toThrow(/sedes\/CETAPs/);
+    expect((await service.assertAlcanceTerritorial('academica_territorial', {}, auth, action)).propios)
+      .toEqual([action === 'aprobar' ? pairs[0] : pairs[1]]);
   });
 
-  it('no autoriza otra sede por compartir territorial y nivel', async () => {
+  it('la sede de la actividad no modifica el alcance territorial de la cuenta', async () => {
     const { service, auth } = await setup({ id_seccional: 'Meta', id_sede: 169 });
-    service.getTerritorialScopeSubjects.mockResolvedValue([
-      { ...pairs[0], programas: [], cetaps: ['169'] },
-      { ...pairs[0], programas: [], cetaps: ['170'] },
-    ]);
-    await expect(service.assertAlcanceTerritorial('academica_territorial', {}, auth, 'aprobar')).rejects.toThrow();
+    expect((await service.assertAlcanceTerritorial('academica_territorial', {}, auth, 'aprobar')).propios).toEqual([pairs[0]]);
   });
 
   it('sin sede personal permite las sedes de la territorial asignada', async () => {
     const { service, auth } = await setup({ id_seccional: 'Meta', id_sede: null });
     expect((await service.getDecisionPermissions('pta1', auth)).territorial.aprobar.pairs).toEqual([pairs[0]]);
-    expect(service.getTerritorialScopeSubjects).not.toHaveBeenCalled();
   });
 
   it('sin asignaciones permite cualquier territorial conservando nivel y etapa', async () => {
@@ -70,9 +63,11 @@ describe('PTA: alcance vigente desde Personas', () => {
     expect(await service.getDecisionListScope(auth)).toEqual({ configured: true, territoriales: null, programas: null, cetaps: null });
   });
 
-  it('conserva el alcance administrativo explícito aunque Personas tenga otra asignación', async () => {
+  it('un alcance administrativo del rol ajeno no reemplaza la territorial de la cuenta', async () => {
     const { service, auth } = await setup({ id_seccional: 'Meta', id_sede: 170 }, { tipo: 'Filtrado', territorial: 'Caldas' });
-    expect((await service.getDecisionPermissions('pta1', auth)).territorial.aprobar.pairs).toEqual([pairs[2]]);
+    const ui = await service.getDecisionPermissions('pta1', auth);
+    expect(ui.territorial.aprobar.pairs).toEqual([pairs[0]]);
+    expect(ui.territorial.revisar.pairs).toEqual([pairs[1]]);
   });
 
   it('reconoce equivalencias de sede y CETAP y vuelve a consultar los cambios en Personas', async () => {

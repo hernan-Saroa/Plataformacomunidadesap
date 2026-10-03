@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { IrALaRevision, useLugarDeDecision } from '../shared/LugarDeDecision';
 import { contratacionService } from '../../services/contratacionService';
 import {
   DatosAdicion,
@@ -733,6 +734,8 @@ function Modificacion({
   onRechazar: () => void;
   onRevocar: () => void;
 }) {
+  // Se decide solo en la pantalla de revisión.
+  const { enLaRevision } = useLugarDeDecision();
   const enTramite = m.estado === 'EN_TRAMITE';
   const aprobada = m.estado === 'APROBADA';
 
@@ -840,9 +843,13 @@ function Modificacion({
         </p>
       ) : null}
 
-      {enTramite && !aprobando ? (
+      {/* Aprobar o rechazar se hace solo en la pantalla de revisión. */}
+      {enTramite && !aprobando && !enLaRevision ? (
+        <IrALaRevision numeral="9.5" que="aprobarla o rechazarla" />
+      ) : enTramite && !aprobando ? (
         <div className="flex flex-wrap gap-2">
           <Boton
+            decision
             icono={<CheckCircle2 className="w-3.5 h-3.5" />}
             disabled={guardando || faltantes.length > 0}
             onClick={onAbrirAprobacion}
@@ -850,6 +857,7 @@ function Modificacion({
             Aprobar
           </Boton>
           <BotonSecundario
+            decision
             icono={<Undo2 className="w-3.5 h-3.5" />}
             disabled={guardando}
             onClick={onRechazar}
@@ -890,6 +898,7 @@ function Modificacion({
           </div>
 
           <SelectorArchivo
+            decision
             id="mo-acto"
             etiqueta="Otrosí o acto administrativo firmado *"
             ayuda="Aprobar sin documento dejaría al expediente afirmando algo que no puede probar."
@@ -901,6 +910,7 @@ function Modificacion({
 
           <div className="flex flex-wrap gap-2">
             <Boton
+              decision
               icono={<CheckCircle2 className="w-3.5 h-3.5" />}
               disabled={guardando || !acto || !aprobacion.numero.trim()}
               onClick={onAprobar}
@@ -908,6 +918,7 @@ function Modificacion({
               Aprobar la modificación
             </Boton>
             <BotonSecundario
+              decision
               icono={<Undo2 className="w-3.5 h-3.5" />}
               disabled={guardando}
               onClick={onCancelarAprobacion}

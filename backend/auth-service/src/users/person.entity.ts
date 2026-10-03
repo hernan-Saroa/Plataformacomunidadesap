@@ -3,6 +3,7 @@ import { User } from './user.entity';
 import { Seccional } from './seccional.entity';
 import { Sede } from './sede.entity';
 import { Dependencia } from './dependencia.entity';
+import { Cargo } from './cargo.entity';
 
 
 @Entity('personas')
@@ -72,6 +73,14 @@ export class Person {
   @ManyToOne(() => Dependencia, { nullable: true })
   @JoinColumn({ name: 'id_dependencia' })
   dependencia: Dependencia | null;
+
+  // Relación con Cargo (catálogo transversal auth.cargos).
+  @Column({ name: 'id_cargo', type: 'bigint', nullable: true })
+  idCargo: number | null;
+
+  @ManyToOne(() => Cargo, { nullable: true })
+  @JoinColumn({ name: 'id_cargo' })
+  cargo: Cargo | null;
 
   @Column({ name: 'fec_nacimiento' })
   fec_nacimiento: string;

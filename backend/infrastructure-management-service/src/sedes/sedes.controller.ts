@@ -56,14 +56,12 @@ export class SedesController {
   }
 
   @Post()
-  @Public()
   @ApiOperation({ summary: 'Registrar una nueva sede' })
   createSede(@Body() dto: CreateSedeDto) {
     return this.sedesService.createSede(dto);
   }
 
   @Patch(':id')
-  @Public()
   @ApiOperation({ summary: 'Actualizar datos de una sede' })
   updateSede(
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -73,28 +71,24 @@ export class SedesController {
   }
 
   @Patch(':id/toggle')
-  @Public()
   @ApiOperation({ summary: 'Activar/desactivar sede (cambio isActivo)' })
   toggleSede(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.sedesService.toggleSedeActiva(id);
   }
 
   @Delete(':id')
-  @Public()
   @ApiOperation({ summary: 'Eliminar sede (solo si NO tiene bloques ligados)' })
   deleteSede(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.sedesService.deleteSede(id);
   }
 
   @Post('bloques')
-  @Public()
   @ApiOperation({ summary: 'Registrar un nuevo bloque en una sede' })
   createBloque(@Body() dto: CreateBloqueDto) {
     return this.sedesService.createBloque(dto);
   }
 
   @Patch('bloques/:idBloque')
-  @Public()
   @ApiOperation({ summary: 'Actualizar datos de un bloque (codigo/nombre/pisos/descripcion/isActivo)' })
   updateBloque(
     @Param('idBloque', new ParseUUIDPipe()) idBloque: string,
@@ -104,14 +98,12 @@ export class SedesController {
   }
 
   @Patch('bloques/:idBloque/toggle')
-  @Public()
   @ApiOperation({ summary: 'Activar/desactivar un bloque (isActivo)' })
   toggleBloque(@Param('idBloque', new ParseUUIDPipe()) idBloque: string) {
     return this.sedesService.toggleBloqueActivo(idBloque);
   }
 
   @Delete('bloques/:idBloque')
-  @Public()
   @ApiOperation({ summary: 'Eliminar bloque (solo si NO tiene espacios ligados)' })
   deleteBloque(@Param('idBloque', new ParseUUIDPipe()) idBloque: string) {
     return this.sedesService.deleteBloque(idBloque);

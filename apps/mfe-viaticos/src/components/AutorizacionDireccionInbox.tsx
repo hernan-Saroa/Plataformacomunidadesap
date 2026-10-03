@@ -20,13 +20,16 @@ import {
   User,
   XCircle,
   Building2,
+  FileSignature,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import { SolicitudAutorizacion } from '../types/viaticos';
 import { formatearMoneda } from '../utils/viaticosUtils';
 import AutorizacionDireccionModal from './AutorizacionDireccionModal';
+import BandejaFirmasAprobacion from './BandejaFirmasAprobacion';
 
 export const AutorizacionDireccionInbox: React.FC = () => {
+  const [pestanaActiva, setPestanaActiva] = useState<'extemporaneas' | 'firmas-023'>('extemporaneas');
   const [solicitudes, setSolicitudes] = useState<SolicitudAutorizacion[]>([]);
   const [cargando, setCargando] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,13 +104,46 @@ export const AutorizacionDireccionInbox: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Banner Institucional Dirección Nacional */}
-      <div
-        className="rounded-2xl p-5 sm:p-7 shadow-lg relative overflow-hidden text-white"
-        style={{
-          background: 'linear-gradient(135deg, #2E0854 0%, #581C87 50%, #7E22CE 100%)',
-        }}
-      >
+      {/* Selector de Flujo: Extemporáneas Etapa 6 vs Firmas Previas Formato 023 */}
+      <div className="flex flex-wrap items-center gap-2 p-1 bg-slate-200/80 rounded-xl w-fit border border-slate-300 shadow-inner">
+        <button
+          type="button"
+          onClick={() => setPestanaActiva('extemporaneas')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            pestanaActiva === 'extemporaneas'
+              ? 'bg-white text-purple-900 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <Award className="w-4 h-4 text-purple-600" />
+          <span>Autorizaciones Extemporáneas (Etapa 6)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setPestanaActiva('firmas-023')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+            pestanaActiva === 'firmas-023'
+              ? 'bg-white text-amber-900 shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <FileSignature className="w-4 h-4 text-amber-600" />
+          <span>Firmas de Aprobación — Formato 023 (Desplazamientos)</span>
+        </button>
+      </div>
+
+      {pestanaActiva === 'firmas-023' ? (
+        <BandejaFirmasAprobacion filtroReglaEspecial={true} />
+      ) : (
+        <>
+          {/* Banner Institucional Dirección Nacional */}
+          <div
+            className="rounded-2xl p-5 sm:p-7 shadow-lg relative overflow-hidden text-white"
+            style={{
+              background: 'linear-gradient(135deg, #2E0854 0%, #581C87 50%, #7E22CE 100%)',
+            }}
+          >
         <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="space-y-2">
             <div className="inline-flex items-center space-x-2 rounded-full px-3 py-1 text-xs font-semibold bg-white/15 text-purple-100 border border-white/20">
@@ -282,7 +318,7 @@ export const AutorizacionDireccionInbox: React.FC = () => {
                     <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                       <Building2 className="w-2.5 h-2.5 text-slate-500 shrink-0" />
                       <span className="truncate">
-                        {viaticosService.resolverNombreDependencia(sol)}
+                        {viaticosService.resolverNombreDependencia?.(sol)}
                       </span>
                     </span>
                   </div>
@@ -355,8 +391,8 @@ export const AutorizacionDireccionInbox: React.FC = () => {
                         <div className="mt-1 flex items-center gap-1">
                           <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
                             <Building2 className="w-2.5 h-2.5 text-slate-500 shrink-0" />
-                            <span className="truncate max-w-[200px]" title={viaticosService.resolverNombreDependencia(sol)}>
-                              {viaticosService.resolverNombreDependencia(sol)}
+                            <span className="truncate max-w-[200px]" title={viaticosService.resolverNombreDependencia?.(sol)}>
+                              {viaticosService.resolverNombreDependencia?.(sol)}
                             </span>
                           </span>
                         </div>
@@ -469,6 +505,8 @@ export const AutorizacionDireccionInbox: React.FC = () => {
           cargarSolicitudes(paginaActual);
         }}
       />
+        </>
+      )}
     </div>
   );
 };

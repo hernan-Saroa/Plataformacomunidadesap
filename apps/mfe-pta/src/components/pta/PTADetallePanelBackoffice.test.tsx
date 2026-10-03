@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { toast } from 'sonner';
 import { getPTAById, getComponentesAprobacion, getComponentesRevision, getPTADecisionPermissions, requestPTAFirmaAprobadorCode, aprobarComponente, getAprobacionTerritorial, getEvidenciasSeguimientoPTA, revisarEvidenciaPTA } from '../../services/api/ptaApi';
 import { PTADetallePanelBackoffice, ApprovalTracker } from './PTADetallePanelBackoffice';
 import { PTA_COMPONENT_KEYS } from './shared/ptaComponentPermissions';
@@ -232,6 +233,48 @@ describe('PTADetallePanelBackoffice — visibilidad de componentes ajenos (EFDS-
     await screen.findByText('Proyecto Ajeno de Investigación');
   });
 
+  it('muestra asignaturas de otra territorial en consulta y explica el alcance asignado', async () => {
+    vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce({ success: true, data: {
+      allowedComponents: ['academica_territorial'], allowedReviewSubsecciones: [],
+      personalTerritoriales: ['Meta'],
+      territorial: {
+        aprobar: { pairs: [{ territorialId: 'Meta', nivel: 'pregrado' }], reason: null },
+        revisar: { pairs: [], reason: null },
+      },
+    } } as any);
+    const pta = basePta({ asignaturas: [
+      { nombre: 'Asignatura Meta', territorial_id: 'Meta', componente_docencia: 'academica_territorial', total_horas: 40 },
+      { nombre: 'Asignatura Tolima', territorial_id: 'Tolima', territorial_nombre: 'Meta',
+        componente_docencia: 'academica_territorial', total_horas: 40 },
+    ] });
+    render(<PTADetallePanelBackoffice {...baseProps({ pta })} />);
+    screen.getByText('Aprobación').closest('button')!.click();
+
+    await screen.findByText('Asignatura Meta');
+    expect(screen.getByText('Asignatura Tolima')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain('no le permite revisar ni aprobar');
+  });
+
+  it('muestra actividades de investigación ajenas en consulta y bloquea la decisión', async () => {
+    vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce({ success: true, data: {
+      allowedComponents: [], allowedReviewSubsecciones: [],
+      personalTerritoriales: ['Meta'],
+      territorial: { aprobar: { pairs: [], reason: null }, revisar: { pairs: [], reason: null } },
+    } } as any);
+    const pta = basePta({ asignaturas: [], investigacion_actividades: [
+      { nombre: 'Proyecto Meta', territorial_id: 'Meta', horas_total: 20 },
+      { nombre: 'Proyecto Tolima', territorial_id: 'Tolima', horas_total: 20 },
+    ] });
+    render(<PTADetallePanelBackoffice {...baseProps({ pta })} />);
+    screen.getByText('Aprobación').closest('button')!.click();
+    const header = await screen.findByText('Componente Investigación');
+    header.closest('button')!.click();
+    await screen.findByText('Proyecto Meta');
+    expect(screen.getByText('Proyecto Tolima')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toContain('territorial asignada');
+    expect(screen.queryByRole('button', { name: 'Aprobar' })).toBeNull();
+  });
+
   it('mantiene bloqueada la acción de aprobar/devolver sobre los componentes ajenos', async () => {
     render(<PTADetallePanelBackoffice {...baseProps()} />);
     screen.getByText('Aprobación').closest('button')!.click();
@@ -424,6 +467,27 @@ describe('autorización vigente del servidor', () => {
     fireEvent.click(await screen.findByText('Confirmar firma de prueba'));
     await waitFor(() => expect(resultadoFirma).toHaveBeenCalledWith(success));
     expect(aprobarComponente).toHaveBeenCalledTimes(1);
+  });
+
+  it('muestra un único aviso temporal cuando el servidor entrega un código de pruebas', async () => {
+    const info = vi.spyOn(toast, 'info').mockImplementation(() => 'otp-test');
+    const success = vi.spyOn(toast, 'success').mockImplementation(() => 'otp-test');
+    try {
+      vi.mocked(requestPTAFirmaAprobadorCode).mockResolvedValueOnce({ success: true,
+        data: { verificationId: 'otp-test', email: 'prueba@example.test', devCode: '676066' } } as any);
+      render(<PTADetallePanelBackoffice {...baseProps()} />);
+      fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+      fireEvent.click(await screen.findByRole('button', { name: /^Aprobar$/ }));
+      await screen.findByText('Confirmar firma de prueba');
+      expect(info).toHaveBeenCalledOnce();
+      expect(info).toHaveBeenCalledWith('[PRUEBAS] Código de validación: 676066', {
+        id: 'pta-firma-otp', duration: 20000,
+      });
+      expect(success).not.toHaveBeenCalled();
+    } finally {
+      info.mockRestore();
+      success.mockRestore();
+    }
   });
 
   it('muestra carga desde la comprobación de permisos y evita clics repetidos u otras decisiones hasta recibir el código', async () => {

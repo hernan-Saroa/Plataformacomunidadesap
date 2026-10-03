@@ -15,6 +15,7 @@ export interface DetalleCierreEjecucionFormProps {
   idSolicitud: string;
   solicitud?: SolicitudMantenimiento | null;
   onSaved?: (r: SolicitudMantenimiento) => void;
+  forzarModoEdicionReapertura?: boolean;
 }
 
 const MAX_EVIDENCIAS = 5;
@@ -27,6 +28,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
   idSolicitud,
   solicitud,
   onSaved,
+  forzarModoEdicionReapertura,
 }) => {
   const [trabajoRealizado, setTrabajoRealizado] = useState('');
   const [observaciones, setObservaciones] = useState('');
@@ -43,12 +45,13 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const yaCerrado = useMemo(() => {
+    if (forzarModoEdicionReapertura) return false;
     if (resumenCierre?.cerrado) return true;
     if (solicitud?.fechaCierreTecnico) return true;
     const estados = ['COMPLETADA', 'CERRADA', 'CERRADA_SIN_ATENCION', 'RECHAZADA'];
     if (solicitud?.estado && estados.includes(solicitud.estado)) return true;
     return false;
-  }, [resumenCierre, solicitud]);
+  }, [resumenCierre, solicitud, forzarModoEdicionReapertura]);
 
   const modoLectura = yaCerrado;
 
@@ -62,7 +65,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
     setErrorForm('');
     setToast(null);
     setResumenCierre(null);
-    if (solicitud?.trabajoRealizado || solicitud?.fechaCierreTecnico) {
+    if (!forzarModoEdicionReapertura && (solicitud?.trabajoRealizado || solicitud?.fechaCierreTecnico)) {
       setTrabajoRealizado(solicitud.trabajoRealizado || '');
       setObservaciones(solicitud.observacionesCierre || '');
       setCostoFinalCop(Number(solicitud.costoFinalEfectivoCop || 0));
@@ -74,7 +77,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
       .obtenerCierreTecnico(idSolicitud)
       .then((r) => {
         setResumenCierre(r);
-        if (r?.cerrado) {
+        if (!forzarModoEdicionReapertura && r?.cerrado) {
           setTrabajoRealizado(r.trabajoRealizado || '');
           setObservaciones(r.observacionesCierre || '');
           setCostoFinalCop(Number(r.costoFinalEfectivoCop || 0));
@@ -84,7 +87,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
       })
       .catch(() => {})
       .finally(() => setLeyendo(false));
-  }, [open, idSolicitud, solicitud]);
+  }, [open, idSolicitud, solicitud, forzarModoEdicionReapertura]);
 
   useEffect(() => {
     if (!toast) return;
