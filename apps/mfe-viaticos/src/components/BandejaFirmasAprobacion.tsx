@@ -18,6 +18,7 @@ import {
   Info,
   Award,
   RotateCcw,
+  X,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import authService from '../services/api/authService';
@@ -432,12 +433,30 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
         <div className="relative flex-1 max-w-md">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
-            type="text"
+            type="search"
+            name="search_filtro_firmas_query"
+            id="search_filtro_firmas_query"
+            autoComplete="new-password"
+            data-lpignore="true"
+            data-form-type="other"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             placeholder="Buscar por código, cédula, comisionado, destino..."
-            className="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+            className="w-full pl-9 pr-9 py-2 border border-slate-300 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
           />
+          {busqueda && (
+            <button
+              type="button"
+              onClick={() => setBusqueda('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 cursor-pointer transition-colors"
+              title="Limpiar búsqueda"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -823,11 +842,13 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
             setSolicitudParaFirmar(null);
           }}
           onFirmadoExitoso={() => {
+            setBusqueda('');
             cargarSolicitudes();
           }}
           onFirmasCompletadas={() => {
             setModalFirmasAbierta(false);
             setSolicitudParaFirmar(null);
+            setBusqueda('');
             cargarSolicitudes();
           }}
           onSolicitudDevuelta={() => {
