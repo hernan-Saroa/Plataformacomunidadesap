@@ -14,6 +14,7 @@ import {
   Receipt,
   FileCheck,
   FileSignature,
+  FileEdit,
   Eye,
   ExternalLink,
   CreditCard,
@@ -1535,7 +1536,21 @@ export default function ViaticosModulePremium() {
                                     <FileSignature className="w-3.5 h-3.5 text-amber-800" />
                                   </button>
                                 )}
-                                {puedeCrearSolicitud && ['RADICADA', 'DEVUELTA'].includes(sol.estado) && (
+                                {sol.estado === 'DEVUELTA' && (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
+                                      setSolicitudAResumir(completa);
+                                    }}
+                                    className="p-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 transition-colors shadow-xs"
+                                    title="Subsanar y editar solicitud devuelta"
+                                    aria-label="Subsanar solicitud"
+                                  >
+                                    <FileEdit className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                {puedeCrearSolicitud && ['RADICADA'].includes(sol.estado) && (
                                   <button
                                     type="button"
                                     onClick={() => void handleConsolidar(sol)}
@@ -2392,6 +2407,24 @@ export default function ViaticosModulePremium() {
                           >
                             <FileSignature className="w-4 h-4" />
                             <span>Revisar y Gestionar Firmas de Aprobación (Formato 023)</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Botón de subsanar solicitud devuelta para el Enlace */}
+                      {solicitudSeleccionada.estado === 'DEVUELTA' && (puedeCrearSolicitud || esEnlace) && (
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const completa = await viaticosService.obtenerSolicitudCompleta(solicitudSeleccionada.id);
+                              setSolicitudSeleccionada(null);
+                              setSolicitudAResumir(completa);
+                            }}
+                            className="w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2 transition-colors shadow-xs cursor-pointer"
+                          >
+                            <FileEdit className="w-4 h-4" />
+                            <span>Subsanar y Editar Solicitud Devuelta</span>
                           </button>
                         </div>
                       )}

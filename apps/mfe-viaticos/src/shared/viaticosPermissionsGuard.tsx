@@ -225,12 +225,7 @@ export function hasViaticosRolePermission(
     return true;
   }
 
-  // 3. Fallback a permisos granulares de acción
-  if (config.fallbackPermissions.length > 0 && auth.hasAnyPermission([...config.fallbackPermissions])) {
-    return true;
-  }
-
-  // 4. Fallback legacy a roles quemados (por compatibilidad si aún no se refrescan tokens)
+  // 3. Verificación por roles legacy
   if (user.roles && user.roles.length > 0) {
     const hasLegacyRole = user.roles.some((r) =>
       config.legacyRoles.includes(r) ||
@@ -239,6 +234,19 @@ export function hasViaticosRolePermission(
     if (hasLegacyRole) {
       return true;
     }
+  }
+
+  // 4. Si se evalúa JEFE_DEPENDENCIA y el usuario tiene explícitamente rol de GERENTE, no es Jefe
+  if (roleKey === 'JEFE_DEPENDENCIA') {
+    const esGerente =
+      auth.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO) ||
+      (user.roles && user.roles.some((r) => r.includes('GERENTE')));
+    if (esGerente) return false;
+  }
+
+  // 5. Fallback a permisos granulares de acción
+  if (config.fallbackPermissions.length > 0 && auth.hasAnyPermission([...config.fallbackPermissions])) {
+    return true;
   }
 
   return false;

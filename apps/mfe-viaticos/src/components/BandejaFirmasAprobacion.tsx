@@ -318,7 +318,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
           </div>
           <div className="flex items-center gap-1.5">
             <Info className="w-4 h-4 text-amber-400" />
-            <span>Surtido el flujo de firmas, la solicitud pasa automáticamente a estado <strong>RADICADA</strong>.</span>
+            <span>Surtido el flujo de firmas, la solicitud pasa automáticamente a la <strong>Secretaría de Viáticos</strong> (estado SOLICITADO / EXTEMPORÁNEA).</span>
           </div>
         </div>
       </div>
@@ -714,6 +714,11 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
             setSolicitudParaFirmar(null);
           }}
           onFirmadoExitoso={() => {
+            cargarSolicitudes();
+          }}
+          onFirmasCompletadas={() => {
+            setModalFirmasAbierta(false);
+            setSolicitudParaFirmar(null);
             cargarSolicitudes();
           }}
           onSolicitudDevuelta={() => {

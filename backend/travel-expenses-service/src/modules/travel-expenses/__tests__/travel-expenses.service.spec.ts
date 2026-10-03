@@ -5310,7 +5310,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(resultado.firmante2.tipo).toBe('GERENTE_PROYECTO');
       });
 
-      it('firmarAprobacionSolicitud: cuando se registran ambas firmas, transiciona a estado RADICADA', async () => {
+      it('firmarAprobacionSolicitud: cuando se registran ambas firmas, transiciona directamente a Secretaría de Viáticos (SOLICITADO / EXTEMPORANEA)', async () => {
         const solicitud = {
           id: 'sol-firmas-completa',
           consecutivoUnico: 'SOL-2026-999',
@@ -5360,11 +5360,13 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         );
 
         expect(resultadoFirma2.radicada).toBe(true);
-        expect(resultadoFirma2.solicitud.estadoSolicitud).toBe(EstadoSolicitud.RADICADA);
-        expect(resultadoFirma2.mensaje).toContain('RADICADA');
+        expect([EstadoSolicitud.SOLICITADO, EstadoSolicitud.EXTEMPORANEA]).toContain(
+          resultadoFirma2.solicitud.estadoSolicitud,
+        );
+        expect(resultadoFirma2.mensaje).toContain('Secretaría de Viáticos');
         expect(historialRepo.save).toHaveBeenCalledWith(
           expect.objectContaining({
-            estadoNuevo: EstadoSolicitud.RADICADA,
+            estadoNuevo: expect.stringMatching(/SOLICITADO|EXTEMPORANEA/),
           }),
         );
       });

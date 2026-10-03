@@ -137,16 +137,30 @@ export default function ModalFirmasAprobacion({
       }
 
       // Asignar el rol que corresponde al usuario autenticado (sin permitir firmar por el otro rol)
-      const esJefeUser = Boolean(authService.isJefeDependencia?.()) || Boolean(authService.isSubdireccionGestionCorporativa?.()) || Boolean(authService.isDireccionNacional?.());
       const esGerenteUser = Boolean(authService.isGerenteProyecto?.());
+      const esJefeUser = Boolean(authService.isJefeDependencia?.());
       const esAnalistaUser = Boolean(authService.isAnalista?.());
+      const esAdminUser = Boolean(authService.getCurrentUserSync()?.esAdmin) || Boolean(authService.isSuperAdmin?.());
+
+      const fJefe = data.firmantes.find((f) => f.tipo === 'JEFE_DEPENDENCIA');
+      const fGerente = data.firmantes.find((f) => f.tipo === 'GERENTE_PROYECTO');
+
       let miRol: TipoFirmaAprobacion = 'JEFE_DEPENDENCIA';
-      if (esGerenteUser && !esJefeUser) {
+      if (esGerenteUser && (!esJefeUser || fJefe?.firmado)) {
         miRol = 'GERENTE_PROYECTO';
+      } else if (esJefeUser && (!esGerenteUser || !fJefe?.firmado)) {
+        miRol = 'JEFE_DEPENDENCIA';
       } else if (esAnalistaUser && !esJefeUser && !esGerenteUser) {
         miRol = 'ANALISTA';
-      } else if (esJefeUser && !esGerenteUser) {
-        miRol = 'JEFE_DEPENDENCIA';
+      } else if (esAdminUser) {
+        if (fJefe && !fJefe.firmado) {
+          miRol = 'JEFE_DEPENDENCIA';
+        } else if (fGerente && !fGerente.firmado) {
+          miRol = 'GERENTE_PROYECTO';
+        } else {
+          const p = data.firmantes.find((f) => !f.firmado);
+          if (p) miRol = p.tipo;
+        }
       } else {
         const p = data.firmantes.find((f) => !f.firmado);
         if (p) miRol = p.tipo;
@@ -350,6 +364,9 @@ export default function ModalFirmasAprobacion({
 
       if (resp.radicada) {
         onFirmasCompletadas?.(resp.solicitud);
+        setTimeout(() => {
+          cerrar();
+        }, 1800);
       }
       return true;
     } catch (e: any) {
@@ -452,31 +469,29 @@ export default function ModalFirmasAprobacion({
   const todasFirmadas = Boolean(estadoFirmas?.completado);
 
   const currentUser = authService.getCurrentUserSync();
-  const esJefe =
-    Boolean(authService.isJefeDependencia?.()) ||
-    Boolean(authService.isSubdireccionGestionCorporativa?.()) ||
-    Boolean(authService.isDireccionNacional?.());
   const esGerente = Boolean(authService.isGerenteProyecto?.());
+  const esJefe = Boolean(authService.isJefeDependencia?.());
   const esAnalista = Boolean(authService.isAnalista?.());
   const esAdmin = Boolean(currentUser?.esAdmin) || Boolean(authService.isSuperAdmin?.());
   const esEnlace = Boolean(authService.isEnlaceDependencia?.());
 
-  // Rol específico con el que firma el usuario autenticado
-  let miRolFirmante: TipoFirmaAprobacion = 'JEFE_DEPENDENCIA';
-  if (esGerente && !esJefe) {
-    miRolFirmante = 'GERENTE_PROYECTO';
-  } else if (esAnalista && !esJefe && !esGerente) {
-    miRolFirmante = 'ANALISTA';
-  } else if (esJefe && !esGerente) {
+  // Permisos efectivos de firma según roles
+  const puedeFirmarComoJefe = Boolean(esAdmin || esJefe) && Boolean(firmante1 && !firmante1.firmado);
+  const puedeFirmarComoGerente = Boolean(esAdmin || esGerente) && Boolean(firmante2 && !firmante2.firmado);
+  const puedeFirmarComoAnalista = Boolean(esAdmin || esAnalista) && Boolean(firmante3 && !firmante3.firmado);
+
+  // Rol específico con el que firma el usuario autenticado (respeta selección explícita del usuario)
+  let miRolFirmante: TipoFirmaAprobacion = firmanteSeleccionado || 'JEFE_DEPENDENCIA';
+  if (miRolFirmante === 'GERENTE_PROYECTO' && !puedeFirmarComoGerente && puedeFirmarComoJefe) {
     miRolFirmante = 'JEFE_DEPENDENCIA';
-  } else if (esAdmin) {
-    if (!firmante1?.firmado) {
-      miRolFirmante = 'JEFE_DEPENDENCIA';
-    } else if (!firmante2?.firmado) {
-      miRolFirmante = 'GERENTE_PROYECTO';
-    } else {
-      miRolFirmante = 'JEFE_DEPENDENCIA';
-    }
+  } else if (miRolFirmante === 'JEFE_DEPENDENCIA' && !puedeFirmarComoJefe && puedeFirmarComoGerente) {
+    miRolFirmante = 'GERENTE_PROYECTO';
+  } else if (!esAdmin && esGerente && !esJefe) {
+    miRolFirmante = 'GERENTE_PROYECTO';
+  } else if (!esAdmin && esJefe && !esGerente) {
+    miRolFirmante = 'JEFE_DEPENDENCIA';
+  } else if (!esAdmin && esAnalista && !esJefe && !esGerente) {
+    miRolFirmante = 'ANALISTA';
   }
 
   // Firmante correspondiente a mi rol y estado de mi firma
@@ -1129,7 +1144,7 @@ export default function ModalFirmasAprobacion({
                       {todasFirmadas ? (
                         <>
                           <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>2 de 2 Firmas · RADICADA</span>
+                          <span>2 de 2 Firmas · ENVIADA A SECRETARÍA</span>
                         </>
                       ) : firmasRegistradasCount === 1 ? (
                         <>
@@ -1231,9 +1246,19 @@ export default function ModalFirmasAprobacion({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Firmante 1: Jefe / Supervisor / Director */}
                 <div
+                  onClick={() => {
+                    if (puedeFirmarComoJefe) {
+                      setFirmanteSeleccionado('JEFE_DEPENDENCIA');
+                      if (firmante1?.cargo) setCargoFirmante(firmante1.cargo);
+                    }
+                  }}
                   className={`p-4 rounded-xl border text-center transition-all ${
+                    puedeFirmarComoJefe ? 'cursor-pointer hover:border-[#003DA5]' : ''
+                  } ${
                     firmante1?.firmado
                       ? 'bg-[#F0FDF4] border-[#BBF7D0] shadow-xs'
+                      : miRolFirmante === 'JEFE_DEPENDENCIA'
+                      ? 'bg-blue-50/40 border-[#003DA5] ring-2 ring-[#003DA5]/20 shadow-xs'
                       : 'bg-white border-slate-200'
                   }`}
                 >
@@ -1321,9 +1346,19 @@ export default function ModalFirmasAprobacion({
 
                 {/* Firmante 2: Gerente de Proyecto */}
                 <div
+                  onClick={() => {
+                    if (puedeFirmarComoGerente) {
+                      setFirmanteSeleccionado('GERENTE_PROYECTO');
+                      if (firmante2?.cargo) setCargoFirmante(firmante2.cargo);
+                    }
+                  }}
                   className={`p-4 rounded-xl border text-center transition-all ${
+                    puedeFirmarComoGerente ? 'cursor-pointer hover:border-[#003DA5]' : ''
+                  } ${
                     firmante2?.firmado
                       ? 'bg-[#F0FDF4] border-[#BBF7D0] shadow-xs'
+                      : miRolFirmante === 'GERENTE_PROYECTO'
+                      ? 'bg-blue-50/40 border-[#003DA5] ring-2 ring-[#003DA5]/20 shadow-xs'
                       : 'bg-white border-slate-200'
                   }`}
                 >
@@ -1489,8 +1524,8 @@ export default function ModalFirmasAprobacion({
                   <span>Flujo de Firmas de Aprobación Completado</span>
                 </div>
                 <p className="text-xs leading-relaxed">
-                  Surtido el flujo de firmas y las validaciones correspondientes, la solicitud ha sido incorporada
-                  y queda formalmente en estado <strong>RADICADA</strong>.
+                  Surtido el flujo de firmas de aprobación y las validaciones correspondientes, la solicitud no requiere
+                  reprocesos y pasa directamente a la <strong>Secretaría de Viáticos</strong> para su priorización y asignación a analista.
                 </p>
                 <div className="pt-2 flex items-center gap-2">
                   <button
@@ -1621,6 +1656,38 @@ export default function ModalFirmasAprobacion({
                       <span className="text-[#003DA5]">{miTituloRol}</span>
                     </h4>
                   </div>
+                  {puedeFirmarComoJefe && puedeFirmarComoGerente && (
+                    <div className="flex items-center gap-1 bg-slate-200/80 p-0.5 rounded-xl border border-slate-300">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFirmanteSeleccionado('JEFE_DEPENDENCIA');
+                          if (firmante1?.cargo) setCargoFirmante(firmante1.cargo);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          miRolFirmante === 'JEFE_DEPENDENCIA'
+                            ? 'bg-[#003DA5] text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Firmar como Jefe
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFirmanteSeleccionado('GERENTE_PROYECTO');
+                          if (firmante2?.cargo) setCargoFirmante(firmante2.cargo);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          miRolFirmante === 'GERENTE_PROYECTO'
+                            ? 'bg-[#003DA5] text-white shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Firmar como Gerente
+                      </button>
+                    </div>
+                  )}
                   <span className="text-[11px] font-semibold text-slate-500 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
                     {obtenerNombreFirmanteFinal()}
                   </span>

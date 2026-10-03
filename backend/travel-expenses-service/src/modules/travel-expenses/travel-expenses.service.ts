@@ -65,6 +65,8 @@ import {
   aYMDUtc,
   cargarFestivosAuth,
   esRadicacionFueraDeJornada,
+  contarDiasHabiles,
+  fechaEfectivaRadicacion,
 } from '../../common/dias-habiles.util';
 import { ConfigService } from '../config/config.service';
 import {
@@ -2639,6 +2641,7 @@ export class TravelExpensesService {
   ): Promise<SolicitudComisionEntity> {
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
+      relations: ['comisionado'],
     });
 
     if (!solicitud) {
@@ -2862,6 +2865,9 @@ if (dto.costoEstimadoTiquete !== undefined) {
       solicitud.comisionado,
       saved,
     );
+    if (!saved.comisionado && solicitud.comisionado) {
+      saved.comisionado = solicitud.comisionado;
+    }
     return saved;
   }
 
@@ -3815,6 +3821,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
       ...(solicitud.camposAdicionales || {}),
       reglaDesplazamiento: estadoFirmas.reglaDesplazamiento,
       descripcionReglaDesplazamiento: estadoFirmas.descripcionRegla,
+      firmasAprobacion: [],
       firmasCompletadas: false,
       firmaElaboro,
       elaboro: `Elaboró: ${nombreEnlace}${docStr} (Certificado: ${certIdElaboro})`,
@@ -3829,6 +3836,11 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     const saved = await this.solicitudRepo.save(solicitud);
 
+    const comentariosLog =
+      estadoAnterior === EstadoSolicitud.DEVUELTA
+        ? `Solicitud subsanada por el enlace y reenviada al flujo de firmas de aprobación (${estadoFirmas.descripcionRegla}) con certificado ${certIdElaboro}.`
+        : `Solicitud elaborada y remitida al flujo de firmas de aprobación previo a radicación (${estadoFirmas.descripcionRegla}) con certificado digital ${certIdElaboro}.`;
+
     await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
       solicitudId: solicitud.id,
       estadoAnterior,
@@ -3837,7 +3849,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
         usuarioId ||
         solicitud.creadoPorUsuarioId ||
         '00000000-0000-0000-0000-000000000000',
-      comentarios: `Solicitud elaborada y remitida al flujo de firmas de aprobación previo a radicación (${estadoFirmas.descripcionRegla}) con certificado digital ${certIdElaboro}.`,
+      comentarios: comentariosLog,
     });
 
     // Despacho de notificaciones Formato 023 por correo y vía app (Jefe, Gerente y Comisionado)
@@ -3915,6 +3927,33 @@ if (dto.costoEstimadoTiquete !== undefined) {
     ];
 
     if (!estadosPermitidosFirmar.includes(solicitud.estadoSolicitud)) {
+      // Idempotencia: si la solicitud ya avanzó a SOLICITADO, EXTEMPORANEA o RADICADA
+      // y la firma de este rol ya fue registrada exitosamente:
+      const firmasExistentes: any[] = Array.isArray(
+        solicitud.camposAdicionales?.firmasAprobacion,
+      )
+        ? solicitud.camposAdicionales.firmasAprobacion
+        : [];
+      const firmaYaRegistrada = firmasExistentes.find(
+        (f) => f.tipo === dto.tipoFirma && f.estado === 'FIRMADO',
+      );
+      if (
+        firmaYaRegistrada &&
+        [
+          EstadoSolicitud.SOLICITADO,
+          EstadoSolicitud.EXTEMPORANEA,
+          EstadoSolicitud.RADICADA,
+        ].includes(solicitud.estadoSolicitud)
+      ) {
+        return {
+          solicitud,
+          radicada: true,
+          mensaje: `La firma digital para ${dto.tipoFirma} ya fue registrada satisfactoriamente en este expediente (Certificado: ${firmaYaRegistrada.certificadoId || 'Digital'}).`,
+          firmas: firmasExistentes,
+          certificadoId: firmaYaRegistrada.certificadoId,
+        };
+      }
+
       throw new BadRequestException(
         `La solicitud tiene estado ${solicitud.estadoSolicitud} y no admite firmas de aprobación en esta etapa.`,
       );
@@ -4022,33 +4061,111 @@ if (dto.costoEstimadoTiquete !== undefined) {
     let mensaje = `Firma digital registrada para ${nombreRolFirmante} (Certificado: ${certId}).`;
 
     if (todasFirmasCompletadas) {
-      // – Surtido el flujo de firmas y las validaciones, la solicitud queda en estado RADICADA.
+      // Surtido el flujo de firmas de aprobación (Jefe de Dependencia y Gerente de Proyecto),
+      // la solicitud NO regresa al enlace para consolidar información; avanza directamente
+      // a la Secretaría de Viáticos evaluando la anticipación de 14 días hábiles
+      // para fijar su estado en SOLICITADO (ordinaria) o EXTEMPORANEA.
+      const ahora = new Date();
+      const festivosSet = await cargarFestivosAuth(this.dataSource);
       const radicadoFueraJornada = esRadicacionFueraDeJornada(
-        new Date(),
-        await cargarFestivosAuth(this.dataSource),
+        ahora,
+        festivosSet,
       );
 
+      const diasHabilesAnticipacion = contarDiasHabiles(
+        fechaEfectivaRadicacion(ahora, festivosSet),
+        solicitud.fechaInicio,
+        festivosSet,
+        'previos',
+      );
+      const esExtemporanea = diasHabilesAnticipacion < 14;
+      const nuevoEstado = EstadoSolicitud.SOLICITADO;
+
       const estadoAnterior = solicitud.estadoSolicitud;
-      solicitud.estadoSolicitud = EstadoSolicitud.RADICADA;
-      solicitud.extemporanea = false;
+      solicitud.estadoSolicitud = nuevoEstado;
+      solicitud.extemporanea = esExtemporanea;
       solicitud.radicadoFueraJornada = radicadoFueraJornada;
+      solicitud.motivoDevolucion = null;
+      if (!solicitud.fechaRadicacion) {
+        solicitud.fechaRadicacion = ahora;
+      }
       radicada = true;
-      mensaje =
-        `Flujo de firmas de aprobación surtido satisfactoriamente con certificación digital. La solicitud ha quedado formalmente en estado RADICADA. Certificado: ${certId}`;
+      mensaje = `Flujo de firmas de aprobación surtido satisfactoriamente con certificación digital. La solicitud ha avanzado directamente a la Secretaría de Viáticos en estado ${nuevoEstado}. Certificado: ${certId}`;
 
       const saved = await this.solicitudRepo.save(solicitud);
 
-      await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
-        solicitudId: solicitud.id,
-        estadoAnterior,
-        estadoNuevo: EstadoSolicitud.RADICADA,
-        usuarioId:
-          usuarioId ||
-          solicitud.creadoPorUsuarioId ||
-          '00000000-0000-0000-0000-000000000000',
-        comentarios:
-          `Flujo de firmas de aprobación surtido con certificación digital (Jefe de Dependencia y Gerente de Proyecto). Solicitud radicada exitosamente con certificado ${certId}.`,
-      });
+      try {
+        await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: nuevoEstado,
+          usuarioId:
+            usuarioId ||
+            solicitud.creadoPorUsuarioId ||
+            '00000000-0000-0000-0000-000000000000',
+          comentarios: `Flujo de firmas de aprobación completado (Jefe de Dependencia y Gerente de Proyecto). Solicitud radicada y remitida a la Secretaría de Viáticos en estado ${nuevoEstado} (${esExtemporanea ? 'Extemporánea por anticipación menor a 14 días hábiles' : 'Ordinaria'}). Certificado ${certId}.`,
+        });
+      } catch (histError: any) {
+        this.logger.warn(
+          `[firmarAprobacionSolicitud] No se pudo guardar historial de estado: ${histError?.message}`,
+        );
+      }
+
+      // Notificar a la Secretaría de Viáticos (in-app y correo) para priorización y asignación a analista
+      const consecutivo = saved.consecutivoUnico || saved.id;
+      const comisionadoNombre = saved.comisionado
+        ? `${saved.comisionado.primerNombre || ''} ${saved.comisionado.primerApellido || ''}`.trim()
+        : '';
+      const destino = `${saved.destinoCiudad || ''}${saved.destinoDepartamento ? ` (${saved.destinoDepartamento})` : ''}`.trim();
+      const fechaIni = saved.fechaInicio ? new Date(saved.fechaInicio).toISOString().split('T')[0] : '';
+      const fechaFn = saved.fechaFin ? new Date(saved.fechaFin).toISOString().split('T')[0] : '';
+      const fechasStr = fechaIni && fechaFn ? `${fechaIni} al ${fechaFn}` : fechaIni || fechaFn || 'Por definir';
+
+      this.notificationClient
+        .notifyByPermission(
+          'travel_expenses.general.es_secretario_viaticos',
+          {
+            tipo_notificacion: 'VIATICOS_RADICADA',
+            titulo: `Nueva solicitud para revisión: ${consecutivo}`,
+            mensaje: `El expediente ${consecutivo} (${esExtemporanea ? 'Extemporáneo' : 'Ordinario'}) completó el flujo de firmas de aprobación y requiere asignación/revisión en la bandeja de Secretaría de Viáticos.`,
+            descripcion_corta: `Solicitud ${consecutivo} · ${saved.comisionado?.numeroDocumento ?? ''}`,
+            icono: 'FileText',
+            color: '#003DA5',
+            prioridad: esExtemporanea ? 'Alta' : 'Media',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver en bandeja',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: saved.id,
+              consecutivoUnico: consecutivo,
+              esExtemporanea,
+            },
+          },
+          {
+            subject: `[Viáticos ESAP] Nueva Solicitud para Revisión: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: 'Secretaría de Viáticos',
+              tituloHeader: 'ESAP — Grupo de Viáticos',
+              subtituloHeader: 'Bandeja de Entrada — Solicitud Aprobada por Jefaturas',
+              mensajePrincipal: `Se han completado todas las firmas de aprobación requeridas para la solicitud de comisión de servicios, la cual se encuentra en estado <strong>${nuevoEstado}</strong> y requiere priorización y asignación a analista:`,
+              consecutivo,
+              comisionadoNombre,
+              destino,
+              fechas: fechasStr,
+              nuevoEstado,
+              tipoNovedad: esExtemporanea ? 'WARNING' : 'INFO',
+              textoBoton: 'Ir a la Bandeja de Entrada',
+            }),
+            text: `Se ha completado el flujo de firmas para la comisión ${consecutivo}. Pasa a revisión en la bandeja del Grupo de Viáticos en estado ${nuevoEstado}.`,
+          },
+          'SECRETARIO',
+        )
+        .catch((err) =>
+          this.logger.warn(
+            `[notify] No se pudo notificar a secretarios para solicitud ${saved.id}: ${err?.message}`,
+          ),
+        );
 
       return {
         solicitud: saved,
@@ -4063,13 +4180,19 @@ if (dto.costoEstimadoTiquete !== undefined) {
       }
       const saved = await this.solicitudRepo.save(solicitud);
 
-      await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
-        solicitudId: solicitud.id,
-        estadoAnterior: solicitud.estadoSolicitud,
-        estadoNuevo: EstadoSolicitud.PENDIENTE_FIRMAS,
-        usuarioId: usuarioId || '00000000-0000-0000-0000-000000000000',
-        comentarios: `Firma digital registrada para ${dto.tipoFirma} (${dto.nombreFirmante}) con certificado ${certId}. Pendiente firma restante para radicación formal.`,
-      });
+      try {
+        await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior: solicitud.estadoSolicitud,
+          estadoNuevo: EstadoSolicitud.PENDIENTE_FIRMAS,
+          usuarioId: usuarioId || '00000000-0000-0000-0000-000000000000',
+          comentarios: `Firma digital registrada para ${dto.tipoFirma} (${dto.nombreFirmante}) con certificado ${certId}. Pendiente firma restante para radicación formal.`,
+        });
+      } catch (histError: any) {
+        this.logger.warn(
+          `[firmarAprobacionSolicitud] No se pudo guardar historial intermedio: ${histError?.message}`,
+        );
+      }
 
       return {
         solicitud: saved,
@@ -4105,8 +4228,9 @@ if (dto.costoEstimadoTiquete !== undefined) {
     solicitud.estadoSolicitud = EstadoSolicitud.DEVUELTA;
     solicitud.motivoDevolucion = motivo.trim();
 
-    if (solicitud.camposAdicionales?.firmasAprobacion) {
+    if (solicitud.camposAdicionales) {
       solicitud.camposAdicionales.firmasCompletadas = false;
+      solicitud.camposAdicionales.firmasAprobacion = [];
     }
 
     const saved = await this.solicitudRepo.save(solicitud);
@@ -4118,6 +4242,60 @@ if (dto.costoEstimadoTiquete !== undefined) {
       usuarioId: usuarioId || '00000000-0000-0000-0000-000000000000',
       comentarios: `Solicitud devuelta en revisión de firmas de aprobación: ${motivo.trim().slice(0, 200)}`,
     });
+
+    // Notificar al Enlace que elaboró la solicitud para que pueda subsanar y reenviar a firmas
+    if (solicitud.creadoPorUsuarioId) {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const datosFirmante = usuarioId
+        ? await this.resolverDatosUsuario(usuarioId, 'Directivo Firmante')
+        : { nombre: 'Directivo Firmante', cargo: 'Aprobador de Comisión' };
+      const nombreDevuelve = datosFirmante.nombre || 'Directivo Firmante';
+      const cargoDevuelve = datosFirmante.cargo || '';
+      const firmanteStr = cargoDevuelve ? `${nombreDevuelve} (${cargoDevuelve})` : nombreDevuelve;
+
+      const notifEnlace = {
+        tipo_notificacion: 'VIATICOS_DEVUELTA_FIRMAS',
+        titulo: `Solicitud devuelta para subsanar: ${consecutivo}`,
+        mensaje: `La solicitud ${consecutivo} fue devuelta por ${firmanteStr} con observaciones. Puede editarla para subsanar y reenviarla al flujo de firmas de aprobación.`,
+        descripcion_corta: `Devuelta para subsanar · ${consecutivo}`,
+        icono: 'AlertTriangle',
+        color: '#D97706',
+        prioridad: 'Alta' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Subsanar solicitud',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+          motivo: motivo.trim(),
+        },
+      };
+
+      const emailEnlace = {
+        subject: `[Viáticos ESAP] Solicitud Devuelta para Subsanar: ${consecutivo}`,
+        html: buildTravelExpenseEmailHtml({
+          destinatarioNombre: 'Enlace de Dependencia',
+          tituloHeader: 'ESAP — Solicitud Devuelta en Firmas de Aprobación',
+          subtituloHeader: `Expediente: ${consecutivo}`,
+          mensajePrincipal: `La solicitud de comisión de servicios <strong>${consecutivo}</strong> ha sido devuelta por <strong>${firmanteStr}</strong> para subsanación de observaciones. Ingrese a la plataforma para realizar los ajustes requeridos y reenviarla al flujo de firmas de aprobación.`,
+          consecutivo,
+          nuevoEstado: 'DEVUELTA',
+          observaciones: motivo.trim(),
+          tipoNovedad: 'WARNING',
+          textoBoton: 'Subsanar en Plataforma',
+        }),
+        text: `La solicitud ${consecutivo} fue devuelta por ${firmanteStr}. Observaciones: ${motivo.trim()}. Ingrese a la plataforma para editar y subsanar.`,
+      };
+
+      this.notificationClient
+        .notifyUser(solicitud.creadoPorUsuarioId, notifEnlace, emailEnlace)
+        .catch((err) =>
+          this.logger.warn(
+            `[devolverFirmaAprobacion] No se pudo notificar al enlace creador ${solicitud.creadoPorUsuarioId}: ${err?.message}`,
+          ),
+        );
+    }
 
     return saved;
   }
@@ -4195,6 +4373,57 @@ if (dto.costoEstimadoTiquete !== undefined) {
           },
         }));
         await this.notificationClient.sendMany(notificaciones);
+
+        // Envío de correo electrónico institucional a los destinatarios
+        const uniqueEmails = Array.from(
+          new Set(
+            destinatarios
+              .map((d) => d.email)
+              .filter((email) => Boolean(email && email.includes('@'))),
+          ),
+        );
+
+        for (const email of uniqueEmails) {
+          const directivo = destinatarios.find((d) => d.email === email);
+          try {
+            const emailHtml = buildTravelExpenseEmailHtml({
+              destinatarioNombre:
+                directivo?.fullName || directivo?.username || nombreRol,
+              tituloHeader: 'ESAP — Sistema de Gestión de Viáticos y Comisiones',
+              subtituloHeader:
+                'Recordatorio Prioritario: Firma de Aprobación Pendiente',
+              mensajePrincipal: `Se le recuerda que la solicitud de viáticos <strong>${consecutivo}</strong> para el comisionado <strong>${comisionadoNombre}</strong> con destino <strong>${destino}</strong> se encuentra pendiente de su revisión y firma digital de aprobación como <strong>${nombreRol}</strong>.`,
+              consecutivo,
+              comisionadoNombre,
+              destino,
+              fechas:
+                solicitud.fechaInicio && solicitud.fechaFin
+                  ? `${solicitud.fechaInicio} al ${solicitud.fechaFin}`
+                  : undefined,
+              nuevoEstado: 'PENDIENTE DE FIRMAS',
+              badgeColor: '#F59E0B',
+              objetoComision: solicitud.objetoComision,
+              motivoUObservaciones: `Alerta institucional: Se requiere su firma de aprobación previa a la radicación de la comisión de servicios.\n\nPor favor ingrese a la bandeja de firmas para revisar el expediente, verificar los soportes obligatorios y registrar su firma digital de aprobación con código OTP.`,
+              tipoNovedad: 'WARNING',
+              textoBoton: 'Ir a Revisar y Firmar Comisión',
+              urlAccion: `${appBaseUrl}/viaticos`,
+            });
+
+            await this.notificationClient.sendEmail({
+              to: email,
+              subject: `[ESAP Viáticos] Recordatorio: Firma de aprobación requerida en solicitud ${consecutivo}`,
+              html: emailHtml,
+              text: `Recordatorio: La solicitud ${consecutivo} para ${comisionadoNombre} (${destino}) se encuentra pendiente de su revisión y firma de aprobación como ${nombreRol}. Ingrese a la plataforma para firmar: ${appBaseUrl}/viaticos`,
+            });
+            this.logger.log(
+              `[notificarFirmaPendiente] Correo de recordatorio enviado a ${email} para solicitud ${consecutivo}`,
+            );
+          } catch (emailErr) {
+            this.logger.warn(
+              `[notificarFirmaPendiente] No se pudo enviar correo a ${email}: ${emailErr}`,
+            );
+          }
+        }
       }
     } catch (e) {
       this.logger.warn(`Error enviando notificación de firma pendiente: ${e}`);
@@ -4331,9 +4560,15 @@ if (dto.costoEstimadoTiquete !== undefined) {
     }
 
     // Localizar comisionado por ID o número de documento
-    let comisionado = await this.comisionadoRepo.findOne({
-      where: { id: comisionadoIdOrDocumento },
-    });
+    const esUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        comisionadoIdOrDocumento,
+      );
+    let comisionado = esUuid
+      ? await this.comisionadoRepo.findOne({
+          where: { id: comisionadoIdOrDocumento },
+        })
+      : null;
     if (!comisionado) {
       comisionado = await this.comisionadoRepo.findOne({
         where: { numeroDocumento: comisionadoIdOrDocumento },
@@ -6493,6 +6728,10 @@ if (itinerarioGeneral) {
       solicitud.estadoSolicitud = EstadoSolicitud.DEVUELTA;
       solicitud.motivoDevolucion = motivo.trim().slice(0, 1000);
       solicitud.siifExportado = false;
+      if (solicitud.camposAdicionales) {
+        solicitud.camposAdicionales.firmasCompletadas = false;
+        solicitud.camposAdicionales.firmasAprobacion = [];
+      }
 
       const saved = await manager
         .getRepository(SolicitudComisionEntity)
