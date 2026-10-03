@@ -28,4 +28,12 @@ export class VerifyAuditDto {
   @IsString()
   @IsOptional()
   firmaImagen?: string;
+
+  @IsString()
+  @IsOptional()
+  nombreAnalista?: string;
+
+  @IsString()
+  @IsOptional()
+  cargoAnalista?: string;
 }

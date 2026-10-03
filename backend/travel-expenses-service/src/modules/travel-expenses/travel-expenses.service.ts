@@ -5039,8 +5039,13 @@ if (dto.costoEstimadoTiquete !== undefined) {
     const elaboroTexto = `Elaboró: ${nombreEnlaceFinal}${emailEnlaceStr}${docElaboroStr}${fElaboroStr}${certElaboroStr}`;
 
     // Revisó: El analista que lo revisó/verificó con firma digital si existe
+    const firmaAnalistaObj =
+      solicitud.camposAdicionales?.firmaAnalista || firmaAnalistaPrev;
+
     const analistaId =
-      solicitud.revisorControlId || solicitud.analistaAsignadoId;
+      firmaAnalistaObj?.usuarioId ||
+      solicitud.analistaAsignadoId ||
+      solicitud.revisorControlId;
     let revisorNombre = '';
     let revisorDoc = '';
     if (analistaId) {
@@ -5048,16 +5053,28 @@ if (dto.costoEstimadoTiquete !== undefined) {
       revisorNombre = dAnalista.nombre;
       revisorDoc = dAnalista.documento;
     }
-    if (firmaAnalistaPrev && !firmaAnalistaPrev.documentoIdentidad && revisorDoc) {
-      firmaAnalistaPrev.documentoIdentidad = revisorDoc;
+    if (firmaAnalistaObj && !firmaAnalistaObj.documentoIdentidad && revisorDoc) {
+      firmaAnalistaObj.documentoIdentidad = revisorDoc;
     }
     const nombreRevisoFinal =
-      firmaAnalistaPrev?.nombreFirmante ||
+      firmaAnalistaObj?.nombreFirmante ||
       solicitud.camposAdicionales?.nombreAnalista ||
       revisorNombre;
-    const docRevisoStr = (firmaAnalistaPrev?.documentoIdentidad || revisorDoc) ? ` · C.C. ${firmaAnalistaPrev?.documentoIdentidad || revisorDoc}` : '';
-    const fRevisoStr = (firmaAnalistaPrev?.fechaFirma || solicitud.fechaRevision) ? ` · Fecha: ${formatFechaHoraSegura(firmaAnalistaPrev?.fechaFirma || solicitud.fechaRevision)}` : '';
-    const certRevisoStr = firmaAnalistaPrev?.certificadoId ? ` · ✓ Firma Digital Verificada (Cert: ${firmaAnalistaPrev.certificadoId})` : '';
+    const docRevisoStr = (firmaAnalistaObj?.documentoIdentidad || revisorDoc)
+      ? ` · C.C. ${firmaAnalistaObj?.documentoIdentidad || revisorDoc}`
+      : '';
+    const fechaFirmaAnalista = firmaAnalistaObj?.fechaFirma || solicitud.fechaRevision;
+    const fRevisoStr = fechaFirmaAnalista
+      ? ` · Fecha: ${formatFechaHoraSegura(fechaFirmaAnalista)}`
+      : '';
+    const certIdReviso =
+      firmaAnalistaObj?.certificadoId ||
+      (solicitud.camposAdicionales?.firmaAnalista?.certificadoId);
+    const certRevisoStr = certIdReviso
+      ? ` · ✓ Firma Digital Verificada (Cert: ${certIdReviso})`
+      : fechaFirmaAnalista
+      ? ` · ✓ Firma Verificada`
+      : '';
 
     const revisoTexto = nombreRevisoFinal
       ? `Revisó: ${nombreRevisoFinal}${docRevisoStr}${fRevisoStr}${certRevisoStr}`
@@ -6567,6 +6584,60 @@ if (itinerarioGeneral) {
         );
       }
 
+      let comisionado: ComisionadoEntity | null | undefined =
+        solicitud.comisionado;
+      if (!comisionado && solicitud.comisionadoId) {
+        try {
+          const comRepo = manager.getRepository(ComisionadoEntity);
+          if (comRepo && typeof comRepo.findOne === 'function') {
+            comisionado = await comRepo.findOne({
+              where: { id: solicitud.comisionadoId },
+            });
+          }
+        } catch {
+          // ignore if repository not found or not mocked
+        }
+      }
+
+      // RF-REV-003: Bloqueo de verificación si contratista es facturador electrónico sin factura adjunta
+      const esContratista =
+        (comisionado?.tipoComisionado || '').toUpperCase() === 'CONTRATISTA';
+      const esFacturador = Boolean(
+        dto.consultaRutFacturador ??
+          (solicitud.consultaRutFacturador || comisionado?.esFacturadorElectronico),
+      );
+
+      if (esContratista && esFacturador) {
+        let docsSoporte: DocumentoSoporteEntity[] =
+          solicitud.documentosSoporte || [];
+        try {
+          const docRepo = manager.getRepository(DocumentoSoporteEntity);
+          if (docRepo && typeof docRepo.find === 'function') {
+            docsSoporte = await docRepo.find({
+              where: { solicitudId: solicitud.id },
+            });
+          }
+        } catch {
+          // fallback a solicitud.documentosSoporte
+        }
+
+        const tieneFactura = (docsSoporte || []).some((d) => {
+          const tipo = (d.tipoDocumento || '').toUpperCase();
+          const nom = (d.nombreArchivoOriginal || '').toLowerCase();
+          return (
+            tipo === 'FACTURA' ||
+            tipo === 'FACTURA_ELECTRONICA' ||
+            nom.includes('factura')
+          );
+        });
+
+        if (!tieneFactura) {
+          throw new BadRequestException(
+            'Bloqueo: El comisionado es contratista facturador electrónico y no cuenta con la Factura Electrónica cargada en el expediente. Debe solicitarla o adjuntarla antes de continuar a la firma.',
+          );
+        }
+      }
+
       // Validación de firma OTP si fue provista
       if (dto.otp) {
         const verificationId =
@@ -6595,45 +6666,68 @@ if (itinerarioGeneral) {
       const estadoAnterior = solicitud.estadoSolicitud;
       solicitud.estadoSolicitud = EstadoSolicitud.SOLICITADA_SIIF;
       solicitud.analistaAsignadoId = usuarioId;
+      solicitud.fechaRevision = new Date();
       solicitud.motivoDevolucion = null;
       solicitud.observacionesSegundaRevision = null;
 
-      // Registrar estampa y certificado de firma del analista en campos adicionales
-      if (dto.certificadoId || dto.hashSha256 || dto.firmaImagen) {
-        solicitud.camposAdicionales = {
-          ...(solicitud.camposAdicionales || {}),
-          firmaAnalista: {
-            usuarioId,
-            fechaFirma: new Date().toISOString(),
-            certificadoId: dto.certificadoId || `CERT-ANALISTA-${Date.now()}`,
-            hashSha256: dto.hashSha256,
-            firmaImagen: dto.firmaImagen,
-          },
-        };
+      // Resolver datos del analista para la estampa digital
+      const dAnalista = await this.resolverDatosUsuario(usuarioId, '');
+      const nombreAnalistaFinal = dto.nombreAnalista || dAnalista.nombre || usuarioId;
+      const cargoAnalistaFinal = dto.cargoAnalista || dAnalista.cargo || 'Analista de Viáticos';
+      const certIdFinal = dto.certificadoId || `ESAP-CERT-VIAT-${Date.now().toString(36).toUpperCase()}`;
+      const fechaFirmaIso = new Date().toISOString();
+
+      const firmaAnalistaData = {
+        tipo: TipoFirmaAprobacion.ANALISTA,
+        usuarioId,
+        nombreFirmante: nombreAnalistaFinal,
+        cargoFirmante: cargoAnalistaFinal,
+        documentoIdentidad: dAnalista.documento || null,
+        fechaFirma: fechaFirmaIso,
+        certificadoId: certIdFinal,
+        hashSha256: dto.hashSha256 || null,
+        firmaImagen: dto.firmaImagen || null,
+        estado: 'FIRMADO',
+        firmadoDigitalmente: true,
+        otpVerificado: true,
+      };
+
+      const prevFirmas = Array.isArray(solicitud.camposAdicionales?.firmasAprobacion)
+        ? [...solicitud.camposAdicionales.firmasAprobacion]
+        : [];
+      const idxFirma = prevFirmas.findIndex(
+        (f: any) =>
+          f.tipo === TipoFirmaAprobacion.ANALISTA ||
+          (f.tipo as string) === 'ANALISTA_VIATICOS',
+      );
+      if (idxFirma >= 0) {
+        prevFirmas[idxFirma] = { ...prevFirmas[idxFirma], ...firmaAnalistaData };
+      } else {
+        prevFirmas.push(firmaAnalistaData);
       }
+
+      solicitud.camposAdicionales = {
+        ...(solicitud.camposAdicionales || {}),
+        nombreAnalista: nombreAnalistaFinal,
+        firmaAnalista: firmaAnalistaData,
+        firmasAprobacion: prevFirmas,
+      };
 
       await manager.getRepository(SolicitudHistorialEstadoEntity).save({
         solicitudId: solicitud.id,
         estadoAnterior,
         estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
         usuarioId: usuarioId,
-        comentarios: `Verificación del analista completada y firmada con OTP (Certificado: ${dto.certificadoId || 'N/A'}). Solicitud transferida a Control de Viáticos para segunda revisión.`,
+        comentarios: `Verificación del analista completada y firmada con OTP (Certificado: ${certIdFinal}). Solicitud transferida a Control de Viáticos para segunda revisión.`,
       });
 
-      solicitud.consultaRutFacturador = dto.consultaRutFacturador ?? false;
-
-      // Sincronizar la marca persistente de facturador electrónico en el comisionado contratista (RF-REV-003)
-      if (solicitud.comisionadoId && dto.consultaRutFacturador !== undefined) {
-        const comRepo = manager.getRepository(ComisionadoEntity);
-        if (comRepo && typeof comRepo.findOne === 'function') {
-          const comisionado = await comRepo.findOne({
-            where: { id: solicitud.comisionadoId },
-          });
-          if (comisionado && (comisionado.tipoComisionado || '').toUpperCase() === 'CONTRATISTA') {
-            comisionado.esFacturadorElectronico = Boolean(dto.consultaRutFacturador);
-            if (typeof comRepo.save === 'function') {
-              await comRepo.save(comisionado);
-            }
+      if (dto.consultaRutFacturador !== undefined) {
+        solicitud.consultaRutFacturador = dto.consultaRutFacturador;
+        if (comisionado && esContratista) {
+          comisionado.esFacturadorElectronico = Boolean(dto.consultaRutFacturador);
+          const comRepo = manager.getRepository(ComisionadoEntity);
+          if (typeof comRepo.save === 'function') {
+            await comRepo.save(comisionado);
           }
         }
       }

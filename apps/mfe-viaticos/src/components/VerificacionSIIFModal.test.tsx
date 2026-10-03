@@ -279,6 +279,32 @@ describe('VerificacionSIIFModal', () => {
     // Botón CSV deshabilitado
     const downloadBtn = screen.getByText('Descargar Archivo Plano CSV para SIIF').closest('button');
     expect(downloadBtn).toBeDisabled();
+
+    // Botón Enviar a Firma OTP también bloqueado
+    const firmaBtn = screen.getByText('Enviar a Firma OTP').closest('button');
+    expect(firmaBtn).toBeDisabled();
+  });
+
+  it('NO bloquea ni muestra alerta de factura cuando el contratista no es facturador electronico incluso en SOLICITADA_SIIF', async () => {
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock({
+        estadoSolicitud: 'SOLICITADA_SIIF',
+        consultaRutFacturador: false,
+        comisionado: {
+          primerNombre: 'Carlos',
+          primerApellido: 'Pérez',
+          numeroDocumento: '12345678',
+          tipoComisionado: 'CONTRATISTA',
+          esFacturadorElectronico: false,
+        },
+        documentosSoporte: [],
+      }),
+    });
+
+    // NO debe mostrar bloqueo de factura electrónica
+    expect(screen.queryByText(/Exportación SIIF Bloqueada: Falta Factura Electrónica/i)).toBeNull();
+    expect(screen.queryByText(/Firma Bloqueada: Falta Factura Electrónica/i)).toBeNull();
   });
 
   it('permite la descarga de CSV SIIF cuando contratista facturador ya tiene factura cargada', async () => {

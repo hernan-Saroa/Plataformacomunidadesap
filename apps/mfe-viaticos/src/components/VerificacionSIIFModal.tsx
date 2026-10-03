@@ -243,7 +243,14 @@ export default function VerificacionSIIFModal({
       setCheckLiquidacion(yaAuditado);
       setCheckSeguridadSocial(yaAuditado);
       setCheckItinerario(yaAuditado);
-      setCheckRutFacturador(Boolean(solicitud?.consultaRutFacturador || yaAuditado));
+      // El flag de facturador electrónico solo debe ser true si el comisionado o la solicitud realmente lo tienen registrado
+      const esFacturadorRegistrado = Boolean(
+        solicitud?.consultaRutFacturador ??
+        (solicitud?.comisionado as any)?.esFacturadorElectronico ??
+        (solicitud?.camposAdicionales as any)?.obligacion_tributaria ??
+        false,
+      );
+      setCheckRutFacturador(esFacturadorRegistrado);
       setRegistrando(false);
       setRegistroError(null);
       setRegistroExitoso(false);
@@ -273,10 +280,11 @@ export default function VerificacionSIIFModal({
   const valorNeto = montoViaticos + montoGastosViaje;
 
   const esContratista = (comisionado?.tipoComisionado || '').toUpperCase() === 'CONTRATISTA';
-  const esFacturadorElectronico = Boolean(
+  const esFacturadorElectronico = esContratista && Boolean(
     checkRutFacturador ||
     solicitud?.consultaRutFacturador ||
-    comisionado?.esFacturadorElectronico,
+    (comisionado as any)?.esFacturadorElectronico ||
+    (solicitud?.camposAdicionales as any)?.obligacion_tributaria,
   );
   const requiereFactura = esContratista && esFacturadorElectronico;
   const todosDocumentos = solicitud?.documentosSoporte || [];
@@ -443,6 +451,12 @@ export default function VerificacionSIIFModal({
   // Solicitar código OTP para iniciar firma digital del analista
   const handleIniciarFirmaOtp = async () => {
     if (!solicitud || !todosCheckMandatory || esDevuelta) return;
+    if (bloqueoFacturaActivo) {
+      setRegistroError(
+        'Bloqueo: El comisionado es contratista facturador electrónico y no cuenta con la Factura Electrónica cargada en el expediente. Debe adjuntarla o solicitarla antes de proceder a la firma.',
+      );
+      return;
+    }
     setSolicitandoOtp(true);
     setRegistroError(null);
     try {
@@ -483,6 +497,8 @@ export default function VerificacionSIIFModal({
         certificadoId: firma.certificado_id,
         hashSha256: firma.hash,
         firmaImagen,
+        nombreAnalista: nombreUsuarioActual,
+        cargoAnalista: cargoUsuarioActual,
       });
       setRegistroExitoso(true);
       setModalFirmaOtpAbierta(false);
@@ -1473,7 +1489,7 @@ export default function VerificacionSIIFModal({
 
                   <div className="border border-slate-200 bg-white rounded-xl p-4 mt-3 shadow-2xs">
                     <p className="text-[10px] font-semibold text-slate-500 uppercase mb-2">
-                      Verificación de RUT
+                      Verificación de RUT (Obligación Tributaria)
                     </p>
                     <CheckboxItem
                       checked={checkRutFacturador}
@@ -1482,11 +1498,24 @@ export default function VerificacionSIIFModal({
                       label="Comisionado es Facturador Electrónico"
                       sublabel={
                         comisionado?.tipoComisionado === 'CONTRATISTA'
-                          ? 'Se consulta el RUT del comisionado en los PDFs de soporte. Si es contratista facturador, el sistema exigirá adjuntar la factura electrónica antes de permitir la exportación a SIIF.'
-                          : 'Se consulta el RUT del comisionado en los PDFs de soporte.'
+                          ? 'Marcar únicamente si el RUT del contratista indica que está obligado a facturar electrónicamente (en cuyo caso se exigirá factura electrónica adjunta para continuar).'
+                          : 'Consulta de RUT y obligaciones tributarias en soportes.'
                       }
                     />
                   </div>
+
+                  {/* Alerta de bloqueo preventivo por factura electrónica */}
+                  {bloqueoFacturaActivo && !esSoloLectura && (
+                    <div className="mt-3 p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-2.5 text-xs text-amber-900">
+                      <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold">Firma Bloqueada: Falta Factura Electrónica. </span>
+                        <span>
+                          El comisionado contratista está marcado como facturador electrónico. Debe adjuntar la Factura Electrónica en la sección de documentos o devolver la solicitud al enlace antes de poder enviar a firma OTP.
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="mt-4 flex items-center justify-between">
                     {esSoloLectura ? (
@@ -1517,14 +1546,16 @@ export default function VerificacionSIIFModal({
                         <button
                           type="button"
                           onClick={handleIniciarFirmaOtp}
-                          disabled={!todosCheckMandatory || solicitandoOtp || registrando}
+                          disabled={!todosCheckMandatory || bloqueoFacturaActivo || solicitandoOtp || registrando}
                           className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs ${
-                            todosCheckMandatory && !solicitandoOtp && !registrando
+                            todosCheckMandatory && !bloqueoFacturaActivo && !solicitandoOtp && !registrando
                               ? 'bg-[#003DA5] text-white hover:bg-[#002a7d] cursor-pointer'
                               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                           }`}
                           title={
-                            !todosCheckMandatory
+                            bloqueoFacturaActivo
+                              ? 'Bloqueado: El contratista es facturador electrónico y debe cargarse la factura electrónica antes de continuar'
+                              : !todosCheckMandatory
                               ? 'Debe marcar las verificaciones obligatorias del checklist para enviar a firma OTP'
                               : 'Enviar a Firma Digital con Validación OTP'
                           }
