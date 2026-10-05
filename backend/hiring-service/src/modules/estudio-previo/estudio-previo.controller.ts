@@ -22,6 +22,7 @@ import { createReadStream } from 'fs';
 import { EstudioPrevioService } from './estudio-previo.service';
 import {
   AnotarRadicadoDto,
+  CambiarModalidadDto,
   CrearProcesoDto,
   EnviarEstudioPrevioDto,
   GuardarBorradorDto,
@@ -94,6 +95,21 @@ export class EstudioPrevioController {
     @Req() req: any,
   ) {
     return this.service.guardarBorrador(id, dto, getHiringAccess(req));
+  }
+
+  @Put(':id/estudio-previo/modalidad')
+  @Puede('editar', '3.1')
+  @ApiOperation({
+    summary: 'Cambiar la modalidad mientras se arma el estudio previo',
+    description:
+      'Cambia la lista de chequeo de la 3.1 y recalcula qué actividades recorre el proceso. Solo el área que radicó, con la 3.1 en borrador o devuelta.',
+  })
+  cambiarModalidad(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CambiarModalidadDto,
+    @Req() req: any,
+  ) {
+    return this.service.cambiarModalidad(id, dto, getHiringAccess(req));
   }
 
   @Post(':id/estudio-previo/enviar')

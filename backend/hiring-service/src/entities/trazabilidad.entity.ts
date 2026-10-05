@@ -70,7 +70,10 @@ export type AccionTraza =
   // propia y no un ANULAR seguido de un ADJUNTAR: son dos filas de traza sin
   // relación aparente entre sí, y lo que ocurrió fue una sola operación —el
   // documento que salió y el que entró en su lugar quedan enlazados.
-  | 'REEMPLAZAR';
+  | 'REEMPLAZAR'
+  // El área cambia la modalidad mientras arma el estudio previo (3.1). Desde
+  // que la 3.5 se juntó con la 3.1 no hay otro sitio donde se cambie.
+  | 'CAMBIAR_MODALIDAD';
 
 @Entity('trazabilidad', { schema: 'hiring' })
 export class Trazabilidad {

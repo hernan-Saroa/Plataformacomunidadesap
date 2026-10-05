@@ -341,6 +341,39 @@ export class DocumentosActividadService {
         cargadoAt: d.createdAt.toISOString(),
       }));
 
+    /*
+     * Lo entregado para requisitos que este proceso ya no pide.
+     *
+     * Pasa cuando el área cambia la modalidad en la 3.1 y la lista nueva no
+     * trae lo que cargó para la anterior. No cuenta ni se exige, pero tampoco
+     * desaparece: si se vuelve a la modalidad de antes reaparece en su fila, y
+     * mientras tanto el área ve qué quedó por fuera.
+     */
+    const pedidos = new Set(requeridos.map((r) => r.codigo));
+    const sobrantes = vigentes.filter((v) => !pedidos.has(v.codigo));
+    const nombreDe = new Map(
+      sobrantes.length === 0
+        ? []
+        : (
+            await em.getRepository(DocumentoRequerido).find({
+              where: { numeral, codigo: In(sobrantes.map((v) => v.codigo)) },
+            })
+          ).map((r) => [r.codigo, r.nombre]),
+    );
+    const deOtraModalidad = sobrantes.map((v) => {
+      const archivo = porId.get(v.documentoId);
+      return {
+        id: v.id,
+        documentoId: v.documentoId,
+        requisito: nombreDe.get(v.codigo) ?? v.codigo,
+        nombre: archivo?.archivoNombreOriginal ?? archivo?.nombre ?? '',
+        descargaUrl: this.rutaDescarga(archivo?.archivoUrl),
+        mimeType: archivo?.archivoMimeType ?? null,
+        subidoPor: v.cargadoPor ?? null,
+        cargadoAt: v.createdAt.toISOString(),
+      };
+    });
+
     const faltantes = obligatoriosPendientes(
       documentos,
       documentos.filter((d) => d.cargado).map((d) => d.codigo),
@@ -353,6 +386,7 @@ export class DocumentosActividadService {
       documentos,
       adicionales,
       soportesDelRevisor,
+      deOtraModalidad,
       faltantes: faltantes.map((f) => ({ codigo: f.codigo, nombre: f.nombre })),
       /** Si no falta ningún obligatorio. */
       completo: faltantes.length === 0,
