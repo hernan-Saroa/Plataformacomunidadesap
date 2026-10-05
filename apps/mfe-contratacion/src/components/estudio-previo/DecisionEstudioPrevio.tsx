@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, Ban, Check, Undo2 } from 'lucide-react';
+import { ArrowRight, Ban, Check, Scale, Undo2 } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { EvidenciaFirmaOtp } from '../../types';
@@ -22,6 +22,11 @@ interface Props {
   variante?: 'franja' | 'tarjeta';
   /** A dónde sigue el proceso si se aprueba, dicho en una línea. */
   pasaA?: string | null;
+  /**
+   * La modalidad que se ratifica al aprobar (migración 094): ya no hay una
+   * actividad aparte para eso, así que se dice al confirmar.
+   */
+  modalidad?: string | null;
 }
 
 /**
@@ -36,7 +41,13 @@ interface Props {
  * 093), como el módulo disciplinario: un párrafo resume mal veinte páginas
  * corregidas a mano.
  */
-export function DecisionEstudioPrevio({ procesoId, onDecidido, variante = 'franja', pasaA }: Props) {
+export function DecisionEstudioPrevio({
+  procesoId,
+  onDecidido,
+  variante = 'franja',
+  pasaA,
+  modalidad,
+}: Props) {
   const [accion, setAccion] = useState<Accion | null>(null);
   const [observaciones, setObservaciones] = useState('');
   const [soportes, setSoportes] = useState<File[]>([]);
@@ -206,6 +217,15 @@ export function DecisionEstudioPrevio({ procesoId, onDecidido, variante = 'franj
           </p>
         ) : null}
 
+        {accion === 'aprobar' && modalidad ? (
+          <p className="text-[12px] text-slate-600 m-0 mb-3 flex items-start gap-1.5">
+            <Scale className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-emerald-700" />
+            <span>
+              Ratificas la modalidad: <strong className="text-slate-900">{modalidad}</strong>
+            </span>
+          </p>
+        ) : null}
+
         <label htmlFor="obs" className="block text-xs font-bold text-gray-600 mb-1.5">
           {accion === 'negar' ? 'Motivo de la negativa' : 'Observaciones'}
           {accion !== 'aprobar' && <span className="text-red-600"> *</span>}
@@ -219,7 +239,7 @@ export function DecisionEstudioPrevio({ procesoId, onDecidido, variante = 'franj
               ? 'Opcional: comentarios sobre la aprobación'
               : accion === 'negar'
                 ? 'Explica por qué la contratación no procede'
-                : 'Indica qué debe corregirse'
+                : 'Indica qué debe corregirse. Si la modalidad no corresponde, di cuál sí'
           }
           className="w-full min-h-[110px] px-3 py-2 text-sm rounded-lg border border-gray-300
             focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"

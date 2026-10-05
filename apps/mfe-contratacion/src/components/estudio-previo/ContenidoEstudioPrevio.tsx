@@ -13,12 +13,13 @@ import {
 
 import { useEstudioPrevio } from '../../hooks/useEstudioPrevio';
 import { contratacionService } from '../../services/contratacionService';
-import { CampoFormulario, RevisionEstudioPrevio } from '../../types';
+import { CampoFormulario, EstudioPrevio, RevisionEstudioPrevio } from '../../types';
 import { CampoDinamico } from './CampoDinamico';
 import { AlertaCamposFaltantes } from './AlertaCamposFaltantes';
 import { VerSoportes } from '../shared/VerSoporte';
 import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { RadicadoGestionDocumental } from './RadicadoGestionDocumental';
+import { ModalidadDelEstudioPrevio } from './ModalidadDelEstudioPrevio';
 import { usarAprobacion } from '../shared/usarAprobacion';
 import { useFirma } from '../shared/useFirma';
 
@@ -66,6 +67,7 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
     cargar,
     documentoFaltante,
     documentosDeLaLista,
+    actualizarProceso,
   } = useEstudioPrevio(procesoId);
 
   const [revisiones, setRevisiones] = useState<RevisionEstudioPrevio[]>([]);
@@ -202,6 +204,18 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
     onCambio?.();
   };
 
+  /**
+   * Tras cambiar la modalidad: la lista de documentos es otra, así que se
+   * relee y se vuelve a contar lo que falta. El formulario no se recarga, para
+   * no llevarse lo que el área escribió y no ha guardado.
+   */
+  const trasCambiarModalidad = (proceso: EstudioPrevio['proceso']) => {
+    actualizarProceso(proceso);
+    setTokenLista((n) => n + 1);
+    contarLoQueFaltaDeLaLista();
+    onCambio?.();
+  };
+
   /** Por qué la lista no se puede tocar, dicho para quien la mira. */
   const motivoBloqueo = negado
     ? 'El proceso fue negado, así que no hay documentos por radicar'
@@ -253,6 +267,15 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
           </div>
         </div>
       )}
+
+      {/* La modalidad va arriba y fuera de las pestañas: de ella depende la
+          lista de documentos, y el abogado la ratifica con el estudio previo. */}
+      <ModalidadDelEstudioPrevio
+        procesoId={procesoId}
+        proceso={datos.proceso}
+        puedeCambiar={datos.estado === 'BORRADOR' && datos.proceso.radicadoPorMi === true}
+        onCambiada={trasCambiarModalidad}
+      />
 
       {/* Pestañas: separan el diligenciamiento de sus soportes y su historial,
           que es lo que el revisor consulta sin querer editar nada. */}

@@ -5,6 +5,7 @@ import { contratacionService } from '../../services/contratacionService';
 import { CampoFormulario, EstudioPrevio, RevisionEstudioPrevio } from '../../types';
 import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { VerSoportes } from '../shared/VerSoporte';
+import { ModalidadDelEstudioPrevio } from '../estudio-previo/ModalidadDelEstudioPrevio';
 import { fechaLarga } from '../shared/fechas';
 
 const pesos = new Intl.NumberFormat('es-CO', {
@@ -70,6 +71,16 @@ export function LecturaEstudioPrevio({ estudio, procesoId }: { estudio: EstudioP
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      {/* La modalidad, que se ratifica al aprobar el estudio previo: es contra
+          ella que se lee la lista de documentos. */}
+      <div className="px-4 pt-3">
+        <ModalidadDelEstudioPrevio
+          procesoId={procesoId}
+          proceso={estudio.proceso}
+          puedeCambiar={false}
+          onCambiada={() => undefined}
+        />
+      </div>
       <div className="px-4 pt-3 flex gap-1 border-b border-gray-200">
         {(
           [

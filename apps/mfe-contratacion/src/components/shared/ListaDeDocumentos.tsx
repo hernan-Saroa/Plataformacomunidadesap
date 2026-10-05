@@ -207,11 +207,13 @@ export function ListaDeDocumentos({
   // las actividades no piden documentos, y un marco vacío se leería como
   // algo pendiente.
   const delRevisor = estado?.soportesDelRevisor ?? [];
+  const deOtraModalidad = estado?.deOtraModalidad ?? [];
   if (
     !estado ||
     (estado.documentos.length === 0 &&
       estado.adicionales.length === 0 &&
-      delRevisor.length === 0)
+      delRevisor.length === 0 &&
+      deOtraModalidad.length === 0)
   ) {
     return null;
   }
@@ -280,6 +282,30 @@ export function ListaDeDocumentos({
               ocupada={ocupado === doc.id}
               puedeRetirar={puedeTocar}
               onRetirar={() => retirar(doc.id)}
+              onVer={setViendo}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Lo que se cargó para la modalidad anterior. No cuenta ni se retira
+          desde aquí: si se vuelve a esa modalidad reaparece en su fila, y
+          mientras tanto el área ve qué quedó por fuera de la lista nueva. */}
+      {deOtraModalidad.length > 0 && (
+        <div className="space-y-1.5 pt-1">
+          <p className="text-[11px] font-bold text-slate-500 m-0">De la modalidad anterior</p>
+          <p className="text-[10.5px] text-slate-500 m-0 leading-relaxed">
+            La lista de esta modalidad no los pide, así que no cuentan para enviar. Se conservan por
+            si se vuelve a la modalidad anterior.
+          </p>
+          {deOtraModalidad.map((doc) => (
+            <FilaAdicional
+              key={doc.id}
+              documento={doc}
+              requisito={doc.requisito}
+              ocupada={false}
+              puedeRetirar={false}
+              onRetirar={() => undefined}
               onVer={setViendo}
             />
           ))}
@@ -537,12 +563,15 @@ function FilaDocumento({
 /** Un adjunto que ninguna fila de la lista pedía. */
 function FilaAdicional({
   documento,
+  requisito,
   ocupada,
   puedeRetirar,
   onRetirar,
   onVer,
 }: {
   documento: DocumentoCargado;
+  /** El requisito que cubría, cuando es de otra modalidad. */
+  requisito?: string;
   ocupada: boolean;
   puedeRetirar: boolean;
   onRetirar: () => void;
@@ -553,6 +582,9 @@ function FilaAdicional({
       <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
 
       <div className="min-w-0 flex-1">
+        {requisito && (
+          <p className="text-[10.5px] font-bold text-slate-500 m-0 truncate">{requisito}</p>
+        )}
         <p className="text-[11.5px] font-semibold text-slate-800 m-0 truncate">{documento.nombre}</p>
         <p className="text-[10.5px] text-slate-500 m-0 tabular-nums">
           {new Date(documento.cargadoAt).toLocaleDateString('es-CO')}

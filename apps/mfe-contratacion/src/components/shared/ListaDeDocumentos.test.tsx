@@ -266,4 +266,28 @@ describe('ListaDeDocumentos', () => {
     expect(await screen.findByText('memorando.pdf', { exact: false })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Historial/ })).toBeNull();
   });
+
+  it('lo cargado para la modalidad anterior se ve aparte, sin contar ni retirarse', async () => {
+    pintar(
+      estado([documento({ estado: 'CARGADO', cargado })], {
+        deOtraModalidad: [
+          {
+            id: 'e-9',
+            documentoId: 'd-9',
+            requisito: 'Certificado de idoneidad',
+            nombre: 'certificado.pdf',
+            descargaUrl: '/files/d-9.pdf',
+            subidoPor: 'area@esap.edu.co',
+            cargadoAt: '2026-09-20T10:00:00.000Z',
+          },
+        ],
+      }),
+    );
+
+    expect(await screen.findByText('De la modalidad anterior')).toBeInTheDocument();
+    expect(screen.getByText('Certificado de idoneidad')).toBeInTheDocument();
+    expect(screen.getByText('certificado.pdf')).toBeInTheDocument();
+    expect(screen.getByText('Obligatorios completos')).toBeInTheDocument();
+    expect(screen.queryByTitle('Retirar del expediente')).toBeNull();
+  });
 });

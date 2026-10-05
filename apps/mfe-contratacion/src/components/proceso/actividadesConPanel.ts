@@ -23,8 +23,6 @@ export const NUMERAL_RADICACION = '3.3';
  */
 export const NUMERAL_REVISION = '3.4';
 
-/** Actividad 3.5: la modalidad que el área eligió, que el abogado ratifica. */
-export const NUMERAL_MODALIDAD = '3.5';
 /** Causal de contratación: la 3.5.1 de la matriz, aplanada a 3.6 en la base. */
 export const NUMERAL_CAUSAL = '3.6';
 /**
@@ -82,14 +80,14 @@ export const NUMERALES_CON_APROBACION_PROPIA = ['3.1'];
  * Actividades cuya decisión son botones del propio panel, no el bloque
  * genérico de aprobación.
  *
- * La 3.5 la ratifica el abogado desde `PanelModalidad`; en la 8.4 se aprueba
+ * En la 8.4 se aprueba
  * cada póliza, en la 9.4 se avala cada cuenta de cobro y en la 9.5 se decide
  * cada modificación. Solo se decide en la pantalla de revisión: ahí el panel
  * sigue en solo lectura y `LugarDeDecision` enciende sus botones de decidir,
  * y en el trabajo del proceso esos botones se cambian por el camino a la
  * revisión.
  */
-export const NUMERALES_CON_DECISION_EN_EL_PANEL = ['3.5', '8.4', '9.4', '9.5'];
+export const NUMERALES_CON_DECISION_EN_EL_PANEL = ['8.4', '9.4', '9.5'];
 
 /** Elaboración de los documentos del proceso (EFDS-1149). */
 export const NUMERAL_DOCUMENTOS = '5.1';
@@ -306,7 +304,6 @@ export const NUMERALES_CON_REGISTRO = Object.keys(ACTIVIDADES_CON_REGISTRO);
 export const TIENEN_PANEL = (numeral: string): boolean =>
   numeral === '3.1' ||
   numeral === NUMERAL_RADICACION ||
-  numeral === NUMERAL_MODALIDAD ||
   numeral === NUMERAL_CAUSAL ||
   numeral === NUMERAL_COMITE_CONTRATACION ||
   NUMERALES_CDP.includes(numeral) ||

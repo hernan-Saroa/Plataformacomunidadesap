@@ -46,7 +46,6 @@ import {
   DecisionComite,
   EstadoCausalProceso,
   EstadoComiteContratacion,
-  EstadoModalidadProceso,
   EstadoActaInicio,
   EstadoSuscripcionActa,
   DatosActaInicio,
@@ -662,37 +661,6 @@ export const contratacionService = {
     pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal/rechazar`, {
       method: 'POST',
       body: JSON.stringify({ observaciones }),
-    }),
-
-  // ------------------- modalidad del proceso · 3.5 (EFDS-1183) --------------
-
-  /** Qué modalidad tiene el proceso, si está ratificada y qué se dijo de ella. */
-  modalidadDelProceso: (procesoId: string) =>
-    pedir<EstadoModalidadProceso>(`/procesos/${procesoId}/modalidad`),
-
-  /**
-   * Propone la modalidad, o la corrige tras una devolución.
-   *
-   * La cambia y la manda a revisar de una vez: corregir es volver a proponer, y
-   * dejarla cambiada sin mandar haría que el abogado viera una modalidad
-   * distinta de la que aprobó sin que nada dijera que estaba pendiente.
-   */
-  proponerModalidad: (procesoId: string, modalidad: string) =>
-    pedir<EstadoModalidadProceso>(`/procesos/${procesoId}/modalidad`, {
-      method: 'PUT',
-      body: JSON.stringify({ modalidad }),
-    }),
-
-  /** El abogado la ratifica, o la devuelve diciendo cuál corresponde. */
-  decidirModalidad: (
-    procesoId: string,
-    decision: 'APROBADO' | 'DEVUELTO',
-    observaciones?: string,
-    firma?: EvidenciaFirmaOtp,
-  ) =>
-    pedir<EstadoModalidadProceso>(`/procesos/${procesoId}/modalidad/decidir`, {
-      method: 'POST',
-      body: JSON.stringify({ decision, observaciones, firma }),
     }),
 
   // ---------------- causal de contratación · 3.6 (3.5.1 de la matriz) -------
@@ -1840,6 +1808,18 @@ export const contratacionService = {
 
   obtenerEstudioPrevio: (procesoId: string) =>
     pedir<EstudioPrevio>(`/procesos/${procesoId}/estudio-previo`),
+
+  /**
+   * Cambia la modalidad mientras el área arma el estudio previo.
+   *
+   * Cambia con ella la lista de documentos de la 3.1 y qué actividades recorre
+   * el proceso. Aprobar la 3.1 la ratifica: no hay otra actividad para eso.
+   */
+  cambiarModalidadDelEstudioPrevio: (procesoId: string, modalidad: string) =>
+    pedir<EstudioPrevio>(`/procesos/${procesoId}/estudio-previo/modalidad`, {
+      method: 'PUT',
+      body: JSON.stringify({ modalidad }),
+    }),
 
   guardarBorrador: (procesoId: string, datos: Record<string, any>, version: number) =>
     pedir<{ estado: string; version: number; datos: Record<string, any> }>(

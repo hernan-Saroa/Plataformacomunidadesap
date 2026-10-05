@@ -192,8 +192,9 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
                   {estudio.revision?.puedeDecidir ? (
                     <>
                       <p className="text-[12px] text-slate-500 m-0">
-                        Lee el estudio y sus documentos antes de resolver. Devolver pide observaciones y
-                        admite un archivo con las correcciones.
+                        Lee el estudio y sus documentos antes de resolver. Aprobarlo ratifica la
+                        modalidad. Devolver pide observaciones y admite un archivo con las
+                        correcciones.
                       </p>
                       {destino ? (
                         <p className="text-[12px] text-slate-600 m-0 flex items-start gap-1.5">
@@ -207,6 +208,7 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
                         procesoId={procesoId}
                         variante="tarjeta"
                         pasaA={destino}
+                        modalidad={estudio.proceso.modalidadNombre}
                         onDecidido={releer}
                       />
                     </>

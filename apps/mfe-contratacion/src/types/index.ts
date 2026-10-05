@@ -518,39 +518,14 @@ export interface RevisionDelProceso {
   motivo: MotivoNoDecide | null;
 }
 
-// --------------------- modalidad del proceso · 3.5 (EFDS-1183) -------------
-
-/** Lo que el abogado dijo de la modalidad cada vez. */
-export interface RevisionModalidad {
-  decision: 'APROBADO' | 'DEVUELTO';
-  observaciones: string | null;
-  revisadoPor: string;
-  createdAt: string;
-}
-
-export interface EstadoModalidadProceso {
-  modalidad: string | null;
-  modalidadNombre: string | null;
-  /** La cuantía, que es contra lo que se comprueba cuál corresponde. */
-  valorEstimado: number | null;
-  estado: EstadoActividad;
-  /** El área puede cambiarla y mandarla: en borrador o devuelta. */
-  puedeCorregir: boolean;
-  /** A quien mira le toca ratificarla. */
-  puedeDecidir: boolean;
-  abogado: { nombre: string; usuarioNombre: string } | null;
-  motivoNoDecide: MotivoNoDecide | null;
-  revisiones: RevisionModalidad[];
-}
-
 // ------------------ causal de contratación · 3.6 (3.5.1 de la matriz) ------
 
 /**
  * Por qué la 3.6 no está abierta, aparte de quién sea el que mira.
  *
  * - `NO_APLICA`: la matriz no marca la causal en la modalidad del proceso.
- * - `MODALIDAD_SIN_RATIFICAR`: la 3.5 aún puede cambiar la modalidad de cuya
- *   lista sale la causal.
+ * - `MODALIDAD_SIN_RATIFICAR`: la 3.1 no está aprobada, así que el área aún
+ *   puede cambiar la modalidad de cuya lista sale la causal.
  * - `ETAPA_PASADA`: el proceso salió de la etapa 3 y la causal ya sustentó la
  *   solicitud de CDP.
  */
@@ -1131,6 +1106,22 @@ export interface SoporteDelRevisor {
 }
 
 /**
+ * Lo entregado para un requisito que el proceso ya no pide, porque el área
+ * cambió la modalidad en la 3.1. No cuenta ni se exige, pero no se pierde.
+ */
+export interface DocumentoDeOtraModalidad {
+  id: string;
+  documentoId: string;
+  /** El requisito que cubría con la modalidad anterior. */
+  requisito: string;
+  nombre: string;
+  descargaUrl: string | null;
+  mimeType?: string | null;
+  subidoPor: string | null;
+  cargadoAt: string;
+}
+
+/**
  * Qué pide una actividad y qué se ha entregado ya.
  *
  * `documentos` es la lista de chequeo de la actividad. `adicionales` son los
@@ -1144,6 +1135,8 @@ export interface EstadoDocumentosActividad {
   adicionales: DocumentoCargado[];
   /** Lo que adjuntó quien devolvió la actividad, aparte de lo del gestor. */
   soportesDelRevisor?: SoporteDelRevisor[];
+  /** Lo que se cargó para la modalidad anterior y la lista de ahora no pide. */
+  deOtraModalidad?: DocumentoDeOtraModalidad[];
   /** Los obligatorios que todavía no están. */
   faltantes: { codigo: string; nombre: string }[];
   completo: boolean;
@@ -3458,7 +3451,7 @@ export interface ElementoPorRevisar {
    * actividad, quien nombra su regla de aprobación; y las pólizas, las
    * modificaciones y las cuentas de cobro se deciden una por una.
    */
-  tipo: 'ESTUDIO_PREVIO' | 'MODALIDAD' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO';
+  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO';
   /** Cuál de ellas, cuando la actividad tiene varias: «Póliza 123 · Seguros X». */
   detalle: string | null;
   procesoId: string;
