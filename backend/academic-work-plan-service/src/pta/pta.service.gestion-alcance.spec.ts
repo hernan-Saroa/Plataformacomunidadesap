@@ -11,7 +11,6 @@ describe('listado de gestión según componentes y alcance efectivos', () => {
     service.resolveNombrePorSeccionalId = jest.fn().mockResolvedValue(new Map());
     service.resolveNombresSeccionales = jest.fn().mockResolvedValue(['Meta', 'Caldas']);
     service.getTerritorialNivelPairsDelComponente = jest.fn(async p => p.subjects);
-    service.getTerritorialScopeSubjects = jest.fn(async p => p.subjects);
     const auth: any = { isSuperUser: false, allowedComponents: approve, allowedReviewSubsecciones: review,
       territorialIds: ['Meta'], cetapIds: ['Granada'],
       allowedNivelesTerritorialAprobar: approve.includes(territorial) ? ['pregrado'] : [],
@@ -32,24 +31,76 @@ describe('listado de gestión según componentes y alcance efectivos', () => {
     return { service, auth, rows, dtos };
   }
 
-  it.each(['aprobar', 'revisar'])('un especialista de %s solo recibe PTA con docencia de su territorial, sede y nivel', async etapa => {
+  it.each(['aprobar', 'revisar'])('un especialista de %s consulta todas las territoriales y decide solo la propia', async etapa => {
     const { service, auth, rows, dtos } = setup(etapa === 'aprobar' ? [territorial] : [], etapa === 'revisar' ? [`${territorial}:general`] : []);
     const result = await service.filterGestionPtas(dtos, rows, auth);
-    expect(result.map(p => p.id)).toEqual(['propio']);
+    expect(result.map(p => p.id)).toEqual(['propio', 'otra-territorial', 'otra-sede', 'otro-nivel', 'cruce-ajeno']);
     expect(result[0].componentes_en_alcance).toEqual([territorial]);
+    expect(result.find(p => p.id === 'otra-territorial').componentes_en_alcance).toEqual([]);
+    expect(result.find(p => p.id === 'otro-nivel').componentes_en_alcance).toEqual([]);
   });
 
-  it('la sede del docente o investigación no hacen visible una docencia ajena', async () => {
+  it('un rol Global puede consultar otra territorial sin recibir acciones sobre ella', async () => {
+    const { service, auth, rows, dtos } = setup([territorial], [`${territorial}:general`]);
+    auth.territorialDecisionGrants = {
+      aprobar: [{ nivel: 'pregrado', territorial: 'todas' }],
+      revisar: [{ nivel: 'pregrado', territorial: 'todas' }],
+    };
+    auth.cetapIds = [];
+    const result = await service.filterGestionPtas(dtos, rows, auth);
+    expect(result.map((pta: any) => pta.id)).toEqual(['propio', 'otra-territorial', 'otra-sede', 'otro-nivel', 'cruce-ajeno']);
+    expect(result.find((pta: any) => pta.id === 'otra-territorial').componentes_aprobacion_en_alcance).toEqual([]);
+    expect(result.find((pta: any) => pta.id === 'otra-territorial').componentes_revision_en_alcance).toEqual([]);
+    expect(result.find((pta: any) => pta.id === 'cruce-ajeno').componentes_aprobacion_en_alcance)
+      .toEqual([territorial]);
+  });
+
+  it('en un PTA mixto conserva ambas asignaturas y solo concede decisiones sobre la propia', async () => {
+    const { service, auth, rows, dtos } = setup([territorial]);
+    auth.cetapIds = [];
+    const mixto: any = dtos.find((pta: any) => pta.id === 'cruce-ajeno')!;
+    mixto.asignaturas = [
+      { nombre: 'Curso Meta', territorial_id: 'Meta' },
+      { nombre: 'Curso Caldas', territorial_id: 'Caldas', territorial_nombre: 'Meta' },
+    ];
+    mixto.num_asignaturas = 2;
+    const result = await service.filterGestionPtas([mixto], rows, auth);
+    expect(result[0].asignaturas.map((a: any) => a.nombre)).toEqual(['Curso Meta', 'Curso Caldas']);
+    expect(result[0].num_asignaturas).toBe(2);
+    expect(result[0].componentes_aprobacion_en_alcance).toEqual([territorial]);
+  });
+
+  it('la sede del docente no determina qué actividades se pueden consultar', async () => {
     const { service, auth, rows, dtos } = setup([territorial]);
     const result = await service.filterGestionPtas(dtos.map(p => ({ ...p, territorial: 'Meta', cetap: 'Granada' })), rows, auth);
-    expect(result.map(p => p.id)).toEqual(['propio']);
+    expect(result.map(p => p.id)).toEqual(['propio', 'otra-territorial', 'otra-sede', 'otro-nivel', 'cruce-ajeno']);
   });
 
-  it('sin asignación geográfica muestra todas las territoriales pero solo el nivel autorizado', async () => {
+  it('sin asignación geográfica consulta todas las territoriales y decide solo el nivel autorizado', async () => {
     const { service, auth, rows, dtos } = setup([], [`${territorial}:general`]);
     auth.territorialIds = []; auth.cetapIds = [];
     expect((await service.filterGestionPtas(dtos, rows, auth)).map(p => p.id))
-      .toEqual(['propio', 'otra-territorial', 'otra-sede', 'cruce-ajeno']);
+      .toEqual(['propio', 'otra-territorial', 'otra-sede', 'otro-nivel', 'cruce-ajeno']);
+    const result = await service.filterGestionPtas(dtos, rows, auth);
+    expect(result.find(p => p.id === 'otro-nivel').componentes_en_alcance).toEqual([]);
+  });
+
+  it('sin territorial de cuenta muestra ambas aunque el rol tenga un alcance guardado', async () => {
+    const { service, auth } = setup(['academica_pregrado']);
+    auth.territorialIds = []; auth.cetapIds = [];
+    service.clasificarAsignaturasDocencia = jest.fn(async (asignaturas: any[]) => ({
+      academica_pregrado: asignaturas, academica_posgrado: [], academica_territorial: [],
+    }));
+    const rows = ['Meta', 'Tolima'].map(id => ({
+      id, datosEstructurados: { asignaturas: [{ territorial_id: id }] },
+    }));
+    const dtos = rows.map(row => ({
+      id: row.id, componentes_con_datos: ['academica_pregrado'], subsecciones_con_datos: [],
+      asignaturas: row.datosEstructurados.asignaturas,
+    }));
+    const result = await service.filterGestionPtas(dtos, rows, auth);
+    expect(result.map((pta: any) => pta.id)).toEqual(['Meta', 'Tolima']);
+    expect(result[0].asignaturas).toEqual([{ territorial_id: 'Meta' }]);
   });
 
   it('un permiso adicional real de investigación sí permite ver su trabajo independiente', async () => {
@@ -133,6 +184,47 @@ describe('listado de gestión según componentes y alcance efectivos', () => {
     auth.approvesAll = false;
     auth.isSuperUser = true;
     expect((await service.filterGestionPtas(dtos, rows, auth)).map(p => p.id)).toEqual(dtos.map(p => p.id));
+  });
+
+  it('el estado posterior a una decisión conserva exactamente el alcance de Gestión', async () => {
+    const { service, auth, rows } = setup(['investigacion'], []);
+    const row = rows[0];
+    service.ptaRepo = { find: jest.fn().mockResolvedValue([row]) };
+    service.getExtMultiplicadores = jest.fn().mockResolvedValue({});
+    service.toPtaDto = jest.fn().mockReturnValue({ id: row.id, estado: 'Pendiente Jefatura' });
+    service.attachComponentApprovalProgress = jest.fn(async dtos => {
+      Object.assign(dtos[0], {
+        componentes_con_datos: ['investigacion', 'complementarias'],
+        subsecciones_con_datos: ['investigacion:general', 'complementarias:docencia'],
+        componentes_aprobacion_estado: [
+          { componente: 'investigacion', estado: 'aprobado', revision_completa: true },
+          { componente: 'complementarias', estado: 'pendiente', revision_completa: false },
+        ],
+      });
+    });
+
+    const result = await service.getUpdatedGestionPta(row.id, auth);
+
+    expect(result.estado).toBe('Pendiente Jefatura');
+    expect(result.componentes_aprobacion_usuario).toEqual([
+      { componente: 'investigacion', estado: 'aprobado', revision_completa: true },
+    ]);
+    expect(result.componentes_revision_usuario).toEqual([]);
+    expect(result.componentes_aprobacion_en_alcance).toEqual(['investigacion']);
+    expect(result.componentes_aprobacion_estado).toHaveLength(2);
+  });
+
+  it('un fallo de consulta posterior no convierte la decisión guardada en fallida', async () => {
+    const { service, auth } = setup(['investigacion']);
+    service.ptaRepo = { find: jest.fn().mockRejectedValue(new Error('Consulta temporalmente no disponible')) };
+    await expect(service.getUpdatedGestionPta('propio', auth)).resolves.toBeUndefined();
+  });
+
+  it('no consulta el estado personal sin contexto autenticado', async () => {
+    const { service } = setup(['investigacion']);
+    service.ptaRepo = { find: jest.fn() };
+    await expect(service.getUpdatedGestionPta('propio')).resolves.toBeUndefined();
+    expect(service.ptaRepo.find).not.toHaveBeenCalled();
   });
 
   it('la ruta de gestión usa el guard y el contexto del servidor', async () => {

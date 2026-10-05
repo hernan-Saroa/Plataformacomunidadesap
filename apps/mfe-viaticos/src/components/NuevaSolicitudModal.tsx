@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
+  AlertTriangle,
   Calculator,
   Calendar,
   CheckCircle,
@@ -11,8 +12,10 @@ import {
   DollarSign,
   Eye,
   FileText,
+  MapPin,
   Plane,
   PlaneTakeoff,
+  Bus,
   Plus,
   Route,
   Search,
@@ -28,10 +31,19 @@ import {
   Mail,
   Phone,
   Wallet,
+  Landmark,
+  CreditCard,
+  Coins,
+  Check,
+  Upload,
+  ArrowLeftRight,
   X,
 } from 'lucide-react';
 import {
+  Cargo,
+  CargoComisionado,
   Comisionado,
+  CuentaBancariaComisionado,
   Dependencia,
   DocumentoFormItem,
   DocumentoSoporte,
@@ -42,6 +54,7 @@ import {
   RutaItinerario,
   SaldoTiquete,
   SolicitudComisionResponse,
+  SolicitudPendiente023,
   TicketValidationResult,
   TipoTransporteTiquete,
 } from '../types/viaticos';
@@ -54,6 +67,7 @@ import LiquidacionPanel from './LiquidacionPanel';
 import TicketBudgetWidget from './TicketBudgetWidget';
 import ConsolidacionExpediente from './ConsolidacionExpediente';
 import ItinerarioBuilder from './ItinerarioBuilder';
+import FirmaDigitalViaticosModal, { FirmaDigitalData } from './FirmaDigitalViaticosModal';
 import { useFestivos } from '../hooks/useFestivos';
 import {
   AYUDA_OBJETO_SIIF,
@@ -65,10 +79,12 @@ import {
   formatearDiasComision,
   formatearMoneda,
   formatearNombreComisionado,
+  getConfigEstado,
   hoyISO,
   inferirTipoMime,
   formInicialNuevaSolicitud,
   mapearARequestCreacion,
+  obtenerAyudaValidacionDocumento,
   sanitizeObjetoComision,
   soloNumeros,
   sincronizarItinerarioFormulario,
@@ -146,10 +162,31 @@ const puedeElegirDependencia = (): boolean => {
   return authService.hasPermission('travel_expenses:manage_config');
 };
 
+const LISTA_BANCOS_COLOMBIA = [
+  'BANCOLOMBIA',
+  'BANCO DE BOGOTÁ',
+  'DAVIVIENDA',
+  'BBVA COLOMBIA',
+  'BANCO DE OCCIDENTE',
+  'BANCO POPULAR',
+  'BANCO AGRARIO DE COLOMBIA',
+  'BANCO CAJA SOCIAL',
+  'BANCO AV VILLAS',
+  'SCOTIABANK COLPATRIA',
+  'BANCO ITAÚ',
+  'BANCO PICHINCHA',
+  'BANCOOMEVA',
+  'BANCO FALABELLA',
+  'NEQUI',
+  'DAVIPLATA',
+  'DALE',
+];
+
 export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCreada, onSolicitudConsolidada, solicitudAResumir, esSuperAdmin }: Props) {
   const [paso, setPaso] = useState(1);
   const [form, setForm] = useState<FormNuevaSolicitud>(formInicialNuevaSolicitud());
   const [comisionado, setComisionado] = useState<Comisionado | null>(null);
+  const [solicitudesPendientes023, setSolicitudesPendientes023] = useState<SolicitudPendiente023[]>([]);
   const [consultando, setConsultando] = useState(false);
   const [errorConsulta, setErrorConsulta] = useState<string | null>(null);
   const [errorValidacion, setErrorValidacion] = useState<string | null>(null);
@@ -157,15 +194,27 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [habeasMarcado, setHabeasMarcado] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const { festivos } = useFestivos();
+  // Historial de cuentas bancarias y selección
+  const [cuentaBancariaSeleccionadaId, setCuentaBancariaSeleccionadaId] = useState<string>('');
   const [alertaAnticipacion, setAlertaAnticipacion] = useState<{
     extemporanea: boolean;
     diasHabiles: number;
     radicadoFueraJornada: boolean;
   } | null>(null);
+  const [alertaSolapamiento, setAlertaSolapamiento] = useState<{
+    mensaje: string;
+    solicitudConflicto?: any | null;
+    claveFechas: string;
+    permitirContinuar: boolean;
+  } | null>(null);
   const [departamentos, setDepartamentos] = useState<Geopolitica[]>([]);
   const [ciudades, setCiudades] = useState<Geopolitica[]>([]);
   const [dependencias, setDependencias] = useState<Dependencia[]>([]);
   const [cargandoDependencias, setCargandoDependencias] = useState(false);
+  const [cargosDisponibles, setCargosDisponibles] = useState<Cargo[]>([]);
+  const [cargandoCargos, setCargandoCargos] = useState(false);
+  const [cargoActualSeleccionado, setCargoActualSeleccionado] = useState<string>('');
+  const [modoCambiarCargo, setModoCambiarCargo] = useState<boolean>(false);
   // Departamento al que pertenecen las ciudades cargadas (evita recargarlas al
   // navegar de vuelta o reanudar; garantiza que se carguen cuando hacen falta).
   const [ciudadesDepto, setCiudadesDepto] = useState('');
@@ -188,7 +237,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [cargandoParametrizacion, setCargandoParametrizacion] = useState(false);
   const [documentosFaltantes, setDocumentosFaltantes] = useState<string[]>([]);
   const [solicitudBorrador, setSolicitudBorrador] = useState<SolicitudComisionResponse | null>(null);
-  const [checklist, setChecklist] = useState<{ obligatorios: Array<{ codigo: string; nombre: string; descripcion: string | null }>; opcionales: Array<{ codigo: string; nombre: string; descripcion: string | null }> } | null>(null);
+  const [checklist, setChecklist] = useState<{
+    obligatorios: Array<{ codigo: string; nombre: string; descripcion: string | null; instruccionesValidacion?: string | null; camposAValidar?: string[] }>;
+    opcionales: Array<{ codigo: string; nombre: string; descripcion: string | null; instruccionesValidacion?: string | null; camposAValidar?: string[] }>;
+  } | null>(null);
   const [cargandoChecklist, setCargandoChecklist] = useState(false);
   const [subiendoDocs, setSubiendoDocs] = useState(false);
   const [errorDocumentos, setErrorDocumentos] = useState<string | null>(null);
@@ -200,6 +252,14 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     cerrarTodosVisores,
   } = useVisorDocumentos();
   const [finalizando, setFinalizando] = useState(false);
+  // Firma Digital OTP Enlace (estándar institucional ESAP)
+  const [modalFirmaEnlaceAbierta, setModalFirmaEnlaceAbierta] = useState(false);
+  const [solicitandoOtpEnlace, setSolicitandoOtpEnlace] = useState(false);
+  const [otpDataEnlace, setOtpDataEnlace] = useState<{
+    verificationId?: string;
+    emailEnviadoA?: string;
+    devCode?: string;
+  } | null>(null);
   const [categoriaInvestigador, setCategoriaInvestigador] = useState<string>('ASOCIADO');
   const [asignacionesBasicasText, setAsignacionesBasicasText] = useState('');
   const [asignacionesBasicas, setAsignacionesBasicas] = useState<number[]>([]);
@@ -264,65 +324,53 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const cargarDependencias = async (depUsuario?: { codDependencia?: string; nomDependencia?: string; idDependencia?: number } | null) => {
-    if (puedeElegirDependencia()) {
-      setCargandoDependencias(true);
-      try {
-        const data = await viaticosService.obtenerDependencias();
-        setDependencias(data);
-        if (data.length > 0) {
-          const existe = data.some((d) => d.codDependencia === dependenciaId);
-          if (!existe) {
-            setDependenciaId(data[0].codDependencia);
-          }
-        }
-      } catch (e) {
-        console.error('Error cargando dependencias:', e);
-        setDependencias([]);
-      } finally {
-        setCargandoDependencias(false);
-      }
-      return;
-    }
+    setCargandoDependencias(true);
+    try {
+      const data = await viaticosService.obtenerDependencias();
+      setDependencias(data || []);
 
-    setDependencias([]);
-    setCargandoDependencias(false);
-    const dep = depUsuario || usuarioActual?.dependencia;
-    let codPropio = dep?.codDependencia || '';
-    let nomPropio = dep?.nomDependencia || '';
-    const idPropio = dep?.idDependencia;
+      const dep = depUsuario || usuarioActual?.dependencia;
+      let codPropio = dep?.codDependencia || '';
+      let nomPropio = dep?.nomDependencia || '';
+      const idPropio = dep?.idDependencia;
 
-    if (!codPropio && idPropio != null) {
-      setCargandoDependencias(true);
-      try {
-        const catalogo = await viaticosService.obtenerDependencias();
-        const match = catalogo.find(
-          (d) => Number(d.idDependencia) === Number(idPropio),
-        );
+      if (!codPropio && idPropio != null && data && data.length > 0) {
+        const match = data.find((d) => Number(d.idDependencia) === Number(idPropio));
         if (match) {
           codPropio = match.codDependencia;
           nomPropio = match.nomDependencia;
         }
-      } catch (e) {
-        console.error('Error resolviendo la dependencia del usuario:', e);
-      } finally {
-        setCargandoDependencias(false);
       }
-    }
 
-    if (codPropio) {
-      setDependenciaId(codPropio);
-      setUsuarioActual((prev) =>
-        prev
-          ? {
-              ...prev,
-              dependencia: {
-                ...(prev.dependencia || {}),
-                codDependencia: codPropio,
-                nomDependencia: nomPropio || prev.dependencia?.nomDependencia || '',
-              },
-            }
-          : prev,
-      );
+      if (puedeElegirDependencia()) {
+        if (data && data.length > 0) {
+          const existe = data.some(
+            (d) => d.codDependencia === dependenciaId || String(d.idDependencia) === String(dependenciaId),
+          );
+          if (!existe && !dependenciaId) {
+            setDependenciaId(codPropio || data[0].codDependencia);
+          }
+        }
+      } else if (codPropio) {
+        setDependenciaId(codPropio);
+        setUsuarioActual((prev) =>
+          prev
+            ? {
+                ...prev,
+                dependencia: {
+                  ...(prev.dependencia || {}),
+                  codDependencia: codPropio,
+                  nomDependencia: nomPropio || prev.dependencia?.nomDependencia || '',
+                },
+              }
+            : prev,
+        );
+      }
+    } catch (e) {
+      console.error('Error cargando dependencias:', e);
+      setDependencias([]);
+    } finally {
+      setCargandoDependencias(false);
     }
   };
 
@@ -365,6 +413,22 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       if (data) {
         if (data.campos) {
           setCamposCatalogo(data.campos);
+          // Inicializar cualquier campo BOOLEAN / CHECKBOX en false si aún no tiene valor en el form
+          setForm((prev) => {
+            const nuevosAdic = { ...(prev.camposAdicionales || {}) };
+            let huboCambio = false;
+            data.campos.forEach((c) => {
+              const tipo = (c.tipoCampo || '').toUpperCase();
+              if (
+                (tipo === 'BOOLEAN' || tipo === 'CHECKBOX') &&
+                (nuevosAdic[c.clave] === undefined || nuevosAdic[c.clave] === null)
+              ) {
+                nuevosAdic[c.clave] = false;
+                huboCambio = true;
+              }
+            });
+            return huboCambio ? { ...prev, camposAdicionales: nuevosAdic } : prev;
+          });
         }
         if (comisionado?.tipoComisionado) {
           const config = data.configuraciones?.[comisionado.tipoComisionado];
@@ -414,16 +478,95 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     const costoEstimadoTiquete = Number(solicitud.costoEstimadoTiquete || 0);
     setAsignacionesBasicas(salarioBasico > 0 ? [salarioBasico] : []);
     setMontoEstimadoTiquete(costoEstimadoTiquete);
+
+    // Hidratar comisionado si hace falta información en el payload
+    let comisionadoCompleto = solicitud.comisionado;
+    if (!comisionadoCompleto && (solicitud.comisionadoId || (solicitud as any).cedulaComisionado)) {
+      try {
+        const idOCed = (solicitud as any).cedulaComisionado || solicitud.comisionadoId;
+        const resCom = await viaticosService.consultarComisionado(idOCed);
+        if (resCom) comisionadoCompleto = resCom;
+      } catch (err) {
+        console.warn('No se pudo reconsultar comisionado:', err);
+      }
+    }
+
+    const {
+      origenCiudad: syncOrigenCiudad,
+      origenDepartamento: syncOrigenDepto,
+      destinoCiudad: syncDestinoCiudad,
+      destinoDepartamento: syncDestinoDepto,
+      fechaInicio: syncFechaInicio,
+      fechaFin: syncFechaFin,
+      diasComision: syncDias,
+    } = sincronizarItinerarioFormulario(solicitud.itinerario || []);
+
+    const rawAdic = (solicitud as any).camposAdicionales || (solicitud as any).campos_adicionales || {};
+    const ctas = comisionadoCompleto?.cuentasBancarias || [];
+    const ctaComisionado = ctas.find((c) => c.esPrincipal) || ctas[0];
+
+    const bco =
+      rawAdic.entidad_bancaria ||
+      rawAdic.entidadBancaria ||
+      rawAdic.banco ||
+      ctaComisionado?.banco ||
+      '';
+    const cta =
+      rawAdic.num_cuenta ||
+      rawAdic.numeroCuenta ||
+      rawAdic.numCuenta ||
+      rawAdic.cuentaBancaria ||
+      ctaComisionado?.numeroCuenta ||
+      '';
+    const tip =
+      rawAdic.tipo_cuenta ||
+      rawAdic.tipoCuenta ||
+      ctaComisionado?.tipoCuenta ||
+      '';
+
+    if (ctaComisionado?.id) {
+      setCuentaBancariaSeleccionadaId(ctaComisionado.id);
+    }
+
+    const cargoEncontrado =
+      rawAdic.cargoEsap ||
+      rawAdic.cargo ||
+      rawAdic.cargoInstitucional ||
+      rawAdic.cargoComisionado ||
+      (solicitud as any).cargo ||
+      comisionadoCompleto?.cargo ||
+      (comisionadoCompleto?.cargos && comisionadoCompleto.cargos.length > 0 ? comisionadoCompleto.cargos[0].cargo : '') ||
+      '';
+
+    const idCargoEncontrado =
+      (solicitud as any).idCargo ||
+      rawAdic.idCargo ||
+      comisionadoCompleto?.idCargo ||
+      (comisionadoCompleto?.cargos && comisionadoCompleto.cargos.length > 0 ? comisionadoCompleto.cargos[0].idCargo : undefined);
+
+    if (cargoEncontrado) {
+      setCargoActualSeleccionado(cargoEncontrado);
+    }
+
+    const idDep = (solicitud as any).idDependencia ?? comisionadoCompleto?.idDependencia;
+    if (idDep) {
+      setDependenciaId(String(idDep));
+    }
+
     setForm({
-      documentoComisionado: solicitud.comisionado?.numeroDocumento || '',
-      comisionadoId: solicitud.comisionadoId || solicitud.comisionado?.id || '',
+      documentoComisionado: comisionadoCompleto?.numeroDocumento || (solicitud as any).cedulaComisionado || '',
+      nombreComisionado: comisionadoCompleto
+        ? formatearNombreComisionado(comisionadoCompleto)
+        : (solicitud as any).nombreComisionado || '',
+      tipoComisionado: comisionadoCompleto?.tipoComisionado || (solicitud as any).tipoComisionado || 'FUNCIONARIO',
+      comisionadoId: solicitud.comisionadoId || comisionadoCompleto?.id || '',
       objetoComision: solicitud.objetoComision || '',
-      origenCiudad: solicitud.origenCiudad || solicitud.ciudadOrigen || solicitud.sedeOrigen || '',
-      origenDepartamento: '',
-      destinoCiudad: solicitud.destinoCiudad || '',
-      destinoDepartamento: solicitud.destinoDepartamento || '',
-      fechaInicio: solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().slice(0, 10) : '',
-      fechaFin: solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().slice(0, 10) : '',
+      origenCiudad: syncOrigenCiudad || solicitud.origenCiudad || solicitud.ciudadOrigen || solicitud.sedeOrigen || '',
+      origenDepartamento: syncOrigenDepto || solicitud.origenDepartamento || '',
+      destinoCiudad: syncDestinoCiudad || solicitud.destinoCiudad || '',
+      destinoDepartamento: syncDestinoDepto || solicitud.destinoDepartamento || '',
+      fechaInicio: syncFechaInicio || (solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().slice(0, 10) : ''),
+      fechaFin: syncFechaFin || (solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().slice(0, 10) : ''),
       rubroPresupuestal: solicitud.rubroPresupuestal || '',
       numeroCdp: (solicitud as any).numeroCdp || '',
       fechaCdp: (solicitud as any).fechaCdp || '',
@@ -431,7 +574,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       requiereTiquetes: Boolean(solicitud.requiereTiquetes),
       montoViaticos: Number(solicitud.montoViaticos || 0),
       montoGastosViaje: Number(solicitud.montoGastosViaje || 0),
-      diasComision: solicitud.diasComision ?? 1,
+      diasComision: syncDias || solicitud.diasComision || 1,
       salarioBasico,
       costoEstimadoTiquete,
       aceptaHabeasData: true,
@@ -445,16 +588,58 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         urlRepositorio: d.urlRepositorio,
         tipoMime: d.tipoMime,
       })),
-      camposAdicionales: (solicitud as any).camposAdicionales || {},
+      camposAdicionales: {
+        ...rawAdic,
+        ...(cargoEncontrado
+          ? {
+              cargoEsap: cargoEncontrado,
+              cargo: cargoEncontrado,
+              cargoInstitucional: cargoEncontrado,
+              cargoComisionado: cargoEncontrado,
+              ...(idCargoEncontrado ? { idCargo: idCargoEncontrado } : {}),
+            }
+          : {}),
+        ...(bco ? { entidad_bancaria: bco, entidadBancaria: bco, banco: bco } : {}),
+        ...(cta ? { num_cuenta: cta, numeroCuenta: cta, numCuenta: cta, cuentaBancaria: cta, numero_cuenta: cta } : {}),
+        ...(tip ? { tipo_cuenta: tip, tipoCuenta: tip } : {}),
+        obligacion_tributaria:
+          rawAdic.obligacion_tributaria !== undefined && rawAdic.obligacion_tributaria !== null
+            ? Boolean(rawAdic.obligacion_tributaria)
+            : Boolean(comisionadoCompleto?.esFacturadorElectronico ?? false),
+      },
+      cuentaBancariaSeleccionada: ctaComisionado
+        ? {
+            id: ctaComisionado.id,
+            banco: bco,
+            tipoCuenta: tip || 'AHORROS',
+            numeroCuenta: cta,
+            urlCertificadoBancario: ctaComisionado.urlCertificadoBancario,
+            nombreArchivoCertificado: ctaComisionado.nombreArchivoCertificado,
+            esPrincipal: ctaComisionado.esPrincipal,
+          }
+        : undefined,
+      cargoSeleccionado: cargoEncontrado
+        ? {
+            idCargo: idCargoEncontrado,
+            cargo: cargoEncontrado,
+            salario: salarioBasico,
+          }
+        : undefined,
       itinerario: solicitud.itinerario || [],
+      idDependencia: idDep != null ? Number(idDep) : undefined,
     });
-    if (solicitud.comisionado) {
-      setComisionado(solicitud.comisionado);
+
+    if (comisionadoCompleto) {
+      setComisionado(comisionadoCompleto);
       await cargarChecklist(
-        solicitud.esInternacional ? 'INTERNACIONAL' : solicitud.comisionado.tipoComisionado,
+        solicitud.esInternacional ? 'INTERNACIONAL' : comisionadoCompleto.tipoComisionado,
       );
     }
-    setPaso(PASOS.length - 1);
+    if (solicitud.estadoSolicitud === 'DEVUELTA') {
+      setPaso(2);
+    } else {
+      setPaso(PASOS.length - 1);
+    }
   };
 
   useEffect(() => {
@@ -462,6 +647,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setPaso(1);
       setForm(formInicialNuevaSolicitud());
       setComisionado(null);
+      setSolicitudesPendientes023([]);
       setConsultando(false);
       setErrorConsulta(null);
       setErrorValidacion(null);
@@ -469,6 +655,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setHabeasMarcado(false);
       setEnviando(false);
       setAlertaAnticipacion(null);
+      setAlertaSolapamiento(null);
       setDepartamentos([]);
       setCiudades([]);
       setCiudadesDepto('');
@@ -489,6 +676,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setTipoTransporte('AEREO');
       setMontoEstimadoTiquete(0);
       setDependenciaId('');
+      setCargoActualSeleccionado('');
+      setCargosDisponibles([]);
+      setCargandoCargos(false);
       setValidacionTiquete(null);
       setValidandoTiquete(false);
       setNumeroActoExcepcion('');
@@ -538,13 +728,244 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const actualizarCampoAdicional = (clave: string, valor: any) => {
-    setForm((prev) => ({
-      ...prev,
-      camposAdicionales: {
+    setForm((prev) => {
+      const campoDef = camposCatalogo.find((c) => c.clave === clave);
+      const tipo = (campoDef?.tipoCampo || '').toUpperCase();
+      const esBool =
+        tipo === 'BOOLEAN' ||
+        tipo === 'CHECKBOX' ||
+        clave === 'obligacion_tributaria' ||
+        clave === 'esFacturadorElectronico';
+      const valorFinal = esBool ? Boolean(valor) : valor;
+
+      const nextAdicionales: Record<string, any> = {
         ...(prev.camposAdicionales || {}),
-        [clave]: valor,
-      },
-    }));
+        [clave]: valorFinal,
+      };
+      if (
+        clave === 'cargoEsap' ||
+        clave === 'cargo' ||
+        clave === 'cargoInstitucional' ||
+        clave === 'cargoComisionado'
+      ) {
+        nextAdicionales.cargoEsap = valor;
+        nextAdicionales.cargo = valor;
+        nextAdicionales.cargoInstitucional = valor;
+        nextAdicionales.cargoComisionado = valor;
+        setCargoActualSeleccionado(String(valor || ''));
+      } else if (clave === 'entidad_bancaria' || clave === 'entidadBancaria' || clave === 'banco') {
+        nextAdicionales.entidad_bancaria = valor;
+        nextAdicionales.entidadBancaria = valor;
+        nextAdicionales.banco = valor;
+      } else if (
+        clave === 'num_cuenta' ||
+        clave === 'numeroCuenta' ||
+        clave === 'numCuenta' ||
+        clave === 'cuentaBancaria' ||
+        clave === 'numero_cuenta'
+      ) {
+        nextAdicionales.num_cuenta = valor;
+        nextAdicionales.numeroCuenta = valor;
+        nextAdicionales.numCuenta = valor;
+        nextAdicionales.cuentaBancaria = valor;
+        nextAdicionales.numero_cuenta = valor;
+      } else if (clave === 'tipo_cuenta' || clave === 'tipoCuenta') {
+        nextAdicionales.tipo_cuenta = valor;
+        nextAdicionales.tipoCuenta = valor;
+      }
+
+      const ctaSync: CuentaBancariaComisionado | undefined =
+        nextAdicionales.entidadBancaria && nextAdicionales.numeroCuenta
+          ? {
+              banco: nextAdicionales.entidadBancaria,
+              tipoCuenta: nextAdicionales.tipoCuenta || 'AHORROS',
+              numeroCuenta: nextAdicionales.numeroCuenta,
+              urlCertificadoBancario: nextAdicionales.urlCertificadoBancario || null,
+              nombreArchivoCertificado: nextAdicionales.nombreArchivoCertificado || null,
+            }
+          : undefined;
+
+      return {
+        ...prev,
+        cuentaBancariaSeleccionada: ctaSync !== undefined ? ctaSync : prev.cuentaBancariaSeleccionada,
+        camposAdicionales: nextAdicionales,
+      };
+    });
+  };
+
+  /**
+   * Resuelve el id numérico de la dependencia activa para consultar cargos (N:M auth.dependencias_cargos).
+   */
+  const idDependenciaActual: number | null = useMemo(() => {
+    if (form.idDependencia != null && form.idDependencia !== '') {
+      const n = Number(form.idDependencia);
+      if (!isNaN(n) && n > 0) return n;
+    }
+    if (comisionado?.idDependencia != null) {
+      const n = Number(comisionado.idDependencia);
+      if (!isNaN(n) && n > 0) return n;
+    }
+    if (dependenciaId) {
+      const match = dependencias.find(
+        (d) =>
+          d.codDependencia === dependenciaId ||
+          String(d.idDependencia) === String(dependenciaId),
+      );
+      if (match?.idDependencia != null) return Number(match.idDependencia);
+      const parsed = parseInt(dependenciaId, 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    if (usuarioActual?.dependencia?.idDependencia != null) {
+      const n = Number(usuarioActual.dependencia.idDependencia);
+      if (!isNaN(n) && n > 0) return n;
+    }
+    return null;
+  }, [form.idDependencia, comisionado?.idDependencia, dependenciaId, dependencias, usuarioActual?.dependencia]);
+
+  // Cargar cargos asignados a la dependencia seleccionada (N:M auth.dependencias_cargos)
+  useEffect(() => {
+    if (!idDependenciaActual) {
+      setCargosDisponibles([]);
+      setCargandoCargos(false);
+      return;
+    }
+
+    let isSubscribed = true;
+    setCargandoCargos(true);
+
+    viaticosService
+      .obtenerCargosPorDependencia(idDependenciaActual)
+      .then((cargos) => {
+        if (isSubscribed) {
+          setCargosDisponibles(cargos || []);
+        }
+      })
+      .catch((err) => {
+        console.error('Error cargando cargos de la dependencia:', err);
+        if (isSubscribed) setCargosDisponibles([]);
+      })
+      .finally(() => {
+        if (isSubscribed) setCargandoCargos(false);
+      });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [idDependenciaActual]);
+
+  const cambiarDependencia = (idDep: number | string | null) => {
+    const numId = idDep ? Number(idDep) : null;
+    const depEncontrada = dependencias.find((d) => Number(d.idDependencia) === numId);
+
+    setForm((prev) => {
+      const prevAdic = { ...(prev.camposAdicionales || {}) };
+      delete prevAdic.cargoEsap;
+      delete prevAdic.cargo;
+      delete prevAdic.cargoInstitucional;
+      delete prevAdic.cargoComisionado;
+      delete prevAdic.idCargo;
+
+      return {
+        ...prev,
+        idDependencia: numId,
+        camposAdicionales: prevAdic,
+      };
+    });
+
+    if (depEncontrada?.codDependencia) {
+      setDependenciaId(depEncontrada.codDependencia);
+    } else if (numId) {
+      setDependenciaId(String(numId));
+    } else {
+      setDependenciaId('');
+    }
+
+    setCargoActualSeleccionado('');
+  };
+
+  const cambiarCargo = (cargoVal: string | null) => {
+    const nomCargo = (cargoVal || '').trim();
+    setCargoActualSeleccionado(nomCargo);
+
+    // Buscar si el cargo está en los cargos registrados del comisionado con su salario relacional
+    const cargoComisionado = (comisionado?.cargos || []).find(
+      (c) => c.cargo?.trim().toLowerCase() === nomCargo.toLowerCase(),
+    );
+
+    const cargoObj = cargosDisponibles.find(
+      (c) => c.nomCargo === nomCargo || String(c.idCargo) === nomCargo,
+    );
+    const nombreFinal = cargoObj ? cargoObj.nomCargo : nomCargo;
+    const idCargoFinal = cargoObj ? cargoObj.idCargo : undefined;
+
+    // Salario relacional asociado: si el cargo tiene salario registrado en el comisionado, usarlo
+    let salarioAsociado = form.salarioBasico || 0;
+    if (cargoComisionado && cargoComisionado.salario > 0) {
+      salarioAsociado = Number(cargoComisionado.salario);
+    }
+
+    setForm((prev) => {
+      const nextAdic = {
+        ...(prev.camposAdicionales || {}),
+        cargoEsap: nombreFinal,
+        cargo: nombreFinal,
+        cargoInstitucional: nombreFinal,
+        cargoComisionado: nombreFinal,
+        ...(idCargoFinal ? { idCargo: idCargoFinal } : {}),
+      };
+      return {
+        ...prev,
+        salarioBasico: salarioAsociado,
+        cargoSeleccionado: {
+          idCargo: idCargoFinal,
+          cargo: nombreFinal,
+          salario: salarioAsociado,
+        },
+        camposAdicionales: nextAdic,
+      };
+    });
+  };
+
+  const seleccionarCuentaBancaria = (cta: CuentaBancariaComisionado) => {
+    setCuentaBancariaSeleccionadaId(cta.id || 'cta-sel');
+
+    setForm((prev) => {
+      const adic = {
+        ...(prev.camposAdicionales || {}),
+        entidad_bancaria: cta.banco,
+        entidadBancaria: cta.banco,
+        banco: cta.banco,
+        tipo_cuenta: cta.tipoCuenta,
+        tipoCuenta: cta.tipoCuenta,
+        num_cuenta: cta.numeroCuenta,
+        numeroCuenta: cta.numeroCuenta,
+        numCuenta: cta.numeroCuenta,
+        cuentaBancaria: cta.numeroCuenta,
+        ...(cta.urlCertificadoBancario ? { urlCertificadoBancario: cta.urlCertificadoBancario } : {}),
+      };
+
+      let docsActualizados = [...(prev.documentos || [])];
+      if (cta.urlCertificadoBancario) {
+        const tieneDocCert = docsActualizados.some((d) => d.tipoDocumento === 'CERT_BANCARIA');
+        if (!tieneDocCert) {
+          docsActualizados.push({
+            id: `doc-cert-${Date.now()}`,
+            tipoDocumento: 'CERT_BANCARIA',
+            nombreArchivoOriginal: cta.nombreArchivoCertificado || `certificacion_bancaria_${cta.banco}.pdf`,
+            nombreArchivoSeguro: `cert_${Date.now()}.pdf`,
+            urlRepositorio: cta.urlCertificadoBancario,
+            tipoMime: 'application/pdf',
+          });
+        }
+      }
+
+      return {
+        ...prev,
+        cuentaBancariaSeleccionada: cta,
+        camposAdicionales: adic,
+        documentos: docsActualizados,
+      };
+    });
   };
 
   const esCampoActivo = (clave: string): boolean => {
@@ -680,6 +1101,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setConsultando(true);
     setErrorConsulta(null);
     setComisionado(null);
+    setSolicitudesPendientes023([]);
     setHabeasPendiente(false);
     setHabeasMarcado(false);
     try {
@@ -691,11 +1113,196 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         return;
       }
       setComisionado(resultado);
-      setForm((prev) => ({
-        ...prev,
-        comisionadoId: resultado.id,
-        idDependencia: resultado.idDependencia ?? prev.idDependencia,
-      }));
+      const pendientes = resultado.solicitudesPendientes || [];
+      setSolicitudesPendientes023(pendientes);
+
+      // Cuentas bancarias del comisionado
+      const cuentas: CuentaBancariaComisionado[] = Array.isArray(resultado.cuentasBancarias)
+        ? [...resultado.cuentasBancarias]
+        : [];
+
+      const resAny = resultado as any;
+      const ctaPlana =
+        resAny.num_cuenta ||
+        resAny.numeroCuenta ||
+        resAny.numCuenta ||
+        resAny.NUM_CUENTA_1 ||
+        resAny.cuentaBancaria ||
+        resAny.cuenta;
+      const bcoPlano =
+        resAny.entidad_bancaria ||
+        resAny.entidadBancaria ||
+        resAny.banco ||
+        resAny.COD_CUENTA_1 ||
+        resAny.nombreBanco;
+      const tipPlano =
+        resAny.tipo_cuenta ||
+        resAny.tipoCuenta ||
+        resAny.TIP_CUENTA_1 ||
+        'AHORROS';
+      const certPlano =
+        resAny.urlCertificadoBancario ||
+        resAny.url_certificado_bancario ||
+        null;
+
+      if (cuentas.length === 0 && ctaPlana && bcoPlano) {
+        cuentas.push({
+          id: 'cta-default',
+          banco: bcoPlano,
+          tipoCuenta: tipPlano,
+          numeroCuenta: ctaPlana,
+          urlCertificadoBancario: certPlano,
+          esPrincipal: true,
+        });
+      }
+
+      let ctaInicial: CuentaBancariaComisionado | null = null;
+      if (cuentas.length > 0) {
+        ctaInicial = cuentas.find((c) => c.esPrincipal) || cuentas[0];
+        setCuentaBancariaSeleccionadaId(ctaInicial.id || 'cta-0');
+      } else {
+        setCuentaBancariaSeleccionadaId('');
+      }
+
+      // Cargos e historial de salario relacional
+      const cargosCom: CargoComisionado[] = Array.isArray(resultado.cargos)
+        ? [...resultado.cargos]
+        : [];
+
+      const cargoComisionado =
+        resultado.cargo ||
+        resAny.cargoComisionado ||
+        resAny.cargoInstitucional ||
+        resAny.cargoEsap ||
+        (cargosCom.length > 0 ? cargosCom[0].cargo : '') ||
+        '';
+
+      const cargoObj = cargosCom.find(
+        (c) => c.cargo?.trim().toLowerCase() === cargoComisionado?.trim().toLowerCase(),
+      ) || (cargosCom.length > 0 ? cargosCom[0] : null);
+
+      let salarioInicial =
+        resultado.salarioBasico != null && Number(resultado.salarioBasico) > 0
+          ? Number(resultado.salarioBasico)
+          : 0;
+
+      if (cargoObj && cargoObj.salario > 0) {
+        salarioInicial = Number(cargoObj.salario);
+      }
+
+      if (salarioInicial > 0) {
+        setAsignacionesBasicas([salarioInicial]);
+      }
+
+      setForm((prev) => {
+        const nuevosCamposAdicionales = { ...(prev.camposAdicionales || {}) };
+        if (ctaInicial) {
+          nuevosCamposAdicionales.num_cuenta = ctaInicial.numeroCuenta;
+          nuevosCamposAdicionales.numeroCuenta = ctaInicial.numeroCuenta;
+          nuevosCamposAdicionales.numCuenta = ctaInicial.numeroCuenta;
+          nuevosCamposAdicionales.cuentaBancaria = ctaInicial.numeroCuenta;
+          nuevosCamposAdicionales.entidad_bancaria = ctaInicial.banco;
+          nuevosCamposAdicionales.entidadBancaria = ctaInicial.banco;
+          nuevosCamposAdicionales.banco = ctaInicial.banco;
+          nuevosCamposAdicionales.tipo_cuenta = ctaInicial.tipoCuenta;
+          nuevosCamposAdicionales.tipoCuenta = ctaInicial.tipoCuenta;
+          if (ctaInicial.urlCertificadoBancario) {
+            nuevosCamposAdicionales.urlCertificadoBancario = ctaInicial.urlCertificadoBancario;
+          }
+        } else if (ctaPlana) {
+          nuevosCamposAdicionales.num_cuenta = ctaPlana;
+          nuevosCamposAdicionales.numeroCuenta = ctaPlana;
+          nuevosCamposAdicionales.numCuenta = ctaPlana;
+          nuevosCamposAdicionales.cuentaBancaria = ctaPlana;
+          if (bcoPlano) {
+            nuevosCamposAdicionales.entidad_bancaria = bcoPlano;
+            nuevosCamposAdicionales.entidadBancaria = bcoPlano;
+            nuevosCamposAdicionales.banco = bcoPlano;
+          }
+          if (tipPlano) {
+            nuevosCamposAdicionales.tipo_cuenta = tipPlano;
+            nuevosCamposAdicionales.tipoCuenta = tipPlano;
+          }
+        }
+
+        if (resAny.numeroContrato || resAny.contrato) {
+          nuevosCamposAdicionales.numeroContrato =
+            nuevosCamposAdicionales.numeroContrato || resAny.numeroContrato || resAny.contrato;
+        }
+
+        if (cargoComisionado) {
+          nuevosCamposAdicionales.cargoEsap = cargoComisionado;
+          nuevosCamposAdicionales.cargo = cargoComisionado;
+          nuevosCamposAdicionales.cargoInstitucional = cargoComisionado;
+          nuevosCamposAdicionales.cargoComisionado = cargoComisionado;
+        }
+
+        // Sincronizar régimen de facturación electrónica del comisionado
+        const facturadorInicial = Boolean(resultado.esFacturadorElectronico ?? false);
+        nuevosCamposAdicionales.obligacion_tributaria = facturadorInicial;
+        nuevosCamposAdicionales.esFacturadorElectronico = facturadorInicial;
+
+        // Asegurar que todos los campos booleanos del catálogo tengan valor booleano explícito
+        camposCatalogo.forEach((c) => {
+          const tipo = (c.tipoCampo || '').toUpperCase();
+          if (tipo === 'BOOLEAN' || tipo === 'CHECKBOX') {
+            if (
+              c.clave === 'obligacion_tributaria' ||
+              c.clave === 'esFacturadorElectronico' ||
+              c.clave.toLowerCase().includes('factura')
+            ) {
+              nuevosCamposAdicionales[c.clave] = facturadorInicial;
+            } else if (
+              nuevosCamposAdicionales[c.clave] === undefined ||
+              nuevosCamposAdicionales[c.clave] === null
+            ) {
+              nuevosCamposAdicionales[c.clave] = false;
+            }
+          }
+        });
+
+        const docsActualizados = [...(prev.documentos || [])];
+        if (ctaInicial?.urlCertificadoBancario) {
+          const tieneDocCert = docsActualizados.some((d) => d.tipoDocumento === 'CERT_BANCARIA');
+          if (!tieneDocCert) {
+            docsActualizados.push({
+              id: `doc-cert-${Date.now()}`,
+              tipoDocumento: 'CERT_BANCARIA',
+              nombreArchivoOriginal: ctaInicial.nombreArchivoCertificado || `certificacion_bancaria_${ctaInicial.banco}.pdf`,
+              nombreArchivoSeguro: `cert_${Date.now()}.pdf`,
+              urlRepositorio: ctaInicial.urlCertificadoBancario,
+              tipoMime: 'application/pdf',
+            });
+          }
+        }
+
+        return {
+          ...prev,
+          comisionadoId: resultado.id,
+          idDependencia: resultado.idDependencia ?? prev.idDependencia,
+          salarioBasico: salarioInicial > 0 ? salarioInicial : prev.salarioBasico,
+          cargoSeleccionado: cargoComisionado
+            ? {
+                idCargo: cargoObj?.idCargo,
+                cargo: cargoComisionado,
+                salario: salarioInicial,
+              }
+            : prev.cargoSeleccionado,
+          cuentaBancariaSeleccionada: ctaInicial,
+          camposAdicionales: nuevosCamposAdicionales,
+          documentos: docsActualizados,
+        };
+      });
+
+      if (cargoComisionado) {
+        setCargoActualSeleccionado(cargoComisionado);
+      }
+      if (resultado.idDependencia != null) {
+        const depEncontrada = dependencias.find((d) => Number(d.idDependencia) === Number(resultado.idDependencia));
+        if (depEncontrada?.codDependencia) {
+          setDependenciaId(depEncontrada.codDependencia);
+        }
+      }
       if (!resultado.autorizacionHabeasData) {
         setHabeasPendiente(true);
       }
@@ -770,6 +1377,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
           fechaInicio: sync.fechaInicio,
           fechaFin: sync.fechaFin,
           diasComision: sync.diasComision,
+          montoGastosViaje: sync.totalGastosDesplazamiento,
+          camposAdicionales: {
+            ...(prev.camposAdicionales || {}),
+            transporteTerminalAereo: sync.transporteTerminalesAereos,
+            transporteTerrestre: sync.transporteTerrestreOtros,
+          },
           requiereTiquetes: algunRequiereTiquete || prev.requiereTiquetes,
           tipoComision: prev.esInternacional ? 'INTERNACIONAL' : (prev.tipoComision === 'ACTO_ADMINISTRATIVO' ? 'ACTO_ADMINISTRATIVO' : 'TERRESTRE'),
         }));
@@ -950,7 +1563,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setPaso(siguiente);
   };
 
-  const guardarYBorrador = async () => {
+  const guardarYBorrador = async (forzarContinuar = false) => {
     if (!form.itinerario || form.itinerario.length === 0) {
       setErrorValidacion('Debe registrar al menos un tramo en el itinerario.');
       return;
@@ -993,23 +1606,132 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       return;
     }
 
+    // ── Validación de duplicidad / solapamiento por cédula y fechas ──────────
+    // Al intentar guardar y continuar al cargue de soportes, se verifica duplicidad.
+    // Si se detecta solapamiento, se alerta al usuario y NO se le deja continuar la primera vez.
+    // Si el usuario decide continuar voluntariamente (segundo clic o botón explícito), puede continuar en borrador,
+    // pero al final en la radicación el backend bloqueará la terminación definitiva.
+    const claveFechasActual = `${comisionado.numeroDocumento}_${fechaInicio}_${fechaFin}`;
+    if (!forzarContinuar) {
+      const yaConfirmadoContinuar =
+        alertaSolapamiento &&
+        alertaSolapamiento.claveFechas === claveFechasActual &&
+        alertaSolapamiento.permitirContinuar;
+
+      if (!yaConfirmadoContinuar) {
+        setEnviando(true);
+        setErrorValidacion(null);
+        try {
+          const verif = await viaticosService.verificarSolapamiento(
+            comisionado.numeroDocumento,
+            fechaInicio,
+            fechaFin,
+            solicitudBorrador?.id,
+          );
+          if (verif.haySolapamiento) {
+            setAlertaSolapamiento({
+              mensaje:
+                verif.mensaje ||
+                'Se detectó duplicidad o solapamiento de fechas con otra solicitud del comisionado.',
+              solicitudConflicto: verif.solicitudConflicto,
+              claveFechas: claveFechasActual,
+              permitirContinuar: true,
+            });
+            setErrorValidacion(
+              verif.mensaje ||
+                'Se detectó duplicidad o solapamiento de fechas con otra comisión existente del comisionado. Por seguridad, no puede continuar la primera vez; revise las fechas o confirme si desea continuar en modo borrador.',
+            );
+            setEnviando(false);
+            return; // Bloquea y no deja continuar la primera vez
+          } else {
+            setAlertaSolapamiento(null);
+          }
+        } catch (eVerif) {
+          console.warn('Error al verificar solapamiento:', eVerif);
+        }
+      }
+    }
+
     setEnviando(true);
     setErrorValidacion(null);
     try {
       const { fechaInicio, fechaFin, diasComision } = sincronizarItinerarioFormulario(form.itinerario || []);
       const { origenCiudad, origenDepartamento, destinoCiudad, destinoDepartamento } = obtenerOrigenDestinoItinerario();
+      const cargoFinal =
+        cargoActualSeleccionado ||
+        form.cargoSeleccionado?.cargo ||
+        form.camposAdicionales?.cargoEsap ||
+        form.camposAdicionales?.cargo ||
+        form.camposAdicionales?.cargoInstitucional ||
+        form.camposAdicionales?.cargoComisionado ||
+        comisionado?.cargo ||
+        (comisionado?.cargos && comisionado.cargos.length > 0 ? comisionado.cargos[0].cargo : '') ||
+        '';
+
+      const cargoEncontradoObj =
+        cargosDisponibles.find(
+          (c) =>
+            c.nomCargo?.trim().toLowerCase() === cargoFinal?.trim().toLowerCase() ||
+            String(c.idCargo) === String(cargoFinal),
+        ) ||
+        (comisionado?.cargos || []).find(
+          (c) => c.cargo?.trim().toLowerCase() === cargoFinal?.trim().toLowerCase(),
+        );
+
+      const idCargoFinal =
+        form.cargoSeleccionado?.idCargo ||
+        form.camposAdicionales?.idCargo ||
+        (form as any).idCargo ||
+        cargoEncontradoObj?.idCargo ||
+        comisionado?.idCargo ||
+        undefined;
+
+      if (!cargoFinal || !cargoFinal.trim()) {
+        setErrorValidacion('Debe seleccionar o registrar el cargo institucional del comisionado antes de continuar.');
+        setEnviando(false);
+        return;
+      }
+
       const payload = mapearARequestCreacion(
-        { ...form, fechaInicio, fechaFin, diasComision, origenCiudad, origenDepartamento, destinoCiudad, destinoDepartamento },
+        {
+          ...form,
+          idDependencia: form.idDependencia ?? comisionado?.idDependencia ?? (idDependenciaActual || undefined),
+          fechaInicio,
+          fechaFin,
+          diasComision,
+          origenCiudad,
+          origenDepartamento,
+          destinoCiudad,
+          destinoDepartamento,
+          camposAdicionales: {
+            ...(form.camposAdicionales || {}),
+            obligacion_tributaria:
+              form.camposAdicionales?.obligacion_tributaria !== undefined &&
+              form.camposAdicionales?.obligacion_tributaria !== null
+                ? Boolean(form.camposAdicionales.obligacion_tributaria)
+                : Boolean(comisionado?.esFacturadorElectronico ?? false),
+            ...(cargoFinal
+              ? {
+                  cargoEsap: cargoFinal,
+                  cargo: cargoFinal,
+                  cargoInstitucional: cargoFinal,
+                  cargoComisionado: cargoFinal,
+                  ...(idCargoFinal ? { idCargo: idCargoFinal } : {}),
+                }
+              : {}),
+          },
+        },
         comisionado,
         usuarioActual?.userId || '',
         true,
         form.tipoComision || 'TERRESTRE',
       );
-      if (solicitudBorrador) {
-        // Ya existe un borrador: actualizar los campos editables (fechas,
-        // destino, montos, etc.) para no perder los cambios al volver atrás.
+      const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+      if (idExistente) {
+        // Ya existe una solicitud (borrador o devuelta para subsanar):
+        // actualizar los campos editables sin crear un nuevo registro.
         const actualizada = await viaticosService.actualizarSolicitud(
-          solicitudBorrador.id,
+          idExistente,
           {
             objetoComision: form.objetoComision,
             destinoCiudad,
@@ -1026,6 +1748,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
             diasComision,
             salarioBasico: form.salarioBasico,
             costoEstimadoTiquete: form.costoEstimadoTiquete,
+            cargo: cargoFinal || undefined,
+            idCargo: idCargoFinal,
             tipoComision: (() => {
                 if (form.esInternacional) return 'INTERNACIONAL';
                 const tramos = form.itinerario || [];
@@ -1036,7 +1760,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 return 'TERRESTRE';
               })(),
             esInternacional: Boolean(form.esInternacional),
-            idDependencia: form.idDependencia ?? comisionado?.idDependencia ?? undefined,
+            idDependencia: form.idDependencia ?? comisionado?.idDependencia ?? (idDependenciaActual || undefined),
             diasPernoctados: form.diasPernoctados ?? undefined,
             tarifaDiaPernoctado: form.tarifaDiaPernoctado ?? undefined,
             totalPernoctados: form.totalPernoctados ?? undefined,
@@ -1051,52 +1775,85 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
             factorPernocta: form.factorPernocta ?? undefined,
             desgloseCalculo: form.desgloseCalculo ?? undefined,
             alertasLiquidacion: form.alertasLiquidacion ?? undefined,
-            camposAdicionales: {
-              ...(form.camposAdicionales ?? {}),
-              transporteTerminalAereo:
-                form.camposAdicionales?.transporteTerminalAereo ??
-                (form.itinerario || []).reduce(
-                  (acc, r) => acc + (r.tarifaTerminalAereo || 0),
-                  0,
-                ),
-              transporteTerrestre:
-                form.camposAdicionales?.transporteTerrestre ??
-                Math.max(
-                  0,
-                  (form.montoGastosViaje || 0) -
-                    (form.itinerario || []).reduce(
-                      (acc, r) => acc + (r.tarifaTerminalAereo || 0),
-                      0,
-                    ),
-                ),
-              fechaAutoliquidacion:
-                form.camposAdicionales?.fechaAutoliquidacion ||
-                new Date().toISOString().split('T')[0],
-            },
+            camposAdicionales: (() => {
+              const prevAdic = form.camposAdicionales ?? {};
+              const rawBanco =
+                prevAdic.entidad_bancaria ||
+                prevAdic.entidadBancaria ||
+                prevAdic.banco ||
+                '';
+              const rawCuenta =
+                prevAdic.num_cuenta ||
+                prevAdic.numeroCuenta ||
+                prevAdic.numCuenta ||
+                prevAdic.cuentaBancaria ||
+                '';
+              const rawTipo =
+                prevAdic.tipo_cuenta ||
+                prevAdic.tipoCuenta ||
+                '';
+              return {
+                ...prevAdic,
+                ...(cargoFinal
+                  ? {
+                      cargoEsap: cargoFinal,
+                      cargo: cargoFinal,
+                      cargoInstitucional: cargoFinal,
+                      cargoComisionado: cargoFinal,
+                    }
+                  : {}),
+                ...(rawBanco ? { entidad_bancaria: rawBanco, entidadBancaria: rawBanco, banco: rawBanco } : {}),
+                ...(rawCuenta ? { num_cuenta: rawCuenta, numeroCuenta: rawCuenta, numCuenta: rawCuenta, cuentaBancaria: rawCuenta } : {}),
+                ...(rawTipo ? { tipo_cuenta: rawTipo, tipoCuenta: rawTipo } : {}),
+                obligacion_tributaria:
+                  prevAdic.obligacion_tributaria !== undefined && prevAdic.obligacion_tributaria !== null
+                    ? Boolean(prevAdic.obligacion_tributaria)
+                    : Boolean(comisionado?.esFacturadorElectronico ?? false),
+                transporteTerminalAereo:
+                  prevAdic.transporteTerminalAereo ??
+                  (form.itinerario || []).reduce(
+                    (acc, r) => acc + (r.tarifaTerminalAereo || 0),
+                    0,
+                  ),
+                transporteTerrestre:
+                  prevAdic.transporteTerrestre ??
+                  Math.max(
+                    0,
+                    (form.montoGastosViaje || 0) -
+                      (form.itinerario || []).reduce(
+                        (acc, r) => acc + (r.tarifaTerminalAereo || 0),
+                        0,
+                      ),
+                  ),
+                fechaAutoliquidacion:
+                  prevAdic.fechaAutoliquidacion ||
+                  new Date().toISOString().split('T')[0],
+              };
+            })(),
             itinerario: (form.itinerario || []).map((r) => {
               const {
                 guardada,
                 origenDepartamentoId,
                 destinoDepartamentoId,
+                horaEstimadaLlegada,
                 ...cleanRuta
               } = r;
-              const horaSalida = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
-              const horaLlegada = r.horaEstimadaLlegada || '';
+              const horaViaje = r.horaEstimadaSalida || r.horarioEstimadoMilitar || '';
               return {
                 ...cleanRuta,
                 tarifaTerminalAereo: r.tarifaTerminalAereo,
-                horaEstimadaSalida: horaSalida,
-                horarioEstimadoMilitar: horaSalida || r.horarioEstimadoMilitar,
-                horaEstimadaLlegada: horaLlegada,
+                horaEstimadaSalida: horaViaje,
+                horarioEstimadoMilitar: horaViaje,
               };
             }),
           },
         );
         setSolicitudBorrador({
           ...actualizada,
-          comisionado: solicitudBorrador.comisionado,
+          comisionado: (actualizada as any).comisionado || solicitudBorrador?.comisionado || solicitudAResumir?.comisionado || comisionado,
           documentosSoporte: (actualizada.documentosSoporte ||
-            solicitudBorrador.documentosSoporte ||
+            solicitudBorrador?.documentosSoporte ||
+            solicitudAResumir?.documentosSoporte ||
             []) as DocumentoSoporte[],
         });
       } else {
@@ -1111,21 +1868,29 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setPaso(3);
     } catch (e: any) {
       console.error('Error guardando borrador:', e);
-      const msg = e?.response?.data?.message || e?.message;
-      setErrorValidacion(
-        Array.isArray(msg)
-          ? msg.join(', ')
-          : typeof msg === 'string' && msg.length > 0
-            ? msg
-            : 'No fue posible guardar el borrador. Verifique e intente nuevamente.',
-      );
+      let msg = e?.response?.data?.message || e?.message;
+      if (Array.isArray(msg)) {
+        msg = msg.join(', ');
+      }
+      if (
+        !msg ||
+        typeof msg !== 'string' ||
+        msg.includes('is not defined') ||
+        msg.includes('Cannot read') ||
+        msg.includes('Network Error') ||
+        msg.includes('Failed to fetch')
+      ) {
+        msg = 'No fue posible guardar la solicitud. Por favor verifique que los campos obligatorios del itinerario y cargo estén completos e intente nuevamente.';
+      }
+      setErrorValidacion(msg);
     } finally {
       setEnviando(false);
     }
   };
 
   const subirDocumentoEspecifico = async (codigo: string, archivo: File) => {
-    if (!solicitudBorrador) {
+    const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+    if (!idExistente) {
       setErrorDocumentos('No hay una solicitud activa para cargar documentos.');
       return;
     }
@@ -1138,7 +1903,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setErrorDocumentos(null);
     try {
       const doc = await viaticosService.subirDocumento(
-        solicitudBorrador.id,
+        idExistente,
         codigo,
         archivo,
         tipoMime,
@@ -1206,7 +1971,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const eliminarDocumentoEspecifico = async (doc: DocumentoFormItem) => {
-    if (!solicitudBorrador) {
+    const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+    if (!idExistente) {
       setErrorDocumentos('No hay una solicitud activa para gestionar documentos.');
       return;
     }
@@ -1221,7 +1987,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setEliminandoDoc(true);
     setErrorDocumentos(null);
     try {
-      await viaticosService.eliminarDocumento(solicitudBorrador.id, doc.id);
+      await viaticosService.eliminarDocumento(idExistente, doc.id);
       setForm((prev) => ({
         ...prev,
         documentos: (prev.documentos || []).filter((d) => d.id !== doc.id),
@@ -1232,6 +1998,38 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     } finally {
       setEliminandoDoc(false);
     }
+  };
+
+  const obtenerNombreEnlace = () => {
+    const user = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
+    const resolvedUser = user && typeof (user as any).then !== 'function' ? user : null;
+    const nombre =
+      (resolvedUser as any)?.fullName ||
+      (resolvedUser as any)?.full_name ||
+      [(resolvedUser as any)?.firstName, (resolvedUser as any)?.lastName].filter(Boolean).join(' ') ||
+      [
+        resolvedUser?.primerNombre,
+        resolvedUser?.segundoNombre,
+        resolvedUser?.primerApellido,
+        resolvedUser?.segundoApellido,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim() ||
+      resolvedUser?.person?.full_name ||
+      (resolvedUser?.person as any)?.nom_largo ||
+      [
+        (resolvedUser?.person as any)?.nom_tercero,
+        (resolvedUser?.person as any)?.pri_apellido,
+        (resolvedUser?.person as any)?.seg_apellido,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim() ||
+      resolvedUser?.nombre ||
+      '';
+    if (nombre && !nombre.includes('@')) return nombre.trim();
+    return 'Enlace de Dependencia';
   };
 
   const finalizarSolicitud = async () => {
@@ -1250,7 +2048,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setErrorValidacion('Debe consultar el comisionado antes de radicar.');
       return;
     }
-    if (!solicitudBorrador) {
+    const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+    if (!idExistente) {
       setErrorValidacion('Debe guardar el borrador antes de radicar.');
       return;
     }
@@ -1260,21 +2059,72 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       );
       return;
     }
-    setFinalizando(true);
+
+    // Solicitar OTP para firma digital de elaboración del Enlace de Dependencia
+    setSolicitandoOtpEnlace(true);
     setErrorValidacion(null);
     try {
-      const radicada = await viaticosService.finalizarSolicitud(solicitudBorrador.id);
-      onSolicitudCreada(radicada as unknown as SolicitudComisionResponse);
-      onCerrar();
+      const resp = await viaticosService.solicitarOtpFirma(idExistente, {
+        tipoFirma: 'ENLACE_ELABORO',
+      });
+      setOtpDataEnlace({
+        verificationId: resp.verificationId,
+        emailEnviadoA: resp.emailEnviadoA || resp.email,
+        devCode: resp.devCode,
+      });
+      setModalFirmaEnlaceAbierta(true);
     } catch (e: any) {
-      console.error('Error radicando solicitud:', e);
+      console.error('Error solicitando OTP de elaboración:', e);
       const mensaje =
         e?.response?.data?.message ||
         e?.message ||
-        'No fue posible radicar la solicitud. Verifique e intente nuevamente.';
+        'No fue posible solicitar el código OTP de verificación. Verifique e intente nuevamente.';
       setErrorValidacion(
         Array.isArray(mensaje) ? mensaje.join(' ') : mensaje,
       );
+    } finally {
+      setSolicitandoOtpEnlace(false);
+    }
+  };
+
+  // Manejo de firma digital completada por el Enlace (OTP validado + hash generado)
+  const handleFirmaEnlaceCompleta = async (firma: FirmaDigitalData) => {
+    const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+    if (!idExistente) return false;
+    setFinalizando(true);
+    setErrorValidacion(null);
+    try {
+      const user = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
+      const userDoc =
+        (user as any)?.cedula ||
+        (user as any)?.numeroDocumento ||
+        (user as any)?.num_identificacion ||
+        (user as any)?.person?.num_identificacion ||
+        (user as any)?.person?.numeroDocumento ||
+        undefined;
+
+      const conFirmas = await viaticosService.solicitarFirmasAprobacion(idExistente, {
+        otp: firma.codigoOtp,
+        verificationId: otpDataEnlace?.verificationId,
+        certificadoId: firma.certificado_id,
+        hashSha256: firma.hash,
+        nombreFirmante: firma.firmante,
+        cargoFirmante: firma.cargo,
+        documentoIdentidad: userDoc ? String(userDoc).trim() : undefined,
+      });
+      onSolicitudCreada(conFirmas);
+      onCerrar();
+      return true;
+    } catch (e: any) {
+      console.error('Error remitiendo con firma digital de elaboración:', e);
+      const mensaje =
+        e?.response?.data?.message ||
+        e?.message ||
+        'No fue posible registrar la firma digital de elaboración de la solicitud.';
+      setErrorValidacion(
+        Array.isArray(mensaje) ? mensaje.join(' ') : mensaje,
+      );
+      throw e;
     } finally {
       setFinalizando(false);
     }
@@ -1335,6 +2185,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       (comisionado as any)?.correo ||
       'No registrado';
     const cargo =
+      cargoActualSeleccionado ||
+      form.camposAdicionales?.cargoEsap ||
+      form.camposAdicionales?.cargo ||
+      form.camposAdicionales?.cargoInstitucional ||
       (comisionado as any)?.cargo ||
       (comisionado as any)?.cargoComisionado ||
       (form as any)?.cargoComisionado ||
@@ -1349,11 +2203,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     const depMatch =
       dependencias.find(
         (d) =>
+          (idDependenciaActual != null && Number(d.idDependencia) === Number(idDependenciaActual)) ||
           (dependenciaId &&
             (d.codDependencia === dependenciaId ||
               String(d.idDependencia) === String(dependenciaId))) ||
           (comisionado?.idDependencia &&
-            String(d.idDependencia) === String(comisionado.idDependencia))
+            Number(d.idDependencia) === Number(comisionado.idDependencia))
       ) ||
       (usuarioActual?.dependencia
         ? {
@@ -1383,6 +2238,21 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     const depUbicacion = (depMatch as any)?.dirDependencia || null;
     const depEmail = (depMatch as any)?.dirEmail || null;
 
+    const fechaInicioContrato = comisionado?.fechaInicioContrato
+      ? String(comisionado.fechaInicioContrato).split('T')[0]
+      : null;
+    const fechaFinContrato = comisionado?.fechaFinContrato
+      ? String(comisionado.fechaFinContrato).split('T')[0]
+      : null;
+    const salarioBasico =
+      form.salarioBasico != null && Number(form.salarioBasico) > 0
+        ? Number(form.salarioBasico)
+        : comisionado?.salarioBasico != null
+        ? Number(comisionado.salarioBasico)
+        : (comisionado?.cargos?.[0]?.salario != null && Number(comisionado.cargos[0].salario) > 0)
+        ? Number(comisionado.cargos[0].salario)
+        : null;
+
     return {
       nombre,
       cedula,
@@ -1397,8 +2267,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       depCodigo,
       depUbicacion,
       depEmail,
+      fechaInicioContrato,
+      fechaFinContrato,
+      salarioBasico,
     };
-  }, [comisionado, form, dependencias, dependenciaId, usuarioActual]);
+  }, [comisionado, form, dependencias, dependenciaId, idDependenciaActual, cargoActualSeleccionado, usuarioActual]);
 
   const saldoDependenciaComisionado = useMemo(() => {
     if (!saldosPresupuesto || saldosPresupuesto.length === 0) return null;
@@ -1419,9 +2292,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
   const esModoConsolidacion = Boolean(
     solicitudAResumir &&
-      (ESTADOS_CONSOLIDABLES as readonly string[]).includes(
-        solicitudAResumir.estadoSolicitud,
-      ),
+      solicitudAResumir.estadoSolicitud === 'RADICADA',
   );
 
   if (esModoConsolidacion && solicitudAResumir) {
@@ -1447,8 +2318,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
               <Plane className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Nueva Solicitud de Comisión de Servicios</h3>
-                <p className="text-xs sm:text-sm text-slate-500 font-medium">Paso {paso} de {PASOS.length}
+              <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                {solicitudAResumir?.estadoSolicitud === 'DEVUELTA'
+                  ? `Subsanar Solicitud de Comisión (${solicitudAResumir.consecutivoUnico || 'DEVUELTA'})`
+                  : 'Nueva Solicitud de Comisión de Servicios'}
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 font-medium">Paso {paso} de {PASOS.length}
                 {comisionado && (
                   <span className="ml-2 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
                     {comisionado.tipoComisionado}
@@ -1466,6 +2341,28 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
             ✕
           </button>
         </div>
+
+        {solicitudAResumir?.motivoDevolucion && (
+          <div className="mb-5 p-4 bg-amber-50 border border-amber-300 rounded-2xl flex items-start gap-3 text-amber-900 shadow-xs">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
+                  Solicitud Devuelta para Subsanación
+                </span>
+                <span className="text-[11px] bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                  {solicitudAResumir.consecutivoUnico || solicitudAResumir.id}
+                </span>
+              </div>
+              <p className="text-xs text-amber-900 leading-relaxed font-semibold">
+                <strong>Motivo / Observaciones del revisor:</strong> {solicitudAResumir.motivoDevolucion}
+              </p>
+              <p className="text-[11px] text-amber-700">
+                Ajuste los datos u observaciones señaladas en cada paso. Al finalizar en el Paso 4, la solicitud se remitirá nuevamente al flujo de firmas de aprobación para que el Jefe de Dependencia y el Gerente de Proyecto la avalen.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 mb-5">
           {PASOS.map((nombre, idx) => {
@@ -1504,6 +2401,88 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         <form onSubmit={onSubmitFormulario} className="space-y-4">
           {paso === 1 && (
             <div className="space-y-4">
+              {solicitudesPendientes023.length > 0 && (
+                <div
+                  className="rounded-2xl border-2 border-amber-300 bg-amber-50/95 dark:bg-amber-950/30 p-4 sm:p-5 shadow-xs space-y-3 transition-all animate-fadeIn"
+                  role="alert"
+                  aria-live="polite"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                      <AlertTriangle className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-amber-900 dark:text-amber-200 text-sm sm:text-base">
+                          Atención: El comisionado tiene solicitudes de Formato 023 pendientes
+                        </h4>
+                        <span className="px-2.5 py-0.5 text-xs font-black rounded-full bg-amber-200 dark:bg-amber-900/80 text-amber-900 dark:text-amber-100 border border-amber-400">
+                          {solicitudesPendientes023.length} {solicitudesPendientes023.length === 1 ? 'solicitud en trámite' : 'solicitudes en trámite'}
+                        </span>
+                      </div>
+                      <p className="text-xs sm:text-sm text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
+                        Este comisionado ya cuenta con solicitudes de comisión (Formato GF-FO-023) registradas y en trámite. Por favor verifique que las nuevas fechas, trayectos y compromisos no generen solapamiento de fechas, duplicidad o incompatibilidad con las solicitudes listadas a continuación:
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 mt-2 pt-2 border-t border-amber-200/90 dark:border-amber-800/60">
+                    <p className="text-xs font-bold text-amber-950 dark:text-amber-200 uppercase tracking-wider flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-amber-700" />
+                      Solicitudes de Formato 023 pendientes / en trámite:
+                    </p>
+                    <div className="grid grid-cols-1 gap-2.5 max-h-64 overflow-y-auto pr-1">
+                      {solicitudesPendientes023.map((sol) => {
+                        const cfgEstado = getConfigEstado(sol.estadoSolicitud);
+                        const consecutivo = sol.codigoSolicitud || sol.consecutivoUnico || `SOL-${sol.id.slice(0, 8)}`;
+                        const total = Number(sol.totalGeneral ?? ((sol.montoViaticos || 0) + (sol.montoGastosViaje || 0)));
+                        return (
+                          <div
+                            key={sol.id}
+                            className="bg-white/95 dark:bg-slate-900/90 rounded-xl p-3.5 border border-amber-200 dark:border-amber-800/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:border-amber-300 transition-colors"
+                          >
+                            <div className="space-y-1.5 min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-extrabold text-[#003DA5] dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 text-xs">
+                                  {consecutivo}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-full font-bold text-[11px] ${cfgEstado.bg} ${cfgEstado.text}`}>
+                                  {cfgEstado.label}
+                                </span>
+                                <span className="text-slate-500 font-medium text-[11px]">
+                                  Formato GF-FO-023
+                                </span>
+                              </div>
+                              <p className="text-slate-700 dark:text-slate-200 font-semibold line-clamp-2" title={sol.objetoComision}>
+                                {sol.objetoComision || 'Sin objeto registrado'}
+                              </p>
+                              <div className="flex items-center gap-4 text-slate-500 dark:text-slate-400 text-[11px] flex-wrap">
+                                <span className="inline-flex items-center gap-1 font-medium">
+                                  <MapPin className="w-3 h-3 text-slate-400" />
+                                  Destino: {sol.destinoCiudad || 'N/A'}{sol.destinoDepartamento ? `, ${sol.destinoDepartamento}` : ''}
+                                </span>
+                                <span className="inline-flex items-center gap-1 font-medium">
+                                  <Calendar className="w-3 h-3 text-slate-400" />
+                                  Periodo: {sol.fechaInicio || 'N/A'} al {sol.fechaFin || 'N/A'}
+                                </span>
+                              </div>
+                            </div>
+                            {total > 0 && (
+                              <div className="sm:text-right shrink-0 bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-200/60">
+                                <span className="text-[10px] text-slate-500 font-medium block">Total Estimado</span>
+                                <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                                  {formatearMoneda(total)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
                 1. Datos del Funcionario Comisionado
               </h4>
@@ -1519,7 +2498,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     required={esCampoObligatorio('documentoComisionado')}
                     placeholder="Ej. 1019283746"
                     value={form.documentoComisionado}
-                    onChange={(e) => actualizar('documentoComisionado', soloNumeros(e.target.value))}
+                    onChange={(e) => {
+                      actualizar('documentoComisionado', soloNumeros(e.target.value));
+                      if (solicitudesPendientes023.length > 0) {
+                        setSolicitudesPendientes023([]);
+                      }
+                    }}
                     className={inputCls}
                   />
                   <button
@@ -1576,18 +2560,213 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Correo Electrónico</span>
                       <span className="font-bold text-slate-800 truncate block" title={infoComisionadoCompleta.correo}>{infoComisionadoCompleta.correo}</span>
                     </div>
-                    <div className="sm:col-span-2 lg:col-span-3 bg-white/90 p-2.5 rounded-xl border border-emerald-100 flex items-center justify-between flex-wrap gap-2">
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Dependencia Asignada</span>
-                        <span className="font-black text-slate-900">{infoComisionadoCompleta.depNombre}</span>
+                    {infoComisionadoCompleta.salarioBasico != null && infoComisionadoCompleta.salarioBasico > 0 && (
+                      <div className="bg-white/90 p-2.5 rounded-xl border border-emerald-100">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Salario Básico</span>
+                        <span className="font-bold text-slate-800">{formatearMoneda(infoComisionadoCompleta.salarioBasico)}</span>
                       </div>
-                      {infoComisionadoCompleta.depCodigo && (
-                        <span className="text-xs font-mono font-bold px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded">
-                          Cód. {infoComisionadoCompleta.depCodigo}
+                    )}
+                    {(infoComisionadoCompleta.fechaInicioContrato || infoComisionadoCompleta.fechaFinContrato) && (
+                      <div className="bg-white/90 p-2.5 rounded-xl border border-emerald-100">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Vigencia Contrato / Vinculación</span>
+                        <span className="font-bold text-slate-800">
+                          {infoComisionadoCompleta.fechaInicioContrato || 'Inicio'} al {infoComisionadoCompleta.fechaFinContrato || 'Indefinido / Vigente'}
                         </span>
-                      )}
+                      </div>
+                    )}
+                    <div className="bg-white/90 p-2.5 rounded-xl border border-emerald-100">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Régimen DIAN / Facturación</span>
+                      <span className="font-bold text-slate-800">
+                        {infoComisionadoCompleta.esFacturador ? 'Facturador Electrónico' : 'Régimen Ordinario / RUT'}
+                      </span>
+                    </div>
+                    {/* Asignación Organizacional: Información del Comisionado (Paso 1 - Solo Lectura / Informativo) */}
+                    <div className="sm:col-span-2 lg:col-span-3 bg-white p-4 rounded-xl border border-emerald-200/90 shadow-2xs space-y-3 mt-1">
+                      <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-emerald-100">
+                        <div className="flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-[#003DA5]" />
+                          <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                            Asignación Organizacional (Dependencia y Cargo)
+                          </span>
+                        </div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                          Informativo · Paso 1
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                        {/* Dependencia */}
+                        <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Dependencia Institucional
+                          </span>
+                          {infoComisionadoCompleta.depNombre ? (
+                            <span className="font-extrabold text-slate-800 block mt-0.5">
+                              {infoComisionadoCompleta.depNombre}
+                              {infoComisionadoCompleta.depCodigo && (
+                                <span className="ml-1 text-[11px] font-mono text-[#003DA5] font-bold">
+                                  (Cód. {infoComisionadoCompleta.depCodigo})
+                                </span>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Falta información de dependencia (se asignará en Paso 2)
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Cargo principal */}
+                        <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Cargo Institucional Registrado
+                          </span>
+                          {infoComisionadoCompleta.cargo ? (
+                            <span className="font-extrabold text-slate-800 block mt-0.5">
+                              {infoComisionadoCompleta.cargo}
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Falta información de cargo (se seleccionará en Paso 2)
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Salario */}
+                        <div className="bg-slate-50/80 p-3 rounded-xl border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            Salario Básico Registrado
+                          </span>
+                          {infoComisionadoCompleta.salarioBasico != null && infoComisionadoCompleta.salarioBasico > 0 ? (
+                            <span className="font-extrabold text-slate-800 block mt-0.5">
+                              {formatearMoneda(infoComisionadoCompleta.salarioBasico)}
+                            </span>
+                          ) : (
+                            <span className="text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              Falta salario (se completará en Paso 2)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Mensaje de completado en Paso 2 */}
+                      <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2.5">
+                        <AlertCircle className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
+                        <div className="space-y-0.5">
+                          <p className="font-bold">
+                            Selección, Cambio y Asignación de Cargo en el Paso 2:
+                          </p>
+                          <p className="text-[11px] text-blue-800 leading-relaxed">
+                            {infoComisionadoCompleta.cargo
+                              ? 'Este funcionario ya cuenta con cargo registrado. En el Paso 2 (Objeto y Destino) podrá confirmar con cuál cargo se realizará esta comisión (o cambiarlo si tiene múltiples cargos) y verificar su salario relacional.'
+                              : 'Este funcionario no tiene cargo registrado. En el Paso 2 (Objeto y Destino) podrá seleccionar la dependencia, elegir el cargo institucional correspondiente y fijar su salario relacional para la liquidación de viáticos.'}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* HISTORIAL Y CONSULTA DE CUENTAS BANCARIAS DEL COMISIONADO (PASO 1 INFORMATIVO) */}
+              {/* ========================================================================= */}
+              {comisionado && !habeasPendiente && (
+                <div className="border border-blue-200 bg-white rounded-2xl p-4 sm:p-5 shadow-xs space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-blue-100 text-[#003DA5] flex items-center justify-center font-bold">
+                        <CreditCard className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h5 className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-2">
+                          Cuentas Bancarias Registradas
+                          {comisionado.cuentasBancarias && comisionado.cuentasBancarias.length > 0 && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-[#003DA5] border border-blue-200 font-extrabold">
+                              {comisionado.cuentasBancarias.length} guardada(s)
+                            </span>
+                          )}
+                        </h5>
+                        <p className="text-[11px] text-slate-500">
+                          Información de cuentas bancarias asociadas al funcionario (Modo solo consulta e informativo).
+                        </p>
+                      </div>
+                    </div>
+
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                      Informativo · Paso 1
+                    </span>
+                  </div>
+
+                  {comisionado.cuentasBancarias && comisionado.cuentasBancarias.length > 0 ? (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {comisionado.cuentasBancarias.map((cta, idx) => (
+                          <div
+                            key={cta.id || `cta-info-${idx}`}
+                            className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 space-y-1.5"
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-extrabold text-slate-900 text-xs truncate">
+                                {cta.banco}
+                              </span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 uppercase">
+                                  {cta.tipoCuenta || 'AHORROS'}
+                                </span>
+                                {cta.esPrincipal && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                                    Principal
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-[11px] text-slate-600 font-mono">
+                              No. <span className="font-bold text-slate-800">{cta.numeroCuenta}</span>
+                            </div>
+                            <div className="pt-1 border-t border-slate-200/60 text-[10px]">
+                              {cta.urlCertificadoBancario ? (
+                                <a
+                                  href={cta.urlCertificadoBancario}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 inline-flex items-center gap-1"
+                                >
+                                  <BadgeCheck className="w-3 h-3 text-emerald-600" /> Certificado registrado
+                                </a>
+                              ) : (
+                                <span className="text-slate-400 italic">
+                                  Sin certificación adjunta
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-[#003DA5] shrink-0" />
+                        <span className="text-[11px]">
+                          En el <strong>Paso 2 (Objeto y Destino)</strong> puede verificar o modificar los datos de la cuenta en los campos adicionales paramétricos, y en el <strong>Paso 3 (Documentos)</strong> gestionar sus soportes.
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    /* Si no hay cuenta indica que no se ha registrado */
+                    <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold text-amber-950">
+                          No se ha registrado cuenta bancaria para este comisionado
+                        </p>
+                        <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+                          El comisionado no cuenta con cuentas bancarias registradas en su historial. En el <strong>Paso 2 (Objeto y Destino)</strong> podrá ingresar los datos de la cuenta en los campos adicionales paramétricos, y en el <strong>Paso 3 (Documentos)</strong> adjuntar la certificación bancaria correspondiente.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1796,12 +2975,312 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 </div>
               </div>
 
+              {/* ========== ASIGNACIÓN ORGANIZACIONAL: CARGO Y SALARIO DE LA COMISIÓN (FORMATO 023 - PASO 2) ========== */}
+              <div className="rounded-2xl border border-emerald-200 bg-white p-4 sm:p-5 space-y-3.5 shadow-2xs">
+                <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-emerald-100">
+                  <div className="flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-[#003DA5]" />
+                    <div>
+                      <h5 className="text-xs sm:text-sm font-black text-slate-800 uppercase tracking-wider">
+                        Asignación Organizacional (Dependencia y Cargo para la Comisión)
+                      </h5>
+                      <p className="text-[11px] text-slate-500">
+                        Seleccione o confirme el cargo y salario relacional con el que se realizará la comisión (Formato GF-FO-023) para trazabilidad y KPIs.
+                      </p>
+                    </div>
+                  </div>
+                  {infoComisionadoCompleta.depCodigo && (
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded">
+                      Cód. {infoComisionadoCompleta.depCodigo}
+                    </span>
+                  )}
+                </div>
+
+                {/* SI EL COMISIONADO TIENE CARGO REGISTRADO O SELECCIONADO */}
+                {((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo) || Boolean(cargoActualSeleccionado)) && (
+                  <div className="bg-gradient-to-r from-blue-50/70 via-slate-50/50 to-emerald-50/70 p-4 rounded-xl border border-blue-200 shadow-2xs space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-start gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-xl bg-blue-100 text-[#003DA5] flex items-center justify-center shrink-0 mt-0.5">
+                          <Briefcase className="w-5 h-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 bg-blue-100 text-[#003DA5] rounded-full border border-blue-200">
+                              Cargo Seleccionado para la Comisión
+                            </span>
+                            {infoComisionadoCompleta.depNombre && (
+                              <span className="text-[11px] text-slate-500 truncate">
+                                • {infoComisionadoCompleta.depNombre}
+                              </span>
+                            )}
+                          </div>
+                          <h4 className="text-sm sm:text-base font-extrabold text-slate-900 mt-0.5 truncate">
+                            {cargoActualSeleccionado || comisionado?.cargo || comisionado?.cargos?.[0]?.cargo || 'Cargo Institucional'}
+                          </h4>
+                          <p className="text-[11px] text-slate-500">
+                            Este cargo quedará registrado en la solicitud para trazabilidad y KPIs analíticos de gasto por cargo.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 sm:self-center shrink-0">
+                        <div className="text-right px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                          <span className="text-[10px] uppercase font-bold text-emerald-800 block">Salario Relacional</span>
+                          <span className="text-xs sm:text-sm font-extrabold text-emerald-900">
+                            ${(form.salarioBasico || 0).toLocaleString('es-CO')} COP
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          id="btn-cambiar-cargo-comision"
+                          onClick={() => setModoCambiarCargo((prev) => !prev)}
+                          className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 shadow-2xs ${
+                            modoCambiarCargo
+                              ? 'bg-slate-200 text-slate-800 border-slate-300'
+                              : 'bg-[#003DA5] text-white hover:bg-[#002D7A] border-[#003DA5]'
+                          }`}
+                        >
+                          <ArrowLeftRight className="w-3.5 h-3.5" />
+                          {modoCambiarCargo ? 'Cerrar selector' : 'Cambiar cargo'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Chips de otros cargos que ya tiene el comisionado guardados */}
+                    {comisionado?.cargos && comisionado.cargos.length > 1 && (
+                      <div className="pt-2 border-t border-slate-200/80 flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                          Cargos previos: Cambiar a otro cargo registrado:
+                        </span>
+                        {comisionado.cargos.map((c, i) => {
+                          const esActivo = cargoActualSeleccionado.toLowerCase() === c.cargo.trim().toLowerCase();
+                          return (
+                            <button
+                              key={c.id || i}
+                              type="button"
+                              onClick={() => {
+                                cambiarCargo(c.cargo);
+                                setModoCambiarCargo(false);
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+                                esActivo
+                                  ? 'bg-blue-600 text-white border-blue-600 font-bold shadow-2xs'
+                                  : 'bg-white hover:bg-blue-50 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              {c.cargo} {c.salario > 0 ? `(${formatearMoneda(c.salario)})` : ''}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* SELECTOR INTERACTIVO: Para cambiar cargo o para completar cuando falta info */}
+                <div className={
+                  modoCambiarCargo || (!((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo)))
+                    ? 'space-y-4 pt-2'
+                    : 'hidden'
+                }>
+                  <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Plus className="w-3.5 h-3.5 text-blue-600" />
+                      {!((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo))
+                        ? 'Completar información requerida de cargo y salario'
+                        : 'Seleccionar o registrar nuevo cargo para la comisión'}
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Cargos parametrizados según dependencia institucional
+                    </span>
+                  </div>
+
+                  {!((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo)) && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>
+                        El funcionario no tiene cargo asignado. Por favor seleccione la dependencia, elija o ingrese el cargo y defina su salario relacional para la liquidación.
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                        Dependencia Asignada <span className="text-red-500">*</span>
+                      </label>
+                      <SearchableSelect
+                        id="dependencia-asignada-select"
+                        options={dependencias.map((d) => ({
+                          value: String(d.idDependencia),
+                          label: d.nomDependencia,
+                          sublabel: d.codDependencia ? `Cód. ${d.codDependencia}` : undefined,
+                        }))}
+                        value={idDependenciaActual ? String(idDependenciaActual) : ''}
+                        onChange={(val) => cambiarDependencia(val)}
+                        placeholder="Seleccionar dependencia..."
+                        disabled={!puedeElegirDependencia() && Boolean(comisionado?.idDependencia)}
+                        emptyText="No hay dependencias registradas"
+                      />
+                      {infoComisionadoCompleta.depNombre && (
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          {infoComisionadoCompleta.depNombre}
+                        </p>
+                      )}
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Los cargos disponibles se actualizarán según la dependencia seleccionada.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1">
+                        Cargo Institucional <span className="text-red-500">*</span>
+                      </label>
+                      <SearchableSelect
+                        id="cargo-institucional-select"
+                        options={(() => {
+                          const listaOpciones: { value: string; label: string; sublabel?: string }[] = [];
+                          const agregados = new Set<string>();
+
+                          // 1. Cargos disponibles de la dependencia
+                          cargosDisponibles.forEach((c) => {
+                            const nom = c.nomCargo?.trim();
+                            if (nom && !agregados.has(nom.toLowerCase())) {
+                              agregados.add(nom.toLowerCase());
+                              listaOpciones.push({
+                                value: nom,
+                                label: nom,
+                                sublabel: `${c.codCargo ? `Cód. ${c.codCargo}` : ''}${
+                                  c.nivelJerarquico ? ` • ${c.nivelJerarquico}` : ''
+                                }`.trim() || undefined,
+                              });
+                            }
+                          });
+
+                          // 2. Cargos registrados previamente en el comisionado
+                          (comisionado?.cargos || []).forEach((c) => {
+                            const nom = c.cargo?.trim();
+                            if (nom && !agregados.has(nom.toLowerCase())) {
+                              agregados.add(nom.toLowerCase());
+                              listaOpciones.push({
+                                value: nom,
+                                label: nom,
+                                sublabel: `Registrado en perfil • Salario: ${formatearMoneda(c.salario)}`,
+                              });
+                            }
+                          });
+
+                          // 3. Cargo actual del comisionado si no está
+                          if (comisionado?.cargo && !agregados.has(comisionado.cargo.trim().toLowerCase())) {
+                            const nom = comisionado.cargo.trim();
+                            listaOpciones.push({
+                              value: nom,
+                              label: nom,
+                              sublabel: 'Cargo actual en ESAP',
+                            });
+                          }
+
+                          return listaOpciones;
+                        })()}
+                        value={cargoActualSeleccionado}
+                        onChange={(val) => cambiarCargo(val)}
+                        placeholder={
+                          !idDependenciaActual
+                            ? 'Primero seleccione una dependencia...'
+                            : cargandoCargos
+                            ? 'Cargando cargos...'
+                            : 'Buscar o seleccionar cargo...'
+                        }
+                        disabled={!idDependenciaActual || cargandoCargos}
+                        loading={cargandoCargos}
+                        allowClear
+                        emptyText={
+                          !idDependenciaActual
+                            ? 'Primero seleccione una dependencia'
+                            : 'No hay cargos asignados a esta dependencia en Configuración General'
+                        }
+                      />
+
+                      {idDependenciaActual && cargosDisponibles.length > 0 ? (
+                        <p className="text-[11px] text-emerald-700 font-medium mt-1">
+                          {cargosDisponibles.length} cargo(s) disponible(s) para esta dependencia.
+                        </p>
+                      ) : idDependenciaActual && !cargandoCargos ? (
+                        <p className="text-[11px] text-amber-700 font-medium mt-1">
+                          Sin cargos vinculados a esta dependencia en Configuración General.
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* Salario básico relacional al cargo */}
+                  <div className="pt-3 border-t border-emerald-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-50/40 p-3 rounded-xl">
+                    <div className="min-w-0">
+                      <label htmlFor="salario-cargo-relacional" className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Coins className="w-4 h-4 text-emerald-700" />
+                        Salario Básico Relacional del Cargo <span className="text-red-500">*</span>
+                      </label>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Asignación salarial vinculada directamente al cargo seleccionado para el cálculo y liquidación de viáticos.
+                      </p>
+                    </div>
+                    <div className="w-full sm:w-56 shrink-0">
+                      <div className="relative rounded-xl shadow-2xs">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 font-bold text-xs">$</span>
+                        <input
+                          id="salario-cargo-relacional"
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="0"
+                          value={form.salarioBasico ? form.salarioBasico.toLocaleString('es-CO') : ''}
+                          onChange={(e) => {
+                            const num = Number(e.target.value.replace(/\D/g, '')) || 0;
+                            setForm((prev) => ({
+                              ...prev,
+                              salarioBasico: num,
+                              cargoSeleccionado: prev.cargoSeleccionado
+                                ? { ...prev.cargoSeleccionado, salario: num }
+                                : cargoActualSeleccionado
+                                ? { cargo: cargoActualSeleccionado, salario: num }
+                                : undefined,
+                            }));
+                            setAsignacionesBasicas(num > 0 ? [num] : []);
+                          }}
+                          className="block w-full pl-8 pr-3 py-2 text-sm font-bold text-slate-900 bg-white border border-emerald-200 rounded-xl focus:ring-2 focus:ring-[#003DA5] focus:border-transparent transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Botón de confirmar cargo y mensaje informativo */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                    <p className="text-[11px] text-slate-500 italic">
+                      ✓ Al fijar este cargo, se vinculará a la solicitud GF-FO-023 y se agregará al perfil del comisionado.
+                    </p>
+                    {((comisionado?.cargos && comisionado.cargos.length > 0) || Boolean(comisionado?.cargo)) && (
+                      <button
+                        type="button"
+                        id="btn-fijar-cargo-comision"
+                        onClick={() => setModoCambiarCargo(false)}
+                        className="px-3 py-1.5 bg-[#003DA5] text-white rounded-xl text-xs font-bold hover:bg-[#002D7A] transition-all flex items-center justify-center gap-1.5 self-end shrink-0"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Fijar este cargo para la comisión
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+
               {/* ========== BLOQUE 1: DATOS REQUERIDOS DE LA COMISIÓN Y SALARIO ========== */}
               <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-4 shadow-2xs">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
                   <FileText className="w-4 h-4 text-[#003DA5]" />
                   <h5 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    Datos Requeridos de la Comisión y Salario
+                    Datos Requeridos de la Comisión
                   </h5>
                 </div>
 
@@ -1894,80 +3373,6 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   )}
                 </div>
 
-                {/* Asignaciones básicas y salario comisionado */}
-                {comisionado?.tipoComisionado && !esCampoOculto('montoViaticos') && (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Wallet className="w-4 h-4 text-slate-500" />
-                      <p className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                        Asignaciones Básicas Mensuales (Salario)
-                      </p>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mb-3">
-                      Ingrese el salario básico del comisionado. Para doble rol, agregue ambos salarios (se usará el mayor para la autoliquidación).
-                    </p>
-
-                    <div className="space-y-2">
-                      {(asignacionesBasicas.length === 0 ? [0] : asignacionesBasicas).map((valor, idx) => (
-                        <div key={idx} className="w-full sm:max-w-xs">
-                          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                            {asignacionesBasicas.length > 1
-                              ? idx === 0
-                                ? 'Salario básico mensual'
-                                : `Salario ${idx + 1} (doble rol)`
-                              : 'Salario básico mensual'}
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              placeholder="0"
-                              value={valor ? formatearMoneda(valor) : ''}
-                              onChange={(e) => {
-                                const val = Number(soloNumeros(e.target.value)) || 0;
-                                actualizarAsignacionBasica(idx, val);
-                              }}
-                              className={`${inputCls} pl-7 pr-8 text-right font-bold`}
-                            />
-                            {asignacionesBasicas.length > 1 && (
-                              <button
-                                type="button"
-                                onClick={() => eliminarAsignacionBasica(idx)}
-                                className="absolute right-2 top-2 text-slate-400 hover:text-red-500"
-                                title="Eliminar salario"
-                                aria-label="Eliminar salario"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-
-                      <div className="flex items-center gap-2 pt-1 flex-wrap">
-                        <button
-                          type="button"
-                          onClick={agregarAsignacionBasica}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 rounded-lg text-[11px] font-bold transition-colors"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          Agregar salario (doble rol)
-                        </button>
-
-                        {obtenerAsignacionesBasicasValidas().length > 1 && (
-                          <div className="flex items-center gap-1.5 text-[11px] text-slate-600 bg-white rounded-lg px-2.5 py-1.5 border border-slate-200">
-                            <Calculator className="w-3.5 h-3.5 text-slate-400" />
-                            <span>
-                              Mayor salario: <strong>{formatearMoneda(Math.max(...obtenerAsignacionesBasicasValidas()))}</strong>
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {/* Categoría investigador y excepción regional si aplica */}
                 {comisionado?.tipoComisionado === 'INVESTIGADOR' && (
                   <div>
@@ -1994,7 +3399,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     .filter((c) => c.activo && !camposEstandar.has(c.clave) && !esCampoOculto(c.clave))
                     .sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
 
-                  if (camposAdicionalesConfigurados.length === 0) return null;
+                  const tieneCuentasMultiples = Boolean(comisionado?.cuentasBancarias && comisionado.cuentasBancarias.length > 1);
+
+                  if (camposAdicionalesConfigurados.length === 0 && !tieneCuentasMultiples) return null;
 
                   return (
                     <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-4">
@@ -2005,10 +3412,102 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         </p>
                       </div>
 
+                      {/* Selector rápido para comisionados con múltiples cuentas registradas */}
+                      {comisionado?.cuentasBancarias && comisionado.cuentasBancarias.length > 1 && (
+                        <div className="p-3 rounded-xl bg-blue-50/80 border border-blue-200 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="w-4 h-4 text-[#003DA5] shrink-0" />
+                            <span className="text-xs font-bold text-slate-800">
+                              Cuentas registradas del comisionado:
+                            </span>
+                            <span className="text-[10px] text-slate-500">
+                              (Haga clic para autocompletar los campos adicionales bancarios)
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {comisionado.cuentasBancarias.map((cta, idx) => {
+                              const idActual = cta.id || `cta-${idx}`;
+                              const esSeleccionada = cuentaBancariaSeleccionadaId === idActual;
+                              return (
+                                <button
+                                  key={idActual}
+                                  type="button"
+                                  onClick={() => seleccionarCuentaBancaria(cta)}
+                                  className={`text-xs font-semibold px-2.5 py-1.5 rounded-lg border transition-all inline-flex items-center gap-1.5 cursor-pointer ${
+                                    esSeleccionada
+                                      ? 'bg-[#003DA5] text-white border-[#003DA5] shadow-xs'
+                                      : 'bg-white text-slate-700 border-slate-300 hover:border-[#003DA5] hover:text-[#003DA5]'
+                                  }`}
+                                >
+                                  <Landmark className="w-3.5 h-3.5" />
+                                  <span>{cta.banco} ({cta.tipoCuenta || 'AHORROS'} - {cta.numeroCuenta})</span>
+                                  {cta.esPrincipal && (
+                                    <span className={`text-[9px] font-bold px-1 rounded ${esSeleccionada ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+                                      Principal
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {camposAdicionalesConfigurados.map((campo) => {
                           const valorActual = form.camposAdicionales?.[campo.clave] ?? '';
                           const obligatorio = esCampoObligatorio(campo.clave);
+
+                          const esCampoCargo =
+                            campo.clave === 'cargoEsap' ||
+                            campo.clave === 'cargo' ||
+                            campo.clave === 'cargoInstitucional' ||
+                            campo.clave === 'cargoComisionado';
+
+                          if (esCampoCargo) {
+                            return (
+                              <div key={campo.clave}>
+                                <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
+                                  {renderLabel(campo.clave, campo.etiqueta)}
+                                </label>
+                                <SearchableSelect
+                                  id={`campo_${campo.clave}`}
+                                  options={cargosDisponibles.map((c) => ({
+                                    value: c.nomCargo,
+                                    label: c.nomCargo,
+                                    sublabel: `${c.codCargo ? `Cód. ${c.codCargo}` : ''}${
+                                      c.nivelJerarquico ? ` • ${c.nivelJerarquico}` : ''
+                                    }`.trim() || undefined,
+                                  }))}
+                                  value={String(valorActual || cargoActualSeleccionado || '')}
+                                  onChange={(v) => {
+                                    actualizarCampoAdicional(campo.clave, v);
+                                    cambiarCargo(v);
+                                  }}
+                                  placeholder={
+                                    !idDependenciaActual
+                                      ? 'Primero seleccione una dependencia en Paso 1...'
+                                      : cargandoCargos
+                                      ? 'Cargando cargos de la dependencia...'
+                                      : 'Buscar o seleccionar cargo...'
+                                  }
+                                  disabled={!idDependenciaActual || cargandoCargos}
+                                  loading={cargandoCargos}
+                                  allowClear
+                                  emptyText={
+                                    !idDependenciaActual
+                                      ? 'Primero seleccione una dependencia en Paso 1'
+                                      : 'No hay cargos asignados a esta dependencia en Configuración General'
+                                  }
+                                />
+                                {idDependenciaActual && cargosDisponibles.length > 0 && (
+                                  <p className="text-[11px] text-emerald-700 font-medium mt-1">
+                                    {cargosDisponibles.length} cargo(s) asignado(s) a la dependencia.
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          }
 
                           if (campo.tipoCampo === 'TEXTAREA') {
                             return (
@@ -2029,14 +3528,18 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             );
                           }
 
-                          if (campo.tipoCampo === 'CHECKBOX') {
+                          if ((campo.tipoCampo as string) === 'CHECKBOX' || (campo.tipoCampo as string) === 'BOOLEAN') {
+                            const estaCheckeado =
+                              valorActual !== '' && valorActual !== null && valorActual !== undefined
+                                ? Boolean(valorActual)
+                                : false;
                             return (
                               <div key={campo.clave} className="col-span-1 sm:col-span-2 flex items-center pt-2">
                                 <label className="flex items-center gap-2 text-xs text-slate-700 font-semibold cursor-pointer">
                                   <input
                                     type="checkbox"
                                     id={`campo_${campo.clave}`}
-                                    checked={Boolean(valorActual)}
+                                    checked={estaCheckeado}
                                     onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.checked)}
                                     className="w-4 h-4 rounded border-slate-300 text-[#003DA5] focus:ring-[#003DA5]"
                                   />
@@ -2046,7 +3549,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             );
                           }
 
-                          if (campo.tipoCampo === 'SELECT') {
+                          if (campo.tipoCampo?.toUpperCase() === 'SELECT') {
+                            const opcionesSelect = (campo.opciones || [])
+                              .map((o: any) => {
+                                if (typeof o === 'string') return { value: o, label: o };
+                                if (o && typeof o === 'object' && !Array.isArray(o)) {
+                                  const val = o.value ?? o.valor ?? o.id ?? '';
+                                  const lab = o.label ?? o.nombre ?? o.etiqueta ?? val;
+                                  if (val || lab) return { value: String(val), label: String(lab) };
+                                }
+                                return null;
+                              })
+                              .filter((o): o is { value: string; label: string } => Boolean(o && (o.value || o.label)));
+
                             return (
                               <div key={campo.clave}>
                                 <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
@@ -2054,7 +3569,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                 </label>
                                 <SearchableSelect
                                   id={`campo_${campo.clave}`}
-                                  options={(campo.opciones || []).map((o) => ({ value: o.value, label: o.label }))}
+                                  options={opcionesSelect}
                                   value={String(valorActual)}
                                   onChange={(v) => actualizarCampoAdicional(campo.clave, v)}
                                   placeholder="Seleccione..."
@@ -2062,6 +3577,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                               </div>
                             );
                           }
+
+                          const esCampoBanco =
+                            campo.clave === 'entidadBancaria' ||
+                            campo.clave === 'entidad_bancaria' ||
+                            campo.clave === 'banco';
 
                           return (
                             <div key={campo.clave}>
@@ -2071,6 +3591,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                               <input
                                 id={`campo_${campo.clave}`}
                                 type={campo.tipoCampo === 'DATE' ? 'date' : 'text'}
+                                list={esCampoBanco ? 'bancos-colombia-list' : undefined}
                                 required={obligatorio}
                                 placeholder={campo.placeholder || (campo as any).ayuda || ''}
                                 value={campo.tipoCampo === 'CURRENCY' && typeof valorActual === 'number' ? formatearMoneda(valorActual) : String(valorActual)}
@@ -2080,6 +3601,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                 }}
                                 className={inputCls}
                               />
+                              {esCampoBanco && (
+                                <datalist id="bancos-colombia-list">
+                                  {LISTA_BANCOS_COLOMBIA.map((b) => (
+                                    <option key={b} value={b} />
+                                  ))}
+                                </datalist>
+                              )}
                             </div>
                           );
                         })}
@@ -2111,6 +3639,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 <ItinerarioBuilder
                   itinerario={form.itinerario || []}
                   onChange={(itinerario) => {
+                    if (alertaSolapamiento) {
+                      setAlertaSolapamiento(null);
+                    }
                     const sync = sincronizarItinerarioFormulario(itinerario.filter((r) => r.guardada));
                     setForm((prev) => ({
                       ...prev,
@@ -2149,14 +3680,14 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   categoriaInvestigador={categoriaInvestigador}
                   asignacionesBasicas={obtenerAsignacionesBasicasValidas()}
                   incluyeTransporteAereo={form.itinerario?.some((r) => r.tipoTransporte === 'AEREO')}
-                  montoTransporteTerrestre={0}
+                  montoTransporteTerrestre={(form.itinerario || []).reduce((acc, r) => r.tipoTransporte !== 'AEREO' ? acc + (Number(r.valorTransporte ?? r.montoTransporteTerrestre ?? 0) || 0) : acc, 0)}
                   itinerario={form.itinerario}
                   onAplicarValor={(montoViaticos, dias, montoGastosDesplazamiento, datosCompletos) => {
                     const tarifasAereas = (form.itinerario || []).reduce((acc, r) => acc + (r.tarifaTerminalAereo || 0), 0);
-                    const totalDesplazamiento = montoGastosDesplazamiento !== undefined && montoGastosDesplazamiento > 0
+                    const transporteTerrestreTotal = (form.itinerario || []).reduce((acc, r) => r.tipoTransporte !== 'AEREO' ? acc + (Number(r.valorTransporte ?? r.montoTransporteTerrestre ?? 0) || 0) : acc, 0);
+                    const totalDesplazamiento = (montoGastosDesplazamiento !== undefined && montoGastosDesplazamiento > 0)
                       ? montoGastosDesplazamiento
-                      : form.montoGastosViaje;
-                    const terrestre = Math.max(0, (totalDesplazamiento || 0) - (datosCompletos?.transporteTerminalesAereos ?? tarifasAereas));
+                      : (tarifasAereas + transporteTerrestreTotal);
 
                     setForm((prev) => ({
                       ...prev,
@@ -2181,7 +3712,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                       camposAdicionales: {
                         ...(prev.camposAdicionales || {}),
                         transporteTerminalAereo: datosCompletos?.transporteTerminalesAereos ?? tarifasAereas,
-                        transporteTerrestre: terrestre,
+                        transporteTerrestre: datosCompletos?.transporteTerrestreFluvial ?? transporteTerrestreTotal,
                         fechaAutoliquidacion: prev.camposAdicionales?.fechaAutoliquidacion || new Date().toISOString().split('T')[0],
                       },
                     }));
@@ -2198,50 +3729,89 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {!esCampoOculto('montoViaticos') && (
-                        <div>
-                          <label className={labelCls} htmlFor="montoViaticos">
-                            {renderLabel('montoViaticos', 'Viáticos')}
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
-                            <input
-                              id="montoViaticos"
-                              type="text"
-                              inputMode="numeric"
-                              required={esCampoObligatorio('montoViaticos')}
-                              value={formatearMoneda(form.montoViaticos)}
-                              readOnly
-                              aria-readonly="true"
-                              title="Calculado automáticamente por el Autoliquidador (no editable)"
-                              className={`${inputCls} pl-7 text-right font-bold bg-slate-100 cursor-not-allowed`}
-                            />
+                      {/* Columna Izquierda: Viáticos y Días de comisión */}
+                      <div className="space-y-3">
+                        {!esCampoOculto('montoViaticos') && (
+                          <div>
+                            <label className={labelCls} htmlFor="montoViaticos">
+                              {renderLabel('montoViaticos', 'Viáticos')}
+                            </label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
+                              <input
+                                id="montoViaticos"
+                                type="text"
+                                inputMode="numeric"
+                                required={esCampoObligatorio('montoViaticos')}
+                                value={formatearMoneda(form.montoViaticos)}
+                                readOnly
+                                aria-readonly="true"
+                                title="Calculado automáticamente por el Autoliquidador (no editable)"
+                                className={`${inputCls} pl-7 text-right font-bold bg-slate-100 cursor-not-allowed`}
+                              />
+                            </div>
+                            <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
+                              <Calculator className="w-3 h-3" /> Automático (Autoliquidador)
+                            </span>
                           </div>
-                          <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
-                            <Calculator className="w-3 h-3" /> Automático (Autoliquidador)
-                          </span>
-                        </div>
-                      )}
+                        )}
+
+                        {!esCampoOculto('diasComision') && (
+                          <div>
+                            <label className={labelCls} htmlFor="diasComision">
+                              {renderLabel('diasComision', 'Días de comisión')}
+                            </label>
+                            <input
+                              type="hidden"
+                              id="diasComision"
+                              value={form.diasComision}
+                            />
+                            <div className="mt-1 flex items-center justify-between px-3.5 py-2.5 bg-slate-50 border border-slate-200/90 rounded-xl hover:bg-slate-100/60 transition-colors">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="p-1.5 bg-blue-50 text-[#003DA5] rounded-lg shrink-0">
+                                  <Calendar className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-slate-800 leading-tight">
+                                    {formatearDiasComision(Number(form.diasComision))}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 font-medium">
+                                    Calculado según itinerario
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="text-[11px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-md shrink-0">
+                                {Number(form.diasComision)} {Number(form.diasComision) === 1 ? 'día' : 'días'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Columna Derecha: Gastos de Desplazamiento y Transporte */}
                       {!esCampoOculto('montoGastosViaje') && (() => {
                           const tarifasAereas = (form.itinerario || []).reduce((acc, r) => acc + (r.tarifaTerminalAereo || 0), 0);
-                          const terrestreActual = Math.max(0, (form.montoGastosViaje || 0) - tarifasAereas);
+                          const transporteTerrestreOtrosTotal = (form.itinerario || []).reduce(
+                            (acc, r) => (r.tipoTransporte !== 'AEREO' ? acc + (Number(r.valorTransporte ?? r.montoTransporteTerrestre ?? 0) || 0) : acc),
+                            0,
+                          );
                           return (
-                            <div className="space-y-3">
+                            <div className="space-y-1.5">
                               <p className={labelCls}>
-                                {renderLabel('montoGastosViaje', '4. Gastos de Desplazamiento y Transporte')}
+                                {renderLabel('montoGastosViaje', 'Gastos de Desplazamiento y Transporte')}
                               </p>
                               {/* Desglose visual */}
                               <div className="rounded-xl border border-slate-200 bg-slate-50/50 divide-y divide-slate-100 overflow-hidden">
                                 {/* Fila: Terminales Aéreos */}
-                                <div className="grid grid-cols-2 items-center px-3 py-2.5 gap-2">
+                                <div className="grid grid-cols-2 items-center px-3 py-2 gap-2">
                                   <div>
                                     <p className="text-[11px] font-bold text-slate-700">
-                                      Transporte a terminales aéreos
+                                       Transporte a terminales aéreos
                                     </p>
                                     <p className="text-[10px] text-slate-400">
                                       {form.itinerario?.some((r) => r.tipoTransporte === 'AEREO')
-                                        ? 'Calculado por tarifa regulada (itinerario aéreo)'
-                                        : 'Sin rutas aéreas en el itinerario'}
+                                        ? 'Calculado por tarifa regulada'
+                                        : 'Sin rutas aéreas'}
                                     </p>
                                   </div>
                                   <div className="relative">
@@ -2263,39 +3833,37 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                   </div>
                                 </div>
                                 {/* Fila: Transporte Terrestre / Otros */}
-                                <div className="grid grid-cols-2 items-center px-3 py-2.5 gap-2">
+                                <div className="grid grid-cols-2 items-center px-3 py-2 gap-2">
                                   <div>
                                     <p className="text-[11px] font-bold text-slate-700">
                                       Transporte terrestre / fluvial / ferroviario / otros
                                     </p>
-                                    <p className="text-[10px] text-slate-400">Ingrese el costo de transporte adicional</p>
+                                    <p className="text-[10px] text-slate-400">
+                                      {transporteTerrestreOtrosTotal > 0
+                                        ? 'Totalizado desde itinerario'
+                                        : 'Calculado desde itinerario'}
+                                    </p>
                                   </div>
                                   <div className="relative">
                                     <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-xs">$</span>
                                     <input
                                       id="montoGastosViaje_terrestre"
                                       type="text"
-                                      inputMode="numeric"
-                                      placeholder="0"
-                                      value={formatearMoneda(terrestreActual || 0)}
-                                      onChange={(e) => {
-                                        const terrestre = Number(soloNumeros(e.target.value)) || 0;
-                                        setForm((prev) => ({
-                                          ...prev,
-                                          montoGastosViaje: tarifasAereas + terrestre,
-                                          camposAdicionales: {
-                                            ...(prev.camposAdicionales || {}),
-                                            transporteTerminalAereo: tarifasAereas,
-                                            transporteTerrestre: terrestre,
-                                          },
-                                        }));
-                                      }}
-                                      className={`${inputCls} pl-7 text-right font-bold`}
+                                      readOnly
+                                      aria-readonly="true"
+                                      value={formatearMoneda(transporteTerrestreOtrosTotal)}
+                                      title="Calculado automáticamente desde los tramos del itinerario"
+                                      className={`${inputCls} pl-7 text-right font-bold bg-slate-100 cursor-not-allowed`}
                                     />
+                                    {transporteTerrestreOtrosTotal > 0 && (
+                                      <span className="flex items-center gap-1 mt-1 text-[9px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded w-fit ml-auto">
+                                        <Bus className="w-2.5 h-2.5" /> Automático
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                                 {/* Total desplazamiento */}
-                                <div className="grid grid-cols-2 items-center px-3 py-2.5 gap-2 bg-blue-50/70 border-t border-blue-100">
+                                <div className="grid grid-cols-2 items-center px-3 py-2 gap-2 bg-blue-50/70 border-t border-blue-100">
                                   <span className="text-[11px] font-black text-blue-900 uppercase tracking-wide">
                                     Total Gastos de Desplazamiento
                                   </span>
@@ -2307,47 +3875,90 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             </div>
                           );
                         })()}
-
                     </div>
 
-                    {!esCampoOculto('diasComision') && (
-                      <div className="w-full sm:max-w-[260px]">
-                        <label className={labelCls} htmlFor="diasComision">
-                          {renderLabel('diasComision', 'Días de comisión')}
-                        </label>
-                        <div className="relative">
-                          <Calendar className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
-                          <input
-                            id="diasComision"
-                            type="text"
-                            readOnly
-                            aria-readonly="true"
-                            title="Calculado automáticamente desde el itinerario (no editable)"
-                            required={esCampoObligatorio('diasComision')}
-                            value={formatearDiasComision(Number(form.diasComision))}
-                            className={`${inputCls} pl-9 pr-14 font-bold bg-slate-100 text-slate-800 cursor-not-allowed`}
-                          />
-                          <span className="absolute right-2.5 top-2 text-[10px] font-bold text-slate-400">
-                            ({Number(form.diasComision)} d)
+                    {(form.montoViaticos > 0 || form.montoGastosViaje > 0) && (
+                      <div className="bg-[#003DA5] text-white rounded-xl px-6 py-5 shadow-sm border border-blue-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200">
+                            Total Estimado de la Comisión
+                          </p>
+                          <p className="text-2xl font-black text-white tracking-tight">
+                            {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
+                          </p>
+                          <p className="text-xs text-blue-100 font-medium">
+                            Viáticos ({formatearMoneda(form.montoViaticos)}) + Desplazamiento ({formatearMoneda(form.montoGastosViaje)})
+                          </p>
+                        </div>
+                        <div className="sm:text-right shrink-0">
+                          <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-white/15 text-white border border-white/20 shadow-xs">
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-300" />
+                            Total consolidado
                           </span>
                         </div>
-                        <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-100 w-fit">
-                          <Calculator className="w-3 h-3" /> Automático (Itinerario)
-                        </span>
-                      </div>
-                    )}
-
-                    {(form.montoViaticos > 0 || form.montoGastosViaje > 0) && (
-                      <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-slate-200">
-                        <span className="text-xs font-bold text-slate-600">Total estimado</span>
-                        <span className="text-sm font-black text-slate-800">
-                          {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
-                        </span>
                       </div>
                     )}
                   </div>
                 )}
               </div>
+
+              {alertaSolapamiento && (
+                <div className="rounded-xl border-2 border-amber-400 bg-amber-50/95 p-4 space-y-3 shadow-xs">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-xl bg-amber-100 text-amber-800 shrink-0">
+                      <AlertTriangle className="w-5 h-5 text-amber-700" />
+                    </div>
+                    <div className="space-y-1.5 flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-xs font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                          Alerta de Duplicidad / Solapamiento de Fechas
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-200 text-amber-900 border border-amber-300">
+                          Bloqueo preventivo
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-900 leading-relaxed font-semibold">
+                        {alertaSolapamiento.mensaje}
+                      </p>
+                      {alertaSolapamiento.solicitudConflicto && (
+                        <div className="bg-white/90 border border-amber-200 rounded-lg p-2.5 text-xs text-slate-800 space-y-1">
+                          <p className="font-semibold text-slate-900">
+                            Solicitud en conflicto:{' '}
+                            <span className="font-bold text-[#003DA5]">
+                              {alertaSolapamiento.solicitudConflicto.consecutivoUnico || alertaSolapamiento.solicitudConflicto.id}
+                            </span>{' '}
+                            <span className="text-[11px] text-slate-500 font-normal">
+                              ({alertaSolapamiento.solicitudConflicto.estadoSolicitud})
+                            </span>
+                          </p>
+                          <p className="text-slate-600 text-[11px]">
+                            Vigencia en conflicto:{' '}
+                            <strong>
+                              {alertaSolapamiento.solicitudConflicto.fechaInicio ? new Date(alertaSolapamiento.solicitudConflicto.fechaInicio).toLocaleDateString() : ''} al{' '}
+                              {alertaSolapamiento.solicitudConflicto.fechaFin ? new Date(alertaSolapamiento.solicitudConflicto.fechaFin).toLocaleDateString() : ''}
+                            </strong>{' '}
+                            {alertaSolapamiento.solicitudConflicto.destinoCiudad && `— Destino: ${alertaSolapamiento.solicitudConflicto.destinoCiudad}`}
+                          </p>
+                        </div>
+                      )}
+                      <div className="text-[11px] text-amber-800 font-medium bg-amber-100/70 rounded-md p-2 border border-amber-200/80">
+                        ⚠️ <strong>Primera advertencia:</strong> No se le permite continuar automáticamente para prevenir duplicidad. Si aún así desea continuar guardando el borrador y cargando soportes, puede pulsar nuevamente <em>"Guardar y Continuar"</em> o hacer clic en el botón a continuación. Tenga en cuenta que en la etapa final de radicación la validación del sistema no le permitirá culminar el proceso.
+                      </div>
+                      <div className="pt-1 flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          disabled={enviando}
+                          onClick={() => void guardarYBorrador(true)}
+                          className="px-3.5 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold transition-colors inline-flex items-center gap-1.5 shadow-2xs"
+                        >
+                          {enviando && <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                          Continuar de todos modos al cargue de soportes <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {errorValidacion && (
                 <p className="text-xs text-red-600 font-semibold bg-red-50 border border-red-200 rounded-lg px-3 py-2" role="alert">
@@ -2382,6 +3993,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
               <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
                 3. Documentos de la Comisión
               </h4>
+              {alertaSolapamiento && (
+                <div className="rounded-xl border border-amber-300 bg-amber-50/90 p-3 flex items-start gap-2.5 text-xs text-amber-900 shadow-2xs">
+                  <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                  <div className="space-y-0.5 flex-1 min-w-0">
+                    <span className="font-bold text-[11px] uppercase tracking-wider text-amber-800 block">
+                      Aviso de Solapamiento de Fechas
+                    </span>
+                    <p className="text-[11px] leading-snug">
+                      Esta solicitud presenta cruce de fechas con otra comisión del comisionado ({alertaSolapamiento.solicitudConflicto?.consecutivoUnico || 'comisión existente'}). Puede completar el cargue de soportes en modo borrador, pero al radicarla definitivamente el sistema bloqueará la radicación hasta corregir las fechas.
+                    </p>
+                  </div>
+                </div>
+              )}
               {cargandoChecklist && (
                 <p className="text-xs text-slate-400 flex items-center gap-2">
                   <AlertCircle className="w-3.5 h-3.5" /> Cargando checklist de documentos...
@@ -2396,8 +4020,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     const cargados = documentosCargados(doc.codigo);
                     const faltan = cargados.length === 0;
                     const noPdf = cargados.some((d) => !esPdfMime(d.tipoMime || ''));
+                    const ayuda = obtenerAyudaValidacionDocumento(doc.codigo, doc.instruccionesValidacion, {
+                      form,
+                      comisionado,
+                    }, doc.camposAValidar);
+                    const esAlerta = ayuda?.badgeTipo === 'alert';
+                    const esWarning = ayuda?.badgeTipo === 'warning';
+
                     return (
-                      <div key={doc.codigo} className="border border-slate-200 rounded-xl p-3">
+                      <div key={doc.codigo} className="border border-slate-200 rounded-xl p-3 bg-white shadow-2xs hover:border-blue-200 transition-colors">
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <p className="font-semibold text-slate-800 text-xs">{doc.nombre}</p>
@@ -2440,8 +4071,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             </div>
                           )}
                         </div>
+
                         {cargados.map((d) => (
-                          <div key={d.id} className="flex items-center justify-between gap-2 mt-1">
+                          <div key={d.id} className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-100">
                             <p className="text-[10px] text-slate-500 truncate">
                               {d.nombreArchivoOriginal} · {d.tipoMime}
                             </p>
@@ -2450,12 +4082,85 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                               title="Previsualizar PDF"
                               aria-label="Previsualizar documento"
                               onClick={() => abrirPrevisualizacion(d)}
-                              className="p-1 rounded-md text-[#003DA5] hover:bg-blue-50 transition-colors shrink-0"
+                              className="p-1 rounded-md text-[#003DA5] hover:bg-blue-50 transition-colors shrink-0 inline-flex items-center gap-1 text-[10px] font-medium"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5" /> Ver PDF
                             </button>
                           </div>
                         ))}
+
+                        {ayuda && (
+                          <div
+                            className={`mt-2.5 rounded-xl p-3 border text-xs transition-colors ${
+                              esAlerta
+                                ? 'bg-amber-50/70 border-amber-200/90 text-amber-950'
+                                : esWarning
+                                ? 'bg-sky-50/70 border-sky-200/90 text-slate-800'
+                                : 'bg-slate-50/90 border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <div
+                                className={`p-1.5 rounded-lg shrink-0 ${
+                                  esAlerta
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : esWarning
+                                    ? 'bg-sky-100 text-[#003DA5]'
+                                    : 'bg-slate-200 text-slate-700'
+                                }`}
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="space-y-1.5 flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <span className="font-bold text-[10px] uppercase tracking-wider text-slate-500">
+                                    Pauta de validación
+                                  </span>
+                                  {ayuda.notaAlerta && (
+                                    <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-300/60">
+                                      {ayuda.notaAlerta}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p className="text-[11px] text-slate-700 leading-snug">
+                                  {ayuda.instruccion}
+                                </p>
+
+                                {ayuda.datosAContrastar.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-slate-200/80">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1">
+                                      <Search className="w-3 h-3 text-[#003DA5]" />
+                                      Campos a validar según el documento:
+                                    </p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                      {ayuda.datosAContrastar.map((item, idx) => (
+                                        <div
+                                          key={idx}
+                                          className="bg-white/95 border border-slate-200/90 rounded-lg px-2.5 py-1.5 shadow-2xs flex flex-col"
+                                        >
+                                          <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-tight">
+                                            {item.etiqueta}
+                                          </span>
+                                          <span className="text-[11px] font-bold text-slate-800 truncate" title={item.valor}>
+                                            {item.valor}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {!faltan && (
+                                  <div className="mt-2 pt-1.5 border-t border-slate-200/70 flex items-center gap-1.5 text-[10px] text-emerald-700 font-medium">
+                                    <CheckCircle className="w-3 h-3 shrink-0" />
+                                    Soporte cargado. Verifica en la previsualización del PDF que los datos coincidan fielmente.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2469,12 +4174,22 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   {checklist.opcionales.map((doc) => {
                     const cargados = documentosCargados(doc.codigo);
                     const faltan = cargados.length === 0;
+                    const ayuda = obtenerAyudaValidacionDocumento(doc.codigo, doc.instruccionesValidacion, {
+                      form,
+                      comisionado,
+                    }, doc.camposAValidar);
+                    const esAlerta = ayuda?.badgeTipo === 'alert';
+                    const esWarning = ayuda?.badgeTipo === 'warning';
+
                     return (
-                      <div key={doc.codigo} className="border border-slate-200 rounded-xl p-3">
+                      <div key={doc.codigo} className="border border-slate-200 rounded-xl p-3 bg-white shadow-2xs hover:border-blue-200 transition-colors">
                         <div className="flex items-center justify-between gap-2">
                           <div className="min-w-0">
                             <p className="font-semibold text-slate-800 text-xs">{doc.nombre}</p>
                             <p className="text-[10px] text-slate-400">{doc.codigo}</p>
+                            {doc.descripcion && (
+                              <p className="text-[10px] text-slate-400">{doc.descripcion}</p>
+                            )}
                           </div>
                           {faltan ? (
                             <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors shrink-0">
@@ -2507,8 +4222,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             </div>
                           )}
                         </div>
+
                         {cargados.map((d) => (
-                          <div key={d.id} className="flex items-center justify-between gap-2 mt-1">
+                          <div key={d.id} className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-slate-100">
                             <p className="text-[10px] text-slate-500 truncate">
                               {d.nombreArchivoOriginal} · {d.tipoMime}
                             </p>
@@ -2517,12 +4233,85 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                               title="Previsualizar PDF"
                               aria-label="Previsualizar documento"
                               onClick={() => abrirPrevisualizacion(d)}
-                              className="p-1 rounded-md text-[#003DA5] hover:bg-blue-50 transition-colors shrink-0"
+                              className="p-1 rounded-md text-[#003DA5] hover:bg-blue-50 transition-colors shrink-0 inline-flex items-center gap-1 text-[10px] font-medium"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <Eye className="w-3.5 h-3.5" /> Ver PDF
                             </button>
                           </div>
                         ))}
+
+                        {ayuda && (
+                          <div
+                            className={`mt-2.5 rounded-xl p-3 border text-xs transition-colors ${
+                              esAlerta
+                                ? 'bg-amber-50/70 border-amber-200/90 text-amber-950'
+                                : esWarning
+                                ? 'bg-sky-50/70 border-sky-200/90 text-slate-800'
+                                : 'bg-slate-50/90 border-slate-200 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <div
+                                className={`p-1.5 rounded-lg shrink-0 ${
+                                  esAlerta
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : esWarning
+                                    ? 'bg-sky-100 text-[#003DA5]'
+                                    : 'bg-slate-200 text-slate-700'
+                                }`}
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" />
+                              </div>
+                              <div className="space-y-1.5 flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <span className="font-bold text-[10px] uppercase tracking-wider text-slate-500">
+                                    Pauta de validación
+                                  </span>
+                                  {ayuda.notaAlerta && (
+                                    <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-300/60">
+                                      {ayuda.notaAlerta}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p className="text-[11px] text-slate-700 leading-snug">
+                                  {ayuda.instruccion}
+                                </p>
+
+                                {ayuda.datosAContrastar.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-slate-200/80">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center gap-1">
+                                      <Search className="w-3 h-3 text-[#003DA5]" />
+                                      Campos a validar según el documento:
+                                    </p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                      {ayuda.datosAContrastar.map((item, idx) => (
+                                        <div
+                                          key={idx}
+                                          className="bg-white/95 border border-slate-200/90 rounded-lg px-2.5 py-1.5 shadow-2xs flex flex-col"
+                                        >
+                                          <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-tight">
+                                            {item.etiqueta}
+                                          </span>
+                                          <span className="text-[11px] font-bold text-slate-800 truncate" title={item.valor}>
+                                            {item.valor}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {!faltan && (
+                                  <div className="mt-2 pt-1.5 border-t border-slate-200/70 flex items-center gap-1.5 text-[10px] text-emerald-700 font-medium">
+                                    <CheckCircle className="w-3 h-3 shrink-0" />
+                                    Soporte cargado. Verifica en la previsualización del PDF que los datos coincidan fielmente.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2563,6 +4352,26 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
               <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
                 4. Confirmación de la Solicitud
               </h4>
+              {alertaSolapamiento && (
+                <div className="rounded-xl border border-red-300 bg-red-50/95 p-3.5 flex items-start gap-3 text-xs text-red-900 shadow-2xs">
+                  <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1 flex-1 min-w-0">
+                    <span className="font-bold text-xs uppercase tracking-wider text-red-800 block">
+                      ⚠️ Bloqueo por Cruce de Fechas / Duplicidad
+                    </span>
+                    <p className="text-[11px] leading-relaxed text-red-900">
+                      Esta solicitud tiene fechas que se cruzan con la comisión <strong>{alertaSolapamiento.solicitudConflicto?.consecutivoUnico || alertaSolapamiento.solicitudConflicto?.id || 'existente'}</strong>. Al presionar <em>"Enviar a Firmas de Aprobación"</em>, el sistema rechazará la radicación. Para poder radicarla, regrese al paso de <strong>Objeto y Destino</strong> y ajuste las fechas del itinerario.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => irPaso(2)}
+                      className="mt-1 px-3 py-1 bg-red-700 hover:bg-red-800 text-white rounded-lg text-[10px] font-bold inline-flex items-center gap-1 transition-colors"
+                    >
+                      <ChevronLeft className="w-3 h-3" /> Regresar y ajustar fechas
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 text-xs">
                 <div className="flex justify-between px-4 py-2.5">
                   <span className="text-slate-400 font-bold">Comisionado</span>
@@ -2680,9 +4489,14 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                       displayVal = val ? 'Sí' : 'No';
                     } else if (campo.tipoCampo === 'CURRENCY' && typeof val === 'number') {
                       displayVal = formatearMoneda(val);
-                    } else if (campo.tipoCampo === 'SELECT' && campo.opciones) {
-                      const matched = campo.opciones.find((o) => o.value === String(val));
-                      if (matched) displayVal = matched.label;
+                    } else if (campo.tipoCampo?.toUpperCase() === 'SELECT' && campo.opciones) {
+                      const matched = (campo.opciones as any[]).find((o) => {
+                        const v = typeof o === 'string' ? o : (o?.value ?? o?.valor);
+                        return String(v) === String(val);
+                      });
+                      if (matched) {
+                        displayVal = typeof matched === 'string' ? matched : (matched.label ?? matched.nombre ?? matched.value ?? displayVal);
+                      }
                     }
 
                     return (
@@ -2700,17 +4514,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         <span className="text-[10px] font-black uppercase tracking-wider text-[#003DA5] bg-blue-100/80 px-2 py-0.5 rounded">
                           Ruta General Consolidada
                         </span>
-                        {sync.horaEstimadaGeneral && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-900 bg-white border border-blue-200 px-2 py-0.5 rounded shadow-xs">
-                            <Clock className="w-3 h-3 text-[#003DA5]" /> Tiempo estimado completo: <strong>{sync.horaEstimadaGeneral}</strong>
-                          </span>
-                        )}
                       </div>
                       <div className="text-sm font-bold text-slate-800 mb-1">
                         {sync.rutaGeneral || `${sync.origenCiudad || '—'} → ${sync.destinoCiudad || '—'}`}
                       </div>
                       <div className="text-xs text-slate-600 mb-3">
-                        {sync.fechaInicio} al {sync.fechaFin} · {formatearDiasComision(sync.diasComision)} ({sync.diasComision} días)
+                        {sync.fechaInicio} al {sync.fechaFin}
                       </div>
 
                       <span className="text-slate-400 font-bold block mb-2 text-[11px] uppercase tracking-wider">
@@ -2727,10 +4536,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             <span className="text-slate-600">{ruta.fechaSalida} al {ruta.fechaLlegada}</span>
                             <span className="text-slate-400">·</span>
                             <span className="inline-flex items-center gap-0.5 text-slate-700 font-semibold">
-                              <Clock className="w-2.5 h-2.5 text-blue-600" /> Horario: {ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '—'} → {ruta.horaEstimadaLlegada || '—'}
+                              <Clock className="w-2.5 h-2.5 text-blue-600" /> Hora del viaje: {ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '—'}
                             </span>
                             <span className="text-slate-400">·</span>
-                            <span className="text-slate-600">{ruta.diasRuta} d</span>
                             <span className="inline-flex items-center px-1 py-0 rounded text-[8px] font-bold bg-slate-200 text-slate-600">
                               {ruta.tipoTrayecto === 'SOLO_IDA' ? 'IDA' : 'ID/VUELTA'}
                             </span>
@@ -2810,17 +4618,54 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 </button>
                 <button
                   type="button"
-                  disabled={!checklistCompleto() || finalizando}
+                  disabled={!checklistCompleto() || finalizando || solicitandoOtpEnlace}
                   onClick={() => void finalizarSolicitud()}
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 transition-colors disabled:opacity-50"
                 >
-                  <Send className="w-4 h-4" /> {finalizando ? 'Radicando...' : 'Finalizar y Radicar'}
+                  <ShieldCheck className="w-4 h-4" />
+                  {solicitandoOtpEnlace
+                    ? 'Enviando OTP...'
+                    : finalizando
+                    ? 'Consolidando...'
+                    : 'Firmar y Pasar a Firmas'}
                 </button>
               </div>
             </div>
           )}
         </form>
       </div>
+
+      {/* Modal Institucional de Firma Digital OTP para Enlace de Dependencia */}
+      {modalFirmaEnlaceAbierta && solicitudBorrador && (
+        <FirmaDigitalViaticosModal
+          isOpen={modalFirmaEnlaceAbierta}
+          solicitudId={solicitudBorrador.id}
+          consecutivo={solicitudBorrador.codigoSolicitud || 'Borrador'}
+          comisionadoNombre={formatearNombreComisionado(comisionado)}
+          destino={form.destinoCiudad || ''}
+          fechas={
+            obtenerFechasItinerario().fechaInicio && obtenerFechasItinerario().fechaFin
+              ? `${obtenerFechasItinerario().fechaInicio} al ${obtenerFechasItinerario().fechaFin}`
+              : ''
+          }
+          firmanteNombre={obtenerNombreEnlace()}
+          firmanteCargo="Enlace de Dependencia"
+          etapaLabel="Firma de Elaboración y Remisión a Firmas"
+          correoDestino={otpDataEnlace?.emailEnviadoA}
+          devCode={otpDataEnlace?.devCode}
+          onVerifyCodigo={async (codigoOtp: string) => {
+            await viaticosService.verificarOtpFirma(solicitudBorrador.id, {
+              verificationId: otpDataEnlace?.verificationId || '',
+              code: codigoOtp,
+              otp: codigoOtp,
+              tipoFirma: 'ENLACE_ELABORO',
+              consume: false,
+            });
+          }}
+          onFirmaCompleta={handleFirmaEnlaceCompleta}
+          onCancelar={() => setModalFirmaEnlaceAbierta(false)}
+        />
+      )}
 
       {habeasPendiente && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">

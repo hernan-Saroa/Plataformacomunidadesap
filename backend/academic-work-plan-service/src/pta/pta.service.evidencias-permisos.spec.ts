@@ -115,7 +115,9 @@ describe('Seguimiento de evidencias - autorización por componente', () => {
     service.toPtaDto = jest.fn().mockReturnValue({ id: 'pta-1', componentes_con_datos: ['investigacion', 'ext_capacitacion'] });
     service.attachPtaReferenceDates = jest.fn();
     service.enrichPtaSummaries = jest.fn(async (rows: any[]) => rows);
-    service.filterGestionPtas = jest.fn(async (rows: any[]) => rows);
+    service.filterGestionPtas = jest.fn(async (rows: any[]) => rows.map(pta => ({
+      ...pta, componentes_aprobacion_en_alcance: ['investigacion'],
+    })));
     service.syncResolucionProyectoInvestigacion = jest.fn();
     service.syncPtaSeguimientoEstado = jest.fn();
     service.toEvidenciaDto = jest.fn((row: any) => ({ id: row.id }));
@@ -198,7 +200,9 @@ describe('Seguimiento de evidencias - autorización por componente', () => {
     });
     service.attachPtaReferenceDates = jest.fn();
     service.enrichPtaSummaries = jest.fn(async (rows: any[]) => rows);
-    service.filterGestionPtas = jest.fn(async (rows: any[]) => rows);
+    service.filterGestionPtas = jest.fn(async (rows: any[]) => rows.map(pta => ({
+      ...pta, componentes_aprobacion_en_alcance: ['ext_capacitacion'],
+    })));
     service.syncResolucionProyectoInvestigacion = jest.fn();
     service.syncPtaSeguimientoEstado = jest.fn().mockResolvedValue('Finalizado');
     service.sortPtasByReferenceDate = jest.fn((rows: any[]) => rows);
@@ -220,5 +224,46 @@ describe('Seguimiento de evidencias - autorización por componente', () => {
       docencia: { horas_aprobadas: 100 },
       extension: { horas_aprobadas: 20 },
     }));
+  });
+
+  it('el detalle de Seguimiento no expone evidencias de un PTA solo consultable en Gestión', async () => {
+    const pta = { id: 'pta-ajeno', estado: 'Aprobado', datosEstructurados: {} };
+    const service = Object.create(PtaService.prototype) as any;
+    service.ptaRepo = { findOne: jest.fn().mockResolvedValue(pta) };
+    service.evidenciaRepo = { find: jest.fn() };
+    service.getExtMultiplicadores = jest.fn().mockResolvedValue({});
+    service.toPtaDto = jest.fn().mockReturnValue({ id: pta.id });
+    service.attachPtaReferenceDates = jest.fn();
+    service.enrichPtaSummaries = jest.fn(async (rows: any[]) => rows);
+    service.filterGestionPtas = jest.fn(async (rows: any[]) => rows.map(item => ({
+      ...item, componentes_aprobacion_en_alcance: [],
+    })));
+
+    await expect(service.getEvidenciasSeguimientoPTA(pta.id, auth(['academica_territorial'])))
+      .resolves.toEqual([]);
+    expect(service.evidenciaRepo.find).not.toHaveBeenCalled();
+  });
+
+  it('no incluye en Seguimiento un PTA consultable en Gestión pero sin aprobación territorial propia', async () => {
+    const pta = { id: 'pta-ajeno', estado: 'Aprobado', datosEstructurados: {} };
+    const ptaQb = {
+      andWhere: jest.fn().mockReturnThis(), orderBy: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([pta]),
+    };
+    const service = Object.create(PtaService.prototype) as any;
+    service.ptaRepo = { createQueryBuilder: jest.fn(() => ptaQb) };
+    service.getExtMultiplicadores = jest.fn().mockResolvedValue({});
+    service.toPtaDto = jest.fn().mockReturnValue({ id: pta.id });
+    service.attachPtaReferenceDates = jest.fn();
+    service.enrichPtaSummaries = jest.fn(async (rows: any[]) => rows);
+    service.filterGestionPtas = jest.fn(async (rows: any[]) => rows.map(item => ({
+      ...item, componentes_aprobacion_en_alcance: [],
+    })));
+    service.sortPtasByReferenceDate = jest.fn((rows: any[]) => rows);
+    service.syncPtaSeguimientoEstado = jest.fn();
+
+    await expect(service.getAllPtasConEvidencias('2026-2', auth(['academica_territorial'])))
+      .resolves.toEqual([]);
+    expect(service.syncPtaSeguimientoEstado).not.toHaveBeenCalled();
   });
 });

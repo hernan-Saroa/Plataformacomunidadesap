@@ -115,3 +115,48 @@ describe('esSoloPresupuesto', () => {
     expect(esSoloPresupuesto()).toBe(false);
   });
 });
+
+describe('cambio de sesión', () => {
+  const entrar = (id: string) => {
+    (window as any).__esap_auth_cache = { id, roles: [], permissions: [] };
+  };
+
+  afterEach(() => {
+    delete (window as any).__esap_auth_cache;
+    olvidarAlcance();
+  });
+
+  it('lo leído para una persona no le sirve a la que entra después', () => {
+    // La gestora puede diligenciar la 3.5; el abogado que entra luego, sin
+    // recargar la página, no. Antes heredaba el alcance de ella.
+    entrar('laura');
+    fijarAlcance({ alcances: [{ accion: 'editar', lugar: '3.5' }], transversales: [] });
+    expect(puedeEn('editar', '3.5')).toBe(true);
+
+    entrar('andres');
+    // Mientras llega el suyo se responde como sin alcance: ni sí ni no
+    // heredado de otra persona.
+    fijarAlcance({ alcances: [{ accion: 'aprobar', lugar: 'E3' }], transversales: [] });
+    expect(puedeEn('editar', '3.5')).toBe(false);
+    expect(puedeEn('aprobar', '3.5')).toBe(true);
+  });
+
+  it('el aviso del shell olvida el alcance de quien salió', () => {
+    entrar('laura');
+    fijarAlcance({ alcances: [{ accion: 'ver', lugar: 'E3' }], transversales: [] });
+    expect(puedeEn('editar', '3.5')).toBe(false);
+
+    window.dispatchEvent(new CustomEvent('esap:auth-user-changed', { detail: { user: null } }));
+
+    // Sin alcance leído, la regla de siempre: ante la duda, sí.
+    expect(puedeEn('editar', '3.5')).toBe(true);
+  });
+
+  it('con otra sesión, lo leído antes deja de contar aunque nadie avise', () => {
+    entrar('laura');
+    fijarAlcance({ alcances: [{ accion: 'ver', lugar: 'E3' }], transversales: [] });
+    entrar('andres');
+
+    expect(puedeEn('editar', '3.5')).toBe(true);
+  });
+});

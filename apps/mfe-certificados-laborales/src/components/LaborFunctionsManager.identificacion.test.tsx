@@ -44,6 +44,17 @@ describe('Gestión individual por identificación', () => {
     fireEvent.click(screen.getByRole('button', { name: /Guardar funciones/ })); await tick();
     expect(api.crearFuncionesLaborales).toHaveBeenCalledWith({ idNumber: '0012345678', functions: '1. Aplicar el numeral 2. Revisar los expedientes.', sourceSheet: 'Registro individual' });
   });
+  it('crea individualmente funciones numeradas con renglones de continuación', async () => {
+    const functions = '1. Revisar los pagos y verificar los descuentos\nlegales\n2. Presentar informes institucionales.';
+    render(<LaborFunctionsManager canManage />); await tick();
+    fireEvent.click(screen.getByRole('button', { name: /Agregar individual/ }));
+    fireEvent.change(screen.getByLabelText(/Número de identificación/), { target: { value: '1000000001' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /Funciones/ }), { target: { value: functions } });
+    expect(screen.getByText('2 funciones detectadas')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Guardar funciones/ })); await tick();
+    expect(api.crearFuncionesLaborales).toHaveBeenCalledWith(expect.objectContaining({ functions }));
+    expect(screen.queryByText('Cada función debe tener al menos 8 caracteres.')).toBeNull();
+  });
   it('edita y conserva el texto íntegro de funciones ya guardadas', async () => {
     render(<LaborFunctionsManager canManage />); await tick();
     fireEvent.click(screen.getByRole('button', { name: 'Editar 0012345678' }));
@@ -52,6 +63,16 @@ describe('Gestión individual por identificación', () => {
     fireEvent.change(screen.getByLabelText(/Número de identificación/), { target: { value: '87654321' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar funciones/ })); await tick();
     expect(api.actualizarFuncionesLaborales).toHaveBeenCalledWith('p1', expect.objectContaining({ idNumber: '87654321' }));
+  });
+  it('edita funciones numeradas con renglones de continuación y cuenta las únicas', async () => {
+    const functions = '1. Revisar los pagos y verificar los descuentos\nlegales\n2. Revisar los pagos y verificar los descuentos legales';
+    render(<LaborFunctionsManager canManage />); await tick();
+    fireEvent.click(screen.getByRole('button', { name: 'Editar 0012345678' }));
+    fireEvent.change(screen.getByRole('textbox', { name: /Funciones/ }), { target: { value: functions } });
+    expect(screen.getByText('1 función detectada')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Guardar funciones/ })); await tick();
+    expect(api.actualizarFuncionesLaborales).toHaveBeenCalledWith('p1', expect.objectContaining({ functions }));
+    expect(screen.queryByText('Cada función debe tener al menos 8 caracteres.')).toBeNull();
   });
   it('mantiene registros heredados pendientes hasta asignarles un documento', async () => {
     vi.mocked(api.listarFuncionesLaborales).mockResolvedValue(response([{ ...profile, id_number: null }]) as any);
@@ -96,5 +117,32 @@ describe('Gestión individual por identificación', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Crear 1 fila válida' })); await tick();
     expect(api.cargarFuncionesLaboralesMasivas).toHaveBeenCalledWith(expect.objectContaining({ rows: [expect.objectContaining({ idNumber: '0012345678', rowNumber: 4 })] }));
     expect(screen.getByText('Registro creado.')).toBeTruthy();
+  });
+  it('acepta una función numerada partida en el Excel y muestra el conteo real', async () => {
+    const functions = '1. Revisar los pagos y verificar los descuentos\nlegales\n2. Consolidar los movimientos contables de manera\noportuna';
+    vi.mocked(api.validarFuncionesLaboralesMasivas).mockImplementation(async ({ rows }) => ({
+      summary: { total: 1, valid: 1, invalid: 0, toCreate: 1, toUpdate: 0 },
+      results: [{ rowNumber: rows[0].rowNumber!, status: 'valid', action: 'created',
+        id_number: rows[0].idNumber, function_count: 2, message: 'Fila válida.' }],
+    }));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['PLANTILLA OFICIAL DE CARGA - No cambie el nombre de esta hoja'],
+      ['Instrucciones'], ['Número de identificación', 'FUNCIONES'],
+      ['1000000001', functions],
+    ]), 'Matriz Funciones ESAP');
+    const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
+    const file = new File([bytes], 'funciones.xlsx');
+    Object.defineProperty(file, 'arrayBuffer', { value: async () => bytes });
+    render(<LaborFunctionsManager canManage />); await tick();
+    fireEvent.click(screen.getByRole('button', { name: 'Carga masiva' }));
+    await act(async () => { fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [file] } }); });
+    await tick();
+    expect(api.validarFuncionesLaboralesMasivas).toHaveBeenCalledWith(expect.objectContaining({
+      rows: [expect.objectContaining({ idNumber: '1000000001', functions })],
+    }));
+    expect(screen.getByRole('cell', { name: '2' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Crear 1 fila válida' })).toBeTruthy();
+    expect(screen.queryByText('Cada función debe tener al menos 8 caracteres.')).toBeNull();
   });
 });

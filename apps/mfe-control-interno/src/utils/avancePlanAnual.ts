@@ -10,6 +10,8 @@
  * 5. Manual → porcentaje_avance almacenado
  */
 
+import { corteDelInicio, esTareaAutomaticaDelRol4 } from '../components/services/cortesPlanAnual';
+
 export type FuenteAvancePlanAnual =
   | 'completada'
   | 'auditorias'
@@ -148,7 +150,9 @@ export function resumenEvidenciasObservacionesTareas(actividad: {
 
 /**
  * Vincula cada tarea al corte correcto: usa puntoControlId guardado o, si falta,
- * el corte del mismo índice (como al crear el plan en el wizard).
+ * el corte del mismo índice (como al crear el plan en el wizard). Las tareas que
+ * genera el Programa Anual van al corte de la fecha de inicio de su auditoría
+ * (EFDS-2237), nunca al del índice.
  */
 export function normalizarTareasConCortes<T extends Record<string, unknown>>(
   tareas: T[],
@@ -162,7 +166,14 @@ export function normalizarTareasConCortes<T extends Record<string, unknown>>(
     let puntoControlId =
       raw && pcs.some((p) => p.id === raw) ? raw : undefined;
     if (!puntoControlId && pcs.length > 0) {
-      puntoControlId = pcs[idx % pcs.length]?.id;
+      // Las tareas automáticas del Rol 4 llevan su propio corte (EFDS-2237); si se perdió,
+      // van al corte donde empieza su periodo
+      puntoControlId = esTareaAutomaticaDelRol4(t)
+        ? corteDelInicio(
+            (t.periodoInicio as string | undefined) || (t.fechaInicio as string | undefined) || (t.fechaLimite as string | undefined),
+            pcs as Array<{ id: string; fechaProgramada: string; fechaSeguimiento?: string | null }>,
+          )?.id
+        : pcs[idx % pcs.length]?.id;
     }
     return { ...t, puntoControlId };
   });

@@ -46,6 +46,13 @@ export interface User {
      created_at: string;
      updated_at: string;
      idDependencia?: number | null;
+     idCargo?: number | null;
+     cargo?: {
+       idCargo: number;
+       codCargo: string;
+       nomCargo: string;
+       nivelJerarquico?: string | null;
+     } | null;
    };
   roles: Array<{
     id: string;
@@ -61,6 +68,19 @@ export interface User {
   // Territorial y CETAP
   seccional: UserSeccional | null;
   sede: UserSede | null;
+  idDependencia?: number | null;
+  dependencia?: {
+    idDependencia: number;
+    codDependencia: string;
+    nomDependencia: string;
+  } | null;
+  idCargo?: number | null;
+  cargo?: {
+    idCargo: number;
+    codCargo: string;
+    nomCargo: string;
+    nivelJerarquico?: string | null;
+  } | null;
 }
 
 export interface CreateUserData {
@@ -75,6 +95,7 @@ export interface CreateUserData {
   idSeccional?: number;
   idSede?: number;
   idDependencia?: number | null;
+  idCargo?: number | null;
   [key: string]: any; // Allow advanced fields (birth_date, address, etc.)
 }
 

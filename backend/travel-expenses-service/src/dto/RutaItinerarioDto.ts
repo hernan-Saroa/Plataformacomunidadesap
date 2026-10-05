@@ -8,8 +8,9 @@ import {
   ValidateNested,
   IsNumber,
   Min,
+  ValidateIf,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 
 export enum TipoTrayecto {
   SOLO_IDA = 'SOLO_IDA',
@@ -19,6 +20,9 @@ export enum TipoTrayecto {
 export enum TipoTransporte {
   AEREO = 'AEREO',
   TERRESTRE = 'TERRESTRE',
+  MARITIMO = 'MARITIMO',
+  FLUVIAL = 'FLUVIAL',
+  FERROVIARIO = 'FERROVIARIO',
 }
 
 export class RutaItinerarioDto {
@@ -53,6 +57,15 @@ export class RutaItinerarioDto {
   diasRuta: number;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    const v = value.trim();
+    if (!v) return undefined;
+    if (/^\d:[0-5]\d$/.test(v)) return `0${v}`;
+    if (/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(v)) return v.slice(0, 5);
+    return v;
+  })
+  @ValidateIf((_, val) => val !== undefined && val !== null && val !== '')
   @IsString()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
     message: 'horarioEstimadoMilitar debe estar en formato HH:mm (ej. 07:30, 14:45)',
@@ -60,6 +73,15 @@ export class RutaItinerarioDto {
   horarioEstimadoMilitar?: string;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    const v = value.trim();
+    if (!v) return undefined;
+    if (/^\d:[0-5]\d$/.test(v)) return `0${v}`;
+    if (/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(v)) return v.slice(0, 5);
+    return v;
+  })
+  @ValidateIf((_, val) => val !== undefined && val !== null && val !== '')
   @IsString()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
     message: 'horaEstimadaSalida debe estar en formato HH:mm (ej. 07:30, 14:45)',
@@ -67,6 +89,15 @@ export class RutaItinerarioDto {
   horaEstimadaSalida?: string;
 
   @IsOptional()
+  @Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    const v = value.trim();
+    if (!v) return undefined;
+    if (/^\d:[0-5]\d$/.test(v)) return `0${v}`;
+    if (/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(v)) return v.slice(0, 5);
+    return v;
+  })
+  @ValidateIf((_, val) => val !== undefined && val !== null && val !== '')
   @IsString()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
     message: 'horaEstimadaLlegada debe estar en formato HH:mm (ej. 07:30, 14:45)',
@@ -74,10 +105,12 @@ export class RutaItinerarioDto {
   horaEstimadaLlegada?: string;
 
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() === '' ? undefined : value))
   @IsString()
   horaSalida?: string;
 
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() === '' ? undefined : value))
   @IsString()
   horaLlegada?: string;
 
@@ -98,4 +131,9 @@ export class RutaItinerarioDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   montoTransporteTerrestre?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  valorTransporte?: number;
 }

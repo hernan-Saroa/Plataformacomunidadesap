@@ -603,9 +603,19 @@ export function PermisosPTAProvider({ children }: { children: ReactNode }) {
       return granular;
     }
 
-    // Fallback: mapa hardcodeado por rol
+    // Conserva las vistas históricas, pero las decisiones de revisión y
+    // aprobación requieren permisos PTA efectivos. El nombre del rol no las da.
     const hardcoded = PERMISOS_POR_ROL[perfil.rol](perfil);
-    return hardcoded;
+    return {
+      ...hardcoded,
+      puedeAprobar: false,
+      puedeRevisar: false,
+      nivelAprobacion: 0,
+      componentesAprobables: [],
+      componentesRevisables: [],
+      nivelesTerritorialAprobar: [],
+      nivelesTerritorialRevisar: [],
+    };
   }, [auth.session?.permisos, perfil, isSuperUserEffective]);
 
   const tieneVista = useCallback((vista: string) => permisos.vistasPerm.includes(vista), [permisos]);

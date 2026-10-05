@@ -27,6 +27,8 @@ export interface TipoDocumentoSoporte {
   codigo: string;
   nombre: string;
   descripcion: string | null;
+  instruccionesValidacion?: string | null;
+  camposAValidar?: string[];
   activo: boolean;
 }
 
@@ -94,6 +96,23 @@ export interface ActualizarConfigTipoComisionadoDTO {
   camposOcultos?: string[];
   documentosObligatorios?: string[];
   documentosOpcionales?: string[];
+  activo?: boolean;
+}
+
+export interface CrearTipoDocumentoSoporteDTO {
+  codigo: string;
+  nombre: string;
+  descripcion?: string;
+  instruccionesValidacion?: string;
+  camposAValidar?: string[];
+  activo?: boolean;
+}
+
+export interface ActualizarTipoDocumentoSoporteDTO {
+  nombre?: string;
+  descripcion?: string;
+  instruccionesValidacion?: string;
+  camposAValidar?: string[];
   activo?: boolean;
 }
 

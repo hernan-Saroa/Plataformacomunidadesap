@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   BarChart3,
   BellRing,
+  Inbox,
   Handshake,
   Coins,
   FolderOpen,
@@ -33,11 +34,15 @@ import { VistaExpedientes } from './expedientes/VistaExpedientes';
 import { VistaAlertas } from './alertas/VistaAlertas';
 import { VistaBandejaCdp } from './cdp/VistaBandejaCdp';
 import { VistaEstadisticas } from './estadisticas/VistaEstadisticas';
+import { RevisionDeActividad } from './revision/RevisionDeActividad';
+import { PestanaTrabajo, VistaMiTrabajo } from './trabajo/VistaMiTrabajo';
+import { useMiTrabajo } from '../hooks/useMiTrabajo';
 import { PERMISOS } from '../auth/permisos';
 import { esSoloPresupuesto, useAlcance } from '../auth/alcance';
 
 type Seccion =
   | 'estudios-previos'
+  | 'mi-trabajo'
   | 'revision'
   | 'alertas'
   | 'bandeja-cdp'
@@ -84,7 +89,9 @@ const SECCIONES_DE_CONFIGURACION: Seccion[] = [
  * por «Procesos», como siempre.
  */
 function seccionDeEntrada(): Seccion {
-  return esSoloPresupuesto() ? 'bandeja-cdp' : 'estudios-previos';
+  // «Mi trabajo» y no el listado (reestructuración del flujo): quien entra
+  // quiere saber qué le toca hoy, no qué procesos existen.
+  return esSoloPresupuesto() ? 'bandeja-cdp' : 'mi-trabajo';
 }
 
 export default function ContratacionModulePremium() {
@@ -111,6 +118,37 @@ export default function ContratacionModulePremium() {
   const [procesoId, setProcesoId] = useState<string | null>(null);
   const [actividad, setActividad] = useState<string | null>(null);
 
+  /**
+   * La revisión abierta, si hay una.
+   *
+   * Es una pantalla aparte del proceso (reestructuración del flujo): quien
+   * aprueba lee y decide ahí, y vuelve a donde vino —su bandeja o el proceso—.
+   */
+  const [revision, setRevision] = useState<{
+    procesoId: string;
+    numeral: string;
+    desde: 'bandeja' | 'proceso';
+  } | null>(null);
+
+  /**
+   * «Mi trabajo»: lo que le toca a quien mira, y el número del menú.
+   *
+   * Se relee al cambiar de sección y al cerrar una revisión o un proceso: el
+   * contador tiene que bajar en cuanto algo se resuelve.
+   */
+  const miTrabajo = useMiTrabajo(`${seccion}|${revision === null}|${procesoId === null}`);
+  const [pestanaTrabajo, setPestanaTrabajo] = useState<PestanaTrabajo | null>(null);
+  /** La pestaña con algo pendiente, si nadie ha elegido otra. */
+  const pestanaVisible: PestanaTrabajo =
+    pestanaTrabajo ??
+    (miTrabajo.trabajo.porHacer.length
+      ? 'hacer'
+      : miTrabajo.porRevisar.length
+        ? 'revisar'
+        : miTrabajo.trabajo.porAsignar.length
+          ? 'asignar'
+          : 'hacer');
+
   const puedeConfigurar = tiene(PERMISOS.configurar);
   /**
    * Quien mueve el presupuesto de la entidad: la Dirección Financiera.
@@ -130,6 +168,23 @@ export default function ContratacionModulePremium() {
   const grupos: MenuGroup[] = [
     {
       items: [
+        /*
+         * «Mi trabajo» (reestructuración del flujo): lo que le toca a quien
+         * mira —hacer, revisar, asignar— y lo que espera a otros en sus
+         * procesos. El número es lo que le reclama una acción.
+         */
+        ...(!puede('ver')
+          ? []
+          : [
+              {
+                id: 'mi-trabajo' as Seccion,
+                label: 'Mi trabajo',
+                subtitle: 'Lo que te toca hoy',
+                icon: <Inbox className="w-5 h-5" />,
+                color: '#059669',
+                badge: miTrabajo.pendientes,
+              },
+            ]),
         {
           id: 'estudios-previos',
           label: 'Procesos',
@@ -275,6 +330,57 @@ export default function ContratacionModulePremium() {
   // Dos niveles: lista de procesos y detalle. El formulario ya no es una
   // pantalla aparte — se despliega dentro de su actividad en el detalle.
   const contenido = () => {
+    if (revision) {
+      return (
+        <RevisionDeActividad
+          procesoId={revision.procesoId}
+          numeral={revision.numeral}
+          volverA={
+            revision.desde === 'proceso'
+              ? 'Proceso'
+              : seccion === 'mi-trabajo'
+                ? 'Mi trabajo'
+                : seccion === 'alertas'
+                  ? 'Alertas'
+                  : 'Procesos'
+          }
+          onVolver={() => {
+            setRevision(null);
+            if (revision.desde === 'bandeja' && seccion === 'mi-trabajo') setPestanaTrabajo('revisar');
+          }}
+          onVerProceso={(numeral) => {
+            setSeccion('estudios-previos');
+            setProcesoId(revision.procesoId);
+            setActividad(numeral);
+            setRevision(null);
+          }}
+        />
+      );
+    }
+
+    if (seccion === 'mi-trabajo' && !procesoId) {
+      return (
+        <VistaMiTrabajo
+          estado={miTrabajo}
+          pestana={pestanaVisible}
+          onPestana={setPestanaTrabajo}
+          onRevisar={(e) =>
+            setRevision({ procesoId: e.procesoId, numeral: e.numeral, desde: 'bandeja' })
+          }
+          // El proceso se abre sin salir de la sección: «volver» regresa a la
+          // bandeja, que es de donde vino.
+          onTrabajar={(id, numeral) => {
+            setProcesoId(id);
+            setActividad(numeral);
+          }}
+          onConsultar={(id) => {
+            setProcesoId(id);
+            setActividad(null);
+          }}
+        />
+      );
+    }
+
     // Se comprueban aunque el menú ya las esconda: la sección sobrevive en el
     // estado, y quien tenía la pantalla abierta cuando le retiraron el permiso
     // seguiría dentro de ella.
@@ -349,7 +455,15 @@ export default function ContratacionModulePremium() {
         // La alerta lleva al proceso y, si es una aprobación, a la actividad
         // concreta: quien recibe el aviso quiere resolverlo, no buscarlo.
         <VistaAlertas
-          onAbrir={(id, numeral) => {
+          onAbrir={(id, numeral, tipo) => {
+            // Una aprobación pendiente se resuelve en su revisión, no en el
+            // formulario de quien la trabajó.
+            if (tipo === 'APROBACION_PENDIENTE' && numeral) {
+              setSeccion('mi-trabajo');
+              setPestanaTrabajo('revisar');
+              setRevision({ procesoId: id, numeral, desde: 'bandeja' });
+              return;
+            }
             setSeccion('estudios-previos');
             setProcesoId(id);
             setActividad(numeral ?? null);
@@ -393,17 +507,33 @@ export default function ContratacionModulePremium() {
       return (
         <DetalleProceso
           procesoId={procesoId}
+          volverA={seccion === 'mi-trabajo' ? 'Mi trabajo' : 'Procesos'}
           onVolver={() => {
             setProcesoId(null);
             setActividad(null);
           }}
           actividadInicial={actividad}
+          onRevisar={(numeral) => {
+            setActividad(numeral);
+            setRevision({ procesoId, numeral, desde: 'proceso' });
+          }}
         />
       );
     }
     return (
       <VistaProcesos
-        onAbrir={(id) => {
+        onAbrir={(id, numeral, revisar) => {
+          // Lo que dice el botón: revisar lleva a la revisión, trabajar a la
+          // actividad, y consultar a la ficha de seguimiento.
+          if (revisar && numeral) {
+            setRevision({ procesoId: id, numeral, desde: 'bandeja' });
+            return;
+          }
+          if (numeral) {
+            setProcesoId(id);
+            setActividad(numeral);
+            return;
+          }
           setProcesoId(id);
           /**
            * Sin forzar actividad: la abre el detalle (EFDS-1183).
@@ -436,11 +566,15 @@ export default function ContratacionModulePremium() {
         setSeccion(s as Seccion);
         setProcesoId(null);
         setActividad(null);
+        setRevision(null);
       }}
     >
       {/* La clave reinicia la animación al cambiar de sección: sin ella React
           reutiliza el nodo y el cambio es un corte seco. */}
-      <div key={`${seccion}-${procesoId ?? ''}`} className="anima-seccion">
+      <div
+        key={`${seccion}-${procesoId ?? ''}-${revision ? `${revision.procesoId}-${revision.numeral}` : ''}`}
+        className="anima-seccion"
+      >
         {contenido()}
       </div>
       {/* Misma configuración que gestión legal y control interno, para que las

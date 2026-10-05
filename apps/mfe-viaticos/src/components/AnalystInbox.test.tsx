@@ -20,6 +20,7 @@ vi.mock('../services/api/authService', () => {
     canProcesarPago: vi.fn(() => true),
     isTesoreria: vi.fn(() => true),
     isAnalista: vi.fn(() => true),
+    hasPermission: vi.fn(() => false),
     getCurrentUserSync: vi.fn(() => ({
       userId: '1',
       username: 'analista_test',

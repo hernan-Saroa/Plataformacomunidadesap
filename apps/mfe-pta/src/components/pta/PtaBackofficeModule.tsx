@@ -75,8 +75,10 @@ import {
   componentKeyForEvidencia,
   isEvidenciaAuthorized,
   hasComponentPermission,
+  labelDeComponente,
 } from './shared/ptaComponentPermissions';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
+import { groupPtaBulkApprovalResults } from './shared/ptaBulkApprovalResult';
 import { getPtaAssignmentTerritorialLabel } from './shared/ptaTerritorialDisplay';
 import '../../styles/pta-world-class.css';
 
@@ -1714,56 +1716,6 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     [bulkApprovalGroups],
   );
 
-  /**
-   * ¿Este PTA tiene algún componente pendiente que le toque a MÍ?
-   *
-   * `componentes_estado` trae las claves COLAPSADAS del listado ('academica',
-   * 'investigacion', 'complementarias', 'extension'), mientras que los permisos del
-   * usuario son granulares (academica_pregrado, ext_capacitacion, ...), así que hay
-   * que mapear unas contra otras.
-   *
-   * Sin esto los contadores de "Pendientes" miraban solo el estado GLOBAL del PTA:
-   * un aprobador que ya avaló SU componente seguía viéndolo como pendiente y el
-   * acumulado nunca bajaba.
-   */
-  /**
-   * ¿La clave COLAPSADA del listado ('academica'/'extension'/...) cae dentro del
-   * alcance granular del usuario? El listado colapsa Docencia y Extensión, así que
-   * hay que expandirlas contra los permisos reales.
-   */
-  const claveColapsadaAutorizada = useCallback((key: string): boolean => {
-    switch (key) {
-      case 'academica':
-        return visibleComponentKeySet.has('academica_pregrado')
-          || visibleComponentKeySet.has('academica_posgrado')
-          || visibleComponentKeySet.has('academica_territorial');
-      case 'extension':
-        return PTA_EXTENSION_COMPONENT_KEYS.some(k => visibleComponentKeySet.has(k));
-      // Complementarias también se colapsa y tiene varios ámbitos (pregrado,
-      // posgrado, territorial y gestión profesoral). Sin expandirla, un usuario
-      // cuyo permiso fuera uno de esos ámbitos no cruzaba contra la clave
-      // 'complementarias' del listado y sus PTAs no contaban como pendientes suyos.
-      case 'complementarias':
-        return PTA_COMPLEMENTARIAS_COMPONENT_KEYS.some(k => visibleComponentKeySet.has(k));
-      default:
-        return visibleComponentKeySet.has(key);
-    }
-  }, [visibleComponentKeySet]);
-
-  const tienePendientesParaMi = useCallback((pta: any): boolean => {
-    if (!shouldRestrictByComponentPermission) return true;
-    const items = Array.isArray(pta?.componentes_estado) ? pta.componentes_estado : [];
-    // Fallback seguro: si el DTO no trae el detalle por componente se cuenta como
-    // pendiente (mejor mostrar de más que ocultarle trabajo a un aprobador).
-    if (items.length === 0) return true;
-
-    return items.some((item: any) => {
-      const estado = String(item?.estado || 'pendiente').toLowerCase();
-      if (estado === 'aprobado' || estado === 'no_iniciado' || estado === 'no_aplica') return false;
-      return claveColapsadaAutorizada(String(item?.key || item?.componente || ''));
-    });
-  }, [shouldRestrictByComponentPermission, claveColapsadaAutorizada]);
-
   const componentesRevisionSet = useMemo(() => new Set(
     (permisos.componentesRevisables || []).map(key => key.split(':')[0]),
   ), [permisos.componentesRevisables]);
@@ -1882,23 +1834,17 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [filtroEstado, setFiltroEstado] = useState('');
   const [filtroPeriodo, setFiltroPeriodo] = useState('');
   const [filtroEstadoRegistro, setFiltroEstadoRegistro] = useState('');
-  // Filtro "Mis componentes": separa la etapa y el avance propios del usuario;
-  // es independiente del estado global del PTA.
-  const [filtroMisComponentes, setFiltroMisComponentes] = useState<FiltroEtapaPersonal>('');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Al cambiar de rol simulado o de asignación de permisos, no conservar un
   // filtro perteneciente a una etapa que ya no está habilitada.
   useEffect(() => {
-    const revisionInvalida = !tieneEtapaRevision
-      && (filtroEstado.startsWith('revision_') || filtroMisComponentes.startsWith('revision_'));
-    const aprobacionInvalida = !tieneEtapaAprobacion
-      && (filtroEstado.startsWith('aprobacion_') || filtroMisComponentes.startsWith('aprobacion_'));
+    const revisionInvalida = !tieneEtapaRevision && filtroEstado.startsWith('revision_');
+    const aprobacionInvalida = !tieneEtapaAprobacion && filtroEstado.startsWith('aprobacion_');
     if (revisionInvalida || aprobacionInvalida) {
       setFiltroEstado('');
-      setFiltroMisComponentes('');
     }
-  }, [filtroEstado, filtroMisComponentes, tieneEtapaAprobacion, tieneEtapaRevision]);
+  }, [filtroEstado, tieneEtapaAprobacion, tieneEtapaRevision]);
 
   // ─── Periodo Académico (Selector Global) ───
   const [periodosPTA, setPeriodosPTA] = useState<any[]>([]);
@@ -2075,9 +2021,14 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [bulkComponentResult, setBulkComponentResult] = useState<{
     groupLabel: string;
     decision: 'aprobado' | 'devuelto';
+    ptaIds: string[];
+    nombres: Record<string, string>;
     resumen: { total: number; aprobados: number; devueltos: number; omitidos: number; fallidos: number };
     resultados: AprobarComponentesLoteResultado[];
   } | null>(null);
+  const bulkDecisionInFlightRef = useRef(false);
+  const groupedBulkApprovalResult = bulkComponentResult?.decision === 'aprobado'
+    ? groupPtaBulkApprovalResults(bulkComponentResult.ptaIds, bulkComponentResult.resultados) : null;
 
   // ═══ Feature 17: Shift+Click Range Selection ═══
   const lastClickedIdx = useRef<number>(-1);
@@ -2526,12 +2477,120 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       // Keep the last valid list on transient failures, including pending PTAs.
     }
     if (statsRes.success) setEstadisticas(statsRes.data);
-    if (reportRes?.success && reportRes.data) {
-      setSelectedPTA((current: any) => current?.id === reportPtaId ? { ...current, ...reportRes.data } : current);
-    }
+    // El PTA abierto debe compartir el estado y alcance de la lista refrescada.
+    // El reporte agrega sus datos de detalle, sin reemplazar el estado personal
+    // confirmado por la consulta de Gestión.
+    setSelectedPTA((current: any) => {
+      if (!current) return current;
+      const actualizado = ptaRes.success && Array.isArray(ptaRes.data)
+        ? ptaRes.data.find((item: any) => item.id === current.id && item.periodo === current.periodo) : null;
+      const reporte = current.id === reportPtaId && reportRes?.success ? reportRes.data : null;
+      return actualizado || reporte ? { ...current, ...reporte, ...actualizado } : current;
+    });
     setLoading(false);
     setLastRefreshed(new Date());
     setRefreshCountdown(120);
+  };
+
+  const applyUpdatedPtas = (data: any) => {
+    // Si el usuario cambió de período durante la decisión, conservar la consulta
+    // de su nueva selección. El resultado pertenece al período original.
+    if (filtroPeriodo !== filtroPeriodoRef.current) return;
+    const actualizados = Array.isArray(data) ? data : [];
+    // Invalida consultas anteriores a la decisión, también para revisiones.
+    ++loadDataRequestRef.current;
+    const byId = new Map<string, any>(actualizados.map((pta: any) => [pta.id, pta]));
+    setPtas(prev => prev.map(pta => {
+      const actualizado = byId.get(pta.id);
+      return actualizado && actualizado.periodo === pta.periodo ? { ...pta, ...actualizado } : pta;
+    }));
+    setSelectedPTA((prev: any) => prev && byId.has(prev.id) ? { ...prev, ...byId.get(prev.id) } : prev);
+  };
+
+  const processBulkReview = async () => {
+    if (bulkDecisionInFlightRef.current) return;
+    const revisiones = Array.from(new Set(permisos.componentesRevisables || []));
+    if (!selectedReviewIds.length || !revisiones.length) {
+      toast.error('No tiene componentes de PTA habilitados para revisar');
+      return;
+    }
+    bulkDecisionInFlightRef.current = true;
+    setProcesando(true);
+    try {
+      const res = await revisarComponentesLote({ ptaIds: selectedReviewIds, revisiones,
+        comentarios: batchReviewObs || undefined, revisorId: aprobadorId,
+        revisorNombre: aprobadorNombre, revisorRol: rolLabel });
+      if (!res.success) {
+        toast.error(res.message || 'Error al procesar la revisión en lote');
+        await loadData(false);
+        return;
+      }
+      applyUpdatedPtas(res.data.ptasActualizados);
+      setShowBatchReview(false);
+      setBatchReviewObs('');
+      setSelectedIds(new Set());
+      if (res.data.resumen.revisados > 0) toast.success(`${res.data.resumen.revisados} revisión(es) marcada(s) correctamente`);
+      if (res.data.resumen.fallidos > 0) {
+        const motivos = [...new Set(res.data.resultados.filter(item => item.estado === 'fallido')
+          .map(item => `${labelDeComponente(item.componente)} (${item.subseccion}): ${item.motivo || 'No se pudo revisar'}`))];
+        toast.error(`${res.data.resumen.fallidos} revisión(es) no se pudieron procesar: ${motivos.join('; ')}`);
+      }
+      await loadData(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al procesar la revisión en lote');
+      await loadData(false);
+    } finally {
+      setProcesando(false);
+      bulkDecisionInFlightRef.current = false;
+    }
+  };
+
+  const processBulkDecision = async (
+    payload: Parameters<typeof aprobarComponentesLote>[0],
+    groupLabel: string,
+  ) => {
+    if (bulkDecisionInFlightRef.current) return;
+    if (!payload.ptaIds.length || !payload.componentes.length) {
+      toast.error('No hay componentes autorizados seleccionados para procesar');
+      return;
+    }
+    if (payload.estado === 'devuelto' && !payload.comentarios?.trim()) {
+      toast.error('Debe ingresar un motivo de devolución');
+      return;
+    }
+    bulkDecisionInFlightRef.current = true;
+    setProcesando(true);
+    try {
+      const res = await aprobarComponentesLote(payload);
+      setShowBatchApproval(false);
+      setBulkComponentGroupKey(null);
+      setShowBatchDevolucion(false);
+      if (!res.success) {
+        toast.error(res.message || 'Error al procesar la decisión en lote');
+        await loadData(false);
+        return;
+      }
+      applyUpdatedPtas(res.data.ptasActualizados);
+      setBulkComponentResult({ groupLabel, decision: payload.estado || 'aprobado', ptaIds: [...payload.ptaIds],
+        nombres: Object.fromEntries(ptas.map(pta => [pta.id, pta.docente_nombre || pta.id])),
+        resumen: res.data.resumen, resultados: res.data.resultados });
+      setSelectedIds(new Set());
+      setBatchObs('');
+      setBulkComponentComentarios('');
+      setBatchDevMotivo('');
+      const decisiones = res.data.resultados.filter(item => item.estado === (payload.estado || 'aprobado')).length;
+      if (decisiones > 0) addNotification({ title: `Resultado de lote — ${groupLabel}`,
+        message: `${decisiones} componente(s) ${payload.estado === 'devuelto' ? 'devuelto(s)' : 'aprobado(s)'} en ${payload.ptaIds.length} PTA(s) seleccionados`,
+        type: payload.estado === 'devuelto' ? 'warning' : 'success' });
+      // También se refresca cuando no hubo decisiones nuevas o el lote fue parcial.
+      await loadData(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al procesar la decisión en lote');
+      await loadData(false);
+    } finally {
+      setProcesando(false);
+      bulkDecisionInFlightRef.current = false;
+    }
   };
 
   useEffect(() => {
@@ -2540,7 +2599,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     setCurrentPage(1);
   }, [filtroPeriodo, periodosInicializadosPTA]);
   // Reset page when search changes
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, filtroEstado, filtroEstadoRegistro, filtroMisComponentes, filtroTags, filtroPeriodo]);
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, filtroEstado, filtroEstadoRegistro, filtroTags, filtroPeriodo]);
 
   // ═══ Cargar personas cuando se navega al Banco de Docentes ═══
   useEffect(() => {
@@ -2649,8 +2708,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     toast.success('Prioridad actualizada', { description: 'El orden se guardará automáticamente' });
   }, []);
 
-  const filtroTerritorialEfectivo = decisionListScope?.configured ? decisionListScope.territoriales : permisos.filtroTerritorial;
-  const filtroProgramaEfectivo = decisionListScope?.configured ? decisionListScope.programas : permisos.filtroPrograma;
+  // El alcance territorial limita las decisiones, no la consulta de actividades.
   const scopedPtas = useMemo(() => {
     let result = ptas;
     // Defensa adicional: aun durante una recarga/cambio rápido, la tabla solo
@@ -2658,41 +2716,16 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     if (filtroPeriodo) {
       result = result.filter((p: any) => String(p?.periodo || '') === filtroPeriodo);
     }
-    // Apply territorial filter for Jefatura role — filtra por territoriales de las ASIGNATURAS del PTA
-    if (filtroTerritorialEfectivo && filtroTerritorialEfectivo.length > 0) {
-      result = result.filter((p: any) => {
-        if (Array.isArray(p.componentes_en_alcance)) return p.componentes_en_alcance.length > 0;
-        const norm = (value: unknown) => String(value ?? '').normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-        const scope = new Set(filtroTerritorialEfectivo.map(norm));
-        const assignmentTokens = [
-          ...(Array.isArray(p.territoriales_docencia_ids) ? p.territoriales_docencia_ids : []),
-          ...(Array.isArray(p.territorialesAsignaturas) ? p.territorialesAsignaturas : []),
-        ];
-        if (assignmentTokens.length) return assignmentTokens.some(t => scope.has(norm(t)));
-        return [p.territorial_id, p.territorial].some(t => t && scope.has(norm(t)));
-      });
-    }
-    // Apply program filter for Decanatura role
-    if (filtroProgramaEfectivo && filtroProgramaEfectivo.length > 0) {
-      result = result.filter((p: any) =>
-        (Array.isArray(p.componentes_en_alcance) ? p.componentes_en_alcance.length > 0 :
-        filtroProgramaEfectivo.includes(p.programa_id) ||
-        filtroProgramaEfectivo.some(pid =>
-          [p.programa, ...(p.programasAsignaturas || [])].some(value => value?.toLowerCase().includes(pid.toLowerCase()))
-        ))
-      );
-    }
     if (shouldRestrictByComponentPermission) {
+      // /gestion ya seleccionó los PTAs consultables. Un alcance vacío indica
+      // que el componente se puede consultar, pero no decidir en esta territorial.
       result = result.filter((p: any) => Array.isArray(p.componentes_en_alcance)
-        ? p.componentes_en_alcance.length > 0 : hasAnyComponentApprovalData(p, visibleComponentKeys));
-    }
-    if (decisionListScope?.configured && decisionListScope.cetaps) {
-      result = result.filter(p => Array.isArray(p.componentes_en_alcance) ? p.componentes_en_alcance.length > 0 : decisionListScope.cetaps!.some(cetap =>
-        [p.cetap, ...(p.cetapsAsignaturas || [])].some(value => String(value || '').toLowerCase() === cetap.toLowerCase())));
+        || (Array.isArray(p.componentes_con_datos)
+          ? p.componentes_con_datos.some((key: string) => visibleComponentKeySet.has(key))
+          : hasAnyComponentApprovalData(p, visibleComponentKeys)));
     }
     return result;
-  }, [ptas, filtroPeriodo, filtroTerritorialEfectivo, filtroProgramaEfectivo, decisionListScope, shouldRestrictByComponentPermission, visibleComponentKeys]);
+  }, [ptas, filtroPeriodo, shouldRestrictByComponentPermission, visibleComponentKeys, visibleComponentKeySet]);
 
   const baseFilteredPtas = useMemo(() => {
     let result = scopedPtas;
@@ -2728,27 +2761,26 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
   /**
    * Los indicadores de etapa deben respetar también el estado real del PTA.
-   * En particular, "Aprobado(s)" nunca incluye borradores ni aprobaciones
-   * parciales aunque el usuario ya haya resuelto su propio componente.
+   * "Aprobados" incluye las aprobaciones personales completadas; el estado
+   * global continúa indicando si faltan decisiones de otros responsables.
    */
   const matchesPersonalStageFilter = useCallback((pta: any, filter: FiltroEtapaPersonal) => {
     if (!filter) return true;
     const estadoGlobal = normalizeEstadoKey(pta?.estado);
     switch (filter) {
       case 'revision_pendiente':
-        return estadoGlobal !== 'BORRADOR' && estadoGlobal !== 'APROBADO'
-          && estadoDeMiEtapa(pta, 'revision') === 'pendiente';
+        return puedeSeleccionarParaRevision(pta);
       case 'revision_revisado':
         return estadoGlobal !== 'BORRADOR' && estadoDeMiEtapa(pta, 'revision') === 'resuelto';
       case 'aprobacion_pendiente':
-        return isEstadoPendienteAprobacion(pta?.estado)
-          && estadoDeMiEtapa(pta, 'aprobacion') === 'pendiente';
+        return puedeSeleccionarParaAprobacion(pta);
       case 'aprobacion_aprobado':
-        return estadoGlobal === 'APROBADO';
+        return estadoGlobal !== 'BORRADOR' && (estadoGlobal === 'APROBADO'
+          || estadoDeMiEtapa(pta, 'aprobacion') === 'resuelto');
       default:
         return true;
     }
-  }, [estadoDeMiEtapa]);
+  }, [estadoDeMiEtapa, puedeSeleccionarParaAprobacion, puedeSeleccionarParaRevision]);
 
   const matchesWorkflowTab = useCallback((pta: any, filter: string) => {
     if (!filter) return true;
@@ -2768,13 +2800,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       result = result.filter((p: any) => matchesWorkflowTab(p, filtroEstado));
     }
 
-    // ═══ Filtro por el avance de MIS componentes (revisor/aprobador) ═══
-    if (filtroMisComponentes) {
-      result = result.filter((p: any) => matchesPersonalStageFilter(p, filtroMisComponentes));
-    }
-
     return result;
-  }, [baseFilteredPtas, filtroEstado, filtroMisComponentes, matchesPersonalStageFilter, matchesWorkflowTab]);
+  }, [baseFilteredPtas, filtroEstado, matchesWorkflowTab]);
 
   // Una selección nunca puede sobrevivir a un cambio de período, filtro,
   // datos o permisos si el PTA dejó de estar visible y accionable. Esto evita
@@ -2813,77 +2840,33 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const workflowTabs = useMemo(() => {
     // Contadores facetados: incluyen los demás filtros activos, pero no el tab
     // cuyo valor se está contando.
-    const countBase = filtroMisComponentes
-      ? baseFilteredPtas.filter((p: any) => matchesPersonalStageFilter(p, filtroMisComponentes))
-      : baseFilteredPtas;
+    const countBase = baseFilteredPtas;
     const tabs: Array<{ id: string; label: string; color: string; count: number }> = [
       { id: '', label: 'Todos', color: '#6B7280', count: countBase.length },
     ];
     if (tieneEtapaRevision) {
       tabs.push(
-        { id: 'revision_pendiente', label: 'Revisión', color: '#F59E0B', count: countBase.filter(p => matchesPersonalStageFilter(p, 'revision_pendiente')).length },
-        { id: 'revision_revisado', label: 'Revisado', color: '#10B981', count: countBase.filter(p => matchesPersonalStageFilter(p, 'revision_revisado')).length },
+        { id: 'revision_pendiente', label: 'Por revisar', color: '#B45309', count: countBase.filter(p => matchesPersonalStageFilter(p, 'revision_pendiente')).length },
+        { id: 'revision_revisado', label: 'Revisados', color: '#059669', count: countBase.filter(p => matchesPersonalStageFilter(p, 'revision_revisado')).length },
       );
     }
     if (tieneEtapaAprobacion) {
       tabs.push(
-        { id: 'aprobacion_pendiente', label: 'Aprobación', color: '#F59E0B', count: countBase.filter(p => matchesPersonalStageFilter(p, 'aprobacion_pendiente')).length },
-        { id: 'aprobacion_aprobado', label: 'Aprobado', color: '#10B981', count: countBase.filter(p => matchesPersonalStageFilter(p, 'aprobacion_aprobado')).length },
+        { id: 'aprobacion_pendiente', label: 'Por aprobar', color: '#1D4ED8', count: countBase.filter(p => matchesPersonalStageFilter(p, 'aprobacion_pendiente')).length },
+        { id: 'aprobacion_aprobado', label: 'Aprobados', color: '#059669', count: countBase.filter(p => matchesPersonalStageFilter(p, 'aprobacion_aprobado')).length },
       );
     }
     return tabs;
-  }, [baseFilteredPtas, filtroMisComponentes, matchesPersonalStageFilter, tieneEtapaAprobacion, tieneEtapaRevision]);
+  }, [baseFilteredPtas, matchesPersonalStageFilter, tieneEtapaAprobacion, tieneEtapaRevision]);
 
-  const renderFiltroPersonal = (key: FiltroEtapaPersonal, label: string, etapa?: 'revision' | 'aprobacion') => {
-    const activo = filtroMisComponentes === key;
-    const colorActivo = etapa === 'revision' ? '#B45309'
-      : etapa === 'aprobacion' ? '#1D4ED8' : '#475569';
-    const fondoActivo = etapa === 'revision' ? '#FEF3C7'
-      : etapa === 'aprobacion' ? '#DBEAFE' : '#F1F5F9';
-    return (
-      <button
-        key={key || 'todos'}
-        type="button"
-        aria-pressed={activo}
-        onClick={() => {
-          setFiltroMisComponentes(key);
-        }}
-        style={{
-          minHeight: 30,
-          padding: '5px 10px', borderRadius: 6, cursor: 'pointer',
-          fontSize: '0.7rem', fontWeight: 700, whiteSpace: 'nowrap',
-          border: activo ? `1.5px solid ${colorActivo}` : '1px solid transparent',
-          background: activo ? fondoActivo : 'transparent',
-          color: activo ? colorActivo : '#64748B',
-          transition: 'background 0.15s, color 0.15s, border-color 0.15s',
-        }}
-      >
-        {label}
-      </button>
-    );
-  };
-
-  const filtrosPersonales = (tieneEtapaRevision || tieneEtapaAprobacion) ? (
-    <div className="pta-personal-filters" role="group" aria-label="Filtrar mis componentes por etapa">
-      <div className="pta-personal-filter-group">
-        {renderFiltroPersonal('', 'Todos')}
-      </div>
-      {tieneEtapaRevision && (
-        <div className="pta-personal-filter-group pta-personal-filter-group--review">
-          <span className="pta-personal-filter-label">Revisión</span>
-          {renderFiltroPersonal('revision_pendiente', 'Por revisar', 'revision')}
-          {renderFiltroPersonal('revision_revisado', 'Revisados', 'revision')}
-        </div>
-      )}
-      {tieneEtapaAprobacion && (
-        <div className="pta-personal-filter-group pta-personal-filter-group--approval">
-          <span className="pta-personal-filter-label">Aprobación</span>
-          {renderFiltroPersonal('aprobacion_pendiente', 'Por aprobar', 'aprobacion')}
-          {renderFiltroPersonal('aprobacion_aprobado', 'Aprobados', 'aprobacion')}
-        </div>
-      )}
-    </div>
-  ) : undefined;
+  const emptyStageTitle = !searchQuery && baseFilteredPtas.length > 0
+    ? ({
+        revision_pendiente: 'No tienes PTAs por revisar',
+        revision_revisado: 'No hay PTAs revisados',
+        aprobacion_pendiente: 'No tienes PTAs por aprobar',
+        aprobacion_aprobado: 'No hay PTAs aprobados',
+      } as Record<string, string>)[filtroEstado]
+    : undefined;
 
   useEffect(() => {
     const pages = Math.max(1, Math.ceil(filteredPtas.length / PAGE_SIZE));
@@ -3128,11 +3111,18 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     }
   };
 
+  const listaPendientesAprobar = scopedPtas.filter((p: any) =>
+    matchesPersonalStageFilter(p, 'aprobacion_pendiente'));
+  const pendientesDeTrabajo = scopedPtas.filter((p: any) =>
+    matchesPersonalStageFilter(p, 'revision_pendiente')
+      || matchesPersonalStageFilter(p, 'aprobacion_pendiente'));
+  const pendingWorkCount = pendientesDeTrabajo.length;
+
   const statCards = estadisticas ? [
     { label: 'Total PTAs', value: scopedPtas.length, icon: FileText, color: '#003DA5', bg: '#EFF6FF' },
     // "Pendientes" cuenta solo lo que le queda por resolver a ESTE usuario: si ya
     // aprobó su componente, el PTA deja de sumar aunque siga pendiente para otros.
-    { label: 'Pendientes', value: scopedPtas.filter((p: any) => isEstadoPendienteAprobacion(p.estado) && tienePendientesParaMi(p)).length, icon: Clock, color: '#D97706', bg: '#FEF3C7' },
+    { label: 'Pendientes', value: pendingWorkCount, icon: Clock, color: '#D97706', bg: '#FEF3C7' },
     { label: 'Aprobados', value: scopedPtas.filter((p: any) => p.estado === 'Aprobado').length, icon: CheckCircle, color: '#059669', bg: '#D1FAE5' },
     { label: 'En Concertación', value: estadisticas.enConcertacion || 0, icon: MessageSquare, color: '#7C3AED', bg: '#F3E8FF' },
     { label: 'Rechazados', value: estadisticas.rechazados || 0, icon: XCircle, color: '#DC2626', bg: '#FEE2E2' },
@@ -3170,13 +3160,6 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   }
 
   // Pending PTAs count for mobile badge
-  const listaPendientesAprobar = scopedPtas.filter((p: any) =>
-    isEstadoPendienteAprobacion(p.estado) &&
-    puedeAprobarPorNivel(p.estado, permisos.nivelAprobacion, isSuperUserEffective) &&
-    tienePendientesParaMi(p)
-  );
-  const pendingForApprovalCount = listaPendientesAprobar.length;
-
   const sortedPtas = [...filteredPtas].sort(comparePtas);
   const totalPages = Math.ceil(sortedPtas.length / PAGE_SIZE);
   const paginatedPtas = sortedPtas.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -3499,7 +3482,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const concertacionCount = filteredPtas.filter((p: any) => p.estado === 'EN_CONCERTACION').length;
 
   // Active filter count for mobile badge
-  const activeFilterCount = [searchQuery, filtroEstado, filtroEstadoRegistro, filtroMisComponentes, filtroTags.length > 0].filter(Boolean).length;
+  const activeFilterCount = [searchQuery, filtroEstado, filtroEstadoRegistro, filtroTags.length > 0].filter(Boolean).length;
 
   // ── Atención requerida ──
   return (
@@ -3575,9 +3558,9 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                           {scopedPtas.length} PTAs
                         </span>
                       )}
-                      {pendingForApprovalCount > 0 && (
+                      {pendingWorkCount > 0 && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] md:text-xs font-medium bg-amber-100 text-amber-700 border border-amber-300">
-                          {pendingForApprovalCount} pendiente{pendingForApprovalCount > 1 ? 's' : ''}
+                          {pendingWorkCount} pendiente{pendingWorkCount > 1 ? 's' : ''}
                         </span>
                       )}
                     </div>
@@ -3829,8 +3812,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       ) : (
         /* ═══ GESTIÓN — Vista principal ═══ */
         <div className="py-6 px-2 max-w-none mx-auto flex flex-col gap-6 w-full">
-          {/* Territorial/Program Filter Banner */}
-          {(filtroTerritorialEfectivo || filtroProgramaEfectivo || decisionListScope?.cetaps) && (
+          {/* Territorial asignada: limita decisiones, no la consulta. */}
+          {Boolean(decisionListScope?.territoriales?.length) && (
             <motion.div
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -3845,12 +3828,9 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                 <Filter style={{ width: 13, height: 13, color: '#92400E' }} />
               </div>
               <div>
-                <span style={{ fontWeight: 700 }}>Vista filtrada por su rol</span>
+                <span style={{ fontWeight: 700 }}>Alcance de revisión y aprobación</span>
                 <div style={{ fontSize: '0.72rem', color: '#B45309', marginTop: 2 }}>
-                  {filtroTerritorialEfectivo && <span>Territoriales: <strong>{filtroTerritorialEfectivo.join(', ')}</strong> · </span>}
-                  {filtroProgramaEfectivo && <span>Programas: <strong>{filtroProgramaEfectivo.join(', ')}</strong> · </span>}
-                  {decisionListScope?.configured && decisionListScope.cetaps && <span>CETAPs: <strong>{decisionListScope.cetaps.join(', ')}</strong> · </span>}
-                  Mostrando {filteredPtas.length} de {scopedPtas.length} PTAs
+                  Territorial asignada: <strong>{decisionListScope?.territoriales?.join(', ')}</strong>. Puede consultar las demás actividades, pero solo revisar o aprobar las que correspondan a su territorial y permisos.
                 </div>
               </div>
             </motion.div>
@@ -3876,7 +3856,6 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
             estadosRegistro={ESTADOS_REGISTRO_PRINCIPALES}
             vistaActual={viewMode}
             setVistaActual={setViewMode}
-            secondaryFilters={filtrosPersonales}
             additionalTools={
               <>
                 {/* Columns config */}
@@ -4410,7 +4389,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           </AnimatePresence>
 
           {/* ── Atención requerida: Banner cuando hay PTAs pendientes de aprobación ── */}
-          {!filtroEstado && !loading && permisos.puedeAprobar && listaPendientesAprobar.length > 0 && (
+          {!filtroEstado && !loading && tieneEtapaAprobacion && listaPendientesAprobar.length > 0 && (
               <motion.div
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -4437,7 +4416,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   </div>
                 </div>
                 <button
-                  onClick={() => setFiltroEstado('pendientes')}
+                  onClick={() => setFiltroEstado('aprobacion_pendiente')}
                   style={{
                     padding: '6px 14px', borderRadius: 8, border: 'none',
                     background: '#EA580C', color: 'white', fontSize: '0.75rem', fontWeight: 700,
@@ -4621,12 +4600,14 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   <FileText style={{ width: 32, height: 32, color: '#003DA5' }} />
                 </div>
                 <p style={{ fontWeight: 800, color: '#111827', fontSize: '1.05rem', margin: '0 0 8px' }}>
-                  {searchQuery ? `Sin resultados para "${searchQuery}"` : 'No se encontraron PTAs'}
+                  {searchQuery ? `Sin resultados para "${searchQuery}"` : emptyStageTitle || 'No se encontraron PTAs'}
                 </p>
                 <p style={{ fontSize: '0.85rem', color: '#6B7280', margin: '0 auto', maxWidth: 400, lineHeight: 1.6 }}>
                   {searchQuery
                     ? 'Intenta con otros términos de búsqueda o amplía los filtros.'
-                    : 'Ajusta los filtros de estado o periodo, o verifica que existan PTAs registrados para este periodo.'}
+                    : emptyStageTitle
+                      ? 'No hay registros en esta pestaña con los filtros actuales.'
+                      : 'Ajusta los filtros de estado o periodo, o verifica que existan PTAs registrados para este periodo.'}
                 </p>
               </div>
               <div style={{ padding: '20px 24px', display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -4638,12 +4619,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                     <X style={{ width: 13, height: 13 }} /> Limpiar búsqueda
                   </button>
                 )}
-                {(filtroEstado || filtroEstadoRegistro || filtroMisComponentes) && (
+                {(filtroEstado || filtroEstadoRegistro) && (
                   <button
                     onClick={() => {
                       setFiltroEstado('');
                       setFiltroEstadoRegistro('');
-                      setFiltroMisComponentes('');
                     }}
                     style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #D1D5DB', background: 'white', color: '#374151', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
                   >
@@ -5635,8 +5615,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   const totalHorasProg = filteredPtas.reduce((sum: number, p: any) => sum + (p.total_horas_programadas || 0), 0);
                   const totalHorasDisp = filteredPtas.reduce((sum: number, p: any) => sum + (p.horas_asignables ?? p.horas_a_programar ?? 0), 0);
                   const avgCarga = totalHorasDisp > 0 ? Math.round((totalHorasProg / totalHorasDisp) * 100) : 0;
-                  const pendCount = filteredPtas.filter((p: any) => isEstadoPendienteAprobacion(p.estado)).length;
-                  const aprobCount = filteredPtas.filter((p: any) => normalizeEstadoKey(p.estado) === 'APROBADO').length;
+                  const pendCount = filteredPtas.filter((p: any) => tieneEtapaAprobacion
+                    ? matchesPersonalStageFilter(p, 'aprobacion_pendiente') : isEstadoPendienteAprobacion(p.estado)).length;
+                  const aprobCount = filteredPtas.filter((p: any) => tieneEtapaAprobacion
+                    ? matchesPersonalStageFilter(p, 'aprobacion_aprobado') : normalizeEstadoKey(p.estado) === 'APROBADO').length;
                   
                   return (
                     <div style={{
@@ -5776,10 +5758,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               onAprobar={() => { setSelectedPTA(null); loadData(); }}
               onDevolver={() => { setSelectedPTA(null); loadData(); }}
               onUpdated={(updatedPta) => {
-                // Actualización optimista para que el panel (que permanece abierto)
-                // refleje el cambio al instante, sin esperar el round-trip de loadData().
-                setPtas(prev => prev.map(p => (p.id === updatedPta.id ? { ...p, ...updatedPta } : p)));
-                setSelectedPTA((prev: any) => prev?.id === updatedPta.id ? { ...prev, ...updatedPta } : prev);
+                if (filtroPeriodo !== filtroPeriodoRef.current
+                  || (updatedPta.periodo && updatedPta.periodo !== filtroPeriodoRef.current)) return;
+                // El servidor entrega el estado personal confirmado. Invalidar
+                // lecturas anteriores igual que en los lotes evita restaurar
+                // contadores pendientes después de registrar la decisión.
+                applyUpdatedPtas([updatedPta]);
                 // Los avales de Revisor/Aprobador por componente solo tocaban el estado
                 // local: los contadores de la vista principal (pestañas Todos/Aprobación/
                 // Aprobado, estadísticas, % de avance) quedaban desactualizados hasta el
@@ -5972,38 +5956,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   Cancelar
                 </button>
                 <button
-                  onClick={async () => {
-                    const revisiones = Array.from(new Set(permisos.componentesRevisables || []));
-                    if (revisiones.length === 0) {
-                      toast.error('No tiene componentes de PTA habilitados para revisar');
-                      return;
-                    }
-                    setProcesando(true);
-                    const ids = selectedReviewIds;
-                    const res = await revisarComponentesLote({
-                      ptaIds: ids,
-                      revisiones,
-                      comentarios: batchReviewObs || undefined,
-                      revisorId: aprobadorId,
-                      revisorNombre: aprobadorNombre,
-                      revisorRol: rolLabel,
-                    });
-                    setProcesando(false);
-                    if (!res.success) {
-                      toast.error(res.message || 'Error al procesar la revisión en lote');
-                      return;
-                    }
-                    setShowBatchReview(false);
-                    setBatchReviewObs('');
-                    setSelectedIds(new Set());
-                    if (res.data.resumen.revisados > 0) {
-                      toast.success(`${res.data.resumen.revisados} revisión(es) marcada(s) correctamente`);
-                    }
-                    if (res.data.resumen.fallidos > 0) {
-                      toast.error(`${res.data.resumen.fallidos} revisión(es) no se pudieron procesar`);
-                    }
-                    await loadData();
-                  }}
+                  onClick={processBulkReview}
                   disabled={procesando}
                   style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', opacity: procesando ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 5 }}
                 >
@@ -6050,7 +6003,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                             {p.estado?.replace(/_/g, ' ')}
                           </span>
                           <ArrowRight style={{ width: 10, height: 10, color: '#9CA3AF' }} />
-                          <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#059669' }}>{getNextState(p.estado)?.replace(/_/g, ' ')}</span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#059669' }}>Aprobar componentes autorizados</span>
                         </div>
                       </div>
                     );
@@ -6075,43 +6028,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   Cancelar
                 </button>
                 <button
-                  onClick={async () => {
-                    if (misComponentesAprobables.length === 0) {
-                      toast.error('No tiene componentes de PTA habilitados para aprobar');
-                      return;
-                    }
-                    setProcesando(true);
-                    const ids = selectedApprovalIds;
-                    // "Aprobar Lote" aprueba, por cada PTA seleccionado, los componentes
-                    // que le correspondan al rol/permisos de quien lo acciona (Jefatura,
-                    // Decanatura, etc.) — no un nivel jerárquico global del PTA, que es
-                    // el modelo viejo y ya no refleja cómo se aprueba un PTA hoy.
-                    const res = await aprobarComponentesLote({
-                      ptaIds: ids,
-                      componentes: misComponentesAprobables,
-                      comentarios: batchObs || undefined,
-                      aprobadorId,
-                      aprobadorNombre,
-                      aprobadorRol: rolLabel,
-                    });
-                    setProcesando(false);
-                    setShowBatchApproval(false);
-                    setBatchObs('');
-                    setSelectedIds(new Set());
-                    if (res.success) {
-                      setBulkComponentResult({ groupLabel: 'Aprobar', decision: 'aprobado', resumen: res.data.resumen, resultados: res.data.resultados });
-                      if (res.data.resumen.aprobados > 0) {
-                        addNotification({
-                          title: 'Aprobación en Lote',
-                          message: `${res.data.resumen.aprobados} componente(s) aprobado(s) en ${ids.length} PTA(s) seleccionados`,
-                          type: 'success',
-                        });
-                        loadData();
-                      }
-                    } else {
-                      toast.error(res.message || 'Error al procesar la aprobación en lote');
-                    }
-                  }}
+                  onClick={() => processBulkDecision({ ptaIds: selectedApprovalIds, componentes: misComponentesAprobables, comentarios: batchObs || undefined, aprobadorId, aprobadorNombre, aprobadorRol: rolLabel }, 'Aprobar')}
                   disabled={procesando}
                   style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', opacity: procesando ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 5 }}
                 >
@@ -6176,39 +6093,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                     Cancelar
                   </button>
                   <button
-                    onClick={async () => {
-                      setProcesando(true);
-                      const ptaIds = selectedApprovalIds;
-                      const res = await aprobarComponentesLote({
-                        ptaIds,
-                        componentes: group.componentKeys,
-                        comentarios: bulkComponentComentarios || undefined,
-                        // Mismos campos de identidad que envía la aprobación
-                        // individual (ejecutarAprobacionComponente en
-                        // PTADetallePanelBackoffice.tsx), para que la trazabilidad
-                        // quede igual sin importar si se aprobó uno por uno o en lote.
-                        aprobadorId,
-                        aprobadorNombre,
-                        aprobadorRol: rolLabel || 'Revisor',
-                      });
-                      setProcesando(false);
-                      setBulkComponentGroupKey(null);
-                      setBulkComponentComentarios('');
-                      if (res.success) {
-                        setBulkComponentResult({ groupLabel: group.label, decision: 'aprobado', resumen: res.data.resumen, resultados: res.data.resultados });
-                        setSelectedIds(new Set());
-                        if (res.data.resumen.aprobados > 0) {
-                          addNotification({
-                            title: `Aprobación masiva — ${group.label}`,
-                            message: `${res.data.resumen.aprobados} componente(s) aprobado(s) en ${ptaIds.length} PTA(s) seleccionados`,
-                            type: 'success',
-                          });
-                          loadData();
-                        }
-                      } else {
-                        toast.error(res.message || 'Error al procesar la aprobación masiva');
-                      }
-                    }}
+                    onClick={() => processBulkDecision({ ptaIds: selectedApprovalIds, componentes: group.componentKeys, comentarios: bulkComponentComentarios || undefined, aprobadorId, aprobadorNombre, aprobadorRol: rolLabel || 'Revisor' }, group.label)}
                     disabled={procesando}
                     style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#047857', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', opacity: procesando ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 5 }}
                   >
@@ -6238,11 +6123,30 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   Resultado — {bulkComponentResult.groupLabel}
                 </h3>
                 <p style={{ fontSize: '0.82rem', color: '#6B7280', margin: '4px 0 0' }}>
-                  {bulkComponentResult.resumen.aprobados} aprobado(s) · {bulkComponentResult.resumen.devueltos} devuelto(s) · {bulkComponentResult.resumen.omitidos} omitido(s) · {bulkComponentResult.resumen.fallidos} fallido(s)
+                  {groupedBulkApprovalResult
+                    ? `${groupedBulkApprovalResult.total} PTA(s) procesado(s) · ${groupedBulkApprovalResult.aprobados} aprobado(s) · ${groupedBulkApprovalResult.noAprobados} no aprobado(s)`
+                    : `${bulkComponentResult.resumen.devueltos} devuelto(s) · ${bulkComponentResult.resumen.omitidos} omitido(s) · ${bulkComponentResult.resumen.fallidos} fallido(s)`}
                 </p>
+                {groupedBulkApprovalResult && <p style={{ fontSize: '0.75rem', color: '#6B7280' }}>
+                  «Aprobado» indica que hay componentes aprobados de esta selección. El PTA queda aprobado completamente cuando se resuelven todos sus componentes.
+                </p>}
               </div>
               <div style={{ padding: '12px 24px', overflowY: 'auto', flex: 1 }}>
-                {bulkComponentResult.resultados
+                {groupedBulkApprovalResult ? groupedBulkApprovalResult.ptas.map(item => (
+                  <div key={item.ptaId} style={{ padding: '10px 12px', borderBottom: '1px solid #F3F4F6' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <strong style={{ fontSize: '0.8rem' }}>{bulkComponentResult.nombres[item.ptaId] || item.ptaId}</strong>
+                      <span style={{ color: item.aprobado ? '#047857' : '#B91C1C', fontSize: '0.7rem', fontWeight: 700 }}>
+                        {item.aprobado ? 'APROBADO' : 'NO APROBADO'}
+                      </span>
+                    </div>
+                    {item.detalles.length === 0 && <p>No se recibió confirmación del servidor para este PTA.</p>}
+                    {item.detalles.map(detalle => <div key={detalle.componente} style={{ fontSize: '0.75rem', color: '#475569', marginTop: 5 }}>
+                      {labelDeComponente(detalle.componente)}: {detalle.estado === 'aprobado'
+                        ? detalle.motivo || 'Aprobado' : detalle.motivo || 'No se pudo aprobar'}
+                    </div>)}
+                  </div>
+                )) : bulkComponentResult.resultados
                   .filter(r => r.estado !== bulkComponentResult.decision)
                   .map((r, idx) => {
                     const pta = ptas.find((p: any) => p.id === r.ptaId);
@@ -6266,7 +6170,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       </div>
                     );
                   })}
-                {bulkComponentResult.resultados.every(r => r.estado === bulkComponentResult.decision) && (
+                {!groupedBulkApprovalResult && bulkComponentResult.resultados.every(r => r.estado === bulkComponentResult.decision) && (
                   <p style={{ fontSize: '0.82rem', color: '#059669', textAlign: 'center', padding: '16px 0' }}>
                     {bulkComponentResult.decision === 'aprobado'
                       ? 'Todos los componentes seleccionados se aprobaron correctamente.'
@@ -6276,7 +6180,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               </div>
               <div style={{ padding: '14px 24px', borderTop: '1px solid #F3F4F6', display: 'flex', justifyContent: 'flex-end' }}>
                 <button
-                  onClick={() => setBulkComponentResult(null)}
+                  onClick={() => { setBulkComponentResult(null); void loadData(false); }}
                   style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}
                 >
                   Cerrar
@@ -6291,6 +6195,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       <AnimatePresence>
         {showFirmaDigital && selectedPTA && (
           <FirmaDigitalPTA
+            showSuccessToast={false}
             ptaId={selectedPTA.id}
             docenteNombre={selectedPTA.docente_nombre || 'Docente ESAP'}
             periodo={selectedPTA.periodo || filtroPeriodo}
@@ -6391,44 +6296,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   Cancelar
                 </button>
                 <button
-                  onClick={async () => {
-                    if (!batchDevMotivo.trim()) { toast.error('Debe ingresar un motivo de devolución'); return; }
-                    if (misComponentesAprobables.length === 0) {
-                      toast.error('No tiene componentes de PTA habilitados para devolver');
-                      return;
-                    }
-                    setProcesando(true);
-                    const ids = selectedApprovalIds;
-                    // "Devolver Lote" devuelve, por cada PTA seleccionado, los componentes
-                    // que le correspondan al rol/permisos de quien lo acciona — mismo
-                    // criterio que "Aprobar Lote", en vez del viejo modelo de niveles.
-                    const res = await aprobarComponentesLote({
-                      ptaIds: ids,
-                      componentes: misComponentesAprobables,
-                      estado: 'devuelto',
-                      comentarios: batchDevMotivo,
-                      aprobadorId,
-                      aprobadorNombre,
-                      aprobadorRol: rolLabel,
-                    });
-                    setProcesando(false);
-                    setShowBatchDevolucion(false);
-                    setSelectedIds(new Set());
-                    setBatchDevMotivo('');
-                    if (res.success) {
-                      setBulkComponentResult({ groupLabel: 'Devolver', decision: 'devuelto', resumen: res.data.resumen, resultados: res.data.resultados });
-                      if (res.data.resumen.devueltos > 0) {
-                        addNotification({
-                          title: 'Devolución en Lote',
-                          message: `${res.data.resumen.devueltos} componente(s) devuelto(s) en ${ids.length} PTA(s): ${batchDevMotivo.substring(0, 60)}...`,
-                          type: 'warning',
-                        });
-                        loadData();
-                      }
-                    } else {
-                      toast.error(res.message || 'Error al procesar la devolución en lote');
-                    }
-                  }}
+                  onClick={() => processBulkDecision({ ptaIds: selectedApprovalIds, componentes: misComponentesAprobables, estado: 'devuelto', comentarios: batchDevMotivo, aprobadorId, aprobadorNombre, aprobadorRol: rolLabel }, 'Devolver')}
                   disabled={procesando || !batchDevMotivo.trim()}
                   style={{
                     padding: '8px 20px', borderRadius: 8, border: 'none',
@@ -6546,7 +6414,6 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
             { id: 'flt-clear', label: 'Limpiar todos los filtros', category: 'Filtro', icon: X, action: () => {
               setFiltroEstado('');
               setFiltroEstadoRegistro('');
-              setFiltroMisComponentes('');
               setSearchQuery('');
               setFiltroTags([]);
               setShowCommandPalette(false);
@@ -7212,7 +7079,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           setOpenDropdown(null);
           setMobileFilterOpen(false);
         }}
-        pendingCount={pendingForApprovalCount}
+        pendingCount={pendingWorkCount}
         concertacionCount={concertacionCount}
       />
     </React.Suspense>

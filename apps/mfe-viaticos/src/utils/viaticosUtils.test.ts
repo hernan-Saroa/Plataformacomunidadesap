@@ -86,7 +86,7 @@ describe('sincronizarItinerarioFormulario', () => {
     expect(sync.origenCiudad).toBe('Bogotá D.C.');
     expect(sync.destinoCiudad).toBe('Cali');
     expect(sync.rutaGeneral).toBe('Bogotá D.C. → Medellín → Cali');
-    expect(sync.horaEstimadaGeneral).toBe('08:00 h → 14:30 h');
+    expect(sync.horaEstimadaGeneral).toBe('08:00 h');
   });
 
   it('calcula horaEstimadaGeneral para un único tramo', () => {
@@ -334,8 +334,8 @@ describe('sincronizarItinerarioFormulario con transporte aéreo', () => {
   });
 });
 
-describe('Preservación de hora de salida y llegada en itinerario', () => {
-  it('sincronizarItinerarioFormulario incluye horaEstimadaSalida y horaEstimadaLlegada', () => {
+describe('Preservación de hora de viaje en itinerario (Formato GF-FO-023)', () => {
+  it('sincronizarItinerarioFormulario incluye horaEstimadaSalida como hora de viaje', () => {
     const itinerario: RutaItinerario[] = [
       {
         id: 'r-1',
@@ -350,17 +350,15 @@ describe('Preservación de hora de salida y llegada en itinerario', () => {
         diasRuta: 1.5,
         horarioEstimadoMilitar: '07:30',
         horaEstimadaSalida: '07:30',
-        horaEstimadaLlegada: '09:00',
       },
     ];
 
     const sync = sincronizarItinerarioFormulario(itinerario);
     expect(sync.horaEstimadaSalida).toBe('07:30');
-    expect(sync.horaEstimadaLlegada).toBe('09:00');
-    expect(sync.horaEstimadaGeneral).toBe('07:30 h → 09:00 h');
+    expect(sync.horaEstimadaGeneral).toBe('07:30 h');
   });
 
-  it('mapearARequestCreacion conserva horaEstimadaSalida y horaEstimadaLlegada en el payload', () => {
+  it('mapearARequestCreacion conserva horaEstimadaSalida y horarioEstimadoMilitar en el payload', () => {
     const form: any = {
       objetoComision: 'Auditoría Territorial',
       origenCiudad: 'Bogotá D.C.',
@@ -390,7 +388,6 @@ describe('Preservación de hora de salida y llegada en itinerario', () => {
           diasRuta: 2,
           horarioEstimadoMilitar: '08:00',
           horaEstimadaSalida: '08:00',
-          horaEstimadaLlegada: '14:30',
           guardada: true,
           tarifaTerminalAereo: 0,
         },
@@ -407,11 +404,278 @@ describe('Preservación de hora de salida y llegada en itinerario', () => {
     expect(payload.itinerario).toBeDefined();
     expect(payload.itinerario!.length).toBe(1);
     expect(payload.itinerario![0].horaEstimadaSalida).toBe('08:00');
-    expect(payload.itinerario![0].horaEstimadaLlegada).toBe('14:30');
     expect(payload.itinerario![0].horarioEstimadoMilitar).toBe('08:00');
+    expect((payload.itinerario![0] as any).horaEstimadaLlegada).toBeUndefined();
     // Verifica que los auxiliares de UI fueron eliminados
     expect((payload.itinerario![0] as any).guardada).toBeUndefined();
     expect((payload.itinerario![0] as any).tarifaTerminalAereo).toBe(0);
   });
+
+  it('totaliza correctamente los costos de transporte adicional cuando se seleccionan medios no aéreos', () => {
+    const itinerario: RutaItinerario[] = [
+      {
+        id: 'r1',
+        origenCiudad: 'Bogotá, D.C.',
+        destinoCiudad: 'Buenaventura',
+        destinoDepartamento: 'VALLE DEL CAUCA',
+        tipoTrayecto: 'SOLO_IDA',
+        fechaSalida: '2026-10-14',
+        fechaLlegada: '2026-10-14',
+        diasRuta: 1,
+        horarioEstimadoMilitar: '08:00',
+        horaEstimadaSalida: '08:00',
+        horaEstimadaLlegada: '12:00',
+        tipoTransporte: 'TERRESTRE',
+        valorTransporte: 85000,
+        guardada: true,
+      },
+      {
+        id: 'r2',
+        origenCiudad: 'Buenaventura',
+        destinoCiudad: 'Guapi',
+        destinoDepartamento: 'CAUCA',
+        tipoTrayecto: 'SOLO_IDA',
+        fechaSalida: '2026-10-15',
+        fechaLlegada: '2026-10-15',
+        diasRuta: 1,
+        horarioEstimadoMilitar: '09:00',
+        horaEstimadaSalida: '09:00',
+        horaEstimadaLlegada: '13:00',
+        tipoTransporte: 'MARITIMO',
+        valorTransporte: 120000,
+        guardada: true,
+      },
+      {
+        id: 'r3',
+        origenCiudad: 'Guapi',
+        destinoCiudad: 'Timbiquí',
+        destinoDepartamento: 'CAUCA',
+        tipoTrayecto: 'SOLO_IDA',
+        fechaSalida: '2026-10-16',
+        fechaLlegada: '2026-10-16',
+        diasRuta: 1,
+        horarioEstimadoMilitar: '10:00',
+        horaEstimadaSalida: '10:00',
+        horaEstimadaLlegada: '14:00',
+        tipoTransporte: 'FLUVIAL',
+        valorTransporte: 50000,
+        guardada: true,
+      },
+    ];
+
+    const sync = sincronizarItinerarioFormulario(itinerario);
+    expect(sync.transporteTerrestreOtros).toBe(85000 + 120000 + 50000); // 255.000
+    expect(sync.transporteTerminalesAereos).toBe(0);
+    expect(sync.totalGastosDesplazamiento).toBe(255000);
+    expect(sync.tieneTransporteAereo).toBe(false);
+  });
 });
+
+describe('obtenerAyudaValidacionDocumento', () => {
+  const mockComisionado: any = {
+    id: 'com-1',
+    numeroDocumento: '10203040',
+    primerNombre: 'Ana',
+    segundoNombre: 'María',
+    primerApellido: 'Gómez',
+    segundoApellido: 'Pérez',
+    tipoComisionado: 'CONTRATISTA',
+  };
+
+  const mockForm: any = {
+    numeroCdp: 'CDP-2026-999',
+    fechaCdp: '2026-09-20',
+    rubroPresupuestal: '2.1.2.02.02',
+    montoViaticos: 500000,
+    montoGastosViaje: 150000,
+    fechaInicio: '2026-10-01',
+    fechaFin: '2026-10-05',
+    diasComision: 5,
+    camposAdicionales: {
+      numeroContrato: 'CO1.PCONT.1234567',
+      cuentaBancaria: '9876543210',
+      banco: 'Banco de Bogotá',
+    },
+  };
+
+  it('genera ayuda visual para CERT_BANCARIA con límite de 90 días y datos bancarios contrastados', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const ayuda = obtenerAyudaValidacionDocumento('CERT_BANCARIA', null, {
+      form: mockForm,
+      comisionado: mockComisionado,
+    });
+
+    expect(ayuda).not.toBeNull();
+    expect(ayuda?.titulo).toBe('Pauta de Validación');
+    expect(ayuda?.instruccion).toContain('90 días');
+    expect(ayuda?.datosAContrastar.some((d) => d.valor.includes('9876543210'))).toBe(true);
+    expect(ayuda?.datosAContrastar.some((d) => d.valor.includes('Banco de Bogotá'))).toBe(true);
+    expect(ayuda?.datosAContrastar.some((d) => d.valor.includes('Ana María Gómez Pérez'))).toBe(true);
+  });
+
+  it('genera ayuda visual para RUT exigiendo vigencia del año en curso', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const anioActual = new Date().getFullYear();
+    const ayuda = obtenerAyudaValidacionDocumento('RUT', null, {
+      form: mockForm,
+      comisionado: mockComisionado,
+    });
+
+    expect(ayuda).not.toBeNull();
+    expect(ayuda?.titulo).toBe('Pauta de Validación');
+    expect(ayuda?.instruccion).toContain(String(anioActual));
+    expect(ayuda?.datosAContrastar.some((d) => d.valor.includes('10203040'))).toBe(true);
+  });
+
+  it('genera ayuda visual para SEGURIDAD_SOCIAL contrastando las fechas de la comisión', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const ayuda = obtenerAyudaValidacionDocumento('SEGURIDAD_SOCIAL', null, {
+      form: mockForm,
+      comisionado: mockComisionado,
+    });
+
+    expect(ayuda).not.toBeNull();
+    expect(ayuda?.titulo).toBe('Pauta de Validación');
+    expect(ayuda?.datosAContrastar.some((d) => d.valor.includes('2026-10-01 al 2026-10-05'))).toBe(true);
+  });
+
+  it('genera ayuda visual para CONTRATO_SECOP contrastando el número de contrato ingresado', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const ayuda = obtenerAyudaValidacionDocumento('CONTRATO_SECOP', null, {
+      form: mockForm,
+      comisionado: mockComisionado,
+    });
+
+    expect(ayuda).not.toBeNull();
+    expect(ayuda?.titulo).toBe('Pauta de Validación');
+    expect(ayuda?.datosAContrastar.some((d) => d.valor === 'CO1.PCONT.1234567')).toBe(true);
+  });
+
+  it('genera ayuda visual para CDP contrastando únicamente el número y la fecha (sin rubro ni saldo)', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const ayuda = obtenerAyudaValidacionDocumento('CDP', null, {
+      form: mockForm,
+      comisionado: mockComisionado,
+    });
+
+    expect(ayuda).not.toBeNull();
+    expect(ayuda?.titulo).toBe('Pauta de Validación');
+    expect(ayuda?.datosAContrastar.some((d) => d.valor === 'CDP-2026-999')).toBe(true);
+    expect(ayuda?.datosAContrastar.some((d) => d.valor === '2026-09-20')).toBe(true);
+    // Verificar que no incluye rubro ni saldo/presupuesto
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta.includes('Rubro'))).toBe(false);
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta.includes('liquidado'))).toBe(false);
+  });
+
+  it('prioriza las instrucciones parametrizadas en backend si se proporcionan', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const ayuda = obtenerAyudaValidacionDocumento('CDP', 'Instrucción personalizada desde base de datos', {
+      form: mockForm,
+      comisionado: mockComisionado,
+    });
+
+    expect(ayuda?.instruccion).toBe('Instrucción personalizada desde base de datos');
+  });
+
+  it('respeta los campos parametrizados (camposAValidar) configurados para cualquier documento', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const ayudaRut = obtenerAyudaValidacionDocumento(
+      'RUT',
+      null,
+      { form: mockForm, comisionado: mockComisionado },
+      ['nombreComisionado', 'numeroDocumento'],
+    );
+    expect(ayudaRut?.datosAContrastar).toHaveLength(2);
+    expect(ayudaRut?.datosAContrastar[0].etiqueta).toBe('Nombre / Titular Comisionado');
+    expect(ayudaRut?.datosAContrastar[0].valor).toBe('Ana María Gómez Pérez');
+    expect(ayudaRut?.datosAContrastar[1].etiqueta).toBe('Documento / Cédula');
+    expect(ayudaRut?.datosAContrastar[1].valor).toBe('10203040');
+
+    const ayudaSecop = obtenerAyudaValidacionDocumento(
+      'CONTRATO_SECOP',
+      null,
+      { form: mockForm, comisionado: mockComisionado },
+      ['nombreComisionado', 'numeroDocumento', 'numeroContrato', 'valorHonorarios'],
+    );
+    expect(ayudaSecop?.datosAContrastar.some((d) => d.etiqueta.includes('Contrato') && d.valor === 'CO1.PCONT.1234567')).toBe(true);
+
+    const ayudaCdp = obtenerAyudaValidacionDocumento(
+      'CDP',
+      null,
+      { form: mockForm, comisionado: mockComisionado },
+      ['numeroCdp', 'fechaCdp'],
+    );
+    expect(ayudaCdp?.datosAContrastar.some((d) => d.valor === 'CDP-2026-999')).toBe(true);
+    expect(ayudaCdp?.datosAContrastar.some((d) => d.valor === '2026-09-20')).toBe(true);
+  });
+
+  it('obtiene datos bancarios del comisionado cuando no están en el formulario', async () => {
+    const { obtenerAyudaValidacionDocumento } = await import('./viaticosUtils');
+    const comisionadoConBanco: any = {
+      ...mockComisionado,
+      numeroCuenta: '1122334455',
+      banco: 'Bancolombia',
+      tipoCuenta: 'Corriente',
+    };
+    const formSinBanco: any = {
+      ...mockForm,
+      camposAdicionales: {},
+    };
+
+    const ayuda = obtenerAyudaValidacionDocumento(
+      'CERT_BANCARIA',
+      null,
+      { form: formSinBanco, comisionado: comisionadoConBanco },
+      ['nombreComisionado', 'numeroDocumento', 'tipoCuenta', 'numeroCuenta', 'entidadBancaria'],
+    );
+
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta === 'N° Cuenta Bancaria' && d.valor === '1122334455')).toBe(true);
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta === 'Entidad Bancaria' && d.valor === 'Bancolombia')).toBe(true);
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta === 'Tipo de Cuenta' && d.valor === 'Corriente')).toBe(true);
+  });
+
+  it('obtiene datos bancarios cuando están en form.camposAdicionales con claves snake_case (entidad_bancaria, num_cuenta, tipo_cuenta)', async () => {
+    const { obtenerAyudaValidacionDocumento, mapearARequestCreacion } = await import('./viaticosUtils');
+    const formConBancoSnake: any = {
+      ...mockForm,
+      camposAdicionales: {
+        entidad_bancaria: 'BANCOLOMBIA',
+        num_cuenta: '9876543210',
+        tipo_cuenta: 'AHORROS',
+      },
+    };
+
+    const ayuda = obtenerAyudaValidacionDocumento(
+      'CERT_BANCARIA',
+      null,
+      { form: formConBancoSnake, comisionado: mockComisionado },
+      ['nombreComisionado', 'numeroDocumento', 'tipoCuenta', 'numeroCuenta', 'entidadBancaria'],
+    );
+
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta === 'N° Cuenta Bancaria' && d.valor === '9876543210')).toBe(true);
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta === 'Entidad Bancaria' && d.valor === 'BANCOLOMBIA')).toBe(true);
+    expect(ayuda?.datosAContrastar.some((d) => d.etiqueta === 'Tipo de Cuenta' && d.valor === 'Cuenta de Ahorros')).toBe(true);
+
+    // Verificar también el fallback cuando camposAValidar no viene parametrizado
+    const ayudaFallback = obtenerAyudaValidacionDocumento(
+      'CERT_BANCARIA',
+      null,
+      { form: formConBancoSnake, comisionado: mockComisionado },
+    );
+    expect(ayudaFallback?.datosAContrastar.some((d) => d.etiqueta === 'N° Cuenta registrado' && d.valor === '9876543210')).toBe(true);
+    expect(ayudaFallback?.datosAContrastar.some((d) => d.etiqueta === 'Banco registrado' && d.valor === 'BANCOLOMBIA')).toBe(true);
+    expect(ayudaFallback?.datosAContrastar.some((d) => d.etiqueta === 'Tipo de Cuenta' && d.valor === 'Cuenta de Ahorros')).toBe(true);
+
+    // Verificar que mapearARequestCreacion refleje las claves en ambos formatos
+    const payload = mapearARequestCreacion(formConBancoSnake, mockComisionado, 'usr-1');
+    expect(payload.camposAdicionales?.entidad_bancaria).toBe('BANCOLOMBIA');
+    expect(payload.camposAdicionales?.entidadBancaria).toBe('BANCOLOMBIA');
+    expect(payload.camposAdicionales?.num_cuenta).toBe('9876543210');
+    expect(payload.camposAdicionales?.numeroCuenta).toBe('9876543210');
+    expect(payload.camposAdicionales?.tipo_cuenta).toBe('AHORROS');
+    expect(payload.camposAdicionales?.tipoCuenta).toBe('AHORROS');
+  });
+});
+
+
 

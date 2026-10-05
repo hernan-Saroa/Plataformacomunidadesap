@@ -37,6 +37,8 @@ export const VIATICOS_PERMISOS_GENERALES = {
   TESORERIA: 'travel_expenses.general.es_tesoreria',
   SST: 'travel_expenses.general.es_sst',
   TIQUETES: 'travel_expenses.general.es_responsable_tiquetes',
+  JEFE_DEPENDENCIA: 'travel_expenses.general.es_jefe_dependencia',
+  GERENTE_PROYECTO: 'travel_expenses.general.es_gerente_proyecto',
 } as const;
 
 export const ROLES_SUBDIRECCION_GESTION_CORPORATIVA = [
@@ -62,6 +64,7 @@ export interface DependenciaUsuario {
 export interface UsuarioActual {
   userId: string;
   username: string;
+  fullName?: string;
   email?: string;
   /** Códigos de rol normalizados a forma canónica (ej. 'SUPER_ADMIN'). */
   roles: string[];
@@ -228,16 +231,24 @@ export class AuthService {
       cached?.sub ||
       '';
 
+    const fullName =
+      cached?.fullName ||
+      cached?.full_name ||
+      data?.fullName ||
+      data?.full_name ||
+      (persona?.first_name && persona?.last_name ? `${persona.first_name} ${persona.last_name}` : '') ||
+      persona?.full_name ||
+      '';
+
     return {
       userId,
       username:
         data?.username ||
-        data?.email ||
         cached?.username ||
-        cached?.fullName ||
-        cached?.full_name ||
-        persona?.full_name ||
+        data?.email ||
+        cached?.email ||
         '',
+      fullName: fullName && !fullName.includes('@') ? fullName : undefined,
       email: data?.email || cached?.email || persona?.email,
       roles,
       permissions,
@@ -562,6 +573,73 @@ export class AuthService {
     return user.roles.some((r) => r.includes('ENLACE'));
   }
 
+  /**
+   * Determina si el usuario es Jefe de Dependencia o Supervisor.
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_jefe_dependencia`.
+   */
+  isJefeDependencia(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA)) return true;
+
+    const tieneRolJefe = user.roles.some((r) =>
+      ['JEFE_DEPENDENCIA', 'SUPERVISOR', 'JEFE', 'DIRECTOR_TERRITORIAL', 'LIDER_DEPENDENCIA'].includes(r) ||
+      r.includes('JEFE') ||
+      r.includes('SUPERVISOR'),
+    );
+    if (tieneRolJefe) return true;
+
+    // Si el usuario es explícitamente Gerente de Proyecto (por rol o permiso de Gerente), no es Jefe
+    const esGerente =
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO) ||
+      user.roles.some((r) =>
+        ['GERENTE_PROYECTO', 'GERENTE', 'LIDER_PROYECTO', 'COORDINADOR_PROYECTO'].includes(r) ||
+        r.includes('GERENTE'),
+      );
+    if (esGerente) return false;
+
+    if (
+      this.hasPermission('travel_expenses:sign_approval') ||
+      this.hasPermission('travel_expenses:read_approvals')
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Determina si el usuario es Gerente de Proyecto.
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_gerente_proyecto`.
+   */
+  isGerenteProyecto(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO)) return true;
+    return user.roles.some((r) =>
+      ['GERENTE_PROYECTO', 'GERENTE', 'LIDER_PROYECTO', 'COORDINADOR_PROYECTO'].includes(r) ||
+      r.includes('GERENTE'),
+    );
+  }
+
+  /**
+   * Determina si el usuario puede firmar aprobaciones del Formato 023.
+   */
+  canFirmarAprobacion(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return (
+      this.isJefeDependencia() ||
+      this.isGerenteProyecto() ||
+      this.isSubdireccionGestionCorporativa() ||
+      this.isDireccionNacional() ||
+      this.hasPermission('travel_expenses:sign_approval') ||
+      this.hasPermission('travel_expenses:read_approvals')
+    );
+  }
+
   getCurrentUserSync(): UsuarioActual | null {
     try {
       const cached: any =
@@ -584,14 +662,26 @@ export class AuthService {
       const esAdmin = roles.some((r) =>
       (ROLES_ADMIN_VIATICOS as readonly string[]).includes(r),
     );
+      const personObj = cached?.person || cached?.user?.person;
+      const fullName =
+        cached?.fullName ||
+        cached?.full_name ||
+        (cached?.firstName && cached?.lastName ? `${cached.firstName} ${cached.lastName}` : '') ||
+        personObj?.full_name ||
+        personObj?.fullName ||
+        personObj?.nom_largo ||
+        [personObj?.nom_tercero, personObj?.pri_apellido, personObj?.seg_apellido].filter(Boolean).join(' ') ||
+        '';
+
       return {
         userId: cached?.id_user || cached?.userId || cached?.id || '',
-        username: cached?.username || cached?.fullName || cached?.full_name || '',
+        username: cached?.username || '',
+        fullName: fullName && !fullName.includes('@') ? fullName.trim() : undefined,
         email: cached?.email,
         roles,
         permissions,
         esAdmin,
-        person: cached?.person || cached?.user?.person,
+        person: personObj,
       };
     } catch {
       return null;

@@ -92,11 +92,13 @@ export class NewsController {
       console.warn('⚠️ [Controller] No llegó fechaQueja en el FormData (rawBody.fechaQueja está vacío)');
     }
 
-    // Obtener el ID del usuario autenticado del JWT
-    const userId = (request as any).user?.userId;
+    // Obtener el ID y email del usuario autenticado del JWT
+    const user = (request as any).user;
+    const userId = user?.userId || user?.sub || user?.id;
     if (!userId) {
       throw new BadRequestException('Usuario no autenticado');
     }
+    const userEmail = user?.email || (user?.username?.includes('@') ? user.username : undefined);
 
     // Validaciones de archivos
     if (files && files.length > 0) {
@@ -119,7 +121,7 @@ export class NewsController {
       }
     }
 
-    return await this.newsService.create(createNewsDto, files, userId);
+    return await this.newsService.create(createNewsDto, files, userId, userEmail);
   }
 
   /**
@@ -272,8 +274,12 @@ async getById(@Param('id') id: string): Promise<DisciplinaryNews> {
   async returnNews(
     @Param('id') id: string,
     @Body() returnNewsDto: ReturnNewsDto,
+    @Req() request: Request,
   ): Promise<DisciplinaryNews> {
-    return await this.newsService.returnNews(id, returnNewsDto);
+    const user = (request as any).user;
+    const userId = user?.userId || user?.sub || user?.id;
+    const userEmail = user?.email || (user?.username?.includes('@') ? user.username : undefined);
+    return await this.newsService.returnNews(id, returnNewsDto, userId, userEmail);
   }
 
   /**
@@ -336,8 +342,12 @@ async getById(@Param('id') id: string): Promise<DisciplinaryNews> {
   async resubmit(
     @Param('id') id: string,
     @Body() resubmitNewsDto: ResubmitNewsDto,
+    @Req() request: Request,
   ): Promise<DisciplinaryNews> {
-    return await this.newsService.resubmitNews(id, resubmitNewsDto.observaciones);
+    const user = (request as any).user;
+    const userId = user?.userId || user?.sub || user?.id;
+    const userEmail = user?.email || (user?.username?.includes('@') ? user.username : undefined);
+    return await this.newsService.resubmitNews(id, resubmitNewsDto.observaciones, userId, userEmail);
   }
 
   /**

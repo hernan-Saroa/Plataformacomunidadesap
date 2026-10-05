@@ -16,9 +16,9 @@ export interface PtaAuthenticatedUser extends PtaAuthContext {
   email: string | null;
   roles: string[];
   /**
-   * Territoriales (auth.seccionales.id_seccional) del usuario, tomadas de
-   * auth.personas.id_seccional. Acotan lo que un aprobador/revisor territorial
-   * puede revisar o aprobar del componente Docencia - Territorial.
+   * Territorial (auth.seccionales.id_seccional) de la cuenta, tomada de
+   * auth.personas.id_seccional. Acota las actividades que cualquier permiso
+   * de revisión o aprobación del PTA puede decidir.
    */
   territorialIds: string[];
   /** Identificadores, códigos y nombres equivalentes de la sede de Personas. */

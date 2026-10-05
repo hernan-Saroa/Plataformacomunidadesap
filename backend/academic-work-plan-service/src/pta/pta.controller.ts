@@ -938,7 +938,8 @@ export class PtaController {
     // La autorización real (qué componentes puede aprobar) proviene de req.ptaAuth,
     // resuelto server-side desde los permisos del usuario. NO se confía en el body.
     const data = await this.ptaService.aprobarComponente(ptaId, body, req.ptaAuth);
-    return { success: true, data };
+    const ptaActualizado = await this.ptaService.getUpdatedGestionPta(ptaId, req.ptaAuth);
+    return { success: true, data: { ...data, ...(ptaActualizado ? { ptaActualizado } : {}) } };
   }
 
   @Post('aprobar-componentes-lote')
@@ -981,6 +982,7 @@ export class PtaController {
     // Misma política que aprobar-componente: la autorización real proviene de
     // req.ptaAuth (resuelta server-side), nunca del body.
     const data = await this.ptaService.revisarComponente(ptaId, body, req.ptaAuth);
-    return { success: true, data };
+    const ptaActualizado = await this.ptaService.getUpdatedGestionPta(ptaId, req.ptaAuth);
+    return { success: true, data: { ...data, ...(ptaActualizado ? { ptaActualizado } : {}) } };
   }
 }

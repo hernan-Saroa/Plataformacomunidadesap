@@ -21,6 +21,7 @@ import {
   ProcesoActividad,
 } from '../../entities/proceso-actividad.entity';
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
+import { Revision } from '../../entities/revision.entity';
 import { STORAGE_PATH } from '../archivos';
 import { exigirExpedienteAbierto } from '../archivo-expediente/expediente-archivado';
 import {
@@ -87,6 +88,36 @@ export interface DocumentoDeLaActividad {
  * Lo que se sube sin corresponder a ningún requisito se guarda igual, como
  * adicional: hay anexos que ninguna lista previó.
  */
+/** La ruta con la que el microfrontend pide un archivo guardado. */
+export function rutaDeDescarga(url: string | null | undefined): string | null {
+  return url ? `/files/${basename(url)}` : null;
+}
+
+/**
+ * Los soportes de unas devoluciones, listos para enseñar.
+ *
+ * Lo usan los dos historiales —el del estudio previo y el de las demás
+ * actividades— para que una devolución diga «ver soporte» sin otra consulta.
+ */
+export async function soportesDeDevolucion(
+  m: EntityManager,
+  ids: (string | null | undefined)[],
+): Promise<Map<string, { nombre: string; descargaUrl: string | null; mimeType: string | null }>> {
+  const validos = [...new Set(ids.filter((id): id is string => !!id))];
+  if (!validos.length) return new Map();
+  const documentos = await m.getRepository(Documento).find({ where: { id: In(validos) } });
+  return new Map(
+    documentos.map((d) => [
+      d.id,
+      {
+        nombre: d.archivoNombreOriginal ?? d.nombre,
+        descargaUrl: rutaDeDescarga(d.archivoUrl),
+        mimeType: d.archivoMimeType ?? null,
+      },
+    ]),
+  );
+}
+
 @Injectable()
 export class DocumentosActividadService {
   /** Las reglas propias de algunas actividades, por numeral. */
@@ -528,7 +559,93 @@ export class DocumentosActividadService {
    * desde el nombre, que es lo unico que el controlador necesita.
    */
   private rutaDescarga(url: string | null | undefined): string | null {
-    return url ? `/files/${basename(url)}` : null;
+    return rutaDeDescarga(url);
+  }
+
+  /**
+   * Adjunta a una devolución el archivo con las correcciones (migración 091).
+   *
+   * Solo lo hace quien devolvió, y solo sobre la última decisión: el soporte
+   * explica esa vuelta, y dejar que otro lo cambie —o que llegue después de
+   * que el área ya corrigió y reenvió— lo desligaría de lo que explicaba.
+   *
+   * No pasa por las guardias de la actividad: esas protegen el trabajo de
+   * quien la diligencia, y quien revisa no está cambiando ese trabajo sino
+   * explicando por qué lo devolvió. Tampoco cubre ningún requisito de la lista.
+   */
+  async cargarSoporteDeDevolucion(
+    procesoId: string,
+    numeral: string,
+    archivo: ArchivoRecibido,
+    hash: string,
+    acceso: HiringAccess,
+  ): Promise<{ id: string; nombre: string; descargaUrl: string | null }> {
+    return this.dataSource.transaction(async (m) => {
+      await this.exigirProceso(m, procesoId);
+
+      const actividad = await m
+        .getRepository(ProcesoActividad)
+        .findOne({ where: { procesoId, numeral } });
+      if (!actividad) throw new NotFoundException(`La actividad ${numeral} no existe en este proceso`);
+
+      const ultima = await m.getRepository(Revision).findOne({
+        where: { procesoActividadId: actividad.id },
+        order: { createdAt: 'DESC' },
+      });
+      const esSuya =
+        !!ultima &&
+        ((!!ultima.revisadoPorId && ultima.revisadoPorId === acceso.userId) ||
+          ultima.revisadoPor?.trim().toLowerCase() === acceso.userName?.trim().toLowerCase());
+
+      if (!ultima || ultima.decision !== 'DEVUELTO' || !esSuya) {
+        throw new ConflictException(
+          'El soporte lo adjunta quien devolvió la actividad, sobre su última devolución',
+        );
+      }
+      if (ultima.soporteDocumentoId) {
+        throw new ConflictException('Esta devolución ya tiene su soporte');
+      }
+      // El estudio previo devuelto vuelve a borrador; lo demás queda DEVUELTO.
+      if (actividad.estado !== 'DEVUELTO' && actividad.estado !== 'BORRADOR') {
+        throw new ConflictException(
+          'La actividad ya se corrigió y se volvió a enviar: el soporte llegaría tarde',
+        );
+      }
+
+      const expediente = await exigirExpedienteAbierto(m, procesoId);
+      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+      const documento = await m.save(
+        m.create(Documento, {
+          expedienteId: expediente.id,
+          numeral,
+          tipo: 'ADJUNTO',
+          nombre: `Soporte de la devolución · ${archivo.originalname}`,
+          archivoUrl: `hiring/files/${archivo.filename}`,
+          archivoNombreOriginal: archivo.originalname,
+          archivoMimeType: archivo.mimetype,
+          archivoTamano: archivo.size,
+          hashSha256: hash,
+          subidoPor: acceso.userName,
+        } as Partial<Documento>),
+      );
+
+      ultima.soporteDocumentoId = documento.id;
+      await m.save(Revision, ultima);
+
+      await this.traza(m, procesoId, documento.id, 'ADJUNTAR', acceso, {
+        numeral,
+        soporteDeDevolucion: true,
+        revision: ultima.id,
+        archivo: archivo.originalname,
+      });
+
+      return {
+        id: documento.id,
+        nombre: documento.nombre,
+        descargaUrl: this.rutaDescarga(documento.archivoUrl),
+      };
+    });
   }
 
   /**

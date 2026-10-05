@@ -114,6 +114,14 @@ export class UpdateSolicitudDto {
   idDependencia?: number;
 
   @IsOptional()
+  @IsString()
+  cargo?: string;
+
+  @IsOptional()
+  @IsNumber()
+  idCargo?: number;
+
+  @IsOptional()
   @IsObject()
   camposAdicionales?: Record<string, any>;
 

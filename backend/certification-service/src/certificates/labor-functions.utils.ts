@@ -95,6 +95,20 @@ const cleanFunctionDescription = (value: string): string =>
     .replace(/\s+([,.;:])/g, '$1')
     .trim();
 
+const NUMBERED_FUNCTION = /^\s*(?:funci[oó]n\s*)?\d{1,3}[.)-]\s+/i;
+
+const functionLines = (value: string): Array<{ text: string; bullet: boolean }> =>
+  value
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .flatMap((line) =>
+      line.split('\u2022').map((text, index) => ({
+        text: text.trim(),
+        bullet: index > 0,
+      })),
+    )
+    .filter(({ text }) => Boolean(text));
+
 // Match the numeric documents used by labor self-service, preserving leading zeros.
 export const normalizeLaborFunctionDocument = (value: unknown): string => {
   if (typeof value === 'number' && (!Number.isSafeInteger(value) || value < 0))
@@ -107,18 +121,28 @@ export const normalizeLaborFunctionDocument = (value: unknown): string => {
 
 export const parseLaborFunctionsRaw = (value: unknown): string[] => {
   // Array entries are already individual functions: do not split their content.
-  const values = Array.isArray(value)
-    ? value
-    : String(value ?? '')
-        .replace(/\r\n?/g, '\n')
-        .split(/\n+|[•]/);
-  return values
-    .filter((item) => typeof item === 'string')
-    .map((item) =>
-      cleanFunctionDescription(
-        item.replace(/^\s*(?:funci[oó]n\s*)?\d{1,3}[.)-]\s+/i, ''),
-      ),
-    )
+  if (Array.isArray(value)) {
+    return value
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => cleanFunctionDescription(item.replace(NUMBERED_FUNCTION, '')))
+      .filter(Boolean);
+  }
+
+  const lines = functionLines(String(value ?? ''));
+  if (!lines.length) return [];
+
+  const entries: string[] = [];
+  if (NUMBERED_FUNCTION.test(lines[0].text)) {
+    for (const { text, bullet } of lines) {
+      if (NUMBERED_FUNCTION.test(text) || bullet || !entries.length)
+        entries.push(text);
+      else entries[entries.length - 1] += ` ${text}`;
+    }
+  } else {
+    entries.push(...lines.map(({ text }) => text));
+  }
+  return entries
+    .map((item) => cleanFunctionDescription(item.replace(NUMBERED_FUNCTION, '')))
     .filter(Boolean);
 };
 

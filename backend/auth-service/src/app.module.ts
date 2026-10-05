@@ -13,6 +13,8 @@ import { Geopolitica } from './users/geopolitica.entity';
 import { Sede } from './users/sede.entity';
 import { Seccional } from './users/seccional.entity';
 import { Dependencia } from './users/dependencia.entity';
+import { Cargo } from './users/cargo.entity';
+import { DependenciaCargo } from './users/dependencia-cargo.entity';
 import { ProgramaAcademico } from './programas/programa.entity';
 import { Asignatura } from './programas/asignatura.entity';
 import { ProgramasModule } from './programas/programas.module';
@@ -39,6 +41,7 @@ import { FestivoColombia } from './settings/festivo-colombia.entity';
       password: process.env.DB_PASS,
       database: process.env.DB_NAME,
       schema: process.env.DB_SCHEMA,
+      autoLoadEntities: true,
       entities: [
         User,
         Person,
@@ -49,6 +52,8 @@ import { FestivoColombia } from './settings/festivo-colombia.entity';
         Sede,
         Seccional,
         Dependencia,
+        Cargo,
+        DependenciaCargo,
         ProgramaAcademico,
         Asignatura,
         CarpetaDigital,

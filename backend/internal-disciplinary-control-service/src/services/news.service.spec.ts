@@ -27,6 +27,16 @@ describe('NewsService', () => {
   let connection: any;
 
   const mockQuery = jest.fn().mockImplementation(async (sql: string) => {
+    if (sql.includes('JEFE') || sql.includes('es_jefe_ocid')) {
+      return [
+        {
+          id_user: 'jefe-1',
+          username: 'jefe.ocid@esap.edu.co',
+          nom_largo: 'Jefe OCID',
+          dir_email: 'jefe.ocid@esap.edu.co',
+        },
+      ];
+    }
     if (sql.includes('auth.user')) {
       return [
         {
@@ -66,6 +76,7 @@ describe('NewsService', () => {
           provide: SequenceService,
           useValue: {
             generateRadicado: jest.fn(),
+            generateNewsRadicado: jest.fn().mockResolvedValue('ND-2026-0001'),
           },
         },
         {
@@ -189,6 +200,97 @@ describe('NewsService', () => {
           subject: expect.stringContaining('ND-2026-0099'),
           html: expect.stringContaining('Falta información del quejoso'),
         }),
+        expect.objectContaining({ timeout: expect.any(Number) }),
+      );
+    });
+  });
+
+  describe('create', () => {
+    it('should create news and send email and in-app notifications to Jefe OCID', async () => {
+      const mockDto: any = {
+        hechos: 'Presunta falta disciplinaria en contratación',
+        territorial: 'Sede Central',
+        dependenciaDenunciado: 'Secretaría General',
+        disciplinable: { nombre: 'Funcionario Investigado', cedula: '12345678' },
+        denunciante: { nombre: 'Ciudadano Quejoso', cedula: '87654321' },
+      };
+
+      const mockSavedNoticia: any = {
+        id: 'news-new-1',
+        radicado: 'ND-2026-0001',
+        estado: 'RADICADA',
+        fechaRecepcion: new Date(),
+        ...mockDto,
+      };
+
+      jest.spyOn(sequenceService, 'generateNewsRadicado' as any).mockResolvedValue('ND-2026-0001');
+      jest.spyOn(stageConfigurationRepository, 'findOne').mockResolvedValue({ id: 'stage-1', orden: 1, activo: true, etapa: 'RECEPCION' } as any);
+      jest.spyOn(newsRepository, 'create').mockReturnValue(mockSavedNoticia);
+      jest.spyOn(newsRepository, 'save').mockResolvedValue(mockSavedNoticia);
+
+      const result = await service.create(mockDto, undefined, 'user-radicador');
+
+      expect(result.radicado).toBe('ND-2026-0001');
+
+      // Verificación de notificación in-app enviada al Jefe OCID
+      expect(notificationClient.sendMany).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id_usuario_destinatario: 'jefe-1',
+            tipo_notificacion: 'NUEVA_NOTICIA',
+          }),
+        ]),
+      );
+
+      // Verificación de correo electrónico enviado al Jefe OCID
+      expect(httpService.post).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/emails/send'),
+        expect.objectContaining({
+          to: 'jefe.ocid@esap.edu.co',
+          subject: expect.stringContaining('ND-2026-0001'),
+          html: expect.stringContaining('Pendiente de Revisión'),
+        }),
+        expect.objectContaining({ timeout: expect.any(Number) }),
+      );
+    });
+  });
+
+  describe('resubmitNews', () => {
+    it('should update status to EN_VALORACION and send email and in-app notifications to Jefe OCID', async () => {
+      const mockNoticia: any = {
+        id: 'news-devuelta-1',
+        radicado: 'ND-2026-0088',
+        estado: NewsStatus.DEVUELTA,
+        disciplinable: { nombre: 'Funcionario Subsanado', cedula: '99887766' },
+        historialAuditoria: [],
+      };
+
+      jest.spyOn(service, 'findById').mockResolvedValue(mockNoticia);
+      jest.spyOn(newsRepository, 'save').mockImplementation(async (n: any) => n);
+
+      const result = await service.resubmitNews('news-devuelta-1', 'Se adjunta prueba documental solicitada');
+
+      expect(result.estado).toBe(NewsStatus.EN_VALORACION);
+
+      // Verificación de notificación in-app enviada al Jefe OCID
+      expect(notificationClient.sendMany).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id_usuario_destinatario: 'jefe-1',
+            tipo_notificacion: 'NOTICIA_REENVIADA',
+          }),
+        ]),
+      );
+
+      // Verificación de correo electrónico enviado al Jefe OCID
+      expect(httpService.post).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/emails/send'),
+        expect.objectContaining({
+          to: 'jefe.ocid@esap.edu.co',
+          subject: expect.stringContaining('ND-2026-0088'),
+          html: expect.stringContaining('Se adjunta prueba documental solicitada'),
+        }),
+        expect.objectContaining({ timeout: expect.any(Number) }),
       );
     });
   });
