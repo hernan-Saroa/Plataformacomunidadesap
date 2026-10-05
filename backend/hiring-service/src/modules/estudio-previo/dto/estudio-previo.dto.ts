@@ -70,6 +70,27 @@ export class CambiarModalidadDto {
   modalidad: string;
 }
 
+/**
+ * El valor estimado corregido, y la modalidad si con él cambia.
+ *
+ * Van juntos porque la modalidad depende de la cuantía: subir el valor por
+ * encima del umbral de licitación pública obliga a cambiar también la
+ * modalidad, y en dos llamadas la primera se rechazaría sin remedio.
+ */
+export class CambiarCuantiaDto {
+  @ApiProperty({ description: 'Valor estimado del contrato en pesos', example: 10000000 })
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'El valor estimado debe ser un número' })
+  @Min(0, { message: 'El valor estimado no puede ser negativo' })
+  valorEstimado: number;
+
+  @ApiPropertyOptional({ description: 'Código de la modalidad; sin él se conserva la actual' })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty({ message: 'Elige la modalidad de contratación' })
+  @MaxLength(60)
+  modalidad?: string;
+}
+
 export class RevisarDto {
   @ApiPropertyOptional({
     description:

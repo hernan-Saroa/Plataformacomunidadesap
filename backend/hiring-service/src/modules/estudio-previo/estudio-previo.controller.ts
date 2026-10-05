@@ -22,6 +22,7 @@ import { createReadStream } from 'fs';
 import { EstudioPrevioService } from './estudio-previo.service';
 import {
   AnotarRadicadoDto,
+  CambiarCuantiaDto,
   CambiarModalidadDto,
   CrearProcesoDto,
   EnviarEstudioPrevioDto,
@@ -110,6 +111,21 @@ export class EstudioPrevioController {
     @Req() req: any,
   ) {
     return this.service.cambiarModalidad(id, dto, getHiringAccess(req));
+  }
+
+  @Put(':id/estudio-previo/cuantia')
+  @Puede('editar', '3.1')
+  @ApiOperation({
+    summary: 'Corregir el valor estimado mientras se arma el estudio previo',
+    description:
+      'Valida el valor contra los umbrales de cuantía, igual que al crear el proceso. Admite la modalidad en la misma llamada, porque un valor que obliga a licitación pública rechaza la de menor cuantía. Solo el área que radicó, con la 3.1 en borrador o devuelta.',
+  })
+  cambiarCuantia(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CambiarCuantiaDto,
+    @Req() req: any,
+  ) {
+    return this.service.cambiarCuantia(id, dto, getHiringAccess(req));
   }
 
   @Post(':id/estudio-previo/enviar')
