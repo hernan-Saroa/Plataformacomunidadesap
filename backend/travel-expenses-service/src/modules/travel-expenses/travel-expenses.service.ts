@@ -8905,6 +8905,7 @@ if (itinerarioGeneral) {
    * 1. Al responsable de tiquetes (in-app y por rol).
    * 2. Al pasajero/comisionado (in-app y correo electrónico con itinerario/tiquete).
    * 3. Al enlace/creador (in-app y correo electrónico con confirmación).
+   * 4. Al grupo de presupuesto (in-app y correo electrónico para expedición de RP).
    */
   private async despacharNotificacionesAutorizacion(
     solicitud: SolicitudComisionEntity,
@@ -9059,6 +9060,52 @@ if (itinerarioGeneral) {
         } catch (err: any) {
           this.logger.warn(`[notify] Error notificando al enlace: ${err?.message}`);
         }
+      }
+
+      // 4. Notificación al Grupo de Presupuesto (para expedición de RP)
+      try {
+        await this.notificationClient.notifyByPermission(
+          'travel_expenses.general.es_presupuesto',
+          {
+            tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_PRESUPUESTO',
+            titulo: `Nueva comisión autorizada para expedición de RP: ${consecutivo}`,
+            mensaje: `La comisión ${consecutivo} con destino a ${destino}${nombrePasajero ? ` (${nombrePasajero})` : ''} fue AUTORIZADA corporativamente y se encuentra disponible para expedición de Registro Presupuestal (RP) en SIIF Nación.`,
+            descripcion_corta: `Autorizada · ${consecutivo}`,
+            icono: 'Receipt',
+            color: '#059669',
+            prioridad: 'Alta',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Expedir RP',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: solicitud.id,
+              consecutivoUnico: consecutivo,
+              comisionadoNombre: nombrePasajero,
+              destinoCiudad: solicitud.destinoCiudad,
+            },
+          },
+          {
+            subject: `[Viáticos ESAP] Comisión Autorizada para Expedición de RP: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: 'Grupo de Presupuesto',
+              tituloHeader: 'ESAP — Grupo de Presupuesto',
+              subtituloHeader: 'Comisión Autorizada Pendiente de Registro Presupuestal (RP)',
+              mensajePrincipal: `La comisión <strong>${consecutivo}</strong> ha sido autorizada corporativamente por la Subdirección de Gestión Corporativa y se encuentra disponible para la expedición de Registro Presupuestal (RP) en SIIF Nación:`,
+              consecutivo,
+              comisionadoNombre: nombrePasajero,
+              destino,
+              nuevoEstado: 'AUTORIZADA',
+              tipoNovedad: 'SUCCESS',
+              textoBoton: 'Expedir RP en Plataforma',
+              urlAccion: '/viaticos',
+            }),
+            text: `La comisión ${consecutivo} fue autorizada y está disponible para expedición de RP en SIIF Nación.`,
+          },
+          'PRESUPUESTO',
+        );
+      } catch (err: any) {
+        this.logger.warn(`[notify] Error notificando a PRESUPUESTO en autorización: ${err?.message}`);
       }
     } catch (err: any) {
       this.logger.warn(`[notify] Error en despacharNotificacionesAutorizacion: ${err?.message}`);

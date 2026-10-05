@@ -4665,6 +4665,9 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
           { observaciones: 'Aprobación presupuestal y de itinerario confirmada' },
         );
 
+        // Esperar a que el despacho asíncrono de notificaciones se complete
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
         // Verificación de estado y campos de auditoría
         expect(resultado.estadoSolicitud).toBe(EstadoSolicitud.AUTORIZADA);
         expect(solicitud.estadoSolicitud).toBe(EstadoSolicitud.AUTORIZADA);
@@ -4700,6 +4703,17 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
           expect.objectContaining({
             id_usuario_destinatario: 'com-aut-001',
             tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_PASAJERO',
+          }),
+        );
+
+        // Verificación de notificación al grupo de presupuesto
+        expect(notificationClient.notifyByRole).toHaveBeenCalledWith(
+          'PRESUPUESTO',
+          expect.objectContaining({
+            tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_PRESUPUESTO',
+            datos_adicionales: expect.objectContaining({
+              solicitudId: 'sol-aut-001',
+            }),
           }),
         );
       });
