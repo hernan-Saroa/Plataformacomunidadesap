@@ -21,6 +21,7 @@ import {
   ConflictException,
   ParseIntPipe,
   HttpStatus,
+  GoneException,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -261,13 +262,16 @@ export class MantenimientoController {
   }
 
   // ---------------------------------------------------------------------------
-  // EFDS-1733: Técnicos mantenimiento
+  // EFDS-1733 / EFDS-174X: Técnicos mantenimiento
+  // OPCIÓN A (DECISIÓN FINAL): Source of Truth = auth-service roles P3/P4.
+  // Modo híbrido backward-compat: GET /tecnicos sirve shape CatalogoItem igual.
+  // CRUD legacy catalogo DEPRECADO 410 Gone.
   // ---------------------------------------------------------------------------
   @Get('tecnicos')
   @Public()
   @ApiOperation({
     summary:
-      'EFDS-1733: Listar técnicos mantenimiento (catálogo TECNICO_MANTENIMIENTO). Por defecto solo activos; use ?soloActivos=false para todos.',
+      'EFDS-174X: Listar técnicos mantenimiento UMI (híbrido). Por defecto solo activos; use ?soloActivos=false para todos. Source of Truth: auth-service usuarios con roles P3 (Eléctrico especializado) o P4 (Multipropósito).',
   })
   listarTecnicos(@Query('soloActivos') soloActivos?: string) {
     const activos =
@@ -281,7 +285,7 @@ export class MantenimientoController {
   @Public()
   @ApiOperation({
     summary:
-      'EFDS-1733: Listar técnicos mantenimiento con columna extra cargaVigente (conteo solicitudes RECIBIDA/ASIGNADA/EN_PROGRESO/EN_ANALISIS area UMI). Por defecto solo activos; use ?incluirInactivos=true para también listar inactivos (cargaVigente=0, soft-delete visual Admin).',
+      'EFDS-174X: Listar técnicos mantenimiento con cargaVigente. Source of Truth auth P3/P4; cálculo de carga por id_tecnico_asignado (UUID) o fallback legacy por responsableAsignado.',
   })
   listarTecnicosConCargaVigente(@Query('incluirInactivos') incluirInactivos?: string) {
     const todos = String(incluirInactivos || '').toLowerCase() === 'true';
@@ -290,28 +294,60 @@ export class MantenimientoController {
 
   @Get('tecnicos/:idTecnico/carga-vigente')
   @ApiOperation({
-    summary: 'EFDS-1733: Carga vigente puntual de un técnico por ID catalogo_item.',
+    summary:
+      'EFDS-174X: Carga vigente puntual de un técnico. Acepta UUID id_user auth (nuevo) o idCatalogo legacy (número catalogo_item).',
   })
-  async getCargaVigenteTecnico(@Param('idTecnico', ParseIntPipe) idTecnico: number) {
-    const tecnico = await this.mantenimientoService['catalogoRepo'].findOne({
-      // fallback usando el service method usando codigo. Buscamos por pk y usamos service method con codigo.
-      where: {
-        catalogo: 'TECNICO_MANTENIMIENTO',
-        idCatalogo: idTecnico,
-      },
-    } as any);
-    if (!tecnico) {
-      throw new NotFoundException(`Técnico #${idTecnico} no existe.`);
+  @ApiResponse({ status: 404, description: 'Técnico no encontrado por UUID o idCatalogo legacy.' })
+  async getCargaVigenteTecnico(@Param('idTecnico') idTecnico: string) {
+    const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+    const esUuid = UUID_RE.test(String(idTecnico || '').trim());
+    const esNumLegacy = /^\d+$/.test(String(idTecnico || '').trim());
+
+    if (esUuid) {
+      const idUserAuth = String(idTecnico).trim();
+      const todos = await this.mantenimientoService.listarTecnicos(true);
+      const tecnico = todos.find((t: any) => String(t?.metadata?.idUserAuth || '').toLowerCase() === idUserAuth.toLowerCase());
+      if (!tecnico) {
+        throw new NotFoundException(`Técnico UUID ${idUserAuth} no existe o no tiene rol P3/P4 UMI.`);
+      }
+      const carga = await this.mantenimientoService.calcularCargaVigenteTecnico(idUserAuth);
+      return {
+        idTecnico: idUserAuth,
+        idUserAuth,
+        codigo: tecnico.codigo,
+        nombre: tecnico.nombre,
+        roleCod: tecnico.metadata?.roleCod,
+        cargaVigente: carga,
+      };
     }
-    const carga = await this.mantenimientoService.calcularCargaVigenteTecnico(tecnico.codigo);
-    return { idTecnico, codigo: tecnico.codigo, nombre: tecnico.nombre, cargaVigente: carga };
+
+    if (esNumLegacy) {
+      const idCat = parseInt(idTecnico, 10);
+      const tecnico = await this.mantenimientoService['catalogoRepo'].findOne({
+        where: {
+          catalogo: 'TECNICO_MANTENIMIENTO',
+          idCatalogo: idCat,
+        },
+      } as any);
+      if (!tecnico) {
+        throw new NotFoundException(`Técnico legacy #${idCat} no existe.`);
+      }
+      const carga = await this.mantenimientoService.calcularCargaVigenteTecnico(tecnico.codigo);
+      return { idTecnico: idCat, codigo: tecnico.codigo, nombre: tecnico.nombre, cargaVigente: carga, legacy: true };
+    }
+
+    throw new BadRequestException(
+      `idTecnico inválido. Use UUID auth-service o idCatalogo legacy numérico. Recibido: ${idTecnico}`,
+    );
   }
 
   @Post('tecnicos')
   @ApiOperation({
+    deprecated: true,
     summary:
-      'EFDS-1733: Crear un técnico mantenimiento (catálogo TECNICO_MANTENIMIENTO). Validaciones: codigo min 4, nombre min 4, dup código 409.',
+      '[DEPRECADO 410] EFDS-174X: Ya no se crean técnicos en catálogo infra. Designar rol P3 (TECNICO_ELECTRICO_ESPECIALIZADO) o P4 (TECNICO_UMI_MULTIPROPOSITO) en MFE Gestión Personas sobre la persona.',
   })
+  @ApiResponse({ status: 410, description: 'Recurso retirado permanentemente. Usar Gestión Personas + roles P3/P4.' })
   crearTecnico(
     @Body()
     body: {
@@ -329,11 +365,13 @@ export class MantenimientoController {
 
   @Patch('tecnicos/:idTecnico')
   @ApiOperation({
+    deprecated: true,
     summary:
-      'EFDS-1733: Actualizar técnico mantenimiento por id (codigo, nombre, email, telefono, especialidades, orden, isActivo).',
+      '[DEPRECADO 410] EFDS-174X: Ya no se editan técnicos en catálogo infra. Source of Truth = auth-service. Editar persona/roles en MFE Gestión Personas.',
   })
+  @ApiResponse({ status: 410, description: 'Recurso retirado permanentemente. Usar Gestión Personas.' })
   actualizarTecnico(
-    @Param('idTecnico', ParseIntPipe) idTecnico: number,
+    @Param('idTecnico') idTecnico: string,
     @Body()
     body: {
       codigo?: string;
@@ -345,23 +383,32 @@ export class MantenimientoController {
       isActivo?: boolean;
     },
   ) {
-    return this.mantenimientoService.actualizarTecnico(idTecnico, body);
+    const idNum = /^\d+$/.test(String(idTecnico || '')) ? parseInt(idTecnico, 10) : 0;
+    return this.mantenimientoService.actualizarTecnico(idNum, body);
   }
 
   @Patch('tecnicos/:idTecnico/toggle')
   @ApiOperation({
-    summary: 'EFDS-1733: Toggle rápido activo/inactivo de un técnico mantenimiento.',
+    deprecated: true,
+    summary:
+      '[DEPRECADO 410] EFDS-174X: Toggle isActivo ya no se maneja en catálogo infra. Es campo is_active auth-service. Designar/retirar roles P3/P4 en Gestión Personas.',
   })
-  toggleTecnico(@Param('idTecnico', ParseIntPipe) idTecnico: number) {
-    return this.mantenimientoService.toggleTecnico(idTecnico);
+  @ApiResponse({ status: 410, description: 'Recurso retirado permanentemente. Usar Gestión Personas + roles.' })
+  toggleTecnico(@Param('idTecnico') idTecnico: string) {
+    const idNum = /^\d+$/.test(String(idTecnico || '')) ? parseInt(idTecnico, 10) : 0;
+    return this.mantenimientoService.toggleTecnico(idNum);
   }
 
   @Delete('tecnicos/:idTecnico')
   @ApiOperation({
-    summary: 'EFDS-1733: Eliminar un técnico de mantenimiento por id (eliminación lógica de catalogo_item pk).',
+    deprecated: true,
+    summary:
+      '[DEPRECADO 410] EFDS-174X: No se eliminan técnicos vía catálogo. Retirar roles P3/P4 en MFE Gestión Personas. La persona permanece en auth-service.',
   })
-  eliminarTecnico(@Param('idTecnico', ParseIntPipe) idTecnico: number) {
-    return this.mantenimientoService.eliminarTecnico(idTecnico);
+  @ApiResponse({ status: 410, description: 'Recurso retirado permanentemente. Retirar roles P3/P4 en Gestión Personas.' })
+  eliminarTecnico(@Param('idTecnico') idTecnico: string) {
+    const idNum = /^\d+$/.test(String(idTecnico || '')) ? parseInt(idTecnico, 10) : 0;
+    return this.mantenimientoService.eliminarTecnico(idNum);
   }
 
   // ---------------------------------------------------------------------------
@@ -394,6 +441,7 @@ export class MantenimientoController {
     @Body()
     body: {
       tecnicoCodigo?: string | null;
+      idTecnicoAsignado?: string | null;
       observaciones?: string | null;
     },
     @Req() req: any,
@@ -433,7 +481,8 @@ export class MantenimientoController {
     @Param('idSolicitud') idSolicitud: string,
     @Body()
     body: {
-      tecnicoCodigo: string;
+      tecnicoCodigo?: string;
+      idTecnicoAsignado?: string;
       motivoRedistribucion?: string | null;
       observaciones?: string | null;
     },

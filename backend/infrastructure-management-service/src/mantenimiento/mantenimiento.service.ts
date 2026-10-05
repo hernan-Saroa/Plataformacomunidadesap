@@ -1,9 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException, OnModuleInit, Optional, Inject, forwardRef, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, InternalServerErrorException, OnModuleInit, Optional, Inject, forwardRef, Logger, GoneException } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, Between, In, IsNull, Not } from 'typeorm';
 import { PassThrough, Readable } from 'node:stream';
 import { SolicitudMantenimiento } from './mantenimiento.entity.js';
-import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto } from './dto/create-mantenimiento.dto.js';
+import { CreateMantenimientoDto, UpdateMantenimientoEstadoDto, RemitirATIDto, IniciarValoracionDto, GuardarValoracionCompletaDto, ConfirmarRecepcionInsumosDto, TecnicoUmiFromAuthDto, AsignarTecnicoPayload } from './dto/create-mantenimiento.dto.js';
 import { CerrarTecnicamenteDto, CierreTecnicoResponse } from './dto/cerrar-tecnicamente.dto.js';
 import { ConfirmarConformidadDto } from './dto/confirmar-conformidad.dto.js';
 import { RechazarConformidadDto } from './dto/rechazar-conformidad.dto.js';
@@ -415,8 +415,45 @@ export class MantenimientoService implements OnModuleInit {
           }
         }
 
+        let esTecnicoUMIPorAuth = false;
+        let roleCodTecnicoAuth: string | null = null;
         const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
         const uidEsUuidValido = UUID_RE.test(String(user.userId || ''));
+        if (uidEsUuidValido) {
+          try {
+            const ds: any = (this as any).dataSource || (this as any).mantenimientoRepo?.manager?.connection;
+            if (ds && typeof ds.query === 'function') {
+              const sqlAuth = `
+                SELECT MAX(CASE WHEN r.code='TECNICO_ELECTRICO_ESPECIALIZADO' THEN 'P3'
+                                WHEN r.code='TECNICO_UMI_MULTIPROPOSITO' THEN 'P4'
+                                ELSE NULL END) AS "roleCod",
+                       MAX(p.nom_largo) AS "nomLargo"
+                  FROM auth."user" u
+                  JOIN auth.personas p ON p.id_person = u.id_person
+                  JOIN auth.user_roles ur ON ur.id_user = u.id_user
+                  JOIN auth.role r ON r.id = ur.id_rol
+                 WHERE u.id_user = $1::uuid
+                   AND r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO')
+                 GROUP BY u.id_user
+                 LIMIT 1;
+              `;
+              const rows = await ds.query(sqlAuth, [user.userId]);
+              if (rows && rows.length === 1 && rows[0].roleCod) {
+                esTecnicoUMIPorAuth = true;
+                roleCodTecnicoAuth = String(rows[0].roleCod);
+                if (rows[0].nomLargo) {
+                  needlesRaw.push(String(rows[0].nomLargo).trim().toLowerCase());
+                }
+                this.loggerFindAll.log(`  AUTH cross-schema: usuario ES TÉCNICO UMI rol=${roleCodTecnicoAuth}`);
+              } else {
+                this.loggerFindAll.log(`  AUTH cross-schema: usuario NO TIENE roles P3/P4`);
+              }
+            }
+          } catch (errAuth: any) {
+            this.loggerFindAll.warn(`  Fallo busqueda auth cross-schema P3/P4: ${errAuth?.message || String(errAuth)}`);
+          }
+        }
+
         const params: any = {};
         if (uidEsUuidValido) params.usuarioId = user.userId;
         let pIdx = 0;
@@ -430,12 +467,15 @@ export class MantenimientoService implements OnModuleInit {
         }
         const partesOr: string[] = [];
         if (uidEsUuidValido) partesOr.push(`solicitud.usuarioSolicitanteId = :usuarioId`);
+        if (esTecnicoUMIPorAuth && uidEsUuidValido) {
+          partesOr.push(`solicitud.idTecnicoAsignado = :usuarioId`);
+        }
         if (likeParts.length > 0) partesOr.push(`(${likeParts.join(' OR ')})`);
         const orClause = partesOr.length > 0
           ? `(${partesOr.join(' OR ')})`
           : `FALSE`;
         query.andWhere(orClause, params);
-        this.loggerFindAll.log(`  APLICADO FILTRO TECNICO/SOLICITANTE OR: uidValido=${String(uidEsUuidValido)}; needles=${JSON.stringify(needlesRaw)}; cond=${orClause}`);
+        this.loggerFindAll.log(`  APLICADO FILTRO TECNICO/SOLICITANTE OR: uidValido=${String(uidEsUuidValido)}; esTecnicoAuth=${String(esTecnicoUMIPorAuth)} rol=${roleCodTecnicoAuth || 'n/a'}; needles=${JSON.stringify(needlesRaw)}; cond=${orClause}`);
       }
     }
 
@@ -586,10 +626,21 @@ export class MantenimientoService implements OnModuleInit {
   async updateEstado(id: string, dto: UpdateMantenimientoEstadoDto): Promise<SolicitudMantenimiento> {
     const solicitud = await this.findById(id);
     solicitud.estado = dto.estado;
-    if (dto.responsableAsignado) solicitud.responsableAsignado = dto.responsableAsignado;
     if (dto.observaciones) solicitud.observaciones = dto.observaciones;
     if (dto.fechaEjecucion) solicitud.fechaEjecucion = dto.fechaEjecucion;
-
+    if (dto.idTecnicoAsignado && this.UUID_RE.test(String(dto.idTecnicoAsignado).trim())) {
+      const idUserTec = String(dto.idTecnicoAsignado).trim();
+      try {
+        const tecResuelto = await this.resolverTecnicoActivo(idUserTec);
+        solicitud.idTecnicoAsignado = tecResuelto.idTecnicoAsignado || idUserTec;
+        solicitud.responsableAsignado = `${tecResuelto.codigo} · ${tecResuelto.nombre}`;
+      } catch (_err) {
+        solicitud.idTecnicoAsignado = idUserTec;
+        if (dto.responsableAsignado) solicitud.responsableAsignado = dto.responsableAsignado;
+      }
+    } else if (dto.responsableAsignado) {
+      solicitud.responsableAsignado = dto.responsableAsignado;
+    }
     return this.mantenimientoRepo.save(solicitud);
   }
 
@@ -1092,61 +1143,183 @@ export class MantenimientoService implements OnModuleInit {
   }
 
   // ---------------------------------------------------------------------------
-  // EFDS-1733: Técnicos mantenimiento (catálogo TECNICO_MANTENIMIENTO)
+  // EFDS-174X OPCION A. Técnicos UMI = auth.role P3/P4 + auth.user + auth.personas.
+  // Retiramos catalog_item TECNICO_MANTENIMIENTO en migracion 025.
+  // Este service mantiene un modo HIBRIDO durante la transicion FE:
+  //   a) SI existen filas legacy en catalog_item (antes de aplicar 025, o en QA):
+  //      se devuelven igual que hoy (backward compat 100%).
+  //   b) SI catalogo se vacio tras 025: se hace RAW QUERY cross-schema auth para
+  //      listar tecnicos desde roles P3/P4 y se mapea a CatalogoItem con shape
+  //      igual que antes para NO ROMPER EL CONTRATO DEL ENDPOINT. El FE NO nota el
+  //      cambio y puede migrar el combo selector en F3 sin prisa.
+  // CRUD legacy crear/actualizar/toggle/eliminar devuelven 410 Gone con mensaje.
   // ---------------------------------------------------------------------------
+  private readonly DEPRECATED_MSG_TECNICOS =
+    '[EFDS-174X Opción A] Endpoint de catálogo TECNICO_MANTENIMIENTO RETIRADO. Source of Truth de técnicos = auth.service roles P3/P4. Para designar una persona como técnico UMI, cree la persona en MFE Gestión-Personas y asígnele rol P3 (TECNICO_ELECTRICO_ESPECIALIZADO) o P4 (TECNICO_UMI_MULTIPROPOSITO). El listado GET /tecnicos sigue funcionando en modo lectura cross-schema auth con shape identica legacy.';
+
+  /**
+   * Listar tecnicos UMI con SHAPE CatalogoItem legacy durante la transición.
+   * - 1) Intenta cargar filas catalogo_item TECNICO_MANTENIMIENTO (legacy sin 025).
+   * - 2) Si viene vacio el catalogo (aplicada 025), consulta cross-schema auth.
+   * - Raw falla safe: si permisos de lectura auth.public.user fallan o no existen
+   *   tablas, devuelve array techos sin romper el response.
+   */
   async listarTecnicos(soloActivos: boolean = true): Promise<CatalogoItem[]> {
-    // Modo SOLO activos (motor asignación, sugerencia, reglas): where estricto catalogo = TECNICO_MANTENIMIENTO
-    if (soloActivos) {
-      return this.catalogoRepo.find({
-        where: { catalogo: TECNICO_MANTENIMIENTO, isActivo: true },
-        order: { orden: 'ASC', idCatalogo: 'ASC' },
-      });
+    // (a) Legacy catalogo_item TECNICO_MANTENIMIENTO (pre 025)
+    let listaLegacy: CatalogoItem[] = [];
+    try {
+      if (soloActivos) {
+        listaLegacy = await this.catalogoRepo.find({
+          where: { catalogo: TECNICO_MANTENIMIENTO, isActivo: true },
+          order: { orden: 'ASC', idCatalogo: 'ASC' },
+        });
+      } else {
+        const qb = this.catalogoRepo
+          .createQueryBuilder('c')
+          .where('(c.catalogo = :catExacto OR upper(c.catalogo) LIKE :catFlex)', {
+            catExacto: TECNICO_MANTENIMIENTO,
+            catFlex: '%TECNICO%',
+          })
+          .orderBy('c.orden', 'ASC')
+          .addOrderBy('c.idCatalogo', 'ASC');
+        listaLegacy = await qb.getMany();
+      }
+    } catch (e) {
+      Logger.warn('listarTecnicos: consulta catalog_item falló (esperable post 025). Usando cross-schema auth.', 'MantenimientoService.listarTecnicos');
     }
-    // Modo TODOS (Admin CRUD): filtro flexible catalogo = TECNICO_MANTENIMIENTO OR catalogo LIKE %TECNICO% para incluir seeds legacy
-    // (soluciona CAP2/CAP3: técnicos creados con catalogo distinto al canonical se veían en PG pero NO en listado Admin)
-    const qb = this.catalogoRepo
-      .createQueryBuilder('c')
-      .where('(c.catalogo = :catExacto OR upper(c.catalogo) LIKE :catFlex)', {
-        catExacto: TECNICO_MANTENIMIENTO,
-        catFlex: '%TECNICO%',
-      })
-      .orderBy('c.orden', 'ASC')
-      .addOrderBy('c.idCatalogo', 'ASC');
-    return qb.getMany();
+    if (listaLegacy && listaLegacy.length > 0) return listaLegacy;
+
+    // (b) Catalog vacio -> cross-schema auth roles P3/P4 -> shape CatalogoItem legacy
+    try {
+      const rows = await this.dataSource.query(`
+        SELECT
+          u.id_user AS "idUser",
+          p.id_person AS "idPerson",
+          u.username AS email,
+          p.nom_largo AS "nomLargo",
+          p.tel_celular AS "telCelular",
+          MAX(CASE WHEN r.code = 'TECNICO_ELECTRICO_ESPECIALIZADO' THEN 'P3'
+                   WHEN r.code = 'TECNICO_UMI_MULTIPROPOSITO'   THEN 'P4' END) AS "roleCod",
+          u.is_active AS "isActive",
+          ARRAY_AGG(DISTINCT r.code) FILTER (WHERE r.code LIKE 'TECNICO_%') AS "rolesTec"
+        FROM auth."user" u
+        INNER JOIN auth.personas p
+                ON p.id_person = u.id_person
+        INNER JOIN auth.user_roles ur
+                ON ur.id_user = u.id_user
+        INNER JOIN auth.role r
+                ON r.id = ur.id_rol
+       WHERE r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO', 'TECNICO_UMI_MULTIPROPOSITO')
+         AND ($1::boolean = TRUE OR u.is_active = TRUE)
+       GROUP BY u.id_user, p.id_person, p.nom_largo, u.username, u.is_active, p.tel_celular
+       ORDER BY "nomLargo" ASC;
+      `, [!soloActivos]);
+
+      if (!Array.isArray(rows) || rows.length === 0) return [];
+
+      const out: CatalogoItem[] = [];
+      let ordenSeed = 1;
+      for (const r of rows) {
+        const isP3 = r.roleCod === 'P3';
+        const cod = isP3
+          ? `TEC-AUTH-P3-${r.idUser.substring(0, 8).toUpperCase()}`
+          : `TEC-AUTH-P4-${r.idUser.substring(0, 8).toUpperCase()}`;
+        const esp = isP3 ? ['CS_002'] : [];
+        const meta: Record<string, any> = {
+          email: r.email,
+          telefono: r.telCelular ?? null,
+          especialidades: esp,
+          // Enriquecimiento extra (no rompe CatalogoItem shape al ser metadata JSONB):
+          idUserAuth: r.idUser,
+          idPersonAuth: r.idPerson,
+          roleCod: r.roleCod,
+          rolesTecnicos: r.rolesTec || [],
+        };
+        out.push({
+          idCatalogo: -1 * (ordenSeed), // id negativo para indicar "auth virtual" (PK catalogo es positive autoincremental)
+          catalogo: TECNICO_MANTENIMIENTO,
+          codigo: cod,
+          nombre: r.nomLargo,
+          descripcion: isP3 ? 'Técnico Eléctrico Especializado (Auth P3)' : 'Técnico UMI Multipropósito (Auth P4)',
+          orden: ordenSeed++,
+          isActivo: !!r.isActive,
+          metadata: meta,
+        } as any);
+      }
+      return out;
+    } catch (err) {
+      Logger.error(
+        `listarTecnicos: cross-schema auth falló. ${(err as any)?.message ?? err}`,
+        (err as any)?.stack,
+        'MantenimientoService.listarTecnicos',
+      );
+      return [];
+    }
   }
 
+  /**
+   * Carga vigente de un técnico. DUAL compatibilidad:
+   *   - Si primer parametro es UUID v4 (36 chars) => id_tecnico_asignado.
+   *   - Sino => codigo legacy TEC-xxx (responsable_asignado LIKE).
+   * Prioridad siempre al nuevo UUID.
+   */
   async calcularCargaVigenteTecnico(
-    tecnicoCodigo: string,
+    tecnicoCodigoOIdTecnicoAsignado: string,
     fechaReferencia: Date = new Date(),
   ): Promise<number> {
-    if (!tecnicoCodigo) return 0;
-    const likePat = '%' + tecnicoCodigo + '%';
-    const count = await this.mantenimientoRepo
-      .createQueryBuilder('s')
-      .where('s.responsable_asignado LIKE :pat', { pat: likePat })
-      .andWhere('s.estado IN (:...estados)', { estados: ESTADOS_CARGA_VIGENTE as any })
+    const codigoOrId = (tecnicoCodigoOIdTecnicoAsignado || '').trim();
+    if (!codigoOrId) return 0;
+
+    const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[4-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const esUUID = UUID_V4_RE.test(codigoOrId);
+
+    const qb = this.mantenimientoRepo.createQueryBuilder('s');
+    qb.where('s.estado IN (:...estados)', { estados: ESTADOS_CARGA_VIGENTE as any })
       .andWhere("s.area_responsable_actual IN ('UMI','PENDIENTE_CLASIFICACION')")
       .andWhere(
         "(s.fecha_programada IS NULL OR DATE(s.fecha_programada) >= DATE(:ref) OR s.estado IN ('RECIBIDA','ASIGNADA','EN_ANALISIS'))",
         { ref: fechaReferencia.toISOString() },
-      )
-      .getCount();
-    return count;
+      );
+
+    if (esUUID) {
+      // Nueva columna FK id_tecnico_asignado = auth.user.id_user
+      qb.andWhere('s.id_tecnico_asignado = :idTec', { idTec: codigoOrId });
+    } else {
+      // Codigo legacy TEC-xxx => LIKE sobre responsable_asignado.
+      const likePat = '%' + codigoOrId + '%';
+      qb.andWhere('s.responsable_asignado LIKE :pat', { pat: likePat });
+    }
+
+    return qb.getCount();
   }
 
+  /**
+   * Devuelve catalogos (o auths) + carga vigente.
+   * Modo dual: carga primero catalog_item legacy; si viene vacio, listarTecnicos()
+   * ya trae los desde auth. El for-loop espera objeto con propiedad "codigo" que
+   * el mapeo de auth devuelve.
+   */
   async listarTecnicosConCargaVigente(incluirInactivos: boolean = false): Promise<Array<CatalogoItem & { cargaVigente: number }>> {
     const tecnicos = await this.listarTecnicos(!incluirInactivos);
     const out = [] as Array<CatalogoItem & { cargaVigente: number }>;
     for (const t of tecnicos) {
+      // Preferir calcular carga vigente por idUser (desde metadata auth virtual) si existe.
+      const idUserAuth = (t.metadata as any)?.idUserAuth ?? null;
       const carga = t.isActivo
-        ? await this.calcularCargaVigenteTecnico(t.codigo)
+        ? idUserAuth
+          ? await this.calcularCargaVigenteTecnico(String(idUserAuth))
+          : await this.calcularCargaVigenteTecnico(t.codigo)
         : 0;
       out.push({ ...t, cargaVigente: carga });
     }
     return out;
   }
 
-  async crearTecnico(data: {
+  // ---------------------------------------------------------------------------
+  // CRUD legacy catalogo tecnicos -> 410 GONE (nunca mas se edita catalogo)
+  // ---------------------------------------------------------------------------
+
+  async crearTecnico(_data: {
     codigo: string;
     nombre: string;
     email?: string;
@@ -1155,43 +1328,12 @@ export class MantenimientoService implements OnModuleInit {
     orden?: number;
     isActivo?: boolean;
   }): Promise<CatalogoItem> {
-    const cod = (data.codigo || '').trim();
-    const nom = (data.nombre || '').trim();
-    if (cod.length < 4) throw new BadRequestException('Código técnico debe tener mínimo 4 caracteres.');
-    if (nom.length < 4) throw new BadRequestException('Nombre técnico debe tener mínimo 4 caracteres.');
-    const dup = await this.catalogoRepo.findOne({ where: { catalogo: TECNICO_MANTENIMIENTO, codigo: cod } });
-    if (dup) throw new ConflictException(`Código técnico ${cod} ya existe.`);
-
-    const maxRow = await this.catalogoRepo
-      .createQueryBuilder('c')
-      .where('c.catalogo = :cat', { cat: TECNICO_MANTENIMIENTO })
-      .select('COALESCE(MAX(c.orden),0)', 'm')
-      .getRawOne<{ m: string }>();
-    const orden = Number.isInteger(data.orden as any) && (data.orden as any) > 0
-      ? (data.orden as any)
-      : (Number(maxRow?.m || 0) + 1);
-    const esp = Array.isArray(data.especialidades)
-      ? data.especialidades.map((e) => String(e).trim()).filter((e) => e.length > 0)
-      : [];
-    const meta: Record<string, any> = {};
-    if (data.email) meta.email = data.email.trim();
-    if (data.telefono) meta.telefono = data.telefono.trim();
-    if (esp.length) meta.especialidades = esp;
-
-    const it = this.catalogoRepo.create({
-      catalogo: TECNICO_MANTENIMIENTO,
-      codigo: cod,
-      nombre: nom,
-      orden,
-      isActivo: data.isActivo ?? true,
-      metadata: meta,
-    });
-    return this.catalogoRepo.save(it);
+    throw new GoneException(this.DEPRECATED_MSG_TECNICOS);
   }
 
   async actualizarTecnico(
-    idCatalogo: number,
-    data: {
+    _idCatalogo: number,
+    _data: {
       codigo?: string;
       nombre?: string;
       email?: string;
@@ -1201,46 +1343,15 @@ export class MantenimientoService implements OnModuleInit {
       isActivo?: boolean;
     },
   ): Promise<CatalogoItem> {
-    const it = await this.catalogoRepo.findOne({ where: { idCatalogo, catalogo: TECNICO_MANTENIMIENTO } });
-    if (!it) throw new NotFoundException(`Técnico #${idCatalogo} no existe.`);
-    if (data.codigo !== undefined) {
-      const cod = data.codigo.trim();
-      if (cod.length < 4) throw new BadRequestException('Código mínimo 4 caracteres.');
-      const dup = await this.catalogoRepo.findOne({ where: { catalogo: TECNICO_MANTENIMIENTO, codigo: cod } });
-      if (dup && dup.idCatalogo !== idCatalogo) throw new ConflictException(`Código ${cod} duplicado.`);
-      it.codigo = cod;
-    }
-    if (data.nombre !== undefined) {
-      const n = data.nombre.trim();
-      if (n.length < 4) throw new BadRequestException('Nombre mínimo 4 caracteres.');
-      it.nombre = n;
-    }
-    if (data.orden !== undefined) it.orden = Number(data.orden);
-    if (data.isActivo !== undefined) it.isActivo = !!data.isActivo;
-    if (!it.metadata || typeof it.metadata !== 'object') it.metadata = {};
-    if (data.email !== undefined) (it.metadata as any).email = data.email?.trim() ?? null;
-    if (data.telefono !== undefined) (it.metadata as any).telefono = data.telefono?.trim() ?? null;
-    if (data.especialidades !== undefined) {
-      const esp = Array.isArray(data.especialidades)
-        ? data.especialidades.map((e) => String(e).trim()).filter(Boolean)
-        : [];
-      (it.metadata as any).especialidades = esp;
-    }
-    return this.catalogoRepo.save(it);
+    throw new GoneException(this.DEPRECATED_MSG_TECNICOS);
   }
 
-  async toggleTecnico(idCatalogo: number): Promise<CatalogoItem> {
-    const it = await this.catalogoRepo.findOne({ where: { idCatalogo, catalogo: TECNICO_MANTENIMIENTO } });
-    if (!it) throw new NotFoundException(`Técnico #${idCatalogo} no existe.`);
-    it.isActivo = !it.isActivo;
-    return this.catalogoRepo.save(it);
+  async toggleTecnico(_idCatalogo: number): Promise<CatalogoItem> {
+    throw new GoneException(this.DEPRECATED_MSG_TECNICOS);
   }
 
-  async eliminarTecnico(idCatalogo: number): Promise<{ idCatalogo: number; eliminado: boolean }> {
-    const it = await this.catalogoRepo.findOne({ where: { idCatalogo, catalogo: TECNICO_MANTENIMIENTO } });
-    if (!it) throw new NotFoundException(`Técnico #${idCatalogo} no existe.`);
-    await this.catalogoRepo.delete({ idCatalogo });
-    return { idCatalogo, eliminado: true };
+  async eliminarTecnico(_idCatalogo: number): Promise<{ idCatalogo: number; eliminado: boolean }> {
+    throw new GoneException(this.DEPRECATED_MSG_TECNICOS);
   }
 
   // ---------------------------------------------------------------------------
@@ -1320,19 +1431,40 @@ export class MantenimientoService implements OnModuleInit {
       // CS_002 Eléctricas y Electrónicas → regla 001 ESPECIALIZACION OBLIGATORIA
       regla = 'ESPECIALIZACION';
       obligatorio = true;
-      const regla001 = await this.catalogoRepo.findOne({
-        where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
+      // Opción A post EFDS-174X: sugerir P3 auth con MENOR carga vigente.
+      // Se permite todavía fallback a la regla legacy REG_001 si existe en catalog_item
+      // y tiene un tecnicoCodigo que aún matchea con opciones (para data antigua).
+      let sugeridoP3: (CatalogoItem & { cargaVigente: number }) | null = null;
+      const p3Activos = opciones.filter((t) => {
+        const roleCod = (t.metadata as any)?.roleCod ?? null;
+        const esLegacyP3 = !!((t.metadata as any)?.especialidades || []).includes('CS_002');
+        return roleCod === 'P3' || esLegacyP3;
       });
-      const codigoTec = regla001 && regla001.metadata ? (regla001.metadata as any).tecnicoCodigo : null;
-      if (!codigoTec) {
-        advertencia = 'Regla eléctricas activa pero el técnico especialista aún no está configurado. Asigna uno desde Panel > Parámetros UMI > Reglas.';
+      if (p3Activos.length > 0) {
+        const sorted = [...p3Activos].sort((a, b) => {
+          if (a.cargaVigente !== b.cargaVigente) return a.cargaVigente - b.cargaVigente;
+          return (a.nombre || '').localeCompare(b.nombre || '');
+        });
+        sugeridoP3 = sorted[0];
       } else {
-        const encontrado = opciones.find((t) => t.codigo === codigoTec);
-        if (encontrado) {
-          sugerido = encontrado;
-        } else {
-          advertencia = `Técnico especialista configurado (${codigoTec}) no existe o está inactivo.`;
+        const regla001 = await this.catalogoRepo.findOne({
+          where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
+        });
+        const codigoTec = regla001 && regla001.metadata ? (regla001.metadata as any).tecnicoCodigo : null;
+        if (codigoTec) {
+          const encontrado = opciones.find((t) => t.codigo === codigoTec);
+          if (encontrado) sugeridoP3 = encontrado;
         }
+      }
+
+      if (!sugeridoP3) {
+        if (opciones.length === 0) {
+          advertencia = 'No hay usuarios con rol P3 (Técnico Eléctrico Especializado) en auth-service. Designa al menos uno desde Gestión Personas > Asignar Roles.';
+        } else {
+          advertencia = 'Aún no hay técnicos eléctricos P3 activos. Esta categoría requiere obligatoriamente perfil P3.';
+        }
+      } else {
+        sugerido = sugeridoP3;
       }
       return { regla, idCategoria, sugerido, obligatorio, opciones, advertencia };
     }
@@ -1341,7 +1473,7 @@ export class MantenimientoService implements OnModuleInit {
     regla = 'EQUIDAD_DISPONIBILIDAD_CARGA_MENOR';
     obligatorio = false;
     if (opciones.length === 0) {
-      advertencia = 'No hay técnicos activos en el catálogo. Da de alta al menos uno desde Parámetros UMI > Técnicos.';
+      advertencia = 'No hay técnicos UMI activos. Designa personas con roles P3 y/o P4 en el módulo Gestión Personas (no en Parámetros UMI).';
     } else {
       const sorted = [...opciones].sort((a, b) => {
         if (a.cargaVigente !== b.cargaVigente) return a.cargaVigente - b.cargaVigente;
@@ -1394,6 +1526,7 @@ export class MantenimientoService implements OnModuleInit {
         | 'CONFORMIDAD_RECHAZADA_Y_REABIERTA';
       tecnicoCodigo?: string | null;
       tecnicoNombreDisplay?: string | null;
+      idTecnicoAsignado?: string | null;
       motivo?: string | null;
       observaciones?: string | null;
       user: AuthUser;
@@ -1409,6 +1542,7 @@ export class MantenimientoService implements OnModuleInit {
       accion: args.accion,
       tecnico_codigo: args.tecnicoCodigo ?? null,
       tecnico_nombre_display: args.tecnicoNombreDisplay ?? null,
+      id_tecnico_asignado: args.idTecnicoAsignado ?? null,
       motivo: args.motivo ?? null,
       observaciones: args.observaciones ?? null,
       usuario_id: args.user.userId ?? null,
@@ -1418,28 +1552,168 @@ export class MantenimientoService implements OnModuleInit {
     solicitud.asignaciones = historial;
   }
 
+  private readonly UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+  private readonly TEC_AUTH_VIRTUAL_RE = /^TEC-AUTH-(P3|P4)-([0-9A-F]{8})$/i;
+
   private async resolverTecnicoActivo(
-    tecnicoCodigo: string,
-  ): Promise<CatalogoItem> {
-    const cod = (tecnicoCodigo || '').trim();
-    if (!cod) {
-      throw new BadRequestException('Código técnico es obligatorio para asignar / redistribuir.');
+    identificador: string,
+  ): Promise<CatalogoItem & { idTecnicoAsignado?: string | null; roleCod?: string | null }> {
+    const id = (identificador || '').trim();
+    if (!id) {
+      throw new BadRequestException('Identificador técnico es obligatorio para asignar / redistribuir (UUID id_user auth o código legacy TEC-xxx).');
     }
+    const esUuid = this.UUID_RE.test(id);
+
+    // (a) Código virtual TEC-AUTH-Px-UUID8 generado por listarTecnicos() cross-schema auth virtual.
+    //     Extraemos prefijo 8 hex y buscamos auth.user id_user LIKE 'prefijo%'. Coincidencia única asegurada
+    //     por UUID entropía 2^32 suficiente; si hay colisión (improbable) escogemos el Px correcto.
+    const virtualMatch = this.TEC_AUTH_VIRTUAL_RE.exec(id);
+    if (virtualMatch && !esUuid) {
+      try {
+        const esperadoRole = virtualMatch[1].toUpperCase(); // P3 o P4
+        const prefijoHex = virtualMatch[2].toLowerCase();   // 8 hex de uuid
+        const sqlAuth = `
+          SELECT u.id_user  AS "idUser",
+                 u.is_active AS "isActive",
+                 u.username  AS email,
+                 p.id_person AS "idPerson",
+                 p.nom_largo AS "nomLargo",
+                 MAX(CASE WHEN r.code='TECNICO_ELECTRICO_ESPECIALIZADO' THEN 'P3'
+                          WHEN r.code='TECNICO_UMI_MULTIPROPOSITO' THEN 'P4'
+                          ELSE NULL END) AS "roleCod"
+            FROM auth."user" u
+            JOIN auth.personas p ON p.id_person = u.id_person
+            JOIN auth.user_roles ur ON ur.id_user = u.id_user
+            JOIN auth.role r ON r.id = ur.id_rol
+           WHERE LOWER(substring(u.id_user::text from 1 for 8)) = $1
+             AND r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO')
+           GROUP BY u.id_user, u.is_active, u.username, p.id_person, p.nom_largo
+           ORDER BY (CASE WHEN MAX(CASE WHEN r.code='TECNICO_ELECTRICO_ESPECIALIZADO' THEN 'P3'
+                                        WHEN r.code='TECNICO_UMI_MULTIPROPOSITO' THEN 'P4' END) = $2 THEN 0 ELSE 1 END)
+           LIMIT 2;
+        `;
+        const rows = await this.dataSource.query(sqlAuth, [prefijoHex, esperadoRole]);
+        if (!Array.isArray(rows) || rows.length === 0) {
+          throw new BadRequestException(
+            `Código virtual ${id} no coincide con ningún usuario auth-service con roles P3/P4. Prefijo UUID ${prefijoHex} sin match.`
+          );
+        }
+        const r = rows.find((x: any) => String(x.roleCod).toUpperCase() === esperadoRole) || rows[0];
+        if (!r.isActive) {
+          throw new BadRequestException(
+            `Técnico virtual ${id} (${String(r.nomLargo || r.email || 's/n')}) está INACTIVO en auth-service.`
+          );
+        }
+        const roleCod = String(r.roleCod).toUpperCase();
+        const nombreDisplay = String(r.nomLargo || r.email || 'Sin nombre');
+        const virtual: any = {
+          idCatalogo: -Math.floor(Math.random() * 999999) - 1,
+          catalogo: TECNICO_MANTENIMIENTO,
+          codigo: id,
+          nombre: nombreDisplay,
+          orden: 0,
+          isActivo: true,
+          descripcion: `Técnico UMI desde auth-service. Perfil ${roleCod}.`,
+          metadata: {
+            idUserAuth: String(r.idUser),
+            idPersonAuth: String(r.idPerson),
+            email: String(r.email || ''),
+            roleCod,
+            desdeAuth: true,
+            codigoVirtualOriginal: id,
+          },
+        };
+        virtual.idTecnicoAsignado = String(r.idUser);
+        virtual.roleCod = roleCod;
+        return virtual;
+      } catch (errV: any) {
+        if (errV instanceof BadRequestException) throw errV;
+        throw new BadRequestException(
+          `No se pudo resolver técnico virtual ${id} desde auth-service. ${errV?.message || ''}`
+        );
+      }
+    }
+
+    if (esUuid) {
+      try {
+        const sqlAuth = `
+          SELECT u.id_user  AS "idUser",
+                 u.is_active AS "isActive",
+                 u.username  AS email,
+                 p.id_person AS "idPerson",
+                 p.nom_largo AS "nomLargo",
+                 MAX(CASE WHEN r.code='TECNICO_ELECTRICO_ESPECIALIZADO' THEN 'P3'
+                          WHEN r.code='TECNICO_UMI_MULTIPROPOSITO' THEN 'P4'
+                          ELSE NULL END) AS "roleCod"
+            FROM auth."user" u
+            JOIN auth.personas p ON p.id_person = u.id_person
+            JOIN auth.user_roles ur ON ur.id_user = u.id_user
+            JOIN auth.role r ON r.id = ur.id_rol
+           WHERE u.id_user = $1::uuid
+             AND r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO')
+           GROUP BY u.id_user, u.is_active, u.username, p.id_person, p.nom_largo
+           LIMIT 1;
+        `;
+        const rows = await this.dataSource.query(sqlAuth, [id]);
+        if (!rows || rows.length !== 1 || !rows[0].roleCod) {
+          throw new BadRequestException(
+            `Usuario UUID ${id} no existe o no tiene roles P3/P4 UMI válidos para ser técnico asignable.`,
+          );
+        }
+        const r = rows[0];
+        if (!r.isActive) {
+          throw new BadRequestException(
+            `Usuario UUID ${id} (${String(r.nomLargo || r.email || 's/n')}) está INACTIVO en auth-service. No se puede asignar.`,
+          );
+        }
+        const roleCod = String(r.roleCod);
+        const codigoVirtual = roleCod === 'P3' ? 'P3-ELECTRICO' : 'P4-MULTIPROPOSITO';
+        const nombreDisplay = String(r.nomLargo || r.email || 'Sin nombre');
+        const virtual: any = {
+          idCatalogo: -Math.floor(Math.random() * 999999) - 1,
+          catalogo: TECNICO_MANTENIMIENTO,
+          codigo: codigoVirtual,
+          nombre: nombreDisplay,
+          orden: 0,
+          isActivo: true,
+          descripcion: `Técnico UMI desde auth-service. Perfil ${roleCod}.`,
+          metadata: {
+            idUserAuth: String(r.idUser),
+            idPersonAuth: String(r.idPerson),
+            email: String(r.email || ''),
+            roleCod,
+            desdeAuth: true,
+          },
+        };
+        virtual.idTecnicoAsignado = String(r.idUser);
+        virtual.roleCod = roleCod;
+        return virtual;
+      } catch (errAuth: any) {
+        if (errAuth instanceof BadRequestException) throw errAuth;
+        throw new BadRequestException(
+          `No se pudo resolver técnico UUID ${id} desde auth-service. ${errAuth?.message || ''}`,
+        );
+      }
+    }
+
     const tec = await this.catalogoRepo.findOne({
-      where: { catalogo: TECNICO_MANTENIMIENTO, codigo: cod },
+      where: { catalogo: TECNICO_MANTENIMIENTO, codigo: id },
     });
     if (!tec) {
-      throw new BadRequestException(`Técnico código ${cod} no existe en el catálogo TECNICO_MANTENIMIENTO.`);
+      throw new BadRequestException(`Técnico código ${id} no existe en catálogo legacy ni es UUID auth válido.`);
     }
     if (!tec.isActivo) {
-      throw new BadRequestException(`Técnico ${cod} está inactivo. No se puede asignar o redistribuir a un técnico inactivo.`);
+      throw new BadRequestException(`Técnico ${id} está inactivo. No se puede asignar o redistribuir a un técnico inactivo.`);
     }
-    return tec;
+    const md = (tec.metadata && typeof tec.metadata === 'object') ? (tec.metadata as any) : {};
+    (tec as any).idTecnicoAsignado = md.idUserAuth || null;
+    (tec as any).roleCod = md.roleCod || null;
+    return tec as any;
   }
 
   async aprobarYAsignar(
     idSolicitud: string,
-    args: { tecnicoCodigo?: string | null; observaciones?: string | null },
+    args: { tecnicoCodigo?: string | null; idTecnicoAsignado?: string | null; observaciones?: string | null },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento & { __meta?: { warning?: string } }> {
     const vr = this.validarRolesAsignador(user);
@@ -1447,7 +1721,9 @@ export class MantenimientoService implements OnModuleInit {
 
     const solicitud = await this.findById(idSolicitud);
     const esTI = (solicitud.areaResponsableActual || '').toUpperCase() === 'TI';
-    const codTec = (args.tecnicoCodigo || '').trim();
+    const idTecnicoIdent = String(
+      (args.idTecnicoAsignado && String(args.idTecnicoAsignado).trim()) || (args.tecnicoCodigo || '').trim() || '',
+    ).trim();
 
     // EFDS-1734: Validar estado permitido para primera aprobación (no permite N veces sobre ASIGNADA).
     // Si la solicitud ya fue aprobada y asignada, para cambiar técnico usar REDISTRIBUIR.
@@ -1462,16 +1738,17 @@ export class MantenimientoService implements OnModuleInit {
       );
     }
 
-    if (!esTI && !codTec) {
-      throw new BadRequestException('Código técnico es obligatorio para asignar / redistribuir solicitudes UMI físicas.');
+    if (!esTI && !idTecnicoIdent) {
+      throw new BadRequestException('Identificador técnico obligatorio para asignar. Enviar idTecnicoAsignado (UUID auth P3/P4) o tecnicoCodigo legacy.');
     }
 
     let warning: string | undefined = undefined;
-    let tec: CatalogoItem | null = null;
+    let tec: (CatalogoItem & { idTecnicoAsignado?: string | null; roleCod?: string | null }) | null = null;
 
     if (esTI) {
       solicitud.estado = 'REMITIDA_TI';
       solicitud.responsableAsignado = 'Oficina de Tecnologías de la Información (TI)';
+      solicitud.idTecnicoAsignado = undefined;
       solicitud.motivoRechazo = undefined;
       if (Array.isArray(solicitud.remisiones) && solicitud.remisiones.length > 0) {
         const ultima = solicitud.remisiones[solicitud.remisiones.length - 1];
@@ -1486,29 +1763,32 @@ export class MantenimientoService implements OnModuleInit {
         accion: 'APROBADA_REMISION_TI',
         tecnicoCodigo: null,
         tecnicoNombreDisplay: null,
+        idTecnicoAsignado: null,
         motivo: 'Confirmación de recepción de la remisión por la Oficina TI. Flujo interno TIC a partir de este punto.',
         observaciones: args.observaciones ?? null,
         user: user as AuthUser,
       });
     } else {
-      tec = await this.resolverTecnicoActivo(codTec);
+      tec = await this.resolverTecnicoActivo(idTecnicoIdent);
       solicitud.estado = 'ASIGNADA';
       solicitud.responsableAsignado = `${tec.codigo} · ${tec.nombre}`;
+      if (tec.idTecnicoAsignado) solicitud.idTecnicoAsignado = tec.idTecnicoAsignado;
       solicitud.motivoRechazo = undefined;
 
       if (Number(solicitud.idCategoria) === 48) {
-        const regla001 = await this.catalogoRepo.findOne({
-          where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
-        });
-        const esperadoCodigo =
-          regla001?.metadata && typeof regla001.metadata === 'object' ? (regla001.metadata as any).tecnicoCodigo : null;
-        if (esperadoCodigo && String(esperadoCodigo).trim() !== '' && String(esperadoCodigo).trim() !== tec.codigo) {
+        const esP3 = String(tec.roleCod || '').toUpperCase() === 'P3';
+        if (!esP3) {
+          const regla001 = await this.catalogoRepo.findOne({
+            where: { catalogo: REGLA_ESCALAMIENTO, codigo: 'REG_001_CATEGORIA_48_ELECTRICAS' },
+          });
+          const esperadoCodigo =
+            regla001?.metadata && typeof regla001.metadata === 'object' ? (regla001.metadata as any).tecnicoCodigo : null;
           warning =
-            '⚠️ Aprobación manual: la solicitud pertenece a categoría Eléctricas (CS_002). Regla ESPECIALIZACIÓN sugiere: ' +
-            String(esperadoCodigo).trim() +
-            '. Usted asignó: ' +
+            '⚠️ Aprobación manual: categoría CS_002 Eléctricas requiere perfil P3. Técnico asignado: ' +
+            (tec.roleCod ? `rol=${tec.roleCod} · ` : '') +
             tec.codigo +
-            '. Queda registrada en historial para auditoría.';
+            (esperadoCodigo ? ` (sugerencia regla REG_001: ${String(esperadoCodigo).trim()})` : '') +
+            '. Queda registrado en auditoría.';
         }
       }
 
@@ -1516,6 +1796,7 @@ export class MantenimientoService implements OnModuleInit {
         accion: 'APROBADA_Y_ASIGNADA',
         tecnicoCodigo: tec.codigo,
         tecnicoNombreDisplay: tec.nombre,
+        idTecnicoAsignado: tec.idTecnicoAsignado ?? null,
         motivo: null,
         observaciones: args.observaciones ?? null,
         user: user as AuthUser,
@@ -1588,7 +1869,7 @@ export class MantenimientoService implements OnModuleInit {
 
   async redistribuir(
     idSolicitud: string,
-    args: { tecnicoCodigo: string; motivoRedistribucion?: string | null; observaciones?: string | null },
+    args: { tecnicoCodigo?: string; idTecnicoAsignado?: string; motivoRedistribucion?: string | null; observaciones?: string | null },
     user: AuthUser | null | undefined,
   ): Promise<SolicitudMantenimiento> {
     const vr = this.validarRolesAsignador(user);
@@ -1610,18 +1891,26 @@ export class MantenimientoService implements OnModuleInit {
       );
     }
 
-    const tec = await this.resolverTecnicoActivo(args.tecnicoCodigo);
+    const idTecnicoIdent = String(
+      (args.idTecnicoAsignado && String(args.idTecnicoAsignado).trim()) || (args.tecnicoCodigo || '').trim() || '',
+    ).trim();
+    if (!idTecnicoIdent) {
+      throw new BadRequestException('Identificador técnico obligatorio para redistribuir. Enviar idTecnicoAsignado (UUID auth P3/P4) o tecnicoCodigo legacy.');
+    }
+    const tec = await this.resolverTecnicoActivo(idTecnicoIdent);
     // D10: si estaba RECIBIDA pasa a ASIGNADA. Si ASIGNADA/EN_ANALISIS/EN_PROGRESO se mantiene el estado actual.
     if (solicitud.estado === 'RECIBIDA' || !solicitud.estado) {
       solicitud.estado = 'ASIGNADA';
     }
     solicitud.responsableAsignado = `${tec.codigo} · ${tec.nombre}`;
+    if (tec.idTecnicoAsignado) solicitud.idTecnicoAsignado = tec.idTecnicoAsignado;
     if (solicitud.estado !== 'RECHAZADA') solicitud.motivoRechazo = undefined;
 
     this.pushAsignacion(solicitud, {
       accion: 'REDISTRIBUIDA',
       tecnicoCodigo: tec.codigo,
       tecnicoNombreDisplay: tec.nombre,
+      idTecnicoAsignado: tec.idTecnicoAsignado ?? null,
       motivo: (args.motivoRedistribucion || '').trim() || null,
       observaciones: args.observaciones ?? null,
       user: user as AuthUser,
@@ -1667,6 +1956,29 @@ export class MantenimientoService implements OnModuleInit {
     return { codigo: (cod || '').trim() || null, nombre: rest.join(' · ').trim() || null };
   }
 
+  private async roleCodUsuarioDesdeAuth(userId: string): Promise<string | null> {
+    if (!this.UUID_RE.test(String(userId || ''))) return null;
+    try {
+      const sql = `
+        SELECT MAX(CASE WHEN r.code='TECNICO_ELECTRICO_ESPECIALIZADO' THEN 'P3'
+                        WHEN r.code='TECNICO_UMI_MULTIPROPOSITO' THEN 'P4'
+                        ELSE NULL END) AS "roleCod"
+          FROM auth."user" u
+          JOIN auth.user_roles ur ON ur.id_user = u.id_user
+          JOIN auth.role r ON r.id = ur.id_rol
+         WHERE u.id_user = $1::uuid
+           AND r.code IN ('TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO')
+         GROUP BY u.id_user
+         LIMIT 1;
+      `;
+      const rows = await this.dataSource.query(sql, [userId]);
+      if (rows && rows.length === 1 && rows[0].roleCod) return String(rows[0].roleCod);
+      return null;
+    } catch (_err) {
+      return null;
+    }
+  }
+
   private async usuarioPuedeOperarComoTecnicoAsignado(
     solicitud: SolicitudMantenimiento,
     user: AuthUser | null | undefined,
@@ -1677,6 +1989,15 @@ export class MantenimientoService implements OnModuleInit {
       const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
       return { puede: true, tecnicoCodigo: t.codigo, tecnicoNombre: t.nombre };
     }
+
+    const idTecnicoAsignado = String(solicitud.idTecnicoAsignado || '').trim();
+    if (idTecnicoAsignado && this.UUID_RE.test(idTecnicoAsignado)) {
+      if (String(user.userId || '').toLowerCase() === idTecnicoAsignado.toLowerCase()) {
+        const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
+        return { puede: true, tecnicoCodigo: t.codigo, tecnicoNombre: t.nombre };
+      }
+    }
+
     const t = this.extraerTecnicoCodigoDesdeResponsable(solicitud);
     if (!t.codigo) return { puede: false };
     const tecnico = await this.catalogoRepo.findOne({
@@ -1704,6 +2025,16 @@ export class MantenimientoService implements OnModuleInit {
   ): Promise<void> {
     if (Number(solicitud.idCategoria) !== 48) return;
     if (this.usuarioEsSuperAdminOAsignador(user)) return;
+
+    const idTecnicoAsignado = String(solicitud.idTecnicoAsignado || '').trim();
+    if (idTecnicoAsignado && this.UUID_RE.test(idTecnicoAsignado)) {
+      const roleCod = await this.roleCodUsuarioDesdeAuth(idTecnicoAsignado);
+      if (roleCod === 'P3') return;
+      throw new ForbiddenException(
+        `CS_002 Eléctricas: solicitud requiere perfil P3 (Técnico eléctrico especializado). Técnico asignado tiene rol=${roleCod || 'NINGUNO'}.`,
+      );
+    }
+
     const tecnicoAsignadoCodigo = per.tecnicoCodigo;
     if (!tecnicoAsignadoCodigo) return;
     const ID_CS_002 = 48;
