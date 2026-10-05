@@ -1059,6 +1059,8 @@ export interface DocumentoDeLaActividad {
   descripcion: string | null;
   /** Los opcionales se ofrecen, pero no traban el avance. */
   obligatorio: boolean;
+  /** Solo de consulta: se descarga su plantilla y no se carga nada. */
+  informativo: boolean;
   /**
    * Si la exigencia es decisión del área o lectura del procedimiento que el
    * equipo aún no ha contrastado con el formato oficial.
@@ -1164,6 +1166,8 @@ export interface DocumentoRequeridoConfig {
   nombre: string;
   descripcion: string | null;
   obligatorio: boolean;
+  /** Solo de consulta: el gestor lo descarga y no carga nada. */
+  informativo: boolean;
   /** Modalidades a las que se pide; vacío = todas. */
   modalidades: string[];
   /** Tipologías contractuales (3.1) a las que se pide; vacío = todas. */
@@ -1191,6 +1195,7 @@ export interface DatosDocumentoRequerido {
   descripcion?: string | null;
   plantillaCodigo?: string | null;
   obligatorio?: boolean;
+  informativo?: boolean;
   modalidades?: string[];
   tipologias?: string[];
   orden?: number;

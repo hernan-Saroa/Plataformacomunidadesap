@@ -15,6 +15,7 @@ const documento = (cambios: Partial<DocumentoDeLaActividad> = {}): DocumentoDeLa
   nombre: 'Memorando de solicitud',
   descripcion: 'Firmado por el jefe del área que remite el proceso.',
   obligatorio: true,
+  informativo: false,
   confirmado: true,
   estado: 'PENDIENTE',
   plantilla: null,
@@ -82,6 +83,27 @@ describe('ListaDeDocumentos', () => {
     expect(screen.getByText('Opcional')).toBeInTheDocument();
     // Solo cuentan los obligatorios: el anexo opcional no «falta».
     expect(screen.getByText('Falta 1 de 1 obligatorios')).toBeInTheDocument();
+  });
+
+  it('ofrece los de consulta para descargar, sin carga ni pendiente', async () => {
+    pintar(
+      estado([
+        documento({
+          codigo: 'GUIA',
+          nombre: 'Guía de estudios previos',
+          obligatorio: false,
+          informativo: true,
+          plantilla: { codigo: 'BS-GU-001', nombre: 'Guía', version: '1', descargaUrl: '/files/guia.pdf' },
+        }),
+      ]),
+    );
+
+    expect(await screen.findByText('Para consultar')).toBeInTheDocument();
+    expect(screen.getByText('Guía de estudios previos')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Descargar \(BS-GU-001, versión 1\)/ })).toBeInTheDocument();
+    expect(screen.queryByText('Pendiente')).not.toBeInTheDocument();
+    expect(screen.queryByText('Opcional')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Cargar/ })).not.toBeInTheDocument();
   });
 
   it('no lista como documento la copia del formulario que sella el envío', async () => {

@@ -46,6 +46,11 @@ export interface DocumentoDeLaActividad {
   descripcion: string | null;
   obligatorio: boolean;
   /**
+   * Solo de consulta: se descarga su plantilla y no se carga nada (095). La
+   * pantalla no le abre espacio de carga ni lo cuenta como pendiente.
+   */
+  informativo: boolean;
+  /**
    * Si el requisito es cita del formato oficial o lectura del equipo. Viaja
    * hasta la pantalla a propósito: a quien se le exige un documento le
    * corresponde saber de dónde sale la exigencia.
@@ -271,6 +276,7 @@ export class DocumentosActividadService {
           nombre: req.nombre,
           descripcion: req.descripcion ?? null,
           obligatorio: req.obligatorio,
+          informativo: req.informativo,
           confirmado: req.confirmado,
           estado: entregado ? 'CARGADO' : 'PENDIENTE',
           plantilla: plantilla
@@ -437,6 +443,11 @@ export class DocumentosActividadService {
         if (!requisito) {
           throw new BadRequestException(
             `El documento "${codigo}" no está entre los que la actividad ${numeral} pide a este proceso`,
+          );
+        }
+        if (requisito.informativo) {
+          throw new BadRequestException(
+            `${requisito.nombre} es solo de consulta: se descarga, no se carga`,
           );
         }
 

@@ -8,6 +8,7 @@ import {
   Eye,
   FileText,
   History,
+  Info,
   MessageSquareWarning,
   Paperclip,
   Plus,
@@ -220,7 +221,10 @@ export function ListaDeDocumentos({
 
   const motivo = soloLectura || bloqueo;
   const puedeTocar = estado.puedeCargar && !motivo;
-  const obligatorios = estado.documentos.filter((d) => d.obligatorio);
+  /** Los de consulta van aparte: no se cargan ni cuentan como pendientes. */
+  const aEntregar = estado.documentos.filter((d) => !d.informativo);
+  const deConsulta = estado.documentos.filter((d) => d.informativo);
+  const obligatorios = aEntregar.filter((d) => d.obligatorio);
   const faltan = estado.faltantes.length;
   /** Alguna fila sale de la lectura del procedimiento y no del formato oficial. */
   const haySupuestos = estado.documentos.some((d) => !d.confirmado);
@@ -258,7 +262,9 @@ export function ListaDeDocumentos({
         <ObservacionesDelRevisor soportes={delRevisor} onVer={setViendo} />
       )}
 
-      {estado.documentos.map((doc) => (
+      {deConsulta.length > 0 && <DocumentosDeConsulta documentos={deConsulta} />}
+
+      {aEntregar.map((doc) => (
         <FilaDocumento
           key={doc.codigo}
           documento={doc}
@@ -356,6 +362,46 @@ export function ListaDeDocumentos({
 
       <VisorDocumento documento={viendo} onClose={() => setViendo(null)} />
     </section>
+  );
+}
+
+/**
+ * Lo que la actividad ofrece para leer: guías, circulares, modelos.
+ *
+ * Va antes de lo que se entrega porque suele ser lo que explica cómo
+ * hacerlo, y sin estado ni botón de carga: no hay nada que resolver aquí.
+ */
+function DocumentosDeConsulta({ documentos }: { documentos: DocumentoDeLaActividad[] }) {
+  return (
+    <div className="rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-3 space-y-2">
+      <p className="text-[11px] font-bold text-sky-900 m-0 flex items-center gap-1.5">
+        <Info className="w-3.5 h-3.5" aria-hidden="true" />
+        Para consultar
+      </p>
+      {documentos.map((doc) => (
+        <div key={doc.codigo} className="min-w-0">
+          <p className="text-[12.5px] font-bold text-slate-800 m-0 leading-snug">{doc.nombre}</p>
+          {doc.descripcion && (
+            <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed">{doc.descripcion}</p>
+          )}
+          {doc.plantilla?.descargaUrl ? (
+            <a
+              href={contratacionService.urlDescarga(doc.plantilla.descargaUrl)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 mt-1 text-[11px] font-bold text-[#003DA5] hover:underline"
+            >
+              <Download className="w-3 h-3" aria-hidden="true" />
+              Descargar ({doc.plantilla.codigo}, versión {doc.plantilla.version})
+            </a>
+          ) : (
+            <p className="text-[11px] text-amber-700 m-0 mt-1">
+              El archivo aún no está disponible. Contratación debe subirlo a la biblioteca.
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 
