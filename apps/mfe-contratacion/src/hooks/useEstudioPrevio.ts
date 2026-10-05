@@ -200,14 +200,24 @@ export function useEstudioPrevio(procesoId: string | null) {
   }, []);
 
   /**
-   * Pone los datos del proceso que devolvió el servidor —la modalidad recién
-   * cambiada— sin tocar el formulario.
+   * Pone los datos del proceso que devolvió el servidor —la modalidad o el
+   * valor recién cambiados— sin tocar lo que el área está escribiendo.
    *
    * `cargar` reemplazaría los valores por los guardados y se llevaría lo que el
    * área escribió y no ha guardado.
    */
   const actualizarProceso = useCallback((proceso: EstudioPrevio['proceso']) => {
-    setEstado((e) => (e.datos ? { ...e, datos: { ...e.datos, proceso } } : e));
+    // El valor estimado se pinta además como campo del formulario: si se
+    // corrigió, el campo tiene que enseñar el nuevo.
+    setEstado((e) =>
+      e.datos
+        ? {
+            ...e,
+            datos: { ...e.datos, proceso },
+            valores: { ...e.valores, valor_estimado: proceso.valorEstimado ?? null },
+          }
+        : e,
+    );
   }, []);
 
   return { ...estado, cargar, cambiar, guardar, enviar, irACampo, actualizarProceso };

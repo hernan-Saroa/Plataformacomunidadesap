@@ -46,7 +46,7 @@ function formatearMoneda(valor: number | string | undefined): string {
  */
 export function CampoDinamico({ campo, valor, error, disabled, dependencia, onChange }: Props) {
   // Los campos de solo lectura se muestran siempre inertes, aunque el estudio
-  // previo esté en borrador: su valor se define al crear el proceso.
+  // previo esté en borrador: su valor vive en el proceso y se corrige aparte.
   const soloLectura = campo.soloLectura === true;
   disabled = disabled || soloLectura;
   const id = `campo-${campo.codigo}`;
@@ -275,7 +275,7 @@ export function CampoDinamico({ campo, valor, error, disabled, dependencia, onCh
         )}
         {/* Sin esto el campo se ve gris sin motivo y parece una falla. */}
         {soloLectura && (
-          <span className="ml-1.5 font-semibold text-slate-400">· se define al crear el proceso</span>
+          <span className="ml-1.5 font-semibold text-slate-400">· se corrige junto a la modalidad</span>
         )}
       </label>
 

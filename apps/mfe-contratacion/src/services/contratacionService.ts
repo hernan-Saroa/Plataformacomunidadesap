@@ -1829,6 +1829,16 @@ export const contratacionService = {
       body: JSON.stringify({ modalidad }),
     }),
 
+  /**
+   * Corrige el valor estimado, con la modalidad si la nueva cuantía la cambia.
+   * Pasa por los mismos umbrales que al crear el proceso.
+   */
+  cambiarCuantiaDelEstudioPrevio: (procesoId: string, valorEstimado: number, modalidad: string) =>
+    pedir<EstudioPrevio>(`/procesos/${procesoId}/estudio-previo/cuantia`, {
+      method: 'PUT',
+      body: JSON.stringify({ valorEstimado, modalidad }),
+    }),
+
   guardarBorrador: (procesoId: string, datos: Record<string, any>, version: number) =>
     pedir<{ estado: string; version: number; datos: Record<string, any> }>(
       `/procesos/${procesoId}/estudio-previo`,
