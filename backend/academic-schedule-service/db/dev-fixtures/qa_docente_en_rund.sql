@@ -1,4 +1,14 @@
 -- ============================================================================
+-- ⚠️  SOLO PARA DESARROLLO LOCAL. NO ES UNA MIGRACIÓN.
+--     NO ejecutar en dev, qa, pre ni prod.
+--     Antes era la migración 033_qa_docente_en_rund.sql. Crea en el RUND (academic_work_plan."Docente")
+--     el registro del usuario de prueba qa.docente:
+--     en db/migrations/ correría en todos los ambientes, incluida producción.
+--     Vive en db/dev-fixtures/ para que ni migrate.service.local.sh ni
+--     deploy.*.sh la ejecuten solos. Se corre a mano, en local.
+-- ============================================================================
+
+-- ============================================================================
 -- §1.1 — El usuario de prueba qa.docente necesita registro en el RUND
 --
 -- El portal del docente resuelve el acumulado del docente autenticado contra el

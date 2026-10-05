@@ -1,4 +1,14 @@
 -- ============================================================================
+-- ⚠️  SOLO PARA DESARROLLO LOCAL. NO ES UNA MIGRACIÓN.
+--     NO ejecutar en dev, qa, pre ni prod.
+--     Antes era la migración 023_retirar_datos_desarrollo.sql. Borra, por identificación explícita, filas de
+--     desarrollo de auth.personas y del RUND (academic_work_plan."Docente"):
+--     en db/migrations/ correría en todos los ambientes, incluida producción.
+--     Vive en db/dev-fixtures/ para que ni migrate.service.local.sh ni
+--     deploy.*.sh la ejecuten solos. Se corre a mano, en local.
+-- ============================================================================
+
+-- ============================================================================
 -- Lote 1 · 1.6 — Retirar los datos quemados de desarrollo
 --
 -- Con los datos reales cargados (1.2–1.5), la siembra de desarrollo sobra.
