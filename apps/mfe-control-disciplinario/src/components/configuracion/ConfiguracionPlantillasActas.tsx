@@ -15,7 +15,7 @@ import disciplinaryService, {
   UpdateActaConfigurationDto 
 } from '../../../../services/api/disciplinary.service';
 import { useActasConfiguration } from '../../../../hooks/useActasConfiguration';
-import { SeccionPlantillasActasUnificada, type TipoActa, type PlantillaArchivo } from './SeccionPlantillasActasUnificada';
+import { SeccionPlantillasActasUnificada, type TipoActa, type PlantillaArchivo, type NuevoTipoActaData } from './SeccionPlantillasActasUnificada';
 import { ModalNuevoTipoActa } from './ModalNuevoTipoActa';
 import { ModalGestionarPlantillasActa } from './ModalGestionarPlantillasActa';
 import { ModalConfirmacion } from './ModalConfirmacion';
@@ -40,23 +40,26 @@ const mapBackendToFrontend = (config: ActaConfiguration): TipoActa => {
     tipo = 'CIERRE';
   }
   
+  const plantillaData: PlantillaArchivo | null = config.nombre_plantilla ? {
+    id: config.id,
+    nombre: config.nombre_plantilla,
+    nombreArchivo: config.nombre_plantilla,
+    descripcion: config.descripcion_plantilla || '',
+    url: config.plantilla || '',
+    tamano: 0,
+    version: config.version_plantilla || '1.0',
+    fechaCreacion: config.createdAt,
+    fechaModificacion: config.updatedAt,
+    activo: config.estado_plantilla !== 'inactivo'
+  } : null;
+
   return {
     id: config.id,
     nombre: config.nombre,
     descripcion: config.descripcion || '',
     tipo,
-    plantillas: config.nombre_plantilla ? [{
-      id: config.id,
-      nombre: config.nombre_plantilla,
-      nombreArchivo: config.nombre_plantilla,
-      descripcion: config.descripcion_plantilla || '',
-      url: config.plantilla || '',
-      tamano: 0,
-      version: config.version_plantilla || '1.0',
-      fechaCreacion: config.createdAt,
-      fechaModificacion: config.updatedAt,
-      activo: config.estado_plantilla !== 'inactivo'
-    }] : [],
+    plantilla: plantillaData,
+    plantillas: plantillaData ? [plantillaData] : [],
     activo: config.estado === 'activo',
     orden: config.orden || 0,
     fechaCreacion: config.createdAt,
@@ -96,13 +99,17 @@ export function ConfiguracionPlantillasActas() {
       
       console.log('🔵 [ConfiguracionPlantillasActas] Configuraciones recibidas:', configs);
       
-      if (configs && configs.length > 0) {
-        const tiposMapeados = configs.map(mapBackendToFrontend);
-        setTiposActas(tiposMapeados);
+      if (configs && Array.isArray(configs)) {
         setDatosDesdeBackend(true);
-        console.log('✅ [ConfiguracionPlantillasActas] Datos cargados desde BD:', tiposMapeados.length);
+        if (configs.length > 0) {
+          const tiposMapeados = configs.map(mapBackendToFrontend);
+          setTiposActas(tiposMapeados);
+          console.log('✅ [ConfiguracionPlantillasActas] Datos cargados desde BD:', tiposMapeados.length);
+        } else {
+          setTiposActas([]);
+          console.log('⚠️ [ConfiguracionPlantillasActas] BD vacía, esperando registros');
+        }
       } else {
-        console.log('⚠️ [ConfiguracionPlantillasActas] No hay datos en BD, mostrando estado vacío');
         setTiposActas([]);
         setDatosDesdeBackend(false);
       }
@@ -132,9 +139,10 @@ export function ConfiguracionPlantillasActas() {
     setMostrarModalTipoActa(true);
   };
 
-  const guardarTipoActa = (nuevoTipo: Omit<TipoActa, 'id' | 'plantillas' | 'fechaCreacion' | 'fechaModificacion'>) => {
-    if (tipoActaEdicion) {
-      if (datosDesdeBackend && tipoActaEdicion.id && !tipoActaEdicion.id.startsWith('tipo-acta-')) {
+  const guardarTipoActa = async (nuevoTipo: NuevoTipoActaData) => {
+    try {
+      if (tipoActaEdicion) {
+        const targetId = tipoActaEdicion.id;
         const updateDto: UpdateActaConfigurationDto = {
           nombre: nuevoTipo.nombre,
           tipo: nuevoTipo.tipo,
@@ -142,65 +150,126 @@ export function ConfiguracionPlantillasActas() {
           estado: nuevoTipo.activo ? 'activo' : 'inactivo',
           orden: nuevoTipo.orden
         };
-        
-        updateConfiguration(tipoActaEdicion.id, updateDto)
-          .then(() => {
-            setTiposActas(tiposActas.map(t => 
-              t.id === tipoActaEdicion.id 
-                ? { ...t, ...nuevoTipo, fechaModificacion: new Date().toISOString() }
-                : t
-            ));
-            toast.success('Tipo de acta actualizado correctamente');
-          })
-          .catch((err) => {
-            console.error('Error actualizando en backend:', err);
-            toast.error('Error al actualizar en el servidor');
-          });
-      } else {
-        setTiposActas(tiposActas.map(t => 
-          t.id === tipoActaEdicion.id 
-            ? { ...t, ...nuevoTipo, fechaModificacion: new Date().toISOString() }
-            : t
-        ));
-        toast.success('Tipo de acta actualizado correctamente');
-      }
-    } else {
-      const nuevoDto: CreateActaConfigurationDto = {
-        nombre: nuevoTipo.nombre,
-        tipo: nuevoTipo.tipo,
-        codigo: `ACTA-${Date.now()}`,
-        descripcion: nuevoTipo.descripcion,
-        estado: nuevoTipo.activo ? 'activo' : 'inactivo',
-        orden: nuevoTipo.orden || tiposActas.length + 1
-      };
 
-      if (datosDesdeBackend) {
-        createConfiguration(nuevoDto)
-          .then((nuevo) => {
-            const tipoCompleto: TipoActa = mapBackendToFrontend(nuevo);
-            setTiposActas([...tiposActas, tipoCompleto]);
-            toast.success('Tipo de acta creado correctamente');
-          })
-          .catch((err) => {
-            console.error('Error creando en backend:', err);
-            toast.error('Error al crear en el servidor');
-          });
+        if (datosDesdeBackend && targetId && !targetId.startsWith('tipo-acta-')) {
+          await updateConfiguration(targetId, updateDto);
+
+          if (nuevoTipo.plantillaFile) {
+            await disciplinaryService.uploadActaPlantilla(
+              targetId,
+              nuevoTipo.plantillaFile,
+              nuevoTipo.nombre,
+              nuevoTipo.descripcion,
+              tipoActaEdicion.plantilla?.version || tipoActaEdicion.plantillas?.[0]?.version || '1.0',
+              nuevoTipo.activo ? 'activo' : 'inactivo'
+            );
+          }
+          await cargarConfiguracion();
+          toast.success('Tipo de acta actualizado correctamente');
+        } else {
+          setTiposActas(tiposActas.map(t => 
+            t.id === targetId 
+              ? { 
+                  ...t, 
+                  ...nuevoTipo, 
+                  plantilla: nuevoTipo.plantillaFile ? {
+                    id: t.plantilla?.id || `plantilla-${Date.now()}`,
+                    nombre: nuevoTipo.nombre,
+                    nombreArchivo: nuevoTipo.plantillaFile.name,
+                    descripcion: nuevoTipo.descripcion,
+                    url: URL.createObjectURL(nuevoTipo.plantillaFile),
+                    tamano: nuevoTipo.plantillaFile.size,
+                    version: t.plantilla?.version || '1.0',
+                    fechaCreacion: t.plantilla?.fechaCreacion || new Date().toISOString(),
+                    fechaModificacion: new Date().toISOString(),
+                    activo: true,
+                    file: nuevoTipo.plantillaFile
+                  } : t.plantilla,
+                  plantillas: nuevoTipo.plantillaFile ? [{
+                    id: t.plantilla?.id || `plantilla-${Date.now()}`,
+                    nombre: nuevoTipo.nombre,
+                    nombreArchivo: nuevoTipo.plantillaFile.name,
+                    descripcion: nuevoTipo.descripcion,
+                    url: URL.createObjectURL(nuevoTipo.plantillaFile),
+                    tamano: nuevoTipo.plantillaFile.size,
+                    version: t.plantilla?.version || '1.0',
+                    fechaCreacion: t.plantilla?.fechaCreacion || new Date().toISOString(),
+                    fechaModificacion: new Date().toISOString(),
+                    activo: true,
+                    file: nuevoTipo.plantillaFile
+                  }] : t.plantillas,
+                  fechaModificacion: new Date().toISOString() 
+                }
+              : t
+          ));
+          toast.success('Tipo de acta actualizado correctamente');
+        }
       } else {
-        const tipoCompleto: TipoActa = {
-          id: `tipo-acta-${Date.now()}`,
-          ...nuevoTipo,
-          plantillas: [],
-          fechaCreacion: new Date().toISOString(),
-          fechaModificacion: new Date().toISOString()
+        const nuevoDto: CreateActaConfigurationDto = {
+          nombre: nuevoTipo.nombre,
+          tipo: nuevoTipo.tipo,
+          codigo: `ACTA-${Date.now()}`,
+          descripcion: nuevoTipo.descripcion,
+          estado: nuevoTipo.activo ? 'activo' : 'inactivo',
+          orden: nuevoTipo.orden || tiposActas.length + 1
         };
-        setTiposActas([...tiposActas, tipoCompleto]);
-        toast.success('Tipo de acta creado correctamente');
+
+        if (datosDesdeBackend) {
+          const nuevo = await disciplinaryService.createActaConfiguration(nuevoDto);
+          const createdId = nuevo?.id || (nuevo as any)?.data?.id;
+
+          if (createdId && nuevoTipo.plantillaFile) {
+            try {
+              await disciplinaryService.uploadActaPlantilla(
+                createdId,
+                nuevoTipo.plantillaFile,
+                nuevoTipo.nombre,
+                nuevoTipo.descripcion,
+                '1.0',
+                nuevoTipo.activo ? 'activo' : 'inactivo'
+              );
+            } catch (errUpload) {
+              console.error('Error subiendo plantilla tras crear acta:', errUpload);
+              toast.error('Acta creada, pero falló la carga de la plantilla');
+            }
+          }
+          await cargarConfiguracion();
+          toast.success('Tipo de acta creado correctamente');
+        } else {
+          const nuevaPlantilla: PlantillaArchivo | null = nuevoTipo.plantillaFile ? {
+            id: `plantilla-${Date.now()}`,
+            nombre: nuevoTipo.nombre,
+            nombreArchivo: nuevoTipo.plantillaFile.name,
+            descripcion: nuevoTipo.descripcion,
+            url: URL.createObjectURL(nuevoTipo.plantillaFile),
+            tamano: nuevoTipo.plantillaFile.size,
+            version: '1.0',
+            fechaCreacion: new Date().toISOString(),
+            fechaModificacion: new Date().toISOString(),
+            activo: true,
+            file: nuevoTipo.plantillaFile
+          } : null;
+
+          const tipoCompleto: TipoActa = {
+            id: `tipo-acta-${Date.now()}`,
+            ...nuevoTipo,
+            plantilla: nuevaPlantilla,
+            plantillas: nuevaPlantilla ? [nuevaPlantilla] : [],
+            fechaCreacion: new Date().toISOString(),
+            fechaModificacion: new Date().toISOString()
+          };
+          setTiposActas([...tiposActas, tipoCompleto]);
+          toast.success('Tipo de acta creado correctamente');
+        }
       }
+      
+      setCambiosPendientes(true);
+      setMostrarModalTipoActa(false);
+      setTipoActaEdicion(null);
+    } catch (error) {
+      console.error('Error en guardarTipoActa:', error);
+      toast.error('Error al guardar el tipo de acta');
     }
-    
-    setCambiosPendientes(true);
-    setMostrarModalTipoActa(false);
-    setTipoActaEdicion(null);
   };
 
   const eliminarTipoActa = async (tipoId: string) => {
@@ -253,56 +322,45 @@ export function ConfiguracionPlantillasActas() {
 
   const actualizarPlantillasTipoActa = async (tipoActaId: string, plantillas: PlantillaArchivo[]) => {
     const plantilla = plantillas[0];
-    const esArchivoNuevo = plantilla?.url?.startsWith('blob:') || false;
     
-    if (datosDesdeBackend && plantilla) {
-      if (esArchivoNuevo) {
-        try {
-          const response = await fetch(plantilla.url);
-          const blob = await response.blob();
-          const file = new globalThis.File([blob], plantilla.nombreArchivo, { 
-            type: blob.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
-          });
-          
-          await uploadPlantilla(
-            tipoActaId,
-            file,
-            plantilla.nombre,
-            plantilla.descripcion,
-            plantilla.version,
-            plantilla.activo ? 'activo' : 'inactivo'
-          );
-          toast.success('Plantilla actualizada correctamente');
-        } catch (error) {
-          console.error('Error subiendo plantilla:', error);
-          toast.error('Error al subir la plantilla');
-        }
-      } else {
-        try {
-          const updateDto: UpdateActaConfigurationDto = {
-            nombre_plantilla: plantilla.nombre,
-            descripcion_plantilla: plantilla.descripcion,
-            version_plantilla: plantilla.version,
-            estado_plantilla: plantilla.activo ? 'activo' : 'inactivo'
-          };
-          
-          await updateConfiguration(tipoActaId, updateDto);
-          toast.success('Plantilla actualizada correctamente');
-        } catch (error) {
-          console.error('Error actualizando plantilla:', error);
-          toast.error('Error al actualizar la plantilla');
+    if (datosDesdeBackend && tipoActaId && !tipoActaId.startsWith('tipo-acta-')) {
+      if (plantilla) {
+        if (plantilla.file) {
+          try {
+            await disciplinaryService.uploadActaPlantilla(
+              tipoActaId,
+              plantilla.file,
+              plantilla.nombre,
+              plantilla.descripcion,
+              plantilla.version,
+              plantilla.activo ? 'activo' : 'inactivo'
+            );
+            toast.success('Plantilla actualizada correctamente');
+          } catch (error) {
+            console.error('❌ Error subiendo plantilla:', error);
+            toast.error('Error al subir la plantilla');
+          }
+        } else if (!plantilla.url?.startsWith('blob:')) {
+          try {
+            const updateDto: UpdateActaConfigurationDto = {
+              nombre_plantilla: plantilla.nombre,
+              descripcion_plantilla: plantilla.descripcion,
+              version_plantilla: plantilla.version,
+              estado_plantilla: plantilla.activo ? 'activo' : 'inactivo'
+            };
+            await updateConfiguration(tipoActaId, updateDto);
+            toast.success('Plantilla actualizada correctamente');
+          } catch (error) {
+            console.error('❌ Error actualizando metadatos de plantilla:', error);
+            toast.error('Error al actualizar la plantilla');
+          }
         }
       }
-    }
-    
-    try {
-      const configs = await disciplinaryService.getActasConfiguration();
-      if (configs && configs.length > 0) {
-        const tiposMapeados = configs.map(mapBackendToFrontend);
-        setTiposActas(tiposMapeados);
-      }
-    } catch (error) {
-      console.error('Error recargando configuración:', error);
+      await cargarConfiguracion();
+    } else {
+      setTiposActas(tiposActas.map(t => 
+        t.id === tipoActaId ? { ...t, plantilla: plantilla || null, plantillas } : t
+      ));
     }
     
     setCambiosPendientes(true);

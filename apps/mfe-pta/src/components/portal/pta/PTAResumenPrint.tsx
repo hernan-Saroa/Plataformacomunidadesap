@@ -18,6 +18,7 @@ import { getPtaComponentDisplayStatus } from '../../pta/shared/ptaComponentStatu
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { getPtaStatusVisual } from '../../pta/shared/ptaStatusVisuals';
 import { formatPtaCompletionPercentage } from '../../../utils/ptaCompletion';
+import { getPtaResearchData } from '../../../utils/ptaResearch';
 import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 import { formatPtaDedicacion, formatPtaVinculacion, ptaNumero } from '../../../utils/ptaInstitutionalDisplay';
 
@@ -228,9 +229,9 @@ export function PTAResumenPrint({ pta, onClose, userDocumento, userName, compone
 
   // ── Normalización de datos (DTO plano del portal o forma agrupada del backoffice) ──
   const asigs: any[] = Array.isArray(pta?.asignaturas) ? pta.asignaturas : [];
-  const proy = (pta?.investigacion_proyecto?.nombre || pta?.investigacion_proyecto?.rol) ? pta.investigacion_proyecto : null;
-  const proyectos: any[] = proy ? [proy] : (pta?.investigacion?.proyectos || []);
-  const actInv: any[] = pta?.investigacion_actividades || pta?.investigacion?.actividades || [];
+  const investigacion = getPtaResearchData(pta);
+  const proyectos = investigacion.proyectos;
+  const actInv = investigacion.actividades;
   const extActs: any[] = Array.isArray(pta?.extension_actividades)
     ? pta.extension_actividades
     : (pta?.extension ? (Object.values(pta.extension).flat() as any[]) : []);
@@ -255,7 +256,7 @@ export function PTAResumenPrint({ pta, onClose, userDocumento, userName, compone
 
   // ── Horas (priorizan agregados del backend: incluyen multiplicadores de sección) ──
   const horasDoc = pta?.horas_docencia ?? asigs.reduce((s, a) => s + Number(a.total_horas || a.horas || 0), 0);
-  const horasInv = pta?.horas_investigacion ?? (proyectos.reduce((s, p) => s + Number(p.horas_solicitadas || 0), 0) || actInv.reduce((s, a) => s + Number(a.horas_total || a.horas || 0), 0));
+  const horasInv = investigacion.horas;
   const horasExt = pta?.horas_extension ?? extActs.reduce((s, a) => s + Number(a.horas || 0), 0);
   const horasComp = pta?.horas_complementarias ?? compActs.reduce((s, a) => s + Number(a.horas || 0), 0);
   const horasProg = pta?.horas_totales ?? pta?.total_horas_programadas ?? (horasDoc + horasInv + horasExt + horasComp);

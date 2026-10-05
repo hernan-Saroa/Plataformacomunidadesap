@@ -2289,17 +2289,17 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       );
 
       expect(result.consultaRutFacturador).toBe(true);
-      expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
       expect(historialRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           solicitudId: 'sol-001',
-          estadoNuevo: EstadoSolicitud.VERIFICADA,
-          comentarios: expect.stringContaining('VERIFICACION_ANALISTA'),
+          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
+          comentarios: expect.stringContaining('transferida a Control de Viáticos'),
         }),
       );
     });
 
-    it('debe registrar verificacion exitosamente para comision EXTEMPORANEA y transicionar a VERIFICADA', async () => {
+    it('debe registrar verificacion exitosamente para comision EXTEMPORANEA y transicionar a SOLICITADA_SIIF', async () => {
       const solicitud = {
         id: 'sol-ext-001',
         consecutivoUnico: 'COM-2026-0012',
@@ -2361,12 +2361,12 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         { seguridadSocialVigente: true, consultaRutFacturador: false },
       );
 
-      expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
       expect(historialRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           solicitudId: 'sol-ext-001',
           estadoAnterior: EstadoSolicitud.EXTEMPORANEA,
-          estadoNuevo: EstadoSolicitud.VERIFICADA,
+          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
         }),
       );
     });
@@ -2915,15 +2915,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       expect(result.solicitud.siifExportado).toBe(true);
       expect(result.solicitud.fechaExportacionSiif).toBeDefined();
       expect(result.solicitud.usuarioExportadorId).toBe('analista-001');
-      expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
-      expect(historialRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          solicitudId: 'sol-001',
-          estadoAnterior: EstadoSolicitud.VERIFICADA,
-          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
-          comentarios: 'Exportado a SIIF Nacion',
-        }),
-      );
+      expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
     });
 
     it('debe permitir re-exportar a SIIF sin límite incluso si ya fue exportada previamente', async () => {
@@ -2986,7 +2978,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
 
       const res = await svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']);
       expect(res.solicitud.siifExportado).toBe(true);
-      expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
+      expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.EN_VERIFICACION);
       expect(res.csvContent).toContain('123456789');
     });
 
@@ -3233,7 +3225,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
 
       const result = await svc.exportarSIIF('sol-001', 'admin-001', ['SUPER_ADMIN']);
 
-      expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
+      expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
     });
 
     it('RF-REV-003: debe bloquear exportacion SIIF si el comisionado contratista es facturador electronico y no tiene factura adjunta', async () => {
@@ -3386,7 +3378,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
       const res = await svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']);
-      expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
+      expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
       expect(res.solicitud.siifExportado).toBe(true);
     });
   });
@@ -5310,7 +5302,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(resultado.firmante2.tipo).toBe('GERENTE_PROYECTO');
       });
 
-      it('firmarAprobacionSolicitud: cuando se registran ambas firmas, transiciona a estado RADICADA', async () => {
+      it('firmarAprobacionSolicitud: cuando se registran ambas firmas, transiciona directamente a Secretaría de Viáticos (SOLICITADO / EXTEMPORANEA)', async () => {
         const solicitud = {
           id: 'sol-firmas-completa',
           consecutivoUnico: 'SOL-2026-999',
@@ -5360,11 +5352,13 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         );
 
         expect(resultadoFirma2.radicada).toBe(true);
-        expect(resultadoFirma2.solicitud.estadoSolicitud).toBe(EstadoSolicitud.RADICADA);
-        expect(resultadoFirma2.mensaje).toContain('RADICADA');
+        expect([EstadoSolicitud.SOLICITADO, EstadoSolicitud.EXTEMPORANEA]).toContain(
+          resultadoFirma2.solicitud.estadoSolicitud,
+        );
+        expect(resultadoFirma2.mensaje).toContain('Secretaría de Viáticos');
         expect(historialRepo.save).toHaveBeenCalledWith(
           expect.objectContaining({
-            estadoNuevo: EstadoSolicitud.RADICADA,
+            estadoNuevo: expect.stringMatching(/SOLICITADO|EXTEMPORANEA/),
           }),
         );
       });

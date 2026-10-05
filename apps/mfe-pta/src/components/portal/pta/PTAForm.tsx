@@ -41,6 +41,7 @@ import { PTADecisionLoading } from '../../pta/PTADecisionLoading';
 import { IdentificacionDocentePanel } from './IdentificacionDocentePanel';
 import { guardarFirmaDigitalPTA } from '../../../services/api/ptaApi';
 import { PTA_COLORS } from '../../pta/shared/ptaColors';
+import { getPtaResearchData } from '../../../utils/ptaResearch';
 import { resolvePtaFileUrl } from '../../pta/shared/ptaFiles';
 import type { PTAComponentKey } from '../../pta/shared/ptaComponentPermissions';
 import { HierarchyBranchTree } from '../../pta/shared/HierarchySelectionSummary';
@@ -2780,15 +2781,19 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
         setEstado(d.estado || 'Borrador');
         setOriginalEstado(d.estado || '');
         setAsignaturas(d.asignaturas || []);
-        const proyectoInvestigacion = d.investigacion_proyecto;
+        const investigacion = getPtaResearchData(d);
+        // Conservar también proyectos parcialmente diligenciados del borrador.
+        const proyectoInvestigacion = d.investigacion_proyecto !== undefined
+          ? d.investigacion_proyecto : investigacion.proyectos[0];
         if (proyectoInvestigacion) {
           setInvProyecto({
             territorial_id: '',
-            nombre: '', codigo: '', grupo: '', linea: '', rol: '',
+            codigo: '', grupo: '', linea: '', rol: '',
             horas_solicitadas: 0,
             fecha_inicio: '', fecha_fin: '', resolucion_nombre: '',
             resolucion_archivo: null, resolucion_archivo_url: '',
             ...proyectoInvestigacion,
+            nombre: proyectoInvestigacion.nombre || proyectoInvestigacion.nombre_proyecto || '',
           });
         } else {
           setInvProyecto({
@@ -2799,8 +2804,10 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
             resolucion_archivo: null, resolucion_archivo_url: '',
           });
         }
-        setInvActividades((d.investigacion_actividades || []).map((activity: any) => ({
+        setInvActividades(investigacion.actividades.map((activity: any) => ({
           ...activity,
+          nombre: activity.nombre || activity.actividad_nombre || '',
+          horas_total: Number(activity.horas_total ?? activity.horas ?? 0),
           territorial_id: String(activity?.territorial_id || ''),
         })));
         // Normalizar actividades de extensión al cargar: aplicar multiplicador x2 si no se hizo

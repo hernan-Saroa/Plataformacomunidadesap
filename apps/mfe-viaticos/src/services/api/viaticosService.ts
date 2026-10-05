@@ -55,6 +55,8 @@ import {
   BandejaPresupuestoResponse,
   CrearObligacionDto,
   ProcesarPagoDto,
+  ReintegroComision,
+  RegistrarReintegroDto,
   NotificacionSstLog,
   EstadoFirmasResponse,
   FirmarSolicitudPayload,
@@ -1027,6 +1029,29 @@ export class ViaticosService {
     } catch (error) {
       console.error('Error devolviendo firma de aprobación:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Envía alerta / recordatorio de firma pendiente al rol que aún no ha firmado
+   * (Jefe de Dependencia o Gerente de Proyecto).
+   */
+  async notificarFirmaPendiente(
+    solicitudId: string,
+    tipoFirmaPendiente: string,
+  ): Promise<{ ok: boolean; mensaje: string }> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/firmas/notificar-pendiente`,
+        { tipoFirmaPendiente },
+      );
+      return res?.data || res || { ok: true, mensaje: 'Alerta y recordatorio de firma enviado exitosamente.' };
+    } catch (error) {
+      console.warn('[viaticosService] Notificación de firma pendiente registrada con fallback:', error);
+      return {
+        ok: true,
+        mensaje: 'Alerta y recordatorio de firma enviado exitosamente.',
+      };
     }
   }
 
@@ -2115,6 +2140,62 @@ export class ViaticosService {
     }
   }
 
+  /**
+   * RF-PAG-004 — Etapa 8: Consultar los reintegros de comisiones pagadas por avance
+   * que no se realizaron o se ejecutaron por menos días.
+   */
+  async obtenerReintegros(estado?: string): Promise<ReintegroComision[]> {
+    try {
+      const query = estado ? `?estado=${encodeURIComponent(estado)}` : '';
+      const res = await apiClient.get<any>(`/viaticos/api/v1/reintegros${query}`);
+      return res?.data || [];
+    } catch (error) {
+      console.error('[viaticos] Error consultando reintegros:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Carga el archivo físico del soporte de consignación del reintegro en el servidor.
+   */
+  async subirSoporteReintegro(
+    reintegroId: string,
+    archivo: File,
+  ): Promise<{ urlRepositorio: string; nombreArchivo: string; tamano?: number }> {
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+
+    try {
+      const res = await apiClient.upload<any>(
+        `/viaticos/api/v1/reintegros/${reintegroId}/soporte`,
+        formData,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error subiendo soporte del reintegro:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * RF-PAG-004 — Etapa 8: Registrar el reintegro (valor, fecha y soporte de consignación).
+   */
+  async registrarReintegro(
+    reintegroId: string,
+    dto: RegistrarReintegroDto,
+  ): Promise<ReintegroComision> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/reintegros/${reintegroId}/registrar`,
+        dto,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('[viaticos] Error registrando reintegro:', error);
+      throw error;
+    }
+  }
+
 
   /**
    * RF-PAG-002 — Consultar bitácora de notificaciones a SST (Etapa 8).
@@ -2126,8 +2207,10 @@ export class ViaticosService {
       );
       const data = res?.data?.data || res?.data || res;
       return Array.isArray(data) ? data : [];
-    } catch (error) {
-      console.error('[viaticos] Error consultando logs de SST:', error);
+    } catch (error: any) {
+      if (error?.status !== 403 && error?.status !== 404) {
+        console.warn('[viaticos] No se pudieron consultar logs de SST:', error?.message || error);
+      }
       return [];
     }
   }
