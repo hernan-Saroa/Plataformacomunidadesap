@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../../../../shell/src/services/api';
 import { getAppOnlineStatus } from '../../../../shell/src/utils/connectivity';
-import { aprobarComponente, revisarComponente, getPTADecisionPermissions, getAllPTAs, getComponentesRevision, getComponentesAprobacion, getPTAById, getPTAsByDocente } from './ptaApi';
+import { aprobarComponente, revisarComponente, aprobarComponentesLote, revisarComponentesLote, getPTADecisionPermissions, getAllPTAs, getComponentesRevision, getComponentesAprobacion, getPTAById, getPTAsByDocente } from './ptaApi';
 
 vi.mock('../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn() } }));
 vi.mock('../../../../shell/src/utils/connectivity', () => ({ getAppOnlineStatus: vi.fn() }));
@@ -109,6 +109,8 @@ describe('decisiones PTA confirmadas por el servidor', () => {
       getPTADecisionPermissions('pta-1'),
       aprobarComponente('pta-1', {} as any),
       revisarComponente('pta-1', {} as any),
+      aprobarComponentesLote({ ptaIds: ['pta-1'], componentes: ['investigacion'] }),
+      revisarComponentesLote({ ptaIds: ['pta-1'], revisiones: ['investigacion:general'] }),
       getComponentesRevision('pta-1'),
       getComponentesAprobacion('pta-1'),
     ])) {
@@ -122,5 +124,15 @@ describe('decisiones PTA confirmadas por el servidor', () => {
     const result = await aprobarComponente('pta-1', {} as any);
     expect(result).toMatchObject({ success: false, message: 'Sin autorización para esta territorial' });
     expect(apiClient.post).toHaveBeenCalledWith('/pta/api/v1/pta-1/aprobar-componente', {}, { retries: 0 });
+  });
+
+  it.each([
+    [aprobarComponentesLote, 'aprobar-componentes-lote', { ptaIds: ['pta-1'], componentes: ['investigacion'] }],
+    [revisarComponentesLote, 'revisar-componentes-lote', { ptaIds: ['pta-1'], revisiones: ['investigacion:general'] }],
+  ] as const)('el lote %s conserva estados confirmados y no reintenta automáticamente', async (decidir, endpoint, payload) => {
+    const data = { resumen: {}, resultados: [], ptasActualizados: [{ id: 'pta-1', estado: 'Pendiente Jefatura' }] };
+    vi.mocked(apiClient.post).mockResolvedValue({ success: true, data });
+    expect(await decidir(payload as any)).toMatchObject({ success: true, data });
+    expect(apiClient.post).toHaveBeenCalledWith(`/pta/api/v1/${endpoint}`, payload, { retries: 0 });
   });
 });

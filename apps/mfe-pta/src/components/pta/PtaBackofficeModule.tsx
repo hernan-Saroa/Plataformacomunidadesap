@@ -75,8 +75,10 @@ import {
   componentKeyForEvidencia,
   isEvidenciaAuthorized,
   hasComponentPermission,
+  labelDeComponente,
 } from './shared/ptaComponentPermissions';
 import { getPtaStatusVisual } from './shared/ptaStatusVisuals';
+import { groupPtaBulkApprovalResults } from './shared/ptaBulkApprovalResult';
 import { getPtaAssignmentTerritorialLabel } from './shared/ptaTerritorialDisplay';
 import '../../styles/pta-world-class.css';
 
@@ -2019,9 +2021,14 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   const [bulkComponentResult, setBulkComponentResult] = useState<{
     groupLabel: string;
     decision: 'aprobado' | 'devuelto';
+    ptaIds: string[];
+    nombres: Record<string, string>;
     resumen: { total: number; aprobados: number; devueltos: number; omitidos: number; fallidos: number };
     resultados: AprobarComponentesLoteResultado[];
   } | null>(null);
+  const bulkDecisionInFlightRef = useRef(false);
+  const groupedBulkApprovalResult = bulkComponentResult?.decision === 'aprobado'
+    ? groupPtaBulkApprovalResults(bulkComponentResult.ptaIds, bulkComponentResult.resultados) : null;
 
   // ═══ Feature 17: Shift+Click Range Selection ═══
   const lastClickedIdx = useRef<number>(-1);
@@ -2478,6 +2485,107 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     setRefreshCountdown(120);
   };
 
+  const applyBulkUpdatedPtas = (data: any) => {
+    // Si el usuario cambió de período durante el lote, conservar la consulta
+    // de su nueva selección. El resultado sigue correspondiendo al lote original.
+    if (filtroPeriodo !== filtroPeriodoRef.current) return;
+    const actualizados = Array.isArray(data) ? data : [];
+    // Invalida consultas anteriores a la decisión, también para revisiones.
+    ++loadDataRequestRef.current;
+    const byId = new Map<string, any>(actualizados.map((pta: any) => [pta.id, pta]));
+    setPtas(prev => prev.map(pta => {
+      const actualizado = byId.get(pta.id);
+      return actualizado && actualizado.periodo === pta.periodo ? { ...pta, ...actualizado } : pta;
+    }));
+    setSelectedPTA((prev: any) => prev && byId.has(prev.id) ? { ...prev, ...byId.get(prev.id) } : prev);
+  };
+
+  const processBulkReview = async () => {
+    if (bulkDecisionInFlightRef.current) return;
+    const revisiones = Array.from(new Set(permisos.componentesRevisables || []));
+    if (!selectedReviewIds.length || !revisiones.length) {
+      toast.error('No tiene componentes de PTA habilitados para revisar');
+      return;
+    }
+    bulkDecisionInFlightRef.current = true;
+    setProcesando(true);
+    try {
+      const res = await revisarComponentesLote({ ptaIds: selectedReviewIds, revisiones,
+        comentarios: batchReviewObs || undefined, revisorId: aprobadorId,
+        revisorNombre: aprobadorNombre, revisorRol: rolLabel });
+      if (!res.success) {
+        toast.error(res.message || 'Error al procesar la revisión en lote');
+        await loadData(false);
+        return;
+      }
+      applyBulkUpdatedPtas(res.data.ptasActualizados);
+      setShowBatchReview(false);
+      setBatchReviewObs('');
+      setSelectedIds(new Set());
+      if (res.data.resumen.revisados > 0) toast.success(`${res.data.resumen.revisados} revisión(es) marcada(s) correctamente`);
+      if (res.data.resumen.fallidos > 0) {
+        const motivos = [...new Set(res.data.resultados.filter(item => item.estado === 'fallido')
+          .map(item => `${labelDeComponente(item.componente)} (${item.subseccion}): ${item.motivo || 'No se pudo revisar'}`))];
+        toast.error(`${res.data.resumen.fallidos} revisión(es) no se pudieron procesar: ${motivos.join('; ')}`);
+      }
+      await loadData(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al procesar la revisión en lote');
+      await loadData(false);
+    } finally {
+      setProcesando(false);
+      bulkDecisionInFlightRef.current = false;
+    }
+  };
+
+  const processBulkDecision = async (
+    payload: Parameters<typeof aprobarComponentesLote>[0],
+    groupLabel: string,
+  ) => {
+    if (bulkDecisionInFlightRef.current) return;
+    if (!payload.ptaIds.length || !payload.componentes.length) {
+      toast.error('No hay componentes autorizados seleccionados para procesar');
+      return;
+    }
+    if (payload.estado === 'devuelto' && !payload.comentarios?.trim()) {
+      toast.error('Debe ingresar un motivo de devolución');
+      return;
+    }
+    bulkDecisionInFlightRef.current = true;
+    setProcesando(true);
+    try {
+      const res = await aprobarComponentesLote(payload);
+      setShowBatchApproval(false);
+      setBulkComponentGroupKey(null);
+      setShowBatchDevolucion(false);
+      if (!res.success) {
+        toast.error(res.message || 'Error al procesar la decisión en lote');
+        await loadData(false);
+        return;
+      }
+      applyBulkUpdatedPtas(res.data.ptasActualizados);
+      setBulkComponentResult({ groupLabel, decision: payload.estado || 'aprobado', ptaIds: [...payload.ptaIds],
+        nombres: Object.fromEntries(ptas.map(pta => [pta.id, pta.docente_nombre || pta.id])),
+        resumen: res.data.resumen, resultados: res.data.resultados });
+      setSelectedIds(new Set());
+      setBatchObs('');
+      setBulkComponentComentarios('');
+      setBatchDevMotivo('');
+      const decisiones = res.data.resultados.filter(item => item.estado === (payload.estado || 'aprobado')).length;
+      if (decisiones > 0) addNotification({ title: `Resultado de lote — ${groupLabel}`,
+        message: `${decisiones} componente(s) ${payload.estado === 'devuelto' ? 'devuelto(s)' : 'aprobado(s)'} en ${payload.ptaIds.length} PTA(s) seleccionados`,
+        type: payload.estado === 'devuelto' ? 'warning' : 'success' });
+      // También se refresca cuando no hubo decisiones nuevas o el lote fue parcial.
+      await loadData(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al procesar la decisión en lote');
+      await loadData(false);
+    } finally {
+      setProcesando(false);
+      bulkDecisionInFlightRef.current = false;
+    }
+  };
+
   useEffect(() => {
     if (!periodosInicializadosPTA || !filtroPeriodo) return;
     loadData();
@@ -2646,8 +2754,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
   /**
    * Los indicadores de etapa deben respetar también el estado real del PTA.
-   * En particular, "Aprobado(s)" nunca incluye borradores ni aprobaciones
-   * parciales aunque el usuario ya haya resuelto su propio componente.
+   * "Aprobados" incluye las aprobaciones personales completadas; el estado
+   * global continúa indicando si faltan decisiones de otros responsables.
    */
   const matchesPersonalStageFilter = useCallback((pta: any, filter: FiltroEtapaPersonal) => {
     if (!filter) return true;
@@ -2660,7 +2768,8 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       case 'aprobacion_pendiente':
         return puedeSeleccionarParaAprobacion(pta);
       case 'aprobacion_aprobado':
-        return estadoGlobal === 'APROBADO';
+        return estadoGlobal !== 'BORRADOR' && (estadoGlobal === 'APROBADO'
+          || estadoDeMiEtapa(pta, 'aprobacion') === 'resuelto');
       default:
         return true;
     }
@@ -5499,8 +5608,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   const totalHorasProg = filteredPtas.reduce((sum: number, p: any) => sum + (p.total_horas_programadas || 0), 0);
                   const totalHorasDisp = filteredPtas.reduce((sum: number, p: any) => sum + (p.horas_asignables ?? p.horas_a_programar ?? 0), 0);
                   const avgCarga = totalHorasDisp > 0 ? Math.round((totalHorasProg / totalHorasDisp) * 100) : 0;
-                  const pendCount = filteredPtas.filter((p: any) => isEstadoPendienteAprobacion(p.estado)).length;
-                  const aprobCount = filteredPtas.filter((p: any) => normalizeEstadoKey(p.estado) === 'APROBADO').length;
+                  const pendCount = filteredPtas.filter((p: any) => tieneEtapaAprobacion
+                    ? matchesPersonalStageFilter(p, 'aprobacion_pendiente') : isEstadoPendienteAprobacion(p.estado)).length;
+                  const aprobCount = filteredPtas.filter((p: any) => tieneEtapaAprobacion
+                    ? matchesPersonalStageFilter(p, 'aprobacion_aprobado') : normalizeEstadoKey(p.estado) === 'APROBADO').length;
                   
                   return (
                     <div style={{
@@ -5836,38 +5947,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   Cancelar
                 </button>
                 <button
-                  onClick={async () => {
-                    const revisiones = Array.from(new Set(permisos.componentesRevisables || []));
-                    if (revisiones.length === 0) {
-                      toast.error('No tiene componentes de PTA habilitados para revisar');
-                      return;
-                    }
-                    setProcesando(true);
-                    const ids = selectedReviewIds;
-                    const res = await revisarComponentesLote({
-                      ptaIds: ids,
-                      revisiones,
-                      comentarios: batchReviewObs || undefined,
-                      revisorId: aprobadorId,
-                      revisorNombre: aprobadorNombre,
-                      revisorRol: rolLabel,
-                    });
-                    setProcesando(false);
-                    if (!res.success) {
-                      toast.error(res.message || 'Error al procesar la revisión en lote');
-                      return;
-                    }
-                    setShowBatchReview(false);
-                    setBatchReviewObs('');
-                    setSelectedIds(new Set());
-                    if (res.data.resumen.revisados > 0) {
-                      toast.success(`${res.data.resumen.revisados} revisión(es) marcada(s) correctamente`);
-                    }
-                    if (res.data.resumen.fallidos > 0) {
-                      toast.error(`${res.data.resumen.fallidos} revisión(es) no se pudieron procesar`);
-                    }
-                    await loadData();
-                  }}
+                  onClick={processBulkReview}
                   disabled={procesando}
                   style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', opacity: procesando ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 5 }}
                 >
@@ -5914,7 +5994,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                             {p.estado?.replace(/_/g, ' ')}
                           </span>
                           <ArrowRight style={{ width: 10, height: 10, color: '#9CA3AF' }} />
-                          <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#059669' }}>{getNextState(p.estado)?.replace(/_/g, ' ')}</span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 600, color: '#059669' }}>Aprobar componentes autorizados</span>
                         </div>
                       </div>
                     );
@@ -5939,43 +6019,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   Cancelar
                 </button>
                 <button
-                  onClick={async () => {
-                    if (misComponentesAprobables.length === 0) {
-                      toast.error('No tiene componentes de PTA habilitados para aprobar');
-                      return;
-                    }
-                    setProcesando(true);
-                    const ids = selectedApprovalIds;
-                    // "Aprobar Lote" aprueba, por cada PTA seleccionado, los componentes
-                    // que le correspondan al rol/permisos de quien lo acciona (Jefatura,
-                    // Decanatura, etc.) — no un nivel jerárquico global del PTA, que es
-                    // el modelo viejo y ya no refleja cómo se aprueba un PTA hoy.
-                    const res = await aprobarComponentesLote({
-                      ptaIds: ids,
-                      componentes: misComponentesAprobables,
-                      comentarios: batchObs || undefined,
-                      aprobadorId,
-                      aprobadorNombre,
-                      aprobadorRol: rolLabel,
-                    });
-                    setProcesando(false);
-                    setShowBatchApproval(false);
-                    setBatchObs('');
-                    setSelectedIds(new Set());
-                    if (res.success) {
-                      setBulkComponentResult({ groupLabel: 'Aprobar', decision: 'aprobado', resumen: res.data.resumen, resultados: res.data.resultados });
-                      if (res.data.resumen.aprobados > 0) {
-                        addNotification({
-                          title: 'Aprobación en Lote',
-                          message: `${res.data.resumen.aprobados} componente(s) aprobado(s) en ${ids.length} PTA(s) seleccionados`,
-                          type: 'success',
-                        });
-                        loadData();
-                      }
-                    } else {
-                      toast.error(res.message || 'Error al procesar la aprobación en lote');
-                    }
-                  }}
+                  onClick={() => processBulkDecision({ ptaIds: selectedApprovalIds, componentes: misComponentesAprobables, comentarios: batchObs || undefined, aprobadorId, aprobadorNombre, aprobadorRol: rolLabel }, 'Aprobar')}
                   disabled={procesando}
                   style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', opacity: procesando ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 5 }}
                 >
@@ -6040,39 +6084,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                     Cancelar
                   </button>
                   <button
-                    onClick={async () => {
-                      setProcesando(true);
-                      const ptaIds = selectedApprovalIds;
-                      const res = await aprobarComponentesLote({
-                        ptaIds,
-                        componentes: group.componentKeys,
-                        comentarios: bulkComponentComentarios || undefined,
-                        // Mismos campos de identidad que envía la aprobación
-                        // individual (ejecutarAprobacionComponente en
-                        // PTADetallePanelBackoffice.tsx), para que la trazabilidad
-                        // quede igual sin importar si se aprobó uno por uno o en lote.
-                        aprobadorId,
-                        aprobadorNombre,
-                        aprobadorRol: rolLabel || 'Revisor',
-                      });
-                      setProcesando(false);
-                      setBulkComponentGroupKey(null);
-                      setBulkComponentComentarios('');
-                      if (res.success) {
-                        setBulkComponentResult({ groupLabel: group.label, decision: 'aprobado', resumen: res.data.resumen, resultados: res.data.resultados });
-                        setSelectedIds(new Set());
-                        if (res.data.resumen.aprobados > 0) {
-                          addNotification({
-                            title: `Aprobación masiva — ${group.label}`,
-                            message: `${res.data.resumen.aprobados} componente(s) aprobado(s) en ${ptaIds.length} PTA(s) seleccionados`,
-                            type: 'success',
-                          });
-                          loadData();
-                        }
-                      } else {
-                        toast.error(res.message || 'Error al procesar la aprobación masiva');
-                      }
-                    }}
+                    onClick={() => processBulkDecision({ ptaIds: selectedApprovalIds, componentes: group.componentKeys, comentarios: bulkComponentComentarios || undefined, aprobadorId, aprobadorNombre, aprobadorRol: rolLabel || 'Revisor' }, group.label)}
                     disabled={procesando}
                     style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#047857', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', opacity: procesando ? 0.5 : 1, display: 'flex', alignItems: 'center', gap: 5 }}
                   >
@@ -6102,11 +6114,30 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   Resultado — {bulkComponentResult.groupLabel}
                 </h3>
                 <p style={{ fontSize: '0.82rem', color: '#6B7280', margin: '4px 0 0' }}>
-                  {bulkComponentResult.resumen.aprobados} aprobado(s) · {bulkComponentResult.resumen.devueltos} devuelto(s) · {bulkComponentResult.resumen.omitidos} omitido(s) · {bulkComponentResult.resumen.fallidos} fallido(s)
+                  {groupedBulkApprovalResult
+                    ? `${groupedBulkApprovalResult.total} PTA(s) procesado(s) · ${groupedBulkApprovalResult.aprobados} aprobado(s) · ${groupedBulkApprovalResult.noAprobados} no aprobado(s)`
+                    : `${bulkComponentResult.resumen.devueltos} devuelto(s) · ${bulkComponentResult.resumen.omitidos} omitido(s) · ${bulkComponentResult.resumen.fallidos} fallido(s)`}
                 </p>
+                {groupedBulkApprovalResult && <p style={{ fontSize: '0.75rem', color: '#6B7280' }}>
+                  «Aprobado» indica que hay componentes aprobados de esta selección. El PTA queda aprobado completamente cuando se resuelven todos sus componentes.
+                </p>}
               </div>
               <div style={{ padding: '12px 24px', overflowY: 'auto', flex: 1 }}>
-                {bulkComponentResult.resultados
+                {groupedBulkApprovalResult ? groupedBulkApprovalResult.ptas.map(item => (
+                  <div key={item.ptaId} style={{ padding: '10px 12px', borderBottom: '1px solid #F3F4F6' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <strong style={{ fontSize: '0.8rem' }}>{bulkComponentResult.nombres[item.ptaId] || item.ptaId}</strong>
+                      <span style={{ color: item.aprobado ? '#047857' : '#B91C1C', fontSize: '0.7rem', fontWeight: 700 }}>
+                        {item.aprobado ? 'APROBADO' : 'NO APROBADO'}
+                      </span>
+                    </div>
+                    {item.detalles.length === 0 && <p>No se recibió confirmación del servidor para este PTA.</p>}
+                    {item.detalles.map(detalle => <div key={detalle.componente} style={{ fontSize: '0.75rem', color: '#475569', marginTop: 5 }}>
+                      {labelDeComponente(detalle.componente)}: {detalle.estado === 'aprobado'
+                        ? detalle.motivo || 'Aprobado' : detalle.motivo || 'No se pudo aprobar'}
+                    </div>)}
+                  </div>
+                )) : bulkComponentResult.resultados
                   .filter(r => r.estado !== bulkComponentResult.decision)
                   .map((r, idx) => {
                     const pta = ptas.find((p: any) => p.id === r.ptaId);
@@ -6130,7 +6161,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                       </div>
                     );
                   })}
-                {bulkComponentResult.resultados.every(r => r.estado === bulkComponentResult.decision) && (
+                {!groupedBulkApprovalResult && bulkComponentResult.resultados.every(r => r.estado === bulkComponentResult.decision) && (
                   <p style={{ fontSize: '0.82rem', color: '#059669', textAlign: 'center', padding: '16px 0' }}>
                     {bulkComponentResult.decision === 'aprobado'
                       ? 'Todos los componentes seleccionados se aprobaron correctamente.'
@@ -6140,7 +6171,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               </div>
               <div style={{ padding: '14px 24px', borderTop: '1px solid #F3F4F6', display: 'flex', justifyContent: 'flex-end' }}>
                 <button
-                  onClick={() => setBulkComponentResult(null)}
+                  onClick={() => { setBulkComponentResult(null); void loadData(false); }}
                   style={{ padding: '8px 20px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer' }}
                 >
                   Cerrar
@@ -6256,44 +6287,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                   Cancelar
                 </button>
                 <button
-                  onClick={async () => {
-                    if (!batchDevMotivo.trim()) { toast.error('Debe ingresar un motivo de devolución'); return; }
-                    if (misComponentesAprobables.length === 0) {
-                      toast.error('No tiene componentes de PTA habilitados para devolver');
-                      return;
-                    }
-                    setProcesando(true);
-                    const ids = selectedApprovalIds;
-                    // "Devolver Lote" devuelve, por cada PTA seleccionado, los componentes
-                    // que le correspondan al rol/permisos de quien lo acciona — mismo
-                    // criterio que "Aprobar Lote", en vez del viejo modelo de niveles.
-                    const res = await aprobarComponentesLote({
-                      ptaIds: ids,
-                      componentes: misComponentesAprobables,
-                      estado: 'devuelto',
-                      comentarios: batchDevMotivo,
-                      aprobadorId,
-                      aprobadorNombre,
-                      aprobadorRol: rolLabel,
-                    });
-                    setProcesando(false);
-                    setShowBatchDevolucion(false);
-                    setSelectedIds(new Set());
-                    setBatchDevMotivo('');
-                    if (res.success) {
-                      setBulkComponentResult({ groupLabel: 'Devolver', decision: 'devuelto', resumen: res.data.resumen, resultados: res.data.resultados });
-                      if (res.data.resumen.devueltos > 0) {
-                        addNotification({
-                          title: 'Devolución en Lote',
-                          message: `${res.data.resumen.devueltos} componente(s) devuelto(s) en ${ids.length} PTA(s): ${batchDevMotivo.substring(0, 60)}...`,
-                          type: 'warning',
-                        });
-                        loadData();
-                      }
-                    } else {
-                      toast.error(res.message || 'Error al procesar la devolución en lote');
-                    }
-                  }}
+                  onClick={() => processBulkDecision({ ptaIds: selectedApprovalIds, componentes: misComponentesAprobables, estado: 'devuelto', comentarios: batchDevMotivo, aprobadorId, aprobadorNombre, aprobadorRol: rolLabel }, 'Devolver')}
                   disabled={procesando || !batchDevMotivo.trim()}
                   style={{
                     padding: '8px 20px', borderRadius: 8, border: 'none',
