@@ -227,6 +227,10 @@ export function PTAWorldClassToolbar({
                 key={tab.id}
                 type="button"
                 aria-pressed={isActive}
+                title={tab.id === 'aprobacion_aprobado'
+                  ? 'PTA con tus aprobaciones completadas. Otros responsables pueden tener componentes pendientes.'
+                  : tab.id === 'aprobacion_pendiente'
+                    ? 'PTA con componentes pendientes que puedes aprobar según tus permisos y alcance.' : undefined}
                 onClick={() => setFiltroEstado(tab.id)}
                 style={{
                   display: 'flex',

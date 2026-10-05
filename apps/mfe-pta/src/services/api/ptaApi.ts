@@ -686,17 +686,19 @@ export async function aprobarComponentesLote(data: {
   aprobadorRol?: string;
 }) {
   try {
-    const raw = await apiClient.post<any>(`${PTA_BASE}/aprobar-componentes-lote`, data);
+    requireConnectionForDecision();
+    const raw = await apiClient.post<any>(`${PTA_BASE}/aprobar-componentes-lote`, data, { retries: 0 });
     const normalized = normalizeResult<{
       resumen: { total: number; aprobados: number; devueltos: number; omitidos: number; fallidos: number };
       resultados: AprobarComponentesLoteResultado[];
-    }>(raw, { resumen: { total: 0, aprobados: 0, devueltos: 0, omitidos: 0, fallidos: 0 }, resultados: [] });
+      ptasActualizados?: any[];
+    }>(raw, { resumen: { total: 0, aprobados: 0, devueltos: 0, omitidos: 0, fallidos: 0 }, resultados: [], ptasActualizados: [] });
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
     console.error('[mfe-pta][aprobarComponentesLote] Error:', error);
     return {
       success: false,
-      data: { resumen: { total: 0, aprobados: 0, devueltos: 0, omitidos: 0, fallidos: 0 }, resultados: [] },
+      data: { resumen: { total: 0, aprobados: 0, devueltos: 0, omitidos: 0, fallidos: 0 }, resultados: [], ptasActualizados: [] as any[] },
       message: (error as any)?.message || 'Error al aprobar los componentes seleccionados',
     };
   }
@@ -720,17 +722,19 @@ export async function revisarComponentesLote(data: {
   revisorRol?: string;
 }) {
   try {
-    const raw = await apiClient.post<any>(`${PTA_BASE}/revisar-componentes-lote`, data);
+    requireConnectionForDecision();
+    const raw = await apiClient.post<any>(`${PTA_BASE}/revisar-componentes-lote`, data, { retries: 0 });
     const normalized = normalizeResult<{
       resumen: { total: number; revisados: number; devueltos: number; omitidos: number; fallidos: number };
       resultados: RevisarComponentesLoteResultado[];
-    }>(raw, { resumen: { total: 0, revisados: 0, devueltos: 0, omitidos: 0, fallidos: 0 }, resultados: [] });
+      ptasActualizados?: any[];
+    }>(raw, { resumen: { total: 0, revisados: 0, devueltos: 0, omitidos: 0, fallidos: 0 }, resultados: [], ptasActualizados: [] });
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
     console.error('[mfe-pta][revisarComponentesLote] Error:', error);
     return {
       success: false,
-      data: { resumen: { total: 0, revisados: 0, devueltos: 0, omitidos: 0, fallidos: 0 }, resultados: [] },
+      data: { resumen: { total: 0, revisados: 0, devueltos: 0, omitidos: 0, fallidos: 0 }, resultados: [], ptasActualizados: [] as any[] },
       message: (error as any)?.message || 'Error al revisar los componentes seleccionados',
     };
   }

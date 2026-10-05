@@ -10844,6 +10844,7 @@ export class PtaService {
       motivo?: string;
     };
     const resultados: ResultadoLote[] = [];
+    const denegados = new Set<string>();
 
     for (const ptaId of ptaIds) {
       // Verificación de existencia explícita: getComponentesAprobacion() no valida
@@ -10851,7 +10852,14 @@ export class PtaService {
       // aprobación 'pendiente', y ese INSERT termina violando la FK de
       // PtaComponentApproval hacia un ptaId que no existe. Cortar aquí evita ese
       // error de base de datos crudo y deja un motivo legible.
-      const existePta = await this.ptaRepo.exists({ where: { id: ptaId } });
+      let existePta: boolean;
+      try {
+        existePta = await this.ptaRepo.exists({ where: { id: ptaId } });
+      } catch (error) {
+        for (const componente of componentes) resultados.push({ ptaId, componente, estado: 'fallido',
+          motivo: error instanceof Error ? error.message : 'No se pudo consultar el PTA' });
+        continue;
+      }
       if (!existePta) {
         for (const componente of componentes) {
           resultados.push({ ptaId, componente, estado: 'fallido', motivo: 'PTA no encontrado' });
@@ -10925,6 +10933,7 @@ export class PtaService {
           }, auth);
           resultados.push({ ptaId, componente, estado: decision });
         } catch (error) {
+          if (error instanceof ForbiddenException) denegados.add(`${ptaId}:${componente}`);
           resultados.push({
             ptaId,
             componente,
@@ -10935,19 +10944,49 @@ export class PtaService {
       }
     }
 
-    const resumen = resultados.reduce(
-      (acc, r) => {
-        acc.total += 1;
-        if (r.estado === 'aprobado') acc.aprobados += 1;
-        else if (r.estado === 'devuelto') acc.devueltos += 1;
-        else if (r.estado === 'omitido') acc.omitidos += 1;
-        else acc.fallidos += 1;
-        return acc;
-      },
-      { total: 0, aprobados: 0, devueltos: 0, omitidos: 0, fallidos: 0 },
-    );
+    // La decisión no depende de que una consulta posterior del frontend funcione.
+    // Entregar el mismo resumen y alcance que usa Gestión, leído después del lote.
+    const ptasActualizados = await this.getBulkUpdatedPtas(ptaIds, auth);
+    // Puede fallar un paso posterior a persistir la decisión (historial/evento).
+    // Solo confirmar contra las decisiones que el servidor entrega al usuario
+    // dentro de su alcance. Un rechazo de permisos nunca concede una aprobación.
+    if (decision === 'aprobado') {
+      for (const resultado of resultados) {
+        if (resultado.estado !== 'fallido' || denegados.has(`${resultado.ptaId}:${resultado.componente}`)) continue;
+        const dto = ptasActualizados.find(pta => pta.id === resultado.ptaId);
+        const confirmadas = dto?.componentes_aprobacion_usuario?.filter(
+          item => item.componente === resultado.componente,
+        ) || [];
+        if (confirmadas.length && confirmadas.every(item => item.estado === 'aprobado')) {
+          resultado.estado = 'aprobado';
+          resultado.motivo = `Aprobación confirmada en el PTA. La operación reportó: ${resultado.motivo}`;
+        }
+      }
+    }
+    const resumen = resultados.reduce((acc, r) => {
+      acc.total++;
+      if (r.estado === 'aprobado') acc.aprobados++;
+      else if (r.estado === 'devuelto') acc.devueltos++;
+      else if (r.estado === 'omitido') acc.omitidos++;
+      else acc.fallidos++;
+      return acc;
+    }, { total: 0, aprobados: 0, devueltos: 0, omitidos: 0, fallidos: 0 });
+    return { resumen, resultados, ptasActualizados };
+  }
 
-    return { resumen, resultados };
+  /** Estado posterior a un lote, con los mismos permisos y alcance de Gestión. */
+  private async getBulkUpdatedPtas(ptaIds: string[], auth: PtaAuthenticatedUser): Promise<any[]> {
+    try {
+      const rows = await this.ptaRepo.find({ where: { id: In(ptaIds) } });
+      const extMult = await this.getExtMultiplicadores();
+      const dtos = rows.map(row => this.toPtaDto(row, extMult));
+      await this.attachComponentApprovalProgress(dtos);
+      return await this.filterGestionPtas(dtos, rows, auth);
+    } catch (error) {
+      // Un fallo de sincronización no convierte decisiones ya guardadas en fallidas.
+      this.logger?.warn(`No se pudo obtener el estado actualizado del lote: ${error instanceof Error ? error.message : error}`);
+    }
+    return [];
   }
 
   /**
@@ -11000,9 +11039,17 @@ export class PtaService {
       motivo?: string;
     };
     const resultados: ResultadoRevisionLote[] = [];
+    const denegados = new Set<string>();
 
     for (const ptaId of ptaIds) {
-      const existePta = await this.ptaRepo.exists({ where: { id: ptaId } });
+      let existePta: boolean;
+      try {
+        existePta = await this.ptaRepo.exists({ where: { id: ptaId } });
+      } catch (error) {
+        for (const item of decisiones) resultados.push({ ptaId, componente: item.componente,
+          subseccion: item.subseccion, estado: 'fallido', motivo: error instanceof Error ? error.message : 'No se pudo consultar el PTA' });
+        continue;
+      }
       if (!existePta) {
         for (const item of decisiones) {
           resultados.push({ ptaId, componente: item.componente, subseccion: item.subseccion, estado: 'fallido', motivo: 'PTA no encontrado' });
@@ -11050,6 +11097,7 @@ export class PtaService {
           }, auth);
           resultados.push({ ptaId, componente: item.componente, subseccion: item.subseccion, estado: decision });
         } catch (error) {
+          if (error instanceof ForbiddenException) denegados.add(`${ptaId}:${item.key}`);
           resultados.push({
             ptaId,
             componente: item.componente,
@@ -11061,6 +11109,21 @@ export class PtaService {
       }
     }
 
+    const ptasActualizados = await this.getBulkUpdatedPtas(ptaIds, auth);
+    if (decision === 'revisado') {
+      for (const resultado of resultados) {
+        if (resultado.estado !== 'fallido'
+          || denegados.has(`${resultado.ptaId}:${resultado.componente}:${resultado.subseccion}`)) continue;
+        const dto = ptasActualizados.find(pta => pta.id === resultado.ptaId);
+        const confirmadas = dto?.componentes_revision_usuario?.filter(
+          item => item.componente === resultado.componente && item.subseccion === resultado.subseccion,
+        ) || [];
+        if (confirmadas.length && confirmadas.every(item => item.estado === 'revisado')) {
+          resultado.estado = 'revisado';
+          resultado.motivo = `Revisión confirmada en el PTA. La operación reportó: ${resultado.motivo}`;
+        }
+      }
+    }
     const resumen = resultados.reduce((acc, item) => {
       acc.total += 1;
       if (item.estado === 'revisado') acc.revisados += 1;
@@ -11070,7 +11133,7 @@ export class PtaService {
       return acc;
     }, { total: 0, revisados: 0, devueltos: 0, omitidos: 0, fallidos: 0 });
 
-    return { resumen, resultados };
+    return { resumen, resultados, ptasActualizados };
   }
 
   async getRUNDDocente(docenteId: string) {
