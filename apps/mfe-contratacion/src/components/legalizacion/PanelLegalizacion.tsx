@@ -32,6 +32,7 @@ import {
 } from '../shared/PiezasPanel';
 import { fechaLarga, hoyEnBogota, momento } from '../shared/fechas';
 import { useFirma } from '../shared/useFirma';
+import { IrALaRevision, useLugarDeDecision } from '../shared/LugarDeDecision';
 
 interface Props {
   procesoId: string;
@@ -75,6 +76,8 @@ const ETIQUETA_ESTADO: Record<GarantiaDelContrato['estado'], string> = {
  * o no hay garantía. Mismo patrón que los miembros del comité (EFDS-1156).
  */
 export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
+  // Las pólizas se aprueban solo en la pantalla de revisión.
+  const { enLaRevision } = useLugarDeDecision();
   const firma = useFirma(numeral, numeral === '8.5' ? 'Registrar la ARL' : 'Aprobar la póliza');
   const [estado, setEstado] = useState<EstadoLegalizacion | null>(null);
   const [cargando, setCargando] = useState(true);
@@ -399,9 +402,13 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
 
                   {/* Aprobar es de la revisión, no de quien carga: sin el rol
                       se dice quién puede, en vez de un botón que dará 403. */}
-                  {g.estado === 'CARGADA' && estado.puedeAprobar ? (
+                  {/* Y solo en la pantalla de revisión: aquí se lleva a ella. */}
+                  {g.estado === 'CARGADA' && estado.puedeAprobar && !enLaRevision ? (
+                    <IrALaRevision numeral="8.4" que="aprobarla" />
+                  ) : g.estado === 'CARGADA' && estado.puedeAprobar ? (
                     <div className="flex flex-wrap gap-2">
                       <Boton
+                        decision
                         icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
                         disabled={guardando}
                         onClick={() => firma.conFirma((firmaOtp) => aprobar(g, firmaOtp))}
@@ -409,6 +416,7 @@ export function PanelLegalizacion({ procesoId, numeral, onCambio }: Props) {
                         Aprobar la póliza
                       </Boton>
                       <BotonSecundario
+                        decision
                         icono={<Undo2 className="w-3.5 h-3.5" />}
                         disabled={guardando}
                         onClick={() => devolver(g)}

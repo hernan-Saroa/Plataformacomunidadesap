@@ -1277,6 +1277,12 @@ export interface FirmanteRequerido {
   descripcion: string;
   esRequerido: boolean;
   firmado: boolean;
+  nombreFirmante?: string | null;
+  cargoFirmante?: string | null;
+  documentoIdentidad?: string | null;
+  fechaFirma?: string | null;
+  certificadoId?: string | null;
+  hashSha256?: string | null;
   firma: FirmaAprobacionRegistrada | null;
 }
 
@@ -1287,6 +1293,8 @@ export interface EstadoFirmasResponse {
   reglaDesplazamiento: string;
   descripcionRegla: string;
   firmantes: FirmanteRequerido[];
+  firmaElaboro?: FirmaAprobacionRegistrada | null;
+  elaboro?: string | null;
   completado: boolean;
   requiereFirmasParaRadicar: boolean;
   mensaje: string;

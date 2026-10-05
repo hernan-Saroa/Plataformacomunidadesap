@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PortalDocentePTA } from './PortalDocentePTA';
 import { getPTAsByDocente, getPTAById, getComponentesAprobacion, getAprobacionTerritorial } from '../../../services/api/ptaApi';
@@ -50,6 +50,43 @@ async function approveRemotely() {
 }
 
 describe('portal docente sin recarga manual', () => {
+  it('actualiza Investigación al revisar y aprobar sin recarga manual, y conserva ambos estados al volver a abrir', async () => {
+    const research = { ...pta, horas_investigacion: 232, investigacion_proyecto: { nombre: 'Proyecto', horas_solicitadas: 200 },
+      investigacion_actividades: [{ nombre: 'Actividad', horas_total: 32 }],
+      componentes_estado: [{ key: 'investigacion', estado: 'en_revision', aplica: true, horas: 232 }],
+    };
+    vi.mocked(getPTAsByDocente).mockResolvedValue({ success: true, data: [research] });
+    const { unmount } = mount();
+    const card = () => screen.getByText('Investigación').parentElement!;
+    await waitFor(() => expect(within(card()).getByText('En revisión')).toBeTruthy());
+    const reviewed = { ...research, componentes_estado: [{ key: 'investigacion', estado: 'pendiente', aplica: true, horas: 232 }],
+      componentes_revision_estado: [{ componente: 'investigacion', subseccion: 'general', estado: 'revisado' }],
+      componentes_aprobacion_estado: [{ componente: 'investigacion', estado: 'pendiente', revision_completa: true }],
+    };
+    vi.mocked(getPTAsByDocente).mockResolvedValue({ success: true, data: [reviewed] });
+    await act(async () => { sync.options.onRefresh(); });
+    await waitFor(() => expect(within(card()).getByText('Pendiente')).toBeTruthy());
+    expect(within(card()).queryByText('En revisión')).toBeNull();
+    expect(within(card()).queryByText('Aprobado')).toBeNull();
+    unmount();
+    const reloaded = mount();
+    await waitFor(() => expect(within(card()).getByText('Pendiente')).toBeTruthy());
+    expect(within(card()).queryByText('En revisión')).toBeNull();
+
+    const approved = { ...reviewed, estado: 'Aprobado',
+      componentes_estado: [{ key: 'investigacion', estado: 'aprobado', aplica: true, horas: 232 }],
+      componentes_aprobacion_estado: [{ componente: 'investigacion', estado: 'aprobado', revision_completa: true }],
+    };
+    vi.mocked(getPTAsByDocente).mockResolvedValue({ success: true, data: [approved] });
+    await act(async () => { sync.options.onRefresh(); });
+    await waitFor(() => expect(within(card()).getByText('Aprobado')).toBeTruthy());
+    expect(within(card()).queryByText('En revisión')).toBeNull();
+    expect(within(card()).queryByText('Pendiente')).toBeNull();
+    reloaded.unmount();
+    mount();
+    await waitFor(() => expect(within(card()).getByText('Aprobado')).toBeTruthy());
+  });
+
   it('muestra el nombre del docente en el historial antiguo y oculta identificadores de autores desconocidos', async () => {
     vi.mocked(getPTAById).mockResolvedValue({ success: true, data: { ...pta, historialEstados: [
       { id: 'h1', estadoNuevo: 'Borrador', actorId: 'docente-1', actorRol: 'Docente' },

@@ -1284,32 +1284,31 @@ function FechaSeguimientoTareaChip({
   const [borrador, setBorrador] = useState(valor);
   useEffect(() => setBorrador(valor), [valor]);
   const texto = valor ? new Date(`${valor}T00:00:00`).toLocaleDateString('es-CO') : 'Sin fecha';
-  const clases = 'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200';
   if (!editable) {
-    return <span className={clases} title="Fecha de seguimiento de la tarea">📅 Seguimiento: {texto}</span>;
+    return (
+      <span className="text-[10px] text-gray-600 border border-gray-200 rounded px-1.5 py-0.5 bg-white" title="Fecha de seguimiento de la tarea">
+        {texto}
+      </span>
+    );
   }
+  // Mismo campo que en el asistente del plan
   return (
-    <label
-      className={clases}
+    <input
+      type="date"
+      value={borrador}
+      aria-label="Fecha de seguimiento de la tarea"
       title="Fecha de seguimiento: por defecto el último día del mes siguiente al corte. Puede cambiarla."
       onClick={(e) => e.stopPropagation()}
-    >
-      📅 Seguimiento:
-      <input
-        type="date"
-        value={borrador}
-        aria-label="Fecha de seguimiento de la tarea"
-        onChange={(e) => setBorrador(e.target.value)}
-        onBlur={() => {
-          if (borrador && borrador !== valor) onCambiar(borrador);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-        }}
-        className="bg-transparent border-0 p-0 text-[11px] font-semibold text-purple-700 focus:outline-none"
-        style={{ width: 112 }}
-      />
-    </label>
+      onChange={(e) => setBorrador(e.target.value)}
+      onBlur={() => {
+        if (borrador && borrador !== valor) onCambiar(borrador);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+      }}
+      className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white"
+      style={{ width: 110 }}
+    />
   );
 }
 
@@ -7844,10 +7843,13 @@ function SeccionGestionYSeguimiento({
     rolNumero: number,
     actividadId: string | number,
     puntoControlId?: string,
-  ) => {
-    if (!nuevaTarea.descripcion.trim()) {
+    // Fila "Nueva tarea" de cada corte, igual a la del asistente (EFDS-2237)
+    datos?: typeof nuevaTarea,
+  ): Promise<boolean> => {
+    const t = datos ?? nuevaTarea;
+    if (!t.descripcion.trim()) {
       toast.error('La descripción de la tarea es obligatoria');
-      return;
+      return false;
     }
     setGuardandoTarea(true);
     try {
@@ -7856,13 +7858,13 @@ function SeccionGestionYSeguimiento({
       const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
       const nuevaTareaObj: TareaSeguimiento = {
         id: `tarea-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-        descripcion: nuevaTarea.descripcion.trim(),
+        descripcion: t.descripcion.trim(),
         completada: false,
-        responsables: nuevaTarea.responsable ? [nuevaTarea.responsable] : [],
-        fechaEntrega: nuevaTarea.fechaLimite || undefined,
+        responsables: t.responsable ? [t.responsable] : [],
+        fechaEntrega: t.fechaLimite || undefined,
         observaciones: '',
-        requiereAdjuntos: nuevaTarea.requiereAdjuntos,
-        requiereObservaciones: nuevaTarea.requiereObservaciones,
+        requiereAdjuntos: t.requiereAdjuntos,
+        requiereObservaciones: t.requiereObservaciones,
         ...(puntoControlId ? { puntoControlId } : {}),
       };
       const tareasActualizadas = [...tareasActuales, nuevaTareaObj];
@@ -7888,11 +7890,14 @@ function SeccionGestionYSeguimiento({
       setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false });
       setFormTareaActividadId(null);
       setFormTareaCorteKey(null);
+      setGuardandoTarea(false);
+      return true;
     } catch (err) {
       console.error('Error al agregar tarea:', err);
       toast.error('Error al agregar la tarea');
     }
     setGuardandoTarea(false);
+    return false;
   };
 
   // Toggle completar tarea (verifica requisitos)
@@ -10004,36 +10009,48 @@ function SeccionGestionYSeguimiento({
                                                       : 'Pendiente'}
                                               </span>
                                             </div>
-                                            <div className="flex flex-wrap gap-3 text-[10px] text-gray-600">
-                                              <span className="flex items-center gap-1">
-                                                <Calendar className="w-3 h-3 text-orange-500" />
-                                                Corte: {fechaCorte.toLocaleDateString('es-CO')}
-                                              </span>
+                                            {/* Inicio y fin del corte, como en el asistente del plan (EFDS-2237) */}
+                                            <div className="grid grid-cols-2 gap-2">
+                                              <div className="flex items-center gap-1.5">
+                                                <Calendar className="w-3 h-3 text-orange-500 flex-shrink-0" />
+                                                <span className="text-[11px] text-gray-700">
+                                                  <span className="text-[9px] text-gray-400 uppercase">Inicio: </span>
+                                                  <span className="font-semibold">{fechaCorte.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                                </span>
+                                              </div>
                                               {fechaSeg && (
-                                                <span className="flex items-center gap-1">
-                                                  <Clock className="w-3 h-3 text-purple-500" />
-                                                  Seguimiento hasta: {fechaSeg.toLocaleDateString('es-CO')}
-                                                </span>
-                                              )}
-                                              {tareasDelCorte.length > 0 && (
-                                                <span className="text-indigo-700 font-medium">
-                                                  Tareas del corte: {tareasHechas}/{tareasDelCorte.length}
-                                                  {tareasHechas === tareasDelCorte.length && tareasDelCorte.length > 0 && !cumplido && (
-                                                    <span className="text-amber-700 ml-1">(marca todas completadas)</span>
-                                                  )}
-                                                </span>
+                                                <div className="flex items-center gap-1.5">
+                                                  <Clock className="w-3 h-3 text-purple-500 flex-shrink-0" />
+                                                  <span className="text-[11px] text-gray-700">
+                                                    <span className="text-[9px] text-gray-400 uppercase">Fin: </span>
+                                                    <span className="font-semibold">{fechaSeg.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                                                  </span>
+                                                </div>
                                               )}
                                             </div>
                                           </div>
                                         </div>
 
-                                        {/* Tareas del corte: observaciones y evidencias por tarea */}
-                                        <div className="mt-2 pt-2 border-t border-dashed border-indigo-100 space-y-2">
-                                          <p className="text-[10px] font-bold text-indigo-700 uppercase">
-                                            Tareas del corte ({tareasHechas}/{tareasDelCorte.length})
-                                          </p>
+                                        {/* Tareas del corte, en el mismo recuadro del asistente; aquí además se marcan, se suben evidencias y se registran observaciones */}
+                                        <div className="mt-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm space-y-2">
+                                          <div className="flex items-center justify-between">
+                                            <p className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                                              <span className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: 'linear-gradient(to bottom right, #22c55e, #059669)' }}>
+                                                <Check className="w-3 h-3 text-white" />
+                                              </span>
+                                              Tareas de este corte
+                                              {tareasDelCorte.length > 0 && (
+                                                <span className="ml-1 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[9px] font-bold">
+                                                  {tareasHechas}/{tareasDelCorte.length}
+                                                </span>
+                                              )}
+                                            </p>
+                                            {tareasHechas === tareasDelCorte.length && tareasDelCorte.length > 0 && !cumplido && (
+                                              <span className="text-[10px] text-amber-700">Todas completadas</span>
+                                            )}
+                                          </div>
                                           {tareasDelCorte.length === 0 && (
-                                            <p className="text-[10px] text-gray-500 italic">Sin tareas. Usa «+ Agregar tarea».</p>
+                                            <p className="text-[10px] text-gray-500 italic">Sin tareas. Agregue una en «Nueva tarea».</p>
                                           )}
                                           {tareasDelCorte.map((tarea) => {
                                             const cantAdj = tarea.adjuntosTarea?.length || 0;
@@ -10070,18 +10087,52 @@ function SeccionGestionYSeguimiento({
                                                     {tarea.descripcion}
                                                   </p>
                                                 </div>
-                                                {/* Fecha de seguimiento de la tarea (editable) y, en las automáticas del Rol 4, el fin de su auditoría o plan (EFDS-2237) */}
+                                                {/* Responsable de la tarea y, en las automáticas del Rol 4, el fin de su auditoría o plan (EFDS-2237) */}
                                                 <div className="ml-7 mt-1.5 flex flex-wrap items-center gap-1.5">
-                                                  <FechaSeguimientoTareaChip
-                                                    fecha={tarea.fechaEntrega || (tarea as any).fechaLimite}
-                                                    editable={puedeGestionarTareas(rol)}
-                                                    onCambiar={(f) => cambiarFechaSeguimientoTarea(rol.numero, actividad.id, tarea.id, f)}
-                                                  />
+                                                  {(() => {
+                                                    const tieneResp = tarea.responsables && tarea.responsables.length > 0;
+                                                    const rolResps = (rol as any).responsables as Auditor[] | undefined;
+                                                    const nombres = tieneResp
+                                                      ? tarea.responsables!
+                                                          .map((r: any) => (typeof r === 'string' ? r : r?.nombre || r?.name || r?.email || ''))
+                                                          .filter(Boolean)
+                                                      : (rolResps || []).map((r) => r.nombre).filter(Boolean);
+                                                    const esDelRol = !tieneResp && nombres.length > 0;
+                                                    const iniciales = (nombres[0] || '').split(' ').filter(Boolean).map((n: string) => n[0]).join('').slice(0, 2).toUpperCase();
+                                                    return nombres.length > 0 ? (
+                                                      <span
+                                                        className="inline-flex items-center gap-1.5 pl-0.5 pr-2.5 py-0.5 rounded-full border font-medium text-gray-900"
+                                                        style={{ background: '#eff6ff', borderColor: '#bfdbfe', fontSize: 12 }}
+                                                        title={esDelRol ? 'Sin responsable propio: se muestra el responsable del rol' : 'Responsable de la tarea'}
+                                                      >
+                                                        <span className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{ background: (rol as any).color || '#7c3aed' }}>
+                                                          {iniciales}
+                                                        </span>
+                                                        {nombres.join(', ')}
+                                                        {esDelRol && <span className="text-[8px] bg-teal-100 text-teal-700 px-1 rounded font-bold">ROL</span>}
+                                                      </span>
+                                                    ) : (
+                                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-gray-100 text-gray-500 border border-dashed border-gray-300">
+                                                        👤 Sin responsable
+                                                      </span>
+                                                    );
+                                                  })()}
                                                   {esTareaAutomaticaDelRol4(tarea) && (tarea as any).fechaLimite && (
                                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-gray-100 text-gray-600" title={esTareaDelProgramaAnual(tarea) ? 'Fin de la auditoría' : 'Fecha límite del plan de mejoramiento'}>
                                                       ⏰ Límite: {new Date(`${String((tarea as any).fechaLimite).slice(0, 10)}T00:00:00`).toLocaleDateString('es-CO')}
                                                     </span>
                                                   )}
+                                                </div>
+                                                {/* Fecha de seguimiento a la derecha, como en el asistente del plan (EFDS-2237) */}
+                                                <div className="ml-7 mt-2 pt-1.5 border-t border-gray-100 flex items-center gap-4 flex-wrap">
+                                                  <span className="text-[10px] text-gray-500">Fecha de seguimiento</span>
+                                                  <div className="ml-auto flex items-center gap-1" title="Fecha de seguimiento">
+                                                    <FechaSeguimientoTareaChip
+                                                      fecha={tarea.fechaEntrega || (tarea as any).fechaLimite}
+                                                      editable={puedeGestionarTareas(rol)}
+                                                      onCambiar={(f) => cambiarFechaSeguimientoTarea(rol.numero, actividad.id, tarea.id, f)}
+                                                    />
+                                                  </div>
                                                 </div>
                                                 <div className="ml-7 mt-2 flex flex-wrap gap-1.5">
                                                   <button
@@ -10181,66 +10232,65 @@ function SeccionGestionYSeguimiento({
                                               </div>
                                             );
                                           })}
-                                        </div>
-
-                                        {puedeGestionarTareas(rol) && plan.estado !== 'BORRADOR' && (
-                                          formTareaCorteKey === formKey ? (
-                                            <div className="mt-2 p-2 bg-teal-50 border border-teal-200 rounded-lg space-y-2" onClick={(e) => e.stopPropagation()}>
-                                              <input
-                                                type="text"
-                                                value={nuevaTarea.descripcion}
-                                                onChange={(e) => setNuevaTarea({ ...nuevaTarea, descripcion: e.target.value })}
-                                                placeholder="Descripción de la tarea *"
-                                                className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded-md"
-                                              />
-                                              {/* Fecha de seguimiento: por defecto el mes siguiente al corte, editable (EFDS-2237) */}
-                                              <label className="flex items-center gap-2 text-[11px] text-gray-700">
-                                                <span className="font-semibold">Fecha de seguimiento</span>
+                                        
+                                        {/* Agregar tarea al corte: misma fila que en el asistente del plan (EFDS-2237) */}
+                                        {puedeGestionarTareas(rol) && plan.estado !== 'BORRADOR' && (() => {
+                                          const sel = (k: string) => document.querySelector<HTMLInputElement>(`[data-${k}="${formKey}"]`);
+                                          const agregar = async () => {
+                                            const input = sel('aprob-tarea');
+                                            if (!input || !input.value.trim()) {
+                                              toast.error('Escriba la descripción de la tarea');
+                                              input?.focus();
+                                              return;
+                                            }
+                                            const ok = await agregarTareaSeguimiento(rol.numero, actividad.id, pc.id, {
+                                              descripcion: input.value.trim(),
+                                              responsable: '',
+                                              fechaLimite: sel('aprob-fecha')?.value || fechaSeguimientoPorDefecto(pc) || '',
+                                              requiereObservaciones: false,
+                                              requiereAdjuntos: false,
+                                            });
+                                            if (ok) input.value = '';
+                                          };
+                                          return (
+                                            <div className="border-t border-dashed border-gray-200 pt-2 mt-2 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+                                              <div className="flex items-center gap-3 px-1">
+                                                <span className="text-[10px] text-gray-500">Fecha de seguimiento de la nueva tarea</span>
+                                                <div className="ml-auto">
+                                                  <input
+                                                    type="date"
+                                                    data-aprob-fecha={formKey}
+                                                    key={`aprob-fecha-${pc.id}-${pc.fechaSeguimiento}`}
+                                                    defaultValue={fechaSeguimientoPorDefecto(pc)}
+                                                    className="text-[10px] border border-gray-200 rounded px-1 py-0.5 bg-white"
+                                                    style={{ width: 110 }}
+                                                    title="Fecha de seguimiento: por defecto el último día del mes siguiente al corte"
+                                                  />
+                                                </div>
+                                              </div>
+                                              <div className="flex gap-1.5">
                                                 <input
-                                                  type="date"
-                                                  value={nuevaTarea.fechaLimite}
-                                                  onChange={(e) => setNuevaTarea({ ...nuevaTarea, fechaLimite: e.target.value })}
-                                                  className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white"
+                                                  type="text"
+                                                  data-aprob-tarea={formKey}
+                                                  placeholder="✏️ Nueva tarea…"
+                                                  className="flex-1 px-2 py-1.5 border border-dashed border-gray-300 rounded-md focus:outline-none focus:border-green-500 text-[11px] text-gray-600 bg-gray-50/50 placeholder:text-gray-400"
+                                                  onKeyDown={(e) => { if (e.key === 'Enter') agregar(); }}
                                                 />
-                                              </label>
-                                              <div className="flex justify-end gap-2">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    setFormTareaCorteKey(null);
-                                                    setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: '', requiereAdjuntos: false, requiereObservaciones: false });
-                                                  }}
-                                                  className="px-2 py-1 text-xs border border-gray-300 rounded bg-white text-gray-700"
-                                                >
-                                                  Cancelar
-                                                </button>
-                                                {/* Color fijo: la clase de Tailwind no venía en los estilos del módulo y el botón quedaba blanco (EFDS-2237) */}
+                                                {/* Color fijo: así se ve aunque falte la clase en los estilos del módulo */}
                                                 <button
                                                   type="button"
                                                   disabled={guardandoTarea}
-                                                  onClick={() => agregarTareaSeguimiento(rol.numero, actividad.id, pc.id)}
-                                                  className="px-2 py-1 text-xs font-bold rounded disabled:opacity-50"
-                                                  style={{ background: '#0d9488', color: '#ffffff' }}
+                                                  onClick={agregar}
+                                                  className="px-2.5 py-1.5 rounded-md text-[10px] font-semibold flex items-center gap-1 shadow-sm flex-shrink-0 disabled:opacity-60"
+                                                  style={{ background: 'linear-gradient(to right, #16a34a, #059669)', color: '#ffffff' }}
                                                 >
-                                                  {guardandoTarea ? 'Guardando...' : 'Guardar tarea'}
+                                                  <Plus className="w-3 h-3" /> {guardandoTarea ? 'Agregando…' : 'Agregar'}
                                                 </button>
                                               </div>
                                             </div>
-                                          ) : (
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setFormTareaCorteKey(formKey);
-                                                setFormTareaActividadId(null);
-                                                setNuevaTarea({ descripcion: '', responsable: '', fechaLimite: fechaSeguimientoPorDefecto(pc) || '', requiereAdjuntos: false, requiereObservaciones: false });
-                                              }}
-                                              className="mt-2 text-[10px] font-semibold text-teal-700 hover:text-teal-900"
-                                            >
-                                              + Agregar tarea a este corte
-                                            </button>
-                                          )
-                                        )}
+                                          );
+                                        })()}
+                                        </div>
 
                                       </div>
                                     );

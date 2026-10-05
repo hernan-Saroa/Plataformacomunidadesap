@@ -193,6 +193,8 @@ backend/travel-expenses-service/uploads/
 .env.pre
 .env.prod
 .env.rund-ocr.local
+.env.rund-documental.*
+!.env.rund-documental.example
 .rund-ocr-testenv/
 backend/rund-ocr-service/__pycache__/
 

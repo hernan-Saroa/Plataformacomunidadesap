@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EvidenciaFirmaOtp } from '../../types';
+import { EvidenciaFirmaOtp, SoporteDeDevolucion } from '../../types';
 
 /** Una decisión ya tomada sobre la actividad. */
 export interface RevisionDeActividad {
@@ -12,6 +12,8 @@ export interface RevisionDeActividad {
   /** Sobre qué versión del documento se pronunció. */
   versionRevisada: number;
   fecha: string;
+  /** Las correcciones marcadas que acompañan una devolución, si las hay. */
+  soporte?: SoporteDeDevolucion | null;
 }
 
 /** Lo que un panel necesita saber para pintar el pie de aprobación. */
@@ -39,7 +41,8 @@ export interface Aprobacion {
   enviar: () => Promise<void>;
   retirar: () => Promise<void>;
   aprobar: (firma?: EvidenciaFirmaOtp) => Promise<void>;
-  devolver: (observaciones: string) => Promise<void>;
+  /** Con archivo, lo adjunta como soporte de la devolución. */
+  devolver: (observaciones: string, soporte?: File | null) => Promise<void>;
 }
 
 /**
@@ -161,10 +164,19 @@ export function usarAprobacion(
         () => contratacionService.aprobarActividad(procesoId, numeral, undefined, firma),
         'Actividad aprobada',
       ),
-    devolver: (observaciones: string) =>
-      accion(
-        () => contratacionService.devolverActividad(procesoId, numeral, observaciones),
-        'Devuelta con tus observaciones',
-      ),
+    devolver: (observaciones: string, soporte?: File | null) =>
+      accion(async () => {
+        await contratacionService.devolverActividad(procesoId, numeral, observaciones);
+        if (!soporte) return;
+        // La devolución ya quedó: si el archivo falla se avisa, pero no se
+        // deshace lo decidido.
+        try {
+          await contratacionService.subirSoporteDevolucion(procesoId, numeral, soporte);
+        } catch (e: any) {
+          toast.warning('Se devolvió, pero no se pudo adjuntar el archivo', {
+            description: e?.message,
+          });
+        }
+      }, 'Devuelta con tus observaciones'),
   };
 }

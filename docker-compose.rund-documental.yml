@@ -1,0 +1,27 @@
+# Overlay optativo: completar respaldo/copia de uploads antes de recrear el servicio.
+# Requiere rutas existentes; no crea directorios vacíos que oculten históricos.
+services:
+  academic-work-plan-service:
+    environment:
+      RUND_DOCUMENTAL_ENABLED: ${RUND_DOCUMENTAL_ENABLED:-false}
+      RUND_DOCUMENT_PROVIDER: ${RUND_DOCUMENT_PROVIDER:-LOCAL}
+      RUND_DOCUMENT_ALLOW_LOCAL: ${RUND_DOCUMENT_ALLOW_LOCAL:-true}
+      RUND_DOCUMENT_LOCAL_ROOT: /app/uploads
+      OPENKM_BASE_URL: ${OPENKM_BASE_URL:-}
+      OPENKM_USERNAME: ${OPENKM_USERNAME:-}
+      OPENKM_PASSWORD: ${OPENKM_PASSWORD:-}
+      OPENKM_TIMEOUT_MS: ${OPENKM_TIMEOUT_MS:-15000}
+      RUND_TRD_POLICY_FILE: ${RUND_TRD_POLICY_FILE:-}
+      RUND_PRIVACY_POLICY_FILE: ${RUND_PRIVACY_POLICY_FILE:-}
+    volumes:
+      - type: bind
+        source: ${RUND_UPLOADS_HOST_PATH:?Indique la carpeta persistente que contiene la copia verificada de uploads}
+        target: /app/uploads
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${RUND_POLICY_HOST_PATH:?Indique una carpeta existente para las politicas institucionales}
+        target: /etc/rund/policies
+        read_only: true
+        bind:
+          create_host_path: false

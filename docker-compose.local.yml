@@ -218,6 +218,18 @@ services:
       DB_NAME: ${LOCAL_DB_NAME:-esap_db}
     depends_on: {}
 
+  # El gateway heredado de DEV depende también de este servicio.
+  chatbot-service:
+    extends:
+      file: ./docker-compose.dev.yml
+      service: chatbot-service
+    environment:
+      DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
+      DB_PORT: ${LOCAL_DB_PORT:-5432}
+      DB_USERNAME: ${LOCAL_DB_USER:-postgres}
+      DB_PASSWORD: ${LOCAL_DB_PASSWORD:-postgres}
+      DB_DATABASE: ${LOCAL_DB_NAME:-esap_db}
+
   frontend:
     extends:
       file: ./docker-compose.frontend-mfe.yml
@@ -312,6 +324,11 @@ services:
     extends:
       file: ./docker-compose.frontend-mfe.yml
       service: frontend-mfe-gestion-infraestructura
+  frontend-mfe-chatbot:
+    extends:
+      file: ./docker-compose.frontend-mfe.yml
+      service: frontend-mfe-chatbot
+
 networks:
   superapp-net:
     driver: bridge

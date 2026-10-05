@@ -478,16 +478,95 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     const costoEstimadoTiquete = Number(solicitud.costoEstimadoTiquete || 0);
     setAsignacionesBasicas(salarioBasico > 0 ? [salarioBasico] : []);
     setMontoEstimadoTiquete(costoEstimadoTiquete);
+
+    // Hidratar comisionado si hace falta información en el payload
+    let comisionadoCompleto = solicitud.comisionado;
+    if (!comisionadoCompleto && (solicitud.comisionadoId || (solicitud as any).cedulaComisionado)) {
+      try {
+        const idOCed = (solicitud as any).cedulaComisionado || solicitud.comisionadoId;
+        const resCom = await viaticosService.consultarComisionado(idOCed);
+        if (resCom) comisionadoCompleto = resCom;
+      } catch (err) {
+        console.warn('No se pudo reconsultar comisionado:', err);
+      }
+    }
+
+    const {
+      origenCiudad: syncOrigenCiudad,
+      origenDepartamento: syncOrigenDepto,
+      destinoCiudad: syncDestinoCiudad,
+      destinoDepartamento: syncDestinoDepto,
+      fechaInicio: syncFechaInicio,
+      fechaFin: syncFechaFin,
+      diasComision: syncDias,
+    } = sincronizarItinerarioFormulario(solicitud.itinerario || []);
+
+    const rawAdic = (solicitud as any).camposAdicionales || (solicitud as any).campos_adicionales || {};
+    const ctas = comisionadoCompleto?.cuentasBancarias || [];
+    const ctaComisionado = ctas.find((c) => c.esPrincipal) || ctas[0];
+
+    const bco =
+      rawAdic.entidad_bancaria ||
+      rawAdic.entidadBancaria ||
+      rawAdic.banco ||
+      ctaComisionado?.banco ||
+      '';
+    const cta =
+      rawAdic.num_cuenta ||
+      rawAdic.numeroCuenta ||
+      rawAdic.numCuenta ||
+      rawAdic.cuentaBancaria ||
+      ctaComisionado?.numeroCuenta ||
+      '';
+    const tip =
+      rawAdic.tipo_cuenta ||
+      rawAdic.tipoCuenta ||
+      ctaComisionado?.tipoCuenta ||
+      '';
+
+    if (ctaComisionado?.id) {
+      setCuentaBancariaSeleccionadaId(ctaComisionado.id);
+    }
+
+    const cargoEncontrado =
+      rawAdic.cargoEsap ||
+      rawAdic.cargo ||
+      rawAdic.cargoInstitucional ||
+      rawAdic.cargoComisionado ||
+      (solicitud as any).cargo ||
+      comisionadoCompleto?.cargo ||
+      (comisionadoCompleto?.cargos && comisionadoCompleto.cargos.length > 0 ? comisionadoCompleto.cargos[0].cargo : '') ||
+      '';
+
+    const idCargoEncontrado =
+      (solicitud as any).idCargo ||
+      rawAdic.idCargo ||
+      comisionadoCompleto?.idCargo ||
+      (comisionadoCompleto?.cargos && comisionadoCompleto.cargos.length > 0 ? comisionadoCompleto.cargos[0].idCargo : undefined);
+
+    if (cargoEncontrado) {
+      setCargoActualSeleccionado(cargoEncontrado);
+    }
+
+    const idDep = (solicitud as any).idDependencia ?? comisionadoCompleto?.idDependencia;
+    if (idDep) {
+      setDependenciaId(String(idDep));
+    }
+
     setForm({
-      documentoComisionado: solicitud.comisionado?.numeroDocumento || '',
-      comisionadoId: solicitud.comisionadoId || solicitud.comisionado?.id || '',
+      documentoComisionado: comisionadoCompleto?.numeroDocumento || (solicitud as any).cedulaComisionado || '',
+      nombreComisionado: comisionadoCompleto
+        ? formatearNombreComisionado(comisionadoCompleto)
+        : (solicitud as any).nombreComisionado || '',
+      tipoComisionado: comisionadoCompleto?.tipoComisionado || (solicitud as any).tipoComisionado || 'FUNCIONARIO',
+      comisionadoId: solicitud.comisionadoId || comisionadoCompleto?.id || '',
       objetoComision: solicitud.objetoComision || '',
-      origenCiudad: solicitud.origenCiudad || solicitud.ciudadOrigen || solicitud.sedeOrigen || '',
-      origenDepartamento: '',
-      destinoCiudad: solicitud.destinoCiudad || '',
-      destinoDepartamento: solicitud.destinoDepartamento || '',
-      fechaInicio: solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().slice(0, 10) : '',
-      fechaFin: solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().slice(0, 10) : '',
+      origenCiudad: syncOrigenCiudad || solicitud.origenCiudad || solicitud.ciudadOrigen || solicitud.sedeOrigen || '',
+      origenDepartamento: syncOrigenDepto || solicitud.origenDepartamento || '',
+      destinoCiudad: syncDestinoCiudad || solicitud.destinoCiudad || '',
+      destinoDepartamento: syncDestinoDepto || solicitud.destinoDepartamento || '',
+      fechaInicio: syncFechaInicio || (solicitud.fechaInicio ? new Date(solicitud.fechaInicio).toISOString().slice(0, 10) : ''),
+      fechaFin: syncFechaFin || (solicitud.fechaFin ? new Date(solicitud.fechaFin).toISOString().slice(0, 10) : ''),
       rubroPresupuestal: solicitud.rubroPresupuestal || '',
       numeroCdp: (solicitud as any).numeroCdp || '',
       fechaCdp: (solicitud as any).fechaCdp || '',
@@ -495,7 +574,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       requiereTiquetes: Boolean(solicitud.requiereTiquetes),
       montoViaticos: Number(solicitud.montoViaticos || 0),
       montoGastosViaje: Number(solicitud.montoGastosViaje || 0),
-      diasComision: solicitud.diasComision ?? 1,
+      diasComision: syncDias || solicitud.diasComision || 1,
       salarioBasico,
       costoEstimadoTiquete,
       aceptaHabeasData: true,
@@ -509,33 +588,58 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         urlRepositorio: d.urlRepositorio,
         tipoMime: d.tipoMime,
       })),
-      camposAdicionales: (() => {
-        const raw = (solicitud as any).camposAdicionales || (solicitud as any).campos_adicionales || {};
-        const bco = raw.entidad_bancaria || raw.entidadBancaria || raw.banco || '';
-        const cta = raw.num_cuenta || raw.numeroCuenta || raw.numCuenta || raw.cuentaBancaria || '';
-        const tip = raw.tipo_cuenta || raw.tipoCuenta || '';
-        const cargoEncontrado = raw.cargoEsap || raw.cargo || raw.cargoInstitucional || raw.cargoComisionado || solicitud.comisionado?.cargo || '';
-        if (cargoEncontrado) {
-          setCargoActualSeleccionado(cargoEncontrado);
-        }
-        return {
-          ...raw,
-          ...(cargoEncontrado ? { cargoEsap: cargoEncontrado, cargo: cargoEncontrado, cargoInstitucional: cargoEncontrado, cargoComisionado: cargoEncontrado } : {}),
-          ...(bco ? { entidad_bancaria: bco, entidadBancaria: bco, banco: bco } : {}),
-          ...(cta ? { num_cuenta: cta, numeroCuenta: cta, numCuenta: cta, cuentaBancaria: cta } : {}),
-          ...(tip ? { tipo_cuenta: tip, tipoCuenta: tip } : {}),
-        };
-      })(),
+      camposAdicionales: {
+        ...rawAdic,
+        ...(cargoEncontrado
+          ? {
+              cargoEsap: cargoEncontrado,
+              cargo: cargoEncontrado,
+              cargoInstitucional: cargoEncontrado,
+              cargoComisionado: cargoEncontrado,
+              ...(idCargoEncontrado ? { idCargo: idCargoEncontrado } : {}),
+            }
+          : {}),
+        ...(bco ? { entidad_bancaria: bco, entidadBancaria: bco, banco: bco } : {}),
+        ...(cta ? { num_cuenta: cta, numeroCuenta: cta, numCuenta: cta, cuentaBancaria: cta, numero_cuenta: cta } : {}),
+        ...(tip ? { tipo_cuenta: tip, tipoCuenta: tip } : {}),
+        obligacion_tributaria:
+          rawAdic.obligacion_tributaria !== undefined && rawAdic.obligacion_tributaria !== null
+            ? Boolean(rawAdic.obligacion_tributaria)
+            : Boolean(comisionadoCompleto?.esFacturadorElectronico ?? false),
+      },
+      cuentaBancariaSeleccionada: ctaComisionado
+        ? {
+            id: ctaComisionado.id,
+            banco: bco,
+            tipoCuenta: tip || 'AHORROS',
+            numeroCuenta: cta,
+            urlCertificadoBancario: ctaComisionado.urlCertificadoBancario,
+            nombreArchivoCertificado: ctaComisionado.nombreArchivoCertificado,
+            esPrincipal: ctaComisionado.esPrincipal,
+          }
+        : undefined,
+      cargoSeleccionado: cargoEncontrado
+        ? {
+            idCargo: idCargoEncontrado,
+            cargo: cargoEncontrado,
+            salario: salarioBasico,
+          }
+        : undefined,
       itinerario: solicitud.itinerario || [],
-      idDependencia: (solicitud as any).idDependencia ?? solicitud.comisionado?.idDependencia ?? undefined,
+      idDependencia: idDep != null ? Number(idDep) : undefined,
     });
-    if (solicitud.comisionado) {
-      setComisionado(solicitud.comisionado);
+
+    if (comisionadoCompleto) {
+      setComisionado(comisionadoCompleto);
       await cargarChecklist(
-        solicitud.esInternacional ? 'INTERNACIONAL' : solicitud.comisionado.tipoComisionado,
+        solicitud.esInternacional ? 'INTERNACIONAL' : comisionadoCompleto.tipoComisionado,
       );
     }
-    setPaso(PASOS.length - 1);
+    if (solicitud.estadoSolicitud === 'DEVUELTA') {
+      setPaso(2);
+    } else {
+      setPaso(PASOS.length - 1);
+    }
   };
 
   useEffect(() => {
@@ -1555,10 +1659,38 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       const { origenCiudad, origenDepartamento, destinoCiudad, destinoDepartamento } = obtenerOrigenDestinoItinerario();
       const cargoFinal =
         cargoActualSeleccionado ||
+        form.cargoSeleccionado?.cargo ||
         form.camposAdicionales?.cargoEsap ||
         form.camposAdicionales?.cargo ||
+        form.camposAdicionales?.cargoInstitucional ||
+        form.camposAdicionales?.cargoComisionado ||
         comisionado?.cargo ||
+        (comisionado?.cargos && comisionado.cargos.length > 0 ? comisionado.cargos[0].cargo : '') ||
         '';
+
+      const cargoEncontradoObj =
+        cargosDisponibles.find(
+          (c) =>
+            c.nomCargo?.trim().toLowerCase() === cargoFinal?.trim().toLowerCase() ||
+            String(c.idCargo) === String(cargoFinal),
+        ) ||
+        (comisionado?.cargos || []).find(
+          (c) => c.cargo?.trim().toLowerCase() === cargoFinal?.trim().toLowerCase(),
+        );
+
+      const idCargoFinal =
+        form.cargoSeleccionado?.idCargo ||
+        form.camposAdicionales?.idCargo ||
+        (form as any).idCargo ||
+        cargoEncontradoObj?.idCargo ||
+        comisionado?.idCargo ||
+        undefined;
+
+      if (!cargoFinal || !cargoFinal.trim()) {
+        setErrorValidacion('Debe seleccionar o registrar el cargo institucional del comisionado antes de continuar.');
+        setEnviando(false);
+        return;
+      }
 
       const payload = mapearARequestCreacion(
         {
@@ -1584,6 +1716,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   cargo: cargoFinal,
                   cargoInstitucional: cargoFinal,
                   cargoComisionado: cargoFinal,
+                  ...(idCargoFinal ? { idCargo: idCargoFinal } : {}),
                 }
               : {}),
           },
@@ -1593,11 +1726,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         true,
         form.tipoComision || 'TERRESTRE',
       );
-      if (solicitudBorrador) {
-        // Ya existe un borrador: actualizar los campos editables (fechas,
-        // destino, montos, etc.) para no perder los cambios al volver atrás.
+      const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+      if (idExistente) {
+        // Ya existe una solicitud (borrador o devuelta para subsanar):
+        // actualizar los campos editables sin crear un nuevo registro.
         const actualizada = await viaticosService.actualizarSolicitud(
-          solicitudBorrador.id,
+          idExistente,
           {
             objetoComision: form.objetoComision,
             destinoCiudad,
@@ -1615,7 +1749,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
             salarioBasico: form.salarioBasico,
             costoEstimadoTiquete: form.costoEstimadoTiquete,
             cargo: cargoFinal || undefined,
-            idCargo: cargoObj?.idCargo ?? undefined,
+            idCargo: idCargoFinal,
             tipoComision: (() => {
                 if (form.esInternacional) return 'INTERNACIONAL';
                 const tramos = form.itinerario || [];
@@ -1716,9 +1850,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         );
         setSolicitudBorrador({
           ...actualizada,
-          comisionado: solicitudBorrador.comisionado,
+          comisionado: (actualizada as any).comisionado || solicitudBorrador?.comisionado || solicitudAResumir?.comisionado || comisionado,
           documentosSoporte: (actualizada.documentosSoporte ||
-            solicitudBorrador.documentosSoporte ||
+            solicitudBorrador?.documentosSoporte ||
+            solicitudAResumir?.documentosSoporte ||
             []) as DocumentoSoporte[],
         });
       } else {
@@ -1733,21 +1868,29 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setPaso(3);
     } catch (e: any) {
       console.error('Error guardando borrador:', e);
-      const msg = e?.response?.data?.message || e?.message;
-      setErrorValidacion(
-        Array.isArray(msg)
-          ? msg.join(', ')
-          : typeof msg === 'string' && msg.length > 0
-            ? msg
-            : 'No fue posible guardar el borrador. Verifique e intente nuevamente.',
-      );
+      let msg = e?.response?.data?.message || e?.message;
+      if (Array.isArray(msg)) {
+        msg = msg.join(', ');
+      }
+      if (
+        !msg ||
+        typeof msg !== 'string' ||
+        msg.includes('is not defined') ||
+        msg.includes('Cannot read') ||
+        msg.includes('Network Error') ||
+        msg.includes('Failed to fetch')
+      ) {
+        msg = 'No fue posible guardar la solicitud. Por favor verifique que los campos obligatorios del itinerario y cargo estén completos e intente nuevamente.';
+      }
+      setErrorValidacion(msg);
     } finally {
       setEnviando(false);
     }
   };
 
   const subirDocumentoEspecifico = async (codigo: string, archivo: File) => {
-    if (!solicitudBorrador) {
+    const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+    if (!idExistente) {
       setErrorDocumentos('No hay una solicitud activa para cargar documentos.');
       return;
     }
@@ -1760,7 +1903,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setErrorDocumentos(null);
     try {
       const doc = await viaticosService.subirDocumento(
-        solicitudBorrador.id,
+        idExistente,
         codigo,
         archivo,
         tipoMime,
@@ -1828,7 +1971,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   const eliminarDocumentoEspecifico = async (doc: DocumentoFormItem) => {
-    if (!solicitudBorrador) {
+    const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+    if (!idExistente) {
       setErrorDocumentos('No hay una solicitud activa para gestionar documentos.');
       return;
     }
@@ -1843,7 +1987,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setEliminandoDoc(true);
     setErrorDocumentos(null);
     try {
-      await viaticosService.eliminarDocumento(solicitudBorrador.id, doc.id);
+      await viaticosService.eliminarDocumento(idExistente, doc.id);
       setForm((prev) => ({
         ...prev,
         documentos: (prev.documentos || []).filter((d) => d.id !== doc.id),
@@ -1859,16 +2003,33 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const obtenerNombreEnlace = () => {
     const user = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
     const resolvedUser = user && typeof (user as any).then !== 'function' ? user : null;
-    const nombre = [
-      resolvedUser?.primerNombre,
-      resolvedUser?.segundoNombre,
-      resolvedUser?.primerApellido,
-      resolvedUser?.segundoApellido,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .trim();
-    return nombre || resolvedUser?.nombre || usuarioActual?.username || 'Enlace de Dependencia';
+    const nombre =
+      (resolvedUser as any)?.fullName ||
+      (resolvedUser as any)?.full_name ||
+      [(resolvedUser as any)?.firstName, (resolvedUser as any)?.lastName].filter(Boolean).join(' ') ||
+      [
+        resolvedUser?.primerNombre,
+        resolvedUser?.segundoNombre,
+        resolvedUser?.primerApellido,
+        resolvedUser?.segundoApellido,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim() ||
+      resolvedUser?.person?.full_name ||
+      (resolvedUser?.person as any)?.nom_largo ||
+      [
+        (resolvedUser?.person as any)?.nom_tercero,
+        (resolvedUser?.person as any)?.pri_apellido,
+        (resolvedUser?.person as any)?.seg_apellido,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .trim() ||
+      resolvedUser?.nombre ||
+      '';
+    if (nombre && !nombre.includes('@')) return nombre.trim();
+    return 'Enlace de Dependencia';
   };
 
   const finalizarSolicitud = async () => {
@@ -1887,7 +2048,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setErrorValidacion('Debe consultar el comisionado antes de radicar.');
       return;
     }
-    if (!solicitudBorrador) {
+    const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+    if (!idExistente) {
       setErrorValidacion('Debe guardar el borrador antes de radicar.');
       return;
     }
@@ -1902,7 +2064,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setSolicitandoOtpEnlace(true);
     setErrorValidacion(null);
     try {
-      const resp = await viaticosService.solicitarOtpFirma(solicitudBorrador.id, {
+      const resp = await viaticosService.solicitarOtpFirma(idExistente, {
         tipoFirma: 'ENLACE_ELABORO',
       });
       setOtpDataEnlace({
@@ -1927,7 +2089,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
   // Manejo de firma digital completada por el Enlace (OTP validado + hash generado)
   const handleFirmaEnlaceCompleta = async (firma: FirmaDigitalData) => {
-    if (!solicitudBorrador) return false;
+    const idExistente = solicitudBorrador?.id || solicitudAResumir?.id;
+    if (!idExistente) return false;
     setFinalizando(true);
     setErrorValidacion(null);
     try {
@@ -1940,7 +2103,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         (user as any)?.person?.numeroDocumento ||
         undefined;
 
-      const conFirmas = await viaticosService.solicitarFirmasAprobacion(solicitudBorrador.id, {
+      const conFirmas = await viaticosService.solicitarFirmasAprobacion(idExistente, {
         otp: firma.codigoOtp,
         verificationId: otpDataEnlace?.verificationId,
         certificadoId: firma.certificado_id,
@@ -2129,9 +2292,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
   const esModoConsolidacion = Boolean(
     solicitudAResumir &&
-      (ESTADOS_CONSOLIDABLES as readonly string[]).includes(
-        solicitudAResumir.estadoSolicitud,
-      ),
+      solicitudAResumir.estadoSolicitud === 'RADICADA',
   );
 
   if (esModoConsolidacion && solicitudAResumir) {
@@ -2157,8 +2318,12 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
               <Plane className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Nueva Solicitud de Comisión de Servicios</h3>
-                <p className="text-xs sm:text-sm text-slate-500 font-medium">Paso {paso} de {PASOS.length}
+              <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                {solicitudAResumir?.estadoSolicitud === 'DEVUELTA'
+                  ? `Subsanar Solicitud de Comisión (${solicitudAResumir.consecutivoUnico || 'DEVUELTA'})`
+                  : 'Nueva Solicitud de Comisión de Servicios'}
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 font-medium">Paso {paso} de {PASOS.length}
                 {comisionado && (
                   <span className="ml-2 text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
                     {comisionado.tipoComisionado}
@@ -2176,6 +2341,28 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
             ✕
           </button>
         </div>
+
+        {solicitudAResumir?.motivoDevolucion && (
+          <div className="mb-5 p-4 bg-amber-50 border border-amber-300 rounded-2xl flex items-start gap-3 text-amber-900 shadow-xs">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-800">
+                  Solicitud Devuelta para Subsanación
+                </span>
+                <span className="text-[11px] bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-full font-bold">
+                  {solicitudAResumir.consecutivoUnico || solicitudAResumir.id}
+                </span>
+              </div>
+              <p className="text-xs text-amber-900 leading-relaxed font-semibold">
+                <strong>Motivo / Observaciones del revisor:</strong> {solicitudAResumir.motivoDevolucion}
+              </p>
+              <p className="text-[11px] text-amber-700">
+                Ajuste los datos u observaciones señaladas en cada paso. Al finalizar en el Paso 4, la solicitud se remitirá nuevamente al flujo de firmas de aprobación para que el Jefe de Dependencia y el Gerente de Proyecto la avalen.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 mb-5">
           {PASOS.map((nombre, idx) => {

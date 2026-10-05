@@ -140,4 +140,44 @@ describe('DocumentosQuePide', () => {
 
     await waitFor(() => expect(copiar).toHaveBeenCalledWith('r-1', '5.4'));
   });
+  /*
+   * El envío de la 3.1 pide solo lo que dice esta lista: sin obligatorios, el
+   * estudio previo se radicaría sin soporte, y aquí es donde se corrige.
+   */
+  it('avisa cuando la 3.1 se quedó sin ningún documento obligatorio', async () => {
+    vi.spyOn(contratacionService, 'documentosRequeridos').mockResolvedValue([
+      fila({ obligatorio: false }),
+      fila({ id: 'r-2', activo: false }),
+    ]);
+    render(<DocumentosQuePide numeral="3.1" modalidades={modalidades} />);
+
+    expect(
+      await screen.findByText('El estudio previo se radicaría sin ningún documento obligatorio'),
+    ).toBeInTheDocument();
+  });
+
+  it('nombra las modalidades que se quedaron sin obligatorio', async () => {
+    vi.spyOn(contratacionService, 'documentosRequeridos').mockResolvedValue([
+      fila({ modalidades: ['CONTRATACION_DIRECTA'] }),
+    ]);
+    render(<DocumentosQuePide numeral="3.1" modalidades={modalidades} />);
+
+    expect(await screen.findByText(/Sin obligatorios: Mínima Cuantía\./)).toBeInTheDocument();
+  });
+
+  it('no avisa si cada modalidad tiene al menos un obligatorio', async () => {
+    vi.spyOn(contratacionService, 'documentosRequeridos').mockResolvedValue([fila()]);
+    render(<DocumentosQuePide numeral="3.1" modalidades={modalidades} />);
+
+    await screen.findByText(/Memorando de solicitud/);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('en otras actividades no avisa: no pedir documentos es lo normal', async () => {
+    vi.spyOn(contratacionService, 'documentosRequeridos').mockResolvedValue([]);
+    render(<DocumentosQuePide numeral="5.4" modalidades={modalidades} />);
+
+    await screen.findByText('Esta actividad todavía no pide documentos');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
 });
