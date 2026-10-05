@@ -38,9 +38,9 @@ export const RESPONDE_EL_ASIGNADO: Readonly<Record<string, RespondeElAsignado>> 
   '3.4': { ...DEL_ABOGADO, soloEnRevision: false },
   '3.6': { ...DEL_ABOGADO, soloEnRevision: false },
   '3.7': { ...DEL_ABOGADO, soloEnRevision: false },
-  // El CDP lo atiende la Financiera que tomó la solicitud.
+  // El CDP lo atiende la Financiera que tomó la solicitud: desde la 096 lo
+  // verifica, lo expide y lo adjunta en la 4.2.
   '4.2': { ...DE_LA_FINANCIERA, soloEnRevision: false },
-  '4.3': { ...DE_LA_FINANCIERA, soloEnRevision: false },
 };
 
 /** Quién responde por la actividad, o `null` si responden los roles de su alcance. */

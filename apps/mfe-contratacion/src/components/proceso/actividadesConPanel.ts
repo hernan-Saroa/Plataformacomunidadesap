@@ -35,7 +35,7 @@ export const NUMERAL_CAUSAL = '3.6';
 export const NUMERAL_COMITE_CONTRATACION = '3.7';
 
 /** Actividades del ciclo del CDP; se trabajan desde el panel de la etapa 4. */
-export const NUMERALES_CDP = ['4.1', '4.2', '4.3', '4.4'];
+export const NUMERALES_CDP = ['4.1', '4.2'];
 
 /**
  * Las etapas en las que interviene la Dirección Financiera.

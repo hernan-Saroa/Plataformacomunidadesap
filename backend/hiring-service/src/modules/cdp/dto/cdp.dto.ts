@@ -134,8 +134,43 @@ export class ExpedirCdpDto {
   firma?: FirmaOtpDto;
 }
 
-/** Actividad 4.4 · lo que acompaña el multipart al adjuntar el soporte. */
-export class AdjuntarSoporteCdpDto {
+/**
+ * Actividad 4.2 · lo que acompaña al certificado en el multipart.
+ *
+ * Los mismos datos que `ExpedirCdpDto`, pero llegan como texto: un multipart no
+ * tiene números ni objetos, así que el valor, la vigencia y la firma se
+ * convierten antes de validarlos.
+ */
+export class ExpedirCdpConSoporteDto {
+  @ApiPropertyOptional({ description: 'Rubro presupuestal con saldo. Obligatorio si la solicitud no lo trae.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  rubro?: string;
+
+  @ApiProperty({ description: 'Número del CDP asignado por la Dirección Financiera', example: 'CDP-2026-0451' })
+  @IsString()
+  @IsNotEmpty({ message: 'El número del CDP es obligatorio' })
+  @MaxLength(60)
+  numero: string;
+
+  @ApiProperty({ description: 'Valor efectivamente certificado, en pesos', example: 45000000 })
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() !== '' ? Number(value) : value))
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'El valor debe ser un número' })
+  @Min(1, { message: 'El valor del CDP debe ser mayor que cero' })
+  valor: number;
+
+  @ApiProperty({ description: 'Fecha de expedición (YYYY-MM-DD)', example: '2026-08-06' })
+  @IsISO8601({ strict: true }, { message: 'La fecha debe tener formato YYYY-MM-DD' })
+  fechaExpedicion: string;
+
+  @ApiPropertyOptional({ description: 'Vigencia fiscal a la que se imputa', example: 2026 })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && value.trim() !== '' ? Number(value) : value))
+  @IsInt()
+  @Min(2000)
+  vigenciaFiscal?: number;
+
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))

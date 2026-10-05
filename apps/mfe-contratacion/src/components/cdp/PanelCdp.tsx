@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AlertTriangle, Check, Info, Landmark, Paperclip, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { EstadoParticipacion, EstadoRespaldo } from '../../types';
 import { momento } from '../shared/fechas';
+import { useDialogo } from '../shared/useDialogo';
 import { useFirma } from '../shared/useFirma';
 import {
   Aviso,
@@ -14,14 +15,14 @@ import {
   Marco,
   Ayuda,
   Pendiente,
-  Siguiente,
+  SelectorArchivo,
   SinPermiso,
   Titulo,
 } from '../shared/PiezasPanel';
 import { PasoDeLaActividad, PasosDeLaActividad } from '../shared/PasosDeLaActividad';
 
 interface Props {
-  /** Cuál de las cuatro actividades del ciclo se está viendo. */
+  /** Cuál de las dos actividades del ciclo se está viendo: 4.1 o 4.2. */
   numeral: string;
   procesoId: string;
   valorEstimado?: number | null;
@@ -42,14 +43,43 @@ function aNumero(texto: string): number | null {
 }
 
 /**
+ * Cómo queda el valor certificado frente al estimado del proceso.
+ *
+ * Por debajo, el respaldo no alcanza a cubrir el contrato; por encima, se
+ * aparta presupuesto que el contrato no pide. Ninguna de las dos bloquea —la
+ * cuantía definitiva la decide la Financiera—, pero las dos se dicen.
+ */
+export function frenteAlEstimado(
+  valor: number | null,
+  estimado: number | null | undefined,
+): { tono: 'ok' | 'aviso'; texto: string } | null {
+  if (valor === null || estimado === null || estimado === undefined) return null;
+  const referencia = `el valor estimado del proceso (${formatoPesos.format(estimado)})`;
+  if (valor === estimado) return { tono: 'ok', texto: `Coincide con ${referencia}.` };
+  const diferencia = formatoPesos.format(Math.abs(valor - estimado));
+  return valor < estimado
+    ? {
+        tono: 'aviso',
+        texto: `Queda ${diferencia} por debajo de ${referencia}: no alcanza a cubrir lo que pide el contrato.`,
+      }
+    : {
+        tono: 'aviso',
+        texto: `Queda ${diferencia} por encima de ${referencia}: se aparta más de lo que pide el contrato.`,
+      };
+}
+
+/**
  * Una actividad del ciclo del CDP (etapa 4).
  *
  * Cada numeral muestra su propio paso y no el ciclo entero: el riel es
- * navegación, y si las cuatro llevaran al mismo contenido, seleccionar una u
+ * navegación, y si las dos llevaran al mismo contenido, seleccionar una u
  * otra daría igual y el usuario no sabría dónde está parado.
  */
 export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props) {
-  const firma = useFirma(numeral, `Actividad ${numeral} del CDP`);
+  // La 4.3 y la 4.4 se juntaron con la 4.2 (096): un enlace viejo cae en esta.
+  const actividad = numeral === '4.1' ? '4.1' : '4.2';
+  const firma = useFirma(actividad, `Actividad ${actividad} del CDP`);
+  const dialogo = useDialogo();
   const [respaldo, setRespaldo] = useState<EstadoRespaldo | null>(null);
   /**
    * Quién lleva la solicitud, que no vive en el estado del respaldo.
@@ -67,14 +97,9 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
   const [numero, setNumero] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [motivo, setMotivo] = useState('');
-  /**
-   * El rubro contra el que la Financiera verifica, y con el que expide.
-   *
-   * Uno solo para las dos actividades: es el mismo dato, y llevar dos estados
-   * dejaría que la 4.3 mostrara algo distinto de lo que la 4.2 certificó.
-   */
+  /** El rubro contra el que la Financiera verifica y expide. */
   const [rubro, setRubro] = useState('');
-  const inputArchivo = useRef<HTMLInputElement>(null);
+  const [soporte, setSoporte] = useState<File | null>(null);
 
   const cargar = async () => {
     setCargando(true);
@@ -196,7 +221,7 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
    * la etapa 3 la solicitud se radica sola y aquí no hay nada que diligenciar:
    * lo que queda es ver qué se pidió y quién de la Financiera se hace cargo.
    */
-  if (numeral === '4.1') {
+  if (actividad === '4.1') {
     // ---------------------------------------- paso 1 · la solicitud ----
     const pasoSolicitud: PasoDeLaActividad = cdp
       ? {
@@ -259,267 +284,228 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
   }
 
   // ------------------------------------------------------------ 4.2 ------
-  if (numeral === '4.2') {
-    if (!cdp) return <Marco><Pendiente falta="4.1" texto="Aún no se ha radicado la solicitud de CDP." /></Marco>;
-    if (estado === 'RECHAZADO') {
-      return (
-        <Marco>
-          <Aviso tono="error" titulo="Solicitud rechazada">
-            {cdp.observaciones}
-          </Aviso>
-        </Marco>
-      );
-    }
-    if (estado !== 'SOLICITADO') {
-      return (
-        <Marco>
-          <Aviso tono="ok" titulo="Disponibilidad verificada">
-            La Dirección Financiera confirmó que hay saldo en el rubro {cdp.rubro}.
-          </Aviso>
-          <Siguiente texto="Continúa en 4.3, la expedición del certificado." />
-        </Marco>
-      );
-    }
-    // Mientras nadie la ha tomado, lo que toca es hacerse cargo: se ofrece
-    // aquí mismo y la verificación espera a que la solicitud tenga quien la
-    // lleve, como dice la 4.1.
-    if (!financiera) {
-      return (
-        <Marco>
-          <Titulo>Verificar la disponibilidad presupuestal</Titulo>
-          <Ayuda>
-            Antes de verificar, alguien de la Dirección Financiera se hace cargo de la solicitud.
-          </Ayuda>
-          <PasosDeLaActividad
-            pasos={[
-              pasoCargo,
-              {
-                titulo: 'Verificar la disponibilidad presupuestal',
-                estado: 'espera',
-                detalle: 'Se habilita en cuanto la solicitud tenga quien la lleve.',
-              },
-            ]}
-          />
-        </Marco>
-      );
-    }
-    if (!respaldo.puedeGestionar) {
-      return <Marco><SinPermiso quien="la Dirección Financiera" /></Marco>;
-    }
+  /*
+   * Verificar, expedir y adjuntar, en una sola pantalla.
+   *
+   * Eran la 4.2, la 4.3 y la 4.4 (hasta la migración 096). Las hace la misma
+   * persona de la Financiera una detrás de otra y con el certificado ya en la
+   * mano, así que van en un formulario y una sola confirmación. Un enlace viejo
+   * a la 4.3 o la 4.4 cae aquí.
+   */
+  if (!cdp) return <Marco><Pendiente falta="4.1" texto="Aún no se ha radicado la solicitud de CDP." /></Marco>;
+  if (estado === 'RECHAZADO') {
     return (
       <Marco>
-        <Titulo>Verificar la disponibilidad presupuestal</Titulo>
-        <Ayuda>
-          Indica el rubro que respalda el gasto y confirma que tiene saldo para cubrir{' '}
-          {cdp.valor !== null ? formatoPesos.format(cdp.valor) : 'el valor solicitado'}. Si no lo
-          hay, rechaza indicando el motivo.
-        </Ayuda>
-        {/* El rubro se escribe aquí porque la solicitud llega sin él: el
-            estudio previo no lo captura y la radicación automática no tiene de
-            dónde sacarlo. Un área que lo conociera pudo adelantarlo, y entonces
-            llega escrito y solo hay que confirmarlo o corregirlo. */}
-        <input
-          value={rubro}
-          onChange={(e) => setRubro(e.target.value)}
-          placeholder="Rubro presupuestal (p. ej. A-02-02-02-008)"
-          aria-label="Rubro presupuestal"
-          className={campo}
-        />
-        <div className="flex items-center gap-2 flex-wrap">
-          <Boton
-            disabled={trabajando || !rubro.trim()}
-            onClick={() =>
-              firma.conFirma((firmaOtp) =>
-                ejecutar(
-                  () => contratacionService.verificarCdp(procesoId, rubro.trim(), firmaOtp),
-                  'Disponibilidad verificada',
-                ),
-              )
-            }
-            icono={<Landmark className="w-3.5 h-3.5" />}
-          >
-            Confirmar disponibilidad
-          </Boton>
-        </div>
-        <div className="pt-2 border-t border-gray-200 space-y-2">
-          <Ayuda>¿No hay saldo? Indica el motivo para que el área sepa qué corregir.</Ayuda>
-          <input
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-            placeholder="Motivo del rechazo"
-            aria-label="Motivo del rechazo"
-            className={campo}
-          />
-          <BotonSecundario
-            disabled={trabajando || !motivo.trim()}
-            onClick={() =>
-              ejecutar(
-                () => contratacionService.rechazarCdp(procesoId, motivo.trim()),
-                'Solicitud rechazada',
-              )
-            }
-            icono={<Undo2 className="w-3.5 h-3.5" />}
-          >
-            Rechazar solicitud
-          </BotonSecundario>
-        </div>
-        {firma.modal}
-      </Marco>
-    );
-  }
-
-  // ------------------------------------------------------------ 4.3 ------
-  if (numeral === '4.3') {
-    if (!cdp || estado === 'SOLICITADO') {
-      return <Marco><Pendiente falta="4.2" texto="Falta que la Dirección Financiera verifique la disponibilidad." /></Marco>;
-    }
-    if (estado === 'RECHAZADO') {
-      return (
-        <Marco>
-          <Aviso tono="error" titulo="Solicitud rechazada">{cdp.observaciones}</Aviso>
-        </Marco>
-      );
-    }
-    if (estado === 'EXPEDIDO') {
-      return (
-        <Marco>
-          <Aviso tono="ok" titulo={`CDP ${cdp.numero} expedido`}>
-            Por {cdp.valor !== null ? formatoPesos.format(cdp.valor) : '—'} el{' '}
-            {cdp.fechaExpedicion}
-            {cdp.rubro ? `, contra el rubro ${cdp.rubro}` : ''}. La partida quedó apartada y el
-            proceso ya puede abrirse.
-          </Aviso>
-          {cdp.valor !== null &&
-            valorEstimado !== null &&
-            valorEstimado !== undefined &&
-            cdp.valor < valorEstimado && (
-              <p className="text-[11px] font-bold text-amber-700 m-0 flex items-start gap-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
-                Es inferior al valor estimado del proceso ({formatoPesos.format(valorEstimado)})
-              </p>
-            )}
-          <Origen conSoporte={respaldo.soporteAdjunto} />
-          {!respaldo.soporteAdjunto && (
-            <Siguiente texto="Continúa en 4.4, adjuntando el soporte al expediente." />
-          )}
-        </Marco>
-      );
-    }
-    if (!respaldo.puedeGestionar) {
-      return <Marco><SinPermiso quien="la Dirección Financiera" /></Marco>;
-    }
-    return (
-      <Marco>
-        <Titulo>Expedir el CDP</Titulo>
-        <Ayuda>
-          Registra el certificado emitido. Desde este momento la partida queda apartada para el
-          proceso y la apertura deja de estar bloqueada.
-        </Ayuda>
-        <div className="grid grid-cols-3 gap-2.5">
-          <input
-            value={numero}
-            onChange={(e) => setNumero(e.target.value)}
-            placeholder="Número"
-            aria-label="Número del CDP"
-            className={campo}
-          />
-          <input
-            value={valorTexto}
-            onChange={(e) => setValorTexto(e.target.value)}
-            inputMode="numeric"
-            placeholder="Valor"
-            aria-label="Valor certificado"
-            className={`${campo} tabular-nums`}
-          />
-          <input
-            type="date"
-            value={fecha}
-            onChange={(e) => setFecha(e.target.value)}
-            aria-label="Fecha de expedición"
-            className={campo}
-          />
-        </div>
-        {/* El rubro llega verificado de la 4.2 y se puede corregir aquí: al
-            buscar el saldo la Financiera pudo acabar imputando a otro. No se
-            pide de cero —eso ya pasó— pero el certificado no sale sin él. */}
-        <input
-          value={rubro}
-          onChange={(e) => setRubro(e.target.value)}
-          placeholder="Rubro presupuestal"
-          aria-label="Rubro presupuestal que afecta el certificado"
-          className={campo}
-        />
-        <Boton
-          disabled={trabajando || !numero.trim() || !rubro.trim() || aNumero(valorTexto) === null}
-          onClick={() =>
-            firma.conFirma((firmaOtp) =>
-              ejecutar(
-                () =>
-                  contratacionService.expedirCdp(procesoId, {
-                    numero: numero.trim(),
-                    valor: aNumero(valorTexto)!,
-                    fechaExpedicion: fecha,
-                    rubro: rubro.trim(),
-                    firma: firmaOtp,
-                  }),
-                'CDP expedido',
-              ),
-            )
-          }
-          icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
-        >
-          Registrar expedición
-        </Boton>
-        {firma.modal}
-      </Marco>
-    );
-  }
-
-  // ------------------------------------------------------------ 4.4 ------
-  if (!cdp || estado !== 'EXPEDIDO') {
-    return <Marco><Pendiente falta="4.3" texto="El soporte se adjunta una vez expedido el CDP." /></Marco>;
-  }
-  if (respaldo.soporteAdjunto) {
-    return (
-      <Marco>
-        <Aviso tono="ok" titulo="Soporte adjunto al expediente">
-          El CDP queda consultable desde las etapas siguientes.
+        <Aviso tono="error" titulo="Solicitud rechazada">
+          {cdp.observaciones}
         </Aviso>
       </Marco>
     );
   }
+  if (estado === 'EXPEDIDO') {
+    const frente = frenteAlEstimado(cdp.valor, valorEstimado);
+    return (
+      <Marco>
+        <Aviso tono="ok" titulo={`CDP ${cdp.numero} expedido`}>
+          Por {cdp.valor !== null ? formatoPesos.format(cdp.valor) : '—'} el{' '}
+          {cdp.fechaExpedicion}
+          {cdp.rubro ? `, contra el rubro ${cdp.rubro}` : ''}. La partida quedó apartada y el
+          proceso ya puede abrirse.
+        </Aviso>
+        {frente?.tono === 'aviso' && (
+          <p className="text-[11px] font-bold text-amber-700 m-0 flex items-start gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
+            {frente.texto}
+          </p>
+        )}
+        <Origen conSoporte={respaldo.soporteAdjunto} />
+        {/* Solo para los CDP expedidos antes de que el soporte fuera con la
+            expedición: los de ahora no pueden quedar sin él. */}
+        {!respaldo.soporteAdjunto && respaldo.puedeGestionar && (
+          <>
+            <SelectorArchivo
+              etiqueta="Soporte del CDP"
+              archivo={soporte}
+              onElegir={setSoporte}
+              ayuda="Carga el certificado firmado para que quede en el expediente."
+            />
+            <Boton
+              disabled={trabajando || !soporte}
+              onClick={() =>
+                ejecutar(
+                  () => contratacionService.adjuntarCdp(procesoId, soporte!),
+                  'Soporte del CDP adjuntado',
+                )
+              }
+              icono={<Paperclip className="w-3.5 h-3.5" />}
+            >
+              Adjuntar soporte
+            </Boton>
+          </>
+        )}
+      </Marco>
+    );
+  }
+  // Mientras nadie la ha tomado, lo que toca es hacerse cargo: se ofrece
+  // aquí mismo y la expedición espera a que la solicitud tenga quien la
+  // lleve, como dice la 4.1.
+  if (!financiera) {
+    return (
+      <Marco>
+        <Titulo>Expedir el CDP</Titulo>
+        <Ayuda>
+          Antes de expedir, alguien de la Dirección Financiera se hace cargo de la solicitud.
+        </Ayuda>
+        <PasosDeLaActividad
+          pasos={[
+            pasoCargo,
+            {
+              titulo: 'Verificar la disponibilidad y expedir el CDP',
+              estado: 'espera',
+              detalle: 'Se habilita en cuanto la solicitud tenga quien la lleve.',
+            },
+          ]}
+        />
+      </Marco>
+    );
+  }
+  if (!respaldo.puedeGestionar) {
+    return <Marco><SinPermiso quien="la Dirección Financiera" /></Marco>;
+  }
+
+  const valor = aNumero(valorTexto);
+  const frente = frenteAlEstimado(valor, valorEstimado);
+  const completo = !!rubro.trim() && !!numero.trim() && valor !== null && !!fecha && !!soporte;
+
+  /*
+   * Confirmar antes de expedir, con la comparación a la vista.
+   *
+   * Expedir aparta la partida y desbloquea la apertura, y el valor es una
+   * cifra larga que se teclea a mano: si no cuadra con el estimado, eso se
+   * tiene que ver antes de confirmar, no en el aviso de después.
+   */
+  const expedir = async () => {
+    if (!completo) return;
+    const resumen =
+      `CDP ${numero.trim()} por ${formatoPesos.format(valor!)} del ${fecha}, ` +
+      `contra el rubro ${rubro.trim()}, con el soporte «${soporte!.name}».`;
+    const confirmado = await dialogo.confirmar({
+      titulo:
+        frente?.tono === 'aviso'
+          ? 'El valor no coincide con el estimado del proceso'
+          : 'Confirmar la expedición del CDP',
+      descripcion: `${resumen}${frente ? ` ${frente.texto}` : ''} Al confirmar, la partida queda apartada para el proceso y la apertura deja de estar bloqueada.`,
+      confirmar: 'Expedir el CDP',
+    });
+    if (!confirmado) return;
+    firma.conFirma((firmaOtp) =>
+      ejecutar(
+        () =>
+          contratacionService.expedirCdpConSoporte(
+            procesoId,
+            {
+              rubro: rubro.trim(),
+              numero: numero.trim(),
+              valor: valor!,
+              fechaExpedicion: fecha,
+              firma: firmaOtp,
+            },
+            soporte!,
+          ),
+        'CDP expedido',
+      ),
+    );
+  };
+
   return (
     <Marco>
-      <Titulo>Adjuntar el CDP al expediente</Titulo>
+      <Titulo>Expedir el CDP</Titulo>
       <Ayuda>
-        Carga el certificado firmado para que quede consultable en las etapas siguientes. No frena
-        la apertura del proceso: eso lo habilitó la expedición.
+        Indica el rubro con saldo para cubrir{' '}
+        {cdp.valor !== null ? formatoPesos.format(cdp.valor) : 'el valor solicitado'}, registra el
+        certificado emitido y adjúntalo. Si no hay saldo, rechaza indicando el motivo.
       </Ayuda>
+      {/* El rubro se escribe aquí porque la solicitud llega sin él: el
+          estudio previo no lo captura y la radicación automática no tiene de
+          dónde sacarlo. Un área que lo conociera pudo adelantarlo, y entonces
+          llega escrito y solo hay que confirmarlo o corregirlo. */}
       <input
-        ref={inputArchivo}
-        type="file"
-        className="hidden"
-        accept=".pdf,.doc,.docx,.xls,.xlsx"
-        onChange={(e) => {
-          const archivo = e.target.files?.[0];
-          if (!archivo) return;
-          firma.conFirma((firmaOtp) =>
-            ejecutar(
-              () => contratacionService.adjuntarCdp(procesoId, archivo, firmaOtp),
-              'Soporte del CDP adjuntado',
-            ),
-          );
-        }}
+        value={rubro}
+        onChange={(e) => setRubro(e.target.value)}
+        placeholder="Rubro presupuestal (p. ej. A-02-02-02-008)"
+        aria-label="Rubro presupuestal"
+        className={campo}
       />
-      <button
-        type="button"
-        disabled={trabajando}
-        onClick={() => inputArchivo.current?.click()}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[11.5px] font-bold rounded-md bg-white text-slate-700 border border-slate-300 hover:border-[#003DA5] hover:text-[#003DA5] disabled:opacity-50 transition-all"
-      >
-        <Paperclip className="w-3.5 h-3.5" />
-        Seleccionar archivo
-      </button>
+      <div className="grid grid-cols-3 gap-2.5">
+        <input
+          value={numero}
+          onChange={(e) => setNumero(e.target.value)}
+          placeholder="Número"
+          aria-label="Número del CDP"
+          className={campo}
+        />
+        <input
+          value={valorTexto}
+          onChange={(e) => setValorTexto(e.target.value)}
+          inputMode="numeric"
+          placeholder="Valor"
+          aria-label="Valor certificado"
+          className={`${campo} tabular-nums`}
+        />
+        <input
+          type="date"
+          value={fecha}
+          onChange={(e) => setFecha(e.target.value)}
+          aria-label="Fecha de expedición"
+          className={campo}
+        />
+      </div>
+      {frente && (
+        <Aviso
+          tono={frente.tono}
+          titulo={frente.tono === 'ok' ? 'Cubre el valor estimado' : 'No coincide con el valor estimado'}
+        >
+          {frente.texto}
+        </Aviso>
+      )}
+      <SelectorArchivo
+        etiqueta="Certificado expedido"
+        archivo={soporte}
+        onElegir={setSoporte}
+        ayuda="El CDP firmado: es la evidencia del certificado en el expediente."
+      />
+      <div className="flex items-center gap-2 flex-wrap">
+        <Boton
+          disabled={trabajando || !completo}
+          onClick={expedir}
+          icono={<Check className="w-3.5 h-3.5" strokeWidth={3} />}
+        >
+          Expedir el CDP
+        </Boton>
+      </div>
+      <div className="pt-2 border-t border-gray-200 space-y-2">
+        <Ayuda>¿No hay saldo? Indica el motivo para que el área sepa qué corregir.</Ayuda>
+        <input
+          value={motivo}
+          onChange={(e) => setMotivo(e.target.value)}
+          placeholder="Motivo del rechazo"
+          aria-label="Motivo del rechazo"
+          className={campo}
+        />
+        <BotonSecundario
+          disabled={trabajando || !motivo.trim()}
+          onClick={() =>
+            ejecutar(
+              () => contratacionService.rechazarCdp(procesoId, motivo.trim()),
+              'Solicitud rechazada',
+            )
+          }
+          icono={<Undo2 className="w-3.5 h-3.5" />}
+        >
+          Rechazar solicitud
+        </BotonSecundario>
+      </div>
+      {dialogo.elemento}
       {firma.modal}
     </Marco>
   );
@@ -538,7 +524,7 @@ const Origen = ({ conSoporte }: { conSoporte: boolean }) => (
   <p className="text-[10.5px] text-slate-500 m-0 flex items-start gap-1.5 leading-relaxed">
     <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
     {conSoporte
-      ? 'Registrado por la Dirección Financiera. El soporte adjunto en 4.4 es la evidencia del certificado.'
+      ? 'Registrado por la Dirección Financiera. El soporte adjunto es la evidencia del certificado.'
       : 'Registrado por la Dirección Financiera. Aún sin soporte adjunto: el certificado no tiene evidencia en el expediente.'}
   </p>
 );

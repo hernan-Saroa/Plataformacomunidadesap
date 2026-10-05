@@ -24,6 +24,6 @@ describe('quién responde por cada actividad', () => {
   it('lo demás lo responden los roles de su alcance', () => {
     expect(respondeElAsignado('3.1')).toBeNull();
     expect(respondeElAsignado('6.1')).toBeNull();
-    expect(Object.keys(RESPONDE_EL_ASIGNADO)).toEqual(['3.4', '3.6', '3.7', '4.2', '4.3']);
+    expect(Object.keys(RESPONDE_EL_ASIGNADO)).toEqual(['3.4', '3.6', '3.7', '4.2']);
   });
 });

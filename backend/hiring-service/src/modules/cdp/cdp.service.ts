@@ -19,6 +19,7 @@ import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { AlcanceService } from '../../auth/alcance.service';
 import {
+  ExpedirCdpConSoporteDto,
   ExpedirCdpDto,
   RechazarCdpDto,
   SolicitarCdpDto,
@@ -123,8 +124,13 @@ export function rubroResultante(
   return recibido?.trim() || actual || null;
 }
 
-/** Actividad 4.4: el CDP cargado al expediente. */
-export const NUMERAL_ADJUNTO_CDP = '4.4';
+/**
+ * La actividad en que la Financiera trabaja el CDP: verifica, expide y adjunta.
+ *
+ * Desde la 096 son una sola —antes eran la 4.2, la 4.3 y la 4.4—, así que el
+ * certificado y su soporte quedan en el expediente bajo este numeral.
+ */
+export const NUMERAL_EXPEDICION_CDP = '4.2';
 
 /**
  * La etapa que termina justo antes del CDP: los estudios previos.
@@ -214,6 +220,14 @@ export const ETAPAS_ENTREGADAS = [
   ETAPA_EJECUCION,
   ETAPA_LIQUIDACION,
 ];
+
+/** Lo que deja multer de un archivo recibido. */
+interface ArchivoCargado {
+  filename: string;
+  originalname: string;
+  mimetype: string;
+  size: number;
+}
 
 /** Transiciones válidas del ciclo. Lo que no esté aquí, no se puede hacer. */
 const TRANSICIONES: Record<EstadoCdp, EstadoCdp[]> = {
@@ -497,7 +511,7 @@ export class CdpService {
     return cdp;
   }
 
-  // --------------------------------------------------------- ciclo (4.1-4.3)
+  // --------------------------------------------------------- ciclo (4.1-4.2)
 
   /**
    * Actividad 4.1: el área solicitante radica la solicitud formal.
@@ -556,7 +570,11 @@ export class CdpService {
   }
 
   /**
-   * Actividad 4.2: la Dirección Financiera verifica la disponibilidad.
+   * La Dirección Financiera verifica la disponibilidad (paso de la 4.2).
+   *
+   * No cierra la actividad: desde la 096 la 4.2 termina al expedir, y el
+   * certificado se verifica y se expide en el mismo formulario
+   * (`expedirConSoporte`). Se conserva como paso suelto de la API.
    *
    * Verificar es decir contra qué rubro hay saldo, no pulsar un botón. Hasta la
    * 073 no se guardaba ninguno y el expediente quedaba afirmando una
@@ -583,7 +601,6 @@ export class CdpService {
       cdp.rubro = rubro;
       await em.save(cdp);
 
-      await this.cerrarActividad(em, procesoId, '4.2', proceso.modalidad ?? null, acceso, dto.firma);
       await this.traza(em, procesoId, cdp.id, 'VERIFICAR', acceso, { rubro });
 
       return this.conAdvertencia(cdp, proceso);
@@ -591,7 +608,7 @@ export class CdpService {
   }
 
   /**
-   * Actividad 4.3: se expide el CDP y queda afectado al proceso.
+   * Se expide el CDP y queda afectado al proceso; cierra la 4.2.
    *
    * Mientras no exista la integración con KLIC (EFDS-1343), el número y el
    * valor se registran a mano con el soporte que expide la Financiera.
@@ -621,7 +638,14 @@ export class CdpService {
       cdp.expedidoPor = acceso.userName;
       await em.save(cdp);
 
-      await this.cerrarActividad(em, procesoId, '4.3', proceso.modalidad ?? null, acceso, dto.firma);
+      await this.cerrarActividad(
+        em,
+        procesoId,
+        NUMERAL_EXPEDICION_CDP,
+        proceso.modalidad ?? null,
+        acceso,
+        dto.firma,
+      );
       await this.traza(em, procesoId, cdp.id, 'EXPEDIR', acceso, {
         numero: dto.numero,
         valor: dto.valor,
@@ -651,18 +675,89 @@ export class CdpService {
   }
 
   /**
-   * Actividad 4.4: se carga el soporte del CDP al expediente.
+   * Actividad 4.2: la Financiera verifica, expide y adjunta el CDP de una vez.
    *
-   * Se exige el CDP expedido: el soporte prueba lo que el registro afirma, y
-   * adjuntar un papel a una solicitud que aún no se ha resuelto daría por
-   * cumplida la actividad sin que exista el certificado.
+   * Desde la 096 es una sola actividad. Quien verifica la disponibilidad ya
+   * tiene el certificado en la mano, y partirlo en tres pantallas solo
+   * obligaba a firmar tres veces lo mismo. Todo va en una transacción: un
+   * certificado expedido sin su soporte, o un soporte de un CDP que no llegó a
+   * expedirse, es justo el expediente a medias que esto quiere evitar.
+   *
+   * Acepta el CDP solicitado o ya verificado: los procesos que pasaron por la
+   * 4.2 antes de la 096 llegan verificados y les falta lo demás.
+   */
+  async expedirConSoporte(
+    procesoId: string,
+    dto: ExpedirCdpConSoporteDto,
+    archivo: ArchivoCargado,
+    hash: string,
+    acceso: HiringAccess,
+  ) {
+    return this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId);
+      const cdp = await this.exigirCdp(em, procesoId);
+
+      const rubro = rubroResultante(dto.rubro, cdp.rubro);
+      if (!rubro) {
+        throw new BadRequestException(
+          'Indica el rubro presupuestal que afecta el certificado',
+        );
+      }
+
+      const verificadoAqui = cdp.estado === 'SOLICITADO';
+      if (verificadoAqui) await this.transicionar(cdp, 'VERIFICADO');
+      await this.transicionar(cdp, 'EXPEDIDO');
+
+      const documento = await this.guardarSoporte(em, procesoId, archivo, hash, acceso);
+
+      cdp.numero = dto.numero;
+      cdp.valor = dto.valor;
+      cdp.rubro = rubro;
+      cdp.fechaExpedicion = dto.fechaExpedicion;
+      cdp.vigenciaFiscal = dto.vigenciaFiscal ?? cdp.vigenciaFiscal;
+      cdp.expedidoPor = acceso.userName;
+      cdp.documentoId = documento.id;
+      await em.save(cdp);
+
+      await this.cerrarActividad(
+        em,
+        procesoId,
+        NUMERAL_EXPEDICION_CDP,
+        proceso.modalidad ?? null,
+        acceso,
+        dto.firma,
+      );
+      if (verificadoAqui) {
+        await this.traza(em, procesoId, cdp.id, 'VERIFICAR', acceso, { rubro });
+      }
+      await this.traza(em, procesoId, cdp.id, 'EXPEDIR', acceso, {
+        numero: dto.numero,
+        valor: dto.valor,
+        rubro,
+      });
+      await this.traza(em, procesoId, cdp.id, 'ADJUNTAR', acceso, {
+        documento: documento.id,
+        nombre: archivo.originalname,
+      });
+
+      return { ...this.conAdvertencia(cdp, proceso), documento };
+    });
+  }
+
+  /**
+   * Carga el soporte de un CDP que ya se expidió sin él.
+   *
+   * Queda para los procesos que expidieron por la 4.3 antes de la 096 y no
+   * llegaron a la 4.4: desde entonces el soporte va con la expedición. No
+   * cierra ninguna actividad —la 4.2 la cerró la expedición—.
+   *
+   * Se exige el CDP expedido: el soporte prueba lo que el registro afirma.
    */
   async adjuntarSoporte(
     procesoId: string,
-    archivo: { filename: string; originalname: string; mimetype: string; size: number },
+    archivo: ArchivoCargado,
     hash: string,
     acceso: HiringAccess,
-    firma?: FirmaOtpDto,
   ) {
     return this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
@@ -674,23 +769,7 @@ export class CdpService {
         );
       }
 
-      const expediente = await em.findOne(Expediente, { where: { procesoId } });
-      if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
-
-      const documento = await em.save(
-        em.create(Documento, {
-          expedienteId: expediente.id,
-          numeral: NUMERAL_ADJUNTO_CDP,
-          tipo: 'ADJUNTO',
-          nombre: archivo.originalname,
-          archivoUrl: `hiring/files/${archivo.filename}`,
-          archivoNombreOriginal: archivo.originalname,
-          archivoMimeType: archivo.mimetype,
-          archivoTamano: archivo.size,
-          hashSha256: hash,
-          subidoPor: acceso.userName,
-        } as Partial<Documento>),
-      );
+      const documento = await this.guardarSoporte(em, procesoId, archivo, hash, acceso);
 
       // El vínculo va en el dato y no por convención de numeral: si mañana se
       // anula este CDP y se expide otro, cada uno conserva su propio soporte.
@@ -698,14 +777,6 @@ export class CdpService {
       cdp.updatedAt = new Date();
       await em.save(cdp);
 
-      await this.cerrarActividad(
-        em,
-        procesoId,
-        NUMERAL_ADJUNTO_CDP,
-        proceso.modalidad ?? null,
-        acceso,
-        firma,
-      );
       await this.traza(em, procesoId, cdp.id, 'ADJUNTAR', acceso, {
         documento: documento.id,
         nombre: archivo.originalname,
@@ -713,6 +784,32 @@ export class CdpService {
 
       return { ...this.conAdvertencia(cdp, proceso), documento };
     });
+  }
+
+  private async guardarSoporte(
+    em: EntityManager,
+    procesoId: string,
+    archivo: ArchivoCargado,
+    hash: string,
+    acceso: HiringAccess,
+  ): Promise<Documento> {
+    const expediente = await em.findOne(Expediente, { where: { procesoId } });
+    if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
+
+    return em.save(
+      em.create(Documento, {
+        expedienteId: expediente.id,
+        numeral: NUMERAL_EXPEDICION_CDP,
+        tipo: 'ADJUNTO',
+        nombre: archivo.originalname,
+        archivoUrl: `hiring/files/${archivo.filename}`,
+        archivoNombreOriginal: archivo.originalname,
+        archivoMimeType: archivo.mimetype,
+        archivoTamano: archivo.size,
+        hashSha256: hash,
+        subidoPor: acceso.userName,
+      } as Partial<Documento>),
+    );
   }
 
   // ------------------------------------------------------ apertura (5.7) ---

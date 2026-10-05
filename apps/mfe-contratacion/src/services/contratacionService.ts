@@ -282,45 +282,43 @@ export const contratacionService = {
     },
   ) => pedir<Cdp>(`/procesos/${procesoId}/cdp`, { method: 'POST', body: JSON.stringify(datos) }),
 
-  /**
-   * Verificar es decir contra qué rubro hay saldo, no pulsar un botón.
-   *
-   * El rubro va vacío si la solicitud ya lo traía; el backend solo lo exige
-   * cuando el CDP no tiene ninguno, que es el caso de la solicitud automática.
-   */
-  verificarCdp: (procesoId: string, rubro?: string, firma?: EvidenciaFirmaOtp) =>
-    pedir<Cdp>(`/procesos/${procesoId}/cdp/verificar`, {
-      method: 'POST',
-      body: JSON.stringify({ rubro, firma }),
-    }),
-
-  expedirCdp: (
-    procesoId: string,
-    datos: {
-      numero: string;
-      valor: number;
-      fechaExpedicion: string;
-      vigenciaFiscal?: number;
-      /** Solo si difiere del verificado; omitirlo conserva aquel. */
-      rubro?: string;
-      firma?: EvidenciaFirmaOtp;
-    },
-  ) =>
-    pedir<Cdp>(`/procesos/${procesoId}/cdp/expedir`, {
-      method: 'POST',
-      body: JSON.stringify(datos),
-    }),
-
   rechazarCdp: (procesoId: string, observaciones: string) =>
     pedir<Cdp>(`/procesos/${procesoId}/cdp/rechazar`, {
       method: 'POST',
       body: JSON.stringify({ observaciones }),
     }),
 
-  adjuntarCdp: (procesoId: string, archivo: File, firma?: EvidenciaFirmaOtp) => {
+  /**
+   * Actividad 4.2: verificar, expedir y adjuntar el CDP en una sola llamada.
+   *
+   * Desde la 096 son una sola actividad; el backend lo hace en una transacción
+   * para que no quede un certificado sin soporte ni un soporte sin certificado.
+   */
+  expedirCdpConSoporte: (
+    procesoId: string,
+    datos: {
+      rubro: string;
+      numero: string;
+      valor: number;
+      fechaExpedicion: string;
+      firma?: EvidenciaFirmaOtp;
+    },
+    archivo: File,
+  ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', archivo);
-    if (firma) cuerpo.append('firma', JSON.stringify(firma));
+    cuerpo.append('rubro', datos.rubro);
+    cuerpo.append('numero', datos.numero);
+    cuerpo.append('valor', String(datos.valor));
+    cuerpo.append('fechaExpedicion', datos.fechaExpedicion);
+    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
+    return pedir<Cdp>(`/procesos/${procesoId}/cdp/expedicion`, { method: 'POST', body: cuerpo });
+  },
+
+  /** Soporte de un CDP expedido antes de la 096 sin él. */
+  adjuntarCdp: (procesoId: string, archivo: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
     return pedir<Cdp>(`/procesos/${procesoId}/cdp/documento`, { method: 'POST', body: cuerpo });
   },
 

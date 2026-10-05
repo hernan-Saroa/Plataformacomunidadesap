@@ -56,8 +56,9 @@ const ESPERADO: [string, any, string, string, unknown][] = [
   ['CDP', CdpController, 'solicitar', 'editar', '4.1'],
   ['CDP', CdpController, 'verificar', 'editar', '4.2'],
   ['CDP', CdpController, 'rechazar', 'editar', '4.2'],
-  ['CDP', CdpController, 'expedir', 'editar', '4.3'],
-  ['CDP', CdpController, 'adjuntar', 'editar', '4.4'],
+  ['CDP', CdpController, 'expedirConSoporte', 'editar', '4.2'],
+  ['CDP', CdpController, 'expedir', 'editar', '4.2'],
+  ['CDP', CdpController, 'adjuntar', 'editar', '4.2'],
   ['bandeja de CDP', BandejaCdpController, 'bandeja', 'editar', '4.2'],
 
   ['riel', AperturaController, 'actividades', 'ver', undefined],
