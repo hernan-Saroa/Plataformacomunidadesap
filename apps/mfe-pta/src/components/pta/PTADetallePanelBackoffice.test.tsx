@@ -752,6 +752,66 @@ describe('PTADetallePanelBackoffice — ámbitos de Complementarias', () => {
 });
 
 describe('Investigación: firma de revisión y recarga del detalle', () => {
+  const casos = ['plano', 'agrupado'].flatMap(formato => ['proyecto', 'actividades', 'ambos'].flatMap(contenido =>
+    ['revision', 'aprobacion'].map(etapa => ({ formato, contenido, etapa }))));
+  it.each(casos)('muestra y decide Investigación $contenido en formato $formato con permiso de $etapa', async ({ formato, contenido, etapa }) => {
+    const proyecto = { nombre_proyecto: 'Proyecto visible', horas_solicitadas: 200 };
+    const actividad = { actividad_nombre: 'Actividad visible', horas: 32 };
+    const proyectos = contenido === 'actividades' ? [] : [proyecto];
+    const actividades = contenido === 'proyecto' ? [] : [actividad];
+    const horas = (proyectos.length ? 200 : 0) + (actividades.length ? 32 : 0);
+    const pta = basePta({ asignaturas: [], investigacion_actividades: undefined,
+      ...(formato === 'plano'
+        ? { investigacion_proyecto: proyectos[0] || {}, investigacion_actividades: actividades }
+        : { investigacion: { proyectos, actividades } }),
+    });
+    const revisa = etapa === 'revision';
+    const permisos = { success: true, data: {
+      allowedComponents: revisa ? [] : ['investigacion'],
+      allowedReviewSubsecciones: revisa ? ['investigacion:general'] : [],
+      territorial: { aprobar: { pairs: [], reason: null }, revisar: { pairs: [], reason: null } },
+    } };
+    permisosGranulares.clear();
+    permisosGranulares.add(revisa ? 'pta.review.investigacion' : 'pta.approve.investigacion');
+    vi.mocked(getPTADecisionPermissions).mockResolvedValue(permisos);
+    vi.mocked(getPTAById).mockResolvedValue({ success: true, data: pta } as any);
+    vi.mocked(getComponentesRevision).mockResolvedValue({ success: true, data: [
+      { componente: 'investigacion', subseccion: 'general', estado: revisa ? 'pendiente' : 'revisado' },
+    ] });
+    vi.mocked(getComponentesAprobacion).mockResolvedValue({ success: true, data: [
+      { componente: 'investigacion', estado: 'pendiente', aplica: true, horas },
+    ] });
+    vi.mocked(requestPTAFirmaAprobadorCode).mockResolvedValueOnce({ success: true,
+      data: { verificationId: 'otp-test', email: 'prueba@example.test' } } as any);
+    const decidir = revisa ? revisarComponente : aprobarComponente;
+    vi.mocked(decidir).mockResolvedValueOnce({ success: true } as any);
+    try {
+      render(<PTADetallePanelBackoffice {...baseProps({ pta, puedeAprobar: !revisa, rolLabel: 'Docente' })} />);
+      fireEvent.click(screen.getByText(revisa ? 'Revisión' : 'Aprobación').closest('button')!);
+      fireEvent.click(await screen.findByRole('button', { name: /^Componente Investigación/ }));
+      if (proyectos.length) expect(await screen.findByText('Proyecto visible')).toBeTruthy();
+      else expect(screen.queryByText('Proyecto de Investigación (Pendiente Registro)')).toBeNull();
+      if (actividades.length) expect(await screen.findByText('Actividad visible')).toBeTruthy();
+      expect(screen.getByText(`Total Investigación: ${horas}h`)).toBeTruthy();
+      expect(screen.getByText(`Contenido: ${proyectos.length} proyecto(s), ${actividades.length} actividad(es) (${horas}h)`)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: revisa ? /^Aprobar$/ : /^Revisar$/ })).toBeNull();
+      fireEvent.click(await screen.findByRole('button', { name: revisa ? /^Revisar$/ : /^Aprobar$/ }));
+      fireEvent.click(await screen.findByText('Confirmar firma de prueba'));
+      await waitFor(() => expect(resultadoFirma).toHaveBeenCalledWith(true));
+      expect(decidir).toHaveBeenCalledWith('pta-1', expect.objectContaining({
+        componente: 'investigacion', estado: revisa ? 'revisado' : 'aprobado',
+      }));
+      expect(revisa ? aprobarComponente : revisarComponente).not.toHaveBeenCalled();
+    } finally {
+      vi.mocked(getPTADecisionPermissions).mockResolvedValue({ success: true, data: {
+        ...permisos.data, allowedComponents: ['academica_pregrado'], allowedReviewSubsecciones: [],
+      } });
+      vi.mocked(getPTAById).mockResolvedValue({ success: false });
+      vi.mocked(getComponentesRevision).mockResolvedValue({ success: true, data: [] });
+      vi.mocked(getComponentesAprobacion).mockResolvedValue({ success: true, data: [] });
+    }
+  });
+
   it('conserva proyecto y actividades revisados al volver a abrir, sin otorgar aprobación al revisor', async () => {
     const permissions = { success: true, data: {
       allowedComponents: [], allowedReviewSubsecciones: ['investigacion:general'],

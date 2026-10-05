@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { PTA_MANAGE_EDIT_REQUESTS_PERMISSION } from './auth/pta-permissions.constants';
 import { PtaService } from './pta.service';
 
 describe('Investigación: revisión persistida antes de la aprobación', () => {
@@ -17,6 +18,9 @@ describe('Investigación: revisión persistida antes de la aprobación', () => {
       save: jest.fn(async (value: any) => {
         for (const row of Array.isArray(value) ? value : [value]) rows.set(row.id, structuredClone(row));
         return structuredClone(value);
+      }),
+      delete: jest.fn(async (where: any) => {
+        for (const [id, row] of rows) if (matches(row, where)) rows.delete(id);
       }),
     };
   }
@@ -62,6 +66,74 @@ describe('Investigación: revisión persistida antes de la aprobación', () => {
   const decision = { componente: 'investigacion', subseccion: 'general', estado: 'revisado', comentarios: 'Revisión de investigación' };
 
   it.each([
+    ['proyecto', { investigacion_proyecto: { nombre: 'Proyecto', horas_solicitadas: 200 } }, 200],
+    ['actividades', { investigacion_actividades: [{ nombre: 'Actividad', horas_total: 32 }] }, 32],
+    ['proyecto y actividades', { investigacion_proyecto: { nombre: 'Proyecto', horas_solicitadas: 200 },
+      investigacion_actividades: [{ nombre: 'Actividad', horas_total: 32 }] }, 232],
+  ])('reabre %s por solicitud de edición y exige nueva revisión conservando Docencia', async (_label, content, hours) => {
+    const service = setup(content);
+    await service.revisarComponente('pta-1', decision, reviewer);
+    await service.aprobarComponente('pta-1', { componente: 'investigacion', estado: 'aprobado' }, approver);
+    const docenciaAntes = (await service.getComponentesAprobacion('pta-1'))
+      .find((row: any) => row.componente === 'academica_pregrado');
+    await service.solicitudRepo.save({ id: 'sol-1', ptaId: 'pta-1', docenteId: 'docente-1',
+      tipoSolicitud: 'edicion_componentes', estado: 'pendiente', componentes: ['investigacion'],
+      justificacion: 'Corregir Investigación' });
+    const repositorios: Record<string, any> = {
+      SolicitudPtaEntity: service.solicitudRepo, PlanTrabajoAcademicoEntity: service.ptaRepo,
+      PtaComponentApprovalEntity: service.ptaComponentApprovalRepo,
+      PtaComponentReviewEntity: service.ptaComponentReviewRepo, HistorialEstadoPtaEntity: service.historialRepo,
+    };
+    service.ptaRepo.manager = { transaction: async (callback: any) => callback({
+      getRepository: (entity: any) => repositorios[entity.name],
+    }) };
+    const permisoSolicitud = { ...reviewer, roles: ['Docente'],
+      permissions: new Set([PTA_MANAGE_EDIT_REQUESTS_PERMISSION, 'pta.review.investigacion']) };
+    await service.resolverSolicitudPTA('sol-1', { decision: 'aprobado', motivo: 'Edición autorizada' }, permisoSolicitud);
+    expect((await service.ptaRepo.findOne({ where: { id: 'pta-1' } })).datosEstructurados)
+      .toMatchObject(content as any);
+    expect((await service.getComponentesAprobacion('pta-1')).find((row: any) => row.componente === 'investigacion'))
+      .toMatchObject({ estado: 'devuelto', scope: 'solicitud_edicion', scopeId: 'sol-1', horas: hours });
+    await expect(service.revisarComponente('pta-1', decision, reviewer)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.aprobarComponente('pta-1', { componente: 'investigacion', estado: 'aprobado' }, approver))
+      .rejects.toBeInstanceOf(BadRequestException);
+
+    // El reenvío confirmado habilita la nueva revisión y conserva los demás avales.
+    await service.resetComponentApprovalWorkflow('pta-1', true);
+    const solicitud = await service.solicitudRepo.findOne({ where: { id: 'sol-1' } });
+    await service.solicitudRepo.save({ ...solicitud, estado: 'en_aprobacion' });
+    const pta = await service.ptaRepo.findOne({ where: { id: 'pta-1' } });
+    await service.ptaRepo.save({ ...pta, estado: 'Pendiente Jefatura' });
+    const dto = await service.getUpdatedGestionPta('pta-1', reviewer);
+    expect(dto.componentes_revision_usuario).toEqual([
+      { componente: 'investigacion', subseccion: 'general', estado: 'pendiente' },
+    ]);
+    expect(dto.horas_investigacion).toBe(hours);
+    await expect(service.aprobarComponente('pta-1', { componente: 'investigacion', estado: 'aprobado' }, approver))
+      .rejects.toBeInstanceOf(BadRequestException);
+    await service.revisarComponente('pta-1', decision, reviewer);
+    const result = await service.aprobarComponente('pta-1', { componente: 'investigacion', estado: 'aprobado' }, approver);
+    expect(result.estadoGeneral).toBe('Aprobado');
+    expect((await service.solicitudRepo.findOne({ where: { id: 'sol-1' } })).estado).toBe('gestionada');
+    expect((await service.getComponentesAprobacion('pta-1')).find((row: any) => row.componente === 'academica_pregrado'))
+      .toEqual(docenciaAntes);
+  });
+
+  it.each([['investigacion', true], ['ext_capacitacion', false]])(
+    'acepta cambios en proyecto y actividades solo si Investigación está autorizada: %s', async (componente, autorizado) => {
+      const anterior = { investigacion_proyecto: { nombre: 'Proyecto anterior', horas_solicitadas: 200 },
+        investigacion_actividades: [{ nombre: 'Actividad anterior', horas_total: 32 }] };
+      const cambios = { investigacion_proyecto: { nombre: 'Proyecto corregido', horas_solicitadas: 180 },
+        investigacion_actividades: [{ nombre: 'Actividad corregida', horas_total: 52 }] };
+      const service = setup(anterior);
+      const pta = await service.ptaRepo.findOne({ where: { id: 'pta-1' } });
+      const merged = await service.mergeRestrictedAdminEditInput({ ...cambios, asignaturas: [] }, pta, [componente]);
+      expect(merged).toMatchObject(autorizado ? cambios : anterior);
+      expect(merged.asignaturas).toEqual(pta.datosEstructurados.asignaturas);
+    },
+  );
+
+  it.each([
     ['proyecto', { investigacion_proyecto: { horas_solicitadas: 200 } }, 200],
     ['actividades', { investigacion_actividades: [{ horas_total: 32 }] }, 32],
     ['proyecto y actividades', {
@@ -70,6 +142,12 @@ describe('Investigación: revisión persistida antes de la aprobación', () => {
   ])('conserva la revisión de %s al recargar y permite completar el PTA al aprobador', async (_label, content, hours) => {
     const service = setup(content);
     await service.getComponentesRevision('pta-1');
+    const inicial = await service.getUpdatedGestionPta('pta-1', reviewer);
+    expect(inicial.componentes_revision_usuario).toEqual([
+      { componente: 'investigacion', subseccion: 'general', estado: 'pendiente' },
+    ]);
+    expect(inicial.componentes_aprobacion_usuario).toEqual([]);
+    expect(inicial.horas_investigacion).toBe(hours);
     const result = await service.revisarComponente('pta-1', decision, reviewer);
     expect(result.review).toMatchObject({ estado: 'revisado', revisorId: reviewer.userId, comentarios: decision.comentarios });
 

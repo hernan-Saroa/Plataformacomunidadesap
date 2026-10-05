@@ -20,6 +20,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef, type ReactNod
 import { getPTADecisionPermissions, type PTADecisionPermissions } from '../../services/api/ptaApi';
 import { canDecidePtaComponent } from './shared/ptaDecisionPermissions';
 import { getPtaHistoryActorLabel } from '../../utils/ptaHistoryActor';
+import { getPtaResearchData } from '../../utils/ptaResearch';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../utils/ptaCompletion';
 import { cargarPreviewOffice, puedePrevisualizarOffice, ESTILOS_PREVIEW_OFFICE } from '../../utils/officePreview';
 import { createPortal } from 'react-dom';
@@ -727,10 +728,7 @@ function normalizePTAData(d: any, fallbackPta: any = {}) {
     ...fallbackPta,
     ...d,
     extension_actividades: extensionActs,
-    investigacion: {
-      proyectos: (d.investigacion_proyecto?.nombre || d.investigacion_proyecto?.rol) ? [d.investigacion_proyecto] : [],
-      actividades: d.investigacion_actividades || [],
-    },
+    investigacion: getPtaResearchData({ ...fallbackPta, ...d }),
     extension: {
       capacitacion: extensionActs.filter((e: any) => e.seccion === 'capacitacion'),
       seleccion: extensionActs.filter((e: any) => e.seccion === 'seleccion'),
@@ -1436,10 +1434,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   };
   const asignaturas = Array.isArray(pta.asignaturas) ? pta.asignaturas : [];
   
-  const investigacion = {
-    proyectos: pta.investigacion_proyecto ? [pta.investigacion_proyecto] : (pta.investigacion?.proyectos || []),
-    actividades: Array.isArray(pta.investigacion_actividades) ? pta.investigacion_actividades : (pta.investigacion?.actividades || [])
-  };
+  const investigacion = getPtaResearchData(pta);
   
   const extActsRaw = (Array.isArray(pta.extension_actividades) ? pta.extension_actividades : []).map((a: any) => ({
     ...a,
@@ -1535,13 +1530,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     [asignaturasTerritorial, sumarHorasAsignaturas],
   );
 
-  const horasInvestigacion = useMemo(() => {
-    if (pta.horas_investigacion !== undefined) return pta.horas_investigacion;
-    const proyectos = investigacion.proyectos || [];
-    const actividades = investigacion.actividades || [];
-    return proyectos.reduce((s: number, p: any) => s + (p.horas_solicitadas || 0), 0)
-      + actividades.reduce((s: number, a: any) => s + (a.horas_total || 0), 0);
-  }, [pta, investigacion]);
+  const horasInvestigacion = investigacion.horas;
 
   const horasExtension = useMemo(() => {
     if (pta.horas_extension !== undefined) return pta.horas_extension;
@@ -4112,7 +4101,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         border: '1px solid #F3F4F6', marginBottom: 4,
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', flex: 1 }}>{p.nombre || 'Proyecto de Investigación (Pendiente Registro)'}</div>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', flex: 1 }}>{p.nombre || p.nombre_proyecto || 'Proyecto de Investigación (Pendiente Registro)'}</div>
                           <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#7C3AED', whiteSpace: 'nowrap' }}>{p.horas_solicitadas}h</span>
                         </div>
                         <div style={{ display: 'flex', gap: 8, fontSize: '0.68rem', color: '#9CA3AF', marginTop: 3, flexWrap: 'wrap' }}>
@@ -4141,8 +4130,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         border: '1px solid #F3F4F6', marginBottom: 4,
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                          <span style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 500, flex: 1 }}>{a.nombre}</span>
-                          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#7C3AED', whiteSpace: 'nowrap' }}>{a.horas_total || a.horas}h</span>
+                          <span style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 500, flex: 1 }}>{a.nombre || a.actividad_nombre || a.actividad_id || 'Actividad de investigación'}</span>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#7C3AED', whiteSpace: 'nowrap' }}>{Number(a.horas_total ?? a.horas ?? 0)}h</span>
                         </div>
                         {a.descripcion && (
                           <div style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 3, lineHeight: 1.4 }}>{a.descripcion}</div>
