@@ -10974,6 +10974,13 @@ export class PtaService {
     return { resumen, resultados, ptasActualizados };
   }
 
+  /** Estado personal posterior a una decisión, con el mismo alcance de Gestión. */
+  async getUpdatedGestionPta(ptaId: string, auth?: PtaAuthenticatedUser): Promise<any | undefined> {
+    if (!auth) return undefined;
+    const actualizados = await this.getBulkUpdatedPtas([ptaId], auth);
+    return actualizados.find(pta => pta.id === ptaId);
+  }
+
   /** Estado posterior a un lote, con los mismos permisos y alcance de Gestión. */
   private async getBulkUpdatedPtas(ptaIds: string[], auth: PtaAuthenticatedUser): Promise<any[]> {
     try {

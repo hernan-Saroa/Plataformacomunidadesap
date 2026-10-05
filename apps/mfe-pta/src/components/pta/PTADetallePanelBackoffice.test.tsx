@@ -294,6 +294,52 @@ describe('PTADetallePanelBackoffice — visibilidad de componentes ajenos (EFDS-
 });
 
 describe('sincronización del detalle abierto', () => {
+  it('aplica los indicadores recibidos de Gestión sin esperar otro sondeo ni perder comentarios', async () => {
+    const pta = basePta({ componentes_estado: [
+      { key: 'academica', horas: 192, estado: 'pendiente' },
+      { key: 'investigacion', horas: 50, estado: 'pendiente' },
+    ] });
+    const props = baseProps({ pta, syncVersion: 'primera' });
+    const { rerender } = render(<PTADetallePanelBackoffice {...props} />);
+    fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+    const input = await screen.findByPlaceholderText('Comentario opcional al aprobar este componente...');
+    fireEvent.change(input, { target: { value: 'Comentario que debe conservarse' } });
+    const consultas = vi.mocked(getPTAById).mock.calls.length;
+    const actualizado = { ...pta, componentes_estado: [
+      { key: 'academica', horas: 192, estado: 'pendiente' },
+      { key: 'investigacion', horas: 50, estado: 'aprobado' },
+    ] };
+    rerender(<PTADetallePanelBackoffice {...props} pta={actualizado} />);
+    await waitFor(() => {
+      const card = screen.getAllByText('Investigación')[0].parentElement!;
+      expect(within(card).getByText('Aprobado')).toBeTruthy();
+    });
+    expect(getPTAById).toHaveBeenCalledTimes(consultas + 1);
+    expect((screen.getByPlaceholderText('Comentario opcional al aprobar este componente...') as HTMLTextAreaElement).value)
+      .toBe('Comentario que debe conservarse');
+    expect(screen.queryByTitle('Aprobar Investigación')).toBeNull();
+  });
+
+  it('descarta una lectura anterior cuando Gestión entrega nuevos indicadores para el mismo PTA', async () => {
+    const pta = basePta({ componentes_estado: [
+      { key: 'academica', horas: 192, estado: 'pendiente' },
+      { key: 'investigacion', horas: 50, estado: 'pendiente' },
+    ] });
+    let completarLecturaAnterior!: (value: any) => void;
+    vi.mocked(getPTAById).mockImplementationOnce(() => new Promise(resolve => { completarLecturaAnterior = resolve; }));
+    const props = baseProps({ pta, syncVersion: 'primera' });
+    const { rerender } = render(<PTADetallePanelBackoffice {...props} />);
+    const actualizado = { ...pta, componentes_estado: [
+      { key: 'academica', horas: 192, estado: 'pendiente' },
+      { key: 'investigacion', horas: 50, estado: 'aprobado' },
+    ] };
+    rerender(<PTADetallePanelBackoffice {...props} pta={actualizado} />);
+    await waitFor(() => expect(getPTAById).toHaveBeenCalledTimes(2));
+    await act(async () => { completarLecturaAnterior({ success: true, data: pta }); });
+    const card = screen.getAllByText('Investigación')[0].parentElement!;
+    expect(within(card).getByText('Aprobado')).toBeTruthy();
+  });
+
   it('refresca el reporte institucional abierto desde el backoffice', async () => {
     const props = baseProps({ syncVersion: 'primera' });
     const { rerender } = render(<PTADetallePanelBackoffice {...props} />);
@@ -467,6 +513,34 @@ describe('autorización vigente del servidor', () => {
     fireEvent.click(await screen.findByText('Confirmar firma de prueba'));
     await waitFor(() => expect(resultadoFirma).toHaveBeenCalledWith(success));
     expect(aprobarComponente).toHaveBeenCalledTimes(1);
+  });
+
+  it('informa el estado personal aprobado antes del refresco auxiliar sin reenviar los estados anteriores', async () => {
+    const pta = basePta({ componentes_aprobacion_usuario: [
+      { componente: 'academica_pregrado', estado: 'pendiente', revision_completa: true },
+    ] });
+    const ptaActualizado = { ...pta, componentes_aprobacion_usuario: [
+      { componente: 'academica_pregrado', estado: 'aprobado', revision_completa: true },
+    ] };
+    const onUpdated = vi.fn();
+    vi.mocked(requestPTAFirmaAprobadorCode).mockResolvedValueOnce({ success: true,
+      data: { verificationId: 'otp-test', email: 'prueba@example.test' } } as any);
+    vi.mocked(aprobarComponente).mockResolvedValueOnce({ success: true,
+      data: { estadoGeneral: 'Pendiente Jefatura', ptaActualizado } } as any);
+    render(<PTADetallePanelBackoffice {...baseProps({ pta, onUpdated })} />);
+    fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+    fireEvent.click(await screen.findByRole('button', { name: /^Aprobar$/ }));
+    await screen.findByText('Confirmar firma de prueba');
+    let completarConsulta!: (value: any) => void;
+    vi.mocked(getComponentesAprobacion).mockImplementationOnce(() => new Promise(resolve => { completarConsulta = resolve; }));
+    // La lectura general no incluye los estados del usuario autenticado.
+    vi.mocked(getPTAById).mockResolvedValueOnce({ success: true, data: { id: pta.id, estado: pta.estado } } as any);
+    fireEvent.click(screen.getByText('Confirmar firma de prueba'));
+    await waitFor(() => expect(onUpdated).toHaveBeenCalledWith(ptaActualizado));
+    expect(resultadoFirma).not.toHaveBeenCalled();
+    await act(async () => { completarConsulta({ success: true, data: [] }); });
+    await waitFor(() => expect(resultadoFirma).toHaveBeenCalledWith(true));
+    expect(onUpdated).toHaveBeenCalledTimes(1);
   });
 
   it('muestra un único aviso temporal cuando el servidor entrega un código de pruebas', async () => {
@@ -700,11 +774,15 @@ describe('Investigación: firma de revisión y recarga del detalle', () => {
     ] });
     vi.mocked(revisarComponente).mockImplementation(async () => {
       reviewed = true;
-      return { success: true, data: { review: review(), estadoGeneral: 'Pendiente Jefatura' } };
+      return { success: true, data: { review: review(), estadoGeneral: 'Pendiente Jefatura',
+        ptaActualizado: { ...pta, componentes_aprobacion_usuario: [],
+          componentes_revision_usuario: [review()] },
+      } };
     });
     vi.mocked(requestPTAFirmaAprobadorCode).mockResolvedValueOnce({ success: true,
       data: { verificationId: 'otp-test', email: 'prueba@example.test' } } as any);
-    const props = baseProps({ pta, puedeAprobar: false, rolLabel: 'Revisor Investigación' });
+    const onUpdated = vi.fn();
+    const props = baseProps({ pta, onUpdated, puedeAprobar: false, rolLabel: 'Revisor Investigación' });
     try {
       const { unmount } = render(<PTADetallePanelBackoffice {...props} />);
       fireEvent.click(screen.getByText('Revisión').closest('button')!);
@@ -712,6 +790,10 @@ describe('Investigación: firma de revisión y recarga del detalle', () => {
       fireEvent.click(await screen.findByText('Confirmar firma de prueba'));
       await screen.findByText('Revisión previa (completa)');
       await waitFor(() => expect(resultadoFirma).toHaveBeenCalledWith(true));
+      expect(onUpdated).toHaveBeenCalledWith(expect.objectContaining({
+        componentes_aprobacion_usuario: [],
+        componentes_revision_usuario: [expect.objectContaining({ componente: 'investigacion', estado: 'revisado' })],
+      }));
       expect(revisarComponente).toHaveBeenCalledWith('pta-1', expect.objectContaining({
         componente: 'investigacion', subseccion: 'general', estado: 'revisado',
       }));

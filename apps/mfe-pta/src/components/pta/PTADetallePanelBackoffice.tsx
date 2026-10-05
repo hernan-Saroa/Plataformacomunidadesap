@@ -924,6 +924,20 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     || Object.values(procesandoAprobacionComponente).some(Boolean)
     || Object.values(procesandoRevision).some(Boolean);
 
+  // La lista recibe el estado personal actualizado incluso cuando el panel está
+  // abierto. Conservar los datos de detalle y comentarios mientras se aplican
+  // los indicadores del flujo que confirmó esa misma consulta del servidor.
+  useEffect(() => {
+    if (!initialPta?.id) return;
+    const campos = ['estado', 'componentes_estado', 'componentes_total', 'componentes_aprobados',
+      'componentes_aprobacion_estado', 'componentes_revision_estado', 'componentes_en_alcance',
+      'componentes_aprobacion_en_alcance', 'componentes_revision_en_alcance',
+      'componentes_aprobacion_usuario', 'componentes_revision_usuario'];
+    const cambio = Object.fromEntries(campos.filter(campo => initialPta[campo] !== undefined)
+      .map(campo => [campo, initialPta[campo]]));
+    setPta((prev: any) => prev.id === initialPta.id ? { ...prev, ...cambio } : prev);
+  }, [initialPta]);
+
   // Refresh server state without replacing local comments or unmounting reports.
   useEffect(() => {
     if (!initialPta?.id || guardandoDecision || decisionOperationRef.current) return;
@@ -971,7 +985,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     });
     // Discard reads started before a local decision or before selecting another PTA.
     return () => { cancelled = true; };
-  }, [initialPta?.id, syncVersion, guardandoDecision]);
+  }, [initialPta, syncVersion, guardandoDecision]);
 
   // Etiquetas legibles de componente para el correo/modal de firma OTP.
   const COMPONENTE_LABELS_FIRMA: Record<string, string> = {
@@ -1064,16 +1078,32 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
    * componentes y el bloque de Aprobaciones de Jefatura seguían mostrando el estado
    * previo hasta recargar la página, que es justo lo que se reportó.
    */
-  const refrescarEstadoDerivadoDelPta = async () => {
+  const refrescarEstadoDerivadoDelPta = async (notificarActualizacion = true) => {
     const [resPta, resJefatura] = await Promise.all([
       getPTAById(pta.id),
       getAprobacionesJefatura(pta.id),
     ]);
     if (resPta.success && resPta.data) {
       setPta((prev: any) => ({ ...prev, ...resPta.data }));
-      onUpdated?.({ ...pta, ...resPta.data });
+      // El detalle general no trae el alcance personal. No reenviar aquí los
+      // estados personales anteriores: sobrescribirían el resultado de Gestión.
+      if (notificarActualizacion) onUpdated?.({ ...resPta.data, id: pta.id, periodo: pta.periodo });
     }
     if (resJefatura.success) setAprobacionesJefatura(resJefatura.data || []);
+  };
+
+  const publicarDecisionRegistrada = (data: any) => {
+    const actualizado = data?.ptaActualizado?.id === pta.id ? data.ptaActualizado : null;
+    const cambio = actualizado || {
+      id: pta.id,
+      periodo: pta.periodo,
+      ...(data?.estadoGeneral ? { estado: data.estadoGeneral } : {}),
+    };
+    setPta((prev: any) => ({ ...prev, ...cambio }));
+    // Aplicar el estado confirmado antes de las consultas auxiliares. Una caída
+    // de estas consultas no debe dejar pendientes los contadores de la decisión.
+    onUpdated?.(cambio);
+    return Boolean(actualizado);
   };
 
   const prepararDecision = async (firma: boolean, operation: () => Promise<unknown>) => {
@@ -1165,6 +1195,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
       decisionSucceeded = res.success;
       if (res.success) {
+        const estadoPersonalActualizado = publicarDecisionRegistrada(res.data);
         const sufijo = par ? ` (${etiquetaParDe(par)})` : '';
         toast.success(`Componente ${estado === 'aprobado' ? 'aprobado' : 'devuelto'} con éxito${sufijo}`);
         setComentariosComponente(prev => ({ ...prev, [clave]: '' }));
@@ -1179,13 +1210,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           if (resTerritorial.success) setAprobacionTerritorial(resTerritorial.data || []);
         }
 
-        if (res.data?.estadoGeneral) {
-          const nuevoEstado = res.data.estadoGeneral;
-          setPta((prev: any) => ({ ...prev, estado: nuevoEstado }));
-          onUpdated?.({ ...pta, estado: nuevoEstado });
-        }
         // Estado por componente y avance de Jefatura: los recalcula el backend.
-        await refrescarEstadoDerivadoDelPta();
+        await refrescarEstadoDerivadoDelPta(!estadoPersonalActualizado);
       } else {
         // Caso de carrera: el panel seguía mostrando el botón "Aprobar" con datos
         // ya desactualizados (otro aprobador resolvió el último par propio pendiente
@@ -1278,6 +1304,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
       decisionSucceeded = res.success;
       if (res.success) {
+        const estadoPersonalActualizado = publicarDecisionRegistrada(res.data);
         const sufijo = par ? ` (${etiquetaParDe(par)})` : '';
         toast.success(`Revisión ${estado === 'revisado' ? 'registrada' : 'devuelta'} con éxito${sufijo}`);
         setComentariosRevision(prev => ({ ...prev, [claveComentario]: '' }));
@@ -1297,13 +1324,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           if (resRevTerritorial.success) setRevisionTerritorial(resRevTerritorial.data || []);
         }
 
-        if (res.data?.estadoGeneral) {
-          const nuevoEstado = res.data.estadoGeneral;
-          setPta((prev: any) => ({ ...prev, estado: nuevoEstado }));
-          onUpdated?.({ ...pta, estado: nuevoEstado });
-        }
         // Igual que al aprobar: 'en_revision' también cambia componentes_estado.
-        await refrescarEstadoDerivadoDelPta();
+        await refrescarEstadoDerivadoDelPta(!estadoPersonalActualizado);
       } else {
         toast.error(res.message || 'Error al actualizar la revisión del componente');
       }

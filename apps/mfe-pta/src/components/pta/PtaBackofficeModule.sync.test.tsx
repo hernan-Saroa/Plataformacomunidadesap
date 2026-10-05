@@ -7,10 +7,10 @@ import {
 } from '../../services/api/ptaApi';
 import { toast } from 'sonner';
 import { apiClient } from '../../../../shell/src/services/api';
-import { PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION, PTA_BULK_APPROVAL_GROUPS,
+import { PTA_MANAGE_DOCUMENT_TRACKING_PERMISSION, PTA_BULK_APPROVAL_GROUPS, PTA_COMPONENT_KEYS,
   REVIEW_SUBSECCIONES_BY_COMPONENT } from './shared/ptaComponentPermissions';
 
-const sync = vi.hoisted(() => ({ options: null as any, isSuperUser: false, rol: 'jefatura', allowedPermissions: null as Set<string> | null, visibleViews: null as Set<string> | null, permissions: {
+const sync = vi.hoisted(() => ({ options: null as any, updatedPta: null as any, isSuperUser: false, rol: 'jefatura', allowedPermissions: null as Set<string> | null, visibleViews: null as Set<string> | null, permissions: {
   nivelAprobacion: 1, puedeAprobar: true, puedeRevisar: false, componentesAprobables: [] as string[], componentesRevisables: [] as string[], filtroTerritorial: undefined as string[] | undefined,
 } }));
 vi.mock('../../hooks/usePTARealtimeSync', () => ({
@@ -48,7 +48,11 @@ vi.mock('../../services/api/ptaApi', () => ({
   revisarComponentesLote: vi.fn(),
 }));
 vi.mock('./PTADetallePanelBackoffice', () => ({
-  PTADetallePanelBackoffice: ({ pta, onUpdated }: any) => <button onClick={() => onUpdated({ ...pta, estado: 'Aprobado' })}>Resolver caso</button>,
+  PTADetallePanelBackoffice: ({ pta, onUpdated }: any) => <button
+    data-estado-pta={pta.estado}
+    data-aprobaciones-usuario={JSON.stringify(pta.componentes_aprobacion_usuario || [])}
+    data-revisiones-usuario={JSON.stringify(pta.componentes_revision_usuario || [])}
+    onClick={() => onUpdated(sync.updatedPta || { ...pta, estado: 'Aprobado' })}>Resolver caso</button>,
 }));
 vi.mock('./ProgramacionAcademica', () => ({ ProgramacionAcademica: () => null }));
 vi.mock('./MesaConcertacion', () => ({ MesaConcertacion: () => null }));
@@ -60,6 +64,7 @@ const pendientes = [
 beforeEach(() => {
   vi.clearAllMocks();
   sync.isSuperUser = false;
+  sync.updatedPta = null;
   sync.rol = 'jefatura';
   sync.allowedPermissions = null;
   sync.visibleViews = null;
@@ -732,6 +737,132 @@ describe('listado y contadores del backoffice', () => {
     expect(tab('Aprobados').textContent).toContain('1');
     expect(screen.getByText('Docente dos')).toBeTruthy();
     expect(screen.getByText('Resolver caso')).toBeTruthy();
+  });
+
+  it.each(['aprobacion', 'revision'] as const)('sincroniza indicadores y el PTA abierto cuando otro usuario completa su %s', async etapa => {
+    sync.rol = 'docente';
+    sync.permissions.componentesAprobables = etapa === 'aprobacion' ? ['investigacion'] : [];
+    sync.permissions.componentesRevisables = etapa === 'revision' ? ['investigacion:general'] : [];
+    sync.permissions.puedeAprobar = etapa === 'aprobacion';
+    sync.permissions.puedeRevisar = etapa === 'revision';
+    const pta = { ...pendientes[0], componentes_en_alcance: ['investigacion'],
+      componentes_aprobados: 0, componentes_total: 4,
+      componentes_aprobacion_usuario: etapa === 'aprobacion'
+        ? [{ componente: 'investigacion', estado: 'pendiente', revision_completa: true }] : [],
+      componentes_revision_usuario: etapa === 'revision'
+        ? [{ componente: 'investigacion', subseccion: 'general', estado: 'pendiente' }] : [],
+    };
+    const ajeno = { ...pendientes[1], componentes_en_alcance: [],
+      componentes_aprobacion_usuario: [], componentes_revision_usuario: [] };
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [pta, ajeno] });
+    render(<PtaBackofficeModule />);
+    fireEvent.click(await screen.findByText('Docente uno'));
+    await screen.findByText('Resolver caso');
+    expect(screen.getByText('1 pendiente')).toBeTruthy();
+    const estadoCompletado = etapa === 'aprobacion' ? 'aprobado' : 'revisado';
+    const campo = etapa === 'aprobacion' ? 'componentes_aprobacion_usuario' : 'componentes_revision_usuario';
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [{ ...pta,
+      componentes_aprobados: etapa === 'aprobacion' ? 1 : 0,
+      [campo]: [{ ...pta[campo][0], estado: estadoCompletado }],
+    }, ajeno] });
+    await act(async () => { await sync.options.onRefresh(); });
+    expect(screen.queryByText('1 pendiente')).toBeNull();
+    expect(tab('Todos').textContent).toContain('2');
+    expect(tab(etapa === 'aprobacion' ? 'Por aprobar' : 'Por revisar').textContent).not.toMatch(/\d/);
+    expect(tab(etapa === 'aprobacion' ? 'Aprobados' : 'Revisados').textContent).toContain('1');
+    expect(screen.queryByText(/requiere tu aprobación/)).toBeNull();
+    if (etapa === 'aprobacion') {
+      expect(screen.getByText('0 Pendientes')).toBeTruthy();
+      expect(screen.getByText('1 Aprobados')).toBeTruthy();
+      expect(screen.getByText('1/4 componentes')).toBeTruthy();
+    }
+    const panel = screen.getByText('Resolver caso');
+    expect(panel.getAttribute('data-estado-pta')).toBe('Pendiente Jefatura');
+    expect(panel.getAttribute(etapa === 'aprobacion' ? 'data-aprobaciones-usuario' : 'data-revisiones-usuario'))
+      .toContain(estadoCompletado);
+  });
+
+  it.each(PTA_COMPONENT_KEYS)('actualiza las bandejas al aprobar individualmente %s aunque el PTA siga pendiente y falle la consulta', async componente => {
+    sync.rol = 'docente';
+    sync.permissions.componentesAprobables = [componente];
+    const pta = { ...pendientes[0], componentes_en_alcance: [componente],
+      componentes_aprobacion_usuario: [{ componente, estado: 'pendiente', revision_completa: true }] };
+    const ajeno = { ...pendientes[1], componentes_en_alcance: [], componentes_aprobacion_usuario: [] };
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [pta, ajeno] });
+    render(<PtaBackofficeModule />);
+    fireEvent.click(await screen.findByText('Docente uno'));
+    await screen.findByText('Resolver caso');
+    expect(tab('Por aprobar').textContent).toContain('1');
+    sync.updatedPta = { ...pta, componentes_aprobados: 1, componentes_total: 4,
+      componentes_aprobacion_usuario: [{ componente, estado: 'aprobado', revision_completa: true }] };
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: false, data: [] });
+    fireEvent.click(screen.getByText('Resolver caso'));
+    await waitFor(() => expect(getAllPTAs).toHaveBeenCalledTimes(2));
+    expect(tab('Todos').textContent).toContain('2');
+    expect(tab('Por aprobar').textContent).not.toMatch(/\d/);
+    expect(tab('Aprobados').textContent).toContain('1');
+    expect(screen.getByText('1/4 componentes')).toBeTruthy();
+    fireEvent.click(tab('Aprobados'));
+    expect(screen.getByText('Docente uno')).toBeTruthy();
+    expect(screen.queryByText('Docente dos')).toBeNull();
+  });
+
+  it('conserva Por aprobar hasta resolver todos los componentes propios y no confunde pendientes ajenos', async () => {
+    sync.permissions.componentesAprobables = ['investigacion', 'ext_gobierno'];
+    const pta = { ...pendientes[0], componentes_en_alcance: ['investigacion', 'ext_gobierno'],
+      componentes_aprobacion_usuario: [
+        { componente: 'investigacion', estado: 'pendiente', revision_completa: true },
+        { componente: 'ext_gobierno', estado: 'pendiente', revision_completa: true },
+      ] };
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [pta] });
+    render(<PtaBackofficeModule />);
+    fireEvent.click(await screen.findByText('Docente uno'));
+    await screen.findByText('Resolver caso');
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: false, data: [] });
+    sync.updatedPta = { ...pta, componentes_aprobacion_usuario: [
+      { componente: 'investigacion', estado: 'aprobado', revision_completa: true },
+      { componente: 'ext_gobierno', estado: 'pendiente', revision_completa: true },
+    ] };
+    fireEvent.click(screen.getByText('Resolver caso'));
+    await waitFor(() => expect(getAllPTAs).toHaveBeenCalledTimes(2));
+    expect(tab('Por aprobar').textContent).toContain('1');
+    expect(tab('Aprobados').textContent).not.toMatch(/\d/);
+    sync.updatedPta = { ...pta, componentes_aprobacion_usuario: [
+      { componente: 'investigacion', estado: 'aprobado', revision_completa: true },
+      { componente: 'ext_gobierno', estado: 'aprobado', revision_completa: true },
+    ], componentes_aprobacion_estado: [{ componente: 'academica_pregrado', estado: 'pendiente' }] };
+    fireEvent.click(screen.getByText('Resolver caso'));
+    await waitFor(() => expect(getAllPTAs).toHaveBeenCalledTimes(3));
+    expect(tab('Por aprobar').textContent).not.toMatch(/\d/);
+    expect(tab('Aprobados').textContent).toContain('1');
+  });
+
+  it('no restaura los contadores pendientes cuando una lectura anterior termina después de aprobar en el detalle', async () => {
+    sync.permissions.componentesAprobables = ['academica_territorial'];
+    const pta = { ...pendientes[0], componentes_en_alcance: ['academica_territorial'],
+      componentes_aprobacion_usuario: [{ componente: 'academica_territorial', territorial_id: 'Meta',
+        nivel: 'pregrado', estado: 'pendiente', revision_completa: true }] };
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [pta] });
+    render(<PtaBackofficeModule />);
+    fireEvent.click(await screen.findByText('Docente uno'));
+    await screen.findByText('Resolver caso');
+    let completarLecturaAnterior!: (value: any) => void;
+    vi.mocked(getAllPTAs).mockImplementationOnce(() => new Promise(resolve => { completarLecturaAnterior = resolve; }));
+    let lecturaAnterior!: Promise<void>;
+    act(() => { lecturaAnterior = sync.options.onRefresh(); });
+    sync.updatedPta = { ...pta, componentes_aprobacion_usuario: [
+      { ...pta.componentes_aprobacion_usuario[0], estado: 'aprobado' },
+    ], componentes_aprobacion_estado: [{ componente: 'academica_territorial', estado: 'pendiente' }] };
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: false, data: [] });
+    fireEvent.click(screen.getByText('Resolver caso'));
+    await waitFor(() => expect(getAllPTAs).toHaveBeenCalledTimes(3));
+    await act(async () => {
+      completarLecturaAnterior({ success: true, data: [pta] });
+      await lecturaAnterior;
+    });
+    expect(tab('Por aprobar').textContent).not.toMatch(/\d/);
+    expect(tab('Aprobados').textContent).toContain('1');
+    expect(tab('Todos').textContent).toContain('1');
   });
 
   it('vuelve a una página con registros cuando la última página de pendientes queda vacía', async () => {

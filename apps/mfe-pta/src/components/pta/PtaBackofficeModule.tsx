@@ -2477,17 +2477,24 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
       // Keep the last valid list on transient failures, including pending PTAs.
     }
     if (statsRes.success) setEstadisticas(statsRes.data);
-    if (reportRes?.success && reportRes.data) {
-      setSelectedPTA((current: any) => current?.id === reportPtaId ? { ...current, ...reportRes.data } : current);
-    }
+    // El PTA abierto debe compartir el estado y alcance de la lista refrescada.
+    // El reporte agrega sus datos de detalle, sin reemplazar el estado personal
+    // confirmado por la consulta de Gestión.
+    setSelectedPTA((current: any) => {
+      if (!current) return current;
+      const actualizado = ptaRes.success && Array.isArray(ptaRes.data)
+        ? ptaRes.data.find((item: any) => item.id === current.id && item.periodo === current.periodo) : null;
+      const reporte = current.id === reportPtaId && reportRes?.success ? reportRes.data : null;
+      return actualizado || reporte ? { ...current, ...reporte, ...actualizado } : current;
+    });
     setLoading(false);
     setLastRefreshed(new Date());
     setRefreshCountdown(120);
   };
 
-  const applyBulkUpdatedPtas = (data: any) => {
-    // Si el usuario cambió de período durante el lote, conservar la consulta
-    // de su nueva selección. El resultado sigue correspondiendo al lote original.
+  const applyUpdatedPtas = (data: any) => {
+    // Si el usuario cambió de período durante la decisión, conservar la consulta
+    // de su nueva selección. El resultado pertenece al período original.
     if (filtroPeriodo !== filtroPeriodoRef.current) return;
     const actualizados = Array.isArray(data) ? data : [];
     // Invalida consultas anteriores a la decisión, también para revisiones.
@@ -2518,7 +2525,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
         await loadData(false);
         return;
       }
-      applyBulkUpdatedPtas(res.data.ptasActualizados);
+      applyUpdatedPtas(res.data.ptasActualizados);
       setShowBatchReview(false);
       setBatchReviewObs('');
       setSelectedIds(new Set());
@@ -2563,7 +2570,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
         await loadData(false);
         return;
       }
-      applyBulkUpdatedPtas(res.data.ptasActualizados);
+      applyUpdatedPtas(res.data.ptasActualizados);
       setBulkComponentResult({ groupLabel, decision: payload.estado || 'aprobado', ptaIds: [...payload.ptaIds],
         nombres: Object.fromEntries(ptas.map(pta => [pta.id, pta.docente_nombre || pta.id])),
         resumen: res.data.resumen, resultados: res.data.resultados });
@@ -5751,10 +5758,12 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               onAprobar={() => { setSelectedPTA(null); loadData(); }}
               onDevolver={() => { setSelectedPTA(null); loadData(); }}
               onUpdated={(updatedPta) => {
-                // Actualización optimista para que el panel (que permanece abierto)
-                // refleje el cambio al instante, sin esperar el round-trip de loadData().
-                setPtas(prev => prev.map(p => (p.id === updatedPta.id ? { ...p, ...updatedPta } : p)));
-                setSelectedPTA((prev: any) => prev?.id === updatedPta.id ? { ...prev, ...updatedPta } : prev);
+                if (filtroPeriodo !== filtroPeriodoRef.current
+                  || (updatedPta.periodo && updatedPta.periodo !== filtroPeriodoRef.current)) return;
+                // El servidor entrega el estado personal confirmado. Invalidar
+                // lecturas anteriores igual que en los lotes evita restaurar
+                // contadores pendientes después de registrar la decisión.
+                applyUpdatedPtas([updatedPta]);
                 // Los avales de Revisor/Aprobador por componente solo tocaban el estado
                 // local: los contadores de la vista principal (pestañas Todos/Aprobación/
                 // Aprobado, estadísticas, % de avance) quedaban desactualizados hasta el
