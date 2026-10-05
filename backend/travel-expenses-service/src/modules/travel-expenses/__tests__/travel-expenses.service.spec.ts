@@ -5155,6 +5155,8 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(pdfBuffer).toBeInstanceOf(Buffer);
         expect(pdfBuffer.length).toBeGreaterThan(0);
         expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        // Garantizar que todo el contenido del Formato 023 (incluyendo firmas y trazabilidad) encaja en 1 página
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
       });
 
       it('debe generar el Formato 023 correctamente cuando la comisión está en estado RADICADA', async () => {
@@ -5195,6 +5197,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(pdfBuffer).toBeInstanceOf(Buffer);
         expect(pdfBuffer.length).toBeGreaterThan(0);
         expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
       });
 
       it('debe generar el Formato 023 con desglose de transporte y dejar campos vacíos si no han ocurrido los procesos', async () => {
@@ -5248,6 +5251,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(pdfBuffer).toBeInstanceOf(Buffer);
         expect(pdfBuffer.length).toBeGreaterThan(0);
         expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
       });
 
       it('debe generar el Formato 023 incluyendo tanto al Analista (Revisó) como al Revisor de Control Viáticos (2do Nivel)', async () => {
@@ -5299,6 +5303,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(pdfBuffer).toBeInstanceOf(Buffer);
         expect(pdfBuffer.length).toBeGreaterThan(0);
         expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
       });
 
       it('debe lanzar NotFoundException si la solicitud no existe al exportar Formato 023', async () => {

@@ -6339,10 +6339,20 @@ if (itinerarioGeneral) {
       doc.fillColor('#C00000').font('Helvetica-Bold').text(fechaCdpLarga || '____________________', { continued: true });
       doc.fillColor('#000000').font('Helvetica').text('.');
 
-      // ========== ESPACIO DE FIRMAS DE APROBACIÓN (JEFE/SUPERVISOR Y GERENTE DE PROYECTO) ==========
-      const yFirmas = ySec5Body + 24 + 3;
-      const hFirmas = 115;
-      drawBox(28, yFirmas, 556, hFirmas, null);
+      // ========== SECCIÓN 6: AUTORIZACIÓN PREVIA DE DESPLAZAMIENTO (FIRMAS DE APROBACIÓN) ==========
+      const ySec6 = ySec5Body + 24 + 2;
+      drawBox(28, ySec6, 556, 12, '#DDE3EA');
+      doc.fontSize(7).font('Helvetica-Bold').fillColor('#000000');
+      doc.text(
+        '6. AUTORIZACIÓN PREVIA DE DESPLAZAMIENTO (JEFATURA INMEDIATA Y GERENCIA DE PROYECTO)',
+        32,
+        ySec6 + 2.5,
+      );
+
+      // Espacio de firmas de aprobación previa (Jefe/Supervisor y Gerente de Proyecto)
+      const yFirmas = ySec6 + 12;
+      const hFirmas = 98;
+      drawBox(28, yFirmas, 556, hFirmas, null, '#000000', 0.6);
       doc.moveTo(306, yFirmas).lineTo(306, yFirmas + hFirmas).strokeColor('#000000').lineWidth(0.6).stroke();
 
       const formatFechaAmigable = (val?: any): string => {
@@ -6363,21 +6373,29 @@ if (itinerarioGeneral) {
         cardW: number,
         fallbackTitulo: string,
       ) => {
-        const cardY = yFirmas + 5;
-        const cardH = 80;
+        const cardY = yFirmas + 4;
+        const cardH = 75;
 
         if (firma && (firma.estado === 'FIRMADO' || firma.firmadoDigitalmente)) {
-          // Fondo tarjeta amigable con estilo verde idéntico al componente PTA (foto)
-          doc.roundedRect(cardX, cardY, cardW, cardH, 6)
+          // Fondo tarjeta con estilo verde institucional
+          doc.roundedRect(cardX, cardY, cardW, cardH, 5)
              .fillColor('#F0FDF4')
-             .strokeColor('#BBF7D0')
+             .strokeColor('#86EFAC')
              .lineWidth(0.8)
              .fillAndStroke();
 
-          // 1. Título superior en gris sutil en mayúsculas
-          doc.fontSize(6.2).font('Helvetica-Bold').fillColor('#9CA3AF');
-          doc.text(fallbackTitulo.toUpperCase(), cardX, cardY + 7, {
-            width: cardW,
+          // 1. Título superior del rol en badge distintivo con negrilla destacada
+          const badgeW = cardW - 16;
+          const badgeH = 13;
+          doc.roundedRect(cardX + 8, cardY + 5, badgeW, badgeH, 3)
+             .fillColor('#DCFCE7')
+             .strokeColor('#BBF7D0')
+             .lineWidth(0.5)
+             .fillAndStroke();
+
+          doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#166534');
+          doc.text(fallbackTitulo.toUpperCase(), cardX + 8, cardY + 7.5, {
+            width: badgeW,
             align: 'center',
           });
 
@@ -6389,9 +6407,9 @@ if (itinerarioGeneral) {
             nombreAprobador = cargoOficial || fallbackTitulo || 'Servidor Autorizado';
           }
           const nombreAprobadorFinal = this.sanitizarTextoPdf(nombreAprobador || 'Servidor Autorizado').toUpperCase();
-          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#111827');
-          doc.text(nombreAprobadorFinal, cardX + 8, cardY + 18, {
-            width: cardW - 16,
+          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0F172A');
+          doc.text(nombreAprobadorFinal, cardX + 6, cardY + 20.5, {
+            width: cardW - 12,
             align: 'center',
           });
 
@@ -6405,26 +6423,26 @@ if (itinerarioGeneral) {
           }
           if (partesSecundarias.length > 0) {
             const textoSecundario = this.sanitizarTextoPdf(partesSecundarias.join(' · '));
-            doc.fontSize(5.2).font('Helvetica').fillColor('#64748B');
-            doc.text(textoSecundario, cardX + 4, cardY + 28, {
+            doc.fontSize(5.2).font('Helvetica').fillColor('#475569');
+            doc.text(textoSecundario, cardX + 4, cardY + 30.5, {
               width: cardW - 8,
               align: 'center',
             });
           }
 
-          // 4. Pill verde con check "Aprobado"
-          const pillW = 74;
-          const pillH = 13.5;
+          // 4. Pill verde con check "✓ Autorizado"
+          const pillW = 78;
+          const pillH = 12.5;
           const pillX = cardX + (cardW - pillW) / 2;
-          const pillY = cardY + 38;
-          doc.roundedRect(pillX, pillY, pillW, pillH, 6.75)
+          const pillY = cardY + 41;
+          doc.roundedRect(pillX, pillY, pillW, pillH, 6.25)
              .fillColor('#D1FAE5')
-             .strokeColor('#A7F3D0')
+             .strokeColor('#86EFAC')
              .lineWidth(0.5)
              .fillAndStroke();
 
-          doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#065F46');
-          doc.text('✓ Autorizado', pillX, pillY + 3.2, {
+          doc.fontSize(6.2).font('Helvetica-Bold').fillColor('#065F46');
+          doc.text('✓ Autorizado', pillX, pillY + 2.8, {
             width: pillW,
             align: 'center',
           });
@@ -6432,8 +6450,8 @@ if (itinerarioGeneral) {
           // 5. Fecha en formato amigable centrado: "01 de oct de 2026"
           const fechaAmigable = formatFechaAmigable(firma.fechaFirma);
           if (fechaAmigable) {
-            doc.fontSize(6.2).font('Helvetica').fillColor('#9CA3AF');
-            doc.text(fechaAmigable, cardX, cardY + 54, {
+            doc.fontSize(5.8).font('Helvetica').fillColor('#059669');
+            doc.text(fechaAmigable, cardX, cardY + 55.5, {
               width: cardW,
               align: 'center',
             });
@@ -6441,8 +6459,8 @@ if (itinerarioGeneral) {
 
           // 6. Certificado digital OTP institucional al pie de la tarjeta
           const certId = firma.certificadoId || 'ESAP-CERT-VIAT';
-          doc.fontSize(4.6).font('Helvetica').fillColor('#94A3B8');
-          doc.text(`Firma Digital Verificada · Cert: ${certId}`, cardX, cardY + 66, {
+          doc.fontSize(4.6).font('Helvetica').fillColor('#64748B');
+          doc.text(`Firma Digital Verificada · Cert: ${certId}`, cardX, cardY + 64.5, {
             width: cardW,
             align: 'center',
           });
@@ -6453,61 +6471,69 @@ if (itinerarioGeneral) {
             doc.text(
               `* En ausencia: ${this.sanitizarTextoPdf(firma.motivoAusencia)}`,
               cardX + 6,
-              cardY + 72,
+              cardY + 68,
               { width: cardW - 12, align: 'center' },
             );
           }
         } else {
           // Tarjeta en estado pendiente / no firmado
-          doc.roundedRect(cardX, cardY, cardW, cardH, 6)
+          doc.roundedRect(cardX, cardY, cardW, cardH, 5)
              .fillColor('#FFFFFF')
-             .strokeColor('#E5E7EB')
+             .strokeColor('#CBD5E1')
              .lineWidth(0.8)
              .fillAndStroke();
 
-          // 1. Título superior en gris sutil en mayúsculas
-          doc.fontSize(6.2).font('Helvetica-Bold').fillColor('#9CA3AF');
-          doc.text(fallbackTitulo.toUpperCase(), cardX, cardY + 7, {
-            width: cardW,
+          // 1. Título superior del rol en badge distintivo con negrilla
+          const badgeW = cardW - 16;
+          const badgeH = 13;
+          doc.roundedRect(cardX + 8, cardY + 5, badgeW, badgeH, 3)
+             .fillColor('#F1F5F9')
+             .strokeColor('#E2E8F0')
+             .lineWidth(0.5)
+             .fillAndStroke();
+
+          doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#334155');
+          doc.text(fallbackTitulo.toUpperCase(), cardX + 8, cardY + 7.5, {
+            width: badgeW,
             align: 'center',
           });
 
           // 2. Línea horizontal o guion
-          doc.fontSize(10).font('Helvetica-Bold').fillColor('#9CA3AF');
-          doc.text('—', cardX, cardY + 20, {
+          doc.fontSize(9).font('Helvetica-Bold').fillColor('#94A3B8');
+          doc.text('—', cardX, cardY + 22, {
             width: cardW,
             align: 'center',
           });
 
           // 3. Pill gris "Pendiente por firmar"
           const pendPillW = 86;
-          const pendPillH = 13.5;
+          const pendPillH = 12.5;
           const pendPillX = cardX + (cardW - pendPillW) / 2;
-          const pendPillY = cardY + 38;
-          doc.roundedRect(pendPillX, pendPillY, pendPillW, pendPillH, 6.75)
-             .fillColor('#F3F4F6')
-             .strokeColor('#E5E7EB')
+          const pendPillY = cardY + 41;
+          doc.roundedRect(pendPillX, pendPillY, pendPillW, pendPillH, 6.25)
+             .fillColor('#F8FAFC')
+             .strokeColor('#E2E8F0')
              .lineWidth(0.5)
              .fillAndStroke();
 
-          doc.fontSize(6).font('Helvetica-Bold').fillColor('#9CA3AF');
-          doc.text('Pendiente por firmar', pendPillX, pendPillY + 3.5, {
+          doc.fontSize(6).font('Helvetica-Bold').fillColor('#64748B');
+          doc.text('Pendiente por firmar', pendPillX, pendPillY + 3, {
             width: pendPillW,
             align: 'center',
           });
 
           // 4. Fecha guion
-          doc.fontSize(6.2).font('Helvetica').fillColor('#CBD5E1');
-          doc.text('—', cardX, cardY + 54, {
+          doc.fontSize(6).font('Helvetica').fillColor('#CBD5E1');
+          doc.text('—', cardX, cardY + 56, {
             width: cardW,
             align: 'center',
           });
         }
 
         // Línea y cargo del firmante al pie del bloque
-        doc.moveTo(cardX + 15, yFirmas + 94).lineTo(cardX + cardW - 15, yFirmas + 94).strokeColor('#000000').lineWidth(0.6).stroke();
-        doc.fontSize(6).font('Helvetica').fillColor('#000000');
-        doc.text(cargoOficial, cardX, yFirmas + 98, { width: cardW, align: 'center' });
+        doc.moveTo(cardX + 15, yFirmas + 82).lineTo(cardX + cardW - 15, yFirmas + 82).strokeColor('#94A3B8').lineWidth(0.5).stroke();
+        doc.fontSize(6).font('Helvetica-Bold').fillColor('#1E293B');
+        doc.text(cargoOficial, cardX, yFirmas + 86, { width: cardW, align: 'center' });
       };
 
       // Firma izquierda: Jefe de Dependencia / Supervisor / Director Nacional / Subdirector
@@ -6516,32 +6542,262 @@ if (itinerarioGeneral) {
       // Firma derecha: Gerente de Proyecto / Convenio
       renderFirmaBox(firmaGerentePdf, cargoGerente, 311, 268, 'Gerente de Proyecto / Convenio');
 
-      // ========== PIE DE PÁGINA: ELABORÓ, REVISÓ, APROBÓ Y LEY 1581 ==========
-      const yFooter = yFirmas + hFirmas;
-      const hFooter = 38;
-      drawBox(28, yFooter, 556, hFooter, null);
-      doc.moveTo(398, yFooter).lineTo(398, yFooter + hFooter).strokeColor('#000000').lineWidth(0.6).stroke();
-
-      const hFilaFooter = hFooter / 3;
-      doc.moveTo(28, yFooter + hFilaFooter).lineTo(398, yFooter + hFilaFooter).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
-      doc.moveTo(28, yFooter + hFilaFooter * 2).lineTo(398, yFooter + hFilaFooter * 2).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
-
-      // Fila Aprobó: La aprobación definitiva de la comisión la otorga el Director Nacional / Ordenador del Gasto
-      const aproboTextoFinal = aproboTexto;
-
-      doc.fontSize(5.1).font('Helvetica').fillColor('#000000');
-      doc.text(elaboroTexto, 32, yFooter + 3.5, { width: 362 });
-      doc.text(revisoTexto, 32, yFooter + hFilaFooter + 3, { width: 362, lineGap: 0.8 });
-      doc.text(aproboTextoFinal, 32, yFooter + hFilaFooter * 2 + 3.5, { width: 362 });
-
-      doc.fontSize(5.6).font('Helvetica').fillColor('#000000');
+      // ========== SECCIÓN 7: CONTROL Y TRAZABILIDAD INSTITUCIONAL (ELABORÓ, REVISÓ, APROBÓ) ==========
+      const ySec7 = yFirmas + hFirmas + 2;
+      drawBox(28, ySec7, 556, 12, '#DDE3EA');
+      doc.fontSize(7).font('Helvetica-Bold').fillColor('#000000');
       doc.text(
-        'La información recolectada en este documento\n' +
-          'es tratada bajo la política de Datos Personales de\n' +
-          'la ESAP en cumplimiento a la Ley 1581 de 2012',
-        400,
-        yFooter + 7,
-        { width: 182, align: 'center', lineGap: 1.5 },
+        '7. CONTROL Y TRAZABILIDAD INSTITUCIONAL (ELABORÓ · REVISÓ · APROBÓ)',
+        32,
+        ySec7 + 2.5,
+      );
+
+      const yTableHeader = ySec7 + 12;
+      const hTableHeader = 11;
+      const colX1 = 28;  const colW1 = 112; // ROL / ETAPA
+      const colX2 = 140; const colW2 = 168; // RESPONSABLE DEL TRÁMITE
+      const colX3 = 308; const colW3 = 132; // IDENTIFICACIÓN Y ROL / ÁREA
+      const colX4 = 440; const colW4 = 144; // ESTADO, FECHA Y FIRMA DIGITAL
+      // 112 + 168 + 132 + 144 = 556 pt.
+
+      drawBox(28, yTableHeader, 556, hTableHeader, '#E8EEF5');
+      doc.moveTo(colX2, yTableHeader).lineTo(colX2, yTableHeader + hTableHeader).strokeColor('#CBD5E1').lineWidth(0.5).stroke();
+      doc.moveTo(colX3, yTableHeader).lineTo(colX3, yTableHeader + hTableHeader).strokeColor('#CBD5E1').lineWidth(0.5).stroke();
+      doc.moveTo(colX4, yTableHeader).lineTo(colX4, yTableHeader + hTableHeader).strokeColor('#CBD5E1').lineWidth(0.5).stroke();
+
+      doc.fontSize(5.8).font('Helvetica-Bold').fillColor('#003DA5');
+      doc.text('ROL / ETAPA', colX1, yTableHeader + 2.5, { width: colW1, align: 'center' });
+      doc.text('RESPONSABLE DEL TRÁMITE', colX2, yTableHeader + 2.5, { width: colW2, align: 'center' });
+      doc.text('IDENTIFICACIÓN Y ÁREA', colX3, yTableHeader + 2.5, { width: colW3, align: 'center' });
+      doc.text('ESTADO, FECHA Y FIRMA DIGITAL', colX4, yTableHeader + 2.5, { width: colW4, align: 'center' });
+
+      const renderFilaTrazabilidad = (
+        yRow: number,
+        hRow: number,
+        rolBadge: { tag: string; sub: string; bg: string; border: string; text: string },
+        nombre: string,
+        detalleNombre: string,
+        identificacion: string,
+        area: string,
+        estado: {
+          aprobado: boolean;
+          textoBadge: string;
+          fechaStr: string;
+          certId?: string;
+        },
+        isAlt: boolean,
+      ) => {
+        // Fondo de fila alternado
+        if (isAlt) {
+          doc.rect(28, yRow, 556, hRow).fillColor('#F8FAFC').fill();
+        }
+
+        // Borde exterior y divisiones verticales
+        doc.rect(28, yRow, 556, hRow).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
+        doc.moveTo(colX2, yRow).lineTo(colX2, yRow + hRow).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
+        doc.moveTo(colX3, yRow).lineTo(colX3, yRow + hRow).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
+        doc.moveTo(colX4, yRow).lineTo(colX4, yRow + hRow).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
+
+        // Col 1: ROL / ETAPA con Badge distintivo en negrilla
+        const tagW = colW1 - 8;
+        const tagH = 9.5;
+        doc.roundedRect(colX1 + 4, yRow + 2, tagW, tagH, 2.5)
+           .fillColor(rolBadge.bg)
+           .strokeColor(rolBadge.border)
+           .lineWidth(0.5)
+           .fillAndStroke();
+
+        doc.fontSize(6).font('Helvetica-Bold').fillColor(rolBadge.text);
+        doc.text(rolBadge.tag, colX1 + 4, yRow + 3.5, { width: tagW, align: 'center' });
+
+        doc.fontSize(4.6).font('Helvetica').fillColor('#64748B');
+        doc.text(rolBadge.sub, colX1 + 4, yRow + 12.2, { width: tagW, align: 'center' });
+
+        // Col 2: SERVIDOR PÚBLICO RESPONSABLE (Nombre en negrilla destacada)
+        const nombreFinal = this.sanitizarTextoPdf(nombre || '—').toUpperCase();
+        doc.fontSize(6.3).font('Helvetica-Bold').fillColor(estado.aprobado ? '#0F172A' : '#64748B');
+        doc.text(nombreFinal, colX2 + 5, yRow + 2.5, { width: colW2 - 10, align: 'left', lineGap: 0 });
+
+        if (detalleNombre) {
+          doc.fontSize(4.8).font('Helvetica').fillColor('#64748B');
+          doc.text(this.sanitizarTextoPdf(detalleNombre), colX2 + 5, yRow + 10.8, { width: colW2 - 10, align: 'left' });
+        }
+
+        // Col 3: IDENTIFICACIÓN Y ÁREA
+        if (identificacion) {
+          doc.fontSize(5.8).font('Helvetica-Bold').fillColor('#334155');
+          doc.text(this.sanitizarTextoPdf(identificacion), colX3 + 5, yRow + 2.5, { width: colW3 - 10, align: 'left' });
+        }
+        if (area) {
+          doc.fontSize(4.8).font('Helvetica').fillColor('#64748B');
+          doc.text(this.sanitizarTextoPdf(area), colX3 + 5, yRow + 10.8, { width: colW3 - 10, align: 'left' });
+        }
+
+        // Col 4: ESTADO, FECHA Y FIRMA DIGITAL (Pill de estado)
+        const pillW = 124;
+        const pillH = 9;
+        const pillX = colX4 + (colW4 - pillW) / 2;
+        const pillY = yRow + 1.8;
+
+        if (estado.aprobado) {
+          doc.roundedRect(pillX, pillY, pillW, pillH, 4.5)
+             .fillColor('#ECFDF5')
+             .strokeColor('#A7F3D0')
+             .lineWidth(0.5)
+             .fillAndStroke();
+
+          doc.fontSize(5.2).font('Helvetica-Bold').fillColor('#065F46');
+          doc.text(estado.textoBadge, pillX, pillY + 2, { width: pillW, align: 'center' });
+
+          const infoFirma = [
+            estado.fechaStr ? `Fecha: ${estado.fechaStr}` : '',
+            estado.certId ? `Cert: ${estado.certId}` : 'Firma Digital Verificada',
+          ].filter(Boolean).join(' · ');
+
+          doc.fontSize(4.5).font('Helvetica').fillColor('#475569');
+          doc.text(infoFirma, colX4 + 2, yRow + 11.8, { width: colW4 - 4, align: 'center' });
+        } else {
+          doc.roundedRect(pillX, pillY, pillW, pillH, 4.5)
+             .fillColor('#F8FAFC')
+             .strokeColor('#E2E8F0')
+             .lineWidth(0.5)
+             .fillAndStroke();
+
+          doc.fontSize(4.9).font('Helvetica-Bold').fillColor('#94A3B8');
+          doc.text(estado.textoBadge, pillX, pillY + 2, { width: pillW, align: 'center' });
+
+          doc.fontSize(4.4).font('Helvetica').fillColor('#CBD5E1');
+          doc.text('Pendiente de verificación / firma', colX4 + 2, yRow + 11.8, { width: colW4 - 4, align: 'center' });
+        }
+      };
+
+      const hRow = 18;
+      let curY = yTableHeader + hTableHeader;
+
+      // 1. ELABORÓ
+      const fechaElaboroStr = formatFechaHoraSegura(
+        firmaElaboro?.fechaFirma || solicitud.creadoEn || (solicitud as any).fechaCreacion,
+      );
+      renderFilaTrazabilidad(
+        curY,
+        hRow,
+        {
+          tag: 'ELABORÓ',
+          sub: 'Enlace de Dependencia',
+          bg: '#EEF2FF',
+          border: '#C7D2FE',
+          text: '#1E40AF',
+        },
+        nombreEnlaceFinal,
+        emailEnlaceFinal || 'Enlace solicitante',
+        docEnlaceFinal ? `C.C. ${docEnlaceFinal}` : 'Identificación registrada',
+        dependenciaNombre || 'Dependencia Solicitante',
+        {
+          aprobado: true,
+          textoBadge: '✓ ELABORADO Y RADICADO',
+          fechaStr: fechaElaboroStr,
+          certId: firmaElaboro?.certificadoId || 'ESAP-RAD-023',
+        },
+        false,
+      );
+      curY += hRow;
+
+      // 2. REVISÓ (1er Nivel — Analista de Viáticos)
+      const analistaVerifico = Boolean(fechaFirmaAnalista || (nombreAnalistaFinal && nombreAnalistaFinal !== 'Analista de Viáticos'));
+      const fechaAnalistaStr = fechaFirmaAnalista ? formatFechaHoraSegura(fechaFirmaAnalista) : '';
+      const docAnalistaDisplay = docAnalistaStr.replace(/^ · /, '') || (nombreAnalistaFinal ? 'C.C. Registrada' : '—');
+      renderFilaTrazabilidad(
+        curY,
+        hRow,
+        {
+          tag: 'REVISÓ (1er Nivel)',
+          sub: 'Analista de Viáticos',
+          bg: '#F0FDF4',
+          border: '#BBF7D0',
+          text: '#166534',
+        },
+        nombreAnalistaFinal || 'Pendiente Asignación / Revisión',
+        'Revisión Técnica y Documental',
+        docAnalistaDisplay,
+        'Grupo de Gestión de Viáticos',
+        {
+          aprobado: analistaVerifico,
+          textoBadge: analistaVerifico ? '✓ REVISIÓN TÉCNICA VERIFICADA' : 'PENDIENTE REVISIÓN ANALISTA',
+          fechaStr: fechaAnalistaStr,
+          certId: certIdAnalista,
+        },
+        true,
+      );
+      curY += hRow;
+
+      // 3. REVISÓ (2do Nivel — Control Viáticos)
+      const controlVerifico = Boolean(fechaFirmaControl || (nombreControlFinal && nombreControlFinal !== 'Control Viáticos' && nombreControlFinal !== 'Control de Viáticos'));
+      const fechaControlStr = fechaFirmaControl ? formatFechaHoraSegura(fechaFirmaControl) : '';
+      const docControlDisplay = docControlStr.replace(/^ · /, '') || (nombreControlFinal ? 'C.C. Registrada' : '—');
+      renderFilaTrazabilidad(
+        curY,
+        hRow,
+        {
+          tag: 'REVISÓ (2do Nivel)',
+          sub: 'Control Viáticos (Cruzado)',
+          bg: '#F0FDF4',
+          border: '#BBF7D0',
+          text: '#166534',
+        },
+        nombreControlFinal || 'Pendiente Verificación 2do Nivel',
+        'Control Cruzado y Segunda Revisión',
+        docControlDisplay,
+        'Verificación de Control Viáticos',
+        {
+          aprobado: controlVerifico,
+          textoBadge: controlVerifico ? '✓ VERIFICADO 2DO NIVEL' : 'PENDIENTE CONTROL CRUZADO',
+          fechaStr: fechaControlStr,
+          certId: certIdControl,
+        },
+        false,
+      );
+      curY += hRow;
+
+      // 4. APROBÓ (Dirección Nacional / Ordenador del Gasto)
+      const dirAprobo = Boolean(autorizadorNombre && (fechaAprobacion || certIdDir));
+      const fechaAprobacionStr = fechaAprobacion ? formatFechaHoraSegura(fechaAprobacion) : '';
+      const docAproboDisplay = docAproboStr.replace(/^ · /, '') || (autorizadorNombre ? 'C.C. Registrada' : '—');
+      renderFilaTrazabilidad(
+        curY,
+        hRow,
+        {
+          tag: 'APROBÓ',
+          sub: 'Dirección / Ordenador Gasto',
+          bg: '#EFF6FF',
+          border: '#BFDBFE',
+          text: '#1D4ED8',
+        },
+        autorizadorNombre || 'Pendiente Aprobación Institucional',
+        'Aprobación Institucional de la Comisión',
+        docAproboDisplay,
+        'Dirección Nacional / Subdirección',
+        {
+          aprobado: dirAprobo,
+          textoBadge: dirAprobo ? '✓ APROBACIÓN INSTITUCIONAL' : 'PENDIENTE APROBACIÓN',
+          fechaStr: fechaAprobacionStr,
+          certId: certIdDir,
+        },
+        true,
+      );
+      curY += hRow;
+
+      // Borde exterior envolvente de la tabla
+      doc.rect(28, yTableHeader, 556, hTableHeader + hRow * 4).strokeColor('#000000').lineWidth(0.6).stroke();
+
+      // Banner institucional de Protección de Datos (Ley 1581 de 2012)
+      const yLey = curY + 2.5;
+      drawBox(28, yLey, 556, 12, '#F8FAFC', '#CBD5E1', 0.5);
+      doc.fontSize(5).font('Helvetica-Oblique').fillColor('#64748B');
+      doc.text(
+        'Tratamiento de Datos Personales: La información recolectada en este documento es tratada bajo la política institucional de Protección de Datos Personales de la ESAP en cumplimiento a la Ley 1581 de 2012.',
+        30,
+        yLey + 3.5,
+        { width: 552, align: 'center' },
       );
 
       doc.end();
