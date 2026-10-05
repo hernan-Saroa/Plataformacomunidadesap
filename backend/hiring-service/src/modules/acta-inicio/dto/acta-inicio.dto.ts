@@ -11,7 +11,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
+import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 /** El acta de inicio suscrita por las dos partes (actividad 8.7, migración 089). */
 export class SuscribirActaDto {
@@ -22,7 +22,7 @@ export class SuscribirActaDto {
   /** Solo si la 8.7 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @FirmaDelMultipart()
   @ValidateNested()
   @Type(() => FirmaOtpDto)
   firma?: FirmaOtpDto;
@@ -78,7 +78,7 @@ export class SuscribirActaInicioDto {
   /** Solo si la 9.1 quedo configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @FirmaDelMultipart()
   @ValidateNested()
   @Type(() => FirmaOtpDto)
   firma?: FirmaOtpDto;

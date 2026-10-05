@@ -14,7 +14,7 @@ import {
 } from 'class-validator';
 
 import { DecisionComite } from '../../../entities/comite-contratacion.entity';
-import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
+import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 export const DECISIONES_COMITE: DecisionComite[] = [
   'APROBADO',
@@ -119,7 +119,7 @@ export class RegistrarSesionComiteDto {
    */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @FirmaDelMultipart()
   @ValidateNested()
   @Type(() => FirmaOtpDto)
   firma?: FirmaOtpDto;
