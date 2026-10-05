@@ -2534,6 +2534,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       {r.comentarios}
                     </div>
                   )}
+                  {subseccionAccionable && !puedeRevisarEsta && (
+                    <div style={{ fontSize: '0.68rem', color: '#64748B', display: 'flex', gap: 6 }}>
+                      <Lock style={{ width: 13, height: 13, flexShrink: 0 }} />
+                      <span>{!decisionPermissions
+                        ? 'No fue posible verificar tus permisos de revisión. Intenta actualizar el detalle.'
+                        : decisionPermissions.componentReasons?.[key]?.revisar
+                          || `No tienes autorización para revisar ${subLabel} de ${labelDeComponente(key)}. La actividad requiere el permiso de revisión correspondiente y un alcance territorial compatible.`}</span>
+                    </div>
+                  )}
                   {r.estado === 'devuelto' && puedeRevisarEsta && (
                     <div style={{
                       fontSize: '0.68rem', color: '#B91C1C', background: '#FEF2F2',
@@ -2864,7 +2873,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     return 'Ya registraste tu decisión sobre la territorial que te corresponde. Quedan decisiones pendientes de otros responsables.';
                   })()
                 : !componentAuthorized
-                ? ((key === 'academica_territorial' && (decisionPermissions?.territorial.aprobar.reason || decisionPermissions?.territorial.revisar.reason)) || 'No tienes los permisos para aprobar este componente.')
+                ? (decisionPermissions?.componentReasons?.[key]?.aprobar || (key === 'academica_territorial' && decisionPermissions?.territorial.aprobar.reason) || 'No tienes los permisos para aprobar este componente.')
                 : hayOtroComponenteDevuelto
                 ? 'Otro componente de este PTA fue devuelto y está pendiente de corrección del docente. No se puede aprobar ni devolver hasta que el PTA sea corregido y reenviado.'
                 : !revisionCargada
