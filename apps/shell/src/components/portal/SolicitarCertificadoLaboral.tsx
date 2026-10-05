@@ -829,7 +829,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
     if (tipoDocumento !== 'CC' || !/^\d{6,15}$/.test(doc)) {
       setMensajeFunciones({
         type: 'info',
-        text: 'Ingresa tu documento y al solicitar validaremos la asociación exacta de tus funciones.',
+        text: 'Ingresa tu documento y al solicitar validaremos las funciones asignadas a tu identificación.',
       });
       return false;
     }
@@ -841,8 +841,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       if (!current()) return false;
       if (!verificacion?.existe || !funciones.disponible) {
         const text = funciones.estado === 'AMBIGUOUS'
-          ? 'Encontramos más de una matriz posible y no podemos asociar tus funciones con seguridad. Talento Humano debe revisar tus datos.'
-          : 'No cuentas con funciones laborales asociadas para incluir en el certificado en este momento.';
+          ? 'Hay registros de funciones en conflicto para tu identificación. Talento Humano debe revisar la asignación.'
+          : 'No hay funciones laborales asignadas a tu número de identificación en este momento.';
         setMensajeFunciones({ type: 'error', text });
         return false;
       }
@@ -1096,8 +1096,8 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
       if (incluirFunciones) {
         if (!funciones.disponible) {
           const text = funciones.estado === 'AMBIGUOUS'
-            ? 'Encontramos más de una matriz posible y no podemos asociar tus funciones con seguridad. Talento Humano debe revisar tus datos.'
-            : 'No cuentas con funciones laborales asociadas para incluir en el certificado en este momento.';
+            ? 'Hay registros de funciones en conflicto para tu identificación. Talento Humano debe revisar la asignación.'
+            : 'No hay funciones laborales asignadas a tu número de identificación en este momento.';
           setMensajeFunciones({ type: 'error', text });
           setBuscandoEmpleado(false);
           return;
@@ -1793,7 +1793,7 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                               if (incluirFunciones) {
                                 setMensajeFunciones({
                                   type: 'info',
-                                  text: 'Documento actualizado. Validaremos nuevamente la asociación de funciones al solicitar.',
+                                  text: 'Documento actualizado. Validaremos nuevamente las funciones de esta identificación al solicitar.',
                                 });
                               }
                               if (incluirPrimaTecnica) {
@@ -1881,10 +1881,10 @@ export function SolicitarCertificadoLaboral({ onBack, onNavigateToHome, onLoginC
                         />
                         <div className="min-w-0">
                           <Label htmlFor="incluir-funciones-paso1" className="cursor-pointer text-sm font-semibold text-gray-800">
-                            Incluir las funciones de mi cargo
+                            Incluir mis funciones laborales
                           </Label>
                           <p className="mt-1 text-xs text-gray-600">
-                            Marca esta opción para que el certificado muestre las funciones asociadas a tu cargo actual.
+                            Marca esta opción si deseas incluir las funciones asignadas a tu número de identificación.
                           </p>
                           {validandoFunciones && (
                             <span className="mt-2 flex items-center gap-1.5 text-xs font-medium text-blue-700" role="status">

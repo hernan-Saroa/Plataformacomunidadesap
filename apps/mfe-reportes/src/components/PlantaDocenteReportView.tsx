@@ -24,6 +24,20 @@ import { PaginationPremium } from '../shared/PaginationPremium';
 import { EmptyStatePremium } from './EmptyStatesPremium';
 
 const BD_BASE = '/pta/api/v1/pta/banco-docentes';
+const PERIODOS_BASE = '/pta/api/v1/periodos-academicos';
+
+interface PeriodoAcademico {
+  codigo: string;
+  anio: number;
+  semestre: number;
+  estado: string;
+}
+
+async function fetchPeriodosAcademicos(): Promise<PeriodoAcademico[]> {
+  const raw = await apiClient.get<any>(PERIODOS_BASE);
+  const data = Array.isArray(raw?.data) ? raw.data : Array.isArray(raw) ? raw : [];
+  return [...data].sort((a, b) => (b.anio - a.anio) || (b.semestre - a.semestre));
+}
 
 interface FiltrosPlantaDocente {
   territorial: string;
@@ -178,6 +192,7 @@ export function PlantaDocenteReportView({ onClose }: { onClose?: () => void }) {
     nivelesFormacion: string[];
     nucleosTematicos: string[];
   }>({ territoriales: [], vinculaciones: [], categorias: [], generos: [], nivelesFormacion: [], nucleosTematicos: [] });
+  const [periodosAcademicos, setPeriodosAcademicos] = useState<PeriodoAcademico[]>([]);
 
   const [filtros, setFiltros] = useState<FiltrosPlantaDocente>(FILTROS_VACIOS);
   const [appliedFiltros, setAppliedFiltros] = useState<FiltrosPlantaDocente>(FILTROS_VACIOS);
@@ -209,6 +224,26 @@ export function PlantaDocenteReportView({ onClose }: { onClose?: () => void }) {
       }
     })();
   }, []);
+
+  // Catálogo institucional de períodos académicos (fuente única: academic_work_plan.periodo_academico).
+  useEffect(() => {
+    (async () => {
+      try {
+        setPeriodosAcademicos(await fetchPeriodosAcademicos());
+      } catch (error) {
+        console.error('[PlantaDocenteReportView] Error cargando períodos académicos:', error);
+        toast.error('No se pudo cargar el catálogo de períodos académicos.');
+      }
+    })();
+  }, []);
+
+  const periodoOptions = useMemo(
+    () => periodosAcademicos.map((p) => ({
+      value: p.codigo,
+      label: p.estado === 'en_curso' ? `${p.codigo} (en curso)` : p.codigo,
+    })),
+    [periodosAcademicos],
+  );
 
   const generarReporte = async () => {
     setAppliedFiltros(filtros);
@@ -364,17 +399,12 @@ export function PlantaDocenteReportView({ onClose }: { onClose?: () => void }) {
             options={filterOptions.nucleosTematicos}
             onChange={(v) => setFiltros((f) => ({ ...f, nucleoTematico: v }))}
           />
-          <div>
-            <label htmlFor="filtro-periodo-academico" className="text-xs font-medium text-gray-600 mb-1 block">Período académico</label>
-            <input
-              id="filtro-periodo-academico"
-              type="text"
-              placeholder="ej. 2025-2"
-              value={filtros.periodoCarga}
-              onChange={(e) => setFiltros((f) => ({ ...f, periodoCarga: e.target.value }))}
-              className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#003DA5]"
-            />
-          </div>
+          <FiltroSelect
+            label="Período académico"
+            value={filtros.periodoCarga}
+            options={periodoOptions}
+            onChange={(v) => setFiltros((f) => ({ ...f, periodoCarga: v }))}
+          />
         </div>
 
         <div className="flex flex-wrap gap-2 mt-4">
@@ -512,10 +542,11 @@ function FiltroSelect({
 }: {
   label: string;
   value: string;
-  options: string[];
+  options: string[] | { value: string; label: string }[];
   onChange: (value: string) => void;
 }) {
   const id = `filtro-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  const normalized = options.map((opt) => (typeof opt === 'string' ? { value: opt, label: opt } : opt));
   return (
     <div>
       <label htmlFor={id} className="text-xs font-medium text-gray-600 mb-1 block">{label}</label>
@@ -526,9 +557,9 @@ function FiltroSelect({
         className="w-full px-3 py-2 border-2 border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#003DA5] bg-white"
       >
         <option value="">Todos</option>
-        {options.map((opt) => (
-          <option key={opt} value={opt}>
-            {opt}
+        {normalized.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
           </option>
         ))}
       </select>

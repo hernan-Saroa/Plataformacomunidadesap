@@ -57,6 +57,7 @@ export class UsersService {
       relations: [
         'person',
         'person.dependencia',
+        'person.cargo',
         'roles',
         'roles.permissions',
       ],
@@ -476,6 +477,7 @@ export class UsersService {
        idSeccional?: number | null;
        idSede?: number | null;
        idDependencia?: number | null;
+       idCargo?: number | null;
      },
   ): Promise<Person> {
     const personRepo = manager.getRepository(Person);
@@ -503,6 +505,7 @@ export class UsersService {
        idSeccional: data.idSeccional ?? null,
        idSede: data.idSede ?? null,
        idDependencia: data.idDependencia ?? null,
+       idCargo: data.idCargo ?? null,
      };
 
     if (legacyPersonId !== null) {
@@ -525,10 +528,11 @@ export class UsersService {
            id_seccional,
            id_sede,
            id_dependencia,
+           id_cargo,
            fec_creacion,
            fec_modificacion
         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_DATE, CURRENT_DATE)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_DATE, CURRENT_DATE)
        `,
        [
          personData.id,
@@ -543,6 +547,7 @@ export class UsersService {
          personData.idSeccional,
          personData.idSede,
          personData.idDependencia,
+         personData.idCargo,
        ],
     );
 
@@ -561,6 +566,8 @@ export class UsersService {
         'person.seccional.ubicacion',
         'person.sede',
         'person.sede.geopolitica',
+        'person.dependencia',
+        'person.cargo',
         'roles',
       ],
     });
@@ -822,6 +829,7 @@ export class UsersService {
       .leftJoinAndSelect('person.sede', 'sede')
       .leftJoinAndSelect('sede.geopolitica', 'sedeGeopolitica')
       .leftJoinAndSelect('person.dependencia', 'dependencia')
+      .leftJoinAndSelect('person.cargo', 'cargo')
       .leftJoinAndSelect('user.roles', 'roles')
       .distinct(true);
 
@@ -941,6 +949,8 @@ export class UsersService {
         'person.seccional.ubicacion',
         'person.sede',
         'person.sede.geopolitica',
+        'person.dependencia',
+        'person.cargo',
         'roles',
       ],
       options?.allowInternalId ?? false,
@@ -982,6 +992,7 @@ export class UsersService {
            idSeccional: dto.idSeccional,
            idSede: dto.idSede,
            idDependencia: dto.idDependencia,
+           idCargo: dto.idCargo,
          });
 
         const passwordHash = await bcrypt.hash('123456', 10);
@@ -1146,6 +1157,10 @@ export class UsersService {
         setClauses.push(`id_dependencia = $${paramIndex++}`);
         values.push(dto.idDependencia || null);
       }
+      if (dto.idCargo !== undefined) {
+        setClauses.push(`id_cargo = $${paramIndex++}`);
+        values.push(dto.idCargo || null);
+      }
 
     // Ejecutar la actualización si hay campos para actualizar
     if (setClauses.length > 0) {
@@ -1297,6 +1312,10 @@ export class UsersService {
       if (dto.idDependencia !== undefined) {
         setClauses.push(`id_dependencia = $${paramIndex++}`);
         values.push(dto.idDependencia || null);
+      }
+      if (dto.idCargo !== undefined) {
+        setClauses.push(`id_cargo = $${paramIndex++}`);
+        values.push(dto.idCargo || null);
       }
       if (dto.birth_date !== undefined) {
         setClauses.push(`fec_nacimiento = $${paramIndex++}`);

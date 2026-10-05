@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Clock,
   FileCheck2,
+  FileSignature,
   FileText,
   Lock,
   Plane,
@@ -427,13 +428,15 @@ export default function ConsolidacionExpediente({
 
       {/* Acciones */}
       <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100">
-        <button
-          type="button"
-          onClick={onCerrar}
-          className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold inline-flex items-center gap-1 hover:bg-slate-50"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> Volver
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onCerrar}
+            className="px-4 py-2 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold inline-flex items-center gap-1 hover:bg-slate-50"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Volver
+          </button>
+        </div>
         <div className="flex items-center gap-2">
           <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-slate-400">
             <Lock className="w-3 h-3" /> Al enviar, el expediente queda en solo lectura
@@ -449,6 +452,7 @@ export default function ConsolidacionExpediente({
           </button>
         </div>
       </div>
+
     </div>
   );
 }
@@ -507,11 +511,6 @@ function DesgloseGeneral({ rutas }: { rutas: RutaItinerario[] }) {
             {sync.rutaGeneral || `${sync.origenCiudad || '—'} → ${sync.destinoCiudad || '—'}`}
           </span>
         </div>
-        {sync.horaEstimadaGeneral && (
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#003DA5] bg-white border border-blue-200 px-2 py-0.5 rounded shadow-xs">
-            <Clock className="w-3 h-3 text-[#003DA5]" /> Tiempo estimado completo: <strong>{sync.horaEstimadaGeneral}</strong>
-          </span>
-        )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1.5 border-t border-blue-100 text-[10px]">
@@ -563,15 +562,10 @@ function ItinerarioDesglose({ rutas }: { rutas: RutaItinerario[] }) {
                 <span className="font-semibold text-slate-700">{ruta.fechaSalida} – {ruta.fechaLlegada}</span>
               </div>
               <div>
-                <span className="text-slate-500">Días:</span>{' '}
-                <span className="font-semibold text-slate-700">{ruta.diasRuta} día(s)</span>
-              </div>
-              <div>
-                <span className="text-slate-500">Tiempo estimado:</span>{' '}
+                <span className="text-slate-500">Hora estimada del viaje:</span>{' '}
                 <span className="font-semibold text-slate-700 inline-flex items-center gap-1">
                   <Clock className="w-3 h-3 text-[#003DA5]" />
                   {ruta.horaEstimadaSalida || ruta.horarioEstimadoMilitar || '—'}
-                  {ruta.horaEstimadaLlegada ? ` → ${ruta.horaEstimadaLlegada}` : ''}
                 </span>
               </div>
               <div>
@@ -581,7 +575,7 @@ function ItinerarioDesglose({ rutas }: { rutas: RutaItinerario[] }) {
                 </span>
               </div>
               {ruta.tipoTransporte && (
-                <div className="col-span-2">
+                <div className="col-span-2 flex items-center gap-1.5 flex-wrap">
                   <span className="text-slate-500">Transporte:</span>{' '}
                   <span
                     className={`font-bold px-1.5 py-0.5 rounded text-[9px] ${
@@ -592,6 +586,11 @@ function ItinerarioDesglose({ rutas }: { rutas: RutaItinerario[] }) {
                   >
                     {ruta.tipoTransporte}
                   </span>
+                  {ruta.tipoTransporte !== 'AEREO' && Number(ruta.valorTransporte ?? ruta.montoTransporteTerrestre ?? 0) > 0 && (
+                    <span className="text-[10px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
+                      Costo adicional: {formatearMoneda(Number(ruta.valorTransporte ?? ruta.montoTransporteTerrestre ?? 0))}
+                    </span>
+                  )}
                 </div>
               )}
             </div>

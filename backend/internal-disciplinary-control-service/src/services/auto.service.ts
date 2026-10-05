@@ -58,6 +58,14 @@ export class AutoService {
     private httpService: HttpService,
   ) {}
 
+  private toUuidOrNull(val?: string | null): string | null {
+    if (!val || typeof val !== 'string') return null;
+    const trimmed = val.trim();
+    const UUID_REGEX =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return UUID_REGEX.test(trimmed) ? trimmed : null;
+  }
+
   /**
    * Crea un nuevo auto (borrador)
    */
@@ -605,16 +613,16 @@ export class AutoService {
     if (reviewAutoDto.observaciones) {
       auto.comentarios = reviewAutoDto.observaciones;
     }
-    auto.aprobadoPorId = aprobadoPorId;
+    auto.aprobadoPorId = this.toUuidOrNull(aprobadoPorId);
 
     const savedAuto = await this.autoRepository.save(auto);
 
     try {
       await this.versionRepository.save({
         auto: { id: savedAuto.id } as LegalAuto,
-        contenido: previousSnapshot.contenido,
-        versionNumber: previousSnapshot.versionNumber,
-        createdBy: aprobadoPorId,
+        contenido: previousSnapshot.contenido || '',
+        versionNumber: previousSnapshot.versionNumber || 1,
+        createdBy: this.toUuidOrNull(aprobadoPorId),
         changeReason:
           reviewAutoDto.action === ReviewAction.APPROVE
             ? previousSnapshot.documentUrl &&
@@ -680,17 +688,21 @@ export class AutoService {
 
     auto.firmaUrl = auto.documentUrl;
     auto.estado = AutoStatus.FIRMADO;
-    auto.aprobadoPorId = userId;
+    auto.aprobadoPorId = this.toUuidOrNull(userId);
 
-    await this.versionRepository.save({
-      auto: { id: auto.id } as LegalAuto,
-      contenido: auto.contenido,
-      versionNumber: auto.currentVersion,
-      createdBy: userId,
-      changeReason: 'Auto Firmado (Estampado Digital en PDF)',
-      documentUrl: auto.documentUrl,
-      documentName: auto.documentName,
-    });
+    try {
+      await this.versionRepository.save({
+        auto: { id: auto.id } as LegalAuto,
+        contenido: auto.contenido || '',
+        versionNumber: auto.currentVersion || 1,
+        createdBy: this.toUuidOrNull(userId),
+        changeReason: 'Auto Firmado (Estampado Digital en PDF)',
+        documentUrl: auto.documentUrl,
+        documentName: auto.documentName,
+      });
+    } catch (error) {
+      console.warn('No se pudo registrar la versión de firma:', error?.message || error);
+    }
 
     return await this.autoRepository.save(auto);
   }
@@ -719,14 +731,18 @@ export class AutoService {
     }
 
     if (auto.contenido && auto.contenido !== nuevoContenido) {
-      await this.versionRepository.save({
-        auto: { id: auto.id } as LegalAuto,
-        contenido: auto.contenido,
-        versionNumber: auto.currentVersion,
-        createdBy: userId,
-        changeReason: 'Actualización de borrador',
-      });
-      auto.currentVersion += 1;
+      try {
+        await this.versionRepository.save({
+          auto: { id: auto.id } as LegalAuto,
+          contenido: auto.contenido || '',
+          versionNumber: auto.currentVersion || 1,
+          createdBy: this.toUuidOrNull(userId),
+          changeReason: 'Actualización de borrador',
+        });
+      } catch (error) {
+        console.warn('No se pudo registrar la versión de contenido:', error?.message || error);
+      }
+      auto.currentVersion = (auto.currentVersion || 1) + 1;
     }
 
     auto.contenido = nuevoContenido;
@@ -765,18 +781,22 @@ export class AutoService {
         updateData.documentUrl && updateData.documentUrl !== auto.documentUrl;
 
       if (contentChanged || fileChanged) {
-        await this.versionRepository.save({
-          auto: { id: auto.id } as LegalAuto,
-          contenido: auto.contenido,
-          versionNumber: auto.currentVersion,
-          createdBy: userId || null,
-          changeReason: fileChanged
-            ? 'Actualización de archivo adjunto'
-            : 'Actualización de contenido',
-          documentUrl: auto.documentUrl,
-          documentName: auto.documentName,
-        });
-        auto.currentVersion += 1;
+        try {
+          await this.versionRepository.save({
+            auto: { id: auto.id } as LegalAuto,
+            contenido: auto.contenido || '',
+            versionNumber: auto.currentVersion || 1,
+            createdBy: this.toUuidOrNull(userId),
+            changeReason: fileChanged
+              ? 'Actualización de archivo adjunto'
+              : 'Actualización de contenido',
+            documentUrl: auto.documentUrl,
+            documentName: auto.documentName,
+          });
+        } catch (error) {
+          console.warn('No se pudo registrar la versión en update:', error?.message || error);
+        }
+        auto.currentVersion = (auto.currentVersion || 1) + 1;
       }
 
       if (updateData.contenidoHtml !== undefined) {
@@ -800,7 +820,7 @@ export class AutoService {
   }
 
   /**
-   * Sube/actualiza el documento fuente mientras el auto está en revisión.
+   * Sube/actualiza el documento fuente mientras el auto está en revisión, borrador o devuelto.
    * Guarda versión previa (incluye documento anterior) e incrementa currentVersion.
    */
   async uploadDocumentoDuranteRevision(
@@ -825,20 +845,29 @@ export class AutoService {
       );
     }
 
-    await this.versionRepository.save({
-      auto: { id: auto.id } as LegalAuto,
-      contenido: auto.contenido,
-      versionNumber: auto.currentVersion,
-      createdBy: userId || null,
-      changeReason:
-        auto.estado === AutoStatus.REVISION_JEFE
-          ? 'Actualización de documento durante revisión'
-          : 'Actualización de archivo adjunto',
-      documentUrl: auto.documentUrl,
-      documentName: auto.documentName,
-    });
+    try {
+      await this.versionRepository.save({
+        auto: { id: auto.id } as LegalAuto,
+        contenido: auto.contenido || '',
+        versionNumber: auto.currentVersion || 1,
+        createdBy: this.toUuidOrNull(userId),
+        changeReason:
+          auto.estado === AutoStatus.REVISION_JEFE
+            ? 'Actualización de documento durante revisión'
+            : auto.estado === AutoStatus.DEVUELTO
+            ? 'Corrección de auto devuelto cargada por Profesional'
+            : 'Actualización de archivo adjunto',
+        documentUrl: auto.documentUrl,
+        documentName: auto.documentName,
+      });
+    } catch (versionError) {
+      console.warn(
+        `[AutoService] No se pudo guardar la versión previa para auto ${id}:`,
+        versionError?.message || versionError,
+      );
+    }
 
-    auto.currentVersion += 1;
+    auto.currentVersion = (auto.currentVersion || 1) + 1;
     auto.documentUrl = documentUrl;
     auto.documentName = documentName;
     auto.documentType = documentType;
@@ -928,17 +957,21 @@ export class AutoService {
 
     const savedAuto = await this.autoRepository.save(auto);
 
-    await this.versionRepository.save({
-      auto: { id: savedAuto.id } as LegalAuto,
-      contenido: savedAuto.contenido,
-      versionNumber: savedAuto.currentVersion,
-      createdBy: 'Sistema',
-      changeReason: JSON.stringify({
-        action: 'NOTIFICACION_REGISTRADA',
-        date: dto.notificationDate,
-        evidenceUrl: dto.notificationEvidence || null,
-      }),
-    });
+    try {
+      await this.versionRepository.save({
+        auto: { id: savedAuto.id } as LegalAuto,
+        contenido: savedAuto.contenido || '',
+        versionNumber: savedAuto.currentVersion || 1,
+        createdBy: null,
+        changeReason: JSON.stringify({
+          action: 'NOTIFICACION_REGISTRADA',
+          date: dto.notificationDate,
+          evidenceUrl: dto.notificationEvidence || null,
+        }),
+      });
+    } catch (error) {
+      console.warn('No se pudo registrar la versión de notificación:', error?.message || error);
+    }
 
     try {
       const asunto = `Auto Notificado: ${auto.tipo} - ${auto.numero || 'Sin Número'}`;
@@ -1377,15 +1410,19 @@ export class AutoService {
 
     const savedAuto = await this.autoRepository.save(auto);
 
-    await this.versionRepository.save({
-      auto: { id: savedAuto.id } as LegalAuto,
-      contenido: savedAuto.contenido,
-      versionNumber: savedAuto.currentVersion,
-      createdBy: revertidoPorId,
-      changeReason: 'Aprobación reversada por el Jefe — auto vuelve a borrador para corrección',
-      documentUrl: savedAuto.documentUrl,
-      documentName: savedAuto.documentName,
-    });
+    try {
+      await this.versionRepository.save({
+        auto: { id: savedAuto.id } as LegalAuto,
+        contenido: savedAuto.contenido || '',
+        versionNumber: savedAuto.currentVersion || 1,
+        createdBy: this.toUuidOrNull(revertidoPorId),
+        changeReason: 'Aprobación reversada por el Jefe — auto vuelve a borrador para corrección',
+        documentUrl: savedAuto.documentUrl,
+        documentName: savedAuto.documentName,
+      });
+    } catch (error) {
+      console.warn('No se pudo registrar la versión de reversión:', error?.message || error);
+    }
 
     const tipoAutoTexto =
       auto.tipo === AutoType.PLIEGO_CARGOS || auto.tipo === AutoType.AUTO_FORMULACION_PLIEGO

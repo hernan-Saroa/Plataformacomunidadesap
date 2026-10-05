@@ -1,3 +1,5 @@
+SET client_encoding = 'UTF8';
+
 -- ============================================================================
 -- 447_campos_dinamicos_tipo_comisionado.sql
 -- Descripción:

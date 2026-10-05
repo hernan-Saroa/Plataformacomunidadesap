@@ -353,6 +353,8 @@ export class ProgramaAnualVersionesService {
       light: true,
     })) as any[];
 
+    const equipos = await this.equiposAuditores(auditorias.map((a) => String(a.id)));
+
     return auditorias
       .map((a): FilaProgramaAnual => ({
         id: String(a.id),
@@ -362,6 +364,8 @@ export class ProgramaAnualVersionesService {
         tipo: this.normalizarTipo(a.tipo, a.tipoKanban),
         territorial: a.territorial ? String(a.territorial) : null,
         responsableArea: this.resolverResponsableArea(a),
+        auditorLider: equipos.get(String(a.id))?.lider ?? null,
+        equipoAuditor: equipos.get(String(a.id))?.equipo ?? [],
         observaciones: String(a.observaciones || '').trim(),
         fechaInicio: this.aFecha(a.fechaInicio),
         fechaFinPlaneacion: this.aFecha(a.fechaFinPlaneacion),
@@ -371,6 +375,44 @@ export class ProgramaAnualVersionesService {
         fechaFin: this.aFecha(a.fechaFin),
         semanasExcluidas: Array.isArray(a.semanasExcluidas) ? [...a.semanasExcluidas].sort() : [],
       }));
+  }
+
+  /**
+   * Auditor Líder (o el asignado si no hay líder) y Equipo Auditor de cada auditoría,
+   * para las columnas "Responsable" y "Equipo Auditor" del Programa Anual (EFDS-2257).
+   * El equipo son los integrantes activos del equipo adicional, sin el líder ni el
+   * jefe/supervisor.
+   */
+  private async equiposAuditores(ids: string[]): Promise<Map<string, { lider: string | null; equipo: string[] }>> {
+    const resultado = new Map<string, { lider: string | null; equipo: string[] }>();
+    const validos = ids.filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+    if (validos.length === 0) return resultado;
+
+    const filas: Array<{ id: string; lider: string | null; equipo: string[] | null }> = await this.dataSource.query(
+      `SELECT a.id::text AS id,
+              NULLIF(TRIM(COALESCE(pl.nom_largo, '')), '') AS lider,
+              (SELECT array_agg(nombre ORDER BY nombre)
+                 FROM (SELECT DISTINCT NULLIF(TRIM(COALESCE(pe.nom_largo, '')), '') AS nombre
+                         FROM control_interno.equipo_auditor ea
+                         LEFT JOIN auth.personas pe ON pe.id_person = ea.persona_id
+                        WHERE ea.auditoria_id = a.id
+                          AND ea.activo = true
+                          AND ea.persona_id IS DISTINCT FROM COALESCE(a.auditor_lider_id, a.auditor_asignado_id)
+                          AND ea.persona_id IS DISTINCT FROM a.supervisor_asignado_id
+                          AND LOWER(COALESCE(ea.rol, '')) NOT LIKE '%jefe%'
+                          AND LOWER(COALESCE(ea.rol, '')) NOT LIKE '%supervisor%'
+                          AND LOWER(COALESCE(ea.rol, '')) NOT LIKE '%lider%'
+                          AND LOWER(COALESCE(ea.rol, '')) NOT LIKE '%líder%') n
+                WHERE nombre IS NOT NULL) AS equipo
+         FROM control_interno.auditoria a
+         LEFT JOIN auth.personas pl ON pl.id_person::text = COALESCE(a.auditor_lider_id, a.auditor_asignado_id)::text
+        WHERE a.id = ANY($1::uuid[])`,
+      [validos],
+    );
+    for (const f of filas) {
+      resultado.set(String(f.id), { lider: f.lider ?? null, equipo: Array.isArray(f.equipo) ? f.equipo : [] });
+    }
+    return resultado;
   }
 
   private calcularHuella(filas: FilaProgramaAnual[]): string {

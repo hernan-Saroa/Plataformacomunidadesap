@@ -2,6 +2,10 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { LOGO_ESAP_URL } from './pdfESAPHeader';
 import { isPlanAprobado } from '../../utils/estadoPlanUtils';
+import { normalizarRolOcigOperativo } from '../../config/roles-ocig-operativos';
+
+/** Rol del miembro del comité; los guardados como 'Aprobador PAI' salen con el nombre actual (EFDS-2197). */
+const rolMiembroComite = (cargo?: string | null) => String(normalizarRolOcigOperativo(cargo || 'Aprobador Plan Anual'));
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COLORES INSTITUCIONALES ESAP
@@ -244,7 +248,7 @@ export async function exportarCertificadoAprobacionPDF(plan: any, equipo: any[],
     return [
       String(i + 1),
       a.nombre || 'N/A',
-      a.cargo || 'Aprobador PAI',
+      rolMiembroComite(a.cargo),
       fmtCorta(t.fecha),
       f.ip || t.ip || 'Registrada',
       t.estado === 'APROBADA' ? 'Aprobada' : t.estado === 'OBSERVADA' ? 'Observada' : 'Pendiente',
@@ -328,7 +332,7 @@ export async function exportarCertificadoAprobacionPDF(plan: any, equipo: any[],
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(6.5);
     doc.setTextColor(...C.gris2);
-    doc.text(`${a.cargo || 'Aprobador PAI'}  •  ${a.email || 'N/A'}`, fx, fy);
+    doc.text(`${rolMiembroComite(a.cargo)}  •  ${a.email || 'N/A'}`, fx, fy);
 
     // Datos de traza
     fy += 5;

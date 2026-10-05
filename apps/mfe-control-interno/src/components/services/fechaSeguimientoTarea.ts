@@ -6,6 +6,10 @@
  * 2. la fecha de entrega o límite con la que se programó la tarea;
  * 3. la del corte (punto de control) al que está vinculada la tarea;
  * 4. la fecha de corte de la actividad.
+ *
+ * Las tareas del Rol 4 que genera el Programa Anual van una por corte y su fecha de
+ * entrega es la de seguimiento de ese corte (el último día del mes siguiente, o la que
+ * se haya puesto a mano), no el fin de la auditoría, que es su fecha límite (EFDS-2237).
  */
 export function fechaSeguimientoTarea(actividad: any, tarea?: any): string {
   const puntos = actividad?.puntosControl || actividad?.puntos_control || [];

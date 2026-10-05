@@ -149,7 +149,7 @@ export class LegalAuto {
   fechaVencimientoNueva: Date | null; // Registro para historial de prórroga
 
   @Column('uuid', { nullable: true })
-  aprobadoPorId: string; // ID del jefe que aprobó
+  aprobadoPorId: string | null; // ID del jefe que aprobó
 
   @Column({ type: 'uuid', nullable: true, name: 'radicador_asignado_id' })
   radicadorAsignadoId: string | null; // ID del radicador/secretario asignado a este auto
