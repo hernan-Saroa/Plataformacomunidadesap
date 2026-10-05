@@ -103,6 +103,31 @@ describe('FilesController', () => {
     await expect(controlador.descargar('nohay.pdf', respuesta())).rejects.toThrow();
   });
 
+  it('a una pestaña le explica que el archivo ya no está, en vez del JSON', async () => {
+    // Los enlaces abren la descarga en pestaña nueva: el JSON crudo dejaba una
+    // pantalla negra cuando el archivo se perdía del disco (QA sin volumen).
+    const enviado: { estado?: number; tipo?: string; cuerpo?: string } = {};
+    const res: any = {
+      status: (estado: number) => ((enviado.estado = estado), res),
+      type: (tipo: string) => ((enviado.tipo = tipo), res),
+      send: (cuerpo: string) => ((enviado.cuerpo = cuerpo), res),
+    };
+    const pestaña: any = { accepts: () => 'html' };
+
+    await controlador.descargar('nohay.pdf', res, undefined, pestaña);
+
+    expect(enviado.estado).toBe(404);
+    expect(enviado.tipo).toBe('html');
+    expect(enviado.cuerpo).toContain('El documento no está disponible');
+  });
+
+  it('al visor le sigue respondiendo el 404 en JSON', async () => {
+    const visor: any = { accepts: () => 'json' };
+    await expect(controlador.descargar('nohay.pdf', respuesta(), undefined, visor)).rejects.toThrow(
+      'Documento no encontrado',
+    );
+  });
+
   /*
    * En disco cada archivo es un hexadecimal aleatorio, y ese era el nombre que
    * proponía la descarga: quien bajaba lo que acababa de subir recibía
