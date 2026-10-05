@@ -123,6 +123,7 @@ import {
   GuardarRegla,
   ReglaActividad,
   Persona,
+  Cargo,
   PlantillaFormato,
   PlazosPublicacion,
   ProcesoResumen,
@@ -240,10 +241,17 @@ export const contratacionService = {
   modalidades: () => pedir<Modalidad[]>('/modalidades'),
 
   /** Personas para los selectores; el termino filtra por nombre. */
-  personas: (q = '', dependencia = '') =>
+  personas: (q = '', dependencia = '', cargo = '') =>
     pedir<Persona[]>(
       `/personas?q=${encodeURIComponent(q)}` +
-        (dependencia ? `&dependencia=${encodeURIComponent(dependencia)}` : ''),
+        (dependencia ? `&dependencia=${encodeURIComponent(dependencia)}` : '') +
+        (cargo ? `&cargo=${encodeURIComponent(cargo)}` : ''),
+    ),
+
+  /** Cargos de una dependencia (todos los activos si no llega), para acotar un selector de persona. */
+  cargos: (dependencia = '') =>
+    pedir<Cargo[]>(
+      '/personas/cargos' + (dependencia ? `?dependencia=${encodeURIComponent(dependencia)}` : ''),
     ),
 
   /**

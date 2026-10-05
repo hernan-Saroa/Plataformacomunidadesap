@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { CampoFormulario } from '../../types';
 import { SelectorPersona } from './SelectorPersona';
 import { SelectorDependencia } from './SelectorDependencia';
+import { SelectorCargo } from './SelectorCargo';
 
 /**
  * Campos que nombran a un funcionario. Va por codigo y no por tipo porque
@@ -49,6 +50,14 @@ export function CampoDinamico({ campo, valor, error, disabled, dependencia, onCh
   const soloLectura = campo.soloLectura === true;
   disabled = disabled || soloLectura;
   const id = `campo-${campo.codigo}`;
+
+  /**
+   * Cargo con el que se acota la persona. Vive aquí y no en el formulario
+   * porque no se guarda: solo filtra a quién se ofrece. Otra área tiene otros
+   * cargos, así que cambiarla vuelve a «todos».
+   */
+  const [cargo, setCargo] = useState('');
+  useEffect(() => setCargo(''), [dependencia]);
   const describedBy = [error ? `${id}-error` : null, campo.ayuda ? `${id}-ayuda` : null]
     .filter(Boolean)
     .join(' ');
@@ -68,16 +77,28 @@ export function CampoDinamico({ campo, valor, error, disabled, dependencia, onCh
       // Sin área elegida no hay de dónde sacar al jefe: se pide primero el
       // área en vez de ofrecer a toda la entidad.
       const sinArea = dependencia !== undefined && !dependencia;
+      // Primero el cargo y después la persona: en un área grande el nombre
+      // solo no basta para dar con el jefe entre todos los que trabajan ahí.
       return (
-        <SelectorPersona
-          id={id}
-          value={valor ?? ''}
-          disabled={disabled || sinArea}
-          invalido={!!error}
-          onChange={onChange}
-          dependencia={dependencia || undefined}
-          placeholder={sinArea ? 'Primero elige el área solicitante' : undefined}
-        />
+        <div className="space-y-1.5">
+          <SelectorCargo
+            id={`${id}-cargo`}
+            value={cargo}
+            onChange={setCargo}
+            dependencia={dependencia || undefined}
+            disabled={disabled || sinArea}
+          />
+          <SelectorPersona
+            id={id}
+            value={valor ?? ''}
+            disabled={disabled || sinArea}
+            invalido={!!error}
+            onChange={onChange}
+            dependencia={dependencia || undefined}
+            cargo={cargo || undefined}
+            placeholder={sinArea ? 'Primero elige el área solicitante' : undefined}
+          />
+        </div>
       );
     }
 
