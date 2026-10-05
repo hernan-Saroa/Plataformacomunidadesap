@@ -64,6 +64,7 @@ export interface DependenciaUsuario {
 export interface UsuarioActual {
   userId: string;
   username: string;
+  fullName?: string;
   email?: string;
   /** Códigos de rol normalizados a forma canónica (ej. 'SUPER_ADMIN'). */
   roles: string[];
@@ -230,16 +231,24 @@ export class AuthService {
       cached?.sub ||
       '';
 
+    const fullName =
+      cached?.fullName ||
+      cached?.full_name ||
+      data?.fullName ||
+      data?.full_name ||
+      (persona?.first_name && persona?.last_name ? `${persona.first_name} ${persona.last_name}` : '') ||
+      persona?.full_name ||
+      '';
+
     return {
       userId,
       username:
         data?.username ||
-        data?.email ||
         cached?.username ||
-        cached?.fullName ||
-        cached?.full_name ||
-        persona?.full_name ||
+        data?.email ||
+        cached?.email ||
         '',
+      fullName: fullName && !fullName.includes('@') ? fullName : undefined,
       email: data?.email || cached?.email || persona?.email,
       roles,
       permissions,
@@ -573,17 +582,30 @@ export class AuthService {
     if (!user) return false;
     if (user.esAdmin) return true;
     if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA)) return true;
+
+    const tieneRolJefe = user.roles.some((r) =>
+      ['JEFE_DEPENDENCIA', 'SUPERVISOR', 'JEFE', 'DIRECTOR_TERRITORIAL', 'LIDER_DEPENDENCIA'].includes(r) ||
+      r.includes('JEFE') ||
+      r.includes('SUPERVISOR'),
+    );
+    if (tieneRolJefe) return true;
+
+    // Si el usuario es explícitamente Gerente de Proyecto (por rol o permiso de Gerente), no es Jefe
+    const esGerente =
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO) ||
+      user.roles.some((r) =>
+        ['GERENTE_PROYECTO', 'GERENTE', 'LIDER_PROYECTO', 'COORDINADOR_PROYECTO'].includes(r) ||
+        r.includes('GERENTE'),
+      );
+    if (esGerente) return false;
+
     if (
       this.hasPermission('travel_expenses:sign_approval') ||
       this.hasPermission('travel_expenses:read_approvals')
     ) {
       return true;
     }
-    return user.roles.some((r) =>
-      ['JEFE_DEPENDENCIA', 'SUPERVISOR', 'JEFE', 'DIRECTOR_TERRITORIAL', 'LIDER_DEPENDENCIA'].includes(r) ||
-      r.includes('JEFE') ||
-      r.includes('SUPERVISOR'),
-    );
+    return false;
   }
 
   /**
@@ -595,12 +617,6 @@ export class AuthService {
     if (!user) return false;
     if (user.esAdmin) return true;
     if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO)) return true;
-    if (
-      this.hasPermission('travel_expenses:sign_approval') ||
-      this.hasPermission('travel_expenses:read_approvals')
-    ) {
-      return true;
-    }
     return user.roles.some((r) =>
       ['GERENTE_PROYECTO', 'GERENTE', 'LIDER_PROYECTO', 'COORDINADOR_PROYECTO'].includes(r) ||
       r.includes('GERENTE'),
@@ -646,14 +662,26 @@ export class AuthService {
       const esAdmin = roles.some((r) =>
       (ROLES_ADMIN_VIATICOS as readonly string[]).includes(r),
     );
+      const personObj = cached?.person || cached?.user?.person;
+      const fullName =
+        cached?.fullName ||
+        cached?.full_name ||
+        (cached?.firstName && cached?.lastName ? `${cached.firstName} ${cached.lastName}` : '') ||
+        personObj?.full_name ||
+        personObj?.fullName ||
+        personObj?.nom_largo ||
+        [personObj?.nom_tercero, personObj?.pri_apellido, personObj?.seg_apellido].filter(Boolean).join(' ') ||
+        '';
+
       return {
         userId: cached?.id_user || cached?.userId || cached?.id || '',
-        username: cached?.username || cached?.fullName || cached?.full_name || '',
+        username: cached?.username || '',
+        fullName: fullName && !fullName.includes('@') ? fullName.trim() : undefined,
         email: cached?.email,
         roles,
         permissions,
         esAdmin,
-        person: cached?.person || cached?.user?.person,
+        person: personObj,
       };
     } catch {
       return null;

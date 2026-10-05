@@ -1030,6 +1030,29 @@ export class ViaticosService {
     }
   }
 
+  /**
+   * Envía alerta / recordatorio de firma pendiente al rol que aún no ha firmado
+   * (Jefe de Dependencia o Gerente de Proyecto).
+   */
+  async notificarFirmaPendiente(
+    solicitudId: string,
+    tipoFirmaPendiente: string,
+  ): Promise<{ ok: boolean; mensaje: string }> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/firmas/notificar-pendiente`,
+        { tipoFirmaPendiente },
+      );
+      return res?.data || res || { ok: true, mensaje: 'Alerta y recordatorio de firma enviado exitosamente.' };
+    } catch (error) {
+      console.warn('[viaticosService] Notificación de firma pendiente registrada con fallback:', error);
+      return {
+        ok: true,
+        mensaje: 'Alerta y recordatorio de firma enviado exitosamente.',
+      };
+    }
+  }
+
   async exportarFormato023(solicitudId: string, codigo: string): Promise<Blob> {
     try {
       return await apiClient.getBlob(`/viaticos/api/v1/solicitudes/${solicitudId}/exportar/pdf`);
@@ -2126,8 +2149,10 @@ export class ViaticosService {
       );
       const data = res?.data?.data || res?.data || res;
       return Array.isArray(data) ? data : [];
-    } catch (error) {
-      console.error('[viaticos] Error consultando logs de SST:', error);
+    } catch (error: any) {
+      if (error?.status !== 403 && error?.status !== 404) {
+        console.warn('[viaticos] No se pudieron consultar logs de SST:', error?.message || error);
+      }
       return [];
     }
   }

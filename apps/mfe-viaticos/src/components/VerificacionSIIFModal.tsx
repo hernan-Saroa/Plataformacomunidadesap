@@ -23,9 +23,13 @@ import {
   X,
   Zap,
   MapPin,
+  FileSignature,
+  Key,
 } from 'lucide-react';
 import VisorDocumentosFlotante, { useVisorDocumentos } from './VisorDocumentosFlotante';
 import viaticosService from '../services/api/viaticosService';
+import authService from '../services/api/authService';
+import FirmaDigitalViaticosModal, { FirmaDigitalData } from './FirmaDigitalViaticosModal';
 import { SolicitudComisionResponse } from '../types/viaticos';
 import {
   esPdfMime,
@@ -193,6 +197,14 @@ export default function VerificacionSIIFModal({
   const [registrando, setRegistrando] = useState(false);
   const [registroError, setRegistroError] = useState<string | null>(null);
   const [registroExitoso, setRegistroExitoso] = useState(false);
+  const [modalFirmaOtpAbierta, setModalFirmaOtpAbierta] = useState(false);
+  const [solicitandoOtp, setSolicitandoOtp] = useState(false);
+  const [otpData, setOtpData] = useState<{
+    verificationId: string;
+    emailEnviadoA?: string;
+    devCode?: string;
+  } | null>(null);
+  const [csvDescargado, setCsvDescargado] = useState(false);
 
   // Devolver a Enlace
   const [mostrandoSolDevolucion, setMostrandoSolDevolucion] = useState(false);
@@ -231,7 +243,14 @@ export default function VerificacionSIIFModal({
       setCheckLiquidacion(yaAuditado);
       setCheckSeguridadSocial(yaAuditado);
       setCheckItinerario(yaAuditado);
-      setCheckRutFacturador(Boolean(solicitud?.consultaRutFacturador || yaAuditado));
+      // El flag de facturador electrónico solo debe ser true si el comisionado o la solicitud realmente lo tienen registrado
+      const esFacturadorRegistrado = Boolean(
+        solicitud?.consultaRutFacturador ??
+        (solicitud?.comisionado as any)?.esFacturadorElectronico ??
+        (solicitud?.camposAdicionales as any)?.obligacion_tributaria ??
+        false,
+      );
+      setCheckRutFacturador(esFacturadorRegistrado);
       setRegistrando(false);
       setRegistroError(null);
       setRegistroExitoso(false);
@@ -242,6 +261,10 @@ export default function VerificacionSIIFModal({
       setSubiendoFactura(false);
       setErrorSubidaFactura(null);
       setCopied(null);
+      setModalFirmaOtpAbierta(false);
+      setSolicitandoOtp(false);
+      setOtpData(null);
+      setCsvDescargado(false);
       cerrarTodosVisores();
       setDescargandoFormato023(false);
       void cargarCatalogoDependencias();
@@ -257,10 +280,11 @@ export default function VerificacionSIIFModal({
   const valorNeto = montoViaticos + montoGastosViaje;
 
   const esContratista = (comisionado?.tipoComisionado || '').toUpperCase() === 'CONTRATISTA';
-  const esFacturadorElectronico = Boolean(
+  const esFacturadorElectronico = esContratista && Boolean(
     checkRutFacturador ||
     solicitud?.consultaRutFacturador ||
-    comisionado?.esFacturadorElectronico,
+    (comisionado as any)?.esFacturadorElectronico ||
+    (solicitud?.camposAdicionales as any)?.obligacion_tributaria,
   );
   const requiereFactura = esContratista && esFacturadorElectronico;
   const todosDocumentos = solicitud?.documentosSoporte || [];
@@ -375,25 +399,130 @@ export default function VerificacionSIIFModal({
     }
   };
 
-  const handleRegistrarVerificacion = async () => {
+  // Resolver usuario actual firmante para estampa institucional
+  const currentUser = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
+  const nombreUsuarioActual =
+    currentUser && typeof currentUser.then !== 'function'
+      ? `${currentUser.primerNombre || ''} ${currentUser.segundoNombre || ''} ${currentUser.primerApellido || ''} ${currentUser.segundoApellido || ''}`.trim() ||
+        currentUser.nombre ||
+        currentUser.username ||
+        'Analista de Viáticos'
+      : 'Analista de Viáticos';
+  const cargoUsuarioActual =
+    currentUser && typeof currentUser.then !== 'function' && (currentUser.cargo || currentUser.job_title)
+      ? currentUser.cargo || currentUser.job_title
+      : 'Analista de Viáticos / Grupo de Gestión Financiera';
+
+  const generarEstampaDigitalAnalista = (nombre: string, cargo: string): string => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 400;
+    canvas.height = 140;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.strokeStyle = '#003DA5';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+
+    ctx.fillStyle = '#003DA5';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('ESAP — VERIFICACIÓN Y AUDITORÍA 1ER NIVEL', 16, 24);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(nombre.slice(0, 36), 16, 52);
+
+    ctx.fillStyle = '#475569';
+    ctx.font = '11px sans-serif';
+    ctx.fillText(cargo.slice(0, 42), 16, 72);
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '9px monospace';
+    const ahora = new Date().toISOString();
+    ctx.fillText(`FECHA/HORA: ${ahora}`, 16, 96);
+    ctx.fillText('VALIDACIÓN: HASH CRIPTOGRÁFICO SHA-256', 16, 112);
+
+    return canvas.toDataURL('image/png');
+  };
+
+  // Solicitar código OTP para iniciar firma digital del analista
+  const handleIniciarFirmaOtp = async () => {
     if (!solicitud || !todosCheckMandatory || esDevuelta) return;
+    if (bloqueoFacturaActivo) {
+      setRegistroError(
+        'Bloqueo: El comisionado es contratista facturador electrónico y no cuenta con la Factura Electrónica cargada en el expediente. Debe adjuntarla o solicitarla antes de proceder a la firma.',
+      );
+      return;
+    }
+    setSolicitandoOtp(true);
+    setRegistroError(null);
+    try {
+      const resp = await viaticosService.solicitarOtpFirma(solicitud.id, {
+        tipoFirma: 'ANALISTA',
+        etapaLabel: 'Verificación de Analista — 1er Nivel (Auditoría SIIF)',
+      });
+      setOtpData({
+        verificationId: resp.verificationId,
+        emailEnviadoA: resp.emailEnviadoA || (resp as any).email,
+        devCode: resp.devCode,
+      });
+      setModalFirmaOtpAbierta(true);
+    } catch (err: any) {
+      console.error('Error solicitando OTP:', err);
+      setRegistroError(
+        err?.response?.data?.message ||
+          err?.message ||
+          'No fue posible solicitar el código OTP de verificación.',
+      );
+    } finally {
+      setSolicitandoOtp(false);
+    }
+  };
+
+  // Confirmar verificación y firma digital tras validación OTP
+  const handleFirmaDigitalCompleta = async (firma: FirmaDigitalData) => {
+    if (!solicitud) return false;
     setRegistrando(true);
     setRegistroError(null);
     try {
+      const firmaImagen = generarEstampaDigitalAnalista(nombreUsuarioActual, cargoUsuarioActual);
       await viaticosService.verificarAuditoria(solicitud.id, {
         seguridadSocialVigente: checkSeguridadSocial,
         consultaRutFacturador: checkRutFacturador,
+        otp: firma.codigoOtp,
+        verificationId: otpData?.verificationId,
+        certificadoId: firma.certificado_id,
+        hashSha256: firma.hash,
+        firmaImagen,
+        nombreAnalista: nombreUsuarioActual,
+        cargoAnalista: cargoUsuarioActual,
       });
       setRegistroExitoso(true);
+      setModalFirmaOtpAbierta(false);
       onRefrescar();
-      handleCerrar();
+      setTimeout(() => {
+        handleCerrar();
+      }, 1500);
+      return true;
     } catch (err: any) {
+      console.error('Error completando verificación y firma OTP:', err);
       setRegistroError(
-        err?.message || 'Error al registrar la verificación de auditoría.',
+        err?.response?.data?.message ||
+          err?.message ||
+          'Error al registrar la firma digital y verificación.',
       );
+      throw err;
     } finally {
       setRegistrando(false);
     }
+  };
+
+  // Mantener compatibilidad con método previo si es invocado directamente
+  const handleRegistrarVerificacion = async () => {
+    await handleIniciarFirmaOtp();
   };
 
   const handleDescargarCsv = async () => {
@@ -408,10 +537,8 @@ export default function VerificacionSIIFModal({
       a.click();
       URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      if (!esSoloLectura) {
-        onRefrescar();
-        handleCerrar();
-      }
+      setCsvDescargado(true);
+      // La descarga no avanza el estado ni cierra el modal; continúa el checklist
     } catch (err: any) {
       console.error('Error descargando CSV SIIF:', err);
       setRegistroError(err?.message || 'Error al descargar el archivo CSV.');
@@ -1132,6 +1259,12 @@ export default function VerificacionSIIFModal({
                           ? 'Descargar Copia de Archivo Plano CSV para SIIF'
                           : 'Descargar Archivo Plano CSV para SIIF'}
                       </button>
+                      {csvDescargado && (
+                        <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Archivo plano CSV descargado exitosamente. Continúe con el checklist.
+                        </span>
+                      )}
                       {registroError && (
                         <span className="text-xs text-red-600 flex items-center gap-1">
                           <AlertCircle className="w-3.5 h-3.5" />
@@ -1145,8 +1278,8 @@ export default function VerificacionSIIFModal({
                         : estaAutorizada
                         ? 'Comisión AUTORIZADA corporativamente. El archivo plano CSV se encuentra disponible para fines informativos y de consulta.'
                         : esSoloLectura
-                        ? 'La solicitud ya fue exportada a SIIF Nación y transferida a Control Viáticos. Puede descargar una copia del archivo plano si lo requiere.'
-                        : 'Al descargar, la solicitud se exporta a SIIF Nación y la comisión se crea en el sistema.'}
+                        ? 'La solicitud ya fue verificada y transferida a Control Viáticos. Puede descargar una copia del archivo plano si lo requiere.'
+                        : 'La descarga del archivo plano no cambia el estado del trámite. Al finalizar el checklist a continuación, dé clic en "Enviar a Firma OTP" para certificar la auditoría y remitir el expediente a Control de Viáticos.'}
                     </p>
                   </>
                 )}
@@ -1356,7 +1489,7 @@ export default function VerificacionSIIFModal({
 
                   <div className="border border-slate-200 bg-white rounded-xl p-4 mt-3 shadow-2xs">
                     <p className="text-[10px] font-semibold text-slate-500 uppercase mb-2">
-                      Verificación de RUT
+                      Verificación de RUT (Obligación Tributaria)
                     </p>
                     <CheckboxItem
                       checked={checkRutFacturador}
@@ -1365,11 +1498,24 @@ export default function VerificacionSIIFModal({
                       label="Comisionado es Facturador Electrónico"
                       sublabel={
                         comisionado?.tipoComisionado === 'CONTRATISTA'
-                          ? 'Se consulta el RUT del comisionado en los PDFs de soporte. Si es contratista facturador, el sistema exigirá adjuntar la factura electrónica antes de permitir la exportación a SIIF.'
-                          : 'Se consulta el RUT del comisionado en los PDFs de soporte.'
+                          ? 'Marcar únicamente si el RUT del contratista indica que está obligado a facturar electrónicamente (en cuyo caso se exigirá factura electrónica adjunta para continuar).'
+                          : 'Consulta de RUT y obligaciones tributarias en soportes.'
                       }
                     />
                   </div>
+
+                  {/* Alerta de bloqueo preventivo por factura electrónica */}
+                  {bloqueoFacturaActivo && !esSoloLectura && (
+                    <div className="mt-3 p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-2.5 text-xs text-amber-900">
+                      <Lock className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold">Firma Bloqueada: Falta Factura Electrónica. </span>
+                        <span>
+                          El comisionado contratista está marcado como facturador electrónico. Debe adjuntar la Factura Electrónica en la sección de documentos o devolver la solicitud al enlace antes de poder enviar a firma OTP.
+                        </span>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="mt-4 flex items-center justify-between">
                     {esSoloLectura ? (
@@ -1399,26 +1545,37 @@ export default function VerificacionSIIFModal({
                       <>
                         <button
                           type="button"
-                          onClick={handleRegistrarVerificacion}
-                          disabled={!todosCheckMandatory || registrando}
+                          onClick={handleIniciarFirmaOtp}
+                          disabled={!todosCheckMandatory || bloqueoFacturaActivo || solicitandoOtp || registrando}
                           className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs ${
-                            todosCheckMandatory && !registrando
+                            todosCheckMandatory && !bloqueoFacturaActivo && !solicitandoOtp && !registrando
                               ? 'bg-[#003DA5] text-white hover:bg-[#002a7d] cursor-pointer'
                               : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                           }`}
+                          title={
+                            bloqueoFacturaActivo
+                              ? 'Bloqueado: El contratista es facturador electrónico y debe cargarse la factura electrónica antes de continuar'
+                              : !todosCheckMandatory
+                              ? 'Debe marcar las verificaciones obligatorias del checklist para enviar a firma OTP'
+                              : 'Enviar a Firma Digital con Validación OTP'
+                          }
                         >
-                          {registrando ? (
+                          {solicitandoOtp || registrando ? (
                             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                           ) : (
-                            <CheckCircle2 className="w-4 h-4" />
+                            <FileSignature className="w-4 h-4" />
                           )}
-                          Registrar Verificación
+                          {solicitandoOtp
+                            ? 'Solicitando OTP...'
+                            : registrando
+                            ? 'Firmando y Verificando...'
+                            : 'Enviar a Firma OTP'}
                         </button>
 
                         {registroExitoso && (
                           <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
                             <CheckCircle2 className="w-3.5 h-3.5" />
-                            Verificación registrada
+                            Verificación firmada y enviada a Control de Viáticos
                           </span>
                         )}
                         {registroError && (
@@ -1456,6 +1613,38 @@ export default function VerificacionSIIFModal({
     documentos={documentosVisor}
     onCerrar={cerrarDocumentoVisor}
   />
+
+  {/* ==================== Modal Institucional de Firma Digital con Validación OTP ==================== */}
+  {modalFirmaOtpAbierta && solicitud && (
+    <FirmaDigitalViaticosModal
+      isOpen={modalFirmaOtpAbierta}
+      solicitudId={solicitud.id}
+      consecutivo={solicitud.consecutivoUnico || (solicitud as any).codigoSolicitud || (solicitud as any).codigo || '023'}
+      comisionadoNombre={nombreCompleto || 'Comisionado'}
+      destino={`${solicitud.destinoCiudad || ''}${solicitud.destinoDepartamento ? ` (${solicitud.destinoDepartamento})` : ''}`.trim()}
+      fechas={
+        solicitud.fechaInicio && solicitud.fechaFin
+          ? `${fmtFecha(solicitud.fechaInicio)} al ${fmtFecha(solicitud.fechaFin)}`
+          : ''
+      }
+      firmanteNombre={nombreUsuarioActual}
+      firmanteCargo={cargoUsuarioActual}
+      etapaLabel="Verificación de Analista — 1er Nivel (Auditoría SIIF)"
+      correoDestino={otpData?.emailEnviadoA}
+      devCode={otpData?.devCode}
+      onVerifyCodigo={async (codigoOtp: string) => {
+        await viaticosService.verificarOtpFirma(solicitud.id, {
+          verificationId: otpData?.verificationId || '',
+          code: codigoOtp,
+          otp: codigoOtp,
+          tipoFirma: 'ANALISTA',
+          consume: false,
+        });
+      }}
+      onFirmaCompleta={handleFirmaDigitalCompleta}
+      onCancelar={() => setModalFirmaOtpAbierta(false)}
+    />
+  )}
 </>
   );
 }
