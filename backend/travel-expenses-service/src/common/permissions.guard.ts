@@ -70,6 +70,8 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:sign_approval',
     'travel_expenses:read_approvals',
     'travel_expenses:read_requests',
+    'travel_expenses:read_reintegros',
+    'travel_expenses:register_reintegro',
   ],
   ROL_ANALISTA: [
     'travel_expenses:read_assigned',
@@ -81,6 +83,8 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:sign_approval',
     'travel_expenses:read_approvals',
     'travel_expenses:read_requests',
+    'travel_expenses:read_reintegros',
+    'travel_expenses:register_reintegro',
   ],
   ANALISTA_VIATICOS: [
     'travel_expenses:read_assigned',
@@ -92,6 +96,8 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:sign_approval',
     'travel_expenses:read_approvals',
     'travel_expenses:read_requests',
+    'travel_expenses:read_reintegros',
+    'travel_expenses:register_reintegro',
   ],
   SECRETARIO: [
     'travel_expenses:read_inbox',
@@ -133,6 +139,8 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_sst_logs',
     'travel_expenses:resend_sst_notification',
     'travel_expenses:read_inbox',
+    'travel_expenses:read_reintegros',
+    'travel_expenses:register_reintegro',
   ],
   ROL_TESORERIA: [
     'travel_expenses:read_payments',
@@ -142,6 +150,8 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_sst_logs',
     'travel_expenses:resend_sst_notification',
     'travel_expenses:read_inbox',
+    'travel_expenses:read_reintegros',
+    'travel_expenses:register_reintegro',
   ],
   GRUPO_TESORERIA: [
     'travel_expenses:read_payments',
@@ -151,6 +161,8 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_sst_logs',
     'travel_expenses:resend_sst_notification',
     'travel_expenses:read_inbox',
+    'travel_expenses:read_reintegros',
+    'travel_expenses:register_reintegro',
   ],
   SST: [
     'travel_expenses:read_sst_requests',

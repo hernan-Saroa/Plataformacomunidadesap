@@ -48,6 +48,7 @@ import AutorizacionInbox from './AutorizacionInbox';
 import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
 import CancelarComisionModal from './CancelarComisionModal';
 import PresupuestoInbox from './PresupuestoInbox';
+import ReintegrosInbox from './ReintegrosInbox';
 import ProcesarPagoModal from './ProcesarPagoModal';
 import ModalFirmasAprobacion from './ModalFirmasAprobacion';
 import BandejaFirmasAprobacion from './BandejaFirmasAprobacion';
@@ -103,6 +104,7 @@ type Seccion =
   | 'autorizaciones-direccion'
   | 'presupuesto'
   | 'tesoreria'
+  | 'reintegros'
   | 'sst'
   | 'firmas-aprobacion';
 
@@ -276,6 +278,13 @@ export default function ViaticosModulePremium() {
           label: 'Tesorería y Desembolso',
           subtitle: 'Aprobación de pagos y órdenes SIIF (Etapa 8)',
           icon: <BadgeDollarSign className="w-5 h-5" />,
+          color: '#059669',
+        },
+        {
+          id: 'reintegros',
+          label: 'Reintegros',
+          subtitle: 'Comisiones no realizadas o por menos días (Etapa 8)',
+          icon: <RotateCcw className="w-5 h-5" />,
           color: '#059669',
         },
         {
@@ -717,6 +726,10 @@ export default function ViaticosModulePremium() {
     authService.isTesoreria() ||
     authService.hasPermission('travel_expenses:read_payments') ||
     authService.hasPermission('travel_expenses:process_payment');
+  const puedeVerReintegros =
+    esSuperAdmin ||
+    authService.hasPermission('travel_expenses:read_reintegros') ||
+    authService.hasPermission('travel_expenses:register_reintegro');
   const puedeVerSst =
     !tieneContextoAuth ||
     esSuperAdmin ||
@@ -757,6 +770,7 @@ export default function ViaticosModulePremium() {
         if (item.id === 'autorizaciones-direccion') return puedeVerAutorizacionesDireccion;
         if (item.id === 'presupuesto') return puedeVerPresupuesto;
         if (item.id === 'tesoreria') return puedeVerTesoreria;
+        if (item.id === 'reintegros') return puedeVerReintegros;
         if (item.id === 'sst') return puedeVerSst;
         if (item.id === 'configuracion') return puedeVerConfiguracion;
         return true;
@@ -1703,6 +1717,11 @@ export default function ViaticosModulePremium() {
                {/* ── BANDEJA DE PRESUPUESTO Y RP SIIF (ETAPA 7) ── */}
                {seccion === 'presupuesto' && puedeVerPresupuesto && (
                  <PresupuestoInbox />
+               )}
+
+               {/* ── REINTEGROS DE COMISIONES (ETAPA 8) ── */}
+               {seccion === 'reintegros' && puedeVerReintegros && (
+                 <ReintegrosInbox />
                )}
 
              {/* ── CONFIGURACIÓN ── */}
