@@ -8,7 +8,6 @@ import { BandejaCdpController, CdpController } from '../modules/cdp/cdp.controll
 import { ComiteContratacionController } from '../modules/comite-contratacion/comite-contratacion.controller';
 import { DocumentosActividadController } from '../modules/documentos-actividad/documentos-actividad.controller';
 import { EstudioPrevioController } from '../modules/estudio-previo/estudio-previo.controller';
-import { ModalidadProcesoController } from '../modules/modalidad-proceso/modalidad-proceso.controller';
 import {
   CandidatosController,
   ParticipacionController,
@@ -48,8 +47,6 @@ const ESPERADO: [string, any, string, string, unknown][] = [
   ['candidatos', CandidatosController, 'abogados', 'ver', '3.4'],
   ['candidatos', CandidatosController, 'financieros', 'ver', '4.1'],
 
-  ['modalidad', ModalidadProcesoController, 'estado', 'ver', '3.5'],
-  ['modalidad', ModalidadProcesoController, 'proponer', 'editar', '3.5'],
   ['causal', CausalContratacionController, 'estado', 'ver', '3.6'],
   ['comité de contratación', ComiteContratacionController, 'estado', 'ver', '3.7'],
 

@@ -36,8 +36,6 @@ export const RESPONDE_EL_ASIGNADO: Readonly<Record<string, RespondeElAsignado>> 
   // La revisión del estudio previo, la causal y el comité son del abogado de
   // principio a fin.
   '3.4': { ...DEL_ABOGADO, soloEnRevision: false },
-  // La modalidad la diligencia contratación y la decide el abogado.
-  '3.5': { ...DEL_ABOGADO, soloEnRevision: true },
   '3.6': { ...DEL_ABOGADO, soloEnRevision: false },
   '3.7': { ...DEL_ABOGADO, soloEnRevision: false },
   // El CDP lo atiende la Financiera que tomó la solicitud.

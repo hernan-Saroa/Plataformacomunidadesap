@@ -28,12 +28,12 @@ export const DECISIONES_COMITE: DecisionComite[] = [
  *
  * Solo las que guardan su propia fila en `proceso_actividades` con contenido
  * sustantivo: el estudio previo (3.1), que desde la 090 trae también el
- * análisis del sector, la modalidad (3.5) y la causal (3.6). La 3.3 y la 3.4 quedan fuera porque no
+ * análisis del sector y desde la 094 la modalidad, y la causal (3.6). La 3.3 y la 3.4 quedan fuera porque no
  * tienen fila propia —la 3.3 es recibir el proceso en la Dirección y la 3.4 es
  * la decisión del abogado sobre el estudio previo, y las dos viven dentro del
  * ciclo de revisión de la 3.1—: devolver a la 3.1 ya las vuelve a abrir.
  */
-export const NUMERALES_REABRIBLES_POR_COMITE = ['3.1', '3.5', '3.6'] as const;
+export const NUMERALES_REABRIBLES_POR_COMITE = ['3.1', '3.6'] as const;
 
 /**
  * Lo que el comite decidio en una sesion — actividad 3.7 (RF-DOC-05).
@@ -109,7 +109,7 @@ export class RegistrarSesionComiteDto {
   @ArrayUnique({ message: 'No repitas el mismo numeral' })
   @IsIn(NUMERALES_REABRIBLES_POR_COMITE, {
     each: true,
-    message: 'El comité solo puede reabrir la 3.1, la 3.2, la 3.5 o la 3.6',
+    message: 'El comité solo puede reabrir la 3.1 o la 3.6',
   })
   numeralesReabrir?: string[];
 

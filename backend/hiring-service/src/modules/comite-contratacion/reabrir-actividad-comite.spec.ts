@@ -89,7 +89,7 @@ describe('ComiteContratacionService · reabrirActividad', () => {
     const { instancia, em } = servicio({ actividad: null });
 
     await expect(
-      (instancia as any).reabrirActividad(em, 'p-1', '3.5', 'Corregir la modalidad', acceso),
+      (instancia as any).reabrirActividad(em, 'p-1', '3.6', 'Corregir la causal', acceso),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
