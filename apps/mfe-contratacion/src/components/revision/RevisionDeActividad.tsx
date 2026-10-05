@@ -12,6 +12,7 @@ import { NUMERALES_CON_DECISION_EN_EL_PANEL } from '../proceso/actividadesConPan
 import { DecisionEstudioPrevio } from '../estudio-previo/DecisionEstudioPrevio';
 import { destinoDeLaSituacion } from '../proceso/situacionDelProceso';
 import { LecturaEstudioPrevio } from './LecturaEstudioPrevio';
+import { VerEstudioPrevio } from './VerEstudioPrevio';
 
 interface Props {
   procesoId: string;
@@ -114,6 +115,12 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
               {estudio.proceso.expediente ? ` · Expediente ${estudio.proceso.expediente}` : ''}
             </p>
           </div>
+          {/* Revisando la 3.1 ya se está leyendo: el botón sería un eco. */}
+          {!esEstudio && (
+            <span className="self-center">
+              <VerEstudioPrevio estudio={estudio} procesoId={procesoId} />
+            </span>
+          )}
           <button
             type="button"
             onClick={() => onVerProceso(numeral)}

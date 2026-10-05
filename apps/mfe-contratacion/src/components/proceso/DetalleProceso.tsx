@@ -48,6 +48,7 @@ import { useResponsables } from '../../auth/responsables';
 import { EntradaSituacion, situacionDelProceso } from './situacionDelProceso';
 import { FranjaSituacion } from './FranjaSituacion';
 import { FichaDelProceso } from './FichaDelProceso';
+import { VerEstudioPrevio } from '../revision/VerEstudioPrevio';
 import { usePlazos } from '../../hooks/usePlazos';
 
 /**
@@ -822,6 +823,9 @@ export function DetalleProceso({
                 <p className="text-[11px] text-gray-400 m-0 mt-1 tabular-nums">{ficha}</p>
               )}
             </div>
+            {/* En la cabecera y no en la 3.1: se consulta desde cualquier
+                actividad sin perder el sitio. */}
+            <VerEstudioPrevio estudio={datos} procesoId={procesoId} />
           </div>
 
           <FranjaSituacion
