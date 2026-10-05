@@ -100,6 +100,16 @@ declare module 'pta/Portal' {
   export default Module;
 }
 
+declare module 'programacion_academica/Module' {
+  const Module: React.ComponentType<any>;
+  export default Module;
+}
+
+declare module 'programacion_academica/Portal' {
+  const Module: React.ComponentType<any>;
+  export default Module;
+}
+
 declare module 'contratacion/Module' {
   const Module: React.ComponentType;
   export { Module as ContratacionModulePremium };

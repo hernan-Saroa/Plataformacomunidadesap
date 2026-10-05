@@ -15,8 +15,8 @@ export class GruposController {
 
   /** GET /grupos?asignatura=<id> — grupos de la asignatura, por numeración. */
   @Get()
-  async listar(@Query('asignatura') idAsignatura: string) {
-    const data = await this.gruposService.listarPorAsignatura(idAsignatura);
+  async listar(@Query('asignatura') idAsignatura: string, @Query('periodo') idPeriodo?: string) {
+    const data = await this.gruposService.listarPorAsignatura(idAsignatura, idPeriodo);
     return { success: true, data };
   }
 

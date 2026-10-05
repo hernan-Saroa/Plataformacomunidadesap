@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Calendar,
   Clock,
@@ -20,16 +20,32 @@ import {
   FileCheck,
   ShieldCheck,
   Award,
-  Layers3
+  Layers3,
+  ClipboardCheck,
+  X
 } from 'lucide-react';
+
+import {
+  getTodasLasSesiones, getAulas, getCrucesHistoricos, getPendientesJefatura, getOfertas,
+  getEstadoPublicacion, publicarProgramacion, retirarProgramacion,
+  type FranjaConContexto, type ValidacionHistorico, type Oferta, type EstadoPublicacion,
+} from '../services/api/catalogoApi';
+import { CalendarioHorario } from './CalendarioHorario';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { SelectorCatalogo } from './SelectorCatalogo';
 import { AsignacionDocente } from './AsignacionDocente';
 import { DisponibilidadAulas } from './DisponibilidadAulas';
 import { GestionOfertas } from './GestionOfertas';
+import { AprobacionJefatura } from './AprobacionJefatura';
 
 interface FranjaHoraria {
   id: string;
+  /** Id del grupo: lo necesita la flecha de Acción para abrir su detalle. */
+  idGrupo: string | null;
+  /** Ciclo del grupo. Sin esto el detalle abriría con las fechas vacías
+   *  aunque estén guardadas: el mismo defecto que se corrigió en 3.2. */
+  fechaInicioGrupo: string | null;
+  fechaFinGrupo: string | null;
   codigo: string;
   programa: string;
   asignatura: string;
@@ -40,101 +56,150 @@ interface FranjaHoraria {
   dia: string;
   horaInicio: string;
   horaFin: string;
-  jornada: 'Diurna' | 'Nocturna' | 'Fin de Semana';
+  jornada: string;
   cupos: number;
-  estado: 'PROGRAMADO' | 'CONFIRMADO' | 'CONFLICTO';
+  /** Los cinco estados reales del ciclo de la franja (migraciones 029-032). */
+  estado: string;
+  /** Código del periodo al que pertenece la franja. */
+  periodoCodigo: string | null;
 }
 
-type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas';
+type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas' | 'aprobacion';
 
-const INITIAL_SCHEDULE: FranjaHoraria[] = [
-  {
-    id: '1',
-    codigo: 'PA-2026-001',
-    programa: 'Administración Pública Territorial (APT)',
-    asignatura: 'Derecho Constitucional I',
-    grupo: 'G01',
-    docente: 'Dr. Roberto Mendoza',
-    sede: 'Sede Central - Bogotá',
-    aula: 'Aula 204 (Bloque B)',
-    dia: 'Lunes',
-    horaInicio: '08:00',
-    horaFin: '11:00',
-    jornada: 'Diurna',
-    cupos: 35,
-    estado: 'CONFIRMADO'
-  },
-  {
-    id: '2',
-    codigo: 'PA-2026-002',
-    programa: 'Maestría en Administración Pública',
-    asignatura: 'Políticas Públicas y Gestión Estatal',
-    grupo: 'G02',
-    docente: 'Dra. María Fernanda Silva',
-    sede: 'Territorial Cundinamarca - Cetap Soacha',
-    aula: 'Auditorio Principal',
-    dia: 'Martes',
-    horaInicio: '18:00',
-    horaFin: '21:00',
-    jornada: 'Nocturna',
-    cupos: 25,
-    estado: 'CONFIRMADO'
-  },
-  {
-    id: '3',
-    codigo: 'PA-2026-003',
-    programa: 'Especialización en Gestión Pública',
-    asignatura: 'Finanzas Públicas y Presupuesto',
-    grupo: 'G01',
-    docente: 'Mg. Carlos Eduardo Gómez',
-    sede: 'Sede Central - Bogotá',
-    aula: 'Laboratorio de Cómputo 1',
-    dia: 'Miércoles',
-    horaInicio: '07:00',
-    horaFin: '10:00',
-    jornada: 'Diurna',
-    cupos: 30,
-    estado: 'CONFLICTO'
-  },
-  {
-    id: '4',
-    codigo: 'PA-2026-004',
-    programa: 'Administración Pública Territorial (APT)',
-    asignatura: 'Economía de lo Público',
-    grupo: 'G03',
-    docente: 'Dra. Ana Lucía Ramírez',
-    sede: 'Territorial Meta - Villavicencio',
-    aula: 'Aula 102',
-    dia: 'Sábado',
-    horaInicio: '08:00',
-    horaFin: '14:00',
-    jornada: 'Fin de Semana',
-    cupos: 40,
-    estado: 'PROGRAMADO'
-  }
-];
+/** Los cinco estados del ciclo de la franja, con su etiqueta y color (§1.2). */
+const BADGE_ESTADO: Record<string, { etiqueta: string; clase: string }> = {
+  PROGRAMADO: { etiqueta: 'Programado', clase: 'bg-blue-50 text-blue-700 border-blue-200' },
+  PUBLICADA:  { etiqueta: 'Publicada',  clase: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  TOMADA:     { etiqueta: 'Tomada',     clase: 'bg-violet-50 text-violet-700 border-violet-200' },
+  APROBADA:   { etiqueta: 'Aprobada',   clase: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  DEVUELTA:   { etiqueta: 'Devuelta',   clase: 'bg-amber-50 text-amber-700 border-amber-200' },
+};
+
+
+/**
+ * El endpoint ya devuelve programa, asignatura y docente resueltos por JOIN
+ * (2.3). Lo que no exista en la base viene en null y se muestra vacío: sigue
+ * sin inventarse nada, que era el vicio de la constante retirada en 2.1.
+ */
+function sesionAFranja(s: FranjaConContexto): FranjaHoraria {
+  return {
+    id: s.idFranja,
+    idGrupo: s.idGrupo,
+    fechaInicioGrupo: s.fechaInicioGrupo,
+    fechaFinGrupo: s.fechaFinGrupo,
+    codigo: s.idFranja.slice(0, 8),
+    programa: s.programa ?? '',
+    asignatura: s.asignatura ?? '',
+    grupo: s.numeroGrupo != null ? String(s.numeroGrupo) : '',
+    docente: s.docente ?? '',
+    sede: '',
+    aula: s.aulaCodigo ?? '',
+    dia: s.diaSemana,
+    horaInicio: s.horaInicio,
+    horaFin: s.horaFin,
+    jornada: s.jornada ?? '',
+    cupos: 0,
+    estado: s.estado ?? 'PROGRAMADO',
+    periodoCodigo: s.periodoCodigo ?? null,
+  };
+}
 
 export function ProgramacionAcademicaModule() {
   const [seccion, setSeccion] = useState<Seccion>('horarios');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedJornada, setSelectedJornada] = useState<string>('TODAS');
-  const [showNewModal, setShowNewModal] = useState(false);
-  const [scheduleList, setScheduleList] = useState<FranjaHoraria[]>(INITIAL_SCHEDULE);
+  // Arranca VACÍO y se llena desde la base. Antes salía de una constante del
+  // front, así que el panel decía "4 franjas activas" con la base en 0.
+  const [scheduleList, setScheduleList] = useState<FranjaHoraria[]>([]);
+  const [totalAulas, setTotalAulas] = useState<number | null>(null);
+  const [cargando, setCargando] = useState(true);
+  // 3.6 — Detalle del grupo que abre la flecha de Acción.
+  const [detalle, setDetalle] = useState<FranjaHoraria | null>(null);
+  // 3.9 — Cruces del histórico. Se cargan aparte del panel: son otra fuente.
+  const [historico, setHistorico] = useState<ValidacionHistorico | null>(null);
+  // EFDS-1939 — el item de aprobación solo aparece si el usuario ES jefatura. Se
+  // prueba pidiendo sus pendientes: 200 (aunque vacío) ⇒ jefatura; 403 ⇒ no.
+  const [esJefatura, setEsJefatura] = useState(false);
+  useEffect(() => { getPendientesJefatura().then(() => setEsJefatura(true)).catch(() => {}); }, []);
+
+  // §1.0 — El periodo como CONTEXTO. Todo lo que se ve debajo pertenece al
+  // periodo seleccionado en la cabecera; se persiste entre recargas.
+  const [periodos, setPeriodos] = useState<Oferta[]>([]);
+  const [periodoSel, setPeriodoSel] = useState<string>(() => {
+    try { return localStorage.getItem('prog-periodo-sel') || ''; } catch { return ''; }
+  });
+  const periodoActual = periodos.find((p) => p.idPeriodo === periodoSel) || null;
+
+  useEffect(() => {
+    getOfertas().then((lista) => {
+      setPeriodos(lista);
+      setPeriodoSel((actual) => {
+        if (actual && lista.some((p) => p.idPeriodo === actual)) return actual;
+        // Por defecto, el primer periodo activo; si no hay, el primero.
+        const def = lista.find((p) => p.estado === 'activo') || lista[0];
+        return def ? def.idPeriodo : '';
+      });
+    }).catch(() => {});
+  }, []);
+
+  const elegirPeriodo = (id: string) => {
+    setPeriodoSel(id);
+    try { localStorage.setItem('prog-periodo-sel', id); } catch { /* storage no disponible */ }
+  };
+
+  // §1.2 — Publicar/retirar el periodo activo DESDE la vista de programación, sin
+  // ir a buscarlo a otra sección. El backend valida sin cruces al publicar y
+  // rechaza retirar si alguien tomó franjas; el mensaje se muestra tal cual.
+  const [estadoPub, setEstadoPub] = useState<EstadoPublicacion | null>(null);
+  const [avisoPub, setAvisoPub] = useState('');
+  const [pubOcupado, setPubOcupado] = useState(false);
+  const cargarEstadoPub = (id: string) => getEstadoPublicacion(id).then(setEstadoPub).catch(() => setEstadoPub(null));
+  useEffect(() => { if (periodoSel) cargarEstadoPub(periodoSel); }, [periodoSel]);
+
+  const publicar = async () => {
+    setAvisoPub(''); setPubOcupado(true);
+    try {
+      const e = await publicarProgramacion(periodoSel);
+      setEstadoPub(e);
+      const s = await getTodasLasSesiones(periodoSel); setScheduleList(s.map(sesionAFranja));
+    } catch (err: any) { setAvisoPub(err?.message || 'No se pudo publicar.'); }
+    finally { setPubOcupado(false); }
+  };
+  const retirarPub = async () => {
+    setAvisoPub(''); setPubOcupado(true);
+    try {
+      const e = await retirarProgramacion(periodoSel);
+      setEstadoPub(e);
+      const s = await getTodasLasSesiones(periodoSel); setScheduleList(s.map(sesionAFranja));
+    } catch (err: any) { setAvisoPub(err?.message || 'No se pudo retirar.'); }
+    finally { setPubOcupado(false); }
+  };
+
+  // Franjas y validación se recargan cada vez que cambia el periodo seleccionado.
+  useEffect(() => {
+    if (!periodoSel) return;
+    let vivo = true;
+    setCargando(true);
+    const codigo = periodos.find((p) => p.idPeriodo === periodoSel)?.codigo;
+    Promise.all([getTodasLasSesiones(periodoSel), getAulas(), getCrucesHistoricos(codigo)])
+      .then(([sesiones, aulas, cruces]) => {
+        if (!vivo) return;
+        setScheduleList(sesiones.map(sesionAFranja));
+        setTotalAulas(aulas.length);
+        setHistorico(cruces);
+      })
+      .catch(() => { if (vivo) setTotalAulas(null); })
+      .finally(() => { if (vivo) setCargando(false); });
+    return () => { vivo = false; };
+  }, [periodoSel, periodos]);
 
   // Form state
-  const [newPrograma, setNewPrograma] = useState('');
-  const [newAsignatura, setNewAsignatura] = useState('');
-  const [newDocente, setNewDocente] = useState('');
-  const [newSede, setNewSede] = useState('Sede Central - Bogotá');
-  const [newAula, setNewAula] = useState('');
-  const [newDia, setNewDia] = useState('Lunes');
-  const [newHoraInicio, setNewHoraInicio] = useState('08:00');
-  const [newHoraFin, setNewHoraFin] = useState('10:00');
-  const [newJornada, setNewJornada] = useState<'Diurna' | 'Nocturna' | 'Fin de Semana'>('Diurna');
 
   const totalFranjas = scheduleList.length;
-  const totalConfirmados = scheduleList.filter(s => s.estado === 'CONFIRMADO').length;
-  const totalConflictos = scheduleList.filter(s => s.estado === 'CONFLICTO').length;
+  // Confirmadas = aprobadas por la jefatura (estado real, no el inventado 'CONFIRMADO').
+  const totalConfirmados = scheduleList.filter(s => s.estado === 'APROBADA').length;
+  // Alertas de cruce = las de validación del periodo (0 en un periodo nuevo).
+  const totalConflictos = historico?.resumen?.total ?? 0;
 
   const gruposNav: MenuGroup[] = [
     {
@@ -171,10 +236,10 @@ export function ProgramacionAcademicaModule() {
           color: '#7C3AED',
         },
         {
-          // EFDS-1375: las cinco ofertas academicas y el consumo entre ellas.
+          // EFDS-1375/1941: aquí se crean, activan, publican y cierran los periodos.
           id: 'ofertas',
-          label: 'Ofertas Académicas',
-          subtitle: 'Periodos, virtual e interperiodo',
+          label: 'Periodos',
+          subtitle: 'Crear, activar, publicar y cerrar',
           icon: <Layers3 className="w-5 h-5" />,
           color: '#003DA5',
         },
@@ -186,6 +251,14 @@ export function ProgramacionAcademicaModule() {
           color: '#D97706',
           badge: totalConflictos > 0 ? totalConflictos : undefined,
         },
+        // EFDS-1939 — solo para jefaturas territoriales.
+        ...(esJefatura ? [{
+          id: 'aprobacion',
+          label: 'Aprobación territorial',
+          subtitle: 'Aprobar o devolver franjas de tus docentes',
+          icon: <ClipboardCheck className="w-5 h-5" />,
+          color: '#059669',
+        }] : []),
       ],
     },
   ];
@@ -201,35 +274,6 @@ export function ProgramacionAcademicaModule() {
     return matchesSearch && matchesJornada;
   });
 
-  const handleCreateFranja = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPrograma || !newAsignatura || !newDocente || !newAula) return;
-
-    const newItem: FranjaHoraria = {
-      id: String(Date.now()),
-      codigo: `PA-2026-0${scheduleList.length + 1}`,
-      programa: newPrograma,
-      asignatura: newAsignatura,
-      grupo: 'G01',
-      docente: newDocente,
-      sede: newSede,
-      aula: newAula,
-      dia: newDia,
-      horaInicio: newHoraInicio,
-      horaFin: newHoraFin,
-      jornada: newJornada,
-      cupos: 30,
-      estado: 'PROGRAMADO'
-    };
-
-    setScheduleList([newItem, ...scheduleList]);
-    setShowNewModal(false);
-    setNewPrograma('');
-    setNewAsignatura('');
-    setNewDocente('');
-    setNewAula('');
-  };
-
   return (
     <ModuleLayout
       moduleName="PROGRAMACIÓN ACADÉMICA"
@@ -240,13 +284,38 @@ export function ProgramacionAcademicaModule() {
       activeSection={seccion}
       onSectionChange={(s) => setSeccion(s as Seccion)}
     >
+      {/* ── PERIODO ACTIVO (§1.0) — contexto de todo lo de abajo ── */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Periodo</span>
+          <select
+            value={periodoSel}
+            onChange={(e) => elegirPeriodo(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-[#003DA5] focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20"
+          >
+            {periodos.length === 0 && <option value="">Cargando…</option>}
+            {periodos.map((p) => (
+              <option key={p.idPeriodo} value={p.idPeriodo}>
+                {p.codigo} — {p.estado === 'activo' ? 'Activo' : p.estado === 'cerrado' ? 'Cerrado' : 'En planeación'}
+              </option>
+            ))}
+          </select>
+          {periodoActual && (
+            <span className="text-xs text-slate-500 hidden sm:inline">{periodoActual.nombre}</span>
+          )}
+        </div>
+        <p className="text-[11px] text-slate-400">
+          Todo lo que ves —franjas, validación, disponibilidad— pertenece a este periodo.
+        </p>
+      </div>
+
       {/* ── KPI HEADER ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Franjas Activas</p>
             <h3 className="text-2xl font-black text-slate-800 mt-1">{totalFranjas}</h3>
-            <p className="text-xs text-blue-600 font-medium mt-1">Periodo 2026-1</p>
+            <p className="text-xs text-blue-600 font-medium mt-1">Periodo {periodoActual?.codigo || '—'}</p>
           </div>
           <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#003DA5] flex items-center justify-center font-bold">
             <Calendar className="w-6 h-6" />
@@ -278,7 +347,7 @@ export function ProgramacionAcademicaModule() {
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Aulas Asignadas</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1">18</h3>
+            <h3 className="text-2xl font-black text-slate-800 mt-1">{totalAulas ?? '—'}</h3>
             <p className="text-xs text-purple-600 font-medium mt-1">Sedes y Territoriales</p>
           </div>
           <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
@@ -287,7 +356,45 @@ export function ProgramacionAcademicaModule() {
         </div>
       </div>
 
-      {/* ── ACCIONES Y BÚSQUEDA ── */}
+      {/* ── PUBLICAR EL PERIODO (§1.2) — desde la vista de programación ── */}
+      {seccion === 'horarios' && estadoPub && periodoActual && periodoActual.estado !== 'cerrado' && (
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="font-bold text-slate-700">Programación de {periodoActual.codigo}:</span>
+              <span>{estadoPub.programado} programadas</span>
+              <span className="text-indigo-600">{estadoPub.publicada} publicadas</span>
+              <span className="text-violet-600">{estadoPub.tomada} tomadas</span>
+              <span className="text-emerald-700">{estadoPub.aprobada} aprobadas</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {estadoPub.publicada === 0 && estadoPub.tomada === 0 && estadoPub.aprobada === 0 ? (
+                <button type="button" disabled={pubOcupado || estadoPub.total === 0} onClick={publicar}
+                  className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 disabled:opacity-40 active:scale-95 transition-all">
+                  {pubOcupado ? 'Publicando…' : 'Publicar programación'}
+                </button>
+              ) : (
+                <>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold">Publicada</span>
+                  <button type="button" disabled={pubOcupado} onClick={retirarPub}
+                    className="px-3 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 disabled:opacity-40 active:scale-95 transition-all">
+                    {pubOcupado ? 'Retirando…' : 'Retirar publicación'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          {avisoPub && (
+            <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">{avisoPub}</div>
+          )}
+        </div>
+      )}
+
+      {/* ── ACCIONES Y BÚSQUEDA ──
+          Solo en Programación General: el buscador, el filtro de jornada y el
+          botón de nueva franja no aplican al catálogo, a las aulas ni a las
+          ofertas. Antes se repetía en todas las secciones. */}
+      {seccion === 'horarios' && (
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="relative w-full md:w-96">
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -309,32 +416,38 @@ export function ProgramacionAcademicaModule() {
               onChange={(e) => setSelectedJornada(e.target.value)}
               className="bg-transparent font-semibold text-slate-800 focus:outline-none"
             >
+              {/* §2.1 — Los valores deben ser los del dato del backend
+                  (DIURNA/NOCTURNA/FIN_DE_SEMANA), no 'Diurna': la comparacion es
+                  exacta y con la etiqueta bonita nunca casaba. */}
               <option value="TODAS">Todas las jornadas</option>
-              <option value="Diurna">Diurna</option>
-              <option value="Nocturna">Nocturna</option>
-              <option value="Fin de Semana">Fin de Semana</option>
+              <option value="DIURNA">Diurna</option>
+              <option value="NOCTURNA">Nocturna</option>
+              <option value="FIN_DE_SEMANA">Fin de semana</option>
             </select>
           </div>
 
+          {/* §2.2 — Una franja se crea siempre desde un grupo (asignatura →
+              grupo → calendario). No hay atajo directo, así que el botón lleva al
+              inicio real de ese flujo, el catálogo, y el texto lo dice sin
+              prometer una creación que no puede cumplir aquí. */}
           <button
-            onClick={() => setShowNewModal(true)}
+            onClick={() => setSeccion('catalogo')}
             className="flex items-center gap-2 px-4 py-2 bg-[#003DA5] text-white hover:bg-blue-800 font-semibold text-xs rounded-xl shadow-md transition-all"
           >
             <Plus className="w-4 h-4" />
-            <span>Nueva Franja Lectiva</span>
+            <span>Programar franja (elegir asignatura)</span>
           </button>
 
-          <button className="flex items-center gap-2 px-3 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium text-xs rounded-xl transition-all">
-            <Download className="w-4 h-4" />
-            <span>Exportar</span>
-          </button>
         </div>
       </div>
+      )}
 
       {/* ── VISTAS POR SECCIÓN ── */}
-      {/* Catálogo: única sección conectada al backend real. Las demás siguen
-          sobre INITIAL_SCHEDULE hasta que se implementen sus HUs. */}
-      {seccion === 'catalogo' && <SelectorCatalogo />}
+
+      {/* Las franjas y el conteo de aulas ya salen de la base. Lo que falta es
+          que el endpoint de horarios devuelva programa, asignatura y docente:
+          hoy solo trae la sesión, así que esas columnas van vacías. */}
+      {seccion === 'catalogo' && <SelectorCatalogo idPeriodo={periodoSel} />}
 
       {seccion === 'horarios' && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
@@ -370,8 +483,8 @@ export function ProgramacionAcademicaModule() {
                       <td className="px-6 py-4">
                         <div className="font-semibold text-slate-800">{item.programa}</div>
                         <div className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                          <MapPin className="w-3 h-3 text-slate-400" />
-                          <span>{item.sede}</span>
+                          <Calendar className="w-3 h-3 text-slate-400" />
+                          <span>Periodo {item.periodoCodigo || '—'}</span>
                         </div>
                       </td>
                       <td className="px-6 py-4">
@@ -391,27 +504,23 @@ export function ProgramacionAcademicaModule() {
                         <div className="text-xs text-slate-500 mt-0.5">{item.aula}</div>
                       </td>
                       <td className="px-6 py-4">
-                        {item.estado === 'CONFIRMADO' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Confirmado</span>
-                          </span>
-                        )}
-                        {item.estado === 'PROGRAMADO' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                            <Clock className="w-3.5 h-3.5" />
-                            <span>Programado</span>
-                          </span>
-                        )}
-                        {item.estado === 'CONFLICTO' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-                            <AlertTriangle className="w-3.5 h-3.5" />
-                            <span>Cruce Detectado</span>
-                          </span>
-                        )}
+                        {(() => {
+                          const b = BADGE_ESTADO[item.estado] || BADGE_ESTADO.PROGRAMADO;
+                          return (
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ${b.clase}`}>
+                              {b.etiqueta}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button className="text-slate-400 hover:text-[#003DA5] font-medium text-xs p-1.5 rounded-lg hover:bg-blue-50 transition-colors">
+                        <button
+                          type="button"
+                          onClick={() => item.idGrupo && setDetalle(item)}
+                          disabled={!item.idGrupo}
+                          title={item.idGrupo ? 'Ver detalle del grupo' : 'La franja no tiene grupo asociado'}
+                          aria-label="Ver detalle del grupo"
+                          className="text-slate-400 hover:text-[#003DA5] font-medium text-xs p-1.5 rounded-lg hover:bg-blue-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                           <ChevronRight className="w-4 h-4" />
                         </button>
                       </td>
@@ -433,154 +542,117 @@ export function ProgramacionAcademicaModule() {
       {/* EFDS-1375: gestión de las cinco ofertas académicas. */}
       {seccion === 'ofertas' && <GestionOfertas />}
 
+      {seccion === 'aprobacion' && <AprobacionJefatura />}
+
+      {/* 3.9 — VALIDACIÓN: cruces del HISTÓRICO, no del sistema.
+          Antes esta sección mostraba alertas inventadas en el propio front.
+          Ahora sale de programacion_historica y va ETIQUETADA: son hallazgos
+          del Excel de 2026-1 que hoy se revisan a mano, no fallas del módulo.
+          El contador "Alertas de Cruce" del panel es otro y vale 0 por diseño,
+          porque el sistema rechaza el cruce al guardar. No se mezclan. */}
       {seccion === 'alertas' && (
         <div className="space-y-4">
           <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-            <h3 className="font-bold text-slate-800 text-sm mb-1">Detección de Cruces y Traslapes</h3>
-            <p className="text-xs text-slate-500">Validación de conflictos de horario en asignaciones docentes y espacios físicos</p>
+            <h3 className="font-bold text-slate-800 text-sm mb-1">Cruces detectados en la programación histórica</h3>
+            <p className="text-xs text-slate-500">
+              Hallazgos sobre la programación cargada de {historico?.periodos?.join(' y ') || '2026-1'} —
+              hoy se revisan a mano. El sistema <strong>no permite crear</strong> estos cruces:
+              se rechazan al guardar.
+            </p>
           </div>
 
-          <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-5 space-y-3">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-              <div>
-                <h4 className="font-bold text-amber-900 text-sm">Cruce de Horario en Laboratorio 1</h4>
-                <p className="text-xs text-amber-700">
-                  El Mg. Carlos Eduardo Gómez presenta cruce de franja horaria el Miércoles entre 07:00 y 10:00 AM en Sede Central Bogotá.
-                </p>
+          {historico && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {[
+                { etiqueta: 'Total detectados', valor: historico.resumen.total, color: '#B45309' },
+                { etiqueta: 'Cruces de aula', valor: historico.resumen.aula, color: '#B45309' },
+                { etiqueta: 'Cruces de docente', valor: historico.resumen.docente, color: '#B45309' },
+              ].map((k) => (
+                <div key={k.etiqueta} className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{k.etiqueta}</p>
+                  <h3 className="text-2xl font-black mt-1" style={{ color: k.color }}>{k.valor}</h3>
+                  <p className="text-xs text-slate-500 mt-1">Origen: histórico</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!historico && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 text-center text-sm text-slate-500">
+              Cargando cruces del histórico…
+            </div>
+          )}
+
+          {historico && historico.cruces.length === 0 && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200 text-center text-sm text-slate-500">
+              No se detectaron cruces en la programación histórica cargada.
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {(historico?.cruces || []).map((c, i) => (
+              <div key={i} className="bg-amber-50/70 border border-amber-200 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="font-bold text-amber-900 text-sm">
+                        {c.tipo === 'aula' ? `Aula ${c.recurso}` : c.recurso}
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-md bg-amber-200/70 text-amber-900 text-[0.62rem] font-bold uppercase tracking-wide">
+                        Cruce de {c.tipo}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-md bg-slate-200 text-slate-700 text-[0.62rem] font-bold uppercase tracking-wide">
+                        Histórico {c.periodo}
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-800 mt-1">
+                      {c.dia} de {c.horaInicio} a {c.horaFin}
+                    </p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      {c.asignaturaA} ({c.programaA}) · {c.asignaturaB} ({c.programaB})
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2 border-t border-amber-200/60">
-              <button className="px-3 py-1.5 bg-amber-600 text-white rounded-lg font-semibold text-xs hover:bg-amber-700 transition-colors">
-                Reasignar Aula / Horario
-              </button>
-            </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 3.6 — Detalle del grupo. La flecha no hacía nada: era un botón sin
+          onClick. Abre el calendario del grupo, que es donde ya se edita el
+          horario y se retiran sesiones. */}
+      {detalle && detalle.idGrupo && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 sm:p-8"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Detalle del grupo de ${detalle.asignatura}`}
+          onClick={() => setDetalle(null)}
+        >
+          {/* §3.1 — Centrado (items-center) y con alto máximo: el contenido alto
+              del calendario hace scroll DENTRO de la tarjeta, no empuja el modal. */}
+          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setDetalle(null)}
+              aria-label="Cerrar"
+              className="absolute right-3 top-3 z-10 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <CalendarioHorario
+              idGrupo={detalle.idGrupo}
+              numeroGrupo={Number(detalle.grupo) || 1}
+              nombreAsignatura={detalle.asignatura || detalle.programa || 'Grupo'}
+              fechaInicioGrupo={detalle.fechaInicioGrupo}
+              fechaFinGrupo={detalle.fechaFinGrupo}
+            />
           </div>
         </div>
       )}
 
-      {/* Modal Nueva Franja Lectiva */}
-      {showNewModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-6 border border-slate-100">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <div>
-                <h3 className="text-lg font-bold text-slate-800">Nueva Franja Académica</h3>
-                <p className="text-xs text-slate-500">Registrar franja horaria en la oferta institucional</p>
-              </div>
-              <button
-                onClick={() => setShowNewModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-lg font-bold p-1"
-              >
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateFranja} className="space-y-4 text-sm">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Programa Académico</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej: Administración Pública Territorial"
-                  value={newPrograma}
-                  onChange={(e) => setNewPrograma(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-[#003DA5]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Asignatura</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej: Finanzas Públicas"
-                  value={newAsignatura}
-                  onChange={(e) => setNewAsignatura(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-[#003DA5]"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Docente Asignado</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Nombre del docente"
-                    value={newDocente}
-                    onChange={(e) => setNewDocente(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-[#003DA5]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Aula / Espacio</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej: Aula 201"
-                    value={newAula}
-                    onChange={(e) => setNewAula(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-[#003DA5]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Día</label>
-                  <select
-                    value={newDia}
-                    onChange={(e) => setNewDia(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-[#003DA5]"
-                  >
-                    <option value="Lunes">Lunes</option>
-                    <option value="Martes">Martes</option>
-                    <option value="Miércoles">Miércoles</option>
-                    <option value="Jueves">Jueves</option>
-                    <option value="Viernes">Viernes</option>
-                    <option value="Sábado">Sábado</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Hora Inicio</label>
-                  <input
-                    type="time"
-                    value={newHoraInicio}
-                    onChange={(e) => setNewHoraInicio(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-[#003DA5]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Hora Fin</label>
-                  <input
-                    type="time"
-                    value={newHoraFin}
-                    onChange={(e) => setNewHoraFin(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-[#003DA5]"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowNewModal(false)}
-                  className="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 font-medium text-xs"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-[#003DA5] hover:bg-blue-800 text-white rounded-xl font-semibold text-xs shadow-md"
-                >
-                  Guardar Franja
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </ModuleLayout>
   );
 }
