@@ -748,6 +748,9 @@ export class TravelExpensesController {
     'travel_expenses:read_obligations',
     'travel_expenses:read_requests',
     'travel_expenses:read_own_requests',
+    'travel_expenses:read_extemporaneous_authorizations',
+    'travel_expenses:authorize_extemporaneous',
+    'travel_expenses:reject_extemporaneous',
   )
   obtenerSolicitud(@Param('id') id: string) {
     return this.service.obtenerSolicitudCompleta(id);
@@ -886,7 +889,7 @@ export class TravelExpensesController {
     return this.service.validarCamposObligatorios(tipo, datosCampos);
   }
 
-  @Get('solicitudes/:id/exportar/pdf')
+  @Get(['solicitudes/:id/exportar/pdf', 'requests/:id/exportar/pdf'])
   @Permissions(
     'travel_expenses:create_request',
     'travel_expenses:read_inbox',
@@ -913,6 +916,12 @@ export class TravelExpensesController {
     'travel_expenses:read_obligations',
     'travel_expenses:read_requests',
     'travel_expenses:read_own_requests',
+    'travel_expenses:read_extemporaneous_authorizations',
+    'travel_expenses:authorize_extemporaneous',
+    'travel_expenses:reject_extemporaneous',
+    'travel_expenses:read_approvals',
+    'travel_expenses:sign_approval',
+    'travel_expenses:return_approval',
   )
   async exportarFormato023(
     @Param('id') id: string,
@@ -1439,6 +1448,10 @@ export class TravelExpensesController {
     'travel_expenses:authorize_expense',
     'travel_expenses:read_inbox',
     'travel_expenses:create_request',
+    'travel_expenses:read_extemporaneous_authorizations',
+    'travel_expenses:authorize_extemporaneous',
+    'travel_expenses:read_approvals',
+    'travel_expenses:sign_approval',
   )
   @ApiOperation({
     summary: 'Descargar PDF de Autorización de Gasto e Itinerario de Viaje (Etapa 6)',

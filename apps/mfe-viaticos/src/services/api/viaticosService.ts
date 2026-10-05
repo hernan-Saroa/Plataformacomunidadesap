@@ -2007,11 +2007,26 @@ export class ViaticosService {
     solicitudId: string,
     justificacion?: string,
     esDelegado?: boolean,
+    firmaDigital?: {
+      otp?: string;
+      verificationId?: string;
+      certificadoId?: string;
+      hashSha256?: string;
+      firmaImagen?: string;
+    },
   ): Promise<any> {
     try {
       return await apiClient.post(
         `/viaticos/api/v1/requests/${solicitudId}/authorize-extemporaneous`,
-        { justificacion, esDelegado },
+        {
+          justificacion,
+          esDelegado,
+          otp: firmaDigital?.otp,
+          verificationId: firmaDigital?.verificationId,
+          certificadoId: firmaDigital?.certificadoId,
+          hashSha256: firmaDigital?.hashSha256,
+          firmaImagen: firmaDigital?.firmaImagen,
+        },
       );
     } catch (error) {
       console.error('[viaticos] Error autorizando comisión extemporánea:', error);

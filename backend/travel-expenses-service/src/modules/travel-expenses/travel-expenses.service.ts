@@ -5151,8 +5151,12 @@ if (dto.costoEstimadoTiquete !== undefined) {
     const fAproboStr = fechaAprobacion ? ` · Fecha: ${formatFechaHoraSegura(fechaAprobacion)}` : '';
     const docAproboStr = autorizadorDoc ? ` · C.C. ${autorizadorDoc}` : '';
 
+    const firmaDirObj = solicitud.camposAdicionales?.firmaDireccionNacional;
+    const certIdDir = firmaDirObj?.certificadoId;
+    const certDirStr = certIdDir ? ` · ✓ Firma Digital (Cert: ${certIdDir})` : '';
+
     const aproboTexto = autorizadorNombre
-      ? `Aprobó: ${autorizadorNombre}${docAproboStr}${fAproboStr} · ✓ Aprobación Institucional de la Comisión`
+      ? `Aprobó: ${autorizadorNombre}${docAproboStr}${fAproboStr}${certDirStr} · ✓ Aprobación Institucional de la Comisión`
       : 'Aprobó: Pendiente de aprobación institucional (Director Nacional / Ordenador del Gasto)';
 
     // Enriquecer datos de firmantes con C.C., correo institucional y nombre si vienen registrados o con usuarioId o correo
@@ -8909,6 +8913,70 @@ if (itinerarioGeneral) {
         );
       }
 
+      // Validación de firma OTP si fue provista
+      if (dto?.otp) {
+        const verificationId =
+          dto.verificationId?.trim() ||
+          `viat:${solicitud.id}:DIRECCION_NACIONAL:${usuarioId}`;
+        const isVerified = this.verificarOtpFirma({
+          verificationId,
+          code: dto.otp,
+          consume: true,
+        });
+        if (!isVerified) {
+          throw new BadRequestException(
+            'Código OTP inválido o expirado para la firma de autorización de Dirección Nacional.',
+          );
+        }
+      }
+
+      const certIdFinal = dto?.certificadoId || this.generarCertificadoId();
+      const datosFirmante = await this.resolverDatosUsuario(usuarioId);
+      const nombreFirmanteFinal = datosFirmante.nombre || 'Dirección Nacional';
+      const cargoFirmanteFinal = esDelegado
+        ? `${datosFirmante.cargo || 'Directivo'} (Delegado de Dirección Nacional)`
+        : datosFirmante.cargo || 'Director(a) Nacional';
+
+      const firmaDireccionData = {
+        tipo: 'DIRECCION_NACIONAL',
+        nombreFirmante: nombreFirmanteFinal,
+        emailFirmante: datosFirmante.email || null,
+        cargoFirmante: cargoFirmanteFinal,
+        documentoIdentidad: datosFirmante.documento || null,
+        firmaImagen: dto?.firmaImagen || null,
+        fechaFirma: new Date().toISOString(),
+        usuarioId,
+        estado: 'FIRMADO',
+        certificadoId: certIdFinal,
+        hashSha256:
+          dto?.hashSha256 ||
+          this.generarHashDocumento(
+            `${solicitud.id}|DIRECCION_NACIONAL|${usuarioId}|${new Date().toISOString()}`,
+          ),
+        otpVerificado: Boolean(dto?.otp),
+        esDelegado,
+      };
+
+      const prevFirmas = Array.isArray(
+        solicitud.camposAdicionales?.firmasAprobacion,
+      )
+        ? [...solicitud.camposAdicionales.firmasAprobacion]
+        : [];
+      const idxFirma = prevFirmas.findIndex(
+        (f: any) => f.tipo === 'DIRECCION_NACIONAL',
+      );
+      if (idxFirma >= 0) {
+        prevFirmas[idxFirma] = { ...prevFirmas[idxFirma], ...firmaDireccionData };
+      } else {
+        prevFirmas.push(firmaDireccionData);
+      }
+
+      solicitud.camposAdicionales = {
+        ...(solicitud.camposAdicionales || {}),
+        firmaDireccionNacional: firmaDireccionData,
+        firmasAprobacion: prevFirmas,
+      };
+
       const estadoAnterior = solicitud.estadoSolicitud;
       solicitud.estadoSolicitud = EstadoSolicitud.EN_AUTORIZACION;
       solicitud.autorizadorDireccionId = usuarioId;
@@ -8926,11 +8994,11 @@ if (itinerarioGeneral) {
         estadoAnterior,
         estadoNuevo: EstadoSolicitud.EN_AUTORIZACION,
         usuarioId,
-        comentarios: `Autorizada excepcionalmente por Dirección Nacional ${esDelegado ? '(como Delegado)' : ''}: ${justificacion ? justificacion.slice(0, 255) : 'Comisión extemporánea avalada, continúa a Subdirección'}`,
+        comentarios: `Autorizada excepcionalmente por Dirección Nacional ${esDelegado ? '(como Delegado)' : ''}${dto?.otp ? ` con firma digital OTP (Cert: ${certIdFinal})` : ''}: ${justificacion ? justificacion.slice(0, 255) : 'Comisión extemporánea avalada, continúa a Subdirección'}`,
       });
 
       this.logger.log(
-        `[RF-AUT-002] Solicitud extemporánea ${solicitud.consecutivoUnico} AUTORIZADA por Dirección Nacional (usuario ${usuarioId})`,
+        `[RF-AUT-002] Solicitud extemporánea ${solicitud.consecutivoUnico} AUTORIZADA por Dirección Nacional (usuario ${usuarioId})${dto?.otp ? ` [Firma OTP: ${certIdFinal}]` : ''}`,
       );
 
       return saved;

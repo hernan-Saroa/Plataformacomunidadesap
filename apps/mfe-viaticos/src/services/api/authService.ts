@@ -360,6 +360,7 @@ export class AuthService {
   isSubdireccionGestionCorporativa(): boolean {
     const user = this.getCurrentUserSync();
     if (!user) {
+      if (this.isDireccionNacional()) return false;
       return (
         this.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION) ||
         this.hasPermission('travel_expenses.general.es_subdirector') ||
@@ -368,6 +369,7 @@ export class AuthService {
       );
     }
     if (user.esAdmin) return true;
+    if (this.isDireccionNacional()) return false;
     if (
       this.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION) ||
       this.hasPermission('travel_expenses.general.es_subdirector') ||

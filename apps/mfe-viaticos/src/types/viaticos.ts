@@ -1169,7 +1169,11 @@ export interface SolicitudAutorizacion {
   costoEstimadoTiquete: number;
   montoViaticos: number;
   montoGastosViaje: number;
+  totalComision?: number;
   montoTotal: number;
+  ciudadOrigen?: string | null;
+  sedeOrigen?: string | null;
+  tipoTransporte?: string | null;
   estadoSolicitud: EstadoSolicitudViatico;
   extemporanea?: boolean;
   motivoDevolucion?: string | null;

@@ -377,7 +377,7 @@ export default function ViaticosModulePremium() {
         const gerenteProy = authService.isGerenteProyecto();
         setEsJefeDependencia(jefeDep);
         setEsGerenteProyecto(gerenteProy);
-        if (dirNac && !superAdmin && !subdir) {
+        if (dirNac && !superAdmin) {
           setSeccion('autorizaciones-direccion');
         } else if (subdir && !superAdmin) {
           setSeccion('autorizaciones');
@@ -711,16 +711,21 @@ export default function ViaticosModulePremium() {
   const puedeVerAutorizaciones =
     !tieneContextoAuth ||
     esSuperAdmin ||
-    authService.hasPermission('travel_expenses:read_authorizations') ||
-    authService.hasPermission('travel_expenses:authorize_expense') ||
-    authService.hasPermission('travel_expenses:return_authorization');
+    (!esDireccionNacional && (
+      esSubdireccion ||
+      authService.hasPermission('travel_expenses:read_authorizations') ||
+      authService.hasPermission('travel_expenses:authorize_expense') ||
+      authService.hasPermission('travel_expenses:return_authorization')
+    ));
   const puedeVerAutorizacionesDireccion =
     !tieneContextoAuth ||
     esSuperAdmin ||
-    esDireccionNacional ||
-    authService.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
-    authService.hasPermission('travel_expenses:authorize_extemporaneous') ||
-     authService.hasPermission('travel_expenses:reject_extemporaneous');
+    (!esSubdireccion && (
+      esDireccionNacional ||
+      authService.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
+      authService.hasPermission('travel_expenses:authorize_extemporaneous') ||
+      authService.hasPermission('travel_expenses:reject_extemporaneous')
+    ));
 
   const puedeCancelarComision = authService.canCancelarComision();
   const puedeVerPresupuesto =
@@ -799,12 +804,14 @@ export default function ViaticosModulePremium() {
       });
 
       if (esDireccionNacional && !esSuperAdmin) {
+        items = items.filter((item) => item.id !== 'autorizaciones');
         items = [...items].sort((a, b) => {
           if (a.id === 'autorizaciones-direccion') return -1;
           if (b.id === 'autorizaciones-direccion') return 1;
           return 0;
         });
       } else if (esSubdireccion && !esSuperAdmin) {
+        items = items.filter((item) => item.id !== 'autorizaciones-direccion');
         items = [...items].sort((a, b) => {
           if (a.id === 'autorizaciones') return -1;
           if (b.id === 'autorizaciones') return 1;
