@@ -8918,7 +8918,8 @@ export class PtaService {
       posgrado: hDocenciaPosgrado,
       territorial: hDocenciaTerritorial,
     } = await this.splitHorasDocenciaPorNivel(asignaturas);
-    const hInv = Number(ds.investigacion_proyecto?.horas_solicitadas || 0) +
+    const horasProyectoInvestigacion = Number(ds.investigacion_proyecto?.horas_solicitadas || 0);
+    const hInv = horasProyectoInvestigacion +
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
     // Complementarias se enruta por programa asociado (sin programa/pregrado/posgrado,
     // ver clasificarComplementarias), igual patrón que Docencia por nivel arriba.
@@ -8962,10 +8963,12 @@ export class PtaService {
       complementarias_gestion_profesoral: hCompGestionProfesoral,
     };
 
-    // Si todos los arrays están vacíos, probablemente hay un problema de datos
-    // (e.g. actividades filtradas incorrectamente al guardar). No auto-aprobar nada.
+    // El proyecto de Investigación se guarda como objeto, fuera del array de
+    // actividades. Con horas también constituye contenido del PTA; el formulario
+    // vacío del proyecto no habilita la autoaprobación de componentes sin horas.
     const totalActividades =
-      asignaturas.length + invActs.length + extActs.length + compDocencia.length + compAadm.length;
+      asignaturas.length + invActs.length + extActs.length + compDocencia.length + compAadm.length
+      + (horasProyectoInvestigacion > 0 ? 1 : 0);
     const hayActividades = totalActividades > 0;
 
     return { horasPorComponente, hayActividades };

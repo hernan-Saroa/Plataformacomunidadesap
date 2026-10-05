@@ -123,7 +123,7 @@ export async function getAllPTAs(filters?: {
 
 export async function getPTAsByDocente(docenteId: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/mis-ptas/${docenteId}`);
+    const raw = await apiClient.get<any>(`${PTA_BASE}/mis-ptas/${docenteId}`, undefined, { cache: 'no-store' });
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
@@ -134,7 +134,7 @@ export async function getPTAsByDocente(docenteId: string) {
 
 export async function getPTAById(id: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/id/${id}`);
+    const raw = await apiClient.get<any>(`${PTA_BASE}/id/${id}`, undefined, { cache: 'no-store' });
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
@@ -552,9 +552,11 @@ export async function updatePTAStatus(
 
 export async function getComponentesAprobacion(ptaId: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/componentes-aprobacion`);
-    const normalized = normalizeResult<any[]>(raw, []);
-    return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
+    requireConnectionForDecision();
+    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/componentes-aprobacion`, undefined, { cache: 'no-store' });
+    const normalized = normalizeResult<any[] | null>(raw, null);
+    const valid = normalized.success && Array.isArray(normalized.data);
+    return { success: valid, data: valid ? normalized.data! : [] };
   } catch (error) {
     console.warn('[mfe-pta][getComponentesAprobacion] No disponible:', error instanceof Error ? error.message : error);
     return { success: false, data: [] };
@@ -631,6 +633,20 @@ export async function aprobarComponente(ptaId: string, data: {
     requireConnectionForDecision();
     const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/aprobar-componente`, data, { retries: 0 });
     const normalized = normalizeResult<any>(raw, null);
+    const approval = normalized.data?.approval;
+    // Una confirmación sin la decisión devuelta no acredita la aprobación,
+    // aunque la firma haya terminado o el cliente haya encolado la petición.
+    // En territoriales puede devolverse la fila del par aprobado sin que el
+    // componente consolidado o el PTA completo estén aprobados todavía.
+    if (normalized.success && (!approval
+      || approval.componente !== data.componente
+      || approval.estado !== data.estado)) {
+      return {
+        success: false,
+        data: null,
+        message: 'El servidor no confirmó el registro de la aprobación. Recarga el PTA y verifica su estado antes de intentar nuevamente.',
+      };
+    }
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
     console.error('[mfe-pta][aprobarComponente] Error:', error);
@@ -720,9 +736,11 @@ export async function revisarComponentesLote(data: {
 
 export async function getComponentesRevision(ptaId: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/componentes-revision`);
-    const normalized = normalizeResult<any[]>(raw, []);
-    return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
+    requireConnectionForDecision();
+    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/componentes-revision`, undefined, { cache: 'no-store' });
+    const normalized = normalizeResult<any[] | null>(raw, null);
+    const valid = normalized.success && Array.isArray(normalized.data);
+    return { success: valid, data: valid ? normalized.data! : [] };
   } catch (error) {
     console.warn('[mfe-pta][getComponentesRevision] No disponible:', error instanceof Error ? error.message : error);
     return { success: false, data: [] };
@@ -748,6 +766,22 @@ export async function revisarComponente(ptaId: string, data: {
     requireConnectionForDecision();
     const raw = await apiClient.post<any>(`${PTA_BASE}/${ptaId}/revisar-componente`, data, { retries: 0 });
     const normalized = normalizeResult<any>(raw, null);
+    const review = normalized.data?.review;
+    // La confirmación de la firma exige la decisión devuelta por el backend.
+    // Un éxito encolado sin conexión o una respuesta de otro componente no
+    // acredita la revisión. Las decisiones territoriales devuelven una fila
+    // por territorial/nivel en lugar de una subsección consolidada.
+    const territorialReview = data.componente === 'academica_territorial' && review?.territorialId;
+    if (normalized.success && (!review
+      || review.componente !== data.componente
+      || review.estado !== data.estado
+      || (!territorialReview && review.subseccion !== data.subseccion))) {
+      return {
+        success: false,
+        data: null,
+        message: 'El servidor no confirmó el registro de la revisión. Recarga el PTA y verifica su estado antes de intentar nuevamente.',
+      };
+    }
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
     console.error('[mfe-pta][revisarComponente] Error:', error);
