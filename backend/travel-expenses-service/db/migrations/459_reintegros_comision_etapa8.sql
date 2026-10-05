@@ -1,7 +1,7 @@
 SET client_encoding = 'UTF8';
 
 -- ============================================================================
--- Migración: 457_reintegros_comision_etapa8.sql
+-- Migración: 459_reintegros_comision_etapa8.sql
 -- Historia de Usuario: [RF-PAG-004] Etapa 8 - Gestionar reintegros por viaje no
 --                      realizado o menor (EFDS-1308)
 -- Propósito: Registrar el reintegro de los recursos girados de más cuando una
@@ -110,4 +110,4 @@ BEGIN
     END IF;
 END $$;
 
--- Fin de migración 457
+-- Fin de migración 459

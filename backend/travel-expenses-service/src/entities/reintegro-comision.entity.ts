@@ -28,7 +28,7 @@ export enum EstadoReintegro {
  * (RF-PAG-004 — Etapa 8).
  *
  * Tabla física: `travel_expenses.reintegros_comision`
- * (migración `457_reintegros_comision_etapa8.sql`).
+ * (migración `459_reintegros_comision_etapa8.sql`).
  */
 @Entity({
   schema: 'travel_expenses',
