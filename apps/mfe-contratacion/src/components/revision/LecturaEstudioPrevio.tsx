@@ -4,7 +4,7 @@ import { CircleCheck, ClipboardCheck, FileText, MessageSquare } from 'lucide-rea
 import { contratacionService } from '../../services/contratacionService';
 import { CampoFormulario, EstudioPrevio, RevisionEstudioPrevio } from '../../types';
 import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
-import { VerSoporte } from '../shared/VerSoporte';
+import { VerSoportes } from '../shared/VerSoporte';
 import { fechaLarga } from '../shared/fechas';
 
 const pesos = new Intl.NumberFormat('es-CO', {
@@ -172,7 +172,7 @@ export function LecturaEstudioPrevio({ estudio, procesoId }: { estudio: EstudioP
                       {r.observaciones ? (
                         <p className="text-[12px] text-slate-600 m-0 mt-0.5 leading-relaxed">{r.observaciones}</p>
                       ) : null}
-                      {r.soporte ? <VerSoporte soporte={r.soporte} /> : null}
+                      <VerSoportes soportes={r.soportes} />
                       <p className="text-[11.5px] text-slate-400 m-0 mt-0.5 tabular-nums">
                         {r.revisadoPor} · {new Date(r.createdAt).toLocaleString('es-CO')}
                       </p>

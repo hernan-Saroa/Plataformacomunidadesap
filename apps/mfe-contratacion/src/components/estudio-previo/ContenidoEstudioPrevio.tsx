@@ -16,7 +16,7 @@ import { contratacionService } from '../../services/contratacionService';
 import { CampoFormulario, RevisionEstudioPrevio } from '../../types';
 import { CampoDinamico } from './CampoDinamico';
 import { AlertaCamposFaltantes } from './AlertaCamposFaltantes';
-import { VerSoporte } from '../shared/VerSoporte';
+import { VerSoportes } from '../shared/VerSoporte';
 import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { RadicadoGestionDocumental } from './RadicadoGestionDocumental';
 import { usarAprobacion } from '../shared/usarAprobacion';
@@ -249,7 +249,7 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
               {ultimaDevolucion.revisadoPor} ·{' '}
               {new Date(ultimaDevolucion.createdAt).toLocaleDateString('es-CO')}
             </p>
-            {ultimaDevolucion.soporte ? <VerSoporte soporte={ultimaDevolucion.soporte} /> : null}
+            <VerSoportes soportes={ultimaDevolucion.soportes} />
           </div>
         </div>
       )}
@@ -397,7 +397,7 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
                         {r.observaciones}
                       </p>
                     )}
-                    {r.soporte ? <VerSoporte soporte={r.soporte} /> : null}
+                    <VerSoportes soportes={r.soportes} />
                     <p className="text-[10px] text-gray-400 m-0 mt-0.5 tabular-nums">
                       {r.revisadoPor} · {new Date(r.createdAt).toLocaleString('es-CO')}
                     </p>

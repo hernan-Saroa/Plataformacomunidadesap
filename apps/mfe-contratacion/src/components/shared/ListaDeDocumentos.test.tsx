@@ -84,6 +84,27 @@ describe('ListaDeDocumentos', () => {
     expect(screen.getByText('Falta 1 de 1 obligatorios')).toBeInTheDocument();
   });
 
+  it('no lista como documento la copia del formulario que sella el envío', async () => {
+    vi.spyOn(contratacionService, 'obtenerExpediente').mockResolvedValue({
+      documentos: [
+        {
+          id: 's-1',
+          numeral: '3.1',
+          tipo: 'SNAPSHOT_FORMULARIO',
+          nombre: 'Estudio previo',
+          descargaUrl: null,
+          subidoPor: 'gestor@esap.edu.co',
+          createdAt: '2026-09-30T10:00:00.000Z',
+        },
+      ],
+    } as never);
+    pintar(estado([documento({ codigo: 'P1', nombre: 'p1', cargado })]));
+
+    expect(await screen.findByText('p1')).toBeInTheDocument();
+    expect(screen.queryByText('Estudio previo')).not.toBeInTheDocument();
+    expect(screen.queryByText('Otros documentos adjuntos')).not.toBeInTheDocument();
+  });
+
   it('ofrece la plantilla donde el documento tiene una', async () => {
     pintar(
       estado([
@@ -184,5 +205,65 @@ describe('ListaDeDocumentos', () => {
 
     await waitFor(() => expect(contratacionService.documentosDeActividad).toHaveBeenCalled());
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it('separa lo que adjuntó quien devolvió de los anexos del gestor', async () => {
+    pintar(
+      estado([documento({ cargado })], {
+        adicionales: [{ ...cargado, id: 'd-anexo', nombre: 'cotizacion.pdf' }],
+        soportesDelRevisor: [
+          {
+            id: 'd-rev',
+            nombre: 'correcciones.pdf',
+            descargaUrl: '/files/rev.pdf',
+            revisadoPor: 'abogado@esap.edu.co',
+            devueltaAt: '2026-10-02T10:00:00.000Z',
+          },
+        ],
+      }),
+    );
+
+    const grupo = await screen.findByRole('group', { name: 'Observaciones del revisor' });
+    expect(grupo).toHaveTextContent('correcciones.pdf');
+    expect(grupo).toHaveTextContent(/Devolución de abogado@esap.edu.co/);
+    // No se retira: son del revisor, no del gestor.
+    expect(grupo.querySelector('[title="Retirar del expediente"]')).toBeNull();
+    expect(screen.getByText('Otros documentos adjuntos')).toBeInTheDocument();
+    expect(screen.getByText('cotizacion.pdf')).toBeInTheDocument();
+  });
+
+  it('guarda el historial de las versiones sustituidas', async () => {
+    pintar(
+      estado([
+        documento({
+          cargado: { ...cargado, nombre: 'memorando-v2.pdf' },
+          anteriores: [
+            {
+              id: 'e-0',
+              documentoId: 'd-0',
+              nombre: 'memorando-v1.pdf',
+              descargaUrl: '/files/v1.pdf',
+              subidoPor: 'gestor@esap.edu.co',
+              cargadoAt: '2026-09-18T10:00:00.000Z',
+              sustituidoAt: '2026-09-20T10:00:00.000Z',
+              sustituidoPor: 'gestor@esap.edu.co',
+            },
+          ],
+        }),
+      ]),
+    );
+
+    const historial = await screen.findByRole('button', { name: /Historial · 1 versión anterior/ });
+    expect(screen.queryByText('memorando-v1.pdf')).toBeNull();
+    await userEvent.click(historial);
+    expect(screen.getByText('memorando-v1.pdf')).toBeInTheDocument();
+    expect(screen.getByTitle('Descargar memorando-v1.pdf')).toBeInTheDocument();
+  });
+
+  it('sin sustituciones no ofrece historial', async () => {
+    pintar(estado([documento({ cargado })]));
+
+    expect(await screen.findByText('memorando.pdf', { exact: false })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Historial/ })).toBeNull();
   });
 });

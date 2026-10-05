@@ -18,7 +18,7 @@ const almacen = mkdtempSync(join(tmpdir(), 'hiring-files-'));
 process.env.HIRING_STORAGE_PATH = almacen;
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { FilesController } = require('./files.controller');
+const { FilesController, disposicionConNombre } = require('./files.controller');
 
 /** Un `Response` que solo recuerda lo que le pusieron. */
 function respuesta() {
@@ -37,17 +37,42 @@ function respuesta() {
   } as any;
 }
 
+/**
+ * Una base que responde a la consulta del nombre original.
+ *
+ * Las filas se buscan por el final de `archivo_url`, así que basta con mirar
+ * qué tabla preguntan y con qué sufijo.
+ */
+function baseCon(filas: { documentos?: Record<string, string>; plantillas?: Record<string, any> }) {
+  return {
+    query: async (sql: string, [sufijo]: [string]) => {
+      const enDisco = sufijo.replace('%/', '');
+      if (sql.includes('hiring.documentos')) {
+        const nombre = filas.documentos?.[enDisco];
+        return nombre ? [{ nombre }] : [];
+      }
+      const plantilla = filas.plantillas?.[enDisco];
+      return plantilla ? [plantilla] : [];
+    },
+  };
+}
+
 describe('FilesController', () => {
-  const controlador = new FilesController();
+  const controlador = new FilesController(
+    baseCon({
+      documentos: { 'a1b2c3.pdf': 'Resolución de apertura — 2026.pdf' },
+      plantillas: { 'd4e5f6.docx': { codigo: 'BS-FO-047', nombre: 'Estudio previo', version: '2' } },
+    }),
+  );
 
   beforeAll(() => {
     writeFileSync(join(almacen, 'a1b2c3.pdf'), '%PDF-1.4');
     writeFileSync(join(almacen, 'd4e5f6.docx'), 'PK');
   });
 
-  it('sirve el documento para verlo, no para bajarlo', () => {
+  it('sirve el documento para verlo, no para bajarlo', async () => {
     const res = respuesta();
-    controlador.descargar('a1b2c3.pdf', res);
+    await controlador.descargar('a1b2c3.pdf', res);
 
     expect(res.cabeceras['Content-Disposition']).toContain('inline');
     // Sin el tipo, el visor recibe un blob que el navegador no sabe pintar y
@@ -55,26 +80,68 @@ describe('FilesController', () => {
     expect(res.cabeceras['Content-Type']).toBe('application/pdf');
   });
 
-  it('lo baja cuando se lo piden', () => {
+  it('lo baja cuando se lo piden', async () => {
     const res = respuesta();
-    controlador.descargar('a1b2c3.pdf', res, '1');
+    await controlador.descargar('a1b2c3.pdf', res, '1');
 
     expect(res.cabeceras['Content-Disposition']).toContain('attachment');
   });
 
-  it('declara el tipo de los formatos de Office', () => {
+  it('declara el tipo de los formatos de Office', async () => {
     const res = respuesta();
-    controlador.descargar('d4e5f6.docx', res);
+    await controlador.descargar('d4e5f6.docx', res);
 
     expect(res.cabeceras['Content-Type']).toContain('wordprocessingml');
   });
 
-  it('no deja salir del directorio de almacenamiento', () => {
+  it('no deja salir del directorio de almacenamiento', async () => {
     // El nombre viene de la URL: un `../` leería cualquier archivo del host.
-    expect(() => controlador.descargar('../secreto.env', respuesta())).toThrow();
+    await expect(controlador.descargar('../secreto.env', respuesta())).rejects.toThrow();
   });
 
-  it('no confirma que exista lo que no está', () => {
-    expect(() => controlador.descargar('nohay.pdf', respuesta())).toThrow();
+  it('no confirma que exista lo que no está', async () => {
+    await expect(controlador.descargar('nohay.pdf', respuesta())).rejects.toThrow();
+  });
+
+  /*
+   * En disco cada archivo es un hexadecimal aleatorio, y ese era el nombre que
+   * proponía la descarga: quien bajaba lo que acababa de subir recibía
+   * «3befe4c0f8cc46bb1ab59ec4f340c8c9.pdf».
+   */
+  it('descarga con el nombre con el que se subió', async () => {
+    const res = respuesta();
+    await controlador.descargar('a1b2c3.pdf', res, '1');
+
+    const cabecera = res.cabeceras['Content-Disposition'];
+    expect(cabecera).not.toContain('a1b2c3');
+    expect(cabecera).toContain(
+      `filename*=UTF-8''${encodeURIComponent('Resolución de apertura — 2026.pdf')}`,
+    );
+    // Para los navegadores que solo leen `filename`, sin tildes ni rayas.
+    expect(cabecera).toContain('filename="Resolucion de apertura _ 2026.pdf"');
+  });
+
+  it('nombra la plantilla por su código, nombre y versión', async () => {
+    const res = respuesta();
+    await controlador.descargar('d4e5f6.docx', res, '1');
+
+    expect(res.cabeceras['Content-Disposition']).toContain(
+      'filename="BS-FO-047 Estudio previo v2.docx"',
+    );
+  });
+
+  it('deja el nombre de disco si ninguna fila reclama el archivo', async () => {
+    const huerfano = new FilesController(baseCon({}));
+    const res = respuesta();
+    await huerfano.descargar('a1b2c3.pdf', res, '1');
+
+    expect(res.cabeceras['Content-Disposition']).toContain('filename="a1b2c3.pdf"');
+  });
+
+  it('no deja que el nombre rompa la cabecera', () => {
+    const salto = String.fromCharCode(13, 10);
+    const cabecera = disposicionConNombre('attachment', `acta "final"${salto}(1).pdf`);
+    expect(cabecera).toContain('filename="acta final(1).pdf"');
+    expect(cabecera).toContain("filename*=UTF-8''acta%20final%281%29.pdf");
   });
 });

@@ -1091,11 +1091,11 @@ export class EstudioPrevioService implements OnModuleInit {
     // marcadas desde el aviso sin buscarlas en el expediente.
     const soportes = await soportesDeDevolucion(
       this.dataSource.manager,
-      revisiones.map((r) => r.soporteDocumentoId),
+      revisiones.flatMap((r) => r.soportesDocumentoIds ?? []),
     );
     return revisiones.map((r) => ({
       ...r,
-      soporte: r.soporteDocumentoId ? (soportes.get(r.soporteDocumentoId) ?? null) : null,
+      soportes: (r.soportesDocumentoIds ?? []).flatMap((id) => soportes.get(id) ?? []),
     }));
   }
 

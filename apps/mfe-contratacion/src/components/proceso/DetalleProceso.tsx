@@ -200,6 +200,8 @@ interface Props {
   volverA?: string;
 }
 
+const CLAVE_RIEL_PLEGADO = 'contratacion:riel-plegado';
+
 export function DetalleProceso({
   procesoId,
   onVolver,
@@ -230,6 +232,27 @@ export function DetalleProceso({
    */
   const [abiertaLaPrimera, setAbiertaLaPrimera] = useState(false);
   const [expedienteAbierto, setExpedienteAbierto] = useState(false);
+  /**
+   * El riel plegado deja solo los puntos y le cede el ancho al formulario.
+   * Es preferencia de quien mira, no del proceso: se recuerda en el navegador
+   * y, si el almacenamiento no responde, se arranca desplegado.
+   */
+  const [rielPlegado, setRielPlegado] = useState(() => {
+    try {
+      return localStorage.getItem(CLAVE_RIEL_PLEGADO) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const alternarRiel = () =>
+    setRielPlegado((plegado) => {
+      try {
+        localStorage.setItem(CLAVE_RIEL_PLEGADO, plegado ? '0' : '1');
+      } catch {
+        // Sin almacenamiento se pliega igual; solo no se recuerda.
+      }
+      return !plegado;
+    });
   /**
    * Qué etapa se está mirando. Nula hasta que alguien elija: mientras tanto se
    * muestra la del proceso, que es donde se trabaja al entrar.
@@ -967,13 +990,19 @@ export function DetalleProceso({
           )}
         </>
       ) : (
-      <div className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''}`}>
+      <div
+        className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''} ${
+          rielPlegado ? 'riel-plegado' : ''
+        }`}
+      >
         <RielActividades
           etapa={etapaVista}
           etapaActual={etapaActual}
           actividades={actividadesDelRiel}
           seleccionada={expandida}
           onSeleccionar={abrirActividad}
+          plegado={rielPlegado}
+          onAlternarPlegado={alternarRiel}
         />
 
         <div className="min-w-0">

@@ -129,6 +129,50 @@
   }
 }
 
+/*
+ * Riel plegado: solo los puntos de estado. Apilado van en fila, debajo de la
+ * cabecera; con columnas, en una tira angosta que le devuelve al formulario
+ * casi todo el ancho del riel.
+ */
+.riel-plegado__cabeza {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .625rem .75rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.riel-plegado__puntos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .125rem;
+  padding: .375rem;
+}
+
+@media (min-width: 1280px) {
+  .detalle-proceso.riel-plegado {
+    grid-template-columns: 3.25rem minmax(0, 1fr);
+  }
+
+  .riel-plegado__cabeza {
+    flex-direction: column;
+    gap: .25rem;
+    padding: .625rem 0;
+  }
+
+  .riel-plegado__puntos {
+    flex-direction: column;
+    align-items: center;
+  }
+}
+
+@media (min-width: 1600px) {
+  .detalle-proceso.riel-plegado.con-expediente {
+    grid-template-columns: 3.25rem minmax(0, 1fr) 19rem;
+  }
+}
+
 /* ======================================================================
    Utilidades con valor arbitrario que el shell no genera
 

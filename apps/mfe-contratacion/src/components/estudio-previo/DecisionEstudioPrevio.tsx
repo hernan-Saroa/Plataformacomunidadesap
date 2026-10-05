@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { ArrowRight, Ban, Check, Paperclip, Undo2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { ArrowRight, Ban, Check, Undo2 } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
 import { EvidenciaFirmaOtp } from '../../types';
 import { Modal } from '../shared/Modal';
 import { useFirma } from '../shared/useFirma';
+import { ElegirSoportes } from '../shared/ElegirSoportes';
+import { adjuntarSoportes } from '../shared/usarAprobacion';
 
 type Accion = 'aprobar' | 'devolver' | 'negar';
 
@@ -23,9 +24,6 @@ interface Props {
   pasaA?: string | null;
 }
 
-const MIME_SOPORTE =
-  '.pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-
 /**
  * La decisión sobre el estudio previo: aprobar, devolver o negar (la 3.4).
  *
@@ -34,14 +32,14 @@ const MIME_SOPORTE =
  * reestructuración—. Aparte, la misma pieza sirve a la pantalla de revisión y,
  * donde todavía no se llega por ella, al pie del formulario.
  *
- * Devolver admite un archivo con las correcciones marcadas (migración 091),
- * como el módulo disciplinario: un párrafo resume mal veinte páginas
+ * Devolver admite archivos con las correcciones marcadas (migraciones 091 y
+ * 093), como el módulo disciplinario: un párrafo resume mal veinte páginas
  * corregidas a mano.
  */
 export function DecisionEstudioPrevio({ procesoId, onDecidido, variante = 'franja', pasaA }: Props) {
   const [accion, setAccion] = useState<Accion | null>(null);
   const [observaciones, setObservaciones] = useState('');
-  const [soporte, setSoporte] = useState<File | null>(null);
+  const [soportes, setSoportes] = useState<File[]>([]);
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,7 +49,7 @@ export function DecisionEstudioPrevio({ procesoId, onDecidido, variante = 'franj
   const abrir = (a: Accion) => {
     setAccion(a);
     setObservaciones('');
-    setSoporte(null);
+    setSoportes([]);
     setError(null);
   };
 
@@ -66,20 +64,11 @@ export function DecisionEstudioPrevio({ procesoId, onDecidido, variante = 'franj
         await contratacionService.negar(procesoId, observaciones.trim());
       } else {
         await contratacionService.devolver(procesoId, observaciones.trim());
-        if (soporte) {
-          // La devolución ya quedó; un archivo que falla se avisa sin deshacerla.
-          try {
-            await contratacionService.subirSoporteDevolucion(procesoId, '3.1', soporte);
-          } catch (e: any) {
-            toast.warning('Se devolvió, pero no se pudo adjuntar el archivo', {
-              description: e?.message,
-            });
-          }
-        }
+        await adjuntarSoportes(procesoId, '3.1', soportes);
       }
       setAccion(null);
       setObservaciones('');
-      setSoporte(null);
+      setSoportes([]);
       await onDecidido();
     } catch (err: any) {
       setError(err.message);
@@ -240,20 +229,13 @@ export function DecisionEstudioPrevio({ procesoId, onDecidido, variante = 'franj
             <p className="text-[11px] text-gray-500 mt-2 mb-0">
               Sin observaciones el área no sabría qué corregir, por eso son obligatorias.
             </p>
-            <label className="mt-3 flex items-center gap-2 text-[12px] font-bold text-slate-700 cursor-pointer">
-              <Paperclip className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />
-              <span>Documento con las correcciones (opcional)</span>
-              <input
-                type="file"
-                accept={MIME_SOPORTE}
-                aria-label="Documento con las correcciones"
-                onChange={(e) => setSoporte(e.target.files?.[0] ?? null)}
-                className="text-[12px] font-normal"
+            <div className="mt-3">
+              <ElegirSoportes
+                archivos={soportes}
+                onCambio={setSoportes}
+                etiqueta="Documentos con las correcciones (opcional)"
               />
-            </label>
-            {soporte ? (
-              <p className="text-[11px] text-slate-500 m-0 mt-1">{soporte.name}</p>
-            ) : null}
+            </div>
           </>
         )}
         {accion === 'negar' && (

@@ -50,7 +50,8 @@ export interface RevisionEstudioPrevio {
   versionRevisada: number;
   revisadoPor: string;
   createdAt: string;
-  soporte?: SoporteDeDevolucion | null;
+  /** Las correcciones marcadas que acompañan una devolución (puede haber varias). */
+  soportes?: SoporteDeDevolucion[];
 }
 
 /** Definición de un campo del formulario; llega del backend, no está en código. */
@@ -1099,6 +1100,34 @@ export interface DocumentoDeLaActividad {
     subidoPor: string | null;
     cargadoAt: string;
   } | null;
+  /** Las versiones que se sustituyeron, de la más reciente a la más vieja. */
+  anteriores?: VersionSustituida[];
+}
+
+/** Una entrega de un documento que se reemplazó por otra. */
+export interface VersionSustituida {
+  id: string;
+  documentoId: string;
+  nombre: string;
+  descargaUrl: string | null;
+  mimeType?: string | null;
+  subidoPor: string | null;
+  cargadoAt: string;
+  sustituidoAt: string;
+  sustituidoPor: string | null;
+}
+
+/**
+ * Un archivo que adjuntó quien devolvió la actividad: son sus observaciones,
+ * no un anexo del gestor.
+ */
+export interface SoporteDelRevisor {
+  id: string;
+  nombre: string;
+  descargaUrl: string | null;
+  mimeType?: string | null;
+  revisadoPor: string;
+  devueltaAt: string;
 }
 
 /**
@@ -1113,6 +1142,8 @@ export interface EstadoDocumentosActividad {
   tipologia: string | null;
   documentos: DocumentoDeLaActividad[];
   adicionales: DocumentoCargado[];
+  /** Lo que adjuntó quien devolvió la actividad, aparte de lo del gestor. */
+  soportesDelRevisor?: SoporteDelRevisor[];
   /** Los obligatorios que todavía no están. */
   faltantes: { codigo: string; nombre: string }[];
   completo: boolean;
