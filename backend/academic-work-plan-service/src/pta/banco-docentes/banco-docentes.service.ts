@@ -18,6 +18,8 @@ import { findRundSensitiveFields, maskIdentityDocument, protectRundSensitiveData
 import { recordRundAccess } from './rund-access-audit';
 import { buildRundPerfilCabezote, RundPerfilCabezote } from './rund-perfil-cabezote';
 import { capturarDatosCarga, fechaCivilPersistencia } from './rund-carga-original';
+import { acceptedPrivacyPolicy, rundPrivacyPolicy } from './rund-privacy-policy';
+import { rundDocumentalEnabled } from './rund-documental-feature';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
@@ -1862,8 +1864,8 @@ export class BancoDocentesService implements OnModuleInit {
         );
       }
 
-      if (action !== 'unchanged' && options.audit) {
-        const auditAction = options.audit.accion || (action === 'insert' ? 'CREAR' : 'EDITAR');
+      if (options.audit && (action !== 'unchanged' || options.audit.metadata?.habeasData?.aceptada === true)) {
+        const auditAction = options.audit.accion || (action === 'unchanged' ? 'CONFIRMAR_AUTOGESTION' : action === 'insert' ? 'CREAR' : 'EDITAR');
         await this.writeAuditWithManager(manager, {
           docenteId: docente.id,
           bloque: 'GENERAL',
@@ -2795,6 +2797,7 @@ export class BancoDocentesService implements OnModuleInit {
       throw new BadRequestException('Código OTP incorrecto.');
     }
 
+    const politicaTratamiento = rundDocumentalEnabled() ? rundPrivacyPolicy() : undefined;
     invitacion.otpCodigo = null;
     invitacion.otpExpiraEn = null;
     invitacion.intentosOtp = 0;
@@ -2804,7 +2807,7 @@ export class BancoDocentesService implements OnModuleInit {
     invitacion.sesionExpiraEn = new Date(Date.now() + 2 * 60 * 60 * 1000);
     await this.invitacionRepo.save(invitacion);
 
-    return { success: true, sessionToken };
+    return { success: true, sessionToken, politicaTratamiento };
   }
 
   private async requireAutogestionSession(token: string): Promise<BancoDocenteInvitacionEntity> {
@@ -2952,7 +2955,7 @@ export class BancoDocentesService implements OnModuleInit {
     return protectRundSensitiveData({ ...match, evidencias: { soportes, bloques } }, false);
   }
 
-  async submitFromToken(token: string, data: any) {
+  async submitFromToken(token: string, data: any, ip?: string) {
     const invitacion = await this.requireAutogestionSession(token);
     
     const submissionData = this.restoreDraftDocument(data, invitacion.borradorJson);
@@ -3002,6 +3005,7 @@ export class BancoDocentesService implements OnModuleInit {
       delete submissionData.PUNTAJE_SALARIAL;
     }
 
+    const habeasData = rundDocumentalEnabled() ? acceptedPrivacyPolicy(data) : undefined;
     // Inyectar el canal de origen para que el payload upsertDocente sepa
     submissionData.canal_origen = 'AUTOGESTION';
 
@@ -3016,7 +3020,8 @@ export class BancoDocentesService implements OnModuleInit {
         canalOrigen: 'AUTOGESTION',
         soporteId: invitacion.id,
         observacion: 'Información enviada mediante invitación y OTP verificado',
-        metadata: { invitacionId: invitacion.id, correoVerificado: true },
+        ip,
+        metadata: { invitacionId: invitacion.id, correoVerificado: true, habeasData },
         sensitiveAccess: { roles: ['DOCENTE_AUTOGESTION'], fullAccess: false, endpoint: 'AUTOGESTION_ENVIAR_PERFIL' },
       },
     });

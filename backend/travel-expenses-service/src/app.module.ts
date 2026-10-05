@@ -28,11 +28,13 @@ import { SolicitudHistorialEstadoEntity } from './entities/solicitud-historial-e
 import { FestivoColombiaEntity } from './entities/festivo-colombia.entity';
 import { AuthSystemSettingEntity } from './entities/auth-system-setting.entity';
 import { TarifaTransporteTerminalEntity } from './entities/liquidation/tarifa-transporte-terminal.entity';
+import { ReintegroComisionEntity } from './entities/reintegro-comision.entity';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PermissionsGuard } from './common/permissions.guard';
 import { LiquidationModule } from './modules/liquidation/liquidation.module';
 import { TicketsModule } from './modules/tickets/tickets.module';
 import { ConsolidacionModule } from './modules/consolidacion/consolidacion.module';
+import { ReintegrosModule } from './modules/reintegros/reintegros.module';
 import { CommonModule } from './common/common.module';
 
 @Module({
@@ -68,6 +70,7 @@ import { CommonModule } from './common/common.module';
         FestivoColombiaEntity,
         AuthSystemSettingEntity,
         TarifaTransporteTerminalEntity,
+        ReintegroComisionEntity,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV !== 'production',
@@ -78,6 +81,7 @@ import { CommonModule } from './common/common.module';
     LiquidationModule,
     TicketsModule,
     ConsolidacionModule,
+    ReintegrosModule,
     NotificationsModule,
     CommonModule,
   ],

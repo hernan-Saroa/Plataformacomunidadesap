@@ -36,6 +36,24 @@ import { motion } from 'motion/react';
 
 import { certificadosService } from '../../services/api/certificados.service';
 import { buildServiceAssetUrl } from '../../config/environment';
+import {
+  analizarVariablesPlantilla,
+  limpiarEstilosExternosPlantilla,
+  normalizarTokensVariablesEditor,
+  prepararVariablesPlantilla,
+  resolverVariablePlantilla,
+  type ProblemaVariablePlantilla,
+} from '../../utils/plantillaVariables';
+import { limpiarHtmlPegadoPlantilla, textoPlanoAHtmlPlantilla } from '../../utils/pegadoPlantilla';
+import {
+  desmarcarVariablesInvalidas,
+  quitarEstilosRedundantes,
+  rearmarBloqueFuncionesEnHtml,
+  restaurarBloqueFunciones,
+  sacarVariablesDelColor,
+  textosBloqueFunciones,
+  variablesEnRango,
+} from '../../utils/variablesEditorDom';
 
 
 
@@ -575,7 +593,7 @@ const coloresDisponibles = [
 
 
 
-  { value: '#A52eA', label: 'Cafe' },
+  { value: '#A52A2A', label: 'Cafe' },
 
 
 
@@ -756,6 +774,49 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   const editorRef = useRef<HTMLDivElement | null>(null);
   const savedSelectionRef = useRef<Range | null>(null);
 
+  // Revisión en vivo de las variables del contenido (pegadas, mal escritas,
+  // desconocidas o sin corchete de cierre).
+  const problemasVariables = useMemo(
+    () => analizarVariablesPlantilla(borrador?.contenidoCertificado.texto || ''),
+    [borrador?.contenidoCertificado.texto],
+  );
+  // Lo que "Corregir automáticamente" puede arreglar sin cambiar el texto.
+  const problemasCorregibles = problemasVariables.filter(
+    (problema) => problema.tipo === 'normalizada' || problema.tipo === 'estilosExternos',
+  );
+  // Solo informativos: una variable pegada a otro texto se respeta tal cual.
+  const problemasInformativos = problemasVariables.filter((problema) => problema.tipo === 'pegada');
+  const esProblemaPorRevisar = (problema: ProblemaVariablePlantilla) =>
+    problema.tipo === 'desconocida' ||
+    problema.tipo === 'incompleta' ||
+    problema.tipo === 'funciones' ||
+    problema.tipo === 'datoReal' ||
+    problema.tipo === 'faltaVariable';
+  const problemasPorRevisar = problemasVariables.filter(esProblemaPorRevisar);
+  // En el panel van primero los que hay que revisar: los corregibles se
+  // arreglan solos al generar y no deben esconder un aviso importante.
+  const problemasEnPanel = [...problemasPorRevisar, ...problemasCorregibles, ...problemasInformativos];
+
+  // Bloques de funciones conocidos (el último guardado y el de la plantilla por
+  // defecto). Si el contenido trae esos mismos párrafos sin su marco (por
+  // ejemplo, al pasar por el Bloc de notas, que solo guarda texto), el marco se
+  // puede volver a armar.
+  const bloquesFuncionesConocidos = useMemo(
+    () =>
+      [
+        textosBloqueFunciones(plantilla?.contenidoCertificado.texto || ''),
+        textosBloqueFunciones(defaultContenidoCertificado[templateType]),
+      ].filter((textos) => textos.length > 0),
+    [plantilla?.contenidoCertificado.texto, templateType],
+  );
+  const contenidoConBloqueRearmado = useMemo(
+    () =>
+      problemasVariables.some((problema) => problema.tipo === 'funciones' && problema.detalle === 'fueraDelBloque')
+        ? rearmarBloqueFuncionesEnHtml(borrador?.contenidoCertificado.texto || '', bloquesFuncionesConocidos)
+        : null,
+    [problemasVariables, borrador?.contenidoCertificado.texto, bloquesFuncionesConocidos],
+  );
+
 
 
   const publishingActor = currentUserEmail || 'cerlaboral@esap.edu.co';
@@ -888,40 +949,12 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
   };
 
   /**
-   * Normaliza las variables eliminando TODOS los spans anidados
+   * Normaliza las variables del editor: colapsa tokens anidados, deja cada
+   * token con su HTML estándar y resalta las variables escritas a mano.
+   * La lógica (y sus pruebas) vive en utils/plantillaVariables.ts.
    */
   const normalizarVariables = (html: string): string => {
-    if (!html) return html;
-
-    let resultado = html;
-    // Renombra token legado para mostrar solo [DEPENDENCIA] en la configuracion.
-    resultado = resultado.replace(/\[UBICACI[^\]]*N\]/gi, '[DEPENDENCIA]');
-
-    // Paso 1: Colapsar todos los spans anidados repetidamente (15 veces para asegurar)
-    for (let i = 0; i < 15; i++) {
-      // Eliminar spans que solo contienen otro span
-      resultado = resultado.replace(
-        /<span[^>]*>\s*(<span[^>]*>[\s\S]*-<\/span>)\s*<\/span>/g,
-        '$1'
-      );
-    }
-
-    // Paso 2: Normalizar todos los spans con clase variable-token
-    resultado = resultado.replace(
-      /<span[^>]*class="[^"]*variable-token[^"]*"[^>]*>([^<]*\[([A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*)\][^<]*)<\/span>/g,
-      crearVariableTokenHtml('[$2]')
-    );
-
-    // Paso 3: Envolver variables sueltas que no tienen span
-    resultado = resultado.replace(
-      /(-<!<span[^>]*>)\[([A-Z0-9_ÁÉÍÓÚÑÜ]+(?: [A-Z0-9_ÁÉÍÓÚÑÜ]+)*)\](-![^<]*<\/span>)/g,
-      crearVariableTokenHtml('[$1]')
-    );
-
-    // Paso 4: Limpiar spans vacAos
-    resultado = resultado.replace(/<span[^>]*>\s*<\/span>/g, '');
-
-    return resultado;
+    return normalizarTokensVariablesEditor(html, crearVariableTokenHtml);
   };
 
   /**
@@ -1379,6 +1412,8 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
   const sincronizarContenidoEditorActual = () => {
     if (!editorRef.current) return;
+    // Estilos que el navegador agrega al editar y que no cambian nada.
+    quitarEstilosRedundantes(editorRef.current);
     actualizarBorradorContenido(normalizarVariables(editorRef.current.innerHTML));
   };
 
@@ -1437,6 +1472,39 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
     guardarSeleccionEditor();
   };
 
+  /**
+   * Aplica un color al texto seleccionado. Las variables conservan su propio
+   * color: si la selección las incluye, se sacan del color aplicado.
+   */
+  const aplicarColorEditor = (color: string) => {
+    if (!ensureEditable()) return;
+    restaurarSeleccionEditor();
+    const editor = editorRef.current;
+    const seleccion = window.getSelection();
+    const rangoInicial = seleccion && seleccion.rangeCount ? seleccion.getRangeAt(0) : null;
+    const variablesAntes = editor ? variablesEnRango(editor, rangoInicial) : [];
+
+    if (typeof document.execCommand === 'function') {
+      document.execCommand('foreColor', false, color);
+    }
+
+    let movidas = 0;
+    if (editor) {
+      // El navegador puede mover los tokens: se revisan los de antes y los que
+      // quedaron dentro de la selección después de colorear.
+      const rangoFinal = seleccion && seleccion.rangeCount ? seleccion.getRangeAt(0) : null;
+      movidas = sacarVariablesDelColor(editor, [...variablesAntes, ...variablesEnRango(editor, rangoFinal)]);
+    }
+    sincronizarContenidoEditorActual();
+    guardarSeleccionEditor();
+
+    if (movidas > 0) {
+      toast.info('Las variables conservan su color', {
+        description: 'El color se aplicó solo al texto; las variables no se pueden recolorear.',
+      });
+    }
+  };
+
   const copiarVariable = async (codigoVariable: string) => {
     try {
       const tokenHtml = crearVariableTokenHtml(codigoVariable);
@@ -1470,13 +1538,193 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
   const manejarPegadoEditor = (event: React.ClipboardEvent<HTMLDivElement>) => {
     const textoPegado = event.clipboardData.getData('text/plain').trim();
+    // "[cargo]" o "[ CARGO ]" pegados también se insertan como la variable oficial.
+    const variablePegada = /^\[[^[\]]{1,80}\]$/.test(textoPegado)
+      ? resolverVariablePlantilla(textoPegado, ordenVariablesPlantilla)
+      : null;
 
-    if (!canEdit || !ordenVariablesPlantilla.includes(textoPegado)) {
+    if (!canEdit) {
       return;
     }
 
+    if (variablePegada) {
+      event.preventDefault();
+      insertarVariable(variablePegada);
+      return;
+    }
+
+    pegarContenidoLimpio(event);
+  };
+
+  /**
+   * Pega contenido de otra plantilla (u otro programa) sin arrastrar estilos
+   * externos ni duplicar el bloque de funciones. Si algo falla, se deja el
+   * pegado normal del navegador.
+   */
+  const pegarContenidoLimpio = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    const editor = editorRef.current;
+    const seleccion = window.getSelection();
+    if (!editor || !seleccion || !seleccion.rangeCount) return;
+    const rango = seleccion.getRangeAt(0);
+    if (!editor.contains(rango.commonAncestorContainer)) return;
+
+    const htmlPegado = event.clipboardData.getData('text/html');
+    const textoPlano = event.clipboardData.getData('text/plain');
+
+    let html = '';
+    let limpiado = false;
+    let bloqueFuncionesDescartado = false;
+    let textosBloquePegado: string[] = [];
+    let textosBloqueAnterior: string[] = [];
+    try {
+      const nodoCursor = rango.startContainer;
+      const elementoCursor = nodoCursor.nodeType === 1 ? (nodoCursor as Element) : nodoCursor.parentElement;
+      const dentroDeFunciones = Boolean(elementoCursor?.closest('section[data-functions-template="true"]'));
+      // Un bloque que el pegado va a reemplazar (p. ej. con Ctrl+A) no cuenta.
+      const seReemplaza = (nodo: Element) => {
+        const padre = nodo.parentNode;
+        if (rango.collapsed || !padre) return false;
+        const indice = Array.prototype.indexOf.call(padre.childNodes, nodo);
+        return rango.comparePoint(padre, indice) === 0 && rango.comparePoint(padre, indice + 1) === 0;
+      };
+      textosBloqueAnterior = textosBloqueFunciones(editor);
+      const bloqueQueSigue = Array.from(
+        editor.querySelectorAll('section[data-functions-template="true"]'),
+      ).some((bloque) => !seReemplaza(bloque));
+
+      if (htmlPegado) {
+        const resultado = limpiarHtmlPegadoPlantilla(htmlPegado, {
+          crearToken: crearVariableTokenHtml,
+          permitirBloqueFunciones: !dentroDeFunciones && !bloqueQueSigue,
+        });
+        html = resultado.html;
+        limpiado = resultado.limpiado;
+        bloqueFuncionesDescartado = resultado.bloqueFuncionesDescartado;
+        textosBloquePegado = resultado.textosBloqueFunciones;
+      } else if (textoPlano) {
+        html = textoPlanoAHtmlPlantilla(textoPlano, crearVariableTokenHtml);
+      }
+    } catch (error) {
+      console.warn('No se pudo limpiar el contenido pegado; se usa el pegado normal.', error);
+      return;
+    }
+
+    // Imágenes u otros archivos: una plantilla de texto no los admite.
     event.preventDefault();
-    insertarVariable(textoPegado);
+    if (!html) return;
+
+    // insertHTML conserva el deshacer (Ctrl+Z); si no existe, se inserta a mano.
+    let insertado = false;
+    try {
+      insertado = typeof document.execCommand === 'function' && document.execCommand('insertHTML', false, html);
+    } catch {
+      insertado = false;
+    }
+    if (!insertado) {
+      rango.deleteContents();
+      const fragmento = rango.createContextualFragment(html);
+      const ultimo = fragmento.lastChild;
+      rango.insertNode(fragmento);
+      if (ultimo) {
+        rango.setStartAfter(ultimo);
+        rango.collapse(true);
+        seleccion.removeAllRanges();
+        seleccion.addRange(rango);
+      }
+    }
+    // Si al insertar se perdió el bloque de funciones (el navegador puede
+    // reacomodar los bloques, y el texto plano no lo trae), se rearma cuando
+    // aparecen tal cual los párrafos del bloque pegado, del que tenía la
+    // plantilla antes de pegar o de un bloque conocido.
+    const bloqueRearmado = [textosBloquePegado, textosBloqueAnterior, ...bloquesFuncionesConocidos].some(
+      (textos) => restaurarBloqueFunciones(editor, textos),
+    );
+    sincronizarContenidoEditorActual();
+    guardarSeleccionEditor();
+
+    if ((limpiado || bloqueFuncionesDescartado) && !bloqueRearmado) {
+      toast.info('Contenido pegado y limpiado', {
+        description: bloqueFuncionesDescartado
+          ? 'Se quitaron estilos externos y no se duplicó el bloque de funciones (la plantilla ya tiene uno).'
+          : 'Se quitaron estilos externos para que el certificado conserve el formato de la plantilla.',
+      });
+    }
+  };
+
+  /**
+   * Copia desde el editor el HTML exacto de la selección (con el bloque de
+   * funciones si la selección lo incluye). Así lo que se pega en otra plantilla
+   * no depende de cómo cada navegador arma el portapapeles.
+   */
+  const copiarContenidoEditor = (event: React.ClipboardEvent<HTMLDivElement>) => {
+    const editor = editorRef.current;
+    const seleccion = window.getSelection();
+    if (!editor || !seleccion || !seleccion.rangeCount) return;
+    const rango = seleccion.getRangeAt(0);
+    if (rango.collapsed || !editor.contains(rango.commonAncestorContainer)) return;
+    try {
+      const contenedor = document.createElement('div');
+      contenedor.appendChild(rango.cloneContents());
+      event.clipboardData.setData('text/html', contenedor.innerHTML);
+      event.clipboardData.setData('text/plain', seleccion.toString());
+      event.preventDefault();
+    } catch (error) {
+      console.warn('No se pudo preparar la copia; se usa la copia normal.', error);
+    }
+  };
+
+  const corregirVariablesPlantilla = () => {
+    if (!ensureEditable() || !editorRef.current) return;
+    const corregidoBase = normalizarVariables(
+      prepararVariablesPlantilla(limpiarEstilosExternosPlantilla(editorRef.current.innerHTML)),
+    );
+    const corregido = rearmarBloqueFuncionesEnHtml(corregidoBase, bloquesFuncionesConocidos) ?? corregidoBase;
+    if (corregido === editorRef.current.innerHTML) return;
+    editorRef.current.innerHTML = corregido;
+    actualizarBorradorContenido(corregido);
+    savedSelectionRef.current = null;
+    toast.success('Variables corregidas', {
+      description: 'Se aplicaron las correcciones automáticas (variables mal escritas, estilos externos y bloque de funciones).',
+    });
+  };
+
+  const describirProblemaVariable = (problema: ProblemaVariablePlantilla): string => {
+    switch (problema.tipo) {
+      case 'pegada':
+        return `${problema.variable} está pegada a otro texto ("${problema.contexto}"). En el certificado saldrá así, sin espacio; si no es intencional, agrega uno.`;
+      case 'normalizada':
+        return `${problema.texto} se interpretará como ${problema.variable}.`;
+      case 'desconocida':
+        return `${problema.texto} no es una variable disponible: saldrá tal cual en el certificado.`;
+      case 'incompleta':
+        return `"${problema.texto}" parece ${problema.variable} pero le falta un corchete: saldrá tal cual en el certificado.`;
+      case 'estilosExternos':
+        return 'Hay estilos de fuente, tamaño o fondo agregados al texto (suelen quedar al copiar y pegar). Podrían cambiar el aspecto del PDF: usa "Corregir automáticamente" para quitarlos.';
+      case 'funciones':
+        if (problema.detalle === 'duplicada') {
+          return '[FUNCIONES] aparece más de una vez: las funciones saldrían repetidas en el certificado.';
+        }
+        if (problema.detalle === 'bloqueDuplicado') {
+          return 'El bloque de funciones está duplicado (suele pasar al pegar una plantilla completa): deja uno solo.';
+        }
+        return contenidoConBloqueRearmado
+          ? '[FUNCIONES] y su texto quedaron sin el marco del bloque de funciones (pasa al copiar como texto, por ejemplo desde el Bloc de notas). Usa "Corregir automáticamente" para volver a armarlo.'
+          : '[FUNCIONES] quedó fuera del bloque de funciones: si el certificado no pide funciones, el texto que la acompaña se imprimirá igual.';
+      case 'datoReal':
+        return `"${problema.texto}" parece un dato de un certificado ya generado: saldría igual en todos. Usa la variable correspondiente.`;
+      case 'faltaVariable':
+        return `La plantilla no tiene ${problema.variable}: todos los certificados mostrarían el mismo dato.`;
+      default:
+        return '';
+    }
+  };
+
+  const advertirVariablesPorRevisar = () => {
+    if (!problemasPorRevisar.length) return;
+    toast.warning('Revisa las variables de la plantilla', {
+      description: problemasPorRevisar.slice(0, 3).map(describirProblemaVariable).join(' '),
+      duration: 8000,
+    });
   };
 
 
@@ -3312,6 +3560,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+      advertirVariablesPorRevisar();
       toast.success('Cambios guardados', {
 
 
@@ -3645,6 +3894,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
+      advertirVariablesPorRevisar();
       toast.success('Plantilla autorizada', {
 
 
@@ -5574,7 +5824,7 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
 
-                          aplicarComandoEditor('foreColor', color.value);
+                          aplicarColorEditor(color.value);
 
 
 
@@ -5813,7 +6063,14 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
                   onKeyUp={guardarSeleccionEditor}
                   onBlur={guardarSeleccionEditor}
                   onPaste={manejarPegadoEditor}
+                  onCopy={copiarContenidoEditor}
                   onInput={(e) => {
+                    // Una variable a la que se le borró un corchete o una letra
+                    // deja de estar resaltada (sin mover el cursor).
+                    desmarcarVariablesInvalidas(e.currentTarget);
+                    // Al borrar o escribir, el navegador puede dejar estilos
+                    // iguales a los del texto de alrededor: se quitan.
+                    quitarEstilosRedundantes(e.currentTarget);
                     let newContent = e.currentTarget.innerHTML;
 
                     // Normalizar el contenido para limpiar spans anidados
@@ -5829,6 +6086,56 @@ export function ConfiguracionPlantilla({ canEdit = true, currentUserEmail }: Con
 
 
                 />
+
+                {problemasVariables.length > 0 && (
+                  <div
+                    role="status"
+                    data-testid="revision-variables-plantilla"
+                    style={{
+                      marginTop: 12,
+                      border: `1px solid ${problemasPorRevisar.length ? '#fcd34d' : '#bfdbfe'}`,
+                      background: problemasPorRevisar.length ? '#fffbeb' : '#eff6ff',
+                      borderRadius: 8,
+                      padding: '12px 14px',
+                      fontSize: 13,
+                      color: '#1f2937',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 }}>
+                        {problemasPorRevisar.length ? (
+                          <AlertCircle style={{ width: 16, height: 16, color: '#b45309', flexShrink: 0 }} />
+                        ) : (
+                          <Info style={{ width: 16, height: 16, color: '#1d4ed8', flexShrink: 0 }} />
+                        )}
+                        <span>Revisión de variables</span>
+                      </div>
+                      {canEdit && (problemasCorregibles.length > 0 || Boolean(contenidoConBloqueRearmado)) && (
+                        <Button type="button" size="sm" variant="outline" onClick={corregirVariablesPlantilla}>
+                          Corregir automáticamente
+                        </Button>
+                      )}
+                    </div>
+                    <ul style={{ margin: '8px 0 0', paddingLeft: 18, listStyleType: 'disc' }}>
+                      {problemasEnPanel.slice(0, 8).map((problema, index) => (
+                        <li
+                          key={`${problema.tipo}-${index}`}
+                          style={{
+                            marginTop: 4,
+                            color: esProblemaPorRevisar(problema) ? '#92400e' : '#1e3a8a',
+                          }}
+                        >
+                          {describirProblemaVariable(problema)}
+                        </li>
+                      ))}
+                    </ul>
+                    {problemasEnPanel.length > 8 && (
+                      <p style={{ margin: '6px 0 0', color: '#4b5563' }}>
+                        y {problemasEnPanel.length - 8} más…
+                      </p>
+                    )}
+                  </div>
+                )}
 
 
 

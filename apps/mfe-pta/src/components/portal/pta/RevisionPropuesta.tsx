@@ -21,6 +21,7 @@ import { docentePtaAlert as toast } from './DocentePtaAlert';
 import { useNotifications } from '../../esap/NotificationsContext';
 import { HierarchySelectionSummary } from '../../pta/shared/HierarchySelectionSummary';
 import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
+import { getPtaResearchData } from '../../../utils/ptaResearch';
 
 interface RevisionPropuestaProps {
   ptaId: string;
@@ -120,6 +121,7 @@ export function RevisionPropuesta({ ptaId, onBack, userPersonId }: RevisionPropu
   if (!pta) return <p className="text-center text-gray-500 py-10">PTA no encontrado</p>;
 
   const canRespond = ['NOTIFICADO_DOCENTE', 'PROPUESTO_POR_DIRECCION'].includes(pta.estado);
+  const investigacion = getPtaResearchData(pta);
 
   return (
     <div className="mx-auto">
@@ -226,14 +228,18 @@ export function RevisionPropuesta({ ptaId, onBack, userPersonId }: RevisionPropu
       </DetailSection>
 
       {/* Investigación detail (read-only if assigned) */}
-      {(pta.investigacion_proyecto?.nombre || pta.investigacion_proyecto?.rol) && (
+      {(investigacion.proyectos.length > 0 || investigacion.actividades.length > 0) && (
         <DetailSection title="Detalle Investigación" subtitle="Asignado por SNI" icon={FlaskConical} color="#7C3AED" locked>
           <div className="p-3 text-xs space-y-1">
-            <div><span className="text-gray-500">Proyecto:</span> <span className="font-medium text-gray-900">{pta.investigacion_proyecto.nombre || 'Proyecto de Investigación (Pendiente Registro)'}</span></div>
-            <div><span className="text-gray-500">Rol:</span> <span className="font-medium text-gray-900">{pta.investigacion_proyecto.rol}</span></div>
-            <div><span className="text-gray-500">Horas:</span> <span className="font-bold text-purple-700">{pta.investigacion_proyecto.horas_solicitadas}h</span></div>
-            <HierarchySelectionSummary activity={pta.investigacion_proyecto} accent="#7C3AED" compact className="mt-2" />
-            {(pta.investigacion_actividades || []).map((actividad: any, index: number) => (
+            {investigacion.proyectos.map((proyecto: any, index: number) => (
+              <div key={index}>
+                <div><span className="text-gray-500">Proyecto:</span> <span className="font-medium text-gray-900">{proyecto.nombre || proyecto.nombre_proyecto || 'Proyecto de Investigación (Pendiente Registro)'}</span></div>
+                <div><span className="text-gray-500">Rol:</span> <span className="font-medium text-gray-900">{proyecto.rol}</span></div>
+                <div><span className="text-gray-500">Horas:</span> <span className="font-bold text-purple-700">{proyecto.horas_solicitadas}h</span></div>
+                <HierarchySelectionSummary activity={proyecto} accent="#7C3AED" compact className="mt-2" />
+              </div>
+            ))}
+            {investigacion.actividades.map((actividad: any, index: number) => (
               <div key={actividad.id || actividad.actividad_id || index} className="mt-2 rounded-lg border border-purple-100 bg-purple-50/40 p-2">
                 <div className="flex items-start justify-between gap-2">
                   <span className="font-medium text-gray-900">{actividad.nombre || actividad.actividad_nombre || 'Actividad de investigación'}</span>

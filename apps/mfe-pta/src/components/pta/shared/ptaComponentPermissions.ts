@@ -430,6 +430,11 @@ export function componentKeysFromPermissionChecker(
 }
 
 export function hasComponentApprovalData(pta: any, key: PTAComponentKey): boolean {
+  // La presencia de actividades sin horas viene resuelta por el backend;
+  // participa en las bandejas sin cambiar qué permisos habilitan cada acción.
+  const complementariaConContenido = pta?.complementarias_con_contenido?.[key];
+  if ((PTA_COMPLEMENTARIAS_COMPONENT_KEYS as readonly string[]).includes(key)
+    && typeof complementariaConContenido === 'boolean') return complementariaConContenido;
   const asignaturas: any[] = Array.isArray(pta?.asignaturas) ? pta.asignaturas : [];
   // El backend resuelve el enrutamiento de Docencia (territorialidad > nivel) y lo
   // expone agregado en el listado. Es la fuente preferida: no depende de que el DTO

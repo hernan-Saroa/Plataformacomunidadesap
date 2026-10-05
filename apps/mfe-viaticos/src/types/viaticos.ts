@@ -464,6 +464,37 @@ export interface ProcesarPagoDto {
   modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string;
 }
 
+export type OrigenReintegro = 'COMISION_NO_REALIZADA' | 'VIAJE_MENOR';
+export type EstadoReintegro = 'PENDIENTE' | 'REGISTRADO';
+
+export interface ReintegroComision {
+  id: string;
+  solicitudId: string;
+  consecutivoUnico: string | null;
+  comisionado: { numeroDocumento: string; nombre: string } | null;
+  destinoCiudad: string | null;
+  fechaInicio: string | null;
+  fechaFin: string | null;
+  origen: OrigenReintegro;
+  estado: EstadoReintegro;
+  valorPagado: number;
+  valorAReintegrar: number;
+  diasComision: number | null;
+  diasEjecutados: number | null;
+  valorReintegrado: number | null;
+  fechaReintegro: string | null;
+  soportePath: string | null;
+  observaciones: string | null;
+  fechaRegistro: string | null;
+}
+
+export interface RegistrarReintegroDto {
+  valorReintegrado: number;
+  fechaReintegro: string;
+  soportePath: string;
+  observaciones?: string;
+}
+
 export interface BandejaSecretarioResponse {
   data: SolicitudListaResponse[];
   total: number;
@@ -1246,6 +1277,12 @@ export interface FirmanteRequerido {
   descripcion: string;
   esRequerido: boolean;
   firmado: boolean;
+  nombreFirmante?: string | null;
+  cargoFirmante?: string | null;
+  documentoIdentidad?: string | null;
+  fechaFirma?: string | null;
+  certificadoId?: string | null;
+  hashSha256?: string | null;
   firma: FirmaAprobacionRegistrada | null;
 }
 
@@ -1256,6 +1293,8 @@ export interface EstadoFirmasResponse {
   reglaDesplazamiento: string;
   descripcionRegla: string;
   firmantes: FirmanteRequerido[];
+  firmaElaboro?: FirmaAprobacionRegistrada | null;
+  elaboro?: string | null;
   completado: boolean;
   requiereFirmasParaRadicar: boolean;
   mensaje: string;

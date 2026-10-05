@@ -186,6 +186,47 @@ describe('listado de gestión según componentes y alcance efectivos', () => {
     expect((await service.filterGestionPtas(dtos, rows, auth)).map(p => p.id)).toEqual(dtos.map(p => p.id));
   });
 
+  it('el estado posterior a una decisión conserva exactamente el alcance de Gestión', async () => {
+    const { service, auth, rows } = setup(['investigacion'], []);
+    const row = rows[0];
+    service.ptaRepo = { find: jest.fn().mockResolvedValue([row]) };
+    service.getExtMultiplicadores = jest.fn().mockResolvedValue({});
+    service.toPtaDto = jest.fn().mockReturnValue({ id: row.id, estado: 'Pendiente Jefatura' });
+    service.attachComponentApprovalProgress = jest.fn(async dtos => {
+      Object.assign(dtos[0], {
+        componentes_con_datos: ['investigacion', 'complementarias'],
+        subsecciones_con_datos: ['investigacion:general', 'complementarias:docencia'],
+        componentes_aprobacion_estado: [
+          { componente: 'investigacion', estado: 'aprobado', revision_completa: true },
+          { componente: 'complementarias', estado: 'pendiente', revision_completa: false },
+        ],
+      });
+    });
+
+    const result = await service.getUpdatedGestionPta(row.id, auth);
+
+    expect(result.estado).toBe('Pendiente Jefatura');
+    expect(result.componentes_aprobacion_usuario).toEqual([
+      { componente: 'investigacion', estado: 'aprobado', revision_completa: true },
+    ]);
+    expect(result.componentes_revision_usuario).toEqual([]);
+    expect(result.componentes_aprobacion_en_alcance).toEqual(['investigacion']);
+    expect(result.componentes_aprobacion_estado).toHaveLength(2);
+  });
+
+  it('un fallo de consulta posterior no convierte la decisión guardada en fallida', async () => {
+    const { service, auth } = setup(['investigacion']);
+    service.ptaRepo = { find: jest.fn().mockRejectedValue(new Error('Consulta temporalmente no disponible')) };
+    await expect(service.getUpdatedGestionPta('propio', auth)).resolves.toBeUndefined();
+  });
+
+  it('no consulta el estado personal sin contexto autenticado', async () => {
+    const { service } = setup(['investigacion']);
+    service.ptaRepo = { find: jest.fn() };
+    await expect(service.getUpdatedGestionPta('propio')).resolves.toBeUndefined();
+    expect(service.ptaRepo.find).not.toHaveBeenCalled();
+  });
+
   it('la ruta de gestión usa el guard y el contexto del servidor', async () => {
     const getAllPTAs = jest.fn().mockResolvedValue([]);
     const controller = new PtaController({ getAllPTAs } as any);

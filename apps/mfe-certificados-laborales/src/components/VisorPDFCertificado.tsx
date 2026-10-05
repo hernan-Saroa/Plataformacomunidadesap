@@ -13,6 +13,7 @@ import html2canvas from 'html2canvas';
 import { certificadosService } from '../../services/api/certificados.service';
 import { buildServiceAssetUrl, getPublicBaseUrl } from '../../config/environment';
 import { formatCargoDisplay, selectPreferredCargoCode } from '../../utils/cargoFormatter';
+import { prepararVariablesPlantilla } from '../../utils/plantillaVariables';
 import { QRCodeCanvas } from 'qrcode.react';
 
 /**
@@ -292,6 +293,23 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
     (certificado as any)?.template_type,
   ]);
 
+  // Preferencias que el usuario puede cambiar después de emitir ("Ocultar
+  // salario", "Incluir prima"). Solo se envían cuando vienen explícitas para
+  // que, sin ellas, el backend use lo persistido en el certificado.
+  const pdfOverrideSalario =
+    typeof certificado?.incluyeSalario === 'boolean' ? certificado.incluyeSalario : undefined;
+  const pdfOverridePrima =
+    pdfOverrideSalario === false
+      ? false
+      : typeof certificado?.incluyePrimaTecnica === 'boolean'
+        ? certificado.incluyePrimaTecnica
+        : undefined;
+  const obtenerPDFOficial = (id: string) =>
+    certificadosService.laborales.obtenerPDFBlob(id, {
+      includeSalary: pdfOverrideSalario,
+      includeTechnicalBonus: pdfOverridePrima,
+    });
+
   // Cargar PDF del backend para la vista previa del modal
   useEffect(() => {
     if (!isOpen || !certificado.id) return;
@@ -299,7 +317,7 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
     let cancelled = false;
     setPdfLoading(true);
     setPdfBlobUrl(null);
-    certificadosService.laborales.obtenerPDFBlob(certificado.id)
+    obtenerPDFOficial(certificado.id)
       .then((blob) => {
         if (cancelled) return;
         blobUrl = URL.createObjectURL(blob);
@@ -315,7 +333,8 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
       if (blobUrl) URL.revokeObjectURL(blobUrl);
       setPdfBlobUrl(null);
     };
-  }, [isOpen, certificado.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, certificado.id, pdfOverrideSalario, pdfOverridePrima]);
 
   const incluirSalario = certificado?.incluyeSalario !== false;
   const includeFunctionsValue: unknown =
@@ -988,7 +1007,7 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
       // descarga, el correo y los reenvíos conservan exactamente el mismo PDF.
       if (certificado.id) {
         try {
-          const backendBlob = await certificadosService.laborales.obtenerPDFBlob(certificado.id);
+          const backendBlob = await obtenerPDFOficial(certificado.id);
           if (autoAction === 'email') {
             const bytes = new Uint8Array(await backendBlob.arrayBuffer());
             let binary = '';
@@ -1131,7 +1150,7 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
     if (certificado.id) {
       try {
         toast.loading('Preparando documento para impresión...', { id: 'print-pdf' });
-        const blob = await certificadosService.laborales.obtenerPDFBlob(certificado.id);
+        const blob = await obtenerPDFOficial(certificado.id);
         const blobUrl = URL.createObjectURL(blob);
         toast.dismiss('print-pdf');
 
@@ -1412,7 +1431,9 @@ const sonValoresPlantillaEquivalentes = (a?: string | null, b?: string | null) =
   const contenidoNormalizado = plantillaConfig.certificateContentHtml
     ? limpiarSeccionesSalario(
         reemplazarVariables(
-          prepararBloqueFuncionesPlantilla(plantillaConfig.certificateContentHtml),
+          prepararBloqueFuncionesPlantilla(
+            prepararVariablesPlantilla(plantillaConfig.certificateContentHtml),
+          ),
         ),
       )
     : '';

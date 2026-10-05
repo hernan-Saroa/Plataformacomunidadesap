@@ -7,6 +7,7 @@ describe('permisos vigentes de las decisiones PTA', () => {
     ['pta.review.investigacion', 'investigacion:general'],
     ['pta.review.extension.capacitacion', 'ext_capacitacion:general'],
     ['pta.review.complementarias.pregrado', 'complementarias_pregrado:docencia'],
+    ['pta.review.complementarias.gestion_profesoral', 'complementarias_gestion_profesoral:docencia'],
     ['pta.review.complementarias.territorial.pregrado', 'complementarias_territorial:docencia'],
   ])('%s concede revisión únicamente sobre su componente', async (permissionCode, expectedScope) => {
     const query = jest.fn().mockResolvedValue([
@@ -26,6 +27,7 @@ describe('permisos vigentes de las decisiones PTA', () => {
     ['pta.approve.investigacion', 'investigacion'],
     ['pta.approve.extension.capacitacion', 'ext_capacitacion'],
     ['pta.approve.complementarias.pregrado', 'complementarias_pregrado'],
+    ['pta.approve.complementarias.gestion_profesoral', 'complementarias_gestion_profesoral'],
     ['pta.approve.complementarias.territorial.pregrado', 'complementarias_territorial'],
   ])('%s concede aprobación pero no revisión de solicitudes', async (permissionCode, expectedComponent) => {
     const query = jest.fn().mockResolvedValue([
@@ -53,6 +55,16 @@ describe('permisos vigentes de las decisiones PTA', () => {
     expect(ctx.allowedReviewSubsecciones).toContain('academica_territorial:general');
     expect(ctx.allowedNivelesTerritorialRevisar).toEqual(['pregrado']);
     expect(query.mock.calls[0][1]).toEqual(['user-1']);
+  });
+
+  it('el nombre del rol y los permisos genéricos no conceden revisión de Gestión Profesoral', async () => {
+    const service = new PtaPermissionsService({ query: jest.fn().mockResolvedValue([
+      { role_code: 'GESTION_PROFESORAL', permission_code: 'pta.review.complementarias.docencia' },
+      { role_code: 'GESTION_PROFESORAL', permission_code: 'pta.review.complementarias.academico_administrativas' },
+    ]) } as any);
+    const ctx = await service.resolveForUser('reviewer');
+    expect(ctx.allowedReviewSubsecciones).not.toContain('complementarias_gestion_profesoral:docencia');
+    expect(ctx.allowedReviewSubsecciones).not.toContain('complementarias_gestion_profesoral:academico_administrativas');
   });
 
   it('aplica inmediatamente altas y revocaciones sin reutilizar la caché del rol', async () => {

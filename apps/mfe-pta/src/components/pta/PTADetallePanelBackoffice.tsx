@@ -20,6 +20,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef, type ReactNod
 import { getPTADecisionPermissions, type PTADecisionPermissions } from '../../services/api/ptaApi';
 import { canDecidePtaComponent } from './shared/ptaDecisionPermissions';
 import { getPtaHistoryActorLabel } from '../../utils/ptaHistoryActor';
+import { getPtaResearchData } from '../../utils/ptaResearch';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../utils/ptaCompletion';
 import { cargarPreviewOffice, puedePrevisualizarOffice, ESTILOS_PREVIEW_OFFICE } from '../../utils/officePreview';
 import { createPortal } from 'react-dom';
@@ -727,10 +728,7 @@ function normalizePTAData(d: any, fallbackPta: any = {}) {
     ...fallbackPta,
     ...d,
     extension_actividades: extensionActs,
-    investigacion: {
-      proyectos: (d.investigacion_proyecto?.nombre || d.investigacion_proyecto?.rol) ? [d.investigacion_proyecto] : [],
-      actividades: d.investigacion_actividades || [],
-    },
+    investigacion: getPtaResearchData({ ...fallbackPta, ...d }),
     extension: {
       capacitacion: extensionActs.filter((e: any) => e.seccion === 'capacitacion'),
       seleccion: extensionActs.filter((e: any) => e.seccion === 'seleccion'),
@@ -924,6 +922,20 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     || Object.values(procesandoAprobacionComponente).some(Boolean)
     || Object.values(procesandoRevision).some(Boolean);
 
+  // La lista recibe el estado personal actualizado incluso cuando el panel está
+  // abierto. Conservar los datos de detalle y comentarios mientras se aplican
+  // los indicadores del flujo que confirmó esa misma consulta del servidor.
+  useEffect(() => {
+    if (!initialPta?.id) return;
+    const campos = ['estado', 'componentes_estado', 'componentes_total', 'componentes_aprobados',
+      'componentes_aprobacion_estado', 'componentes_revision_estado', 'componentes_en_alcance',
+      'componentes_aprobacion_en_alcance', 'componentes_revision_en_alcance',
+      'componentes_aprobacion_usuario', 'componentes_revision_usuario'];
+    const cambio = Object.fromEntries(campos.filter(campo => initialPta[campo] !== undefined)
+      .map(campo => [campo, initialPta[campo]]));
+    setPta((prev: any) => prev.id === initialPta.id ? { ...prev, ...cambio } : prev);
+  }, [initialPta]);
+
   // Refresh server state without replacing local comments or unmounting reports.
   useEffect(() => {
     if (!initialPta?.id || guardandoDecision || decisionOperationRef.current) return;
@@ -971,7 +983,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     });
     // Discard reads started before a local decision or before selecting another PTA.
     return () => { cancelled = true; };
-  }, [initialPta?.id, syncVersion, guardandoDecision]);
+  }, [initialPta, syncVersion, guardandoDecision]);
 
   // Etiquetas legibles de componente para el correo/modal de firma OTP.
   const COMPONENTE_LABELS_FIRMA: Record<string, string> = {
@@ -1064,16 +1076,32 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
    * componentes y el bloque de Aprobaciones de Jefatura seguían mostrando el estado
    * previo hasta recargar la página, que es justo lo que se reportó.
    */
-  const refrescarEstadoDerivadoDelPta = async () => {
+  const refrescarEstadoDerivadoDelPta = async (notificarActualizacion = true) => {
     const [resPta, resJefatura] = await Promise.all([
       getPTAById(pta.id),
       getAprobacionesJefatura(pta.id),
     ]);
     if (resPta.success && resPta.data) {
       setPta((prev: any) => ({ ...prev, ...resPta.data }));
-      onUpdated?.({ ...pta, ...resPta.data });
+      // El detalle general no trae el alcance personal. No reenviar aquí los
+      // estados personales anteriores: sobrescribirían el resultado de Gestión.
+      if (notificarActualizacion) onUpdated?.({ ...resPta.data, id: pta.id, periodo: pta.periodo });
     }
     if (resJefatura.success) setAprobacionesJefatura(resJefatura.data || []);
+  };
+
+  const publicarDecisionRegistrada = (data: any) => {
+    const actualizado = data?.ptaActualizado?.id === pta.id ? data.ptaActualizado : null;
+    const cambio = actualizado || {
+      id: pta.id,
+      periodo: pta.periodo,
+      ...(data?.estadoGeneral ? { estado: data.estadoGeneral } : {}),
+    };
+    setPta((prev: any) => ({ ...prev, ...cambio }));
+    // Aplicar el estado confirmado antes de las consultas auxiliares. Una caída
+    // de estas consultas no debe dejar pendientes los contadores de la decisión.
+    onUpdated?.(cambio);
+    return Boolean(actualizado);
   };
 
   const prepararDecision = async (firma: boolean, operation: () => Promise<unknown>) => {
@@ -1165,6 +1193,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
       decisionSucceeded = res.success;
       if (res.success) {
+        const estadoPersonalActualizado = publicarDecisionRegistrada(res.data);
         const sufijo = par ? ` (${etiquetaParDe(par)})` : '';
         toast.success(`Componente ${estado === 'aprobado' ? 'aprobado' : 'devuelto'} con éxito${sufijo}`);
         setComentariosComponente(prev => ({ ...prev, [clave]: '' }));
@@ -1179,13 +1208,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           if (resTerritorial.success) setAprobacionTerritorial(resTerritorial.data || []);
         }
 
-        if (res.data?.estadoGeneral) {
-          const nuevoEstado = res.data.estadoGeneral;
-          setPta((prev: any) => ({ ...prev, estado: nuevoEstado }));
-          onUpdated?.({ ...pta, estado: nuevoEstado });
-        }
         // Estado por componente y avance de Jefatura: los recalcula el backend.
-        await refrescarEstadoDerivadoDelPta();
+        await refrescarEstadoDerivadoDelPta(!estadoPersonalActualizado);
       } else {
         // Caso de carrera: el panel seguía mostrando el botón "Aprobar" con datos
         // ya desactualizados (otro aprobador resolvió el último par propio pendiente
@@ -1278,6 +1302,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
 
       decisionSucceeded = res.success;
       if (res.success) {
+        const estadoPersonalActualizado = publicarDecisionRegistrada(res.data);
         const sufijo = par ? ` (${etiquetaParDe(par)})` : '';
         toast.success(`Revisión ${estado === 'revisado' ? 'registrada' : 'devuelta'} con éxito${sufijo}`);
         setComentariosRevision(prev => ({ ...prev, [claveComentario]: '' }));
@@ -1297,13 +1322,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
           if (resRevTerritorial.success) setRevisionTerritorial(resRevTerritorial.data || []);
         }
 
-        if (res.data?.estadoGeneral) {
-          const nuevoEstado = res.data.estadoGeneral;
-          setPta((prev: any) => ({ ...prev, estado: nuevoEstado }));
-          onUpdated?.({ ...pta, estado: nuevoEstado });
-        }
         // Igual que al aprobar: 'en_revision' también cambia componentes_estado.
-        await refrescarEstadoDerivadoDelPta();
+        await refrescarEstadoDerivadoDelPta(!estadoPersonalActualizado);
       } else {
         toast.error(res.message || 'Error al actualizar la revisión del componente');
       }
@@ -1414,10 +1434,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   };
   const asignaturas = Array.isArray(pta.asignaturas) ? pta.asignaturas : [];
   
-  const investigacion = {
-    proyectos: pta.investigacion_proyecto ? [pta.investigacion_proyecto] : (pta.investigacion?.proyectos || []),
-    actividades: Array.isArray(pta.investigacion_actividades) ? pta.investigacion_actividades : (pta.investigacion?.actividades || [])
-  };
+  const investigacion = getPtaResearchData(pta);
   
   const extActsRaw = (Array.isArray(pta.extension_actividades) ? pta.extension_actividades : []).map((a: any) => ({
     ...a,
@@ -1513,13 +1530,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     [asignaturasTerritorial, sumarHorasAsignaturas],
   );
 
-  const horasInvestigacion = useMemo(() => {
-    if (pta.horas_investigacion !== undefined) return pta.horas_investigacion;
-    const proyectos = investigacion.proyectos || [];
-    const actividades = investigacion.actividades || [];
-    return proyectos.reduce((s: number, p: any) => s + (p.horas_solicitadas || 0), 0)
-      + actividades.reduce((s: number, a: any) => s + (a.horas_total || 0), 0);
-  }, [pta, investigacion]);
+  const horasInvestigacion = investigacion.horas;
 
   const horasExtension = useMemo(() => {
     if (pta.horas_extension !== undefined) return pta.horas_extension;
@@ -2534,6 +2545,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       {r.comentarios}
                     </div>
                   )}
+                  {subseccionAccionable && !puedeRevisarEsta && (
+                    <div style={{ fontSize: '0.68rem', color: '#64748B', display: 'flex', gap: 6 }}>
+                      <Lock style={{ width: 13, height: 13, flexShrink: 0 }} />
+                      <span>{!decisionPermissions
+                        ? 'No fue posible verificar tus permisos de revisión. Intenta actualizar el detalle.'
+                        : decisionPermissions.componentReasons?.[key]?.revisar
+                          || `No tienes autorización para revisar ${subLabel} de ${labelDeComponente(key)}. La actividad requiere el permiso de revisión correspondiente y un alcance territorial compatible.`}</span>
+                    </div>
+                  )}
                   {r.estado === 'devuelto' && puedeRevisarEsta && (
                     <div style={{
                       fontSize: '0.68rem', color: '#B91C1C', background: '#FEF2F2',
@@ -2864,7 +2884,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                     return 'Ya registraste tu decisión sobre la territorial que te corresponde. Quedan decisiones pendientes de otros responsables.';
                   })()
                 : !componentAuthorized
-                ? ((key === 'academica_territorial' && (decisionPermissions?.territorial.aprobar.reason || decisionPermissions?.territorial.revisar.reason)) || 'No tienes los permisos para aprobar este componente.')
+                ? (decisionPermissions?.componentReasons?.[key]?.aprobar || (key === 'academica_territorial' && decisionPermissions?.territorial.aprobar.reason) || 'No tienes los permisos para aprobar este componente.')
                 : hayOtroComponenteDevuelto
                 ? 'Otro componente de este PTA fue devuelto y está pendiente de corrección del docente. No se puede aprobar ni devolver hasta que el PTA sea corregido y reenviado.'
                 : !revisionCargada
@@ -4081,7 +4101,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         border: '1px solid #F3F4F6', marginBottom: 4,
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', flex: 1 }}>{p.nombre || 'Proyecto de Investigación (Pendiente Registro)'}</div>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', flex: 1 }}>{p.nombre || p.nombre_proyecto || 'Proyecto de Investigación (Pendiente Registro)'}</div>
                           <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#7C3AED', whiteSpace: 'nowrap' }}>{p.horas_solicitadas}h</span>
                         </div>
                         <div style={{ display: 'flex', gap: 8, fontSize: '0.68rem', color: '#9CA3AF', marginTop: 3, flexWrap: 'wrap' }}>
@@ -4110,8 +4130,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         border: '1px solid #F3F4F6', marginBottom: 4,
                       }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                          <span style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 500, flex: 1 }}>{a.nombre}</span>
-                          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#7C3AED', whiteSpace: 'nowrap' }}>{a.horas_total || a.horas}h</span>
+                          <span style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 500, flex: 1 }}>{a.nombre || a.actividad_nombre || a.actividad_id || 'Actividad de investigación'}</span>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#7C3AED', whiteSpace: 'nowrap' }}>{Number(a.horas_total ?? a.horas ?? 0)}h</span>
                         </div>
                         {a.descripcion && (
                           <div style={{ fontSize: '0.68rem', color: '#6B7280', marginTop: 3, lineHeight: 1.4 }}>{a.descripcion}</div>
