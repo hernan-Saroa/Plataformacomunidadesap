@@ -753,29 +753,44 @@ export const AdminParametrosUMI: React.FC = () => {
       {tab === 'tecnicos' && (
         <div className="space-y-4 pt-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <p className="text-sm text-slate-600">
-                Catálogo técnico mantenimiento. La columna <span className="font-bold text-slate-800">Carga vigente</span> cuenta solicitudes UMI activas (RECIBIDA / ASIGNADA / EN_PROGRESO / EN_ANÁLISIS).
-              </p>
-              <div className="inline-flex items-center gap-2 text-xs font-bold">
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                  Activos: {tecnicos.filter((x) => x.isActivo).length}
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-300">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-500" />
-                  Inactivos: {tecnicos.filter((x) => !x.isActivo).length}
-                </span>
+            <div className="flex flex-col gap-2 w-full md:w-auto">
+              <div className="rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50 via-white to-slate-50 px-4 py-3 flex items-start gap-3">
+                <div className="w-9 h-9 shrink-0 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-sm ring-1 ring-indigo-500">
+                  <Users className="w-4 h-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-black text-sm text-slate-900 tracking-tight">
+                    Source of Truth: auth-service · Roles P3 / P4
+                  </h4>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    Los técnicos UMI ya no se crean ni editan en este módulo. Para <span className="font-bold text-indigo-800">designar un técnico</span>,
+                    ir a <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 text-[11px]">MFE Gestión Personas</span> y
+                    asignar rol <span className="font-bold text-purple-800">P3 (Técnico Eléctrico Especializado · CS_002)</span> o
+                    <span className="font-bold text-blue-800 ml-1">P4 (Técnico Multipropósito · resto categorías)</span> sobre la persona.
+                  </p>
+                </div>
               </div>
-              <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition-colors select-none">
-                <input
-                  type="checkbox"
-                  className="w-3.5 h-3.5 rounded border-slate-400 text-blue-600 focus:ring-blue-500"
-                  checked={mostrarInactivos}
-                  onChange={(e) => setMostrarInactivos(e.target.checked)}
-                />
-                Mostrar inactivos
-              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center gap-2 text-xs font-bold">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                    P3/P4 activos: {tecnicos.filter((x) => x.isActivo).length}
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-300">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-500" />
+                    Inactivos auth: {tecnicos.filter((x) => !x.isActivo).length}
+                  </span>
+                </div>
+                <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700 px-2.5 py-1 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 transition-colors select-none">
+                  <input
+                    type="checkbox"
+                    className="w-3.5 h-3.5 rounded border-slate-400 text-blue-600 focus:ring-blue-500"
+                    checked={mostrarInactivos}
+                    onChange={(e) => setMostrarInactivos(e.target.checked)}
+                  />
+                  Mostrar inactivos
+                </label>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -789,11 +804,12 @@ export const AdminParametrosUMI: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={abrirCrearTec}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-md ring-1 ring-blue-500"
+                onClick={() => window.dispatchEvent(new CustomEvent('navigate:mfe-gestion-personas', { detail: { tab: 'usuarios' } }))}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-700 hover:from-indigo-700 hover:to-blue-800 text-white text-sm font-bold shadow-md ring-1 ring-indigo-500"
+                title="Abrir Gestión Personas para designar roles P3/P4 UMI"
               >
-                <Plus className="w-4 h-4" />
-                Nuevo técnico
+                <Users className="w-4 h-4" />
+                Abrir Gestión Personas
               </button>
             </div>
           </div>
@@ -804,40 +820,51 @@ export const AdminParametrosUMI: React.FC = () => {
                 <tr>
                   <th className="px-4 py-3 text-left font-semibold w-16">#</th>
                   <th className="px-4 py-3 text-left font-semibold w-32">Código</th>
-                  <th className="px-4 py-3 text-left font-semibold">Nombre</th>
-                  <th className="px-4 py-3 text-left font-semibold w-28 hidden md:table-cell">Contacto</th>
-                  <th className="px-4 py-3 text-left font-semibold w-56 hidden md:table-cell">Especialidades</th>
+                  <th className="px-4 py-3 text-left font-semibold">Nombre persona</th>
+                  <th className="px-4 py-3 text-left font-semibold w-28">Perfil UMI</th>
+                  <th className="px-4 py-3 text-left font-semibold w-28 hidden md:table-cell">Contacto auth</th>
+                  <th className="px-4 py-3 text-left font-semibold w-24">Estado cuenta</th>
                   <th className="px-4 py-3 text-left font-semibold w-64">Carga vigente</th>
-                  <th className="px-4 py-3 text-left font-semibold w-20">Activo</th>
-                  <th className="px-4 py-3 text-right font-semibold w-32">Acciones</th>
+                  <th className="px-4 py-3 text-right font-semibold w-36">Info / Origen</th>
                 </tr>
               </thead>
               <tbody className="divide-y bg-white">
                 {cargandoTecnicos && (
                   <tr>
                     <td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-xs">
-                      Cargando técnicos…
+                      Cargando listado de técnicos desde auth-service (roles P3/P4)…
                     </td>
                   </tr>
                 )}
                 {!cargandoTecnicos && tecnicos.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-xs">
-                      No hay técnicos dados de alta. Crea el primero.
+                    <td colSpan={8} className="px-4 py-10 text-center">
+                      <div className="inline-flex flex-col items-center gap-2 max-w-md">
+                        <Users className="w-8 h-8 text-slate-300 mb-1" />
+                        <p className="text-sm font-bold text-slate-600">
+                          No hay técnicos UMI designados aún.
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Ir a <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300">Gestión Personas</span>,
+                          abrir la persona y asignar rol <strong className="text-purple-700">P3 (Eléctrico especializado)</strong> o
+                          <strong className="text-blue-700 ml-1">P4 (Multipropósito)</strong>.
+                        </p>
+                      </div>
                     </td>
                   </tr>
                 )}
                 {!cargandoTecnicos && tecnicos
                   .filter((t) => (mostrarInactivos ? true : !!t.isActivo))
                   .map((t) => {
-                  const esp = Array.isArray(t.metadata?.especialidades)
-                    ? (t.metadata.especialidades as string[])
-                    : [];
+                  const md = ((t as any).metadata ?? {}) as any;
+                  const roleCodRaw = String(md.roleCod || (t.codigo && t.codigo.startsWith('P3') ? 'P3' : t.codigo && t.codigo.startsWith('P4') ? 'P4' : ''));
+                  const roleCod = roleCodRaw === 'P3' || roleCodRaw === 'P4' ? roleCodRaw : null;
+                  const esDesdeAuth = Boolean(md.desdeAuth || md.idUserAuth || roleCod);
                   const carga = Number(t.cargaVigente ?? 0);
                   const nivelCarga = carga === 0 ? 'OK' : carga <= 3 ? 'MEDIA' : 'ALTA';
                   const inactivo = !t.isActivo;
                   return (
-                    <tr key={t.idCatalogo} className={`${inactivo ? 'bg-slate-50/80 hover:bg-slate-100 opacity-80' : 'hover:bg-slate-50'} transition-colors`}>
+                    <tr key={String(t.idCatalogo)} className={`${inactivo ? 'bg-slate-50/80 hover:bg-slate-100 opacity-80' : 'hover:bg-slate-50'} transition-colors`}>
                       <td className={`px-4 py-3 font-mono text-xs ${inactivo ? 'text-slate-400' : 'text-slate-500'}`}>{t.orden}</td>
                       <td className={`px-4 py-3 font-mono font-bold text-xs ${inactivo ? 'text-slate-500 line-through decoration-slate-400 decoration-1' : 'text-slate-900'}`}>{t.codigo}</td>
                       <td className={`px-4 py-3 font-semibold ${inactivo ? 'text-slate-500' : 'text-slate-900'}`}>
@@ -848,29 +875,42 @@ export const AdminParametrosUMI: React.FC = () => {
                           </span>
                         )}
                         <div className={`md:hidden mt-0.5 text-[11px] font-normal ${inactivo ? 'text-slate-400' : 'text-slate-500'}`}>
-                          {t.metadata?.email as string}
-                          {t.metadata?.telefono ? <span className="ml-2">· {t.metadata.telefono as string}</span> : null}
+                          {md.email as string || t.codigo}
+                          {md.telefono ? <span className="ml-2">· {String(md.telefono)}</span> : null}
                         </div>
                       </td>
-                      <td className={`px-4 py-3 hidden md:table-cell ${inactivo ? 'opacity-70' : ''}`}>
-                        <div className={`text-xs ${inactivo ? 'text-slate-500' : 'text-slate-700'}`}>{(t.metadata?.email as string) || '—'}</div>
-                        <div className={`text-[11px] ${inactivo ? 'text-slate-400' : 'text-slate-500'}`}>{(t.metadata?.telefono as string) || '—'}</div>
-                      </td>
-                      <td className={`px-4 py-3 hidden md:table-cell ${inactivo ? 'opacity-60' : ''}`}>
-                        {esp.length === 0 ? (
-                          <span className={`text-xs italic ${inactivo ? 'text-slate-400' : 'text-slate-400'}`}>Sin especialidades declaradas</span>
+                      <td className="px-4 py-3">
+                        {roleCod === 'P3' ? (
+                          <span title="Técnico eléctrico especializado · categoría CS_002 exclusivo" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-300 shadow-sm">
+                            <Zap className="w-3 h-3" />
+                            P3 · Eléctrico
+                          </span>
+                        ) : roleCod === 'P4' ? (
+                          <span title="Técnico UMI multipropósito · categorías CS_001, CS_003 a CS_008" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider bg-blue-100 text-blue-800 border border-blue-300 shadow-sm">
+                            <Users className="w-3 h-3" />
+                            P4 · Multipropósito
+                          </span>
                         ) : (
-                          <div className="flex flex-wrap gap-1">
-                            {esp.map((e) => (
-                              <span key={e} className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${
-                                inactivo
-                                  ? 'bg-slate-100 text-slate-500 border-slate-200'
-                                  : 'bg-slate-100 text-slate-700 border-slate-200'
-                              }`}>
-                                {e}
-                              </span>
-                            ))}
-                          </div>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-300">
+                            Legacy · Sin perfil
+                          </span>
+                        )}
+                      </td>
+                      <td className={`px-4 py-3 hidden md:table-cell ${inactivo ? 'opacity-70' : ''}`}>
+                        <div className={`text-xs ${inactivo ? 'text-slate-500' : 'text-slate-700'}`}>{(md.email as string) || '—'}</div>
+                        <div className={`text-[11px] ${inactivo ? 'text-slate-400' : 'text-slate-500'}`}>{(md.telefono as string) || '—'}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {t.isActivo ? (
+                          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            <span className="inline-block w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                            Cuenta activa
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-md bg-slate-200 text-slate-700 border border-slate-400">
+                            <span className="inline-block w-2 h-2 rounded-full bg-slate-500" />
+                            Desactivada
+                          </span>
                         )}
                       </td>
                       <td className={`px-4 py-3 align-top ${inactivo ? 'opacity-75' : ''}`}>
@@ -950,36 +990,24 @@ export const AdminParametrosUMI: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => toggleTec(t)}
-                          title={t.isActivo ? 'Desactivar técnico (baja lógica, se excluye del motor de asignación)' : 'Reactivar técnico (incluir en motor de asignación nuevamente)'}
-                          className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-lg transition-colors ${
-                            t.isActivo
-                              ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300'
-                              : 'bg-slate-200 text-slate-700 hover:bg-slate-300 border border-slate-400'
-                          }`}
-                        >
-                          {t.isActivo ? (<><ToggleRight className="w-4 h-4" /> Sí</>) : (<><ToggleLeft className="w-4 h-4" /> No</>)}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1.5">
+                        <div className="flex flex-col items-end gap-2">
+                          {esDesdeAuth ? (
+                            <span title="Source of Truth = auth-service roles P3/P4 (no editable en este módulo)" className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-300 whitespace-nowrap">
+                              ✔  auth-service
+                            </span>
+                          ) : (
+                            <span title="Legacy: dato en catálogo_item infraestructura (pre-migración)." className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-300 whitespace-nowrap">
+                              ⚠  catálogo legacy
+                            </span>
+                          )}
                           <button
                             type="button"
-                            onClick={() => abrirEditarTec(t)}
-                            className={`p-2 rounded-lg transition-colors ${inactivo ? 'hover:bg-slate-200 text-slate-500' : 'hover:bg-indigo-50 text-indigo-700'}`}
-                            aria-label="editar"
+                            onClick={() => window.dispatchEvent(new CustomEvent('navigate:mfe-gestion-personas', { detail: { idPerson: md.idPersonAuth, idUser: md.idUserAuth, tab: 'usuarios' } }))}
+                            className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 transition-colors"
+                            title="Abrir esta persona en Gestión Personas para ver roles/editar"
                           >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmElimTec(t)}
-                            className={`p-2 rounded-lg transition-colors ${inactivo ? 'hover:bg-slate-200 text-slate-500' : 'hover:bg-red-50 text-red-600'}`}
-                            aria-label="eliminar"
-                          >
-                            <Trash2 className="w-4 h-4" />
+                            <Pencil className="w-3 h-3" />
+                            Gestionar en Personas
                           </button>
                         </div>
                       </td>
