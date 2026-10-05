@@ -814,6 +814,44 @@ export interface CreateExcepcionTiqueteRequest {
   comentarios?: string;
 }
 
+export interface TarifaReferenciaTiquete {
+  id: number;
+  origenCiudad: string;
+  destinoCiudad: string;
+  origenIata: string;
+  destinoIata: string;
+  tarifaEstimada: number;
+  tarifaMinima?: number | null;
+  tarifaMaxima?: number | null;
+  fuente: string;
+  notas?: string | null;
+  ultimaActualizacion?: string;
+  activo: boolean;
+}
+
+export interface TarifaEstimadaResult {
+  encontrado: boolean;
+  origen: string;
+  destino: string;
+  origenIata: string | null;
+  destinoIata: string | null;
+  tarifaEstimada: number;
+  tarifaMinima: number | null;
+  tarifaMaxima: number | null;
+  fuente: string | null;
+  ultimaActualizacion: string | null;
+  mensaje: string;
+}
+
+export interface SincronizarTarifasResult {
+  totalRutas: number;
+  actualizadas: number;
+  fuente: string;
+  mensaje: string;
+  rutasActualizadas: Array<{ ruta: string; tarifa: number; fuente: string }>;
+}
+
+
 // =========================================================================
 // RF-LIQ-004 — Consolidación y cierre de expediente (Etapa 3)
 // =========================================================================
@@ -1022,6 +1060,14 @@ export interface BandejaControlViaticosResponse {
 /** Payload para verificar en segundo nivel (Control Cruzado). */
 export interface VerificarSegundoNivelRequest {
   observaciones?: string;
+  otp?: string;
+  verificationId?: string;
+  certificadoId?: string;
+  hashSha256?: string;
+  firmaImagen?: string;
+  nombreRevisor?: string;
+  cargoRevisor?: string;
+  documentoIdentidad?: string;
 }
 
 /** Respuesta al verificar en segundo nivel. */
@@ -1250,7 +1296,8 @@ export type TipoFirmaAprobacion =
   | 'JEFE_DEPENDENCIA'
   | 'GERENTE_PROYECTO'
   | 'ENLACE_ELABORO'
-  | 'ANALISTA';
+  | 'ANALISTA'
+  | 'CONTROL_VIATICOS';
 
 export interface FirmaAprobacionRegistrada {
   tipo: TipoFirmaAprobacion;

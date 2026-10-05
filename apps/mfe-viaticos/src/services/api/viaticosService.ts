@@ -22,6 +22,9 @@ import {
   RutaRestringida,
   ExcepcionTiquete,
   CreateExcepcionTiqueteRequest,
+  TarifaReferenciaTiquete,
+  TarifaEstimadaResult,
+  SincronizarTarifasResult,
   ResumenConsolidacion,
   ResultadoConsolidacion,
   BandejaSecretarioResponse,
@@ -1514,6 +1517,113 @@ export class ViaticosService {
       );
     } catch (error) {
       console.error('Error actualizando holgura global:', error);
+      throw error;
+    }
+  }
+
+  // ---------- Matriz Paramétrica de Tarifas de Referencia de Tiquetes ----------
+
+  async obtenerTarifasReferencia(): Promise<TarifaReferenciaTiquete[]> {
+    try {
+      return await apiClient.get<TarifaReferenciaTiquete[]>(
+        '/viaticos/api/v1/tickets/tarifas-referencia',
+      );
+    } catch (error) {
+      console.error('Error obteniendo tarifas de referencia:', error);
+      return [];
+    }
+  }
+
+  async obtenerTarifaReferenciaPorId(
+    id: number,
+  ): Promise<TarifaReferenciaTiquete | null> {
+    try {
+      return await apiClient.get<TarifaReferenciaTiquete>(
+        `/viaticos/api/v1/tickets/tarifas-referencia/${id}`,
+      );
+    } catch (error) {
+      console.error('Error obteniendo tarifa de referencia:', error);
+      return null;
+    }
+  }
+
+  async crearTarifaReferencia(
+    dto: Partial<TarifaReferenciaTiquete>,
+  ): Promise<TarifaReferenciaTiquete | null> {
+    try {
+      return await apiClient.post<TarifaReferenciaTiquete>(
+        '/viaticos/api/v1/tickets/tarifas-referencia',
+        dto,
+      );
+    } catch (error) {
+      console.error('Error creando tarifa de referencia:', error);
+      throw error;
+    }
+  }
+
+  async actualizarTarifaReferencia(
+    id: number,
+    dto: Partial<TarifaReferenciaTiquete>,
+  ): Promise<TarifaReferenciaTiquete | null> {
+    try {
+      return await apiClient.put<TarifaReferenciaTiquete>(
+        `/viaticos/api/v1/tickets/tarifas-referencia/${id}`,
+        dto,
+      );
+    } catch (error) {
+      console.error('Error actualizando tarifa de referencia:', error);
+      throw error;
+    }
+  }
+
+  async eliminarTarifaReferencia(
+    id: number,
+  ): Promise<{ message: string }> {
+    try {
+      return await apiClient.delete<{ message: string }>(
+        `/viaticos/api/v1/tickets/tarifas-referencia/${id}`,
+      );
+    } catch (error) {
+      console.error('Error eliminando tarifa de referencia:', error);
+      throw error;
+    }
+  }
+
+  async consultarTarifaEstimada(
+    origen: string,
+    destino: string,
+  ): Promise<TarifaEstimadaResult> {
+    try {
+      const params = new URLSearchParams({ origen, destino });
+      return await apiClient.get<TarifaEstimadaResult>(
+        `/viaticos/api/v1/tickets/tarifa-estimada?${params.toString()}`,
+      );
+    } catch (error) {
+      console.error('Error consultando tarifa estimada:', error);
+      return {
+        encontrado: false,
+        origen,
+        destino,
+        origenIata: null,
+        destinoIata: null,
+        tarifaEstimada: 0,
+        tarifaMinima: null,
+        tarifaMaxima: null,
+        fuente: null,
+        ultimaActualizacion: null,
+        mensaje: 'Error de conexión al consultar tarifa estimada.',
+      };
+    }
+  }
+
+  async sincronizarTarifasBatch(): Promise<SincronizarTarifasResult> {
+    try {
+      return await apiClient.post<SincronizarTarifasResult>(
+        '/viaticos/api/v1/tickets/sincronizar-tarifas',
+        {},
+      );
+    } catch (error) {
+      console.error('Error sincronizando tarifas en lote:', error);
       throw error;
     }
   }

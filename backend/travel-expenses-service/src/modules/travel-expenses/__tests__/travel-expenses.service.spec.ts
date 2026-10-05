@@ -20,6 +20,7 @@ import { VerifyAuditDto } from '../../../dto/verify-audit.dto';
 
 import { DevolverAnalistaDto } from '../../../dto/devolver-analista.dto';
 import { SegundaRevisionObservacionesDto } from '../../../dto/segunda-revision-observaciones.dto';
+import { TipoFirmaAprobacion } from '../../../dto/firmar-solicitud.dto';
 
 describe('TravelExpensesService', () => {
   let service: TravelExpensesService;
@@ -3902,6 +3903,60 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       expect(solicitud.observacionesSegundaRevision).toBe('');
     });
 
+    it('debe validar OTP y registrar firma digital de Control Viáticos al verificar', async () => {
+      const solicitud = mockTransactionalSolicitud();
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      jest.spyOn(svc, 'verificarOtpFirma').mockReturnValue(true);
+
+      const result = await svc.verificarSegundaRevision(
+        'sol-001',
+        'revisor-control',
+        ['CONTROL_VIATICOS'],
+        {
+          observaciones: 'Control cruzado aprobado con OTP',
+          otp: '123456',
+          certificadoId: 'CERT-CV-001',
+          nombreRevisor: 'Lic. Andrés Cepeda',
+          cargoRevisor: 'Revisor de Control Viáticos',
+        } as SegundaRevisionObservacionesDto,
+      );
+
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
+      expect(svc.verificarOtpFirma).toHaveBeenCalledWith(
+        expect.objectContaining({ code: '123456' }),
+      );
+      expect(solicitud.camposAdicionales.revisorControlNombre).toBe('Lic. Andrés Cepeda');
+      expect(solicitud.camposAdicionales.firmaControlViaticos).toBeDefined();
+      expect(solicitud.camposAdicionales.firmaControlViaticos.tipo).toBe(TipoFirmaAprobacion.CONTROL_VIATICOS);
+      expect(solicitud.camposAdicionales.firmaControlViaticos.otpVerificado).toBe(true);
+    });
+
+    it('debe lanzar BadRequestException si el código OTP de Control Viáticos es inválido', async () => {
+      const solicitud = mockTransactionalSolicitud();
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      jest.spyOn(svc, 'verificarOtpFirma').mockReturnValue(false);
+
+      await expect(
+        svc.verificarSegundaRevision(
+          'sol-001',
+          'revisor-control',
+          ['CONTROL_VIATICOS'],
+          {
+            observaciones: 'Control cruzado',
+            otp: '000000',
+          } as SegundaRevisionObservacionesDto,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
     it('debe lanzar NotFoundException cuando la solicitud no existe', async () => {
       const solicitudRepo = {
         createQueryBuilder: jest.fn().mockReturnValue({
@@ -5189,6 +5244,57 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
         const pdfBuffer = await svc.exportarFormato023('sol-023-003');
+
+        expect(pdfBuffer).toBeInstanceOf(Buffer);
+        expect(pdfBuffer.length).toBeGreaterThan(0);
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+      });
+
+      it('debe generar el Formato 023 incluyendo tanto al Analista (Revisó) como al Revisor de Control Viáticos (2do Nivel)', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.VERIFICADA),
+          id: 'sol-023-ambos-revisores',
+          consecutivoUnico: 'SOL-2026-0004',
+          creadoPorUsuarioId: 'user-enlace-1',
+          analistaAsignadoId: 'user-analista-1',
+          revisorControlId: 'user-control-1',
+          fechaRevision: new Date(),
+          fechaSegundaRevision: new Date(),
+          camposAdicionales: {
+            nombreAnalista: 'Marcela Castro (Analista)',
+            revisorControlNombre: 'David Muñoz (Control)',
+            firmaAnalista: {
+              nombreFirmante: 'Marcela Castro',
+              certificadoId: 'CERT-ANA-01',
+              fechaFirma: new Date().toISOString(),
+            },
+            firmaControlViaticos: {
+              nombreFirmante: 'David Muñoz',
+              certificadoId: 'CERT-CTRL-02',
+              fechaFirma: new Date().toISOString(),
+            },
+          },
+          comisionado: {
+            primerNombre: 'Pedro',
+            primerApellido: 'Gómez',
+            numeroDocumento: '79123456',
+            tipoComisionado: 'CONTRATISTA',
+          },
+          documentosSoporte: [],
+        };
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+        };
+
+        const dataSource = {
+          query: jest.fn().mockResolvedValue([]),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-ambos-revisores');
 
         expect(pdfBuffer).toBeInstanceOf(Buffer);
         expect(pdfBuffer.length).toBeGreaterThan(0);

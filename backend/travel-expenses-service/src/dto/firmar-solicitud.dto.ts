@@ -6,6 +6,7 @@ export enum TipoFirmaAprobacion {
   GERENTE_PROYECTO = 'GERENTE_PROYECTO',
   ENLACE_ELABORO = 'ENLACE_ELABORO',
   ANALISTA = 'ANALISTA',
+  CONTROL_VIATICOS = 'CONTROL_VIATICOS',
 }
 
 export class FirmarSolicitudDto {
