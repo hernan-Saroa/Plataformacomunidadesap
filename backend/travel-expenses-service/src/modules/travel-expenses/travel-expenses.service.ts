@@ -5129,35 +5129,80 @@ if (dto.costoEstimadoTiquete !== undefined) {
       revisoTexto = 'Revisó: Pendiente revisión técnica y documental (Analista / Control Viáticos)';
     }
 
-    // Aprobó: La aprobación formal de la comisión la otorga el Director Nacional / Ordenador del Gasto
-    // (NO el jefe de dependencia ni el gerente de proyecto, quienes otorgan la autorización previa de desplazamiento)
-    const autorizadorId =
+    // Flags de extemporaneidad y resolución de aprobadores
+    const isExtemporanea = Boolean(
+      solicitud.extemporanea ||
+      solicitud.estadoSolicitud === EstadoSolicitud.EXTEMPORANEA ||
       solicitud.autorizadorDireccionId ||
-      solicitud.autorizadorId;
-    let autorizadorNombre = '';
-    let autorizadorDoc = '';
+      solicitud.fechaAutorizacionDireccion ||
+      solicitud.decisionDireccion,
+    );
+
+    // 1. Datos Subdirector(a) de Gestión Corporativa (Ordenador del Gasto - RF-AUT-001)
+    const subdirectorId = solicitud.autorizadorId;
+    let subdirectorNombre = '';
+    let subdirectorDoc = '';
+    if (solicitud.autorizador) {
+      subdirectorNombre =
+        (solicitud.autorizador as any).nombreCompleto ||
+        (solicitud.autorizador as any).nomLargo ||
+        '';
+    }
+    if (!subdirectorNombre && subdirectorId) {
+      const dSubdirector = await this.resolverDatosUsuario(subdirectorId, '');
+      subdirectorNombre = dSubdirector.nombre;
+      subdirectorDoc = dSubdirector.documento;
+    }
+    const firmaSubdirObj =
+      solicitud.camposAdicionales?.firmaSubdireccion ||
+      firmasRegistradasPdf.find(
+        (f: any) =>
+          (f.tipo === 'SUBDIRECCION' || (f.tipo as string) === 'SUBDIRECTOR') &&
+          f.estado !== 'RECHAZADO',
+      );
+    if (firmaSubdirObj?.nombreFirmante && !subdirectorNombre) {
+      subdirectorNombre = firmaSubdirObj.nombreFirmante;
+    }
+    if (firmaSubdirObj?.documentoIdentidad && !subdirectorDoc) {
+      subdirectorDoc = firmaSubdirObj.documentoIdentidad;
+    }
+    const fechaAprobacionSubdir =
+      firmaSubdirObj?.fechaFirma || solicitud.fechaAutorizacion;
+    const certIdSubdir = firmaSubdirObj?.certificadoId;
+
+    // 2. Datos Dirección Nacional (Autorización Excepcional Extemporánea - RF-AUT-002)
+    const dirNacionalId = solicitud.autorizadorDireccionId;
+    let dirNacionalNombre = '';
+    let dirNacionalDoc = '';
     if (solicitud.autorizadorDireccion) {
-      autorizadorNombre = (solicitud.autorizadorDireccion as any).nombreCompleto || (solicitud.autorizadorDireccion as any).nomLargo || '';
-    } else if (solicitud.autorizador) {
-      autorizadorNombre = (solicitud.autorizador as any).nombreCompleto || (solicitud.autorizador as any).nomLargo || '';
+      dirNacionalNombre =
+        (solicitud.autorizadorDireccion as any).nombreCompleto ||
+        (solicitud.autorizadorDireccion as any).nomLargo ||
+        '';
     }
-    if (!autorizadorNombre && autorizadorId) {
-      const dAutorizador = await this.resolverDatosUsuario(autorizadorId, '');
-      autorizadorNombre = dAutorizador.nombre;
-      autorizadorDoc = dAutorizador.documento;
+    if (!dirNacionalNombre && dirNacionalId) {
+      const dDirNac = await this.resolverDatosUsuario(dirNacionalId, '');
+      dirNacionalNombre = dDirNac.nombre;
+      dirNacionalDoc = dDirNac.documento;
     }
-    const fechaAprobacion =
-      solicitud.fechaAutorizacionDireccion || solicitud.fechaAutorizacion;
-    const fAproboStr = fechaAprobacion ? ` · Fecha: ${formatFechaHoraSegura(fechaAprobacion)}` : '';
-    const docAproboStr = autorizadorDoc ? ` · C.C. ${autorizadorDoc}` : '';
-
-    const firmaDirObj = solicitud.camposAdicionales?.firmaDireccionNacional;
-    const certIdDir = firmaDirObj?.certificadoId;
-    const certDirStr = certIdDir ? ` · ✓ Firma Digital (Cert: ${certIdDir})` : '';
-
-    const aproboTexto = autorizadorNombre
-      ? `Aprobó: ${autorizadorNombre}${docAproboStr}${fAproboStr}${certDirStr} · ✓ Aprobación Institucional de la Comisión`
-      : 'Aprobó: Pendiente de aprobación institucional (Director Nacional / Ordenador del Gasto)';
+    const firmaDirNacObj =
+      solicitud.camposAdicionales?.firmaDireccionNacional ||
+      firmasRegistradasPdf.find(
+        (f: any) =>
+          (f.tipo === 'DIRECCION_NACIONAL' ||
+            (f.tipo as string) === 'DIRECTOR_NACIONAL') &&
+          f.estado !== 'RECHAZADO',
+      );
+    if (firmaDirNacObj?.nombreFirmante && !dirNacionalNombre) {
+      dirNacionalNombre = firmaDirNacObj.nombreFirmante;
+    }
+    if (firmaDirNacObj?.documentoIdentidad && !dirNacionalDoc) {
+      dirNacionalDoc = firmaDirNacObj.documentoIdentidad;
+    }
+    const fechaAutorizacionDir =
+      firmaDirNacObj?.fechaFirma || solicitud.fechaAutorizacionDireccion;
+    const certIdDirNac = firmaDirNacObj?.certificadoId;
+    const justificacionDirNac = solicitud.justificacionDireccion || '';
 
     // Enriquecer datos de firmantes con C.C., correo institucional y nombre si vienen registrados o con usuarioId o correo
     if (firmaJefePdf) {
@@ -6671,7 +6716,7 @@ if (itinerarioGeneral) {
         }
       };
 
-      const hRow = 18;
+      const hRow = isExtemporanea ? 16 : 18;
       let curY = yTableHeader + hTableHeader;
 
       // 1. ELABORÓ
@@ -6758,36 +6803,140 @@ if (itinerarioGeneral) {
       );
       curY += hRow;
 
-      // 4. APROBÓ (Dirección Nacional / Ordenador del Gasto)
-      const dirAprobo = Boolean(autorizadorNombre && (fechaAprobacion || certIdDir));
-      const fechaAprobacionStr = fechaAprobacion ? formatFechaHoraSegura(fechaAprobacion) : '';
-      const docAproboDisplay = docAproboStr.replace(/^ · /, '') || (autorizadorNombre ? 'C.C. Registrada' : '—');
-      renderFilaTrazabilidad(
-        curY,
-        hRow,
-        {
-          tag: 'APROBÓ',
-          sub: 'Dirección / Ordenador Gasto',
-          bg: '#EFF6FF',
-          border: '#BFDBFE',
-          text: '#1D4ED8',
-        },
-        autorizadorNombre || 'Pendiente Aprobación Institucional',
-        'Aprobación Institucional de la Comisión',
-        docAproboDisplay,
-        'Dirección Nacional / Subdirección',
-        {
-          aprobado: dirAprobo,
-          textoBadge: dirAprobo ? '✓ APROBACIÓN INSTITUCIONAL' : 'PENDIENTE APROBACIÓN',
-          fechaStr: fechaAprobacionStr,
-          certId: certIdDir,
-        },
-        true,
-      );
-      curY += hRow;
+      // Fila(s) de Aprobación:
+      // Si es EXTEMPORÁNEA: primero firma Dirección Nacional (RF-AUT-002) y luego Subdirección de Gestión Corporativa (RF-AUT-001)
+      // Si es de control cruzado / estado NORMAL: NO requiere intervención de Dirección Nacional, sigue directamente la Subdirección.
+
+      if (isExtemporanea) {
+        // 4. AUTORIZÓ (Dirección Nacional — Autorización Extemporánea RF-AUT-002)
+        const dirAprobo = Boolean(
+          dirNacionalNombre &&
+            (fechaAutorizacionDir ||
+              certIdDirNac ||
+              solicitud.decisionDireccion === 'AUTORIZADO'),
+        );
+        const fechaDirStr = fechaAutorizacionDir
+          ? formatFechaHoraSegura(fechaAutorizacionDir)
+          : '';
+        const docDirDisplay = dirNacionalDoc
+          ? `C.C. ${dirNacionalDoc}`
+          : dirNacionalNombre
+          ? 'C.C. Registrada'
+          : '—';
+        const detalleDir = justificacionDirNac
+          ? `Obs: ${this.sanitizarTextoPdf(justificacionDirNac).slice(0, 48)}...`
+          : 'Autorización Extemporánea (RF-AUT-002)';
+
+        renderFilaTrazabilidad(
+          curY,
+          hRow,
+          {
+            tag: 'AUTORIZÓ',
+            sub: 'Dirección Nacional (Extemp.)',
+            bg: '#FAF5FF',
+            border: '#E9D5FF',
+            text: '#7E22CE',
+          },
+          dirNacionalNombre || 'Pendiente Aval Dirección Nacional',
+          detalleDir,
+          docDirDisplay,
+          solicitud.esDelegadoDireccion
+            ? 'Delegado Dirección Nacional'
+            : 'Dirección Nacional / Despacho',
+          {
+            aprobado: dirAprobo,
+            textoBadge: dirAprobo
+              ? '✓ AVAL EXTEMPORÁNEO'
+              : 'PENDIENTE AVAL DIRECCIÓN',
+            fechaStr: fechaDirStr,
+            certId: certIdDirNac,
+          },
+          true,
+        );
+        curY += hRow;
+
+        // 5. APROBÓ (Subdirección de Gestión Corporativa — Ordenador del Gasto RF-AUT-001)
+        const subdirAprobo = Boolean(
+          subdirectorNombre && (fechaAprobacionSubdir || certIdSubdir),
+        );
+        const fechaSubdirStr = fechaAprobacionSubdir
+          ? formatFechaHoraSegura(fechaAprobacionSubdir)
+          : '';
+        const docSubdirDisplay = subdirectorDoc
+          ? `C.C. ${subdirectorDoc}`
+          : subdirectorNombre
+          ? 'C.C. Registrada'
+          : '—';
+
+        renderFilaTrazabilidad(
+          curY,
+          hRow,
+          {
+            tag: 'APROBÓ',
+            sub: 'Subdirección / Ordenador Gasto',
+            bg: '#EFF6FF',
+            border: '#BFDBFE',
+            text: '#1D4ED8',
+          },
+          subdirectorNombre || 'Pendiente Aprobación Institucional',
+          'Aprobación Corporativa de Gasto (RF-AUT-001)',
+          docSubdirDisplay,
+          'Subdirección de Gestión Corporativa',
+          {
+            aprobado: subdirAprobo,
+            textoBadge: subdirAprobo
+              ? '✓ APROBACIÓN INSTITUCIONAL'
+              : 'PENDIENTE APROBACIÓN SUBDIRECCIÓN',
+            fechaStr: fechaSubdirStr,
+            certId: certIdSubdir,
+          },
+          false,
+        );
+        curY += hRow;
+      } else {
+        // 4. APROBÓ (Subdirección de Gestión Corporativa — Ordenador del Gasto RF-AUT-001)
+        const subdirAprobo = Boolean(
+          subdirectorNombre && (fechaAprobacionSubdir || certIdSubdir),
+        );
+        const fechaSubdirStr = fechaAprobacionSubdir
+          ? formatFechaHoraSegura(fechaAprobacionSubdir)
+          : '';
+        const docSubdirDisplay = subdirectorDoc
+          ? `C.C. ${subdirectorDoc}`
+          : subdirectorNombre
+          ? 'C.C. Registrada'
+          : '—';
+
+        renderFilaTrazabilidad(
+          curY,
+          hRow,
+          {
+            tag: 'APROBÓ',
+            sub: 'Subdirección / Ordenador Gasto',
+            bg: '#EFF6FF',
+            border: '#BFDBFE',
+            text: '#1D4ED8',
+          },
+          subdirectorNombre || 'Pendiente Aprobación Institucional',
+          'Aprobación Corporativa de Gasto (RF-AUT-001)',
+          docSubdirDisplay,
+          'Subdirección de Gestión Corporativa',
+          {
+            aprobado: subdirAprobo,
+            textoBadge: subdirAprobo
+              ? '✓ APROBACIÓN INSTITUCIONAL'
+              : 'PENDIENTE APROBACIÓN SUBDIRECCIÓN',
+            fechaStr: fechaSubdirStr,
+            certId: certIdSubdir,
+          },
+          true,
+        );
+        curY += hRow;
+      }
 
       // Borde exterior envolvente de la tabla
-      doc.rect(28, yTableHeader, 556, hTableHeader + hRow * 4).strokeColor('#000000').lineWidth(0.6).stroke();
+      const totalFilas = isExtemporanea ? 5 : 4;
+      doc.rect(28, yTableHeader, 556, hTableHeader + hRow * totalFilas).strokeColor('#000000').lineWidth(0.6).stroke();
 
       // Banner institucional de Protección de Datos (Ley 1581 de 2012)
       const yLey = curY + 2.5;
@@ -8567,6 +8716,70 @@ if (itinerarioGeneral) {
           );
         }
       }
+
+      // Validación de firma OTP si fue provista
+      if (dto?.otp) {
+        const verificationId =
+          dto.verificationId?.trim() ||
+          `viat:${solicitud.id}:SUBDIRECCION:${usuarioId}`;
+        const isVerified = this.verificarOtpFirma({
+          verificationId,
+          code: dto.otp,
+          consume: true,
+        });
+        if (!isVerified) {
+          throw new BadRequestException(
+            'Código OTP inválido o expirado para la firma de autorización de Subdirección.',
+          );
+        }
+      }
+
+      const certIdFinal = dto?.certificadoId || this.generarCertificadoId();
+      const datosFirmante = await this.resolverDatosUsuario(usuarioId);
+      const nombreFirmanteFinal = datosFirmante.nombre || 'Subdirección de Gestión';
+      const cargoFirmanteFinal = datosFirmante.cargo || 'Subdirector(a) de Gestión Corporativa';
+
+      const firmaSubdireccionData = {
+        tipo: 'SUBDIRECCION',
+        nombreFirmante: nombreFirmanteFinal,
+        emailFirmante: datosFirmante.email || null,
+        cargoFirmante: cargoFirmanteFinal,
+        documentoIdentidad: datosFirmante.documento || null,
+        firmaImagen: dto?.firmaImagen || null,
+        fechaFirma: new Date().toISOString(),
+        usuarioId,
+        estado: 'FIRMADO',
+        firmadoDigitalmente: true,
+        certificadoId: certIdFinal,
+        hashSha256:
+          dto?.hashSha256 ||
+          this.generarHashDocumento(
+            `${solicitud.id}|SUBDIRECCION|${usuarioId}|${new Date().toISOString()}`,
+          ),
+        otpVerificado: Boolean(dto?.otp),
+      };
+
+      const prevFirmas = Array.isArray(
+        solicitud.camposAdicionales?.firmasAprobacion,
+      )
+        ? [...solicitud.camposAdicionales.firmasAprobacion]
+        : [];
+      const idxFirma = prevFirmas.findIndex(
+        (f: any) =>
+          f.tipo === 'SUBDIRECCION' ||
+          (f.tipo as string) === 'SUBDIRECTOR',
+      );
+      if (idxFirma >= 0) {
+        prevFirmas[idxFirma] = { ...prevFirmas[idxFirma], ...firmaSubdireccionData };
+      } else {
+        prevFirmas.push(firmaSubdireccionData);
+      }
+
+      solicitud.camposAdicionales = {
+        ...(solicitud.camposAdicionales || {}),
+        firmaSubdireccion: firmaSubdireccionData,
+        firmasAprobacion: prevFirmas,
+      };
 
       const estadoAnterior = solicitud.estadoSolicitud;
       solicitud.estadoSolicitud = EstadoSolicitud.AUTORIZADA;

@@ -4704,6 +4704,103 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         );
       });
 
+      it('debe validar OTP y registrar firma digital de Subdirección al autorizar', async () => {
+        const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.EN_AUTORIZACION);
+
+        const solRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            setLock: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(solicitud),
+          }),
+          save: jest.fn().mockImplementation(async (s) => s),
+        };
+
+        const histRepo = { save: jest.fn().mockResolvedValue({}) };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockImplementation((entity) => {
+                if (entity === SolicitudHistorialEstadoEntity) return histRepo;
+                return solRepo;
+              }),
+            };
+            return cb(manager);
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo: solRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        jest.spyOn(svc, 'verificarOtpFirma').mockReturnValue(true);
+
+        const resultado = await svc.autorizarComision(
+          'sol-aut-001',
+          'subdirector-001',
+          ['SUBDIRECCION_GESTION_CORPORATIVA'],
+          {
+            observaciones: 'Visto bueno con firma OTP',
+            otp: '654321',
+            verificationId: 'viat:sol-aut-001:SUBDIRECCION:subdirector-001',
+            certificadoId: 'CERT-SUBDIR-999',
+            hashSha256: 'hash-sha-256-subdirector',
+          },
+        );
+
+        expect(svc.verificarOtpFirma).toHaveBeenCalledWith({
+          verificationId: 'viat:sol-aut-001:SUBDIRECCION:subdirector-001',
+          code: '654321',
+          consume: true,
+        });
+        expect(resultado.estadoSolicitud).toBe(EstadoSolicitud.AUTORIZADA);
+        expect(resultado.camposAdicionales?.firmaSubdireccion).toBeDefined();
+        expect(resultado.camposAdicionales?.firmaSubdireccion?.tipo).toBe('SUBDIRECCION');
+        expect(resultado.camposAdicionales?.firmaSubdireccion?.certificadoId).toBe('CERT-SUBDIR-999');
+        expect(resultado.camposAdicionales?.firmaSubdireccion?.otpVerificado).toBe(true);
+      });
+
+      it('debe lanzar BadRequestException si el código OTP de Subdirección es inválido', async () => {
+        const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.EN_AUTORIZACION);
+
+        const solRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            setLock: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(solicitud),
+          }),
+          save: jest.fn(),
+        };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockReturnValue(solRepo),
+            };
+            return cb(manager);
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo: solRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        jest.spyOn(svc, 'verificarOtpFirma').mockReturnValue(false);
+
+        await expect(
+          svc.autorizarComision(
+            'sol-aut-001',
+            'subdirector-001',
+            ['SUBDIRECCION_GESTION_CORPORATIVA'],
+            {
+              otp: '000000',
+              verificationId: 'viat:sol-aut-001:SUBDIRECCION:subdirector-001',
+            },
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+
       it('debe lanzar BadRequestException si la comisión no está en EN_AUTORIZACION', async () => {
         const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.SOLICITADO);
 
@@ -5299,6 +5396,75 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
         const pdfBuffer = await svc.exportarFormato023('sol-023-ambos-revisores');
+
+        expect(pdfBuffer).toBeInstanceOf(Buffer);
+        expect(pdfBuffer.length).toBeGreaterThan(0);
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
+      });
+
+      it('debe generar el Formato 023 para comisión extemporánea mostrando aval de Dirección Nacional y visto bueno de Subdirección en 1 página', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.AUTORIZADA),
+          id: 'sol-023-extemporanea',
+          consecutivoUnico: 'SOL-2026-EXT-001',
+          extemporanea: true,
+          creadoPorUsuarioId: 'user-enlace-1',
+          revisorControlId: 'user-revisor-1',
+          autorizadorDireccionId: 'user-dir-nacional',
+          autorizadorId: 'user-subdirector-1',
+          fechaAutorizacionDireccion: new Date(),
+          fechaAutorizacion: new Date(),
+          justificacionDireccion: 'Se autoriza por necesidad del servicio en zona territorial',
+          decisionDireccion: 'AUTORIZADO',
+          camposAdicionales: {
+            firmaDireccionNacional: {
+              tipo: 'DIRECCION_NACIONAL',
+              nombreFirmante: 'Dr. Jorge Vargas Muñoz',
+              cargoFirmante: 'Director Nacional',
+              certificadoId: 'CERT-DIR-001',
+              fechaFirma: new Date().toISOString(),
+              firmadoDigitalmente: true,
+            },
+            firmaSubdireccion: {
+              tipo: 'SUBDIRECCION',
+              nombreFirmante: 'Dra. Patricia Silva',
+              cargoFirmante: 'Subdirectora de Gestión Corporativa',
+              certificadoId: 'CERT-SUB-001',
+              fechaFirma: new Date().toISOString(),
+              firmadoDigitalmente: true,
+            },
+          },
+          comisionado: {
+            primerNombre: 'Laura',
+            primerApellido: 'Méndez',
+            numeroDocumento: '10203040',
+            tipoComisionado: 'FUNCIONARIO',
+          },
+          montoViaticos: 500000,
+          montoGastosViaje: 100000,
+          documentosSoporte: [],
+        };
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+        };
+
+        const dataSource = {
+          query: jest.fn().mockImplementation(async (query: string, params: any[]) => {
+            const uid = params?.[0];
+            if (uid === 'user-enlace-1') return [{ nom_largo: 'Enlace Solicitante' }];
+            if (uid === 'user-revisor-1') return [{ nom_largo: 'Revisor Control' }];
+            if (uid === 'user-dir-nacional') return [{ nom_largo: 'Dr. Jorge Vargas Muñoz' }];
+            if (uid === 'user-subdirector-1') return [{ nom_largo: 'Dra. Patricia Silva' }];
+            return [];
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-extemporanea');
 
         expect(pdfBuffer).toBeInstanceOf(Buffer);
         expect(pdfBuffer.length).toBeGreaterThan(0);

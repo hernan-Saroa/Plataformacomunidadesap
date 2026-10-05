@@ -1920,12 +1920,16 @@ export class ViaticosService {
    */
   async autorizarComision(
     solicitudId: string,
-    observaciones?: string,
+    observacionesOrPayload?: string | AutorizarComisionRequest,
   ): Promise<AutorizarComisionResponse> {
     try {
+      const body =
+        typeof observacionesOrPayload === 'string'
+          ? { observaciones: observacionesOrPayload }
+          : observacionesOrPayload || {};
       return await apiClient.post<AutorizarComisionResponse>(
         `/viaticos/api/v1/requests/${solicitudId}/authorize`,
-        { observaciones },
+        body,
       );
     } catch (error) {
       console.error('[viaticos] Error autorizando comisión:', error);

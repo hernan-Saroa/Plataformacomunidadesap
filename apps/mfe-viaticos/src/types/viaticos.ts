@@ -1123,6 +1123,11 @@ export interface SolicitudControlViatico {
 
 export interface AutorizarComisionRequest {
   observaciones?: string;
+  otp?: string;
+  verificationId?: string;
+  certificadoId?: string;
+  hashSha256?: string;
+  firmaImagen?: string;
 }
 
 export interface AutorizarComisionResponse {
