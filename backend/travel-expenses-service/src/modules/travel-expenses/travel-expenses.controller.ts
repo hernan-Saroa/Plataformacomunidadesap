@@ -544,9 +544,8 @@ export class TravelExpensesController {
   @Permissions(
     'travel_expenses:sign_approval',
     'travel_expenses:read_approvals',
-    'travel_expenses:create_request',
-    'travel_expenses:read_requests',
-    'travel_expenses:read_inbox',
+    'travel_expenses:read_authorizations',
+    'travel_expenses:read_extemporaneous_authorizations',
   )
   async obtenerBandejaFirmas(
     @Query('page') page?: string,

@@ -387,6 +387,12 @@ export default function ViaticosModulePremium() {
           setSeccion('tesoreria');
         } else if (sst && !superAdmin) {
           setSeccion('sst');
+        } else if (authService.isAnalista() && !superAdmin) {
+          setSeccion('mis-solicitudes');
+        } else if (authService.isControlViaticos() && !superAdmin) {
+          setSeccion('solicitudes');
+        } else if (secretario && !superAdmin) {
+          setSeccion('solicitudes');
         } else if ((jefeDep || gerenteProy) && !superAdmin) {
           setSeccion('firmas-aprobacion');
         }
@@ -483,11 +489,15 @@ export default function ViaticosModulePremium() {
     setDocumentosSoporte([]);
 
     // Cargar estado de firmas institucional en paralelo para el visualizador
-    viaticosService
-      .obtenerEstadoFirmas(sol.id)
-      .then((data) => setEstadoFirmasDetalle(data))
-      .catch(() => setEstadoFirmasDetalle(null))
-      .finally(() => setCargandoFirmasDetalle(false));
+    if (typeof viaticosService.obtenerEstadoFirmas === 'function') {
+      viaticosService
+        .obtenerEstadoFirmas(sol.id)
+        .then((data) => setEstadoFirmasDetalle(data))
+        .catch(() => setEstadoFirmasDetalle(null))
+        .finally(() => setCargandoFirmasDetalle(false));
+    } else {
+      setCargandoFirmasDetalle(false);
+    }
 
     // Cargar logs de notificación formal a SST (RF-PAG-002) solo si aplica a la etapa
     setLogsSst([]);
@@ -744,15 +754,27 @@ export default function ViaticosModulePremium() {
     esPresupuesto ||
     authService.hasPermission(Permissions.VIATICOS_SST_RESEND);
   const esEnlace = authService.isEnlaceDependencia();
-  const puedeFirmarAprobacion =
-    !esEnlace &&
-    (esSuperAdmin ||
-      esJefeDependencia ||
-      esGerenteProyecto ||
-      esSubdireccion ||
-      esDireccionNacional ||
-      authService.canFirmarAprobacion());
-  const puedeVerFirmasAprobacion = puedeFirmarAprobacion;
+  // Mostrar la bandeja de firmas exclusivamente si tiene rol/permiso general es_jefe, es_gerente, es_subdirector o es_director (o superAdmin)
+  const puedeVerFirmasAprobacion =
+    esSuperAdmin ||
+    esJefeDependencia ||
+    esGerenteProyecto ||
+    esSubdireccion ||
+    esDireccionNacional ||
+    authService.hasPermission('travel_expenses.general.es_jefe_dependencia') ||
+    authService.hasPermission('travel_expenses.general.es_jefe') ||
+    authService.hasPermission('general.es_jefe') ||
+    authService.hasPermission('travel_expenses.general.es_gerente_proyecto') ||
+    authService.hasPermission('travel_expenses.general.es_gerente') ||
+    authService.hasPermission('general.es_gerente') ||
+    authService.hasPermission('travel_expenses.general.es_subdireccion_corporativa') ||
+    authService.hasPermission('travel_expenses.general.es_subdirector') ||
+    authService.hasPermission('general.es_subdirector') ||
+    authService.hasPermission('travel_expenses.general.es_direccion_nacional') ||
+    authService.hasPermission('travel_expenses.general.es_director') ||
+    authService.hasPermission('general.es_director');
+
+  const puedeFirmarAprobacion = puedeVerFirmasAprobacion;
 
   const gruposFiltrados: MenuGroup[] = grupos
     .map((grupo) => {

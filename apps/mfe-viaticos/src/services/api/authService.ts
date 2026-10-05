@@ -360,11 +360,21 @@ export class AuthService {
   isSubdireccionGestionCorporativa(): boolean {
     const user = this.getCurrentUserSync();
     if (!user) {
-      return this.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION) ||
-        this.hasPermission('travel_expenses:read_authorizations');
+      return (
+        this.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION) ||
+        this.hasPermission('travel_expenses.general.es_subdirector') ||
+        this.hasPermission('general.es_subdirector') ||
+        this.hasPermission('travel_expenses:read_authorizations')
+      );
     }
     if (user.esAdmin) return true;
-    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION)) return true;
+    if (
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION) ||
+      this.hasPermission('travel_expenses.general.es_subdirector') ||
+      this.hasPermission('general.es_subdirector')
+    ) {
+      return true;
+    }
     if (
       this.hasPermission('travel_expenses:read_authorizations') ||
       this.hasPermission('travel_expenses:authorize_expense')
@@ -387,12 +397,20 @@ export class AuthService {
     if (!user) {
       return (
         this.hasPermission(VIATICOS_PERMISOS_GENERALES.DIRECCION_NACIONAL) ||
+        this.hasPermission('travel_expenses.general.es_director') ||
+        this.hasPermission('general.es_director') ||
         this.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
         this.hasPermission('travel_expenses:authorize_extemporaneous')
       );
     }
     if (user.esAdmin) return true;
-    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.DIRECCION_NACIONAL)) return true;
+    if (
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.DIRECCION_NACIONAL) ||
+      this.hasPermission('travel_expenses.general.es_director') ||
+      this.hasPermission('general.es_director')
+    ) {
+      return true;
+    }
     if (
       this.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
       this.hasPermission('travel_expenses:authorize_extemporaneous')
@@ -581,30 +599,42 @@ export class AuthService {
     const user = this.getCurrentUserSync();
     if (!user) return false;
     if (user.esAdmin) return true;
-    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA)) return true;
-
-    const tieneRolJefe = user.roles.some((r) =>
-      ['JEFE_DEPENDENCIA', 'SUPERVISOR', 'JEFE', 'DIRECTOR_TERRITORIAL', 'LIDER_DEPENDENCIA'].includes(r) ||
-      r.includes('JEFE') ||
-      r.includes('SUPERVISOR'),
-    );
-    if (tieneRolJefe) return true;
+    if (
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA) ||
+      this.hasPermission('travel_expenses.general.es_jefe') ||
+      this.hasPermission('general.es_jefe')
+    ) {
+      return true;
+    }
 
     // Si el usuario es explícitamente Gerente de Proyecto (por rol o permiso de Gerente), no es Jefe
     const esGerente =
       this.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO) ||
+      this.hasPermission('travel_expenses.general.es_gerente') ||
+      this.hasPermission('general.es_gerente') ||
       user.roles.some((r) =>
         ['GERENTE_PROYECTO', 'GERENTE', 'LIDER_PROYECTO', 'COORDINADOR_PROYECTO'].includes(r) ||
         r.includes('GERENTE'),
       );
     if (esGerente) return false;
 
-    if (
-      this.hasPermission('travel_expenses:sign_approval') ||
-      this.hasPermission('travel_expenses:read_approvals')
-    ) {
-      return true;
-    }
+    // Si el usuario es rol operativo (Analista, Secretario, Control Viáticos, Enlace),
+    // no debe ser considerado Jefe de Dependencia a menos que tenga el rol/permiso explícito
+    const esOperativo =
+      this.isAnalista() ||
+      this.isSecretario() ||
+      this.isControlViaticos() ||
+      this.isEnlaceDependencia();
+
+    const tieneRolJefe = user.roles.some((r) =>
+      ['JEFE_DEPENDENCIA', 'JEFE', 'DIRECTOR_TERRITORIAL', 'LIDER_DEPENDENCIA'].includes(r) ||
+      (r.includes('JEFE') && !r.includes('CONTROL')) ||
+      (!esOperativo && (r === 'SUPERVISOR' || r.includes('SUPERVISOR'))),
+    );
+    if (tieneRolJefe) return true;
+
+    // No se usan fallbacks genéricos de travel_expenses:sign_approval / read_approvals
+    // porque esos permisos se asignaron a analistas y control de viáticos para validaciones OTP.
     return false;
   }
 
@@ -616,7 +646,13 @@ export class AuthService {
     const user = this.getCurrentUserSync();
     if (!user) return false;
     if (user.esAdmin) return true;
-    if (this.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO)) return true;
+    if (
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO) ||
+      this.hasPermission('travel_expenses.general.es_gerente') ||
+      this.hasPermission('general.es_gerente')
+    ) {
+      return true;
+    }
     return user.roles.some((r) =>
       ['GERENTE_PROYECTO', 'GERENTE', 'LIDER_PROYECTO', 'COORDINADOR_PROYECTO'].includes(r) ||
       r.includes('GERENTE'),
@@ -624,19 +660,34 @@ export class AuthService {
   }
 
   /**
-   * Determina si el usuario puede firmar aprobaciones del Formato 023.
+   * Determina si el usuario puede firmar aprobaciones del Formato 023 y ver la bandeja de firmas.
+   * Reservado exclusivamente para directivos: Jefe de Dependencia, Gerente de Proyecto,
+   * Subdirección Nacional (Gestión Corporativa) y Dirección Nacional (más Super Admin).
+   * Los roles de Analista, Secretario, Control Viáticos y Enlace están expresamente excluidos.
    */
   canFirmarAprobacion(): boolean {
     const user = this.getCurrentUserSync();
     if (!user) return false;
     if (user.esAdmin) return true;
+
+    // Acceso exclusivo a usuarios con permiso general o rol directivo de Jefe, Gerente, Subdirector o Director Nacional
     return (
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA) ||
+      this.hasPermission('travel_expenses.general.es_jefe') ||
+      this.hasPermission('general.es_jefe') ||
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO) ||
+      this.hasPermission('travel_expenses.general.es_gerente') ||
+      this.hasPermission('general.es_gerente') ||
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION) ||
+      this.hasPermission('travel_expenses.general.es_subdirector') ||
+      this.hasPermission('general.es_subdirector') ||
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.DIRECCION_NACIONAL) ||
+      this.hasPermission('travel_expenses.general.es_director') ||
+      this.hasPermission('general.es_director') ||
       this.isJefeDependencia() ||
       this.isGerenteProyecto() ||
       this.isSubdireccionGestionCorporativa() ||
-      this.isDireccionNacional() ||
-      this.hasPermission('travel_expenses:sign_approval') ||
-      this.hasPermission('travel_expenses:read_approvals')
+      this.isDireccionNacional()
     );
   }
 

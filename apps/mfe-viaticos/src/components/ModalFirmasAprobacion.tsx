@@ -532,9 +532,17 @@ export default function ModalFirmasAprobacion({
       ? 'Jefe de Dependencia / Supervisor'
       : 'Gerente de Proyecto');
 
+  const esDirectivo =
+    esAdmin ||
+    esJefe ||
+    esGerente ||
+    Boolean(authService.isSubdireccionGestionCorporativa?.()) ||
+    Boolean(authService.isDireccionNacional?.());
+
   const puedeFirmar =
     !esEnlace &&
-    (Boolean(authService.canFirmarAprobacion?.()) || esJefe || esGerente || esAnalista || esAdmin);
+    esDirectivo &&
+    (Boolean(authService.canFirmarAprobacion?.()) || esAdmin || esJefe || esGerente);
 
   // Enviar alerta y recordatorio de firma pendiente al otro rol
   const handleEnviarAlerta = async (tipoDestino?: TipoFirmaAprobacion) => {
