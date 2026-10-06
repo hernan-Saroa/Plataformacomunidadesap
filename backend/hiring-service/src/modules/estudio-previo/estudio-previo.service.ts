@@ -387,7 +387,11 @@ export class EstudioPrevioService implements OnModuleInit {
     if (acceso && proceso.createdBy !== acceso.userName) {
       const verTodos = await this.puedeVerTodos(acceso);
       const enElProceso =
-        verTodos || (await this.participacion.procesosDe(acceso)).includes(procesoId);
+        verTodos ||
+        (await this.participacion.procesosDe(acceso)).includes(procesoId) ||
+        // Quien evalúa no participa del proceso, pero tiene que abrirlo para
+        // llegar a la 6.3.
+        (await this.participacion.procesosDondeEvalua(acceso)).includes(procesoId);
 
       /**
        * Y la bandeja, que es la cuarta vía y la más fácil de olvidar.
@@ -452,7 +456,12 @@ export class EstudioPrevioService implements OnModuleInit {
     if (!verTodos) {
       mios.push({ createdBy: acceso!.userName });
 
-      const alcanzables = new Set(await this.participacion.procesosDe(acceso!));
+      const alcanzables = new Set([
+        ...(await this.participacion.procesosDe(acceso!)),
+        // Y los que evalúa: el memorando lo designa sin repartirle el proceso,
+        // y sin esto no tendría cómo llegar a la 6.3.
+        ...(await this.participacion.procesosDondeEvalua(acceso!)),
+      ]);
       if (await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION_DIRECCION)) {
         for (const id of await this.participacion.idsEnBandeja()) alcanzables.add(id);
       }
