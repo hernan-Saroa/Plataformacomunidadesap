@@ -177,8 +177,9 @@ describe('lotes de todos los componentes según permisos, sin recarga manual', (
   it.each(PTA_BULK_APPROVAL_GROUPS)('aprueba únicamente el componente autorizado del botón $label y actualiza su bandeja', async group => {
     const componente = group.componentKeys[0];
     sync.rol = 'docente';
+    sync.permissions.filtroTerritorial = ['Meta'];
     sync.permissions.componentesAprobables = [componente];
-    const pta = { ...pendientes[0], componentes_en_alcance: [componente],
+    const pta = { ...pendientes[0], territorial: componente.startsWith('academica_') ? 'Meta' : 'Caldas', componentes_en_alcance: [componente],
       componentes_aprobacion_usuario: [{ componente, estado: 'pendiente', revision_completa: true }] };
     vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [pta] });
     vi.mocked(aprobarComponentesLote).mockImplementation(async () => {
@@ -209,11 +210,12 @@ describe('lotes de todos los componentes según permisos, sin recarga manual', (
     .flatMap(([componente, subsecciones]) => subsecciones.map(subseccion => ({ componente, subseccion })));
   it.each(revisiones)('revisa únicamente $componente/$subseccion, sin conceder aprobación ni perder estados por fallos de recarga', async ({ componente, subseccion }) => {
     sync.rol = 'docente';
+    sync.permissions.filtroTerritorial = ['Meta'];
     sync.permissions.puedeAprobar = false;
     sync.permissions.puedeRevisar = true;
     sync.permissions.componentesAprobables = [];
     sync.permissions.componentesRevisables = [`${componente}:${subseccion}`];
-    const pta = { ...pendientes[0], componentes_en_alcance: [componente],
+    const pta = { ...pendientes[0], territorial: componente.startsWith('academica_') ? 'Meta' : 'Caldas', componentes_en_alcance: [componente],
       componentes_revision_usuario: [{ componente, subseccion, estado: 'pendiente' }], componentes_aprobacion_usuario: [] };
     vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [pta] });
     let complete!: (value: any) => void;
@@ -784,8 +786,14 @@ describe('listado y contadores del backoffice', () => {
 
   it.each(PTA_COMPONENT_KEYS)('actualiza las bandejas al aprobar individualmente %s aunque el PTA siga pendiente y falle la consulta', async componente => {
     sync.rol = 'docente';
-    sync.permissions.componentesAprobables = [componente];
-    const pta = { ...pendientes[0], componentes_en_alcance: [componente],
+    const esDocencia = componente.startsWith('academica_');
+    sync.permissions.filtroTerritorial = ['Meta'];
+    sync.permissions.componentesAprobables = esDocencia ? [componente] : [componente, 'academica_pregrado'];
+    const pta = { ...pendientes[0], territorial: esDocencia ? 'Meta' : 'Caldas', componentes_en_alcance: [componente],
+      componentes_aprobacion_estado: [
+        { componente: 'academica_pregrado', estado: 'pendiente', revision_completa: true },
+        ...(!esDocencia ? [{ componente, estado: 'pendiente', revision_completa: true }] : []),
+      ],
       componentes_aprobacion_usuario: [{ componente, estado: 'pendiente', revision_completa: true }] };
     const ajeno = { ...pendientes[1], componentes_en_alcance: [], componentes_aprobacion_usuario: [] };
     vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [pta, ajeno] });

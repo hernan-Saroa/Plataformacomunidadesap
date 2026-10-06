@@ -11,7 +11,7 @@ export interface PTADecisionPermissions {
   allowedReviewSubsecciones: string[];
   /** Motivos por los que un permiso vigente queda bloqueado para este PTA. */
   componentReasons?: Record<string, Partial<Record<'aprobar' | 'revisar', string>>>;
-  /** Territoriales visibles según los permisos y alcances vigentes; null = sin filtro territorial. */
+  /** Alcance territorial para decisiones de Docencia; no restringe los demás componentes. */
   personalTerritoriales?: string[] | null;
   territorial: Record<'aprobar' | 'revisar', {
     pairs: Array<{ territorialId: string; nivel: 'pregrado' | 'posgrado' }>;
