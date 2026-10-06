@@ -49,6 +49,10 @@ import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
 import CancelarComisionModal from './CancelarComisionModal';
 import PresupuestoInbox from './PresupuestoInbox';
 import ReintegrosInbox from './ReintegrosInbox';
+import LegalizacionesSeccion from './LegalizacionesSeccion';
+import PazYSalvoCoordinadora from './paz-y-salvo/PazYSalvoCoordinadora';
+import ConfigSoportesLegalizacion from './ConfigSoportesLegalizacion';
+import VistaAnalistaViaticos from './VistaAnalistaViaticos';
 import ProcesarPagoModal from './ProcesarPagoModal';
 import ModalFirmasAprobacion from './ModalFirmasAprobacion';
 import BandejaFirmasAprobacion from './BandejaFirmasAprobacion';
@@ -88,12 +92,14 @@ const Permissions = {
   VIATICOS_TIQUETES_MANAGE: 'travel_expenses:tickets.manage',
   VIATICOS_LEGALIZACIONES_VIEW: 'travel_expenses:legalizations.view',
   VIATICOS_LEGALIZACIONES_MANAGE: 'travel_expenses:legalizations.manage',
+  VIATICOS_LEGALIZACIONES_REVERTIR: 'travel_expenses:legalizations.revert_approval',
   VIATICOS_RESOLUCIONES_VIEW: 'travel_expenses:resolutions.view',
   VIATICOS_RESOLUCIONES_MANAGE: 'travel_expenses:resolutions.manage',
   VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
 } as const;
 
 type Seccion =
+  | 'paz-y-salvo'
   | 'solicitudes'
   | 'tiquetes'
   | 'legalizaciones'
@@ -107,6 +113,11 @@ type Seccion =
   | 'reintegros'
   | 'sst'
   | 'firmas-aprobacion';
+
+// Una comisión pagada pasa enseguida a PENDIENTE_LEGALIZACION (EFDS-1309) y luego a
+// LEGALIZADO: para Tesorería y SST sigue siendo una comisión pagada.
+const ESTADOS_PAGADA = ['PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'];
+const ESTADOS_TESORERIA_SST = ['OBLIGADA', ...ESTADOS_PAGADA];
 
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
   OBLIGADA: 1,
@@ -244,6 +255,10 @@ export default function ViaticosModulePremium() {
           subtitle: 'Carga de facturas y cumplidos',
           icon: <Receipt className="w-5 h-5" />,
           color: '#D97706',
+        },
+        {
+          id: 'paz-y-salvo', label: 'Paz y salvo', subtitle: 'Certificación y firma de Viáticos',
+          icon: <FileCheck className="w-5 h-5" />, color: '#003DA5',
         },
         {
           id: 'resoluciones',
@@ -427,7 +442,7 @@ export default function ViaticosModulePremium() {
         (filtroEstado === 'EXTEMPORANEA' ? esExt : sol.estado === filtroEstado);
       const cumpleSeccion =
         seccion === 'tesoreria' || seccion === 'sst'
-          ? ['OBLIGADA', 'PAGADA'].includes(sol.estado)
+          ? ESTADOS_TESORERIA_SST.includes(sol.estado)
           : true;
       return cumpleBusqueda && cumpleEstado && cumpleSeccion;
     })
@@ -685,6 +700,7 @@ export default function ViaticosModulePremium() {
     authService.hasAnyPermission([
       Permissions.VIATICOS_LEGALIZACIONES_VIEW,
       Permissions.VIATICOS_LEGALIZACIONES_MANAGE,
+      Permissions.VIATICOS_LEGALIZACIONES_REVERTIR,
     ]);
   const puedeVerResoluciones =
     !tieneContextoAuth ||
@@ -728,6 +744,7 @@ export default function ViaticosModulePremium() {
     ));
 
   const puedeCancelarComision = authService.canCancelarComision();
+  const puedeEmitirPazYSalvo = esSuperAdmin || authService.hasPermission('travel_expenses:paz_y_salvo.manage');
   const puedeVerPresupuesto =
     !tieneContextoAuth ||
     esSuperAdmin ||
@@ -792,6 +809,7 @@ export default function ViaticosModulePremium() {
         if (item.id === 'firmas-aprobacion') return puedeVerFirmasAprobacion;
         if (item.id === 'tiquetes') return puedeVerTiquetes;
         if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
+        if (item.id === 'paz-y-salvo') return puedeEmitirPazYSalvo;
         if (item.id === 'resoluciones') return puedeVerResoluciones;
         if (item.id === 'autorizaciones') return puedeVerAutorizaciones;
         if (item.id === 'autorizaciones-direccion') return puedeVerAutorizacionesDireccion;
@@ -859,7 +877,7 @@ export default function ViaticosModulePremium() {
   }
 
   if (esAnalista && !esSuperAdmin) {
-    return <AnalystInbox />;
+    return <VistaAnalistaViaticos />;
   }
 
   return (
@@ -933,7 +951,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pagadas (Desembolsadas)</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
-                        {solicitudes.filter((s) => s.estado === 'PAGADA').length}
+                        {solicitudes.filter((s) => ESTADOS_PAGADA.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-blue-600 font-medium mt-1">Giros formalizados</p>
                     </div>
@@ -946,7 +964,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Modalidad Avance</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
-                        {solicitudes.filter((s) => s.modalidadPago === 'AVANCE' && ['OBLIGADA', 'PAGADA'].includes(s.estado)).length}
+                        {solicitudes.filter((s) => s.modalidadPago === 'AVANCE' && ESTADOS_TESORERIA_SST.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-amber-600 font-medium mt-1">Giro previo al viaje</p>
                     </div>
@@ -961,7 +979,7 @@ export default function ViaticosModulePremium() {
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
                         {formatearMoneda(
                           solicitudes
-                            .filter((s) => s.estado === 'PAGADA')
+                            .filter((s) => ESTADOS_PAGADA.includes(s.estado))
                             .reduce((acc, s) => acc + (s.valorPagado || s.montoTotalEstimado || 0), 0)
                         )}
                       </h3>
@@ -978,7 +996,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Comisiones Formalizadas</p>
                       <h3 className="text-2xl font-black text-emerald-800 mt-1">
-                        {solicitudes.filter((s) => ['OBLIGADA', 'PAGADA'].includes(s.estado)).length}
+                        {solicitudes.filter((s) => ESTADOS_TESORERIA_SST.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-emerald-600 font-medium mt-1">Para cobertura y monitoreo SST</p>
                     </div>
@@ -1004,7 +1022,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pagadas / Desembolsadas</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
-                        {solicitudes.filter((s) => s.estado === 'PAGADA').length}
+                        {solicitudes.filter((s) => ESTADOS_PAGADA.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-blue-600 font-medium mt-1">Giro confirmado</p>
                     </div>
@@ -1018,7 +1036,7 @@ export default function ViaticosModulePremium() {
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Días Totales en Territorio</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
                         {solicitudes
-                          .filter((s) => ['OBLIGADA', 'PAGADA'].includes(s.estado))
+                          .filter((s) => ESTADOS_TESORERIA_SST.includes(s.estado))
                           .reduce((acc, s) => acc + (s.diasComision || 1), 0)}
                       </h3>
                       <p className="text-xs text-purple-600 font-medium mt-1">Exposición operativa</p>
@@ -1681,23 +1699,10 @@ export default function ViaticosModulePremium() {
 
            {/* ── LEGALIZACIONES ── */}
            {seccion === 'legalizaciones' && puedeVerLegalizaciones && (
-             <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
-                <div>
-                  <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    <Receipt className="w-5 h-5 text-amber-600" />
-                    Legalización y Cumplido de Comisión
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Revisión de facturas, cumplidos firmados y cálculo de reintegros o devoluciones.
-                  </p>
-                </div>
-              </div>
-              <div className="p-8 text-center text-slate-400 text-xs">
-                <Receipt className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-                Cargue de soportes de legalización activo para comisiones finalizadas.
-              </div>
-            </div>
+             <LegalizacionesSeccion />
+          )}
+           {seccion === 'paz-y-salvo' && puedeEmitirPazYSalvo && (
+             <PazYSalvoCoordinadora />
           )}
 
             {/* ── RESOLUCIONES ── */}
@@ -1769,6 +1774,9 @@ export default function ViaticosModulePremium() {
                </div>
                <div className="mt-4">
                  <ParametrizacionManager />
+               </div>
+               <div className="mt-6 pt-5 border-t border-slate-100">
+                 <ConfigSoportesLegalizacion />
                </div>
              </div>
            )}
@@ -2192,7 +2200,7 @@ export default function ViaticosModulePremium() {
                     {/* ========================================================================= */}
                     {/* HITO GRÁFICO SST (RF-PAG-002 — Etapa 8: Notificación Automática a SST)    */}
                     {/* ========================================================================= */}
-                    {Boolean(solicitudSeleccionada.notificadoSst || logsSst.length > 0 || ['COMPROMETIDA', 'OBLIGADA', 'PAGADA'].includes(solicitudSeleccionada.estado)) && (() => {
+                    {Boolean(solicitudSeleccionada.notificadoSst || logsSst.length > 0 || ['COMPROMETIDA', ...ESTADOS_TESORERIA_SST].includes(solicitudSeleccionada.estado)) && (() => {
                       const ultimoLogSst = logsSst[0];
                       const payloadSst = (ultimoLogSst?.payloadNotificado as any) || {
                         nombre_completo_comisionado: solicitudSeleccionada.nombreComisionado,
@@ -2370,7 +2378,7 @@ export default function ViaticosModulePremium() {
                     {/* ========================================================================= */}
                     {/* ETAPA 8: DETALLE DE DESEMBOLSO / PAGO REALIZADO (ESTADO PAGADA) */}
                     {/* ========================================================================= */}
-                    {solicitudSeleccionada.estado === 'PAGADA' && (
+                    {ESTADOS_PAGADA.includes(solicitudSeleccionada.estado) && (
                       <div className="mt-4 p-4 bg-emerald-50/90 rounded-xl border border-emerald-300 shadow-xs">
                         <div className="flex items-start gap-2.5">
                           <span className="p-2 rounded-lg bg-emerald-100 text-emerald-800 shrink-0 mt-0.5">

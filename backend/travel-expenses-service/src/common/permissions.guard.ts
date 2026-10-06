@@ -49,12 +49,14 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:double_check_request',
     'travel_expenses:return_to_analyst',
     'travel_expenses:read_requests',
+    'travel_expenses:legalizations.revert_approval', // EFDS-1310: aprueba reversiones de revisión
   ],
   ROL_CONTROL_VIATICOS: [
     'travel_expenses:read_siif_requested',
     'travel_expenses:double_check_request',
     'travel_expenses:return_to_analyst',
     'travel_expenses:read_requests',
+    'travel_expenses:legalizations.revert_approval', // EFDS-1310: aprueba reversiones de revisión
   ],
   ANALISTA: [
     'travel_expenses:read_assigned',
@@ -66,6 +68,7 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_requests',
     'travel_expenses:read_reintegros',
     'travel_expenses:register_reintegro',
+    'travel_expenses:legalizations.manage', // EFDS-1310: revisar y cerrar legalizaciones
   ],
   ROL_ANALISTA: [
     'travel_expenses:read_assigned',
@@ -77,6 +80,7 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_requests',
     'travel_expenses:read_reintegros',
     'travel_expenses:register_reintegro',
+    'travel_expenses:legalizations.manage', // EFDS-1310: revisar y cerrar legalizaciones
   ],
   ANALISTA_VIATICOS: [
     'travel_expenses:read_assigned',
@@ -88,6 +92,7 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_requests',
     'travel_expenses:read_reintegros',
     'travel_expenses:register_reintegro',
+    'travel_expenses:legalizations.manage', // EFDS-1310: revisar y cerrar legalizaciones
   ],
   SECRETARIO: [
     'travel_expenses:read_inbox',
@@ -378,6 +383,10 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses.general.es_comisionado',
     'es_comisionado',
   ],
+  // EFDS-1311: emisores de paz y salvo (migración 463). El fallback solo abre la ruta;
+  // el servicio revalida en auth el rol activo y la territorial en cada operación.
+  COORDINADOR_COMISIONES_VIATICOS: ['travel_expenses:paz_y_salvo.manage'],
+  COORDINADOR_ADMINISTRATIVO_FINANCIERO: ['travel_expenses:paz_y_salvo.manage'],
 };
 
 @Injectable()

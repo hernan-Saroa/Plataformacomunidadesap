@@ -719,6 +719,96 @@ export class TravelExpensesController {
     return this.service.notificarFirmaPendiente(id, tipoFirmaPendiente, req.user?.userId);
   }
 
+  /**
+   * RF-REV-002 — Bandeja de solicitudes en estado SOLICITADA_SIIF.
+   *
+   * Devuelve el listado de solicitudes exportadas a SIIF que esperan la
+   * verificación de segundo nivel (revisor de Control Viáticos).
+   * Exige el permiso `travel_expenses:read_siif_requested`.
+   */
+  @Get('requests/siif-requested')
+  @Permissions('travel_expenses:read_siif_requested')
+  @ApiOperation({
+    summary: 'Obtener solicitudes en estado SOLICITADA_SIIF pendientes de segunda revisión',
+    description:
+      'Devuelve la lista de solicitudes exportadas a SIIF que esperan la verificación de segundo nivel (revisor de control).',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de solicitudes pendientes de segunda revisión.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'No autenticado. Se requiere token Bearer válido.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'No tiene permiso para consultar la bandeja de Control Viáticos.',
+  })
+  @ApiBearerAuth()
+  async obtenerSolicitudesSIIFRequested(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+    const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
+    const result =
+      await this.service.obtenerSolicitudesSIIFRequested(pageNum, limitNum);
+    return {
+      data: result.data,
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+    };
+  }
+
+  /**
+   * RF-PRE-001 — Bandeja del Grupo de Presupuesto (Etapa 7).
+   *
+   * Endpoint oficial: GET /api/v1/requests/budget-inbox
+   * Alias: GET requests/budget-inbox, GET requests/budget/inbox
+   */
+  @Get(['requests/budget-inbox', 'api/v1/requests/budget-inbox', 'requests/budget/inbox'])
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(
+    'travel_expenses:read_authorized',
+    'travel_expenses:read_budget',
+    'travel_expenses:read_all',
+  )
+  @ApiTags('presupuesto')
+  @ApiOperation({
+    summary: 'Bandeja de comisiones para Grupo de Presupuesto (Etapa 7 — RF-PRE-001)',
+    description:
+      'Retorna comisiones pendientes de RP en estado AUTORIZADA / EN_PRESUPUESTO y comprometidas (COMPROMETIDA) con búsqueda, filtros y KPIs consolidados. Permite bypass total a SUPER_ADMIN.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado de comisiones en Presupuesto y KPIs consolidados.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Permiso denegado (requiere travel_expenses:read_authorized o rol SUPER_ADMIN).',
+  })
+  @ApiBearerAuth()
+  async obtenerBandejaPresupuesto(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('estado') estado?: string,
+  ) {
+    const result = await this.service.obtenerBandejaPresupuesto(
+      page ? parseInt(page, 10) : 1,
+      limit ? parseInt(limit, 10) : 20,
+      search,
+      estado,
+    );
+    return {
+      success: true,
+      ...result,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   @Get('requests/:id')
   @Permissions(
     'travel_expenses:sign_approval',
@@ -1081,49 +1171,6 @@ export class TravelExpensesController {
       'Content-Length': Buffer.byteLength(result.csvContent, 'utf8'),
     });
     res.send(result.csvContent);
-  }
-
-  /**
-   * RF-REV-002 — Bandeja de solicitudes en estado SOLICITADA_SIIF.
-   *
-   * Devuelve el listado de solicitudes exportadas a SIIF que esperan la
-   * verificación de segundo nivel (revisor de Control Viáticos).
-   * Exige el permiso `travel_expenses:read_siif_requested`.
-   */
-  @Get('requests/siif-requested')
-  @Permissions('travel_expenses:read_siif_requested')
-  @ApiOperation({
-    summary: 'Obtener solicitudes en estado SOLICITADA_SIIF pendientes de segunda revisión',
-    description:
-      'Devuelve la lista de solicitudes exportadas a SIIF que esperan la verificación de segundo nivel (revisor de control).',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Lista de solicitudes pendientes de segunda revisión.',
-  })
-  @ApiResponse({
-    status: 401,
-    description: 'No autenticado. Se requiere token Bearer válido.',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'No tiene permiso para consultar la bandeja de Control Viáticos.',
-  })
-  @ApiBearerAuth()
-  async obtenerSolicitudesSIIFRequested(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
-    const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
-    const result =
-      await this.service.obtenerSolicitudesSIIFRequested(pageNum, limitNum);
-    return {
-      data: result.data,
-      total: result.total,
-      page: result.page,
-      limit: result.limit,
-    };
   }
 
   /**
@@ -1742,53 +1789,6 @@ export class TravelExpensesController {
       success: true,
       data: result,
       message: 'Paquete de comisión enviado exitosamente a la bandeja del Grupo de Presupuesto.',
-      timestamp: new Date().toISOString(),
-    };
-  }
-
-  /**
-   * RF-PRE-001 — Bandeja del Grupo de Presupuesto (Etapa 7).
-   *
-   * Endpoint oficial: GET /api/v1/requests/budget-inbox
-   * Alias: GET requests/budget-inbox, GET requests/budget/inbox
-   */
-  @Get(['requests/budget-inbox', 'api/v1/requests/budget-inbox', 'requests/budget/inbox'])
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions(
-    'travel_expenses:read_authorized',
-    'travel_expenses:read_budget',
-    'travel_expenses:read_all',
-  )
-  @ApiTags('presupuesto')
-  @ApiOperation({
-    summary: 'Bandeja de comisiones para Grupo de Presupuesto (Etapa 7 — RF-PRE-001)',
-    description:
-      'Retorna comisiones pendientes de RP en estado AUTORIZADA / EN_PRESUPUESTO y comprometidas (COMPROMETIDA) con búsqueda, filtros y KPIs consolidados. Permite bypass total a SUPER_ADMIN.',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Listado de comisiones en Presupuesto y KPIs consolidados.',
-  })
-  @ApiResponse({
-    status: 403,
-    description: 'Permiso denegado (requiere travel_expenses:read_authorized o rol SUPER_ADMIN).',
-  })
-  @ApiBearerAuth()
-  async obtenerBandejaPresupuesto(
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-    @Query('search') search?: string,
-    @Query('estado') estado?: string,
-  ) {
-    const result = await this.service.obtenerBandejaPresupuesto(
-      page ? parseInt(page, 10) : 1,
-      limit ? parseInt(limit, 10) : 20,
-      search,
-      estado,
-    );
-    return {
-      success: true,
-      ...result,
       timestamp: new Date().toISOString(),
     };
   }

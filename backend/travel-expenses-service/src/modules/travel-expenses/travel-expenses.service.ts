@@ -439,11 +439,11 @@ export class TravelExpensesService {
     if (!isSuperAdmin && !isSecretario) {
       if (isTesoreria) {
         query.andWhere('s.estado_solicitud IN (:...estadosTesoreria)', {
-          estadosTesoreria: ['OBLIGADA', 'PAGADA'],
+          estadosTesoreria: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'],
         });
       } else if (isSst) {
         query.andWhere('s.estado_solicitud IN (:...estadosSst)', {
-          estadosSst: ['OBLIGADA', 'PAGADA'],
+          estadosSst: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'],
         });
       } else if (isControlViaticos) {
         query.andWhere('s.estado_solicitud IN (:...estadosControl)', {

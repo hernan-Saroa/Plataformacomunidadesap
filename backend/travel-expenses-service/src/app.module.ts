@@ -38,6 +38,8 @@ import { TicketsModule } from './modules/tickets/tickets.module';
 import { ConsolidacionModule } from './modules/consolidacion/consolidacion.module';
 import { ReintegrosModule } from './modules/reintegros/reintegros.module';
 import { CommonModule } from './common/common.module';
+import { LegalizacionModule, LEGALIZACION_ENTITIES } from './modules/legalizacion/legalizacion.module';
+import { PazYSalvoModule } from './modules/paz-y-salvo/paz-y-salvo.module';
 
 @Module({
   imports: [
@@ -75,6 +77,7 @@ import { CommonModule } from './common/common.module';
         TarifaTransporteTerminalEntity,
         TarifaReferenciaTiqueteEntity,
         ReintegroComisionEntity,
+        ...LEGALIZACION_ENTITIES,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV !== 'production',
@@ -88,6 +91,8 @@ import { CommonModule } from './common/common.module';
     ReintegrosModule,
     NotificationsModule,
     CommonModule,
+    LegalizacionModule,
+    PazYSalvoModule,
   ],
   controllers: [AppController],
   providers: [
