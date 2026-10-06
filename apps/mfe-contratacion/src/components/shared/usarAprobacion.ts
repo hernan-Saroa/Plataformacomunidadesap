@@ -4,6 +4,34 @@ import { toast } from 'sonner';
 import { contratacionService } from '../../services/contratacionService';
 import { EvidenciaFirmaOtp, SoporteDeDevolucion } from '../../types';
 
+/**
+ * Sube, uno tras otro, los archivos que acompañan una devolución.
+ *
+ * En fila y no a la vez: cada uno se suma a la lista de la revisión, y así
+ * quedan en el orden en que se eligieron. La devolución ya quedó, así que los
+ * que fallen se avisan juntos sin deshacer lo decidido.
+ */
+export async function adjuntarSoportes(procesoId: string, numeral: string, archivos: File[]) {
+  const fallidos: string[] = [];
+  let motivo: string | undefined;
+  for (const archivo of archivos) {
+    try {
+      await contratacionService.subirSoporteDevolucion(procesoId, numeral, archivo);
+    } catch (e: any) {
+      fallidos.push(archivo.name);
+      motivo = motivo ?? e?.message;
+    }
+  }
+  if (fallidos.length) {
+    toast.warning(
+      fallidos.length === 1
+        ? `Se devolvió, pero no se pudo adjuntar ${fallidos[0]}`
+        : `Se devolvió, pero no se pudieron adjuntar ${fallidos.length} archivos: ${fallidos.join(', ')}`,
+      { description: motivo },
+    );
+  }
+}
+
 /** Una decisión ya tomada sobre la actividad. */
 export interface RevisionDeActividad {
   decision: 'APROBADO' | 'DEVUELTO';
@@ -13,7 +41,7 @@ export interface RevisionDeActividad {
   versionRevisada: number;
   fecha: string;
   /** Las correcciones marcadas que acompañan una devolución, si las hay. */
-  soporte?: SoporteDeDevolucion | null;
+  soportes?: SoporteDeDevolucion[];
 }
 
 /** Lo que un panel necesita saber para pintar el pie de aprobación. */
@@ -41,8 +69,8 @@ export interface Aprobacion {
   enviar: () => Promise<void>;
   retirar: () => Promise<void>;
   aprobar: (firma?: EvidenciaFirmaOtp) => Promise<void>;
-  /** Con archivo, lo adjunta como soporte de la devolución. */
-  devolver: (observaciones: string, soporte?: File | null) => Promise<void>;
+  /** Con archivos, los adjunta como soportes de la devolución. */
+  devolver: (observaciones: string, soportes?: File[]) => Promise<void>;
 }
 
 /**
@@ -164,19 +192,10 @@ export function usarAprobacion(
         () => contratacionService.aprobarActividad(procesoId, numeral, undefined, firma),
         'Actividad aprobada',
       ),
-    devolver: (observaciones: string, soporte?: File | null) =>
+    devolver: (observaciones: string, soportes: File[] = []) =>
       accion(async () => {
         await contratacionService.devolverActividad(procesoId, numeral, observaciones);
-        if (!soporte) return;
-        // La devolución ya quedó: si el archivo falla se avisa, pero no se
-        // deshace lo decidido.
-        try {
-          await contratacionService.subirSoporteDevolucion(procesoId, numeral, soporte);
-        } catch (e: any) {
-          toast.warning('Se devolvió, pero no se pudo adjuntar el archivo', {
-            description: e?.message,
-          });
-        }
+        await adjuntarSoportes(procesoId, numeral, soportes);
       }, 'Devuelta con tus observaciones'),
   };
 }

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -28,6 +29,7 @@ import { SolicitudHistorialEstadoEntity } from './entities/solicitud-historial-e
 import { FestivoColombiaEntity } from './entities/festivo-colombia.entity';
 import { AuthSystemSettingEntity } from './entities/auth-system-setting.entity';
 import { TarifaTransporteTerminalEntity } from './entities/liquidation/tarifa-transporte-terminal.entity';
+import { TarifaReferenciaTiqueteEntity } from './entities/tickets/tarifa-referencia-tiquete.entity';
 import { ReintegroComisionEntity } from './entities/reintegro-comision.entity';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { PermissionsGuard } from './common/permissions.guard';
@@ -36,11 +38,14 @@ import { TicketsModule } from './modules/tickets/tickets.module';
 import { ConsolidacionModule } from './modules/consolidacion/consolidacion.module';
 import { ReintegrosModule } from './modules/reintegros/reintegros.module';
 import { CommonModule } from './common/common.module';
+import { LegalizacionModule, LEGALIZACION_ENTITIES } from './modules/legalizacion/legalizacion.module';
+import { PazYSalvoModule } from './modules/paz-y-salvo/paz-y-salvo.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST,
@@ -70,7 +75,9 @@ import { CommonModule } from './common/common.module';
         FestivoColombiaEntity,
         AuthSystemSettingEntity,
         TarifaTransporteTerminalEntity,
+        TarifaReferenciaTiqueteEntity,
         ReintegroComisionEntity,
+        ...LEGALIZACION_ENTITIES,
       ],
       synchronize: false,
       logging: process.env.NODE_ENV !== 'production',
@@ -84,6 +91,8 @@ import { CommonModule } from './common/common.module';
     ReintegrosModule,
     NotificationsModule,
     CommonModule,
+    LegalizacionModule,
+    PazYSalvoModule,
   ],
   controllers: [AppController],
   providers: [

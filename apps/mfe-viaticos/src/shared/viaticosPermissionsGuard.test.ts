@@ -13,6 +13,9 @@ import {
   isSst,
   isResponsableTiquetes,
   isEnlaceDependencia,
+  isJefeDependencia,
+  isGerenteProyecto,
+  canFirmarAprobacion,
 } from './viaticosPermissionsGuard';
 import { authService, AuthService, UsuarioActual } from '../services/api/authService';
 
@@ -322,6 +325,90 @@ describe('viaticosPermissionsGuard — Mapeo y Guards por Permisos Inmutables', 
 
       expect(authService.isGerenteProyecto()).toBe(true);
       expect(authService.canFirmarAprobacion()).toBe(true);
+    });
+
+    describe('Exclusión estricta de bandeja de firmas para roles operativos (Analista, Secretario, Control Viáticos)', () => {
+      it('Analista de viáticos NO debe tener acceso a canFirmarAprobacion ni ser reconocido como Jefe/Gerente aun si tiene sign_approval', () => {
+        (window as any).__esap_auth_cache = {
+          id_user: 'user-analista-01',
+          roles: ['ANALISTA_VIATICOS'],
+          permissions: [
+            'travel_expenses.general.es_analista_viaticos',
+            'travel_expenses:sign_approval',
+            'travel_expenses:read_approvals',
+            'travel_expenses:read_requests',
+          ],
+        };
+
+        expect(authService.isAnalista()).toBe(true);
+        expect(authService.isJefeDependencia()).toBe(false);
+        expect(authService.isGerenteProyecto()).toBe(false);
+        expect(authService.canFirmarAprobacion()).toBe(false);
+        expect(isJefeDependencia(authService)).toBe(false);
+        expect(isGerenteProyecto(authService)).toBe(false);
+        expect(canFirmarAprobacion(authService)).toBe(false);
+      });
+
+      it('Secretario de viáticos NO debe tener acceso a canFirmarAprobacion ni ser reconocido como Jefe/Gerente', () => {
+        (window as any).__esap_auth_cache = {
+          id_user: 'user-secretario-01',
+          roles: ['SECRETARIO_VIATICOS'],
+          permissions: [
+            'travel_expenses.general.es_secretario_viaticos',
+            'travel_expenses:read_requests',
+            'travel_expenses:read_inbox',
+          ],
+        };
+
+        expect(authService.isSecretario()).toBe(true);
+        expect(authService.isJefeDependencia()).toBe(false);
+        expect(authService.isGerenteProyecto()).toBe(false);
+        expect(authService.canFirmarAprobacion()).toBe(false);
+        expect(isJefeDependencia(authService)).toBe(false);
+        expect(isGerenteProyecto(authService)).toBe(false);
+        expect(canFirmarAprobacion(authService)).toBe(false);
+      });
+
+      it('Control de viáticos NO debe tener acceso a canFirmarAprobacion ni ser reconocido como Jefe/Gerente aun si tiene sign_approval', () => {
+        (window as any).__esap_auth_cache = {
+          id_user: 'user-control-01',
+          roles: ['CONTROL_VIATICOS'],
+          permissions: [
+            'travel_expenses.general.es_control_viaticos',
+            'travel_expenses:sign_approval',
+            'travel_expenses:read_approvals',
+            'travel_expenses:read_requests',
+          ],
+        };
+
+        expect(authService.isControlViaticos()).toBe(true);
+        expect(authService.isJefeDependencia()).toBe(false);
+        expect(authService.isGerenteProyecto()).toBe(false);
+        expect(authService.canFirmarAprobacion()).toBe(false);
+        expect(isJefeDependencia(authService)).toBe(false);
+        expect(isGerenteProyecto(authService)).toBe(false);
+        expect(canFirmarAprobacion(authService)).toBe(false);
+      });
+
+      it('Subdirector y Director Nacional SÍ tienen acceso a canFirmarAprobacion', () => {
+        (window as any).__esap_auth_cache = {
+          id_user: 'user-dir-01',
+          roles: ['DIRECCION_NACIONAL'],
+          permissions: ['travel_expenses.general.es_direccion_nacional'],
+        };
+        expect(authService.isDireccionNacional()).toBe(true);
+        expect(authService.canFirmarAprobacion()).toBe(true);
+        expect(canFirmarAprobacion(authService)).toBe(true);
+
+        (window as any).__esap_auth_cache = {
+          id_user: 'user-subdir-01',
+          roles: ['SUBDIRECCION_GESTION_CORPORATIVA'],
+          permissions: ['travel_expenses.general.es_subdireccion_corporativa'],
+        };
+        expect(authService.isSubdireccionGestionCorporativa()).toBe(true);
+        expect(authService.canFirmarAprobacion()).toBe(true);
+        expect(canFirmarAprobacion(authService)).toBe(true);
+      });
     });
   });
 });

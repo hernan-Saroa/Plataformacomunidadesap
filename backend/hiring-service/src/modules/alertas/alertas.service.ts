@@ -116,7 +116,7 @@ export interface ElementoPorRevisar {
    * las modificaciones y las cuentas de cobro se deciden una por una dentro de
    * su actividad.
    */
-  tipo: 'ESTUDIO_PREVIO' | 'MODALIDAD' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO';
+  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO';
   /** Cuál de ellas, cuando la actividad tiene varias: «Póliza 123 · Seguros X». */
   detalle: string | null;
   procesoId: string;
@@ -539,7 +539,7 @@ export class AlertasService {
                     ON pp.proceso_id = p.id
                    AND pp.papel = 'ABOGADO'
                    AND pp.estado = 'VIGENTE'
-             WHERE pa.numeral IN ('3.1', '3.5')
+             WHERE pa.numeral = '3.1'
                AND pa.estado = 'EN_REVISION'
                AND (
                  ($1 <> '' AND LOWER(pp.usuario_nombre) = LOWER($1))
@@ -570,11 +570,6 @@ export class AlertasService {
       };
     };
 
-    // La modalidad la ratifica el abogado del proceso si además tiene el
-    // permiso, como en `quienDecide`: ser el abogado no basta.
-    const ratificaModalidad = this.alcance
-      ? await this.alcance.puedeEn(acceso, 'aprobar', '3.5')
-      : true;
     const [garantias, modificaciones, pagos] = await Promise.all([
       this.garantiasPorAprobar(acceso),
       this.modificacionesPorDecidir(acceso),
@@ -582,12 +577,9 @@ export class AlertasService {
     ]);
 
     return [
-      ...estudios.filter((f: any) => f.numeral !== '3.5').map(aElemento('ESTUDIO_PREVIO')),
-      ...(ratificaModalidad
-        ? estudios.filter((f: any) => f.numeral === '3.5').map(aElemento('MODALIDAD'))
-        : []),
+      ...estudios.map(aElemento('ESTUDIO_PREVIO')),
       ...aprobaciones
-        .filter((f: any) => f.numeral !== '3.1' && f.numeral !== '3.5')
+        .filter((f: any) => f.numeral !== '3.1')
         .map(aElemento('ACTIVIDAD')),
       ...garantias.map(aElemento('GARANTIA')),
       ...modificaciones.map(aElemento('MODIFICACION')),

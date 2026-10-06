@@ -52,20 +52,36 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
   } = useVisorDocumentos();
 
   const usuario = authService.getCurrentUserSync();
-  const esSuperAdmin = usuario?.esAdmin || authService.isSuperAdmin();
-  const esJefe = authService.isJefeDependencia();
-  const esGerente = authService.isGerenteProyecto();
-  const esSubdir = authService.isSubdireccionGestionCorporativa();
-  const esDirNac = authService.isDireccionNacional();
-  const esAnalista = Boolean(authService.isAnalista?.());
-  const puedeFirmar =
-    esSuperAdmin ||
-    esJefe ||
-    esGerente ||
-    esSubdir ||
-    esDirNac ||
-    esAnalista ||
-    authService.canFirmarAprobacion?.();
+  const esSuperAdmin = Boolean(usuario?.esAdmin || authService.isSuperAdmin());
+
+  // Validación directa: Si tiene rol/permiso general es_jefe, es_gerente, es_subdirector o es_director
+  const esJefe =
+    authService.hasPermission('travel_expenses.general.es_jefe_dependencia') ||
+    authService.hasPermission('travel_expenses.general.es_jefe') ||
+    authService.hasPermission('general.es_jefe') ||
+    authService.isJefeDependencia();
+
+  const esGerente =
+    authService.hasPermission('travel_expenses.general.es_gerente_proyecto') ||
+    authService.hasPermission('travel_expenses.general.es_gerente') ||
+    authService.hasPermission('general.es_gerente') ||
+    authService.isGerenteProyecto();
+
+  const esSubdir =
+    authService.hasPermission('travel_expenses.general.es_subdireccion_corporativa') ||
+    authService.hasPermission('travel_expenses.general.es_subdirector') ||
+    authService.hasPermission('general.es_subdirector') ||
+    authService.isSubdireccionGestionCorporativa();
+
+  const esDirNac =
+    authService.hasPermission('travel_expenses.general.es_direccion_nacional') ||
+    authService.hasPermission('travel_expenses.general.es_director') ||
+    authService.hasPermission('general.es_director') ||
+    authService.isDireccionNacional();
+
+  // Si tiene alguno de estos roles/permisos directivos, muestra la bandeja; de lo contrario no.
+  const puedeVerBandeja = esSuperAdmin || esJefe || esGerente || esSubdir || esDirNac;
+  const puedeFirmar = puedeVerBandeja;
 
   const cargarSolicitudes = async () => {
     setCargando(true);
@@ -86,8 +102,12 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
   };
 
   useEffect(() => {
+    if (!puedeVerBandeja) {
+      setCargando(false);
+      return;
+    }
     cargarSolicitudes();
-  }, [busqueda]);
+  }, [busqueda, puedeVerBandeja]);
 
   // Determina si una solicitud está pendiente de la firma del usuario actual
   const faltaMiFirma = (s: any): boolean => {
@@ -98,11 +118,6 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
       const tieneJefe = firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO');
       const tieneGerente = firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO');
       return !tieneJefe || !tieneGerente;
-    }
-    if (esAnalista && !esJefe && !esGerente && !esSubdir && !esDirNac) {
-      return !firmas.some(
-        (f: any) => (f.tipo === 'ANALISTA' || (f.tipo as string) === 'ANALISTA_VIATICOS') && f.estado !== 'RECHAZADO',
-      );
     }
     if (esGerente && !esJefe && !esSubdir && !esDirNac) {
       return !firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO');
@@ -122,9 +137,6 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
       return true;
     }
     if ((esJefe || esSubdir || esDirNac) && firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO')) {
-      return true;
-    }
-    if (esAnalista && firmas.some((f: any) => (f.tipo === 'ANALISTA' || (f.tipo as string) === 'ANALISTA_VIATICOS') && f.estado !== 'RECHAZADO')) {
       return true;
     }
     return false;
@@ -162,7 +174,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
       }
       return true;
     });
-  }, [solicitudes, filtroRegla, esGerente, esJefe, esSubdir, esDirNac, esAnalista, esSuperAdmin]);
+  }, [solicitudes, filtroRegla, esGerente, esJefe, esSubdir, esDirNac, esSuperAdmin]);
 
   const pendientesTotales = solicitudes.length;
   const conReglaEspecial = solicitudes.filter(
@@ -176,7 +188,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
   const enEsperaCount = conUnaFirma;
   const porFirmarCount = useMemo(
     () => solicitudes.filter(faltaMiFirma).length,
-    [solicitudes, esSuperAdmin, esGerente, esJefe, esSubdir, esDirNac, esAnalista],
+    [solicitudes, esSuperAdmin, esGerente, esJefe, esSubdir, esDirNac],
   );
   const montoAcumulado = solicitudes.reduce(
     (acc, curr) =>
@@ -281,6 +293,20 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
       </span>
     );
   };
+
+  if (!puedeVerBandeja) {
+    return (
+      <div className="bg-white rounded-2xl border border-amber-200 p-8 text-center shadow-xs">
+        <div className="w-12 h-12 mx-auto rounded-full bg-amber-100 flex items-center justify-center text-amber-600 mb-3">
+          <AlertTriangle className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-800">Acceso Exclusivo para Directivos Firmantes</h2>
+        <p className="text-sm text-slate-500 mt-1 max-w-lg mx-auto">
+          Esta bandeja de firmas de aprobación previa a radicación (Formato 023) está reservada exclusivamente para el Jefe de Dependencia, Gerente de Proyecto, Subdirección de Gestión Corporativa y Dirección Nacional.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

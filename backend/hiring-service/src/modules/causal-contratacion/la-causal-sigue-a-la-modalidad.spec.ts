@@ -5,8 +5,8 @@ import { EstadoActividad } from '../../entities/proceso-actividad.entity';
  * Actividad 3.6 · Causal de contratación (3.5.1 de la matriz, RF-EST-04).
  *
  * De esta regla depende que la causal se elija cuando tiene sentido elegirla:
- * ni en una modalidad que la matriz no marca, ni antes de que la 3.5 ratifique
- * la modalidad de cuya lista sale, ni después de que la etapa 3 cierre y la
+ * ni en una modalidad que la matriz no marca, ni antes de que la aprobación de
+ * la 3.1 ratifique la modalidad de cuya lista sale, ni después de que la etapa 3 cierre y la
  * solicitud de CDP ya se haya radicado con ella detrás.
  *
  * Se prueba sobre la función pura y no contra la base: es una decisión del
@@ -25,7 +25,7 @@ describe('motivoParaNoElegir · cuándo está abierta la 3.6', () => {
 
   it('la modalidad sin ratificar la cierra', () => {
     // El caso que da sentido a todo: la lista de causales es la de la
-    // modalidad, y mientras la 3.5 pueda devolverla y cambiarla, elegir aquí
+    // modalidad, y mientras la 3.1 no esté aprobada el área puede cambiarla: elegir aquí
     // dejaría en el expediente una causal de una modalidad que el proceso ya no
     // tiene.
     expect(abierta('BORRADOR', 'EN_REVISION')).toBe('MODALIDAD_SIN_RATIFICAR');

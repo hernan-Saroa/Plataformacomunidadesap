@@ -18,6 +18,7 @@ export default defineConfig({
       filename: 'remoteEntry.js',
       exposes: {
         './Module': path.resolve(__dirname, './src/components/ProgramacionAcademicaModule.tsx'),
+        './Portal': path.resolve(__dirname, './src/components/PortalDocenteProgramacion.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),

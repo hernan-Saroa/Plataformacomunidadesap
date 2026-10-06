@@ -11,6 +11,14 @@ import {
 } from './solapamiento.js';
 import { GrupoEntity } from '../grupos/grupo.entity.js';
 
+/**
+ * Margen del tope de horas del grupo (§1.3). Se publica solo si las horas
+ * programadas no superan las requeridas por el catálogo en más de un 30%. El
+ * margen es amplio a propósito: el histórico real desvía (mediana 1.06×, 58%
+ * dentro de ±25%), así que un tope estricto rechazaría programación legítima.
+ */
+export const FACTOR_TOPE_HORAS = 1.3;
+
 export interface CrearSesionDto {
   idGrupo: string;
   diaSemana: DiaSemana;
@@ -20,6 +28,29 @@ export interface CrearSesionDto {
   jornada?: Jornada;
   sedeCodigo?: string | null;
   aulaCodigo?: string | null;
+}
+
+/** Franja con su contexto resuelto por el servidor (2.3). */
+export interface FranjaConContexto {
+  idFranja: string;
+  idGrupo: string | null;
+  diaSemana: string;
+  horaInicio: string;
+  horaFin: string;
+  tipoSesion: string;
+  jornada: string | null;
+  aulaCodigo: string | null;
+  estado: string;
+  numeroGrupo: number | null;
+  /** Ciclo del grupo: lo necesita el detalle que abre la flecha de Acción. */
+  fechaInicioGrupo: string | null;
+  fechaFinGrupo: string | null;
+  asignatura: string | null;
+  programa: string | null;
+  docente: string | null;
+  /** Periodo al que pertenece la franja (vía grupo.id_periodo). Null = sin periodo. */
+  idPeriodo: string | null;
+  periodoCodigo: string | null;
 }
 
 export interface PeriodoGrupoDto {
@@ -35,6 +66,58 @@ export class HorariosService {
     @InjectRepository(GrupoEntity)
     private readonly grupoRepo: Repository<GrupoEntity>,
   ) {}
+
+  /**
+   * TODAS las franjas, con programa, asignatura y docente YA RESUELTOS.
+   *
+   * Va con JOIN en el servidor y no con una consulta por fila desde el front:
+   * una tabla de N franjas dispararía N peticiones.
+   *
+   * ⚠️ TODOS los vínculos son POR ID —grupo.id_asignatura, asignatura.id_programa,
+   * asignacion_docente.id_docente— nunca por nombre. Emparejar por texto es donde
+   * se han colado los tropiezos de este módulo.
+   *
+   * El docente sale de la asignación ASIGNADA del grupo; si el grupo no tiene
+   * docente asignado, viene en null y el front muestra el vacío, no un invento.
+   */
+  /**
+   * @param idPeriodo si viene, acota a las franjas de ESE periodo (vía
+   * grupo.id_periodo). Es lo que permite que cada vista del módulo pertenezca al
+   * periodo seleccionado en la cabecera: sin él, la tabla mezclaba periodos.
+   */
+  async listarTodas(idPeriodo?: string): Promise<FranjaConContexto[]> {
+    const filtro = idPeriodo ? 'WHERE g.id_periodo = $1' : '';
+    return this.franjaRepo.query(
+      `SELECT f.id_franja                       AS "idFranja",
+              f.id_grupo::text                  AS "idGrupo",
+              f.dia_semana                      AS "diaSemana",
+              to_char(f.hora_inicio, 'HH24:MI')  AS "horaInicio",
+              to_char(f.hora_fin, 'HH24:MI')    AS "horaFin",
+              f.tipo_sesion                     AS "tipoSesion",
+              f.jornada,
+              f.aula_codigo                     AS "aulaCodigo",
+              f.estado,
+              g.numero_grupo                    AS "numeroGrupo",
+              g.fecha_inicio::text              AS "fechaInicioGrupo",
+              g.fecha_fin::text                 AS "fechaFinGrupo",
+              g.id_periodo::text                AS "idPeriodo",
+              pp.codigo                         AS "periodoCodigo",
+              a.nombre                          AS "asignatura",
+              pr.nombre                         AS "programa",
+              per.nom_largo                     AS "docente"
+         FROM "academic-schedule".franja_horaria f
+         LEFT JOIN "academic-schedule".grupo g          ON g.id_grupo = f.id_grupo
+         LEFT JOIN "academic-schedule".periodo_programacion pp ON pp.id_periodo = g.id_periodo
+         LEFT JOIN academic_work_plan.asignatura a      ON a.id       = g.id_asignatura
+         LEFT JOIN academic_work_plan.programa pr       ON pr.id      = a.id_programa
+         LEFT JOIN "academic-schedule".asignacion_docente ad
+                ON ad.id_grupo = g.id_grupo AND ad.estado = 'ASIGNADO'
+         LEFT JOIN auth.personas per                    ON per.id_person = ad.id_docente
+        ${filtro}
+        ORDER BY f.dia_semana ASC, f.hora_inicio ASC`,
+      idPeriodo ? [idPeriodo] : undefined,
+    );
+  }
 
   listarPorGrupo(idGrupo: string): Promise<FranjaHorariaEntity[]> {
     return this.franjaRepo.find({
@@ -86,7 +169,7 @@ export class HorariosService {
     if (choque) {
       throw new BadRequestException(
         `La sesión se cruza con otra del mismo grupo el ${dto.diaSemana.toLowerCase()} `
-        + `de ${choque.horaInicio} a ${choque.horaFin}.`,
+        + `de ${String(choque.horaInicio).slice(0, 5)} a ${String(choque.horaFin).slice(0, 5)}.`,
       );
     }
 
@@ -146,6 +229,48 @@ export class HorariosService {
     if (!franja) throw new NotFoundException('Sesión no encontrada.');
     await this.franjaRepo.remove(franja);
     return { eliminado: true };
+  }
+
+  /**
+   * Horas del grupo: PROGRAMADAS (Σ duración semanal × semanas del ciclo) frente
+   * a las REQUERIDAS por el catálogo (asignatura.horas_clase, RN de la Circular
+   * 003: nunca se recalculan). EFDS-1373-bis / §1.3.
+   *
+   * Las SEMANAS salen de las fechas de ciclo del grupo; sin ellas no se puede
+   * validar (semanas=null) y no se bloquea. El tope se fija con margen (×1.3)
+   * porque el histórico real desvía: la mediana programa 1.06× lo requerido y
+   * solo el 58% cae dentro de ±25%. Un margen estricto rechazaría programación
+   * legítima; ×1.3 igual atrapa el error grueso (p. ej. 160h sobre 64h = 2.5×).
+   */
+  async horasGrupo(idGrupo: string): Promise<{
+    programadas: number | null; requeridas: number | null; semanas: number | null; excede: boolean;
+  }> {
+    const grupo = await this.grupoRepo.findOne({ where: { idGrupo } });
+    if (!grupo) throw new NotFoundException('El grupo no existe.');
+
+    const req = await this.franjaRepo.query(
+      `SELECT horas_clase FROM academic_work_plan.asignatura WHERE id = $1`,
+      [(grupo as any).idAsignatura],
+    );
+    const requeridas = req.length && req[0].horas_clase != null ? Number(req[0].horas_clase) : null;
+
+    const fi = (grupo as any).fechaInicio, ff = (grupo as any).fechaFin;
+    let semanas: number | null = null;
+    if (fi && ff) {
+      const dias = Math.round((new Date(ff).getTime() - new Date(fi).getTime()) / 86400000) + 1;
+      semanas = Math.max(1, Math.round(dias / 7));
+    }
+
+    const franjas = await this.franjaRepo.find({ where: { idGrupo } });
+    const horasSemana = franjas.reduce((s, f) => {
+      const ini = aMinutos(String(f.horaInicio).slice(0, 5));
+      const fin = aMinutos(String(f.horaFin).slice(0, 5));
+      return s + Math.max(0, fin - ini) / 60;
+    }, 0);
+
+    const programadas = semanas != null ? Math.round(horasSemana * semanas * 100) / 100 : null;
+    const excede = programadas != null && requeridas != null && programadas > requeridas * FACTOR_TOPE_HORAS;
+    return { programadas, requeridas, semanas, excede };
   }
 
   /** Periodo del ciclo de clases del grupo (AC-01). */

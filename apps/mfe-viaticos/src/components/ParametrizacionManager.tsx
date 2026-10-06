@@ -13,6 +13,7 @@ import {
   ToggleRight,
   DollarSign,
   Plane,
+  PlaneTakeoff,
   ChevronUp,
   ChevronDown,
   Upload,
@@ -43,10 +44,11 @@ import TarifasInvestigadorAdmin from './admin/TarifasInvestigadorAdmin';
 import TarifasTransporteTerminalAdmin from './admin/TarifasTransporteTerminalAdmin';
 import ParametrosLiquidacionAdmin from './admin/ParametrosLiquidacionAdmin';
 import TicketsAdminPanel from './admin/TicketsAdminPanel';
+import TarifasReferenciaAdmin from './admin/TarifasReferenciaAdmin';
 // Dependencias se gestiona desde el shell (Configuración General > Dependencias)
 // y NO se renderiza como tab aquí para evitar duplicación con el menú global.
 
-type TabActiva = 'campos' | 'documentos' | 'configuraciones' | 'escalas' | 'tarifas' | 'terminalesAereos' | 'parametros' | 'tiquetes';
+type TabActiva = 'campos' | 'documentos' | 'configuraciones' | 'escalas' | 'tarifas' | 'terminalesAereos' | 'parametros' | 'tiquetes' | 'tarifasReferencia';
 
 const TIPOS_CAMPO: TipoCampoFormulario[] = ['TEXT', 'TEXTAREA', 'SELECT', 'DATE', 'NUMBER', 'BOOLEAN', 'CURRENCY', 'DOCUMENT'];
 const GRUPOS_CAMPO: GrupoCampoFormulario[] = ['comisionado', 'comision', 'valores', 'soportes'];
@@ -784,6 +786,18 @@ export default function ParametrizacionManager() {
             <Plane className="w-4 h-4" />
             Tiquetes y Presupuesto
           </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('tarifasReferencia')}
+            className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition-colors whitespace-nowrap ${
+              tabActiva === 'tarifasReferencia'
+                ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <PlaneTakeoff className="w-4 h-4" />
+            Tarifas de Referencia Aéreas
+          </button>
         </div>
 
         <div className="p-5">
@@ -1234,6 +1248,7 @@ export default function ParametrizacionManager() {
               {tabActiva === 'terminalesAereos' && <TarifasTransporteTerminalAdmin />}
               {tabActiva === 'parametros' && <ParametrosLiquidacionAdmin />}
               {tabActiva === 'tiquetes' && <TicketsAdminPanel />}
+              {tabActiva === 'tarifasReferencia' && <TarifasReferenciaAdmin />}
             </>
           )}
         </div>

@@ -532,9 +532,17 @@ export default function ModalFirmasAprobacion({
       ? 'Jefe de Dependencia / Supervisor'
       : 'Gerente de Proyecto');
 
+  const esDirectivo =
+    esAdmin ||
+    esJefe ||
+    esGerente ||
+    Boolean(authService.isSubdireccionGestionCorporativa?.()) ||
+    Boolean(authService.isDireccionNacional?.());
+
   const puedeFirmar =
     !esEnlace &&
-    (Boolean(authService.canFirmarAprobacion?.()) || esJefe || esGerente || esAnalista || esAdmin);
+    esDirectivo &&
+    (Boolean(authService.canFirmarAprobacion?.()) || esAdmin || esJefe || esGerente);
 
   // Enviar alerta y recordatorio de firma pendiente al otro rol
   const handleEnviarAlerta = async (tipoDestino?: TipoFirmaAprobacion) => {
@@ -983,7 +991,7 @@ export default function ModalFirmasAprobacion({
                         {/* Elaboró - Enlace */}
                         {firmaElaboro && (
                           <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs space-y-1 shadow-xs">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            <span className="text-[10px] font-black text-blue-900 uppercase tracking-wider block">
                               1. Elaboró (Enlace)
                             </span>
                             <p className="font-black text-slate-900 truncate">
@@ -1005,7 +1013,7 @@ export default function ModalFirmasAprobacion({
                         {/* Aprobó - Jefe */}
                         {firmante1?.firmado && (
                           <div className="bg-white border border-emerald-200 rounded-xl p-3 text-xs space-y-1 shadow-xs">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider block">
                               2. {firmante1.titulo || 'Jefe de Dependencia'}
                             </span>
                             <p className="font-black text-slate-900 truncate">
@@ -1031,7 +1039,7 @@ export default function ModalFirmasAprobacion({
                         {/* Aprobó - Gerente */}
                         {firmante2?.firmado && (
                           <div className="bg-white border border-emerald-200 rounded-xl p-3 text-xs space-y-1 shadow-xs">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            <span className="text-[10px] font-black text-blue-900 uppercase tracking-wider block">
                               3. {firmante2.titulo || 'Gerente de Proyecto'}
                             </span>
                             <p className="font-black text-slate-900 truncate">
@@ -1057,7 +1065,7 @@ export default function ModalFirmasAprobacion({
                         {/* Revisó - Analista */}
                         {firmante3?.firmado && (
                           <div className="bg-white border border-emerald-200 rounded-xl p-3 text-xs space-y-1 shadow-xs">
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                            <span className="text-[10px] font-black text-emerald-800 uppercase tracking-wider block">
                               4. {firmante3.titulo || 'Analista de Viáticos'}
                             </span>
                             <p className="font-black text-slate-900 truncate">
@@ -1278,7 +1286,7 @@ export default function ModalFirmasAprobacion({
                       : 'bg-white border-slate-200'
                   }`}
                 >
-                  <div className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">
+                  <div className="text-[11px] font-black text-[#003DA5] uppercase tracking-wider mb-2">
                     {firmante1?.titulo || 'JEFE DE DEPENDENCIA — SUPERVISOR'}
                   </div>
 
@@ -1378,7 +1386,7 @@ export default function ModalFirmasAprobacion({
                       : 'bg-white border-slate-200'
                   }`}
                 >
-                  <div className="text-[11px] font-bold text-[#9CA3AF] uppercase tracking-wider mb-2">
+                  <div className="text-[11px] font-black text-[#003DA5] uppercase tracking-wider mb-2">
                     {firmante2?.titulo || 'GERENTE DE PROYECTO / CONVENIO'}
                   </div>
 

@@ -41,11 +41,12 @@ export class Revision {
   revisadoPorId: string;
 
   /**
-   * El archivo que acompaña una devolución (migración 091): las correcciones
-   * marcadas sobre el documento. Es de esta vuelta, no de la actividad.
+   * Los archivos que acompañan una devolución (migraciones 091 y 093): las
+   * correcciones marcadas sobre los documentos, en el orden en que se
+   * adjuntaron. Son de esta vuelta, no de la actividad.
    */
-  @Column({ name: 'soporte_documento_id', type: 'uuid', nullable: true })
-  soporteDocumentoId: string | null;
+  @Column({ name: 'soportes_documento_ids', type: 'uuid', array: true, default: () => "'{}'" })
+  soportesDocumentoIds: string[];
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
