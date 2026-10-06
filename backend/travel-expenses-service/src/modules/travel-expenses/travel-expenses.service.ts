@@ -10841,6 +10841,70 @@ if (itinerarioGeneral) {
         solicitud.observacionesRp = datosRp.observaciones.trim();
       }
 
+      // Validación de firma OTP si fue provista
+      if ((datosRp as any).otp) {
+        const verificationId =
+          (datosRp as any).verificationId?.trim() ||
+          `viat:${solicitud.id}:PRESUPUESTO:${usuarioId}`;
+        const isVerified = this.verificarOtpFirma({
+          verificationId,
+          code: (datosRp as any).otp,
+          consume: true,
+        });
+        if (!isVerified) {
+          throw new BadRequestException(
+            'Código OTP inválido o expirado para la firma de compromiso presupuestal.',
+          );
+        }
+      }
+
+      const certIdFinal = (datosRp as any).certificadoId || this.generarCertificadoId();
+      const datosFirmante = await this.resolverDatosUsuario(usuarioId);
+      const nombreFirmanteFinal = datosFirmante.nombre || 'Grupo de Presupuesto';
+      const cargoFirmanteFinal = datosFirmante.cargo || 'Profesional de Presupuesto / SIIF';
+
+      const firmaPresupuestoData = {
+        tipo: 'PRESUPUESTO',
+        nombreFirmante: nombreFirmanteFinal,
+        emailFirmante: datosFirmante.email || null,
+        cargoFirmante: cargoFirmanteFinal,
+        documentoIdentidad: datosFirmante.documento || null,
+        firmaImagen: (datosRp as any).firmaImagen || null,
+        fechaFirma: new Date().toISOString(),
+        usuarioId,
+        estado: 'FIRMADO',
+        firmadoDigitalmente: true,
+        certificadoId: certIdFinal,
+        hashSha256:
+          (datosRp as any).hashSha256 ||
+          this.generarHashDocumento(
+            `${solicitud.id}|PRESUPUESTO|${usuarioId}|${new Date().toISOString()}`,
+          ),
+        otpVerificado: Boolean((datosRp as any).otp),
+      };
+
+      const prevFirmas = Array.isArray(
+        solicitud.camposAdicionales?.firmasAprobacion,
+      )
+        ? [...solicitud.camposAdicionales.firmasAprobacion]
+        : [];
+      const idxFirma = prevFirmas.findIndex(
+        (f: any) =>
+          f.tipo === 'PRESUPUESTO' ||
+          (f.tipo as string) === 'GRUPO_PRESUPUESTO',
+      );
+      if (idxFirma >= 0) {
+        prevFirmas[idxFirma] = { ...prevFirmas[idxFirma], ...firmaPresupuestoData };
+      } else {
+        prevFirmas.push(firmaPresupuestoData);
+      }
+
+      solicitud.camposAdicionales = {
+        ...(solicitud.camposAdicionales || {}),
+        firmaPresupuesto: firmaPresupuestoData,
+        firmasAprobacion: prevFirmas,
+      };
+
       // RF-PRE-003: Determinar modalidad de pago según los días hábiles disponibles antes del viaje
       const fechaBaseModalidad = datosRp.fechaRp || new Date();
       const diasHabilesPrevios = await this.calcularDiasHabilesPrevios(
@@ -10888,7 +10952,12 @@ if (itinerarioGeneral) {
       rubro: (dto as any).rubro || (dto as any).rubroPresupuestal,
       codigoRp: dto.codigoRp,
       soporteRpPath: (dto as any).soporteRpPath,
-      observaciones: dto.observaciones,
+      observaciones: (dto as any).observaciones,
+      otp: (dto as any).otp,
+      verificationId: (dto as any).verificationId,
+      certificadoId: (dto as any).certificadoId,
+      hashSha256: (dto as any).hashSha256,
+      firmaImagen: (dto as any).firmaImagen,
     };
 
     const guardada = await this.registrarRP(solicitudId, issueDto, usuarioId);

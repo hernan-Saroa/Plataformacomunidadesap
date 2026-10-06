@@ -12,6 +12,7 @@ import {
   Tag,
   Clock,
   Sparkles,
+  Eye,
 } from 'lucide-react';
 import { SolicitudViatico } from '../types/viaticos';
 import { viaticosService } from '../services/api/viaticosService';
@@ -413,12 +414,25 @@ export default function PresupuestoInbox() {
                             <span className="text-white">Registrar RP</span>
                           </button>
                         ) : estaComprometida ? (
-                          <span className="text-[11px] text-indigo-700 font-semibold flex items-center justify-end space-x-1">
+                          <button
+                            type="button"
+                            onClick={() => abrirModalExpedirRp(sol)}
+                            className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 transition-all flex items-center space-x-1.5 ml-auto cursor-pointer"
+                            title="Ver detalles del RP expedido, Formato 023 y firmas digitales"
+                          >
                             <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>Comprometida</span>
-                          </span>
+                            <span>Ver RP / Firmas</span>
+                          </button>
                         ) : (
-                          <span className="text-[11px] text-slate-400">Solo lectura</span>
+                          <button
+                            type="button"
+                            onClick={() => abrirModalExpedirRp(sol)}
+                            className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all flex items-center space-x-1.5 ml-auto cursor-pointer"
+                            title="Ver detalles de la comisión"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Ver Detalles</span>
+                          </button>
                         )}
                       </td>
                     </tr>

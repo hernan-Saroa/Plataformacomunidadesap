@@ -93,4 +93,40 @@ export class IssueRpDto {
   @IsString()
   @MaxLength(1000)
   observaciones?: string;
+
+  @ApiPropertyOptional({
+    description: 'Código OTP para validación de firma digital.',
+    example: '123456',
+  })
+  @IsOptional()
+  @IsString()
+  otp?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador de verificación OTP.',
+  })
+  @IsOptional()
+  @IsString()
+  verificationId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador del certificado digital institucional.',
+  })
+  @IsOptional()
+  @IsString()
+  certificadoId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hash SHA-256 de la transacción/firma.',
+  })
+  @IsOptional()
+  @IsString()
+  hashSha256?: string;
+
+  @ApiPropertyOptional({
+    description: 'Estampa visual o imagen de firma en base64.',
+  })
+  @IsOptional()
+  @IsString()
+  firmaImagen?: string;
 }

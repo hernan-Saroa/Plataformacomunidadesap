@@ -381,24 +381,48 @@ export const AprobacionPorComponente: React.FC<PropsAprobacionPorComponente> = (
 
     // 7. Presupuesto (Expedición RP)
     const etapasPostPresupuesto = ['COMPROMETIDA', 'OBLIGADA', 'PAGADA'];
+    const firmaPresupuesto =
+      (solicitudCompleta?.camposAdicionales?.firmaPresupuesto as any) ||
+      (solicitud as any).camposAdicionales?.firmaPresupuesto ||
+      firmasRegistradas.find(
+        (f) =>
+          (f.tipo === 'PRESUPUESTO' || f.tipo === 'GRUPO_PRESUPUESTO') &&
+          f.estado !== 'RECHAZADO',
+      );
     const tieneRp = Boolean(
       solicitud.numeroRp ||
         (solicitud as any).codigoRp ||
+        firmaPresupuesto ||
         etapasPostPresupuesto.includes(estado),
     );
+    const nombrePresupuesto =
+      firmaPresupuesto?.nombreFirmante ||
+      (tieneRp
+        ? `RP Nº ${solicitud.numeroRp || (solicitud as any).codigoRp || 'Registrado'}`
+        : '—');
     componentes.push({
       id: 'presupuesto_rp',
       etiqueta: 'PRESUPUESTO — RP',
-      firmante: tieneRp
-        ? `RP Nº ${solicitud.numeroRp || (solicitud as any).codigoRp || 'Registrado'}`
-        : '—',
-      cargo: 'Expedición RP SIIF Nación',
+      firmante: tieneRp ? nombrePresupuesto : '—',
+      cargo:
+        firmaPresupuesto?.cargoFirmante ||
+        'Expedición RP SIIF Nación / Grupo de Presupuesto',
       estado: tieneRp
         ? 'APROBADO'
-        : estado === 'EN_PRESUPUESTO'
+        : estado === 'EN_PRESUPUESTO' || estado === 'AUTORIZADA'
         ? 'PENDIENTE'
         : 'PENDIENTE',
-      fecha: solicitud.fechaRp || (solicitud as any).fechaExpedicionRp || null,
+      fecha:
+        firmaPresupuesto?.fechaFirma ||
+        solicitud.fechaRp ||
+        (solicitud as any).fechaExpedicionRp ||
+        null,
+      certificado: firmaPresupuesto?.certificadoId || null,
+      observaciones:
+        solicitud.observacionesRp ||
+        ((solicitud as any).codigoRp || solicitud.numeroRp
+          ? `RP: ${(solicitud as any).codigoRp || solicitud.numeroRp}`
+          : null),
     });
 
     // 8. Tesorería (Giro y Desembolso)

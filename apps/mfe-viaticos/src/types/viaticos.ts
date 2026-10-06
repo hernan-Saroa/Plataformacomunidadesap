@@ -577,6 +577,11 @@ export interface SolicitudViatico {
   numeroOrdenPago?: string | null;
   observacionesPago?: string | null;
   pagadoPorId?: string | null;
+  consecutivoUnico?: string | null;
+  montoTotal?: number | null;
+  observacionesRp?: string | null;
+  soporteRpPath?: string | null;
+  camposAdicionales?: Record<string, any> | null;
 }
 
 /** Registro de notificación formal enviada al área de SST (RF-PAG-002) */
@@ -1250,8 +1255,15 @@ export interface ExpedirRpPayload {
   fechaRp: string;
   valorComprometido: number;
   rubro: string;
+  rubroPresupuestal?: string;
   codigoRp?: string;
+  soporteRpPath?: string;
   observaciones?: string;
+  otp?: string;
+  verificationId?: string;
+  certificadoId?: string;
+  hashSha256?: string;
+  firmaImagen?: string;
 }
 
 export interface ItemCargaMasivaRp {
