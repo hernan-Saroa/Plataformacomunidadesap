@@ -111,6 +111,7 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_my_requests',
   ],
   PRESUPUESTO: [
+    'travel_expenses:sign_approval',
     'travel_expenses:read_authorized',
     'travel_expenses:read_budget',
     'travel_expenses:issue_rp',
@@ -119,6 +120,25 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:resend_sst_notification',
   ],
   GRUPO_PRESUPUESTO: [
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_authorized',
+    'travel_expenses:read_budget',
+    'travel_expenses:issue_rp',
+    'travel_expenses:register_rp',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
+  ],
+  CONTROL_PRESUPUESTO: [
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_authorized',
+    'travel_expenses:read_budget',
+    'travel_expenses:issue_rp',
+    'travel_expenses:register_rp',
+    'travel_expenses:read_sst_logs',
+    'travel_expenses:resend_sst_notification',
+  ],
+  ROL_CONTROL_PRESUPUESTO: [
+    'travel_expenses:sign_approval',
     'travel_expenses:read_authorized',
     'travel_expenses:read_budget',
     'travel_expenses:issue_rp',

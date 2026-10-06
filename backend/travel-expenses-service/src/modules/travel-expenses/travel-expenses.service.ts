@@ -5204,6 +5204,40 @@ if (dto.costoEstimadoTiquete !== undefined) {
     const certIdDirNac = firmaDirNacObj?.certificadoId;
     const justificacionDirNac = solicitud.justificacionDireccion || '';
 
+    // 3. Datos Grupo de Presupuesto (Compromiso presupuestal / Expedición RP - RF-PRE-001)
+    const firmaPresupuestoObj =
+      solicitud.camposAdicionales?.firmaPresupuesto ||
+      firmasRegistradasPdf.find(
+        (f: any) =>
+          (f.tipo === 'PRESUPUESTO' || (f.tipo as string) === 'GRUPO_PRESUPUESTO') &&
+          f.estado !== 'RECHAZADO',
+      );
+    const presupuestoUsuarioId =
+      firmaPresupuestoObj?.usuarioId || (solicitud as any).expedidoRpPorId;
+    let presupuestoNombre =
+      firmaPresupuestoObj?.nombreFirmante && !String(firmaPresupuestoObj.nombreFirmante).includes('@')
+        ? firmaPresupuestoObj.nombreFirmante
+        : '';
+    let presupuestoDoc = firmaPresupuestoObj?.documentoIdentidad || '';
+    let presupuestoCargo = firmaPresupuestoObj?.cargoFirmante || '';
+    if (presupuestoUsuarioId && (!presupuestoNombre || !presupuestoDoc)) {
+      const dPres = await this.resolverDatosUsuario(presupuestoUsuarioId, '');
+      if (!presupuestoNombre && dPres.nombre && !dPres.nombre.includes('@')) {
+        presupuestoNombre = dPres.nombre;
+      }
+      if (!presupuestoDoc && dPres.documento) presupuestoDoc = dPres.documento;
+      if (!presupuestoCargo && dPres.cargo) presupuestoCargo = dPres.cargo;
+    }
+    if (!presupuestoNombre && (solicitud as any).expedidoRpPor) {
+      const u = (solicitud as any).expedidoRpPor;
+      presupuestoNombre = u.nombreCompleto || u.nomLargo || '';
+    }
+    const fechaCompromisoPres =
+      firmaPresupuestoObj?.fechaFirma || (solicitud as any).fechaExpedicionRp || null;
+    const certIdPresupuesto = firmaPresupuestoObj?.certificadoId;
+    const codigoRpPdf = (solicitud as any).codigoRp || solicitud.numeroRp || '';
+    const valorComprometidoPdf = Number((solicitud as any).valorComprometido || 0);
+
     // Enriquecer datos de firmantes con C.C., correo institucional y nombre si vienen registrados o con usuarioId o correo
     if (firmaJefePdf) {
       const idParaResolverJefe =
@@ -6934,8 +6968,56 @@ if (itinerarioGeneral) {
         curY += hRow;
       }
 
+      // COMPROMETIÓ (Grupo de Presupuesto — Expedición RP en SIIF Nación, RF-PRE-001)
+      const presupuestoComprometio = Boolean(
+        (presupuestoNombre || presupuestoUsuarioId) &&
+          (fechaCompromisoPres || certIdPresupuesto || codigoRpPdf),
+      );
+      const fechaPresStr = fechaCompromisoPres
+        ? formatFechaHoraSegura(fechaCompromisoPres)
+        : '';
+      const docPresDisplay = presupuestoDoc
+        ? `C.C. ${presupuestoDoc}`
+        : presupuestoNombre
+        ? 'C.C. Registrada'
+        : '—';
+      const detallePres = [
+        codigoRpPdf ? `RP: ${codigoRpPdf}` : '',
+        valorComprometidoPdf > 0 ? `Valor: ${formatCurrencyCOP(valorComprometidoPdf)}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ') || 'Compromiso Presupuestal (RP SIIF Nación)';
+
+      renderFilaTrazabilidad(
+        curY,
+        hRow,
+        {
+          tag: 'COMPROMETIÓ',
+          sub: 'Grupo de Presupuesto',
+          bg: '#FFFBEB',
+          border: '#FDE68A',
+          text: '#92400E',
+        },
+        presupuestoComprometio
+          ? presupuestoNombre || 'Grupo de Presupuesto'
+          : 'Pendiente Compromiso Presupuestal',
+        detallePres,
+        docPresDisplay,
+        presupuestoCargo || 'Grupo de Presupuesto / SIIF Nación',
+        {
+          aprobado: presupuestoComprometio,
+          textoBadge: presupuestoComprometio
+            ? '✓ SOLICITUD COMPROMETIDA'
+            : 'PENDIENTE COMPROMISO PRESUPUESTAL',
+          fechaStr: fechaPresStr,
+          certId: certIdPresupuesto,
+        },
+        isExtemporanea,
+      );
+      curY += hRow;
+
       // Borde exterior envolvente de la tabla
-      const totalFilas = isExtemporanea ? 5 : 4;
+      const totalFilas = isExtemporanea ? 6 : 5;
       doc.rect(28, yTableHeader, 556, hTableHeader + hRow * totalFilas).strokeColor('#000000').lineWidth(0.6).stroke();
 
       // Banner institucional de Protección de Datos (Ley 1581 de 2012)

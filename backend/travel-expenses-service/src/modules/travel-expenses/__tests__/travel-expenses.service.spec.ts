@@ -5270,6 +5270,58 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
       });
 
+      it('debe incluir la firma de compromiso del Grupo de Presupuesto y mantener 1 página (extemporánea)', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.COMPROMETIDA),
+          id: 'sol-023-pres',
+          consecutivoUnico: 'SOL-2026-0099',
+          creadoPorUsuarioId: 'user-radicador-1',
+          autorizadorId: 'user-autorizador-1',
+          autorizadorDireccionId: 'user-dir-1',
+          fechaAutorizacionDireccion: new Date(),
+          extemporanea: true,
+          codigoRp: '20260916_RP_12345',
+          numeroRp: '12345',
+          valorComprometido: 1000000,
+          expedidoRpPorId: 'user-pres-1',
+          fechaExpedicionRp: new Date(),
+          comisionado: {
+            primerNombre: 'Ana',
+            primerApellido: 'García',
+            numeroDocumento: '52987654',
+          },
+          camposAdicionales: {
+            firmaPresupuesto: {
+              tipo: 'PRESUPUESTO',
+              nombreFirmante: 'Laura Presupuesto',
+              documentoIdentidad: '1012345678',
+              cargoFirmante: 'Profesional de Presupuesto',
+              fechaFirma: new Date().toISOString(),
+              usuarioId: 'user-pres-1',
+              estado: 'FIRMADO',
+              certificadoId: 'CERT-PRES-001',
+            },
+          },
+          diasPernoctados: 1,
+          tarifaDiaPernoctado: 250000,
+          totalPernoctados: 250000,
+          diasNoPernoctados: 1,
+          tarifaDiaNoPernoctado: 125000,
+          totalNoPernoctados: 125000,
+          documentosSoporte: [],
+        };
+
+        const solicitudRepo = { findOne: jest.fn().mockResolvedValue(solicitud) };
+        const dataSource = { query: jest.fn().mockResolvedValue([{ nom_largo: 'Funcionario' }]) };
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-pres');
+
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
+      });
+
       it('debe generar el Formato 023 correctamente cuando la comisión está en estado RADICADA', async () => {
         const solicitud = {
           ...mockSolicitudAutorizacion(EstadoSolicitud.RADICADA),
