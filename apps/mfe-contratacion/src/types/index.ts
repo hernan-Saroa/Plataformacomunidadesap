@@ -752,6 +752,10 @@ export interface DocumentoExpediente {
    * aparecería en el expediente como si fuera otro estudio previo.
    */
   requisito?: string | null;
+  /** Nombre del requisito en el catálogo, para no enseñar el código. */
+  requisitoNombre?: string | null;
+  /** Si otro archivo lo sustituyó como soporte del requisito. */
+  sustituido?: boolean;
   mimeType?: string;
   tamano?: number | null;
   hashSha256: string;

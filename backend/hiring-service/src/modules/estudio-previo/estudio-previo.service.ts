@@ -21,6 +21,7 @@ import {
 import { CampoFormulario, TipoCampo } from '../../entities/campo-formulario.entity';
 import { Documento } from '../../entities/documento.entity';
 import { DocumentoProceso } from '../../entities/documento-proceso.entity';
+import { DocumentoRequerido } from '../../entities/documento-requerido.entity';
 import { Trazabilidad, AccionTraza } from '../../entities/trazabilidad.entity';
 import { DecisionRevision, Revision } from '../../entities/revision.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
@@ -1259,33 +1260,54 @@ export class EstudioPrevioService implements OnModuleInit {
      * Los anulados entran: un requisito sustituido dejó de cubrirlo, pero el
      * archivo siguió sin ser el entregable de la actividad.
      */
-    const requisitos = new Map(
-      (
-        await this.dataSource.getRepository(DocumentoProceso).find({ where: { procesoId } })
-      ).map((d) => [d.documentoId, d.codigo]),
-    );
+    const cargas = await this.dataSource
+      .getRepository(DocumentoProceso)
+      .find({ where: { procesoId } });
+    const requisitos = new Map(cargas.map((d) => [d.documentoId, d]));
+
+    /*
+     * Y cómo se llama ese requisito. El código solo lo entiende el sistema: el
+     * expediente agrupa por él y tiene que poder decir «Memorando de
+     * solicitud», no MEMORANDO_SOLICITUD. Por numeral y código, que es la
+     * llave del catálogo; se leen también los inactivos, porque un requisito
+     * retirado después no deja de nombrar lo que ya se cargó.
+     */
+    const catalogo = cargas.length
+      ? await this.dataSource.getRepository(DocumentoRequerido).find({
+          where: { codigo: In([...new Set(cargas.map((c) => c.codigo))]) },
+        })
+      : [];
+    const nombreRequisito = new Map(catalogo.map((r) => [`${r.numeral}|${r.codigo}`, r.nombre]));
 
     return {
       numeroExpediente: expediente.numeroExpediente,
       estado: expediente.estado,
       fechaApertura: expediente.fechaApertura,
-      documentos: documentos.map((d) => ({
-        id: d.id,
-        tipo: d.tipo,
-        nombre: d.nombre,
-        numeral: d.numeral,
-        /** Código del requisito que cubre; null si es un adjunto de la actividad. */
-        requisito: requisitos.get(d.id) ?? null,
-        mimeType: d.archivoMimeType,
-        tamano: d.archivoTamano ? Number(d.archivoTamano) : null,
-        hashSha256: d.hashSha256,
-        version: d.version,
-        subidoPor: d.subidoPor,
-        createdAt: d.createdAt,
-        // El snapshot se devuelve completo: es el estudio previo registrado
-        contenido: d.tipo === 'SNAPSHOT_FORMULARIO' ? d.contenidoSnapshot : undefined,
-        descargaUrl: d.archivoUrl ? `/files/${d.archivoUrl.split('/').pop()}` : undefined,
-      })),
+      documentos: documentos.map((d) => {
+        const carga = requisitos.get(d.id);
+        return {
+          id: d.id,
+          tipo: d.tipo,
+          nombre: d.nombre,
+          numeral: d.numeral,
+          /** Código del requisito que cubre; null si es un adjunto de la actividad. */
+          requisito: carga?.codigo ?? null,
+          requisitoNombre: carga
+            ? (nombreRequisito.get(`${carga.numeral}|${carga.codigo}`) ?? null)
+            : null,
+          /** Si otro archivo lo sustituyó como soporte del requisito. */
+          sustituido: !!carga?.anuladoAt,
+          mimeType: d.archivoMimeType,
+          tamano: d.archivoTamano ? Number(d.archivoTamano) : null,
+          hashSha256: d.hashSha256,
+          version: d.version,
+          subidoPor: d.subidoPor,
+          createdAt: d.createdAt,
+          // El snapshot se devuelve completo: es el estudio previo registrado
+          contenido: d.tipo === 'SNAPSHOT_FORMULARIO' ? d.contenidoSnapshot : undefined,
+          descargaUrl: d.archivoUrl ? `/files/${d.archivoUrl.split('/').pop()}` : undefined,
+        };
+      }),
     };
   }
 

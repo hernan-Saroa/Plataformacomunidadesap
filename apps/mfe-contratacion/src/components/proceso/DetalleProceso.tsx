@@ -6,7 +6,6 @@ import {
   ClipboardCheck,
   FilePen,
   FileText,
-  FolderOpen,
   ClipboardList,
   ListChecks,
   ShieldCheck,
@@ -35,7 +34,7 @@ import {
   TIENEN_PANEL,
 } from './actividadesConPanel';
 import { etapaEnCurso } from '../procesos/etapaEnCurso';
-import { PanelExpediente } from '../estudio-previo/PanelExpediente';
+import { ExpedienteDelProceso } from './ExpedienteDelProceso';
 import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { AprobacionDeLaActividad } from '../shared/AprobacionDeLaActividad';
 import { EncabezadoActividad } from '../shared/PiezasPanel';
@@ -221,7 +220,7 @@ export function DetalleProceso({
    * algo concreto —desde «Mi trabajo», una alerta o la franja— entra directo a
    * trabajar esa actividad.
    */
-  const [vista, setVista] = useState<'seguimiento' | 'trabajo'>(
+  const [vista, setVista] = useState<'seguimiento' | 'trabajo' | 'expediente'>(
     actividadInicial ? 'trabajo' : 'seguimiento',
   );
   /**
@@ -232,7 +231,6 @@ export function DetalleProceso({
    * se refresca, deshaciendo lo que el gestor acabara de elegir.
    */
   const [abiertaLaPrimera, setAbiertaLaPrimera] = useState(false);
-  const [expedienteAbierto, setExpedienteAbierto] = useState(false);
   /**
    * El riel plegado deja solo los puntos y le cede el ancho al formulario.
    * Es preferencia de quien mira, no del proceso: se recuerda en el navegador
@@ -843,6 +841,9 @@ export function DetalleProceso({
                 [
                   { id: 'seguimiento' as const, etiqueta: 'Seguimiento' },
                   { id: 'trabajo' as const, etiqueta: 'Trabajar' },
+                  // Pantalla propia y no columna lateral: en la columna era una
+                  // sola lista y no se sabía de qué actividad era cada archivo.
+                  { id: 'expediente' as const, etiqueta: 'Expediente' },
                 ]
               ).map((v) => (
                 <button
@@ -925,22 +926,7 @@ export function DetalleProceso({
               </button>
             )}
 
-            <button
-              type="button"
-              onClick={() => setExpedienteAbierto((v) => !v)}
-              aria-expanded={expedienteAbierto}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold
-                border transition-colors ${
-                  expedienteAbierto
-                    ? 'bg-[#E0EDFF] border-[#003DA5]/30 text-[#003DA5]'
-                    : 'bg-white border-gray-200 text-slate-600 hover:border-[#003DA5]/30 hover:text-[#003DA5]'
-                }`}
-            >
-              <FolderOpen className="w-3.5 h-3.5" />
-              Expediente
-            </button>
-
-            {/* El expediente de trabajo deja subir y borrar; este solo se lee, y
+            {/* El expediente deja subir y borrar; la auditoría solo se lee, y
                 trae además la trazabilidad y el historial (EFDS-1186). */}
             <button
               type="button"
@@ -960,16 +946,23 @@ export function DetalleProceso({
         </div>
       </div>
 
-      {/* A ancho completo y no en la columna del expediente: la trazabilidad y
-          el historial no caben en una barra lateral. */}
+      {/* A ancho completo: la trazabilidad y el historial no caben en una
+          barra lateral. */}
       {auditoriaAbierta && (
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)] mb-4">
           <PanelAuditoria procesoId={procesoId} />
         </div>
       )}
 
-      {/* Riel de actividades · superficie de trabajo · expediente a demanda. */}
-      {vista === 'seguimiento' ? (
+      {/* Seguimiento · riel y superficie de trabajo · expediente. */}
+      {vista === 'expediente' ? (
+        <ExpedienteDelProceso
+          procesoId={procesoId}
+          editable={!aprobado && !enRevision}
+          actividades={actividades}
+          recargarToken={tokenExpediente}
+        />
+      ) : vista === 'seguimiento' ? (
         <>
           <FichaDelProceso
             procesoId={procesoId}
@@ -983,21 +976,10 @@ export function DetalleProceso({
             onCambio={() => setTokenExpediente((t) => t + 1)}
             motivoDe={motivoDe}
           />
-          {expedienteAbierto && (
-            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-              <PanelExpediente
-                procesoId={procesoId}
-                editable={!aprobado && !enRevision}
-                recargarToken={tokenExpediente}
-              />
-            </div>
-          )}
         </>
       ) : (
       <div
-        className={`detalle-proceso ${expedienteAbierto ? 'con-expediente' : ''} ${
-          rielPlegado ? 'riel-plegado' : ''
-        }`}
+        className={`detalle-proceso ${rielPlegado ? 'riel-plegado' : ''}`}
       >
         <RielActividades
           etapa={etapaVista}
@@ -1106,16 +1088,6 @@ export function DetalleProceso({
         {/* Aquí ya no se decide: aprobar o devolver se hace en la pantalla de
             revisión, que enseña lo enviado en solo lectura y la decisión al
             lado. El aviso de arriba lleva a ella a quien le toca. */}
-
-        {expedienteAbierto && (
-          <div className="panel-expediente bg-white border border-gray-200 rounded-xl overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
-            <PanelExpediente
-              procesoId={procesoId}
-              editable={!aprobado && !enRevision}
-              recargarToken={tokenExpediente}
-            />
-          </div>
-        )}
       </div>
 
       )}
