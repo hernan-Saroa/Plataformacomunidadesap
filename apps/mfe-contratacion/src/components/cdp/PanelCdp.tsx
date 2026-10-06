@@ -55,16 +55,22 @@ export function frenteAlEstimado(
 ): { tono: 'ok' | 'aviso'; texto: string } | null {
   if (valor === null || estimado === null || estimado === undefined) return null;
   const referencia = `el valor estimado del proceso (${formatoPesos.format(estimado)})`;
-  if (valor === estimado) return { tono: 'ok', texto: `Coincide con ${referencia}.` };
+  // El texto nombra el valor certificado y no solo la diferencia: con cifras
+  // largas, la diferencia cambia en los últimos dígitos ($1.999.985,
+  // $1.999.850…) y, sin el valor al lado, el aviso parece no haberse movido.
+  const certificado = formatoPesos.format(valor);
+  if (valor === estimado) {
+    return { tono: 'ok', texto: `${certificado} coincide con ${referencia}.` };
+  }
   const diferencia = formatoPesos.format(Math.abs(valor - estimado));
   return valor < estimado
     ? {
         tono: 'aviso',
-        texto: `Queda ${diferencia} por debajo de ${referencia}: no alcanza a cubrir lo que pide el contrato.`,
+        texto: `${certificado} queda ${diferencia} por debajo de ${referencia}: no alcanza a cubrir lo que pide el contrato.`,
       }
     : {
         tono: 'aviso',
-        texto: `Queda ${diferencia} por encima de ${referencia}: se aparta más de lo que pide el contrato.`,
+        texto: `${certificado} queda ${diferencia} por encima de ${referencia}: se aparta más de lo que pide el contrato.`,
       };
 }
 
@@ -94,6 +100,14 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
   const [trabajando, setTrabajando] = useState(false);
 
   const [valorTexto, setValorTexto] = useState('');
+  /**
+   * Si el valor se está tecleando todavía.
+   *
+   * Mientras tanto no se compara con el estimado: al primer dígito el aviso ya
+   * decía que $1 no cubre el contrato, y lo que se veía era un juicio sobre
+   * una cifra a medio escribir.
+   */
+  const [escribiendoValor, setEscribiendoValor] = useState(false);
   const [numero, setNumero] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [motivo, setMotivo] = useState('');
@@ -447,6 +461,8 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
         <input
           value={valorTexto}
           onChange={(e) => setValorTexto(e.target.value)}
+          onFocus={() => setEscribiendoValor(true)}
+          onBlur={() => setEscribiendoValor(false)}
           inputMode="numeric"
           placeholder="Valor"
           aria-label="Valor certificado"
@@ -460,7 +476,7 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
           className={campo}
         />
       </div>
-      {frente && (
+      {frente && !escribiendoValor && (
         <Aviso
           tono={frente.tono}
           titulo={frente.tono === 'ok' ? 'Cubre el valor estimado' : 'No coincide con el valor estimado'}

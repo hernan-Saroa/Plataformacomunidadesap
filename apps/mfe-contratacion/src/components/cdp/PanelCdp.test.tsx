@@ -172,14 +172,27 @@ describe('PanelCdp · 4.2, expedir en una sola pantalla', () => {
     await diligenciar('1500000');
 
     expect(screen.getByText('No coincide con el valor estimado')).toBeInTheDocument();
-    expect(screen.getByText(/Queda .* por debajo/)).toBeInTheDocument();
+    expect(screen.getByText(/1\.500\.000 queda .* por debajo/)).toBeInTheDocument();
+  });
+
+  it('no compara mientras el valor se está tecleando', async () => {
+    tomada();
+    await diligenciar('1');
+    const valor = screen.getByLabelText('Valor certificado');
+
+    fireEvent.focus(valor);
+    fireEvent.change(valor, { target: { value: '15' } });
+    expect(screen.queryByText('No coincide con el valor estimado')).toBeNull();
+
+    fireEvent.blur(valor);
+    expect(screen.getByText(/\$\s15 queda .* por debajo/)).toBeInTheDocument();
   });
 
   it('avisa que el valor queda por encima antes de confirmar', async () => {
     tomada();
     await diligenciar('2500000');
 
-    expect(screen.getByText(/Queda .* por encima/)).toBeInTheDocument();
+    expect(screen.getByText(/queda .* por encima/)).toBeInTheDocument();
   });
 
   it('pide confirmación y no expide si se cancela', async () => {
