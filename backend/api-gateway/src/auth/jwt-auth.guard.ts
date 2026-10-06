@@ -47,6 +47,14 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/registro-academico\/api\/v\d+\/certificates\/[^/]+\/pdf(?:\?.*)?$/i,
     /^\/[\w-]+\/uploads\//i,
     /^\/[\w-]+\/files\//i,
+    // RUND: formulario público de autogestión docente (OTP + borrador + envío con token)
+    // y consulta externa del Macro Docente. Reflejan los endpoints @Public() del rund-service.
+    /^\/rund\/api\/v\d+\/(?:pta\/)?banco-docentes\/otp\/(?:request|validate)\/?(?:\?.*)?$/i,
+    /^\/rund\/api\/v\d+\/(?:pta\/)?banco-docentes\/drafts\/[^/?]+\/?(?:\?.*)?$/i,
+    /^\/rund\/api\/v\d+\/(?:pta\/)?banco-docentes\/autogestion\/me\/[^/?]+\/?(?:\?.*)?$/i,
+    /^\/rund\/api\/v\d+\/(?:pta\/)?banco-docentes\/submit\/[^/?]+\/?(?:\?.*)?$/i,
+    /^\/rund\/api\/v\d+\/(?:pta\/)?banco-docentes\/[^/?]+\/bloques\/[^/?]+\/soportes\/autogestion\/?(?:\?.*)?$/i,
+    /^\/rund\/api\/v\d+\/(?:pta\/)?macro-docente\/externo\/[^/?]+\/?(?:\?.*)?$/i,
     // Documentos de control institucional (preview/download requieren acceso sin JWT para iframes)
     /^\/control-institucional\/api\/v\d+\/documentos\/[^/]+\/preview/i,
     /^\/control-institucional\/api\/v\d+\/documentos\/[^/]+\/download/i,

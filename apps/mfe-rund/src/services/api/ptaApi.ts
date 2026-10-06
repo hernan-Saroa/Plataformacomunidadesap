@@ -1103,7 +1103,7 @@ export async function getReporteSeguimiento(_filters?: any) {
 
 export async function getRUNDDocente(_docenteId: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/rund/docente/${encodeURIComponent(_docenteId)}`);
+    const raw = await apiClient.get<any>(`/rund/api/v1/rund/docente/${encodeURIComponent(_docenteId)}`);
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
@@ -1114,7 +1114,7 @@ export async function getRUNDDocente(_docenteId: string) {
 
 export async function getRUNDResumen(_periodo?: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/rund/resumen`, _periodo ? { periodo: _periodo } : undefined);
+    const raw = await apiClient.get<any>(`/rund/api/v1/rund/resumen`, _periodo ? { periodo: _periodo } : undefined);
     const normalized = normalizeResult<any>(raw, null);
     return { success: normalized.success, data: normalized.data };
   } catch (error) {
@@ -1969,7 +1969,7 @@ export async function respuestaConcertacionDocente(ptaId: string, aceptaPropuest
 
 export async function syncRUNDDocuments(docenteId: string, documentos: any[]) {
   try {
-    const raw = await apiClient.post<any>(`${PTA_BASE}/rund/docente/${docenteId}/sync-documents`, { documentos });
+    const raw = await apiClient.post<any>(`/rund/api/v1/rund/docente/${docenteId}/sync-documents`, { documentos });
     return normalizeResult<any>(raw, null);
   } catch (error: any) {
     console.error('Error syncing RUND checklist with Carpeta Digital:', error);
@@ -1979,7 +1979,8 @@ export async function syncRUNDDocuments(docenteId: string, documentos: any[]) {
 
 // ═══ Banco de Docentes ════════════════════════════════════════════════
 
-const BD_BASE = `${SERVICE_BASE}/pta/banco-docentes`;
+// RUND vive en su propio microservicio (gateway: /rund/api/v1/* -> rund-service /*).
+const BD_BASE = '/rund/api/v1/pta/banco-docentes';
 
 export async function getBancoDocentes(filters?: {
   territorial?: string;

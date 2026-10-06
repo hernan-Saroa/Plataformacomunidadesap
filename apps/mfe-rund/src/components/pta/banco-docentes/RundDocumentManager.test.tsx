@@ -93,7 +93,7 @@ describe('Biblioteca compacta de documentos RUND', () => {
     fireEvent.change(screen.getByLabelText('Cargar PDF'), { target: { files: [file] } });
     await waitFor(() => expect(apiClient.upload).toHaveBeenCalled());
     const [url, form] = vi.mocked(apiClient.upload).mock.calls[0];
-    expect(url).toBe('/pta/api/v1/pta/banco-docentes/docente-1/documentos');
+    expect(url).toBe('/rund/api/v1/pta/banco-docentes/docente-1/documentos');
     expect((form as FormData).get('file')).toBe(file);
     expect((form as FormData).get('categoria')).toBe('IDENTIDAD');
     expect((form as FormData).get('tipoSoporte')).toBe('documento_identidad');
@@ -139,7 +139,7 @@ describe('Biblioteca compacta de documentos RUND', () => {
     expect(apiClient.delete).not.toHaveBeenCalled();
     confirm.mockReturnValue(true);
     fireEvent.click(row('Maestría.pdf').getByTitle('Eliminar'));
-    await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith('/pta/api/v1/pta/banco-docentes/docente-1/documentos/degree'));
+    await waitFor(() => expect(apiClient.delete).toHaveBeenCalledWith('/rund/api/v1/pta/banco-docentes/docente-1/documentos/degree'));
   });
 
   it('consulta versiones anteriores y mantiene inactivas sus acciones de modificación', async () => {

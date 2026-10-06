@@ -402,6 +402,8 @@ services:
       API_GATEWAY_URL: http://api-gateway:3000
       AUTH_SERVICE_URL: http://auth-service:3001
       NOTIFICATION_SERVICE_URL: http://notifications-service:3009
+    volumes:
+      - ./backend/rund-service/uploads:/app/uploads
     ports:
       - "3016:3016"
 

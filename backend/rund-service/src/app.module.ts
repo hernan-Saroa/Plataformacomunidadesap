@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { requireInProduction } from './common/require-env';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -11,6 +12,8 @@ import { SituacionesAdminModule } from './modules/situaciones-admin/situaciones-
 import { SoportesModule } from './modules/soportes/soportes.module';
 import { TarjetaDigitalModule } from './modules/tarjeta-digital/tarjeta-digital.module';
 import { EstadisticasModule } from './modules/estadisticas/estadisticas.module';
+import { BancoDocentesModule } from './modules/banco-docentes/banco-docentes.module';
+import { MacroDocenteModule } from './modules/macro-docente/macro-docente.module';
 
 import { DocenteEntity } from './entities/docente.entity';
 import { FormacionAcademicaEntity } from './entities/formacion-academica.entity';
@@ -33,7 +36,7 @@ import { PermissionsGuard } from './auth/permissions.guard';
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT || '5432', 10),
       username: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || process.env.DB_PASS || 'password',
+      password: requireInProduction('DB_PASS', process.env.DB_PASSWORD || process.env.DB_PASS, 'password'),
       database: process.env.DB_NAME || 'esap_db',
       schema: 'rund',
       entities: [
@@ -46,6 +49,7 @@ import { PermissionsGuard } from './auth/permissions.guard';
         TarjetaRundLogEntity,
         InvitacionDocenteEntity,
       ],
+      autoLoadEntities: true,
       synchronize: false,
       logging: process.env.NODE_ENV !== 'production',
     }),
@@ -56,6 +60,8 @@ import { PermissionsGuard } from './auth/permissions.guard';
     SoportesModule,
     TarjetaDigitalModule,
     EstadisticasModule,
+    BancoDocentesModule,
+    MacroDocenteModule,
   ],
   controllers: [AppController],
   providers: [
