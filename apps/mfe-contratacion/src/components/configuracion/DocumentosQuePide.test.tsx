@@ -16,6 +16,7 @@ const fila = (cambios: Partial<DocumentoRequeridoConfig> = {}): DocumentoRequeri
   nombre: 'Memorando de solicitud',
   descripcion: 'Firmado por el jefe del área.',
   obligatorio: true,
+  informativo: false,
   modalidades: [],
   tipologias: [],
   orden: 10,
@@ -97,7 +98,7 @@ describe('DocumentosQuePide', () => {
     await userEvent.click(await screen.findByRole('button', { name: /Agregar documento/ }));
     await userEvent.type(screen.getByPlaceholderText(/Memorando de solicitud firmado/), 'Memorando');
     await userEvent.selectOptions(screen.getByLabelText('Plantilla'), 'BS-FO-047');
-    await userEvent.click(screen.getByLabelText(/Obligatorio: la actividad no avanza/));
+    await userEvent.click(screen.getByLabelText(/Puede cargarlo/));
     await userEvent.click(screen.getByLabelText('Mínima Cuantía'));
     await userEvent.click(screen.getByLabelText('Suministro'));
     await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
@@ -109,10 +110,43 @@ describe('DocumentosQuePide', () => {
         descripcion: null,
         plantillaCodigo: 'BS-FO-047',
         obligatorio: false,
+        informativo: false,
         modalidades: ['MINIMA_CUANTIA'],
         tipologias: ['Suministro'],
       }),
     );
+  });
+
+  it('agrega un documento solo de consulta, que nunca es obligatorio', async () => {
+    vi.spyOn(contratacionService, 'documentosRequeridos').mockResolvedValue([]);
+    const crear = vi
+      .spyOn(contratacionService, 'crearDocumentoRequerido')
+      .mockResolvedValue(fila());
+    render(<DocumentosQuePide numeral="3.1" modalidades={modalidades} />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Agregar documento/ }));
+    await userEvent.type(screen.getByPlaceholderText(/Memorando de solicitud firmado/), 'Guía');
+    await userEvent.click(screen.getByLabelText(/Solo de consulta/));
+    // Sin el archivo que se va a ofrecer no hay nada que consultar.
+    expect(screen.getByRole('button', { name: 'Guardar' })).toBeDisabled();
+
+    await userEvent.selectOptions(screen.getByLabelText('Plantilla'), 'BS-FO-047');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() =>
+      expect(crear).toHaveBeenCalledWith(
+        expect.objectContaining({ plantillaCodigo: 'BS-FO-047', obligatorio: false, informativo: true }),
+      ),
+    );
+  });
+
+  it('marca en la lista los que son solo de consulta', async () => {
+    vi.spyOn(contratacionService, 'documentosRequeridos').mockResolvedValue([
+      fila({ informativo: true, obligatorio: false }),
+    ]);
+    render(<DocumentosQuePide numeral="5.1" modalidades={modalidades} />);
+
+    expect(await screen.findByText('Solo consulta')).toBeInTheDocument();
   });
 
   it('dejar de pedir un documento lo desactiva, no lo borra', async () => {

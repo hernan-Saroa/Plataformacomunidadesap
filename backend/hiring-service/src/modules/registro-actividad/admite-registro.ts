@@ -29,9 +29,10 @@ export const NUMERALES_CON_REGISTRO = [
   // con el estudio previo, en la lista de chequeo de la 3.1 (migración 090).
   // Las otras cinco salieron:
   // radicar es recibir el proceso en la Dirección y ponerle responsable (3.3);
-  // la 3.4 es la decisión del abogado sobre el estudio previo; la 3.5 es
+  // la 3.4 es la decisión del abogado sobre el estudio previo; la 3.5 era
   // ratificar la modalidad que el área eligió —subir un papel la daba por
-  // definida sin que nadie la mirara—; la 3.6 es elegir la causal del catálogo
+  // definida sin que nadie la mirara— y desde la 094 se ratifica al aprobar
+  // la 3.1; la 3.6 es elegir la causal del catálogo
   // de esa modalidad; y la 3.7 es lo que el comité decidió, que son tres
   // desenlaces y no un adjunto.
   // Etapa 5 · participación previa a la apertura

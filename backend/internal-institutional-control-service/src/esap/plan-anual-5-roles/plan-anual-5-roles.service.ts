@@ -969,24 +969,49 @@ export class PlanAnual5RolesService {
     }
 
     const vigenciaOriginal = plan.año;
+    const estadoOriginal = plan.estado;
 
     // Soft delete release pattern: usar estado válido para no violar CHECK.
     // El "eliminado lógico" se determina por año negativo.
     plan.estado = 'completado';
     // Liberar la vigencia para que el usuario pueda crear otro plan en el mismo año,
     // garantizando que no choque con la restricción @Unique(['año']) de TypeORM
-    plan.año = -(Date.now() % 1000000000); 
+    plan.año = -(Date.now() % 1000000000);
 
-    await this.planRepository.save(plan);
+    // Las versiones y los ajustes del Programa Anual nacen con la aprobación de este plan:
+    // se esconden con él (mismo año negativo) para que la vigencia quede libre y el
+    // Programa Anual vuelva a "en elaboración". No se borran: quedan ligados al plan
+    // eliminado por trazabilidad. Las auditorías y el Universo Auditable no se tocan.
+    let versionesOcultas = 0;
+    let ajustesOcultos = 0;
+    await this.dataSource.transaction(async (manager) => {
+      await manager.save(plan);
+      if (vigenciaOriginal > 0) {
+        const versiones = await manager.query(
+          `UPDATE control_interno.version_programa_anual SET vigencia = $1 WHERE vigencia = $2`,
+          [plan.año, vigenciaOriginal],
+        );
+        const ajustes = await manager.query(
+          `UPDATE control_interno.programa_anual_ajuste SET vigencia = $1 WHERE vigencia = $2`,
+          [plan.año, vigenciaOriginal],
+        );
+        versionesOcultas = Number(Array.isArray(versiones) ? versiones[1] : 0) || 0;
+        ajustesOcultos = Number(Array.isArray(ajustes) ? ajustes[1] : 0) || 0;
+      }
+    });
 
     // Dejar traza explícita e imborrable en el Módulo de Auditoría (Historial interno)
     await this.registrarHistorial(
       plan.id,
       TipoEventoPlanAnual.CAMBIO_ESTADO,
       'Eliminación de Plan Anual',
-      `El Plan Anual de Auditoría de la vigencia ${vigenciaOriginal} fue eliminado por el usuario. Eliminación lógica registrada por control de trazabilidad.`,
+      `El Plan Anual de Auditoría de la vigencia ${vigenciaOriginal} fue eliminado por el usuario. Eliminación lógica registrada por control de trazabilidad.` +
+        (versionesOcultas > 0 || ajustesOcultos > 0
+          ? ` Sus versiones (${versionesOcultas}) y ajustes (${ajustesOcultos}) del Programa Anual quedaron ocultos con el plan en la vigencia ${plan.año}.`
+          : ''),
       usuarioId,
-      JSON.stringify({ accion: 'SOFT_DELETE', vigenciaOriginal }),
+      // estado_anterior admite 50 caracteres: va el estado que tenía el plan
+      String(estadoOriginal || '').slice(0, 50),
       'completado'
     );
   }

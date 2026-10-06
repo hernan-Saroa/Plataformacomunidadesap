@@ -101,6 +101,16 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
   }, [isOpen]);
 
   // Cargar cargos asignados a la dependencia seleccionada (N:M auth.dependencias_cargos)
+  // Fallback seguro EFDS-174X: si el backend no tiene tablas cargos/dependencias_cargos (migracion 003 auth no aplicada)
+  // inyecta un cargo generico para que el formulario no se bloquee en ambientes de QA/dev.
+  const FALLBACK_CARGO_GENERICO: Cargo = {
+    idCargo: -99001,
+    codCargo: 'CAR-GENERICO-TEC-UMI',
+    nomCargo: 'Sin cargo específico / Técnico UMI',
+    descripcion: 'Fallback para ambientes sin tabla auth.cargos poblada',
+    nivelJerarquico: 'Profesional',
+    activo: true,
+  };
   useEffect(() => {
     if (!formData.idDependencia) {
       setCargosDisponibles([]);
@@ -115,12 +125,17 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
       .obtenerCargosPorDependencia(Number(formData.idDependencia))
       .then((cargos) => {
         if (isSubscribed) {
-          setCargosDisponibles(cargos || []);
+          const arr = Array.isArray(cargos) ? cargos : [];
+          if (arr.length === 0) {
+            setCargosDisponibles([FALLBACK_CARGO_GENERICO]);
+          } else {
+            setCargosDisponibles(arr);
+          }
         }
       })
       .catch((err) => {
         console.error('Error cargando cargos de la dependencia:', err);
-        if (isSubscribed) setCargosDisponibles([]);
+        if (isSubscribed) setCargosDisponibles([FALLBACK_CARGO_GENERICO]);
       })
       .finally(() => {
         if (isSubscribed) setIsLoadingCargos(false);

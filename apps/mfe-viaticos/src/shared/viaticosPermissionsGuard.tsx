@@ -171,9 +171,6 @@ export const VIATICOS_ROLE_PERMISSION_MAP: Record<ViaticosRoleKey, RolePermissio
       'LIDER_DEPENDENCIA',
     ],
     fallbackPermissions: [
-      'travel_expenses:sign_approval',
-      'travel_expenses:read_approvals',
-      'travel_expenses:read_requests',
       'travel_expenses:return_approval',
     ],
     label: 'Jefe de Dependencia / Supervisor',
@@ -187,9 +184,6 @@ export const VIATICOS_ROLE_PERMISSION_MAP: Record<ViaticosRoleKey, RolePermissio
       'COORDINADOR_PROYECTO',
     ],
     fallbackPermissions: [
-      'travel_expenses:sign_approval',
-      'travel_expenses:read_approvals',
-      'travel_expenses:read_requests',
       'travel_expenses:return_approval',
     ],
     label: 'Gerente de Proyecto',
@@ -244,6 +238,26 @@ export function hasViaticosRolePermission(
     if (esGerente) return false;
   }
 
+  // Si se evalúa rol directivo (JEFE_DEPENDENCIA o GERENTE_PROYECTO), los roles operativos
+  // (Analista, Secretario, Control Viáticos, Enlace) no deben evaluarse como directivos por fallbacks.
+  if (roleKey === 'JEFE_DEPENDENCIA' || roleKey === 'GERENTE_PROYECTO') {
+    const esOperativo =
+      auth.hasPermission(VIATICOS_PERMISOS_GENERALES.ANALISTA) ||
+      auth.hasPermission(VIATICOS_PERMISOS_GENERALES.SECRETARIO) ||
+      auth.hasPermission(VIATICOS_PERMISOS_GENERALES.CONTROL_VIATICOS) ||
+      auth.hasPermission(VIATICOS_PERMISOS_GENERALES.ENLACE) ||
+      (user.roles &&
+        user.roles.some((r) =>
+          ['ANALISTA', 'ANALISTA_VIATICOS', 'SECRETARIO', 'SECRETARIO_VIATICOS', 'CONTROL_VIATICOS', 'ENLACE'].includes(r),
+        ));
+    if (esOperativo && !auth.hasPermission(config.permission)) {
+      const tieneLegacyDirectivo =
+        user.roles &&
+        user.roles.some((r) => ['JEFE_DEPENDENCIA', 'GERENTE_PROYECTO', 'DIRECTOR_TERRITORIAL'].includes(r));
+      if (!tieneLegacyDirectivo) return false;
+    }
+  }
+
   // 5. Fallback a permisos granulares de acción
   if (config.fallbackPermissions.length > 0 && auth.hasAnyPermission([...config.fallbackPermissions])) {
     return true;
@@ -295,13 +309,25 @@ export const canFirmarAprobacion = (auth: AuthService = defaultAuthService): boo
   const user = auth.getCurrentUserSync();
   if (!user) return false;
   if (user.esAdmin) return true;
+
+  // Acceso exclusivo a usuarios con permiso general o rol directivo de Jefe, Gerente, Subdirector o Director Nacional
   return (
+    auth.hasPermission(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA) ||
+    auth.hasPermission('travel_expenses.general.es_jefe') ||
+    auth.hasPermission('general.es_jefe') ||
+    auth.hasPermission(VIATICOS_PERMISOS_GENERALES.GERENTE_PROYECTO) ||
+    auth.hasPermission('travel_expenses.general.es_gerente') ||
+    auth.hasPermission('general.es_gerente') ||
+    auth.hasPermission(VIATICOS_PERMISOS_GENERALES.SUBDIRECCION) ||
+    auth.hasPermission('travel_expenses.general.es_subdirector') ||
+    auth.hasPermission('general.es_subdirector') ||
+    auth.hasPermission(VIATICOS_PERMISOS_GENERALES.DIRECCION_NACIONAL) ||
+    auth.hasPermission('travel_expenses.general.es_director') ||
+    auth.hasPermission('general.es_director') ||
     isJefeDependencia(auth) ||
     isGerenteProyecto(auth) ||
     isSubdireccionCorporativa(auth) ||
-    isDireccionNacional(auth) ||
-    auth.hasPermission('travel_expenses:sign_approval') ||
-    auth.hasPermission('travel_expenses:read_approvals')
+    isDireccionNacional(auth)
   );
 };
 

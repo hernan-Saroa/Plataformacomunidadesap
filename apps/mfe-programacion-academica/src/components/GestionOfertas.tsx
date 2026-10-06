@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { CalendarDays, Loader2, Gauge, Search } from 'lucide-react';
 
 import {
-  getOfertas, getConsumoPorOferta, type Oferta, type AcumuladoDocente,
+  getOfertas, getConsumoPorOferta, crearPeriodo, activarPeriodo,
+  getEstadoPublicacion, publicarProgramacion, retirarProgramacion, cerrarProgramacion,
+  getPendientesCierre, marcarExcepcion,
+  type Oferta, type AcumuladoDocente, type EstadoPublicacion, type PendienteCierre,
 } from '../services/api/catalogoApi';
 
 /**
@@ -30,9 +33,130 @@ export function GestionOfertas() {
   const [consumo, setConsumo] = useState<AcumuladoDocente | null>(null);
   const [buscando, setBuscando] = useState(false);
 
+  // NUEVA-5a — Crear y activar. Requieren el permiso de administración; si
+  // falta, el backend responde 403 y el mensaje se muestra tal cual, sin
+  // traducirlo a un genérico.
+  const [nuevo, setNuevo] = useState({
+    codigo: '', nombre: '', tipo: 'periodo_regular', fechaInicio: '', fechaFin: '',
+  });
+  const [guardando, setGuardando] = useState(false);
+  const [avisoAdmin, setAvisoAdmin] = useState('');
+
+  // NUEVA-1 (EFDS-1937) — Publicación de la programación por periodo. El estado
+  // por periodo se consulta y se refresca tras publicar/retirar.
+  const [pubs, setPubs] = useState<Record<string, EstadoPublicacion>>({});
+  const [pubOcupado, setPubOcupado] = useState<string | null>(null);
+  const [avisoPub, setAvisoPub] = useState('');
+  // EFDS-1941 — lista de franjas que impiden cerrar, para marcarlas como excepción.
+  const [verPend, setVerPend] = useState<string | null>(null);
+  const [pendCierre, setPendCierre] = useState<Record<string, PendienteCierre[]>>({});
+
+  const cargarPubs = (lista: Oferta[]) =>
+    Promise.all(lista.map((o) =>
+      getEstadoPublicacion(o.idPeriodo).then((e) => [o.idPeriodo, e] as const).catch(() => null),
+    )).then((pares) => {
+      const map: Record<string, EstadoPublicacion> = {};
+      for (const p of pares) if (p) map[p[0]] = p[1];
+      setPubs(map);
+    });
+
+  const recargar = () => getOfertas().then((l) => { setOfertas(l); return cargarPubs(l); }).catch(() => {});
+
+  const publicar = async (id: string) => {
+    setAvisoPub('');
+    setPubOcupado(id);
+    try {
+      const e = await publicarProgramacion(id);
+      setPubs((prev) => ({ ...prev, [id]: e }));
+    } catch (err: any) {
+      setAvisoPub(err?.message || 'No se pudo publicar la programación.');
+    } finally {
+      setPubOcupado(null);
+    }
+  };
+
+  const retirar = async (id: string) => {
+    setAvisoPub('');
+    setPubOcupado(id);
+    try {
+      const e = await retirarProgramacion(id);
+      setPubs((prev) => ({ ...prev, [id]: e }));
+    } catch (err: any) {
+      setAvisoPub(err?.message || 'No se pudo retirar la publicación.');
+    } finally {
+      setPubOcupado(null);
+    }
+  };
+
+  const abrirExcepciones = async (id: string) => {
+    if (verPend === id) { setVerPend(null); return; }
+    setAvisoPub('');
+    try {
+      const lista = await getPendientesCierre(id);
+      setPendCierre((prev) => ({ ...prev, [id]: lista }));
+      setVerPend(id);
+    } catch (err: any) {
+      setAvisoPub(err?.message || 'No se pudieron cargar las franjas pendientes.');
+    }
+  };
+
+  const excepcion = async (id: string, idFranja: string) => {
+    if (!window.confirm('¿Marcar esta franja como excepción? No pasará por aprobación y no impedirá cerrar el periodo.')) return;
+    setAvisoPub('');
+    try {
+      const e = await marcarExcepcion(id, idFranja);
+      setPubs((prev) => ({ ...prev, [id]: e }));
+      const lista = await getPendientesCierre(id);
+      setPendCierre((prev) => ({ ...prev, [id]: lista }));
+      if (lista.length === 0) setVerPend(null);
+    } catch (err: any) {
+      setAvisoPub(err?.message || 'No se pudo marcar la excepción.');
+    }
+  };
+
+  // NUEVA-5b (EFDS-1941) — Cerrar el periodo. Al cerrarse queda inmutable, así
+  // que se recarga para que la tarjeta muestre el estado 'cerrado'.
+  const cerrar = async (id: string) => {
+    setAvisoPub('');
+    setPubOcupado(id);
+    try {
+      await cerrarProgramacion(id);
+      await recargar();
+    } catch (err: any) {
+      setAvisoPub(err?.message || 'No se pudo cerrar el periodo.');
+    } finally {
+      setPubOcupado(null);
+    }
+  };
+
+  const crear = async (e: FormEvent) => {
+    e.preventDefault();
+    setGuardando(true);
+    setAvisoAdmin('');
+    try {
+      await crearPeriodo({ ...nuevo, tipo: nuevo.tipo || null });
+      setNuevo({ codigo: '', nombre: '', tipo: 'periodo_regular', fechaInicio: '', fechaFin: '' });
+      await recargar();
+    } catch (err: any) {
+      setAvisoAdmin(err?.message || 'No se pudo crear el periodo.');
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const activar = async (id: string) => {
+    setAvisoAdmin('');
+    try {
+      await activarPeriodo(id);
+      await recargar();
+    } catch (err: any) {
+      setAvisoAdmin(err?.message || 'No se pudo activar el periodo.');
+    }
+  };
+
   useEffect(() => {
     getOfertas()
-      .then(setOfertas)
+      .then((l) => { setOfertas(l); return cargarPubs(l); })
       .catch((e) => setError(e?.message || 'No se pudieron cargar las ofertas.'))
       .finally(() => setCargando(false));
   }, []);
@@ -55,14 +179,22 @@ export function GestionOfertas() {
     <div className="space-y-4">
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
         <h3 className="font-bold text-slate-800 text-sm mb-1 flex items-center gap-2">
-          <CalendarDays className="w-4 h-4 text-[#003DA5]" /> Ofertas Académicas
+          <CalendarDays className="w-4 h-4 text-[#003DA5]" /> Periodos
         </h3>
         <p className="text-xs text-slate-500">
-          Las cinco ofertas del año. El consumo de un docente se acumula por semestre entre todas ellas.
+          Aquí se crean, activan, publican y cierran los periodos de programación. El consumo de un
+          docente se acumula por semestre entre todos ellos. Las fechas de los periodos sembrados son
+          de referencia hasta que llegue el calendario oficial (C-5).
         </p>
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>}
+
+      {/* Aviso de publicar/retirar: el mensaje del backend, verbatim (403 para
+          quien no administra; conflicto si ya hay franjas tomadas). */}
+      {avisoPub && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">{avisoPub}</div>
+      )}
 
       {cargando ? (
         <div className="flex items-center gap-2 text-sm text-slate-500 p-4">
@@ -81,12 +213,156 @@ export function GestionOfertas() {
               <p className="text-xs text-slate-600">{o.nombre}</p>
               <p className="text-[11px] text-slate-400">
                 {o.fechaInicio || '—'} a {o.fechaFin || '—'}
-                <span className="ml-1 italic">(referencia)</span>
               </p>
+              <div className="flex items-center justify-between pt-1">
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${o.estado === 'activo' ? 'bg-emerald-50 text-emerald-700' : o.estado === 'cerrado' ? 'bg-slate-200 text-slate-600' : 'bg-amber-50 text-amber-700'}`}>
+                  {o.estado === 'activo' ? 'Activo' : o.estado === 'cerrado' ? 'Cerrado' : 'En planeación'}
+                </span>
+                {/* Cerrado es inmutable: no se ofrece reactivar lo que el
+                    backend rechazaría por inmutable. */}
+                {o.estado === 'planeacion' && (
+                  <button
+                    type="button"
+                    onClick={() => activar(o.idPeriodo)}
+                    className="px-2.5 py-1 rounded-lg bg-[#003DA5] text-white text-[11px] font-bold hover:bg-blue-800 active:scale-95 transition-all"
+                  >
+                    Activar
+                  </button>
+                )}
+              </div>
+
+              {/* NUEVA-1 — Publicación de la programación del periodo. Publicar
+                  valida sin cruces; retirar solo si nadie tomó franjas. */}
+              {(() => {
+                const p = pubs[o.idPeriodo];
+                if (!p) return null;
+                const ocupado = pubOcupado === o.idPeriodo;
+                const publicado = p.publicada > 0 || p.tomada > 0;
+                return (
+                  <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                    <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">
+                      <span className="font-semibold text-slate-600">Programación:</span>
+                      <span>{p.programado} programadas</span>
+                      <span className="text-emerald-600">{p.publicada} publicadas</span>
+                      <span className="text-[#003DA5]">{p.tomada} tomadas</span>
+                      <span className="text-emerald-700 font-semibold">{p.aprobada} aprobadas</span>
+                    </div>
+                    {o.estado !== 'cerrado' && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {!publicado ? (
+                        <button type="button" disabled={ocupado || p.total === 0}
+                          onClick={() => publicar(o.idPeriodo)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 disabled:opacity-40 active:scale-95 transition-all">
+                          {ocupado ? 'Publicando…' : 'Publicar programación'}
+                        </button>
+                      ) : (
+                        <>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold">Publicada</span>
+                          {/* Retirar se ofrece; el backend lo rechaza verbatim si ya hay franjas tomadas. */}
+                          <button type="button" disabled={ocupado}
+                            onClick={() => retirar(o.idPeriodo)}
+                            className="px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 text-[11px] font-bold hover:bg-slate-50 disabled:opacity-40 active:scale-95 transition-all">
+                            {ocupado ? 'Retirando…' : 'Retirar'}
+                          </button>
+                        </>
+                      )}
+                      {/* Cerrar: el backend exige todo aprobado o en excepción y lo
+                          rechaza verbatim si algo queda pendiente. */}
+                      <button type="button" disabled={ocupado}
+                        onClick={() => cerrar(o.idPeriodo)}
+                        title={p.pendientesCierre > 0 ? `${p.pendientesCierre} franja(s) sin aprobar` : 'Cerrar el periodo'}
+                        className="px-2.5 py-1 rounded-lg bg-slate-700 text-white text-[11px] font-bold hover:bg-slate-800 disabled:opacity-40 active:scale-95 transition-all">
+                        {ocupado ? 'Cerrando…' : 'Cerrar periodo'}
+                      </button>
+                      {p.pendientesCierre > 0 && (
+                        <button type="button" onClick={() => abrirExcepciones(o.idPeriodo)}
+                          className="px-2.5 py-1 rounded-lg border border-amber-300 text-amber-800 text-[11px] font-bold hover:bg-amber-50 active:scale-95 transition-all">
+                          {verPend === o.idPeriodo ? 'Ocultar' : `Excepción (${p.pendientesCierre})`}
+                        </button>
+                      )}
+                    </div>
+                    )}
+
+                    {/* Lista de franjas que impiden cerrar; se marcan como excepción. */}
+                    {verPend === o.idPeriodo && (pendCierre[o.idPeriodo]?.length ?? 0) > 0 && (
+                      <div className="mt-1 space-y-1 border border-amber-200 rounded-lg p-2 bg-amber-50/40">
+                        {pendCierre[o.idPeriodo].map((f) => (
+                          <div key={f.idFranja} className="flex items-center justify-between gap-2 text-[11px]">
+                            <span className="min-w-0 truncate text-slate-600">
+                              {f.asignatura || 'Asignatura'} · {f.diaSemana.toLowerCase()} {f.horaInicio}–{f.horaFin}
+                              <span className="ml-1 text-slate-400">({f.estado.toLowerCase()})</span>
+                            </span>
+                            <button type="button" onClick={() => excepcion(o.idPeriodo, f.idFranja)}
+                              className="shrink-0 px-2 py-0.5 rounded border border-amber-300 text-amber-800 font-bold hover:bg-amber-100">
+                              Excepción
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </div>
       )}
+
+      {/* NUEVA-5a — Crear periodo. Nace en planeación; activar es aparte. */}
+      <form onSubmit={crear} className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+        <h4 className="font-bold text-slate-800 text-sm">Crear periodo</h4>
+        <p className="text-xs text-slate-500">
+          Nace <strong>en planeación</strong>. Activarlo es un acto aparte, y varios periodos
+          pueden estar activos a la vez.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase">Código</span>
+            <input required value={nuevo.codigo} placeholder="2027-1" maxLength={20}
+              onChange={(e) => setNuevo({ ...nuevo, codigo: e.target.value })}
+              className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase">Nombre</span>
+            <input required value={nuevo.nombre} placeholder="Periodo Regular 2027-1"
+              onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })}
+              className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase">Tipo</span>
+            <select value={nuevo.tipo}
+              onChange={(e) => setNuevo({ ...nuevo, tipo: e.target.value })}
+              className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
+              <option value="periodo_regular">Periodo regular</option>
+              <option value="creditos_virtual">Créditos virtual</option>
+              <option value="interperiodo">Interperiodo</option>
+            </select>
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase">Inicio</span>
+            <input required type="date" value={nuevo.fechaInicio}
+              onChange={(e) => setNuevo({ ...nuevo, fechaInicio: e.target.value })}
+              className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] font-bold text-slate-500 uppercase">Fin</span>
+            <input required type="date" value={nuevo.fechaFin}
+              onChange={(e) => setNuevo({ ...nuevo, fechaFin: e.target.value })}
+              className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
+          </label>
+          </div>
+        </div>
+        {avisoAdmin && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+            {avisoAdmin}
+          </div>
+        )}
+        <button type="submit" disabled={guardando}
+          className="px-4 py-2 rounded-lg bg-[#003DA5] text-white text-xs font-bold disabled:opacity-50 active:scale-95 transition-all">
+          {guardando ? 'Creando…' : 'Crear periodo'}
+        </button>
+      </form>
 
       {/* Consumo previo del docente frente al tope, entre ofertas */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">

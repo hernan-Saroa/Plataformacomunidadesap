@@ -14,8 +14,12 @@ import {
   Clock,
   MapPin,
   Route,
+  Plane,
+  Car,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
+import authService from '../services/api/authService';
+import FirmaDigitalViaticosModal, { FirmaDigitalData } from './FirmaDigitalViaticosModal';
 import { SolicitudControlViaticosResponse, LiquidacionResponse, RutaItinerario } from '../types/viaticos';
 import {
   esPdfMime,
@@ -529,6 +533,15 @@ export default function ControlViaticosModal({
   const [errorDevolucion, setErrorDevolucion] = useState<string | null>(null);
   const [tiposDocSoporte, setTiposDocSoporte] = useState<TipoDocumentoSoporte[]>([]);
 
+  // Estados para validación OTP y Firma Digital Institucional
+  const [solicitandoOtp, setSolicitandoOtp] = useState(false);
+  const [modalFirmaOtpAbierta, setModalFirmaOtpAbierta] = useState(false);
+  const [otpData, setOtpData] = useState<{
+    verificationId?: string;
+    emailEnviadoA?: string;
+    devCode?: string;
+  } | null>(null);
+
   useEffect(() => {
     if (abierta && typeof viaticosService.obtenerTiposDocumentoSoporte === 'function') {
       viaticosService
@@ -555,6 +568,9 @@ export default function ControlViaticosModal({
       setDevolviendo(false);
       setErrorDevolucion(null);
       setCopied(null);
+      setSolicitandoOtp(false);
+      setModalFirmaOtpAbierta(false);
+      setOtpData(null);
       cerrarTodosVisores();
       void cargarCatalogoDependencias();
     }
@@ -563,10 +579,24 @@ export default function ControlViaticosModal({
   if (!abierta) return null;
 
   const comisionado = solicitud?.comisionado;
-  const nombreCompleto = comisionado ? formatearNombreComisionado(comisionado) : '';
+  const nombreCompleto = comisionado ? formatearNombreComisionado(comisionado as any) : '';
   const montoViaticos = Number(solicitud?.montoViaticos || 0);
   const montoGastosViaje = Number(solicitud?.montoGastosViaje || 0);
   const valorNeto = montoViaticos + montoGastosViaje;
+
+  // Desglose de transporte terminal aérea guardado
+  const montoTerminalAereo = Number(
+    solicitud?.camposAdicionales?.transporteTerminalAereo ??
+      solicitud?.camposAdicionales?.montoTerminalAereo ??
+      (Array.isArray(solicitud?.itinerario)
+        ? (solicitud.itinerario as any[]).reduce(
+            (acc: number, r: any) =>
+              acc + Number(r.tarifaTerminalAereo ?? r.montoTerminalAereo ?? 0),
+            0,
+          )
+        : 0),
+  );
+  const costoEstimadoTiquete = Number(solicitud?.costoEstimadoTiquete || 0);
 
   const resumenPresupuestal = (solicitud as any)?.resumenPresupuestal as
     | {
@@ -583,6 +613,63 @@ export default function ControlViaticosModal({
   const semaforo = resumenPresupuestal?.semaforo || 'VERDE';
   const isVerificada = solicitud?.estadoSolicitud === 'VERIFICADA' || verificacionExitosa;
 
+  // Resolver usuario actual firmante para estampa institucional
+  const currentUser = authService.getCurrentUserSync?.() || (authService as any).getCurrentUser?.();
+  const nombreUsuarioActual =
+    currentUser && typeof currentUser.then !== 'function'
+      ? `${currentUser.primerNombre || ''} ${currentUser.segundoNombre || ''} ${currentUser.primerApellido || ''} ${currentUser.segundoApellido || ''}`.trim() ||
+        currentUser.nombre ||
+        currentUser.username ||
+        'Revisor de Control de Viáticos'
+      : 'Revisor de Control de Viáticos';
+  const cargoUsuarioActual =
+    currentUser && typeof currentUser.then !== 'function' && (currentUser.cargo || currentUser.job_title)
+      ? currentUser.cargo || currentUser.job_title
+      : 'Control de Viáticos / 2do Nivel (Control Cruzado)';
+  const documentoIdentidadUsuarioActual =
+    currentUser && typeof currentUser.then !== 'function'
+      ? currentUser.numeroDocumento || currentUser.documento || currentUser.identificacion
+      : undefined;
+
+  const generarEstampaDigitalControlViaticos = (nombre: string, cargo: string): string => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 400;
+      canvas.height = 140;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return '';
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = '#003DA5';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+
+      ctx.fillStyle = '#003DA5';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillText('ESAP — CONTROL CRUZADO 2DO NIVEL (CONTROL VIÁTICOS)', 16, 24);
+
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText(nombre.slice(0, 36), 16, 52);
+
+      ctx.fillStyle = '#475569';
+      ctx.font = '11px sans-serif';
+      ctx.fillText(cargo.slice(0, 42), 16, 72);
+
+      ctx.fillStyle = '#64748b';
+      ctx.font = '9px monospace';
+      const ahora = new Date().toISOString();
+      ctx.fillText(`FECHA/HORA: ${ahora}`, 16, 96);
+      ctx.fillText('VALIDACIÓN: HASH CRIPTOGRÁFICO SHA-256', 16, 112);
+
+      return canvas.toDataURL('image/png');
+    } catch {
+      return '';
+    }
+  };
+
   const handleCopy = async (valor: string) => {
     if (!valor) return;
     try {
@@ -594,28 +681,79 @@ export default function ControlViaticosModal({
     }
   };
 
-  const handleVerificarSegundoNivel = async () => {
+  // Solicitar código OTP para iniciar firma digital de control viáticos (2do nivel)
+  const handleIniciarFirmaOtp = async () => {
     if (!solicitud || isVerificada) return;
+    setSolicitandoOtp(true);
+    setErrorVerificacion(null);
+    try {
+      const resp = await viaticosService.solicitarOtpFirma(solicitud.id, {
+        tipoFirma: 'CONTROL_VIATICOS',
+        etapaLabel: 'Control Viáticos — Control Cruzado (2do Nivel)',
+      });
+      setOtpData({
+        verificationId: resp.verificationId,
+        emailEnviadoA: resp.emailEnviadoA || (resp as any).email,
+        devCode: resp.devCode,
+      });
+      setModalFirmaOtpAbierta(true);
+    } catch (err: any) {
+      console.error('Error solicitando OTP:', err);
+      setErrorVerificacion(
+        err?.response?.data?.message ||
+          err?.message ||
+          'No fue posible solicitar el código OTP de verificación.',
+      );
+    } finally {
+      setSolicitandoOtp(false);
+    }
+  };
+
+  // Confirmar verificación y firma digital tras validación OTP
+  const handleFirmaDigitalCompleta = async (firma: FirmaDigitalData) => {
+    if (!solicitud) return false;
     setVerificando(true);
     setErrorVerificacion(null);
     try {
-      await viaticosService.verificarSegundoNivel(solicitud.id, { observaciones: '' });
+      const firmaImagen = generarEstampaDigitalControlViaticos(nombreUsuarioActual, cargoUsuarioActual);
+      await viaticosService.verificarSegundoNivel(solicitud.id, {
+        observaciones: 'Verificación y control cruzado aprobado con firma digital institucional',
+        otp: firma.codigoOtp,
+        verificationId: otpData?.verificationId,
+        certificadoId: firma.certificado_id,
+        hashSha256: firma.hash,
+        firmaImagen,
+        nombreRevisor: nombreUsuarioActual,
+        cargoRevisor: cargoUsuarioActual,
+        documentoIdentidad: documentoIdentidadUsuarioActual,
+      });
       setVerificacionExitosa(true);
       if (solicitud) {
         solicitud.estadoSolicitud = 'VERIFICADA';
       }
+      setModalFirmaOtpAbierta(false);
       setTimeout(() => {
         setVerificacionExitosa(false);
         onRefrescar();
         onCerrar();
       }, 1500);
+      return true;
     } catch (err: any) {
+      console.error('Error al registrar verificación de segundo nivel con OTP:', err);
       setErrorVerificacion(
-        err?.message || 'Error al registrar la verificación de segundo nivel.',
+        err?.response?.data?.message ||
+          err?.message ||
+          'Error al registrar la verificación de segundo nivel.',
       );
+      return false;
     } finally {
       setVerificando(false);
     }
+  };
+
+  // Mantener compatibilidad si es invocado directamente
+  const handleVerificarSegundoNivel = async () => {
+    await handleIniciarFirmaOtp();
   };
 
   const handleDevolverAAnalista = async () => {
@@ -797,18 +935,73 @@ export default function ControlViaticosModal({
                 </div>
               </section>
 
-              {/* ==================== Section 3: Validación de Tiquete ==================== */}
-              {solicitud.requiereTiquetes && solicitud.validacionTiquete && (
+              {/* ==================== Section 3: Desplazamiento Aéreo y Transporte a Terminal ==================== */}
+              {solicitud.requiereTiquetes && (
                 <section className="mb-6 border-t border-slate-100 pt-4">
-                  <h3 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Validación de Tiquete (Presupuesto y Ruta)
-                  </h3>
-                  <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
-                    <TicketBudgetWidget
-                      validacion={solicitud.validacionTiquete}
-                      montoEstimadoDisplay={formatearMoneda(solicitud.costoEstimadoTiquete || 0)}
-                    />
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-bold text-slate-500 uppercase flex items-center gap-2">
+                      <Plane className="w-4 h-4 text-[#003DA5]" />
+                      Desplazamiento Aéreo y Transporte a Terminal Aérea
+                    </h3>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#003DA5] border border-blue-200">
+                      Requiere Tiquetes Aéreos
+                    </span>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/50 space-y-3">
+                    {/* Tarjeta de Transporte a Terminal Aérea Guardado */}
+                    {montoTerminalAereo > 0 || montoGastosViaje > 0 ? (
+                      <div className="p-3 bg-white rounded-lg border border-slate-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                            <Car className="w-4 h-4 text-emerald-600" />
+                            Transporte a Terminal Aérea (Aeropuerto)
+                          </span>
+                          <span className="text-xs font-extrabold text-emerald-700 font-mono">
+                            {formatearMoneda(montoTerminalAereo > 0 ? montoTerminalAereo : montoGastosViaje)}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                          Tarifa oficial parametrizada para el traslado hacia/desde la terminal aérea en las ciudades de la comisión.
+                        </p>
+                        {montoGastosViaje > montoTerminalAereo && montoTerminalAereo > 0 && (
+                          <div className="pt-2 border-t border-slate-100 flex justify-between text-[11px] text-slate-600">
+                            <span>Otros traslados terrestres / complementarios:</span>
+                            <span className="font-semibold text-slate-800">
+                              {formatearMoneda(montoGastosViaje - montoTerminalAereo)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-white rounded-lg border border-slate-200 text-xs text-slate-500 flex items-center gap-2">
+                        <Info className="w-4 h-4 text-slate-400 shrink-0" />
+                        <span>Sin saldo de transporte a terminal aérea liquidado en esta solicitud.</span>
+                      </div>
+                    )}
+
+                    {/* Estado del Costo Estimado del Tiquete */}
+                    <div className="p-3 bg-white rounded-lg border border-slate-200 flex items-center justify-between">
+                      <div>
+                        <span className="text-xs font-bold text-slate-700">Costo Estimado Tiquete Aéreo</span>
+                        <p className="text-[11px] text-slate-500">
+                          {costoEstimadoTiquete > 0
+                            ? 'Valor de referencia registrado en la solicitud'
+                            : 'Pendiente de cotización formal / emisión por la Agencia de Viajes (Tiquetería)'}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        {costoEstimadoTiquete > 0 ? (
+                          <span className="text-xs font-extrabold text-slate-800 font-mono">
+                            {formatearMoneda(costoEstimadoTiquete)}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+                            Por cotizar
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </section>
               )}
@@ -894,16 +1087,20 @@ export default function ControlViaticosModal({
                       </p>
                       <button
                         type="button"
-                        onClick={handleVerificarSegundoNivel}
-                        disabled={verificando}
+                        onClick={handleIniciarFirmaOtp}
+                        disabled={verificando || solicitandoOtp}
                         className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50 transition-colors"
                       >
-                        {verificando ? (
+                        {solicitandoOtp || verificando ? (
                           <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         ) : (
                           <CheckCircle2 className="w-4 h-4" />
                         )}
-                        {verificando ? 'Verificando...' : 'Aprobar y Verificar (2do Nivel)'}
+                        {solicitandoOtp
+                          ? 'Solicitando código OTP...'
+                          : verificando
+                          ? 'Verificando...'
+                          : 'Aprobar y Verificar (2do Nivel)'}
                       </button>
                       {verificacionExitosa && (
                         <span className="ml-4 text-xs text-emerald-600 font-semibold flex items-center gap-1">
@@ -1011,6 +1208,38 @@ export default function ControlViaticosModal({
     documentos={documentosVisor}
     onCerrar={cerrarDocumentoVisor}
   />
+
+  {/* ==================== Modal Institucional de Firma Digital con Validación OTP ==================== */}
+  {modalFirmaOtpAbierta && solicitud && (
+    <FirmaDigitalViaticosModal
+      isOpen={modalFirmaOtpAbierta}
+      solicitudId={solicitud.id}
+      consecutivo={solicitud.consecutivoUnico || (solicitud as any).codigoSolicitud || (solicitud as any).codigo || '023'}
+      comisionadoNombre={nombreCompleto || 'Comisionado'}
+      destino={`${solicitud.destinoCiudad || ''}${solicitud.destinoDepartamento ? ` (${solicitud.destinoDepartamento})` : ''}`.trim()}
+      fechas={
+        solicitud.fechaInicio && solicitud.fechaFin
+          ? `${fmtFecha(solicitud.fechaInicio)} al ${fmtFecha(solicitud.fechaFin)}`
+          : ''
+      }
+      firmanteNombre={nombreUsuarioActual}
+      firmanteCargo={cargoUsuarioActual}
+      etapaLabel="Control Viáticos — Control Cruzado (2do Nivel)"
+      correoDestino={otpData?.emailEnviadoA}
+      devCode={otpData?.devCode}
+      onVerifyCodigo={async (codigoOtp: string) => {
+        await viaticosService.verificarOtpFirma(solicitud.id, {
+          verificationId: otpData?.verificationId || '',
+          code: codigoOtp,
+          otp: codigoOtp,
+          tipoFirma: 'CONTROL_VIATICOS',
+          consume: false,
+        });
+      }}
+      onFirmaCompleta={handleFirmaDigitalCompleta}
+      onCancelar={() => setModalFirmaOtpAbierta(false)}
+    />
+  )}
 </>
   );
 }

@@ -12,7 +12,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
+import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 /**
  * Los números llegan como texto dentro del multipart —la petición trae también
@@ -83,7 +83,7 @@ export class RegistrarResultadoDto {
   /** Solo si la 6.3 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @FirmaDelMultipart()
   @ValidateNested()
   @Type(() => FirmaOtpDto)
   firma?: FirmaOtpDto;

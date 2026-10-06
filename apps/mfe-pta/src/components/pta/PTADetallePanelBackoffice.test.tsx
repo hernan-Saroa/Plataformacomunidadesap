@@ -252,10 +252,10 @@ describe('PTADetallePanelBackoffice — visibilidad de componentes ajenos (EFDS-
 
     await screen.findByText('Asignatura Meta');
     expect(screen.getByText('Asignatura Tolima')).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toContain('no le permite revisar ni aprobar');
+    expect(screen.getByRole('status').textContent).toContain('solo revisar o aprobar Docencia dentro de su alcance territorial');
   });
 
-  it('muestra actividades de investigación ajenas en consulta y bloquea la decisión', async () => {
+  it('muestra Investigación de cualquier territorial y bloquea la decisión cuando falta el permiso', async () => {
     vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce({ success: true, data: {
       allowedComponents: [], allowedReviewSubsecciones: [],
       personalTerritoriales: ['Meta'],
@@ -271,7 +271,7 @@ describe('PTADetallePanelBackoffice — visibilidad de componentes ajenos (EFDS-
     header.closest('button')!.click();
     await screen.findByText('Proyecto Meta');
     expect(screen.getByText('Proyecto Tolima')).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toContain('territorial asignada');
+    expect(screen.queryByRole('status')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Aprobar' })).toBeNull();
   });
 
@@ -391,6 +391,26 @@ describe('sincronización del detalle abierto', () => {
 });
 
 describe('autorización vigente del servidor', () => {
+  it.each([false, true])('la advertencia territorial solo corresponde a Docencia, aun con actividades ajenas en todos los demás componentes: %s', async conDocencia => {
+    vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce({ success: true, data: {
+      allowedComponents: ['investigacion'], allowedReviewSubsecciones: [], personalTerritoriales: ['Meta'],
+      territorial: { aprobar: { pairs: [], reason: null }, revisar: { pairs: [], reason: null } },
+    } });
+    const pta = basePta({
+      asignaturas: conDocencia ? [{ nombre: 'Docencia Caldas', territorial_id: 'Caldas', total_horas: 100 }] : [],
+      investigacion_proyecto: { nombre: 'Proyecto Caldas', territorial_id: 'Caldas', horas_solicitadas: 100 },
+      investigacion_actividades: [{ nombre: 'Actividad Tolima', territorial_id: 'Tolima', horas_total: 32 }],
+      extension_actividades: [{ nombre: 'Extensión Tolima', territorial_id: 'Tolima', seccion: 'capacitacion', horas: 10 }],
+      complementarias: [{ nombre: 'Complementaria Caldas', territorial_id: 'Caldas', horas: 10 }],
+    });
+    render(<PTADetallePanelBackoffice {...baseProps({ pta })} />);
+    fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+    await waitFor(() => expect(getPTADecisionPermissions).toHaveBeenCalled());
+    await screen.findByRole('button', { name: /^Componente Investigación/ });
+    await waitFor(() => expect(Boolean(screen.queryByText(/solo revisar o aprobar Docencia dentro de su alcance territorial/))).toBe(conDocencia));
+    expect(screen.queryByText(/La actividad requiere.*alcance territorial/)).toBeNull();
+  });
+
   const sinPermisos = { success: true, data: {
     allowedComponents: [], allowedReviewSubsecciones: [],
     territorial: { aprobar: { pairs: [], reason: null }, revisar: { pairs: [], reason: null } },
@@ -653,8 +673,8 @@ describe('PTADetallePanelBackoffice — ámbitos de Complementarias', () => {
     expect(screen.getByRole('button', { name: 'Revisar' })).toBeTruthy();
   });
 
-  it('muestra el motivo territorial sin habilitar revisión ni aprobación', async () => {
-    const reason = 'No se puede verificar la territorial de todas las actividades de complementarias_gestion_profesoral.';
+  it('muestra el rechazo por permiso sin habilitar revisión ni aprobación', async () => {
+    const reason = 'No tiene el permiso de revisión de Complementarias de Gestión Profesoral.';
     vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce({ success: true, data: {
       allowedComponents: [], allowedReviewSubsecciones: [],
       componentReasons: { complementarias_gestion_profesoral: { revisar: reason } },

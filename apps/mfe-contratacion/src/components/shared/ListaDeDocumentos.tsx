@@ -2,10 +2,14 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   ClipboardCheck,
   Download,
   Eye,
   FileText,
+  History,
+  Info,
+  MessageSquareWarning,
   Paperclip,
   Plus,
   RefreshCw,
@@ -18,6 +22,8 @@ import {
   DocumentoCargado,
   DocumentoDeLaActividad,
   EstadoDocumentosActividad,
+  SoporteDelRevisor,
+  VersionSustituida,
 } from '../../types';
 import { DocumentoVisible, VisorDocumento } from './VisorDocumento';
 import { useSoloLectura } from './SoloLectura';
@@ -64,8 +70,14 @@ const boton =
  * radicación de la 3.1, los documentos de la 5.1 y cualquier otra actividad
  * sin escribir nada por actividad.
  *
- * Debajo va lo que la actividad dejó en el expediente sin pasar por la lista:
- * anexos que ninguna fila previó y las copias que genera el propio proceso.
+ * Debajo van los anexos que ninguna fila previó. Lo que adjuntó quien
+ * devolvió la actividad va aparte y arriba: son sus observaciones, no
+ * documentos del gestor, y es lo primero que hay que leer para corregir.
+ * Cada fila guarda además las versiones que se sustituyeron.
+ *
+ * La copia del formulario que la 3.1 sella al enviarse no va aquí: no es un
+ * archivo —no se abre ni se descarga— y en la lista se leía como un documento
+ * vacío. Su sitio es el expediente, que la muestra con su hash.
  */
 export function ListaDeDocumentos({
   procesoId,
@@ -88,34 +100,11 @@ export function ListaDeDocumentos({
    */
   const soloLectura = useSoloLectura();
 
-  /**
-   * Lo que llegó al expediente por otra vía: la copia del formulario al
-   * enviarlo, lo que sube el panel propio de la actividad. No son adjuntos del
-   * gestor, así que se listan pero no se retiran desde aquí.
-   */
-  const [delExpediente, setDelExpediente] = useState<DocumentoCargado[]>([]);
-
   const leer = useCallback(
     () =>
-      Promise.all([
-        contratacionService.documentosDeActividad(procesoId, numeral),
-        contratacionService.obtenerExpediente(procesoId).catch(() => null),
-      ])
-        .then(([documentos, expediente]) => {
-          setEstado(documentos);
-          setDelExpediente(
-            ((expediente as any)?.documentos ?? [])
-              .filter((d: any) => d.numeral === numeral && d.tipo !== 'ADJUNTO')
-              .map((d: any) => ({
-                id: d.id,
-                nombre: d.nombre,
-                descargaUrl: d.descargaUrl ?? null,
-                mimeType: d.mimeType ?? null,
-                subidoPor: d.subidoPor ?? null,
-                cargadoAt: d.createdAt,
-              })),
-          );
-        })
+      contratacionService
+        .documentosDeActividad(procesoId, numeral)
+        .then(setEstado)
         // Silencioso: un fallo al listarlos no debe tapar la actividad que el
         // gestor está trabajando.
         .catch(() => setEstado(null)),
@@ -218,18 +207,24 @@ export function ListaDeDocumentos({
   // Sin nada que pedir ni nada cargado la lista no se pinta: la mayoría de
   // las actividades no piden documentos, y un marco vacío se leería como
   // algo pendiente.
+  const delRevisor = estado?.soportesDelRevisor ?? [];
+  const deOtraModalidad = estado?.deOtraModalidad ?? [];
   if (
     !estado ||
     (estado.documentos.length === 0 &&
       estado.adicionales.length === 0 &&
-      delExpediente.length === 0)
+      delRevisor.length === 0 &&
+      deOtraModalidad.length === 0)
   ) {
     return null;
   }
 
   const motivo = soloLectura || bloqueo;
   const puedeTocar = estado.puedeCargar && !motivo;
-  const obligatorios = estado.documentos.filter((d) => d.obligatorio);
+  /** Los de consulta van aparte: no se cargan ni cuentan como pendientes. */
+  const aEntregar = estado.documentos.filter((d) => !d.informativo);
+  const deConsulta = estado.documentos.filter((d) => d.informativo);
+  const obligatorios = aEntregar.filter((d) => d.obligatorio);
   const faltan = estado.faltantes.length;
   /** Alguna fila sale de la lectura del procedimiento y no del formato oficial. */
   const haySupuestos = estado.documentos.some((d) => !d.confirmado);
@@ -263,7 +258,13 @@ export function ListaDeDocumentos({
         )}
       </div>
 
-      {estado.documentos.map((doc) => (
+      {delRevisor.length > 0 && (
+        <ObservacionesDelRevisor soportes={delRevisor} onVer={setViendo} />
+      )}
+
+      {deConsulta.length > 0 && <DocumentosDeConsulta documentos={deConsulta} />}
+
+      {aEntregar.map((doc) => (
         <FilaDocumento
           key={doc.codigo}
           documento={doc}
@@ -277,7 +278,7 @@ export function ListaDeDocumentos({
         />
       ))}
 
-      {(estado.adicionales.length > 0 || delExpediente.length > 0) && (
+      {estado.adicionales.length > 0 && (
         <div className="space-y-1.5 pt-1">
           <p className="text-[11px] font-bold text-slate-500 m-0">Otros documentos adjuntos</p>
           {estado.adicionales.map((doc) => (
@@ -290,10 +291,24 @@ export function ListaDeDocumentos({
               onVer={setViendo}
             />
           ))}
-          {delExpediente.map((doc) => (
+        </div>
+      )}
+
+      {/* Lo que se cargó para la modalidad anterior. No cuenta ni se retira
+          desde aquí: si se vuelve a esa modalidad reaparece en su fila, y
+          mientras tanto el área ve qué quedó por fuera de la lista nueva. */}
+      {deOtraModalidad.length > 0 && (
+        <div className="space-y-1.5 pt-1">
+          <p className="text-[11px] font-bold text-slate-500 m-0">De la modalidad anterior</p>
+          <p className="text-[10.5px] text-slate-500 m-0 leading-relaxed">
+            La lista de esta modalidad no los pide, así que no cuentan para enviar. Se conservan por
+            si se vuelve a la modalidad anterior.
+          </p>
+          {deOtraModalidad.map((doc) => (
             <FilaAdicional
               key={doc.id}
               documento={doc}
+              requisito={doc.requisito}
               ocupada={false}
               puedeRetirar={false}
               onRetirar={() => undefined}
@@ -347,6 +362,46 @@ export function ListaDeDocumentos({
 
       <VisorDocumento documento={viendo} onClose={() => setViendo(null)} />
     </section>
+  );
+}
+
+/**
+ * Lo que la actividad ofrece para leer: guías, circulares, modelos.
+ *
+ * Va antes de lo que se entrega porque suele ser lo que explica cómo
+ * hacerlo, y sin estado ni botón de carga: no hay nada que resolver aquí.
+ */
+function DocumentosDeConsulta({ documentos }: { documentos: DocumentoDeLaActividad[] }) {
+  return (
+    <div className="rounded-lg border border-sky-200 bg-sky-50 px-3.5 py-3 space-y-2">
+      <p className="text-[11px] font-bold text-sky-900 m-0 flex items-center gap-1.5">
+        <Info className="w-3.5 h-3.5" aria-hidden="true" />
+        Para consultar
+      </p>
+      {documentos.map((doc) => (
+        <div key={doc.codigo} className="min-w-0">
+          <p className="text-[12.5px] font-bold text-slate-800 m-0 leading-snug">{doc.nombre}</p>
+          {doc.descripcion && (
+            <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed">{doc.descripcion}</p>
+          )}
+          {doc.plantilla?.descargaUrl ? (
+            <a
+              href={contratacionService.urlDescarga(doc.plantilla.descargaUrl)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 mt-1 text-[11px] font-bold text-[#003DA5] hover:underline"
+            >
+              <Download className="w-3 h-3" aria-hidden="true" />
+              Descargar ({doc.plantilla.codigo}, versión {doc.plantilla.version})
+            </a>
+          ) : (
+            <p className="text-[11px] text-amber-700 m-0 mt-1">
+              El archivo aún no está disponible. Contratación debe subirlo a la biblioteca.
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -512,6 +567,10 @@ function FilaDocumento({
         }}
       />
 
+      {documento.anteriores && documento.anteriores.length > 0 && (
+        <HistorialDeVersiones versiones={documento.anteriores} onVer={onVer} />
+      )}
+
       {/* Sin permiso no se pinta ningún botón: ofrecerle «Cargar» a quien solo
           aprueba sería ofrecerle algo que el servicio va a rechazarle. */}
       {puedeTocar ? (
@@ -550,12 +609,15 @@ function FilaDocumento({
 /** Un adjunto que ninguna fila de la lista pedía. */
 function FilaAdicional({
   documento,
+  requisito,
   ocupada,
   puedeRetirar,
   onRetirar,
   onVer,
 }: {
   documento: DocumentoCargado;
+  /** El requisito que cubría, cuando es de otra modalidad. */
+  requisito?: string;
   ocupada: boolean;
   puedeRetirar: boolean;
   onRetirar: () => void;
@@ -566,6 +628,9 @@ function FilaAdicional({
       <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
 
       <div className="min-w-0 flex-1">
+        {requisito && (
+          <p className="text-[10.5px] font-bold text-slate-500 m-0 truncate">{requisito}</p>
+        )}
         <p className="text-[11.5px] font-semibold text-slate-800 m-0 truncate">{documento.nombre}</p>
         <p className="text-[10.5px] text-slate-500 m-0 tabular-nums">
           {new Date(documento.cargadoAt).toLocaleDateString('es-CO')}
@@ -612,6 +677,168 @@ function FilaAdicional({
         >
           <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
         </button>
+      )}
+    </div>
+  );
+}
+
+const dia = (iso: string) => new Date(iso).toLocaleDateString('es-CO');
+
+/** Ver y descargar, los dos iconos que acompañan a cualquier archivo. */
+function AccionesArchivo({
+  nombre,
+  descargaUrl,
+  mimeType,
+  detalle,
+  onVer,
+  tono = 'text-[#003DA5] hover:bg-slate-50',
+}: {
+  nombre: string;
+  descargaUrl: string | null;
+  mimeType?: string | null;
+  detalle?: string;
+  onVer: (documento: DocumentoVisible) => void;
+  tono?: string;
+}) {
+  if (!descargaUrl) return null;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => onVer({ nombre, descargaUrl, detalle, mimeType: mimeType ?? null })}
+        title={`Ver ${nombre}`}
+        className={`shrink-0 p-1 rounded-md ${tono}`}
+      >
+        <Eye className="w-3.5 h-3.5" aria-hidden="true" />
+      </button>
+      <a
+        href={contratacionService.urlDescarga(descargaUrl)}
+        target="_blank"
+        rel="noreferrer"
+        title={`Descargar ${nombre}`}
+        className={`shrink-0 p-1 rounded-md ${tono}`}
+      >
+        <Download className="w-3.5 h-3.5" aria-hidden="true" />
+      </a>
+    </>
+  );
+}
+
+/**
+ * Lo que adjuntó quien devolvió la actividad.
+ *
+ * Con su propio marco y su propio color: en «Otros documentos adjuntos» se
+ * leían como un anexo más del gestor, y quien corregía no sabía que ahí
+ * estaban las correcciones marcadas. No se retiran: son del revisor.
+ */
+function ObservacionesDelRevisor({
+  soportes,
+  onVer,
+}: {
+  soportes: SoporteDelRevisor[];
+  onVer: (documento: DocumentoVisible) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Observaciones del revisor"
+      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-1.5"
+    >
+      <p className="text-[11px] font-bold text-amber-800 m-0 flex items-center gap-1.5">
+        <MessageSquareWarning className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+        Observaciones del revisor
+      </p>
+      {soportes.map((s) => (
+        <div
+          key={s.id}
+          className="flex items-center gap-2.5 rounded-md border border-amber-200 bg-white px-3 py-2"
+        >
+          <FileText className="w-3.5 h-3.5 text-amber-600 shrink-0" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[11.5px] font-semibold text-slate-800 m-0 truncate" title={s.nombre}>
+              {s.nombre}
+            </p>
+            <p className="text-[10.5px] text-amber-800 m-0 tabular-nums">
+              Devolución de {s.revisadoPor} · {dia(s.devueltaAt)}
+            </p>
+          </div>
+          <AccionesArchivo
+            nombre={s.nombre}
+            descargaUrl={s.descargaUrl}
+            mimeType={s.mimeType}
+            detalle={`Observaciones de ${s.revisadoPor}`}
+            onVer={onVer}
+            tono="text-amber-700 hover:bg-amber-100"
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Las versiones que se sustituyeron de un documento, plegadas.
+ *
+ * Sustituir nunca borró nada —el expediente conserva la anterior—, pero desde
+ * la lista no había forma de verla: quien revisaba una corrección no podía
+ * comparar con lo que había devuelto.
+ */
+function HistorialDeVersiones({
+  versiones,
+  onVer,
+}: {
+  versiones: VersionSustituida[];
+  onVer: (documento: DocumentoVisible) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const n = versiones.length;
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        onClick={() => setAbierto((a) => !a)}
+        aria-expanded={abierto}
+        className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-[#003DA5]"
+      >
+        <History className="w-3.5 h-3.5" aria-hidden="true" />
+        Historial · {n === 1 ? '1 versión anterior' : `${n} versiones anteriores`}
+        <ChevronDown
+          className={`w-3.5 h-3.5 transition-transform ${abierto ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
+      </button>
+      {abierto && (
+        <ol className="list-none m-0 mt-1.5 p-0 space-y-1">
+          {versiones.map((v) => (
+            <li
+              key={v.id}
+              className="flex items-center gap-2.5 rounded-md border border-slate-200 bg-white px-3 py-1.5"
+            >
+              <FileText className="w-3.5 h-3.5 text-slate-300 shrink-0" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <p
+                  className="text-[11.5px] text-slate-500 m-0 truncate line-through decoration-slate-300"
+                  title={v.nombre}
+                >
+                  {v.nombre}
+                </p>
+                <p className="text-[10.5px] text-slate-400 m-0 tabular-nums">
+                  Cargada {dia(v.cargadoAt)}
+                  {v.subidoPor ? ` por ${v.subidoPor}` : ''} · sustituida {dia(v.sustituidoAt)}
+                  {v.sustituidoPor ? ` por ${v.sustituidoPor}` : ''}
+                </p>
+              </div>
+              <AccionesArchivo
+                nombre={v.nombre}
+                descargaUrl={v.descargaUrl}
+                mimeType={v.mimeType}
+                detalle={`Versión sustituida el ${dia(v.sustituidoAt)}`}
+                onVer={onVer}
+                tono="text-slate-500 hover:bg-slate-50"
+              />
+            </li>
+          ))}
+        </ol>
       )}
     </div>
   );

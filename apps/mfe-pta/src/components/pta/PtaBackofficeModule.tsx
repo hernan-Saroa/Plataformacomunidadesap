@@ -3830,7 +3830,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               <div>
                 <span style={{ fontWeight: 700 }}>Alcance de revisión y aprobación</span>
                 <div style={{ fontSize: '0.72rem', color: '#B45309', marginTop: 2 }}>
-                  Territorial asignada: <strong>{decisionListScope?.territoriales?.join(', ')}</strong>. Puede consultar las demás actividades, pero solo revisar o aprobar las que correspondan a su territorial y permisos.
+                  Territorial asignada para Docencia: <strong>{decisionListScope?.territoriales?.join(', ')}</strong>. La revisión y aprobación de Docencia respetan su alcance territorial. Investigación, Extensión y Complementarias dependen de sus permisos, sin restricción territorial.
                 </div>
               </div>
             </motion.div>
@@ -6060,7 +6060,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                     Aprobar {group.label}
                   </h3>
                   <p style={{ fontSize: '0.82rem', color: '#6B7280', margin: '4px 0 0' }}>
-                    Se aprobará este componente en los {selectedApprovalIds.length} PTA{selectedApprovalIds.length > 1 ? 's' : ''} seleccionado{selectedApprovalIds.length > 1 ? 's' : ''} que lo tengan pendiente. Los que no apliquen o ya estén aprobados se omiten; los que no cumplan un requisito (revisión pendiente, alcance territorial, otro componente devuelto) se reportan sin afectar al resto.
+                    Se aprobará este componente en los {selectedApprovalIds.length} PTA{selectedApprovalIds.length > 1 ? 's' : ''} seleccionado{selectedApprovalIds.length > 1 ? 's' : ''} que lo tengan pendiente. Los que no apliquen o ya estén aprobados se omiten; los que no cumplan un requisito (revisión pendiente, alcance territorial de Docencia, otro componente devuelto) se reportan sin afectar al resto.
                   </p>
                 </div>
                 <div style={{ padding: '16px 24px' }}>

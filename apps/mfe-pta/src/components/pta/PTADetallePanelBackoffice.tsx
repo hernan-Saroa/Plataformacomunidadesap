@@ -1457,10 +1457,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const complementarias = { actividades: [..._compSplit.docencia, ..._compSplit.aadm] };
   const hayActividadesFueraDeAlcance = Boolean(decisionPermissions && territorialesPersona?.length && (
     asignaturas.some(actividadFueraDeTerritorial)
-    || investigacion.proyectos.some(actividadFueraDeTerritorial)
-    || investigacion.actividades.some(actividadFueraDeTerritorial)
-    || extActsRaw.some(actividadFueraDeTerritorial)
-    || complementarias.actividades.some(actividadFueraDeTerritorial)
   ));
   const tieneTotalidadAcadAdmin = _compSplit.aadm.some((a: any) => a?.consumeTotalidad === true);
   const programaResumen = pta.programa_academico || pta.programa || pta.programa_nombre || pta.programaAcademico;
@@ -2551,7 +2547,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       <span>{!decisionPermissions
                         ? 'No fue posible verificar tus permisos de revisión. Intenta actualizar el detalle.'
                         : decisionPermissions.componentReasons?.[key]?.revisar
-                          || `No tienes autorización para revisar ${subLabel} de ${labelDeComponente(key)}. La actividad requiere el permiso de revisión correspondiente y un alcance territorial compatible.`}</span>
+                          || `No tienes autorización para revisar ${subLabel} de ${labelDeComponente(key)}. Se requiere el permiso de revisión correspondiente${key.startsWith('academica_') ? ' y un alcance territorial compatible' : ''}.`}</span>
                     </div>
                   )}
                   {r.estado === 'devuelto' && puedeRevisarEsta && (
@@ -3910,7 +3906,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               {hayActividadesFueraDeAlcance && (
                 <div role="status" style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 10,
                   background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF', fontSize: '0.78rem' }}>
-                  Puede consultar estas actividades, pero su territorial asignada no le permite revisar ni aprobar las de otras territoriales.
+                  Puede consultar las asignaturas, pero solo revisar o aprobar Docencia dentro de su alcance territorial. Investigación, Extensión y Complementarias dependen de sus permisos, sin restricción territorial.
                 </div>
               )}
               {/* Header + traza de aprobación granular (antes tab "Aprobación") */}

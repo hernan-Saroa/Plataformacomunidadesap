@@ -161,5 +161,47 @@ describe('AprobacionPorComponente — Gestor de Firmas', () => {
 
     // Debe mostrar la fecha en formato amigable
     expect(screen.getAllByText('01 de oct de 2026').length).toBeGreaterThanOrEqual(1);
+
+    // En estado normal: NO requiere ni muestra el tramo de Dirección Nacional
+    expect(screen.queryByText('AUTORIZACIÓN DIRECCIÓN')).toBeNull();
+    // En estado normal: Muestra directamente el tramo de Subdirección
+    expect(screen.getByText('AUTORIZACIÓN CORPORATIVA')).toBeDefined();
+  });
+
+  it('en comisión EXTEMPORÁNEA: muestra primero tramo de Dirección Nacional y luego Subdirección', () => {
+    const solicitudExtemporanea: SolicitudViatico = {
+      ...baseSolicitud,
+      estado: 'AUTORIZADA',
+      extemporanea: true,
+    };
+
+    render(
+      <AprobacionPorComponente
+        solicitud={solicitudExtemporanea}
+        solicitudCompleta={{
+          ...solicitudExtemporanea,
+          consecutivoUnico: 'VIAT-2026-EXT-001',
+          extemporanea: true,
+          fechaAutorizacionDireccion: '2026-10-02T10:00:00Z',
+          justificacionDireccion: 'Se autoriza por agenda institucional prioritaria',
+          autorizadorDireccionNombre: 'Dr. Jorge Vargas Muñoz',
+          fechaAutorizacion: '2026-10-02T14:00:00Z',
+          autorizadorNombre: 'Dra. Patricia Silva',
+          observacionesAutorizacion: 'Visto bueno corporativo expedido',
+        }}
+      />,
+    );
+
+    // Debe mostrar ambos tramos en el flujo
+    expect(screen.getByText('AUTORIZACIÓN DIRECCIÓN')).toBeDefined();
+    expect(screen.getByText('Dirección Nacional (Aval Extemporáneo)')).toBeDefined();
+    expect(screen.getByText('Dr. Jorge Vargas Muñoz')).toBeDefined();
+
+    expect(screen.getByText('AUTORIZACIÓN CORPORATIVA')).toBeDefined();
+    expect(screen.getByText('Subdirección de Gestión Corporativa (Ordenador del Gasto)')).toBeDefined();
+    expect(screen.getByText('Dra. Patricia Silva')).toBeDefined();
+
+    // Debe renderizar la justificación / observación de Dirección Nacional
+    expect(screen.getByText('"Se autoriza por agenda institucional prioritaria"')).toBeDefined();
   });
 });

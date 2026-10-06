@@ -81,18 +81,18 @@ export const COMPLEMENTARIAS_COMPONENT_KEYS: PTAComponentKey[] = [
  * por actividad en Configuración PTA (campo `tipo_aprobacion`):
  *
  *   'gestion_profesoral' (default): flujo único, NO se ramifica por territorial.
- *   'decanatura':                   se abre una aprobación por cada territorial
- *                                   presente en la complementaria; el componente
- *                                   consolida solo cuando todas aprueban.
+ *   'decanatura':                   usa Complementarias Territorial con permisos
+ *                                   por nivel y una decisión para todo el componente,
+ *                                   sin restricción geográfica del responsable.
  *
- * Igual que en Docencia, la territorialidad MANDA sobre el nivel: una actividad
- * marcada como Decanatura va a `complementarias_territorial` aunque tenga
- * nivel_programa pregrado/posgrado (el nivel se conserva como dimensión dentro
- * de la aprobación territorial, ver PtaTerritorialApproval).
+ * Una actividad marcada como Decanatura y con territorial registrada va a
+ * `complementarias_territorial` aunque tenga
+ * nivel_programa pregrado/posgrado. El nivel determina el permiso requerido;
+ * la territorial de la actividad no limita quién puede decidir.
  */
 export type PTATipoAprobacionComplementaria = 'gestion_profesoral' | 'decanatura';
 
-/** Componentes cuya aprobación/revisión se desagrega por territorial. */
+/** Componentes con permisos por nivel; solo Docencia se decide por territorial. */
 export const TERRITORIAL_COMPONENT_KEYS: PTAComponentKey[] = [
   'academica_territorial',
   'complementarias_territorial',

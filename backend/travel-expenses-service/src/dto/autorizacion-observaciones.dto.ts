@@ -19,4 +19,40 @@ export class AutorizacionObservacionesDto {
   @IsString()
   @Length(0, 2000)
   observaciones?: string;
+
+  @ApiPropertyOptional({
+    description: 'Código OTP de 6 dígitos para validación de la firma digital de Subdirección.',
+    example: '123456',
+  })
+  @IsOptional()
+  @IsString()
+  otp?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador de verificación emitido en solicitarOtpFirma.',
+  })
+  @IsOptional()
+  @IsString()
+  verificationId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador del certificado digital generado para la firma.',
+  })
+  @IsOptional()
+  @IsString()
+  certificadoId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hash criptográfico SHA-256 de la firma digital de Subdirección.',
+  })
+  @IsOptional()
+  @IsString()
+  hashSha256?: string;
+
+  @ApiPropertyOptional({
+    description: 'Estampa gráfica o sello de la firma digital de Subdirección.',
+  })
+  @IsOptional()
+  @IsString()
+  firmaImagen?: string;
 }

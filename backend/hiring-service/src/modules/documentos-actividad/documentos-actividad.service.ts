@@ -46,6 +46,11 @@ export interface DocumentoDeLaActividad {
   descripcion: string | null;
   obligatorio: boolean;
   /**
+   * Solo de consulta: se descarga su plantilla y no se carga nada (095). La
+   * pantalla no le abre espacio de carga ni lo cuenta como pendiente.
+   */
+  informativo: boolean;
+  /**
    * Si el requisito es cita del formato oficial o lectura del equipo. Viaja
    * hasta la pantalla a propósito: a quien se le exige un documento le
    * corresponde saber de dónde sale la exigencia.
@@ -73,6 +78,43 @@ export interface DocumentoDeLaActividad {
     subidoPor: string | null;
     cargadoAt: string;
   } | null;
+  /**
+   * Las versiones que se sustituyeron, de la más reciente a la más vieja.
+   *
+   * Sustituir anula la entrega y no la borra: el expediente conserva la
+   * anterior. Aquí se enseña para que quien revisa vea qué cambió entre una
+   * vuelta y otra sin ir a buscarla al expediente.
+   */
+  anteriores: VersionSustituida[];
+}
+
+/** Una entrega que se reemplazó por otra. */
+export interface VersionSustituida {
+  id: string;
+  documentoId: string;
+  nombre: string;
+  descargaUrl: string | null;
+  mimeType: string | null;
+  subidoPor: string | null;
+  cargadoAt: string;
+  sustituidoAt: string;
+  sustituidoPor: string | null;
+}
+
+/**
+ * Un archivo que adjuntó quien devolvió la actividad (migraciones 091 y 093).
+ *
+ * Vive en el expediente como cualquier adjunto, pero no es del gestor: son las
+ * observaciones del revisor. Por eso la lista lo enseña aparte, con quién lo
+ * devolvió y cuándo, y no deja retirarlo.
+ */
+export interface SoporteDelRevisor {
+  id: string;
+  nombre: string;
+  descargaUrl: string | null;
+  mimeType: string | null;
+  revisadoPor: string;
+  devueltaAt: string;
 }
 
 /**
@@ -201,7 +243,10 @@ export class DocumentosActividadService {
     const tipologia = await this.tipologiaDe(em, procesoId);
 
     const requeridos = await this.requeridosDe(procesoId, numeral, em);
-    const vigentes = await this.vigentesDe(em, procesoId, numeral);
+    const entregas = await em
+      .getRepository(DocumentoProceso)
+      .find({ where: { procesoId, numeral }, order: { createdAt: 'DESC' } });
+    const vigentes = entregas.filter((e) => !e.anuladoAt);
     const plantillas = await this.plantillasVigentes(
       em,
       requeridos.map((r) => r.plantillaCodigo).filter((c): c is string => !!c),
@@ -220,6 +265,9 @@ export class DocumentosActividadService {
       requeridos.map(async (req) => {
         const entregado = vigentes.find((v) => v.codigo === req.codigo);
         const archivo = entregado ? porId.get(entregado.documentoId) : undefined;
+        const sustituidas = entregas
+          .filter((e) => e.codigo === req.codigo && e.anuladoAt)
+          .sort((a, b) => b.anuladoAt!.getTime() - a.anuladoAt!.getTime());
         const plantilla = req.plantillaCodigo ? plantillas.get(req.plantillaCodigo) : undefined;
 
         return {
@@ -228,6 +276,7 @@ export class DocumentosActividadService {
           nombre: req.nombre,
           descripcion: req.descripcion ?? null,
           obligatorio: req.obligatorio,
+          informativo: req.informativo,
           confirmado: req.confirmado,
           estado: entregado ? 'CARGADO' : 'PENDIENTE',
           plantilla: plantilla
@@ -254,9 +303,30 @@ export class DocumentosActividadService {
                 cargadoAt: entregado.createdAt.toISOString(),
               }
             : null,
+          anteriores: sustituidas.map((e) => {
+            const previo = porId.get(e.documentoId);
+            return {
+              id: e.id,
+              documentoId: e.documentoId,
+              nombre: previo?.archivoNombreOriginal ?? previo?.nombre ?? '',
+              descargaUrl: this.rutaDescarga(previo?.archivoUrl),
+              mimeType: previo?.archivoMimeType ?? null,
+              subidoPor: e.cargadoPor ?? null,
+              cargadoAt: e.createdAt.toISOString(),
+              sustituidoAt: e.anuladoAt!.toISOString(),
+              sustituidoPor: e.anuladoPor ?? null,
+            };
+          }),
         };
       }),
     );
+
+    /*
+     * Lo que adjuntó quien devolvió: son sus observaciones, no anexos del
+     * gestor. Se separan para que no se confundan con lo que el área cargó.
+     */
+    const soportesDelRevisor = await this.soportesDelRevisor(em, procesoId, numeral, porId);
+    const deRevisor = new Set(soportesDelRevisor.map((s) => s.id));
 
     /*
      * Lo que se subió sin requisito detrás.
@@ -265,13 +335,9 @@ export class DocumentosActividadService {
      * sustituido: un memorando anulado no pasa a ser un anexo más, sigue
      * siendo la versión anterior del memorando.
      */
-    const conRequisito = new Set(
-      (
-        await em.getRepository(DocumentoProceso).find({ where: { procesoId, numeral } })
-      ).map((d) => d.documentoId),
-    );
+    const conRequisito = new Set(entregas.map((d) => d.documentoId));
     const adicionales = archivos
-      .filter((d) => !conRequisito.has(d.id))
+      .filter((d) => !conRequisito.has(d.id) && !deRevisor.has(d.id))
       .map((d) => ({
         id: d.id,
         nombre: d.archivoNombreOriginal ?? d.nombre,
@@ -280,6 +346,39 @@ export class DocumentosActividadService {
         subidoPor: d.subidoPor ?? null,
         cargadoAt: d.createdAt.toISOString(),
       }));
+
+    /*
+     * Lo entregado para requisitos que este proceso ya no pide.
+     *
+     * Pasa cuando el área cambia la modalidad en la 3.1 y la lista nueva no
+     * trae lo que cargó para la anterior. No cuenta ni se exige, pero tampoco
+     * desaparece: si se vuelve a la modalidad de antes reaparece en su fila, y
+     * mientras tanto el área ve qué quedó por fuera.
+     */
+    const pedidos = new Set(requeridos.map((r) => r.codigo));
+    const sobrantes = vigentes.filter((v) => !pedidos.has(v.codigo));
+    const nombreDe = new Map(
+      sobrantes.length === 0
+        ? []
+        : (
+            await em.getRepository(DocumentoRequerido).find({
+              where: { numeral, codigo: In(sobrantes.map((v) => v.codigo)) },
+            })
+          ).map((r) => [r.codigo, r.nombre]),
+    );
+    const deOtraModalidad = sobrantes.map((v) => {
+      const archivo = porId.get(v.documentoId);
+      return {
+        id: v.id,
+        documentoId: v.documentoId,
+        requisito: nombreDe.get(v.codigo) ?? v.codigo,
+        nombre: archivo?.archivoNombreOriginal ?? archivo?.nombre ?? '',
+        descargaUrl: this.rutaDescarga(archivo?.archivoUrl),
+        mimeType: archivo?.archivoMimeType ?? null,
+        subidoPor: v.cargadoPor ?? null,
+        cargadoAt: v.createdAt.toISOString(),
+      };
+    });
 
     const faltantes = obligatoriosPendientes(
       documentos,
@@ -292,6 +391,8 @@ export class DocumentosActividadService {
       tipologia,
       documentos,
       adicionales,
+      soportesDelRevisor,
+      deOtraModalidad,
       faltantes: faltantes.map((f) => ({ codigo: f.codigo, nombre: f.nombre })),
       /** Si no falta ningún obligatorio. */
       completo: faltantes.length === 0,
@@ -342,6 +443,11 @@ export class DocumentosActividadService {
         if (!requisito) {
           throw new BadRequestException(
             `El documento "${codigo}" no está entre los que la actividad ${numeral} pide a este proceso`,
+          );
+        }
+        if (requisito.informativo) {
+          throw new BadRequestException(
+            `${requisito.nombre} es solo de consulta: se descarga, no se carga`,
           );
         }
 
@@ -483,6 +589,17 @@ export class DocumentosActividadService {
         );
       }
 
+      const deUnaDevolucion = await em
+        .getRepository(Revision)
+        .createQueryBuilder('r')
+        .where(':id = ANY(r.soportes_documento_ids)', { id: documento.id })
+        .getCount();
+      if (deUnaDevolucion) {
+        throw new ConflictException(
+          'Son las observaciones de quien devolvió la actividad: no se retiran del expediente',
+        );
+      }
+
       await this.guardias
         .get(documento.numeral)
         ?.antesDeCambiar?.(em, procesoId, 'anular', acceso);
@@ -499,6 +616,40 @@ export class DocumentosActividadService {
   }
 
   // ------------------------------------------------------------ auxiliares --
+
+  /** Los soportes de las devoluciones de la actividad, de la más nueva a la más vieja. */
+  private async soportesDelRevisor(
+    em: EntityManager,
+    procesoId: string,
+    numeral: string,
+    porId: Map<string, Documento>,
+  ): Promise<SoporteDelRevisor[]> {
+    const actividad = await em
+      .getRepository(ProcesoActividad)
+      .findOne({ where: { procesoId, numeral } });
+    if (!actividad) return [];
+
+    const revisiones = await em.getRepository(Revision).find({
+      where: { procesoActividadId: actividad.id },
+      order: { createdAt: 'DESC' },
+    });
+    return revisiones.flatMap((r) =>
+      (r.soportesDocumentoIds ?? []).flatMap((id) => {
+        const d = porId.get(id);
+        if (!d) return [];
+        return [
+          {
+            id: d.id,
+            nombre: d.archivoNombreOriginal ?? d.nombre,
+            descargaUrl: this.rutaDescarga(d.archivoUrl),
+            mimeType: d.archivoMimeType ?? null,
+            revisadoPor: r.revisadoPor,
+            devueltaAt: r.createdAt.toISOString(),
+          },
+        ];
+      }),
+    );
+  }
 
   /** Lo entregado y vigente; lo sustituido queda fuera por `anuladoAt`. */
   private vigentesDe(em: EntityManager, procesoId: string, numeral: string) {
@@ -588,9 +739,12 @@ export class DocumentosActividadService {
         .findOne({ where: { procesoId, numeral } });
       if (!actividad) throw new NotFoundException(`La actividad ${numeral} no existe en este proceso`);
 
+      // Bloqueada: quien adjunta varios soportes seguidos no debe perder
+      // ninguno porque dos cargas leyeron la misma lista a la vez.
       const ultima = await m.getRepository(Revision).findOne({
         where: { procesoActividadId: actividad.id },
         order: { createdAt: 'DESC' },
+        lock: { mode: 'pessimistic_write' },
       });
       const esSuya =
         !!ultima &&
@@ -601,9 +755,6 @@ export class DocumentosActividadService {
         throw new ConflictException(
           'El soporte lo adjunta quien devolvió la actividad, sobre su última devolución',
         );
-      }
-      if (ultima.soporteDocumentoId) {
-        throw new ConflictException('Esta devolución ya tiene su soporte');
       }
       // El estudio previo devuelto vuelve a borrador; lo demás queda DEVUELTO.
       if (actividad.estado !== 'DEVUELTO' && actividad.estado !== 'BORRADOR') {
@@ -630,7 +781,8 @@ export class DocumentosActividadService {
         } as Partial<Documento>),
       );
 
-      ultima.soporteDocumentoId = documento.id;
+      // Se suma a los que ya tuviera: una devolución puede llevar varios.
+      ultima.soportesDocumentoIds = [...(ultima.soportesDocumentoIds ?? []), documento.id];
       await m.save(Revision, ultima);
 
       await this.traza(m, procesoId, documento.id, 'ADJUNTAR', acceso, {

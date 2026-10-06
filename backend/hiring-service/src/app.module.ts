@@ -26,7 +26,6 @@ import { ContratosModule } from './modules/contratos/contratos.module';
 import { LegalizacionModule } from './modules/legalizacion/legalizacion.module';
 import { SupervisionModule } from './modules/supervision/supervision.module';
 import { ParticipacionModule } from './modules/participacion/participacion.module';
-import { ModalidadProcesoModule } from './modules/modalidad-proceso/modalidad-proceso.module';
 import { CausalContratacionModule } from './modules/causal-contratacion/causal-contratacion.module';
 import { ComiteContratacionModule } from './modules/comite-contratacion/comite-contratacion.module';
 import { RegistroPresupuestalModule } from './modules/registro-presupuestal/registro-presupuestal.module';
@@ -182,7 +181,6 @@ import {
     LegalizacionModule,
     SupervisionModule,
     ParticipacionModule,
-    ModalidadProcesoModule,
     CausalContratacionModule,
     ComiteContratacionModule,
     RegistroPresupuestalModule,

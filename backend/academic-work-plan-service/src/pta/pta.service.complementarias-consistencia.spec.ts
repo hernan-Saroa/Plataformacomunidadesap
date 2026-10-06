@@ -182,20 +182,27 @@ describe('Complementarias: contenido, aprobación automática y permisos vigente
     expect(detail.complementarias[0].componente_complementaria).toBe('complementarias_pregrado');
   });
 
-  it.each(['900002', undefined])('informa el bloqueo territorial de GP sin conceder permisos: territorial %s', async territorial => {
+  it.each(['900002', undefined])('permite revisión GP con su permiso aunque la territorial sea distinta o no esté registrada: %s', async territorial => {
     const ds = dsMixto();
     (ds.academico_admin[0] as any).territorial_id = territorial;
     const { service } = setup(ds);
+    service.ptaComponentReviewRepo.findOne = jest.fn().mockResolvedValue(null);
     const resolver = new PtaPermissionsService({ query: jest.fn().mockResolvedValue([
       { role_code: 'GESTION_PROFESORAL', permission_code: 'pta.review.complementarias.gestion_profesoral' },
     ]) } as any);
     const auth = { ...await resolver.resolveForUser('reviewer'), territorialIds: ['900001'], cetapIds: [] };
     const effective = await service.getDecisionPermissions('pta', auth);
-    expect(effective.allowedReviewSubsecciones).toEqual([]);
-    expect(effective.componentReasons.complementarias_gestion_profesoral.revisar).toBeTruthy();
+    expect(effective.allowedReviewSubsecciones.sort()).toEqual([
+      'complementarias_gestion_profesoral:academico_administrativas', 'complementarias_gestion_profesoral:docencia',
+    ]);
+    expect(effective.allowedComponents).toEqual([]);
+    expect(effective.componentReasons.complementarias_gestion_profesoral).toBeUndefined();
     await expect(service.revisarComponente('pta', {
       componente: 'complementarias_gestion_profesoral', subseccion: 'academico_administrativas', estado: 'revisado',
-    }, auth)).rejects.toThrow(/territorial/);
+    }, auth)).resolves.toMatchObject({ review: { estado: 'revisado' } });
+    await expect(service.aprobarComponente('pta', {
+      componente: 'complementarias_gestion_profesoral', estado: 'aprobado',
+    }, auth)).rejects.toThrow(/permiso/i);
   });
 
   it('el revisor GP obtiene ambas subsecciones dentro de su territorial, sin aprobación', async () => {

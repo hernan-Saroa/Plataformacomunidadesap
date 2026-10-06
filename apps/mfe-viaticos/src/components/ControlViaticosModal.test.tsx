@@ -2,6 +2,54 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import ControlViaticosModal from './ControlViaticosModal';
 
+vi.mock('./FirmaDigitalViaticosModal', () => ({
+  default: ({ isOpen, onFirmaCompleta, onCancelar }: any) =>
+    isOpen ? (
+      <div data-testid="firma-digital-viaticos-modal">
+        <span>Modal Firma OTP Abierta</span>
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await onFirmaCompleta({
+                codigoOtp: '654321',
+                certificado_id: 'ESAP-CERT-VIAT-2026-TEST',
+                hash: 'SHA256:mockedhash1234567890abcdef',
+                timestamp: new Date().toISOString(),
+                firmante: 'Revisor Control',
+                cargo: 'Control de Viáticos / 2do Nivel',
+              });
+            } catch {
+              // noop
+            }
+          }}
+        >
+          Confirmar Firma OTP Test
+        </button>
+        <button type="button" onClick={onCancelar}>
+          Cancelar Firma OTP
+        </button>
+      </div>
+    ) : null,
+}));
+
+vi.mock('../services/api/authService', () => ({
+  default: {
+    getCurrentUserSync: vi.fn(() => ({
+      primerNombre: 'Revisor',
+      primerApellido: 'Control',
+      cargo: 'Control de Viáticos',
+      numeroDocumento: '987654321',
+    })),
+    getCurrentUser: vi.fn().mockResolvedValue({
+      primerNombre: 'Revisor',
+      primerApellido: 'Control',
+      cargo: 'Control de Viáticos',
+      numeroDocumento: '987654321',
+    }),
+  },
+}));
+
 vi.mock('../services/api/viaticosService', () => ({
   default: {
     verificarSegundoNivel: vi.fn(),
@@ -9,6 +57,8 @@ vi.mock('../services/api/viaticosService', () => ({
     obtenerDependencias: vi.fn(),
     obtenerUrlArchivo: vi.fn((url: string) => url),
     obtenerSolicitudControlViaticos: vi.fn(),
+    solicitarOtpFirma: vi.fn(),
+    verificarOtpFirma: vi.fn(),
   },
 }));
 
@@ -199,7 +249,36 @@ describe('ControlViaticosModal', () => {
     expect(screen.getByRole('button', { name: 'Aprobar y Verificar (2do Nivel)' })).toBeDefined();
   });
 
-  it('debe llamar a verificarSegundoNivel con observaciones vacías al aprobar', async () => {
+  it('solicita OTP y abre el modal de firma digital al hacer clic en "Aprobar y Verificar (2do Nivel)"', async () => {
+    (viaticosService.solicitarOtpFirma as any).mockResolvedValue({
+      verificationId: 'v-123',
+      emailEnviadoA: 'control@esap.edu.co',
+      devCode: '654321',
+    });
+
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock(),
+      cargando: false,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aprobar y Verificar (2do Nivel)' }));
+
+    await waitFor(() => {
+      expect(viaticosService.solicitarOtpFirma).toHaveBeenCalledWith('sol-001', {
+        tipoFirma: 'CONTROL_VIATICOS',
+        etapaLabel: 'Control Viáticos — Control Cruzado (2do Nivel)',
+      });
+      expect(screen.getByTestId('firma-digital-viaticos-modal')).toBeDefined();
+    });
+  });
+
+  it('llama a verificarSegundoNivel con OTP y firma digital al confirmar la firma', async () => {
+    (viaticosService.solicitarOtpFirma as any).mockResolvedValue({
+      verificationId: 'v-123',
+      emailEnviadoA: 'control@esap.edu.co',
+      devCode: '654321',
+    });
     (viaticosService.verificarSegundoNivel as any).mockResolvedValue({
       success: true,
       data: { id: 'sol-001', estadoSolicitud: 'VERIFICADA' },
@@ -216,13 +295,28 @@ describe('ControlViaticosModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Aprobar y Verificar (2do Nivel)' }));
 
     await waitFor(() => {
-      expect(viaticosService.verificarSegundoNivel).toHaveBeenCalledWith('sol-001', {
-        observaciones: '',
-      });
+      expect(screen.getByTestId('firma-digital-viaticos-modal')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('Confirmar Firma OTP Test'));
+
+    await waitFor(() => {
+      expect(viaticosService.verificarSegundoNivel).toHaveBeenCalledWith(
+        'sol-001',
+        expect.objectContaining({
+          otp: '654321',
+          verificationId: 'v-123',
+          certificadoId: 'ESAP-CERT-VIAT-2026-TEST',
+          hashSha256: 'SHA256:mockedhash1234567890abcdef',
+        }),
+      );
     });
   });
 
-  it('muestra "Verificación de 2do nivel registrada" después de aprobar exitosamente', async () => {
+  it('muestra "Verificación de 2do nivel registrada" después de aprobar y firmar exitosamente', async () => {
+    (viaticosService.solicitarOtpFirma as any).mockResolvedValue({
+      verificationId: 'v-123',
+    });
     (viaticosService.verificarSegundoNivel as any).mockResolvedValue({
       success: true,
       data: { id: 'sol-001', estadoSolicitud: 'VERIFICADA' },
@@ -237,11 +331,38 @@ describe('ControlViaticosModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Aprobar y Verificar (2do Nivel)' }));
 
     await waitFor(() => {
+      expect(screen.getByTestId('firma-digital-viaticos-modal')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('Confirmar Firma OTP Test'));
+
+    await waitFor(() => {
       expect(screen.getByText('Verificación de 2do nivel registrada')).toBeDefined();
     });
   });
 
-  it('muestra error de verificación cuando verificarSegundoNivel falla', async () => {
+  it('muestra error de solicitud de OTP cuando solicitarOtpFirma falla', async () => {
+    (viaticosService.solicitarOtpFirma as any).mockRejectedValue(
+      new Error('Error al generar código OTP'),
+    );
+
+    renderModal({
+      abierta: true,
+      solicitud: solicitudMock(),
+      cargando: false,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aprobar y Verificar (2do Nivel)' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Error al generar código OTP')).toBeDefined();
+    });
+  });
+
+  it('muestra error de verificación cuando verificarSegundoNivel falla durante la firma OTP', async () => {
+    (viaticosService.solicitarOtpFirma as any).mockResolvedValue({
+      verificationId: 'v-123',
+    });
     (viaticosService.verificarSegundoNivel as any).mockRejectedValue(
       new Error('Violación de Segregación de Funciones'),
     );
@@ -253,6 +374,12 @@ describe('ControlViaticosModal', () => {
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Aprobar y Verificar (2do Nivel)' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('firma-digital-viaticos-modal')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('Confirmar Firma OTP Test'));
 
     await waitFor(() => {
       expect(screen.getByText('Violación de Segregación de Funciones')).toBeDefined();

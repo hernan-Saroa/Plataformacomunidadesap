@@ -166,8 +166,8 @@ export function laSesionAdmiteReabrir(decision: DecisionComite): boolean {
  *
  * El comité sesiona en la Dirección de Contratación y es un cuerpo colegiado:
  * la plataforma no lo reemplaza, transcribe lo que decidió y guarda el acta.
- * Quien transcribe es el abogado que lleva el proceso, como en la 3.4, la 3.5 y
- * la 3.6 —antes bastaba con `actividad.edit`, que también tiene el área
+ * Quien transcribe es el abogado que lleva el proceso, como en la 3.4 y la
+ * 3.6 —antes bastaba con `actividad.edit`, que también tiene el área
  * solicitante: la que lleva sus documentos al comité no puede ser la que
  * certifica qué dijo el comité—.
  */
