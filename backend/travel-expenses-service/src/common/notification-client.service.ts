@@ -323,7 +323,7 @@ export class NotificationClientService {
          INNER JOIN auth.role_permissions rp ON rp.id_rol = r.id
          INNER JOIN auth.permission p ON p.id_permission = rp.id_permission
          LEFT JOIN auth.personas p_person ON p_person.id_person = u.id_person
-         WHERE u.is_active = true
+         WHERE COALESCE(u.is_active, true) = true
            AND COALESCE(ur.is_active, true) = true
            AND COALESCE(r.is_active, true) = true
            AND COALESCE(rp.is_active, true) = true
@@ -356,7 +356,7 @@ export class NotificationClientService {
            INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
            INNER JOIN auth.role r ON r.id = ur.id_rol
            LEFT JOIN auth.personas p_person ON p_person.id_person = u.id_person
-           WHERE u.is_active = true
+           WHERE COALESCE(u.is_active, true) = true
              AND COALESCE(ur.is_active, true) = true
              AND COALESCE(r.is_active, true) = true
              AND (r.id::text = $1 OR UPPER(r.code) = UPPER($1) OR UPPER(r.name) = UPPER($1))`,
@@ -540,7 +540,7 @@ export class NotificationClientService {
          FROM auth."user" u
          INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
          INNER JOIN auth.role r ON r.id = ur.id_rol
-         WHERE u.is_active = true
+         WHERE COALESCE(u.is_active, true) = true
            AND (r.id::text = $1 OR UPPER(r.code) = UPPER($1) OR UPPER(r.name) = UPPER($1))
            AND COALESCE(ur.is_active, true) = true
            AND COALESCE(r.is_active, true) = true`,
@@ -563,7 +563,7 @@ export class NotificationClientService {
          INNER JOIN auth.user_roles ur ON ur.id_user = u.id_user
          INNER JOIN auth.role r ON r.id = ur.id_rol
          LEFT JOIN auth.personas p_person ON p_person.id_person = u.id_person
-         WHERE u.is_active = true
+         WHERE COALESCE(u.is_active, true) = true
            AND (r.id::text = $1 OR UPPER(r.code) = UPPER($1) OR UPPER(r.name) = UPPER($1))
            AND COALESCE(ur.is_active, true) = true
            AND COALESCE(r.is_active, true) = true`,
@@ -599,16 +599,27 @@ export class NotificationClientService {
     await this.sendMany(notifications);
   }
 
+  private getCandidateBaseUrls(): string[] {
+    const list = [
+      this.baseUrl,
+      this.baseUrl.replace('notifications-service', 'localhost'),
+      'http://localhost:3009',
+    ].filter(Boolean);
+    return Array.from(new Set(list));
+  }
+
   /**
    * Envía una notificación a la bandeja de notificaciones del software (in-app).
    * Intenta primero por HTTP hacia el microservicio de notificaciones y,
    * en caso de contingencia, inserta directamente en la tabla notifications.notificacion.
    */
   async send(dto: SendNotificationDto): Promise<void> {
-    const urls = [
-      `${this.baseUrl}/notificaciones/api/v1/notifications`,
-      `${this.baseUrl}/api/v1/notifications`,
-    ];
+    const urls: string[] = [];
+    for (const b of this.getCandidateBaseUrls()) {
+      urls.push(`${b}/notifications`);
+      urls.push(`${b}/notificaciones/api/v1/notifications`);
+      urls.push(`${b}/api/v1/notifications`);
+    }
 
     for (const url of urls) {
       try {
@@ -668,10 +679,12 @@ export class NotificationClientService {
     if (!dto.to || !dto.subject) {
       return;
     }
-    const urls = [
-      `${this.baseUrl}/api/v1/emails/send`,
-      `${this.baseUrl}/notificaciones/api/v1/emails/send`,
-    ];
+    const urls: string[] = [];
+    for (const b of this.getCandidateBaseUrls()) {
+      urls.push(`${b}/api/v1/emails/send`);
+      urls.push(`${b}/notificaciones/api/v1/emails/send`);
+      urls.push(`${b}/emails/send`);
+    }
     let sent = false;
     for (const url of urls) {
       try {
@@ -679,6 +692,7 @@ export class NotificationClientService {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(dto),
+          signal: AbortSignal.timeout(3000),
         });
         if (response.ok) {
           this.logger.log(`[NotificationClient] Correo enviado exitosamente a ${dto.to} vía ${url}`);
@@ -686,7 +700,7 @@ export class NotificationClientService {
           break;
         }
       } catch (err: any) {
-        this.logger.warn(`[NotificationClient] Error conectando a ${url}: ${err?.message}`);
+        // continúa probando alternativas
       }
     }
     if (!sent) {
@@ -696,27 +710,34 @@ export class NotificationClientService {
 
   async sendMany(dtos: SendNotificationDto[]): Promise<void> {
     if (!dtos.length) return;
-    try {
-      const response = await fetch(
-        `${this.baseUrl}/notificaciones/api/v1/notifications/bulk`,
-        {
+    const urls: string[] = [];
+    for (const b of this.getCandidateBaseUrls()) {
+      urls.push(`${b}/notifications/bulk`);
+      urls.push(`${b}/notificaciones/api/v1/notifications/bulk`);
+      urls.push(`${b}/api/v1/notifications/bulk`);
+    }
+
+    for (const url of urls) {
+      try {
+        const response = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ notifications: dtos }),
-        },
-      );
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          signal: AbortSignal.timeout(3000),
+        });
+        if (response.ok) {
+          this.logger.log(
+            `[NotificationClient] Enviadas ${dtos.length} notificaciones vía HTTP (${url})`,
+          );
+          return;
+        }
+      } catch (err: any) {
+        // continúa al siguiente endpoint o fallback
       }
-      this.logger.log(
-        `[NotificationClient] Enviadas ${dtos.length} notificaciones vía HTTP`,
-      );
-      return;
-    } catch (err: any) {
-      this.logger.warn(
-        `[NotificationClient] Falló POST bulk (status=${err?.status ?? 'n/a'}): ${err?.message}. Insertando directo en BD.`,
-      );
     }
+    this.logger.warn(
+      `[NotificationClient] No respondieron endpoints bulk HTTP. Insertando directo en BD.`,
+    );
 
     try {
       for (const dto of dtos) {
@@ -809,7 +830,7 @@ export class NotificationClientService {
          LEFT JOIN auth.role_permissions rp ON rp.id_rol = r.id
          LEFT JOIN auth.permission p ON p.id_permission = rp.id_permission
          LEFT JOIN auth.personas p_person ON p_person.id_person = u.id_person
-         WHERE u.is_active = true
+         WHERE COALESCE(u.is_active, true) = true
            AND COALESCE(ur.is_active, true) = true
            AND COALESCE(r.is_active, true) = true
            AND (
@@ -851,7 +872,7 @@ export class NotificationClientService {
            u.username
          FROM auth."user" u
          LEFT JOIN auth.personas p_person ON p_person.id_person = u.id_person
-         WHERE u.is_active = true
+         WHERE COALESCE(u.is_active, true) = true
            AND (u.id_user IN (SELECT DISTINCT usuario_id FROM travel_expenses.analistas WHERE activo = true)
                 OR u.is_superuser = true)`,
       );
@@ -1007,7 +1028,7 @@ export class NotificationClientService {
            COALESCE(p_person.nom_largo, TRIM(CONCAT_WS(' ', p_person.nom_tercero, p_person.pri_apellido)), u.username, '') AS full_name
          FROM auth."user" u
          LEFT JOIN auth.personas p_person ON p_person.id_person = u.id_person
-         WHERE u.is_active = true
+         WHERE COALESCE(u.is_active, true) = true
            AND (
              (LOWER(u.username) = LOWER($1) AND $1 <> '')
              OR (p_person.dir_email IS NOT NULL AND LOWER(p_person.dir_email) = LOWER($1) AND $1 <> '')
@@ -1126,6 +1147,18 @@ export class NotificationClientService {
           'SUPER_ADMIN',
         );
       }
+
+      // Asegurar que roles operativos (Analista, Secretario, Control Viáticos, Enlace) no sean notificados como directivos
+      directivos = directivos.filter((d: any) => {
+        const roles: string[] = Array.isArray(d.roles) ? d.roles.map((r: string) => String(r).toUpperCase()) : [];
+        const esOperativo = roles.some((r) =>
+          ['ANALISTA', 'ANALISTA_VIATICOS', 'CONTROL_VIATICOS', 'SECRETARIO', 'SECRETARIO_VIATICOS', 'ENLACE'].includes(r),
+        );
+        const esDirectivo = roles.some((r) =>
+          ['JEFE_DEPENDENCIA', 'GERENTE_PROYECTO', 'SUBDIRECCION_GESTION_CORPORATIVA', 'DIRECCION_NACIONAL', 'SUPER_ADMIN'].includes(r),
+        );
+        return esDirectivo || !esOperativo;
+      });
 
       if (directivos.length > 0) {
         this.logger.log(

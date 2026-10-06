@@ -31,6 +31,7 @@ import VerificacionSIIFModal from './VerificacionSIIFModal';
 import CancelarComisionModal from './CancelarComisionModal';
 import CrearObligacionModal from './CrearObligacionModal';
 import ProcesarPagoModal from './ProcesarPagoModal';
+import ReintegrosInbox from './ReintegrosInbox';
 
 const PRIORIDAD_CONFIG: Record<PrioridadSolicitud, { bg: string; text: string; label: string }> = {
   ALTA: { bg: 'bg-red-100', text: 'text-red-700', label: 'Alta' },
@@ -70,7 +71,7 @@ const ESTADOS_EXCLUIDOS_ANALISTA = new Set([
   'CANCELADA',
 ]);
 
-export type TabAnalista = 'TODAS' | 'PENDIENTES' | 'VERIFICADAS' | 'AUTORIZADAS' | 'COMPROMETIDAS' | 'EXTEMPORANEAS' | 'DEVOLUCIONES';
+export type TabAnalista = 'TODAS' | 'PENDIENTES' | 'VERIFICADAS' | 'AUTORIZADAS' | 'COMPROMETIDAS' | 'EXTEMPORANEAS' | 'DEVOLUCIONES' | 'REINTEGROS';
 
 export default function AnalystInbox() {
   const [solicitudes, setSolicitudes] = useState<SolicitudListaResponse[]>([]);
@@ -79,6 +80,9 @@ export default function AnalystInbox() {
   const [busqueda, setBusqueda] = useState('');
   const [dependencias, setDependencias] = useState<Dependencia[]>([]);
   const [tabActual, setTabActual] = useState<TabAnalista>('TODAS');
+  const puedeVerReintegros =
+    authService.hasPermission('travel_expenses:read_reintegros') ||
+    authService.hasPermission('travel_expenses:register_reintegro');
   const [modalAbierta, setModalAbierta] = useState(false);
   const [solicitudModal, setSolicitudModal] = useState<SolicitudComisionResponse | null>(null);
   const [cargandoModal, setCargandoModal] = useState(false);
@@ -520,10 +524,25 @@ export default function AnalystInbox() {
             </span>
           )}
         </button>
+
+        {puedeVerReintegros && (
+          <button
+            type="button"
+            onClick={() => setTabActual('REINTEGROS')}
+            className={`pb-2.5 px-3 text-xs font-bold border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+              tabActual === 'REINTEGROS'
+                ? 'border-emerald-600 text-emerald-700'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Reintegros</span>
+          </button>
+        )}
       </div>
 
       {/* Buscador */}
-      <div className="mt-4 relative">
+      <div className={`mt-4 relative ${tabActual === 'REINTEGROS' ? 'hidden' : ''}`}>
         <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
         <input
           type="text"
@@ -535,7 +554,11 @@ export default function AnalystInbox() {
       </div>
 
       {/* Contenido de la bandeja */}
-      {cargando ? (
+      {tabActual === 'REINTEGROS' ? (
+        <div className="mt-4">
+          <ReintegrosInbox />
+        </div>
+      ) : cargando ? (
         <div className="py-8 text-center text-xs text-slate-400">Cargando solicitudes asignadas...</div>
       ) : error ? (
         <div className="py-8 text-center text-xs text-red-500">{error}</div>

@@ -41,6 +41,7 @@ export type RundProfileDocument = {
   creadoEn?: string;
   contenidoUrl: string | null;
   contenidoRestringido?: boolean;
+  soporteGestion?: boolean;
 };
 
 type Props = {
@@ -78,6 +79,16 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged, r
   const [history, setHistory] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [configuration, setConfiguration] = useState<any>(null);
+
+  useEffect(() => {
+    let active = true;
+    setConfiguration(null);
+    if (canManage) apiClient.get<any>('/pta/api/v1/pta/banco-docentes/documentos/configuracion')
+      .then(response => { if (active) setConfiguration(response?.data ?? response); })
+      .catch(() => { if (active) setConfiguration(null); });
+    return () => { active = false; };
+  }, [canManage, docenteId]);
 
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = 0;
@@ -250,6 +261,15 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged, r
           </div>
         </div>
         <div className="rund-documents__header-actions">
+          {canManage && configuration?.habilitado === true && <button type="button" disabled={busy === 'expediente'} style={secondaryButton(false)} onClick={async () => {
+            setBusy('expediente');
+            try {
+              await apiClient.post(`/pta/api/v1/pta/banco-docentes/${docenteId}/expediente`, {});
+              toast.success('Expediente preparado con las carpetas de identidad, formación, experiencia, actos administrativos y evaluaciones.');
+            } catch (error: any) {
+              toast.error(error?.message || 'No fue posible preparar el expediente. Puede reintentar.');
+            } finally { setBusy(null); }
+          }}>{busy === 'expediente' ? 'Preparando…' : 'Preparar expediente'}</button>}
           {canManage && <button type="button" onClick={() => { setShowUpload(value => expanded ? !value : true); setExpanded(true); }} aria-expanded={showUpload && expanded} style={secondaryButton(showUpload)}>
             <FilePlus2 size={15} /> {showUpload && expanded ? 'Cerrar carga' : 'Agregar documento'}
           </button>}
@@ -260,6 +280,15 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged, r
       </div>
 
       {expanded && <>
+        {canManage && configuration?.habilitado === true && <p role="status" style={{ color: '#64748B', fontSize: 12 }}>
+          {configuration.unavailable ? 'No se pudo consultar la configuración documental.'
+            : configuration.proveedor && <>
+              {configuration.almacenamientoProvisional ? 'Almacenamiento provisional local.' : 'Repositorio documental OpenKM seleccionado.'}
+              {!configuration.escrituraConfigurada && ' La carga requiere completar la configuración.'}
+              {configuration.trd?.estado !== 'CONFIGURADA' && ' TRD pendiente de configuración o revisión.'}
+              {configuration.privacidad !== 'CONFIGURADA' && ' Política institucional de tratamiento pendiente.'}
+            </>}
+        </p>}
         <div className="rund-documents__toolbar">
           <label className="rund-documents__search">
             <Search size={16} aria-hidden="true" />
@@ -333,7 +362,7 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged, r
               </div>
               <div className="rund-documents__review">
                 {document.estado === 'ACTIVO' && <div style={{ marginBottom: 5, color: document.estadoRevision === 'Aprobado' ? '#047857' : document.estadoRevision === 'Rechazado' ? '#B91C1C' : '#92400E', fontWeight: 700, fontSize: 11 }}>
-                  {document.estadoRevision === 'Aprobado' ? '✓ Soporte aprobado' : document.estadoRevision === 'Rechazado' ? 'Devuelto para corrección' : document.tipoSoporte ? 'Pendiente de revisión' : 'Anexo general'}
+                  {document.soporteGestion ? 'Evidencia de gestión del perfil' : document.estadoRevision === 'Aprobado' ? '✓ Soporte aprobado' : document.estadoRevision === 'Rechazado' ? 'Devuelto para corrección' : document.tipoSoporte ? 'Pendiente de revisión' : 'Anexo general'}
                 </div>}
                 {document.observacionRevision && <div style={{ color: '#B91C1C', fontSize: 11 }}>{document.observacionRevision}</div>}
                 <details className="rund-documents__details">
@@ -349,7 +378,7 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged, r
                 {document.contenidoRestringido && <span style={{ fontSize: 11, color: '#64748B' }}>Original restringido</span>}
                 {document.estado !== 'ELIMINADO' && document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Visualizar" onClick={() => onView(document.contenidoUrl!, document.nombreArchivo, document.categoriaNombre)}><Eye size={14} /></IconButton>}
                 {document.estado !== 'ELIMINADO' && document.contenidoUrl && !document.contenidoRestringido && <IconButton title="Descargar" onClick={() => download(document)} disabled={busy === `download-${document.id}`}><Download size={14} /></IconButton>}
-                {canManage && document.estado === 'ACTIVO' && canReplaceEvidence(document.tipoSoporte) && (
+                {canManage && !document.soporteGestion && document.estado === 'ACTIVO' && canReplaceEvidence(document.tipoSoporte) && (
                   <label title={`Reemplazar (PDF, máximo ${fileSize(Number(categories.find(item => item.codigo === document.categoria)?.tamano_maximo_bytes || 10 * 1024 * 1024))})`} style={iconButtonStyle}>
                     <Replace size={14} />
                     <input type="file" accept="application/pdf,.pdf" hidden disabled={busy === `replace-${document.id}`} onChange={(event) => {
@@ -359,7 +388,7 @@ export function RundDocumentManager({ docenteId, canManage, onView, onChanged, r
                     }} />
                   </label>
                 )}
-                {canManage && document.estado === 'ACTIVO' && <IconButton title="Eliminar" danger onClick={() => remove(document)} disabled={busy === `delete-${document.id}`}><Trash2 size={14} /></IconButton>}
+                {canManage && !document.soporteGestion && document.estado === 'ACTIVO' && <IconButton title="Eliminar" danger onClick={() => remove(document)} disabled={busy === `delete-${document.id}`}><Trash2 size={14} /></IconButton>}
                 {document.totalVersiones > 1 && <span title={`${document.totalVersiones} versiones`} style={{ ...iconButtonStyle, cursor: 'default', color: '#7C3AED' }}><FileClock size={14} /></span>}
               </div>
             </article>

@@ -14,6 +14,7 @@ import {
   Receipt,
   FileCheck,
   FileSignature,
+  FileEdit,
   Eye,
   ExternalLink,
   CreditCard,
@@ -47,11 +48,17 @@ import AutorizacionInbox from './AutorizacionInbox';
 import AutorizacionDireccionInbox from './AutorizacionDireccionInbox';
 import CancelarComisionModal from './CancelarComisionModal';
 import PresupuestoInbox from './PresupuestoInbox';
+import ReintegrosInbox from './ReintegrosInbox';
+import LegalizacionesSeccion from './LegalizacionesSeccion';
+import PazYSalvoCoordinadora from './paz-y-salvo/PazYSalvoCoordinadora';
+import ConfigSoportesLegalizacion from './ConfigSoportesLegalizacion';
+import VistaAnalistaViaticos from './VistaAnalistaViaticos';
 import ProcesarPagoModal from './ProcesarPagoModal';
 import ModalFirmasAprobacion from './ModalFirmasAprobacion';
 import BandejaFirmasAprobacion from './BandejaFirmasAprobacion';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import SearchableSelect from './SearchableSelect';
+import AprobacionPorComponente from './AprobacionPorComponente';
 import {
   SolicitudViatico,
   ResumenEstadisticoViaticos,
@@ -61,6 +68,7 @@ import {
   ResultadoConsolidacion,
   NotificacionSstLog,
   SaldoTiquete,
+  EstadoFirmasResponse,
 } from '../types/viaticos';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
@@ -84,12 +92,14 @@ const Permissions = {
   VIATICOS_TIQUETES_MANAGE: 'travel_expenses:tickets.manage',
   VIATICOS_LEGALIZACIONES_VIEW: 'travel_expenses:legalizations.view',
   VIATICOS_LEGALIZACIONES_MANAGE: 'travel_expenses:legalizations.manage',
+  VIATICOS_LEGALIZACIONES_REVERTIR: 'travel_expenses:legalizations.revert_approval',
   VIATICOS_RESOLUCIONES_VIEW: 'travel_expenses:resolutions.view',
   VIATICOS_RESOLUCIONES_MANAGE: 'travel_expenses:resolutions.manage',
   VIATICOS_CONFIG_MANAGE: 'travel_expenses:manage_config',
 } as const;
 
 type Seccion =
+  | 'paz-y-salvo'
   | 'solicitudes'
   | 'tiquetes'
   | 'legalizaciones'
@@ -100,8 +110,14 @@ type Seccion =
   | 'autorizaciones-direccion'
   | 'presupuesto'
   | 'tesoreria'
+  | 'reintegros'
   | 'sst'
   | 'firmas-aprobacion';
+
+// Una comisión pagada pasa enseguida a PENDIENTE_LEGALIZACION (EFDS-1309) y luego a
+// LEGALIZADO: para Tesorería y SST sigue siendo una comisión pagada.
+const ESTADOS_PAGADA = ['PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'];
+const ESTADOS_TESORERIA_SST = ['OBLIGADA', ...ESTADOS_PAGADA];
 
 const ORDEN_ESTADOS_TABLA: Record<string, number> = {
   OBLIGADA: 1,
@@ -134,6 +150,9 @@ export default function ViaticosModulePremium() {
   const [modalNuevaAbierta, setModalNuevaAbierta] = useState(false);
   const [solicitudAResumir, setSolicitudAResumir] = useState<SolicitudComisionResponse | null>(null);
   const [solicitudSeleccionada, setSolicitudSeleccionada] = useState<SolicitudViatico | null>(null);
+  const [solicitudCompletaDetalle, setSolicitudCompletaDetalle] = useState<SolicitudComisionResponse | null>(null);
+  const [estadoFirmasDetalle, setEstadoFirmasDetalle] = useState<EstadoFirmasResponse | null>(null);
+  const [cargandoFirmasDetalle, setCargandoFirmasDetalle] = useState(false);
   const [documentosSoporte, setDocumentosSoporte] = useState<DocumentoSoporte[]>([]);
   const [cargandoDocumentos, setCargandoDocumentos] = useState(false);
   const [mensajeExito, setMensajeExito] = useState<string | null>(null);
@@ -238,6 +257,10 @@ export default function ViaticosModulePremium() {
           color: '#D97706',
         },
         {
+          id: 'paz-y-salvo', label: 'Paz y salvo', subtitle: 'Certificación y firma de Viáticos',
+          icon: <FileCheck className="w-5 h-5" />, color: '#003DA5',
+        },
+        {
           id: 'resoluciones',
           label: 'Resoluciones Institucionales',
           subtitle: 'Actos administrativos de comisión',
@@ -270,6 +293,13 @@ export default function ViaticosModulePremium() {
           label: 'Tesorería y Desembolso',
           subtitle: 'Aprobación de pagos y órdenes SIIF (Etapa 8)',
           icon: <BadgeDollarSign className="w-5 h-5" />,
+          color: '#059669',
+        },
+        {
+          id: 'reintegros',
+          label: 'Reintegros',
+          subtitle: 'Comisiones no realizadas o por menos días (Etapa 8)',
+          icon: <RotateCcw className="w-5 h-5" />,
           color: '#059669',
         },
         {
@@ -362,7 +392,7 @@ export default function ViaticosModulePremium() {
         const gerenteProy = authService.isGerenteProyecto();
         setEsJefeDependencia(jefeDep);
         setEsGerenteProyecto(gerenteProy);
-        if (dirNac && !superAdmin && !subdir) {
+        if (dirNac && !superAdmin) {
           setSeccion('autorizaciones-direccion');
         } else if (subdir && !superAdmin) {
           setSeccion('autorizaciones');
@@ -372,6 +402,12 @@ export default function ViaticosModulePremium() {
           setSeccion('tesoreria');
         } else if (sst && !superAdmin) {
           setSeccion('sst');
+        } else if (authService.isAnalista() && !superAdmin) {
+          setSeccion('mis-solicitudes');
+        } else if (authService.isControlViaticos() && !superAdmin) {
+          setSeccion('solicitudes');
+        } else if (secretario && !superAdmin) {
+          setSeccion('solicitudes');
         } else if ((jefeDep || gerenteProy) && !superAdmin) {
           setSeccion('firmas-aprobacion');
         }
@@ -406,7 +442,7 @@ export default function ViaticosModulePremium() {
         (filtroEstado === 'EXTEMPORANEA' ? esExt : sol.estado === filtroEstado);
       const cumpleSeccion =
         seccion === 'tesoreria' || seccion === 'sst'
-          ? ['OBLIGADA', 'PAGADA'].includes(sol.estado)
+          ? ESTADOS_TESORERIA_SST.includes(sol.estado)
           : true;
       return cumpleBusqueda && cumpleEstado && cumpleSeccion;
     })
@@ -458,17 +494,35 @@ export default function ViaticosModulePremium() {
 
   const handleVerDetalle = async (sol: SolicitudViatico) => {
     setSolicitudSeleccionada(sol);
+    setSolicitudCompletaDetalle(null);
+    setEstadoFirmasDetalle(null);
+    setCargandoFirmasDetalle(true);
     setPrioridadSeleccionada(sol.prioridad || 'MEDIA');
     setAnalistaSeleccionadoId(sol.analistaAsignadoId || null);
     setMotivoDevolucion('');
     setCargandoDocumentos(true);
     setDocumentosSoporte([]);
 
-    // Cargar logs de notificación formal a SST (RF-PAG-002)
+    // Cargar estado de firmas institucional en paralelo para el visualizador
+    if (typeof viaticosService.obtenerEstadoFirmas === 'function') {
+      viaticosService
+        .obtenerEstadoFirmas(sol.id)
+        .then((data) => setEstadoFirmasDetalle(data))
+        .catch(() => setEstadoFirmasDetalle(null))
+        .finally(() => setCargandoFirmasDetalle(false));
+    } else {
+      setCargandoFirmasDetalle(false);
+    }
+
+    // Cargar logs de notificación formal a SST (RF-PAG-002) solo si aplica a la etapa
     setLogsSst([]);
     setExpandirSst(false);
     setMensajeSst(null);
-    if (typeof viaticosService.obtenerLogsSst === 'function') {
+    const aplicaSst = Boolean(
+      sol.notificadoSst ||
+      ['COMPROMETIDA', 'OBLIGADA', 'PAGADA'].includes(sol.estado)
+    );
+    if (aplicaSst && typeof viaticosService.obtenerLogsSst === 'function') {
       viaticosService
         .obtenerLogsSst(sol.id)
         .then((logs) => setLogsSst(logs))
@@ -480,6 +534,7 @@ export default function ViaticosModulePremium() {
 
     try {
       const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
+      setSolicitudCompletaDetalle(completa);
       setDocumentosSoporte(completa.documentosSoporte || []);
       if (completa.analistaAsignadoId) {
         setAnalistaSeleccionadoId(completa.analistaAsignadoId);
@@ -645,6 +700,7 @@ export default function ViaticosModulePremium() {
     authService.hasAnyPermission([
       Permissions.VIATICOS_LEGALIZACIONES_VIEW,
       Permissions.VIATICOS_LEGALIZACIONES_MANAGE,
+      Permissions.VIATICOS_LEGALIZACIONES_REVERTIR,
     ]);
   const puedeVerResoluciones =
     !tieneContextoAuth ||
@@ -671,18 +727,24 @@ export default function ViaticosModulePremium() {
   const puedeVerAutorizaciones =
     !tieneContextoAuth ||
     esSuperAdmin ||
-    authService.hasPermission('travel_expenses:read_authorizations') ||
-    authService.hasPermission('travel_expenses:authorize_expense') ||
-    authService.hasPermission('travel_expenses:return_authorization');
+    (!esDireccionNacional && (
+      esSubdireccion ||
+      authService.hasPermission('travel_expenses:read_authorizations') ||
+      authService.hasPermission('travel_expenses:authorize_expense') ||
+      authService.hasPermission('travel_expenses:return_authorization')
+    ));
   const puedeVerAutorizacionesDireccion =
     !tieneContextoAuth ||
     esSuperAdmin ||
-    esDireccionNacional ||
-    authService.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
-    authService.hasPermission('travel_expenses:authorize_extemporaneous') ||
-     authService.hasPermission('travel_expenses:reject_extemporaneous');
+    (!esSubdireccion && (
+      esDireccionNacional ||
+      authService.hasPermission('travel_expenses:read_extemporaneous_authorizations') ||
+      authService.hasPermission('travel_expenses:authorize_extemporaneous') ||
+      authService.hasPermission('travel_expenses:reject_extemporaneous')
+    ));
 
   const puedeCancelarComision = authService.canCancelarComision();
+  const puedeEmitirPazYSalvo = esSuperAdmin || authService.hasPermission('travel_expenses:paz_y_salvo.manage');
   const puedeVerPresupuesto =
     !tieneContextoAuth ||
     esSuperAdmin ||
@@ -696,6 +758,10 @@ export default function ViaticosModulePremium() {
     authService.isTesoreria() ||
     authService.hasPermission('travel_expenses:read_payments') ||
     authService.hasPermission('travel_expenses:process_payment');
+  const puedeVerReintegros =
+    esSuperAdmin ||
+    authService.hasPermission('travel_expenses:read_reintegros') ||
+    authService.hasPermission('travel_expenses:register_reintegro');
   const puedeVerSst =
     !tieneContextoAuth ||
     esSuperAdmin ||
@@ -709,14 +775,28 @@ export default function ViaticosModulePremium() {
     esSuperAdmin ||
     esPresupuesto ||
     authService.hasPermission(Permissions.VIATICOS_SST_RESEND);
-  const puedeFirmarAprobacion =
+  const esEnlace = authService.isEnlaceDependencia();
+  // Mostrar la bandeja de firmas exclusivamente si tiene rol/permiso general es_jefe, es_gerente, es_subdirector o es_director (o superAdmin)
+  const puedeVerFirmasAprobacion =
     esSuperAdmin ||
     esJefeDependencia ||
     esGerenteProyecto ||
     esSubdireccion ||
     esDireccionNacional ||
-    authService.canFirmarAprobacion();
-  const puedeVerFirmasAprobacion = puedeFirmarAprobacion;
+    authService.hasPermission('travel_expenses.general.es_jefe_dependencia') ||
+    authService.hasPermission('travel_expenses.general.es_jefe') ||
+    authService.hasPermission('general.es_jefe') ||
+    authService.hasPermission('travel_expenses.general.es_gerente_proyecto') ||
+    authService.hasPermission('travel_expenses.general.es_gerente') ||
+    authService.hasPermission('general.es_gerente') ||
+    authService.hasPermission('travel_expenses.general.es_subdireccion_corporativa') ||
+    authService.hasPermission('travel_expenses.general.es_subdirector') ||
+    authService.hasPermission('general.es_subdirector') ||
+    authService.hasPermission('travel_expenses.general.es_direccion_nacional') ||
+    authService.hasPermission('travel_expenses.general.es_director') ||
+    authService.hasPermission('general.es_director');
+
+  const puedeFirmarAprobacion = puedeVerFirmasAprobacion;
 
   const gruposFiltrados: MenuGroup[] = grupos
     .map((grupo) => {
@@ -729,23 +809,27 @@ export default function ViaticosModulePremium() {
         if (item.id === 'firmas-aprobacion') return puedeVerFirmasAprobacion;
         if (item.id === 'tiquetes') return puedeVerTiquetes;
         if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
+        if (item.id === 'paz-y-salvo') return puedeEmitirPazYSalvo;
         if (item.id === 'resoluciones') return puedeVerResoluciones;
         if (item.id === 'autorizaciones') return puedeVerAutorizaciones;
         if (item.id === 'autorizaciones-direccion') return puedeVerAutorizacionesDireccion;
         if (item.id === 'presupuesto') return puedeVerPresupuesto;
         if (item.id === 'tesoreria') return puedeVerTesoreria;
+        if (item.id === 'reintegros') return puedeVerReintegros;
         if (item.id === 'sst') return puedeVerSst;
         if (item.id === 'configuracion') return puedeVerConfiguracion;
         return true;
       });
 
       if (esDireccionNacional && !esSuperAdmin) {
+        items = items.filter((item) => item.id !== 'autorizaciones');
         items = [...items].sort((a, b) => {
           if (a.id === 'autorizaciones-direccion') return -1;
           if (b.id === 'autorizaciones-direccion') return 1;
           return 0;
         });
       } else if (esSubdireccion && !esSuperAdmin) {
+        items = items.filter((item) => item.id !== 'autorizaciones-direccion');
         items = [...items].sort((a, b) => {
           if (a.id === 'autorizaciones') return -1;
           if (b.id === 'autorizaciones') return 1;
@@ -793,7 +877,7 @@ export default function ViaticosModulePremium() {
   }
 
   if (esAnalista && !esSuperAdmin) {
-    return <AnalystInbox />;
+    return <VistaAnalistaViaticos />;
   }
 
   return (
@@ -867,7 +951,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pagadas (Desembolsadas)</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
-                        {solicitudes.filter((s) => s.estado === 'PAGADA').length}
+                        {solicitudes.filter((s) => ESTADOS_PAGADA.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-blue-600 font-medium mt-1">Giros formalizados</p>
                     </div>
@@ -880,7 +964,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Modalidad Avance</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
-                        {solicitudes.filter((s) => s.modalidadPago === 'AVANCE' && ['OBLIGADA', 'PAGADA'].includes(s.estado)).length}
+                        {solicitudes.filter((s) => s.modalidadPago === 'AVANCE' && ESTADOS_TESORERIA_SST.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-amber-600 font-medium mt-1">Giro previo al viaje</p>
                     </div>
@@ -895,7 +979,7 @@ export default function ViaticosModulePremium() {
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
                         {formatearMoneda(
                           solicitudes
-                            .filter((s) => s.estado === 'PAGADA')
+                            .filter((s) => ESTADOS_PAGADA.includes(s.estado))
                             .reduce((acc, s) => acc + (s.valorPagado || s.montoTotalEstimado || 0), 0)
                         )}
                       </h3>
@@ -912,7 +996,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Comisiones Formalizadas</p>
                       <h3 className="text-2xl font-black text-emerald-800 mt-1">
-                        {solicitudes.filter((s) => ['OBLIGADA', 'PAGADA'].includes(s.estado)).length}
+                        {solicitudes.filter((s) => ESTADOS_TESORERIA_SST.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-emerald-600 font-medium mt-1">Para cobertura y monitoreo SST</p>
                     </div>
@@ -938,7 +1022,7 @@ export default function ViaticosModulePremium() {
                     <div>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Pagadas / Desembolsadas</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
-                        {solicitudes.filter((s) => s.estado === 'PAGADA').length}
+                        {solicitudes.filter((s) => ESTADOS_PAGADA.includes(s.estado)).length}
                       </h3>
                       <p className="text-xs text-blue-600 font-medium mt-1">Giro confirmado</p>
                     </div>
@@ -952,7 +1036,7 @@ export default function ViaticosModulePremium() {
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Días Totales en Territorio</p>
                       <h3 className="text-2xl font-black text-slate-800 mt-1">
                         {solicitudes
-                          .filter((s) => ['OBLIGADA', 'PAGADA'].includes(s.estado))
+                          .filter((s) => ESTADOS_TESORERIA_SST.includes(s.estado))
                           .reduce((acc, s) => acc + (s.diasComision || 1), 0)}
                       </h3>
                       <p className="text-xs text-purple-600 font-medium mt-1">Exposición operativa</p>
@@ -1465,7 +1549,7 @@ export default function ViaticosModulePremium() {
                                   type="button"
                                   onClick={() => handleVerDetalle(sol)}
                                   className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
-                                  title="Ver Detalle"
+                                  title={sol.estado === 'PENDIENTE_FIRMAS' ? 'Ver detalles y gestión de firmas (Formato 023)' : 'Ver Detalle'}
                                   aria-label="Ver Detalle"
                                 >
                                   <Eye className="w-3.5 h-3.5 text-slate-500" />
@@ -1502,7 +1586,7 @@ export default function ViaticosModulePremium() {
                                     <FileText className="w-3.5 h-3.5" />
                                   </button>
                                 )}
-                                {sol.estado === 'PENDIENTE_FIRMAS' && puedeFirmarAprobacion && (
+                                {sol.estado === 'PENDIENTE_FIRMAS' && puedeFirmarAprobacion && !esEnlace && (
                                   <button
                                     type="button"
                                     onClick={() => setSolicitudParaFirmas(sol)}
@@ -1513,7 +1597,21 @@ export default function ViaticosModulePremium() {
                                     <FileSignature className="w-3.5 h-3.5 text-amber-800" />
                                   </button>
                                 )}
-                                {puedeCrearSolicitud && ['RADICADA', 'DEVUELTA'].includes(sol.estado) && (
+                                {sol.estado === 'DEVUELTA' && (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const completa = await viaticosService.obtenerSolicitudCompleta(sol.id);
+                                      setSolicitudAResumir(completa);
+                                    }}
+                                    className="p-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 transition-colors shadow-xs"
+                                    title="Subsanar y editar solicitud devuelta"
+                                    aria-label="Subsanar solicitud"
+                                  >
+                                    <FileEdit className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                {puedeCrearSolicitud && ['RADICADA'].includes(sol.estado) && (
                                   <button
                                     type="button"
                                     onClick={() => void handleConsolidar(sol)}
@@ -1601,23 +1699,10 @@ export default function ViaticosModulePremium() {
 
            {/* ── LEGALIZACIONES ── */}
            {seccion === 'legalizaciones' && puedeVerLegalizaciones && (
-             <div className="bg-white rounded-2xl border border-slate-200 p-6">
-              <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
-                <div>
-                  <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    <Receipt className="w-5 h-5 text-amber-600" />
-                    Legalización y Cumplido de Comisión
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Revisión de facturas, cumplidos firmados y cálculo de reintegros o devoluciones.
-                  </p>
-                </div>
-              </div>
-              <div className="p-8 text-center text-slate-400 text-xs">
-                <Receipt className="w-10 h-10 mx-auto text-slate-300 mb-2" />
-                Cargue de soportes de legalización activo para comisiones finalizadas.
-              </div>
-            </div>
+             <LegalizacionesSeccion />
+          )}
+           {seccion === 'paz-y-salvo' && puedeEmitirPazYSalvo && (
+             <PazYSalvoCoordinadora />
           )}
 
             {/* ── RESOLUCIONES ── */}
@@ -1668,6 +1753,11 @@ export default function ViaticosModulePremium() {
                  <PresupuestoInbox />
                )}
 
+               {/* ── REINTEGROS DE COMISIONES (ETAPA 8) ── */}
+               {seccion === 'reintegros' && puedeVerReintegros && (
+                 <ReintegrosInbox />
+               )}
+
              {/* ── CONFIGURACIÓN ── */}
              {seccion === 'configuracion' && puedeVerConfiguracion && (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5">
@@ -1685,74 +1775,107 @@ export default function ViaticosModulePremium() {
                <div className="mt-4">
                  <ParametrizacionManager />
                </div>
+               <div className="mt-6 pt-5 border-t border-slate-100">
+                 <ConfigSoportesLegalizacion />
+               </div>
              </div>
            )}
 
           {/* ── MODAL DETALLE DE SOLICITUD ── */}
           {solicitudSeleccionada && (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-start sm:items-center justify-center p-4 pt-20 sm:pt-4 overflow-y-auto">
-              <div className="bg-white rounded-2xl max-w-xl w-full my-auto shadow-2xl border border-slate-200 flex flex-col max-h-[calc(100vh-6rem)]">
-                <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 shrink-0 bg-gradient-to-r from-slate-50 to-white rounded-t-2xl">
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-[9999] flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto">
+              <div className="bg-white rounded-2xl max-w-4xl w-full my-auto shadow-2xl border border-slate-200 flex flex-col h-[88vh] max-h-[88vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-100 shrink-0 bg-gradient-to-r from-slate-50 via-white to-blue-50/20">
                   <div className="min-w-0 flex-1 pr-3">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-[10px] text-slate-400 tracking-wide truncate">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="font-mono text-xs font-bold text-blue-900 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md">
                         {solicitudSeleccionada.codigo}
                       </span>
+                      <span>{getBadgeEstado(solicitudSeleccionada.estado)}</span>
                       {authService.isSuperAdmin() && solicitudSeleccionada.esCreadoPorMi && (
-                        <span className="inline-flex items-center text-blue-500" title="Radicada por mí">
-                          <UserCheck className="w-3 h-3" />
+                        <span className="inline-flex items-center gap-1 text-[11px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 font-semibold" title="Radicada por mí">
+                          <UserCheck className="w-3 h-3" /> Radicada por mí
                         </span>
                       )}
                     </div>
-                    <h3 className="text-sm font-black text-slate-900 truncate">
+                    <h3 className="text-sm sm:text-base font-black text-slate-900 truncate">
                       {solicitudSeleccionada.nombreComisionado}
                     </h3>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setSolicitudSeleccionada(null)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
-                    aria-label="Cerrar detalle"
-                    title="Cerrar"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleExportarPDF(solicitudSeleccionada)}
+                      disabled={exportando}
+                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#003DA5] border border-blue-200/80 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                      title="Exportar Formato 023"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Exportar 023</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSolicitudSeleccionada(null);
+                        setSolicitudCompletaDetalle(null);
+                      }}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0 cursor-pointer"
+                      aria-label="Cerrar detalle"
+                      title="Cerrar"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
-                <div className="px-5 py-4 space-y-2.5 text-xs overflow-y-auto flex-1 min-h-0 scrollbar-thin">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="bg-slate-50 rounded-lg px-3 py-2">
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Cargo</span>
-                      <span className="font-semibold text-slate-800 text-xs">{solicitudSeleccionada.cargoComisionado}</span>
+                <div 
+                  className="px-6 py-4 space-y-4 text-xs overflow-y-auto flex-1 min-h-0 scrollbar-thin"
+                  style={{ maxHeight: 'calc(88vh - 120px)', overscrollBehavior: 'contain' }}
+                >
+                  {/* Grid de Datos Generales */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Cargo Comisionado</span>
+                      <span className="font-bold text-slate-800 text-xs block truncate">{solicitudSeleccionada.cargoComisionado || '—'}</span>
+                      <span className="text-[10px] text-slate-500 font-mono mt-0.5 block truncate">C.C. {solicitudSeleccionada.cedulaComisionado || '—'}</span>
                     </div>
-                    <div className="bg-slate-50 rounded-lg px-3 py-2">
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Dependencia</span>
-                      <span className="font-semibold text-slate-800 text-xs">{solicitudSeleccionada.dependencia}</span>
+                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Dependencia</span>
+                      <span className="font-bold text-slate-800 text-xs block truncate">{solicitudSeleccionada.dependencia || '—'}</span>
                     </div>
-                    <div className="bg-slate-50 rounded-lg px-3 py-2">
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Origen</span>
-                      <span className="font-semibold text-slate-800 text-xs">
-                        {solicitudSeleccionada.ciudadOrigen || solicitudSeleccionada.sedeOrigen || 'Bogotá D.C.'}
-                      </span>
-                    </div>
-                    <div className="bg-slate-50 rounded-lg px-3 py-2">
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Destino</span>
-                      <span className="font-semibold text-slate-800 text-xs">
+                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Ruta de Comisión</span>
+                      <span className="font-bold text-slate-800 text-xs block truncate">
                         {solicitudSeleccionada.ciudadDestino} ({solicitudSeleccionada.departamentoDestino})
                       </span>
+                      <span className="text-[10px] text-slate-500 block truncate mt-0.5">
+                        Origen: {solicitudSeleccionada.ciudadOrigen || solicitudSeleccionada.sedeOrigen || 'Bogotá D.C.'}
+                      </span>
                     </div>
-                    <div className="bg-slate-50 rounded-lg px-3 py-2 col-span-2">
-                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Itinerario / Fechas</span>
-                      <div className="font-semibold text-slate-800 text-xs flex items-center gap-1.5 flex-wrap mt-0.5">
-                        <span>{solicitudSeleccionada.fechaInicio} al {solicitudSeleccionada.fechaFin}</span>
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
-                          {formatearDiasComision(Number(solicitudSeleccionada.diasComision || 1))}
-                        </span>
+                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-0.5">Itinerario / Fechas</span>
+                      <div className="font-bold text-slate-800 text-xs block truncate">
+                        {solicitudSeleccionada.fechaInicio} al {solicitudSeleccionada.fechaFin}
                       </div>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-100 mt-1">
+                        {formatearDiasComision(Number(solicitudSeleccionada.diasComision || 1))}
+                      </span>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
-                    <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Estado</span>
-                    <span>{getBadgeEstado(solicitudSeleccionada.estado)}</span>
+
+                  {/* Resumen Financiero Compacto */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-600">Monto Viáticos:</span>
+                      <span className="font-mono font-bold text-slate-900">{formatearMoneda(solicitudSeleccionada.montoSolicitadoViaticos || 0)}</span>
+                    </div>
+                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-slate-600">Gastos de Viaje:</span>
+                      <span className="font-mono font-bold text-slate-900">{formatearMoneda(solicitudSeleccionada.montoSolicitadoGastosViaje || 0)}</span>
+                    </div>
+                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-2.5 flex items-center justify-between">
+                      <span className="text-xs font-bold text-blue-900">Total Estimado:</span>
+                      <span className="font-mono font-black text-blue-900">{formatearMoneda(solicitudSeleccionada.montoTotalEstimado || 0)}</span>
+                    </div>
                   </div>
                   {(solicitudSeleccionada.motivoDevolucion || solicitudSeleccionada.observacionesSegundaRevision) && (
                     <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl">
@@ -2077,7 +2200,7 @@ export default function ViaticosModulePremium() {
                     {/* ========================================================================= */}
                     {/* HITO GRÁFICO SST (RF-PAG-002 — Etapa 8: Notificación Automática a SST)    */}
                     {/* ========================================================================= */}
-                    {Boolean(solicitudSeleccionada.notificadoSst || logsSst.length > 0 || ['COMPROMETIDA', 'OBLIGADA', 'PAGADA'].includes(solicitudSeleccionada.estado)) && (() => {
+                    {Boolean(solicitudSeleccionada.notificadoSst || logsSst.length > 0 || ['COMPROMETIDA', ...ESTADOS_TESORERIA_SST].includes(solicitudSeleccionada.estado)) && (() => {
                       const ultimoLogSst = logsSst[0];
                       const payloadSst = (ultimoLogSst?.payloadNotificado as any) || {
                         nombre_completo_comisionado: solicitudSeleccionada.nombreComisionado,
@@ -2255,7 +2378,7 @@ export default function ViaticosModulePremium() {
                     {/* ========================================================================= */}
                     {/* ETAPA 8: DETALLE DE DESEMBOLSO / PAGO REALIZADO (ESTADO PAGADA) */}
                     {/* ========================================================================= */}
-                    {solicitudSeleccionada.estado === 'PAGADA' && (
+                    {ESTADOS_PAGADA.includes(solicitudSeleccionada.estado) && (
                       <div className="mt-4 p-4 bg-emerald-50/90 rounded-xl border border-emerald-300 shadow-xs">
                         <div className="flex items-start gap-2.5">
                           <span className="p-2 rounded-lg bg-emerald-100 text-emerald-800 shrink-0 mt-0.5">
@@ -2319,22 +2442,20 @@ export default function ViaticosModulePremium() {
                       </div>
                     )}
 
-                    {solicitudSeleccionada.estado === 'PENDIENTE_FIRMAS' && (
-                      <div className="mt-4 p-4 bg-amber-50/90 rounded-xl border border-amber-300 shadow-xs space-y-2.5">
-                        <div className="flex items-start gap-2.5">
-                          <span className="p-2 rounded-lg bg-amber-100 text-amber-800 shrink-0 mt-0.5">
-                            <FileSignature className="w-4 h-4 text-amber-800" />
-                          </span>
-                          <div>
-                            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-950">
-                              <span>Control Previo a Radicación · Pendiente de Firmas de Aprobación</span>
-                            </div>
-                            <p className="text-[11px] text-amber-900 mt-0.5">
-                              La solicitud incorpora el flujo de firmas de aprobación previo a su radicación: sin las firmas de aprobación la solicitud no se radica.
-                            </p>
-                          </div>
-                        </div>
-                        {puedeFirmarAprobacion ? (
+                    {/* ========================================================================= */}
+                    {/* GESTIÓN DE FIRMAS INSTITUCIONALES — APROBACIÓN POR COMPONENTE (FORMATO 023) */}
+                    {/* ========================================================================= */}
+                    <div className="mt-4 pt-4 border-t border-slate-200">
+                      <AprobacionPorComponente
+                        solicitud={solicitudSeleccionada}
+                        solicitudCompleta={solicitudCompletaDetalle}
+                        estadoFirmas={estadoFirmasDetalle}
+                        cargandoFirmas={cargandoFirmasDetalle}
+                      />
+
+                      {/* Botón de firma directa para Jefes/Gerentes (excluyendo Enlace) */}
+                      {solicitudSeleccionada.estado === 'PENDIENTE_FIRMAS' && puedeFirmarAprobacion && !esEnlace && (
+                        <div className="mt-3">
                           <button
                             type="button"
                             onClick={() => setSolicitudParaFirmas(solicitudSeleccionada)}
@@ -2343,34 +2464,53 @@ export default function ViaticosModulePremium() {
                             <FileSignature className="w-4 h-4" />
                             <span>Revisar y Gestionar Firmas de Aprobación (Formato 023)</span>
                           </button>
-                        ) : (
-                          <div className="p-2.5 bg-white/90 rounded-lg border border-amber-200 text-xs text-amber-900 flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
-                            <span className="text-[11px]">
-                              El expediente se encuentra en revisión de los jefes firmantes. El Enlace no suscribe firmas; se notificará una vez completadas las validaciones.
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                        </div>
+                      )}
+
+                      {/* Botón de subsanar solicitud devuelta para el Enlace */}
+                      {solicitudSeleccionada.estado === 'DEVUELTA' && (puedeCrearSolicitud || esEnlace) && (
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const completa = await viaticosService.obtenerSolicitudCompleta(solicitudSeleccionada.id);
+                              setSolicitudSeleccionada(null);
+                              setSolicitudAResumir(completa);
+                            }}
+                            className="w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold inline-flex items-center justify-center gap-2 transition-colors shadow-xs cursor-pointer"
+                          >
+                            <FileEdit className="w-4 h-4" />
+                            <span>Subsanar y Editar Solicitud Devuelta</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                 </div>
-                <div className="px-5 py-3 border-t border-slate-100 flex justify-end gap-2 shrink-0 bg-white rounded-b-2xl">
-                  <button
-                    type="button"
-                    onClick={() => solicitudSeleccionada && handleExportarPDF(solicitudSeleccionada)}
-                    disabled={exportando}
-                    className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs inline-flex items-center gap-1.5 disabled:opacity-50 transition-colors"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    {exportando ? 'Exportando...' : 'Exportar PDF'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSolicitudSeleccionada(null)}
-                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition-colors"
-                  >
-                    Cerrar
-                  </button>
+                <div className="px-6 py-3.5 border-t border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/60 rounded-b-2xl">
+                  <div className="text-[11px] text-slate-500 font-medium">
+                    Expediente: <span className="font-mono font-bold text-slate-700">{solicitudSeleccionada.codigo}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => solicitudSeleccionada && handleExportarPDF(solicitudSeleccionada)}
+                      disabled={exportando}
+                      className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs inline-flex items-center gap-1.5 disabled:opacity-50 transition-colors cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      {exportando ? 'Exportando...' : 'Exportar PDF'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSolicitudSeleccionada(null);
+                        setSolicitudCompletaDetalle(null);
+                      }}
+                      className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs transition-colors cursor-pointer"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

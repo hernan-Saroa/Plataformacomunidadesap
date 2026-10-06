@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { OfertasController } from './ofertas.controller.js';
 import { OfertasService } from './ofertas.service.js';
 import { AsignacionesModule } from '../asignaciones/asignaciones.module.js';
+import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 
 /**
  * Ofertas académicas (EFDS-1375). Reusa el AcumuladoService de asignaciones: la
@@ -11,7 +12,7 @@ import { AsignacionesModule } from '../asignaciones/asignaciones.module.js';
 @Module({
   imports: [AsignacionesModule],
   controllers: [OfertasController],
-  providers: [OfertasService],
+  providers: [OfertasService, ProgramacionPermissionsService],
   exports: [OfertasService],
 })
 export class OfertasModule {}

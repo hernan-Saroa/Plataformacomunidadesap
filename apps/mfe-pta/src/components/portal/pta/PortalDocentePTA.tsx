@@ -36,6 +36,7 @@ import {
 } from '../../../services/api/ptaApi';
 import { formatPtaAssignmentName, formatPtaPensum } from '../../../utils/ptaPensumCompatibility';
 import { getPtaHistoryActorLabel } from '../../../utils/ptaHistoryActor';
+import { getPtaResearchData } from '../../../utils/ptaResearch';
 import { PTAForm } from './PTAForm';
 import { PTAResumenPrint } from './PTAResumenPrint';
 import { RevisionPropuesta } from './RevisionPropuesta';
@@ -1619,15 +1620,13 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
 
               {/* Investigación — Proyecto y Actividades (detalle completo) */}
               {(() => {
-                const proy = selectedPta.investigacion_proyecto;
-                const invActs = Array.isArray(selectedPta.investigacion_actividades) ? selectedPta.investigacion_actividades : [];
-                const tieneProy = proy && (proy.nombre || proy.rol || proy.codigo || Number(proy.horas_solicitadas) > 0);
+                const research = getPtaResearchData(selectedPta);
+                const proy = research.proyectos[0];
+                const invActs = research.actividades;
+                const tieneProy = Boolean(proy);
                 if (!tieneProy && invActs.length === 0) return null;
                 const colorInv = PTA_COLORS.INVESTIGACION;
-                // Igual que el backend (toPtaDto): horas del proyecto o, en su defecto, suma de actividades.
-                const totalInv = Number(selectedPta.horas_investigacion ?? 0)
-                  || Number(proy?.horas_solicitadas || 0)
-                  || invActs.reduce((s: number, a: any) => s + Number(a.horas_total ?? a.horas ?? 0), 0);
+                const totalInv = research.horas;
                 const partes = [tieneProy ? 'Proyecto' : null, invActs.length > 0 ? `${invActs.length} ${invActs.length === 1 ? 'actividad' : 'actividades'}` : null].filter(Boolean);
                 return (
                   <DetalleSeccion
@@ -1642,7 +1641,7 @@ export function PortalDocentePTA({ onBack, userPersonId, userName, userEmail }: 
                       <ItemDetalle color={colorInv}>
                         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
                           <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#111827', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{proy.nombre || 'Proyecto de investigación'}</div>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#111827', lineHeight: 1.3, overflowWrap: 'anywhere' }}>{proy.nombre || proy.nombre_proyecto || 'Proyecto de investigación'}</div>
                             {proy.rol && (
                               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
                                 <Award size={11} color={colorInv} />

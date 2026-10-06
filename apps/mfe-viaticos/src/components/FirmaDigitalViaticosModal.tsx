@@ -484,6 +484,11 @@ export default function FirmaDigitalViaticosModal({
                     ref={(el) => {
                       inputRefs.current[i] = el;
                     }}
+                    name={`otp_digit_${i}`}
+                    id={`otp_digit_${i}`}
+                    autoComplete="one-time-code"
+                    data-lpignore="true"
+                    data-form-type="other"
                     type="password"
                     inputMode="numeric"
                     maxLength={1}

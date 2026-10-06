@@ -1,4 +1,5 @@
 import { PtaService } from './pta.service';
+import { PtaPermissionsService } from './auth/pta-permissions.service';
 
 /**
  * EFDS-1353 dejó 'gestion_profesoral' como TIPO DE APROBACIÓN POR DEFECTO de toda
@@ -72,6 +73,7 @@ describe('PtaService - Complementarias de Gestión Profesoral en el flujo de rev
   it('marcar la revisión como revisada levanta el candado de aprobación', async () => {
     const service = createService();
     const reviews: any[] = [];
+    const approvals: any[] = [];
     service.ptaComponentReviewRepo = {
       find: jest.fn(async ({ where }: any) => reviews.filter(r =>
         r.componente === where.componente && (!where.subseccion || r.subseccion === where.subseccion))),
@@ -88,25 +90,36 @@ describe('PtaService - Complementarias de Gestión Profesoral en el flujo de rev
       }),
     };
     service.ptaComponentApprovalRepo = {
-      find: jest.fn().mockResolvedValue([]),
-      findOne: jest.fn().mockResolvedValue(null),
+      find: jest.fn(async () => approvals),
+      findOne: jest.fn(async ({ where }: any) => approvals.find(r => r.componente === where.componente) || null),
       create: jest.fn((row: any) => ({ ...row })),
-      save: jest.fn(async (row: any) => row),
+      save: jest.fn(async (row: any) => {
+        for (const entry of Array.isArray(row) ? row : [row]) {
+          if (!approvals.includes(entry)) approvals.push(entry);
+        }
+        return row;
+      }),
     };
     service.ptaRepo.findOne = jest.fn().mockResolvedValue({
       id: 'pta-1', estado: 'Pendiente Jefatura', version: 1,
-      datosEstructurados: { complementarias: [COMPLEMENTARIA_GP] },
+      datosEstructurados: { complementarias: [COMPLEMENTARIA_GP,
+        { ...COMPLEMENTARIA_GP, horas: 10, seccion: 'academico_administrativas' }], },
     });
+    service.ptaRepo.save = jest.fn(async (row: any) => row);
+    service.solicitudRepo = { findOne: jest.fn().mockResolvedValue(null) };
     service.historialRepo = { create: jest.fn((row: any) => row), save: jest.fn(async (row: any) => row) };
     service.logEvento = jest.fn().mockResolvedValue(undefined);
     service.logger = { warn: jest.fn(), log: jest.fn(), error: jest.fn(), debug: jest.fn() };
     service.notificaciones = { notificarDecisionComponente: jest.fn(), notificarCambioEstado: jest.fn() };
 
-    const auth: any = {
-      userId: 'u-super', name: 'Super Admin', roles: ['SUPER_ADMIN'], isSuperUser: true,
-      approvesAll: true, reviewsAll: true, permissions: new Set<string>(),
-      allowedComponents: ['complementarias_gestion_profesoral'], allowedReviewSubsecciones: [],
+    const resolveAuth = async (action: string) => {
+      const resolver = new PtaPermissionsService({ query: jest.fn().mockResolvedValue([
+        { role_code: 'GESTION_PROFESORAL', permission_code: `pta.${action}.complementarias.gestion_profesoral` },
+      ]) } as any);
+      return { ...await resolver.resolveForUser(`u-${action}`), name: action === 'review' ? 'Revisor GP' : 'Aprobador GP', territorialIds: [] };
     };
+    const auth = await resolveAuth('approve');
+    const reviewer = await resolveAuth('review');
     const revisionPendiente = /tiene revisión\(es\) pendiente\(s\)/;
     const mensajeDeError = async (fn: () => Promise<unknown>): Promise<string> => {
       try { await fn(); return ''; } catch (err: any) { return String(err?.message || err); }
@@ -120,10 +133,24 @@ describe('PtaService - Complementarias de Gestión Profesoral en el flujo de rev
     }, auth));
     expect(bloqueado).toMatch(revisionPendiente);
 
+    await expect(service.aprobarComponente('pta-1', {
+      componente: 'complementarias_gestion_profesoral', estado: 'aprobado',
+    }, reviewer)).rejects.toThrow(/No tiene permisos/);
+    await expect(service.revisarComponente('pta-1', {
+      componente: 'complementarias_gestion_profesoral', subseccion: 'docencia', estado: 'revisado',
+    }, auth)).rejects.toThrow(/No tiene permisos/);
+
     await service.revisarComponente('pta-1', {
       componente: 'complementarias_gestion_profesoral', subseccion: 'docencia', estado: 'revisado',
-    }, auth);
+    }, reviewer);
     expect(reviews.find(r => r.componente === 'complementarias_gestion_profesoral')?.estado).toBe('revisado');
+
+    await expect(service.aprobarComponente('pta-1', {
+      componente: 'complementarias_gestion_profesoral', estado: 'aprobado',
+    }, auth)).rejects.toThrow(/academico_administrativas/);
+    await service.revisarComponente('pta-1', {
+      componente: 'complementarias_gestion_profesoral', subseccion: 'academico_administrativas', estado: 'revisado',
+    }, reviewer);
 
     // Y con la revisión resuelta, la aprobación se completa de punta a punta.
     const resultado = await service.aprobarComponente('pta-1', {
@@ -132,8 +159,9 @@ describe('PtaService - Complementarias de Gestión Profesoral en el flujo de rev
     expect(resultado.approval).toEqual(expect.objectContaining({
       componente: 'complementarias_gestion_profesoral',
       estado: 'aprobado',
-      aprobadorNombre: 'Super Admin',
+      aprobadorNombre: 'Aprobador GP',
     }));
+    expect(resultado.estadoGeneral).toBe('Aprobado');
   });
 
   it('acepta revisar y aprobar el componente de Gestión Profesoral', async () => {

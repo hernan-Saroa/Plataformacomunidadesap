@@ -23,6 +23,42 @@ export class AutorizacionExtemporaneaDto {
   @IsOptional()
   @IsBoolean()
   esDelegado?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Código OTP de 6 dígitos para validación de la firma digital de Dirección Nacional.',
+    example: '123456',
+  })
+  @IsOptional()
+  @IsString()
+  otp?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador de verificación emitido en solicitarOtpFirma.',
+  })
+  @IsOptional()
+  @IsString()
+  verificationId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador del certificado digital generado para la firma.',
+  })
+  @IsOptional()
+  @IsString()
+  certificadoId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hash criptográfico SHA-256 de la firma de Dirección Nacional.',
+  })
+  @IsOptional()
+  @IsString()
+  hashSha256?: string;
+
+  @ApiPropertyOptional({
+    description: 'Estampa gráfica o estampa de la firma digital.',
+  })
+  @IsOptional()
+  @IsString()
+  firmaImagen?: string;
 }
 
 /**

@@ -26,6 +26,22 @@ export interface SituacionResuelta {
   vigenteHasta: string | null;
 }
 
+
+/**
+ * ¿Es asignable un docente SIN situación registrada en el RUND?
+ *
+ * Por defecto NO: no se inventa un estado que el RUND no tiene. Pero es un caso
+ * DISTINTO de "no asignable por su situación" — aquí no hay texto en absoluto —,
+ * y conflacionarlos hace que el motivo que ve la decanatura sea engañoso.
+ *
+ * Se parametriza porque hoy caen aquí los 80 catedráticos extraídos del
+ * histórico: Cátedra es el 63 % de la programación real y no hay un solo
+ * catedrático en el RUND. Es un vacío de DATOS, no de reglas. Con
+ * PROG_SIN_DATO_ASIGNABLE=true se ejercita el flujo en desarrollo; en
+ * producción lo decide la ESAP, no este archivo.
+ */
+export const SIN_DATO_ASIGNABLE = process.env.PROG_SIN_DATO_ASIGNABLE === 'true';
+
 /** Categorías del RUND que impiden asignar, reconocidas por patrón (sin tildes). */
 const NO_ASIGNABLES: { categoria: string; motivo: string; patrones: string[] }[] = [
   { categoria: 'ano_sabatico', motivo: 'El docente se encuentra en año sabático', patrones: ['sabatico'] },
@@ -99,12 +115,16 @@ export function resolverSituacion(
   const cat = normalizar(categoria);
   const vigenteHasta = extraerVigencia(descripcion);
 
-  // Fail-closed: sin categoría no se puede afirmar que esté disponible.
+  // Sin categoría: FALTA EL DATO. No es lo mismo que "el dato dice que no".
+  // Bloquea por defecto, pero se distingue para que el motivo sea honesto y
+  // para poder habilitarlo por parámetro sin tocar el resto de la clasificación.
   if (!cat) {
     return {
-      categoria: null,
-      asignable: false,
-      motivo: 'El docente no tiene situación administrativa registrada en el RUND',
+      categoria: 'sin_dato',
+      asignable: SIN_DATO_ASIGNABLE,
+      motivo: SIN_DATO_ASIGNABLE
+        ? null
+        : 'Falta información del RUND: el docente no tiene situación administrativa registrada',
       vigenteHasta,
     };
   }

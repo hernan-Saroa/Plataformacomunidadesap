@@ -63,11 +63,10 @@ export class SolicitudHistorialEstadoEntity {
   @Column({ name: 'usuario_id', type: 'uuid' })
   usuarioId: string;
 
-  /** Justificación u observación de la transición (máx. 255 caracteres). */
+  /** Justificación u observación de la transición. */
   @Column({
     name: 'comentarios',
-    type: 'varchar',
-    length: 255,
+    type: 'text',
     nullable: true,
   })
   comentarios: string | null;

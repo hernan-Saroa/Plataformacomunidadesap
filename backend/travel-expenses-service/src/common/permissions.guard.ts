@@ -48,11 +48,15 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_siif_requested',
     'travel_expenses:double_check_request',
     'travel_expenses:return_to_analyst',
+    'travel_expenses:read_requests',
+    'travel_expenses:legalizations.revert_approval', // EFDS-1310: aprueba reversiones de revisión
   ],
   ROL_CONTROL_VIATICOS: [
     'travel_expenses:read_siif_requested',
     'travel_expenses:double_check_request',
     'travel_expenses:return_to_analyst',
+    'travel_expenses:read_requests',
+    'travel_expenses:legalizations.revert_approval', // EFDS-1310: aprueba reversiones de revisión
   ],
   ANALISTA: [
     'travel_expenses:read_assigned',
@@ -61,6 +65,10 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:export_siif',
     'travel_expenses:return_assigned',
     'travel_expenses:send_to_budget',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_reintegros',
+    'travel_expenses:register_reintegro',
+    'travel_expenses:legalizations.manage', // EFDS-1310: revisar y cerrar legalizaciones
   ],
   ROL_ANALISTA: [
     'travel_expenses:read_assigned',
@@ -69,6 +77,10 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:export_siif',
     'travel_expenses:return_assigned',
     'travel_expenses:send_to_budget',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_reintegros',
+    'travel_expenses:register_reintegro',
+    'travel_expenses:legalizations.manage', // EFDS-1310: revisar y cerrar legalizaciones
   ],
   ANALISTA_VIATICOS: [
     'travel_expenses:read_assigned',
@@ -77,6 +89,10 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:export_siif',
     'travel_expenses:return_assigned',
     'travel_expenses:send_to_budget',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_reintegros',
+    'travel_expenses:register_reintegro',
+    'travel_expenses:legalizations.manage', // EFDS-1310: revisar y cerrar legalizaciones
   ],
   SECRETARIO: [
     'travel_expenses:read_inbox',
@@ -118,6 +134,8 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_sst_logs',
     'travel_expenses:resend_sst_notification',
     'travel_expenses:read_inbox',
+    'travel_expenses:read_reintegros',
+    'travel_expenses:register_reintegro',
   ],
   ROL_TESORERIA: [
     'travel_expenses:read_payments',
@@ -127,6 +145,8 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_sst_logs',
     'travel_expenses:resend_sst_notification',
     'travel_expenses:read_inbox',
+    'travel_expenses:read_reintegros',
+    'travel_expenses:register_reintegro',
   ],
   GRUPO_TESORERIA: [
     'travel_expenses:read_payments',
@@ -136,6 +156,8 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:read_sst_logs',
     'travel_expenses:resend_sst_notification',
     'travel_expenses:read_inbox',
+    'travel_expenses:read_reintegros',
+    'travel_expenses:register_reintegro',
   ],
   SST: [
     'travel_expenses:read_sst_requests',
@@ -183,6 +205,9 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:return_authorization',
     'travel_expenses:sign_approval',
     'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
+    'travel_expenses.general.es_subdireccion_corporativa',
   ],
   ROL_SUBDIRECCION_GESTION_CORPORATIVA: [
     'travel_expenses:authorize_expense',
@@ -190,6 +215,69 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:return_authorization',
     'travel_expenses:sign_approval',
     'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
+    'travel_expenses.general.es_subdireccion_corporativa',
+  ],
+  SUBDIRECCION_DE_GESTION_CORPORATIVA: [
+    'travel_expenses:authorize_expense',
+    'travel_expenses:read_authorizations',
+    'travel_expenses:return_authorization',
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
+    'travel_expenses.general.es_subdireccion_corporativa',
+  ],
+  SUBDIRECCION: [
+    'travel_expenses:authorize_expense',
+    'travel_expenses:read_authorizations',
+    'travel_expenses:return_authorization',
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
+    'travel_expenses.general.es_subdireccion_corporativa',
+  ],
+  ROL_SUBDIRECCION: [
+    'travel_expenses:authorize_expense',
+    'travel_expenses:read_authorizations',
+    'travel_expenses:return_authorization',
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
+    'travel_expenses.general.es_subdireccion_corporativa',
+  ],
+  SUBDIRECTOR: [
+    'travel_expenses:authorize_expense',
+    'travel_expenses:read_authorizations',
+    'travel_expenses:return_authorization',
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
+    'travel_expenses.general.es_subdireccion_corporativa',
+  ],
+  ORDENADOR_GASTO: [
+    'travel_expenses:authorize_expense',
+    'travel_expenses:read_authorizations',
+    'travel_expenses:return_authorization',
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
+    'travel_expenses.general.es_subdireccion_corporativa',
+  ],
+  ORDENADOR_DEL_GASTO: [
+    'travel_expenses:authorize_expense',
+    'travel_expenses:read_authorizations',
+    'travel_expenses:return_authorization',
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
+    'travel_expenses.general.es_subdireccion_corporativa',
   ],
   DIRECCION_NACIONAL: [
     'travel_expenses:authorize_extemporaneous',
@@ -197,6 +285,8 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:reject_extemporaneous',
     'travel_expenses:sign_approval',
     'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
   ],
   ROL_DIRECCION_NACIONAL: [
     'travel_expenses:authorize_extemporaneous',
@@ -204,6 +294,44 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses:reject_extemporaneous',
     'travel_expenses:sign_approval',
     'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
+  ],
+  DIRECTOR_NACIONAL: [
+    'travel_expenses:authorize_extemporaneous',
+    'travel_expenses:read_extemporaneous_authorizations',
+    'travel_expenses:reject_extemporaneous',
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
+  ],
+  ROL_DIRECTOR_NACIONAL: [
+    'travel_expenses:authorize_extemporaneous',
+    'travel_expenses:read_extemporaneous_authorizations',
+    'travel_expenses:reject_extemporaneous',
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
+  ],
+  DIRECCION_GENERAL: [
+    'travel_expenses:authorize_extemporaneous',
+    'travel_expenses:read_extemporaneous_authorizations',
+    'travel_expenses:reject_extemporaneous',
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
+  ],
+  DIRECCION_NACIONAL_O_DELEGADO: [
+    'travel_expenses:authorize_extemporaneous',
+    'travel_expenses:read_extemporaneous_authorizations',
+    'travel_expenses:reject_extemporaneous',
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_requests',
+    'travel_expenses:read_own_requests',
   ],
   JEFE_DEPENDENCIA: [
     'travel_expenses:sign_approval',
@@ -255,6 +383,10 @@ const ROLE_PERMISSIONS_FALLBACK: Record<string, string[]> = {
     'travel_expenses.general.es_comisionado',
     'es_comisionado',
   ],
+  // EFDS-1311: emisores de paz y salvo (migración 463). El fallback solo abre la ruta;
+  // el servicio revalida en auth el rol activo y la territorial en cada operación.
+  COORDINADOR_COMISIONES_VIATICOS: ['travel_expenses:paz_y_salvo.manage'],
+  COORDINADOR_ADMINISTRATIVO_FINANCIERO: ['travel_expenses:paz_y_salvo.manage'],
 };
 
 @Injectable()
