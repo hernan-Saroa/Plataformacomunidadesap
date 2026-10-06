@@ -178,3 +178,55 @@ describe('RielActividades · qué se puede pulsar', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('RielActividades · plegado', () => {
+  const pintarPlegable = (plegado: boolean, onSeleccionar = vi.fn(), onAlternarPlegado = vi.fn()) =>
+    render(
+      <RielActividades
+        etapa={5}
+        etapaActual={5}
+        actividades={actividades}
+        seleccionada={null}
+        onSeleccionar={onSeleccionar}
+        plegado={plegado}
+        onAlternarPlegado={onAlternarPlegado}
+      />,
+    );
+
+  it('sin quien lo pliegue no ofrece plegarse', () => {
+    pintar(5);
+    expect(screen.queryByRole('button', { name: 'Plegar las actividades' })).toBeNull();
+  });
+
+  it('desplegado ofrece plegarse', async () => {
+    const onAlternarPlegado = vi.fn();
+    pintarPlegable(false, vi.fn(), onAlternarPlegado);
+    await userEvent.click(screen.getByRole('button', { name: 'Plegar las actividades' }));
+    expect(onAlternarPlegado).toHaveBeenCalledTimes(1);
+  });
+
+  it('plegado esconde los nombres pero deja un punto por actividad aplicable', () => {
+    pintarPlegable(true);
+    expect(screen.queryByText('Documentos del proceso')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Documentos del proceso' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publicación del proyecto de pliego' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Audiencia de riesgos' })).toBeNull();
+    expect(screen.getByText('1/2')).toBeInTheDocument();
+  });
+
+  it('plegado, cada punto sigue abriendo su actividad', async () => {
+    const onSeleccionar = vi.fn();
+    pintarPlegable(true, onSeleccionar);
+    await userEvent.click(screen.getByRole('button', { name: 'Publicación del proyecto de pliego' }));
+    expect(onSeleccionar).toHaveBeenCalledWith('5.2');
+  });
+
+  it('plegado se puede volver a desplegar', async () => {
+    const onAlternarPlegado = vi.fn();
+    pintarPlegable(true, vi.fn(), onAlternarPlegado);
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Mostrar las actividades de la etapa 5' }),
+    );
+    expect(onAlternarPlegado).toHaveBeenCalledTimes(1);
+  });
+});

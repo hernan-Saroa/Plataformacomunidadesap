@@ -25,6 +25,8 @@ interface Props {
    * asignadas a esa dependencia (por nombre, como la guarda el estudio previo).
    */
   dependencia?: string;
+  /** Si llega, solo se ofrecen las personas con ese cargo (id de auth.cargos). */
+  cargo?: string;
 }
 
 /** Iniciales de nombre y apellido, como en los equipos de Control Interno. */
@@ -57,6 +59,7 @@ export function SelectorPersona({
   disabled,
   invalido,
   dependencia,
+  cargo,
 }: Props) {
   const [abierto, setAbierto] = useState(false);
   const [termino, setTermino] = useState('');
@@ -84,7 +87,7 @@ export function SelectorPersona({
       setCargando(true);
       setError(null);
       try {
-        setPersonas(await contratacionService.personas(termino, dependencia ?? ''));
+        setPersonas(await contratacionService.personas(termino, dependencia ?? '', cargo ?? ''));
       } catch (err: any) {
         setError(err.message);
         setPersonas([]);
@@ -93,7 +96,7 @@ export function SelectorPersona({
       }
     }, 250);
     return () => clearTimeout(t);
-  }, [termino, abierto, dependencia]);
+  }, [termino, abierto, dependencia, cargo]);
 
   const vacio = useMemo(
     () => !cargando && !error && personas.length === 0,
@@ -190,7 +193,9 @@ export function SelectorPersona({
               <li className="px-3 py-2 text-[11.5px] text-gray-400">
                 {termino
                   ? 'Sin coincidencias'
-                  : dependencia
+                  : cargo
+                    ? 'No hay personas con ese cargo'
+                    : dependencia
                     ? 'No hay personas registradas en esta dependencia'
                     : 'No hay personas registradas'}
               </li>
@@ -222,9 +227,11 @@ export function SelectorPersona({
                     <span className="block text-[12.5px] text-slate-700 truncate">
                       {persona.nombre}
                     </span>
-                    {persona.email && (
+                    {/* El cargo junto al correo: con el filtro en «todos los
+                        cargos» es lo que distingue al jefe del resto. */}
+                    {(persona.cargo || persona.email) && (
                       <span className="block text-[10.5px] text-gray-400 truncate">
-                        {persona.email}
+                        {[persona.cargo, persona.email].filter(Boolean).join(' · ')}
                       </span>
                     )}
                   </span>

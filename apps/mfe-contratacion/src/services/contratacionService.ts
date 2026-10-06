@@ -46,7 +46,6 @@ import {
   DecisionComite,
   EstadoCausalProceso,
   EstadoComiteContratacion,
-  EstadoModalidadProceso,
   EstadoActaInicio,
   EstadoSuscripcionActa,
   DatosActaInicio,
@@ -124,6 +123,7 @@ import {
   GuardarRegla,
   ReglaActividad,
   Persona,
+  Cargo,
   PlantillaFormato,
   PlazosPublicacion,
   ProcesoResumen,
@@ -241,10 +241,17 @@ export const contratacionService = {
   modalidades: () => pedir<Modalidad[]>('/modalidades'),
 
   /** Personas para los selectores; el termino filtra por nombre. */
-  personas: (q = '', dependencia = '') =>
+  personas: (q = '', dependencia = '', cargo = '') =>
     pedir<Persona[]>(
       `/personas?q=${encodeURIComponent(q)}` +
-        (dependencia ? `&dependencia=${encodeURIComponent(dependencia)}` : ''),
+        (dependencia ? `&dependencia=${encodeURIComponent(dependencia)}` : '') +
+        (cargo ? `&cargo=${encodeURIComponent(cargo)}` : ''),
+    ),
+
+  /** Cargos de una dependencia (todos los activos si no llega), para acotar un selector de persona. */
+  cargos: (dependencia = '') =>
+    pedir<Cargo[]>(
+      '/personas/cargos' + (dependencia ? `?dependencia=${encodeURIComponent(dependencia)}` : ''),
     ),
 
   /**
@@ -275,45 +282,43 @@ export const contratacionService = {
     },
   ) => pedir<Cdp>(`/procesos/${procesoId}/cdp`, { method: 'POST', body: JSON.stringify(datos) }),
 
-  /**
-   * Verificar es decir contra qué rubro hay saldo, no pulsar un botón.
-   *
-   * El rubro va vacío si la solicitud ya lo traía; el backend solo lo exige
-   * cuando el CDP no tiene ninguno, que es el caso de la solicitud automática.
-   */
-  verificarCdp: (procesoId: string, rubro?: string, firma?: EvidenciaFirmaOtp) =>
-    pedir<Cdp>(`/procesos/${procesoId}/cdp/verificar`, {
-      method: 'POST',
-      body: JSON.stringify({ rubro, firma }),
-    }),
-
-  expedirCdp: (
-    procesoId: string,
-    datos: {
-      numero: string;
-      valor: number;
-      fechaExpedicion: string;
-      vigenciaFiscal?: number;
-      /** Solo si difiere del verificado; omitirlo conserva aquel. */
-      rubro?: string;
-      firma?: EvidenciaFirmaOtp;
-    },
-  ) =>
-    pedir<Cdp>(`/procesos/${procesoId}/cdp/expedir`, {
-      method: 'POST',
-      body: JSON.stringify(datos),
-    }),
-
   rechazarCdp: (procesoId: string, observaciones: string) =>
     pedir<Cdp>(`/procesos/${procesoId}/cdp/rechazar`, {
       method: 'POST',
       body: JSON.stringify({ observaciones }),
     }),
 
-  adjuntarCdp: (procesoId: string, archivo: File, firma?: EvidenciaFirmaOtp) => {
+  /**
+   * Actividad 4.2: verificar, expedir y adjuntar el CDP en una sola llamada.
+   *
+   * Desde la 096 son una sola actividad; el backend lo hace en una transacción
+   * para que no quede un certificado sin soporte ni un soporte sin certificado.
+   */
+  expedirCdpConSoporte: (
+    procesoId: string,
+    datos: {
+      rubro: string;
+      numero: string;
+      valor: number;
+      fechaExpedicion: string;
+      firma?: EvidenciaFirmaOtp;
+    },
+    archivo: File,
+  ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', archivo);
-    if (firma) cuerpo.append('firma', JSON.stringify(firma));
+    cuerpo.append('rubro', datos.rubro);
+    cuerpo.append('numero', datos.numero);
+    cuerpo.append('valor', String(datos.valor));
+    cuerpo.append('fechaExpedicion', datos.fechaExpedicion);
+    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
+    return pedir<Cdp>(`/procesos/${procesoId}/cdp/expedicion`, { method: 'POST', body: cuerpo });
+  },
+
+  /** Soporte de un CDP expedido antes de la 096 sin él. */
+  adjuntarCdp: (procesoId: string, archivo: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', archivo);
     return pedir<Cdp>(`/procesos/${procesoId}/cdp/documento`, { method: 'POST', body: cuerpo });
   },
 
@@ -662,37 +667,6 @@ export const contratacionService = {
     pedir<EstadoRegistroPresupuestal>(`/procesos/${procesoId}/registro-presupuestal/rechazar`, {
       method: 'POST',
       body: JSON.stringify({ observaciones }),
-    }),
-
-  // ------------------- modalidad del proceso · 3.5 (EFDS-1183) --------------
-
-  /** Qué modalidad tiene el proceso, si está ratificada y qué se dijo de ella. */
-  modalidadDelProceso: (procesoId: string) =>
-    pedir<EstadoModalidadProceso>(`/procesos/${procesoId}/modalidad`),
-
-  /**
-   * Propone la modalidad, o la corrige tras una devolución.
-   *
-   * La cambia y la manda a revisar de una vez: corregir es volver a proponer, y
-   * dejarla cambiada sin mandar haría que el abogado viera una modalidad
-   * distinta de la que aprobó sin que nada dijera que estaba pendiente.
-   */
-  proponerModalidad: (procesoId: string, modalidad: string) =>
-    pedir<EstadoModalidadProceso>(`/procesos/${procesoId}/modalidad`, {
-      method: 'PUT',
-      body: JSON.stringify({ modalidad }),
-    }),
-
-  /** El abogado la ratifica, o la devuelve diciendo cuál corresponde. */
-  decidirModalidad: (
-    procesoId: string,
-    decision: 'APROBADO' | 'DEVUELTO',
-    observaciones?: string,
-    firma?: EvidenciaFirmaOtp,
-  ) =>
-    pedir<EstadoModalidadProceso>(`/procesos/${procesoId}/modalidad/decidir`, {
-      method: 'POST',
-      body: JSON.stringify({ decision, observaciones, firma }),
     }),
 
   // ---------------- causal de contratación · 3.6 (3.5.1 de la matriz) -------
@@ -1840,6 +1814,28 @@ export const contratacionService = {
 
   obtenerEstudioPrevio: (procesoId: string) =>
     pedir<EstudioPrevio>(`/procesos/${procesoId}/estudio-previo`),
+
+  /**
+   * Cambia la modalidad mientras el área arma el estudio previo.
+   *
+   * Cambia con ella la lista de documentos de la 3.1 y qué actividades recorre
+   * el proceso. Aprobar la 3.1 la ratifica: no hay otra actividad para eso.
+   */
+  cambiarModalidadDelEstudioPrevio: (procesoId: string, modalidad: string) =>
+    pedir<EstudioPrevio>(`/procesos/${procesoId}/estudio-previo/modalidad`, {
+      method: 'PUT',
+      body: JSON.stringify({ modalidad }),
+    }),
+
+  /**
+   * Corrige el valor estimado, con la modalidad si la nueva cuantía la cambia.
+   * Pasa por los mismos umbrales que al crear el proceso.
+   */
+  cambiarCuantiaDelEstudioPrevio: (procesoId: string, valorEstimado: number, modalidad: string) =>
+    pedir<EstudioPrevio>(`/procesos/${procesoId}/estudio-previo/cuantia`, {
+      method: 'PUT',
+      body: JSON.stringify({ valorEstimado, modalidad }),
+    }),
 
   guardarBorrador: (procesoId: string, datos: Record<string, any>, version: number) =>
     pedir<{ estado: string; version: number; datos: Record<string, any> }>(

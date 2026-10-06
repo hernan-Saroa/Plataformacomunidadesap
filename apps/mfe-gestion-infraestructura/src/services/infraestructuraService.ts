@@ -442,6 +442,7 @@ export interface SugerenciaAsignacion {
 
 export interface AprobarAsignarPayload {
   tecnicoCodigo?: string | null;
+  idTecnicoAsignado?: string | null;
   observaciones?: string | null;
 }
 
@@ -451,7 +452,8 @@ export interface RechazarPayload {
 }
 
 export interface RedistribuirPayload {
-  tecnicoCodigo: string;
+  tecnicoCodigo?: string;
+  idTecnicoAsignado?: string | null;
   motivoRedistribucion?: string | null;
   observaciones?: string | null;
 }

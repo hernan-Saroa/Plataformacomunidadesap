@@ -13,7 +13,7 @@ import {
 import { Transform, Type } from 'class-transformer';
 
 import { TipoLiquidacion } from '../../../entities/acta-liquidacion.entity';
-import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
+import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
 export const TIPOS_LIQUIDACION: TipoLiquidacion[] = ['BILATERAL', 'UNILATERAL'];
 
@@ -50,7 +50,7 @@ export class LiquidarDto {
   /** Solo si la 10.2 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? JSON.parse(value) : value))
+  @FirmaDelMultipart()
   @ValidateNested()
   @Type(() => FirmaOtpDto)
   firma?: FirmaOtpDto;

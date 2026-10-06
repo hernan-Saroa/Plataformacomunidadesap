@@ -538,10 +538,16 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setToastModal({ tipo: 'err', texto: 'Debes seleccionar un técnico para aprobar y asignar. Usa "Sugerir técnico" o elige uno manualmente.' });
       return;
     }
+    const tecnicoItem = !areaTI
+      ? (tecnicosCatalogo.find((t) => t.codigo === codTec) ?? sugerencia?.sugerido ?? null)
+      : null;
+    const idTecnicoAsignado = tecnicoItem?.metadata?.idUserAuth ?? tecnicoItem?.id_user_auth ?? null;
+
     setEjecutandoAprobar(true);
     try {
       const payload: any = {
         tecnicoCodigo: areaTI ? undefined : codTec,
+        idTecnicoAsignado: areaTI ? undefined : (idTecnicoAsignado || undefined),
         observaciones: aprobacionObservaciones.trim() || undefined,
       };
       const res: any = await infraestructuraService.aprobarYAsignar(idSolicitud, payload);
@@ -552,7 +558,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
         if (areaTI) {
           setToastModal({ tipo: 'ok', texto: 'Solicitud TECNOLÓGICA APROBADA. Confirmación de recepción enviada a Oficina TI.' });
         } else {
-          const nombre = res?.responsableAsignado || codTec;
+          const nombre = res?.responsableAsignado || tecnicoItem?.nombre || codTec;
           setToastModal({ tipo: 'ok', texto: `Solicitud APROBADA y ASIGNADA a ${nombre}. Estado actualizado.` });
         }
       }
@@ -621,11 +627,15 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setErrorRedist('Debes seleccionar un técnico de destino para la redistribución.');
       return;
     }
+    const tecnicoItem = (tecnicosCatalogo.find((t) => t.codigo === cod) ?? sugerencia?.sugerido ?? null);
+    const idTecnicoAsignado = tecnicoItem?.metadata?.idUserAuth ?? tecnicoItem?.id_user_auth ?? null;
+
     setEjecutandoRedist(true);
     setErrorRedist('');
     try {
       const res: any = await infraestructuraService.redistribuirAsignacion(idSolicitud, {
         tecnicoCodigo: cod,
+        idTecnicoAsignado: idTecnicoAsignado || undefined,
         motivoRedistribucion: redistMotivo.trim() || undefined,
         observaciones: redistObservaciones.trim() || undefined,
       });
@@ -633,7 +643,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       if (res?.__meta?.warning) {
         setToastModal({ tipo: 'warn', texto: res.__meta.warning });
       } else {
-        const nombre = res?.responsableAsignado || cod;
+        const nombre = res?.responsableAsignado || tecnicoItem?.nombre || cod;
         setToastModal({ tipo: 'ok', texto: `Solicitud REDISTRIBUIDA a ${nombre}.` });
       }
       setMostrarModalRedistribuir(false);

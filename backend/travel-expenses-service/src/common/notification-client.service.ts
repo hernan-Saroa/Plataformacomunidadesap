@@ -1148,6 +1148,18 @@ export class NotificationClientService {
         );
       }
 
+      // Asegurar que roles operativos (Analista, Secretario, Control Viáticos, Enlace) no sean notificados como directivos
+      directivos = directivos.filter((d: any) => {
+        const roles: string[] = Array.isArray(d.roles) ? d.roles.map((r: string) => String(r).toUpperCase()) : [];
+        const esOperativo = roles.some((r) =>
+          ['ANALISTA', 'ANALISTA_VIATICOS', 'CONTROL_VIATICOS', 'SECRETARIO', 'SECRETARIO_VIATICOS', 'ENLACE'].includes(r),
+        );
+        const esDirectivo = roles.some((r) =>
+          ['JEFE_DEPENDENCIA', 'GERENTE_PROYECTO', 'SUBDIRECCION_GESTION_CORPORATIVA', 'DIRECCION_NACIONAL', 'SUPER_ADMIN'].includes(r),
+        );
+        return esDirectivo || !esOperativo;
+      });
+
       if (directivos.length > 0) {
         this.logger.log(
           `[NotificationClient] Notificando a ${directivos.length} directivo(s) (Jefe/Gerente) para solicitud ${consecutivo}`,
