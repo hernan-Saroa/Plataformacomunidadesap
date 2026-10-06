@@ -41,6 +41,14 @@ class CamposDocumentoRequerido {
   obligatorio?: boolean;
 
   @ApiPropertyOptional({
+    description:
+      'Solo de consulta: se ofrece la plantilla para descargar y el gestor no carga nada. Implica que no es obligatorio.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  informativo?: boolean;
+
+  @ApiPropertyOptional({
     example: ['CONTRATACION_DIRECTA'],
     description: 'Modalidades a las que se pide. Lista vacía significa todas.',
   })

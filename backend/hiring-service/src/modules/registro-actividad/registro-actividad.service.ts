@@ -72,7 +72,9 @@ export class RegistroActividadService {
     procesoId: string,
     numeral: string,
   ): Promise<boolean> {
-    return (await this.catalogo.requeridosDe(procesoId, numeral, em)).length > 0;
+    // Los de consulta no cuentan: no piden nada, y tomarlos por requisito
+    // anularía el soporte que la actividad sí exige por parámetro.
+    return (await this.catalogo.requeridosDe(procesoId, numeral, em)).some((r) => !r.informativo);
   }
 
   /**

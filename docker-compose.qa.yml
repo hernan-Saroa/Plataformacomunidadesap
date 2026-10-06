@@ -567,6 +567,7 @@ services:
 
       # JWT - debe coincidir con gateway y auth-service
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_qa_2024}
+      HIRING_STORAGE_PATH: /app/uploads
     ports:
       - "3012:3012"
     depends_on:
@@ -574,6 +575,10 @@ services:
         condition: service_healthy
     networks:
       - superapp-net-qa
+    # Fuera del contenedor: sin esto, cada despliegue borraba los archivos
+    # subidos en Contratación y quedaban filas apuntando a nada.
+    volumes:
+      - ./backend/hiring-service/uploads:/app/uploads
     restart: unless-stopped
 
   # ============ ACADEMIC SCHEDULE SERVICE ============
