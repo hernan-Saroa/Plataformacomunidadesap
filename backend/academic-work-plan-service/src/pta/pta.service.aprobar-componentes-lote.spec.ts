@@ -1,5 +1,6 @@
 import { PtaService } from './pta.service';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { PTA_COMPONENT_KEYS } from './auth/pta-permissions.constants';
 
 describe('PtaService.aprobarComponentesLote', () => {
   function createService() {
@@ -12,6 +13,21 @@ describe('PtaService.aprobarComponentesLote', () => {
   }
 
   const auth = { userId: 'u1', isSuperUser: false, allowedComponents: ['academica_pregrado', 'complementarias_pregrado'] } as any;
+
+  it.each(PTA_COMPONENT_KEYS)('mantiene autorización y resultados independientes en el lote de %s', async componente => {
+    const service = createService();
+    const permisos = { ...auth, allowedComponents: [componente], roles: ['Docente'] };
+    service.getComponentesAprobacion = jest.fn().mockResolvedValue([{ componente, estado: 'pendiente', aplica: true }]);
+    service.aprobarComponente = jest.fn(async (ptaId: string) => {
+      if (ptaId === 'fuera-de-alcance') throw new ForbiddenException('Fuera de alcance territorial');
+      return { approval: { estado: 'aprobado' } };
+    });
+    const result = await service.aprobarComponentesLote({ ptaIds: ['autorizado', 'fuera-de-alcance'], componentes: [componente] }, permisos);
+    expect(service.aprobarComponente).toHaveBeenCalledWith('autorizado', expect.objectContaining({ componente, estado: 'aprobado' }), permisos);
+    expect(service.aprobarComponente).toHaveBeenCalledWith('fuera-de-alcance', expect.objectContaining({ componente }), permisos);
+    expect(result.resumen).toMatchObject({ total: 2, aprobados: 1, fallidos: 1 });
+    expect(result.resultados[1]).toMatchObject({ estado: 'fallido', motivo: 'Fuera de alcance territorial' });
+  });
 
   it('rechaza sin autenticación', async () => {
     const service = createService();
@@ -285,5 +301,67 @@ describe('PtaService.aprobarComponentesLote', () => {
     await expect(
       service.aprobarComponentesLote({ ptaIds: ['p1'], componentes: ['investigacion'], estado: 'rechazado' }, auth),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('entrega el estado posterior al lote aplicando el mismo alcance de Gestión y sin ampliar permisos', async () => {
+    const service = createService();
+    const entity = { id: 'pta-1', estado: 'Pendiente Jefatura' };
+    const dto = { id: 'pta-1', componentes_aprobacion_estado: [{ componente: 'academica_pregrado', estado: 'aprobado' }] };
+    service.getComponentesAprobacion = jest.fn().mockResolvedValue([{ componente: 'academica_pregrado', estado: 'pendiente' }]);
+    service.aprobarComponente = jest.fn().mockResolvedValue({ approval: {}, estadoGeneral: entity.estado });
+    service.ptaRepo.find = jest.fn().mockResolvedValue([entity]);
+    service.getExtMultiplicadores = jest.fn().mockResolvedValue({});
+    service.toPtaDto = jest.fn().mockReturnValue(dto);
+    service.attachComponentApprovalProgress = jest.fn();
+    service.filterGestionPtas = jest.fn().mockResolvedValue([{ ...dto, componentes_aprobacion_usuario: dto.componentes_aprobacion_estado }]);
+    const result = await service.aprobarComponentesLote({ ptaIds: ['pta-1'], componentes: ['academica_pregrado'] }, auth);
+    expect(service.filterGestionPtas).toHaveBeenCalledWith([dto], [entity], auth);
+    expect(service.aprobarComponente).toHaveBeenCalledWith('pta-1', expect.anything(), auth);
+    expect(result.ptasActualizados[0].componentes_aprobacion_usuario[0].estado).toBe('aprobado');
+    expect(result.resumen.aprobados).toBe(1);
+  });
+
+  it('no reporta como fallida una aprobación guardada si falla la consulta del estado posterior', async () => {
+    const service = createService();
+    service.getComponentesAprobacion = jest.fn().mockResolvedValue([{ componente: 'academica_pregrado', estado: 'pendiente' }]);
+    service.aprobarComponente = jest.fn().mockResolvedValue({ approval: {}, estadoGeneral: 'Aprobado' });
+    service.ptaRepo.find = jest.fn().mockRejectedValue(new Error('Consulta temporalmente no disponible'));
+    const result = await service.aprobarComponentesLote({ ptaIds: ['pta-1'], componentes: ['academica_pregrado'] }, auth);
+    expect(result.resultados).toEqual([{ ptaId: 'pta-1', componente: 'academica_pregrado', estado: 'aprobado' }]);
+    expect(result.resumen.fallidos).toBe(0);
+    expect(result.ptasActualizados).toEqual([]);
+  });
+
+  it.each([
+    ['error posterior al guardado', new Error('Falló el evento posterior'), true, true],
+    ['rechazo de permisos', new ForbiddenException('No tiene permisos'), true, false],
+    ['componente fuera de alcance', new Error('Falló el evento posterior'), false, false],
+  ])('contrasta el resultado con el estado persistido sin eludir autorización: %s', async (_label, error, enAlcance, aprobado) => {
+    const service = createService();
+    service.getComponentesAprobacion = jest.fn().mockResolvedValue([{ componente: 'academica_pregrado', estado: 'pendiente' }]);
+    service.aprobarComponente = jest.fn().mockRejectedValue(error);
+    service.ptaRepo.find = jest.fn().mockResolvedValue([{ id: 'pta-1' }]);
+    service.getExtMultiplicadores = jest.fn().mockResolvedValue({});
+    service.toPtaDto = jest.fn().mockReturnValue({ id: 'pta-1' });
+    service.attachComponentApprovalProgress = jest.fn();
+    service.filterGestionPtas = jest.fn().mockResolvedValue([{
+      id: 'pta-1', componentes_aprobacion_usuario: enAlcance
+        ? [{ componente: 'academica_pregrado', estado: 'aprobado' }] : [],
+    }]);
+    const result = await service.aprobarComponentesLote({ ptaIds: ['pta-1'], componentes: ['academica_pregrado'] }, auth);
+    expect(result.resumen).toMatchObject({ total: 1, aprobados: aprobado ? 1 : 0, fallidos: aprobado ? 0 : 1 });
+    expect(result.resultados[0].estado).toBe(aprobado ? 'aprobado' : 'fallido');
+    expect(result.resultados[0].motivo).toContain(error.message);
+  });
+
+  it('conserva las aprobaciones previas del lote cuando no se puede consultar otro PTA', async () => {
+    const service = createService();
+    service.ptaRepo.exists.mockResolvedValueOnce(true).mockRejectedValueOnce(new Error('Consulta no disponible'));
+    service.getComponentesAprobacion = jest.fn().mockResolvedValue([{ componente: 'academica_pregrado', estado: 'pendiente' }]);
+    service.aprobarComponente = jest.fn().mockResolvedValue({ approval: {}, estadoGeneral: 'Aprobado' });
+    const result = await service.aprobarComponentesLote({ ptaIds: ['pta-1', 'pta-2'], componentes: ['academica_pregrado'] }, auth);
+    expect(result.resumen).toMatchObject({ total: 2, aprobados: 1, fallidos: 1 });
+    expect(result.resultados[0].estado).toBe('aprobado');
+    expect(result.resultados[1]).toMatchObject({ estado: 'fallido', motivo: 'Consulta no disponible' });
   });
 });

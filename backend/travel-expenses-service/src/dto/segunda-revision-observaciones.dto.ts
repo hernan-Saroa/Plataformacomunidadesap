@@ -14,4 +14,36 @@ export class SegundaRevisionObservacionesDto {
   @IsString()
   @Length(0, 2000)
   observaciones?: string;
+
+  @IsOptional()
+  @IsString()
+  otp?: string;
+
+  @IsOptional()
+  @IsString()
+  verificationId?: string;
+
+  @IsOptional()
+  @IsString()
+  certificadoId?: string;
+
+  @IsOptional()
+  @IsString()
+  hashSha256?: string;
+
+  @IsOptional()
+  @IsString()
+  firmaImagen?: string;
+
+  @IsOptional()
+  @IsString()
+  nombreRevisor?: string;
+
+  @IsOptional()
+  @IsString()
+  cargoRevisor?: string;
+
+  @IsOptional()
+  @IsString()
+  documentoIdentidad?: string;
 }

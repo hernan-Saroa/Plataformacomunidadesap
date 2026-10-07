@@ -87,6 +87,16 @@ export interface PlantillaArchivo {
   fechaModificacion: string;
   activo: boolean;
   tipoArchivo?: string; // Opcional - tipo MIME del archivo
+  file?: File;
+}
+
+export interface NuevoTipoOficioData {
+  nombre: string;
+  descripcion: string;
+  categoria: CategoriaOficioId;
+  orden: number;
+  activo: boolean;
+  plantillaFile?: File;
 }
 
 export interface TipoOficio {

@@ -22,6 +22,7 @@ import {
   ESTADOS_SOLO_LECTURA,
 } from '../../entities/estado-solicitud.enum';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { PendientesService } from '../legalizacion/pendientes.service';
 
 export const DIAS_HABILES_MINIMOS_AVANCE_DEFAULT = 5;
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
@@ -65,6 +66,8 @@ import {
   aYMDUtc,
   cargarFestivosAuth,
   esRadicacionFueraDeJornada,
+  contarDiasHabiles,
+  fechaEfectivaRadicacion,
 } from '../../common/dias-habiles.util';
 import { ConfigService } from '../config/config.service';
 import {
@@ -195,6 +198,8 @@ export class TravelExpensesService {
     private readonly ticketsService?: TicketsService,
     @Optional()
     private readonly eventEmitter?: EventEmitter2,
+    @Optional()
+    private readonly pendientesService?: PendientesService,
   ) {}
 
   private sincronizarItinerario(dto: {
@@ -437,11 +442,11 @@ export class TravelExpensesService {
     if (!isSuperAdmin && !isSecretario) {
       if (isTesoreria) {
         query.andWhere('s.estado_solicitud IN (:...estadosTesoreria)', {
-          estadosTesoreria: ['OBLIGADA', 'PAGADA'],
+          estadosTesoreria: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'],
         });
       } else if (isSst) {
         query.andWhere('s.estado_solicitud IN (:...estadosSst)', {
-          estadosSst: ['OBLIGADA', 'PAGADA'],
+          estadosSst: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'],
         });
       } else if (isControlViaticos) {
         query.andWhere('s.estado_solicitud IN (:...estadosControl)', {
@@ -2225,6 +2230,8 @@ export class TravelExpensesService {
       );
     }
 
+    await this.validarLegalizacionesPendientes(dto.comisionadoId);
+
     let extemporanea = false;
     let radicadoFueraJornada = false;
     let estadoSolicitud: EstadoSolicitud;
@@ -2639,6 +2646,7 @@ export class TravelExpensesService {
   ): Promise<SolicitudComisionEntity> {
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
+      relations: ['comisionado'],
     });
 
     if (!solicitud) {
@@ -2862,6 +2870,9 @@ if (dto.costoEstimadoTiquete !== undefined) {
       solicitud.comisionado,
       saved,
     );
+    if (!saved.comisionado && solicitud.comisionado) {
+      saved.comisionado = solicitud.comisionado;
+    }
     return saved;
   }
 
@@ -3060,6 +3071,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
         `La solicitud tiene estado ${solicitud.estadoSolicitud} y no puede finalizarse.`,
       );
     }
+
+    await this.validarLegalizacionesPendientes(solicitud.comisionadoId);
 
     const documentos = await this.documentoRepo.find({
       where: { solicitudId: solicitud.id },
@@ -3342,25 +3355,63 @@ if (dto.costoEstimadoTiquete !== undefined) {
         f.estado !== 'RECHAZADO',
     );
 
+    let nombreJefe = firmaJefe?.nombreFirmante || null;
+    let docJefe = firmaJefe?.documentoIdentidad || null;
+    let cargoJefe = firmaJefe?.cargoFirmante || firmante1.cargo;
+    if (firmaJefe && (firmaJefe.usuarioId || (firmaJefe.nombreFirmante && firmaJefe.nombreFirmante.includes('@')))) {
+      const d = await this.resolverDatosUsuario(firmaJefe.usuarioId || firmaJefe.nombreFirmante);
+      if (d.nombre && (!nombreJefe || nombreJefe.includes('@'))) nombreJefe = d.nombre;
+      if (d.documento && !docJefe) docJefe = d.documento;
+      if (d.cargo && (!cargoJefe || cargoJefe === firmante1.cargo)) cargoJefe = d.cargo;
+    }
+
+    let nombreGerente = firmaGerente?.nombreFirmante || null;
+    let docGerente = firmaGerente?.documentoIdentidad || null;
+    let cargoGerente = firmaGerente?.cargoFirmante || firmante2.cargo;
+    if (firmaGerente && (firmaGerente.usuarioId || (firmaGerente.nombreFirmante && firmaGerente.nombreFirmante.includes('@')))) {
+      const d = await this.resolverDatosUsuario(firmaGerente.usuarioId || firmaGerente.nombreFirmante);
+      if (d.nombre && (!nombreGerente || nombreGerente.includes('@'))) nombreGerente = d.nombre;
+      if (d.documento && !docGerente) docGerente = d.documento;
+      if (d.cargo && (!cargoGerente || cargoGerente === firmante2.cargo)) cargoGerente = d.cargo;
+    }
+
     const firmantes = [
       {
         ...firmante1,
         firmado: Boolean(firmaJefe),
-        firma: firmaJefe || null,
+        nombreFirmante: nombreJefe,
+        cargoFirmante: cargoJefe,
+        documentoIdentidad: docJefe,
+        fechaFirma: firmaJefe?.fechaFirma || null,
+        certificadoId: firmaJefe?.certificadoId || null,
+        hashSha256: firmaJefe?.hashSha256 || null,
+        firma: firmaJefe ? { ...firmaJefe, nombreFirmante: nombreJefe, documentoIdentidad: docJefe } : null,
       },
       {
         ...firmante2,
         firmado: Boolean(firmaGerente),
-        firma: firmaGerente || null,
+        nombreFirmante: nombreGerente,
+        cargoFirmante: cargoGerente,
+        documentoIdentidad: docGerente,
+        fechaFirma: firmaGerente?.fechaFirma || null,
+        certificadoId: firmaGerente?.certificadoId || null,
+        hashSha256: firmaGerente?.hashSha256 || null,
+        firma: firmaGerente ? { ...firmaGerente, nombreFirmante: nombreGerente, documentoIdentidad: docGerente } : null,
       },
       {
         ...firmante3,
         firmado: Boolean(firmaAnalista),
+        nombreFirmante: firmaAnalista?.nombreFirmante || null,
+        cargoFirmante: firmaAnalista?.cargoFirmante || firmante3.cargo,
+        documentoIdentidad: firmaAnalista?.documentoIdentidad || null,
+        fechaFirma: firmaAnalista?.fechaFirma || null,
+        certificadoId: firmaAnalista?.certificadoId || null,
+        hashSha256: firmaAnalista?.hashSha256 || null,
         firma: firmaAnalista || null,
       },
     ];
 
-    const completado = Boolean(firmaJefe && firmaGerente && firmaAnalista);
+    const completado = Boolean(firmaJefe && firmaGerente);
 
     return {
       solicitudId: solicitud.id,
@@ -3369,6 +3420,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
       reglaDesplazamiento,
       descripcionRegla,
       firmantes,
+      firmaElaboro: solicitud.camposAdicionales?.firmaElaboro || null,
+      elaboro: solicitud.camposAdicionales?.elaboro || null,
       completado,
       requiereFirmasParaRadicar: true,
       mensaje: completado
@@ -3680,6 +3733,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
       );
     }
 
+    await this.validarLegalizacionesPendientes(solicitud.comisionadoId);
+
     // Si viene código OTP del enlace, verificarlo
     if (dto?.otp && dto?.verificationId) {
       this.verificarOtpFirma({
@@ -3742,10 +3797,13 @@ if (dto.costoEstimadoTiquete !== undefined) {
     const datosUsuario = usuarioId
       ? await this.resolverDatosUsuario(usuarioId, 'Enlace de Dependencia')
       : { nombre: 'Enlace de Dependencia', documento: '', cargo: '' };
-    const nombreEnlace =
-      dto?.nombreFirmante ||
-      datosUsuario.nombre ||
-      'Enlace de Dependencia';
+    let nombreEnlace = dto?.nombreFirmante?.trim() || '';
+    if (!nombreEnlace || nombreEnlace.includes('@')) {
+      nombreEnlace =
+        datosUsuario.nombre && !datosUsuario.nombre.includes('@')
+          ? datosUsuario.nombre
+          : 'Enlace de Dependencia';
+    }
     const cargoEnlace = dto?.cargoFirmante || datosUsuario.cargo || 'Enlace de Dependencia';
     const docEnlace = dto?.documentoIdentidad?.trim() || datosUsuario.documento || '';
     const fechaElaboro = new Date().toISOString();
@@ -3772,6 +3830,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
       ...(solicitud.camposAdicionales || {}),
       reglaDesplazamiento: estadoFirmas.reglaDesplazamiento,
       descripcionReglaDesplazamiento: estadoFirmas.descripcionRegla,
+      firmasAprobacion: [],
       firmasCompletadas: false,
       firmaElaboro,
       elaboro: `Elaboró: ${nombreEnlace}${docStr} (Certificado: ${certIdElaboro})`,
@@ -3786,6 +3845,11 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     const saved = await this.solicitudRepo.save(solicitud);
 
+    const comentariosLog =
+      estadoAnterior === EstadoSolicitud.DEVUELTA
+        ? `Solicitud subsanada por el enlace y reenviada al flujo de firmas de aprobación (${estadoFirmas.descripcionRegla}) con certificado ${certIdElaboro}.`
+        : `Solicitud elaborada y remitida al flujo de firmas de aprobación previo a radicación (${estadoFirmas.descripcionRegla}) con certificado digital ${certIdElaboro}.`;
+
     await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
       solicitudId: solicitud.id,
       estadoAnterior,
@@ -3794,7 +3858,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
         usuarioId ||
         solicitud.creadoPorUsuarioId ||
         '00000000-0000-0000-0000-000000000000',
-      comentarios: `Solicitud elaborada y remitida al flujo de firmas de aprobación previo a radicación (${estadoFirmas.descripcionRegla}) con certificado digital ${certIdElaboro}.`,
+      comentarios: comentariosLog,
     });
 
     // Despacho de notificaciones Formato 023 por correo y vía app (Jefe, Gerente y Comisionado)
@@ -3872,6 +3936,33 @@ if (dto.costoEstimadoTiquete !== undefined) {
     ];
 
     if (!estadosPermitidosFirmar.includes(solicitud.estadoSolicitud)) {
+      // Idempotencia: si la solicitud ya avanzó a SOLICITADO, EXTEMPORANEA o RADICADA
+      // y la firma de este rol ya fue registrada exitosamente:
+      const firmasExistentes: any[] = Array.isArray(
+        solicitud.camposAdicionales?.firmasAprobacion,
+      )
+        ? solicitud.camposAdicionales.firmasAprobacion
+        : [];
+      const firmaYaRegistrada = firmasExistentes.find(
+        (f) => f.tipo === dto.tipoFirma && f.estado === 'FIRMADO',
+      );
+      if (
+        firmaYaRegistrada &&
+        [
+          EstadoSolicitud.SOLICITADO,
+          EstadoSolicitud.EXTEMPORANEA,
+          EstadoSolicitud.RADICADA,
+        ].includes(solicitud.estadoSolicitud)
+      ) {
+        return {
+          solicitud,
+          radicada: true,
+          mensaje: `La firma digital para ${dto.tipoFirma} ya fue registrada satisfactoriamente en este expediente (Certificado: ${firmaYaRegistrada.certificadoId || 'Digital'}).`,
+          firmas: firmasExistentes,
+          certificadoId: firmaYaRegistrada.certificadoId,
+        };
+      }
+
       throw new BadRequestException(
         `La solicitud tiene estado ${solicitud.estadoSolicitud} y no admite firmas de aprobación en esta etapa.`,
       );
@@ -3895,17 +3986,33 @@ if (dto.costoEstimadoTiquete !== undefined) {
     const fechaFirma = new Date().toISOString();
     const certId = dto.certificadoId || this.generarCertificadoId();
     let docFirmante = dto.documentoIdentidad?.trim() || '';
-    if (!docFirmante && usuarioId) {
+    let nombreFirmante = dto.nombreFirmante?.trim() || '';
+    let cargoFirmante = dto.cargoFirmante?.trim() || '';
+    let emailFirmante = (dto.nombreFirmante?.includes('@') ? dto.nombreFirmante : '').trim();
+
+    if (usuarioId) {
       const datosFirmante = await this.resolverDatosUsuario(usuarioId);
-      docFirmante = datosFirmante.documento || '';
+      if (datosFirmante.documento && !docFirmante) {
+        docFirmante = datosFirmante.documento;
+      }
+      if (datosFirmante.nombre && (!nombreFirmante || nombreFirmante.includes('@'))) {
+        nombreFirmante = datosFirmante.nombre;
+      }
+      if (datosFirmante.cargo && !cargoFirmante) {
+        cargoFirmante = datosFirmante.cargo;
+      }
+      if (datosFirmante.email && !emailFirmante) {
+        emailFirmante = datosFirmante.email;
+      }
     }
-    const hashData = `${solicitud.id}|${dto.tipoFirma}|${dto.nombreFirmante}|${docFirmante}|${dto.cargoFirmante}|${fechaFirma}`;
+    const hashData = `${solicitud.id}|${dto.tipoFirma}|${nombreFirmante || dto.nombreFirmante}|${docFirmante}|${cargoFirmante || dto.cargoFirmante}|${fechaFirma}`;
     const hash = dto.hashSha256 || this.generarHashDocumento(hashData);
 
     const nuevaFirma = {
       tipo: dto.tipoFirma,
-      nombreFirmante: dto.nombreFirmante.trim(),
-      cargoFirmante: dto.cargoFirmante.trim(),
+      nombreFirmante: (nombreFirmante || dto.nombreFirmante).trim(),
+      emailFirmante: emailFirmante || null,
+      cargoFirmante: (cargoFirmante || dto.cargoFirmante).trim(),
       documentoIdentidad: docFirmante,
       firmaImagen: dto.firmaImagen || null,
       esAusencia: Boolean(dto.esAusencia),
@@ -3963,33 +4070,111 @@ if (dto.costoEstimadoTiquete !== undefined) {
     let mensaje = `Firma digital registrada para ${nombreRolFirmante} (Certificado: ${certId}).`;
 
     if (todasFirmasCompletadas) {
-      // – Surtido el flujo de firmas y las validaciones, la solicitud queda en estado RADICADA.
+      // Surtido el flujo de firmas de aprobación (Jefe de Dependencia y Gerente de Proyecto),
+      // la solicitud NO regresa al enlace para consolidar información; avanza directamente
+      // a la Secretaría de Viáticos evaluando la anticipación de 14 días hábiles
+      // para fijar su estado en SOLICITADO (ordinaria) o EXTEMPORANEA.
+      const ahora = new Date();
+      const festivosSet = await cargarFestivosAuth(this.dataSource);
       const radicadoFueraJornada = esRadicacionFueraDeJornada(
-        new Date(),
-        await cargarFestivosAuth(this.dataSource),
+        ahora,
+        festivosSet,
       );
 
+      const diasHabilesAnticipacion = contarDiasHabiles(
+        fechaEfectivaRadicacion(ahora, festivosSet),
+        solicitud.fechaInicio,
+        festivosSet,
+        'previos',
+      );
+      const esExtemporanea = diasHabilesAnticipacion < 14;
+      const nuevoEstado = EstadoSolicitud.SOLICITADO;
+
       const estadoAnterior = solicitud.estadoSolicitud;
-      solicitud.estadoSolicitud = EstadoSolicitud.RADICADA;
-      solicitud.extemporanea = false;
+      solicitud.estadoSolicitud = nuevoEstado;
+      solicitud.extemporanea = esExtemporanea;
       solicitud.radicadoFueraJornada = radicadoFueraJornada;
+      solicitud.motivoDevolucion = null;
+      if (!solicitud.fechaRadicacion) {
+        solicitud.fechaRadicacion = ahora;
+      }
       radicada = true;
-      mensaje =
-        `Flujo de firmas de aprobación surtido satisfactoriamente con certificación digital. La solicitud ha quedado formalmente en estado RADICADA. Certificado: ${certId}`;
+      mensaje = `Flujo de firmas de aprobación surtido satisfactoriamente con certificación digital. La solicitud ha avanzado directamente a la Secretaría de Viáticos en estado ${nuevoEstado}. Certificado: ${certId}`;
 
       const saved = await this.solicitudRepo.save(solicitud);
 
-      await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
-        solicitudId: solicitud.id,
-        estadoAnterior,
-        estadoNuevo: EstadoSolicitud.RADICADA,
-        usuarioId:
-          usuarioId ||
-          solicitud.creadoPorUsuarioId ||
-          '00000000-0000-0000-0000-000000000000',
-        comentarios:
-          `Flujo de firmas de aprobación surtido con certificación digital (Jefe de Dependencia y Gerente de Proyecto). Solicitud radicada exitosamente con certificado ${certId}.`,
-      });
+      try {
+        await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: nuevoEstado,
+          usuarioId:
+            usuarioId ||
+            solicitud.creadoPorUsuarioId ||
+            '00000000-0000-0000-0000-000000000000',
+          comentarios: `Flujo de firmas de aprobación completado (Jefe de Dependencia y Gerente de Proyecto). Solicitud radicada y remitida a la Secretaría de Viáticos en estado ${nuevoEstado} (${esExtemporanea ? 'Extemporánea por anticipación menor a 14 días hábiles' : 'Ordinaria'}). Certificado ${certId}.`,
+        });
+      } catch (histError: any) {
+        this.logger.warn(
+          `[firmarAprobacionSolicitud] No se pudo guardar historial de estado: ${histError?.message}`,
+        );
+      }
+
+      // Notificar a la Secretaría de Viáticos (in-app y correo) para priorización y asignación a analista
+      const consecutivo = saved.consecutivoUnico || saved.id;
+      const comisionadoNombre = saved.comisionado
+        ? `${saved.comisionado.primerNombre || ''} ${saved.comisionado.primerApellido || ''}`.trim()
+        : '';
+      const destino = `${saved.destinoCiudad || ''}${saved.destinoDepartamento ? ` (${saved.destinoDepartamento})` : ''}`.trim();
+      const fechaIni = saved.fechaInicio ? new Date(saved.fechaInicio).toISOString().split('T')[0] : '';
+      const fechaFn = saved.fechaFin ? new Date(saved.fechaFin).toISOString().split('T')[0] : '';
+      const fechasStr = fechaIni && fechaFn ? `${fechaIni} al ${fechaFn}` : fechaIni || fechaFn || 'Por definir';
+
+      this.notificationClient
+        .notifyByPermission(
+          'travel_expenses.general.es_secretario_viaticos',
+          {
+            tipo_notificacion: 'VIATICOS_RADICADA',
+            titulo: `Nueva solicitud para revisión: ${consecutivo}`,
+            mensaje: `El expediente ${consecutivo} (${esExtemporanea ? 'Extemporáneo' : 'Ordinario'}) completó el flujo de firmas de aprobación y requiere asignación/revisión en la bandeja de Secretaría de Viáticos.`,
+            descripcion_corta: `Solicitud ${consecutivo} · ${saved.comisionado?.numeroDocumento ?? ''}`,
+            icono: 'FileText',
+            color: '#003DA5',
+            prioridad: esExtemporanea ? 'Alta' : 'Media',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Ver en bandeja',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: saved.id,
+              consecutivoUnico: consecutivo,
+              esExtemporanea,
+            },
+          },
+          {
+            subject: `[Viáticos ESAP] Nueva Solicitud para Revisión: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: 'Secretaría de Viáticos',
+              tituloHeader: 'ESAP — Grupo de Viáticos',
+              subtituloHeader: 'Bandeja de Entrada — Solicitud Aprobada por Jefaturas',
+              mensajePrincipal: `Se han completado todas las firmas de aprobación requeridas para la solicitud de comisión de servicios, la cual se encuentra en estado <strong>${nuevoEstado}</strong> y requiere priorización y asignación a analista:`,
+              consecutivo,
+              comisionadoNombre,
+              destino,
+              fechas: fechasStr,
+              nuevoEstado,
+              tipoNovedad: esExtemporanea ? 'WARNING' : 'INFO',
+              textoBoton: 'Ir a la Bandeja de Entrada',
+            }),
+            text: `Se ha completado el flujo de firmas para la comisión ${consecutivo}. Pasa a revisión en la bandeja del Grupo de Viáticos en estado ${nuevoEstado}.`,
+          },
+          'SECRETARIO',
+        )
+        .catch((err) =>
+          this.logger.warn(
+            `[notify] No se pudo notificar a secretarios para solicitud ${saved.id}: ${err?.message}`,
+          ),
+        );
 
       return {
         solicitud: saved,
@@ -4004,13 +4189,19 @@ if (dto.costoEstimadoTiquete !== undefined) {
       }
       const saved = await this.solicitudRepo.save(solicitud);
 
-      await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
-        solicitudId: solicitud.id,
-        estadoAnterior: solicitud.estadoSolicitud,
-        estadoNuevo: EstadoSolicitud.PENDIENTE_FIRMAS,
-        usuarioId: usuarioId || '00000000-0000-0000-0000-000000000000',
-        comentarios: `Firma digital registrada para ${dto.tipoFirma} (${dto.nombreFirmante}) con certificado ${certId}. Pendiente firma restante para radicación formal.`,
-      });
+      try {
+        await this.dataSource.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior: solicitud.estadoSolicitud,
+          estadoNuevo: EstadoSolicitud.PENDIENTE_FIRMAS,
+          usuarioId: usuarioId || '00000000-0000-0000-0000-000000000000',
+          comentarios: `Firma digital registrada para ${dto.tipoFirma} (${dto.nombreFirmante}) con certificado ${certId}. Pendiente firma restante para radicación formal.`,
+        });
+      } catch (histError: any) {
+        this.logger.warn(
+          `[firmarAprobacionSolicitud] No se pudo guardar historial intermedio: ${histError?.message}`,
+        );
+      }
 
       return {
         solicitud: saved,
@@ -4046,8 +4237,9 @@ if (dto.costoEstimadoTiquete !== undefined) {
     solicitud.estadoSolicitud = EstadoSolicitud.DEVUELTA;
     solicitud.motivoDevolucion = motivo.trim();
 
-    if (solicitud.camposAdicionales?.firmasAprobacion) {
+    if (solicitud.camposAdicionales) {
       solicitud.camposAdicionales.firmasCompletadas = false;
+      solicitud.camposAdicionales.firmasAprobacion = [];
     }
 
     const saved = await this.solicitudRepo.save(solicitud);
@@ -4060,7 +4252,196 @@ if (dto.costoEstimadoTiquete !== undefined) {
       comentarios: `Solicitud devuelta en revisión de firmas de aprobación: ${motivo.trim().slice(0, 200)}`,
     });
 
+    // Notificar al Enlace que elaboró la solicitud para que pueda subsanar y reenviar a firmas
+    if (solicitud.creadoPorUsuarioId) {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const datosFirmante = usuarioId
+        ? await this.resolverDatosUsuario(usuarioId, 'Directivo Firmante')
+        : { nombre: 'Directivo Firmante', cargo: 'Aprobador de Comisión' };
+      const nombreDevuelve = datosFirmante.nombre || 'Directivo Firmante';
+      const cargoDevuelve = datosFirmante.cargo || '';
+      const firmanteStr = cargoDevuelve ? `${nombreDevuelve} (${cargoDevuelve})` : nombreDevuelve;
+
+      const notifEnlace = {
+        tipo_notificacion: 'VIATICOS_DEVUELTA_FIRMAS',
+        titulo: `Solicitud devuelta para subsanar: ${consecutivo}`,
+        mensaje: `La solicitud ${consecutivo} fue devuelta por ${firmanteStr} con observaciones. Puede editarla para subsanar y reenviarla al flujo de firmas de aprobación.`,
+        descripcion_corta: `Devuelta para subsanar · ${consecutivo}`,
+        icono: 'AlertTriangle',
+        color: '#D97706',
+        prioridad: 'Alta' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Subsanar solicitud',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+          motivo: motivo.trim(),
+        },
+      };
+
+      const emailEnlace = {
+        subject: `[Viáticos ESAP] Solicitud Devuelta para Subsanar: ${consecutivo}`,
+        html: buildTravelExpenseEmailHtml({
+          destinatarioNombre: 'Enlace de Dependencia',
+          tituloHeader: 'ESAP — Solicitud Devuelta en Firmas de Aprobación',
+          subtituloHeader: `Expediente: ${consecutivo}`,
+          mensajePrincipal: `La solicitud de comisión de servicios <strong>${consecutivo}</strong> ha sido devuelta por <strong>${firmanteStr}</strong> para subsanación de observaciones. Ingrese a la plataforma para realizar los ajustes requeridos y reenviarla al flujo de firmas de aprobación.`,
+          consecutivo,
+          nuevoEstado: 'DEVUELTA',
+          observaciones: motivo.trim(),
+          tipoNovedad: 'WARNING',
+          textoBoton: 'Subsanar en Plataforma',
+        }),
+        text: `La solicitud ${consecutivo} fue devuelta por ${firmanteStr}. Observaciones: ${motivo.trim()}. Ingrese a la plataforma para editar y subsanar.`,
+      };
+
+      this.notificationClient
+        .notifyUser(solicitud.creadoPorUsuarioId, notifEnlace, emailEnlace)
+        .catch((err) =>
+          this.logger.warn(
+            `[devolverFirmaAprobacion] No se pudo notificar al enlace creador ${solicitud.creadoPorUsuarioId}: ${err?.message}`,
+          ),
+        );
+    }
+
     return saved;
+  }
+
+  /**
+   * Envía una alerta y recordatorio prioritario de firma de aprobación pendiente al rol correspondiente.
+   */
+  async notificarFirmaPendiente(
+    solicitudId: string,
+    tipoFirmaPendiente?: string,
+    usuarioSolicitaId?: string,
+  ): Promise<{ ok: boolean; mensaje: string }> {
+    const solicitud = await this.solicitudRepo.findOne({
+      where: { id: solicitudId },
+      relations: ['comisionado'],
+    });
+
+    if (!solicitud) {
+      throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    const consecutivo =
+      solicitud.consecutivoUnico ||
+      solicitud.camposAdicionales?.consecutivoUnico ||
+      solicitud.id;
+    const destino = solicitud.destinoCiudad || 'Territorio Nacional';
+    const comisionadoNombre = solicitud.comisionado
+      ? `${solicitud.comisionado.primerNombre || ''} ${solicitud.comisionado.primerApellido || ''}`.trim()
+      : 'Funcionario en comisión';
+
+    const esJefe = tipoFirmaPendiente === TipoFirmaAprobacion.JEFE_DEPENDENCIA;
+    const nombreRol = esJefe
+      ? 'Jefe de Dependencia / Supervisor'
+      : 'Gerente de Proyecto';
+
+    const permissions = esJefe
+      ? ['travel_expenses.general.es_jefe_dependencia']
+      : ['travel_expenses.general.es_gerente_proyecto'];
+
+    const roles = esJefe
+      ? ['JEFE_DEPENDENCIA']
+      : ['GERENTE_PROYECTO'];
+
+    try {
+      let destinatarios = await this.notificationClient.getRecipientsByPermissions(
+        permissions,
+        roles,
+      );
+      if (!destinatarios.length) {
+        destinatarios = await this.notificationClient.getRecipientsByPermission(
+          'travel_expenses:sign_approval',
+          'SUPER_ADMIN',
+        );
+      }
+
+      if (destinatarios.length > 0) {
+        const appBaseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
+        const notificaciones = destinatarios.map((d) => ({
+          id_usuario_destinatario: d.id,
+          tipo_notificacion: 'RECORDATORIO_FIRMA_PENDIENTE',
+          titulo: `Recordatorio: Firma pendiente en solicitud ${consecutivo}`,
+          mensaje: `Se le recuerda que la solicitud de viáticos ${consecutivo} para ${comisionadoNombre} (${destino}) se encuentra pendiente de su revisión y firma de aprobación como ${nombreRol}.`,
+          descripcion_corta: `Firma pendiente: ${consecutivo}`,
+          icono: 'bell',
+          color: '#F59E0B',
+          prioridad: 'Alta' as const,
+          categoria: 'VIATICOS' as const,
+          tiene_accion: true,
+          texto_boton_accion: 'Revisar y Firmar',
+          url_accion: `${appBaseUrl}/viaticos`,
+          datos_adicionales: {
+            solicitudId: solicitud.id,
+            consecutivo,
+            tipoFirma: tipoFirmaPendiente,
+          },
+        }));
+        await this.notificationClient.sendMany(notificaciones);
+
+        // Envío de correo electrónico institucional a los destinatarios
+        const uniqueEmails = Array.from(
+          new Set(
+            destinatarios
+              .map((d) => d.email)
+              .filter((email) => Boolean(email && email.includes('@'))),
+          ),
+        );
+
+        for (const email of uniqueEmails) {
+          const directivo = destinatarios.find((d) => d.email === email);
+          try {
+            const emailHtml = buildTravelExpenseEmailHtml({
+              destinatarioNombre:
+                directivo?.fullName || directivo?.username || nombreRol,
+              tituloHeader: 'ESAP — Sistema de Gestión de Viáticos y Comisiones',
+              subtituloHeader:
+                'Recordatorio Prioritario: Firma de Aprobación Pendiente',
+              mensajePrincipal: `Se le recuerda que la solicitud de viáticos <strong>${consecutivo}</strong> para el comisionado <strong>${comisionadoNombre}</strong> con destino <strong>${destino}</strong> se encuentra pendiente de su revisión y firma digital de aprobación como <strong>${nombreRol}</strong>.`,
+              consecutivo,
+              comisionadoNombre,
+              destino,
+              fechas:
+                solicitud.fechaInicio && solicitud.fechaFin
+                  ? `${solicitud.fechaInicio} al ${solicitud.fechaFin}`
+                  : undefined,
+              nuevoEstado: 'PENDIENTE DE FIRMAS',
+              badgeColor: '#F59E0B',
+              objetoComision: solicitud.objetoComision,
+              motivoUObservaciones: `Alerta institucional: Se requiere su firma de aprobación previa a la radicación de la comisión de servicios.\n\nPor favor ingrese a la bandeja de firmas para revisar el expediente, verificar los soportes obligatorios y registrar su firma digital de aprobación con código OTP.`,
+              tipoNovedad: 'WARNING',
+              textoBoton: 'Ir a Revisar y Firmar Comisión',
+              urlAccion: `${appBaseUrl}/viaticos`,
+            });
+
+            await this.notificationClient.sendEmail({
+              to: email,
+              subject: `[ESAP Viáticos] Recordatorio: Firma de aprobación requerida en solicitud ${consecutivo}`,
+              html: emailHtml,
+              text: `Recordatorio: La solicitud ${consecutivo} para ${comisionadoNombre} (${destino}) se encuentra pendiente de su revisión y firma de aprobación como ${nombreRol}. Ingrese a la plataforma para firmar: ${appBaseUrl}/viaticos`,
+            });
+            this.logger.log(
+              `[notificarFirmaPendiente] Correo de recordatorio enviado a ${email} para solicitud ${consecutivo}`,
+            );
+          } catch (emailErr) {
+            this.logger.warn(
+              `[notificarFirmaPendiente] No se pudo enviar correo a ${email}: ${emailErr}`,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      this.logger.warn(`Error enviando notificación de firma pendiente: ${e}`);
+    }
+
+    return {
+      ok: true,
+      mensaje: `Alerta y recordatorio de firma enviado exitosamente a ${nombreRol}.`,
+    };
   }
 
   /**
@@ -4164,6 +4545,42 @@ if (dto.costoEstimadoTiquete !== undefined) {
   }
 
   /**
+   * RF-VAL-003 — Bloquea la solicitud si el comisionado tiene una o más
+   * comisiones que ya debieron legalizarse (fecha límite vencida) y no están
+   * legalizadas. Usa la definición de pendientes de la Etapa 9.
+   */
+  private async validarLegalizacionesPendientes(comisionadoId: string): Promise<void> {
+    if (!this.pendientesService || !comisionadoId) return;
+
+    const { comisiones } = await this.pendientesService.tieneLegalizacionesPendientes(comisionadoId);
+    const ahora = Date.now();
+    const vencidas = comisiones.filter(
+      (c) => c.fechaLimite && new Date(c.fechaLimite).getTime() < ahora,
+    );
+    if (vencidas.length === 0) return;
+
+    const listado = vencidas
+      .map((c) => {
+        const limite = new Date(c.fechaLimite as Date).toLocaleString('es-CO', {
+          timeZone: 'America/Bogota',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        });
+        return `${c.codigo} (fecha límite ${limite})`;
+      })
+      .join(', ');
+    throw new ConflictException(
+      `El comisionado tiene ${vencidas.length === 1 ? 'una comisión pendiente' : `${vencidas.length} comisiones pendientes`} ` +
+        `de legalizar con el plazo vencido: ${listado}. ` +
+        `Debe ${vencidas.length === 1 ? 'legalizarla' : 'legalizarlas'} antes de registrar una nueva solicitud.`,
+    );
+  }
+
+  /**
    * Verifica si las fechas propuestas para un comisionado se cruzan con otra solicitud existente
    * (sin bloquear la persistencia en modo borrador, pero alertando al usuario antes de pasar al cargue de soportes).
    */
@@ -4188,9 +4605,15 @@ if (dto.costoEstimadoTiquete !== undefined) {
     }
 
     // Localizar comisionado por ID o número de documento
-    let comisionado = await this.comisionadoRepo.findOne({
-      where: { id: comisionadoIdOrDocumento },
-    });
+    const esUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        comisionadoIdOrDocumento,
+      );
+    let comisionado = esUuid
+      ? await this.comisionadoRepo.findOne({
+          where: { id: comisionadoIdOrDocumento },
+        })
+      : null;
     if (!comisionado) {
       comisionado = await this.comisionadoRepo.findOne({
         where: { numeroDocumento: comisionadoIdOrDocumento },
@@ -4424,28 +4847,85 @@ if (dto.costoEstimadoTiquete !== undefined) {
   async resolverDatosUsuario(
     usuarioId?: string | null,
     fallbackNombre: string = '',
-  ): Promise<{ nombre: string; documento: string; cargo: string }> {
-    const result = { nombre: fallbackNombre, documento: '', cargo: '' };
+  ): Promise<{ nombre: string; documento: string; cargo: string; email: string }> {
+    const result = { nombre: fallbackNombre, documento: '', cargo: '', email: '' };
     if (!usuarioId) return result;
+    const cleanId = String(usuarioId).trim();
+    if (!cleanId) return result;
+
     if (typeof this.dataSource?.query === 'function') {
       try {
         const rows: any[] = await this.dataSource.query(
-          `SELECT u.username, p.nom_tercero, p.pri_apellido, p.nom_largo, p.num_identificacion, p.cargo
+          `SELECT 
+             u.id_user,
+             u.username,
+             p.nom_tercero,
+             p.pri_apellido,
+             p.seg_apellido,
+             p.nom_largo,
+             p.num_identificacion,
+             c.nom_cargo AS cargo,
+             p.dir_email
            FROM auth."user" u
            LEFT JOIN auth.personas p ON p.id_person = u.id_person
-           WHERE u.id_user = $1
+           LEFT JOIN auth.cargos c ON c.id_cargo = p.id_cargo
+           WHERE u.id_user::text = $1 
+              OR LOWER(u.username) = LOWER($1) 
+              OR LOWER(SPLIT_PART($1, '@', 1)) = LOWER(u.username)
+              OR (p.dir_email IS NOT NULL AND LOWER(p.dir_email) = LOWER($1))
+              OR p.num_identificacion = $1
            LIMIT 1`,
-          [usuarioId],
+          [cleanId],
         );
-        if (Array.isArray(rows) && rows[0]) {
-          const r = rows[0];
-          const nombre =
-            r.nom_largo ||
-            [r.nom_tercero, r.pri_apellido].filter(Boolean).join(' ') ||
-            r.username;
-          if (nombre) result.nombre = String(nombre).trim();
+
+        let r = Array.isArray(rows) && rows[0] ? rows[0] : null;
+
+        // Si no encontró relación por auth."user", intentar directamente en auth.personas
+        if (!r || (!r.nom_largo && !r.nom_tercero)) {
+          const pRows: any[] = await this.dataSource.query(
+            `SELECT 
+               p.nom_tercero,
+               p.pri_apellido,
+               p.seg_apellido,
+               p.nom_largo,
+               p.num_identificacion,
+               c.nom_cargo AS cargo,
+               p.dir_email
+             FROM auth.personas p
+             LEFT JOIN auth.cargos c ON c.id_cargo = p.id_cargo
+             WHERE LOWER(p.dir_email) = LOWER($1)
+                OR p.num_identificacion = $1
+                OR LOWER(SPLIT_PART(p.dir_email, '@', 1)) = LOWER(SPLIT_PART($1, '@', 1))
+             LIMIT 1`,
+            [cleanId],
+          );
+          if (Array.isArray(pRows) && pRows[0]) {
+            r = { ...(r || {}), ...pRows[0] };
+          }
+        }
+
+        if (r) {
+          const partes = [r.nom_tercero, r.pri_apellido, r.seg_apellido].filter(Boolean).join(' ').trim();
+          let nombreHumano = (r.nom_largo || partes || '').trim();
+          if (nombreHumano && !nombreHumano.includes('@')) {
+            // Capitalizar palabras si está en minúsculas (ej. "jefe planeacion" -> "Jefe Planeación")
+            if (nombreHumano === nombreHumano.toLowerCase()) {
+              nombreHumano = nombreHumano
+                .split(/\s+/)
+                .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                .join(' ');
+            }
+            result.nombre = nombreHumano;
+          } else if (r.username && !r.username.includes('@')) {
+            result.nombre = String(r.username).trim();
+          }
           if (r.num_identificacion) result.documento = String(r.num_identificacion).trim();
           if (r.cargo) result.cargo = String(r.cargo).trim();
+          if (r.dir_email) {
+            result.email = String(r.dir_email).trim();
+          } else if (r.username && r.username.includes('@')) {
+            result.email = String(r.username).trim();
+          }
         }
       } catch (e) {
         this.logger.warn(`Error resolviendo datos de usuario ${usuarioId}: ${e}`);
@@ -4534,69 +5014,275 @@ if (dto.costoEstimadoTiquete !== undefined) {
     );
     const firmaElaboro = solicitud.camposAdicionales?.firmaElaboro;
 
-    // Elaboró: Nombre del enlace que lo generó (creadoPorUsuarioId o usuarioRadicacionId)
+    // Elaboró: Nombre del enlace que lo generó (creadoPorUsuarioId, usuarioRadicacionId, firmaElaboro, camposAdicionales)
     const enlaceId =
       solicitud.creadoPorUsuarioId || (solicitud as any).usuarioRadicacionId;
     let elaboroNombre = '';
     let elaboroDoc = '';
+    let elaboroEmail = '';
     if (enlaceId) {
       const dEnlace = await this.resolverDatosUsuario(enlaceId, '');
       elaboroNombre = dEnlace.nombre;
       elaboroDoc = dEnlace.documento;
+      elaboroEmail = dEnlace.email;
     }
-    if (firmaElaboro && !firmaElaboro.documentoIdentidad && elaboroDoc) {
-      firmaElaboro.documentoIdentidad = elaboroDoc;
-    }
-    const docElaboroStr = firmaElaboro?.documentoIdentidad ? ` · C.C. ${firmaElaboro.documentoIdentidad}` : '';
-    const fElaboroStr = firmaElaboro?.fechaFirma ? ` · Fecha: ${formatFechaHoraSegura(firmaElaboro.fechaFirma)}` : '';
-    const elaboroTexto =
-      firmaElaboro?.nombreFirmante
-        ? `Elaboró: ${firmaElaboro.nombreFirmante}${docElaboroStr}${fElaboroStr} · ✓ Firma Digital Verificada (Cert: ${firmaElaboro.certificadoId || 'ESAP-CERT-VIAT'})`
-        : solicitud.camposAdicionales?.elaboro ||
-          (elaboroNombre ? `Elaboró: ${elaboroNombre}${elaboroDoc ? ` · C.C. ${elaboroDoc}` : ''}` : 'Elaboró:');
 
-    // Revisó: El analista que lo revisó/verificó con firma digital si existe
+    let nombreEnlaceFinal =
+      (firmaElaboro?.nombreFirmante && !firmaElaboro.nombreFirmante.includes('@') ? firmaElaboro.nombreFirmante : '') ||
+      solicitud.camposAdicionales?.nombreEnlace ||
+      solicitud.camposAdicionales?.enlaceNombre ||
+      elaboroNombre ||
+      '';
+
+    let emailEnlaceFinal =
+      (firmaElaboro?.nombreFirmante?.includes('@') ? firmaElaboro.nombreFirmante : '') ||
+      elaboroEmail ||
+      solicitud.camposAdicionales?.emailEnlace ||
+      '';
+
+    // Si viene como correo o vacío, intentar resolver con resolverDatosUsuario
+    if (!nombreEnlaceFinal || nombreEnlaceFinal.includes('@')) {
+      const idParaResolver =
+        (firmaElaboro?.nombreFirmante?.includes('@') ? firmaElaboro.nombreFirmante : null) ||
+        enlaceId ||
+        (solicitud as any).creadoPor ||
+        (req?.user?.email);
+      if (idParaResolver) {
+        const d = await this.resolverDatosUsuario(idParaResolver, '');
+        if (d.nombre && !d.nombre.includes('@')) {
+          nombreEnlaceFinal = d.nombre;
+        }
+        if (d.documento && !elaboroDoc) {
+          elaboroDoc = d.documento;
+        }
+        if (d.email && !emailEnlaceFinal) {
+          emailEnlaceFinal = d.email;
+        }
+      }
+    }
+
+    if ((!nombreEnlaceFinal || nombreEnlaceFinal.includes('@')) && elaboroNombre && !elaboroNombre.includes('@')) {
+      nombreEnlaceFinal = elaboroNombre;
+    }
+    if ((!nombreEnlaceFinal || nombreEnlaceFinal.includes('@')) && req?.user?.fullName && !req.user.fullName.includes('@')) {
+      nombreEnlaceFinal = req.user.fullName;
+    }
+    if (!nombreEnlaceFinal || nombreEnlaceFinal.includes('@')) {
+      nombreEnlaceFinal = 'Enlace de Dependencia';
+    }
+
+    const docEnlaceFinal =
+      firmaElaboro?.documentoIdentidad ||
+      solicitud.camposAdicionales?.documentoEnlace ||
+      elaboroDoc ||
+      '';
+    const emailEnlaceStr = emailEnlaceFinal ? ` (${emailEnlaceFinal})` : '';
+    const docElaboroStr = docEnlaceFinal ? ` · C.C. ${docEnlaceFinal}` : '';
+    const fElaboroStr = firmaElaboro?.fechaFirma ? ` · Fecha: ${formatFechaHoraSegura(firmaElaboro.fechaFirma)}` : '';
+    const certElaboroStr = firmaElaboro?.certificadoId ? ` · ✓ Firma Digital Verificada (Cert: ${firmaElaboro.certificadoId})` : '';
+
+    const elaboroTexto = `Elaboró: ${nombreEnlaceFinal}${emailEnlaceStr}${docElaboroStr}${fElaboroStr}${certElaboroStr}`;
+
+    // Revisó: El analista que lo revisó/verificó con firma digital (1er Nivel)
+    const firmaAnalistaObj =
+      solicitud.camposAdicionales?.firmaAnalista || firmaAnalistaPrev;
+
     const analistaId =
-      solicitud.revisorControlId || solicitud.analistaAsignadoId;
-    let revisorNombre = '';
-    let revisorDoc = '';
+      firmaAnalistaObj?.usuarioId ||
+      solicitud.analistaAsignadoId;
+    let analistaNombre = '';
+    let analistaDoc = '';
     if (analistaId) {
       const dAnalista = await this.resolverDatosUsuario(analistaId, '');
-      revisorNombre = dAnalista.nombre;
-      revisorDoc = dAnalista.documento;
+      analistaNombre = dAnalista.nombre;
+      analistaDoc = dAnalista.documento;
     }
-    if (firmaAnalistaPrev && !firmaAnalistaPrev.documentoIdentidad && revisorDoc) {
-      firmaAnalistaPrev.documentoIdentidad = revisorDoc;
+    if (firmaAnalistaObj && !firmaAnalistaObj.documentoIdentidad && analistaDoc) {
+      firmaAnalistaObj.documentoIdentidad = analistaDoc;
     }
-    const docRevisoStr = firmaAnalistaPrev?.documentoIdentidad ? ` · C.C. ${firmaAnalistaPrev.documentoIdentidad}` : '';
-    const fRevisoStr = firmaAnalistaPrev?.fechaFirma ? ` · Fecha: ${formatFechaHoraSegura(firmaAnalistaPrev.fechaFirma)}` : '';
-    const revisoTexto =
-      firmaAnalistaPrev?.nombreFirmante
-        ? `Revisó: ${firmaAnalistaPrev.nombreFirmante}${docRevisoStr}${fRevisoStr} · ✓ Firma Digital Verificada (Cert: ${firmaAnalistaPrev.certificadoId || 'ESAP-CERT-VIAT'})`
-        : solicitud.camposAdicionales?.reviso ||
-          (revisorNombre ? `Revisó: ${revisorNombre}${revisorDoc ? ` · C.C. ${revisorDoc}` : ''}` : 'Revisó:');
+    const nombreAnalistaFinal =
+      firmaAnalistaObj?.nombreFirmante ||
+      solicitud.camposAdicionales?.nombreAnalista ||
+      analistaNombre;
+    const docAnalistaStr = (firmaAnalistaObj?.documentoIdentidad || analistaDoc)
+      ? ` · C.C. ${firmaAnalistaObj?.documentoIdentidad || analistaDoc}`
+      : '';
+    const fechaFirmaAnalista = firmaAnalistaObj?.fechaFirma || solicitud.fechaRevision;
+    const fAnalistaStr = fechaFirmaAnalista
+      ? ` · Fecha: ${formatFechaHoraSegura(fechaFirmaAnalista)}`
+      : '';
+    const certIdAnalista =
+      firmaAnalistaObj?.certificadoId ||
+      (solicitud.camposAdicionales?.firmaAnalista?.certificadoId);
+    const certAnalistaStr = certIdAnalista
+      ? ` · ✓ Firma Digital (Cert: ${certIdAnalista})`
+      : fechaFirmaAnalista
+      ? ` · ✓ Verificado`
+      : '';
 
-    // Aprobó: Quien la dejó en estado de pagada (pagado_por_id), si no ha llegado dejar vacío
-    const pagadoPorId = solicitud.pagadoPorId;
-    let pagadorNombre = '';
-    let pagadorDoc = '';
-    if (pagadoPorId) {
-      const dPagador = await this.resolverDatosUsuario(pagadoPorId, '');
-      pagadorNombre = dPagador.nombre;
-      pagadorDoc = dPagador.documento;
-    }
-    const aproboTexto =
-      solicitud.camposAdicionales?.aprobo ||
-      (pagadorNombre ? `Aprobó: ${pagadorNombre}${pagadorDoc ? ` · C.C. ${pagadorDoc}` : ''}` : 'Aprobó:');
+    // Revisor de Control Viáticos (2do Nivel / Control Cruzado)
+    const firmaControlPrev = firmasRegistradasPdf.find(
+      (f: any) =>
+        (f.tipo === 'CONTROL_VIATICOS' || f.tipo === TipoFirmaAprobacion.CONTROL_VIATICOS) &&
+        f.estado !== 'RECHAZADO',
+    );
+    const firmaControlObj =
+      solicitud.camposAdicionales?.firmaControlViaticos || firmaControlPrev;
 
-    // Enriquecer datos de firmantes con C.C. si no vienen explícitos
-    if (firmaJefePdf && !firmaJefePdf.documentoIdentidad && firmaJefePdf.usuarioId) {
-      const d = await this.resolverDatosUsuario(firmaJefePdf.usuarioId);
-      if (d.documento) firmaJefePdf.documentoIdentidad = d.documento;
+    const revisorControlId =
+      firmaControlObj?.usuarioId ||
+      solicitud.revisorControlId;
+
+    let revisorControlNombre = '';
+    let revisorControlDoc = '';
+    if (revisorControlId) {
+      const dRev = await this.resolverDatosUsuario(revisorControlId, '');
+      revisorControlNombre = dRev.nombre;
+      revisorControlDoc = dRev.documento;
     }
-    if (firmaGerentePdf && !firmaGerentePdf.documentoIdentidad && firmaGerentePdf.usuarioId) {
-      const d = await this.resolverDatosUsuario(firmaGerentePdf.usuarioId);
-      if (d.documento) firmaGerentePdf.documentoIdentidad = d.documento;
+    if (firmaControlObj && !firmaControlObj.documentoIdentidad && revisorControlDoc) {
+      firmaControlObj.documentoIdentidad = revisorControlDoc;
+    }
+    const nombreControlFinal =
+      firmaControlObj?.nombreFirmante ||
+      solicitud.camposAdicionales?.revisorControlNombre ||
+      revisorControlNombre;
+    const docControlStr = (firmaControlObj?.documentoIdentidad || revisorControlDoc)
+      ? ` · C.C. ${firmaControlObj?.documentoIdentidad || revisorControlDoc}`
+      : '';
+    const fechaFirmaControl = firmaControlObj?.fechaFirma || solicitud.fechaSegundaRevision;
+    const fControlStr = fechaFirmaControl
+      ? ` · Fecha: ${formatFechaHoraSegura(fechaFirmaControl)}`
+      : '';
+    const certIdControl =
+      firmaControlObj?.certificadoId ||
+      solicitud.camposAdicionales?.firmaControlViaticos?.certificadoId;
+    const certControlStr = certIdControl
+      ? ` · ✓ Firma Digital (Cert: ${certIdControl})`
+      : fechaFirmaControl
+      ? ` · ✓ Verificado 2do Nivel`
+      : '';
+
+    let revisoTexto = '';
+    if (nombreAnalistaFinal && nombreControlFinal) {
+      revisoTexto = `Revisó: Analista (Revisó): ${nombreAnalistaFinal}${docAnalistaStr}${fAnalistaStr}${certAnalistaStr}  |  Control Viáticos (2do Nivel - Revisó): ${nombreControlFinal}${docControlStr}${fControlStr}${certControlStr}`;
+    } else if (nombreAnalistaFinal) {
+      revisoTexto = `Revisó: Analista (Revisó): ${nombreAnalistaFinal}${docAnalistaStr}${fAnalistaStr}${certAnalistaStr}`;
+    } else if (nombreControlFinal) {
+      revisoTexto = `Revisó: Control Viáticos (2do Nivel - Revisó): ${nombreControlFinal}${docControlStr}${fControlStr}${certControlStr}`;
+    } else {
+      revisoTexto = 'Revisó: Pendiente revisión técnica y documental (Analista / Control Viáticos)';
+    }
+
+    // Flags de extemporaneidad y resolución de aprobadores
+    const isExtemporanea = Boolean(
+      solicitud.extemporanea ||
+      solicitud.estadoSolicitud === EstadoSolicitud.EXTEMPORANEA ||
+      solicitud.autorizadorDireccionId ||
+      solicitud.fechaAutorizacionDireccion ||
+      solicitud.decisionDireccion,
+    );
+
+    // 1. Datos Subdirector(a) de Gestión Corporativa (Ordenador del Gasto - RF-AUT-001)
+    const subdirectorId = solicitud.autorizadorId;
+    let subdirectorNombre = '';
+    let subdirectorDoc = '';
+    if (solicitud.autorizador) {
+      subdirectorNombre =
+        (solicitud.autorizador as any).nombreCompleto ||
+        (solicitud.autorizador as any).nomLargo ||
+        '';
+    }
+    if (!subdirectorNombre && subdirectorId) {
+      const dSubdirector = await this.resolverDatosUsuario(subdirectorId, '');
+      subdirectorNombre = dSubdirector.nombre;
+      subdirectorDoc = dSubdirector.documento;
+    }
+    const firmaSubdirObj =
+      solicitud.camposAdicionales?.firmaSubdireccion ||
+      firmasRegistradasPdf.find(
+        (f: any) =>
+          (f.tipo === 'SUBDIRECCION' || (f.tipo as string) === 'SUBDIRECTOR') &&
+          f.estado !== 'RECHAZADO',
+      );
+    if (firmaSubdirObj?.nombreFirmante && !subdirectorNombre) {
+      subdirectorNombre = firmaSubdirObj.nombreFirmante;
+    }
+    if (firmaSubdirObj?.documentoIdentidad && !subdirectorDoc) {
+      subdirectorDoc = firmaSubdirObj.documentoIdentidad;
+    }
+    const fechaAprobacionSubdir =
+      firmaSubdirObj?.fechaFirma || solicitud.fechaAutorizacion;
+    const certIdSubdir = firmaSubdirObj?.certificadoId;
+
+    // 2. Datos Dirección Nacional (Autorización Excepcional Extemporánea - RF-AUT-002)
+    const dirNacionalId = solicitud.autorizadorDireccionId;
+    let dirNacionalNombre = '';
+    let dirNacionalDoc = '';
+    if (solicitud.autorizadorDireccion) {
+      dirNacionalNombre =
+        (solicitud.autorizadorDireccion as any).nombreCompleto ||
+        (solicitud.autorizadorDireccion as any).nomLargo ||
+        '';
+    }
+    if (!dirNacionalNombre && dirNacionalId) {
+      const dDirNac = await this.resolverDatosUsuario(dirNacionalId, '');
+      dirNacionalNombre = dDirNac.nombre;
+      dirNacionalDoc = dDirNac.documento;
+    }
+    const firmaDirNacObj =
+      solicitud.camposAdicionales?.firmaDireccionNacional ||
+      firmasRegistradasPdf.find(
+        (f: any) =>
+          (f.tipo === 'DIRECCION_NACIONAL' ||
+            (f.tipo as string) === 'DIRECTOR_NACIONAL') &&
+          f.estado !== 'RECHAZADO',
+      );
+    if (firmaDirNacObj?.nombreFirmante && !dirNacionalNombre) {
+      dirNacionalNombre = firmaDirNacObj.nombreFirmante;
+    }
+    if (firmaDirNacObj?.documentoIdentidad && !dirNacionalDoc) {
+      dirNacionalDoc = firmaDirNacObj.documentoIdentidad;
+    }
+    const fechaAutorizacionDir =
+      firmaDirNacObj?.fechaFirma || solicitud.fechaAutorizacionDireccion;
+    const certIdDirNac = firmaDirNacObj?.certificadoId;
+    const justificacionDirNac = solicitud.justificacionDireccion || '';
+
+    // Enriquecer datos de firmantes con C.C., correo institucional y nombre si vienen registrados o con usuarioId o correo
+    if (firmaJefePdf) {
+      const idParaResolverJefe =
+        firmaJefePdf.usuarioId ||
+        (firmaJefePdf.nombreFirmante?.includes('@') ? firmaJefePdf.nombreFirmante : null);
+      if (idParaResolverJefe) {
+        const d = await this.resolverDatosUsuario(idParaResolverJefe);
+        if (d.documento && !firmaJefePdf.documentoIdentidad) firmaJefePdf.documentoIdentidad = d.documento;
+        if (d.email) (firmaJefePdf as any).emailFirmante = d.email;
+        if (firmaJefePdf.nombreFirmante?.includes('@')) {
+          (firmaJefePdf as any).emailFirmante = (firmaJefePdf as any).emailFirmante || firmaJefePdf.nombreFirmante;
+        }
+        if (d.nombre && (!firmaJefePdf.nombreFirmante || firmaJefePdf.nombreFirmante.includes('@'))) {
+          firmaJefePdf.nombreFirmante = d.nombre;
+        }
+        if (d.cargo && !firmaJefePdf.cargoFirmante) firmaJefePdf.cargoFirmante = d.cargo;
+      }
+    }
+    if (firmaGerentePdf) {
+      const idParaResolverGerente =
+        firmaGerentePdf.usuarioId ||
+        (firmaGerentePdf.nombreFirmante?.includes('@') ? firmaGerentePdf.nombreFirmante : null);
+      if (idParaResolverGerente) {
+        const d = await this.resolverDatosUsuario(idParaResolverGerente);
+        if (d.documento && !firmaGerentePdf.documentoIdentidad) firmaGerentePdf.documentoIdentidad = d.documento;
+        if (d.email) (firmaGerentePdf as any).emailFirmante = d.email;
+        if (firmaGerentePdf.nombreFirmante?.includes('@')) {
+          (firmaGerentePdf as any).emailFirmante = (firmaGerentePdf as any).emailFirmante || firmaGerentePdf.nombreFirmante;
+        }
+        if (d.nombre && (!firmaGerentePdf.nombreFirmante || firmaGerentePdf.nombreFirmante.includes('@'))) {
+          firmaGerentePdf.nombreFirmante = d.nombre;
+        }
+        if (d.cargo && !firmaGerentePdf.cargoFirmante) firmaGerentePdf.cargoFirmante = d.cargo;
+      }
     }
 
     // Búsqueda de datos complementarios en auth.personas (fecha_nacimiento, etc.)
@@ -5743,10 +6429,20 @@ if (itinerarioGeneral) {
       doc.fillColor('#C00000').font('Helvetica-Bold').text(fechaCdpLarga || '____________________', { continued: true });
       doc.fillColor('#000000').font('Helvetica').text('.');
 
-      // ========== ESPACIO DE FIRMAS DE APROBACIÓN (JEFE/SUPERVISOR Y GERENTE DE PROYECTO) ==========
-      const yFirmas = ySec5Body + 24 + 3;
-      const hFirmas = 115;
-      drawBox(28, yFirmas, 556, hFirmas, null);
+      // ========== SECCIÓN 6: AUTORIZACIÓN PREVIA DE DESPLAZAMIENTO (FIRMAS DE APROBACIÓN) ==========
+      const ySec6 = ySec5Body + 24 + 2;
+      drawBox(28, ySec6, 556, 12, '#DDE3EA');
+      doc.fontSize(7).font('Helvetica-Bold').fillColor('#000000');
+      doc.text(
+        '6. AUTORIZACIÓN PREVIA DE DESPLAZAMIENTO (JEFATURA INMEDIATA Y GERENCIA DE PROYECTO)',
+        32,
+        ySec6 + 2.5,
+      );
+
+      // Espacio de firmas de aprobación previa (Jefe/Supervisor y Gerente de Proyecto)
+      const yFirmas = ySec6 + 12;
+      const hFirmas = 98;
+      drawBox(28, yFirmas, 556, hFirmas, null, '#000000', 0.6);
       doc.moveTo(306, yFirmas).lineTo(306, yFirmas + hFirmas).strokeColor('#000000').lineWidth(0.6).stroke();
 
       const formatFechaAmigable = (val?: any): string => {
@@ -5767,54 +6463,76 @@ if (itinerarioGeneral) {
         cardW: number,
         fallbackTitulo: string,
       ) => {
-        const cardY = yFirmas + 5;
-        const cardH = 80;
+        const cardY = yFirmas + 4;
+        const cardH = 75;
 
         if (firma && (firma.estado === 'FIRMADO' || firma.firmadoDigitalmente)) {
-          // Fondo tarjeta amigable con estilo verde idéntico al componente PTA (foto)
-          doc.roundedRect(cardX, cardY, cardW, cardH, 6)
+          // Fondo tarjeta con estilo verde institucional
+          doc.roundedRect(cardX, cardY, cardW, cardH, 5)
              .fillColor('#F0FDF4')
-             .strokeColor('#BBF7D0')
+             .strokeColor('#86EFAC')
              .lineWidth(0.8)
              .fillAndStroke();
 
-          // 1. Título superior en gris sutil en mayúsculas
-          doc.fontSize(6.2).font('Helvetica-Bold').fillColor('#9CA3AF');
-          doc.text(fallbackTitulo.toUpperCase(), cardX, cardY + 7, {
-            width: cardW,
+          // 1. Título superior del rol en badge distintivo con negrilla destacada
+          const badgeW = cardW - 16;
+          const badgeH = 13;
+          doc.roundedRect(cardX + 8, cardY + 5, badgeW, badgeH, 3)
+             .fillColor('#DCFCE7')
+             .strokeColor('#BBF7D0')
+             .lineWidth(0.5)
+             .fillAndStroke();
+
+          doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#166534');
+          doc.text(fallbackTitulo.toUpperCase(), cardX + 8, cardY + 7.5, {
+            width: badgeW,
             align: 'center',
           });
 
           // 2. Nombre del aprobador en negrilla centrada
-          const nombreAprobador = this.sanitizarTextoPdf(firma.nombreFirmante || 'Servidor Autorizado').toUpperCase();
-          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#111827');
-          doc.text(nombreAprobador, cardX + 8, cardY + 18, {
-            width: cardW - 16,
+          let nombreAprobador = (firma.nombreFirmante || '').trim();
+          let correoAprobador = ((firma as any).emailFirmante || '').trim();
+          if (nombreAprobador.includes('@')) {
+            if (!correoAprobador) correoAprobador = nombreAprobador;
+            nombreAprobador = cargoOficial || fallbackTitulo || 'Servidor Autorizado';
+          }
+          const nombreAprobadorFinal = this.sanitizarTextoPdf(nombreAprobador || 'Servidor Autorizado').toUpperCase();
+          doc.fontSize(7.5).font('Helvetica-Bold').fillColor('#0F172A');
+          doc.text(nombreAprobadorFinal, cardX + 6, cardY + 20.5, {
+            width: cardW - 12,
             align: 'center',
           });
 
-          // 3. Documento de Identidad (C.C.)
+          // 3. Documento de Identidad (C.C.) y correo institucional del aprobador
+          const partesSecundarias: string[] = [];
           if (firma.documentoIdentidad) {
-            doc.fontSize(5.5).font('Helvetica').fillColor('#64748B');
-            doc.text(`C.C. ${firma.documentoIdentidad}`, cardX, cardY + 28, {
-              width: cardW,
+            partesSecundarias.push(`C.C. ${firma.documentoIdentidad}`);
+          }
+          if (correoAprobador) {
+            partesSecundarias.push(correoAprobador.toLowerCase());
+          }
+          if (partesSecundarias.length > 0) {
+            const textoSecundario = this.sanitizarTextoPdf(partesSecundarias.join(' · '));
+            doc.fontSize(5.2).font('Helvetica').fillColor('#475569');
+            doc.text(textoSecundario, cardX + 4, cardY + 30.5, {
+              width: cardW - 8,
               align: 'center',
             });
           }
 
-          // 4. Pill verde con check "Aprobado"
-          const pillW = 74;
-          const pillH = 13.5;
+          // 4. Pill verde con check "✓ Autorizado"
+          const pillW = 78;
+          const pillH = 12.5;
           const pillX = cardX + (cardW - pillW) / 2;
-          const pillY = cardY + 38;
-          doc.roundedRect(pillX, pillY, pillW, pillH, 6.75)
+          const pillY = cardY + 41;
+          doc.roundedRect(pillX, pillY, pillW, pillH, 6.25)
              .fillColor('#D1FAE5')
-             .strokeColor('#A7F3D0')
+             .strokeColor('#86EFAC')
              .lineWidth(0.5)
              .fillAndStroke();
 
-          doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#065F46');
-          doc.text('✓ Aprobado', pillX, pillY + 3.2, {
+          doc.fontSize(6.2).font('Helvetica-Bold').fillColor('#065F46');
+          doc.text('✓ Autorizado', pillX, pillY + 2.8, {
             width: pillW,
             align: 'center',
           });
@@ -5822,8 +6540,8 @@ if (itinerarioGeneral) {
           // 5. Fecha en formato amigable centrado: "01 de oct de 2026"
           const fechaAmigable = formatFechaAmigable(firma.fechaFirma);
           if (fechaAmigable) {
-            doc.fontSize(6.2).font('Helvetica').fillColor('#9CA3AF');
-            doc.text(fechaAmigable, cardX, cardY + 54, {
+            doc.fontSize(5.8).font('Helvetica').fillColor('#059669');
+            doc.text(fechaAmigable, cardX, cardY + 55.5, {
               width: cardW,
               align: 'center',
             });
@@ -5831,20 +6549,11 @@ if (itinerarioGeneral) {
 
           // 6. Certificado digital OTP institucional al pie de la tarjeta
           const certId = firma.certificadoId || 'ESAP-CERT-VIAT';
-          doc.fontSize(4.6).font('Helvetica').fillColor('#94A3B8');
-          doc.text(`Firma Digital Verificada · Cert: ${certId}`, cardX, cardY + 66, {
+          doc.fontSize(4.6).font('Helvetica').fillColor('#64748B');
+          doc.text(`Firma Digital Verificada · Cert: ${certId}`, cardX, cardY + 64.5, {
             width: cardW,
             align: 'center',
           });
-
-          // Imagen opcional de rúbrica si existiera
-          if (firma.firmaImagen && typeof firma.firmaImagen === 'string') {
-            try {
-              const rawBase64 = firma.firmaImagen.replace(/^data:image\/\w+;base64,/, '');
-              const imgBuf = Buffer.from(rawBase64, 'base64');
-              doc.image(imgBuf, cardX + cardW - 48, cardY + 6, { fit: [42, 18], align: 'right' });
-            } catch {}
-          }
 
           // Si es firma por ausencia
           if (firma.esAusencia && firma.motivoAusencia) {
@@ -5852,108 +6561,437 @@ if (itinerarioGeneral) {
             doc.text(
               `* En ausencia: ${this.sanitizarTextoPdf(firma.motivoAusencia)}`,
               cardX + 6,
-              cardY + 72,
+              cardY + 68,
               { width: cardW - 12, align: 'center' },
             );
           }
         } else {
           // Tarjeta en estado pendiente / no firmado
-          doc.roundedRect(cardX, cardY, cardW, cardH, 6)
+          doc.roundedRect(cardX, cardY, cardW, cardH, 5)
              .fillColor('#FFFFFF')
-             .strokeColor('#E5E7EB')
+             .strokeColor('#CBD5E1')
              .lineWidth(0.8)
              .fillAndStroke();
 
-          // 1. Título superior en gris sutil en mayúsculas
-          doc.fontSize(6.2).font('Helvetica-Bold').fillColor('#9CA3AF');
-          doc.text(fallbackTitulo.toUpperCase(), cardX, cardY + 7, {
-            width: cardW,
+          // 1. Título superior del rol en badge distintivo con negrilla
+          const badgeW = cardW - 16;
+          const badgeH = 13;
+          doc.roundedRect(cardX + 8, cardY + 5, badgeW, badgeH, 3)
+             .fillColor('#F1F5F9')
+             .strokeColor('#E2E8F0')
+             .lineWidth(0.5)
+             .fillAndStroke();
+
+          doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#334155');
+          doc.text(fallbackTitulo.toUpperCase(), cardX + 8, cardY + 7.5, {
+            width: badgeW,
             align: 'center',
           });
 
-          // 2. Línea horizontal o guion como en la foto
-          doc.fontSize(10).font('Helvetica-Bold').fillColor('#9CA3AF');
-          doc.text('—', cardX, cardY + 20, {
+          // 2. Línea horizontal o guion
+          doc.fontSize(9).font('Helvetica-Bold').fillColor('#94A3B8');
+          doc.text('—', cardX, cardY + 22, {
             width: cardW,
             align: 'center',
           });
 
           // 3. Pill gris "Pendiente por firmar"
           const pendPillW = 86;
-          const pendPillH = 13.5;
+          const pendPillH = 12.5;
           const pendPillX = cardX + (cardW - pendPillW) / 2;
-          const pendPillY = cardY + 38;
-          doc.roundedRect(pendPillX, pendPillY, pendPillW, pendPillH, 6.75)
-             .fillColor('#F3F4F6')
-             .strokeColor('#E5E7EB')
+          const pendPillY = cardY + 41;
+          doc.roundedRect(pendPillX, pendPillY, pendPillW, pendPillH, 6.25)
+             .fillColor('#F8FAFC')
+             .strokeColor('#E2E8F0')
              .lineWidth(0.5)
              .fillAndStroke();
 
-          doc.fontSize(6).font('Helvetica-Bold').fillColor('#9CA3AF');
-          doc.text('Pendiente por firmar', pendPillX, pendPillY + 3.5, {
+          doc.fontSize(6).font('Helvetica-Bold').fillColor('#64748B');
+          doc.text('Pendiente por firmar', pendPillX, pendPillY + 3, {
             width: pendPillW,
             align: 'center',
           });
 
           // 4. Fecha guion
-          doc.fontSize(6.2).font('Helvetica').fillColor('#CBD5E1');
-          doc.text('—', cardX, cardY + 54, {
+          doc.fontSize(6).font('Helvetica').fillColor('#CBD5E1');
+          doc.text('—', cardX, cardY + 56, {
             width: cardW,
             align: 'center',
           });
         }
 
         // Línea y cargo del firmante al pie del bloque
-        doc.moveTo(cardX + 15, yFirmas + 94).lineTo(cardX + cardW - 15, yFirmas + 94).strokeColor('#000000').lineWidth(0.6).stroke();
-        doc.fontSize(6).font('Helvetica').fillColor('#000000');
-        doc.text(cargoOficial, cardX, yFirmas + 98, { width: cardW, align: 'center' });
+        doc.moveTo(cardX + 15, yFirmas + 82).lineTo(cardX + cardW - 15, yFirmas + 82).strokeColor('#94A3B8').lineWidth(0.5).stroke();
+        doc.fontSize(6).font('Helvetica-Bold').fillColor('#1E293B');
+        doc.text(cargoOficial, cardX, yFirmas + 86, { width: cardW, align: 'center' });
       };
 
       // Firma izquierda: Jefe de Dependencia / Supervisor / Director Nacional / Subdirector
       renderFirmaBox(firmaJefePdf, cargoJefe, 33, 268, 'Jefe de Dependencia / Supervisor');
 
-      // Firma derecha: Gerente de Proyecto / Ordenador
-      renderFirmaBox(firmaGerentePdf, cargoGerente, 311, 268, 'Gerente de Proyecto');
+      // Firma derecha: Gerente de Proyecto / Convenio
+      renderFirmaBox(firmaGerentePdf, cargoGerente, 311, 268, 'Gerente de Proyecto / Convenio');
 
-      // ========== PIE DE PÁGINA: ELABORÓ, REVISÓ, APROBÓ Y LEY 1581 ==========
-      const yFooter = yFirmas + hFirmas;
-      const hFooter = 38;
-      drawBox(28, yFooter, 556, hFooter, null);
-      doc.moveTo(398, yFooter).lineTo(398, yFooter + hFooter).strokeColor('#000000').lineWidth(0.6).stroke();
+      // ========== SECCIÓN 7: CONTROL Y TRAZABILIDAD INSTITUCIONAL (ELABORÓ, REVISÓ, APROBÓ) ==========
+      const ySec7 = yFirmas + hFirmas + 2;
+      drawBox(28, ySec7, 556, 12, '#DDE3EA');
+      doc.fontSize(7).font('Helvetica-Bold').fillColor('#000000');
+      doc.text(
+        '7. CONTROL Y TRAZABILIDAD INSTITUCIONAL (ELABORÓ · REVISÓ · APROBÓ)',
+        32,
+        ySec7 + 2.5,
+      );
 
-      const hFilaFooter = hFooter / 3;
-      doc.moveTo(28, yFooter + hFilaFooter).lineTo(398, yFooter + hFilaFooter).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
-      doc.moveTo(28, yFooter + hFilaFooter * 2).lineTo(398, yFooter + hFilaFooter * 2).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
+      const yTableHeader = ySec7 + 12;
+      const hTableHeader = 11;
+      const colX1 = 28;  const colW1 = 112; // ROL / ETAPA
+      const colX2 = 140; const colW2 = 168; // RESPONSABLE DEL TRÁMITE
+      const colX3 = 308; const colW3 = 132; // IDENTIFICACIÓN Y ROL / ÁREA
+      const colX4 = 440; const colW4 = 144; // ESTADO, FECHA Y FIRMA DIGITAL
+      // 112 + 168 + 132 + 144 = 556 pt.
 
-      const firmasAprobadas = [firmaJefePdf, firmaGerentePdf].filter((f: any) => f && (f.estado === 'FIRMADO' || f.firmadoDigitalmente));
-      let aproboTextoFinal = '';
-      if (firmasAprobadas.length > 0) {
-        const parts = firmasAprobadas.map((f: any) => {
-          const cc = f.documentoIdentidad ? ` (C.C. ${f.documentoIdentidad})` : '';
-          const fStr = f.fechaFirma ? ` ${formatFechaHoraSegura(f.fechaFirma)}` : '';
-          return `${f.nombreFirmante}${cc} · ✓ Verificada${fStr}`;
-        });
-        aproboTextoFinal = `Aprobó: ${parts.join(' / ')}`;
+      drawBox(28, yTableHeader, 556, hTableHeader, '#E8EEF5');
+      doc.moveTo(colX2, yTableHeader).lineTo(colX2, yTableHeader + hTableHeader).strokeColor('#CBD5E1').lineWidth(0.5).stroke();
+      doc.moveTo(colX3, yTableHeader).lineTo(colX3, yTableHeader + hTableHeader).strokeColor('#CBD5E1').lineWidth(0.5).stroke();
+      doc.moveTo(colX4, yTableHeader).lineTo(colX4, yTableHeader + hTableHeader).strokeColor('#CBD5E1').lineWidth(0.5).stroke();
+
+      doc.fontSize(5.8).font('Helvetica-Bold').fillColor('#003DA5');
+      doc.text('ROL / ETAPA', colX1, yTableHeader + 2.5, { width: colW1, align: 'center' });
+      doc.text('RESPONSABLE DEL TRÁMITE', colX2, yTableHeader + 2.5, { width: colW2, align: 'center' });
+      doc.text('IDENTIFICACIÓN Y ÁREA', colX3, yTableHeader + 2.5, { width: colW3, align: 'center' });
+      doc.text('ESTADO, FECHA Y FIRMA DIGITAL', colX4, yTableHeader + 2.5, { width: colW4, align: 'center' });
+
+      const renderFilaTrazabilidad = (
+        yRow: number,
+        hRow: number,
+        rolBadge: { tag: string; sub: string; bg: string; border: string; text: string },
+        nombre: string,
+        detalleNombre: string,
+        identificacion: string,
+        area: string,
+        estado: {
+          aprobado: boolean;
+          textoBadge: string;
+          fechaStr: string;
+          certId?: string;
+        },
+        isAlt: boolean,
+      ) => {
+        // Fondo de fila alternado
+        if (isAlt) {
+          doc.rect(28, yRow, 556, hRow).fillColor('#F8FAFC').fill();
+        }
+
+        // Borde exterior y divisiones verticales
+        doc.rect(28, yRow, 556, hRow).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
+        doc.moveTo(colX2, yRow).lineTo(colX2, yRow + hRow).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
+        doc.moveTo(colX3, yRow).lineTo(colX3, yRow + hRow).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
+        doc.moveTo(colX4, yRow).lineTo(colX4, yRow + hRow).strokeColor('#E2E8F0').lineWidth(0.4).stroke();
+
+        // Col 1: ROL / ETAPA con Badge distintivo en negrilla
+        const tagW = colW1 - 8;
+        const tagH = 9.5;
+        doc.roundedRect(colX1 + 4, yRow + 2, tagW, tagH, 2.5)
+           .fillColor(rolBadge.bg)
+           .strokeColor(rolBadge.border)
+           .lineWidth(0.5)
+           .fillAndStroke();
+
+        doc.fontSize(6).font('Helvetica-Bold').fillColor(rolBadge.text);
+        doc.text(rolBadge.tag, colX1 + 4, yRow + 3.5, { width: tagW, align: 'center' });
+
+        doc.fontSize(4.6).font('Helvetica').fillColor('#64748B');
+        doc.text(rolBadge.sub, colX1 + 4, yRow + 12.2, { width: tagW, align: 'center' });
+
+        // Col 2: SERVIDOR PÚBLICO RESPONSABLE (Nombre en negrilla destacada)
+        const nombreFinal = this.sanitizarTextoPdf(nombre || '—').toUpperCase();
+        doc.fontSize(6.3).font('Helvetica-Bold').fillColor(estado.aprobado ? '#0F172A' : '#64748B');
+        doc.text(nombreFinal, colX2 + 5, yRow + 2.5, { width: colW2 - 10, align: 'left', lineGap: 0 });
+
+        if (detalleNombre) {
+          doc.fontSize(4.8).font('Helvetica').fillColor('#64748B');
+          doc.text(this.sanitizarTextoPdf(detalleNombre), colX2 + 5, yRow + 10.8, { width: colW2 - 10, align: 'left' });
+        }
+
+        // Col 3: IDENTIFICACIÓN Y ÁREA
+        if (identificacion) {
+          doc.fontSize(5.8).font('Helvetica-Bold').fillColor('#334155');
+          doc.text(this.sanitizarTextoPdf(identificacion), colX3 + 5, yRow + 2.5, { width: colW3 - 10, align: 'left' });
+        }
+        if (area) {
+          doc.fontSize(4.8).font('Helvetica').fillColor('#64748B');
+          doc.text(this.sanitizarTextoPdf(area), colX3 + 5, yRow + 10.8, { width: colW3 - 10, align: 'left' });
+        }
+
+        // Col 4: ESTADO, FECHA Y FIRMA DIGITAL (Pill de estado)
+        const pillW = 124;
+        const pillH = 9;
+        const pillX = colX4 + (colW4 - pillW) / 2;
+        const pillY = yRow + 1.8;
+
+        if (estado.aprobado) {
+          doc.roundedRect(pillX, pillY, pillW, pillH, 4.5)
+             .fillColor('#ECFDF5')
+             .strokeColor('#A7F3D0')
+             .lineWidth(0.5)
+             .fillAndStroke();
+
+          doc.fontSize(5.2).font('Helvetica-Bold').fillColor('#065F46');
+          doc.text(estado.textoBadge, pillX, pillY + 2, { width: pillW, align: 'center' });
+
+          const infoFirma = [
+            estado.fechaStr ? `Fecha: ${estado.fechaStr}` : '',
+            estado.certId ? `Cert: ${estado.certId}` : 'Firma Digital Verificada',
+          ].filter(Boolean).join(' · ');
+
+          doc.fontSize(4.5).font('Helvetica').fillColor('#475569');
+          doc.text(infoFirma, colX4 + 2, yRow + 11.8, { width: colW4 - 4, align: 'center' });
+        } else {
+          doc.roundedRect(pillX, pillY, pillW, pillH, 4.5)
+             .fillColor('#F8FAFC')
+             .strokeColor('#E2E8F0')
+             .lineWidth(0.5)
+             .fillAndStroke();
+
+          doc.fontSize(4.9).font('Helvetica-Bold').fillColor('#94A3B8');
+          doc.text(estado.textoBadge, pillX, pillY + 2, { width: pillW, align: 'center' });
+
+          doc.fontSize(4.4).font('Helvetica').fillColor('#CBD5E1');
+          doc.text('Pendiente de verificación / firma', colX4 + 2, yRow + 11.8, { width: colW4 - 4, align: 'center' });
+        }
+      };
+
+      const hRow = isExtemporanea ? 16 : 18;
+      let curY = yTableHeader + hTableHeader;
+
+      // 1. ELABORÓ
+      const fechaElaboroStr = formatFechaHoraSegura(
+        firmaElaboro?.fechaFirma || solicitud.creadoEn || (solicitud as any).fechaCreacion,
+      );
+      renderFilaTrazabilidad(
+        curY,
+        hRow,
+        {
+          tag: 'ELABORÓ',
+          sub: 'Enlace de Dependencia',
+          bg: '#EEF2FF',
+          border: '#C7D2FE',
+          text: '#1E40AF',
+        },
+        nombreEnlaceFinal,
+        emailEnlaceFinal || 'Enlace solicitante',
+        docEnlaceFinal ? `C.C. ${docEnlaceFinal}` : 'Identificación registrada',
+        dependenciaNombre || 'Dependencia Solicitante',
+        {
+          aprobado: true,
+          textoBadge: '✓ ELABORADO Y RADICADO',
+          fechaStr: fechaElaboroStr,
+          certId: firmaElaboro?.certificadoId || 'ESAP-RAD-023',
+        },
+        false,
+      );
+      curY += hRow;
+
+      // 2. REVISÓ (1er Nivel — Analista de Viáticos)
+      const analistaVerifico = Boolean(fechaFirmaAnalista || (nombreAnalistaFinal && nombreAnalistaFinal !== 'Analista de Viáticos'));
+      const fechaAnalistaStr = fechaFirmaAnalista ? formatFechaHoraSegura(fechaFirmaAnalista) : '';
+      const docAnalistaDisplay = docAnalistaStr.replace(/^ · /, '') || (nombreAnalistaFinal ? 'C.C. Registrada' : '—');
+      renderFilaTrazabilidad(
+        curY,
+        hRow,
+        {
+          tag: 'REVISÓ (1er Nivel)',
+          sub: 'Analista de Viáticos',
+          bg: '#F0FDF4',
+          border: '#BBF7D0',
+          text: '#166534',
+        },
+        nombreAnalistaFinal || 'Pendiente Asignación / Revisión',
+        'Revisión Técnica y Documental',
+        docAnalistaDisplay,
+        'Grupo de Gestión de Viáticos',
+        {
+          aprobado: analistaVerifico,
+          textoBadge: analistaVerifico ? '✓ REVISIÓN TÉCNICA VERIFICADA' : 'PENDIENTE REVISIÓN ANALISTA',
+          fechaStr: fechaAnalistaStr,
+          certId: certIdAnalista,
+        },
+        true,
+      );
+      curY += hRow;
+
+      // 3. REVISÓ (2do Nivel — Control Viáticos)
+      const controlVerifico = Boolean(fechaFirmaControl || (nombreControlFinal && nombreControlFinal !== 'Control Viáticos' && nombreControlFinal !== 'Control de Viáticos'));
+      const fechaControlStr = fechaFirmaControl ? formatFechaHoraSegura(fechaFirmaControl) : '';
+      const docControlDisplay = docControlStr.replace(/^ · /, '') || (nombreControlFinal ? 'C.C. Registrada' : '—');
+      renderFilaTrazabilidad(
+        curY,
+        hRow,
+        {
+          tag: 'REVISÓ (2do Nivel)',
+          sub: 'Control Viáticos (Cruzado)',
+          bg: '#F0FDF4',
+          border: '#BBF7D0',
+          text: '#166534',
+        },
+        nombreControlFinal || 'Pendiente Verificación 2do Nivel',
+        'Control Cruzado y Segunda Revisión',
+        docControlDisplay,
+        'Verificación de Control Viáticos',
+        {
+          aprobado: controlVerifico,
+          textoBadge: controlVerifico ? '✓ VERIFICADO 2DO NIVEL' : 'PENDIENTE CONTROL CRUZADO',
+          fechaStr: fechaControlStr,
+          certId: certIdControl,
+        },
+        false,
+      );
+      curY += hRow;
+
+      // Fila(s) de Aprobación:
+      // Si es EXTEMPORÁNEA: primero firma Dirección Nacional (RF-AUT-002) y luego Subdirección de Gestión Corporativa (RF-AUT-001)
+      // Si es de control cruzado / estado NORMAL: NO requiere intervención de Dirección Nacional, sigue directamente la Subdirección.
+
+      if (isExtemporanea) {
+        // 4. AUTORIZÓ (Dirección Nacional — Autorización Extemporánea RF-AUT-002)
+        const dirAprobo = Boolean(
+          dirNacionalNombre &&
+            (fechaAutorizacionDir ||
+              certIdDirNac ||
+              solicitud.decisionDireccion === 'AUTORIZADO'),
+        );
+        const fechaDirStr = fechaAutorizacionDir
+          ? formatFechaHoraSegura(fechaAutorizacionDir)
+          : '';
+        const docDirDisplay = dirNacionalDoc
+          ? `C.C. ${dirNacionalDoc}`
+          : dirNacionalNombre
+          ? 'C.C. Registrada'
+          : '—';
+        const detalleDir = justificacionDirNac
+          ? `Obs: ${this.sanitizarTextoPdf(justificacionDirNac).slice(0, 48)}...`
+          : 'Autorización Extemporánea (RF-AUT-002)';
+
+        renderFilaTrazabilidad(
+          curY,
+          hRow,
+          {
+            tag: 'AUTORIZÓ',
+            sub: 'Dirección Nacional (Extemp.)',
+            bg: '#FAF5FF',
+            border: '#E9D5FF',
+            text: '#7E22CE',
+          },
+          dirNacionalNombre || 'Pendiente Aval Dirección Nacional',
+          detalleDir,
+          docDirDisplay,
+          solicitud.esDelegadoDireccion
+            ? 'Delegado Dirección Nacional'
+            : 'Dirección Nacional / Despacho',
+          {
+            aprobado: dirAprobo,
+            textoBadge: dirAprobo
+              ? '✓ AVAL EXTEMPORÁNEO'
+              : 'PENDIENTE AVAL DIRECCIÓN',
+            fechaStr: fechaDirStr,
+            certId: certIdDirNac,
+          },
+          true,
+        );
+        curY += hRow;
+
+        // 5. APROBÓ (Subdirección de Gestión Corporativa — Ordenador del Gasto RF-AUT-001)
+        const subdirAprobo = Boolean(
+          subdirectorNombre && (fechaAprobacionSubdir || certIdSubdir),
+        );
+        const fechaSubdirStr = fechaAprobacionSubdir
+          ? formatFechaHoraSegura(fechaAprobacionSubdir)
+          : '';
+        const docSubdirDisplay = subdirectorDoc
+          ? `C.C. ${subdirectorDoc}`
+          : subdirectorNombre
+          ? 'C.C. Registrada'
+          : '—';
+
+        renderFilaTrazabilidad(
+          curY,
+          hRow,
+          {
+            tag: 'APROBÓ',
+            sub: 'Subdirección / Ordenador Gasto',
+            bg: '#EFF6FF',
+            border: '#BFDBFE',
+            text: '#1D4ED8',
+          },
+          subdirectorNombre || 'Pendiente Aprobación Institucional',
+          'Aprobación Corporativa de Gasto (RF-AUT-001)',
+          docSubdirDisplay,
+          'Subdirección de Gestión Corporativa',
+          {
+            aprobado: subdirAprobo,
+            textoBadge: subdirAprobo
+              ? '✓ APROBACIÓN INSTITUCIONAL'
+              : 'PENDIENTE APROBACIÓN SUBDIRECCIÓN',
+            fechaStr: fechaSubdirStr,
+            certId: certIdSubdir,
+          },
+          false,
+        );
+        curY += hRow;
       } else {
-        const nombresAprobadores = [firmaJefePdf?.nombreFirmante, firmaGerentePdf?.nombreFirmante].filter(Boolean).join(' / ');
-        aproboTextoFinal =
-          solicitud.camposAdicionales?.aprobo ||
-          (nombresAprobadores ? `Aprobó: ${nombresAprobadores}` : aproboTexto);
+        // 4. APROBÓ (Subdirección de Gestión Corporativa — Ordenador del Gasto RF-AUT-001)
+        const subdirAprobo = Boolean(
+          subdirectorNombre && (fechaAprobacionSubdir || certIdSubdir),
+        );
+        const fechaSubdirStr = fechaAprobacionSubdir
+          ? formatFechaHoraSegura(fechaAprobacionSubdir)
+          : '';
+        const docSubdirDisplay = subdirectorDoc
+          ? `C.C. ${subdirectorDoc}`
+          : subdirectorNombre
+          ? 'C.C. Registrada'
+          : '—';
+
+        renderFilaTrazabilidad(
+          curY,
+          hRow,
+          {
+            tag: 'APROBÓ',
+            sub: 'Subdirección / Ordenador Gasto',
+            bg: '#EFF6FF',
+            border: '#BFDBFE',
+            text: '#1D4ED8',
+          },
+          subdirectorNombre || 'Pendiente Aprobación Institucional',
+          'Aprobación Corporativa de Gasto (RF-AUT-001)',
+          docSubdirDisplay,
+          'Subdirección de Gestión Corporativa',
+          {
+            aprobado: subdirAprobo,
+            textoBadge: subdirAprobo
+              ? '✓ APROBACIÓN INSTITUCIONAL'
+              : 'PENDIENTE APROBACIÓN SUBDIRECCIÓN',
+            fechaStr: fechaSubdirStr,
+            certId: certIdSubdir,
+          },
+          true,
+        );
+        curY += hRow;
       }
 
-      doc.fontSize(5.5).font('Helvetica').fillColor('#000000');
-      doc.text(elaboroTexto, 32, yFooter + 3.5, { width: 362 });
-      doc.text(revisoTexto, 32, yFooter + hFilaFooter + 3.5, { width: 362 });
-      doc.text(aproboTextoFinal, 32, yFooter + hFilaFooter * 2 + 3.5, { width: 362 });
+      // Borde exterior envolvente de la tabla
+      const totalFilas = isExtemporanea ? 5 : 4;
+      doc.rect(28, yTableHeader, 556, hTableHeader + hRow * totalFilas).strokeColor('#000000').lineWidth(0.6).stroke();
 
-      doc.fontSize(5.6).font('Helvetica').fillColor('#000000');
+      // Banner institucional de Protección de Datos (Ley 1581 de 2012)
+      const yLey = curY + 2.5;
+      drawBox(28, yLey, 556, 12, '#F8FAFC', '#CBD5E1', 0.5);
+      doc.fontSize(5).font('Helvetica-Oblique').fillColor('#64748B');
       doc.text(
-        'La información recolectada en este documento\n' +
-          'es tratada bajo la política de Datos Personales de\n' +
-          'la ESAP en cumplimiento a la Ley 1581 de 2012',
-        400,
-        yFooter + 7,
-        { width: 182, align: 'center', lineGap: 1.5 },
+        'Tratamiento de Datos Personales: La información recolectada en este documento es tratada bajo la política institucional de Protección de Datos Personales de la ESAP en cumplimiento a la Ley 1581 de 2012.',
+        30,
+        yLey + 3.5,
+        { width: 552, align: 'center' },
       );
 
       doc.end();
@@ -6049,42 +7087,150 @@ if (itinerarioGeneral) {
         );
       }
 
+      let comisionado: ComisionadoEntity | null | undefined =
+        solicitud.comisionado;
+      if (!comisionado && solicitud.comisionadoId) {
+        try {
+          const comRepo = manager.getRepository(ComisionadoEntity);
+          if (comRepo && typeof comRepo.findOne === 'function') {
+            comisionado = await comRepo.findOne({
+              where: { id: solicitud.comisionadoId },
+            });
+          }
+        } catch {
+          // ignore if repository not found or not mocked
+        }
+      }
+
+      // RF-REV-003: Bloqueo de verificación si contratista es facturador electrónico sin factura adjunta
+      const esContratista =
+        (comisionado?.tipoComisionado || '').toUpperCase() === 'CONTRATISTA';
+      const esFacturador = Boolean(
+        dto.consultaRutFacturador ??
+          (solicitud.consultaRutFacturador || comisionado?.esFacturadorElectronico),
+      );
+
+      if (esContratista && esFacturador) {
+        let docsSoporte: DocumentoSoporteEntity[] =
+          solicitud.documentosSoporte || [];
+        try {
+          const docRepo = manager.getRepository(DocumentoSoporteEntity);
+          if (docRepo && typeof docRepo.find === 'function') {
+            docsSoporte = await docRepo.find({
+              where: { solicitudId: solicitud.id },
+            });
+          }
+        } catch {
+          // fallback a solicitud.documentosSoporte
+        }
+
+        const tieneFactura = (docsSoporte || []).some((d) => {
+          const tipo = (d.tipoDocumento || '').toUpperCase();
+          const nom = (d.nombreArchivoOriginal || '').toLowerCase();
+          return (
+            tipo === 'FACTURA' ||
+            tipo === 'FACTURA_ELECTRONICA' ||
+            nom.includes('factura')
+          );
+        });
+
+        if (!tieneFactura) {
+          throw new BadRequestException(
+            'Bloqueo: El comisionado es contratista facturador electrónico y no cuenta con la Factura Electrónica cargada en el expediente. Debe solicitarla o adjuntarla antes de continuar a la firma.',
+          );
+        }
+      }
+
+      // Validación de firma OTP si fue provista
+      if (dto.otp) {
+        const verificationId =
+          dto.verificationId?.trim() ||
+          `viat:${solicitud.id}:ANALISTA:${usuarioId}`;
+        const isVerified = this.verificarOtpFirma({
+          verificationId,
+          code: dto.otp,
+          consume: true,
+        });
+        if (!isVerified) {
+          throw new BadRequestException(
+            'Código OTP inválido o expirado para la firma de verificación del analista.',
+          );
+        }
+      }
+
       const comentarioChecklist = JSON.stringify({
         tipo: 'VERIFICACION_ANALISTA',
         seguridad_social_vigente: dto.seguridadSocialVigente ?? null,
         consulta_rut_facturador: dto.consultaRutFacturador ?? false,
+        certificado_id: dto.certificadoId ?? null,
+        hash_sha256: dto.hashSha256 ?? null,
       });
 
       const estadoAnterior = solicitud.estadoSolicitud;
-      solicitud.estadoSolicitud = EstadoSolicitud.VERIFICADA;
+      solicitud.estadoSolicitud = EstadoSolicitud.SOLICITADA_SIIF;
+      solicitud.analistaAsignadoId = usuarioId;
+      solicitud.fechaRevision = new Date();
       solicitud.motivoDevolucion = null;
       solicitud.observacionesSegundaRevision = null;
+
+      // Resolver datos del analista para la estampa digital
+      const dAnalista = await this.resolverDatosUsuario(usuarioId, '');
+      const nombreAnalistaFinal = dto.nombreAnalista || dAnalista.nombre || usuarioId;
+      const cargoAnalistaFinal = dto.cargoAnalista || dAnalista.cargo || 'Analista de Viáticos';
+      const certIdFinal = dto.certificadoId || `ESAP-CERT-VIAT-${Date.now().toString(36).toUpperCase()}`;
+      const fechaFirmaIso = new Date().toISOString();
+
+      const firmaAnalistaData = {
+        tipo: TipoFirmaAprobacion.ANALISTA,
+        usuarioId,
+        nombreFirmante: nombreAnalistaFinal,
+        cargoFirmante: cargoAnalistaFinal,
+        documentoIdentidad: dAnalista.documento || null,
+        fechaFirma: fechaFirmaIso,
+        certificadoId: certIdFinal,
+        hashSha256: dto.hashSha256 || null,
+        firmaImagen: dto.firmaImagen || null,
+        estado: 'FIRMADO',
+        firmadoDigitalmente: true,
+        otpVerificado: true,
+      };
+
+      const prevFirmas = Array.isArray(solicitud.camposAdicionales?.firmasAprobacion)
+        ? [...solicitud.camposAdicionales.firmasAprobacion]
+        : [];
+      const idxFirma = prevFirmas.findIndex(
+        (f: any) =>
+          f.tipo === TipoFirmaAprobacion.ANALISTA ||
+          (f.tipo as string) === 'ANALISTA_VIATICOS',
+      );
+      if (idxFirma >= 0) {
+        prevFirmas[idxFirma] = { ...prevFirmas[idxFirma], ...firmaAnalistaData };
+      } else {
+        prevFirmas.push(firmaAnalistaData);
+      }
+
+      solicitud.camposAdicionales = {
+        ...(solicitud.camposAdicionales || {}),
+        nombreAnalista: nombreAnalistaFinal,
+        firmaAnalista: firmaAnalistaData,
+        firmasAprobacion: prevFirmas,
+      };
 
       await manager.getRepository(SolicitudHistorialEstadoEntity).save({
         solicitudId: solicitud.id,
         estadoAnterior,
-        estadoNuevo: EstadoSolicitud.VERIFICADA,
+        estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
         usuarioId: usuarioId,
-        comentarios:
-          comentarioChecklist.length > 255
-            ? comentarioChecklist.slice(0, 252) + '...'
-            : comentarioChecklist,
+        comentarios: `Verificación del analista completada y firmada con OTP (Certificado: ${certIdFinal}). Solicitud transferida a Control de Viáticos para segunda revisión.`,
       });
 
-      solicitud.consultaRutFacturador = dto.consultaRutFacturador ?? false;
-
-      // Sincronizar la marca persistente de facturador electrónico en el comisionado contratista (RF-REV-003)
-      if (solicitud.comisionadoId && dto.consultaRutFacturador !== undefined) {
-        const comRepo = manager.getRepository(ComisionadoEntity);
-        if (comRepo && typeof comRepo.findOne === 'function') {
-          const comisionado = await comRepo.findOne({
-            where: { id: solicitud.comisionadoId },
-          });
-          if (comisionado && (comisionado.tipoComisionado || '').toUpperCase() === 'CONTRATISTA') {
-            comisionado.esFacturadorElectronico = Boolean(dto.consultaRutFacturador);
-            if (typeof comRepo.save === 'function') {
-              await comRepo.save(comisionado);
-            }
+      if (dto.consultaRutFacturador !== undefined) {
+        solicitud.consultaRutFacturador = dto.consultaRutFacturador;
+        if (comisionado && esContratista) {
+          comisionado.esFacturadorElectronico = Boolean(dto.consultaRutFacturador);
+          const comRepo = manager.getRepository(ComisionadoEntity);
+          if (typeof comRepo.save === 'function') {
+            await comRepo.save(comisionado);
           }
         }
       }
@@ -6094,7 +7240,7 @@ if (itinerarioGeneral) {
         .save(solicitud);
 
       this.logger.log(
-        `[etapa5] Verificacion registrada para solicitud ${solicitud.consecutivoUnico} por usuario ${usuarioId}`,
+        `[etapa5] Verificacion registrada con firma OTP para solicitud ${solicitud.consecutivoUnico} por usuario ${usuarioId}`,
       );
 
       return saved;
@@ -6113,11 +7259,11 @@ if (itinerarioGeneral) {
           'travel_expenses.general.es_control_viaticos',
           {
             tipo_notificacion: 'VIATICOS_PENDIENTE_SEGUNDA_REVISION',
-            titulo: `Comisión verificada para control: ${consecutivo}`,
-            mensaje: `El analista ha verificado la comisión ${consecutivo} hacia ${destino}. Se encuentra lista para segunda revisión técnica (Control Cruzado).`,
-            descripcion_corta: `Segunda Revisión · ${consecutivo}`,
+            titulo: `Comisión en espera de Control de Viáticos: ${consecutivo}`,
+            mensaje: `El analista ha verificado y firmado con OTP la comisión ${consecutivo} hacia ${destino}. Se encuentra en la bandeja de Control de Viáticos para segunda revisión técnica (Control Cruzado).`,
+            descripcion_corta: `Control Cruzado · ${consecutivo}`,
             icono: 'CheckSquare',
-            color: '#2563EB',
+            color: '#003DA5',
             prioridad: 'Media',
             categoria: 'VIATICOS',
             tiene_accion: true,
@@ -6129,20 +7275,20 @@ if (itinerarioGeneral) {
             },
           },
           {
-            subject: `[Viáticos ESAP] Comisión Verificada para Control Técnico: ${consecutivo}`,
+            subject: `[Viáticos ESAP] Solicitud Lista para Control de Viáticos: ${consecutivo}`,
             html: buildTravelExpenseEmailHtml({
               destinatarioNombre: 'Revisor de Control de Viáticos',
               tituloHeader: 'ESAP — Grupo de Viáticos',
               subtituloHeader: 'Segunda Revisión Técnica (Control Cruzado)',
-              mensajePrincipal: `La comisión de servicios <strong>${consecutivo}</strong> ha completado la verificación por analista y está pendiente de su segunda revisión técnica:`,
+              mensajePrincipal: `La comisión de servicios <strong>${consecutivo}</strong> ha completado la verificación por analista con firma digital OTP y está pendiente de su segunda revisión técnica en la bandeja de Control de Viáticos:`,
               consecutivo,
               destino,
               fechas: fechasStr,
-              nuevoEstado: 'VERIFICADA',
+              nuevoEstado: 'SOLICITADA_SIIF',
               tipoNovedad: 'INFO',
               textoBoton: 'Ver en Bandeja de Control',
             }),
-            text: `La comisión ${consecutivo} ha sido verificada por el analista y está pendiente de segunda revisión técnica.`,
+            text: `La comisión ${consecutivo} ha sido verificada por el analista con firma OTP y remitida a Control de Viáticos para segunda revisión técnica.`,
           },
           'CONTROL_VIATICOS',
         )
@@ -6210,6 +7356,10 @@ if (itinerarioGeneral) {
       solicitud.estadoSolicitud = EstadoSolicitud.DEVUELTA;
       solicitud.motivoDevolucion = motivo.trim().slice(0, 1000);
       solicitud.siifExportado = false;
+      if (solicitud.camposAdicionales) {
+        solicitud.camposAdicionales.firmasCompletadas = false;
+        solicitud.camposAdicionales.firmasAprobacion = [];
+      }
 
       const saved = await manager
         .getRepository(SolicitudComisionEntity)
@@ -6462,51 +7612,17 @@ if (itinerarioGeneral) {
       const fechaCorta = new Date().toISOString().slice(0, 10);
       const fileName = `SIIF_${solicitud.consecutivoUnico}_${fechaCorta}.csv`;
 
-      const estadosAvanzadosSoloLectura = [
-        EstadoSolicitud.AUTORIZADA,
-        EstadoSolicitud.COMPROMETIDA,
-        EstadoSolicitud.OBLIGADA,
-        EstadoSolicitud.RESOLUCION_EMITIDA,
-        EstadoSolicitud.TIQUETES_COMPRADOS,
-        EstadoSolicitud.EN_COMISION,
-        EstadoSolicitud.PENDIENTE_LEGALIZACION,
-        EstadoSolicitud.LEGALIZADO,
-      ];
-      const esEstadoAvanzado = estadosAvanzadosSoloLectura.includes(solicitud.estadoSolicitud);
-
-      const estadoAnterior = solicitud.estadoSolicitud;
       solicitud.siifExportado = true;
       solicitud.fechaExportacionSiif = new Date();
       solicitud.usuarioExportadorId = usuarioId;
-
-      if (!esEstadoAvanzado) {
-        solicitud.estadoSolicitud = EstadoSolicitud.SOLICITADA_SIIF;
-      }
 
       const saved = await manager
         .getRepository(SolicitudComisionEntity)
         .save(solicitud);
 
-      if (!esEstadoAvanzado) {
-        await manager.getRepository(SolicitudHistorialEstadoEntity).save({
-          solicitudId: solicitud.id,
-          estadoAnterior,
-          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
-          usuarioId: usuarioId,
-          comentarios:
-            estadoAnterior === EstadoSolicitud.SOLICITADA_SIIF
-              ? 'Re-exportado a SIIF Nacion'
-              : 'Exportado a SIIF Nacion',
-        });
-
-        this.logger.log(
-          `[etapa5] Solicitud ${solicitud.consecutivoUnico} exportada a SIIF por usuario ${usuarioId}`,
-        );
-      } else {
-        this.logger.log(
-          `[consulta-siif] Solicitud ${solicitud.consecutivoUnico} (${estadoAnterior}) descargada como copia CSV por usuario ${usuarioId}`,
-        );
-      }
+      this.logger.log(
+        `[exportarSIIF] Archivo plano CSV descargado para ${solicitud.consecutivoUnico} (${solicitud.estadoSolicitud}) por usuario ${usuarioId}`,
+      );
 
       return { csvContent, fileName, solicitud: saved };
     });
@@ -6884,6 +8000,23 @@ if (itinerarioGeneral) {
         );
       }
 
+      // Validación de firma OTP si fue provista
+      if (dto.otp) {
+        const verificationId =
+          dto.verificationId?.trim() ||
+          `viat:${solicitud.id}:CONTROL_VIATICOS:${usuarioId}`;
+        const isVerified = this.verificarOtpFirma({
+          verificationId,
+          code: dto.otp,
+          consume: true,
+        });
+        if (!isVerified) {
+          throw new BadRequestException(
+            'Código OTP inválido o expirado para la firma de Control Viáticos.',
+          );
+        }
+      }
+
       const estadoAnterior = solicitud.estadoSolicitud;
       const esExtemporanea = Boolean(solicitud.extemporanea);
       solicitud.estadoSolicitud = esExtemporanea
@@ -6892,6 +8025,49 @@ if (itinerarioGeneral) {
       solicitud.revisorControlId = usuarioId;
       solicitud.fechaSegundaRevision = new Date();
       solicitud.observacionesSegundaRevision = observaciones.slice(0, 2000);
+
+      // Resolver datos del revisor de Control Viáticos para la estampa digital y firmas
+      const dRevisor = await this.resolverDatosUsuario(usuarioId, '');
+      const nombreRevisorFinal = dto.nombreRevisor || dRevisor.nombre || usuarioId;
+      const cargoRevisorFinal = dto.cargoRevisor || dRevisor.cargo || 'Revisor de Control de Viáticos';
+      const certIdFinal = dto.certificadoId || `ESAP-CERT-VIAT-${Date.now().toString(36).toUpperCase()}`;
+      const fechaFirmaIso = new Date().toISOString();
+
+      const firmaControlData = {
+        tipo: TipoFirmaAprobacion.CONTROL_VIATICOS,
+        usuarioId,
+        nombreFirmante: nombreRevisorFinal,
+        cargoFirmante: cargoRevisorFinal,
+        documentoIdentidad: dto.documentoIdentidad || dRevisor.documento || null,
+        fechaFirma: fechaFirmaIso,
+        certificadoId: certIdFinal,
+        hashSha256: dto.hashSha256 || null,
+        firmaImagen: dto.firmaImagen || null,
+        estado: 'FIRMADO',
+        firmadoDigitalmente: true,
+        otpVerificado: Boolean(dto.otp),
+      };
+
+      const prevFirmas = Array.isArray(solicitud.camposAdicionales?.firmasAprobacion)
+        ? [...solicitud.camposAdicionales.firmasAprobacion]
+        : [];
+      const idxFirma = prevFirmas.findIndex(
+        (f: any) =>
+          f.tipo === TipoFirmaAprobacion.CONTROL_VIATICOS ||
+          (f.tipo as string) === 'CONTROL_VIATICOS',
+      );
+      if (idxFirma >= 0) {
+        prevFirmas[idxFirma] = { ...prevFirmas[idxFirma], ...firmaControlData };
+      } else {
+        prevFirmas.push(firmaControlData);
+      }
+
+      solicitud.camposAdicionales = {
+        ...(solicitud.camposAdicionales || {}),
+        revisorControlNombre: nombreRevisorFinal,
+        firmaControlViaticos: firmaControlData,
+        firmasAprobacion: prevFirmas,
+      };
 
       const saved = await manager
         .getRepository(SolicitudComisionEntity)
@@ -6903,8 +8079,8 @@ if (itinerarioGeneral) {
         estadoNuevo: solicitud.estadoSolicitud,
         usuarioId: usuarioId,
         comentarios: esExtemporanea
-          ? `Segunda revisión completada. Enrutada a Dirección Nacional por comisión extemporánea (RF-AUT-002): ${observaciones.slice(0, 200)}`
-          : `Segunda revisión: ${observaciones.slice(0, 255)}`,
+          ? `Segunda revisión (Control Cruzado) completada y firmada${dto.otp ? ` con OTP (Cert: ${certIdFinal})` : ''}. Enrutada a Dirección Nacional por comisión extemporánea (RF-AUT-002): ${observaciones.slice(0, 200)}`
+          : `Segunda revisión (Control Cruzado)${dto.otp ? ` firmada con OTP (Cert: ${certIdFinal})` : ''}: ${observaciones.slice(0, 255)}`,
       });
 
       this.logger.log(
@@ -7586,6 +8762,70 @@ if (itinerarioGeneral) {
         }
       }
 
+      // Validación de firma OTP si fue provista
+      if (dto?.otp) {
+        const verificationId =
+          dto.verificationId?.trim() ||
+          `viat:${solicitud.id}:SUBDIRECCION:${usuarioId}`;
+        const isVerified = this.verificarOtpFirma({
+          verificationId,
+          code: dto.otp,
+          consume: true,
+        });
+        if (!isVerified) {
+          throw new BadRequestException(
+            'Código OTP inválido o expirado para la firma de autorización de Subdirección.',
+          );
+        }
+      }
+
+      const certIdFinal = dto?.certificadoId || this.generarCertificadoId();
+      const datosFirmante = await this.resolverDatosUsuario(usuarioId);
+      const nombreFirmanteFinal = datosFirmante.nombre || 'Subdirección de Gestión';
+      const cargoFirmanteFinal = datosFirmante.cargo || 'Subdirector(a) de Gestión Corporativa';
+
+      const firmaSubdireccionData = {
+        tipo: 'SUBDIRECCION',
+        nombreFirmante: nombreFirmanteFinal,
+        emailFirmante: datosFirmante.email || null,
+        cargoFirmante: cargoFirmanteFinal,
+        documentoIdentidad: datosFirmante.documento || null,
+        firmaImagen: dto?.firmaImagen || null,
+        fechaFirma: new Date().toISOString(),
+        usuarioId,
+        estado: 'FIRMADO',
+        firmadoDigitalmente: true,
+        certificadoId: certIdFinal,
+        hashSha256:
+          dto?.hashSha256 ||
+          this.generarHashDocumento(
+            `${solicitud.id}|SUBDIRECCION|${usuarioId}|${new Date().toISOString()}`,
+          ),
+        otpVerificado: Boolean(dto?.otp),
+      };
+
+      const prevFirmas = Array.isArray(
+        solicitud.camposAdicionales?.firmasAprobacion,
+      )
+        ? [...solicitud.camposAdicionales.firmasAprobacion]
+        : [];
+      const idxFirma = prevFirmas.findIndex(
+        (f: any) =>
+          f.tipo === 'SUBDIRECCION' ||
+          (f.tipo as string) === 'SUBDIRECTOR',
+      );
+      if (idxFirma >= 0) {
+        prevFirmas[idxFirma] = { ...prevFirmas[idxFirma], ...firmaSubdireccionData };
+      } else {
+        prevFirmas.push(firmaSubdireccionData);
+      }
+
+      solicitud.camposAdicionales = {
+        ...(solicitud.camposAdicionales || {}),
+        firmaSubdireccion: firmaSubdireccionData,
+        firmasAprobacion: prevFirmas,
+      };
+
       const estadoAnterior = solicitud.estadoSolicitud;
       solicitud.estadoSolicitud = EstadoSolicitud.AUTORIZADA;
       solicitud.autorizadorId = usuarioId;
@@ -7710,6 +8950,7 @@ if (itinerarioGeneral) {
    * 1. Al responsable de tiquetes (in-app y por rol).
    * 2. Al pasajero/comisionado (in-app y correo electrónico con itinerario/tiquete).
    * 3. Al enlace/creador (in-app y correo electrónico con confirmación).
+   * 4. Al grupo de presupuesto (in-app y correo electrónico para expedición de RP).
    */
   private async despacharNotificacionesAutorizacion(
     solicitud: SolicitudComisionEntity,
@@ -7864,6 +9105,52 @@ if (itinerarioGeneral) {
         } catch (err: any) {
           this.logger.warn(`[notify] Error notificando al enlace: ${err?.message}`);
         }
+      }
+
+      // 4. Notificación al Grupo de Presupuesto (para expedición de RP)
+      try {
+        await this.notificationClient.notifyByPermission(
+          'travel_expenses.general.es_presupuesto',
+          {
+            tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_PRESUPUESTO',
+            titulo: `Nueva comisión autorizada para expedición de RP: ${consecutivo}`,
+            mensaje: `La comisión ${consecutivo} con destino a ${destino}${nombrePasajero ? ` (${nombrePasajero})` : ''} fue AUTORIZADA corporativamente y se encuentra disponible para expedición de Registro Presupuestal (RP) en SIIF Nación.`,
+            descripcion_corta: `Autorizada · ${consecutivo}`,
+            icono: 'Receipt',
+            color: '#059669',
+            prioridad: 'Alta',
+            categoria: 'VIATICOS',
+            tiene_accion: true,
+            texto_boton_accion: 'Expedir RP',
+            url_accion: '/viaticos',
+            datos_adicionales: {
+              solicitudId: solicitud.id,
+              consecutivoUnico: consecutivo,
+              comisionadoNombre: nombrePasajero,
+              destinoCiudad: solicitud.destinoCiudad,
+            },
+          },
+          {
+            subject: `[Viáticos ESAP] Comisión Autorizada para Expedición de RP: ${consecutivo}`,
+            html: buildTravelExpenseEmailHtml({
+              destinatarioNombre: 'Grupo de Presupuesto',
+              tituloHeader: 'ESAP — Grupo de Presupuesto',
+              subtituloHeader: 'Comisión Autorizada Pendiente de Registro Presupuestal (RP)',
+              mensajePrincipal: `La comisión <strong>${consecutivo}</strong> ha sido autorizada corporativamente por la Subdirección de Gestión Corporativa y se encuentra disponible para la expedición de Registro Presupuestal (RP) en SIIF Nación:`,
+              consecutivo,
+              comisionadoNombre: nombrePasajero,
+              destino,
+              nuevoEstado: 'AUTORIZADA',
+              tipoNovedad: 'SUCCESS',
+              textoBoton: 'Expedir RP en Plataforma',
+              urlAccion: '/viaticos',
+            }),
+            text: `La comisión ${consecutivo} fue autorizada y está disponible para expedición de RP en SIIF Nación.`,
+          },
+          'PRESUPUESTO',
+        );
+      } catch (err: any) {
+        this.logger.warn(`[notify] Error notificando a PRESUPUESTO en autorización: ${err?.message}`);
       }
     } catch (err: any) {
       this.logger.warn(`[notify] Error en despacharNotificacionesAutorizacion: ${err?.message}`);
@@ -8187,6 +9474,70 @@ if (itinerarioGeneral) {
         );
       }
 
+      // Validación de firma OTP si fue provista
+      if (dto?.otp) {
+        const verificationId =
+          dto.verificationId?.trim() ||
+          `viat:${solicitud.id}:DIRECCION_NACIONAL:${usuarioId}`;
+        const isVerified = this.verificarOtpFirma({
+          verificationId,
+          code: dto.otp,
+          consume: true,
+        });
+        if (!isVerified) {
+          throw new BadRequestException(
+            'Código OTP inválido o expirado para la firma de autorización de Dirección Nacional.',
+          );
+        }
+      }
+
+      const certIdFinal = dto?.certificadoId || this.generarCertificadoId();
+      const datosFirmante = await this.resolverDatosUsuario(usuarioId);
+      const nombreFirmanteFinal = datosFirmante.nombre || 'Dirección Nacional';
+      const cargoFirmanteFinal = esDelegado
+        ? `${datosFirmante.cargo || 'Directivo'} (Delegado de Dirección Nacional)`
+        : datosFirmante.cargo || 'Director(a) Nacional';
+
+      const firmaDireccionData = {
+        tipo: 'DIRECCION_NACIONAL',
+        nombreFirmante: nombreFirmanteFinal,
+        emailFirmante: datosFirmante.email || null,
+        cargoFirmante: cargoFirmanteFinal,
+        documentoIdentidad: datosFirmante.documento || null,
+        firmaImagen: dto?.firmaImagen || null,
+        fechaFirma: new Date().toISOString(),
+        usuarioId,
+        estado: 'FIRMADO',
+        certificadoId: certIdFinal,
+        hashSha256:
+          dto?.hashSha256 ||
+          this.generarHashDocumento(
+            `${solicitud.id}|DIRECCION_NACIONAL|${usuarioId}|${new Date().toISOString()}`,
+          ),
+        otpVerificado: Boolean(dto?.otp),
+        esDelegado,
+      };
+
+      const prevFirmas = Array.isArray(
+        solicitud.camposAdicionales?.firmasAprobacion,
+      )
+        ? [...solicitud.camposAdicionales.firmasAprobacion]
+        : [];
+      const idxFirma = prevFirmas.findIndex(
+        (f: any) => f.tipo === 'DIRECCION_NACIONAL',
+      );
+      if (idxFirma >= 0) {
+        prevFirmas[idxFirma] = { ...prevFirmas[idxFirma], ...firmaDireccionData };
+      } else {
+        prevFirmas.push(firmaDireccionData);
+      }
+
+      solicitud.camposAdicionales = {
+        ...(solicitud.camposAdicionales || {}),
+        firmaDireccionNacional: firmaDireccionData,
+        firmasAprobacion: prevFirmas,
+      };
+
       const estadoAnterior = solicitud.estadoSolicitud;
       solicitud.estadoSolicitud = EstadoSolicitud.EN_AUTORIZACION;
       solicitud.autorizadorDireccionId = usuarioId;
@@ -8204,11 +9555,11 @@ if (itinerarioGeneral) {
         estadoAnterior,
         estadoNuevo: EstadoSolicitud.EN_AUTORIZACION,
         usuarioId,
-        comentarios: `Autorizada excepcionalmente por Dirección Nacional ${esDelegado ? '(como Delegado)' : ''}: ${justificacion ? justificacion.slice(0, 255) : 'Comisión extemporánea avalada, continúa a Subdirección'}`,
+        comentarios: `Autorizada excepcionalmente por Dirección Nacional ${esDelegado ? '(como Delegado)' : ''}${dto?.otp ? ` con firma digital OTP (Cert: ${certIdFinal})` : ''}: ${justificacion ? justificacion.slice(0, 255) : 'Comisión extemporánea avalada, continúa a Subdirección'}`,
       });
 
       this.logger.log(
-        `[RF-AUT-002] Solicitud extemporánea ${solicitud.consecutivoUnico} AUTORIZADA por Dirección Nacional (usuario ${usuarioId})`,
+        `[RF-AUT-002] Solicitud extemporánea ${solicitud.consecutivoUnico} AUTORIZADA por Dirección Nacional (usuario ${usuarioId})${dto?.otp ? ` [Firma OTP: ${certIdFinal}]` : ''}`,
       );
 
       return saved;

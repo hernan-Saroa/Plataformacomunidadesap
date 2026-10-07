@@ -1,6 +1,11 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, Matches } from 'class-validator';
 
 export class RequestSignatureOtpDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^paz-y-salvo:[0-9a-f-]{36}:[0-9a-f]{64}$/)
+  context?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(120)

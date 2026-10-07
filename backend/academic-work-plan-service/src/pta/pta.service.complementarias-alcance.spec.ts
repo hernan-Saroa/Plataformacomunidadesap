@@ -27,7 +27,7 @@ describe('alcance independiente de Complementarias territoriales', () => {
     expect(result.propios).toEqual([{ territorialId: 'Meta', nivel: 'pregrado' }]);
   });
 
-  it.each(['aprobar', 'revisar'])('el alcance de Complementarias depende de la cuenta para %s', async action => {
+  it.each(['aprobar', 'revisar'])('Complementarias conserva el permiso por nivel sin depender de la territorial de la cuenta para %s', async action => {
     const permission = action === 'aprobar' ? 'approve' : 'review';
     const { service, auth, pta } = await setup([
       row(permission, 'pregrado', 'Caldas'),
@@ -36,7 +36,8 @@ describe('alcance independiente de Complementarias territoriales', () => {
     expect((await service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, action)).propios)
       .toEqual([{ territorialId: 'Meta', nivel: 'pregrado' }]);
     auth.territorialIds = ['Caldas'];
-    await expect(service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, action)).rejects.toThrow('No tiene alcance');
+    expect((await service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, action)).propios)
+      .toEqual([{ territorialId: 'Meta', nivel: 'pregrado' }]);
   });
 
   it('separa los niveles del aprobador y revisor de un mismo usuario', async () => {
@@ -48,15 +49,27 @@ describe('alcance independiente de Complementarias territoriales', () => {
     expect(ui.allowedReviewSubsecciones).not.toContain('complementarias_territorial:docencia');
   });
 
-  it('no consolida actividades de otra territorial dentro del mismo componente', async () => {
+  it.each(['aprobar', 'revisar'])('varias territoriales no eliminan la obligación de tener todos los niveles para %s', async action => {
+    const permission = action === 'aprobar' ? 'approve' : 'review';
+    const { service, auth, pta } = await setup([row(permission)], [
+      { actividad_id: 'pre', territorial_id: 'Caldas', horas: 10 },
+      { actividad_id: 'pos', territorial_id: 'Tolima', horas: 10 },
+    ]);
+    await expect(service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, action))
+      .rejects.toThrow('Falta permiso de: posgrado');
+    auth.permissions.add(`pta.${permission}.complementarias.territorial.posgrado`);
+    expect((await service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, action)).propios)
+      .toHaveLength(2);
+  });
+
+  it('permite decidir el mismo nivel en varias territoriales con un único permiso de Complementarias', async () => {
     const { service, auth, pta } = await setup([row('approve')], [
       { actividad_id: 'pre', territorial_id: 'Meta', horas: 10 },
       { actividad_id: 'pre', territorial_id: 'Caldas', horas: 10 },
     ]);
-    await expect(service.aprobarComponente('pta', { componente: 'complementarias_territorial', estado: 'aprobado' }, auth))
-      .rejects.toThrow('No tiene alcance');
-    await expect(service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, 'aprobar'))
-      .rejects.toThrow('No tiene alcance');
+    expect((await service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, 'aprobar')).propios)
+      .toEqual([{ territorialId: 'Meta', nivel: 'pregrado' }, { territorialId: 'Caldas', nivel: 'pregrado' }]);
+    expect((await service.getDecisionPermissions('pta', auth)).allowedComponents).toContain('complementarias_territorial');
   });
 
   // Regresión del bloqueo sin salida: una complementaria de Decanatura sin
@@ -72,11 +85,7 @@ describe('alcance independiente de Complementarias territoriales', () => {
     expect(ui.allowedComponents).toContain('complementarias_territorial');
   });
 
-  // La complementaria captura territorial, pero NO sede/CETAP ni programa. Un rol
-  // con alcance Filtrado que además acota la sede quedaba sin poder aprobar
-  // ninguna complementaria territorial: el filtro se comparaba contra un dato que
-  // el ítem nunca trae. La territorial, en cambio, sigue siendo estricta.
-  it('usa la territorial de la cuenta independientemente de la sede y alcance del rol', async () => {
+  it('la territorial, sede y alcance geográfico del rol no restringen Complementarias', async () => {
     const conSede = (territorial: string) => ({
       ...row('approve'), role_scope: { tipo: 'Filtrado', territorial, cetap: 'Granada', programa: 'APT' },
     });
@@ -89,8 +98,8 @@ describe('alcance independiente de Complementarias territoriales', () => {
     expect((await ajena.service.assertAlcanceTerritorial('complementarias_territorial', ajena.pta, ajena.auth, 'aprobar')).propios)
       .toEqual([{ territorialId: 'Meta', nivel: 'pregrado' }]);
     ajena.auth.territorialIds = ['Caldas'];
-    await expect(ajena.service.assertAlcanceTerritorial('complementarias_territorial', ajena.pta, ajena.auth, 'aprobar'))
-      .rejects.toThrow('No tiene alcance');
+    expect((await ajena.service.assertAlcanceTerritorial('complementarias_territorial', ajena.pta, ajena.auth, 'aprobar')).propios)
+      .toEqual([{ territorialId: 'Meta', nivel: 'pregrado' }]);
   });
 
   it('sin asignación permite cualquier territorial, pero no concede otros niveles', async () => {

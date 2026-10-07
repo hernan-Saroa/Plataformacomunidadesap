@@ -96,7 +96,7 @@ describe('Visibilidad de Solicitudes Etapa 8 (Tesorería y SST)', () => {
 
     expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
       's.estado_solicitud IN (:...estadosTesoreria)',
-      { estadosTesoreria: ['OBLIGADA', 'PAGADA'] },
+      { estadosTesoreria: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'] },
     );
     expect(resultado.data).toHaveLength(2);
     expect(resultado.data[0].estadoSolicitud).toBe('OBLIGADA');
@@ -120,7 +120,7 @@ describe('Visibilidad de Solicitudes Etapa 8 (Tesorería y SST)', () => {
 
     expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
       's.estado_solicitud IN (:...estadosSst)',
-      { estadosSst: ['OBLIGADA', 'PAGADA'] },
+      { estadosSst: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'] },
     );
     expect(resultado.data).toHaveLength(2);
   });

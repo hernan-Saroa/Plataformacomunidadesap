@@ -18,7 +18,7 @@ const archivo = {
 } as any;
 
 /**
- * El soporte de una devolución (migración 091).
+ * Los soportes de una devolución (migraciones 091 y 093).
  *
  * Solo quien devolvió lo adjunta, sobre su última devolución y mientras el
  * área no haya reenviado: el archivo explica esa vuelta y nada más.
@@ -36,7 +36,7 @@ function montar(opciones: {
           decision: 'DEVUELTO',
           revisadoPor: abogado.userName,
           revisadoPorId: abogado.userId,
-          soporteDocumentoId: null,
+          soportesDocumentoIds: [],
           ...opciones.ultima,
         } as Revision);
 
@@ -70,7 +70,7 @@ describe('soporte de la devolución', () => {
 
     expect(resultado.nombre).toMatch(/^Soporte de la devolución/);
     expect(resultado.descargaUrl).toBe('/files/abc123.pdf');
-    expect(revision!.soporteDocumentoId).toBe(resultado.id);
+    expect(revision!.soportesDocumentoIds).toEqual([resultado.id]);
   });
 
   it('otra persona no puede adjuntarlo, aunque pueda aprobar', async () => {
@@ -97,12 +97,14 @@ describe('soporte de la devolución', () => {
     ).rejects.toThrow(/llegaría tarde/);
   });
 
-  it('una devolución lleva un solo soporte', async () => {
-    const { service } = montar({ ultima: { soporteDocumentoId: 'd-anterior' } as any });
+  it('una devolución puede llevar varios soportes, en el orden en que llegan', async () => {
+    const { service, revision } = montar({
+      ultima: { soportesDocumentoIds: ['d-anterior'] } as any,
+    });
 
-    await expect(
-      service.cargarSoporteDeDevolucion('p-1', '3.1', archivo, 'hash', abogado),
-    ).rejects.toThrow(/ya tiene su soporte/);
+    const resultado = await service.cargarSoporteDeDevolucion('p-1', '3.1', archivo, 'hash', abogado);
+
+    expect(revision!.soportesDocumentoIds).toEqual(['d-anterior', resultado.id]);
   });
 
   it('deja traza de que es el soporte de una devolución', async () => {

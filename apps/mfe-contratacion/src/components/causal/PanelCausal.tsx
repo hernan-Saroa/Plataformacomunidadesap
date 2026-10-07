@@ -28,7 +28,7 @@ const NUMERAL = '3.6';
  * administrativo de justificación de la directa.
  *
  * La lista llega filtrada del servidor y no se filtra aquí: cuál corresponde
- * depende de la modalidad ratificada en la 3.5, y armar el filtro en la
+ * depende de la modalidad ratificada al aprobar la 3.1, y armar el filtro en la
  * pantalla es la forma más fácil de acabar ofreciendo una causal ajena.
  */
 export function PanelCausal({ procesoId, onCambio }: Props) {
@@ -121,7 +121,7 @@ export function PanelCausal({ procesoId, onCambio }: Props) {
       <Titulo>Causal de contratación</Titulo>
       <Ayuda>
         Qué disposición habilita contratar por esta modalidad. La elige el abogado que lleva el
-        proceso, de la lista de la modalidad ratificada en la 3.5.
+        proceso, de la lista de la modalidad ratificada al aprobar el estudio previo (3.1).
         {estado.referenciaMatriz ? ` La matriz remite a: ${estado.referenciaMatriz}.` : ''}
       </Ayuda>
 
@@ -246,7 +246,7 @@ export function PanelCausal({ procesoId, onCambio }: Props) {
       {!estado.puedeElegir && (
         <p className="text-[11.5px] text-slate-500 m-0">
           {sinRatificar
-            ? 'Primero hay que ratificar la modalidad en la 3.5: la lista de causales sale de la modalidad ratificada.'
+            ? 'Primero hay que aprobar el estudio previo (3.1), que es donde se ratifica la modalidad: la lista de causales sale de ella.'
             : estado.motivoNoElige === 'ETAPA_PASADA'
               ? 'El proceso ya pasó de la etapa 3 y la causal sustentó la solicitud de CDP: queda como está.'
               : estado.motivoNoDecide === 'SIN_ABOGADO'

@@ -46,7 +46,7 @@ function makeFakeRepo() {
   }
 }
 
-function createService() {
+function createService(revisionCompleta = false) {
   const service = Object.create(PtaService.prototype) as any;
   service.programaRepo = {
     find: jest.fn().mockResolvedValue([
@@ -64,6 +64,8 @@ function createService() {
   };
   service.ptaTerritorialApprovalRepo = makeFakeRepo();
   service.ptaTerritorialReviewRepo = makeFakeRepo();
+  service.ptaComponentApprovalRepo = { findOne: jest.fn().mockResolvedValue(null) };
+  service.ptaComponentReviewRepo = { findOne: jest.fn().mockResolvedValue(revisionCompleta ? { estado: 'revisado' } : null) };
   service.historialRepo = { save: jest.fn(), create: jest.fn((x: any) => x) };
   service.logger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
   return service;
@@ -172,7 +174,7 @@ describe('PtaService — matriz territorial × nivel de Docencia', () => {
 
   describe('aprobarComponenteTerritorialParcial', () => {
     it('aprobación parcial: un actor de (A, pregrado) solo resuelve esa fila; el resto sigue pendiente y no se consolida', async () => {
-      const service = createService();
+      const service = createService(true);
       const existingPta = { estado: 'Pendiente Jefatura', version: 1, datosEstructurados: makePtaConTresPares().datosEstructurados };
       const auth = authCon({ territorialIds: ['ter-A'], allowedNivelesTerritorialAprobar: ['pregrado'] });
       const alcance = await service.assertAlcanceTerritorial('academica_territorial', existingPta, auth, 'aprobar');
@@ -193,7 +195,7 @@ describe('PtaService — matriz territorial × nivel de Docencia', () => {
     });
 
     it('cuando el último par pendiente queda aprobado, se delega a la lógica ordinaria (undefined) para consolidar', async () => {
-      const service = createService();
+      const service = createService(true);
       const existingPta = { estado: 'Pendiente Jefatura', version: 1, datosEstructurados: makePtaConTresPares().datosEstructurados };
 
       // Superusuario aprueba los 3 pares de una vez (simula que ya estaban todos resueltos salvo uno).
@@ -210,7 +212,7 @@ describe('PtaService — matriz territorial × nivel de Docencia', () => {
     });
 
     it('la devolución siempre se propaga (undefined) aunque haya 2+ pares, para que el componente vuelva completo al docente', async () => {
-      const service = createService();
+      const service = createService(true);
       const existingPta = { estado: 'Pendiente Jefatura', version: 1, datosEstructurados: makePtaConTresPares().datosEstructurados };
       const auth = authCon({ territorialIds: ['ter-A'], allowedNivelesTerritorialAprobar: ['pregrado'] });
       const alcance = await service.assertAlcanceTerritorial('academica_territorial', existingPta, auth, 'aprobar');
@@ -226,7 +228,7 @@ describe('PtaService — matriz territorial × nivel de Docencia', () => {
     });
 
     it('bloquea re-decidir el MISMO par (A, pregrado) ya devuelto, tanto para aprobar como para devolver de nuevo', async () => {
-      const service = createService();
+      const service = createService(true);
       const existingPta = { estado: 'Pendiente Jefatura', version: 1, datosEstructurados: makePtaConTresPares().datosEstructurados };
       const auth = authCon({ territorialIds: ['ter-A'], allowedNivelesTerritorialAprobar: ['pregrado'] });
       const alcance = await service.assertAlcanceTerritorial('academica_territorial', existingPta, auth, 'aprobar');
@@ -246,7 +248,7 @@ describe('PtaService — matriz territorial × nivel de Docencia', () => {
     });
 
     it('NO bloquea un par independiente (B, pregrado) aunque (A, pregrado) ya esté devuelto — cada combinación territorial×nivel es autónoma', async () => {
-      const service = createService();
+      const service = createService(true);
       const existingPta = { estado: 'Pendiente Jefatura', version: 1, datosEstructurados: makePtaConTresPares().datosEstructurados };
 
       // (A, pregrado) ya devuelto por su propio aprobador.
@@ -272,7 +274,7 @@ describe('PtaService — matriz territorial × nivel de Docencia', () => {
     });
 
     it('bloquea volver a APROBAR un par (A, pregrado) que ya fue aprobado', async () => {
-      const service = createService();
+      const service = createService(true);
       const existingPta = { estado: 'Pendiente Jefatura', version: 1, datosEstructurados: makePtaConTresPares().datosEstructurados };
       const auth = authCon({ territorialIds: ['ter-A'], allowedNivelesTerritorialAprobar: ['pregrado'] });
       const alcance = await service.assertAlcanceTerritorial('academica_territorial', existingPta, auth, 'aprobar');
@@ -288,7 +290,7 @@ describe('PtaService — matriz territorial × nivel de Docencia', () => {
     });
 
     it('sí permite DEVOLVER un par (A, pregrado) que ya estaba aprobado (el aprobador se puede arrepentir)', async () => {
-      const service = createService();
+      const service = createService(true);
       const existingPta = { estado: 'Pendiente Jefatura', version: 1, datosEstructurados: makePtaConTresPares().datosEstructurados };
       const auth = authCon({ territorialIds: ['ter-A'], allowedNivelesTerritorialAprobar: ['pregrado'] });
       const alcance = await service.assertAlcanceTerritorial('academica_territorial', existingPta, auth, 'aprobar');
@@ -307,7 +309,7 @@ describe('PtaService — matriz territorial × nivel de Docencia', () => {
     });
 
     it('en un pedido con varios pares propios, excluye en silencio los ya aprobados y aprueba solo los que faltan', async () => {
-      const service = createService();
+      const service = createService(true);
       const existingPta = { estado: 'Pendiente Jefatura', version: 1, datosEstructurados: makePtaConTresPares().datosEstructurados };
       // Este actor cubre (A, pregrado) Y (A, posgrado).
       const auth = authCon({ territorialIds: ['ter-A'], allowedNivelesTerritorialAprobar: ['pregrado', 'posgrado'] });

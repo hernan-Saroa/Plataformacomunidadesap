@@ -612,6 +612,11 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                 <p className="text-xs text-slate-600 font-medium">
                   📋 Las secciones de este submódulo son fijas según el Anexo 1. Configura aquí las actividades disponibles dentro de cada bloque.
                 </p>
+                <p className="text-xs text-slate-600">
+                  <b>Revisión y aprobación:</b> Gestión Profesoral con Programa Ninguno envía la actividad a Gestión Profesoral;
+                  con Pregrado o Posgrado, a Complementarias de ese nivel. Decanatura usa el componente Territorial.
+                  Cada responsable necesita su permiso de revisión o aprobación y, cuando corresponda, el nivel autorizado. La territorial del responsable no restringe Complementarias.
+                </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] text-slate-500">
                   <div className="flex items-start gap-1.5">
                     <span className="text-amber-500 font-bold mt-0.5">⚡</span>
@@ -939,8 +944,8 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                     onChange={e => updateAct(sec.key, aIdx, 'nivel_programa', e.target.value)}
                                     disabled={((act as any).tipo_aprobacion || 'gestion_profesoral') === 'decanatura'}
                                     title={((act as any).tipo_aprobacion || 'gestion_profesoral') === 'decanatura'
-                                      ? 'No aplica: al ser Decanatura (Territorial), la aprobación se abre por cada territorial del PTA, no por nivel de programa.'
-                                      : 'Enruta la aprobación/revisión de esta actividad al Revisor/Aprobador de Complementarias Pregrado o Posgrado. Sin selección (Ninguno): la revisa/aprueba Complementarias.'}
+                                      ? 'Decanatura tiene prioridad sobre Programa. Se requieren permisos de Complementarias Territorial por nivel, sin restricción por la territorial del responsable. Sin nivel, se utiliza Pregrado.'
+                                      : 'Pregrado o Posgrado: revisión y aprobación de Complementarias de ese nivel. Ninguno: revisión y aprobación de Complementarias de Gestión Profesoral. Cada etapa requiere su propio permiso.'}
                                     className="w-full bg-white border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
                                   >
                                     <option value="">Ninguno</option>
@@ -948,15 +953,13 @@ export function TabComplementarias({ draft, handleChange }: { draft: PTARules; h
                                     <option value="posgrado">Posgrado</option>
                                   </select>
                                 </div>
-                                {/* EFDS-1353: ámbito de aprobación. Decanatura abre una
-                                    aprobación por cada territorial presente en el PTA
-                                    (unanimidad); Gestión Profesoral mantiene el flujo único. */}
+                                {/* El ámbito y el nivel definen la ruta; no conceden permisos al usuario. */}
                                 <div className="w-40 shrink-0">
                                   <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Aprueba</span>
                                   <select
                                     value={(act as any).tipo_aprobacion || 'gestion_profesoral'}
                                     onChange={e => updateAct(sec.key, aIdx, 'tipo_aprobacion', e.target.value)}
-                                    title="Gestión Profesoral: flujo de aprobación único. Decanatura (Territorial): se abre una aprobación por cada territorial incluida en la complementaria, y el componente queda aprobado solo cuando todas aprueban."
+                                    title="Gestión Profesoral con Programa Ninguno: componente de Gestión Profesoral; con Pregrado o Posgrado: Complementarias de ese nivel. Decanatura: componente Territorial, cuya decisión requiere permisos por nivel y alcance sobre todas sus actividades. Revisar y aprobar son permisos independientes."
                                     className="w-full bg-white border border-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-violet-500/20 outline-none"
                                   >
                                     <option value="gestion_profesoral">Gestión Profesoral</option>

@@ -478,6 +478,9 @@ export class UsersService {
        idSede?: number | null;
        idDependencia?: number | null;
        idCargo?: number | null;
+       dir_residencia?: string | null;
+       fec_nacimiento?: string | null;
+       city?: string | null;
      },
   ): Promise<Person> {
     const personRepo = manager.getRepository(Person);
@@ -506,6 +509,9 @@ export class UsersService {
        idSede: data.idSede ?? null,
        idDependencia: data.idDependencia ?? null,
        idCargo: data.idCargo ?? null,
+       dir_residencia: data.dir_residencia ?? null,
+       fec_nacimiento: data.fec_nacimiento ?? null,
+       city: data.city ?? null,
      };
 
     if (legacyPersonId !== null) {
@@ -529,10 +535,13 @@ export class UsersService {
            id_sede,
            id_dependencia,
            id_cargo,
+           dir_residencia,
+           fec_nacimiento,
+           city,
            fec_creacion,
            fec_modificacion
         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, CURRENT_DATE, CURRENT_DATE)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, CURRENT_DATE, CURRENT_DATE)
        `,
        [
          personData.id,
@@ -548,6 +557,9 @@ export class UsersService {
          personData.idSede,
          personData.idDependencia,
          personData.idCargo,
+         personData.dir_residencia,
+         personData.fec_nacimiento,
+         personData.city,
        ],
     );
 
@@ -788,14 +800,24 @@ export class UsersService {
     await this.userRepo.save(user);
   }
 
-  async setResetToken(userId: string, token: string | null): Promise<void> {
+  async setResetToken(userId: string, token: string | null, signatureContext?: string): Promise<void> {
     const user = await this.userRepo.findOne({ where: { id_user: userId } });
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
     }
 
     user.token = token;
+    user.signatureOtpContext = token ? signatureContext ?? null : null;
     await this.userRepo.save(user);
+  }
+
+  /** Consumo atómico: dos verificaciones concurrentes no pueden usar el mismo OTP. */
+  async consumeSignatureOtp(userId: string, token: string, context: string): Promise<boolean> {
+    const result = await this.userRepo.update(
+      { id_user: userId, token, signatureOtpContext: context },
+      { token: null, signatureOtpContext: null },
+    );
+    return result.affected === 1;
   }
 
   async setMicrosoftToken(userId: string, microsoftOid: string): Promise<void> {
@@ -993,6 +1015,9 @@ export class UsersService {
            idSede: dto.idSede,
            idDependencia: dto.idDependencia,
            idCargo: dto.idCargo,
+           dir_residencia: dto.address,
+           fec_nacimiento: dto.birth_date,
+           city: dto.city,
          });
 
         const passwordHash = await bcrypt.hash('123456', 10);
@@ -1324,6 +1349,10 @@ export class UsersService {
       if (dto.address !== undefined) {
         setClauses.push(`dir_residencia = $${paramIndex++}`);
         values.push(dto.address || null);
+      }
+      if (dto.city !== undefined) {
+        setClauses.push(`city = $${paramIndex++}`);
+        values.push(dto.city || null);
       }
 
       if (setClauses.length > 0) {

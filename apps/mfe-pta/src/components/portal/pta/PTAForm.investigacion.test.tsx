@@ -1,7 +1,7 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PTAForm } from './PTAForm';
-import { getPTAById, savePTA } from '../../../services/api/ptaApi';
+import { getComponentesAprobacion, getPTAById, savePTA } from '../../../services/api/ptaApi';
 
 vi.mock('../../../../../shell/src/services/api', () => ({ getBaseURL: () => 'http://localhost' }));
 vi.mock('../../../services/api/ptaApi', () => {
@@ -13,7 +13,7 @@ vi.mock('../../../services/api/ptaApi', () => {
     getCatalogoActividadesInvestigacion: empty, getCatalogoActividadesExtension: empty,
     getCatalogoActividadesComplementarias: empty, getCatalogoActividadesAcademicoAdmin: empty,
     getCatalogoRolesInvestigacion: empty, getCatalogoSeccionesExtension: empty,
-    getPeriodosAcademicos: empty, getRUNDDocente: empty, getComponentesAprobacion: empty,
+    getPeriodosAcademicos: empty, getRUNDDocente: empty, getComponentesAprobacion: vi.fn().mockImplementation(empty),
     getCatalogoProgramasCascada: empty, getOfertaCetap: empty,
     getActivePeriodoAcademico: () => Promise.resolve({ codigo: '2026-2' }),
     getBancoDocenteById: () => Promise.resolve({ success: true, data: { horas_programables: 800 } }),
@@ -46,17 +46,53 @@ const pta = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getComponentesAprobacion).mockResolvedValue({ success: true, data: [] });
   vi.mocked(getPTAById).mockResolvedValue({ success: true, data: pta } as any);
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 async function mount() {
   render(<PTAForm onBack={() => {}} userPersonId="docente-1" ptaId="pta-1" />);
-  fireEvent.click(await screen.findByRole('button', { name: /Investigación/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /^Investigación/ }));
   return await screen.findByRole('combobox', { name: 'Actividad' }) as HTMLSelectElement;
 }
 
 describe('selector de actividades de investigación', () => {
+  it.each(['plano', 'agrupado'])('carga y autoguarda proyecto y actividades en una edición autorizada con datos %s', async formato => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const proyecto = { nombre_proyecto: 'Proyecto autorizado', rol: 'COINVESTIGADOR', horas_solicitadas: 200 };
+    const actividad = { ...activity, actividad_id: 'INV_01', actividad_nombre: 'Semillero', nombre: undefined,
+      horas_total: undefined, horas: 32 };
+    vi.mocked(getPTAById).mockResolvedValue({ success: true, data: {
+      ...pta, estado: 'REVISION_DOCENTE_N2',
+      asignaturas: [{ ...pta.asignaturas[0], asignatura_id: 'ASIG_1' }],
+      ...(formato === 'plano'
+        ? { investigacion_proyecto: proyecto, investigacion_actividades: [actividad] }
+        : { investigacion_proyecto: undefined, investigacion_actividades: undefined,
+          investigacion: { proyectos: [proyecto], actividades: [actividad] } }),
+    } } as any);
+    vi.mocked(getComponentesAprobacion).mockResolvedValue({ success: true, data: [
+      { componente: 'investigacion', estado: 'devuelto', scope: 'solicitud_edicion', scopeId: 'sol-1' },
+      { componente: 'academica_pregrado', estado: 'aprobado' },
+    ] } as any);
+    const select = await mount();
+    expect(select.value).toBe('INV_01');
+    const nombre = screen.getByRole('textbox', { name: 'Nombre del Proyecto' });
+    expect((nombre as HTMLInputElement).value).toBe('Proyecto autorizado');
+    expect((screen.getByRole('spinbutton', { name: 'Horas' }) as HTMLInputElement).value).toBe('32');
+    expect(screen.queryByRole('button', { name: /^Docencia/ })).toBeNull();
+    fireEvent.change(nombre, { target: { value: 'Proyecto corregido' } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
+    expect(savePTA).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(savePTA).mock.calls[0][0]).toMatchObject({
+      estado: 'REVISION_DOCENTE_N2',
+      investigacion_proyecto: { nombre: 'Proyecto corregido', horas_solicitadas: 200 },
+      investigacion_actividades: [{ actividad_id: 'INV_01', nombre: 'Semillero', horas_total: 32,
+        descripcion: 'Descripción conservada', resolucion_nombre: 'Resolución conservada' }],
+      asignaturas: [expect.objectContaining({ ...pta.asignaturas[0], asignatura_id: 'ASIG_1' })],
+    });
+  });
+
   it('conserva el selector, la selección y los datos al escribir, cambiar y borrar el nombre del proyecto', async () => {
     const select = await mount();
     fireEvent.change(select, { target: { value: 'INV_01' } });

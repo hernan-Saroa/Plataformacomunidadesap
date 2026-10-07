@@ -136,7 +136,7 @@ export class AprobacionService {
     const revision = revisiones[0] ?? null;
     const soportes = await soportesDeDevolucion(
       em,
-      revisiones.map((r) => r.soporteDocumentoId),
+      revisiones.flatMap((r) => r.soportesDocumentoIds ?? []),
     );
 
     const enviadoPorId = actividad?.enviadoPorId;
@@ -182,7 +182,7 @@ export class AprobacionService {
         revisadoPor: r.revisadoPor,
         versionRevisada: r.versionRevisada,
         fecha: r.createdAt,
-        soporte: r.soporteDocumentoId ? (soportes.get(r.soporteDocumentoId) ?? null) : null,
+        soportes: (r.soportesDocumentoIds ?? []).flatMap((id) => soportes.get(id) ?? []),
       })),
     };
   }

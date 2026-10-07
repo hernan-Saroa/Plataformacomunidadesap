@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { plainToInstance, Transform } from 'class-transformer';
 import { IsIn, IsISO8601, IsNotEmpty, IsString } from 'class-validator';
 
 /**
@@ -25,3 +26,17 @@ export class FirmaOtpDto {
   @IsIn(['OTP_EMAIL'])
   metodo: string;
 }
+
+/**
+ * La firma cuando llega como texto JSON dentro de un multipart.
+ *
+ * `plainToInstance` y no `JSON.parse` a secas: el resultado del Transform es
+ * el valor final, `@Type` ya no lo convierte, y sin una instancia real el
+ * `whitelist` del ValidationPipe la despoja de todos sus campos. Llegaba como
+ * `{}`, sin `fechaFirma`, y `exigirFirmaValida` la daba por expirada aunque se
+ * acabara de verificar.
+ */
+export const FirmaDelMultipart = () =>
+  Transform(({ value }) =>
+    typeof value === 'string' ? plainToInstance(FirmaOtpDto, JSON.parse(value)) : value,
+  );

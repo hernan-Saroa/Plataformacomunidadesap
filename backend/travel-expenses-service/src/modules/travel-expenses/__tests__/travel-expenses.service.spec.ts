@@ -20,6 +20,7 @@ import { VerifyAuditDto } from '../../../dto/verify-audit.dto';
 
 import { DevolverAnalistaDto } from '../../../dto/devolver-analista.dto';
 import { SegundaRevisionObservacionesDto } from '../../../dto/segunda-revision-observaciones.dto';
+import { TipoFirmaAprobacion } from '../../../dto/firmar-solicitud.dto';
 
 describe('TravelExpensesService', () => {
   let service: TravelExpensesService;
@@ -876,7 +877,7 @@ describe('TravelExpensesService', () => {
       expect(result.data[0].numeroObligacion).toBe('OBL-SIIF-2026-001');
       expect(qb.andWhere).toHaveBeenCalledWith(
         's.estado_solicitud IN (:...estadosTesoreria)',
-        { estadosTesoreria: ['OBLIGADA', 'PAGADA'] },
+        { estadosTesoreria: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'] },
       );
     });
 
@@ -916,7 +917,7 @@ describe('TravelExpensesService', () => {
       expect(result.data[0].estadoSolicitud).toBe('PAGADA');
       expect(qb.andWhere).toHaveBeenCalledWith(
         's.estado_solicitud IN (:...estadosSst)',
-        { estadosSst: ['OBLIGADA', 'PAGADA'] },
+        { estadosSst: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'] },
       );
     });
   });
@@ -2289,17 +2290,17 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       );
 
       expect(result.consultaRutFacturador).toBe(true);
-      expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
       expect(historialRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           solicitudId: 'sol-001',
-          estadoNuevo: EstadoSolicitud.VERIFICADA,
-          comentarios: expect.stringContaining('VERIFICACION_ANALISTA'),
+          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
+          comentarios: expect.stringContaining('transferida a Control de Viáticos'),
         }),
       );
     });
 
-    it('debe registrar verificacion exitosamente para comision EXTEMPORANEA y transicionar a VERIFICADA', async () => {
+    it('debe registrar verificacion exitosamente para comision EXTEMPORANEA y transicionar a SOLICITADA_SIIF', async () => {
       const solicitud = {
         id: 'sol-ext-001',
         consecutivoUnico: 'COM-2026-0012',
@@ -2361,12 +2362,12 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         { seguridadSocialVigente: true, consultaRutFacturador: false },
       );
 
-      expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
       expect(historialRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({
           solicitudId: 'sol-ext-001',
           estadoAnterior: EstadoSolicitud.EXTEMPORANEA,
-          estadoNuevo: EstadoSolicitud.VERIFICADA,
+          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
         }),
       );
     });
@@ -2915,15 +2916,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       expect(result.solicitud.siifExportado).toBe(true);
       expect(result.solicitud.fechaExportacionSiif).toBeDefined();
       expect(result.solicitud.usuarioExportadorId).toBe('analista-001');
-      expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
-      expect(historialRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          solicitudId: 'sol-001',
-          estadoAnterior: EstadoSolicitud.VERIFICADA,
-          estadoNuevo: EstadoSolicitud.SOLICITADA_SIIF,
-          comentarios: 'Exportado a SIIF Nacion',
-        }),
-      );
+      expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
     });
 
     it('debe permitir re-exportar a SIIF sin límite incluso si ya fue exportada previamente', async () => {
@@ -2986,7 +2979,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
 
       const res = await svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']);
       expect(res.solicitud.siifExportado).toBe(true);
-      expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
+      expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.EN_VERIFICACION);
       expect(res.csvContent).toContain('123456789');
     });
 
@@ -3233,7 +3226,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
 
       const result = await svc.exportarSIIF('sol-001', 'admin-001', ['SUPER_ADMIN']);
 
-      expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
+      expect(result.solicitud.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
     });
 
     it('RF-REV-003: debe bloquear exportacion SIIF si el comisionado contratista es facturador electronico y no tiene factura adjunta', async () => {
@@ -3386,7 +3379,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       const svc = module.get<TravelExpensesService>(TravelExpensesService);
 
       const res = await svc.exportarSIIF('sol-001', 'analista-001', ['ANALISTA']);
-      expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.SOLICITADA_SIIF);
+      expect(res.solicitud.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
       expect(res.solicitud.siifExportado).toBe(true);
     });
   });
@@ -3908,6 +3901,60 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
 
       expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
       expect(solicitud.observacionesSegundaRevision).toBe('');
+    });
+
+    it('debe validar OTP y registrar firma digital de Control Viáticos al verificar', async () => {
+      const solicitud = mockTransactionalSolicitud();
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      jest.spyOn(svc, 'verificarOtpFirma').mockReturnValue(true);
+
+      const result = await svc.verificarSegundaRevision(
+        'sol-001',
+        'revisor-control',
+        ['CONTROL_VIATICOS'],
+        {
+          observaciones: 'Control cruzado aprobado con OTP',
+          otp: '123456',
+          certificadoId: 'CERT-CV-001',
+          nombreRevisor: 'Lic. Andrés Cepeda',
+          cargoRevisor: 'Revisor de Control Viáticos',
+        } as SegundaRevisionObservacionesDto,
+      );
+
+      expect(result.estadoSolicitud).toBe(EstadoSolicitud.VERIFICADA);
+      expect(svc.verificarOtpFirma).toHaveBeenCalledWith(
+        expect.objectContaining({ code: '123456' }),
+      );
+      expect(solicitud.camposAdicionales.revisorControlNombre).toBe('Lic. Andrés Cepeda');
+      expect(solicitud.camposAdicionales.firmaControlViaticos).toBeDefined();
+      expect(solicitud.camposAdicionales.firmaControlViaticos.tipo).toBe(TipoFirmaAprobacion.CONTROL_VIATICOS);
+      expect(solicitud.camposAdicionales.firmaControlViaticos.otpVerificado).toBe(true);
+    });
+
+    it('debe lanzar BadRequestException si el código OTP de Control Viáticos es inválido', async () => {
+      const solicitud = mockTransactionalSolicitud();
+      const { solicitudRepo, historialRepo, dataSource } = createTransactionalMock(solicitud);
+
+      const module = await createMockModuleEtapa5({ solicitudRepo, historialRepo, dataSource });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      jest.spyOn(svc, 'verificarOtpFirma').mockReturnValue(false);
+
+      await expect(
+        svc.verificarSegundaRevision(
+          'sol-001',
+          'revisor-control',
+          ['CONTROL_VIATICOS'],
+          {
+            observaciones: 'Control cruzado',
+            otp: '000000',
+          } as SegundaRevisionObservacionesDto,
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('debe lanzar NotFoundException cuando la solicitud no existe', async () => {
@@ -4618,6 +4665,9 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
           { observaciones: 'Aprobación presupuestal y de itinerario confirmada' },
         );
 
+        // Esperar a que el despacho asíncrono de notificaciones se complete
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
         // Verificación de estado y campos de auditoría
         expect(resultado.estadoSolicitud).toBe(EstadoSolicitud.AUTORIZADA);
         expect(solicitud.estadoSolicitud).toBe(EstadoSolicitud.AUTORIZADA);
@@ -4655,6 +4705,114 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
             tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_PASAJERO',
           }),
         );
+
+        // Verificación de notificación al grupo de presupuesto
+        expect(notificationClient.notifyByRole).toHaveBeenCalledWith(
+          'PRESUPUESTO',
+          expect.objectContaining({
+            tipo_notificacion: 'VIATICOS_COMISION_AUTORIZADA_PRESUPUESTO',
+            datos_adicionales: expect.objectContaining({
+              solicitudId: 'sol-aut-001',
+            }),
+          }),
+        );
+      });
+
+      it('debe validar OTP y registrar firma digital de Subdirección al autorizar', async () => {
+        const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.EN_AUTORIZACION);
+
+        const solRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            setLock: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(solicitud),
+          }),
+          save: jest.fn().mockImplementation(async (s) => s),
+        };
+
+        const histRepo = { save: jest.fn().mockResolvedValue({}) };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockImplementation((entity) => {
+                if (entity === SolicitudHistorialEstadoEntity) return histRepo;
+                return solRepo;
+              }),
+            };
+            return cb(manager);
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo: solRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        jest.spyOn(svc, 'verificarOtpFirma').mockReturnValue(true);
+
+        const resultado = await svc.autorizarComision(
+          'sol-aut-001',
+          'subdirector-001',
+          ['SUBDIRECCION_GESTION_CORPORATIVA'],
+          {
+            observaciones: 'Visto bueno con firma OTP',
+            otp: '654321',
+            verificationId: 'viat:sol-aut-001:SUBDIRECCION:subdirector-001',
+            certificadoId: 'CERT-SUBDIR-999',
+            hashSha256: 'hash-sha-256-subdirector',
+          },
+        );
+
+        expect(svc.verificarOtpFirma).toHaveBeenCalledWith({
+          verificationId: 'viat:sol-aut-001:SUBDIRECCION:subdirector-001',
+          code: '654321',
+          consume: true,
+        });
+        expect(resultado.estadoSolicitud).toBe(EstadoSolicitud.AUTORIZADA);
+        expect(resultado.camposAdicionales?.firmaSubdireccion).toBeDefined();
+        expect(resultado.camposAdicionales?.firmaSubdireccion?.tipo).toBe('SUBDIRECCION');
+        expect(resultado.camposAdicionales?.firmaSubdireccion?.certificadoId).toBe('CERT-SUBDIR-999');
+        expect(resultado.camposAdicionales?.firmaSubdireccion?.otpVerificado).toBe(true);
+      });
+
+      it('debe lanzar BadRequestException si el código OTP de Subdirección es inválido', async () => {
+        const solicitud = mockSolicitudAutorizacion(EstadoSolicitud.EN_AUTORIZACION);
+
+        const solRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue({
+            setLock: jest.fn().mockReturnThis(),
+            leftJoinAndSelect: jest.fn().mockReturnThis(),
+            where: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(solicitud),
+          }),
+          save: jest.fn(),
+        };
+
+        const dataSource = {
+          transaction: jest.fn().mockImplementation(async (cb) => {
+            const manager = {
+              getRepository: jest.fn().mockReturnValue(solRepo),
+            };
+            return cb(manager);
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo: solRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        jest.spyOn(svc, 'verificarOtpFirma').mockReturnValue(false);
+
+        await expect(
+          svc.autorizarComision(
+            'sol-aut-001',
+            'subdirector-001',
+            ['SUBDIRECCION_GESTION_CORPORATIVA'],
+            {
+              otp: '000000',
+              verificationId: 'viat:sol-aut-001:SUBDIRECCION:subdirector-001',
+            },
+          ),
+        ).rejects.toThrow(BadRequestException);
       });
 
       it('debe lanzar BadRequestException si la comisión no está en EN_AUTORIZACION', async () => {
@@ -5108,6 +5266,8 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(pdfBuffer).toBeInstanceOf(Buffer);
         expect(pdfBuffer.length).toBeGreaterThan(0);
         expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        // Garantizar que todo el contenido del Formato 023 (incluyendo firmas y trazabilidad) encaja en 1 página
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
       });
 
       it('debe generar el Formato 023 correctamente cuando la comisión está en estado RADICADA', async () => {
@@ -5148,6 +5308,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(pdfBuffer).toBeInstanceOf(Buffer);
         expect(pdfBuffer.length).toBeGreaterThan(0);
         expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
       });
 
       it('debe generar el Formato 023 con desglose de transporte y dejar campos vacíos si no han ocurrido los procesos', async () => {
@@ -5201,6 +5362,128 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(pdfBuffer).toBeInstanceOf(Buffer);
         expect(pdfBuffer.length).toBeGreaterThan(0);
         expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
+      });
+
+      it('debe generar el Formato 023 incluyendo tanto al Analista (Revisó) como al Revisor de Control Viáticos (2do Nivel)', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.VERIFICADA),
+          id: 'sol-023-ambos-revisores',
+          consecutivoUnico: 'SOL-2026-0004',
+          creadoPorUsuarioId: 'user-enlace-1',
+          analistaAsignadoId: 'user-analista-1',
+          revisorControlId: 'user-control-1',
+          fechaRevision: new Date(),
+          fechaSegundaRevision: new Date(),
+          camposAdicionales: {
+            nombreAnalista: 'Marcela Castro (Analista)',
+            revisorControlNombre: 'David Muñoz (Control)',
+            firmaAnalista: {
+              nombreFirmante: 'Marcela Castro',
+              certificadoId: 'CERT-ANA-01',
+              fechaFirma: new Date().toISOString(),
+            },
+            firmaControlViaticos: {
+              nombreFirmante: 'David Muñoz',
+              certificadoId: 'CERT-CTRL-02',
+              fechaFirma: new Date().toISOString(),
+            },
+          },
+          comisionado: {
+            primerNombre: 'Pedro',
+            primerApellido: 'Gómez',
+            numeroDocumento: '79123456',
+            tipoComisionado: 'CONTRATISTA',
+          },
+          documentosSoporte: [],
+        };
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+        };
+
+        const dataSource = {
+          query: jest.fn().mockResolvedValue([]),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-ambos-revisores');
+
+        expect(pdfBuffer).toBeInstanceOf(Buffer);
+        expect(pdfBuffer.length).toBeGreaterThan(0);
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
+      });
+
+      it('debe generar el Formato 023 para comisión extemporánea mostrando aval de Dirección Nacional y visto bueno de Subdirección en 1 página', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.AUTORIZADA),
+          id: 'sol-023-extemporanea',
+          consecutivoUnico: 'SOL-2026-EXT-001',
+          extemporanea: true,
+          creadoPorUsuarioId: 'user-enlace-1',
+          revisorControlId: 'user-revisor-1',
+          autorizadorDireccionId: 'user-dir-nacional',
+          autorizadorId: 'user-subdirector-1',
+          fechaAutorizacionDireccion: new Date(),
+          fechaAutorizacion: new Date(),
+          justificacionDireccion: 'Se autoriza por necesidad del servicio en zona territorial',
+          decisionDireccion: 'AUTORIZADO',
+          camposAdicionales: {
+            firmaDireccionNacional: {
+              tipo: 'DIRECCION_NACIONAL',
+              nombreFirmante: 'Dr. Jorge Vargas Muñoz',
+              cargoFirmante: 'Director Nacional',
+              certificadoId: 'CERT-DIR-001',
+              fechaFirma: new Date().toISOString(),
+              firmadoDigitalmente: true,
+            },
+            firmaSubdireccion: {
+              tipo: 'SUBDIRECCION',
+              nombreFirmante: 'Dra. Patricia Silva',
+              cargoFirmante: 'Subdirectora de Gestión Corporativa',
+              certificadoId: 'CERT-SUB-001',
+              fechaFirma: new Date().toISOString(),
+              firmadoDigitalmente: true,
+            },
+          },
+          comisionado: {
+            primerNombre: 'Laura',
+            primerApellido: 'Méndez',
+            numeroDocumento: '10203040',
+            tipoComisionado: 'FUNCIONARIO',
+          },
+          montoViaticos: 500000,
+          montoGastosViaje: 100000,
+          documentosSoporte: [],
+        };
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+        };
+
+        const dataSource = {
+          query: jest.fn().mockImplementation(async (query: string, params: any[]) => {
+            const uid = params?.[0];
+            if (uid === 'user-enlace-1') return [{ nom_largo: 'Enlace Solicitante' }];
+            if (uid === 'user-revisor-1') return [{ nom_largo: 'Revisor Control' }];
+            if (uid === 'user-dir-nacional') return [{ nom_largo: 'Dr. Jorge Vargas Muñoz' }];
+            if (uid === 'user-subdirector-1') return [{ nom_largo: 'Dra. Patricia Silva' }];
+            return [];
+          }),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-extemporanea');
+
+        expect(pdfBuffer).toBeInstanceOf(Buffer);
+        expect(pdfBuffer.length).toBeGreaterThan(0);
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
       });
 
       it('debe lanzar NotFoundException si la solicitud no existe al exportar Formato 023', async () => {
@@ -5310,7 +5593,7 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(resultado.firmante2.tipo).toBe('GERENTE_PROYECTO');
       });
 
-      it('firmarAprobacionSolicitud: cuando se registran ambas firmas, transiciona a estado RADICADA', async () => {
+      it('firmarAprobacionSolicitud: cuando se registran ambas firmas, transiciona directamente a Secretaría de Viáticos (SOLICITADO / EXTEMPORANEA)', async () => {
         const solicitud = {
           id: 'sol-firmas-completa',
           consecutivoUnico: 'SOL-2026-999',
@@ -5360,11 +5643,13 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         );
 
         expect(resultadoFirma2.radicada).toBe(true);
-        expect(resultadoFirma2.solicitud.estadoSolicitud).toBe(EstadoSolicitud.RADICADA);
-        expect(resultadoFirma2.mensaje).toContain('RADICADA');
+        expect([EstadoSolicitud.SOLICITADO, EstadoSolicitud.EXTEMPORANEA]).toContain(
+          resultadoFirma2.solicitud.estadoSolicitud,
+        );
+        expect(resultadoFirma2.mensaje).toContain('Secretaría de Viáticos');
         expect(historialRepo.save).toHaveBeenCalledWith(
           expect.objectContaining({
-            estadoNuevo: EstadoSolicitud.RADICADA,
+            estadoNuevo: expect.stringMatching(/SOLICITADO|EXTEMPORANEA/),
           }),
         );
       });

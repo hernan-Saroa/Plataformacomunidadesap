@@ -6,10 +6,20 @@ import { HorariosService, type CrearSesionDto, type PeriodoGrupoDto } from './ho
 export class HorariosController {
   constructor(private readonly horarios: HorariosService) {}
 
-  /** GET /horarios?grupo=<id> — sesiones del grupo, ordenadas. */
+  /**
+   * GET /horarios?grupo=<id> — sesiones de UN grupo.
+   * GET /horarios            — TODAS, con programa, asignatura y docente
+   *                            resueltos por JOIN en el servidor.
+   *
+   * Sin el parámetro se devolvía una lista vacía, y el panel llenaba el hueco
+   * con una constante del front. Ahora la ausencia de grupo significa "todas".
+   */
   @Get()
-  async listar(@Query('grupo') idGrupo: string) {
-    return { success: true, data: await this.horarios.listarPorGrupo(idGrupo) };
+  async listar(@Query('grupo') idGrupo?: string, @Query('periodo') idPeriodo?: string) {
+    const data = idGrupo
+      ? await this.horarios.listarPorGrupo(idGrupo)
+      : await this.horarios.listarTodas(idPeriodo);
+    return { success: true, data };
   }
 
   /** POST /horarios — crea una sesión con franja arbitraria (AC-01, AC-03). */
@@ -27,5 +37,11 @@ export class HorariosController {
   @Put('grupo/:id/periodo')
   async periodo(@Param('id') id: string, @Body() body: PeriodoGrupoDto) {
     return { success: true, data: await this.horarios.definirPeriodo(id, body) };
+  }
+
+  /** GET /horarios/grupo/:id/horas — programadas vs requeridas (§1.3). */
+  @Get('grupo/:id/horas')
+  async horas(@Param('id') id: string) {
+    return { success: true, data: await this.horarios.horasGrupo(id) };
   }
 }

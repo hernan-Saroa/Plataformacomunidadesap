@@ -55,6 +55,8 @@ export class SstNotificationController {
     'travel_expenses:read_inbox',
     'travel_expenses:read_assigned',
     'travel_expenses:read_all',
+    'travel_expenses:view_own_requests',
+    'travel_expenses:read_my_requests',
   )
   @ApiOperation({
     summary: 'Consultar estado de notificación a SST (RF-PAG-002)',

@@ -213,6 +213,11 @@ services:
       OPENKM_USERNAME: ${OPENKM_USERNAME:-}
       OPENKM_PASSWORD: ${OPENKM_PASSWORD:-}
       OPENKM_TIMEOUT_MS: ${OPENKM_TIMEOUT_MS:-15000}
+      RUND_DOCUMENT_PROVIDER: ${RUND_DOCUMENT_PROVIDER:-AUTO}
+      RUND_DOCUMENTAL_ENABLED: ${RUND_DOCUMENTAL_ENABLED:-false}
+      RUND_DOCUMENT_LOCAL_ROOT: ${RUND_DOCUMENT_LOCAL_ROOT:-/app/uploads}
+      RUND_TRD_POLICY_FILE: ${RUND_TRD_POLICY_FILE:-}
+      RUND_PRIVACY_POLICY_FILE: ${RUND_PRIVACY_POLICY_FILE:-}
       RUND_DOCUMENT_MAX_SIZE_BYTES: ${RUND_DOCUMENT_MAX_SIZE_BYTES:-10485760}
       RUND_DOCUMENT_ALLOW_LOCAL: ${RUND_DOCUMENT_ALLOW_LOCAL:-false}
 
@@ -562,6 +567,7 @@ services:
 
       # JWT - debe coincidir con gateway y auth-service
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_qa_2024}
+      HIRING_STORAGE_PATH: /app/uploads
     ports:
       - "3012:3012"
     depends_on:
@@ -569,6 +575,10 @@ services:
         condition: service_healthy
     networks:
       - superapp-net-qa
+    # Fuera del contenedor: sin esto, cada despliegue borraba los archivos
+    # subidos en Contratación y quedaban filas apuntando a nada.
+    volumes:
+      - ./backend/hiring-service/uploads:/app/uploads
     restart: unless-stopped
 
   # ============ ACADEMIC SCHEDULE SERVICE ============

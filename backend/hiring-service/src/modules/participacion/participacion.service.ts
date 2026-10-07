@@ -490,6 +490,33 @@ export class ParticipacionService {
   }
 
   /**
+   * Los procesos en cuyo comité evaluador vigente está quien pregunta.
+   *
+   * Aparte de `procesosDe` a propósito: estar en el proceso da para escribir
+   * el estudio previo (`exigirQueSeaSuyo`), y evaluar no. Esto solo abre la
+   * puerta para ver el proceso y llegar a la 6.3, que es donde trabaja.
+   *
+   * En crudo por `auth."user"`, que es de otro equipo: es el mismo enlace
+   * cuenta → persona que usa `ComiteService`, sin mapear su tabla aquí.
+   */
+  async procesosDondeEvalua(acceso: HiringAccess): Promise<string[]> {
+    const id = (acceso.userId ?? '').trim();
+    if (!id) return [];
+
+    const filas: { proceso_id: string }[] = await this.dataSource.query(
+      `SELECT DISTINCT c.proceso_id
+         FROM hiring.comites_evaluadores c
+         JOIN hiring.miembros_comite m ON m.comite_id = c.id
+         JOIN auth."user" u ON u.id_person = m.persona_id
+        WHERE c.estado = 'VIGENTE'
+          AND u.id_user::text = $1`,
+      [id],
+    );
+
+    return filas.map((f) => f.proceso_id);
+  }
+
+  /**
    * Los procesos en los que está quien pregunta, en cualquier papel.
    *
    * Lo consulta el listado para que «los míos» deje de ser solo «los que

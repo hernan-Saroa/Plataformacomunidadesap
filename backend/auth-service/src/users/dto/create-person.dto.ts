@@ -57,4 +57,8 @@ export class CreatePersonDto {
   @IsString()
   address?: string;
 
+  @IsOptional()
+  @IsString()
+  city?: string;
+
 }

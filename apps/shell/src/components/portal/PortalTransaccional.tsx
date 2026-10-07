@@ -54,6 +54,7 @@ import { getEstadisticasPortal, inicializarDatosPortal, uploadFotoPerfil, getPer
 import { MisCertificadosLaborales } from './recursos-humanos/MisCertificadosLaborales';
 import { MisDocumentos } from './gestion-documental/MisDocumentos';
 import { PortalDocentePTA } from './pta/PortalDocentePTA';
+import { PortalDocenteProgramacion } from './programacion/PortalDocenteProgramacion';
 import { MisAuditoriasControlInterno } from './control-interno/MisAuditoriasControlInterno';
 import { toast } from 'sonner';
 import { PortalSettings } from './PortalSettings';
@@ -103,6 +104,7 @@ type InternalView =
   | { type: 'gestion-documental' }
   | { type: 'carpeta-digital' }
   | { type: 'pta' }
+  | { type: 'programacion-docente' }
   | { type: 'mis-auditorias' }
   | { type: 'configuracion' }
   | { type: 'ayuda' };
@@ -392,6 +394,8 @@ export function PortalTransaccional({
       setCurrentView({ type: 'carpeta-digital' });
     } else if (servicioId === 'pta-docente') {
       setCurrentView({ type: 'pta' });
+    } else if (servicioId === 'programacion-docente') {
+      setCurrentView({ type: 'programacion-docente' });
     } else if (servicioId === 'control-interno-gestion') {
       setCurrentView({ type: 'mis-auditorias' });
     }
@@ -449,6 +453,23 @@ export function PortalTransaccional({
         prioridadColor: '#DC2626',
         visiblePara: ['DOCENTE', 'SUPER_ADMIN'],
         requierePermiso: 'portal-transaccional.pta.view',
+      },
+      {
+        id: 'programacion-docente',
+        nombre: 'Mi Programación Académica',
+        codigo: 'PROG-001',
+        descripcion: 'Toma las franjas publicadas que quieres dictar y sigue tu carga frente al tope',
+        icon: <Calendar style={{ width: 18, height: 18 }} />,
+        iconBg: '#EFF6FF',
+        iconColor: '#003DA5',
+        categoria: 'Académico',
+        badges: [
+          { label: 'Tomar franjas', color: '#003DA5', bgColor: '#EFF6FF' },
+        ],
+        prioridad: 'Alta',
+        prioridadColor: '#DC2626',
+        visiblePara: ['DOCENTE', 'SUPER_ADMIN'],
+        requierePermiso: 'portal-transaccional.programacion-academica.view',
       },
       {
         id: 'control-interno-gestion',
@@ -804,6 +825,10 @@ export function PortalTransaccional({
           </div>
         );
       }
+      case 'programacion-docente':
+        return renderWithLeftLayout(
+          <PortalDocenteProgramacion onBack={() => setCurrentView({ type: 'dashboard' })} />,
+        );
       case 'mis-auditorias':
         return renderWithLeftLayout(
           <MisAuditoriasControlInterno

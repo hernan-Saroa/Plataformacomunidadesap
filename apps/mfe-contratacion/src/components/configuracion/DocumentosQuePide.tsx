@@ -42,6 +42,7 @@ interface Borrador {
   descripcion: string;
   plantillaCodigo: string;
   obligatorio: boolean;
+  informativo: boolean;
   modalidades: string[];
   tipologias: string[];
 }
@@ -51,6 +52,7 @@ const VACIO: Borrador = {
   descripcion: '',
   plantillaCodigo: '',
   obligatorio: true,
+  informativo: false,
   modalidades: [],
   tipologias: [],
 };
@@ -151,7 +153,8 @@ export function DocumentosQuePide({ numeral, modalidades }: Props) {
       nombre: b.nombre.trim(),
       descripcion: b.descripcion.trim() || null,
       plantillaCodigo: b.plantillaCodigo || null,
-      obligatorio: b.obligatorio,
+      obligatorio: b.informativo ? false : b.obligatorio,
+      informativo: b.informativo,
       modalidades: b.modalidades,
       tipologias: b.tipologias,
     };
@@ -243,7 +246,8 @@ export function DocumentosQuePide({ numeral, modalidades }: Props) {
           <p className="text-sm font-semibold text-gray-800 m-0">Documentos que pide esta actividad</p>
           <p className="text-[11px] text-gray-500 mt-0.5 mb-0 leading-relaxed">
             Es la lista de chequeo que verá el gestor en la actividad. Los obligatorios deben estar
-            cargados para poder avanzar; los opcionales se pueden cargar si se tienen.
+            cargados para poder avanzar; los opcionales se pueden cargar si se tienen; los de
+            consulta solo se descargan.
           </p>
         </div>
         {editando !== 'nueva' && (
@@ -307,6 +311,7 @@ export function DocumentosQuePide({ numeral, modalidades }: Props) {
                     descripcion: fila.descripcion ?? '',
                     plantillaCodigo: fila.plantillaCodigo ?? '',
                     obligatorio: fila.obligatorio,
+                    informativo: fila.informativo,
                     modalidades: fila.modalidades,
                     tipologias: fila.tipologias,
                   }}
@@ -433,10 +438,10 @@ function Fila({
             )}
             <span
               className={`ml-2 text-[10px] font-semibold ${
-                fila.obligatorio ? 'text-amber-700' : 'text-gray-500'
+                fila.informativo ? 'text-sky-700' : fila.obligatorio ? 'text-amber-700' : 'text-gray-500'
               }`}
             >
-              {fila.obligatorio ? 'Obligatorio' : 'Opcional'}
+              {fila.informativo ? 'Solo consulta' : fila.obligatorio ? 'Obligatorio' : 'Opcional'}
             </span>
           </p>
           {fila.descripcion && (
@@ -521,6 +526,39 @@ function Fila({
     </li>
   );
 }
+
+type Uso = 'obligatorio' | 'opcional' | 'consulta';
+
+/**
+ * Las tres maneras en que una actividad puede ofrecer un documento.
+ *
+ * Una elección y no dos casillas: «obligatorio» y «de consulta» juntas no
+ * tienen sentido —nadie puede entregar lo que solo se lee—, y con casillas
+ * la pantalla tendría que explicar por qué una apaga a la otra.
+ */
+const USOS: { valor: Uso; etiqueta: string; ayuda: string; campos: Pick<Borrador, 'obligatorio' | 'informativo'> }[] = [
+  {
+    valor: 'obligatorio',
+    etiqueta: 'Debe cargarlo',
+    ayuda: 'La actividad no avanza hasta que esté cargado.',
+    campos: { obligatorio: true, informativo: false },
+  },
+  {
+    valor: 'opcional',
+    etiqueta: 'Puede cargarlo',
+    ayuda: 'Se ofrece para cargar, pero no traba nada si falta.',
+    campos: { obligatorio: false, informativo: false },
+  },
+  {
+    valor: 'consulta',
+    etiqueta: 'Solo de consulta',
+    ayuda: 'Se ofrece para descargar y leer (guía, circular, modelo). No se carga nada.',
+    campos: { obligatorio: false, informativo: true },
+  },
+];
+
+const usoDe = (b: Borrador): Uso =>
+  b.informativo ? 'consulta' : b.obligatorio ? 'obligatorio' : 'opcional';
 
 /** Alta y edición de un documento, con su plantilla y su alcance. */
 function Formulario({
@@ -609,7 +647,9 @@ function Formulario({
       </label>
 
       <div className="space-y-1.5">
-        <span className="text-[11px] font-semibold text-gray-600">Plantilla</span>
+        <span className="text-[11px] font-semibold text-gray-600">
+          {b.informativo ? 'Archivo que se ofrece para consultar (obligatorio)' : 'Plantilla'}
+        </span>
         <div className="flex items-center gap-2">
           <select
             aria-label="Plantilla"
@@ -667,14 +707,26 @@ function Formulario({
         </div>
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-gray-700">
-        <input
-          type="checkbox"
-          checked={b.obligatorio}
-          onChange={(e) => setB({ ...b, obligatorio: e.target.checked })}
-        />
-        Obligatorio: la actividad no avanza sin este documento
-      </label>
+      <fieldset className="m-0 p-0 border-0">
+        <legend className="text-[11px] font-semibold text-gray-600">Qué hace el gestor con él</legend>
+        <div className="mt-1 space-y-1">
+          {USOS.map((u) => (
+            <label key={u.valor} className="flex items-start gap-2 text-sm text-gray-700">
+              <input
+                type="radio"
+                name="uso-documento"
+                className="mt-1"
+                checked={usoDe(b) === u.valor}
+                onChange={() => setB({ ...b, ...u.campos })}
+              />
+              <span>
+                {u.etiqueta}
+                <span className="block text-[11px] text-gray-500">{u.ayuda}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
 
       <fieldset className="m-0 p-0 border-0">
         <legend className="text-[11px] font-semibold text-gray-600">
@@ -724,7 +776,12 @@ function Formulario({
         </button>
         <button
           type="button"
-          disabled={ocupado || !b.nombre.trim()}
+          disabled={ocupado || !b.nombre.trim() || (b.informativo && !b.plantillaCodigo)}
+          title={
+            b.informativo && !b.plantillaCodigo
+              ? 'Un documento de consulta necesita el archivo que se va a ofrecer'
+              : undefined
+          }
           onClick={() => onGuardar(b)}
           className="rounded-lg bg-[#003DA5] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
         >

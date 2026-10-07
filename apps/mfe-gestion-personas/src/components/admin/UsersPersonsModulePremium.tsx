@@ -216,6 +216,7 @@ export function UsersPersonsModulePremium() {
         lastName: item.last_name,
         email: item.email,
         phone: item.phone || '',
+        city: item.city || '',
         document: item.identification_number,
         identification_number: item.identification_number,
         identificationType: item.identification_type,
@@ -488,6 +489,52 @@ export function UsersPersonsModulePremium() {
       return role.code === 'SUPER_ADMIN'
     });
 
+  const TECNICO_UMI_ROLE_CODES: Record<string, { label: string; color: string; variant: string }> = {
+    TECNICO_ELECTRICO_ESPECIALIZADO: {
+      label: 'Técnico UMI · P3 Eléctrico Especializado',
+      color: 'purple',
+      variant: 'bg-[#EDE9FE] text-[#5B21B6] border-[#8B5CF6]'
+    },
+    TECNICO_UMI_MULTIPROPOSITO: {
+      label: 'Técnico UMI · P4 Multipropósito',
+      color: 'blue',
+      variant: 'bg-[#EFF6FF] text-[#1E40AF] border-[#3B82F6]'
+    }
+  };
+
+  const hasTecnicoUmiRole = (user: any): { code: string; config: typeof TECNICO_UMI_ROLE_CODES[string] } | null => {
+    if (!user?.roles) return null;
+    for (const code of Object.keys(TECNICO_UMI_ROLE_CODES)) {
+      const hit = user.roles.find((r: any) => r.code === code);
+      if (hit) return { code, config: TECNICO_UMI_ROLE_CODES[code] };
+    }
+    return null;
+  };
+
+  const getTecnicoUmiBadge = (user: any) => {
+    const match = hasTecnicoUmiRole(user);
+    if (!match) return null;
+    return (
+      <Badge
+        className={`${match.config.variant} border text-xs font-semibold`}
+        title="Habilitado para flujo de mantenimiento Infraestructura UMI"
+      >
+        <div className="flex items-center gap-1.5">
+          <Cog className="w-3 h-3" />
+          <span>{match.config.label}</span>
+        </div>
+      </Badge>
+    );
+  };
+
+  const navigateToAdminParametrosUmi = (user: any) => {
+    const idUserAuth = user.id_user || user.id;
+    const idPerson = user.id_person || user.person?.id_person || user.personId;
+    window.dispatchEvent(new CustomEvent('navigate:mfe-gestion-infraestructura', {
+      detail: { tab: 'parametros-umi', idUserAuth, idPerson }
+    }));
+  };
+
   // ✅ FUNCIÓN HELPER PARA BADGES DE ENROLAMIENTO
   const getEnrollmentBadge = (
     method: "qr" | "manual" | "massive",
@@ -670,8 +717,9 @@ export function UsersPersonsModulePremium() {
         // Agregar seccional y sede si están definidos
          idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : null,
          idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : null,
-         idDependencia: userData.idDependencia ? Number(userData.idDependencia) : null,
-         idCargo: userData.idCargo ? Number(userData.idCargo) : null,
+        idDependencia: userData.idDependencia ? Number(userData.idDependencia) : null,
+        // EFDS-174X: idCargo negativo = fallback FE dummy (tabla auth.cargos no existe). Enviar NULL para no contaminar.
+         idCargo: (userData.idCargo && Number(userData.idCargo) > 0) ? Number(userData.idCargo) : null,
        };
 
        await usersService.updateUser(userId, updateUserData);
@@ -814,18 +862,48 @@ export function UsersPersonsModulePremium() {
 
     try {
       setRolesSaving(true);
+
+      const TECNICO_CODES = Object.keys(TECNICO_UMI_ROLE_CODES);
+      const rolesAntes = (selectedUser.roles || []).map((r: any) => r.id);
+      const rolesAntesTecnicoCodes = (selectedUser.roles || [])
+        .filter((r: any) => TECNICO_CODES.includes(r.code))
+        .map((r: any) => r.code);
+      const availableRolesById = new Map(availableRoles.map(r => [r.id, r]));
+      const rolesDespuesTecnicoCodes = Array.from(selectedRoleIds)
+        .map(id => availableRolesById.get(id)?.code)
+        .filter((code): code is string => !!code && TECNICO_CODES.includes(code));
+
+      const setAntes = new Set(rolesAntesTecnicoCodes);
+      const setDespues = new Set(rolesDespuesTecnicoCodes);
+      const tecnicosAsignados = rolesDespuesTecnicoCodes.filter(c => !setAntes.has(c));
+      const tecnicosRetirados = rolesAntesTecnicoCodes.filter(c => !setDespues.has(c));
+      const deltaTecnico = tecnicosAsignados.length > 0 || tecnicosRetirados.length > 0;
+
       await usersService.updateUser(selectedUser.id_user || selectedUser.id, {
         roleIds: Array.from(selectedRoleIds)
       });
 
-      // Si se asignó rol DOCENTE, sincronizar con banco de docentes
       const assignedRoles = availableRoles.filter(r => selectedRoleIds.has(r.id));
       const hasDocente = assignedRoles.some(r => r.code === 'DOCENTE');
       if (hasDocente) triggerBancoDocentesSync();
 
-      toast.success('Roles asignados', {
-        description: `Se actualizaron los roles de ${selectedUser.firstName} ${selectedUser.lastName}`
-      });
+      if (deltaTecnico && tecnicosAsignados.length > 0) {
+        const labels = tecnicosAsignados.map(c => TECNICO_UMI_ROLE_CODES[c].label.split('·')[1]?.trim() || c).join(' + ');
+        toast.success('Técnico UMI designado', {
+          description: `${selectedUser.firstName} ${selectedUser.lastName} ahora es ${labels}. Aparecerá en Admin Parámetros UMI.`,
+          duration: 5500
+        });
+      } else if (deltaTecnico && tecnicosRetirados.length > 0 && tecnicosAsignados.length === 0) {
+        toast.info('Retirado de técnicos UMI', {
+          description: `${selectedUser.firstName} ${selectedUser.lastName} ya no aparece en Admin Parámetros UMI.`,
+          duration: 5000
+        });
+      } else {
+        toast.success('Roles asignados', {
+          description: `Se actualizaron los roles de ${selectedUser.firstName} ${selectedUser.lastName}`
+        });
+      }
+
       setShowAssignRolesModal(false);
       setSelectedUser(null);
       await loadUsers();
@@ -986,8 +1064,9 @@ export function UsersPersonsModulePremium() {
         // Agregar seccional y sede si están definidos
          idSeccional: Number.isFinite(seccionalIdNumerica as number) ? seccionalIdNumerica : undefined,
          idSede: Number.isFinite(sedeIdNumerica as number) ? sedeIdNumerica : undefined,
-         idDependencia: userData.idDependencia ? Number(userData.idDependencia) : null,
-         idCargo: userData.idCargo ? Number(userData.idCargo) : null,
+        idDependencia: userData.idDependencia ? Number(userData.idDependencia) : null,
+        // EFDS-174X: idCargo negativo = fallback FE dummy (tabla auth.cargos no existe). Enviar NULL para no contaminar.
+         idCargo: (userData.idCargo && Number(userData.idCargo) > 0) ? Number(userData.idCargo) : null,
        };
 
        const newUser = await usersService.createUser(createUserData);
@@ -1771,6 +1850,7 @@ export function UsersPersonsModulePremium() {
                           }}
                         >
                           <div className="flex flex-wrap gap-1.5">
+                            {getTecnicoUmiBadge(user)}
                             {user.roles.map((role: any) => (
                               <div key={role.id || role.code || role.name}>
                                 {getRoleBadge(
@@ -2018,6 +2098,18 @@ export function UsersPersonsModulePremium() {
                                     Asignar Roles
                                   </DropdownMenuItem>
                                 )}
+                                {hasTecnicoUmiRole(user) && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={() => navigateToAdminParametrosUmi(user)}
+                                      className="text-[#7C3AED] data-[highlighted]:bg-[#7C3AED] data-[highlighted]:text-white"
+                                    >
+                                      <Cog className="w-4 h-4 mr-2" />
+                                      Ver en Admin Parámetros UMI
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
                                 <DropdownMenuItem
                                   onClick={() => handleForcePasswordReset(user)}
                                   className="text-[#7C3AED] data-[highlighted]:bg-[#7C3AED] data-[highlighted]:text-white"
@@ -2254,6 +2346,18 @@ export function UsersPersonsModulePremium() {
                               <Users className="w-4 h-4 mr-2" />
                               Asignar Roles
                             </DropdownMenuItem>
+                          )}
+                          {hasTecnicoUmiRole(user) && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => navigateToAdminParametrosUmi(user)}
+                                className="text-purple-700 data-[highlighted]:bg-purple-600 data-[highlighted]:text-white"
+                              >
+                                <Cog className="w-4 h-4 mr-2" />
+                                Ver en Admin Parámetros UMI
+                              </DropdownMenuItem>
+                            </>
                           )}
                           <DropdownMenuItem
                             onClick={() => handleForcePasswordReset(user)}
