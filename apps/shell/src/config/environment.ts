@@ -284,7 +284,7 @@ export const config = {
   API_TIMEOUT: 30000,
 
   // Número de reintentos en caso de fallo
-  API_RETRY_ATTEMPTS: 3,
+  API_RETRY_ATTEMPTS: 0,
 
   // Delay entre reintentos (ms)
   API_RETRY_DELAY: 1000,

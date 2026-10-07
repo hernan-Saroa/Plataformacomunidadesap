@@ -216,6 +216,7 @@ export function UsersPersonsModulePremium() {
         lastName: item.last_name,
         email: item.email,
         phone: item.phone || '',
+        city: item.city || '',
         document: item.identification_number,
         identification_number: item.identification_number,
         identificationType: item.identification_type,

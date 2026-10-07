@@ -165,7 +165,7 @@ export function PanelApertura({ procesoId, onCambio }: Props) {
     estado.requisitos.cdp.cumplido
       ? null
       : {
-          falta: '4.3',
+          falta: '4.2',
           texto: estado.requisitos.cdp.motivo
             ? `${estado.requisitos.cdp.motivo}. El proceso no puede abrirse sin el CDP expedido.`
             : 'El proceso no puede abrirse mientras el CDP no esté expedido.',

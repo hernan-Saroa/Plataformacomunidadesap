@@ -19,6 +19,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { getPTADecisionPermissions, type PTADecisionPermissions } from '../../services/api/ptaApi';
 import { canDecidePtaComponent } from './shared/ptaDecisionPermissions';
+import { scopedTerritorialProgress, territorialProgressStatus, mergeTerritorialProgress } from './shared/ptaTerritorialProgress';
 import { getPtaHistoryActorLabel } from '../../utils/ptaHistoryActor';
 import { getPtaResearchData } from '../../utils/ptaResearch';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../utils/ptaCompletion';
@@ -405,6 +406,7 @@ export function ApprovalTracker({
   modoRevision = false,
   componentesRevision = [],
   componentesEstado = [],
+  docenciaPersonal,
 }: {
   pta?: any;
   estado: string;
@@ -416,6 +418,7 @@ export function ApprovalTracker({
   componentesRevision?: any[];
   /** `componentes_estado` del DTO: estado colapsado calculado por el backend. */
   componentesEstado?: any[];
+  docenciaPersonal?: { aprobaciones: any[]; revisiones: any[] };
 }) {
   const visibleSet = visibleComponentKeys?.length ? new Set(visibleComponentKeys) : null;
   const getStatusForComponent = (compKeys: string[], collapsedKey?: string) => {
@@ -424,6 +427,12 @@ export function ApprovalTracker({
     const source = { ...pta, estado, componentes_estado: componentesEstado };
     const collapsedStatus = getPtaComponentDisplayStatus(source, collapsedKey || '');
     if (collapsedStatus === 'no_aplica') return 'no_aplica';
+    if (collapsedKey === 'academica' && docenciaPersonal) {
+      const tieneAprobacionAplicable = docenciaPersonal.aprobaciones.some(row => getPtaApprovalDisplayStatus(source, row) !== 'no_aplica');
+      if (modoRevision || (!tieneAprobacionAplicable && docenciaPersonal.revisiones.length > 0)) return docenciaPersonal.revisiones.length
+        ? territorialProgressStatus(docenciaPersonal.revisiones, 'revisado') : 'no_aplica';
+      return getPtaApprovalGroupStatus(source, docenciaPersonal.aprobaciones);
+    }
 
     if (modoRevision) {
       const revisiones = componentesRevision.filter(r => scopedKeys.includes(r.componente));
@@ -860,10 +869,46 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const esParTerritorialPropio = useCallback((t: { territorialId: string; territorialNombre?: string; nivel: PTANivelDocencia }, etapa: 'aprobar' | 'revisar' = 'aprobar'): boolean =>
     canDecidePtaComponent(decisionPermissions, 'academica_territorial', etapa, 'general', t), [decisionPermissions]);
 
+  const territorialParticionado = aprobacionTerritorial.length >= 2 || revisionTerritorial.length >= 2
+    || [...(pta.componentes_aprobacion_usuario || []), ...(pta.componentes_revision_usuario || [])]
+      .some((row: any) => row.componente === 'academica_territorial' && row.territorial_id);
+  const revisionGeneralTerritorial = componentesRevision.find(row => row.componente === 'academica_territorial');
+  const aprobacionGeneralTerritorial = componentesAprobacion.find(row => row.componente === 'academica_territorial');
+  const aprobacionesTerritorialesPropias = territorialParticionado ? scopedTerritorialProgress(
+    aprobacionTerritorial, pta.componentes_aprobacion_usuario || [], decisionPermissions?.territorial.aprobar.pairs || [], aprobacionGeneralTerritorial,
+  ) : [];
+  const revisionesTerritorialesPropias = territorialParticionado ? scopedTerritorialProgress(
+    revisionTerritorial, pta.componentes_revision_usuario || [],
+    (decisionPermissions?.territorial.revisar.pairs.length ? decisionPermissions.territorial.revisar.pairs : decisionPermissions?.territorial.aprobar.pairs) || [],
+    revisionGeneralTerritorial,
+  ) : [];
+  const revisionesPersonales = componentesRevision.map(row => row.componente === 'academica_territorial' && revisionesTerritorialesPropias.length
+    ? { ...row, ...revisionesTerritorialesPropias[0], estado: territorialProgressStatus(revisionesTerritorialesPropias, 'revisado') }
+    : row);
+  const revisionDelParCompleta = (par: ParTerritorial) => revisionCargada && scopedTerritorialProgress(
+    revisionTerritorial, pta.componentes_revision_usuario || [], [par], revisionGeneralTerritorial,
+  )[0]?.estado === 'revisado';
+  const aprobacionesPersonales = componentesAprobacion.map(row => {
+    if (row.componente !== 'academica_territorial' || !aprobacionesTerritorialesPropias.length) return row;
+    const estadoPersonal = territorialProgressStatus(aprobacionesTerritorialesPropias, 'aprobado');
+    return { ...row, estado: estadoPersonal, estado_visual: estadoPersonal,
+      aprobadorNombre: aprobacionesTerritorialesPropias[0].actorNombre || row.aprobadorNombre,
+      aprobadorRol: aprobacionesTerritorialesPropias[0].actorRol || row.aprobadorRol,
+      fechaAprobacion: aprobacionesTerritorialesPropias[0].fechaDecision || row.fechaAprobacion,
+      comentarios: aprobacionesTerritorialesPropias[0].comentarios || row.comentarios,
+    };
+  });
+  const tieneAlcanceDocencia = Boolean(decisionPermissions?.allowedComponents.some(key => key.startsWith('academica_'))
+    || decisionPermissions?.allowedReviewSubsecciones.some(key => key.startsWith('academica_')));
+  const docenciaPersonal = tieneAlcanceDocencia ? {
+    aprobaciones: aprobacionesPersonales.filter(row => row.componente.startsWith('academica_') && isComponentAuthorized(row.componente)),
+    revisiones: revisionesPersonales.filter(row => row.componente.startsWith('academica_') && isSubseccionAuthorizedToReview(row.componente, row.subseccion)),
+  } : undefined;
+
   /** Filas de revisión requeridas para un componente (ya vienen filtradas por el backend). */
   const subseccionesRevision = useCallback(
-    (key: string) => componentesRevision.filter(r => r.componente === key),
-    [componentesRevision],
+    (key: string) => revisionesPersonales.filter(r => r.componente === key),
+    [revisionesPersonales],
   );
   /** true si no hay revisiones pendientes para el componente (o no requiere ninguna).
    *  Mientras no se haya podido cargar el estado de revisión se responde `false`
@@ -934,6 +979,10 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     const cambio = Object.fromEntries(campos.filter(campo => initialPta[campo] !== undefined)
       .map(campo => [campo, initialPta[campo]]));
     setPta((prev: any) => prev.id === initialPta.id ? { ...prev, ...cambio } : prev);
+    // Gestión ya confirmó el avance propio. No dejar que las filas del panel
+    // permanezcan antiguas si falla la lectura auxiliar de cada territorial.
+    setAprobacionTerritorial(prev => mergeTerritorialProgress(prev, initialPta.componentes_aprobacion_usuario || []));
+    setRevisionTerritorial(prev => mergeTerritorialProgress(prev, initialPta.componentes_revision_usuario || []));
   }, [initialPta]);
 
   // Refresh server state without replacing local comments or unmounting reports.
@@ -1098,6 +1147,31 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       ...(data?.estadoGeneral ? { estado: data.estadoGeneral } : {}),
     };
     setPta((prev: any) => ({ ...prev, ...cambio }));
+    // Actualizar las filas visibles con la decisión guardada antes de las
+    // lecturas auxiliares. Un par territorial no sustituye el consolidado.
+    const revisionesConfirmadas = [
+      ...(data?.review?.componente && !data.review.territorialId ? [data.review] : []),
+      ...(actualizado?.componentes_revision_estado || []),
+    ];
+    setComponentesRevision(prev => prev.map(row => {
+      const confirmada = revisionesConfirmadas.find(item => item.componente === row.componente
+        && (item.subseccion || 'general') === (row.subseccion || 'general'));
+      return confirmada ? { ...row, ...confirmada } : row;
+    }));
+    const aprobacionesConfirmadas = [
+      ...(data?.approval?.componente && !data.approval.territorialId ? [data.approval] : []),
+      ...(actualizado?.componentes_aprobacion_estado || []),
+    ];
+    setComponentesAprobacion(prev => prev.map(row => {
+      const confirmada = aprobacionesConfirmadas.find(item => item.componente === row.componente);
+      return confirmada ? { ...row, ...confirmada, estado_visual: confirmada.estado_visual || confirmada.estado } : row;
+    }));
+    setRevisionTerritorial(prev => mergeTerritorialProgress(prev, [
+      ...(actualizado?.componentes_revision_usuario || []), ...(data?.review?.territorialId ? [data.review] : []),
+    ]));
+    setAprobacionTerritorial(prev => mergeTerritorialProgress(prev, [
+      ...(actualizado?.componentes_aprobacion_usuario || []), ...(data?.approval?.territorialId ? [data.approval] : []),
+    ]));
     // Aplicar el estado confirmado antes de las consultas auxiliares. Una caída
     // de estas consultas no debe dejar pendientes los contadores de la decisión.
     onUpdated?.(cambio);
@@ -1457,10 +1531,6 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   const complementarias = { actividades: [..._compSplit.docencia, ..._compSplit.aadm] };
   const hayActividadesFueraDeAlcance = Boolean(decisionPermissions && territorialesPersona?.length && (
     asignaturas.some(actividadFueraDeTerritorial)
-    || investigacion.proyectos.some(actividadFueraDeTerritorial)
-    || investigacion.actividades.some(actividadFueraDeTerritorial)
-    || extActsRaw.some(actividadFueraDeTerritorial)
-    || complementarias.actividades.some(actividadFueraDeTerritorial)
   ));
   const tieneTotalidadAcadAdmin = _compSplit.aadm.some((a: any) => a?.consumeTotalidad === true);
   const programaResumen = pta.programa_academico || pta.programa || pta.programa_nombre || pta.programaAcademico;
@@ -1969,7 +2039,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
   }, [complementarias.actividades, pta, componentesAprobacion, componenteDeComplementaria]);
 
   const renderComponentCard = (key: string, label: string, IconComponent: any, color: string, subtitle: string, isSubComponent = false) => {
-    const approval = componentesAprobacion.find(c => c.componente === key) || { estado: 'pendiente' };
+    const approval = aprobacionesPersonales.find(c => c.componente === key) || { estado: 'pendiente' };
     const estado = approval.estado || 'pendiente';
     const estadoVisual = getPtaApprovalDisplayStatus(pta, { ...approval, componente: key });
     const noAplica = estadoVisual === 'no_aplica';
@@ -1998,8 +2068,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     // decisión y el backend la rechazaba con un 400 ("ya fue(ron) aprobada(s).
     // No se puede volver a aprobar."). Se oculta el panel de aprobación en ese
     // caso y se informa qué falta (ver mensaje más abajo).
-    const paresPropiosTerritorial = key === 'academica_territorial' && aprobacionTerritorial.length >= 2
-      ? aprobacionTerritorial.filter(t => esParTerritorialPropio(t, 'aprobar'))
+    const paresPropiosTerritorial = key === 'academica_territorial' && territorialParticionado
+      ? aprobacionesTerritorialesPropias
       : [];
     const territorialSinPendientesPropios = paresPropiosTerritorial.length > 0 &&
       paresPropiosTerritorial.every(t => t.estado !== 'pendiente');
@@ -2008,9 +2078,11 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     // de un único botón que intentaba resolverlos todos a la vez — que era lo
     // que provocaba el 400 cuando uno de ellos ya estaba resuelto.
     const paresAccionablesTerritorial = paresPropiosTerritorial.filter(t => t.estado === 'pendiente');
+    const paresListosTerritorial = paresAccionablesTerritorial.filter(t => revisionDelParCompleta(t));
     const canEvaluateComponent = puedeActuarSobreComponentes && componentAuthorized && !isAutoAprobado &&
-      revisionCompleta && !hayOtroComponenteDevuelto && !territorialSinPendientesPropios &&
-      (estado === 'pendiente' || !!evaluandoComponente[key]);
+      (key === 'academica_territorial' && territorialParticionado ? paresListosTerritorial.length > 0 : revisionCompleta)
+      && !hayOtroComponenteDevuelto && !territorialSinPendientesPropios &&
+      ((key === 'academica_territorial' && territorialParticionado) || estado === 'pendiente' || !!evaluandoComponente[key]);
 
     const getAssignmentDate = (): Date | null => {
       const transition = (pta.historialEstados || []).find(
@@ -2551,7 +2623,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                       <span>{!decisionPermissions
                         ? 'No fue posible verificar tus permisos de revisión. Intenta actualizar el detalle.'
                         : decisionPermissions.componentReasons?.[key]?.revisar
-                          || `No tienes autorización para revisar ${subLabel} de ${labelDeComponente(key)}. La actividad requiere el permiso de revisión correspondiente y un alcance territorial compatible.`}</span>
+                          || `No tienes autorización para revisar ${subLabel} de ${labelDeComponente(key)}. Se requiere el permiso de revisión correspondiente${key.startsWith('academica_') ? ' y un alcance territorial compatible' : ''}.`}</span>
                     </div>
                   )}
                   {r.estado === 'devuelto' && puedeRevisarEsta && (
@@ -2728,7 +2800,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                         </button>
                         <button
                           onClick={() => handleAprobarComponente(key, 'aprobado', par)}
-                          disabled={procesandoPar}
+                          disabled={procesandoPar || !revisionDelParCompleta(par)}
                           style={{
                             padding: '6px 16px', borderRadius: 8, border: 'none',
                             background: '#059669', color: 'white', fontSize: '0.72rem', fontWeight: 800,
@@ -3586,6 +3658,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               modoRevision={!puedeAprobar && tieneAlgunPermisoRevision}
               componentesRevision={componentesRevision}
               componentesEstado={pta.componentes_estado}
+              docenciaPersonal={docenciaPersonal}
             />
           </div>
         </div>
@@ -3910,7 +3983,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
               {hayActividadesFueraDeAlcance && (
                 <div role="status" style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 10,
                   background: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1E40AF', fontSize: '0.78rem' }}>
-                  Puede consultar estas actividades, pero su territorial asignada no le permite revisar ni aprobar las de otras territoriales.
+                  Puede consultar las asignaturas, pero solo revisar o aprobar Docencia dentro de su alcance territorial. Investigación, Extensión y Complementarias dependen de sus permisos, sin restricción territorial.
                 </div>
               )}
               {/* Header + traza de aprobación granular (antes tab "Aprobación") */}

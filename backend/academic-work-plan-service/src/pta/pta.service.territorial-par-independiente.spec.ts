@@ -32,6 +32,8 @@ describe('PtaService - pares (territorial, nivel) independientes', () => {
   const montarServicio = (filas: any[]) => {
     const service = Object.create(PtaService.prototype) as any;
     service.ensureTerritorialApprovalRows = jest.fn().mockResolvedValue(filas);
+    service.ptaTerritorialReviewRepo = { find: jest.fn().mockResolvedValue(filas.map(row => ({ ...row, estado: 'revisado' }))) };
+    service.ptaComponentReviewRepo = { findOne: jest.fn().mockResolvedValue({ estado: 'revisado' }) };
     service.ptaTerritorialApprovalRepo = {
       create: jest.fn((v: any) => v),
       save: jest.fn((v: any) => Promise.resolve(v)),

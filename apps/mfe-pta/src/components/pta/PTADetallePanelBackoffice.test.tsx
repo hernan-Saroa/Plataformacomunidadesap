@@ -2,9 +2,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { toast } from 'sonner';
-import { getPTAById, getComponentesAprobacion, getComponentesRevision, getPTADecisionPermissions, requestPTAFirmaAprobadorCode, aprobarComponente, revisarComponente, getAprobacionTerritorial, getEvidenciasSeguimientoPTA, revisarEvidenciaPTA } from '../../services/api/ptaApi';
+import { getPTAById, getComponentesAprobacion, getComponentesRevision, getPTADecisionPermissions, requestPTAFirmaAprobadorCode, aprobarComponente, revisarComponente, getAprobacionTerritorial, getRevisionTerritorial, getEvidenciasSeguimientoPTA, revisarEvidenciaPTA } from '../../services/api/ptaApi';
 import { PTADetallePanelBackoffice, ApprovalTracker } from './PTADetallePanelBackoffice';
-import { PTA_COMPONENT_KEYS } from './shared/ptaComponentPermissions';
+import { PTA_COMPONENT_KEYS, PTA_COMPONENT_REVIEW_PERMISSION, REVIEW_SUBSECCIONES_BY_COMPONENT } from './shared/ptaComponentPermissions';
 
 afterEach(() => {
   cleanup();
@@ -252,10 +252,10 @@ describe('PTADetallePanelBackoffice — visibilidad de componentes ajenos (EFDS-
 
     await screen.findByText('Asignatura Meta');
     expect(screen.getByText('Asignatura Tolima')).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toContain('no le permite revisar ni aprobar');
+    expect(screen.getByRole('status').textContent).toContain('solo revisar o aprobar Docencia dentro de su alcance territorial');
   });
 
-  it('muestra actividades de investigación ajenas en consulta y bloquea la decisión', async () => {
+  it('muestra Investigación de cualquier territorial y bloquea la decisión cuando falta el permiso', async () => {
     vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce({ success: true, data: {
       allowedComponents: [], allowedReviewSubsecciones: [],
       personalTerritoriales: ['Meta'],
@@ -271,7 +271,7 @@ describe('PTADetallePanelBackoffice — visibilidad de componentes ajenos (EFDS-
     header.closest('button')!.click();
     await screen.findByText('Proyecto Meta');
     expect(screen.getByText('Proyecto Tolima')).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toContain('territorial asignada');
+    expect(screen.queryByRole('status')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Aprobar' })).toBeNull();
   });
 
@@ -391,6 +391,26 @@ describe('sincronización del detalle abierto', () => {
 });
 
 describe('autorización vigente del servidor', () => {
+  it.each([false, true])('la advertencia territorial solo corresponde a Docencia, aun con actividades ajenas en todos los demás componentes: %s', async conDocencia => {
+    vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce({ success: true, data: {
+      allowedComponents: ['investigacion'], allowedReviewSubsecciones: [], personalTerritoriales: ['Meta'],
+      territorial: { aprobar: { pairs: [], reason: null }, revisar: { pairs: [], reason: null } },
+    } });
+    const pta = basePta({
+      asignaturas: conDocencia ? [{ nombre: 'Docencia Caldas', territorial_id: 'Caldas', total_horas: 100 }] : [],
+      investigacion_proyecto: { nombre: 'Proyecto Caldas', territorial_id: 'Caldas', horas_solicitadas: 100 },
+      investigacion_actividades: [{ nombre: 'Actividad Tolima', territorial_id: 'Tolima', horas_total: 32 }],
+      extension_actividades: [{ nombre: 'Extensión Tolima', territorial_id: 'Tolima', seccion: 'capacitacion', horas: 10 }],
+      complementarias: [{ nombre: 'Complementaria Caldas', territorial_id: 'Caldas', horas: 10 }],
+    });
+    render(<PTADetallePanelBackoffice {...baseProps({ pta })} />);
+    fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+    await waitFor(() => expect(getPTADecisionPermissions).toHaveBeenCalled());
+    await screen.findByRole('button', { name: /^Componente Investigación/ });
+    await waitFor(() => expect(Boolean(screen.queryByText(/solo revisar o aprobar Docencia dentro de su alcance territorial/))).toBe(conDocencia));
+    expect(screen.queryByText(/La actividad requiere.*alcance territorial/)).toBeNull();
+  });
+
   const sinPermisos = { success: true, data: {
     allowedComponents: [], allowedReviewSubsecciones: [],
     territorial: { aprobar: { pairs: [], reason: null }, revisar: { pairs: [], reason: null } },
@@ -444,6 +464,8 @@ describe('autorización vigente del servidor', () => {
       { territorialId: 'meta', territorialNombre: 'Meta', nivel: 'pregrado', estado: 'pendiente' },
     ];
     vi.mocked(getAprobacionTerritorial).mockResolvedValueOnce({ success: true, data: pairs } as any);
+    vi.mocked(getComponentesRevision).mockResolvedValueOnce({ success: true, data: [{ componente: 'academica_territorial', subseccion: 'general', estado: 'revisado' }] } as any);
+    vi.mocked(getRevisionTerritorial).mockResolvedValueOnce({ success: true, data: pairs.map(pair => ({ ...pair, estado: 'revisado' })) } as any);
     const props = baseProps({ syncVersion: 'primera', pta: basePta({ asignaturas: pairs.map(t => ({
       nombre: `Asignatura ${t.territorialNombre} ${t.nivel}`, componente_docencia: 'academica_territorial',
       territorial_id: t.territorialId, territorial: t.territorialNombre, nivel_programa: t.nivel, total_horas: 96,
@@ -486,6 +508,8 @@ describe('autorización vigente del servidor', () => {
     } };
     vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce(permisos);
     vi.mocked(getAprobacionTerritorial).mockResolvedValueOnce({ success: true, data: pairs } as any);
+    vi.mocked(getRevisionTerritorial).mockResolvedValueOnce({ success: true, data: pairs.map(pair => ({ ...pair, estado: 'revisado' })) } as any)
+      .mockResolvedValueOnce({ success: true, data: pairs.map(pair => ({ ...pair, estado: 'revisado' })) } as any);
     const props = baseProps({ syncVersion: 'primera', pta: basePta({ asignaturas: pairs.map(t => ({
       nombre: `Asignatura ${t.territorialNombre}`, componente_docencia: 'academica_territorial',
       territorial_id: t.territorialId, territorial: t.territorialNombre, nivel_programa: t.nivel, total_horas: 96,
@@ -611,6 +635,214 @@ describe('autorización vigente del servidor', () => {
 // horas vivían en otro componente, la tarjeta visible quedaba en 0h ("No aplica")
 // y el componente real no aparecía en ninguna parte — sin forma de revisarlo ni
 // aprobarlo.
+describe('Docencia por territorial: avance personal', () => {
+  const pares = [
+    { territorialId: 'Pasto', territorialNombre: 'Pasto', nivel: 'pregrado' as const, estado: 'pendiente' },
+    { territorialId: 'Bucaramanga', territorialNombre: 'Bucaramanga', nivel: 'pregrado' as const, estado: 'pendiente' },
+  ];
+  const pta = (estado = 'Pendiente Jefatura') => basePta({ estado, asignaturas: pares.map(par => ({ nombre: `Asignatura ${par.territorialId}`,
+    territorial_id: par.territorialId, componente_docencia: 'academica_territorial', total_horas: 100,
+  })), investigacion_actividades: [], horas_docencia: 200 });
+  const permiso = (territorialId: string, etapa: 'aprobar' | 'revisar') => ({ success: true, data: {
+    allowedComponents: etapa === 'aprobar' ? ['academica_territorial'] : [],
+    allowedReviewSubsecciones: etapa === 'revisar' ? ['academica_territorial:general'] : [],
+    territorial: { aprobar: { pairs: etapa === 'aprobar' ? [{ territorialId, nivel: 'pregrado' }] : [], reason: null },
+      revisar: { pairs: etapa === 'revisar' ? [{ territorialId, nivel: 'pregrado' }] : [], reason: null } },
+  } });
+  const cargar = (consolidado = 'pendiente', revisionPasto = 'revisado') => {
+    vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: true, data: [{ componente: 'academica_territorial', estado: consolidado, estado_visual: consolidado, aplica: true, horas: 200 }] } as any);
+    vi.mocked(getComponentesRevision).mockResolvedValueOnce({ success: true, data: [{ componente: 'academica_territorial', subseccion: 'general', estado: 'pendiente' }] } as any);
+    vi.mocked(getAprobacionTerritorial).mockResolvedValueOnce({ success: true, data: pares.map(par => ({ ...par,
+      estado: par.territorialId === 'Bucaramanga' && consolidado === 'devuelto' ? 'devuelto' : par.estado,
+    })) } as any);
+    vi.mocked(getRevisionTerritorial).mockResolvedValueOnce({ success: true, data: pares.map(par => ({ ...par,
+      estado: par.territorialId === 'Pasto' ? revisionPasto : 'pendiente', revisorNombre: 'Revisor Pasto',
+    })) } as any);
+  };
+
+  it.each(['pendiente', 'devuelto'])('aprueba Pasto con Bucaramanga %s y conserva el indicador personal aprobado aunque fallen las lecturas posteriores', async consolidado => {
+    permisosGranulares.add('pta.approve.academica.territorial.pregrado');
+    const permissions = permiso('Pasto', 'aprobar');
+    vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce(permissions as any).mockResolvedValueOnce(permissions as any);
+    cargar(consolidado);
+    const propio = pta(consolidado === 'devuelto' ? 'REVISION_DOCENTE_N1' : 'Pendiente Jefatura');
+    vi.mocked(requestPTAFirmaAprobadorCode).mockResolvedValueOnce({ success: true, data: { verificationId: 'otp', email: 'test@example.test' } } as any);
+    vi.mocked(aprobarComponente).mockResolvedValueOnce({ success: true, data: {
+      estadoGeneral: propio.estado, approval: { componente: 'academica_territorial', ...pares[0], estado: 'aprobado' },
+      ptaActualizado: { ...propio, componentes_aprobacion_usuario: [{ componente: 'academica_territorial', territorial_id: 'Pasto', nivel: 'pregrado', estado: 'aprobado', revision_completa: true }] },
+    } } as any);
+    render(<PTADetallePanelBackoffice {...baseProps({ pta: propio, actorNombre: 'Aprobador Pasto' })} />);
+    fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+    const aprobar = await screen.findByTitle('Aprobar Pasto · Pregrado') as HTMLButtonElement;
+    expect(aprobar.disabled).toBe(false);
+    expect(screen.queryByTitle('Aprobar Bucaramanga · Pregrado')).toBeNull();
+    vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: false, data: [] } as any);
+    vi.mocked(getAprobacionTerritorial).mockResolvedValueOnce({ success: false, data: [] } as any);
+    fireEvent.click(aprobar);
+    fireEvent.click(await screen.findByText('Confirmar firma de prueba'));
+    await waitFor(() => expect(aprobarComponente).toHaveBeenCalledWith('pta-1', expect.objectContaining({ territorialId: 'Pasto', nivel: 'pregrado' })));
+    await waitFor(() => expect(within(screen.getByText('Docencia').parentElement!).getByText('Aprobado')).toBeTruthy());
+    expect(screen.queryByTitle('Aprobar Pasto · Pregrado')).toBeNull();
+  });
+
+  it.each([
+    ['aprobar', false], ['revisar', false], ['aprobar', true], ['revisar', true],
+  ] as const)('actualiza el indicador de %s con la confirmación de otro usuario y consultas territoriales demoradas=%s', async (etapa, demorada) => {
+    const aprueba = etapa === 'aprobar';
+    permisosGranulares.add(aprueba ? 'pta.approve.academica.territorial.pregrado' : 'pta.review.academica.territorial.pregrado');
+    const permissions = permiso('Pasto', etapa);
+    vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce(permissions as any)
+      .mockResolvedValueOnce(permissions as any).mockResolvedValueOnce(permissions as any);
+    cargar('pendiente', 'pendiente');
+    const props = baseProps({ pta: pta(), puedeAprobar: aprueba });
+    const { rerender } = render(<PTADetallePanelBackoffice {...props} syncVersion="inicial" />);
+    await waitFor(() => expect(within(screen.getAllByText('Docencia')[0].parentElement!).getByText('Pendiente')).toBeTruthy());
+    await waitFor(() => expect(getAprobacionTerritorial).toHaveBeenCalledTimes(1));
+    // La consulta de Gestión confirma el avance propio, pero las lecturas
+    // auxiliares no consiguen renovar el estado pendiente que tenía el panel.
+    let liberarLectura!: () => void;
+    const lectura = demorada ? new Promise<any>(resolve => { liberarLectura = () => resolve({ success: false, data: [] }); })
+      : Promise.resolve({ success: false, data: [] });
+    vi.mocked(getAprobacionTerritorial).mockReturnValueOnce(lectura as any);
+    vi.mocked(getRevisionTerritorial).mockReturnValueOnce(lectura as any);
+    vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: false, data: [] } as any);
+    vi.mocked(getComponentesRevision).mockResolvedValueOnce({ success: false, data: [] } as any);
+    const campo = aprueba ? 'componentes_aprobacion_usuario' : 'componentes_revision_usuario';
+    const actualizado = { ...props.pta, [campo]: [{ componente: 'academica_territorial',
+      territorial_id: 'Pasto', nivel: 'pregrado', subseccion: 'general', estado: aprueba ? 'aprobado' : 'revisado' }] };
+    rerender(<PTADetallePanelBackoffice {...props} pta={actualizado} syncVersion="cambio-externo" />);
+    await waitFor(() => expect(within(screen.getAllByText('Docencia')[0].parentElement!).getByText(aprueba ? 'Aprobado' : 'Revisado')).toBeTruthy());
+    if (demorada) await act(async () => { liberarLectura(); });
+    expect(within(screen.getAllByText('Docencia')[0].parentElement!).getByText(aprueba ? 'Aprobado' : 'Revisado')).toBeTruthy();
+    // Una reapertura confirmada también debe quitar el verde anterior.
+    vi.mocked(getAprobacionTerritorial).mockResolvedValueOnce({ success: false, data: [] } as any);
+    vi.mocked(getRevisionTerritorial).mockResolvedValueOnce({ success: false, data: [] } as any);
+    vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: false, data: [] } as any);
+    vi.mocked(getComponentesRevision).mockResolvedValueOnce({ success: false, data: [] } as any);
+    rerender(<PTADetallePanelBackoffice {...props} pta={{ ...actualizado, estado: 'REVISION_DOCENTE_N1',
+      [campo]: actualizado[campo].map((row: any) => ({ ...row, estado: 'pendiente' })),
+    }} syncVersion="reapertura" />);
+    await waitFor(() => expect(within(screen.getAllByText('Docencia')[0].parentElement!).getByText('Pendiente')).toBeTruthy());
+    expect(aprobarComponente).not.toHaveBeenCalled();
+    expect(revisarComponente).not.toHaveBeenCalled();
+  });
+
+  it('la revisión territorial individual actualiza el panel y la lista sin arrastrar la territorial ajena', async () => {
+    permisosGranulares.clear();
+    permisosGranulares.add('pta.review.academica.territorial.pregrado');
+    const permissions = permiso('Pasto', 'revisar');
+    vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce(permissions as any).mockResolvedValueOnce(permissions as any);
+    cargar('pendiente', 'pendiente');
+    const actualizado = { ...pta(), componentes_aprobacion_usuario: [], componentes_revision_usuario: [
+      { componente: 'academica_territorial', subseccion: 'general', territorial_id: 'Pasto', nivel: 'pregrado', estado: 'revisado' },
+    ] };
+    vi.mocked(revisarComponente).mockResolvedValueOnce({ success: true, data: {
+      review: { componente: 'academica_territorial', ...pares[0], estado: 'revisado' },
+      estadoGeneral: 'Pendiente Jefatura', ptaActualizado: actualizado,
+    } } as any);
+    vi.mocked(requestPTAFirmaAprobadorCode).mockResolvedValueOnce({ success: true,
+      data: { verificationId: 'otp-test', email: 'prueba@example.test' } } as any);
+    const onUpdated = vi.fn();
+    render(<PTADetallePanelBackoffice {...baseProps({ pta: pta(), puedeAprobar: false, onUpdated })} />);
+    fireEvent.click(screen.getByText('Revisión').closest('button')!);
+    const revisar = await screen.findByRole('button', { name: /^Revisar$/ });
+    vi.mocked(getComponentesRevision).mockResolvedValueOnce({ success: false, data: [] } as any);
+    vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: false, data: [] } as any);
+    vi.mocked(getRevisionTerritorial).mockResolvedValueOnce({ success: false, data: [] } as any);
+    vi.mocked(getAprobacionTerritorial).mockResolvedValueOnce({ success: false, data: [] } as any);
+    fireEvent.click(revisar);
+    fireEvent.click(await screen.findByText('Confirmar firma de prueba'));
+    await waitFor(() => expect(onUpdated).toHaveBeenCalledWith(actualizado));
+    expect(within(screen.getByText('Docencia').parentElement!).getByText('Revisado')).toBeTruthy();
+    expect(screen.getByText(/Bucaramanga.*Pendiente de revisión/)).toBeTruthy();
+    expect(revisarComponente).toHaveBeenCalledWith('pta-1', expect.objectContaining({ territorialId: 'Pasto', nivel: 'pregrado' }));
+    expect(aprobarComponente).not.toHaveBeenCalled();
+  });
+
+  it('el revisor de Pasto ve Revisado y el de Bucaramanga continúa pendiente sobre el mismo PTA', async () => {
+    permisosGranulares.add('pta.review.academica.territorial.pregrado');
+    vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce(permiso('Pasto', 'revisar') as any);
+    cargar();
+    const props = baseProps({ pta: pta(), puedeAprobar: false, rolLabel: 'Revisor Docencia' });
+    const { rerender } = render(<PTADetallePanelBackoffice {...props} syncVersion="Pasto" />);
+    await waitFor(() => expect(within(screen.getAllByText('Docencia')[0].parentElement!).getByText('Revisado')).toBeTruthy());
+    vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce(permiso('Bucaramanga', 'revisar') as any);
+    cargar();
+    rerender(<PTADetallePanelBackoffice {...props} syncVersion="Bucaramanga" />);
+    await waitFor(() => expect(within(screen.getAllByText('Docencia')[0].parentElement!).getByText('Pendiente')).toBeTruthy());
+  });
+
+  it('el permiso de aprobar otro componente no reemplaza el indicador de revisión propia de Docencia', async () => {
+    permisosGranulares.add('pta.review.academica.territorial.pregrado');
+    permisosGranulares.add('pta.approve.investigacion');
+    const permissions = permiso('Pasto', 'revisar');
+    permissions.data.allowedComponents = ['investigacion'];
+    vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce(permissions as any);
+    cargar();
+    render(<PTADetallePanelBackoffice {...baseProps({ pta: pta(), puedeAprobar: true })} />);
+    await waitFor(() => expect(within(screen.getAllByText('Docencia')[0].parentElement!).getByText('Revisado')).toBeTruthy());
+  });
+});
+
+describe('revisión confirmada visible antes de las lecturas auxiliares', () => {
+  const casos = Object.entries(REVIEW_SUBSECCIONES_BY_COMPONENT)
+    .filter(([componente]) => componente !== 'academica_territorial')
+    .flatMap(([componente, subsecciones]) => subsecciones.map(subseccion => ({ componente, subseccion })));
+  it.each(casos)('$componente/$subseccion actualiza la revisión sin esperar otra consulta ni ampliar permisos', async ({ componente, subseccion }) => {
+    permisosGranulares.clear();
+    permisosGranulares.add(PTA_COMPONENT_REVIEW_PERMISSION[`${componente}:${subseccion}`]);
+    if (componente === 'complementarias_territorial') permisosGranulares.add('pta.review.complementarias.territorial.pregrado');
+    const permissions = { success: true, data: {
+      allowedComponents: [], allowedReviewSubsecciones: [`${componente}:${subseccion}`],
+      territorial: { aprobar: { pairs: [], reason: null }, revisar: { pairs: [], reason: null } },
+    } };
+    vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce(permissions as any).mockResolvedValueOnce(permissions as any);
+    const review = { componente, subseccion, estado: 'pendiente' };
+    vi.mocked(getComponentesRevision).mockResolvedValueOnce({ success: true, data: [review] } as any);
+    vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: true, data: [{ componente,
+      estado: 'pendiente', estado_visual: 'pendiente', aplica: true, horas: 40 }] } as any);
+    const plan = basePta({
+      asignaturas: [
+        { nombre: 'Asignatura de prueba', componente_docencia: componente, total_horas: 40 },
+      ],
+      investigacion_actividades: [{ nombre: 'Actividad investigativa', horas_total: 40 }],
+      extension_actividades: [{ nombre: 'Actividad de extensión',
+        seccion: ({ ext_procesos: 'seleccion', ext_gobierno: 'alto_gobierno' } as Record<string, string>)[componente] || componente.replace('ext_', ''),
+        horas: 40, horas_total: 40, total_horas: 40 }],
+      complementarias: [{ nombre: 'Actividad complementaria', componente_complementaria: componente, horas: 40,
+        seccion: subseccion === 'academico_administrativas' ? 'academico_admin' : 'complementarias_docencia' }],
+      complementarias_por_componente: { [componente]: 40 },
+    });
+    const confirmado = { ...review, estado: 'revisado', revisorNombre: 'Revisor autorizado', comentarios: 'Revisión confirmada' };
+    const actualizado = { ...plan, componentes_revision_usuario: [confirmado], componentes_aprobacion_usuario: [],
+      componentes_revision_estado: [{ ...review, estado: 'revisado' }],
+    };
+    vi.mocked(revisarComponente).mockResolvedValueOnce({ success: true, data: {
+      review: confirmado, estadoGeneral: plan.estado, ptaActualizado: actualizado,
+    } } as any);
+    vi.mocked(requestPTAFirmaAprobadorCode).mockResolvedValueOnce({ success: true,
+      data: { verificationId: 'otp-test', email: 'prueba@example.test' } } as any);
+    const onUpdated = vi.fn();
+    render(<PTADetallePanelBackoffice {...baseProps({ pta: plan, puedeAprobar: false, onUpdated })} />);
+    fireEvent.click(screen.getByText('Revisión').closest('button')!);
+    const revisar = await screen.findByRole('button', { name: /^Revisar$/ });
+    let terminarLectura!: () => void;
+    vi.mocked(getComponentesRevision).mockImplementationOnce(() => new Promise(resolve => {
+      terminarLectura = () => resolve({ success: false, data: [] });
+    }));
+    vi.mocked(getComponentesAprobacion).mockResolvedValueOnce({ success: false, data: [] } as any);
+    fireEvent.click(revisar);
+    fireEvent.click(await screen.findByText('Confirmar firma de prueba'));
+    await waitFor(() => expect(onUpdated).toHaveBeenCalledWith(actualizado));
+    expect(screen.getByText('Revisión previa (completa)')).toBeTruthy();
+    expect(screen.getByText('Revisión confirmada')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Revisar$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Aprobar$/ })).toBeNull();
+    expect(aprobarComponente).not.toHaveBeenCalled();
+    await act(async () => { terminarLectura(); });
+  });
+});
+
 describe('PTADetallePanelBackoffice — ámbitos de Complementarias', () => {
   const ptaConGestionProfesoral = () => basePta({
     complementarias: [
@@ -653,8 +885,8 @@ describe('PTADetallePanelBackoffice — ámbitos de Complementarias', () => {
     expect(screen.getByRole('button', { name: 'Revisar' })).toBeTruthy();
   });
 
-  it('muestra el motivo territorial sin habilitar revisión ni aprobación', async () => {
-    const reason = 'No se puede verificar la territorial de todas las actividades de complementarias_gestion_profesoral.';
+  it('muestra el rechazo por permiso sin habilitar revisión ni aprobación', async () => {
+    const reason = 'No tiene el permiso de revisión de Complementarias de Gestión Profesoral.';
     vi.mocked(getPTADecisionPermissions).mockResolvedValueOnce({ success: true, data: {
       allowedComponents: [], allowedReviewSubsecciones: [],
       componentReasons: { complementarias_gestion_profesoral: { revisar: reason } },

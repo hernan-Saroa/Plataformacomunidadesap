@@ -9,13 +9,13 @@ interface Props {
 }
 
 /**
- * Si la actividad exige que quien la trabaja la firme con el token
- * institucional antes de darse por terminada.
+ * Si la actividad exige firmar con el token institucional.
  *
- * Sin buscador de aprobadores: a diferencia de la aprobación, que la da otra
- * persona, la firma la pone quien registra la actividad —es su manera de
- * responder por lo que entregó—, así que aquí solo hay una decisión que
- * tomar, no a quién elegir.
+ * Firma cada quien su propia acción: quien registra la actividad al enviarla,
+ * y quien la aprueba al aprobarla, si la actividad tiene aprobación
+ * configurada. Sin buscador de personas: la firma no designa a nadie, solo
+ * pide que cada uno responda por lo que hizo, así que aquí hay una sola
+ * decisión que tomar.
  *
  * Aquí solo se guarda la regla `EXIGE_FIRMA`; quien la hace cumplir es
  * `useFirma`, que envuelve la acción del panel y pide el token antes de
@@ -68,8 +68,8 @@ export function FirmaActividad({ numeral }: Props) {
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-600 m-0 leading-relaxed">
-        Si esta actividad necesita que quien la registra la firme con el token que llega al
-        correo institucional antes de darse por terminada. Los procesos ya cerrados no cambian:
+        Si esta actividad necesita firma con el token que llega al correo institucional: la pone
+        quien la registra al enviarla y, si tiene aprobación, también quien la aprueba. Los procesos ya cerrados no cambian:
         lo que se configure aquí rige de ahora en adelante.
       </p>
 
@@ -92,8 +92,8 @@ export function FirmaActividad({ numeral }: Props) {
       {requiere && (
         <p className="ml-6 flex items-start gap-2 text-[11px] text-slate-500 leading-relaxed">
           <KeySquare className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" aria-hidden="true" />
-          Al ejecutar la acción se pide el token que llega al correo institucional; sin firmarlo
-          la actividad no avanza.
+          Se pide el token al enviar la actividad y otra vez al aprobarla, a cada persona en su
+          propio correo; sin firmar, la actividad no avanza. Devolver no pide firma.
         </p>
       )}
     </div>

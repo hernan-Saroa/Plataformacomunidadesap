@@ -1,0 +1,1 @@
+ALTER TABLE auth."personas" ADD COLUMN IF NOT EXISTS city varchar(255);

@@ -82,9 +82,12 @@ export class Person {
   @JoinColumn({ name: 'id_cargo' })
   cargo: Cargo | null;
 
-  @Column({ name: 'fec_nacimiento' })
-  fec_nacimiento: string;
+  @Column({ name: 'fec_nacimiento', type: 'date', nullable: true })
+  fec_nacimiento: string | null;
 
-  @Column({ name: 'dir_residencia' })
-  dir_residencia: string;
+  @Column({ name: 'dir_residencia', type: 'varchar', nullable: true })
+  dir_residencia: string | null;
+
+  @Column({ name: 'city', type: 'varchar', nullable: true })
+  city: string | null;
 }

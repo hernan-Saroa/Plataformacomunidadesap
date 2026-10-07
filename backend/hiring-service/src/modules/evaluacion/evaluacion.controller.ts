@@ -24,7 +24,7 @@ import {
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
-import { Puede } from '../../auth/puede.guard';
+import { PuedeOEsDelComite } from './puede-o-es-del-comite.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -38,9 +38,10 @@ import {
  * Evaluación de ofertas — actividad 6.3 (EFDS-1157).
  *
  * La plataforma no califica: el comité evalúa por fuera y aquí registra el
- * resultado con su informe. El rol del token solo abre la puerta; quién puede
- * registrar lo decide la membresía del comité de este proceso, así que un
- * evaluador designado en otro llega hasta aquí y no escribe nada.
+ * resultado con su informe. Quién puede registrar lo decide la membresía del
+ * comité de este proceso, no el rol: el designado entra aunque no tenga el
+ * alcance de la 6.3, y un evaluador designado en otro proceso llega hasta aquí
+ * y no escribe nada.
  */
 @ApiTags('Etapa 6 · Evaluación de ofertas')
 @Controller('procesos/:id/evaluacion')
@@ -48,7 +49,7 @@ export class EvaluacionController {
   constructor(private readonly service: EvaluacionService) {}
 
   @Get()
-  @Puede('ver', '6.3')
+  @PuedeOEsDelComite('ver', '6.3')
   @ApiOperation({
     summary: 'Estado de la evaluación del proceso',
     description:
@@ -59,7 +60,7 @@ export class EvaluacionController {
   }
 
   @Post('resultado')
-  @Puede('editar', '6.3')
+  @PuedeOEsDelComite('editar', '6.3')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -99,7 +100,7 @@ export class EvaluacionController {
   }
 
   @Post('resultado/rectificar')
-  @Puede('editar', '6.3')
+  @PuedeOEsDelComite('editar', '6.3')
   @ApiOperation({
     summary: 'Rectificar el resultado registrado',
     description:
@@ -114,7 +115,7 @@ export class EvaluacionController {
   }
 
   @Post('resultado/evidencias')
-  @Puede('editar', '6.3')
+  @PuedeOEsDelComite('editar', '6.3')
   @UseInterceptors(
     FileInterceptor(
       'file',

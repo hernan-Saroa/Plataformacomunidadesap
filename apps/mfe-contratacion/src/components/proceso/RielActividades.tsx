@@ -1,5 +1,12 @@
 import React, { useState } from 'react';
-import { Check, ChevronDown, Lock, Paperclip } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  Lock,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Paperclip,
+} from 'lucide-react';
 
 import { ActividadEtapa, EstadoActividadUI } from './ListaActividades';
 import { ETAPAS } from './Etapas';
@@ -13,6 +20,10 @@ interface Props {
   actividades: ActividadEtapa[];
   seleccionada: string | null;
   onSeleccionar: (numeral: string) => void;
+  /** Plegado se queda en los puntos, para darle el ancho al formulario. */
+  plegado?: boolean;
+  /** Sin esto el riel no ofrece plegarse. */
+  onAlternarPlegado?: () => void;
 }
 
 const COLORES: Record<EstadoActividadUI, { punto: string; borde: string }> = {
@@ -60,6 +71,8 @@ export function RielActividades({
   actividades,
   seleccionada,
   onSeleccionar,
+  plegado = false,
+  onAlternarPlegado,
 }: Props) {
   const [verExcluidas, setVerExcluidas] = useState(false);
 
@@ -68,6 +81,76 @@ export function RielActividades({
   const excluidas = deLaEtapa.filter((a) => a.estado === 'no_aplica');
   const completas = aplicables.filter((a) => a.estado === 'aprobada').length;
   const esActual = etapa === etapaActual;
+
+  /**
+   * Plegado no esconde el avance: quedan los puntos, en el mismo orden y con
+   * los mismos colores, y cada uno sigue abriendo su actividad. El nombre pasa
+   * al `title`, que es lo que se pierde a cambio del ancho.
+   */
+  if (plegado && onAlternarPlegado) {
+    return (
+      <nav
+        aria-label={`Actividades de la etapa ${etapa}`}
+        className="riel-plegado__caja bg-white border border-gray-200 rounded-xl overflow-hidden
+          shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
+      >
+        <button
+          type="button"
+          onClick={onAlternarPlegado}
+          aria-expanded={false}
+          aria-label={`Mostrar las actividades de la etapa ${etapa}`}
+          title="Mostrar las actividades"
+          className="riel-plegado__cabeza bg-slate-50 hover:bg-slate-100 text-slate-500
+            focus:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5]/40 transition-colors"
+        >
+          <PanelLeftOpen className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+            E{etapa}
+          </span>
+          {aplicables.length > 0 && (
+            <span className="text-[10px] font-bold tabular-nums">
+              {completas}/{aplicables.length}
+            </span>
+          )}
+        </button>
+
+        {aplicables.length > 0 && (
+          <ul className="riel-plegado__puntos list-none m-0">
+            {aplicables.map((actividad) => {
+              const color = COLORES[actividad.estado];
+              const activa = seleccionada === actividad.numeral;
+              return (
+                <li key={actividad.numeral}>
+                  <button
+                    type="button"
+                    onClick={() => onSeleccionar(actividad.numeral)}
+                    aria-current={activa ? 'true' : undefined}
+                    aria-label={actividad.nombre}
+                    title={`${actividad.numeral} · ${actividad.nombre}`}
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center
+                      transition-colors focus:outline-none focus-visible:ring-2
+                      focus-visible:ring-[#003DA5]/40 ${
+                        activa ? 'bg-[#E0EDFF]' : 'hover:bg-slate-50'
+                      }`}
+                  >
+                    <span
+                      className="w-4 h-4 rounded-full border-2 flex items-center justify-center"
+                      style={{ background: color.punto, borderColor: color.borde }}
+                      aria-hidden="true"
+                    >
+                      {actividad.estado === 'aprobada' && (
+                        <Check className="w-2.5 h-2.5 text-white" strokeWidth={4} />
+                      )}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </nav>
+    );
+  }
 
   return (
     <nav
@@ -95,6 +178,20 @@ export function RielActividades({
           <span className="text-[10px] font-bold text-slate-500 tabular-nums flex-shrink-0 mt-0.5">
             {completas}/{aplicables.length}
           </span>
+        )}
+        {onAlternarPlegado && (
+          <button
+            type="button"
+            onClick={onAlternarPlegado}
+            aria-expanded={true}
+            aria-label="Plegar las actividades"
+            title="Plegar las actividades"
+            className="-mr-1 p-0.5 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200
+              flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#003DA5]/40
+              transition-colors"
+          >
+            <PanelLeftClose className="w-4 h-4" aria-hidden="true" />
+          </button>
         )}
       </div>
 
