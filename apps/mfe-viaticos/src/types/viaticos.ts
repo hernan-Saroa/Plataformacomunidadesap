@@ -387,6 +387,7 @@ export interface SolicitudListaResponse {
   requiereTiquetes: boolean;
   montoViaticos: number;
   montoGastosViaje: number;
+  montoTotal?: number;
   diasComision: number;
   estadoSolicitud: string;
   radicadoFueraJornada: boolean;
@@ -456,12 +457,20 @@ export interface CrearObligacionDto {
 export interface ProcesarPagoDto {
   fechaPago: string;
   valorPagado: number;
+  costoEstimadoTiquete?: number;
   soportePagoPath?: string;
   soporteDesembolsoPath?: string;
   numeroOrdenPago?: string;
   comprobantePago?: string;
   observacionesPago?: string;
   modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string;
+  otp?: string;
+  verificationId?: string;
+  certificadoId?: string;
+  hashSha256?: string;
+  firmaImagen?: string;
+  nombreFirmante?: string;
+  cargoFirmante?: string;
 }
 
 export type OrigenReintegro = 'COMISION_NO_REALIZADA' | 'VIAJE_MENOR';
@@ -535,6 +544,9 @@ export interface SolicitudViatico {
   montoSolicitadoViaticos: number;
   montoSolicitadoGastosViaje: number;
   montoTotalEstimado: number;
+  montoViaticos?: number;
+  montoGastosViaje?: number;
+  costoEstimadoTiquete?: number;
   estado: EstadoSolicitudViatico;
   extemporanea: boolean;
   radicadoFueraJornada: boolean;
@@ -1318,7 +1330,9 @@ export type TipoFirmaAprobacion =
   | 'GERENTE_PROYECTO'
   | 'ENLACE_ELABORO'
   | 'ANALISTA'
-  | 'CONTROL_VIATICOS';
+  | 'CONTROL_VIATICOS'
+  | 'PRESUPUESTO'
+  | 'TESORERIA';
 
 export interface FirmaAprobacionRegistrada {
   tipo: TipoFirmaAprobacion;

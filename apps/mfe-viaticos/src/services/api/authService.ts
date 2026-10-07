@@ -544,6 +544,21 @@ export class AuthService {
   }
 
   /**
+   * Determina si el usuario de Tesorería puede generar la firma digital de desembolso (Etapa 8 — RF-PAG-003).
+   * Requiere el permiso `travel_expenses:sign_approval` asignado por la Migración 504.
+   */
+  canFirmarTesoreria(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return (
+      this.isTesoreria() ||
+      this.hasPermission('travel_expenses:sign_approval') ||
+      this.hasPermission('travel_expenses:process_payment')
+    );
+  }
+
+  /**
    * Determina si el usuario pertenece al área de Seguridad y Salud en el Trabajo (SST) (Etapa 8 — RF-PAG-002).
    * Prioriza el permiso inmutable específico `travel_expenses.general.es_sst` (Migración 441).
    */

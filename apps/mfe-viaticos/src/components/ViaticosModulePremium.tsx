@@ -1862,21 +1862,78 @@ export default function ViaticosModulePremium() {
                     </div>
                   </div>
 
-                  {/* Resumen Financiero Compacto */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-600">Monto Viáticos:</span>
-                      <span className="font-mono font-bold text-slate-900">{formatearMoneda(solicitudSeleccionada.montoSolicitadoViaticos || 0)}</span>
-                    </div>
-                    <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-2.5 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-600">Gastos de Viaje:</span>
-                      <span className="font-mono font-bold text-slate-900">{formatearMoneda(solicitudSeleccionada.montoSolicitadoGastosViaje || 0)}</span>
-                    </div>
-                    <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-2.5 flex items-center justify-between">
-                      <span className="text-xs font-bold text-blue-900">Total Estimado:</span>
-                      <span className="font-mono font-black text-blue-900">{formatearMoneda(solicitudSeleccionada.montoTotalEstimado || 0)}</span>
-                    </div>
-                  </div>
+                  {/* Resumen Financiero Completo y Desglosado */}
+                  {(() => {
+                    const montoViaticos = Number(
+                      (solicitudCompletaDetalle as any)?.montoViaticos ??
+                      solicitudSeleccionada.montoSolicitadoViaticos ??
+                      solicitudSeleccionada.montoViaticos ??
+                      0,
+                    );
+                    const montoGastosViaje = Number(
+                      (solicitudCompletaDetalle as any)?.montoGastosViaje ??
+                      solicitudSeleccionada.montoSolicitadoGastosViaje ??
+                      solicitudSeleccionada.montoGastosViaje ??
+                      0,
+                    );
+                    const costoTiquetes = Number(
+                      (solicitudCompletaDetalle as any)?.costoEstimadoTiquete ??
+                      solicitudSeleccionada.costoEstimadoTiquete ??
+                      0,
+                    );
+                    const montoTotal = Number(
+                      (solicitudCompletaDetalle as any)?.montoTotal ??
+                      solicitudSeleccionada.montoTotalEstimado ??
+                      solicitudSeleccionada.montoTotal ??
+                      (montoViaticos + montoGastosViaje + costoTiquetes),
+                    );
+
+                    return (
+                      <div className="bg-slate-50/70 border border-slate-200/90 rounded-2xl p-3 sm:p-3.5 space-y-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-1">
+                          <span className="text-[11px] uppercase tracking-wider font-extrabold text-slate-700 flex items-center gap-1.5">
+                            <DollarSign className="w-3.5 h-3.5 text-[#003DA5]" />
+                            Desglose de Liquidación Económica
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            Cálculo consolidado de viáticos, desplazamientos y tiquetes
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                          <div className="bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Viáticos</span>
+                            <span className="font-mono font-bold text-slate-900 text-xs sm:text-sm block">
+                              {formatearMoneda(montoViaticos)}
+                            </span>
+                            <span className="text-[9px] text-slate-500 mt-0.5 block truncate">Alojamiento y manutención</span>
+                          </div>
+                          <div className="bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Gastos de Viaje</span>
+                            <span className="font-mono font-bold text-slate-900 text-xs sm:text-sm block">
+                              {formatearMoneda(montoGastosViaje)}
+                            </span>
+                            <span className="text-[9px] text-slate-500 mt-0.5 block truncate">Terminales y traslados</span>
+                          </div>
+                          <div className="bg-white border border-slate-200 rounded-xl p-2.5 shadow-2xs">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Tiquetes Aéreos</span>
+                            <span className="font-mono font-bold text-sky-800 text-xs sm:text-sm block">
+                              {formatearMoneda(costoTiquetes)}
+                            </span>
+                            <span className="text-[9px] text-slate-500 mt-0.5 block truncate">
+                              {costoTiquetes > 0 ? 'Tarifa pasajes de comisión' : 'Por cotizar / No aplica'}
+                            </span>
+                          </div>
+                          <div className="bg-blue-50/90 border border-blue-200 rounded-xl p-2.5 shadow-2xs">
+                            <span className="text-[10px] uppercase font-bold text-[#003DA5] block mb-0.5">Total Consolidado</span>
+                            <span className="font-mono font-black text-[#003DA5] text-xs sm:text-sm block">
+                              {formatearMoneda(montoTotal)}
+                            </span>
+                            <span className="text-[9px] text-blue-700 mt-0.5 block font-semibold truncate">Viáticos + Gastos + Tiquetes</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {(solicitudSeleccionada.motivoDevolucion || solicitudSeleccionada.observacionesSegundaRevision) && (
                     <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl">
                       <div className="flex items-start gap-2.5">

@@ -5238,6 +5238,46 @@ if (dto.costoEstimadoTiquete !== undefined) {
     const codigoRpPdf = (solicitud as any).codigoRp || solicitud.numeroRp || '';
     const valorComprometidoPdf = Number((solicitud as any).valorComprometido || 0);
 
+    // 4. Datos Grupo de Tesorería (Pago y Desembolso — SIIF Nación, RF-PAG-001)
+    const firmaTesoreriaObj =
+      solicitud.camposAdicionales?.firmaTesoreria ||
+      firmasRegistradasPdf.find(
+        (f: any) =>
+          (f.tipo === 'TESORERIA' ||
+            (f.tipo as string) === 'GRUPO_TESORERIA' ||
+            (f.tipo as string) === 'PAGADOR') &&
+          f.estado !== 'RECHAZADO',
+      );
+    const tesoreriaUsuarioId =
+      firmaTesoreriaObj?.usuarioId || (solicitud as any).pagadoPorId;
+    let tesoreriaNombre =
+      firmaTesoreriaObj?.nombreFirmante && !String(firmaTesoreriaObj.nombreFirmante).includes('@')
+        ? firmaTesoreriaObj.nombreFirmante
+        : '';
+    let tesoreriaDoc = firmaTesoreriaObj?.documentoIdentidad || '';
+    let tesoreriaCargo = firmaTesoreriaObj?.cargoFirmante || '';
+    if (tesoreriaUsuarioId && (!tesoreriaNombre || !tesoreriaDoc)) {
+      const dTes = await this.resolverDatosUsuario(tesoreriaUsuarioId, '');
+      if (!tesoreriaNombre && dTes.nombre && !dTes.nombre.includes('@')) {
+        tesoreriaNombre = dTes.nombre;
+      }
+      if (!tesoreriaDoc && dTes.documento) tesoreriaDoc = dTes.documento;
+      if (!tesoreriaCargo && dTes.cargo) tesoreriaCargo = dTes.cargo;
+    }
+    if (!tesoreriaNombre && (solicitud as any).pagadoPor) {
+      const u = (solicitud as any).pagadoPor;
+      tesoreriaNombre = u.nombreCompleto || u.nomLargo || '';
+    }
+    const fechaPagoTes =
+      firmaTesoreriaObj?.fechaFirma || (solicitud as any).fechaPago || (solicitud as any).fechaRegistroPago || null;
+    const certIdTesoreria = firmaTesoreriaObj?.certificadoId;
+    const numeroOrdenPagoPdf = (solicitud as any).numeroOrdenPago || '';
+    const valorPagadoPdf = Number((solicitud as any).valorPagado || 0);
+    const tesoreriaPago = Boolean(
+      (solicitud.estadoSolicitud === EstadoSolicitud.PAGADA || Boolean(fechaPagoTes) || Boolean(numeroOrdenPagoPdf)) &&
+      (tesoreriaNombre || tesoreriaUsuarioId || fechaPagoTes || numeroOrdenPagoPdf)
+    );
+
     // Enriquecer datos de firmantes con C.C., correo institucional y nombre si vienen registrados o con usuarioId o correo
     if (firmaJefePdf) {
       const idParaResolverJefe =
@@ -5793,7 +5833,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
       }
     }
 
-    const montoTotalGeneral = montoViaticos + totalGastosViaje;
+    const montoTotalGeneral =
+      montoViaticos + totalGastosViaje + Number(solicitud.costoEstimadoTiquete || 0);
     const diasTotales =
       diasPernoctados + diasNoPernoctados * 0.5 ||
       Number(solicitud.diasComision || 0);
@@ -6343,52 +6384,64 @@ if (itinerarioGeneral) {
       const ySec4 = ySec3R3 + 11 + 2;
       drawBox(28, ySec4, 556, 12, '#DDE3EA');
       doc.fontSize(7).font('Helvetica-Bold').fillColor('#000000');
-      doc.text('4. LIQUIDACIÓN DE LOS GASTOS DE DESPLAZAMIENTO', 32, ySec4 + 2.5);
+      doc.text('4. LIQUIDACIÓN DE LOS GASTOS DE DESPLAZAMIENTO Y TIQUETES', 32, ySec4 + 2.5);
 
       // Tabla encabezado
       const ySec4Header = ySec4 + 12;
-      drawBox(28, ySec4Header, 400, 11, null);
+      drawBox(28, ySec4Header, 400, 10, null);
       doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000').text('Descripción', 28, ySec4Header + 2, { width: 400, align: 'center' });
-      drawBox(428, ySec4Header, 156, 11, null);
+      drawBox(428, ySec4Header, 156, 10, null);
       doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000').text('Total', 428, ySec4Header + 2, { width: 156, align: 'center' });
 
       // Fila 1 Desglose Terminales Aéreos
-      const ySec4R1 = ySec4Header + 11;
-      drawBox(28, ySec4R1, 400, 11, null);
+      const ySec4R1 = ySec4Header + 10;
+      drawBox(28, ySec4R1, 400, 10, null);
       doc.fontSize(6.5).font('Helvetica').fillColor('#000000').text('Total Transporte y desplazamientos terminales aéreos', 28, ySec4R1 + 2, { width: 400, align: 'center' });
-      drawBox(428, ySec4R1, 156, 11, null);
+      drawBox(428, ySec4R1, 156, 10, null);
       if (montoTerminalAereo > 0) {
         doc.fontSize(6.5).font('Helvetica').fillColor('#000000').text(formatCurrencyCOP(montoTerminalAereo), 428, ySec4R1 + 2, { width: 146, align: 'right' });
       }
 
       // Fila 2 Desglose Transporte Terrestre / Otros
-      const ySec4R2 = ySec4R1 + 11;
-      drawBox(28, ySec4R2, 400, 11, null);
+      const ySec4R2 = ySec4R1 + 10;
+      drawBox(28, ySec4R2, 400, 10, null);
       doc.fontSize(6.5).font('Helvetica').fillColor('#000000').text('Transporte y desplazamiento por vía terrestre, marítimo, fluvial y/o ferroviario', 28, ySec4R2 + 2, { width: 400, align: 'center' });
-      drawBox(428, ySec4R2, 156, 11, null);
+      drawBox(428, ySec4R2, 156, 10, null);
       if (montoTerrestreUOtro > 0) {
         doc.fontSize(6.5).font('Helvetica').fillColor('#000000').text(formatCurrencyCOP(montoTerrestreUOtro), 428, ySec4R2 + 2, { width: 146, align: 'right' });
       }
 
-      // Fila 3 Total Gastos de Desplazamiento y Transporte (Nuevo subtotal de transporte)
-      const ySec4R3 = ySec4R2 + 11;
-      drawBox(28, ySec4R3, 400, 11, null);
-      doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000').text('Total Gastos de Desplazamiento y Transporte', 28, ySec4R3 + 2, { width: 390, align: 'right' });
-      drawBox(428, ySec4R3, 156, 11, null);
+      // Fila 3 Subtotal Gastos de Desplazamiento y Transporte
+      const ySec4R3 = ySec4R2 + 10;
+      drawBox(28, ySec4R3, 400, 10, null);
+      doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000').text('Subtotal Gastos de Desplazamiento y Transporte', 28, ySec4R3 + 2, { width: 390, align: 'right' });
+      drawBox(428, ySec4R3, 156, 10, null);
       if (totalGastosViaje > 0) {
         doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000').text(formatCurrencyCOP(totalGastosViaje), 428, ySec4R3 + 2, { width: 146, align: 'right' });
       }
 
-      // Fila 4 Total General Viáticos + Transporte
-      const ySec4R4 = ySec4R3 + 11;
-      drawBox(28, ySec4R4, 400, 11, null);
-      doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000').text('TOTAL VIÁTICOS, TRANSPORTES Y DESPLAZAMIENTOS*', 28, ySec4R4 + 2, { width: 390, align: 'right' });
-      drawBox(428, ySec4R4, 156, 11, null);
-      doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000').text(formatCurrencyCOP(montoTotalGeneral), 428, ySec4R4 + 2, { width: 146, align: 'right' });
+      // Fila 4 Costo Estimado / Confirmado de Tiquetes Aéreos
+      const ySec4R4 = ySec4R3 + 10;
+      drawBox(28, ySec4R4, 400, 10, null);
+      doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000').text('Costo Tiquetes Aéreos (Pasajes de la comisión)', 28, ySec4R4 + 2, { width: 390, align: 'right' });
+      drawBox(428, ySec4R4, 156, 10, null);
+      const costoTiquetesPdf = Number(solicitud.costoEstimadoTiquete || 0);
+      if (costoTiquetesPdf > 0) {
+        doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000').text(formatCurrencyCOP(costoTiquetesPdf), 428, ySec4R4 + 2, { width: 146, align: 'right' });
+      } else {
+        doc.fontSize(6).font('Helvetica').fillColor('#64748B').text('$ 0 (No aplica / Por cotizar)', 428, ySec4R4 + 2, { width: 146, align: 'right' });
+      }
 
-      const yNota = ySec4R4 + 11;
-      doc.fontSize(5.2).font('Helvetica-Oblique').fillColor('#000000');
-      doc.text('*NOTA: Para la liquidación de gastos de transporte se aplicará lo referido en la Resolución de viáticos vigente.', 28, yNota + 1);
+      // Fila 5 Total General Viáticos + Transporte + Tiquetes
+      const ySec4R5 = ySec4R4 + 10;
+      drawBox(28, ySec4R5, 400, 10, null);
+      doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000').text('TOTAL GENERAL (VIÁTICOS + DESPLAZAMIENTOS + TIQUETES)*', 28, ySec4R5 + 2, { width: 390, align: 'right' });
+      drawBox(428, ySec4R5, 156, 10, null);
+      doc.fontSize(6.5).font('Helvetica-Bold').fillColor('#000000').text(formatCurrencyCOP(montoTotalGeneral), 428, ySec4R5 + 2, { width: 146, align: 'right' });
+
+      const yNota = ySec4R5 + 10;
+      doc.fontSize(5.1).font('Helvetica-Oblique').fillColor('#000000');
+      doc.text('*NOTA: Incluye liquidación de viáticos, gastos de transporte y valor de pasajes/tiquetes aéreos de la comisión.', 28, yNota + 1);
 
       // ========== SECCIÓN 5: INFORMACIÓN FINANCIERA ==========
       const ySec5 = yNota + 10;
@@ -6679,78 +6732,78 @@ if (itinerarioGeneral) {
 
         // Col 1: ROL / ETAPA con Badge distintivo en negrilla
         const tagW = colW1 - 8;
-        const tagH = 9.5;
-        doc.roundedRect(colX1 + 4, yRow + 2, tagW, tagH, 2.5)
+        const tagH = 8.8;
+        doc.roundedRect(colX1 + 4, yRow + 1.8, tagW, tagH, 2.5)
            .fillColor(rolBadge.bg)
            .strokeColor(rolBadge.border)
            .lineWidth(0.5)
            .fillAndStroke();
 
-        doc.fontSize(6).font('Helvetica-Bold').fillColor(rolBadge.text);
-        doc.text(rolBadge.tag, colX1 + 4, yRow + 3.5, { width: tagW, align: 'center' });
+        doc.fontSize(5.8).font('Helvetica-Bold').fillColor(rolBadge.text);
+        doc.text(rolBadge.tag, colX1 + 4, yRow + 3, { width: tagW, align: 'center' });
 
-        doc.fontSize(4.6).font('Helvetica').fillColor('#64748B');
-        doc.text(rolBadge.sub, colX1 + 4, yRow + 12.2, { width: tagW, align: 'center' });
+        doc.fontSize(4.5).font('Helvetica').fillColor('#64748B');
+        doc.text(rolBadge.sub, colX1 + 4, yRow + 10.6, { width: tagW, align: 'center' });
 
         // Col 2: SERVIDOR PÚBLICO RESPONSABLE (Nombre en negrilla destacada)
         const nombreFinal = this.sanitizarTextoPdf(nombre || '—').toUpperCase();
-        doc.fontSize(6.3).font('Helvetica-Bold').fillColor(estado.aprobado ? '#0F172A' : '#64748B');
-        doc.text(nombreFinal, colX2 + 5, yRow + 2.5, { width: colW2 - 10, align: 'left', lineGap: 0 });
+        doc.fontSize(6).font('Helvetica-Bold').fillColor(estado.aprobado ? '#0F172A' : '#64748B');
+        doc.text(nombreFinal, colX2 + 5, yRow + 2, { width: colW2 - 10, align: 'left', lineGap: 0 });
 
         if (detalleNombre) {
-          doc.fontSize(4.8).font('Helvetica').fillColor('#64748B');
-          doc.text(this.sanitizarTextoPdf(detalleNombre), colX2 + 5, yRow + 10.8, { width: colW2 - 10, align: 'left' });
+          doc.fontSize(4.6).font('Helvetica').fillColor('#64748B');
+          doc.text(this.sanitizarTextoPdf(detalleNombre), colX2 + 5, yRow + 9.5, { width: colW2 - 10, align: 'left' });
         }
 
         // Col 3: IDENTIFICACIÓN Y ÁREA
         if (identificacion) {
-          doc.fontSize(5.8).font('Helvetica-Bold').fillColor('#334155');
-          doc.text(this.sanitizarTextoPdf(identificacion), colX3 + 5, yRow + 2.5, { width: colW3 - 10, align: 'left' });
+          doc.fontSize(5.6).font('Helvetica-Bold').fillColor('#334155');
+          doc.text(this.sanitizarTextoPdf(identificacion), colX3 + 5, yRow + 2, { width: colW3 - 10, align: 'left' });
         }
         if (area) {
-          doc.fontSize(4.8).font('Helvetica').fillColor('#64748B');
-          doc.text(this.sanitizarTextoPdf(area), colX3 + 5, yRow + 10.8, { width: colW3 - 10, align: 'left' });
+          doc.fontSize(4.6).font('Helvetica').fillColor('#64748B');
+          doc.text(this.sanitizarTextoPdf(area), colX3 + 5, yRow + 9.5, { width: colW3 - 10, align: 'left' });
         }
 
         // Col 4: ESTADO, FECHA Y FIRMA DIGITAL (Pill de estado)
         const pillW = 124;
-        const pillH = 9;
+        const pillH = 8.5;
         const pillX = colX4 + (colW4 - pillW) / 2;
-        const pillY = yRow + 1.8;
+        const pillY = yRow + 1.5;
 
         if (estado.aprobado) {
-          doc.roundedRect(pillX, pillY, pillW, pillH, 4.5)
+          doc.roundedRect(pillX, pillY, pillW, pillH, 4.25)
              .fillColor('#ECFDF5')
              .strokeColor('#A7F3D0')
              .lineWidth(0.5)
              .fillAndStroke();
 
-          doc.fontSize(5.2).font('Helvetica-Bold').fillColor('#065F46');
-          doc.text(estado.textoBadge, pillX, pillY + 2, { width: pillW, align: 'center' });
+          doc.fontSize(5).font('Helvetica-Bold').fillColor('#065F46');
+          doc.text(estado.textoBadge, pillX, pillY + 1.8, { width: pillW, align: 'center' });
 
           const infoFirma = [
             estado.fechaStr ? `Fecha: ${estado.fechaStr}` : '',
             estado.certId ? `Cert: ${estado.certId}` : 'Firma Digital Verificada',
           ].filter(Boolean).join(' · ');
 
-          doc.fontSize(4.5).font('Helvetica').fillColor('#475569');
-          doc.text(infoFirma, colX4 + 2, yRow + 11.8, { width: colW4 - 4, align: 'center' });
+          doc.fontSize(4.4).font('Helvetica').fillColor('#475569');
+          doc.text(infoFirma, colX4 + 2, yRow + 10.4, { width: colW4 - 4, align: 'center' });
         } else {
-          doc.roundedRect(pillX, pillY, pillW, pillH, 4.5)
+          doc.roundedRect(pillX, pillY, pillW, pillH, 4.25)
              .fillColor('#F8FAFC')
              .strokeColor('#E2E8F0')
              .lineWidth(0.5)
              .fillAndStroke();
 
-          doc.fontSize(4.9).font('Helvetica-Bold').fillColor('#94A3B8');
-          doc.text(estado.textoBadge, pillX, pillY + 2, { width: pillW, align: 'center' });
+          doc.fontSize(4.7).font('Helvetica-Bold').fillColor('#94A3B8');
+          doc.text(estado.textoBadge, pillX, pillY + 1.8, { width: pillW, align: 'center' });
 
-          doc.fontSize(4.4).font('Helvetica').fillColor('#CBD5E1');
-          doc.text('Pendiente de verificación / firma', colX4 + 2, yRow + 11.8, { width: colW4 - 4, align: 'center' });
+          doc.fontSize(4.3).font('Helvetica').fillColor('#CBD5E1');
+          doc.text('Pendiente de verificación / firma', colX4 + 2, yRow + 10.4, { width: colW4 - 4, align: 'center' });
         }
       };
 
-      const hRow = isExtemporanea ? 16 : 18;
+      const hRow = isExtemporanea ? 14 : 15;
       let curY = yTableHeader + hTableHeader;
 
       // 1. ELABORÓ
@@ -6844,11 +6897,21 @@ if (itinerarioGeneral) {
       if (isExtemporanea) {
         // 4. AUTORIZÓ (Dirección Nacional — Autorización Extemporánea RF-AUT-002)
         const dirAprobo = Boolean(
-          dirNacionalNombre &&
+          (dirNacionalNombre || solicitud.autorizadorDireccionId || firmaDirNacObj) &&
             (fechaAutorizacionDir ||
               certIdDirNac ||
-              solicitud.decisionDireccion === 'AUTORIZADO'),
+              solicitud.decisionDireccion === 'AUTORIZADO' ||
+              solicitud.decisionDireccion === 'AUTORIZADA' ||
+              [
+                'EN_AUTORIZACION',
+                EstadoSolicitud.AUTORIZADA,
+                EstadoSolicitud.EN_PRESUPUESTO,
+                EstadoSolicitud.COMPROMETIDA,
+                EstadoSolicitud.OBLIGADA,
+                EstadoSolicitud.PAGADA,
+              ].includes(solicitud.estadoSolicitud as any)),
         );
+        const nombreDirFinal = dirNacionalNombre || (dirAprobo ? 'Dirección Nacional' : 'Pendiente Aval Dirección Nacional');
         const fechaDirStr = fechaAutorizacionDir
           ? formatFechaHoraSegura(fechaAutorizacionDir)
           : '';
@@ -6871,7 +6934,7 @@ if (itinerarioGeneral) {
             border: '#E9D5FF',
             text: '#7E22CE',
           },
-          dirNacionalNombre || 'Pendiente Aval Dirección Nacional',
+          nombreDirFinal,
           detalleDir,
           docDirDisplay,
           solicitud.esDelegadoDireccion
@@ -6891,8 +6954,19 @@ if (itinerarioGeneral) {
 
         // 5. APROBÓ (Subdirección de Gestión Corporativa — Ordenador del Gasto RF-AUT-001)
         const subdirAprobo = Boolean(
-          subdirectorNombre && (fechaAprobacionSubdir || certIdSubdir),
+          (subdirectorNombre || solicitud.autorizadorId || firmaSubdirObj) &&
+            (fechaAprobacionSubdir ||
+              certIdSubdir ||
+              solicitud.fechaAutorizacion ||
+              [
+                EstadoSolicitud.AUTORIZADA,
+                EstadoSolicitud.EN_PRESUPUESTO,
+                EstadoSolicitud.COMPROMETIDA,
+                EstadoSolicitud.OBLIGADA,
+                EstadoSolicitud.PAGADA,
+              ].includes(solicitud.estadoSolicitud as any)),
         );
+        const nombreSubdirFinal = subdirectorNombre || (subdirAprobo ? 'Subdirección de Gestión Corporativa' : 'Pendiente Aprobación Institucional');
         const fechaSubdirStr = fechaAprobacionSubdir
           ? formatFechaHoraSegura(fechaAprobacionSubdir)
           : '';
@@ -6907,20 +6981,20 @@ if (itinerarioGeneral) {
           hRow,
           {
             tag: 'APROBÓ',
-            sub: 'Subdirección / Ordenador Gasto',
+            sub: 'Subdirección de Gestión Corporativa',
             bg: '#EFF6FF',
             border: '#BFDBFE',
             text: '#1D4ED8',
           },
-          subdirectorNombre || 'Pendiente Aprobación Institucional',
-          'Aprobación Corporativa de Gasto (RF-AUT-001)',
+          nombreSubdirFinal,
+          'Aprobación Subdirección de Gestión Corporativa (RF-AUT-001)',
           docSubdirDisplay,
           'Subdirección de Gestión Corporativa',
           {
             aprobado: subdirAprobo,
             textoBadge: subdirAprobo
               ? '✓ APROBACIÓN INSTITUCIONAL'
-              : 'PENDIENTE APROBACIÓN SUBDIRECCIÓN',
+              : 'PENDIENTE GESTIÓN CORPORATIVA',
             fechaStr: fechaSubdirStr,
             certId: certIdSubdir,
           },
@@ -6930,8 +7004,19 @@ if (itinerarioGeneral) {
       } else {
         // 4. APROBÓ (Subdirección de Gestión Corporativa — Ordenador del Gasto RF-AUT-001)
         const subdirAprobo = Boolean(
-          subdirectorNombre && (fechaAprobacionSubdir || certIdSubdir),
+          (subdirectorNombre || solicitud.autorizadorId || firmaSubdirObj) &&
+            (fechaAprobacionSubdir ||
+              certIdSubdir ||
+              solicitud.fechaAutorizacion ||
+              [
+                EstadoSolicitud.AUTORIZADA,
+                EstadoSolicitud.EN_PRESUPUESTO,
+                EstadoSolicitud.COMPROMETIDA,
+                EstadoSolicitud.OBLIGADA,
+                EstadoSolicitud.PAGADA,
+              ].includes(solicitud.estadoSolicitud as any)),
         );
+        const nombreSubdirFinal = subdirectorNombre || (subdirAprobo ? 'Subdirección de Gestión Corporativa' : 'Pendiente Aprobación Institucional');
         const fechaSubdirStr = fechaAprobacionSubdir
           ? formatFechaHoraSegura(fechaAprobacionSubdir)
           : '';
@@ -6946,20 +7031,20 @@ if (itinerarioGeneral) {
           hRow,
           {
             tag: 'APROBÓ',
-            sub: 'Subdirección / Ordenador Gasto',
+            sub: 'Subdirección de Gestión Corporativa',
             bg: '#EFF6FF',
             border: '#BFDBFE',
             text: '#1D4ED8',
           },
-          subdirectorNombre || 'Pendiente Aprobación Institucional',
-          'Aprobación Corporativa de Gasto (RF-AUT-001)',
+          nombreSubdirFinal,
+          'Aprobación Subdirección de Gestión Corporativa (RF-AUT-001)',
           docSubdirDisplay,
           'Subdirección de Gestión Corporativa',
           {
             aprobado: subdirAprobo,
             textoBadge: subdirAprobo
               ? '✓ APROBACIÓN INSTITUCIONAL'
-              : 'PENDIENTE APROBACIÓN SUBDIRECCIÓN',
+              : 'PENDIENTE GESTIÓN CORPORATIVA',
             fechaStr: fechaSubdirStr,
             certId: certIdSubdir,
           },
@@ -7016,8 +7101,52 @@ if (itinerarioGeneral) {
       );
       curY += hRow;
 
+      // DESEMBOLSÓ (Grupo de Tesorería — Pago y Desembolso SIIF Nación, RF-PAG-001)
+      const fechaTesStr = fechaPagoTes
+        ? formatFechaHoraSegura(fechaPagoTes)
+        : '';
+      const docTesDisplay = tesoreriaDoc
+        ? `C.C. ${tesoreriaDoc}`
+        : tesoreriaNombre
+        ? 'C.C. Registrada'
+        : '—';
+      const detalleTes = [
+        numeroOrdenPagoPdf ? `Orden Pago: ${numeroOrdenPagoPdf}` : '',
+        valorPagadoPdf > 0 ? `Desembolso: ${formatCurrencyCOP(valorPagadoPdf)}` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ') || 'Desembolso y Pago (SIIF Nación)';
+
+      renderFilaTrazabilidad(
+        curY,
+        hRow,
+        {
+          tag: 'DESEMBOLSÓ',
+          sub: 'Grupo de Tesorería',
+          bg: '#ECFDF5',
+          border: '#A7F3D0',
+          text: '#065F46',
+        },
+        tesoreriaPago
+          ? tesoreriaNombre || 'Grupo de Tesorería'
+          : 'Pendiente Desembolso Tesorería',
+        detalleTes,
+        docTesDisplay,
+        tesoreriaCargo || 'Tesorería / SIIF Nación',
+        {
+          aprobado: tesoreriaPago,
+          textoBadge: tesoreriaPago
+            ? '✓ COMISIÓN PAGADA (SIIF)'
+            : 'PENDIENTE DESEMBOLSO TESORERÍA',
+          fechaStr: fechaTesStr,
+          certId: certIdTesoreria,
+        },
+        !isExtemporanea,
+      );
+      curY += hRow;
+
       // Borde exterior envolvente de la tabla
-      const totalFilas = isExtemporanea ? 6 : 5;
+      const totalFilas = isExtemporanea ? 7 : 6;
       doc.rect(28, yTableHeader, 556, hTableHeader + hRow * totalFilas).strokeColor('#000000').lineWidth(0.6).stroke();
 
       // Banner institucional de Protección de Datos (Ley 1581 de 2012)
@@ -8711,7 +8840,10 @@ if (itinerarioGeneral) {
         costoEstimadoTiquete: s.costoEstimadoTiquete,
         montoViaticos: s.montoViaticos,
         montoGastosViaje: s.montoGastosViaje,
-        montoTotal: Number(s.montoViaticos || 0) + Number(s.montoGastosViaje || 0),
+        montoTotal:
+          Number(s.montoViaticos || 0) +
+          Number(s.montoGastosViaje || 0) +
+          Number(s.costoEstimadoTiquete || 0),
         estadoSolicitud: s.estadoSolicitud,
         extemporanea: s.extemporanea,
         siifExportado: s.siifExportado,
@@ -8818,7 +8950,7 @@ if (itinerarioGeneral) {
 
       const certIdFinal = dto?.certificadoId || this.generarCertificadoId();
       const datosFirmante = await this.resolverDatosUsuario(usuarioId);
-      const nombreFirmanteFinal = datosFirmante.nombre || 'Subdirección de Gestión';
+      const nombreFirmanteFinal = datosFirmante.nombre || 'Subdirección de Gestión Corporativa';
       const cargoFirmanteFinal = datosFirmante.cargo || 'Subdirector(a) de Gestión Corporativa';
 
       const firmaSubdireccionData = {
@@ -9431,7 +9563,10 @@ if (itinerarioGeneral) {
         costoEstimadoTiquete: s.costoEstimadoTiquete,
         montoViaticos: s.montoViaticos,
         montoGastosViaje: s.montoGastosViaje,
-        montoTotal: Number(s.montoViaticos || 0) + Number(s.montoGastosViaje || 0),
+        montoTotal:
+          Number(s.montoViaticos || 0) +
+          Number(s.montoGastosViaje || 0) +
+          Number(s.costoEstimadoTiquete || 0),
         estadoSolicitud: s.estadoSolicitud,
         extemporanea: s.extemporanea,
         motivoDevolucion: s.motivoDevolucion,
@@ -10845,7 +10980,7 @@ if (itinerarioGeneral) {
    * Método transaccional ACID con bloqueo pesimista SELECT ... FOR UPDATE.
    * Transiciona la comisión de AUTORIZADA / EN_PRESUPUESTO al estado COMPROMETIDA.
    */
-  async registrarRP(
+async registrarRP(
     solicitudId: string,
     datosRp: IssueRpDto,
     usuarioId: string,
@@ -11000,6 +11135,9 @@ if (itinerarioGeneral) {
 
       const guardada = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
 
+      // Consecutivo para notificaciones
+      const consecutivo = guardada.consecutivoUnico || guardada.id;
+
       await manager.getRepository(SolicitudHistorialEstadoEntity).save({
         solicitudId: solicitud.id,
         estadoAnterior,
@@ -11007,6 +11145,52 @@ if (itinerarioGeneral) {
         usuarioId,
         motivo: `[RF-PRE-001 / RF-PRE-003] Registro Presupuestal (RP) expedido en SIIF Nación: ${codigoOficialRp}. Modalidad: ${modalidadPago} (${diasHabilesPrevios} días hábiles previos). Valor comprometido: $${Number(datosRp.valorComprometido).toLocaleString('es-CO')}. Rubro: ${rubroFinal}`,
       });
+
+      // NOTIFICAR A USUARIOS CON PERMISO travel-expenses:general.es_presupuesto
+      // Esto notificará al analista y otros roles con permiso de presupuesto
+      if (guardada.analistaAsignadoId) {
+        try {
+          await this.notificationClient.notifyByPermission(
+            'travel-expenses.general.es_presupuesto',
+            {
+              tipo_notificacion: 'VIATICOS_COMISION_COMPROMETIDA_ANALISTA',
+              titulo: `Comisión comprometida para análisis: ${consecutivo}`,
+              mensaje: `La comisión ${consecutivo} ha sido comprometida y requiere generación de obligación en SIIF.`,
+              descripcion_corta: `Comprometida SIIF · ${consecutivo}`,
+              icono: 'Clock',
+              color: '#F59E0B',
+              prioridad: 'Media' as const,
+              categoria: 'VIATICOS',
+              tiene_accion: true,
+              texto_boton_accion: 'Generar obligación',
+              url_accion: '/viaticos/obligar',
+              datos_adicionales: {
+                solicitudId: guardada.id,
+                consecutivoUnico: consecutivo,
+                rol: 'CONTROL_VIATICOS',
+              },
+            }, {
+              asunto: `Comisión comprometida para obligación SIIF: ${consecutivo}`,
+              html: buildTravelExpenseEmailHtml({
+                consecutivo,
+                comisionadoNombre: this.getComisionadoNombre(guardada.comisionado),
+                destino: `${guardada.destinoCiudad || ''}, ${guardada.destinoDepartamento || ''}`.trim(),
+                fechaInicio: guardada.fechaInicio ? new Date(guardada.fechaInicio).toISOString().split('T')[0] : '',
+                fechaFin: guardada.fechaFin ? new Date(guardada.fechaFin).toISOString().split('T')[0] : '',
+                estadoBadge: 'COMPROMETIDA',
+                badgeColor: '#F59E0B',
+                mensajePrincipal: `La comisión <strong>${consecutivo}</strong> ha sido comprometida y requiere generación de obligación en SIIF para pasar a estado OBLIGADO y quedar lista a Tesorería.`,
+                observaciones: `RP: ${guardada.codigoRp} · Valor: $${Number(guardada.valorComprometido).toLocaleString('es-CO')}`,
+                botonTexto: 'Generar Obligación',
+                botonUrl: '/viaticos/obligar',
+              }),
+              text: `La comisión ${consecutivo} ha sido comprometida y requiere generación de obligación en SIIF.`,
+            }
+          );
+        } catch (notifErr: any) {
+          this.logger.warn(`[notify] No se pudo notificar por permiso es_presupuesto: ${notifErr?.message}`);
+        }
+      }
 
       this.emitirDisbursementReady(guardada.id, EstadoSolicitud.COMPROMETIDA, usuarioId);
       return guardada;
@@ -11599,6 +11783,71 @@ if (itinerarioGeneral) {
     const ordenPagoFinal = dto.numeroOrdenPago?.trim() || dto.comprobantePago?.trim() || null;
     const modalidadFinal = dto.modalidadPago || solicitud.modalidadPago || 'AVANCE';
 
+    // Validación de firma OTP de Tesorería si fue provista
+    if (dto.otp) {
+      const verificationId =
+        dto.verificationId?.trim() ||
+        `viat:${solicitud.id}:TESORERIA:${usuarioId}`;
+      const isVerified = this.verificarOtpFirma({
+        verificationId,
+        code: dto.otp,
+        consume: true,
+      });
+      if (!isVerified) {
+        throw new BadRequestException(
+          'Código OTP inválido o expirado para la firma de desembolso de Tesorería.',
+        );
+      }
+    }
+
+    const certIdFinal = dto.certificadoId || this.generarCertificadoId();
+    const datosFirmante = await this.resolverDatosUsuario(usuarioId);
+    const nombreFirmanteFinal = dto.nombreFirmante || datosFirmante.nombre || 'Profesional de Tesorería';
+    const cargoFirmanteFinal = dto.cargoFirmante || datosFirmante.cargo || 'Responsable de Tesorería / SIIF';
+
+    const firmaTesoreriaData = {
+      tipo: 'TESORERIA',
+      nombreFirmante: nombreFirmanteFinal,
+      emailFirmante: datosFirmante.email || null,
+      cargoFirmante: cargoFirmanteFinal,
+      documentoIdentidad: datosFirmante.documento || null,
+      firmaImagen: dto.firmaImagen || null,
+      fechaFirma: new Date().toISOString(),
+      usuarioId,
+      estado: 'FIRMADO',
+      firmadoDigitalmente: true,
+      certificadoId: certIdFinal,
+      hashSha256:
+        dto.hashSha256 ||
+        this.generarHashDocumento(
+          `${solicitud.id}|TESORERIA|${usuarioId}|${new Date().toISOString()}`,
+        ),
+      otpVerificado: Boolean(dto.otp),
+    };
+
+    const prevFirmas = Array.isArray(
+      solicitud.camposAdicionales?.firmasAprobacion,
+    )
+      ? [...solicitud.camposAdicionales.firmasAprobacion]
+      : [];
+    const idxFirma = prevFirmas.findIndex(
+      (f: any) =>
+        f.tipo === 'TESORERIA' ||
+        (f.tipo as string) === 'GRUPO_TESORERIA' ||
+        (f.tipo as string) === 'PAGADOR',
+    );
+    if (idxFirma >= 0) {
+      prevFirmas[idxFirma] = { ...prevFirmas[idxFirma], ...firmaTesoreriaData };
+    } else {
+      prevFirmas.push(firmaTesoreriaData);
+    }
+
+    solicitud.camposAdicionales = {
+      ...(solicitud.camposAdicionales || {}),
+      firmaTesoreria: firmaTesoreriaData,
+      firmasAprobacion: prevFirmas,
+    };
+
     solicitud.estadoSolicitud = EstadoSolicitud.PAGADA;
     solicitud.fechaPago = fechaPagoFinal;
     solicitud.valorPagado = valorPagadoFinal;
@@ -11606,6 +11855,9 @@ if (itinerarioGeneral) {
     solicitud.numeroOrdenPago = ordenPagoFinal;
     solicitud.observacionesPago = dto.observacionesPago?.trim() || null;
     solicitud.pagadoPorId = usuarioId;
+    if (dto.costoEstimadoTiquete !== undefined && dto.costoEstimadoTiquete !== null) {
+      solicitud.costoEstimadoTiquete = Number(dto.costoEstimadoTiquete);
+    }
     solicitud.fechaRegistroPago = new Date();
 
     const consecutivo = solicitud.consecutivoUnico || solicitud.id;
@@ -11614,7 +11866,7 @@ if (itinerarioGeneral) {
     return await this.dataSource.transaction(async (manager) => {
       const guardada = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
 
-      const comentariosTrazabilidad = `[RF-PAG-003] Pago procesado por Tesorería. Estado: PAGADA. Valor desembolsado: $${valorPagadoFinal.toLocaleString('es-CO')}. Modalidad: ${modalidadFinal}. Obligación SIIF: ${numObligacion}${ordenPagoFinal ? `. Orden Pago: ${ordenPagoFinal}` : ''}${soporteFinal ? `. Soporte: ${soporteFinal}` : ''}.`;
+      const comentariosTrazabilidad = `[RF-PAG-003] Pago procesado y firmado por Tesorería (${certIdFinal}). Estado: PAGADA. Valor desembolsado: $${valorPagadoFinal.toLocaleString('es-CO')}. Modalidad: ${modalidadFinal}. Obligación SIIF: ${numObligacion}${ordenPagoFinal ? `. Orden Pago: ${ordenPagoFinal}` : ''}${soporteFinal ? `. Soporte: ${soporteFinal}` : ''}.`;
 
       await manager.getRepository(SolicitudHistorialEstadoEntity).save({
         solicitudId: guardada.id,
@@ -11674,17 +11926,26 @@ if (itinerarioGeneral) {
           ].filter(Boolean) as string[]));
 
           for (const destId of destinatarios) {
-            await this.notificationClient.notifyUser(destId, notifPago, emailPago);
+            if (typeof this.notificationClient.notifyUser === 'function') {
+              await this.notificationClient.notifyUser(destId, notifPago, emailPago);
+            } else if (typeof (this.notificationClient as any).send === 'function') {
+              await (this.notificationClient as any).send({
+                ...notifPago,
+                id_usuario_destinatario: destId,
+              });
+            }
           }
 
           // Notificación directa por email al comisionado si tiene correo registrado
           if (guardada.comisionado?.email && guardada.comisionado.email.includes('@')) {
-            await this.notificationClient.sendEmail({
-              to: guardada.comisionado.email,
-              subject: emailPago.asunto,
-              html: emailPago.html,
-              text: notifPago.mensaje,
-            });
+            if (typeof this.notificationClient.sendEmail === 'function') {
+              await this.notificationClient.sendEmail({
+                to: guardada.comisionado.email,
+                subject: emailPago.asunto,
+                html: emailPago.html,
+                text: notifPago.mensaje,
+              });
+            }
           }
         } catch (notifErr: any) {
           this.logger.warn(`[RF-PAG-003] No se pudo enviar notificación de pago: ${notifErr?.message}`);

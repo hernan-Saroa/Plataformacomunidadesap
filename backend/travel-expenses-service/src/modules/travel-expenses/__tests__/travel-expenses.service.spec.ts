@@ -5270,6 +5270,60 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
       });
 
+      it('debe incluir la firma digital verificada de Tesorería y el desglose de tiquetes aéreos en 1 página', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.PAGADA),
+          id: 'sol-023-tesoreria',
+          consecutivoUnico: 'SOL-2026-0005',
+          creadoPorUsuarioId: 'user-radicador-1',
+          revisorControlId: 'user-revisor-1',
+          autorizadorId: 'user-autorizador-1',
+          numeroRp: '2026-09-17_RP_9988',
+          fechaRp: new Date(),
+          fechaPago: new Date(),
+          numeroOrdenPago: 'OP-SIIF-99123',
+          valorPagado: 1450000,
+          montoViaticos: 800000,
+          montoGastosViaje: 200000,
+          costoEstimadoTiquete: 450000,
+          comisionado: {
+            primerNombre: 'Sandra',
+            primerApellido: 'Martínez',
+            numeroDocumento: '1023456789',
+          },
+          camposAdicionales: {
+            firmaTesoreria: {
+              tipo: 'TESORERIA',
+              nombreFirmante: 'Felipe Tesorería',
+              documentoIdentidad: '79123456',
+              cargoFirmante: 'Profesional Universitario - Tesorería',
+              fechaFirma: new Date().toISOString(),
+              usuarioId: 'user-tesorero-1',
+              estado: 'FIRMADO',
+              certificadoId: 'CERT-TES-8899',
+            },
+          },
+          diasPernoctados: 2,
+          tarifaDiaPernoctado: 300000,
+          totalPernoctados: 600000,
+          diasNoPernoctados: 1,
+          tarifaDiaNoPernoctado: 150000,
+          totalNoPernoctados: 150000,
+          documentosSoporte: [],
+        };
+
+        const solicitudRepo = { findOne: jest.fn().mockResolvedValue(solicitud) };
+        const dataSource = { query: jest.fn().mockResolvedValue([{ nom_largo: 'Funcionario' }]) };
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-tesoreria');
+
+        expect(pdfBuffer).toBeInstanceOf(Buffer);
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
+      });
+
       it('debe incluir la firma de compromiso del Grupo de Presupuesto y mantener 1 página (extemporánea)', async () => {
         const solicitud = {
           ...mockSolicitudAutorizacion(EstadoSolicitud.COMPROMETIDA),

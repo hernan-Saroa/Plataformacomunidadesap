@@ -269,6 +269,11 @@ export class ViaticosService {
   public mapearSolicitudLista(s: SolicitudListaResponse): SolicitudViatico {
     const montoViaticos = Number(s.montoViaticos || 0);
     const montoGastosViaje = Number(s.montoGastosViaje || 0);
+    const costoEstimadoTiquete = Number(s.costoEstimadoTiquete || (s as any).montoEstimadoTiquete || 0);
+    const montoTotal = Number(
+      s.montoTotal ??
+      (montoViaticos + montoGastosViaje + costoEstimadoTiquete)
+    );
     const idDep = (s as any).idDependencia ?? s.comisionado?.idDependencia ?? null;
     const depNombre = this.resolverNombreDependencia(s);
     return {
@@ -291,9 +296,13 @@ export class ViaticosService {
       tipoComision: 'SERVICIOS_INSTITUCIONALES',
       medioTransporte: s.requiereTiquetes ? 'AEREO' : 'TERRESTRE',
       justificacion: s.objetoComision,
+      montoViaticos,
+      montoGastosViaje,
+      costoEstimadoTiquete,
+      montoTotal,
       montoSolicitadoViaticos: montoViaticos,
       montoSolicitadoGastosViaje: montoGastosViaje,
-      montoTotalEstimado: montoViaticos + montoGastosViaje,
+      montoTotalEstimado: montoTotal,
       estado: (s.estadoSolicitud || 'RADICADA') as EstadoSolicitudViatico,
       extemporanea: Boolean(s.extemporanea),
       radicadoFueraJornada: Boolean(s.radicadoFueraJornada),

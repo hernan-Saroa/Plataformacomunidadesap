@@ -607,6 +607,10 @@ export class TravelExpensesController {
     'travel_expenses:view_assigned_requests',
     'travel_expenses:double_check_request',
     'travel_expenses:read_siif_requested',
+    'travel_expenses:process_payment',
+    'travel_expenses:register_payment',
+    'travel_expenses.general.es_tesoreria',
+    'travel_expenses.general.es_presupuesto',
   )
   solicitarOtpFirma(
     @Param('id') id: string,
@@ -630,6 +634,10 @@ export class TravelExpensesController {
     'travel_expenses:view_assigned_requests',
     'travel_expenses:double_check_request',
     'travel_expenses:read_siif_requested',
+    'travel_expenses:process_payment',
+    'travel_expenses:register_payment',
+    'travel_expenses.general.es_tesoreria',
+    'travel_expenses.general.es_presupuesto',
   )
   verificarOtpFirma(
     @Param('id') id: string,
@@ -2031,7 +2039,14 @@ export class TravelExpensesController {
     'api/v1/requests/:id/desembolso',
   ])
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('travel_expenses:process_payment', 'travel_expenses:register_payment', 'travel_expenses:create_obligation', 'travel_expenses:verify_request')
+  @Permissions(
+    'travel_expenses:process_payment',
+    'travel_expenses:register_payment',
+    'travel_expenses:create_obligation',
+    'travel_expenses:verify_request',
+    'travel_expenses:sign_approval',
+    'travel_expenses.general.es_tesoreria',
+  )
   @ApiTags('tesoreria')
   @ApiOperation({
     summary: 'Procesar desembolso y pago de comisión (Etapa 8 — RF-PAG-003)',

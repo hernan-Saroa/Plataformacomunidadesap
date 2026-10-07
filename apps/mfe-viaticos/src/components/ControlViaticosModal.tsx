@@ -152,6 +152,7 @@ function LiquidacionSection({
 }) {
   const montoViaticos = Number(solicitud?.montoViaticos || liquidacion?.valorTotalViaticos || 0);
   const montoGastosViaje = Number(solicitud?.montoGastosViaje || 0);
+  const costoEstimadoTiquete = Number(solicitud?.costoEstimadoTiquete || 0);
   const dias = Number(solicitud?.diasComision || liquidacion?.numeroDiasNoches || 1);
   const salarioBase = Number(solicitud?.salarioBasico || liquidacion?.salarioBaseAplicado || 0);
   const tarifaDiaria =
@@ -171,7 +172,7 @@ function LiquidacionSection({
   const factorComisionado = liquidacion?.factorComisionado ?? 1;
   const factorPernocta = liquidacion?.factorPernocta ?? 1;
   const totalViaticos = liquidacion?.valorTotalViaticos ?? montoViaticos;
-  const valorTotalNeto = totalViaticos + montoGastosViaje;
+  const valorTotalNeto = totalViaticos + montoGastosViaje + costoEstimadoTiquete;
 
   return (
     <div className="space-y-2 text-xs">
@@ -218,9 +219,15 @@ function LiquidacionSection({
           <span className="font-semibold text-slate-800">{formatearMoneda(montoGastosViaje)}</span>
         </div>
       )}
-      {montoGastosViaje > 0 && (
+      {costoEstimadoTiquete > 0 && (
+        <div className="flex justify-between">
+          <span className="text-slate-500">Costo Tiquetes Aéreos (Pasajes)</span>
+          <span className="font-semibold text-sky-800">{formatearMoneda(costoEstimadoTiquete)}</span>
+        </div>
+      )}
+      {(montoGastosViaje > 0 || costoEstimadoTiquete > 0) && (
         <div className="flex justify-between border-t border-slate-200 pt-2 font-bold bg-slate-100/70 p-2 rounded-lg">
-          <span className="text-slate-900">Total a Girar (Viáticos + Gastos)</span>
+          <span className="text-slate-900">Total Consolidado (Viáticos + Gastos + Tiquetes)</span>
           <span className="text-emerald-800 text-sm">{formatearMoneda(valorTotalNeto)}</span>
         </div>
       )}
@@ -1002,6 +1009,20 @@ export default function ControlViaticosModal({
                         )}
                       </div>
                     </div>
+
+                    {costoEstimadoTiquete > 0 && (
+                      <div className="p-3 bg-blue-50/80 rounded-lg border border-blue-200 flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-[#003DA5]">Total Consolidado con Tiquetes</span>
+                          <p className="text-[11px] text-blue-700/80">
+                            Viáticos ({formatearMoneda(montoViaticos)}) + Desplazamiento ({formatearMoneda(montoGastosViaje)}) + Tiquetes ({formatearMoneda(costoEstimadoTiquete)})
+                          </p>
+                        </div>
+                        <span className="text-sm font-black text-[#003DA5] font-mono">
+                          {formatearMoneda(montoViaticos + montoGastosViaje + costoEstimadoTiquete)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </section>
               )}
