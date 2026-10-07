@@ -251,7 +251,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3004
-      CERTIFICATION_EMAIL_SAFE_MODE: 'true'
+      CERTIFICATION_EMAIL_SAFE_MODE: "true"
       NOTIFICATION_SERVICE_URL: http://notifications-service:3009
 
       DB_HOST: db
@@ -572,6 +572,7 @@ services:
 
       # JWT - debe coincidir con gateway y auth-service
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_change_in_production}
+      HIRING_STORAGE_PATH: /app/uploads
 
       REDIS_URL: redis://redis:6379
       API_GATEWAY_URL: http://api-gateway:3000
@@ -584,6 +585,10 @@ services:
         condition: service_started
     networks:
       - superapp-net
+    # Fuera del contenedor: sin esto, cada despliegue borraba los archivos
+    # subidos en Contratación y quedaban filas apuntando a nada.
+    volumes:
+      - ./backend/hiring-service/uploads:/app/uploads
     restart: unless-stopped
 
   # ============ ACADEMIC SCHEDULE SERVICE ============
