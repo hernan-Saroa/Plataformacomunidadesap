@@ -1147,6 +1147,25 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       ...(data?.estadoGeneral ? { estado: data.estadoGeneral } : {}),
     };
     setPta((prev: any) => ({ ...prev, ...cambio }));
+    // Actualizar las filas visibles con la decisión guardada antes de las
+    // lecturas auxiliares. Un par territorial no sustituye el consolidado.
+    const revisionesConfirmadas = [
+      ...(data?.review?.componente && !data.review.territorialId ? [data.review] : []),
+      ...(actualizado?.componentes_revision_estado || []),
+    ];
+    setComponentesRevision(prev => prev.map(row => {
+      const confirmada = revisionesConfirmadas.find(item => item.componente === row.componente
+        && (item.subseccion || 'general') === (row.subseccion || 'general'));
+      return confirmada ? { ...row, ...confirmada } : row;
+    }));
+    const aprobacionesConfirmadas = [
+      ...(data?.approval?.componente && !data.approval.territorialId ? [data.approval] : []),
+      ...(actualizado?.componentes_aprobacion_estado || []),
+    ];
+    setComponentesAprobacion(prev => prev.map(row => {
+      const confirmada = aprobacionesConfirmadas.find(item => item.componente === row.componente);
+      return confirmada ? { ...row, ...confirmada, estado_visual: confirmada.estado_visual || confirmada.estado } : row;
+    }));
     setRevisionTerritorial(prev => mergeTerritorialProgress(prev, [
       ...(actualizado?.componentes_revision_usuario || []), ...(data?.review?.territorialId ? [data.review] : []),
     ]));

@@ -8,6 +8,17 @@ vi.mock('../../../../shell/src/utils/connectivity', () => ({ getAppOnlineStatus:
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(getAppOnlineStatus).mockReturnValue(true); });
 
 describe('decisiones PTA confirmadas por el servidor', () => {
+  it('no interpreta respuestas incompletas como ausencia de solicitudes de edición', async () => {
+    for (const consultar of [() => getMisSolicitudesPTA('docente-1'), () => getSolicitudesPTA()]) {
+      for (const response of [{ success: true, data: null }, { success: true }, { success: true, data: {} }]) {
+        vi.mocked(apiClient.get).mockResolvedValueOnce(response);
+        expect(await consultar()).toEqual({ success: false, data: [] });
+      }
+      vi.mocked(apiClient.get).mockResolvedValueOnce({ success: true, data: [] });
+      expect(await consultar()).toEqual({ success: true, data: [] });
+    }
+  });
+
   it('actualiza revisión y aprobación de cada par territorial sin usar respuestas HTTP anteriores', async () => {
     vi.mocked(apiClient.get).mockResolvedValue([]);
     await getAprobacionTerritorial('pta-1');

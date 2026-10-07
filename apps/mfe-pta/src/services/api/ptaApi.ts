@@ -1015,7 +1015,7 @@ export async function getSolicitudesPTA(estado?: string) {
     if (!getAppOnlineStatus()) throw new Error('Se necesita conexión para consultar las solicitudes y verificar su alcance.');
     const raw = await apiClient.get<any>(`${PTA_BASE}/solicitudes`, estado ? { estado } : undefined,
       { cache: 'no-store', skipErrorToast: true, retries: 0 });
-    const normalized = normalizeResult<any[]>(raw, []);
+    const normalized = normalizeResult<any[] | null>(raw, null);
     return { success: normalized.success && Array.isArray(normalized.data), data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
     console.error('[mfe-pta][getSolicitudesPTA] Error:', error);
@@ -1699,8 +1699,9 @@ export async function enviarAprobacionPTA(ptaId: string, data?: { enviado_por?: 
 export async function getMisSolicitudesPTA(docenteId: string) {
   try {
     const raw = await apiClient.get<any>(`${PTA_BASE}/solicitudes/docente/${docenteId}`, undefined, { cache: 'no-store' });
-    const normalized = normalizeResult<any[]>(raw, []);
-    return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
+    const normalized = normalizeResult<any[] | null>(raw, null);
+    const valid = normalized.success && Array.isArray(normalized.data);
+    return { success: valid, data: valid ? normalized.data! : [] };
   } catch (error) {
     console.error('[mfe-pta][getMisSolicitudesPTA] Error:', error);
     return { success: false, data: [] };

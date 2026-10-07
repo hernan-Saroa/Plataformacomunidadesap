@@ -2513,6 +2513,10 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     },
   });
 
+  const contextoBandeja = JSON.stringify([filtroEstado, searchQuery, filtroEstadoRegistro, filtroTags]);
+  const contextoBandejaRef = useRef(contextoBandeja);
+  contextoBandejaRef.current = contextoBandeja;
+
   const loadData = async (showLoading = true) => {
     // La primera renderización todavía no conoce el período activo. Consultar en
     // ese instante sin `periodo` trae todos los PTAs y puede sobrescribir después
@@ -2575,11 +2579,24 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
     // Invalida consultas anteriores a la decisión, también para revisiones.
     ++loadDataRequestRef.current;
     const byId = new Map<string, any>(actualizados.map((pta: any) => [pta.id, pta]));
-    setPtas(prev => prev.map(pta => {
+    const aplicarActualizacion = (pta: any) => {
       const actualizado = byId.get(pta.id);
       return actualizado && actualizado.periodo === pta.periodo ? { ...pta, ...actualizado } : pta;
-    }));
+    };
+    setPtas(prev => prev.map(aplicarActualizacion));
     setSelectedPTA((prev: any) => prev && byId.has(prev.id) ? { ...prev, ...byId.get(prev.id) } : prev);
+    const etapa = filtroEstado === 'revision_pendiente' ? 'revision'
+      : filtroEstado === 'aprobacion_pendiente' ? 'aprobacion' : null;
+    if (etapa && contextoBandeja === contextoBandejaRef.current) {
+      const bandejaActualizada = baseFilteredPtasRef.current.map(aplicarActualizacion);
+      const resolvioCasoVisible = bandejaActualizada.some(pta => byId.has(pta.id)
+        && estadoDeMiEtapa(pta, etapa) === 'resuelto');
+      // Al terminar el último pendiente visible, mostrar la bandeja resuelta.
+      // Si quedan otras tareas propias, conservar la bandeja para continuarlas.
+      if (resolvioCasoVisible && !bandejaActualizada.some(pta => matchesPersonalStageFilter(pta, filtroEstado as FiltroEtapaPersonal))) {
+        setFiltroEstado(etapa === 'revision' ? 'revision_revisado' : 'aprobacion_aprobado');
+      }
+    }
   };
 
   const processBulkReview = async () => {
@@ -2833,6 +2850,11 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
 
     return result;
   }, [scopedPtas, searchQuery, filtroTags, ptaTags, filtroEstadoRegistro]);
+
+  // Las decisiones pueden finalizar después de una sincronización de otro
+  // usuario. La navegación debe usar la lista vigente al recibir la respuesta.
+  const baseFilteredPtasRef = useRef(baseFilteredPtas);
+  baseFilteredPtasRef.current = baseFilteredPtas;
 
   /**
    * Los indicadores de etapa deben respetar también el estado real del PTA.
