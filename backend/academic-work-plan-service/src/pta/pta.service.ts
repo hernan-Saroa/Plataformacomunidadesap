@@ -3844,6 +3844,8 @@ export class PtaService {
                     territorial_id: par.territorialId,
                     nivel: par.nivel,
                     estado: row?.estado || estadoAprobacionBase.get(componente) || 'pendiente',
+                    revision_completa: String(revisionTerritorialByKey.get(clavePar(dto.id, componente, par.territorialId, par.nivel))?.estado
+                      || estadoRevisionBase.get(`${componente}:general`) || 'pendiente').toLowerCase() === 'revisado',
                   });
                 }
               }
@@ -3895,9 +3897,6 @@ export class PtaService {
       const revisionUsuario = estadosRevision.filter((item: any) =>
         revisionSet.has(`${item?.componente || ''}:${item?.subseccion || 'general'}`)
           && !(item?.componente === 'academica_territorial' && revisionTerritorialUsuario.length));
-      const revisionConsolidadaTerritorial = estadosRevision.some((item: any) =>
-        item?.componente === 'academica_territorial'
-          && String(item?.estado || '').toLowerCase() === 'revisado');
       visibles.push({
         ...dto,
         componentes_en_alcance: componentesEnAlcance,
@@ -3905,12 +3904,7 @@ export class PtaService {
         componentes_revision_en_alcance: propiosRevision,
         componentes_aprobacion_usuario: [
           ...aprobacionUsuario,
-          ...aprobacionTerritorialUsuario.map(item => ({
-            ...item,
-            // La aprobación territorial solo queda habilitada cuando la
-            // revisión consolidada del componente está completa.
-            revision_completa: revisionConsolidadaTerritorial,
-          })),
+          ...aprobacionTerritorialUsuario,
         ],
         componentes_revision_usuario: [...revisionUsuario, ...revisionTerritorialUsuario],
       });
@@ -5297,6 +5291,33 @@ export class PtaService {
       const devueltos = await this.ptaComponentApprovalRepo.find({
         where: { ptaId, componente: In(componentKeys), estado: 'devuelto' },
       });
+      const docenciaReabierta = devueltos.find(row => DOCENCIA_COMPONENT_KEYS.includes(row.componente as PTAComponentKey)
+        && row.scope === 'solicitud_edicion' && row.scopeId);
+      if (docenciaReabierta) {
+        const solicitud = await this.solicitudRepo.findOne({ where: { id: docenciaReabierta.scopeId, ptaId,
+          tipoSolicitud: SOLICITUD_EDICION_TIPO, estado: In(['aprobado', 'en_aprobacion']) } as any });
+        if (solicitud && normalizeSolicitudComponentesAprobados(solicitud).includes('docencia')) {
+          const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+          const { horasPorComponente } = await this.computeHorasPorComponente(pta?.datosEstructurados || {});
+          const actuales = await this.ptaComponentApprovalRepo.find({ where: { ptaId, componente: In(DOCENCIA_COMPONENT_KEYS) } });
+          for (const componente of DOCENCIA_COMPONENT_KEYS) {
+            const actual = actuales.find(row => row.componente === componente);
+            if (!(horasPorComponente[componente] > 0) || actual?.scopeId === solicitud.id) continue;
+            const nueva = actual || this.ptaComponentApprovalRepo.create({ ptaId, componente });
+            nueva.estado = 'devuelto';
+            nueva.scope = 'solicitud_edicion';
+            nueva.scopeId = solicitud.id;
+            nueva.comentarios = 'Contenido de Docencia incorporado durante la edición autorizada: requiere revisión y aprobación.';
+            await this.ptaComponentApprovalRepo.save(nueva);
+            await this.ptaComponentReviewRepo.delete({ ptaId, componente });
+            if (componente === 'academica_territorial') {
+              await this.ptaTerritorialReviewRepo.delete({ ptaId, componente });
+              await this.ptaTerritorialApprovalRepo.delete({ ptaId, componente });
+            }
+            devueltos.push(nueva);
+          }
+        }
+      }
       for (const row of devueltos) {
         row.estado = 'pendiente';
         row.respuestaDocente = respuestasDocentePorComponente[row.componente] || respuestaDocente || null;
@@ -5322,6 +5343,23 @@ export class PtaService {
       // otro componente territorial (EFDS-1353).
       for (const compTerritorial of TERRITORIAL_COMPONENT_KEYS) {
         if (devueltos.some((d) => d.componente === compTerritorial)) {
+          if (compTerritorial === 'academica_territorial') {
+            const paresDevueltos = await this.ptaTerritorialApprovalRepo.find({
+              where: { ptaId, componente: compTerritorial, estado: 'devuelto' },
+            });
+            if (paresDevueltos.length) {
+              for (const par of paresDevueltos) {
+                await this.ptaTerritorialReviewRepo.delete({ ptaId, componente: compTerritorial,
+                  territorialId: par.territorialId, nivel: par.nivel });
+              }
+            } else {
+              // Una devolución consolidada, sin pares concretos devueltos,
+              // reabre toda Docencia territorial (incluida la concertación).
+              await this.ptaTerritorialApprovalRepo.delete({ ptaId, componente: compTerritorial });
+              await this.ptaTerritorialReviewRepo.delete({ ptaId, componente: compTerritorial });
+            }
+            await this.ptaComponentReviewRepo.update({ ptaId, componente: compTerritorial }, { estado: 'pendiente' });
+          }
           await this.ptaTerritorialApprovalRepo.update(
             { ptaId, componente: compTerritorial, estado: 'devuelto' } as any,
             { estado: 'pendiente' },
@@ -5339,6 +5377,7 @@ export class PtaService {
         componente: In(componentKeys),
       } as any);
       await this.ptaTerritorialApprovalRepo.delete({ ptaId } as any);
+      await this.ptaTerritorialReviewRepo.delete({ ptaId } as any);
     }
     await this.getComponentesAprobacion(ptaId);
   }
@@ -6622,7 +6661,14 @@ export class PtaService {
       // Materializar la matriz completa antes de reabrirla. Para PTAs históricos
       // aprobados antes de existir la aprobación granular, las filas no elegidas
       // se consolidan como aprobadas y no se envían otra vez a revisión.
-      await this.getComponentesAprobacion(pta.id);
+      const componentesOriginales = await this.getComponentesAprobacion(pta.id);
+      const docenciaConContenido = componentesOriginales.some(item => DOCENCIA_COMPONENT_KEYS.includes(item.componente as PTAComponentKey) && item.aplica === true);
+      // Docencia es un área que agrupa varios bloques. Reabrir el área no crea
+      // trabajo en sus bloques vacíos e intactos; una incorporación posterior
+      // se detecta al reenviar y exige revisión/aprobación nuevas.
+      const clavesReabiertas = approvalKeys.filter(key => !docenciaConContenido
+        || !DOCENCIA_COMPONENT_KEYS.includes(key as PTAComponentKey)
+        || componentesOriginales.find(item => item.componente === key)?.aplica !== false);
 
       const result = await this.ptaRepo.manager.transaction(async manager => {
         const txSolicitudRepo = manager.getRepository(SolicitudPtaEntity);
@@ -6665,7 +6711,7 @@ export class PtaService {
         // su totalidad), así que cualquier componente no elegido que siga
         // 'pendiente' aquí es residual y se consolida como aprobado.
         for (const current of currentApprovals) {
-          if (approvalKeys.includes(current.componente) || current.estado === 'aprobado') continue;
+          if (clavesReabiertas.includes(current.componente) || current.estado === 'aprobado') continue;
           current.estado = 'aprobado';
           current.aprobadorId = current.aprobadorId || 'sistema';
           current.aprobadorNombre = current.aprobadorNombre || 'Sistema';
@@ -6676,7 +6722,7 @@ export class PtaService {
           await txApprovalRepo.save(current);
         }
 
-        for (const componente of approvalKeys) {
+        for (const componente of clavesReabiertas) {
           let approval = await txApprovalRepo.findOne({ where: { ptaId: txPta.id, componente } });
           if (!approval) {
             approval = txApprovalRepo.create({ ptaId: txPta.id, componente, estado: 'pendiente' });
@@ -6699,8 +6745,12 @@ export class PtaService {
         // regenere en 'pendiente' la próxima vez que se consulten.
         await txReviewRepo.delete({
           ptaId: txPta.id,
-          componente: In(approvalKeys),
+          componente: In(clavesReabiertas),
         } as any);
+        if (clavesReabiertas.includes('academica_territorial')) {
+          await manager.getRepository(PtaTerritorialApprovalEntity).delete({ ptaId: txPta.id, componente: 'academica_territorial' });
+          await manager.getRepository(PtaTerritorialReviewEntity).delete({ ptaId: txPta.id, componente: 'academica_territorial' });
+        }
 
         txPta.estado = nuevoEstado;
         txPta.version = (txPta.version || 1) + 1;
@@ -6730,6 +6780,7 @@ export class PtaService {
             solicitudId: savedSolicitud.id,
             componentes,
             approvalKeys,
+            clavesReabiertas,
             estadoPtaAnterior: estadoAnterior,
             decision: 'aprobado',
             resueltoPorId: actorId,
@@ -9481,6 +9532,8 @@ export class PtaService {
     const existingKeys = new Set(existing.map((r) => `${r.territorialId}::${r.nivel}`));
     const missing = pares.filter((p) => !existingKeys.has(`${p.territorialId}::${p.nivel}`));
     if (missing.length === 0) return existing;
+    const consolidada = await this.ptaComponentApprovalRepo.findOne({ where: { ptaId, componente } });
+    const aprobadaHistorica = consolidada?.estado === 'aprobado';
     const nombrePorId = await this.resolveNombrePorSeccionalId(missing.map((p) => p.territorialId));
     const nuevas = missing.map((p) => this.ptaTerritorialApprovalRepo.create({
       ptaId,
@@ -9488,7 +9541,9 @@ export class PtaService {
       territorialId: p.territorialId,
       territorialNombre: nombrePorId.get(p.territorialId) || null,
       nivel: p.nivel,
-      estado: 'pendiente',
+      estado: aprobadaHistorica ? 'aprobado' : 'pendiente',
+      ...(aprobadaHistorica ? { actorId: consolidada.aprobadorId, actorNombre: consolidada.aprobadorNombre,
+        actorRol: consolidada.aprobadorRol, fechaDecision: consolidada.fechaAprobacion, comentarios: consolidada.comentarios } : {}),
     }));
     try {
       const guardadas = await this.ptaTerritorialApprovalRepo.save(nuevas);
@@ -9519,6 +9574,7 @@ export class PtaService {
         nivel,
         estado: row?.estado || 'pendiente',
         actorNombre: row?.actorNombre || null,
+        actorRol: row?.actorRol || null,
         comentarios: row?.comentarios || null,
         fechaDecision: row?.fechaDecision || null,
       };
@@ -9537,6 +9593,11 @@ export class PtaService {
     const existingKeys = new Set(existing.map((r) => `${r.territorialId}::${r.nivel}`));
     const missing = pares.filter((p) => !existingKeys.has(`${p.territorialId}::${p.nivel}`));
     if (missing.length === 0) return existing;
+    const [consolidada, aprobacion] = await Promise.all([
+      this.ptaComponentReviewRepo.findOne({ where: { ptaId, componente, subseccion: 'general' } }),
+      this.ptaComponentApprovalRepo.findOne({ where: { ptaId, componente } }),
+    ]);
+    const revisadaHistorica = consolidada?.estado === 'revisado' && aprobacion?.estado !== 'devuelto';
     const nombrePorId = await this.resolveNombrePorSeccionalId(missing.map((p) => p.territorialId));
     const nuevas = missing.map((p) => this.ptaTerritorialReviewRepo.create({
       ptaId,
@@ -9544,7 +9605,9 @@ export class PtaService {
       territorialId: p.territorialId,
       territorialNombre: nombrePorId.get(p.territorialId) || null,
       nivel: p.nivel,
-      estado: 'pendiente',
+      estado: revisadaHistorica ? 'revisado' : 'pendiente',
+      ...(revisadaHistorica ? { revisorId: consolidada.revisorId, revisorNombre: consolidada.revisorNombre,
+        revisorRol: consolidada.revisorRol, fechaRevision: consolidada.fechaRevision, comentarios: consolidada.comentarios } : {}),
     }));
     try {
       const guardadas = await this.ptaTerritorialReviewRepo.save(nuevas);
@@ -9571,6 +9634,7 @@ export class PtaService {
         nivel,
         estado: row?.estado || 'pendiente',
         revisorNombre: row?.revisorNombre || null,
+        revisorRol: row?.revisorRol || null,
         comentarios: row?.comentarios || null,
         fechaRevision: row?.fechaRevision || null,
       };
@@ -9604,7 +9668,7 @@ export class PtaService {
       pares: Array<{ territorialId: string; nivel: PTANivelDocencia }>;
       propios: Array<{ territorialId: string; nivel: PTANivelDocencia }>;
     } | null,
-  ): Promise<{ approval: PtaTerritorialApprovalEntity; estadoGeneral: string } | undefined> {
+  ): Promise<{ approval: PtaTerritorialApprovalEntity; estadoGeneral: string; motivo?: string } | undefined> {
     if (componente !== 'academica_territorial' || !alcance || alcance.pares.length < 2) {
       return undefined;
     }
@@ -9693,10 +9757,33 @@ export class PtaService {
       throw new BadRequestException({
         message: `${partes.join('; ')}. No se puede volver a ${estado === 'aprobado' ? 'aprobar' : 'devolver'}.`,
         code: 'PTA_TERRITORIAL_SIN_PENDIENTES_PROPIOS',
+        motivo: targets.length > 0 && yaDevueltos.length === 0 && estado === 'aprobado'
+          ? 'Ya estaba aprobado' : 'Devuelto: pendiente de corrección del docente',
       });
     }
     if (yaResueltos.length > 0) {
       targets = targets.filter((t) => !yaResueltos.some((y) => y.territorialId === t.territorialId && y.nivel === t.nivel));
+    }
+
+    let pendientesPropiosRevision = 0;
+    if (estado === 'aprobado') {
+      const [revisiones, consolidada] = await Promise.all([
+        this.ptaTerritorialReviewRepo.find({ where: { ptaId, componente } }),
+        this.ptaComponentReviewRepo.findOne({ where: { ptaId, componente, subseccion: 'general' } }),
+      ]);
+      const revisionByKey = new Map(revisiones.map(row => [keyOf(row.territorialId, row.nivel), row]));
+      // Las filas por par son autoritativas. El consolidado solo respalda
+      // revisiones históricas que todavía no cuentan con una fila territorial.
+      const pendientesRevision = targets.filter(par => String(
+        revisionByKey.get(keyOf(par.territorialId, par.nivel))?.estado || consolidada?.estado || 'pendiente',
+      ).toLowerCase() !== 'revisado');
+      if (body?._soloParesRevisados === true && pendientesRevision.length < targets.length) {
+        pendientesPropiosRevision = pendientesRevision.length;
+        targets = targets.filter(par => !pendientesRevision.includes(par));
+      } else if (pendientesRevision.length) {
+        const nombres = await this.resolveNombresSeccionales([...new Set(pendientesRevision.map(par => par.territorialId))]);
+        throw new BadRequestException(`Docencia territorial tiene revisión pendiente en los pares seleccionados (${nombres.join(', ')}). Cada territorial y nivel debe revisarse antes de su aprobación.`);
+      }
     }
 
     for (const { territorialId, nivel } of targets) {
@@ -9755,7 +9842,9 @@ export class PtaService {
     );
 
     const approvalRow = rowByKey.get(keyOf(targets[0].territorialId, targets[0].nivel)) || rows[0];
-    return { approval: approvalRow, estadoGeneral: existingPta.estado };
+    return { approval: approvalRow, estadoGeneral: existingPta.estado,
+      ...(pendientesPropiosRevision ? { motivo: 'Se aprobaron los pares revisados de su alcance; quedan otros pares propios pendientes de revisión.' } : {}),
+    };
   }
 
   /**
@@ -9828,10 +9917,17 @@ export class PtaService {
     const yaRevisados = targets.filter((t) => rowByKey.get(keyOf(t.territorialId, t.nivel))?.estado === 'revisado');
     if (yaRevisados.length === targets.length) {
       const nombres = await this.resolveNombresSeccionales(Array.from(new Set(yaRevisados.map((t) => t.territorialId))));
-      throw new BadRequestException(`La(s) territorial(es) ${nombres.join(', ')} ya fue(ron) revisada(s). No se puede volver a revisar.`);
+      throw new BadRequestException({ message: `La(s) territorial(es) ${nombres.join(', ')} ya fue(ron) revisada(s). No se puede volver a revisar.`,
+        code: 'PTA_TERRITORIAL_REVISION_SIN_PENDIENTES_PROPIOS' });
     }
     if (yaRevisados.length > 0) {
       targets = targets.filter((t) => !yaRevisados.some((y) => y.territorialId === t.territorialId && y.nivel === t.nivel));
+    }
+
+    const aprobaciones = await this.ensureTerritorialApprovalRows(ptaId, pares, componente);
+    if (targets.some(par => aprobaciones.some(row => row.territorialId === par.territorialId
+      && row.nivel === par.nivel && row.estado === 'devuelto'))) {
+      throw new BadRequestException('La territorial y nivel seleccionados están devueltos y pendientes de corrección del docente.');
     }
 
     for (const { territorialId, nivel } of targets) {
@@ -10225,14 +10321,13 @@ export class PtaService {
     // Antes de esto, un revisor con alcance sobre un solo par quedaba bloqueado
     // por completo al intentar marcar "revisado" si el PTA incluía otro par que
     // no le pertenecía.
+    await this.assertComponenteDisponibleParaDecision(ptaId, componente, true);
     const resultadoParcialTerritorialRevision = await this.revisarComponenteTerritorialParcial(
       ptaId, componente, auth, estado, body, alcanceTerritorialRevision,
     );
     if (resultadoParcialTerritorialRevision) {
       return { review: resultadoParcialTerritorialRevision.review, estadoGeneral: existingPta.estado };
     }
-
-    await this.assertComponenteDisponibleParaDecision(ptaId, componente, true);
 
     const ds = (existingPta.datosEstructurados as any) || {};
     const requeridas = await this.getRequiredSubsecciones(componente, ds);
@@ -10476,6 +10571,8 @@ export class PtaService {
     // Ver aprobarComponenteTerritorialParcial más abajo para la aprobación parcial
     // cuando el PTA tiene 2+ territoriales distintas.
     const alcanceTerritorial = await this.assertAlcanceTerritorial(componente, existingPta, auth, 'aprobar');
+    const esTerritorialConVariosPares = componente === 'academica_territorial'
+      && (alcanceTerritorial?.pares?.length ?? 0) >= 2;
 
     await this.assertComponenteDisponibleParaDecision(ptaId, componente);
 
@@ -10485,7 +10582,7 @@ export class PtaService {
     // permiso adicional. Solo bloquea la transición a 'aprobado'; una
     // devolución (por el aprobador, o reutilizada desde revisarComponente) sigue
     // permitida aunque falte revisión.
-    if (estado === 'aprobado') {
+    if (estado === 'aprobado' && !esTerritorialConVariosPares) {
       const dsParaRevision = (existingPta.datosEstructurados as any) || {};
       const requeridas = await this.getRequiredSubsecciones(componente, dsParaRevision);
       if (requeridas.length > 0) {
@@ -10526,8 +10623,6 @@ export class PtaService {
     // fila única bloquearía a Territorial 2 solo porque Territorial 1 devolvió
     // su parte. En ese caso el candado correcto (por par, no por componente) lo
     // aplica aprobarComponenteTerritorialParcial más abajo.
-    const esTerritorialConVariosPares = componente === 'academica_territorial'
-      && (alcanceTerritorial?.pares?.length ?? 0) >= 2;
     if (approval.estado === 'devuelto' && !esTerritorialConVariosPares) {
       throw new BadRequestException(
         `El componente "${componente}" ya fue devuelto y está pendiente de corrección por el docente. ` +
@@ -10894,7 +10989,13 @@ export class PtaService {
           resultados.push({ ptaId, componente, estado: 'omitido', motivo: 'Sin actividades en este componente' });
           continue;
         }
-        const estadoActual = detalleActual.estado;
+        let estadoActual = detalleActual.estado;
+        if (componente === 'academica_territorial' && estadoActual === 'devuelto') {
+          const personal = await this.getUpdatedGestionPta(ptaId, auth);
+          if (personal?.componentes_aprobacion_usuario?.some(row => row.componente === componente && row.estado === 'pendiente')) {
+            estadoActual = 'pendiente';
+          }
+        }
         if (estadoActual === decision) {
           resultados.push({
             ptaId,
@@ -10921,22 +11022,29 @@ export class PtaService {
           // pasarlo, la trazabilidad de un componente aprobado/devuelto en lote
           // mostraría el rol crudo del token en vez del mismo rótulo que dejaría
           // la acción individual.
-          await this.aprobarComponente(ptaId, {
+          const decisionRegistrada = await this.aprobarComponente(ptaId, {
             componente,
             estado: decision,
             comentarios: body?.comentarios,
             aprobadorId: body?.aprobadorId,
             aprobadorNombre: body?.aprobadorNombre,
             aprobadorRol: body?.aprobadorRol,
+            ...(componente === 'academica_territorial' ? { _soloParesRevisados: true } : {}),
           }, auth);
-          resultados.push({ ptaId, componente, estado: decision });
+          resultados.push({ ptaId, componente, estado: decision,
+            ...(decisionRegistrada && 'motivo' in decisionRegistrada && typeof decisionRegistrada.motivo === 'string' && decisionRegistrada.motivo ? { motivo: decisionRegistrada.motivo } : {}),
+          });
         } catch (error) {
           if (error instanceof ForbiddenException) denegados.add(`${ptaId}:${componente}`);
+          const response = error instanceof BadRequestException ? error.getResponse() : null;
+          const sinPendientesPropios = componente === 'academica_territorial' && typeof response === 'object'
+            && response && (response as any).code === 'PTA_TERRITORIAL_SIN_PENDIENTES_PROPIOS';
           resultados.push({
             ptaId,
             componente,
-            estado: 'fallido',
-            motivo: error instanceof Error ? error.message : 'Error desconocido',
+            estado: sinPendientesPropios ? 'omitido' : 'fallido',
+            motivo: sinPendientesPropios && typeof (response as any)?.motivo === 'string'
+              ? (response as any).motivo : error instanceof Error ? error.message : 'Error desconocido',
           });
         }
       }
@@ -11077,7 +11185,13 @@ export class PtaService {
       ]));
 
       for (const item of decisiones) {
-        const estadoActual = estadoPorRevision.get(item.key);
+        let estadoActual = estadoPorRevision.get(item.key);
+        if (item.componente === 'academica_territorial' && estadoActual === 'devuelto') {
+          const personal = await this.getUpdatedGestionPta(ptaId, auth);
+          if (personal?.componentes_revision_usuario?.some(row => row.componente === item.componente && row.estado === 'pendiente')) {
+            estadoActual = 'pendiente';
+          }
+        }
         if (estadoActual === undefined) {
           resultados.push({ ptaId, componente: item.componente, subseccion: item.subseccion, estado: 'omitido', motivo: 'No aplica a este PTA' });
           continue;
@@ -11103,11 +11217,14 @@ export class PtaService {
           resultados.push({ ptaId, componente: item.componente, subseccion: item.subseccion, estado: decision });
         } catch (error) {
           if (error instanceof ForbiddenException) denegados.add(`${ptaId}:${item.key}`);
+          const response = error instanceof BadRequestException ? error.getResponse() : null;
+          const sinPendientesPropios = item.componente === 'academica_territorial' && typeof response === 'object'
+            && response && (response as any).code === 'PTA_TERRITORIAL_REVISION_SIN_PENDIENTES_PROPIOS';
           resultados.push({
             ptaId,
             componente: item.componente,
             subseccion: item.subseccion,
-            estado: 'fallido',
+            estado: sinPendientesPropios ? 'omitido' : 'fallido',
             motivo: error instanceof Error ? error.message : 'Error desconocido',
           });
         }

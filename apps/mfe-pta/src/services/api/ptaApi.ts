@@ -574,6 +574,7 @@ export type TerritorialApprovalRow = {
   nivel: 'pregrado' | 'posgrado';
   estado: 'pendiente' | 'aprobado' | 'devuelto';
   actorNombre: string | null;
+  actorRol?: string | null;
   comentarios: string | null;
   fechaDecision: string | null;
 };
@@ -581,7 +582,7 @@ export type TerritorialApprovalRow = {
 /** Estado por (territorial, nivel) del componente "academica_territorial" (aprobación parcial). */
 export async function getAprobacionTerritorial(ptaId: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/aprobacion-territorial`);
+    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/aprobacion-territorial`, undefined, { cache: 'no-store' });
     const normalized = normalizeResult<TerritorialApprovalRow[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
@@ -596,6 +597,7 @@ export type TerritorialReviewRow = {
   nivel: 'pregrado' | 'posgrado';
   estado: 'pendiente' | 'revisado' | 'devuelto';
   revisorNombre: string | null;
+  revisorRol?: string | null;
   comentarios: string | null;
   fechaRevision: string | null;
 };
@@ -603,7 +605,7 @@ export type TerritorialReviewRow = {
 /** Estado por (territorial, nivel) del componente "academica_territorial" en la etapa de Revisión (revisión parcial). */
 export async function getRevisionTerritorial(ptaId: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/revision-territorial`);
+    const raw = await apiClient.get<any>(`${PTA_BASE}/${ptaId}/revision-territorial`, undefined, { cache: 'no-store' });
     const normalized = normalizeResult<TerritorialReviewRow[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {

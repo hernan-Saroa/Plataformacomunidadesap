@@ -1870,8 +1870,19 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
   }, [estadoDeMiEtapa, tieneEtapaRevision]);
 
   const puedeSeleccionarParaAprobacion = useCallback((pta: any): boolean => {
+    // Una devolución de otro par de Docencia mantiene el PTA en corrección,
+    // pero no debe sacar de la bandeja los pares propios ya revisados. Esta
+    // excepción usa únicamente el alcance confirmado por el servidor y no
+    // habilita otros componentes ni la aprobación global del PTA.
+    const estados = Array.isArray(pta?.componentes_aprobacion_estado) ? pta.componentes_aprobacion_estado : [];
+    const territorialAjenaDevuelta = normalizeEstadoKey(pta?.estado) === 'REVISION_DOCENTE_N1'
+      && estados.some((row: any) => row.componente === 'academica_territorial' && row.estado === 'devuelto')
+      && !estados.some((row: any) => row.componente !== 'academica_territorial' && row.estado === 'devuelto')
+      && Array.isArray(pta?.componentes_aprobacion_usuario)
+      && pta.componentes_aprobacion_usuario.some((row: any) => row.componente === 'academica_territorial'
+        && row.territorial_id && row.nivel && row.estado === 'pendiente' && row.revision_completa === true);
     return tieneEtapaAprobacion
-      && isEstadoPendienteAprobacion(pta?.estado)
+      && (isEstadoPendienteAprobacion(pta?.estado) || territorialAjenaDevuelta)
       && estadoDeMiEtapa(pta, 'aprobacion') === 'pendiente';
   }, [estadoDeMiEtapa, tieneEtapaAprobacion]);
 

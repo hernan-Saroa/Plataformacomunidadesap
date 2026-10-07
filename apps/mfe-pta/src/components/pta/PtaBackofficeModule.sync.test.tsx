@@ -914,6 +914,76 @@ describe('listado y contadores del backoffice', () => {
       .toContain(estadoCompletado);
   });
 
+  it.each([
+    ['revision', 'Pasto', 'Pendiente Jefatura'], ['revision', 'Bucaramanga', 'Pendiente Jefatura'],
+    ['aprobacion', 'Pasto', 'Pendiente Jefatura'], ['aprobacion', 'Bucaramanga', 'Pendiente Jefatura'],
+    ['aprobacion', 'Pasto', 'REVISION_DOCENTE_N1'], ['aprobacion', 'Bucaramanga', 'REVISION_DOCENTE_N1'],
+  ] as const)('las pestañas de %s de %s siguen su propio par y se actualizan sin recargar, con PTA %s', async (etapa, territorial, estadoPta) => {
+    const componente = 'academica_territorial';
+    const aprueba = etapa === 'aprobacion';
+    const campo = aprueba ? 'componentes_aprobacion_usuario' : 'componentes_revision_usuario';
+    const pendientesLabel = aprueba ? 'Por aprobar' : 'Por revisar';
+    const resueltosLabel = aprueba ? 'Aprobados' : 'Revisados';
+    sync.rol = 'docente';
+    sync.permissions.filtroTerritorial = [territorial];
+    sync.permissions.puedeAprobar = aprueba;
+    sync.permissions.puedeRevisar = !aprueba;
+    sync.permissions.componentesAprobables = aprueba ? [componente] : [];
+    sync.permissions.componentesRevisables = aprueba ? [] : [`${componente}:general`];
+    const propio = { componente, territorial_id: territorial, nivel: 'pregrado',
+      subseccion: 'general', estado: 'pendiente', revision_completa: true };
+    const pta = { ...pendientes[0], estado: estadoPta, territorial, componentes_en_alcance: [componente],
+      componentes_aprobados: 0, componentes_total: 4,
+      componentes_aprobacion_estado: [{ componente, estado: estadoPta === 'REVISION_DOCENTE_N1' ? 'devuelto' : 'pendiente', revision_completa: false }],
+      componentes_revision_usuario: aprueba ? [] : [propio],
+      componentes_aprobacion_usuario: aprueba ? [propio] : [],
+    };
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [pta] });
+    render(<PtaBackofficeModule />);
+    fireEvent.click(await screen.findByText('Docente uno'));
+    await screen.findByText('Resolver caso');
+    expect(tab(pendientesLabel).textContent).toContain('1');
+    expect((screen.getAllByRole('checkbox').find(input => input.getAttribute('title')?.startsWith('Seleccionar')) as HTMLInputElement).disabled).toBe(false);
+    expect(tab(resueltosLabel).textContent).not.toMatch(/\d/);
+    // La decisión confirmada del servidor cambia el avance propio; el estado
+    // consolidado continúa pendiente porque la otra territorial falta.
+    sync.updatedPta = { ...pta, [campo]: [{ ...propio, estado: aprueba ? 'aprobado' : 'revisado' }] };
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: false, data: [] });
+    fireEvent.click(screen.getByText('Resolver caso'));
+    await waitFor(() => expect(getAllPTAs).toHaveBeenCalledTimes(2));
+    expect(tab('Todos').textContent).toContain('1');
+    expect(tab(pendientesLabel).textContent).not.toMatch(/\d/);
+    expect(tab(resueltosLabel).textContent).toContain('1');
+    const panel = screen.getByText('Resolver caso');
+    expect(panel.getAttribute('data-estado-pta')).toBe(estadoPta);
+    expect(JSON.parse(panel.getAttribute(aprueba ? 'data-aprobaciones-usuario' : 'data-revisiones-usuario')!))
+      .toEqual([{ ...propio, estado: aprueba ? 'aprobado' : 'revisado' }]);
+    fireEvent.click(tab(pendientesLabel));
+    expect(screen.queryByText('Docente uno')).toBeNull();
+    fireEvent.click(tab(resueltosLabel));
+    expect(screen.getByText('Docente uno')).toBeTruthy();
+  });
+
+  it.each(['revision_pendiente', 'otro_componente_devuelto'])('no habilita aprobación territorial durante la corrección con %s', async motivo => {
+    sync.rol = 'docente';
+    sync.permissions.componentesAprobables = ['academica_territorial'];
+    sync.permissions.filtroTerritorial = ['Pasto'];
+    vi.mocked(getAllPTAs).mockResolvedValue({ success: true, data: [{ ...pendientes[0],
+      territorial: 'Pasto', estado: 'REVISION_DOCENTE_N1', componentes_en_alcance: ['academica_territorial'],
+      componentes_aprobacion_estado: [
+        { componente: 'academica_territorial', estado: 'devuelto' },
+        ...(motivo === 'otro_componente_devuelto' ? [{ componente: 'investigacion', estado: 'devuelto' }] : []),
+      ],
+      componentes_aprobacion_usuario: [{ componente: 'academica_territorial', territorial_id: 'Pasto',
+        nivel: 'pregrado', estado: 'pendiente', revision_completa: motivo !== 'revision_pendiente' }],
+    }] });
+    render(<PtaBackofficeModule />);
+    await screen.findByText('Docente uno');
+    expect(tab('Por aprobar').textContent).not.toMatch(/\d/);
+    fireEvent.click(tab('Por aprobar'));
+    expect(screen.queryByText('Docente uno')).toBeNull();
+  });
+
   it.each(PTA_COMPONENT_KEYS)('actualiza las bandejas al aprobar individualmente %s aunque el PTA siga pendiente y falle la consulta', async componente => {
     sync.rol = 'docente';
     const esDocencia = componente.startsWith('academica_');

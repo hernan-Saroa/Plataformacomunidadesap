@@ -1,13 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../../../../shell/src/services/api';
 import { getAppOnlineStatus } from '../../../../shell/src/utils/connectivity';
-import { aprobarComponente, revisarComponente, aprobarComponentesLote, revisarComponentesLote, getPTADecisionPermissions, getAllPTAs, getComponentesRevision, getComponentesAprobacion, getPTAById, getPTAsByDocente, getSolicitudesPTA, getMisSolicitudesPTA, resolverSolicitudPTA, crearSolicitudPTA } from './ptaApi';
+import { aprobarComponente, revisarComponente, aprobarComponentesLote, revisarComponentesLote, getPTADecisionPermissions, getAllPTAs, getComponentesRevision, getComponentesAprobacion, getPTAById, getPTAsByDocente, getSolicitudesPTA, getMisSolicitudesPTA, resolverSolicitudPTA, crearSolicitudPTA, getAprobacionTerritorial, getRevisionTerritorial } from './ptaApi';
 
 vi.mock('../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }));
 vi.mock('../../../../shell/src/utils/connectivity', () => ({ getAppOnlineStatus: vi.fn() }));
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(getAppOnlineStatus).mockReturnValue(true); });
 
 describe('decisiones PTA confirmadas por el servidor', () => {
+  it('actualiza revisión y aprobación de cada par territorial sin usar respuestas HTTP anteriores', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue([]);
+    await getAprobacionTerritorial('pta-1');
+    await getRevisionTerritorial('pta-1');
+    expect(apiClient.get).toHaveBeenCalledWith('/pta/api/v1/pta-1/aprobacion-territorial', undefined, { cache: 'no-store' });
+    expect(apiClient.get).toHaveBeenCalledWith('/pta/api/v1/pta-1/revision-territorial', undefined, { cache: 'no-store' });
+  });
   it('solo confirma una solicitud de edición guardada sobre el mismo PTA y evita encolarla sin conexión', async () => {
     const payload = { tipoSolicitud: 'edicion_componentes', ptaId: 'pta-1', componentes: ['investigacion'] };
     vi.mocked(getAppOnlineStatus).mockReturnValue(false);
