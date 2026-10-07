@@ -16,7 +16,7 @@ import { join } from 'path';
 
 import { CdpService } from './cdp.service';
 import {
-  AdjuntarSoporteCdpDto,
+  ExpedirCdpConSoporteDto,
   ExpedirCdpDto,
   RechazarCdpDto,
   SolicitarCdpDto,
@@ -67,12 +67,36 @@ export class CdpController {
     return this.service.solicitar(procesoId, dto, getHiringAccess(req));
   }
 
+  @Post('expedicion')
+  @Puede('editar', '4.2')
+  @UseInterceptors(
+    FileInterceptor(
+      'file',
+      opcionesDeCarga(MIME_DOCUMENTOS, 'Solo se admiten archivos PDF, Word o Excel'),
+    ),
+  )
+  @ApiOperation({
+    summary: 'Actividad 4.2 · Verificar, expedir y adjuntar el CDP',
+    description:
+      'Una sola actuación de la Dirección Financiera: el rubro con saldo, el número, valor y fecha del certificado y su soporte. Cierra la 4.2.',
+  })
+  async expedirConSoporte(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @UploadedFile() file: any,
+    @Body() dto: ExpedirCdpConSoporteDto,
+    @Req() req: any,
+  ) {
+    if (!file) throw new BadRequestException('Adjunta el certificado expedido');
+    const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
+    return this.service.expedirConSoporte(procesoId, dto, file, hash, getHiringAccess(req));
+  }
+
   @Post('verificar')
   @Puede('editar', '4.2')
   @ApiOperation({
-    summary: 'Actividad 4.2 · Verificar la disponibilidad presupuestal',
+    summary: 'Paso de la 4.2 · Verificar la disponibilidad presupuestal',
     description:
-      'Se confirma contra un rubro, que queda en el CDP: una disponibilidad sin rubro no se puede conciliar después con la ejecución presupuestal. Solo se pide si la solicitud no lo traía.',
+      'Se confirma contra un rubro, que queda en el CDP. No cierra la 4.2: la cierra la expedición.',
   })
   verificar(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -83,9 +107,9 @@ export class CdpController {
   }
 
   @Post('expedir')
-  @Puede('editar', '4.3')
+  @Puede('editar', '4.2')
   @ApiOperation({
-    summary: 'Actividad 4.3 · Expedir el CDP',
+    summary: 'Paso de la 4.2 · Expedir el CDP sin soporte',
     description:
       'Mientras no exista la integración con KLIC, el número y el valor se registran a mano con el soporte de la Dirección Financiera.',
   })
@@ -98,7 +122,7 @@ export class CdpController {
   }
 
   @Post('documento')
-  @Puede('editar', '4.4')
+  @Puede('editar', '4.2')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -106,19 +130,18 @@ export class CdpController {
     ),
   )
   @ApiOperation({
-    summary: 'Actividad 4.4 · Adjuntar el CDP al expediente',
+    summary: 'Adjuntar el soporte de un CDP expedido sin él',
     description:
-      'El soporte queda vinculado al CDP, no solo al numeral, para que un CDP anulado y su reemplazo conserven cada uno el suyo.',
+      'Para los CDP expedidos antes de que la 4.2 pidiera el soporte con la expedición. El soporte queda vinculado al CDP, no solo al numeral.',
   })
   async adjuntar(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @UploadedFile() file: any,
-    @Body() dto: AdjuntarSoporteCdpDto,
     @Req() req: any,
   ) {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
-    return this.service.adjuntarSoporte(procesoId, file, hash, getHiringAccess(req), dto.firma);
+    return this.service.adjuntarSoporte(procesoId, file, hash, getHiringAccess(req));
   }
 
   @Post('rechazar')

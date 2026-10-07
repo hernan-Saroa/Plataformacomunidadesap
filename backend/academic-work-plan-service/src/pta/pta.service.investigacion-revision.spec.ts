@@ -55,7 +55,7 @@ describe('Investigación: revisión persistida antes de la aprobación', () => {
   }
 
   const reviewer = {
-    userId: 'reviewer-1', name: 'Revisor Investigación', roles: ['REVISOR'], territorialIds: [],
+    userId: 'reviewer-1', name: 'Revisor Investigación', roles: ['REVISOR'], territorialIds: ['Meta'],
     isSuperUser: false, reviewsAll: false, approvesAll: false,
     allowedComponents: [], allowedReviewSubsecciones: ['investigacion:general'],
   } as any;
@@ -66,10 +66,10 @@ describe('Investigación: revisión persistida antes de la aprobación', () => {
   const decision = { componente: 'investigacion', subseccion: 'general', estado: 'revisado', comentarios: 'Revisión de investigación' };
 
   it.each([
-    ['proyecto', { investigacion_proyecto: { nombre: 'Proyecto', horas_solicitadas: 200 } }, 200],
-    ['actividades', { investigacion_actividades: [{ nombre: 'Actividad', horas_total: 32 }] }, 32],
-    ['proyecto y actividades', { investigacion_proyecto: { nombre: 'Proyecto', horas_solicitadas: 200 },
-      investigacion_actividades: [{ nombre: 'Actividad', horas_total: 32 }] }, 232],
+    ['proyecto', { investigacion_proyecto: { nombre: 'Proyecto', territorial_id: 'Caldas', horas_solicitadas: 200 } }, 200],
+    ['actividades', { investigacion_actividades: [{ nombre: 'Actividad', territorial_id: 'Tolima', horas_total: 32 }] }, 32],
+    ['proyecto y actividades', { investigacion_proyecto: { nombre: 'Proyecto', territorial_id: 'Caldas', horas_solicitadas: 200 },
+      investigacion_actividades: [{ nombre: 'Actividad', territorial_id: 'Tolima', horas_total: 32 }] }, 232],
   ])('reabre %s por solicitud de edición y exige nueva revisión conservando Docencia', async (_label, content, hours) => {
     const service = setup(content);
     await service.revisarComponente('pta-1', decision, reviewer);

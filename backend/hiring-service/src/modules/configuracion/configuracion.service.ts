@@ -14,6 +14,7 @@ import { DocumentoRequerido } from '../../entities/documento-requerido.entity';
 import { TipologiaContrato } from '../../entities/tipologia-contrato.entity';
 import { Documento } from '../../entities/documento.entity';
 import {
+  EstadoActividad,
   NUMERAL_ESTUDIO_PREVIO,
   ProcesoActividad,
 } from '../../entities/proceso-actividad.entity';
@@ -38,6 +39,33 @@ import {
   reglasAplicables,
 } from './evaluador-reglas';
 import { descripcion, proyectarFormulario } from './evaluador-condiciones';
+
+/**
+ * En qué queda una actividad cuando el proceso cambia de modalidad.
+ *
+ * Solo se mueve lo que nadie ha tocado: una actividad en NO_APLICA vuelve a
+ * BORRADOR si la nueva modalidad la recorre, y una en BORRADOR sin datos pasa
+ * a NO_APLICA si la excluye. Lo que ya tiene trabajo se deja como está: borrar
+ * en silencio lo que alguien diligenció no es lo que se pidió al cambiar la
+ * modalidad. En la práctica no ocurre, porque la modalidad solo cambia
+ * mientras la 3.1 no se ha aprobado y nada después de ella ha avanzado.
+ *
+ * Función pura para poder fijar la regla sin base de datos.
+ */
+export function estadoConLaModalidad(
+  actividad: Pick<ProcesoActividad, 'estado' | 'datos'>,
+  excluida: boolean,
+): EstadoActividad {
+  if (excluida && actividad.estado === 'BORRADOR' && sinDatos(actividad.datos)) {
+    return 'NO_APLICA';
+  }
+  if (!excluida && actividad.estado === 'NO_APLICA') return 'BORRADOR';
+  return actividad.estado;
+}
+
+function sinDatos(datos: Record<string, any> | null | undefined): boolean {
+  return !datos || Object.keys(datos).length === 0;
+}
 
 /**
  * Módulo de Configuración de Etapas.
@@ -301,6 +329,37 @@ export class ConfiguracionService {
 
     if (nuevas.length > 0) await em.save(ProcesoActividad, nuevas as Partial<ProcesoActividad>[]);
     return nuevas.length;
+  }
+
+  /**
+   * Vuelve a decidir qué actividades recorre el proceso tras cambiarle la
+   * modalidad en la 3.1.
+   *
+   * `instanciarActividades` lo decide una sola vez, al crear el proceso. Sin
+   * esto, cambiar de mínima cuantía a licitación dejaba el proceso recorriendo
+   * las actividades de la modalidad vieja: sin comité, sin audiencia de riesgos.
+   *
+   * Devuelve los numerales que cambiaron, para la traza.
+   */
+  async reaplicarModalidad(em: EntityManager, procesoId: string, modalidad: string) {
+    const activas = new Set(
+      (await em.find(Actividad, { where: { activa: true } })).map((a) => a.numeral),
+    );
+    const excluidas = new Set(
+      (await em.find(ActividadExcluida, { where: { modalidad } })).map((e) => e.numeral),
+    );
+
+    const propias = await em.find(ProcesoActividad, { where: { procesoId } });
+    const cambiadas: string[] = [];
+    for (const actividad of propias) {
+      if (!activas.has(actividad.numeral)) continue;
+      const nuevo = estadoConLaModalidad(actividad, excluidas.has(actividad.numeral));
+      if (nuevo === actividad.estado) continue;
+      actividad.estado = nuevo;
+      await em.save(ProcesoActividad, actividad);
+      cambiadas.push(actividad.numeral);
+    }
+    return cambiadas;
   }
 
   // ------------------------------------------------------------ edicion ----

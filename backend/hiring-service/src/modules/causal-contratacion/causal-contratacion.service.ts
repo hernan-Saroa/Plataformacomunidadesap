@@ -20,7 +20,6 @@ import { HiringAccess } from '../../auth/hiring-access';
 import { ParticipacionService } from '../participacion/participacion.service';
 import { CdpService } from '../cdp/cdp.service';
 import { ElegirCausalDto } from './dto/causal-contratacion.dto';
-import { NUMERAL_MODALIDAD } from '../modalidad-proceso/modalidad-proceso.service';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 
 /** Actividad 3.6 de la matriz —su 3.5.1—: la causal de contratación. */
@@ -49,12 +48,11 @@ export type MotivoNoElige = 'NO_APLICA' | 'MODALIDAD_SIN_RATIFICAR' | 'ETAPA_PAS
  * elección dejaría al abogado sin salida ante su propio error.
  *
  * - `NO_APLICA`: la modalidad no pasa por esta actividad. Nueve de las once.
- * - `MODALIDAD_SIN_RATIFICAR`: la 3.5 todavía puede cambiar la modalidad, y la
- *   causal se elige de la lista de *esa* modalidad. Elegirla antes dejaría en
- *   el expediente una causal de una modalidad que el proceso ya no tiene.
- *   Una 3.5 que la propia modalidad excluye —bolsa mercantil— no bloquea: no
- *   hay nada que ratificar ahí. Hoy no puede darse, porque esa modalidad
- *   también excluye la 3.6, pero la regla no depende de que eso siga así.
+ * - `MODALIDAD_SIN_RATIFICAR`: la 3.1 no está aprobada, así que el área todavía
+ *   puede cambiar la modalidad, y la causal se elige de la lista de *esa*
+ *   modalidad. Elegirla antes dejaría en el expediente una causal de una
+ *   modalidad que el proceso ya no tiene. Desde la migración 094 la modalidad
+ *   se elige en la 3.1 y aprobar el estudio previo es ratificarla.
  * - `ETAPA_PASADA`: el proceso salió de la etapa 3. Cerrar la etapa es lo que
  *   radica la solicitud de CDP, así que a partir de ahí la causal ya sustentó
  *   una actuación y cambiarla reescribiría el expediente hacia atrás.
@@ -214,7 +212,7 @@ export class CausalContratacionService {
       }
       if (noElige === 'MODALIDAD_SIN_RATIFICAR') {
         throw new ConflictException(
-          'Primero hay que ratificar la modalidad en la 3.5: la causal se elige de la lista de la modalidad ratificada',
+          'Primero hay que aprobar el estudio previo (3.1), que es donde se ratifica la modalidad: la causal se elige de la lista de la modalidad ratificada',
         );
       }
       if (noElige === 'ETAPA_PASADA') {
@@ -290,18 +288,19 @@ export class CausalContratacionService {
   }
 
   /**
-   * En qué va la 3.5, de la que depende la lista.
+   * En qué va la 3.1, que es donde se ratifica la modalidad de la que depende
+   * la lista (migración 094).
    *
    * Una actividad sin instanciar se lee como BORRADOR y no como aprobada: un
-   * proceso anterior a la parametrización no tiene ratificada la modalidad,
-   * solo no llegó a tener la fila.
+   * proceso así no tiene ratificada la modalidad, solo no llegó a tener la
+   * fila.
    */
   private async estadoDeLaModalidad(
     em: EntityManager,
     procesoId: string,
   ): Promise<EstadoActividad> {
     const modalidad = await em.getRepository(ProcesoActividad).findOne({
-      where: { procesoId, numeral: NUMERAL_MODALIDAD },
+      where: { procesoId, numeral: NUMERAL_ESTUDIO_PREVIO },
     });
     return modalidad?.estado ?? 'BORRADOR';
   }

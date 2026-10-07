@@ -4782,8 +4782,8 @@ export class PtaService {
       if (!auth) {
         throw new ForbiddenException('No autenticado para aprobar/devolver el PTA.');
       }
-      // La ruta de estado resuelve el PTA completo. Una persona con territorial
-      // asignada no puede usarla para decidir también sobre actividades ajenas.
+      // La ruta de estado conserva el alcance geográfico de Docencia y los
+      // permisos por nivel de Complementarias; los demás componentes no filtran geografía.
       if (!auth.isSuperUser && auth.territorialIds?.length) {
         for (const componente of COMPONENT_APPROVAL_KEYS) {
           const alcance = await this.assertAlcanceTerritorial(componente, existing, auth, 'aprobar');
@@ -5755,8 +5755,12 @@ export class PtaService {
       await this.syncPtaSeguimientoEstado(ptaId);
     }
     const rows = await this.evidenciaRepo.find({ where: { ptaId }, order: { createdAt: 'DESC' } });
+    const requiereAlcanceDocencia = rows.some(row => this.grupoSeguimientoParaEvidencia(row) === 'docencia'
+      && this.puedeGestionarEvidencia(authenticated, row));
+    const docenciaEnAlcance = !requiereAlcanceDocencia
+      || Boolean(await this.getPtaEnAlcanceSeguimiento(ptaId, authenticated, true));
     return rows
-      .filter(row => this.puedeGestionarEvidencia(authenticated, row))
+      .filter(row => this.puedeGestionarEvidencia(authenticated, row, docenciaEnAlcance))
       .map(row => this.toEvidenciaDto(row));
   }
 
@@ -5806,8 +5810,9 @@ export class PtaService {
     return null;
   }
 
-  private puedeGestionarEvidencia(auth: PtaAuthenticatedUser | undefined, evidencia: PtaEvidenciaEntity): boolean {
+  private puedeGestionarEvidencia(auth: PtaAuthenticatedUser | undefined, evidencia: PtaEvidenciaEntity, docenciaEnAlcance = true): boolean {
     if (!auth) return false;
+    if (!docenciaEnAlcance && this.grupoSeguimientoParaEvidencia(evidencia) === 'docencia') return false;
     if (auth.isSuperUser || auth.approvesAll) return true;
     const permitidos = new Set(auth.allowedComponents || []);
     return this.componentKeysForEvidencia(evidencia).some(key => permitidos.has(key));
@@ -5828,6 +5833,7 @@ export class PtaService {
   private async getPtaEnAlcanceSeguimiento(
     ptaId: string,
     auth: PtaAuthenticatedUser,
+    soloDocencia = false,
   ): Promise<PlanTrabajoAcademicoEntity | null> {
     const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
     if (!pta) throw new NotFoundException('PTA no encontrado');
@@ -5836,8 +5842,17 @@ export class PtaService {
     const dtos = [this.toPtaDto(pta, extMult)];
     await this.attachPtaReferenceDates(dtos);
     const summaries = await this.enrichPtaSummaries(dtos);
+    // Un permiso de otro componente no sustituye el alcance de Docencia.
+    // Los soportes históricos sin Docencia vigente conservan su tratamiento.
+    const acotarDocencia = soloDocencia && (pta.datosEstructurados as any)?.asignaturas?.length > 0;
     const visibles = await this.filterGestionPtas(summaries, [pta], {
       ...auth,
+      ...(acotarDocencia ? {
+        approvesAll: false,
+        reviewsAll: false,
+        allowedComponents: auth.approvesAll ? DOCENCIA_COMPONENT_KEYS
+          : auth.allowedComponents.filter(key => DOCENCIA_COMPONENT_KEYS.includes(key)),
+      } : {}),
       allowedReviewSubsecciones: [],
     });
     return visibles.some(item => (item.componentes_aprobacion_en_alcance || []).length > 0)
@@ -5976,7 +5991,9 @@ export class PtaService {
     const existing = await this.evidenciaRepo.findOne({ where: { id: evidenciaId, ptaId } });
     if (!existing) throw new NotFoundException('Evidencia no encontrada');
     this.assertPuedeGestionarEvidencia(auth, existing);
-    const ptaEnAlcance = await this.getPtaEnAlcanceSeguimiento(ptaId, auth as PtaAuthenticatedUser);
+    const ptaEnAlcance = await this.getPtaEnAlcanceSeguimiento(
+      ptaId, auth as PtaAuthenticatedUser, this.grupoSeguimientoParaEvidencia(existing) === 'docencia',
+    );
     if (!ptaEnAlcance) {
       throw new ForbiddenException('El PTA no pertenece al alcance territorial autorizado para esta cuenta.');
     }
@@ -6086,20 +6103,21 @@ export class PtaService {
   }
 
   /**
-   * Áreas funcionales cubiertas por permisos de revisión. El permiso de bandeja
+   * Áreas funcionales cubiertas por permisos de revisión o aprobación. El permiso de bandeja
    * no amplía este alcance: únicamente permite entrar, consultar y ejecutar la
    * acción sobre los componentes que el rol ya tiene autorizados.
    */
   private componentesSolicitudGestionables(auth?: PtaAuthenticatedUser): string[] {
     if (!auth) return [];
     if (this.tieneAccesoTotalSolicitudesEdicion(auth)) return [...SOLICITUD_COMPONENT_KEYS];
-    if (auth.reviewsAll) return [...SOLICITUD_COMPONENT_KEYS];
-    const revisables = new Set(
-      (auth.allowedReviewSubsecciones || []).map(value => String(value).split(':')[0]),
-    );
+    if (auth.reviewsAll || auth.approvesAll) return [...SOLICITUD_COMPONENT_KEYS];
+    const autorizados = new Set([
+      ...(auth.allowedReviewSubsecciones || []).map(value => String(value).split(':')[0]),
+      ...(auth.allowedComponents || []),
+    ]);
     return SOLICITUD_COMPONENT_KEYS.filter(componente =>
       (SOLICITUD_COMPONENT_APPROVAL_KEYS[componente] || [])
-        .some(key => revisables.has(key)),
+        .some(key => autorizados.has(key)),
     );
   }
 
@@ -6319,7 +6337,7 @@ export class PtaService {
     if (!auth || !autorizado) {
       throw new ForbiddenException(
         esSolicitudEdicion
-          ? 'No tienes permisos de revisión sobre los componentes de esta solicitud.'
+          ? 'No tienes permiso para gestionar solicitudes de edición del PTA.'
           : 'No tienes permiso para resolver solicitudes del PTA.',
       );
     }
@@ -6358,10 +6376,10 @@ export class PtaService {
         : componentesIniciales.filter(componente =>
             this.componentesSolicitudGestionables(auth).includes(componente));
       if (componentesBody.some(componente => !componentesInicialesEnAlcance.includes(componente))) {
-        throw new ForbiddenException('Intentaste resolver un componente fuera de tu área de revisión.');
+        throw new ForbiddenException('Intentaste resolver un componente fuera de tu área autorizada.');
       }
       if ((componentesBody.length > 0 ? componentesBody : componentesInicialesEnAlcance).length === 0) {
-        throw new ForbiddenException('Esta solicitud no contiene componentes dentro de tu área de revisión.');
+        throw new ForbiddenException('Esta solicitud no contiene componentes dentro de tu área autorizada.');
       }
       const pta = await this.ptaRepo.findOne({ where: { id: existing.ptaId } });
       if (!pta) throw new NotFoundException('El PTA asociado a la solicitud ya no existe.');
@@ -6392,13 +6410,13 @@ export class PtaService {
           : componentesSolicitados.filter(componente =>
               this.componentesSolicitudGestionables(auth).includes(componente));
         if (componentesBody.some(componente => !componentesEnAlcance.includes(componente))) {
-          throw new ForbiddenException('Intentaste resolver un componente fuera de tu área de revisión.');
+          throw new ForbiddenException('Intentaste resolver un componente fuera de tu área autorizada.');
         }
         const componentesObjetivo = componentesBody.length > 0
           ? componentesBody
           : componentesEnAlcance;
         if (componentesObjetivo.length === 0) {
-          throw new ForbiddenException('Esta solicitud no contiene componentes dentro de tu área de revisión.');
+          throw new ForbiddenException('Esta solicitud no contiene componentes dentro de tu área autorizada.');
         }
 
         const decisionesComponentes = normalizeSolicitudDecisiones(txSolicitud);
@@ -7229,6 +7247,11 @@ export class PtaService {
       .getMany();
 
     const evidenciasByPta: Record<string, any[]> = {};
+    const docenciaEnAlcanceByPta = new Map(scopedPtasActualizados.map(pta => [
+      String(pta.id || pta.pta_id),
+      !(pta.asignaturas || []).length
+        || (pta.componentes_aprobacion_en_alcance || []).some((key: PTAComponentKey) => DOCENCIA_COMPONENT_KEYS.includes(key)),
+    ]));
     const resumenByPta: Record<string, Record<string, { horas_aprobadas: number }>> = {};
     for (const ev of evidencias) {
       resumenByPta[ev.ptaId] ||= {
@@ -7245,7 +7268,7 @@ export class PtaService {
       ) {
         resumenByPta[ev.ptaId][grupo].horas_aprobadas += Math.max(0, Number(ev.horasAvance) || 0);
       }
-      if (!this.puedeGestionarEvidencia(authenticated, ev)) continue;
+      if (!this.puedeGestionarEvidencia(authenticated, ev, docenciaEnAlcanceByPta.get(String(ev.ptaId)) ?? false)) continue;
       evidenciasByPta[ev.ptaId] ||= [];
       evidenciasByPta[ev.ptaId].push(this.toEvidenciaDto(ev));
     }
@@ -9169,20 +9192,10 @@ export class PtaService {
       const nivel = actividadId ? nivelPorActividadId.get(actividadId) : undefined;
       const tipo = actividadId ? tipoPorActividadId.get(actividadId) : undefined;
 
-      // La territorialidad MANDA sobre el nivel, igual que en Docencia: una
-      // actividad marcada como Decanatura se aprueba por territorial aunque
-      // tenga nivel pregrado/posgrado (el nivel se conserva como dimensión
-      // dentro de PtaTerritorialApproval).
-      //
-      // Pero la Decanatura que resuelve es la de la territorial capturada EN la
-      // complementaria (ver TabComplementarias). Un ítem sin territorial —datos
-      // previos a que el formulario la volviera obligatoria, o cargas desde el
-      // backoffice— no tiene Decanatura a la cual enrutarse: quedaba igual en
-      // 'complementarias_territorial' y NADIE podía resolverlo, porque
-      // assertAlcanceComplementariasTerritoriales exige alcance sobre todos los
-      // pares y un par sin territorial nunca es "propio" (solo el superusuario
-      // pasaba). El PTA quedaba trabado sin salida. Mismo criterio que Docencia,
-      // donde esAsignaturaTerritorial exige un territorial_id real.
+      // Decanatura conserva su componente y sus permisos por nivel. La territorial
+      // capturada participa en el enrutamiento histórico, pero no limita las decisiones
+      // a responsables de esa territorial. Se conserva la clasificación anterior
+      // para registros sin territorial y no se modifican sus permisos requeridos.
       if (tipo === 'decanatura' && coalesceLookupKey(item?.territorial_id, item?.territorialId)) {
         out.complementarias_territorial.push(item);
         continue;
@@ -9380,24 +9393,17 @@ export class PtaService {
     return { pares, propios };
   }
 
-  /** Los componentes de decisión única no pueden resolver actividades de otra territorial. */
+  /** Docencia por nivel conserva el alcance territorial de la cuenta. */
   private async assertAlcancePersonalDeActividades(
     componente: string, pta: PlanTrabajoAcademicoEntity, auth: PtaAuthenticatedUser,
     accion: 'aprobar' | 'revisar',
   ): Promise<void> {
-    if (auth.isSuperUser || !auth.territorialIds?.length) return;
+    if (!DOCENCIA_COMPONENT_KEYS.includes(componente as PTAComponentKey)
+      || auth.isSuperUser || !auth.territorialIds?.length) return;
     const ds = (pta.datosEstructurados as any) || {};
     let actividades: any[] = [];
     if (componente === 'academica_pregrado' || componente === 'academica_posgrado') {
       actividades = (await this.clasificarAsignaturasDocencia(ds.asignaturas || []))[componente];
-    } else if (componente.startsWith('complementarias')) {
-      actividades = (await this.clasificarComplementarias(ds))[componente] || [];
-    } else if (componente === 'investigacion') {
-      actividades = [...(ds.investigacion_actividades || []), ds.investigacion_proyecto].filter(Boolean);
-    } else if (componente.startsWith('ext_')) {
-      const seccion = ({ ext_capacitacion: 'capacitacion', ext_procesos: 'seleccion',
-        ext_fortalecimiento: 'fortalecimiento', ext_gobierno: 'alto_gobierno' } as Record<string, string>)[componente];
-      actividades = (ds.extension_actividades || []).filter((a: any) => normalizeExtensionSectionKey(a?.seccion) === seccion);
     }
     const territoriales = actividades.map(a => coalesceLookupKey(
       a?.territorial_id, a?.territorialId, a?.territorial?.id,
@@ -9423,7 +9429,7 @@ export class PtaService {
     }
   }
 
-  /** Complementarias captura territorial; su decisión vigente consolida el componente completo. */
+  /** Complementarias de Decanatura conserva los permisos por nivel, sin restringir la geografía. */
   private async assertAlcanceComplementariasTerritoriales(
     pta: PlanTrabajoAcademicoEntity, auth: PtaAuthenticatedUser, accion: 'aprobar' | 'revisar',
   ) {
@@ -9434,10 +9440,8 @@ export class PtaService {
     if (!actividades.length) return null;
     const catalogo = [...await this.getCatalogoActividadesComplementarias(), ...await this.getCatalogoActividadesAcademicoAdmin()];
     const porId = new Map(catalogo.map(item => [String(item.id), item]));
-    // Territorial y nivel son las ÚNICAS dimensiones que existen aquí: la captura
-    // de Complementarias pide la territorial de cada actividad (obligatoria en el
-    // formulario) pero no sede/CETAP ni programa — a diferencia de Docencia, donde
-    // la asignatura sí los trae.
+    // La territorial capturada es información del PTA; únicamente el nivel
+    // configurado determina qué permiso necesita cada etapa de Complementarias.
     const items = actividades.map(item => ({
       territorialId: coalesceLookupKey(item.territorial_id, item.territorialId) || '',
       nivel: (normalizeNivelProgramaComplementaria(porId.get(String(item.actividad_id ?? item.id))?.nivel_programa) || 'pregrado') as PTANivelDocencia,
@@ -9450,27 +9454,16 @@ export class PtaService {
     const niveles = (['pregrado', 'posgrado'] as const).filter(nivel =>
       (etapaPermiso === 'aprobar' ? auth.approvesAll : auth.reviewsAll)
       || auth.permissions?.has((etapaPermiso === 'aprobar' ? permissionMap.approve : permissionMap.review)[nivel]));
-    const nombres = await this.resolveNombrePorSeccionalId([
-      ...pares.map(p => p.territorialId),
-      ...(auth.territorialIds || []),
-    ]);
-    const tokens = (id: string) => [id, nombres.get(id)].map(v => this.normalizeSeccionalNombre(v)).filter(Boolean);
-    const territorialesPersona = new Set((auth.territorialIds || []).flatMap(tokens));
-    const propios = pares.filter(p => p.territorialId
-      && (!territorialesPersona.size || tokens(p.territorialId).some(t => territorialesPersona.has(t)))
-      && niveles.includes(p.nivel));
-    // Esta decisión no dispone de filas por subsección/territorial: no puede resolver actividades ajenas.
+    const propios = pares.filter(p => niveles.includes(p.nivel));
+    // Se decide el componente completo: todos sus niveles requieren permiso.
     if (!propios.length || propios.length !== pares.length) {
-      // El componente se decide completo; se informa qué territorial o nivel falta.
       const faltantes = pares.filter(p => !propios.some(o => o.territorialId === p.territorialId && o.nivel === p.nivel));
-      const nombresFaltantes = await this.resolveNombresSeccionales(
-        Array.from(new Set(faltantes.map(p => p.territorialId).filter(Boolean))),
-      );
+      const nivelesFaltantes = [...new Set(faltantes.map(p => p.nivel))];
       throw new ForbiddenException(
-        `No tiene alcance para ${accion} todas las territoriales y niveles de este componente de Complementarias. `
+        `No tiene permisos para ${accion} todos los niveles de este componente de Complementarias. `
         + `Las Complementarias de Decanatura se resuelven en una sola decisión para todo el componente, `
-        + `por lo que se requiere alcance sobre cada territorial y nivel incluidos.`
-        + (nombresFaltantes.length ? ` Falta alcance sobre: ${nombresFaltantes.join(', ')}.` : ''),
+        + `por lo que se requiere el permiso de cada nivel incluido.`
+        + (nivelesFaltantes.length ? ` Falta permiso de: ${nivelesFaltantes.join(', ')}.` : ''),
       );
     }
     return { pares, propios };
@@ -10221,9 +10214,8 @@ export class PtaService {
       throw new BadRequestException('El PTA está terminado (solo lectura) y no admite cambios.');
     }
 
-    // Alcance territorial: el permiso habilita el componente, pero la territorial
-    // y el nivel (pregrado/posgrado) concretos los define la seccional y los
-    // permisos de la persona.
+    // Solo Docencia restringe la geografía. Complementarias de Decanatura valida
+    // sus permisos por nivel; Investigación y Extensión solo su permiso de etapa.
     const alcanceTerritorialRevision = await this.assertAlcanceTerritorial(componente, existingPta, auth, 'revisar');
 
     // Revisión PARCIAL por (territorial, nivel): si el PTA mezcla 2+ pares en
@@ -10349,6 +10341,10 @@ export class PtaService {
     const configured = auth.isSuperUser || auth.allowedComponents.length > 0
       || auth.allowedReviewSubsecciones.length > 0;
     if (!configured || auth.isSuperUser) return { configured, territoriales: null, programas: null, cetaps: null };
+    const decideDocencia = auth.approvesAll || auth.reviewsAll
+      || auth.allowedComponents.some(key => DOCENCIA_COMPONENT_KEYS.includes(key))
+      || auth.allowedReviewSubsecciones.some(key => DOCENCIA_COMPONENT_KEYS.includes(key.split(':')[0] as PTAComponentKey));
+    if (!decideDocencia) return { configured, territoriales: null, programas: null, cetaps: null };
     const ids = auth.territorialIds || [];
     if (!ids.length) return { configured, territoriales: null, programas: null, cetaps: null };
     const nombres = await this.resolveNombrePorSeccionalId(ids);
@@ -10404,7 +10400,8 @@ export class PtaService {
     }
     if (!auth.isSuperUser) {
       for (const componente of allowedComponents) {
-        if (TERRITORIAL_COMPONENT_KEYS.includes(componente as PTAComponentKey)) continue;
+        if (!DOCENCIA_COMPONENT_KEYS.includes(componente as PTAComponentKey)
+          || componente === 'academica_territorial') continue;
         try {
           await this.assertAlcancePersonalDeActividades(componente, pta, auth, 'aprobar');
         } catch (error) {
@@ -10415,7 +10412,8 @@ export class PtaService {
       }
       for (const key of allowedReviewSubsecciones) {
         const [componente] = key.split(':');
-        if (TERRITORIAL_COMPONENT_KEYS.includes(componente as PTAComponentKey)) continue;
+        if (!DOCENCIA_COMPONENT_KEYS.includes(componente as PTAComponentKey)
+          || componente === 'academica_territorial') continue;
         try {
           await this.assertAlcancePersonalDeActividades(componente, pta, auth, 'revisar');
         } catch (error) {

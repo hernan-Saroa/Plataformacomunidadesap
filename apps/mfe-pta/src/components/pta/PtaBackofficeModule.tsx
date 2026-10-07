@@ -296,7 +296,7 @@ function formatSolicitudDateTime(value: unknown): string {
     : SOLICITUD_DATE_TIME_FORMATTER.format(date);
 }
 
-function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre: string; syncCounter?: number }) {
+function SolicitudesPTAAdmin({ aprobadorNombre, syncVersion }: { aprobadorNombre: string; syncVersion?: string | null }) {
   const { permisos } = usePermisosPTA();
   const auth = useAuth();
   const [solicitudes, setSolicitudes] = useState<any[]>([]);
@@ -314,16 +314,41 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
     componentes?: string[];
   }>>({});
   const [territoriales, setTerritoriales] = useState<any[]>([]);
-  const tieneAlcanceEdicion = auth.isSuperUser || (permisos.componentesRevisables?.length || 0) > 0;
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const loadRequestRef = useRef(0);
+  const filtroSolicitudRef = useRef(filtro);
+  const ultimoFiltroRef = useRef<string | null>(null);
+  const resolviendoRef = useRef(false);
+  filtroSolicitudRef.current = filtro;
+  const tieneAlcanceEdicion = auth.isSuperUser || (permisos.componentesRevisables?.length || 0) > 0
+    || (permisos.componentesAprobables?.length || 0) > 0;
 
-  const load = async () => {
-    setLoading(true);
-    const res = await getSolicitudesPTA(filtro || undefined);
-    if (res.success) setSolicitudes(res.data || []);
-    setLoading(false);
-  };
+  const load = useCallback(async (showLoading = true) => {
+    const request = ++loadRequestRef.current;
+    const estado = filtroSolicitudRef.current;
+    if (showLoading) setLoading(true);
+    try {
+      const res = await getSolicitudesPTA(estado || undefined);
+      if (request !== loadRequestRef.current || estado !== filtroSolicitudRef.current) return;
+      if (res.success) {
+        setSolicitudes(res.data || []);
+        setErrorCarga(null);
+      } else {
+        setErrorCarga('No fue posible consultar las solicitudes. Intenta nuevamente.');
+      }
+    } catch {
+      if (request === loadRequestRef.current) setErrorCarga('No fue posible consultar las solicitudes. Intenta nuevamente.');
+    } finally {
+      if (request === loadRequestRef.current) setLoading(false);
+    }
+  }, []);
 
-  useEffect(() => { load(); }, [filtro, syncCounter]);
+  useEffect(() => {
+    const showLoading = ultimoFiltroRef.current !== filtro;
+    ultimoFiltroRef.current = filtro;
+    void load(showLoading);
+    return () => { ++loadRequestRef.current; };
+  }, [filtro, syncVersion, load]);
 
   // Cargar territoriales para caso 1 (vía apiClient/gateway, no fetch a localhost:5000
   // que rompía por CSP en QA/prod).
@@ -334,40 +359,74 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
   }, []);
 
   const handleResolver = async (id: string, decision: 'aprobado' | 'denegado', componentes: string[]) => {
+    if (resolviendoRef.current) return;
+    resolviendoRef.current = true;
+    ++loadRequestRef.current;
     const form = resForm[id] || {};
+    const solicitudActual = solicitudes.find(sol => sol.id === id);
+    const esEdicion = solicitudActual?.tipoSolicitud === 'edicion_componentes'
+      || solicitudActual?.caso === 'edicion_pta';
     setProcesando(id);
-    const res = await resolverSolicitudPTA(id, {
-      decision,
-      motivo: form.motivo,
-      accion: form.accion,
-      territorialNueva: form.territorial,
-      horasPtaOriginal: form.horasOrig,
-      horasPtaNuevo: form.horasNuevo,
-      resueltoPor: aprobadorNombre,
-      componentes,
-    });
-    setProcesando(null);
-    if (res.success) {
-      setResForm(prev => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
+    try {
+      const res = await resolverSolicitudPTA(id, {
+        decision,
+        motivo: form.motivo,
+        accion: form.accion,
+        territorialNueva: form.territorial,
+        horasPtaOriginal: form.horasOrig,
+        horasPtaNuevo: form.horasNuevo,
+        resueltoPor: aprobadorNombre,
+        componentes,
       });
-      toast.success(res.data?.resolucionParcial
-        ? componentes.length === 1
-          ? 'Decisión registrada para el componente'
-          : 'Decisión registrada para los componentes seleccionados'
-        : decision === 'aprobado' ? 'Solicitud aprobada' : 'Solicitud denegada');
-      load();
+      if (res.success) {
+        // La respuesta puede contener otras áreas: conservar solo las visibles.
+        // Aplicar la decisión confirmada aunque falle la consulta posterior.
+        if (res.data?.estado) {
+          setSolicitudes(prev => prev.flatMap(sol => {
+            if (sol.id !== id) return [sol];
+            const actualizado = { ...sol, estado: res.data.estado,
+              resueltoPor: res.data.resueltoPor, resolucionFecha: res.data.resolucionFecha,
+              resolucionMotivo: res.data.resolucionMotivo, requiereConsolidacion: false,
+              decisionesComponentes: Object.fromEntries((sol.componentes || []).map((key: string) => [
+                key, res.data.decisionesComponentes?.[key] || sol.decisionesComponentes?.[key],
+              ])),
+            };
+            return filtroSolicitudRef.current && actualizado.estado !== filtroSolicitudRef.current ? [] : [actualizado];
+          }));
+        }
+        setResForm(prev => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        toast.success(res.data?.resolucionParcial
+          ? componentes.length === 1
+            ? 'Decisión registrada para el componente'
+            : 'Decisión registrada para los componentes seleccionados'
+          : esEdicion && res.data?.estado === 'aprobado' && decision === 'denegado'
+            ? 'Decisión registrada. Edición habilitada únicamente para los componentes aprobados.'
+            : decision === 'aprobado' ? 'Solicitud aprobada' : 'Solicitud denegada');
+        await load(false);
+      }
+      else {
+        toast.error(res.message || 'No se pudo resolver la solicitud');
+        await load(false);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'No se pudo resolver la solicitud');
+      await load(false);
+    } finally {
+      resolviendoRef.current = false;
+      setProcesando(null);
     }
-    else toast.error(res.message || 'Error');
   };
 
   const updateForm = (id: string, field: string, value: any) => {
     setResForm(prev => ({ ...prev, [id]: { ...prev[id], [field]: value } }));
   };
 
-  const pendientes = solicitudes.filter((s) => {
+  const solicitudesVisibles = solicitudes.filter(s => !filtro || s.estado === filtro);
+  const pendientes = solicitudesVisibles.filter((s) => {
     if (s.estado !== 'pendiente') return false;
     const esEdicion = s.tipoSolicitud === 'edicion_componentes' || s.caso === 'edicion_pta';
     if (!esEdicion) return true;
@@ -407,7 +466,7 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
         <div>
           <h2 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111827', margin: 0 }}>Solicitudes PTA</h2>
-          <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: '2px 0 0' }}>Revisión de solicitudes según los componentes autorizados para tu rol</p>
+          <p style={{ fontSize: '0.75rem', color: '#6B7280', margin: '2px 0 0' }}>Gestión de solicitudes según tus permisos por componente</p>
         </div>
         {pendientes > 0 && (
           <span style={{ padding: '4px 10px', borderRadius: 8, background: '#FEF3C7', color: '#92400E', fontSize: '0.72rem', fontWeight: 700 }}>
@@ -433,23 +492,28 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
         ))}
       </div>
 
+      {errorCarga && (
+        <div role="alert" style={{ marginBottom: 12, padding: 12, borderRadius: 8, background: '#FEF2F2', color: '#991B1B', fontSize: '0.75rem' }}>
+          {errorCarga} <button onClick={() => void load()} style={{ marginLeft: 8 }}>Reintentar</button>
+        </div>
+      )}
       {loading ? (
         <div style={{ textAlign: 'center', padding: 50, color: '#9CA3AF' }}>Cargando...</div>
-      ) : solicitudes.length === 0 ? (
+      ) : solicitudesVisibles.length === 0 ? errorCarga ? null : (
         <div style={{ textAlign: 'center', padding: 60, background: '#F9FAFB', borderRadius: 14 }}>
           <Send style={{ width: 40, height: 40, color: '#D1D5DB', margin: '0 auto 12px' }} />
           <p style={{ fontSize: '0.9rem', color: '#64748B', margin: 0, fontWeight: 600 }}>
-            {!tieneAlcanceEdicion && !filtro ? 'Sin componentes de revisión asignados' : 'Sin solicitudes'}
+            {!tieneAlcanceEdicion && !filtro ? 'Sin componentes autorizados' : 'Sin solicitudes'}
           </p>
           {!tieneAlcanceEdicion && !filtro && (
             <p style={{ maxWidth: 520, margin: '6px auto 0', fontSize: '0.7rem', color: '#94A3B8', lineHeight: 1.45 }}>
-              El permiso de la pestaña está activo, pero el rol necesita al menos un permiso pta.review.* para visualizar y resolver componentes.
+              Para visualizar y resolver solicitudes también necesitas un permiso de revisión o aprobación de sus componentes.
             </p>
           )}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {solicitudes.map((sol: any) => {
+          {solicitudesVisibles.map((sol: any) => {
             const isOpen = expandedId === sol.id;
             const casoLabel = CASO_LABELS[sol.caso] || { label: sol.caso, color: '#6B7280' };
             const isPendiente = sol.estado === 'pendiente';
@@ -738,17 +802,17 @@ function SolicitudesPTAAdmin({ aprobadorNombre, syncCounter }: { aprobadorNombre
 
                             {/* Botones */}
                             {requiereConsolidacion ? (
-                              <button onClick={() => handleResolver(sol.id, 'aprobado', componentesSeleccionados)} disabled={procesando === sol.id}
+                              <button onClick={() => handleResolver(sol.id, 'aprobado', componentesSeleccionados)} disabled={Boolean(procesando)}
                                 style={{ width: '100%', padding: '8px 14px', borderRadius: 8, border: 'none', background: '#003DA5', color: 'white', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: procesando === sol.id ? 0.6 : 1 }}>
                                 <RefreshCw style={{ width: 14, height: 14 }} /> Completar resolución
                               </button>
                             ) : (
                               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                <button onClick={() => handleResolver(sol.id, 'aprobado', componentesSeleccionados)} disabled={procesando === sol.id || faltaSeleccionComponente}
+                                <button onClick={() => handleResolver(sol.id, 'aprobado', componentesSeleccionados)} disabled={Boolean(procesando) || faltaSeleccionComponente}
                                   style={{ flex: 1, padding: '8px 14px', borderRadius: 8, border: 'none', background: faltaSeleccionComponente ? '#D1D5DB' : '#059669', color: 'white', fontSize: '0.78rem', fontWeight: 700, cursor: faltaSeleccionComponente ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: procesando === sol.id ? 0.6 : 1 }}>
                                   <CheckCircle style={{ width: 14, height: 14 }} /> {esEdicion ? 'Aprobar componente(s)' : 'Aprobar'}
                                 </button>
-                                <button onClick={() => handleResolver(sol.id, 'denegado', componentesSeleccionados)} disabled={procesando === sol.id || faltaSeleccionComponente || !(form.motivo?.trim())}
+                                <button onClick={() => handleResolver(sol.id, 'denegado', componentesSeleccionados)} disabled={Boolean(procesando) || faltaSeleccionComponente || !(form.motivo?.trim())}
                                   style={{ flex: 1, padding: '8px 14px', borderRadius: 8, border: 'none', background: faltaSeleccionComponente || !(form.motivo?.trim()) ? '#D1D5DB' : '#DC2626', color: 'white', fontSize: '0.78rem', fontWeight: 700, cursor: faltaSeleccionComponente || !(form.motivo?.trim()) ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, opacity: procesando === sol.id ? 0.6 : 1 }}>
                                   <XCircle style={{ width: 14, height: 14 }} /> Denegar
                                 </button>
@@ -3732,7 +3796,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
           onNavigate={(view: string) => setModuleView(view as ModuleView)}
         />
       ) : moduleView === 'solicitudes_pta' ? (
-        <SolicitudesPTAAdmin aprobadorNombre={aprobadorNombre} syncCounter={syncState.lastCounter} />
+        <SolicitudesPTAAdmin aprobadorNombre={aprobadorNombre} syncVersion={syncState.lastSyncTime} />
       ) : moduleView === 'seguimiento_docs' ? (
         <SeguimientoDocumentosAdmin
           aprobadorNombre={aprobadorNombre}
@@ -3830,7 +3894,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
               <div>
                 <span style={{ fontWeight: 700 }}>Alcance de revisión y aprobación</span>
                 <div style={{ fontSize: '0.72rem', color: '#B45309', marginTop: 2 }}>
-                  Territorial asignada: <strong>{decisionListScope?.territoriales?.join(', ')}</strong>. Puede consultar las demás actividades, pero solo revisar o aprobar las que correspondan a su territorial y permisos.
+                  Territorial asignada para Docencia: <strong>{decisionListScope?.territoriales?.join(', ')}</strong>. La revisión y aprobación de Docencia respetan su alcance territorial. Investigación, Extensión y Complementarias dependen de sus permisos, sin restricción territorial.
                 </div>
               </div>
             </motion.div>
@@ -6060,7 +6124,7 @@ function PtaBackofficeModuleInner({ initialView }: { initialView?: string } = {}
                     Aprobar {group.label}
                   </h3>
                   <p style={{ fontSize: '0.82rem', color: '#6B7280', margin: '4px 0 0' }}>
-                    Se aprobará este componente en los {selectedApprovalIds.length} PTA{selectedApprovalIds.length > 1 ? 's' : ''} seleccionado{selectedApprovalIds.length > 1 ? 's' : ''} que lo tengan pendiente. Los que no apliquen o ya estén aprobados se omiten; los que no cumplan un requisito (revisión pendiente, alcance territorial, otro componente devuelto) se reportan sin afectar al resto.
+                    Se aprobará este componente en los {selectedApprovalIds.length} PTA{selectedApprovalIds.length > 1 ? 's' : ''} seleccionado{selectedApprovalIds.length > 1 ? 's' : ''} que lo tengan pendiente. Los que no apliquen o ya estén aprobados se omiten; los que no cumplan un requisito (revisión pendiente, alcance territorial de Docencia, otro componente devuelto) se reportan sin afectar al resto.
                   </p>
                 </div>
                 <div style={{ padding: '16px 24px' }}>
