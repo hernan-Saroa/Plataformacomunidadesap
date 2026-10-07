@@ -1010,9 +1010,11 @@ export async function eliminarEvidenciaPTA(ptaId: string, evidenciaId: string) {
 
 export async function getSolicitudesPTA(estado?: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/solicitudes`, estado ? { estado } : undefined);
+    if (!getAppOnlineStatus()) throw new Error('Se necesita conexión para consultar las solicitudes y verificar su alcance.');
+    const raw = await apiClient.get<any>(`${PTA_BASE}/solicitudes`, estado ? { estado } : undefined,
+      { cache: 'no-store', skipErrorToast: true, retries: 0 });
     const normalized = normalizeResult<any[]>(raw, []);
-    return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
+    return { success: normalized.success && Array.isArray(normalized.data), data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
     console.error('[mfe-pta][getSolicitudesPTA] Error:', error);
     return { success: false, data: [] };
@@ -1049,8 +1051,12 @@ export async function resolverSolicitudPTA(
   },
 ) {
   try {
-    const raw = await apiClient.patch<any>(`${PTA_BASE}/solicitudes/${solicitudId}/resolver`, data);
+    requireConnectionForDecision();
+    const raw = await apiClient.patch<any>(`${PTA_BASE}/solicitudes/${solicitudId}/resolver`, data, { retries: 0 });
     const normalized = normalizeResult<any>(raw, null);
+    if (normalized.success && (normalized.data?.id !== solicitudId || !normalized.data?.estado)) {
+      return { success: false, message: 'El servidor no confirmó la resolución de la solicitud. Actualiza su estado antes de reintentar.' };
+    }
     return { success: normalized.success, data: normalized.data };
   } catch (error: any) {
     console.error('[mfe-pta][resolverSolicitudPTA] Error:', error);
@@ -1690,7 +1696,7 @@ export async function enviarAprobacionPTA(ptaId: string, data?: { enviado_por?: 
 
 export async function getMisSolicitudesPTA(docenteId: string) {
   try {
-    const raw = await apiClient.get<any>(`${PTA_BASE}/solicitudes/docente/${docenteId}`);
+    const raw = await apiClient.get<any>(`${PTA_BASE}/solicitudes/docente/${docenteId}`, undefined, { cache: 'no-store' });
     const normalized = normalizeResult<any[]>(raw, []);
     return { success: normalized.success, data: Array.isArray(normalized.data) ? normalized.data : [] };
   } catch (error) {
@@ -1712,8 +1718,15 @@ export async function marcarSolicitudLeida(solicitudId: string) {
 
 export async function crearSolicitudPTA(payload: any) {
   try {
-    const raw = await apiClient.post<any>(`${PTA_BASE}/solicitudes`, payload);
+    const esEdicion = payload?.tipoSolicitud === 'edicion_componentes'
+      || payload?.tipo_solicitud === 'edicion_componentes' || payload?.caso === 'edicion_pta';
+    if (esEdicion) requireConnectionForDecision();
+    const raw = await apiClient.post<any>(`${PTA_BASE}/solicitudes`, payload, esEdicion ? { retries: 0 } : undefined);
     const normalized = normalizeResult<any>(raw, null);
+    if (esEdicion && normalized.success && (!normalized.data?.id
+      || normalized.data.ptaId !== (payload.ptaId || payload.pta_id) || normalized.data.estado !== 'pendiente')) {
+      return { success: false, data: null, message: 'El servidor no confirmó la solicitud de edición sobre este PTA. Consulta tus solicitudes antes de reintentar.' };
+    }
     return { success: normalized.success, data: normalized.data, message: (raw as any)?.message };
   } catch (error: any) {
     console.error('[mfe-pta][crearSolicitudPTA] Error:', error);

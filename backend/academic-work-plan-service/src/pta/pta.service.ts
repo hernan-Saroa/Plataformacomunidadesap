@@ -6103,20 +6103,21 @@ export class PtaService {
   }
 
   /**
-   * Áreas funcionales cubiertas por permisos de revisión. El permiso de bandeja
+   * Áreas funcionales cubiertas por permisos de revisión o aprobación. El permiso de bandeja
    * no amplía este alcance: únicamente permite entrar, consultar y ejecutar la
    * acción sobre los componentes que el rol ya tiene autorizados.
    */
   private componentesSolicitudGestionables(auth?: PtaAuthenticatedUser): string[] {
     if (!auth) return [];
     if (this.tieneAccesoTotalSolicitudesEdicion(auth)) return [...SOLICITUD_COMPONENT_KEYS];
-    if (auth.reviewsAll) return [...SOLICITUD_COMPONENT_KEYS];
-    const revisables = new Set(
-      (auth.allowedReviewSubsecciones || []).map(value => String(value).split(':')[0]),
-    );
+    if (auth.reviewsAll || auth.approvesAll) return [...SOLICITUD_COMPONENT_KEYS];
+    const autorizados = new Set([
+      ...(auth.allowedReviewSubsecciones || []).map(value => String(value).split(':')[0]),
+      ...(auth.allowedComponents || []),
+    ]);
     return SOLICITUD_COMPONENT_KEYS.filter(componente =>
       (SOLICITUD_COMPONENT_APPROVAL_KEYS[componente] || [])
-        .some(key => revisables.has(key)),
+        .some(key => autorizados.has(key)),
     );
   }
 
@@ -6336,7 +6337,7 @@ export class PtaService {
     if (!auth || !autorizado) {
       throw new ForbiddenException(
         esSolicitudEdicion
-          ? 'No tienes permisos de revisión sobre los componentes de esta solicitud.'
+          ? 'No tienes permiso para gestionar solicitudes de edición del PTA.'
           : 'No tienes permiso para resolver solicitudes del PTA.',
       );
     }
@@ -6375,10 +6376,10 @@ export class PtaService {
         : componentesIniciales.filter(componente =>
             this.componentesSolicitudGestionables(auth).includes(componente));
       if (componentesBody.some(componente => !componentesInicialesEnAlcance.includes(componente))) {
-        throw new ForbiddenException('Intentaste resolver un componente fuera de tu área de revisión.');
+        throw new ForbiddenException('Intentaste resolver un componente fuera de tu área autorizada.');
       }
       if ((componentesBody.length > 0 ? componentesBody : componentesInicialesEnAlcance).length === 0) {
-        throw new ForbiddenException('Esta solicitud no contiene componentes dentro de tu área de revisión.');
+        throw new ForbiddenException('Esta solicitud no contiene componentes dentro de tu área autorizada.');
       }
       const pta = await this.ptaRepo.findOne({ where: { id: existing.ptaId } });
       if (!pta) throw new NotFoundException('El PTA asociado a la solicitud ya no existe.');
@@ -6409,13 +6410,13 @@ export class PtaService {
           : componentesSolicitados.filter(componente =>
               this.componentesSolicitudGestionables(auth).includes(componente));
         if (componentesBody.some(componente => !componentesEnAlcance.includes(componente))) {
-          throw new ForbiddenException('Intentaste resolver un componente fuera de tu área de revisión.');
+          throw new ForbiddenException('Intentaste resolver un componente fuera de tu área autorizada.');
         }
         const componentesObjetivo = componentesBody.length > 0
           ? componentesBody
           : componentesEnAlcance;
         if (componentesObjetivo.length === 0) {
-          throw new ForbiddenException('Esta solicitud no contiene componentes dentro de tu área de revisión.');
+          throw new ForbiddenException('Esta solicitud no contiene componentes dentro de tu área autorizada.');
         }
 
         const decisionesComponentes = normalizeSolicitudDecisiones(txSolicitud);
