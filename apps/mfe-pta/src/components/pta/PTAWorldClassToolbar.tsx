@@ -326,7 +326,9 @@ export function PTAWorldClassToolbar({
             pointerEvents: 'none',
           }} />
           <input
-            type="text"
+            type="search"
+            name="pta-docente-search"
+            autoComplete="off"
             placeholder="Buscar por docente, territorial, programa..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}

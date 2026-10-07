@@ -1,13 +1,72 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiClient } from '../../../../shell/src/services/api';
 import { getAppOnlineStatus } from '../../../../shell/src/utils/connectivity';
-import { aprobarComponente, revisarComponente, aprobarComponentesLote, revisarComponentesLote, getPTADecisionPermissions, getAllPTAs, getComponentesRevision, getComponentesAprobacion, getPTAById, getPTAsByDocente } from './ptaApi';
+import { aprobarComponente, revisarComponente, aprobarComponentesLote, revisarComponentesLote, getPTADecisionPermissions, getAllPTAs, getComponentesRevision, getComponentesAprobacion, getPTAById, getPTAsByDocente, getSolicitudesPTA, getMisSolicitudesPTA, resolverSolicitudPTA, crearSolicitudPTA, getAprobacionTerritorial, getRevisionTerritorial } from './ptaApi';
 
-vi.mock('../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn() } }));
+vi.mock('../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }));
 vi.mock('../../../../shell/src/utils/connectivity', () => ({ getAppOnlineStatus: vi.fn() }));
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(getAppOnlineStatus).mockReturnValue(true); });
 
 describe('decisiones PTA confirmadas por el servidor', () => {
+  it('no interpreta respuestas incompletas como ausencia de solicitudes de edición', async () => {
+    for (const consultar of [() => getMisSolicitudesPTA('docente-1'), () => getSolicitudesPTA()]) {
+      for (const response of [{ success: true, data: null }, { success: true }, { success: true, data: {} }]) {
+        vi.mocked(apiClient.get).mockResolvedValueOnce(response);
+        expect(await consultar()).toEqual({ success: false, data: [] });
+      }
+      vi.mocked(apiClient.get).mockResolvedValueOnce({ success: true, data: [] });
+      expect(await consultar()).toEqual({ success: true, data: [] });
+    }
+  });
+
+  it('actualiza revisión y aprobación de cada par territorial sin usar respuestas HTTP anteriores', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue([]);
+    await getAprobacionTerritorial('pta-1');
+    await getRevisionTerritorial('pta-1');
+    expect(apiClient.get).toHaveBeenCalledWith('/pta/api/v1/pta-1/aprobacion-territorial', undefined, { cache: 'no-store' });
+    expect(apiClient.get).toHaveBeenCalledWith('/pta/api/v1/pta-1/revision-territorial', undefined, { cache: 'no-store' });
+  });
+  it('solo confirma una solicitud de edición guardada sobre el mismo PTA y evita encolarla sin conexión', async () => {
+    const payload = { tipoSolicitud: 'edicion_componentes', ptaId: 'pta-1', componentes: ['investigacion'] };
+    vi.mocked(getAppOnlineStatus).mockReturnValue(false);
+    expect((await crearSolicitudPTA(payload)).success).toBe(false);
+    expect(apiClient.post).not.toHaveBeenCalled();
+    vi.mocked(getAppOnlineStatus).mockReturnValue(true);
+    for (const response of [{ success: true, data: null }, { id: 'sol-1', ptaId: 'pta-nuevo', estado: 'pendiente' }]) {
+      vi.mocked(apiClient.post).mockResolvedValue(response);
+      expect((await crearSolicitudPTA(payload)).success).toBe(false);
+    }
+    vi.mocked(apiClient.post).mockResolvedValue({ id: 'sol-1', ptaId: 'pta-1', estado: 'pendiente' });
+    expect((await crearSolicitudPTA(payload)).success).toBe(true);
+  });
+  it('consulta solicitudes del aprobador y docente sin recuperar una respuesta HTTP anterior', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue([]);
+    await getSolicitudesPTA('pendiente');
+    await getMisSolicitudesPTA('docente-1');
+    expect(apiClient.get).toHaveBeenCalledWith('/pta/api/v1/solicitudes', { estado: 'pendiente' },
+      expect.objectContaining({ cache: 'no-store' }));
+    expect(apiClient.get).toHaveBeenCalledWith('/pta/api/v1/solicitudes/docente/docente-1', undefined,
+      expect.objectContaining({ cache: 'no-store' }));
+  });
+  it('no consulta una bandeja de permisos en caché ni encola una resolución sin conexión', async () => {
+    vi.mocked(getAppOnlineStatus).mockReturnValue(false);
+    expect((await getSolicitudesPTA()).success).toBe(false);
+    expect((await resolverSolicitudPTA('sol-1', { decision: 'aprobado', componentes: ['investigacion'] })).success).toBe(false);
+    expect(apiClient.get).not.toHaveBeenCalled();
+    expect(apiClient.patch).not.toHaveBeenCalled();
+  });
+  it('exige la solicitud confirmada por el servidor antes de informar que quedó resuelta', async () => {
+    for (const response of [
+      { success: true, data: null, message: 'Encolado offline' },
+      { id: 'sol-ajena', estado: 'aprobado' },
+    ]) {
+      vi.mocked(apiClient.patch).mockResolvedValue(response);
+      expect((await resolverSolicitudPTA('sol-1', { decision: 'aprobado', componentes: ['investigacion'] })).success).toBe(false);
+    }
+    vi.mocked(apiClient.patch).mockResolvedValue({ id: 'sol-1', estado: 'pendiente', resolucionParcial: true,
+      decisionesComponentes: { investigacion: { estado: 'aprobado' } } });
+    expect((await resolverSolicitudPTA('sol-1', { decision: 'aprobado', componentes: ['investigacion'] })).success).toBe(true);
+  });
   it('recarga la revisión guardada de Investigación sin recuperar una respuesta HTTP anterior', async () => {
     const pending = [{ componente: 'investigacion', subseccion: 'general', estado: 'pendiente' }];
     const reviewed = [{ ...pending[0], estado: 'revisado' }];
