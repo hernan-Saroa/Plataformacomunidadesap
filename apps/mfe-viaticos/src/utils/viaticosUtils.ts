@@ -456,8 +456,9 @@ export function contarDiasHabilesEntre(
 export function validarAnticipacionRadicacion(
   fechaInicio: string,
   festivos?: ReadonlySet<string> | string[],
+  configJornada?: any,
 ) {
-  return validarAnticipacionRadicacionStd(fechaInicio, festivos);
+  return validarAnticipacionRadicacionStd(fechaInicio, festivos, new Date(), configJornada);
 }
 
 /**

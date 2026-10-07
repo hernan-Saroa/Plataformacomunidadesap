@@ -51,7 +51,6 @@ import PresupuestoInbox from './PresupuestoInbox';
 import ReintegrosInbox from './ReintegrosInbox';
 import LegalizacionesSeccion from './LegalizacionesSeccion';
 import PazYSalvoCoordinadora from './paz-y-salvo/PazYSalvoCoordinadora';
-import ConfigSoportesLegalizacion from './ConfigSoportesLegalizacion';
 import VistaAnalistaViaticos from './VistaAnalistaViaticos';
 import ProcesarPagoModal from './ProcesarPagoModal';
 import ModalFirmasAprobacion from './ModalFirmasAprobacion';
@@ -1774,9 +1773,6 @@ export default function ViaticosModulePremium() {
                </div>
                <div className="mt-4">
                  <ParametrizacionManager />
-               </div>
-               <div className="mt-6 pt-5 border-t border-slate-100">
-                 <ConfigSoportesLegalizacion />
                </div>
              </div>
            )}

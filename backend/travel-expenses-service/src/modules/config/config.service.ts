@@ -24,6 +24,11 @@ import {
   CreateTipoDocumentoSoporteDto,
   UpdateTipoDocumentoSoporteDto,
 } from '../../dto/config/tipo-documento-soporte.dto';
+import { ConfigJornadaLaboralEntity } from '../../entities/config/config-jornada-laboral.entity';
+import {
+  CreateConfigJornadaLaboralDto,
+  UpdateConfigJornadaLaboralDto,
+} from '../../dto/config/config-jornada-laboral.dto';
 
 @Injectable()
 export class ConfigService {
@@ -36,6 +41,8 @@ export class ConfigService {
     private readonly tipoDocumentoRepo: Repository<TipoDocumentoSoporteEntity>,
     @InjectRepository(ConfigTipoComisionadoDocumentoEntity)
     private readonly configDocumentoRepo: Repository<ConfigTipoComisionadoDocumentoEntity>,
+    @InjectRepository(ConfigJornadaLaboralEntity)
+    private readonly jornadaRepo: Repository<ConfigJornadaLaboralEntity>,
     @Optional()
     private readonly notificationClient?: NotificationClientService,
   ) {}
@@ -537,5 +544,160 @@ export class ConfigService {
       totalTiposConfigurados: configs.length,
       tipos: configs.map((c) => c.tipoComisionado),
     };
+  }
+
+  // ==================== JORNADA LABORAL Y DÍAS HÁBILES ====================
+
+  async obtenerConfiguracionesJornada(): Promise<ConfigJornadaLaboralEntity[]> {
+    return this.jornadaRepo.find({
+      order: { activo: 'DESC', id: 'DESC' },
+    });
+  }
+
+  async obtenerJornadaLaboralActiva(): Promise<ConfigJornadaLaboralEntity> {
+    const activa = await this.jornadaRepo.findOne({
+      where: { activo: true },
+      order: { id: 'DESC' },
+    });
+
+    if (activa) {
+      return activa;
+    }
+
+    // Fallback estándar en caso de base de datos limpia
+    const fallback = new ConfigJornadaLaboralEntity();
+    fallback.id = 0;
+    fallback.codigo = 'DEFAULT';
+    fallback.nombre = 'Jornada Laboral Institucional';
+    fallback.horaInicio = '08:00';
+    fallback.horaFin = '16:30';
+    fallback.diasLaborales = [1, 2, 3, 4, 5];
+    fallback.diasAnticipacionMinima = 14;
+    fallback.diasUmbralAvance = 5;
+    fallback.activo = true;
+    fallback.descripcion = 'Jornada estándar institucional por defecto (8:00 AM - 4:30 PM, Lunes a Viernes)';
+    return fallback;
+  }
+
+  async obtenerJornadaPorId(id: number): Promise<ConfigJornadaLaboralEntity | null> {
+    return this.jornadaRepo.findOne({ where: { id } });
+  }
+
+  async crearJornada(
+    dto: CreateConfigJornadaLaboralDto,
+    usuarioModificador?: string,
+  ): Promise<ConfigJornadaLaboralEntity> {
+    const existente = await this.jornadaRepo.findOne({
+      where: { codigo: dto.codigo.trim().toUpperCase() },
+    });
+    if (existente) {
+      throw new ConflictException(`Ya existe una jornada laboral con el código ${dto.codigo}`);
+    }
+
+    if (dto.activo) {
+      // Si la nueva jornada se crea como activa, desactivar las demás
+      await this.jornadaRepo.update({}, { activo: false });
+    }
+
+    const nueva = this.jornadaRepo.create({
+      ...dto,
+      codigo: dto.codigo.trim().toUpperCase(),
+      actualizadoPor: usuarioModificador || 'Administrador',
+    });
+
+    const guardada = await this.jornadaRepo.save(nueva);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Jornada Laboral y Días Hábiles',
+      operacion: 'Creación de Jornada',
+      descripcionAjuste: `Se creó la jornada laboral "${guardada.nombre}" (${guardada.horaInicio} a ${guardada.horaFin}) con anticipación mínima de ${guardada.diasAnticipacionMinima} días hábiles.`,
+      detalle: guardada as any,
+      usuarioModificador,
+    });
+
+    return guardada;
+  }
+
+  async actualizarJornada(
+    id: number,
+    dto: UpdateConfigJornadaLaboralDto,
+    usuarioModificador?: string,
+  ): Promise<ConfigJornadaLaboralEntity> {
+    const existente = await this.jornadaRepo.findOne({ where: { id } });
+    if (!existente) {
+      throw new NotFoundException(`No se encontró la jornada laboral con id ${id}`);
+    }
+
+    if (dto.activo === true && !existente.activo) {
+      // Si se activa, desactivar las demás
+      await this.jornadaRepo.update({}, { activo: false });
+    }
+
+    Object.assign(existente, dto);
+    existente.actualizadoPor = usuarioModificador || 'Administrador';
+
+    const guardada = await this.jornadaRepo.save(existente);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Jornada Laboral y Días Hábiles',
+      operacion: 'Actualización de Jornada',
+      descripcionAjuste: `Se actualizó la jornada laboral "${guardada.nombre}" (${guardada.horaInicio} a ${guardada.horaFin}).`,
+      detalle: guardada as any,
+      usuarioModificador,
+    });
+
+    return guardada;
+  }
+
+  async activarJornada(
+    id: number,
+    usuarioModificador?: string,
+  ): Promise<ConfigJornadaLaboralEntity> {
+    const existente = await this.jornadaRepo.findOne({ where: { id } });
+    if (!existente) {
+      throw new NotFoundException(`No se encontró la jornada laboral con id ${id}`);
+    }
+
+    await this.jornadaRepo.update({}, { activo: false });
+    existente.activo = true;
+    existente.actualizadoPor = usuarioModificador || 'Administrador';
+    const guardada = await this.jornadaRepo.save(existente);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Jornada Laboral y Días Hábiles',
+      operacion: 'Activación de Jornada',
+      descripcionAjuste: `Se activó como principal la jornada laboral "${guardada.nombre}" (${guardada.horaInicio} - ${guardada.horaFin}).`,
+      detalle: guardada as any,
+      usuarioModificador,
+    });
+
+    return guardada;
+  }
+
+  async eliminarJornada(
+    id: number,
+    usuarioModificador?: string,
+  ): Promise<{ success: boolean }> {
+    const existente = await this.jornadaRepo.findOne({ where: { id } });
+    if (!existente) {
+      throw new NotFoundException(`No se encontró la jornada laboral con id ${id}`);
+    }
+
+    if (existente.activo) {
+      throw new BadRequestException(
+        'No se puede eliminar la jornada laboral activa. Active primero otra configuración antes de eliminar esta.',
+      );
+    }
+
+    await this.jornadaRepo.delete(id);
+
+    this.notificarCambioParametro({
+      tipoConfiguracion: 'Jornada Laboral y Días Hábiles',
+      operacion: 'Eliminación de Jornada',
+      descripcionAjuste: `Se eliminó la jornada laboral inactiva "${existente.nombre}" (Código: ${existente.codigo}).`,
+      usuarioModificador,
+    });
+
+    return { success: true };
   }
 }

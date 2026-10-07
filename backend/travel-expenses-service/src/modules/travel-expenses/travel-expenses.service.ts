@@ -2254,9 +2254,14 @@ export class TravelExpensesService {
         );
       }
 
+      const configJornada =
+        typeof this.configService?.obtenerJornadaLaboralActiva === 'function'
+          ? await this.configService.obtenerJornadaLaboralActiva()
+          : null;
       radicadoFueraJornada = esRadicacionFueraDeJornada(
         new Date(),
         await cargarFestivosAuth(this.dataSource),
+        configJornada,
       );
 
       estadoSolicitud = EstadoSolicitud.RADICADA;
@@ -4076,18 +4081,25 @@ if (dto.costoEstimadoTiquete !== undefined) {
       // para fijar su estado en SOLICITADO (ordinaria) o EXTEMPORANEA.
       const ahora = new Date();
       const festivosSet = await cargarFestivosAuth(this.dataSource);
+      const configJornada =
+        typeof this.configService?.obtenerJornadaLaboralActiva === 'function'
+          ? await this.configService.obtenerJornadaLaboralActiva()
+          : null;
       const radicadoFueraJornada = esRadicacionFueraDeJornada(
         ahora,
         festivosSet,
+        configJornada,
       );
 
       const diasHabilesAnticipacion = contarDiasHabiles(
-        fechaEfectivaRadicacion(ahora, festivosSet),
+        fechaEfectivaRadicacion(ahora, festivosSet, configJornada),
         solicitud.fechaInicio,
         festivosSet,
         'previos',
+        configJornada?.diasLaborales,
       );
-      const esExtemporanea = diasHabilesAnticipacion < 14;
+      const anticipacionMinima = configJornada?.diasAnticipacionMinima ?? 14;
+      const esExtemporanea = diasHabilesAnticipacion < anticipacionMinima;
       const nuevoEstado = EstadoSolicitud.SOLICITADO;
 
       const estadoAnterior = solicitud.estadoSolicitud;

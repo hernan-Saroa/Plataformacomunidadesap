@@ -59,7 +59,8 @@ import {
   TipoTransporteTiquete,
   TarifaEstimadaResult,
 } from '../types/viaticos';
-import { ConfigTipoComisionado, CampoFormulario } from '../types/parametrizacion';
+import { ConfigTipoComisionado, CampoFormulario, ConfigJornadaLaboral } from '../types/parametrizacion';
+import { obtenerJornadaLaboralActiva } from '../utils/diasHabilesUtils';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
 import SearchableSelect, { SearchableSelectOption } from './SearchableSelect';
@@ -197,10 +198,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const { festivos } = useFestivos();
   // Historial de cuentas bancarias y selección
   const [cuentaBancariaSeleccionadaId, setCuentaBancariaSeleccionadaId] = useState<string>('');
+  const [configJornada, setConfigJornada] = useState<ConfigJornadaLaboral | null>(null);
   const [alertaAnticipacion, setAlertaAnticipacion] = useState<{
     extemporanea: boolean;
     diasHabiles: number;
     radicadoFueraJornada: boolean;
+    anticipacionMinimaRequerida?: number;
+    horaCorteAplicada?: string;
   } | null>(null);
   const [alertaSolapamiento, setAlertaSolapamiento] = useState<{
     mensaje: string;
@@ -1331,17 +1335,25 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   );
 
   useEffect(() => {
+    void obtenerJornadaLaboralActiva().then((cfg) => {
+      setConfigJornada(cfg);
+    });
+  }, []);
+
+  useEffect(() => {
     if (paso === PASOS.length && form.fechaInicio) {
-      const validacion = validarAnticipacionRadicacion(form.fechaInicio, festivos);
+      const validacion = validarAnticipacionRadicacion(form.fechaInicio, festivos, configJornada);
       setAlertaAnticipacion({
         extemporanea: validacion?.extemporanea ?? false,
         diasHabiles: validacion?.diasHabiles ?? 0,
         radicadoFueraJornada: validacion?.radicadoFueraJornada ?? false,
+        anticipacionMinimaRequerida: validacion?.anticipacionMinimaRequerida ?? 14,
+        horaCorteAplicada: validacion?.horaCorteAplicada ?? '16:30',
       });
     } else {
       setAlertaAnticipacion(null);
     }
-  }, [paso, form.fechaInicio, festivos]);
+  }, [paso, form.fechaInicio, festivos, configJornada]);
 
   useEffect(() => {
     if (form.fechaInicio && form.fechaFin) {
@@ -4623,12 +4635,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 <div className="space-y-2">
                   {alertaAnticipacion.extemporanea && (
                     <p className="text-xs text-red-700 font-semibold bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                      La solicitud se radicará como <strong>Comisión Extemporánea</strong> porque faltan menos de 14 días hábiles para el inicio ({alertaAnticipacion.diasHabiles} días hábiles).
+                      La solicitud se radicará como <strong>Comisión Extemporánea</strong> porque faltan menos de{' '}
+                      {alertaAnticipacion.anticipacionMinimaRequerida || 14} días hábiles para el inicio ({alertaAnticipacion.diasHabiles} días hábiles).
                     </p>
                   )}
                   {alertaAnticipacion.radicadoFueraJornada && (
                     <p className="text-xs text-amber-700 font-semibold bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                      Radicación fuera de horario laboral: el trámite iniciará formalmente el siguiente día hábil.
+                      Radicación fuera de horario laboral{alertaAnticipacion.horaCorteAplicada ? ` (jornada hasta las ${alertaAnticipacion.horaCorteAplicada} h)` : ''}: el trámite iniciará formalmente el siguiente día hábil.
                     </p>
                   )}
                 </div>

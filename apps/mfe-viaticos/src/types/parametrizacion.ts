@@ -166,3 +166,42 @@ export interface LiquidationParam {
   actualizadoEn: string;
 }
 
+export interface ConfigJornadaLaboral {
+  id: number;
+  codigo: string;
+  nombre: string;
+  horaInicio: string;
+  horaFin: string;
+  diasLaborales: number[];
+  diasAnticipacionMinima: number;
+  diasUmbralAvance: number;
+  activo: boolean;
+  descripcion?: string | null;
+  actualizadoPor?: string | null;
+  creadoEn?: string;
+  actualizadoEn?: string;
+}
+
+export interface CrearConfigJornadaLaboralDTO {
+  codigo: string;
+  nombre: string;
+  horaInicio: string;
+  horaFin: string;
+  diasLaborales: number[];
+  diasAnticipacionMinima: number;
+  diasUmbralAvance: number;
+  activo?: boolean;
+  descripcion?: string;
+}
+
+export interface ActualizarConfigJornadaLaboralDTO {
+  nombre?: string;
+  horaInicio?: string;
+  horaFin?: string;
+  diasLaborales?: number[];
+  diasAnticipacionMinima?: number;
+  diasUmbralAvance?: number;
+  activo?: boolean;
+  descripcion?: string;
+}
+

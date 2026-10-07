@@ -24,6 +24,8 @@ import {
   Info,
   Sparkles,
   Search,
+  Clock,
+  Receipt,
 } from 'lucide-react';
 import viaticosService from '../services/api/viaticosService';
 import {
@@ -45,10 +47,12 @@ import TarifasTransporteTerminalAdmin from './admin/TarifasTransporteTerminalAdm
 import ParametrosLiquidacionAdmin from './admin/ParametrosLiquidacionAdmin';
 import TicketsAdminPanel from './admin/TicketsAdminPanel';
 import TarifasReferenciaAdmin from './admin/TarifasReferenciaAdmin';
+import HorarioLaboralAdmin from './admin/HorarioLaboralAdmin';
+import ConfigSoportesLegalizacion from './ConfigSoportesLegalizacion';
 // Dependencias se gestiona desde el shell (Configuración General > Dependencias)
 // y NO se renderiza como tab aquí para evitar duplicación con el menú global.
 
-type TabActiva = 'campos' | 'documentos' | 'configuraciones' | 'escalas' | 'tarifas' | 'terminalesAereos' | 'parametros' | 'tiquetes' | 'tarifasReferencia';
+type TabActiva = 'formularioSoportes' | 'campos' | 'documentos' | 'configuraciones' | 'escalas' | 'tarifas' | 'terminalesAereos' | 'parametros' | 'tiquetes' | 'tarifasReferencia' | 'horarioLaboral' | 'soportesLegalizacion';
 
 const TIPOS_CAMPO: TipoCampoFormulario[] = ['TEXT', 'TEXTAREA', 'SELECT', 'DATE', 'NUMBER', 'BOOLEAN', 'CURRENCY', 'DOCUMENT'];
 const GRUPOS_CAMPO: GrupoCampoFormulario[] = ['comisionado', 'comision', 'valores', 'soportes'];
@@ -119,13 +123,17 @@ const configVacia = (): ConfigFormularioEstado => ({
 });
 
 export default function ParametrizacionManager() {
-  const [tabActiva, setTabActiva] = useState<TabActiva>('campos');
+  const [tabActiva, setTabActiva] = useState<TabActiva>('formularioSoportes');
+  const [subTabFormulario, setSubTabFormulario] = useState<'campos' | 'documentos'>('campos');
   const [campos, setCampos] = useState<CampoFormulario[]>([]);
   const [configuraciones, setConfiguraciones] = useState<ConfigTipoComisionado[]>([]);
   const [tiposDocumento, setTiposDocumento] = useState<TipoDocumentoSoporte[]>([]);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [exito, setExito] = useState<string | null>(null);
+
+  const esTabFormulario = tabActiva === 'formularioSoportes' || tabActiva === 'campos' || tabActiva === 'documentos';
+  const vistaActualFormulario = tabActiva === 'documentos' ? 'documentos' : (tabActiva === 'campos' ? 'campos' : subTabFormulario);
 
   const [modalCampoAbierto, setModalCampoAbierto] = useState(false);
   const [campoEditando, setCampoEditando] = useState<CampoFormularioEstado | null>(null);
@@ -689,29 +697,18 @@ export default function ParametrizacionManager() {
         <div className="flex border-b border-slate-200 overflow-x-auto whitespace-nowrap scrollbar-thin">
           <button
             type="button"
-            onClick={() => setTabActiva('campos')}
-            className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition-colors ${
-              tabActiva === 'campos'
+            onClick={() => setTabActiva('formularioSoportes')}
+            className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition-colors whitespace-nowrap ${
+              esTabFormulario
                 ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
                 : 'border-transparent text-slate-500 hover:text-slate-700'
             }`}
           >
             <Layers className="w-4 h-4" />
-            Campos del Formulario
-            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px]">{campos.length}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setTabActiva('documentos')}
-            className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition-colors ${
-              tabActiva === 'documentos'
-                ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            Documentos Soporte
-            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px]">{tiposDocumento.length}</span>
+            Formulario y Soportes
+            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px]" title="Total campos y documentos soporte">
+              {campos.length + tiposDocumento.length}
+            </span>
           </button>
           <button
             type="button"
@@ -798,6 +795,30 @@ export default function ParametrizacionManager() {
             <PlaneTakeoff className="w-4 h-4" />
             Tarifas de Referencia Aéreas
           </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('horarioLaboral')}
+            className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition-colors whitespace-nowrap ${
+              tabActiva === 'horarioLaboral'
+                ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Clock className="w-4 h-4" />
+            Jornada y Días Laborales
+          </button>
+          <button
+            type="button"
+            onClick={() => setTabActiva('soportesLegalizacion')}
+            className={`flex items-center gap-2 px-5 py-3 text-xs font-bold border-b-2 transition-colors whitespace-nowrap ${
+              tabActiva === 'soportesLegalizacion'
+                ? 'border-[#003DA5] text-[#003DA5] bg-blue-50/50'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Receipt className="w-4 h-4" />
+            Soportes de Legalización
+          </button>
         </div>
 
         <div className="p-5">
@@ -808,7 +829,7 @@ export default function ParametrizacionManager() {
           ) : (
             <>
               {/* SEPARACIÓN VISUAL Y AMIGABLE ENTRE CAMPOS FORMULARIO Y DOCUMENTOS SOPORTE */}
-              {(tabActiva === 'campos' || tabActiva === 'documentos') && (
+              {esTabFormulario && (
                 <div className="bg-gradient-to-r from-blue-50/90 via-slate-50 to-indigo-50/60 border border-blue-100 rounded-2xl p-4 mb-6 shadow-2xs">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="space-y-1">
@@ -818,13 +839,13 @@ export default function ParametrizacionManager() {
                         </span>
                         <span className="text-xs text-slate-300">•</span>
                         <span className="text-xs text-slate-700 font-semibold">
-                          {tabActiva === 'campos'
+                          {vistaActualFormulario === 'campos'
                             ? 'Gestión de Campos Dinámicos de Diligenciamiento'
                             : 'Gestión de Documentos y Archivos Soporte'}
                         </span>
                       </div>
                       <p className="text-xs text-slate-500">
-                        {tabActiva === 'campos'
+                        {vistaActualFormulario === 'campos'
                           ? 'Administra las variables que el solicitante diligencia (fechas, selecciones, números, textos).'
                           : 'Administra los soportes legales requeridos en travel_expenses.tipos_documento_soporte e incluye sus instrucciones de validación.'}
                       </p>
@@ -834,9 +855,12 @@ export default function ParametrizacionManager() {
                     <div className="inline-flex p-1 bg-white border border-slate-200 rounded-xl shadow-2xs self-start md:self-auto shrink-0">
                       <button
                         type="button"
-                        onClick={() => setTabActiva('campos')}
+                        onClick={() => {
+                          setTabActiva('formularioSoportes');
+                          setSubTabFormulario('campos');
+                        }}
                         className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                          tabActiva === 'campos'
+                          vistaActualFormulario === 'campos'
                             ? 'bg-[#003DA5] text-white shadow-xs'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                         }`}
@@ -845,7 +869,7 @@ export default function ParametrizacionManager() {
                         Campos del Formulario
                         <span
                           className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                            tabActiva === 'campos' ? 'bg-blue-900/60 text-white' : 'bg-slate-100 text-slate-600'
+                            vistaActualFormulario === 'campos' ? 'bg-blue-900/60 text-white' : 'bg-slate-100 text-slate-600'
                           }`}
                         >
                           {campos.length}
@@ -854,9 +878,12 @@ export default function ParametrizacionManager() {
 
                       <button
                         type="button"
-                        onClick={() => setTabActiva('documentos')}
+                        onClick={() => {
+                          setTabActiva('formularioSoportes');
+                          setSubTabFormulario('documentos');
+                        }}
                         className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                          tabActiva === 'documentos'
+                          vistaActualFormulario === 'documentos'
                             ? 'bg-[#003DA5] text-white shadow-xs'
                             : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                         }`}
@@ -865,7 +892,7 @@ export default function ParametrizacionManager() {
                         Documentos Soporte
                         <span
                           className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                            tabActiva === 'documentos' ? 'bg-blue-900/60 text-white' : 'bg-slate-100 text-slate-600'
+                            vistaActualFormulario === 'documentos' ? 'bg-blue-900/60 text-white' : 'bg-slate-100 text-slate-600'
                           }`}
                         >
                           {tiposDocumento.length}
@@ -876,7 +903,7 @@ export default function ParametrizacionManager() {
                 </div>
               )}
 
-              {tabActiva === 'campos' && (
+              {esTabFormulario && vistaActualFormulario === 'campos' && (
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <p className="text-xs text-slate-500">
@@ -999,7 +1026,7 @@ export default function ParametrizacionManager() {
                 </div>
               )}
 
-              {tabActiva === 'documentos' && (
+              {esTabFormulario && vistaActualFormulario === 'documentos' && (
                 <div>
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                     <div className="flex items-center gap-3">
@@ -1249,6 +1276,8 @@ export default function ParametrizacionManager() {
               {tabActiva === 'parametros' && <ParametrosLiquidacionAdmin />}
               {tabActiva === 'tiquetes' && <TicketsAdminPanel />}
               {tabActiva === 'tarifasReferencia' && <TarifasReferenciaAdmin />}
+              {tabActiva === 'horarioLaboral' && <HorarioLaboralAdmin />}
+              {tabActiva === 'soportesLegalizacion' && <ConfigSoportesLegalizacion />}
             </>
           )}
         </div>

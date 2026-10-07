@@ -87,6 +87,9 @@ import {
   TarifaRegionalExcepcion,
   TarifaTransporteTerminal,
   LiquidationParam,
+  ConfigJornadaLaboral,
+  CrearConfigJornadaLaboralDTO,
+  ActualizarConfigJornadaLaboralDTO,
 } from '../../types/parametrizacion';
 import { fallbackGeopolitica, formatearNombreComisionado } from '../../utils/viaticosUtils';
 
@@ -722,6 +725,64 @@ export class ViaticosService {
       return await apiClient.put<ConfigTipoComisionado>(`/viaticos/api/v1/parametrizacion/config-tipo-comisionado/${encodeURIComponent(tipo)}`, dto);
     } catch (error) {
       console.error('Error actualizando configuración de tipo comisionado:', error);
+      throw error;
+    }
+  }
+
+  // ==================== JORNADA LABORAL Y DÍAS HÁBILES ====================
+
+  async obtenerConfiguracionesJornada(): Promise<ConfigJornadaLaboral[]> {
+    try {
+      const res = await apiClient.get<ConfigJornadaLaboral[]>('/viaticos/api/v1/parametrizacion/jornada-laboral');
+      return Array.isArray(res) ? res : (res as any)?.data || [];
+    } catch (error) {
+      console.error('Error obteniendo configuraciones de jornada laboral:', error);
+      return [];
+    }
+  }
+
+  async obtenerJornadaLaboralActiva(): Promise<ConfigJornadaLaboral | null> {
+    try {
+      const res = await apiClient.get<ConfigJornadaLaboral>('/viaticos/api/v1/parametrizacion/jornada-laboral/activa');
+      return res || null;
+    } catch (error) {
+      console.warn('Error obteniendo jornada laboral activa, usando fallback local:', error);
+      return null;
+    }
+  }
+
+  async crearConfigJornada(dto: CrearConfigJornadaLaboralDTO): Promise<ConfigJornadaLaboral> {
+    try {
+      return await apiClient.post<ConfigJornadaLaboral>('/viaticos/api/v1/parametrizacion/jornada-laboral', dto);
+    } catch (error) {
+      console.error('Error creando jornada laboral:', error);
+      throw error;
+    }
+  }
+
+  async actualizarConfigJornada(id: number, dto: ActualizarConfigJornadaLaboralDTO): Promise<ConfigJornadaLaboral> {
+    try {
+      return await apiClient.put<ConfigJornadaLaboral>(`/viaticos/api/v1/parametrizacion/jornada-laboral/${id}`, dto);
+    } catch (error) {
+      console.error('Error actualizando jornada laboral:', error);
+      throw error;
+    }
+  }
+
+  async activarConfigJornada(id: number): Promise<ConfigJornadaLaboral> {
+    try {
+      return await apiClient.put<ConfigJornadaLaboral>(`/viaticos/api/v1/parametrizacion/jornada-laboral/${id}/activar`, {});
+    } catch (error) {
+      console.error('Error activando jornada laboral:', error);
+      throw error;
+    }
+  }
+
+  async eliminarConfigJornada(id: number): Promise<{ success: boolean }> {
+    try {
+      return await apiClient.delete<{ success: boolean }>(`/viaticos/api/v1/parametrizacion/jornada-laboral/${id}`);
+    } catch (error) {
+      console.error('Error eliminando jornada laboral:', error);
       throw error;
     }
   }
