@@ -16,8 +16,30 @@ import { EvaluacionProceso } from './entities/evaluacion-proceso.entity';
 import { ProcesoAuditable } from './entities/proceso-auditable.entity';
 import { CreateEvaluacionProcesoDto, UpdateEvaluacionProcesoDto } from './dto/evaluacion-proceso.dto';
 import { calcularAuditableDesdeCiclo } from './evaluacion-auditable.util';
+import { AuditoriasService } from '../auditorias/auditorias.service';
 
 export { calcularAuditableDesdeCiclo } from './evaluacion-auditable.util';
+
+/** Auditoría programada a partir de un proceso del Universo Auditable (EFDS-2281). */
+export interface AuditoriaDelProceso {
+  id: string;
+  codigo: string | null;
+  nombre: string | null;
+  fase: string | null;
+}
+
+/**
+ * Qué pasa con las auditorías del proceso si se elimina su evaluación del Universo:
+ * las que siguen en Programa Anual se archivan; si alguna ya empezó, no se deja eliminar.
+ */
+export interface ImpactoEliminacionEvaluacion {
+  proceso: string | null;
+  vigencia: number;
+  /** Auditorías aún en Programa Anual: se archivan al confirmar la eliminación */
+  porArchivar: AuditoriaDelProceso[];
+  /** Auditorías que ya empezaron (planeación en adelante): impiden eliminar */
+  iniciadas: AuditoriaDelProceso[];
+}
 
 @Injectable()
 export class EvaluacionProcesoService implements OnModuleInit {
@@ -28,6 +50,7 @@ export class EvaluacionProcesoService implements OnModuleInit {
     private readonly evaluacionRepository: Repository<EvaluacionProceso>,
     @InjectRepository(ProcesoAuditable)
     private readonly procesoRepository: Repository<ProcesoAuditable>,
+    private readonly auditoriasService: AuditoriasService,
   ) {}
 
   async onModuleInit() {
@@ -362,10 +385,90 @@ export class EvaluacionProcesoService implements OnModuleInit {
   /**
    * Elimina una evaluación (soft delete - inactivar)
    */
-  async delete(id: string): Promise<void> {
+  async delete(
+    id: string,
+    opciones: { archivarAuditorias?: boolean; usuarioId?: string } = {},
+  ): Promise<{ archivadas: AuditoriaDelProceso[] }> {
     const evaluacion = await this.findOne(id);
+    const impacto = await this.impactoEliminacion(id, evaluacion);
+
+    // EFDS-2281: un proceso con auditorías ya iniciadas no sale del Universo; primero se
+    // gestionan esas auditorías en Auditorías OCI.
+    if (impacto.iniciadas.length > 0) {
+      throw new ConflictException({
+        codigo: 'AUDITORIAS_INICIADAS',
+        message:
+          `No se puede eliminar "${impacto.proceso ?? 'el proceso'}" del Universo Auditable: ` +
+          `tiene auditorías que ya empezaron (${impacto.iniciadas.map((a) => a.codigo || a.nombre).join(', ')}). ` +
+          'Gestiónelas primero en Auditorías OCI.',
+        ...impacto,
+      });
+    }
+    // Las que siguen en Programa Anual se archivan, pero solo si quien elimina lo confirmó.
+    if (impacto.porArchivar.length > 0 && !opciones.archivarAuditorias) {
+      throw new ConflictException({
+        codigo: 'REQUIERE_CONFIRMAR_ARCHIVO',
+        message:
+          `"${impacto.proceso ?? 'El proceso'}" tiene auditorías programadas ` +
+          `(${impacto.porArchivar.map((a) => a.codigo || a.nombre).join(', ')}). Confirme que se archiven.`,
+        ...impacto,
+      });
+    }
+
+    for (const auditoria of impacto.porArchivar) {
+      await this.auditoriasService.update(auditoria.id, { archivada: true } as any, opciones.usuarioId);
+    }
+    if (impacto.porArchivar.length > 0) {
+      this.logger.log(
+        `Evaluación ${id} (${impacto.proceso}, ${impacto.vigencia}) eliminada: auditorías archivadas ${impacto.porArchivar.map((a) => a.codigo).join(', ')}`,
+      );
+    }
+
     evaluacion.activo = false;
-    const saved = await this.evaluacionRepository.save(evaluacion);
+    await this.evaluacionRepository.save(evaluacion);
+    return { archivadas: impacto.porArchivar };
+  }
+
+  /**
+   * Auditorías regulares de la vigencia programadas con el proceso de esta evaluación
+   * (EFDS-2281). La auditoría guarda el proceso por su nombre (o, en registros viejos,
+   * por su id). Si el proceso sigue teniendo otra evaluación activa en la vigencia
+   * (otra dependencia o fecha de corte), sus auditorías siguen respaldadas y no se tocan.
+   * Las auditorías especiales y territoriales no salen del Universo y no cuentan.
+   */
+  async impactoEliminacion(id: string, evaluacionCargada?: EvaluacionProceso): Promise<ImpactoEliminacionEvaluacion> {
+    const evaluacion = evaluacionCargada ?? (await this.findOne(id));
+    const proceso = evaluacion.proceso ?? (await this.procesoRepository.findOne({ where: { id: evaluacion.procesoId } }));
+    const nombre = proceso?.nombre?.trim() || null;
+    const vigencia = Number(evaluacion.vigencia);
+    const vacio: ImpactoEliminacionEvaluacion = { proceso: nombre, vigencia, porArchivar: [], iniciadas: [] };
+    if (!nombre || !evaluacion.activo) return vacio;
+
+    const otraActiva = await this.evaluacionRepository.count({
+      where: { id: Not(id), procesoId: evaluacion.procesoId, vigencia: evaluacion.vigencia, activo: true },
+    });
+    if (otraActiva > 0) return vacio;
+
+    const filas: Array<AuditoriaDelProceso> = await this.evaluacionRepository.manager.query(
+      `SELECT a.id::text AS id, a.codigo, a.nombre, a.fase
+         FROM control_interno.auditoria a
+        WHERE a.activa = true
+          AND a.archivada = false
+          AND (a.plan_anual_vigencia = $1
+               OR (a.plan_anual_vigencia IS NULL AND EXTRACT(YEAR FROM a.fecha_inicio) = $1))
+          AND lower(coalesce(a.tipo, '')) NOT LIKE '%especial%'
+          AND lower(coalesce(a.tipo, '')) NOT LIKE '%territorial%'
+          AND (lower(trim(a.proceso_auditado)) = lower($2) OR a.proceso_auditado = $3)
+        ORDER BY a.codigo`,
+      [vigencia, nombre, String(evaluacion.procesoId ?? '')],
+    );
+
+    return {
+      proceso: nombre,
+      vigencia,
+      porArchivar: filas.filter((a) => (a.fase || 'plan-anual') === 'plan-anual'),
+      iniciadas: filas.filter((a) => (a.fase || 'plan-anual') !== 'plan-anual'),
+    };
   }
 
   /**
