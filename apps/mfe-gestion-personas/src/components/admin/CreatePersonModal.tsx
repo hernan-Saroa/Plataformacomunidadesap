@@ -398,7 +398,8 @@ export function CreatePersonModal({ isOpen, onClose, onCreate, editMode = false,
       toast.success(editMode ? 'Usuario actualizado exitosamente' : 'Usuario creado exitosamente');
       onClose();
     } catch (error) {
-      toast.error('Error al guardar el usuario');
+      const errorText = error ? (error as Error).message || 'Error al guardar el usuario' : 'Error al guardar el usuario';
+      toast.error(errorText);
     } finally {
       setIsSubmitting(false);
     }

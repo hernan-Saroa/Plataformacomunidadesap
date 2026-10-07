@@ -22,6 +22,7 @@ import {
   ESTADOS_SOLO_LECTURA,
 } from '../../entities/estado-solicitud.enum';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { PendientesService } from '../legalizacion/pendientes.service';
 
 export const DIAS_HABILES_MINIMOS_AVANCE_DEFAULT = 5;
 import { CreateSolicitudDto } from '../../dto/create-solicitud.dto';
@@ -197,6 +198,8 @@ export class TravelExpensesService {
     private readonly ticketsService?: TicketsService,
     @Optional()
     private readonly eventEmitter?: EventEmitter2,
+    @Optional()
+    private readonly pendientesService?: PendientesService,
   ) {}
 
   private sincronizarItinerario(dto: {
@@ -2227,6 +2230,8 @@ export class TravelExpensesService {
       );
     }
 
+    await this.validarLegalizacionesPendientes(dto.comisionadoId);
+
     let extemporanea = false;
     let radicadoFueraJornada = false;
     let estadoSolicitud: EstadoSolicitud;
@@ -3067,6 +3072,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
       );
     }
 
+    await this.validarLegalizacionesPendientes(solicitud.comisionadoId);
+
     const documentos = await this.documentoRepo.find({
       where: { solicitudId: solicitud.id },
     });
@@ -3725,6 +3732,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
         `La solicitud tiene estado ${solicitud.estadoSolicitud} y no puede enviarse a flujo de firmas.`,
       );
     }
+
+    await this.validarLegalizacionesPendientes(solicitud.comisionadoId);
 
     // Si viene código OTP del enlace, verificarlo
     if (dto?.otp && dto?.verificationId) {
@@ -4532,6 +4541,42 @@ if (dto.costoEstimadoTiquete !== undefined) {
       `Las fechas indicadas (${this.formatearFecha(fechaInicio)} a ${this.formatearFecha(fechaFin)}) ` +
       `se cruzan con la solicitud ${referencia} (${estado}, ${this.formatearFecha(solapada.fechaInicio)} a ${this.formatearFecha(solapada.fechaFin)}). ` +
       `Ajuste las fechas de esta comisión o cancele/radique la solicitud conflictiva antes de continuar.`
+    );
+  }
+
+  /**
+   * RF-VAL-003 — Bloquea la solicitud si el comisionado tiene una o más
+   * comisiones que ya debieron legalizarse (fecha límite vencida) y no están
+   * legalizadas. Usa la definición de pendientes de la Etapa 9.
+   */
+  private async validarLegalizacionesPendientes(comisionadoId: string): Promise<void> {
+    if (!this.pendientesService || !comisionadoId) return;
+
+    const { comisiones } = await this.pendientesService.tieneLegalizacionesPendientes(comisionadoId);
+    const ahora = Date.now();
+    const vencidas = comisiones.filter(
+      (c) => c.fechaLimite && new Date(c.fechaLimite).getTime() < ahora,
+    );
+    if (vencidas.length === 0) return;
+
+    const listado = vencidas
+      .map((c) => {
+        const limite = new Date(c.fechaLimite as Date).toLocaleString('es-CO', {
+          timeZone: 'America/Bogota',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        });
+        return `${c.codigo} (fecha límite ${limite})`;
+      })
+      .join(', ');
+    throw new ConflictException(
+      `El comisionado tiene ${vencidas.length === 1 ? 'una comisión pendiente' : `${vencidas.length} comisiones pendientes`} ` +
+        `de legalizar con el plazo vencido: ${listado}. ` +
+        `Debe ${vencidas.length === 1 ? 'legalizarla' : 'legalizarlas'} antes de registrar una nueva solicitud.`,
     );
   }
 
