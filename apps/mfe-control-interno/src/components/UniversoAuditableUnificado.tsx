@@ -730,6 +730,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
               territorial: data.territorial,
               areaObjetivo: data.areaObjetivo,
               procesoAuditado: data.procesoAuditado,
+              unidadesAuditables: data.unidadesAuditables ?? [],
               alcance: data.alcance,
               auditorLider: data.auditorLider,
               equipoAuditores: data.equipoAuditores,
