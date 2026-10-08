@@ -1,6 +1,6 @@
 import { Client } from 'pg';
 
-import { resolverSituacion, extraerVigencia, sigueVigente } from './situacion-docente.js';
+import { resolverSituacion, extraerVigencia, sigueVigente , SIN_DATO_ASIGNABLE } from './situacion-docente.js';
 
 /**
  * EFDS-1372 :: subtarea 8 :: resolución de situación administrativa.
@@ -103,9 +103,14 @@ describe('EFDS-1372 :: canario agregado sobre el RUND real', () => {
   siHayBase(
     'sobre la planta completa, exactamente 9 no asignables y son sabático + comisión',
     async () => {
+      // Acotado a la planta con situación registrada en el RUND. Desde el Lote 1
+      // conviven 80 catedráticos extraídos del histórico que NO traen situación
+      // administrativa: son no asignables por fail-closed y por falta de dato,
+      // no por sabático ni comisión. Se verifican aparte, en el canario de abajo.
       const { rows } = await client!.query(
         `SELECT "situacionCategoria" AS categoria, "situacionAdministrativa" AS descripcion
-           FROM academic_work_plan."Docente"`,
+           FROM academic_work_plan."Docente"
+          WHERE "tipoVinculacion" <> 'Cátedra'`,
       );
       expect(rows.length).toBeGreaterThan(0);
 
@@ -126,6 +131,34 @@ describe('EFDS-1372 :: canario agregado sobre el RUND real', () => {
         String(r.categoria).toLowerCase().includes('directivo'),
       );
       expect(directivosBloqueados).toHaveLength(0);
+    },
+  );
+
+  siHayBase(
+    'los 80 catedraticos del historico: no asignables por falta de dato, no por situacion',
+    async () => {
+      const { rows } = await client!.query(
+        `SELECT d."situacionCategoria" AS categoria, d."situacionAdministrativa" AS descripcion
+           FROM academic_work_plan."Docente" d
+           JOIN auth.personas p ON p.id_person = d."personaId"
+          WHERE d."tipoVinculacion" = 'Cátedra'
+            -- qa.docente se siembra como cátedra para probar el portal (migración
+            -- 033); no es un catedrático del histórico, así que se excluye.
+            AND p.num_identificacion <> '1020304053'`,
+      );
+      expect(rows).toHaveLength(80);
+
+      // Todos no asignables, y todos por la MISMA razón: sin situación en el
+      // RUND. Si alguno pasara a asignable, alguien les inventó una situación.
+      const resueltos = rows.map((r) => resolverSituacion(r.categoria, r.descripcion, HOY));
+      // Bloqueados por defecto, y todos por la MISMA razon: falta el dato.
+      expect(resueltos.every((r) => !r.asignable)).toBe(true);
+      expect([...new Set(resueltos.map((r) => r.categoria))]).toEqual(['sin_dato']);
+      // El motivo distingue "falta informacion" de "su situacion lo impide":
+      // conflacionarlos hacia que la decanatura leyera un motivo enganoso.
+      expect(resueltos.every((r) => /Falta informaci/.test(String(r.motivo)))).toBe(true);
+      // Y el parametro esta apagado por defecto: nadie les invento una situacion.
+      expect(SIN_DATO_ASIGNABLE).toBe(false);
     },
   );
 });

@@ -57,6 +57,7 @@ import {
   SolicitudPendiente023,
   TicketValidationResult,
   TipoTransporteTiquete,
+  TarifaEstimadaResult,
 } from '../types/viaticos';
 import { ConfigTipoComisionado, CampoFormulario } from '../types/parametrizacion';
 import viaticosService from '../services/api/viaticosService';
@@ -279,6 +280,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   } | null>(null);
   const [subiendoExcepcion, setSubiendoExcepcion] = useState(false);
   const [errorExcepcion, setErrorExcepcion] = useState<string | null>(null);
+  const [tarifaEstimadaReferencia, setTarifaEstimadaReferencia] = useState<TarifaEstimadaResult | null>(null);
   const refTokenValidacionTiquete = useRef(0);
 
   // ========== Estado RF-LIQ-005 (Saldo Presupuestal por Dependencia - Informativo) ==========
@@ -1412,6 +1414,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   useEffect(() => {
     if (!form.requiereTiquetes) {
       setValidacionTiquete(null);
+      setTarifaEstimadaReferencia(null);
       return;
     }
     const { origenCiudad: origenItinerario, destinoCiudad: destinoItinerario } = obtenerOrigenDestinoItinerario();
@@ -1420,6 +1423,19 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     }
     const token = ++refTokenValidacionTiquete.current;
     setValidandoTiquete(true);
+
+    // Consulta de tarifa de referencia automática para rutas aéreas (Modelo Híbrido)
+    if (tipoTransporte === 'AEREO') {
+      void viaticosService.consultarTarifaEstimada(origenItinerario, destinoItinerario).then((tarifa) => {
+        if (token === refTokenValidacionTiquete.current && tarifa && tarifa.tarifaEstimada > 0) {
+          setTarifaEstimadaReferencia(tarifa);
+          if (!montoEstimadoTiquete || montoEstimadoTiquete === 0) {
+            setMontoEstimadoTiquete(tarifa.tarifaEstimada);
+          }
+        }
+      });
+    }
+
     void viaticosService
       .validarTiquete({
         dependenciaId,
@@ -4448,6 +4464,22 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     <span className="text-slate-400 font-bold">Dependencia solicitante</span>
                     <span className="font-semibold text-slate-800">
                       {dependencias.find((d) => d.codDependencia === dependenciaId)?.nomDependencia || dependenciaId}
+                    </span>
+                  </div>
+                )}
+                {form.requiereTiquetes && (
+                  <div className="flex justify-between px-4 py-2.5 bg-blue-50/30">
+                    <span className="text-slate-500 font-bold flex items-center gap-1.5">
+                      <Plane className="w-3.5 h-3.5 text-blue-600" />
+                      Tiquete Aéreo Estimado
+                    </span>
+                    <span className="font-semibold text-slate-800 flex items-center gap-2">
+                      {formatearMoneda(montoEstimadoTiquete)}
+                      {tarifaEstimadaReferencia && (
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
+                          Tarifa Referencia ({tarifaEstimadaReferencia.fuente || 'OFICIAL'})
+                        </span>
+                      )}
                     </span>
                   </div>
                 )}

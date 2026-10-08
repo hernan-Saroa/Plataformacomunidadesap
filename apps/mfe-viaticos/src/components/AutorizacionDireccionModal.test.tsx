@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AutorizacionDireccionModal from './AutorizacionDireccionModal';
 import { SolicitudAutorizacion } from '../types/viaticos';
 
-const mockSolicitud: SolicitudAutorizacion = {
+const mockSolicitud = {
   id: 'sol-ext-001',
   consecutivoUnico: 'COM-2026-EXT-0001',
   estadoSolicitud: 'AUTORIZACION_DIRECCION',
@@ -29,14 +29,49 @@ const mockSolicitud: SolicitudAutorizacion = {
   documentosSoporte: [],
 };
 
+vi.mock('./FirmaDigitalViaticosModal', () => ({
+  default: ({ isOpen, onFirmaCompleta, onCancelar }: any) =>
+    isOpen ? (
+      <div data-testid="firma-digital-viaticos-modal">
+        <span>Modal Firma OTP Abierta</span>
+        <button
+          type="button"
+          onClick={async () => {
+            await onFirmaCompleta({
+              codigoOtp: '654321',
+              certificado_id: 'ESAP-CERT-VIAT-2026-TEST',
+              hash: 'SHA256:mockedhash1234567890abcdef',
+              timestamp: new Date().toISOString(),
+              firmante: 'Director Nacional ESAP',
+              cargo: 'Director(a) Nacional',
+              pin_verificado: true,
+              solicitudId: 'sol-ext-001',
+            });
+          }}
+        >
+          Confirmar Firma OTP Test
+        </button>
+        <button type="button" onClick={onCancelar}>
+          Cancelar Firma OTP
+        </button>
+      </div>
+    ) : null,
+}));
+
 vi.mock('../services/api/viaticosService', () => ({
   default: {
     autorizarComisionExtemporanea: vi.fn(),
     rechazarComisionExtemporanea: vi.fn(),
+    solicitarOtpFirma: vi.fn(),
+    verificarOtpFirma: vi.fn(),
+    exportarFormato023: vi.fn(),
   },
   viaticosService: {
     autorizarComisionExtemporanea: vi.fn(),
     rechazarComisionExtemporanea: vi.fn(),
+    solicitarOtpFirma: vi.fn(),
+    verificarOtpFirma: vi.fn(),
+    exportarFormato023: vi.fn(),
   },
 }));
 
@@ -66,6 +101,40 @@ describe('AutorizacionDireccionModal — RF-AUT-002', () => {
       person: { full_name: 'Director Nacional ESAP' },
     });
     (authService.isSuperAdmin as any).mockReturnValue(false);
+    (viaticosService.solicitarOtpFirma as any).mockResolvedValue({
+      verificationId: 'v-dir-123',
+      emailEnviadoA: 'direccion@esap.edu.co',
+      devCode: '654321',
+    });
+    (viaticosService.exportarFormato023 as any).mockResolvedValue(
+      new Blob(['fake-pdf'], { type: 'application/pdf' }),
+    );
+    if (!window.URL.createObjectURL) {
+      window.URL.createObjectURL = vi.fn(() => 'blob:http://localhost/fake-blob');
+    } else {
+      vi.spyOn(window.URL, 'createObjectURL').mockReturnValue('blob:http://localhost/fake-blob');
+    }
+    if (!window.URL.revokeObjectURL) {
+      window.URL.revokeObjectURL = vi.fn();
+    } else {
+      vi.spyOn(window.URL, 'revokeObjectURL').mockReturnValue(undefined as any);
+    }
+    HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({
+      fillStyle: '',
+      strokeStyle: '',
+      lineWidth: 1,
+      font: '',
+      textAlign: '',
+      textBaseline: '',
+      fillRect: vi.fn(),
+      strokeRect: vi.fn(),
+      fillText: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      stroke: vi.fn(),
+    }) as any;
+    HTMLCanvasElement.prototype.toDataURL = vi.fn().mockReturnValue('data:image/png;base64,mockedcanvasdata');
   });
 
   it('renderiza la información de la comisión extemporánea y el campo de decisión', () => {
@@ -86,7 +155,7 @@ describe('AutorizacionDireccionModal — RF-AUT-002', () => {
     expect(screen.getByText(/Actúo formalmente en calidad de Delegado/i)).toBeDefined();
   });
 
-  it('permite autorizar con justificación y marca de delegado', async () => {
+  it('permite autorizar con proceso de firma digital y validación OTP', async () => {
     (viaticosService.autorizarComisionExtemporanea as any).mockResolvedValue({
       id: 'sol-ext-001',
       estadoSolicitud: 'EN_AUTORIZACION',
@@ -109,15 +178,32 @@ describe('AutorizacionDireccionModal — RF-AUT-002', () => {
     const checkDelegado = screen.getByRole('checkbox');
     fireEvent.click(checkDelegado);
 
-    // Click autorizar
+    // Click autorizar (inicia firma OTP)
     const btnAutorizar = screen.getByRole('button', { name: /Autorizar Comisión Extemporánea/i });
     fireEvent.click(btnAutorizar);
+
+    await waitFor(() => {
+      expect(viaticosService.solicitarOtpFirma).toHaveBeenCalledWith('sol-ext-001', {
+        tipoFirma: 'DIRECCION_NACIONAL',
+        etapaLabel: 'Autorización Dirección Nacional — Comisión Extemporánea (RF-AUT-002)',
+      });
+      expect(screen.getByTestId('firma-digital-viaticos-modal')).toBeDefined();
+    });
+
+    // Confirmar firma OTP desde el modal
+    const btnConfirmarOtp = screen.getByRole('button', { name: /Confirmar Firma OTP Test/i });
+    fireEvent.click(btnConfirmarOtp);
 
     await waitFor(() => {
       expect(viaticosService.autorizarComisionExtemporanea).toHaveBeenCalledWith(
         'sol-ext-001',
         'Comisión urgente requerida por calamidad',
         true,
+        expect.objectContaining({
+          otp: '654321',
+          certificadoId: 'ESAP-CERT-VIAT-2026-TEST',
+          verificationId: 'v-dir-123',
+        }),
       );
     });
 
@@ -128,6 +214,48 @@ describe('AutorizacionDireccionModal — RF-AUT-002', () => {
       },
       { timeout: 3000 },
     );
+  });
+
+  it('permite previsualizar el Formato 023 en el visor flotante', async () => {
+    render(
+      <AutorizacionDireccionModal
+        isOpen={true}
+        solicitud={mockSolicitud}
+        onClose={onClose}
+        onSuccess={onSuccess}
+      />,
+    );
+
+    const btnVer023 = screen.getAllByRole('button', { name: /Ver Formato 023|Previsualizar Formato 023/i })[0];
+    fireEvent.click(btnVer023);
+
+    await waitFor(() => {
+      expect(viaticosService.exportarFormato023).toHaveBeenCalledWith(
+        'sol-ext-001',
+        'COM-2026-EXT-0001',
+      );
+    });
+  });
+
+  it('permite exportar / descargar el Formato 023 en PDF', async () => {
+    render(
+      <AutorizacionDireccionModal
+        isOpen={true}
+        solicitud={mockSolicitud}
+        onClose={onClose}
+        onSuccess={onSuccess}
+      />,
+    );
+
+    const btnExportar023 = screen.getAllByRole('button', { name: /Exportar 023|Exportar PDF/i })[0];
+    fireEvent.click(btnExportar023);
+
+    await waitFor(() => {
+      expect(viaticosService.exportarFormato023).toHaveBeenCalledWith(
+        'sol-ext-001',
+        'COM-2026-EXT-0001',
+      );
+    });
   });
 
   it('permite rechazar la comisión extemporánea previa confirmación', async () => {
@@ -256,7 +384,32 @@ describe('AutorizacionDireccionModal — RF-AUT-002', () => {
     expect(screen.getByText(/13\/2000 caracteres/i)).toBeDefined();
   });
 
-  it('muestra mensaje de error si la autorización falla en el backend', async () => {
+  it('muestra mensaje de error si solicitarOtpFirma falla', async () => {
+    (viaticosService.solicitarOtpFirma as any).mockRejectedValue(
+      new Error('No fue posible enviar el código OTP al correo institucional'),
+    );
+
+    render(
+      <AutorizacionDireccionModal
+        isOpen={true}
+        solicitud={mockSolicitud}
+        onClose={onClose}
+        onSuccess={onSuccess}
+      />,
+    );
+
+    const btnAutorizar = screen.getByRole('button', { name: /Autorizar Comisión Extemporánea/i });
+    fireEvent.click(btnAutorizar);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/No fue posible enviar el código OTP al correo institucional/i),
+      ).toBeDefined();
+    });
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+
+  it('muestra mensaje de error si la autorización falla en el backend tras validar OTP', async () => {
     (viaticosService.autorizarComisionExtemporanea as any).mockRejectedValue(
       new Error('Fallo de conexión con el servicio de viáticos'),
     );
@@ -272,6 +425,13 @@ describe('AutorizacionDireccionModal — RF-AUT-002', () => {
 
     const btnAutorizar = screen.getByRole('button', { name: /Autorizar Comisión Extemporánea/i });
     fireEvent.click(btnAutorizar);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('firma-digital-viaticos-modal')).toBeDefined();
+    });
+
+    const btnConfirmarOtp = screen.getByRole('button', { name: /Confirmar Firma OTP Test/i });
+    fireEvent.click(btnConfirmarOtp);
 
     await waitFor(() => {
       expect(screen.getByText(/Fallo de conexión con el servicio de viáticos/i)).toBeDefined();
