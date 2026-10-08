@@ -188,6 +188,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const [paso, setPaso] = useState(1);
   const [form, setForm] = useState<FormNuevaSolicitud>(formInicialNuevaSolicitud());
   const [comisionado, setComisionado] = useState<Comisionado | null>(null);
+  const [comisionadosDependencia, setComisionadosDependencia] = useState<Comisionado[]>([]);
+  const [cargandoComisionadosDep, setCargandoComisionadosDep] = useState(false);
   const [solicitudesPendientes023, setSolicitudesPendientes023] = useState<SolicitudPendiente023[]>([]);
   const [consultando, setConsultando] = useState(false);
   const [errorConsulta, setErrorConsulta] = useState<string | null>(null);
@@ -653,6 +655,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       setPaso(1);
       setForm(formInicialNuevaSolicitud());
       setComisionado(null);
+      setComisionadosDependencia([]);
+      setCargandoComisionadosDep(false);
       setSolicitudesPendientes023([]);
       setConsultando(false);
       setErrorConsulta(null);
@@ -800,9 +804,50 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   };
 
   /**
+   * Resuelve el id numérico de la dependencia propia del usuario enlace.
+   */
+  const idDependenciaUsuario: number | null = useMemo(() => {
+    if (usuarioActual?.dependencia?.idDependencia != null) {
+      const n = Number(usuarioActual.dependencia.idDependencia);
+      if (!isNaN(n) && n > 0) return n;
+    }
+    if (usuarioActual?.dependencia?.codDependencia) {
+      const match = dependencias.find((d) => d.codDependencia === usuarioActual.dependencia?.codDependencia);
+      if (match?.idDependencia != null) {
+        const n = Number(match.idDependencia);
+        if (!isNaN(n) && n > 0) return n;
+      }
+    }
+    if (dependenciaId) {
+      const match = dependencias.find(
+        (d) => d.codDependencia === dependenciaId || String(d.idDependencia) === String(dependenciaId),
+      );
+      if (match?.idDependencia != null) return Number(match.idDependencia);
+    }
+    return null;
+  }, [usuarioActual?.dependencia, dependencias, dependenciaId]);
+
+  const depEnlaceActual = useMemo(() => {
+    return (
+      dependencias.find((d) => Number(d.idDependencia) === Number(idDependenciaUsuario)) ||
+      (usuarioActual?.dependencia
+        ? {
+            idDependencia: usuarioActual.dependencia.idDependencia,
+            codDependencia: usuarioActual.dependencia.codDependencia,
+            nomDependencia: usuarioActual.dependencia.nomDependencia,
+          }
+        : null)
+    );
+  }, [dependencias, idDependenciaUsuario, usuarioActual?.dependencia]);
+
+  /**
    * Resuelve el id numérico de la dependencia activa para consultar cargos (N:M auth.dependencias_cargos).
    */
   const idDependenciaActual: number | null = useMemo(() => {
+    // Si es enlace (no superadmin), está estrictamente restringido a su propia dependencia
+    if (!puedeElegirDependencia() && idDependenciaUsuario != null) {
+      return idDependenciaUsuario;
+    }
     if (form.idDependencia != null && form.idDependencia !== '') {
       const n = Number(form.idDependencia);
       if (!isNaN(n) && n > 0) return n;
@@ -826,7 +871,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       if (!isNaN(n) && n > 0) return n;
     }
     return null;
-  }, [form.idDependencia, comisionado?.idDependencia, dependenciaId, dependencias, usuarioActual?.dependencia]);
+  }, [form.idDependencia, comisionado?.idDependencia, dependenciaId, dependencias, usuarioActual?.dependencia, idDependenciaUsuario]);
 
   // Cargar cargos asignados a la dependencia seleccionada (N:M auth.dependencias_cargos)
   useEffect(() => {
@@ -858,6 +903,38 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       isSubscribed = false;
     };
   }, [idDependenciaActual]);
+
+  // Cargar lista de comisionados de la dependencia (para enlaces, los de su dependencia; para admin, los de la dependencia activa)
+  useEffect(() => {
+    const idDepAListar = !puedeElegirDependencia() ? idDependenciaUsuario : idDependenciaActual;
+    if (!idDepAListar || typeof viaticosService.listarComisionados !== 'function') {
+      setComisionadosDependencia([]);
+      setCargandoComisionadosDep(false);
+      return;
+    }
+
+    let isSubscribed = true;
+    setCargandoComisionadosDep(true);
+
+    viaticosService
+      .listarComisionados(idDepAListar)
+      .then((lista) => {
+        if (isSubscribed) {
+          setComisionadosDependencia(lista || []);
+        }
+      })
+      .catch((err) => {
+        console.warn('Error cargando comisionados de la dependencia:', err);
+        if (isSubscribed) setComisionadosDependencia([]);
+      })
+      .finally(() => {
+        if (isSubscribed) setCargandoComisionadosDep(false);
+      });
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [idDependenciaUsuario, idDependenciaActual]);
 
   const cambiarDependencia = (idDep: number | string | null) => {
     const numId = idDep ? Number(idDep) : null;
@@ -1129,8 +1206,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.destinoDepartamento, departamentos, ciudadesDepto]);
 
-  const consultarComisionado = async () => {
-    const documento = form.documentoComisionado.trim();
+  const consultarComisionado = async (docParam?: string) => {
+    const documento = (typeof docParam === 'string' ? docParam : form.documentoComisionado).trim();
     if (!documento) {
       setErrorConsulta('Ingrese el número de documento del funcionario.');
       return;
@@ -1141,14 +1218,46 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     setSolicitudesPendientes023([]);
     setHabeasPendiente(false);
     setHabeasMarcado(false);
+
+    const esAdmin = puedeElegirDependencia() || esSuperAdminViaticos || Boolean(esSuperAdmin);
+    const idDepFiltro = !esAdmin ? idDependenciaUsuario : undefined;
+
     try {
-      const resultado = await viaticosService.consultarComisionado(documento);
+      const resultado = await viaticosService.consultarComisionado(documento, idDepFiltro);
       if (!resultado) {
         setErrorConsulta(
           `No se encontró un comisionado con documento ${documento} en ESAP. Verifique el número o contacte al administrador.`,
         );
         return;
       }
+
+      // Restricción estricta de dependencia para enlaces: verificar que pertenezca a su misma dependencia
+      if (!esAdmin && idDependenciaUsuario != null) {
+        if (
+          resultado.idDependencia != null &&
+          resultado.idDependencia !== '' &&
+          Number(resultado.idDependencia) !== Number(idDependenciaUsuario)
+        ) {
+          const depComisionado = dependencias.find((d) => Number(d.idDependencia) === Number(resultado.idDependencia));
+          const depUsuario =
+            dependencias.find((d) => Number(d.idDependencia) === Number(idDependenciaUsuario)) ||
+            usuarioActual?.dependencia;
+          const nomDepComisionado = depComisionado?.nomDependencia || `Dependencia ${resultado.idDependencia}`;
+          const nomDepUsuario = depUsuario?.nomDependencia || 'su dependencia';
+
+          setErrorConsulta(
+            `El funcionario con documento ${documento} (${formatearNombreComisionado(resultado)}) pertenece a otra dependencia (${nomDepComisionado}). Como enlace de ${nomDepUsuario}, solo puede consultar y comisionar personal de su propia dependencia.`,
+          );
+          setComisionado(null);
+          return;
+        }
+
+        // Si no tiene dependencia en BD, asignarla a la del enlace
+        if (resultado.idDependencia == null || resultado.idDependencia === '') {
+          resultado.idDependencia = Number(idDependenciaUsuario);
+        }
+      }
+
       setComisionado(resultado);
       const pendientes = resultado.solicitudesPendientes || [];
       setSolicitudesPendientes023(pendientes);
@@ -1315,8 +1424,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
 
         return {
           ...prev,
+          documentoComisionado: documento,
+          nombreComisionado: formatearNombreComisionado(resultado),
+          tipoComisionado: resultado.tipoComisionado || prev.tipoComisionado || 'FUNCIONARIO',
           comisionadoId: resultado.id,
-          idDependencia: resultado.idDependencia ?? prev.idDependencia,
+          idDependencia: !esAdmin && idDependenciaUsuario != null ? idDependenciaUsuario : (resultado.idDependencia ?? prev.idDependencia),
           salarioBasico: salarioInicial > 0 ? salarioInicial : prev.salarioBasico,
           cargoSeleccionado: cargoComisionado
             ? {
@@ -1334,7 +1446,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       if (cargoComisionado) {
         setCargoActualSeleccionado(cargoComisionado);
       }
-      if (resultado.idDependencia != null) {
+      if (resultado.idDependencia != null && esAdmin) {
         const depEncontrada = dependencias.find((d) => Number(d.idDependencia) === Number(resultado.idDependencia));
         if (depEncontrada?.codDependencia) {
           setDependenciaId(depEncontrada.codDependencia);
@@ -1345,7 +1457,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       }
     } catch (e: any) {
       console.error('Error consultando comisionado:', e);
-      // Mensaje proveniente del backend (origen único ESAP).
+      // Mensaje proveniente del backend (origen único ESAP o validación de dependencia).
       setErrorConsulta(
         e?.message ||
           'Ocurrió un error al consultar el comisionado. Intente nuevamente.',
@@ -2582,6 +2694,59 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
               <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider text-blue-700">
                 1. Datos del Funcionario Comisionado
               </h4>
+
+              {!puedeElegirDependencia() && depEnlaceActual && (
+                <div className="flex items-center gap-3 px-4 py-3 bg-blue-50/90 dark:bg-blue-950/40 border border-blue-200/90 dark:border-blue-800/60 rounded-xl text-xs text-blue-950 dark:text-blue-100 shadow-2xs">
+                  <div className="w-8 h-8 rounded-lg bg-blue-600/10 text-blue-700 dark:text-blue-300 flex items-center justify-center shrink-0">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-blue-900 dark:text-blue-200 truncate">
+                      Dependencia del Enlace:{' '}
+                      <span className="font-extrabold text-blue-950 dark:text-white">
+                        {depEnlaceActual.nomDependencia || depEnlaceActual.codDependencia}
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-blue-700/80 dark:text-blue-300/80">
+                      Como enlace de dependencia, solo puede consultar y comisionar personal asignado a su dependencia.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {comisionadosDependencia.length > 0 && (
+                <div>
+                  <label className={labelCls} htmlFor="comisionado-dependencia-select">
+                    Comisionados Registrados de la Dependencia
+                    <span className="text-[11px] font-normal text-slate-500 ml-1.5">
+                      ({comisionadosDependencia.length} disponible{comisionadosDependencia.length === 1 ? '' : 's'})
+                    </span>
+                  </label>
+                  <SearchableSelect
+                    id="comisionado-dependencia-select"
+                    options={comisionadosDependencia.map((c) => ({
+                      value: c.numeroDocumento,
+                      label: `${formatearNombreComisionado(c)} — CC ${c.numeroDocumento}`,
+                      sublabel: `${c.cargo || 'Funcionario'} · ${c.tipoComisionado || 'FUNCIONARIO'}`,
+                    }))}
+                    value={form.documentoComisionado}
+                    onChange={(docVal) => {
+                      if (docVal) {
+                        actualizar('documentoComisionado', docVal);
+                        void consultarComisionado(docVal);
+                      }
+                    }}
+                    placeholder="Buscar y seleccionar comisionado de su dependencia..."
+                    loading={cargandoComisionadosDep}
+                    emptyText="No se encontraron comisionados"
+                    allowClear
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Seleccione un comisionado de la lista o ingrese el documento a continuación para consultar otro funcionario.
+                  </p>
+                </div>
+              )}
+
               <div>
                 <label className={labelCls} htmlFor="documentoComisionado">
                   {renderLabel('documentoComisionado', 'Documento de Identidad')}
@@ -2604,7 +2769,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   />
                   <button
                     type="button"
-                    onClick={consultarComisionado}
+                    onClick={() => void consultarComisionado()}
                     disabled={consultando}
                     className="px-5 py-2.5 bg-[#003DA5] hover:bg-[#002b75] text-white rounded-xl text-sm font-bold inline-flex items-center gap-1.5 shrink-0 transition-all shadow-xs disabled:opacity-50"
                   >
@@ -3238,7 +3403,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         value={idDependenciaActual ? String(idDependenciaActual) : ''}
                         onChange={(val) => cambiarDependencia(val)}
                         placeholder="Seleccionar dependencia..."
-                        disabled={!puedeElegirDependencia() && Boolean(comisionado?.idDependencia)}
+                        disabled={!puedeElegirDependencia()}
                         emptyText="No hay dependencias registradas"
                       />
                       {infoComisionadoCompleta.depNombre && (

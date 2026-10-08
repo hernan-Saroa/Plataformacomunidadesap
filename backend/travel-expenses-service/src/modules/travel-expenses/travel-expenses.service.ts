@@ -1057,13 +1057,21 @@ export class TravelExpensesService implements OnModuleInit {
    *      * Si está vigente: se materializa en la tabla `travel_expenses.comisionados` y se retorna.
    *    - Si NO existe tampoco en Talento Humano: arroja NotFoundException ("no es un comisionado").
    */
-  async consultarComisionado(documento: string): Promise<ComisionadoEntity> {
+  async consultarComisionado(
+    documento: string,
+    idDependencia?: string | number,
+  ): Promise<ComisionadoEntity> {
     const doc = (documento || '').trim();
     if (!doc) {
       throw new BadRequestException(
         'Debe proporcionar el número de documento del comisionado.',
       );
     }
+
+    const depEsperada =
+      idDependencia != null && idDependencia !== ''
+        ? Number(idDependencia)
+        : null;
 
     const adjuntarSolicitudesPendientes = async (com: ComisionadoEntity) => {
       try {
@@ -1169,6 +1177,18 @@ export class TravelExpensesService implements OnModuleInit {
         );
       }
 
+      // Validar restricción de dependencia si se solicita como enlace de dependencia
+      if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0) {
+        if (comisionadoLocal.idDependencia != null && Number(comisionadoLocal.idDependencia) !== depEsperada) {
+          throw new BadRequestException(
+            `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
+          );
+        } else if (comisionadoLocal.idDependencia == null) {
+          comisionadoLocal.idDependencia = depEsperada;
+          comisionadoLocal = await this.comisionadoRepo.save(comisionadoLocal);
+        }
+      }
+
       return await adjuntarSolicitudesPendientes(comisionadoLocal);
     }
 
@@ -1202,6 +1222,14 @@ export class TravelExpensesService implements OnModuleInit {
         );
       }
 
+      const idDepAsignar = idDependenciaFnc != null ? idDependenciaFnc : depEsperada;
+
+      if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0 && idDependenciaFnc != null && Number(idDependenciaFnc) !== depEsperada) {
+        throw new BadRequestException(
+          `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
+        );
+      }
+
       this.logger.log(
         `[consultarComisionado] Registrando nuevo comisionado ${doc} desde Talento Humano con contrato vigente`,
       );
@@ -1216,7 +1244,7 @@ export class TravelExpensesService implements OnModuleInit {
         tipoComisionado: 'FUNCIONARIO',
         origenDatos: 'HUMANO',
         autorizacionHabeasData: false,
-        idDependencia: idDependenciaFnc,
+        idDependencia: idDepAsignar,
         cuentasBancarias: [],
         cargos: cargo
           ? [
@@ -1224,7 +1252,7 @@ export class TravelExpensesService implements OnModuleInit {
                 id: `crg-${Date.now()}`,
                 cargo,
                 salario: salario || 0,
-                idDependencia: idDependenciaFnc,
+                idDependencia: idDepAsignar,
                 esPrincipal: true,
               },
             ]
@@ -1278,8 +1306,15 @@ export class TravelExpensesService implements OnModuleInit {
       apellidos.shift() || persona.pri_apellido || 'SIN APELLIDO';
     const segundoApellido = apellidos.join(' ') || null;
 
-    const idDependencia =
+    const idDepPersona =
       persona.id_dependencia != null ? Number(persona.id_dependencia) : null;
+    const idDependenciaFinal = idDepPersona != null ? idDepPersona : depEsperada;
+
+    if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0 && idDepPersona != null && Number(idDepPersona) !== depEsperada) {
+      throw new BadRequestException(
+        `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
+      );
+    }
 
     const nuevo = this.comisionadoRepo.create({
       numeroDocumento: doc,
@@ -1292,11 +1327,43 @@ export class TravelExpensesService implements OnModuleInit {
       tipoComisionado: 'FUNCIONARIO',
       origenDatos: 'ESAP',
       autorizacionHabeasData: false,
-      idDependencia,
+      idDependencia: idDependenciaFinal,
     } as Partial<ComisionadoEntity>);
 
     const guardado = await this.comisionadoRepo.save(nuevo);
     return await adjuntarSolicitudesPendientes(guardado);
+  }
+
+  /**
+   * Lista los comisionados registrados en la base local, opcionalmente filtrados
+   * por dependencia y/o texto de búsqueda (nombre, apellido, cédula, cargo).
+   */
+  async listarComisionados(
+    idDependencia?: string | number,
+    search?: string,
+  ): Promise<ComisionadoEntity[]> {
+    const qb = this.comisionadoRepo.createQueryBuilder('c');
+
+    if (idDependencia != null && idDependencia !== '') {
+      const depNum = Number(idDependencia);
+      if (!isNaN(depNum) && depNum > 0) {
+        qb.andWhere('c.idDependencia = :depNum', { depNum });
+      }
+    }
+
+    if (search && search.trim().length > 0) {
+      const term = `%${search.trim().toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(c.numeroDocumento) LIKE :term OR LOWER(c.primerNombre) LIKE :term OR LOWER(c.primerApellido) LIKE :term OR LOWER(c.cargo) LIKE :term)',
+        { term },
+      );
+    }
+
+    qb.orderBy('c.primerApellido', 'ASC')
+      .addOrderBy('c.primerNombre', 'ASC')
+      .limit(100);
+
+    return await qb.getMany();
   }
 
 

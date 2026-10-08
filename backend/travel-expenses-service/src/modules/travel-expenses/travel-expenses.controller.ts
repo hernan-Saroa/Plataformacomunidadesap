@@ -282,6 +282,30 @@ export class TravelExpensesController {
     };
   }
 
+  @Get('comisionados')
+  @Public()
+  @ApiOperation({
+    summary: 'Listar comisionados con filtro por dependencia y búsqueda opcional',
+    description:
+      'Retorna comisionados registrados en travel_expenses.comisionados, opcionalmente filtrados por idDependencia o término de búsqueda.',
+  })
+  @ApiQuery({
+    name: 'idDependencia',
+    required: false,
+    description: 'Filtrar por ID de la dependencia asignada',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Filtrar por texto en documento, nombre o cargo',
+  })
+  async listarComisionados(
+    @Query('idDependencia') idDependencia?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.service.listarComisionados(idDependencia, search);
+  }
+
   @Get('comisionados/:documento')
   @Public()
   @ApiOperation({
@@ -294,6 +318,11 @@ export class TravelExpensesController {
     description: 'Número de documento de identidad del funcionario',
     example: '1019283746',
   })
+  @ApiQuery({
+    name: 'idDependencia',
+    required: false,
+    description: 'ID de la dependencia del usuario enlace para restringir consulta solo a su dependencia',
+  })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Comisionado encontrado o materializado exitosamente.',
@@ -302,8 +331,11 @@ export class TravelExpensesController {
     status: HttpStatus.NOT_FOUND,
     description: 'No se encontró el funcionario en ninguna base de datos.',
   })
-  async consultarComisionado(@Param('documento') documento: string) {
-    const comisionado = await this.service.consultarComisionado(documento);
+  async consultarComisionado(
+    @Param('documento') documento: string,
+    @Query('idDependencia') idDependencia?: string,
+  ) {
+    const comisionado = await this.service.consultarComisionado(documento, idDependencia);
     let estadoUsuario = {
       esUsuario: false,
       usuarioId: null as string | null,

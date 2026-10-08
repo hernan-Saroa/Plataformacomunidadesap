@@ -527,9 +527,18 @@ export class ViaticosService {
     }
   }
 
-  async consultarComisionado(documento: string): Promise<Comisionado | null> {
+  async consultarComisionado(
+    documento: string,
+    idDependencia?: number | string | null,
+  ): Promise<Comisionado | null> {
     try {
-      const comisionado = await apiClient.get<Comisionado>(`/viaticos/api/v1/comisionados/${documento}`);
+      const queryParams = new URLSearchParams();
+      if (idDependencia != null && idDependencia !== '') {
+        queryParams.set('idDependencia', String(idDependencia));
+      }
+      const qs = queryParams.toString();
+      const url = `/viaticos/api/v1/comisionados/${encodeURIComponent(documento)}${qs ? `?${qs}` : ''}`;
+      const comisionado = await apiClient.get<Comisionado>(url);
       if (comisionado && (!comisionado.solicitudesPendientes || !Array.isArray(comisionado.solicitudesPendientes))) {
         try {
           comisionado.solicitudesPendientes = await this.obtenerSolicitudesPendientesComisionado(documento);
@@ -547,9 +556,46 @@ export class ViaticosService {
             `No se encontró un comisionado con documento ${documento} en ESAP.`,
         );
       }
+      if (error?.status === 400 || error?.status === 403) {
+        throw new Error(
+          error?.message ||
+            `No se pudo consultar el comisionado con documento ${documento}.`,
+        );
+      }
       console.error('[viaticos] Error consultando comisionado:', error);
       throw error;
     }
+  }
+
+  async listarComisionados(
+    idDependencia?: number | string | null,
+    search?: string,
+  ): Promise<Comisionado[]> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (idDependencia != null && idDependencia !== '') {
+        queryParams.set('idDependencia', String(idDependencia));
+      }
+      if (search && search.trim()) {
+        queryParams.set('search', search.trim());
+      }
+      const qs = queryParams.toString();
+      const url = `/viaticos/api/v1/comisionados${qs ? `?${qs}` : ''}`;
+      const res = await apiClient.get<Comisionado[] | { data: Comisionado[] }>(url);
+      if (Array.isArray(res)) return res;
+      if (res && Array.isArray((res as any).data)) return (res as any).data;
+      return [];
+    } catch (error) {
+      console.warn('[viaticos] Error listando comisionados:', error);
+      return [];
+    }
+  }
+
+  async obtenerComisionados(
+    idDependencia?: number | string | null,
+    search?: string,
+  ): Promise<Comisionado[]> {
+    return this.listarComisionados(idDependencia, search);
   }
 
   async obtenerSolicitudesPendientesComisionado(documento: string): Promise<SolicitudPendiente023[]> {
