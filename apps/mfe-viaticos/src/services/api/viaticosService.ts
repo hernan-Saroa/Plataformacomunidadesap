@@ -363,6 +363,26 @@ export class ViaticosService {
     }
   }
 
+  /**
+   * Obtiene exclusivamente las solicitudes creadas a nombre del funcionario comisionado
+   * autenticado. Invoca el endpoint filtrando por el comisionado.
+   */
+  async obtenerSolicitudesComisionado(): Promise<{ solicitudes: SolicitudViatico[]; esSuperAdmin: boolean }> {
+    try {
+      await this.cargarDependenciasCache();
+      const timestamp = Date.now();
+      const response = await apiClient.get<unknown>(
+        `/viaticos/api/v1/solicitudes?soloComisionado=true&t=${timestamp}`,
+      );
+      const { data, esSuperAdmin } = extraerSolicitudes(response);
+      const solicitudes = data.map((item) => this.mapearSolicitudLista(item));
+      return { solicitudes, esSuperAdmin };
+    } catch (error) {
+      console.error('[viaticos] obtenerSolicitudesComisionado error=', error);
+      return { solicitudes: [], esSuperAdmin: false };
+    }
+  }
+
   async obtenerResumenEstadistico(): Promise<ResumenEstadisticoViaticos> {
     const { solicitudes } = await this.obtenerSolicitudes();
     return {

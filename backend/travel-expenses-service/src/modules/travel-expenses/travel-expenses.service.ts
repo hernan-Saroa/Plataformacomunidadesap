@@ -420,6 +420,7 @@ export class TravelExpensesService implements OnModuleInit {
     isTesoreria = false,
     isSst = false,
     isComisionado = false,
+    soloComisionado = false,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     console.log(
       '[travel-expenses] service obtenerSolicitudes usuarioId=',
@@ -438,6 +439,8 @@ export class TravelExpensesService implements OnModuleInit {
       isSst,
       'isComisionado=',
       isComisionado,
+      'soloComisionado=',
+      soloComisionado,
       'page=',
       page,
       'limit=',
@@ -447,8 +450,31 @@ export class TravelExpensesService implements OnModuleInit {
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.comisionado', 'comisionado');
 
-    if (!isSuperAdmin && !isSecretario) {
-      if (isTesoreria) {
+    if ((!isSuperAdmin && !isSecretario) || soloComisionado) {
+      if (soloComisionado || (isComisionado && !isTesoreria && !isSst && !isControlViaticos && !isAnalista)) {
+        if (usuarioId) {
+          const datosPersona = await this.obtenerDatosPersonaPorUsuarioId(usuarioId);
+          const docs = [datosPersona?.numIdentificacion].filter(Boolean) as string[];
+          if (datosPersona?.username && /^\d+$/.test(datosPersona.username.trim())) {
+            docs.push(datosPersona.username.trim());
+          }
+          const emails = [datosPersona?.dirEmail, datosPersona?.username]
+            .filter(Boolean)
+            .map((e) => (e as string).toLowerCase().trim()) as string[];
+
+          query.andWhere(
+            new Brackets((qb) => {
+              qb.where('s.creadoPorUsuarioId = :usuarioId', { usuarioId });
+              if (docs.length > 0) {
+                qb.orWhere('comisionado.numero_documento IN (:...docs)', { docs });
+              }
+              if (emails.length > 0) {
+                qb.orWhere('LOWER(comisionado.email) IN (:...emails)', { emails });
+              }
+            }),
+          );
+        }
+      } else if (isTesoreria) {
         query.andWhere('s.estado_solicitud IN (:...estadosTesoreria)', {
           estadosTesoreria: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'],
         });
@@ -465,6 +491,9 @@ export class TravelExpensesService implements OnModuleInit {
       } else if (isComisionado && usuarioId) {
         const datosPersona = await this.obtenerDatosPersonaPorUsuarioId(usuarioId);
         const docs = [datosPersona?.numIdentificacion].filter(Boolean) as string[];
+        if (datosPersona?.username && /^\d+$/.test(datosPersona.username.trim())) {
+          docs.push(datosPersona.username.trim());
+        }
         const emails = [datosPersona?.dirEmail, datosPersona?.username]
           .filter(Boolean)
           .map((e) => (e as string).toLowerCase().trim()) as string[];

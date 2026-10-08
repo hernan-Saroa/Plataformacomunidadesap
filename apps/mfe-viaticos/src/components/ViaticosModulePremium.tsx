@@ -39,6 +39,7 @@ import {
   ArrowRight,
   Wallet,
   Building2,
+  User,
 } from 'lucide-react';
 import TableroCargaAnalistas from './TableroCargaAnalistas';
 import SolicitudesAsignadasAnalista from './SolicitudesAsignadasAnalista';
@@ -52,6 +53,8 @@ import ReintegrosInbox from './ReintegrosInbox';
 import LegalizacionesSeccion from './LegalizacionesSeccion';
 import PazYSalvoCoordinadora from './paz-y-salvo/PazYSalvoCoordinadora';
 import VistaAnalistaViaticos from './VistaAnalistaViaticos';
+import ComisionadoInbox from './ComisionadoInbox';
+import VistaComisionadoViaticos from './VistaComisionadoViaticos';
 import ProcesarPagoModal from './ProcesarPagoModal';
 import ModalFirmasAprobacion from './ModalFirmasAprobacion';
 import BandejaFirmasAprobacion from './BandejaFirmasAprobacion';
@@ -100,6 +103,7 @@ const Permissions = {
 type Seccion =
   | 'paz-y-salvo'
   | 'solicitudes'
+  | 'mis-comisiones'
   | 'tiquetes'
   | 'legalizaciones'
   | 'resoluciones'
@@ -167,6 +171,7 @@ export default function ViaticosModulePremium() {
   const [esSst, setEsSst] = useState(false);
   const [esJefeDependencia, setEsJefeDependencia] = useState(false);
   const [esGerenteProyecto, setEsGerenteProyecto] = useState(false);
+  const [esComisionado, setEsComisionado] = useState(false);
   const [solicitudParaPagar, setSolicitudParaPagar] = useState<SolicitudViatico | null>(null);
   const [enviandoPresupuestoId, setEnviandoPresupuestoId] = useState<string | null>(null);
   const {
@@ -220,6 +225,13 @@ export default function ViaticosModulePremium() {
     {
       title: 'GESTIÓN PRINCIPAL',
       items: [
+        {
+          id: 'mis-comisiones',
+          label: 'Mis Comisiones',
+          subtitle: 'Comisiones a mi nombre como comisionado',
+          icon: <User className="w-5 h-5" />,
+          color: '#003DA5',
+        },
         {
           id: 'solicitudes',
           label: 'Solicitudes y Comisiones',
@@ -389,8 +401,10 @@ export default function ViaticosModulePremium() {
         setEsSst(sst);
         const jefeDep = authService.isJefeDependencia();
         const gerenteProy = authService.isGerenteProyecto();
+        const comisionado = authService.isComisionado();
         setEsJefeDependencia(jefeDep);
         setEsGerenteProyecto(gerenteProy);
+        setEsComisionado(comisionado);
         if (dirNac && !superAdmin) {
           setSeccion('autorizaciones-direccion');
         } else if (subdir && !superAdmin) {
@@ -409,6 +423,8 @@ export default function ViaticosModulePremium() {
           setSeccion('solicitudes');
         } else if ((jefeDep || gerenteProy) && !superAdmin) {
           setSeccion('firmas-aprobacion');
+        } else if (comisionado && !superAdmin) {
+          setSeccion('mis-comisiones');
         }
         setCargandoRol(false);
       }
@@ -677,6 +693,17 @@ export default function ViaticosModulePremium() {
       'travel_expenses:double_check_request',
     ]) ||
     authService.isControlViaticos();
+
+  const puedeVerMisComisiones =
+    !tieneContextoAuth ||
+    esSuperAdmin ||
+    esComisionado ||
+    authService.isComisionado() ||
+    authService.hasAnyPermission([
+      'travel_expenses.general.es_comisionado',
+      'es_comisionado',
+      'travel_expenses:read_own_requests',
+    ]);
   const puedeCrearSolicitud =
     (!tieneContextoAuth ||
       esSuperAdmin ||
@@ -804,6 +831,7 @@ export default function ViaticosModulePremium() {
           if ((esTesoreria || esSst) && !esSuperAdmin) return false;
           return puedeVerSolicitudes;
         }
+        if (item.id === 'mis-comisiones') return puedeVerMisComisiones;
         if (item.id === 'mis-solicitudes') return puedeVerSolicitudesAsignadas;
         if (item.id === 'firmas-aprobacion') return puedeVerFirmasAprobacion;
         if (item.id === 'tiquetes') return puedeVerTiquetes;
@@ -858,6 +886,12 @@ export default function ViaticosModulePremium() {
           if (b.id === 'firmas-aprobacion') return 1;
           return 0;
         });
+      } else if (esComisionado && !esSuperAdmin) {
+        items = [...items].sort((a, b) => {
+          if (a.id === 'mis-comisiones') return -1;
+          if (b.id === 'mis-comisiones') return 1;
+          return 0;
+        });
       }
 
       return {
@@ -877,6 +911,25 @@ export default function ViaticosModulePremium() {
 
   if (esAnalista && !esSuperAdmin) {
     return <VistaAnalistaViaticos />;
+  }
+
+  const esPuroComisionado =
+    esComisionado &&
+    !esSuperAdmin &&
+    !esSecretario &&
+    !esAnalista &&
+    !esControlViaticos &&
+    !esSubdireccion &&
+    !esDireccionNacional &&
+    !esPresupuesto &&
+    !esTesoreria &&
+    !esSst &&
+    !esJefeDependencia &&
+    !esGerenteProyecto &&
+    !authService.isEnlaceDependencia();
+
+  if (esPuroComisionado) {
+    return <VistaComisionadoViaticos />;
   }
 
   return (
@@ -1724,6 +1777,15 @@ export default function ViaticosModulePremium() {
                </div>
              </div>
            )}
+
+             {/* ── MIS COMISIONES (ROL COMISIONADO) ── */}
+             {seccion === 'mis-comisiones' && puedeVerMisComisiones && (
+               <ComisionadoInbox
+                 onIrALegalizacion={() => {
+                   setSeccion('legalizaciones');
+                 }}
+               />
+             )}
 
              {/* ── MIS SOLICITUDES ASIGNADAS ── */}
 {seccion === 'mis-solicitudes' && puedeVerSolicitudesAsignadas && (

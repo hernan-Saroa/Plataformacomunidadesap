@@ -118,7 +118,7 @@ export class TravelExpensesController {
   private readonly logger = new Logger(TravelExpensesController.name);
   constructor(private readonly service: TravelExpensesService) {}
 
-  @Get('solicitudes')
+  @Get(['solicitudes', 'api/v1/solicitudes', 'requests/comisionado', 'api/v1/requests/comisionado'])
   @Header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
   @Header('Pragma', 'no-cache')
   @Header('Expires', '0')
@@ -126,6 +126,7 @@ export class TravelExpensesController {
     @Req() req: AuthenticatedRequest,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('soloComisionado') soloComisionado?: string,
   ) {
     const usuarioId = req.user?.userId;
     const rawRoles = Array.isArray(req.user?.roles) ? req.user.roles : [];
@@ -213,6 +214,7 @@ export class TravelExpensesController {
 
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
+    const forzarSoloComisionado = soloComisionado === 'true' || soloComisionado === '1';
     const result = await this.service.obtenerSolicitudes(
       usuarioId,
       superAdmin,
@@ -224,6 +226,7 @@ export class TravelExpensesController {
       isTesoreria,
       isSst,
       isComisionado,
+      forzarSoloComisionado,
     );
     return {
       data: result.data,

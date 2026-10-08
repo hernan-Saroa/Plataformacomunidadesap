@@ -315,6 +315,9 @@ export const isJefeDependencia = (auth: AuthService = defaultAuthService): boole
 export const isGerenteProyecto = (auth: AuthService = defaultAuthService): boolean =>
   hasViaticosRolePermission(auth, 'GERENTE_PROYECTO');
 
+export const isComisionado = (auth: AuthService = defaultAuthService): boolean =>
+  hasViaticosRolePermission(auth, 'COMISIONADO');
+
 export const canFirmarAprobacion = (auth: AuthService = defaultAuthService): boolean => {
   const user = auth.getCurrentUserSync();
   if (!user) return false;
@@ -361,6 +364,7 @@ export function useViaticosPermissions(auth: AuthService = defaultAuthService) {
     const esEnlace = isEnlaceDependencia(auth);
     const esJefe = isJefeDependencia(auth);
     const esGerente = isGerenteProyecto(auth);
+    const esComi = isComisionado(auth);
     const puedeFirmar = canFirmarAprobacion(auth);
 
     return {
@@ -378,6 +382,7 @@ export function useViaticosPermissions(auth: AuthService = defaultAuthService) {
       esEnlaceDependencia: esEnlace,
       esJefeDependencia: esJefe,
       esGerenteProyecto: esGerente,
+      esComisionado: esComi,
       puedeFirmarAprobacion: puedeFirmar,
       hasPermission: (perm: string) => auth.hasPermission(perm),
       hasAnyPermission: (perms: string[]) => auth.hasAnyPermission(perms),
