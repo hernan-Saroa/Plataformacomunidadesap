@@ -290,23 +290,34 @@ export default function ComisionadoInbox({ onIrALegalizacion }: ComisionadoInbox
     }
   };
 
+  const ESTADOS_TRAMITE_COMISIONADO = [
+    'PENDIENTE',
+    'BORRADOR',
+    'PENDIENTE_FIRMAS',
+    'RADICADA',
+    'SOLICITADO',
+    'EN_VERIFICACION',
+    'VERIFICADA',
+    'DEVUELTA',
+    'EXTEMPORANEA',
+    'AUTORIZACION_DIRECCION',
+    'EN_AUTORIZACION',
+    'AUTORIZADA',
+    'SOLICITADA_SIIF',
+    'APROBADO_JEFE',
+    'APROBADO_TALENTO_HUMANO',
+    'RESOLUCION_EMITIDA',
+    'TIQUETES_COMPRADOS',
+    'EN_PRESUPUESTO',
+    'COMPROMETIDA',
+    'OBLIGADA',
+  ];
+
   // KPIs
   const kpis = useMemo(() => {
     const total = solicitudes.length;
     const enTramite = solicitudes.filter((s) =>
-      [
-        'PENDIENTE_FIRMAS',
-        'RADICADA',
-        'EN_VERIFICACION',
-        'VERIFICADA',
-        'SOLICITADA_SIIF',
-        'AUTORIZACION_DIRECCION',
-        'EN_AUTORIZACION',
-        'AUTORIZADA',
-        'EN_PRESUPUESTO',
-        'COMPROMETIDA',
-        'OBLIGADA',
-      ].includes(s.estado),
+      ESTADOS_TRAMITE_COMISIONADO.includes((s.estado || '').toUpperCase()),
     ).length;
 
     const pagadas = solicitudes.filter((s) => s.estado === 'PAGADA' || s.estado === 'EN_COMISION').length;
@@ -322,32 +333,26 @@ export default function ComisionadoInbox({ onIrALegalizacion }: ComisionadoInbox
   const solicitudesFiltradas = useMemo(() => {
     return solicitudes.filter((sol) => {
       const q = busqueda.toLowerCase().trim();
+      const visual = getEstadoComisionVisual(sol.estado);
       const coincideBusqueda =
         !q ||
-        sol.codigo.toLowerCase().includes(q) ||
-        sol.ciudadDestino.toLowerCase().includes(q) ||
-        (sol.departamentoDestino && sol.departamentoDestino.toLowerCase().includes(q)) ||
-        (sol.ciudadOrigen && sol.ciudadOrigen.toLowerCase().includes(q)) ||
-        sol.dependencia.toLowerCase().includes(q) ||
-        (sol.justificacion && sol.justificacion.toLowerCase().includes(q));
+        (sol.codigo?.toLowerCase().includes(q) ?? false) ||
+        (sol.ciudadDestino?.toLowerCase().includes(q) ?? false) ||
+        (sol.departamentoDestino?.toLowerCase().includes(q) ?? false) ||
+        (sol.ciudadOrigen?.toLowerCase().includes(q) ?? false) ||
+        (sol.sedeOrigen?.toLowerCase().includes(q) ?? false) ||
+        (sol.dependencia?.toLowerCase().includes(q) ?? false) ||
+        (sol.justificacion?.toLowerCase().includes(q) ?? false) ||
+        (sol.cedulaComisionado?.toLowerCase().includes(q) ?? false) ||
+        (sol.estado?.toLowerCase().includes(q) ?? false) ||
+        (visual.etiqueta?.toLowerCase().includes(q) ?? false) ||
+        (sol.numeroResolucion?.toLowerCase().includes(q) ?? false) ||
+        (sol.numeroRp?.toLowerCase().includes(q) ?? false);
 
       if (!coincideBusqueda) return false;
 
       if (filtroTab === 'TRAMITE') {
-        return [
-          'PENDIENTE_FIRMAS',
-          'RADICADA',
-          'EN_VERIFICACION',
-          'VERIFICADA',
-          'SOLICITADA_SIIF',
-          'AUTORIZACION_DIRECCION',
-          'EN_AUTORIZACION',
-          'AUTORIZADA',
-          'EN_PRESUPUESTO',
-          'COMPROMETIDA',
-          'OBLIGADA',
-          'DEVUELTA',
-        ].includes(sol.estado);
+        return ESTADOS_TRAMITE_COMISIONADO.includes((sol.estado || '').toUpperCase());
       }
       if (filtroTab === 'PAGADAS') {
         return sol.estado === 'PAGADA' || sol.estado === 'EN_COMISION';

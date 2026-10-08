@@ -127,17 +127,66 @@ const ORDEN_ESTADOS_TABLA: Record<string, number> = {
   EN_PRESUPUESTO: 2,
   COMPROMETIDA: 3,
   EN_AUTORIZACION: 4,
+  AUTORIZACION_DIRECCION: 4.5,
   SOLICITADA_SIIF: 5,
+  EN_VERIFICACION: 5.5,
   VERIFICADA: 6,
+  APROBADO_JEFE: 6.5,
+  APROBADO_TALENTO_HUMANO: 6.8,
+  RESOLUCION_EMITIDA: 6.9,
   AUTORIZADA: 7,
+  TIQUETES_COMPRADOS: 7.2,
   PENDIENTE_FIRMAS: 7.5,
   DEVUELTA: 8,
   RADICADA: 8,
   EXTEMPORANEA: 9,
   SOLICITADO: 10,
   PENDIENTE: 11,
+  BORRADOR: 11,
+  EN_COMISION: 11.5,
   PAGADA: 12,
+  PENDIENTE_LEGALIZACION: 13,
+  LEGALIZADO: 14,
+  CANCELADA: 15,
+  RECHAZADO: 16,
 };
+
+const OPCIONES_FILTRO_ESTADOS_SOLICITUD: { value: string; label: string }[] = [
+  { value: 'TODOS', label: 'Todos los Estados' },
+  { value: 'PENDIENTE_FIRMAS', label: 'Pendiente de Firmas' },
+  { value: 'RADICADA', label: 'Radicada' },
+  { value: 'SOLICITADO', label: 'Solicitado' },
+  { value: 'EN_VERIFICACION', label: 'En Verificación' },
+  { value: 'VERIFICADA', label: 'Verificada' },
+  { value: 'DEVUELTA', label: 'Devuelta' },
+  { value: 'EXTEMPORANEA', label: 'Extemporánea' },
+  { value: 'AUTORIZACION_DIRECCION', label: 'Pendiente Dirección Nacional' },
+  { value: 'EN_AUTORIZACION', label: 'En Autorización' },
+  { value: 'AUTORIZADA', label: 'Autorizada' },
+  { value: 'SOLICITADA_SIIF', label: 'Solicitada SIIF' },
+  { value: 'EN_PRESUPUESTO', label: 'En Presupuesto' },
+  { value: 'COMPROMETIDA', label: 'Comprometida (RP)' },
+  { value: 'OBLIGADA', label: 'Obligada (Pendiente Pago)' },
+  { value: 'PAGADA', label: 'Pagada (Desembolsada)' },
+  { value: 'EN_COMISION', label: 'En Comisión' },
+  { value: 'PENDIENTE_LEGALIZACION', label: 'Por Legalizar' },
+  { value: 'LEGALIZADO', label: 'Legalizado' },
+  { value: 'APROBADO_JEFE', label: 'Aprobado Jefe' },
+  { value: 'APROBADO_TALENTO_HUMANO', label: 'Aprobado TH' },
+  { value: 'RESOLUCION_EMITIDA', label: 'Resolución Emitida' },
+  { value: 'TIQUETES_COMPRADOS', label: 'Tiquetes Comprados' },
+  { value: 'PENDIENTE', label: 'Pendiente (borrador)' },
+  { value: 'CANCELADA', label: 'Cancelada' },
+  { value: 'RECHAZADO', label: 'Rechazada' },
+];
+
+const OPCIONES_FILTRO_ESTADOS_TESORERIA_SST: { value: string; label: string }[] = [
+  { value: 'TODOS', label: 'Todos los Estados' },
+  { value: 'OBLIGADA', label: 'Obligada (Pendiente Pago)' },
+  { value: 'PAGADA', label: 'Pagada (Desembolsada)' },
+  { value: 'PENDIENTE_LEGALIZACION', label: 'Por Legalizar' },
+  { value: 'LEGALIZADO', label: 'Legalizado' },
+];
 
 function prioridadEstadoTabla(estado: string): number {
   return ORDEN_ESTADOS_TABLA[estado] ?? 9;
@@ -223,15 +272,8 @@ export default function ViaticosModulePremium() {
 
   const grupos: MenuGroup[] = [
     {
-      title: 'GESTIÓN PRINCIPAL',
+      title: 'GESTIÓN DE COMISIONES',
       items: [
-        {
-          id: 'mis-comisiones',
-          label: 'Mis Comisiones',
-          subtitle: 'Comisiones a mi nombre como comisionado',
-          icon: <User className="w-5 h-5" />,
-          color: '#003DA5',
-        },
         {
           id: 'solicitudes',
           label: 'Solicitudes y Comisiones',
@@ -240,11 +282,11 @@ export default function ViaticosModulePremium() {
           color: '#003DA5',
         },
         {
-          id: 'mis-solicitudes',
-          label: 'Mis Solicitudes Asignadas',
-          subtitle: 'Solicitudes pendientes de revisión',
-          icon: <UserCheck className="w-5 h-5" />,
-          color: '#10B981',
+          id: 'mis-comisiones',
+          label: 'Mis Comisiones',
+          subtitle: 'Comisiones a mi nombre como comisionado',
+          icon: <User className="w-5 h-5" />,
+          color: '#003DA5',
         },
         {
           id: 'firmas-aprobacion',
@@ -254,30 +296,24 @@ export default function ViaticosModulePremium() {
           color: '#0284C7',
         },
         {
+          id: 'mis-solicitudes',
+          label: 'Mis Solicitudes Asignadas',
+          subtitle: 'Solicitudes pendientes de revisión',
+          icon: <UserCheck className="w-5 h-5" />,
+          color: '#10B981',
+        },
+        {
           id: 'tiquetes',
           label: 'Pasajes y Alojamiento',
           subtitle: 'Reservas aéreas y terrestres',
           icon: <CreditCard className="w-5 h-5" />,
           color: '#059669',
         },
-        {
-          id: 'legalizaciones',
-          label: 'Legalización de Gastos',
-          subtitle: 'Carga de facturas y cumplidos',
-          icon: <Receipt className="w-5 h-5" />,
-          color: '#D97706',
-        },
-        {
-          id: 'paz-y-salvo', label: 'Paz y salvo', subtitle: 'Certificación y firma de Viáticos',
-          icon: <FileCheck className="w-5 h-5" />, color: '#003DA5',
-        },
-        {
-          id: 'resoluciones',
-          label: 'Resoluciones Institucionales',
-          subtitle: 'Actos administrativos de comisión',
-          icon: <FileCheck className="w-5 h-5" />,
-          color: '#7C3AED',
-        },
+      ],
+    },
+    {
+      title: 'AUTORIZACIONES Y TRÁMITE',
+      items: [
         {
           id: 'autorizaciones',
           label: 'Autorización Corporativa',
@@ -307,6 +343,25 @@ export default function ViaticosModulePremium() {
           color: '#059669',
         },
         {
+          id: 'sst',
+          label: 'Seguridad y Salud (SST)',
+          subtitle: 'Monitoreo de comisiones obligadas y pagadas',
+          icon: <HeartPulse className="w-5 h-5" />,
+          color: '#10B981',
+        },
+      ],
+    },
+    {
+      title: 'LEGALIZACIÓN Y CIERRE',
+      items: [
+        {
+          id: 'legalizaciones',
+          label: 'Legalización de Gastos',
+          subtitle: 'Carga de facturas y cumplidos',
+          icon: <Receipt className="w-5 h-5" />,
+          color: '#D97706',
+        },
+        {
           id: 'reintegros',
           label: 'Reintegros',
           subtitle: 'Comisiones no realizadas o por menos días (Etapa 8)',
@@ -314,12 +369,17 @@ export default function ViaticosModulePremium() {
           color: '#059669',
         },
         {
-          id: 'sst',
-          label: 'Seguridad y Salud (SST)',
-          subtitle: 'Monitoreo de comisiones obligadas y pagadas',
-          icon: <HeartPulse className="w-5 h-5" />,
-          color: '#10B981',
+          id: 'paz-y-salvo',
+          label: 'Paz y Salvo',
+          subtitle: 'Certificación y firma de Viáticos',
+          icon: <FileCheck className="w-5 h-5" />,
+          color: '#003DA5',
         },
+      ],
+    },
+    {
+      title: 'SISTEMA',
+      items: [
         {
           id: 'configuracion',
           label: 'Configuración',
@@ -441,20 +501,44 @@ export default function ViaticosModulePremium() {
 
   const solicitudesFiltradas = solicitudes
     .filter((sol) => {
-      const termino = busqueda.toLowerCase();
+      const termino = busqueda.toLowerCase().trim();
       const esExt = Boolean(sol.extemporanea || sol.estado === 'EXTEMPORANEA');
       const cumpleBusqueda =
         !termino ||
-        sol.nombreComisionado.toLowerCase().includes(termino) ||
-        sol.codigo.toLowerCase().includes(termino) ||
-        sol.ciudadDestino.toLowerCase().includes(termino) ||
-        (sol.ciudadOrigen && sol.ciudadOrigen.toLowerCase().includes(termino)) ||
-        (sol.sedeOrigen && sol.sedeOrigen.toLowerCase().includes(termino)) ||
-        sol.dependencia.toLowerCase().includes(termino) ||
+        (sol.nombreComisionado?.toLowerCase().includes(termino) ?? false) ||
+        (sol.codigo?.toLowerCase().includes(termino) ?? false) ||
+        (sol.cedulaComisionado?.toLowerCase().includes(termino) ?? false) ||
+        (sol.ciudadDestino?.toLowerCase().includes(termino) ?? false) ||
+        (sol.departamentoDestino?.toLowerCase().includes(termino) ?? false) ||
+        (sol.ciudadOrigen?.toLowerCase().includes(termino) ?? false) ||
+        (sol.sedeOrigen?.toLowerCase().includes(termino) ?? false) ||
+        (sol.dependencia?.toLowerCase().includes(termino) ?? false) ||
+        (sol.justificacion?.toLowerCase().includes(termino) ?? false) ||
+        (sol.estado?.toLowerCase().includes(termino) ?? false) ||
+        (getConfigEstado(sol.estado)?.label?.toLowerCase().includes(termino) ?? false) ||
+        (sol.numeroResolucion?.toLowerCase().includes(termino) ?? false) ||
+        (sol.numeroRp?.toLowerCase().includes(termino) ?? false) ||
+        (sol.numeroObligacion?.toLowerCase().includes(termino) ?? false) ||
         (esExt && ('extemporanea'.includes(termino) || 'extemporánea'.includes(termino)));
-      const cumpleEstado =
-        filtroEstado === 'TODOS' ||
-        (filtroEstado === 'EXTEMPORANEA' ? esExt : sol.estado === filtroEstado);
+
+      const estadoNorm = (sol.estado || '').toString().trim().toUpperCase();
+      const filtroNorm = (filtroEstado || '').trim().toUpperCase();
+
+      let cumpleEstado = false;
+      if (!filtroNorm || filtroNorm === 'TODOS') {
+        cumpleEstado = true;
+      } else if (filtroNorm === 'EXTEMPORANEA') {
+        cumpleEstado = esExt;
+      } else if (filtroNorm === 'PENDIENTE' || filtroNorm === 'BORRADOR') {
+        cumpleEstado = estadoNorm === 'PENDIENTE' || estadoNorm === 'BORRADOR';
+      } else if (filtroNorm === 'EN_AUTORIZACION') {
+        cumpleEstado = estadoNorm === 'EN_AUTORIZACION' || estadoNorm === 'AUTORIZACION_DIRECCION';
+      } else if (filtroNorm === 'PAGADA') {
+        cumpleEstado = estadoNorm === 'PAGADA' || (Boolean(sol.fechaPago) && ESTADOS_PAGADA.includes(estadoNorm));
+      } else {
+        cumpleEstado = estadoNorm === filtroNorm;
+      }
+
       const cumpleSeccion =
         seccion === 'tesoreria' || seccion === 'sst'
           ? ESTADOS_TESORERIA_SST.includes(sol.estado)
@@ -741,8 +825,7 @@ export default function ViaticosModulePremium() {
     authService.hasPermission(Permissions.VIATICOS_CONFIG_MANAGE);
   const puedeVerSolicitudesAsignadas =
     !tieneContextoAuth ||
-    esSuperAdmin ||
-    authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_VIEW_ASSIGNED);
+    (!esSuperAdmin && authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_VIEW_ASSIGNED));
   const puedeVerControlViaticos =
     !tieneContextoAuth ||
     esSuperAdmin ||
@@ -832,12 +915,12 @@ export default function ViaticosModulePremium() {
           return puedeVerSolicitudes;
         }
         if (item.id === 'mis-comisiones') return puedeVerMisComisiones;
-        if (item.id === 'mis-solicitudes') return puedeVerSolicitudesAsignadas;
+        if (item.id === 'mis-solicitudes') return !esSuperAdmin && puedeVerSolicitudesAsignadas;
         if (item.id === 'firmas-aprobacion') return puedeVerFirmasAprobacion;
-        if (item.id === 'tiquetes') return puedeVerTiquetes;
+        if (item.id === 'tiquetes') return !esSuperAdmin && puedeVerTiquetes;
         if (item.id === 'legalizaciones') return puedeVerLegalizaciones;
         if (item.id === 'paz-y-salvo') return puedeEmitirPazYSalvo;
-        if (item.id === 'resoluciones') return puedeVerResoluciones;
+        if (item.id === 'resoluciones') return !esSuperAdmin && puedeVerResoluciones;
         if (item.id === 'autorizaciones') return puedeVerAutorizaciones;
         if (item.id === 'autorizaciones-direccion') return puedeVerAutorizacionesDireccion;
         if (item.id === 'presupuesto') return puedeVerPresupuesto;
@@ -1357,32 +1440,33 @@ export default function ViaticosModulePremium() {
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4 text-slate-400" />
+                  <Filter className="w-4 h-4 text-slate-400 shrink-0" />
                   <SearchableSelect
                     id="filtroEstado"
-                    options={[
-                      { value: 'TODOS', label: 'Todos los Estados' },
-                      { value: 'OBLIGADA', label: 'Obligada (Pendiente Pago)' },
-                      { value: 'PAGADA', label: 'Pagada (Desembolsada)' },
-                      { value: 'COMPROMETIDA', label: 'Comprometida (RP)' },
-                      { value: 'EN_PRESUPUESTO', label: 'En Presupuesto' },
-                      { value: 'EN_AUTORIZACION', label: 'En Autorización' },
-                      { value: 'EXTEMPORANEA', label: 'Extemporánea' },
-                      { value: 'AUTORIZADA', label: 'Autorizada' },
-                      { value: 'SOLICITADA_SIIF', label: 'Solicitada SIIF' },
-                      { value: 'VERIFICADA', label: 'Verificada' },
-                      { value: 'PENDIENTE', label: 'Pendiente (borrador)' },
-                      { value: 'SOLICITADO', label: 'Solicitado' },
-                      { value: 'DEVUELTA', label: 'Devuelta' },
-                      { value: 'APROBADO_TALENTO_HUMANO', label: 'Aprobado TH' },
-                      { value: 'RESOLUCION_EMITIDA', label: 'Resolución Emitida' },
-                      { value: 'EN_COMISION', label: 'En Comisión' },
-                      { value: 'LEGALIZADO', label: 'Legalizado' },
-                    ]}
+                    options={
+                      seccion === 'tesoreria' || seccion === 'sst'
+                        ? OPCIONES_FILTRO_ESTADOS_TESORERIA_SST
+                        : OPCIONES_FILTRO_ESTADOS_SOLICITUD
+                    }
                     value={filtroEstado}
-                    onChange={(valor) => setFiltroEstado(valor)}
+                    onChange={(valor) => setFiltroEstado(valor || 'TODOS')}
                     placeholder="Filtrar por estado"
+                    allowClear={true}
                   />
+                  {(Boolean(busqueda.trim()) || (filtroEstado && filtroEstado !== 'TODOS')) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBusqueda('');
+                        setFiltroEstado('TODOS');
+                      }}
+                      className="inline-flex items-center gap-1 px-3 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer shrink-0"
+                      title="Limpiar filtros"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Limpiar filtros</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1408,8 +1492,22 @@ export default function ViaticosModulePremium() {
                        {solicitudesFiltradas.length === 0 ? (
                          <tr>
                             <td colSpan={(esSuperAdmin || esSecretario || authService.hasPermission(Permissions.VIATICOS_SOLICITUDES_SET_PRIORITY)) ? 7 : 6} className="px-4 py-8 text-center text-slate-400">
-                             No se encontraron solicitudes de viáticos registradas.
-                           </td>
+                             <div className="flex flex-col items-center justify-center gap-2">
+                               <span>No se encontraron solicitudes de viáticos registradas.</span>
+                               {(Boolean(busqueda.trim()) || (filtroEstado && filtroEstado !== 'TODOS')) && (
+                                 <button
+                                   type="button"
+                                   onClick={() => {
+                                     setBusqueda('');
+                                     setFiltroEstado('TODOS');
+                                   }}
+                                   className="text-xs font-semibold text-blue-600 hover:text-blue-800 underline cursor-pointer"
+                                 >
+                                   Limpiar filtros para ver todas las solicitudes
+                                 </button>
+                               )}
+                             </div>
+                            </td>
                          </tr>
                       ) : (
                         solicitudesFiltradas.map((sol) => (
