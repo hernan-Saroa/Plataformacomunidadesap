@@ -389,16 +389,13 @@ export function FormularioProcesoDafpVisual({
   const [procesoIdSeleccionado, setProcesoIdSeleccionado] = useState<string>(procesoInicial?.id || '');
   const [valorProcesoSeleccionado, setValorProcesoSeleccionado] = useState<string>(procesoInicial?.selectorProcesoCodificado || '');
 
-  // ── Multi-select para Unidades Auditables ──
-  const [unidadesDisponibles, setUnidadesDisponibles] = useState<string[]>(() => {
+  // ── Unidades Auditables ──
+  // Son todas las del proceso en Configuración y aquí no se quitan: cuáles se
+  // auditan se elige al programar la auditoría (EFDS-2316).
+  const [unidadesProceso, setUnidadesProceso] = useState<string[]>(() => {
     const selectedFromCatalog = procesosCatalog?.find(p => p.id === procesoInicial?.id) || procesosCatalog?.find(p => p.nombre === procesoInicial?.nombre);
     return parseUnidades(selectedFromCatalog?.macroproceso || procesoInicial?.macroproceso);
   });
-  const [unidadesSeleccionadas, setUnidadesSeleccionadas] = useState<Set<string>>(() => {
-    return new Set(parseUnidades(procesoInicial?.macroproceso));
-  });
-  const [unidadDropdownOpen, setUnidadDropdownOpen] = useState(false);
-  const unidadDropdownRef = useRef<HTMLDivElement>(null);
 
   // ── Searchable Select para Proceso ──
   const [procesoDropdownOpen, setProcesoDropdownOpen] = useState(false);
@@ -407,9 +404,6 @@ export function FormularioProcesoDafpVisual({
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (unidadDropdownRef.current && !unidadDropdownRef.current.contains(event.target as Node)) {
-        setUnidadDropdownOpen(false);
-      }
       if (procesoDropdownRef.current && !procesoDropdownRef.current.contains(event.target as Node)) {
         setProcesoDropdownOpen(false);
       }
@@ -566,12 +560,13 @@ export function FormularioProcesoDafpVisual({
     setProcesoIdSeleccionado(selectedFromCatalog?.id || nextForm.id || '');
     setValorProcesoSeleccionado(selectedFromCatalog?.encodedValue || nextForm.selectorProcesoCodificado || '');
 
-    // Inicializar el dropdown de unidades auditables en modo edición
-    const disponibles = parseUnidades(selectedFromCatalog?.macroproceso || nextForm.macroproceso);
-    setUnidadesDisponibles(disponibles);
-
-    const seleccionadas = parseUnidades(nextForm.macroproceso);
-    setUnidadesSeleccionadas(new Set(seleccionadas));
+    // En edición también van todas las unidades de Configuración, aunque la fila
+    // se hubiera guardado con menos (EFDS-2316)
+    const unidades = parseUnidades(selectedFromCatalog?.macroproceso || nextForm.macroproceso);
+    setUnidadesProceso(unidades);
+    if (unidades.length > 0) {
+      setFormData((prev) => ({ ...prev, macroproceso: unidades.join('; ') }));
+    }
   }, [catalogoProcesos, fechaCortePlan, open, procesoInicial, vigenciaPlan]);
 
   const handleChange = <K extends keyof FormularioDafpData>(field: K, value: FormularioDafpData[K]) => {
@@ -590,10 +585,9 @@ export function FormularioProcesoDafpVisual({
     const esEspecial = flagEspecial === 'ESP' || Boolean(proceso.esEspecial);
 
     setProcesoIdSeleccionado(proceso.id);
-    // Parse unidades auditables y auto-seleccionar todas
+    // El proceso queda con todas sus unidades auditables (EFDS-2316)
     const unidadesParsed = parseUnidades(macroproceso);
-    setUnidadesDisponibles(unidadesParsed);
-    setUnidadesSeleccionadas(new Set(unidadesParsed));
+    setUnidadesProceso(unidadesParsed);
     setFormData((prev) => ({
       ...prev,
       selectorProcesoCodificado: encodedValue,
@@ -714,7 +708,7 @@ export function FormularioProcesoDafpVisual({
 
           <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
             <div className="space-y-5 p-6">
-              <section className={`rounded-xl border-2 border-gray-200 bg-gradient-to-br from-gray-50 to-blue-50/40 p-5 transition-all ${procesoDropdownOpen || unidadDropdownOpen ? 'relative z-40' : 'relative z-10'}`}>
+              <section className={`rounded-xl border-2 border-gray-200 bg-gradient-to-br from-gray-50 to-blue-50/40 p-5 transition-all ${procesoDropdownOpen ? 'relative z-40' : 'relative z-10'}`}>
                 <h3 className="mb-4 flex items-center gap-2 text-sm font-black text-[#003DA5]">
                   <Info className="h-4 w-4" />
                   INFORMACIÓN BÁSICA
@@ -842,76 +836,26 @@ export function FormularioProcesoDafpVisual({
                         className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 px-3 py-2.5 text-sm"
                       />
                     </div>
-                    <div className={`relative ${unidadDropdownOpen ? 'z-50' : 'z-10'}`} ref={unidadDropdownRef}>
+                    <div>
                       <label className="mb-1.5 block text-xs font-bold text-gray-700">Unidad auditable</label>
-                      <button
-                        type="button"
-                        onClick={() => setUnidadDropdownOpen(!unidadDropdownOpen)}
-                        className={`w-full rounded-lg border-2 px-3 py-2.5 text-sm text-left flex items-center justify-between transition-all ${
-                          unidadDropdownOpen ? 'border-[#2962FF] ring-2 ring-[#2962FF]/20 bg-white' : 'border-gray-200 bg-gray-50 hover:border-gray-300'
-                        }`}
+                      {/* Solo lectura: van todas las del proceso; se eligen al programar la auditoría (EFDS-2316) */}
+                      <div
+                        className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 px-3 py-2.5 text-sm"
+                        title="Las unidades auditables vienen de Configuración. Las que se auditan se eligen al programar la auditoría."
                       >
-                        <span className={unidadesSeleccionadas.size > 0 ? 'text-gray-900' : 'text-gray-400'}>
-                          {unidadesSeleccionadas.size > 0
-                            ? `${unidadesSeleccionadas.size} unidad${unidadesSeleccionadas.size > 1 ? 'es' : ''} seleccionada${unidadesSeleccionadas.size > 1 ? 's' : ''}`
-                            : 'Seleccione unidades...'}
+                        <span className={unidadesProceso.length > 0 ? 'text-gray-900' : 'text-gray-400'}>
+                          {unidadesProceso.length > 0
+                            ? `${unidadesProceso.length} unidad${unidadesProceso.length > 1 ? 'es' : ''} del proceso`
+                            : procesoIdSeleccionado
+                              ? 'Sin unidades en Configuración'
+                              : 'Seleccione un proceso'}
                         </span>
-                        <svg className={`w-4 h-4 text-gray-500 transition-transform ${unidadDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                      </button>
-                      {unidadDropdownOpen && unidadesDisponibles.length > 0 && (
-                        <div className="absolute top-full left-0 z-[100] mt-1 w-full rounded-xl border border-gray-200 bg-white shadow-2xl max-h-48 overflow-y-auto">
-                          <div className="p-1">
-                            <button
-                              type="button"
-                              className="w-full text-left px-3 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 rounded"
-                              onClick={() => {
-                                const allSelected = unidadesSeleccionadas.size === unidadesDisponibles.length;
-                                const next = allSelected ? new Set<string>() : new Set(unidadesDisponibles);
-                                setUnidadesSeleccionadas(next);
-                                setFormData(prev => ({ ...prev, macroproceso: allSelected ? '' : unidadesDisponibles.join('; ') }));
-                              }}
-                            >
-                              {unidadesSeleccionadas.size === unidadesDisponibles.length ? '✕ Deseleccionar todas' : '✓ Seleccionar todas'}
-                            </button>
-                            <div className="border-t border-gray-100 my-1" />
-                            {unidadesDisponibles.map((u) => (
-                              <label
-                                key={u}
-                                className="flex items-center gap-2 px-3 py-2 hover:bg-blue-50 rounded cursor-pointer transition-colors"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={unidadesSeleccionadas.has(u)}
-                                  onChange={() => {
-                                    const next = new Set(unidadesSeleccionadas);
-                                    if (next.has(u)) next.delete(u);
-                                    else next.add(u);
-                                    setUnidadesSeleccionadas(next);
-                                    setFormData(prev => ({ ...prev, macroproceso: Array.from(next).join('; ') }));
-                                  }}
-                                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                />
-                                <span className="text-sm text-gray-700">{u}</span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {unidadesSeleccionadas.size > 0 && (
+                      </div>
+                      {unidadesProceso.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1.5">
-                          {Array.from(unidadesSeleccionadas).map((u) => (
+                          {unidadesProceso.map((u) => (
                             <span key={u} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[11px] font-medium">
                               {u}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const next = new Set(unidadesSeleccionadas);
-                                  next.delete(u);
-                                  setUnidadesSeleccionadas(next);
-                                  setFormData(prev => ({ ...prev, macroproceso: Array.from(next).join('; ') }));
-                                }}
-                                className="hover:text-blue-900 font-bold"
-                              >×</button>
                             </span>
                           ))}
                         </div>
