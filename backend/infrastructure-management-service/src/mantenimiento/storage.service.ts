@@ -8,12 +8,20 @@ export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   public readonly bucketDefault: string;
   public readonly endpointPublic: string;
+  public readonly endpointPublicLegacy: string;
   public readonly uploadsDir: string;
+  public readonly uploadPublicPrefix: string;
 
   constructor(private readonly config: ConfigService) {
     const port = parseInt(this.config.get<string>('PORT', '3014'), 10);
     const publicHost = this.config.get<string>('APP_PUBLIC_URL', `http://localhost:${port}`);
-    this.endpointPublic = publicHost.replace(/\/$/, '');
+    this.endpointPublicLegacy = publicHost.replace(/\/$/, '');
+    // URL publica por defecto: path relativo al Gateway Shell (mismo origin).
+    // Cumple CSP img-src 'self' y evita Mixed Content en despliegues HTTPS.
+    // El gateway NGINX Shell routea /services/ -> api-gateway:3000 -> microservicio por el prefix.
+    this.uploadPublicPrefix = '/services/infraestructura/uploads';
+    // Mantener endpointPublic como ruta base sin scheme/host para regenerar URLs de forma consistente
+    this.endpointPublic = '';
     this.bucketDefault = this.config.get<string>(
       'MINIO_INFRAESTRUCTURA_BUCKET',
       'infraestructura-evidencias',
@@ -83,7 +91,10 @@ export class StorageService {
     await fs.promises.writeFile(rutaAbsoluta, params.buffer);
 
     const rutaRelativaNormalizada = params.rutaObjeto.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\//, '');
-    const urlPublica = `${this.endpointPublic}/uploads/${encodeURI(rutaRelativaNormalizada)}`;
+    // Path relativo bajo /services/infraestructura para que el Shell Gateway lo routee al backend
+    // manteniendo mismo origin (img-src 'self' CSP valido, sin Mixed Content)
+    const rutaEncoded = encodeURI(rutaRelativaNormalizada);
+    const urlPublica = `${this.uploadPublicPrefix}/${rutaEncoded}`;
     // Almacenamiento local directo: la URL no expira, se proyecta a 10 años para consistencia en BD
     const vencimientoPresigned = new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000);
     const urlPresigned = urlPublica;
@@ -106,7 +117,7 @@ export class StorageService {
     _expireSeconds = 604800,
   ): Promise<{ urlPresigned: string; vencimientoPresigned: Date }> {
     const rutaRelativaNormalizada = rutaObjeto.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/^\//, '');
-    const urlPresigned = `${this.endpointPublic}/uploads/${encodeURI(rutaRelativaNormalizada)}`;
+    const urlPresigned = `${this.uploadPublicPrefix}/${encodeURI(rutaRelativaNormalizada)}`;
     return {
       urlPresigned,
       vencimientoPresigned: new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000),
