@@ -105,6 +105,8 @@ export interface TipoOficio {
   nombre: string;
   descripcion: string;
   categoria: CategoriaOficioId;
+  tipoBackend?: string;
+  codigo?: string;
   plantilla: PlantillaArchivo | null; // Una sola plantilla
   plantillas?: PlantillaArchivo[]; // Array de plantillas (para modales)
   activo: boolean;
@@ -150,17 +152,22 @@ export function SeccionPlantillasOficiosUnificada({
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const handleDescargarPlantilla = (plantilla: PlantillaArchivo | null) => {
-    if (!plantilla) return;
+  const handleDescargarPlantilla = async (plantilla: PlantillaArchivo | null) => {
+    if (!plantilla || !plantilla.url) {
+      toast.error('No hay archivo para descargar');
+      return;
+    }
 
-    const link = document.createElement('a');
-    link.href = disciplinaryService.getAbsoluteFileUrl(plantilla.url);
-    link.download = plantilla.nombreArchivo;
-    link.click();
-
-    toast.success('Plantilla descargada', {
-      description: plantilla.nombreArchivo
-    });
+    try {
+      const nombreDescarga = plantilla.nombreArchivo || `${plantilla.nombre || 'plantilla'}.docx`;
+      await disciplinaryService.downloadFileFromUrl(plantilla.url, nombreDescarga);
+      toast.success('Plantilla descargada', {
+        description: nombreDescarga
+      });
+    } catch (error) {
+      console.error('Error descargando plantilla de oficio:', error);
+      toast.error('Error al descargar la plantilla');
+    }
   };
 
   const toggleExpandirTipo = (tipoId: string) => {
