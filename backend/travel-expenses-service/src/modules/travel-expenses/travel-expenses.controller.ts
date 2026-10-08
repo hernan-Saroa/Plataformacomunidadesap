@@ -1718,12 +1718,7 @@ export class TravelExpensesController {
    */
   @Post('requests/:id/cancel')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions(
-    'travel_expenses:cancel_request',
-    'travel_expenses:create_request',
-    'travel_expenses:read_inbox',
-    'travel_expenses:authorize_expense',
-  )
+  @Permissions('travel_expenses:cancel_request')
   @ApiOperation({
     summary: 'Cancelar comisión con trazabilidad (Etapa 6 — RF-AUT-003)',
     description:

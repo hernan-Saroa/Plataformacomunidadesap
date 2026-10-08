@@ -338,6 +338,8 @@ export class TravelExpensesService implements OnModuleInit {
     'ADMIN',
     'SUPER_ADMIN',
     'ADMINISTRATIVO',
+    'ADMINISTRADOR',
+    'ADMINISTRADOR_SISTEMA',
     'SUPER_ADMINISTRADOR',
     'super_administrador',
     'SUPERUSER',
@@ -9268,6 +9270,49 @@ if (itinerarioGeneral) {
   }
 
   /**
+   * RF-AUT-003 — Valida que el usuario tenga rol de Jefe de Dependencia o Super Administrador
+   * para proceder con la cancelación de la comisión de viáticos.
+   */
+  private validarAutorizacionCancelacion(rolesUsuario: string[]): void {
+    if (!rolesUsuario || rolesUsuario.length === 0) {
+      return;
+    }
+
+    if (this.esSuperAdmin(rolesUsuario)) {
+      return;
+    }
+
+    const rolesPermitidosJefe = [
+      'JEFE_DEPENDENCIA',
+      'ROL_JEFE_DEPENDENCIA',
+      'SUPERVISOR',
+      'JEFE',
+      'DIRECTOR_TERRITORIAL',
+      'LIDER_DEPENDENCIA',
+      'LIDER_DE_DEPENDENCIA',
+      'JEFE_DE_DEPENDENCIA',
+    ];
+
+    const esAutorizado = rolesUsuario.some((r: any) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        rolesPermitidosJefe.includes(normalized) ||
+        normalized.includes('JEFE_DEPENDENCIA') ||
+        normalized === 'SUPERVISOR' ||
+        r === 'travel_expenses:cancel_request' ||
+        r === 'travel_expenses.general.es_jefe_dependencia'
+      );
+    });
+
+    if (!esAutorizado) {
+      throw new ForbiddenException(
+        'Solo el Jefe de Dependencia o un administrador está autorizado para cancelar solicitudes de comisiones de viáticos.',
+      );
+    }
+  }
+
+  /**
    * RF-AUT-001 — Obtener bandeja de comisiones para la Subdirección de Gestión Corporativa (Etapa 6).
    *
    * Criterio de aceptación 1 (Gherkin):
@@ -10664,6 +10709,8 @@ if (itinerarioGeneral) {
       throw new BadRequestException('solicitudId es obligatorio.');
     }
 
+    this.validarAutorizacionCancelacion(rolesUsuario);
+
     const motivo = (dto?.motivoCancelacion || '').trim();
     if (motivo.length < 5) {
       throw new BadRequestException(
@@ -10672,7 +10719,7 @@ if (itinerarioGeneral) {
     }
 
     const responsable =
-      (dto?.responsableCancelacion || '').trim() || 'Dependencia solicitante / Grupo de Viáticos';
+      (dto?.responsableCancelacion || '').trim() || 'Jefe de Dependencia / Dirección Territorial';
 
     const result = await this.dataSource.transaction(async (manager) => {
       const solicitud = await manager

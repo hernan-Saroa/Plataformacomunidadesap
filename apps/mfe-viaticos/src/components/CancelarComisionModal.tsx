@@ -72,7 +72,7 @@ export const CancelarComisionModal: React.FC<CancelarComisionModalProps> = ({
           : currentUser?.username || '';
       const rolUsuario = currentUser?.role ? ` (${currentUser.role})` : '';
       setResponsableCancelacion(
-        nombreUsuario ? `${nombreUsuario}${rolUsuario}` : 'Dependencia solicitante',
+        nombreUsuario ? `${nombreUsuario}${rolUsuario}` : 'Jefe de Dependencia / Dirección Territorial',
       );
     }
   }, [isOpen, solicitud, recursosComprometidosAuto]);
@@ -106,6 +106,12 @@ export const CancelarComisionModal: React.FC<CancelarComisionModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (typeof authService.canCancelarComision === 'function' && !authService.canCancelarComision()) {
+      setError('Solo el Jefe de Dependencia o un administrador está autorizado para cancelar la comisión.');
+      return;
+    }
+
     if (motivoCancelacion.trim().length < 5) {
       setError('El motivo de cancelación es obligatorio (mínimo 5 caracteres).');
       return;

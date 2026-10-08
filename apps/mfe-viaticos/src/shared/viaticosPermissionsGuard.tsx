@@ -173,6 +173,7 @@ export const VIATICOS_ROLE_PERMISSION_MAP: Record<ViaticosRoleKey, RolePermissio
     ],
     fallbackPermissions: [
       'travel_expenses:return_approval',
+      'travel_expenses:cancel_request',
     ],
     label: 'Jefe de Dependencia / Supervisor',
   },
