@@ -28,6 +28,7 @@ export const VIATICOS_PERMISOS_GENERALES = {
   TIQUETES: 'travel_expenses.general.es_responsable_tiquetes',
   JEFE_DEPENDENCIA: 'travel_expenses.general.es_jefe_dependencia',
   GERENTE_PROYECTO: 'travel_expenses.general.es_gerente_proyecto',
+  COMISIONADO: 'travel_expenses.general.es_comisionado',
 } as const;
 
 export type ViaticosRoleKey = keyof typeof VIATICOS_PERMISOS_GENERALES;
@@ -187,6 +188,15 @@ export const VIATICOS_ROLE_PERMISSION_MAP: Record<ViaticosRoleKey, RolePermissio
       'travel_expenses:return_approval',
     ],
     label: 'Gerente de Proyecto',
+  },
+  COMISIONADO: {
+    permission: VIATICOS_PERMISOS_GENERALES.COMISIONADO,
+    legacyRoles: ['COMISIONADO', 'ROL_COMISIONADO'],
+    fallbackPermissions: [
+      'travel_expenses:read_own_requests',
+      'es_comisionado',
+    ],
+    label: 'Comisionado',
   },
 };
 

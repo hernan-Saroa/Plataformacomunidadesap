@@ -299,8 +299,36 @@ export class TravelExpensesController {
     status: HttpStatus.NOT_FOUND,
     description: 'No se encontró el funcionario en ninguna base de datos.',
   })
-  consultarComisionado(@Param('documento') documento: string) {
-    return this.service.consultarComisionado(documento);
+  async consultarComisionado(@Param('documento') documento: string) {
+    const comisionado = await this.service.consultarComisionado(documento);
+    let estadoUsuario = {
+      esUsuario: false,
+      usuarioId: null as string | null,
+      rolesUsuario: [] as string[],
+      idPersona: null as string | null,
+      tieneRolComisionado: false,
+    };
+    try {
+      estadoUsuario = await this.service.identificarUsuarioComisionado(
+        comisionado?.numeroDocumento || documento,
+        comisionado?.email,
+      );
+    } catch {
+      // Si la consulta en auth falla o no está disponible, continuar con los datos del comisionado
+    }
+    return {
+      ...comisionado,
+      ...estadoUsuario,
+    };
+  }
+
+  @Get('comisionados/estado-usuario/:documento')
+  @Public()
+  @ApiOperation({
+    summary: 'Verificar si un comisionado ya tiene usuario y roles en auth-service',
+  })
+  identificarUsuarioComisionado(@Param('documento') documento: string) {
+    return this.service.identificarUsuarioComisionado(documento);
   }
 
   @Post('comisionados/:documento/cuentas-bancarias')

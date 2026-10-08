@@ -212,6 +212,11 @@ export interface Comisionado {
   cuentasBancarias?: CuentaBancariaComisionado[];
   cargos?: CargoComisionado[];
   solicitudesPendientes?: SolicitudPendiente023[];
+  esUsuario?: boolean;
+  usuarioId?: string | null;
+  rolesUsuario?: string[];
+  idPersona?: string | null;
+  tieneRolComisionado?: boolean;
 }
 
 export interface DocumentoSoporte {

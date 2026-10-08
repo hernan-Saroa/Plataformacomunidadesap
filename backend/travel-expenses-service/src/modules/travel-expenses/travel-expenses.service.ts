@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   Logger,
   Optional,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, EntityManager, In, Brackets } from 'typeorm';
@@ -177,7 +178,7 @@ function etiquetaEstadoHumana(estado?: string): string {
 }
 
 @Injectable()
-export class TravelExpensesService {
+export class TravelExpensesService implements OnModuleInit {
   private readonly logger = new Logger(TravelExpensesService.name);
 
   constructor(
@@ -201,6 +202,12 @@ export class TravelExpensesService {
     @Optional()
     private readonly pendientesService?: PendientesService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.asegurarRolYPermisosComisionado().catch((err) =>
+      this.logger.warn(`[onModuleInit] No se pudo asegurar rol COMISIONADO: ${err?.message}`),
+    );
+  }
 
   private sincronizarItinerario(dto: {
     itinerario?: any[];
@@ -358,7 +365,7 @@ export class TravelExpensesService {
     }
     try {
       const rows = await this.solicitudRepo.query(
-        `SELECT id_dependencia, cod_dependencia, nom_dependencia FROM auth.dependencias WHERE activo = true OR estado = 'ACTIVO'`,
+        `SELECT id_dependencia, cod_dependencia, nom_dependencia FROM auth.dependencias WHERE activo = true`,
       );
       this.dependenciasMapCache.clear();
       for (const r of rows) {
@@ -375,11 +382,11 @@ export class TravelExpensesService {
 
   async obtenerDatosPersonaPorUsuarioId(
     usuarioId: string,
-  ): Promise<{ numIdentificacion?: string; dirEmail?: string; username?: string } | null> {
+  ): Promise<{ idPerson?: string; numIdentificacion?: string; dirEmail?: string; username?: string } | null> {
     if (!usuarioId) return null;
     try {
       const rows = await this.solicitudRepo.query(
-        `SELECT p.num_identificacion, p.dir_email, u.username
+        `SELECT p.id_person, p.num_identificacion, p.dir_email, u.username
          FROM auth."user" u
          LEFT JOIN auth.personas p ON p.id_person = u.id_person
          WHERE u.id_user::text = $1
@@ -388,6 +395,7 @@ export class TravelExpensesService {
       );
       if (rows && rows.length > 0) {
         return {
+          idPerson: rows[0].id_person || undefined,
           numIdentificacion: rows[0].num_identificacion || undefined,
           dirEmail: rows[0].dir_email || undefined,
           username: rows[0].username || undefined,
@@ -2138,6 +2146,483 @@ export class TravelExpensesService {
     };
   }
 
+  /**
+   * Identifica si un comisionado está registrado como usuario en auth."user",
+   * sus roles asignados, id_person y si ya cuenta con el rol COMISIONADO.
+   */
+  async identificarUsuarioComisionado(
+    documento: string,
+    email?: string,
+  ): Promise<{
+    esUsuario: boolean;
+    usuarioId: string | null;
+    rolesUsuario: string[];
+    idPersona: string | null;
+    tieneRolComisionado: boolean;
+  }> {
+    const doc = (documento || '').trim();
+    const mail = (email || '').trim().toLowerCase();
+
+    let esUsuario = false;
+    let usuarioId: string | null = null;
+    let rolesUsuario: string[] = [];
+    let idPersona: string | null = null;
+    let tieneRolComisionado = false;
+
+    try {
+      if (this.dataSource && typeof this.dataSource.query === 'function') {
+        const userRows = await this.dataSource.query(
+          `SELECT
+             u.id_user,
+             u.username,
+             u.is_active,
+             p.id_person,
+             COALESCE(
+               array_agg(r.code) FILTER (WHERE r.code IS NOT NULL),
+               '{}'
+             ) AS roles
+           FROM auth.personas p
+           INNER JOIN auth."user" u ON u.id_person = p.id_person
+           LEFT JOIN auth.user_roles ur ON ur.id_user = u.id_user AND ur.is_active = true
+           LEFT JOIN auth.role r ON r.id = ur.id_rol
+           WHERE p.num_identificacion = $1
+           GROUP BY u.id_user, u.username, u.is_active, p.id_person
+           LIMIT 1`,
+          [doc],
+        );
+
+        let userRow = userRows?.[0];
+        if (!userRow && mail && mail !== 'sin-correo@esap.edu.co') {
+          const userByEmail = await this.dataSource.query(
+            `SELECT
+               u.id_user,
+               u.username,
+               u.is_active,
+               u.id_person,
+               COALESCE(
+                 array_agg(r.code) FILTER (WHERE r.code IS NOT NULL),
+                 '{}'
+               ) AS roles
+             FROM auth."user" u
+             LEFT JOIN auth.user_roles ur ON ur.id_user = u.id_user AND ur.is_active = true
+             LEFT JOIN auth.role r ON r.id = ur.id_rol
+             WHERE LOWER(u.username) = LOWER($1)
+             GROUP BY u.id_user, u.username, u.is_active, u.id_person
+             LIMIT 1`,
+            [mail],
+          );
+          userRow = userByEmail?.[0];
+        }
+
+        if (userRow?.id_user) {
+          esUsuario = true;
+          usuarioId = userRow.id_user;
+          rolesUsuario = Array.isArray(userRow.roles) ? userRow.roles : [];
+          idPersona = userRow.id_person || null;
+          tieneRolComisionado = rolesUsuario.some(
+            (r) => r === 'COMISIONADO' || r.toUpperCase().includes('COMISIONADO'),
+          );
+        } else {
+          const pRow = await this.dataSource.query(
+            `SELECT id_person FROM auth.personas WHERE num_identificacion = $1 LIMIT 1`,
+            [doc],
+          );
+          idPersona = pRow?.[0]?.id_person || null;
+        }
+      }
+    } catch (err: any) {
+      this.logger.warn(
+        `[identificarUsuarioComisionado] Error identificando usuario en auth para doc ${doc}: ${err?.message}`,
+      );
+    }
+
+    return {
+      esUsuario,
+      usuarioId,
+      rolesUsuario,
+      idPersona,
+      tieneRolComisionado,
+    };
+  }
+
+  /**
+   * Asegura la existencia idempotente del rol COMISIONADO y sus permisos
+   * (travel_expenses.general.es_comisionado, es_comisionado, travel_expenses:read_own_requests).
+   */
+  async asegurarRolYPermisosComisionado(): Promise<void> {
+    try {
+      if (!this.dataSource || typeof this.dataSource.query !== 'function') return;
+
+      // 1. Obtener ID del módulo viáticos en auth.module
+      let moduleId: string | null = null;
+      try {
+        const modRows = await this.dataSource.query(
+          `SELECT id_module FROM auth.module WHERE code = 'viaticos' OR code ILIKE '%viatico%' LIMIT 1`,
+        );
+        moduleId = modRows?.[0]?.id_module || null;
+      } catch {}
+
+      // 2. Asegurar Rol COMISIONADO en auth.role
+      let roleId: string | null = null;
+      try {
+        const roleRows = await this.dataSource.query(
+          `SELECT id FROM auth.role WHERE UPPER(code) = 'COMISIONADO' LIMIT 1`,
+        );
+        if (roleRows && roleRows.length > 0) {
+          roleId = roleRows[0].id;
+        } else {
+          const insertRole = await this.dataSource.query(
+            `INSERT INTO auth.role (
+               id, code, name, description, category, icon, color, type, is_active, created_at, updated_at
+             ) VALUES (
+               gen_random_uuid(), 'COMISIONADO', 'Comisionado',
+               'Servidor público o contratista que cumple comisiones de servicios institucionales y consulta sus solicitudes (Formato GF-FO-023).',
+               'operativo', 'UserCheck', '#003DA5', 'sistema', true, NOW(), NOW()
+             ) RETURNING id`,
+          );
+          roleId = insertRole?.[0]?.id || null;
+        }
+      } catch (err: any) {
+        this.logger.warn(`[asegurarRolYPermisosComisionado] No se pudo asegurar auth.role COMISIONADO: ${err?.message}`);
+      }
+
+      // 3. Asegurar Permisos en auth.permission
+      const permisosDeseados = [
+        {
+          code: 'travel_expenses.general.es_comisionado',
+          name: 'Es Comisionado (General)',
+          desc: 'Identificador inmutable general para funcionarios y contratistas en calidad de comisionados dentro de la plataforma.',
+        },
+        {
+          code: 'es_comisionado',
+          name: 'Es Comisionado',
+          desc: 'Permiso general de comisionado institucional para consultar sus solicitudes radicadas y estado de firmas.',
+        },
+        {
+          code: 'travel_expenses:read_own_requests',
+          name: 'Consultar solicitudes radicadas para el comisionado',
+          desc: 'Permite al comisionado consultar en la plataforma el estado, itinerario, liquidación y firmas de las solicitudes radicadas a su nombre (Formato GF-FO-023).',
+        },
+      ];
+
+      const permIds: string[] = [];
+      for (const p of permisosDeseados) {
+        try {
+          const pRows = await this.dataSource.query(
+            `SELECT id_permission FROM auth.permission WHERE code = $1 LIMIT 1`,
+            [p.code],
+          );
+          if (pRows && pRows.length > 0) {
+            permIds.push(pRows[0].id_permission);
+          } else {
+            const insP = await this.dataSource.query(
+              `INSERT INTO auth.permission (
+                 id_permission, code, name, description, id_module, is_active, created_at, updated_at
+               ) VALUES (
+                 gen_random_uuid(), $1, $2, $3, $4, true, NOW(), NOW()
+               ) RETURNING id_permission`,
+              [p.code, p.name, p.desc, moduleId],
+            );
+            if (insP?.[0]?.id_permission) {
+              permIds.push(insP[0].id_permission);
+            }
+          }
+        } catch {}
+      }
+
+      // 4. Asociar permisos al rol COMISIONADO y SUPER_ADMIN
+      if (roleId && permIds.length > 0) {
+        for (const pid of permIds) {
+          try {
+            await this.dataSource.query(
+              `INSERT INTO auth.role_permissions (id_rol, id_permission)
+               VALUES ($1, $2)
+               ON CONFLICT (id_rol, id_permission) DO NOTHING`,
+              [roleId, pid],
+            );
+          } catch {}
+          try {
+            await this.dataSource.query(
+              `INSERT INTO auth.role_permission (id, id_role, id_permission)
+               SELECT gen_random_uuid(), $1, $2
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM auth.role_permission WHERE id_role = $1 AND id_permission = $2
+               )`,
+              [roleId, pid],
+            );
+          } catch {}
+        }
+      }
+    } catch (e: any) {
+      this.logger.warn(`[asegurarRolYPermisosComisionado] Error general asegurando rol: ${e?.message}`);
+    }
+  }
+
+  /**
+   * Garantiza que el comisionado tenga un usuario en el sistema con el rol COMISIONADO:
+   * 1. Si ya es un usuario con roles: Se le asigna el nuevo rol COMISIONADO manteniendo intactos todos sus roles previos.
+   * 2. Si no está creado: Se crea el usuario usando el servicio de auth (POST /new-person) o fallback directo en BD,
+   *    con los datos mínimos requeridos (incluyendo idDependencia que radica el enlace) y rol COMISIONADO.
+   */
+  async garantizarUsuarioYRolComisionado(
+    comisionado: ComisionadoEntity,
+    idDependenciaRadica?: number | null,
+    creadorUsuarioId?: string | null,
+  ): Promise<void> {
+    try {
+      if (!this.dataSource || typeof this.dataSource.query !== 'function') return;
+
+      await this.asegurarRolYPermisosComisionado();
+
+      const doc = (comisionado.numeroDocumento || '').trim();
+      const email = (comisionado.email || '').trim().toLowerCase();
+
+      // Resolver el idDependencia: 1) idDependencia radicado en la solicitud,
+      // 2) id_dependencia de la persona enlace que radica (creadorUsuarioId),
+      // 3) id_dependencia preexistente en comisionado
+      let idDependenciaFinal: number | null =
+        idDependenciaRadica != null && Number.isFinite(Number(idDependenciaRadica))
+          ? Number(idDependenciaRadica)
+          : null;
+
+      if (idDependenciaFinal == null && creadorUsuarioId) {
+        try {
+          const enlaceRows = await this.dataSource.query(
+            `SELECT p.id_dependencia
+             FROM auth."user" u
+             LEFT JOIN auth.personas p ON p.id_person = u.id_person
+             WHERE u.id_user = $1
+             LIMIT 1`,
+            [creadorUsuarioId],
+          );
+          if (enlaceRows?.[0]?.id_dependencia != null) {
+            idDependenciaFinal = Number(enlaceRows[0].id_dependencia);
+          }
+        } catch {}
+      }
+
+      if (idDependenciaFinal == null && comisionado.idDependencia != null) {
+        idDependenciaFinal = Number(comisionado.idDependencia);
+      }
+
+      // Si el comisionado local no tenía idDependencia registrada, asignarla
+      if (idDependenciaFinal != null && comisionado.idDependencia == null) {
+        try {
+          comisionado.idDependencia = idDependenciaFinal;
+          await this.comisionadoRepo.update(comisionado.id, { idDependencia: idDependenciaFinal });
+        } catch {}
+      }
+
+      // 1. Buscar si ya existe un usuario asociado en auth."user"
+      const existingUser = await this.dataSource.query(
+        `SELECT u.id_user, u.username, u.id_person
+         FROM auth."user" u
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE p.num_identificacion = $1 OR (u.username IS NOT NULL AND LOWER(u.username) = $2)
+         LIMIT 1`,
+        [doc, email],
+      );
+
+      const roleRow = await this.dataSource.query(
+        `SELECT id FROM auth.role WHERE UPPER(code) = 'COMISIONADO' LIMIT 1`,
+      );
+      const roleComisionadoId = roleRow?.[0]?.id;
+
+      if (existingUser && existingUser.length > 0 && existingUser[0]?.id_user) {
+        const userId = existingUser[0].id_user;
+        const personId = existingUser[0].id_person;
+        this.logger.log(`[garantizarUsuarioYRolComisionado] Comisionado ${doc} ya es usuario (${userId}). Asignando rol COMISIONADO manteniendo roles previos...`);
+
+        // Si la persona asociada no tiene id_dependencia y tenemos el idDependencia que radica el enlace, sincronizarlo
+        if (personId && idDependenciaFinal != null) {
+          try {
+            await this.dataSource.query(
+              `UPDATE auth.personas
+               SET id_dependencia = $1, fec_modificacion = CURRENT_DATE
+               WHERE id_person = $2 AND id_dependencia IS NULL`,
+              [idDependenciaFinal, personId],
+            );
+          } catch {}
+        }
+
+        if (roleComisionadoId) {
+          // Asignar el nuevo rol COMISIONADO SIN eliminar roles existentes
+          await this.dataSource.query(
+            `INSERT INTO auth.user_roles (id_user, id_rol, is_active)
+             VALUES ($1, $2, true)
+             ON CONFLICT (id_user, id_rol) DO UPDATE SET is_active = true`,
+            [userId, roleComisionadoId],
+          );
+          this.logger.log(`[garantizarUsuarioYRolComisionado] Rol COMISIONADO asignado exitosamente al usuario ${userId}`);
+        }
+        return;
+      }
+
+      // 2. No está creado como usuario: crear el usuario usando el servicio de auth
+      this.logger.log(`[garantizarUsuarioYRolComisionado] Comisionado ${doc} no tiene usuario. Creando usuario mediante auth-service...`);
+
+      const nombres = [comisionado.primerNombre, comisionado.segundoNombre].filter(Boolean).join(' ').trim() || 'Funcionario';
+      const apellidos = [comisionado.primerApellido, comisionado.segundoApellido].filter(Boolean).join(' ').trim() || 'Comisionado';
+      const emailValido = email && email !== 'sin-correo@esap.edu.co' ? email : `${doc}@esap.edu.co`;
+      const telefonoValido = comisionado.telefonoContacto && comisionado.telefonoContacto !== '0000000000'
+        ? comisionado.telefonoContacto
+        : undefined;
+
+      const payloadAuth = {
+        firstName: comisionado.primerNombre || nombres,
+        lastName: apellidos,
+        documentNumber: doc,
+        email: emailValido,
+        phone: telefonoValido,
+        username: emailValido,
+        password: '123456',
+        roles: ['Comisionado'],
+        idDependencia: idDependenciaFinal != null ? Number(idDependenciaFinal) : undefined,
+      };
+
+      let creadoViaHttp = false;
+      let authServiceUrl = (process.env.AUTH_SERVICE_URL || 'http://localhost:3001').replace(/\/+$/, '');
+      if (authServiceUrl.includes('auth-service') && process.platform === 'win32') {
+        authServiceUrl = authServiceUrl.replace('auth-service', '127.0.0.1');
+      }
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const resp = await fetch(`${authServiceUrl}/new-person`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payloadAuth),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (resp.ok) {
+          creadoViaHttp = true;
+          this.logger.log(`[garantizarUsuarioYRolComisionado] Usuario creado exitosamente vía HTTP en auth-service para comisionado ${doc} con dependencia ${idDependenciaFinal}`);
+        } else {
+          const errText = await resp.text();
+          this.logger.warn(`[garantizarUsuarioYRolComisionado] Falló creación HTTP en auth-service (${resp.status}): ${errText}. Procediendo a sincronización directa en BD...`);
+        }
+      } catch (errHttp: any) {
+        this.logger.warn(`[garantizarUsuarioYRolComisionado] Error conectando con auth-service (${errHttp?.message}). Procediendo a sincronización directa en BD...`);
+      }
+
+      // Si no se pudo vía HTTP (ej: servicio apagado o timeout en tests), asegurar directamente en BD compartida
+      if (!creadoViaHttp) {
+        await this.crearUsuarioComisionadoDirectoEnBd({
+          documento: doc,
+          nombres,
+          apellidos,
+          email: emailValido,
+          telefono: telefonoValido,
+          idDependencia: idDependenciaFinal,
+          roleComisionadoId,
+        });
+      }
+    } catch (err: any) {
+      this.logger.error(`[garantizarUsuarioYRolComisionado] Error garantizando usuario/rol para comisionado: ${err?.message}`);
+    }
+  }
+
+  private async crearUsuarioComisionadoDirectoEnBd(params: {
+    documento: string;
+    nombres: string;
+    apellidos: string;
+    email: string;
+    telefono?: string;
+    idDependencia?: number | null;
+    roleComisionadoId?: string;
+  }): Promise<void> {
+    const { documento, nombres, apellidos, email, telefono, idDependencia, roleComisionadoId } = params;
+
+    // 1. Asegurar persona en auth.personas
+    const personasExistentes = await this.dataSource.query(
+      `SELECT id_person FROM auth.personas WHERE num_identificacion = $1 LIMIT 1`,
+      [documento],
+    );
+
+    let idPerson = personasExistentes?.[0]?.id_person;
+    if (!idPerson) {
+      const nuevaPersona = await this.dataSource.query(
+        `INSERT INTO auth.personas (
+           id_person,
+           num_identificacion,
+           tip_identificacion,
+           nom_tercero,
+           pri_apellido,
+           nom_largo,
+           dir_email,
+           tel_celular,
+           id_dependencia,
+           fec_creacion,
+           fec_modificacion
+         ) VALUES (
+           gen_random_uuid(),
+           $1,
+           'CC',
+           $2,
+           $3,
+           $4,
+           $5,
+           $6,
+           $7,
+           NOW(),
+           NOW()
+         ) RETURNING id_person`,
+        [documento, nombres, apellidos, `${nombres} ${apellidos}`, email, telefono || null, idDependencia || null],
+      );
+      idPerson = nuevaPersona?.[0]?.id_person;
+    }
+
+    // 2. Asegurar usuario en auth."user"
+    const usuariosExistentes = await this.dataSource.query(
+      `SELECT id_user FROM auth."user" WHERE id_person = $1 OR LOWER(username) = LOWER($2) LIMIT 1`,
+      [idPerson, email],
+    );
+
+    let idUser = usuariosExistentes?.[0]?.id_user;
+    if (!idUser) {
+      const hashDefault = '$2b$10$K509yCjy4ifdIBc3HCb5cu82S.8./2UTqF554uccfpa8nqZrqnh9.'; // bcrypt hash para '123456' (estándar auth-service)
+      const nuevoUsuario = await this.dataSource.query(
+        `INSERT INTO auth."user" (
+           id_user,
+           public_id,
+           username,
+           password_hash,
+           id_person,
+           is_active,
+           created_at,
+           updated_at
+         ) VALUES (
+           gen_random_uuid(),
+           gen_random_uuid(),
+           $1,
+           $2,
+           $3,
+           true,
+           NOW(),
+           NOW()
+         ) RETURNING id_user`,
+        [email, hashDefault, idPerson],
+      );
+      idUser = nuevoUsuario?.[0]?.id_user;
+    }
+
+    // 3. Asignar rol COMISIONADO
+    if (idUser && roleComisionadoId) {
+      await this.dataSource.query(
+        `INSERT INTO auth.user_roles (id_user, id_rol, is_active)
+         VALUES ($1, $2, true)
+         ON CONFLICT (id_user, id_rol) DO UPDATE SET is_active = true`,
+        [idUser, roleComisionadoId],
+      );
+      this.logger.log(`[crearUsuarioComisionadoDirectoEnBd] Usuario ${idUser} y rol COMISIONADO asegurados directamente en BD.`);
+    }
+  }
+
   async crearSolicitud(
     dto: CreateSolicitudDto,
   ): Promise<SolicitudComisionEntity> {
@@ -2148,6 +2633,14 @@ export class TravelExpensesService {
     if (!comisionado) {
       throw new BadRequestException('Comisionado no encontrado.');
     }
+
+    // 1. Si el comisionado es un usuario con roles, asignarle el nuevo rol comisionado (manteniendo roles previos).
+    // 2. Si no está creado, crear el usuario usando el servicio de auth (o fallback DB) con idDependencia que radica el enlace.
+    await this.garantizarUsuarioYRolComisionado(
+      comisionado,
+      dto.idDependencia,
+      dto.creadoPorUsuarioId,
+    );
 
     if (!comisionado.autorizacionHabeasData && !dto.aceptaHabeasData) {
       throw new BadRequestException(
@@ -3739,6 +4232,15 @@ if (dto.costoEstimadoTiquete !== undefined) {
     }
 
     await this.validarLegalizacionesPendientes(solicitud.comisionadoId);
+
+    // Garantizar que el comisionado tenga usuario y rol COMISIONADO (idempotente)
+    if (solicitud.comisionado) {
+      await this.garantizarUsuarioYRolComisionado(
+        solicitud.comisionado,
+        solicitud.idDependencia,
+        solicitud.creadoPorUsuarioId,
+      );
+    }
 
     // Si viene código OTP del enlace, verificarlo
     if (dto?.otp && dto?.verificationId) {

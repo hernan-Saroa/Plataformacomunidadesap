@@ -2567,12 +2567,33 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         </p>
                       </div>
                     </div>
-                    {infoComisionadoCompleta.origen && (
-                      <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
-                        <BadgeCheck className="w-3.5 h-3.5 text-emerald-600" />
-                        Verificado {infoComisionadoCompleta.origen === 'HUMANO' ? 'Talento Humano' : infoComisionadoCompleta.origen}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {infoComisionadoCompleta.origen && (
+                        <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+                          <BadgeCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          Verificado {infoComisionadoCompleta.origen === 'HUMANO' ? 'Talento Humano' : infoComisionadoCompleta.origen}
+                        </span>
+                      )}
+                      {comisionado?.esUsuario ? (
+                        <span
+                          className="text-xs font-bold px-3 py-1 rounded-full bg-blue-100 text-blue-800 border border-blue-300 inline-flex items-center gap-1"
+                          title={comisionado.rolesUsuario && comisionado.rolesUsuario.length > 0 ? `Roles actuales: ${comisionado.rolesUsuario.join(', ')}` : 'Usuario registrado en ESAP'}
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                          {comisionado.tieneRolComisionado
+                            ? 'Usuario Comisionado Activo'
+                            : 'Usuario ESAP (se asignará rol Comisionado)'}
+                        </span>
+                      ) : (
+                        <span
+                          className="text-xs font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300 inline-flex items-center gap-1"
+                          title="Se registrará su usuario en el servicio de autenticación con rol Comisionado al crear la solicitud"
+                        >
+                          <User className="w-3.5 h-3.5 text-amber-600" />
+                          Usuario nuevo (se creará cuenta automáticamente)
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs sm:text-sm">

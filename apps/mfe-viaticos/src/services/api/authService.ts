@@ -39,6 +39,7 @@ export const VIATICOS_PERMISOS_GENERALES = {
   TIQUETES: 'travel_expenses.general.es_responsable_tiquetes',
   JEFE_DEPENDENCIA: 'travel_expenses.general.es_jefe_dependencia',
   GERENTE_PROYECTO: 'travel_expenses.general.es_gerente_proyecto',
+  COMISIONADO: 'travel_expenses.general.es_comisionado',
 } as const;
 
 export const ROLES_SUBDIRECCION_GESTION_CORPORATIVA = [
@@ -707,6 +708,32 @@ export class AuthService {
       this.isGerenteProyecto() ||
       this.isSubdireccionGestionCorporativa() ||
       this.isDireccionNacional()
+    );
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene el rol / función de Comisionado.
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_comisionado` (Migración 452).
+   */
+  isComisionado(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) {
+      return (
+        this.hasPermission(VIATICOS_PERMISOS_GENERALES.COMISIONADO) ||
+        this.hasPermission('es_comisionado') ||
+        this.hasPermission('travel_expenses:read_own_requests')
+      );
+    }
+    if (
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.COMISIONADO) ||
+      this.hasPermission('es_comisionado') ||
+      this.hasPermission('travel_expenses:read_own_requests')
+    ) {
+      return true;
+    }
+    return user.roles.some((r) =>
+      ['COMISIONADO', 'ROL_COMISIONADO'].includes(r) ||
+      r.includes('COMISIONADO'),
     );
   }
 
