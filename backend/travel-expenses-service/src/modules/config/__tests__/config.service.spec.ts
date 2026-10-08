@@ -192,6 +192,35 @@ describe('ConfigService — Gestión de Campos Dinámicos y Parametrización', (
       expect(resultado.orden).toBe(2);
     });
 
+    it('debe permitir actualizar el límite de caracteres configurable', async () => {
+      const campoExistente: CampoFormularioEntity = {
+        id: 'uuid-4',
+        clave: 'justificacion',
+        etiqueta: 'Justificación',
+        tipoCampo: TipoCampoFormulario.TEXTAREA,
+        placeholder: null,
+        opciones: null,
+        grupo: GrupoCampoFormulario.COMISION,
+        orden: 1,
+        activo: true,
+        limiteCaracteres: 250,
+        creadoEn: new Date(),
+        actualizadoEn: new Date(),
+      };
+
+      mockCampoRepo.findOne.mockResolvedValue({ ...campoExistente });
+      mockCampoRepo.save.mockImplementation((ent) => Promise.resolve(ent));
+
+      const resultado = await service.actualizarCampoFormulario('justificacion', {
+        limiteCaracteres: 500,
+      });
+
+      expect(resultado.limiteCaracteres).toBe(500);
+      expect(mockCampoRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ clave: 'justificacion', limiteCaracteres: 500 }),
+      );
+    });
+
     it('debe lanzar NotFoundException si el campo a actualizar no existe', async () => {
       mockCampoRepo.findOne.mockResolvedValue(null);
 

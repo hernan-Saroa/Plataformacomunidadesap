@@ -63,6 +63,12 @@ export class CreateCampoFormularioDto {
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(10000)
+  limiteCaracteres?: number | null;
 }
 
 export class UpdateCampoFormularioDto {
@@ -100,5 +106,11 @@ export class UpdateCampoFormularioDto {
   @IsOptional()
   @IsBoolean()
   activo?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(10000)
+  limiteCaracteres?: number | null;
 }
 
