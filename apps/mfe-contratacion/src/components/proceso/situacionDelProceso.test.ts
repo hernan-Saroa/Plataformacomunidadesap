@@ -321,3 +321,38 @@ describe('a dónde pasa al aprobar', () => {
     expect(pasos[1]).toMatchObject({ aplica: false, construida: false });
   });
 });
+
+/**
+ * El Plan Anual de Adquisiciones (migración 097) puede detener o cancelar el
+ * proceso. El riel sigue con una actividad abierta, pero no le toca a nadie
+ * trabajarla: el servidor la rechazaría.
+ */
+describe('situacionDelProceso · el PAA', () => {
+  const abogado = { nombre: 'Andrés Rojas', usuarioNombre: 'andres', esMio: true };
+
+  it('un proceso cancelado no le toca a nadie', () => {
+    const s = situacionDelProceso({
+      pasos: flujo({ '3.1': 'BORRADOR' }),
+      radicadoPorMi: true,
+      estadoProceso: 'CANCELADO',
+      puedo: () => true,
+    });
+    expect(s).toMatchObject({ momento: 'cancelado', teToca: false });
+    expect(destinoDeLaSituacion(s)).toBe('El proceso termina');
+  });
+
+  it('detenido, solo le toca al abogado, que decide la revisión', () => {
+    const entrada = {
+      pasos: flujo({ '3.1': 'BORRADOR' }),
+      radicadoPorMi: true,
+      detenidoPorPaa: true,
+      puedo: () => true,
+    };
+    expect(situacionDelProceso({ ...entrada, participacion: { abogado } })).toMatchObject({
+      momento: 'detenido',
+      quien: 'Andrés Rojas',
+      teToca: true,
+    });
+    expect(situacionDelProceso(entrada)).toMatchObject({ momento: 'detenido', teToca: false });
+  });
+});

@@ -578,6 +578,8 @@ export function DetalleProceso({
     radicadoPorMi: datos.proceso.radicadoPorMi,
     responsables,
     puedo: alcanceCargado ? puede : undefined,
+    estadoProceso: datos.proceso.estado,
+    detenidoPorPaa: datos.proceso.paaDetenido,
   };
   const situacion = situacionDelProceso(entradaSituacion);
 

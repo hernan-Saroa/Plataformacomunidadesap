@@ -35,6 +35,7 @@ import { VistaAlertas } from './alertas/VistaAlertas';
 import { VistaBandejaCdp } from './cdp/VistaBandejaCdp';
 import { VistaEstadisticas } from './estadisticas/VistaEstadisticas';
 import { RevisionDeActividad } from './revision/RevisionDeActividad';
+import { RevisionDelPaa } from './paa/RevisionDelPaa';
 import { PestanaTrabajo, VistaMiTrabajo } from './trabajo/VistaMiTrabajo';
 import { useMiTrabajo } from '../hooks/useMiTrabajo';
 import { PERMISOS } from '../auth/permisos';
@@ -131,12 +132,22 @@ export default function ContratacionModulePremium() {
   } | null>(null);
 
   /**
+   * La revisión del PAA abierta, si hay una (migración 097).
+   *
+   * No es una actividad del riel sino una decisión sobre el proceso entero —si
+   * sigue, se devuelve, se migra o se cancela—, así que tiene su propia pantalla.
+   */
+  const [revisionPaa, setRevisionPaa] = useState<string | null>(null);
+
+  /**
    * «Mi trabajo»: lo que le toca a quien mira, y el número del menú.
    *
    * Se relee al cambiar de sección y al cerrar una revisión o un proceso: el
    * contador tiene que bajar en cuanto algo se resuelve.
    */
-  const miTrabajo = useMiTrabajo(`${seccion}|${revision === null}|${procesoId === null}`);
+  const miTrabajo = useMiTrabajo(
+    `${seccion}|${revision === null}|${revisionPaa === null}|${procesoId === null}`,
+  );
   const [pestanaTrabajo, setPestanaTrabajo] = useState<PestanaTrabajo | null>(null);
   /** La pestaña con algo pendiente, si nadie ha elegido otra. */
   const pestanaVisible: PestanaTrabajo =
@@ -330,6 +341,25 @@ export default function ContratacionModulePremium() {
   // Dos niveles: lista de procesos y detalle. El formulario ya no es una
   // pantalla aparte — se despliega dentro de su actividad en el detalle.
   const contenido = () => {
+    if (revisionPaa) {
+      return (
+        <RevisionDelPaa
+          revisionId={revisionPaa}
+          volverA={seccion === 'mi-trabajo' ? 'Mi trabajo' : 'Procesos'}
+          onVolver={() => {
+            setRevisionPaa(null);
+            if (seccion === 'mi-trabajo') setPestanaTrabajo('revisar');
+          }}
+          onVerProceso={(id) => {
+            setSeccion('estudios-previos');
+            setProcesoId(id);
+            setActividad(null);
+            setRevisionPaa(null);
+          }}
+        />
+      );
+    }
+
     if (revision) {
       return (
         <RevisionDeActividad
@@ -365,7 +395,9 @@ export default function ContratacionModulePremium() {
           pestana={pestanaVisible}
           onPestana={setPestanaTrabajo}
           onRevisar={(e) =>
-            setRevision({ procesoId: e.procesoId, numeral: e.numeral, desde: 'bandeja' })
+            e.tipo === 'REVISION_PAA' && e.referencia
+              ? setRevisionPaa(e.referencia)
+              : setRevision({ procesoId: e.procesoId, numeral: e.numeral, desde: 'bandeja' })
           }
           // El proceso se abre sin salir de la sección: «volver» regresa a la
           // bandeja, que es de donde vino.

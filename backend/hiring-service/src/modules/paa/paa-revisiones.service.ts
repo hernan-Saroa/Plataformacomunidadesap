@@ -324,7 +324,7 @@ export class PaaRevisionesService {
 }
 
 const SELECT_REVISION = `
-  SELECT r.*, p.radicado, p.objeto, p.etapa, p.estado AS estado_proceso, p.paa_anio,
+  SELECT r.*, p.radicado, p.objeto, p.etapa, p.estado AS estado_proceso, p.paa_anio, p.paa_region_id,
          rg.nombre AS region, va.numero AS version_anterior, vn.numero AS version_nueva,
          ga.anio AS anio_anterior, gn.anio AS anio_nuevo,
          ab.nombre AS abogado, ab.usuario_id::text AS abogado_id, ab.usuario_nombre AS abogado_usuario
@@ -347,6 +347,7 @@ function aVista(f: any) {
     etapa: Number(f.etapa),
     estadoProceso: f.estado_proceso as string,
     region: f.region as string | null,
+    regionId: f.paa_region_id as string | null,
     codigo: f.codigo as string,
     tipo: f.tipo as PaaRevision['tipo'],
     porCambioAnual: f.tipo === 'CAMBIO_VIGENCIA',

@@ -66,6 +66,19 @@ const LINEA_1 = {
   enUso: null,
 };
 
+const DETALLE_LINEA_1 = {
+  id: 'l-1',
+  codigo: 'LINEA 1',
+  region: { id: 'r-sede', nombre: 'Sede Central' },
+  vigencia: { id: 'v-2026', anio: 2026, vigente: true },
+  version: { id: 'ver-31', numero: 31, estado: 'ACTIVA' },
+  campos: [
+    { clave: 'objeto', etiqueta: 'Objeto', valor: 'Soporte técnico en sitio' },
+    { clave: 'valor_total', etiqueta: 'Valor total estimado', valor: 78852000 },
+  ],
+  enUso: null,
+};
+
 /**
  * Crear un proceso desde el Plan Anual de Adquisiciones (migración 097).
  *
@@ -84,18 +97,7 @@ describe('VistaProcesos · crear desde el PAA', () => {
       motivo: null,
     });
     servicio.paa.buscarLineas.mockResolvedValue(busqueda([LINEA_1]));
-    servicio.paa.linea.mockResolvedValue({
-      id: 'l-1',
-      codigo: 'LINEA 1',
-      region: { id: 'r-sede', nombre: 'Sede Central' },
-      vigencia: { id: 'v-2026', anio: 2026, vigente: true },
-      version: { id: 'ver-31', numero: 31, estado: 'ACTIVA' },
-      campos: [
-        { clave: 'objeto', etiqueta: 'Objeto', valor: 'Soporte técnico en sitio' },
-        { clave: 'valor_total', etiqueta: 'Valor total estimado', valor: 78852000 },
-      ],
-      enUso: null,
-    });
+    servicio.paa.linea.mockResolvedValue(DETALLE_LINEA_1);
   });
 
   const abrir = async (onAbrir = vi.fn()) => {
@@ -139,7 +141,7 @@ describe('VistaProcesos · crear desde el PAA', () => {
 
   it('no deja crear con una línea que ya tiene proceso', async () => {
     servicio.paa.linea.mockResolvedValue({
-      ...(await servicio.paa.linea()),
+      ...DETALLE_LINEA_1,
       enUso: { procesoId: 'p-9', radicado: 'CTO-2026-0009' },
     });
     await abrir();

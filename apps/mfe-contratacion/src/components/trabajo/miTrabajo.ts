@@ -43,10 +43,11 @@ export function clasificarMiTrabajo(elementos: ElementoDeTrabajo[]): MiTrabajo {
 
   for (const e of elementos) {
     const { momento, teToca } = e.situacion;
-    if (momento === 'terminado' || momento === 'negado') continue;
+    if (momento === 'terminado' || momento === 'negado' || momento === 'cancelado') continue;
 
     if (teToca) {
-      if (momento === 'revision') continue;
+      // La revisión del PAA que detiene el proceso ya está en «Por revisar».
+      if (momento === 'revision' || momento === 'detenido') continue;
       if (momento === 'asignacion') trabajo.porAsignar.push(e);
       else trabajo.porHacer.push(e);
       continue;

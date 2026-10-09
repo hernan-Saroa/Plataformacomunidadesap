@@ -119,6 +119,11 @@ export interface ElementoPorRevisar {
   tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO' | 'REVISION_PAA';
   /** Cuál de ellas, cuando la actividad tiene varias: «Póliza 123 · Seguros X». */
   detalle: string | null;
+  /**
+   * Qué abrir cuando el proceso y el numeral no bastan: la revisión del PAA,
+   * que no es una actividad del riel sino una decisión sobre el proceso.
+   */
+  referencia: string | null;
   procesoId: string;
   radicado: string | null;
   objeto: string;
@@ -556,6 +561,7 @@ export class AlertasService {
       return {
         tipo,
         detalle: f.detalle ?? null,
+        referencia: f.referencia ?? null,
         procesoId: f.proceso_id,
         radicado: f.radicado,
         objeto: f.objeto,
@@ -620,6 +626,7 @@ export class AlertasService {
              NULL           AS version,
              NULL           AS enviado_por,
              r.codigo || CASE WHEN r.bloquea THEN ' · detiene el proceso' ELSE '' END AS detalle,
+             r.id::text     AS referencia,
              r.created_at   AS desde
         FROM hiring.paa_revisiones r
         JOIN hiring.procesos p ON p.id = r.proceso_id

@@ -724,6 +724,10 @@ export interface EstudioPrevio {
     expediente?: string;
     /** Quien mira radicó el proceso: es el área que redacta el estudio previo. */
     radicadoPorMi?: boolean;
+    /** Desenlace del proceso; CANCELADO si lo canceló una revisión del PAA. */
+    estado?: EstadoDelProceso;
+    /** Una revisión por cambio del PAA lo tiene detenido. */
+    paaDetenido?: boolean;
   };
   estado: EstadoActividad;
   version: number;
@@ -3480,6 +3484,8 @@ export interface ElementoPorRevisar {
   tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO' | 'REVISION_PAA';
   /** Cuál de ellas, cuando la actividad tiene varias: «Póliza 123 · Seguros X». */
   detalle: string | null;
+  /** La revisión del PAA que se abre, cuando el proceso y el numeral no bastan. */
+  referencia?: string | null;
   procesoId: string;
   radicado: string | null;
   objeto: string;
@@ -3853,6 +3859,7 @@ export interface RevisionPaa {
   etapa: number;
   estadoProceso: EstadoDelProceso;
   region: string | null;
+  regionId: string | null;
   codigo: string;
   tipo: TipoRevisionPaa;
   porCambioAnual: boolean;

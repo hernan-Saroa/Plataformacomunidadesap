@@ -609,6 +609,17 @@ export class EstudioPrevioService implements OnModuleInit {
     // Sin este dato la lista no puede distinguir un proceso que alguien lleva de
     // uno que sigue en la bandeja esperando que lo reciban.
     const participantes = await this.participacion.vigentesDe(ids);
+    // Los que una revisión del PAA tiene detenidos: la lista tiene que decirlo,
+    // o el proceso parece esperando a alguien que no puede hacer nada.
+    const detenidos = new Set<string>(
+      (
+        await this.dataSource.query(
+          `SELECT DISTINCT proceso_id FROM hiring.paa_revisiones
+            WHERE proceso_id = ANY($1) AND estado = 'PENDIENTE' AND bloquea`,
+          [ids],
+        )
+      ).map((f: { proceso_id: string }) => f.proceso_id),
+    );
 
     const porProceso = new Map<string, ProcesoActividad[]>();
     for (const a of actividades) {
@@ -645,6 +656,7 @@ export class EstudioPrevioService implements OnModuleInit {
          */
         /** Para que la lista le diga «te toca» al área cuando el estudio es suyo. */
         radicadoPorMi: this.loRadico(proceso, acceso),
+        paaDetenido: detenidos.has(proceso.id),
         participacion: {
           contratacion,
           abogado: quien('ABOGADO'),
@@ -711,6 +723,10 @@ export class EstudioPrevioService implements OnModuleInit {
         etapa: proceso.etapa,
         expediente: proceso.expediente?.numeroExpediente,
         radicadoPorMi: this.loRadico(proceso, acceso),
+        // El desenlace y si una revisión del PAA lo detiene: la ficha no puede
+        // decir «te toca» de un proceso cancelado o detenido.
+        estado: proceso.estado,
+        paaDetenido: await this.detenidoPorElPaa(procesoId),
       },
       estado: actividad.estado,
       version: actividad.version,
@@ -729,6 +745,15 @@ export class EstudioPrevioService implements OnModuleInit {
        */
       revision: acceso ? await this.quienRevisa(procesoId, acceso) : null,
     };
+  }
+
+  /** Si una revisión del PAA pendiente detiene el proceso (migración 097). */
+  private async detenidoPorElPaa(procesoId: string): Promise<boolean> {
+    const [fila] = await this.dataSource.query(
+      `SELECT 1 FROM hiring.paa_revisiones WHERE proceso_id = $1 AND estado = 'PENDIENTE' AND bloquea LIMIT 1`,
+      [procesoId],
+    );
+    return !!fila;
   }
 
   /** El abogado del proceso y por qué quien pregunta puede o no decidir. */

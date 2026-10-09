@@ -65,5 +65,7 @@ export function situacionDelResumen(
     radicadoPorMi: proceso.radicadoPorMi,
     responsables,
     puedo,
+    estadoProceso: proceso.estado,
+    detenidoPorPaa: proceso.paaDetenido,
   });
 }
