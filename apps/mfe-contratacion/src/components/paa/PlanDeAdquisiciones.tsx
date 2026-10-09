@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 
+import { CamposDelFormulario } from './CamposDelFormulario';
 import { RegionesPaa } from './RegionesPaa';
 import { VigenciasYVersiones } from './VigenciasYVersiones';
 
 const SECCIONES = [
   { clave: 'versiones' as const, etiqueta: 'Vigencias y versiones' },
   { clave: 'regiones' as const, etiqueta: 'Regiones' },
+  { clave: 'campos' as const, etiqueta: 'Campos del formulario' },
 ];
 
 type Seccion = (typeof SECCIONES)[number]['clave'];
@@ -45,6 +47,7 @@ export function PlanDeAdquisiciones() {
 
       {seccion === 'versiones' && <VigenciasYVersiones />}
       {seccion === 'regiones' && <RegionesPaa />}
+      {seccion === 'campos' && <CamposDelFormulario />}
     </div>
   );
 }
