@@ -12,6 +12,23 @@ import { PermissionsService } from '../services/permissions.service';
 // Roles que tienen TODOS los permisos (superusuarios)
 const SUPER_ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN', 'ADMINISTRATIVO', 'Super Administrador', 'SUPER_ADMINISTRADOR', 'super_administrador'];
 
+/** Mismo criterio del guard, para reglas de negocio que el superusuario también se salta (EFDS-2322). */
+export function esSuperAdmin(user: any): boolean {
+  const roles: string[] = [];
+  if (Array.isArray(user?.roles)) {
+    user.roles.forEach((role: any) => {
+      if (typeof role === 'string') roles.push(role);
+      else if (role?.code) roles.push(role.code);
+      else if (role?.name) roles.push(role.name);
+    });
+  }
+  if (typeof user?.role === 'string') roles.push(user.role);
+  return roles.some((role) => {
+    const normalized = role.toUpperCase().replace(/\s+/g, '_');
+    return SUPER_ADMIN_ROLES.includes(normalized) || SUPER_ADMIN_ROLES.includes(role.toUpperCase());
+  });
+}
+
 @Injectable()
 export class PermissionsGuard implements CanActivate {
   constructor(

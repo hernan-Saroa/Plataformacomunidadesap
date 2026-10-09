@@ -64,6 +64,7 @@ import {
 // S& NUEVO: Exportación Excel con logo
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
 import { fechaSeguimientoTarea, fechaCompletadaLegible } from './services/fechaSeguimientoTarea';
+import { actorDeSesion, actorEsResponsable, nombresDeResponsables, responsablesQueMandan } from './services/responsableDeTarea';
 import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
 import { camposDeSincronizacion, corteDeLaFecha, cortesComoPeriodos, esTareaAutomaticaDelRol4, esTareaDelProgramaAnual, estadoDelCorte, fechaEntregaDeTarea, fechaSeguimientoPorDefecto, repartirTareasAutomaticasEnCortes, tareasEnElAñoDeLosCortes } from './services/cortesPlanAnual';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
@@ -7839,6 +7840,29 @@ function SeccionGestionYSeguimiento({
     return puedeEditarPlan || puedeSeguimiento;
   };
 
+  // Completar, fechar, observar y adjuntar evidencias de una tarea es solo de su responsable; sin
+  // responsable propio, de los del rol y la actividad. Los demás la ven. Misma regla del backend (EFDS-2322)
+  const puedeIntervenirTarea = (rol: any, actividad: any, tarea: any): boolean => {
+    if (esSuperUsuario) return true;
+    const actor = actorDeSesion(currentUser);
+    if (!actor) return false;
+    return actorEsResponsable(responsablesQueMandan(tarea, rol, actividad), actor);
+  };
+  const motivoTareaAjena = (rol: any, actividad: any, tarea: any): string => {
+    const nombres = nombresDeResponsables(responsablesQueMandan(tarea, rol, actividad));
+    return nombres
+      ? `Solo su responsable (${nombres}) puede hacer el seguimiento de esta tarea`
+      : 'Solo el responsable puede hacer el seguimiento de esta tarea';
+  };
+  const asegurarResponsableDeTarea = (rolNumero: number, actividadId: string | number, tareaId: string): boolean => {
+    const rol = plan.roles.find((r) => r.numero === rolNumero);
+    const actividad = rol?.actividades.find((a) => a.id === actividadId);
+    const tarea = ((actividad as any)?.tareasSeguimiento || []).find((t: any) => t.id === tareaId);
+    if (!rol || !actividad || !tarea || puedeIntervenirTarea(rol, actividad, tarea)) return true;
+    toast.error(motivoTareaAjena(rol, actividad, tarea));
+    return false;
+  };
+
   // Agregar nueva tarea de seguimiento a una actividad
   const agregarTareaSeguimiento = async (
     rolNumero: number,
@@ -7908,6 +7932,7 @@ function SeccionGestionYSeguimiento({
     const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
     const tarea = tareasActuales.find(t => t.id === tareaId);
     if (!tarea) return;
+    if (!asegurarResponsableDeTarea(rolNumero, actividadId, tareaId)) return;
     // Si quiere completar, verificar requisitos
     if (!tarea.completada) {
       if (tarea.requiereAdjuntos && (!tarea.adjuntosTarea || tarea.adjuntosTarea.length === 0)) {
@@ -8005,6 +8030,7 @@ function SeccionGestionYSeguimiento({
     const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
     if (!actividadActual) return;
     const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
+    if (!asegurarResponsableDeTarea(rolNumero, actividadId, tareaId)) return;
     const tareasActualizadas = tareasActuales.map(t => (t.id === tareaId ? { ...t, fechaEntrega: fecha } : t));
     await persistirTareasYRecalcularAvance(rolNumero, actividadId, tareasActualizadas);
     toast.success('Fecha de seguimiento actualizada');
@@ -8087,6 +8113,7 @@ function SeccionGestionYSeguimiento({
     const actividadActual = plan.roles.find(r => r.numero === rolNumero)?.actividades.find(a => a.id === actividadId);
     if (!actividadActual) return;
     const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
+    if (!asegurarResponsableDeTarea(rolNumero, actividadId, tareaId)) return;
     const lineaNueva = `[${new Date().toLocaleString('es-CO')}] ${comentario.trim()}`;
     const tareasActualizadas = tareasActuales.map((t) => {
       if (t.id !== tareaId) return t;
@@ -8122,6 +8149,7 @@ function SeccionGestionYSeguimiento({
     const tareasActuales: TareaSeguimiento[] = (actividadActual as any).tareasSeguimiento || [];
     const nuevosAdjuntos: { id: string; nombre: string; url: string; fecha: string }[] = [];
 
+    if (!asegurarResponsableDeTarea(rolNumero, actividadId, tareaId)) return;
     const toastId = toast.loading(`Subiendo ${files.length} archivo(s)...`);
     try {
       for (const file of Array.from(files)) {
@@ -8160,6 +8188,7 @@ function SeccionGestionYSeguimiento({
       toast.error('No se puede eliminar: el archivo no está vinculado al servidor');
       return;
     }
+    if (!asegurarResponsableDeTarea(rolNumero, actividadId, tareaId)) return;
     if (!window.confirm(`¿Eliminar la evidencia "${adjunto.nombre}"?`)) return;
 
     const actividadActual = plan.roles
@@ -9471,94 +9500,10 @@ function SeccionGestionYSeguimiento({
         // Solo contar actividades activas (activo !== false) para estadísticas
         const actividadesActivas = rol.actividades.filter(a => a.activo !== false);
 
-        // S& DEFINIR SI EL USUARIO PUEDE VER TODO EL PLAN
-        const liderazgoVerTodos = puedeAprobarPlan || esSuperUsuario || puedeEditarPlan || puedeAsignarActividades;
-
-        // S& FILTRAR ACTIVIDADES PARA QUE EL AUDITOR SOLO VEA LAS PROPIAS
-        const actividadesVisibles = actividadesActivas.filter(actividad => {
-          if (liderazgoVerTodos) return true; // Líderes o planificadores ven todo
-          
-          // Leer datos del usuario - usar fallback si currentUser no tiene campos de identidad
-          const hasIdentity = currentUser?.nombre || currentUser?.email || currentUser?.nombres;
-          const user = hasIdentity ? currentUser : (() => {
-            try {
-              const u = (window as any).__esap_auth_cache;
-              if (!u) return currentUser;
-              return {
-                ...(currentUser || {}),
-                ...u,
-                nombre: u?.person?.first_name ? `${u.person.first_name} ${u.person.last_name || ''}`.trim() : u?.fullName || u?.name || u?.username || u?.nombre || '',
-                email: u?.person?.email || u?.email || '',
-                idPerson: u?.person?.id || u?.idPerson || currentUser?.idPerson,
-              };
-            } catch (_e) { return currentUser; }
-          })();
-          if (!user) return false;
-          
-          const currentName = user.nombre || user.nombres || user.name || '';
-          const currentEmail = user.email || user.correo || '';
-          // Recopilar todos los posibles IDs del usuario actual
-          const possibleIds = [
-            user.id, user.idPerson, user.idPersona, 
-            user.documento, user.sub, user.userId
-          ].filter(Boolean).map(String);
-
-          // Función helper para comparar identidad (acepta objeto O string)
-          const matchesUser = (r: any) => {
-            if (!r) return false;
-            // Si r es un string directo (nombre), comparar por palabras
-            if (typeof r === 'string') {
-              if (!currentName) return false;
-              const rWords = r.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-              const cWords = currentName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-              const shorterWords = cWords.length <= rWords.length ? cWords : rWords;
-              const longerName = cWords.length <= rWords.length ? r.toLowerCase() : currentName.toLowerCase();
-              return shorterWords.length > 0 && shorterWords.every((w: string) => longerName.includes(w));
-            }
-            // Comparar por ID
-            if (r.id && possibleIds.includes(String(r.id))) return true;
-            // Comparar por email
-            if (r.email && currentEmail && r.email.toLowerCase() === currentEmail.toLowerCase()) return true;
-            // Comparar por nombre (basado en palabras)
-            const rName = r.nombre || r.name || r.fullName || '';
-            if (rName && currentName) {
-              const rWords = rName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-              const cWords = currentName.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2);
-              const shorterWords = cWords.length <= rWords.length ? cWords : rWords;
-              const longerName = cWords.length <= rWords.length ? rName.toLowerCase() : currentName.toLowerCase();
-              if (shorterWords.length > 0 && shorterWords.every((w: string) => longerName.includes(w))) return true;
-            }
-            return false;
-          };
-
-          const isMainResp = matchesUser(actividad.responsable);
-          const isRespAdicional = actividad.responsables?.some(matchesUser);
-          const isApoyo = actividad.responsablesApoyo?.some(matchesUser);
-          // También verificar si el usuario es responsable del ROL (hereda visibilidad)
-          const isRolResp = (rol as any).responsables?.some(matchesUser);
-
-          return isMainResp || isRespAdicional || isApoyo || isRolResp;
-        });
-
-        // Diagnóstico de matching (solo primer rol, primera actividad)
-        if (rol.numero === 1 && !liderazgoVerTodos && actividadesActivas.length > 0) {
-          const a0 = actividadesActivas[0];
-          const r = a0.responsable;
-          console.log('x [MATCH-DEBUG] responsable.id=' + (r?.id || 'null') + 
-            ' | responsable.nombre=' + (r?.nombre || r?.name || (typeof r === 'string' ? r : 'null')) +
-            ' | responsable.email=' + (r?.email || 'null') +
-            ' | responsables[0]=' + JSON.stringify(a0.responsables?.[0] || null) +
-            ' | rolResp=' + JSON.stringify((rol as any).responsables?.[0] || null) +
-            ' | currentUser.nombre=' + (currentUser?.nombre || 'null') +
-            ' | currentUser.email=' + (currentUser?.email || 'null') +
-            ' | currentUser.ids=' + JSON.stringify([currentUser?.id, currentUser?.idPerson, currentUser?.sub].filter(Boolean)) +
-            ' | visibles=' + actividadesVisibles.length + '/' + actividadesActivas.length);
-        }
-
-        // Si el usuario no tiene capacidad de gestión/análisis y no tiene actividades en este rol, lo ocultamos
-        if (!liderazgoVerTodos && actividadesVisibles.length === 0) {
-           return null;
-        }
+        // Todos los auditores ven las actividades y tareas de todos los roles; lo que se
+        // restringe es completar o editar las tareas ajenas (EFDS-2322). Antes cada auditor
+        // solo veía las actividades en las que era responsable.
+        const actividadesVisibles = actividadesActivas;
 
         const totalActividades = actividadesVisibles.length;
         const asignadas = actividadesVisibles.filter(a => a.responsable !== null).length;
@@ -10068,6 +10013,9 @@ function SeccionGestionYSeguimiento({
                                           {tareasDelCorte.map((tarea) => {
                                             const cantAdj = tarea.adjuntosTarea?.length || 0;
                                             const tieneObs = !!(tarea.observaciones || '').trim();
+                                            // Solo el responsable de la tarea hace su seguimiento (EFDS-2322)
+                                            const puedeTocar = puedeGestionarTareas(rol) && puedeIntervenirTarea(rol, actividad, tarea);
+                                            const motivoAjena = puedeTocar ? '' : motivoTareaAjena(rol, actividad, tarea);
                                             return (
                                               <div
                                                 key={tarea.id}
@@ -10080,10 +10028,11 @@ function SeccionGestionYSeguimiento({
                                                   <button
                                                     type="button"
                                                     onClick={() =>
-                                                      puedeGestionarTareas(rol) &&
+                                                      puedeTocar &&
                                                       toggleCompletarTarea(rol.numero, actividad.id, tarea.id)
                                                     }
-                                                    disabled={!puedeGestionarTareas(rol)}
+                                                    disabled={!puedeTocar}
+                                                    title={motivoAjena || (tarea.completada ? 'Marcar como pendiente' : 'Marcar como completada')}
                                                     className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 ${
                                                       tarea.completada
                                                         ? 'bg-green-500 border-green-500 text-white'
@@ -10130,6 +10079,11 @@ function SeccionGestionYSeguimiento({
                                                       </span>
                                                     );
                                                   })()}
+                                                  {puedeGestionarTareas(rol) && !puedeTocar && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200" title={motivoAjena}>
+                                                      🔒 Solo su responsable
+                                                    </span>
+                                                  )}
                                                   {esTareaAutomaticaDelRol4(tarea) && (tarea as any).fechaLimite && (
                                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-gray-100 text-gray-600" title={esTareaDelProgramaAnual(tarea) ? 'Fin de la auditoría' : 'Fecha límite del plan de mejoramiento'}>
                                                       ⏰ Límite: {new Date(`${String((tarea as any).fechaLimite).slice(0, 10)}T00:00:00`).toLocaleDateString('es-CO')}
@@ -10148,7 +10102,7 @@ function SeccionGestionYSeguimiento({
                                                   <div className="ml-auto flex items-center gap-1" title="Fecha de seguimiento">
                                                     <FechaSeguimientoTareaChip
                                                       fecha={tarea.fechaEntrega || (tarea as any).fechaLimite}
-                                                      editable={puedeGestionarTareas(rol)}
+                                                      editable={puedeTocar}
                                                       onCambiar={(f) => cambiarFechaSeguimientoTarea(rol.numero, actividad.id, tarea.id, f)}
                                                     />
                                                   </div>
@@ -10170,7 +10124,9 @@ function SeccionGestionYSeguimiento({
                                                         );
                                                       input.click();
                                                     }}
-                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border ${
+                                                    disabled={!puedeTocar}
+                                                    title={motivoAjena || 'Subir archivos de evidencia para esta tarea'}
+                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border disabled:opacity-50 disabled:cursor-not-allowed ${
                                                       cantAdj > 0
                                                         ? 'bg-purple-50 text-purple-700 border-purple-200 font-medium'
                                                         : 'bg-gray-50 text-gray-600 border-dashed border-gray-300'
@@ -10185,7 +10141,9 @@ function SeccionGestionYSeguimiento({
                                                       setComentarioTareaId(tarea.id);
                                                       setTextoComentarioTarea('');
                                                     }}
-                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border ${
+                                                    disabled={!puedeTocar}
+                                                    title={motivoAjena || 'Escribir observación de esta tarea'}
+                                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] border disabled:opacity-50 disabled:cursor-not-allowed ${
                                                       tieneObs
                                                         ? 'bg-amber-50 text-amber-800 border-amber-200 font-medium'
                                                         : 'bg-gray-50 text-gray-600 border-dashed border-gray-300'
@@ -10196,7 +10154,7 @@ function SeccionGestionYSeguimiento({
                                                 </div>
                                                 <ListaEvidenciasTarea
                                                   adjuntos={tarea.adjuntosTarea || []}
-                                                  puedeEliminar={puedeGestionarEvidenciasTarea(rol)}
+                                                  puedeEliminar={puedeGestionarEvidenciasTarea(rol) && puedeTocar}
                                                   onEliminar={(adj) =>
                                                     eliminarAdjuntoTarea(rol.numero, actividad.id, tarea.id, adj)
                                                   }
@@ -10343,7 +10301,10 @@ function SeccionGestionYSeguimiento({
                                   const estaProxima = diasRestantes !== null && diasRestantes >= 0 && diasRestantes <= 7 && !tarea.completada;
                                   const cantAdjuntos = tarea.adjuntosTarea?.length || 0;
                                   const tieneObservacion = tarea.observaciones && tarea.observaciones.trim();
-                                  
+                                  // Solo el responsable de la tarea hace su seguimiento (EFDS-2322)
+                                  const puedeTocar = puedeGestionarTareas(rol) && puedeIntervenirTarea(rol, actividad, tarea);
+                                  const motivoAjena = puedeTocar ? '' : motivoTareaAjena(rol, actividad, tarea);
+
                                   return (
                                     <div key={tarea.id} className={`p-3 rounded-lg border transition-colors ${
                                       tarea.completada ? 'bg-green-50/60 border-green-200' : 
@@ -10354,11 +10315,12 @@ function SeccionGestionYSeguimiento({
                                       {/* Fila 1: Checkbox + Descripción */}
                                       <div className="flex items-start gap-2.5">
                                         <button
-                                          onClick={(e) => { e.stopPropagation(); puedeGestionarTareas(rol) && toggleCompletarTarea(rol.numero, actividad.id, tarea.id); }}
-                                          disabled={!puedeGestionarTareas(rol)}
+                                          onClick={(e) => { e.stopPropagation(); puedeTocar && toggleCompletarTarea(rol.numero, actividad.id, tarea.id); }}
+                                          disabled={!puedeTocar}
+                                          title={motivoAjena || (tarea.completada ? 'Marcar como pendiente' : 'Marcar como completada')}
                                           className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
                                             tarea.completada ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 bg-white hover:border-blue-400'
-                                          } ${puedeGestionarTareas(rol) ? 'cursor-pointer' : 'cursor-default'}`}
+                                          } ${puedeTocar ? 'cursor-pointer' : 'cursor-default'}`}
                                         >
                                           {tarea.completada && (
                                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
@@ -10407,6 +10369,11 @@ function SeccionGestionYSeguimiento({
                                           );
                                         })()}
 
+                                        {puedeGestionarTareas(rol) && !puedeTocar && (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200" title={motivoAjena}>
+                                            🔒 Solo su responsable
+                                          </span>
+                                        )}
                                         {/* 📎 Adjuntos  SIEMPRE visible */}
                                         <button
                                           type="button"
@@ -10420,12 +10387,13 @@ function SeccionGestionYSeguimiento({
                                             };
                                             input.click();
                                           }}
-                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${
+                                          disabled={!puedeTocar}
+                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border disabled:opacity-50 disabled:cursor-not-allowed ${
                                             cantAdjuntos > 0
                                               ? 'bg-purple-50 text-purple-700 border-purple-200 font-medium hover:bg-purple-100'
                                               : 'bg-gray-100 text-gray-500 border-dashed border-gray-300 hover:bg-gray-200'
                                           }`}
-                                          title="Subir archivos de evidencia para esta tarea"
+                                          title={motivoAjena || 'Subir archivos de evidencia para esta tarea'}
                                         >
                                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
                                           {cantAdjuntos > 0 ? `${cantAdjuntos} evidencia${cantAdjuntos !== 1 ? 's' : ''}` : 'Adjuntar evidencia'}
@@ -10438,12 +10406,13 @@ function SeccionGestionYSeguimiento({
                                             setComentarioTareaId(tarea.id);
                                             setTextoComentarioTarea('');
                                           }}
-                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${
+                                          disabled={!puedeTocar}
+                                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border disabled:opacity-50 disabled:cursor-not-allowed ${
                                             tieneObservacion
                                               ? 'bg-amber-50 text-amber-700 border-amber-200 font-medium hover:bg-amber-100'
                                               : 'bg-gray-100 text-gray-500 border-dashed border-gray-300 hover:bg-gray-200'
                                           }`}
-                                          title="Escribir observación de esta tarea"
+                                          title={motivoAjena || 'Escribir observación de esta tarea'}
                                         >
                                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
                                           {tieneObservacion ? 'Añadir otra observación' : 'Observación'}
@@ -10479,7 +10448,7 @@ function SeccionGestionYSeguimiento({
 
                                       <ListaEvidenciasTarea
                                         adjuntos={tarea.adjuntosTarea || []}
-                                        puedeEliminar={puedeGestionarEvidenciasTarea(rol)}
+                                        puedeEliminar={puedeGestionarEvidenciasTarea(rol) && puedeTocar}
                                         onEliminar={(adj) =>
                                           eliminarAdjuntoTarea(rol.numero, actividad.id, tarea.id, adj)
                                         }
