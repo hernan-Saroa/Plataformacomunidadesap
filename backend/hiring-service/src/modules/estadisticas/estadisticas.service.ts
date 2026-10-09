@@ -253,6 +253,9 @@ const NOMBRE_DEL_DESENLACE: Record<EstadoProceso, string> = {
   // salió al mercado, así que contarlo ahí exageraría cuántas convocatorias se
   // quedaron sin oferentes, que es lo que ese indicador mide.
   NEGADO: 'Negados en revisión',
+  // Tampoco se suma a los negados: no los rechazó la Dirección, se quedaron
+  // sin sustento cuando cambió el PAA.
+  CANCELADO: 'Cancelados por cambio del PAA',
 };
 
 const NOMBRE_DE_LA_MODIFICACION: Record<TipoModificacion, string> = {
