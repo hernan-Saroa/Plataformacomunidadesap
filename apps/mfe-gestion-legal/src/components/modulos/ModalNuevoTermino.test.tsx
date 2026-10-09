@@ -7,7 +7,7 @@ vi.mock('sonner', () => ({
 
 vi.mock('../../../../services/api/legal.service', () => ({
   legalService: {
-    getAbogados: vi.fn().mockResolvedValue([]),
+    getResponsablesTermino: vi.fn().mockResolvedValue([]),
     createTerminoManual: vi.fn().mockResolvedValue({}),
   },
 }));
@@ -17,6 +17,7 @@ vi.mock('../config/ConfiguracionesSIGLContext', () => ({
     getDestinatariosInformeActivos: () => [{ id: 'd1', nombre: 'Contraloría' }],
     getEntesSolicitantesInformeActivos: () => [{ id: 'e1', nombre: 'Ciudadano' }],
     getTiposFuenteNormativaActivos: () => [{ id: 'f1', nombre: 'Resolución' }],
+    getRolesResponsablesTermino: () => ['RESUELVE_GESTION_LEGAL'],
   }),
 }));
 

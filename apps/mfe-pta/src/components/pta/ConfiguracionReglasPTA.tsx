@@ -285,10 +285,10 @@ export interface PTARules {
     min_horas?: number;
     porcentaje_pta?: number;
     consumeTotalidad?: boolean;
-    // Programa asociado a este TIPO de actividad (no por instancia): enruta su
-    // aprobación/revisión a Complementarias Pregrado/Posgrado (mismo aprobador que
-    // Docencia por nivel) en vez del componente "Complementarias" sin programa.
+    // Programa asociado a este tipo de actividad, configurable por separado
+    // del responsable seleccionado en tipo_aprobacion.
     nivel_programa?: 'pregrado' | 'posgrado' | null;
+    tipo_aprobacion?: 'gestion_profesoral' | 'decanatura' | 'territorial';
   }>>;
 
   // Actividades Académico-Administrativas (configurables)

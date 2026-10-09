@@ -36,6 +36,15 @@ export class ProcesarPagoDto {
   valorPagado: number;
 
   @ApiPropertyOptional({
+    description: 'Costo ajustado o confirmado del tiquete aéreo para sumar al total de viáticos y calcular el valor real a desembolsar.',
+    example: 450000,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({}, { message: 'El costo del tiquete debe ser un valor numérico.' })
+  costoEstimadoTiquete?: number;
+
+  @ApiPropertyOptional({
     description: 'Ruta o URL del soporte de desembolso / comprobante de egreso del pago.',
     example: 'uploads/pagos/2026/comprobante-egreso-8920.pdf',
   })
@@ -90,4 +99,54 @@ export class ProcesarPagoDto {
     message: 'La modalidad de pago debe ser AVANCE o RECONOCIMIENTO_POSTERIOR.',
   })
   modalidadPago?: string;
+
+  @ApiPropertyOptional({
+    description: 'Código OTP para validación de firma digital de Tesorería.',
+    example: '123456',
+  })
+  @IsOptional()
+  @IsString()
+  otp?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador de verificación OTP emitido por solicitarOtpFirma.',
+  })
+  @IsOptional()
+  @IsString()
+  verificationId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Identificador único del certificado digital emitido en la validación OTP.',
+  })
+  @IsOptional()
+  @IsString()
+  certificadoId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Hash SHA-256 de la actuación de firma digital.',
+  })
+  @IsOptional()
+  @IsString()
+  hashSha256?: string;
+
+  @ApiPropertyOptional({
+    description: 'Representación gráfica o estampa digital de la firma de Tesorería en Base64.',
+  })
+  @IsOptional()
+  @IsString()
+  firmaImagen?: string;
+
+  @ApiPropertyOptional({
+    description: 'Nombre del funcionario o responsable firmante de Tesorería.',
+  })
+  @IsOptional()
+  @IsString()
+  nombreFirmante?: string;
+
+  @ApiPropertyOptional({
+    description: 'Cargo oficial del responsable de Tesorería.',
+  })
+  @IsOptional()
+  @IsString()
+  cargoFirmante?: string;
 }

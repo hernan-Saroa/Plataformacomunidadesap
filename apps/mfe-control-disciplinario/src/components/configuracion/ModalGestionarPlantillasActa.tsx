@@ -12,11 +12,12 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Upload, File as FileIcon, Download, Trash2, Edit2, Plus, AlertCircle, 
-  Save, Loader2, Files, Clock, Info, CheckCircle
+  Save, Loader2, Files, Clock, Info, CheckCircle, Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
 import disciplinaryService from '../../../../services/api/disciplinary.service';
 import type { TipoActa, PlantillaArchivo } from './SeccionPlantillasActasUnificada';
+import { ModalVisorPlantilla } from './ModalVisorPlantilla';
 
 interface ModalGestionarPlantillasActaProps {
   tipoActa: TipoActa;
@@ -42,6 +43,7 @@ export function ModalGestionarPlantillasActa({
   
   const [modalAgregarPlantilla, setModalAgregarPlantilla] = useState(false);
   const [plantillaEditando, setPlantillaEditando] = useState<PlantillaArchivo | null>(null);
+  const [plantillaParaVer, setPlantillaParaVer] = useState<PlantillaArchivo | null>(null);
   const [guardando, setGuardando] = useState(false);
 
   // Actualizar plantillas cuando cambie tipoActa
@@ -158,6 +160,8 @@ export function ModalGestionarPlantillasActa({
               
               plantilla.url = uploadedData.plantilla || (uploadedData as any)?.data?.plantilla || plantilla.url;
               plantilla.nombre = uploadedData.nombre_plantilla || (uploadedData as any)?.data?.nombre_plantilla || plantilla.nombre;
+              plantilla.nombreArchivo = fileToUpload.name;
+              (plantilla as any).yaSincronizado = true;
               plantilla.file = undefined;
             }
           } catch (uploadError) {
@@ -346,11 +350,22 @@ export function ModalGestionarPlantillasActa({
                               {plantilla.activo ? 'Activa' : 'Inactiva'}
                             </button>
 
+                            {/* Previsualizar */}
+                            {(plantilla.url || plantilla.file) && (
+                              <button
+                                onClick={() => setPlantillaParaVer(plantilla)}
+                                className="p-1.5 rounded-lg text-amber-700 hover:bg-amber-100 transition-colors"
+                                title="Previsualizar plantilla"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                            )}
+
                             {/* Descargar */}
-                            {plantilla.url && (
+                            {(plantilla.url || plantilla.file) && (
                               <button
                                 onClick={() => handleDescargarPlantilla(plantilla)}
-                                className="p-1.5 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
+                                className="p-1.5 rounded-lg text-green-700 hover:bg-green-100 transition-colors"
                                 title="Descargar plantilla"
                               >
                                 <Download className="w-4 h-4" />
@@ -445,6 +460,20 @@ export function ModalGestionarPlantillasActa({
           setPlantillaEditando(null);
         }}
       />
+
+      {/* Modal Visor de Plantilla */}
+      {plantillaParaVer && (
+        <ModalVisorPlantilla
+          isOpen={!!plantillaParaVer}
+          onClose={() => setPlantillaParaVer(null)}
+          titulo={tipoActa.nombre}
+          subtitulo={`Plantilla: ${plantillaParaVer.nombre}`}
+          descripcion={plantillaParaVer.descripcion || tipoActa.descripcion}
+          tipoPlantilla="acta"
+          plantillas={[plantillaParaVer]}
+          colorTema="#F59E0B"
+        />
+      )}
     </>
   );
 }

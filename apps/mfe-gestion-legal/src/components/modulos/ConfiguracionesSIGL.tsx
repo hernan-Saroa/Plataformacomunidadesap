@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign, ChevronDown, ChevronUp, Info, FolderOpen, Activity, Columns, Send, Building } from 'lucide-react';
+import { Settings, Clock, LayoutGrid, Save, RotateCcw, Plus, Trash2, GripVertical, AlertCircle, Scale, X, CheckCircle, Gavel, Target, FileText, Landmark, Mail, AtSign, ChevronDown, ChevronUp, Info, FolderOpen, Activity, Columns, Send, Building, UserCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { legalService, procesosCoactivosService } from '../../../../services/api/legal.service';
 import { toast } from 'sonner';
@@ -283,6 +283,8 @@ export function ConfiguracionesSIGL() {
     actualizarEntesSolicitantesInforme,
     tiposFuenteNormativa,
     actualizarTiposFuenteNormativa,
+    rolesResponsablesTermino,
+    actualizarRolesResponsablesTermino,
     guardarConfiguraciones,
     restablecerDefecto,
     savingStatus
@@ -445,7 +447,7 @@ export function ConfiguracionesSIGL() {
   useEffect(() => {
     const fetchRoles = async () => {
       try {
-        const response = await rolesService.getRoles({ limit: 100 });
+        const response = await rolesService.getRoles({ limit: 1000 });
         if (response && response.roles) {
           setRoles(response.roles);
         }
@@ -2077,6 +2079,53 @@ export function ConfiguracionesSIGL() {
                       </div>
                     )}
                   </div>
+                </div>
+              </div>
+
+              {/* Roles que pueden ser Responsable de un término/informe */}
+              <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200">
+                <div className="p-3 sm:p-4 lg:p-6">
+                  <div className="mb-4 sm:mb-6">
+                    <h2 className="text-base sm:text-lg font-bold text-gray-900 flex items-center gap-2">
+                      <div className="p-1.5 bg-blue-100 rounded-md">
+                        <UserCheck className="w-5 h-5 text-blue-700" />
+                      </div>
+                      Puede ser Responsable de Término
+                    </h2>
+                    <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                      Marca los roles cuyos usuarios activos aparecerán en el campo «Responsable» al crear o editar un término o informe. Un rol nuevo que se marque aquí se refleja sin cambios de código.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">
+                    {roles.map((rol: any) => {
+                      const clave = String(rol.code || rol.id);
+                      const marcado = rolesResponsablesTermino.some(c => c.toUpperCase() === clave.toUpperCase());
+                      return (
+                        <label
+                          key={rol.id}
+                          className="flex items-center gap-3 p-2.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:border-blue-300 transition-colors"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={marcado}
+                            onChange={(e) => {
+                              const resto = rolesResponsablesTermino.filter(c => c.toUpperCase() !== clave.toUpperCase());
+                              actualizarRolesResponsablesTermino(e.target.checked ? [...resto, clave] : resto);
+                            }}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm font-medium text-gray-800">{rol.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+
+                  {roles.length === 0 && (
+                    <div className="text-center py-8 text-gray-400 border-2 border-dashed border-gray-200 rounded-xl">
+                      <p>No se pudieron cargar los roles.</p>
+                    </div>
+                  )}
                 </div>
               </div>
 

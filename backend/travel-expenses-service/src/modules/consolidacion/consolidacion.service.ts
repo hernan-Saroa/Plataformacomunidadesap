@@ -255,13 +255,19 @@ export class ConsolidacionService {
       // y el inicio del viaje, con festivos (EFDS-1285).
       const ahora = new Date();
       const festivosSet = await cargarFestivosAuth(this.dataSource);
+      const configJornada =
+        typeof this.configService?.obtenerJornadaLaboralActiva === 'function'
+          ? await this.configService.obtenerJornadaLaboralActiva()
+          : null;
       const diasHabilesAnticipacion = contarDiasHabiles(
-        fechaEfectivaRadicacion(ahora, festivosSet),
+        fechaEfectivaRadicacion(ahora, festivosSet, configJornada),
         expediente.fechaInicio,
         festivosSet,
         'previos',
+        configJornada?.diasLaborales,
       );
-      const esExtemporanea = diasHabilesAnticipacion < 14;
+      const anticipacionMinima = configJornada?.diasAnticipacionMinima ?? 14;
+      const esExtemporanea = diasHabilesAnticipacion < anticipacionMinima;
 
       const estadoAnterior = expediente.estadoSolicitud;
       if (esExtemporanea) {

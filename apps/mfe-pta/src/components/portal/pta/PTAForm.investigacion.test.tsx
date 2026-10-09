@@ -58,6 +58,33 @@ async function mount() {
 }
 
 describe('selector de actividades de investigación', () => {
+  it.each(['complementarias_pregrado', 'complementarias_gestion_profesoral', 'actividad_reclasificada'])('permite corregir la actividad compartida al devolver %s, conservando las ajenas', async caso => {
+    const reclasificada = caso === 'actividad_reclasificada';
+    const componente = reclasificada ? 'complementarias_pregrado' : caso;
+    vi.mocked(getPTAById).mockResolvedValue({ success: true, data: { ...pta, estado: 'REVISION_DOCENTE_N2',
+      complementarias: [
+        { id: 20, nombre: 'Actividad editable', actividad_id: 'COMP_1', horas: 40,
+          componente_complementaria: 'complementarias_gestion_profesoral',
+          componentes_complementaria: reclasificada ? ['complementarias_posgrado', 'complementarias_decanatura']
+            : ['complementarias_pregrado', 'complementarias_gestion_profesoral'],
+          ...(reclasificada ? { componentes_edicion_complementaria: ['complementarias_pregrado'] } : {}),
+          ...(reclasificada ? { componente_complementaria: 'complementarias_decanatura' } : {}),
+        },
+        { id: 21, nombre: 'Actividad ajena', actividad_id: 'COMP_2', horas: 20,
+          componente_complementaria: 'complementarias_decanatura',
+          componentes_complementaria: ['complementarias_posgrado', 'complementarias_decanatura'] },
+      ],
+    } } as any);
+    vi.mocked(getComponentesAprobacion).mockResolvedValue({ success: true, data: [
+      { componente, estado: 'devuelto' }, { componente: 'academica_pregrado', estado: 'aprobado' },
+    ] } as any);
+    render(<PTAForm onBack={() => {}} userPersonId="docente-1" ptaId="pta-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: /^Complementarias/ }));
+    const selects = await screen.findAllByRole('combobox', { name: 'Actividad' });
+    expect((selects[0] as HTMLSelectElement).disabled).toBe(false);
+    expect((selects[1] as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.getAllByRole('button', { name: 'Eliminar Actividad Complementaria' })).toHaveLength(1);
+  });
   it.each(['plano', 'agrupado'])('carga y autoguarda proyecto y actividades en una edición autorizada con datos %s', async formato => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const proyecto = { nombre_proyecto: 'Proyecto autorizado', rol: 'COINVESTIGADOR', horas_solicitadas: 200 };

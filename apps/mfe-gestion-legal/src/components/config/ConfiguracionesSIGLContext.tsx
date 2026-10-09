@@ -155,6 +155,11 @@ export interface TipoFuenteNormativa {
   activo: boolean;
 }
 
+// Roles cuyos usuarios pueden ser "Responsable" de un término/informe. Cada entrada es la
+// clave del rol: su `code` (o su `id` si no tiene code). Es una lista de claves y no de
+// usuarios a propósito: cualquier usuario activo que reciba uno de estos roles aparece solo.
+export type ClaveRolResponsableTermino = string;
+
 // Entes de control dedicados para Planes de Mejoramiento
 export interface EnteControlPM {
   id: string;
@@ -688,6 +693,12 @@ const categoriasDocumentosIniciales: CategoriaDocumento[] = [
   { id: 'documentos', nombre: 'Documentos Generales', icono: 'File', color: '#6B7280', activo: true, orden: 9 },
 ];
 
+// ============ ROLES RESPONSABLES DE TÉRMINOS INICIALES ============
+// Semilla para instalaciones nuevas: conserva el comportamiento histórico (solo
+// "Resuelve Gestión Legal"). A partir de ahí el administrador decide en Configuración.
+
+const rolesResponsablesTerminoIniciales: ClaveRolResponsableTermino[] = ['RESUELVE_GESTION_LEGAL'];
+
 // ============ CONTEXT TYPE ============
 
 interface ConfiguracionesSIGLContextType {
@@ -701,6 +712,7 @@ interface ConfiguracionesSIGLContextType {
   destinatariosInforme: DestinatarioInforme[];
   entesSolicitantesInforme: EnteSolicitanteInforme[];
   tiposFuenteNormativa: TipoFuenteNormativa[];
+  rolesResponsablesTermino: ClaveRolResponsableTermino[];
   cambiosPendientes: boolean;
   getConfiguracionModulo: (moduloId: string) => ConfiguracionModulo | undefined;
   getEstadosActivos: (moduloId: string) => EstadoKanban[];
@@ -720,6 +732,7 @@ interface ConfiguracionesSIGLContextType {
   getDestinatariosInformeActivos: () => DestinatarioInforme[];
   getEntesSolicitantesInformeActivos: () => EnteSolicitanteInforme[];
   getTiposFuenteNormativaActivos: () => TipoFuenteNormativa[];
+  getRolesResponsablesTermino: () => ClaveRolResponsableTermino[];
   actualizarConfiguraciones: (nuevasConfigs: ConfiguracionModulo[]) => void;
   actualizarEjesEstrategicos: (nuevosEjes: EjeEstrategico[]) => void;
   actualizarTiposIndicadores: (nuevosTipos: TipoIndicador[]) => void;
@@ -730,6 +743,7 @@ interface ConfiguracionesSIGLContextType {
   actualizarDestinatariosInforme: (nuevosDestinatarios: DestinatarioInforme[]) => void;
   actualizarEntesSolicitantesInforme: (nuevosEntes: EnteSolicitanteInforme[]) => void;
   actualizarTiposFuenteNormativa: (nuevosTipos: TipoFuenteNormativa[]) => void;
+  actualizarRolesResponsablesTermino: (nuevosRoles: ClaveRolResponsableTermino[]) => void;
   guardarConfiguraciones: (silencioso?: boolean) => Promise<void>;
   restablecerDefecto: () => void;
   setCambiosPendientes: (value: boolean) => void;
@@ -749,6 +763,7 @@ const CLAVES_LISTAS_TERMINOS_INFORMES = {
   destinatariosInforme: 'sigl-destinatarios-informe',
   entesSolicitantesInforme: 'sigl-entes-solicitantes-informe',
   tiposFuenteNormativa: 'sigl-tipos-fuente-normativa',
+  rolesResponsablesTermino: 'sigl-roles-responsables-termino',
 } as const;
 
 // Lee una lista de caché local. Devuelve null si no existe o está corrupta.
@@ -822,6 +837,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
   const [destinatariosInforme, setDestinatariosInforme] = useState<DestinatarioInforme[]>(destinatariosInformeIniciales);
   const [entesSolicitantesInforme, setEntesSolicitantesInforme] = useState<EnteSolicitanteInforme[]>(entesSolicitantesInformeIniciales);
   const [tiposFuenteNormativa, setTiposFuenteNormativa] = useState<TipoFuenteNormativa[]>(tiposFuenteNormativaIniciales);
+  const [rolesResponsablesTermino, setRolesResponsablesTermino] = useState<ClaveRolResponsableTermino[]>(rolesResponsablesTerminoIniciales);
   const [cambiosPendientes, setCambiosPendientes] = useState(false);
   const [savingStatus, setSavingStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   // true en cuanto el usuario toca cualquier configuración. La carga inicial del
@@ -1004,6 +1020,9 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     const fuentesLocales = leerListaLocal<TipoFuenteNormativa>(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa);
     if (fuentesLocales) setTiposFuenteNormativa(fuentesLocales);
 
+    const rolesResponsablesLocales = leerListaLocal<ClaveRolResponsableTermino>(CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino);
+    if (rolesResponsablesLocales) setRolesResponsablesTermino(rolesResponsablesLocales);
+
     // Resuelve una lista contra las tres fuentes posibles, en orden de autoridad.
     //
     // La clave está en distinguir "nunca se configuró" de "se configuró y quedó vacía":
@@ -1045,10 +1064,11 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     };
 
     const loadListasTerminosInformes = async () => {
-      const [lecturaDestinatarios, lecturaEntes, lecturaFuentes] = await Promise.all([
+      const [lecturaDestinatarios, lecturaEntes, lecturaFuentes, lecturaRolesResponsables] = await Promise.all([
         leerListaBackend<DestinatarioInforme>(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme),
         leerListaBackend<EnteSolicitanteInforme>(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme),
         leerListaBackend<TipoFuenteNormativa>(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa),
+        leerListaBackend<ClaveRolResponsableTermino>(CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino),
       ]);
 
       // El bloqueo de escritura se marca aunque el usuario ya esté editando: si no sabemos
@@ -1057,6 +1077,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         [lecturaDestinatarios, CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme],
         [lecturaEntes, CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme],
         [lecturaFuentes, CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa],
+        [lecturaRolesResponsables, CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino],
       ] as const;
       claves.forEach(([lectura, clave]) => {
         if (lectura.estado === 'error') listasNoCargadasRef.current.add(clave);
@@ -1072,6 +1093,8 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
         CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, setEntesSolicitantesInforme);
       resolverLista(lecturaFuentes, fuentesLocales, tiposFuenteNormativaIniciales,
         CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, setTiposFuenteNormativa);
+      resolverLista(lecturaRolesResponsables, rolesResponsablesLocales, rolesResponsablesTerminoIniciales,
+        CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino, setRolesResponsablesTermino);
 
       if (listasNoCargadasRef.current.size === 0) {
         console.log('✅ Listas de Términos e Informes sincronizadas desde backend');
@@ -1174,6 +1197,8 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     return tiposFuenteNormativa.filter(t => t.activo);
   };
 
+  const getRolesResponsablesTermino = (): ClaveRolResponsableTermino[] => rolesResponsablesTermino;
+
   // Actualizar configuraciones
   const actualizarConfiguraciones = (nuevasConfig: ConfiguracionModulo[]) => {
     setConfiguraciones(nuevasConfig);
@@ -1240,6 +1265,12 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     setCambiosPendientes(true);
   };
 
+  const actualizarRolesResponsablesTermino = (nuevosRoles: ClaveRolResponsableTermino[]) => {
+    setRolesResponsablesTermino(nuevosRoles);
+    usuarioEditoRef.current = true;
+    setCambiosPendientes(true);
+  };
+
   // Guardar configuraciones
   const guardarConfiguraciones = async (silencioso: boolean = false): Promise<void> => {
     // Esperar la lectura inicial: hasta que termine no se sabe qué claves son seguras
@@ -1258,6 +1289,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       [CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, destinatariosInforme],
       [CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, entesSolicitantesInforme],
       [CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, tiposFuenteNormativa],
+      [CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino, rolesResponsablesTermino],
     ];
     const listasGuardables = listasTerminosInformes.filter(([clave]) => !listasNoCargadasRef.current.has(clave));
     if (listasGuardables.length < listasTerminosInformes.length) {
@@ -1405,7 +1437,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     // `cambiosPendientes` y `categoriasDocumentos` deben estar aquí: sin ellos el
     // efecto no se re-ejecutaba al editar categorías de documentos (no se
     // autoguardaban) ni al marcar cambios sin que mutara ninguna otra lista.
-  }, [cambiosPendientes, configuraciones, ejesEstrategicos, tiposIndicadores, tiposRequerimientos, organismosControl, entesControlPM, categoriasDocumentos, destinatariosInforme, entesSolicitantesInforme, tiposFuenteNormativa]);
+  }, [cambiosPendientes, configuraciones, ejesEstrategicos, tiposIndicadores, tiposRequerimientos, organismosControl, entesControlPM, categoriasDocumentos, destinatariosInforme, entesSolicitantesInforme, tiposFuenteNormativa, rolesResponsablesTermino]);
 
   // Limpiar estado 'saved' / 'error' de vuelta a 'idle' después de unos segundos
   useEffect(() => {
@@ -1429,6 +1461,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     setDestinatariosInforme(destinatariosInformeIniciales);
     setEntesSolicitantesInforme(entesSolicitantesInformeIniciales);
     setTiposFuenteNormativa(tiposFuenteNormativaIniciales);
+    setRolesResponsablesTermino(rolesResponsablesTerminoIniciales);
 
     localStorage.removeItem('sigl-configuraciones');
     localStorage.removeItem('sigl-ejes-estrategicos');
@@ -1440,6 +1473,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     localStorage.removeItem(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme);
     localStorage.removeItem(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme);
     localStorage.removeItem(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa);
+    localStorage.removeItem(CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino);
 
     // Las listas de Términos e Informes viven en el backend: hay que devolverlas
     // también allí, o la próxima recarga volvería a traer los valores anteriores.
@@ -1447,6 +1481,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
       legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.destinatariosInforme, destinatariosInformeIniciales),
       legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.entesSolicitantesInforme, entesSolicitantesInformeIniciales),
       legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.tiposFuenteNormativa, tiposFuenteNormativaIniciales),
+      legalService.saveConfiguration(CLAVES_LISTAS_TERMINOS_INFORMES.rolesResponsablesTermino, rolesResponsablesTerminoIniciales),
     ]).then(resultados => {
       if (resultados.some(r => r.status === 'rejected')) {
         console.warn('⚠️ No se pudieron restablecer en el backend todas las listas de Términos e Informes');
@@ -1472,6 +1507,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     destinatariosInforme,
     entesSolicitantesInforme,
     tiposFuenteNormativa,
+    rolesResponsablesTermino,
     cambiosPendientes,
     getConfiguracionModulo,
     getEstadosActivos,
@@ -1491,6 +1527,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     getDestinatariosInformeActivos,
     getEntesSolicitantesInformeActivos,
     getTiposFuenteNormativaActivos,
+    getRolesResponsablesTermino,
     actualizarConfiguraciones,
     actualizarEjesEstrategicos,
     actualizarTiposIndicadores,
@@ -1501,6 +1538,7 @@ export function ConfiguracionesSIGLProvider({ children }: { children: ReactNode 
     actualizarDestinatariosInforme,
     actualizarEntesSolicitantesInforme,
     actualizarTiposFuenteNormativa,
+    actualizarRolesResponsablesTermino,
     guardarConfiguraciones,
     restablecerDefecto,
     setCambiosPendientes,

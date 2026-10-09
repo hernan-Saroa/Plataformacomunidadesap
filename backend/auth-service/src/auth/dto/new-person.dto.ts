@@ -27,4 +27,7 @@ export class NewPersonDto {
 
   @IsOptional()
   roles?: string[];
+
+  @IsOptional()
+  idDependencia?: number;
 }

@@ -136,6 +136,9 @@ const HISTORIAL_COMP_LABELS: Record<string, string> = {
   complementarias: 'Complementarias',
   complementarias_pregrado: 'Complementarias (Pregrado)',
   complementarias_posgrado: 'Complementarias (Posgrado)',
+  complementarias_decanatura: 'Complementarias (Decanatura)',
+  complementarias_territorial: 'Complementarias (Territorial)',
+  complementarias_gestion_profesoral: 'Complementarias (Gestión Profesoral)',
   academicas_admin: 'Acad. Admin.',
 };
 

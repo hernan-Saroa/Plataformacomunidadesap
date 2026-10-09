@@ -346,7 +346,7 @@ export function ModalGestionEvidenciasWorldClass({
                         variant="outline"
                         onClick={() => setVisorDocumento({ show: true, documento: evidencia })}
                         title="Ver evidencia"
-                        className="border-orange-600 text-orange-600 hover:bg-orange-50"
+                        className="border-orange-600 text-orange-600 hover:bg-orange-50 hover:text-orange-700"
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
@@ -356,7 +356,7 @@ export function ModalGestionEvidenciasWorldClass({
                         variant="outline"
                         onClick={() => handleDescargarEvidencia(evidencia)}
                         title="Descargar evidencia"
-                        className="border-orange-600 text-orange-600 hover:bg-orange-50"
+                        className="border-orange-600 text-orange-600 hover:bg-orange-50 hover:text-orange-700"
                       >
                         <Download className="w-4 h-4" />
                       </Button>

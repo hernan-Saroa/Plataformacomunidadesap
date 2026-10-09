@@ -28,8 +28,8 @@ import {
 } from '../dtos/acta-configuration.dto';
 import { ActaConfiguration } from '../entities/acta-configuration.entity';
 import { diskStorage } from 'multer';
-import { existsSync, mkdirSync } from 'fs';
-import { join, extname } from 'path';
+import { existsSync, mkdirSync, unlinkSync } from 'fs';
+import { join, extname, basename } from 'path';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -153,7 +153,8 @@ export class ActasConfigurationController {
         filename: (req, file, cb) => {
           const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
           const ext = extname(file.originalname);
-          const filename = `plantilla-acta-${req.params.id}-${uniqueSuffix}${ext}`;
+          const baseOriginal = basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
+          const filename = `plantilla-acta-${req.params.id}-${uniqueSuffix}-${baseOriginal}${ext}`;
           cb(null, filename);
         },
       }),
@@ -179,6 +180,20 @@ export class ActasConfigurationController {
   ): Promise<ActaConfiguration> {
     if (!file) {
       throw new BadRequestException('No se ha subido ningún archivo');
+    }
+
+    // Eliminar archivo anterior si existía físicamente
+    try {
+      const actualConfig = await this.actasConfigService.findById(id);
+      if (actualConfig?.plantilla && actualConfig.plantilla.startsWith('/uploads/plantillas-actas/')) {
+        const oldFilename = basename(actualConfig.plantilla);
+        const oldFilePath = join(process.cwd(), 'uploads', 'plantillas-actas', oldFilename);
+        if (existsSync(oldFilePath) && oldFilename !== file.filename) {
+          unlinkSync(oldFilePath);
+        }
+      }
+    } catch (_) {
+      // Ignorar error al limpiar archivo anterior
     }
     
     // Construir la URL del archivo

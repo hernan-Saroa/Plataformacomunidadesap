@@ -305,11 +305,11 @@ interface ComplementariaItem {
   seleccion_jerarquica?: HierarchySelectionSnapshot[];
   fecha_inicio: string;
   fecha_fin: string;
-  // Anotado por el backend en getPTAById (clasificarComplementarias): a qué
-  // componente de aprobación pertenece esta actividad (complementarias /
-  // complementarias_pregrado / complementarias_posgrado, según el nivel_programa
-  // configurado para su TIPO en el catálogo). Ausente en filas nuevas sin guardar.
+  // El backend anota el responsable final y todas las etapas de la actividad.
+  // Las filas nuevas todavía no tienen esta clasificación.
   componente_complementaria?: string;
+  componentes_complementaria?: string[];
+  componentes_edicion_complementaria?: string[];
 }
 
 function ResolutionFilePreviewButton({
@@ -1941,6 +1941,9 @@ const COMPONENT_TO_FORM_SECTION: Record<PTAComponentKey, PTAFormSectionKey> = {
   complementarias: 'complementarias',
   complementarias_pregrado: 'complementarias',
   complementarias_posgrado: 'complementarias',
+  complementarias_decanatura: 'complementarias',
+  complementarias_territorial: 'complementarias',
+  complementarias_gestion_profesoral: 'complementarias',
 };
 const ALL_COMPONENT_KEYS = Object.keys(COMPONENT_TO_FORM_SECTION) as PTAComponentKey[];
 
@@ -1958,6 +1961,9 @@ const COMPONENT_LABEL: Record<string, string> = {
   complementarias: 'Complementarias',
   complementarias_pregrado: 'Complementarias (Pregrado)',
   complementarias_posgrado: 'Complementarias (Posgrado)',
+  complementarias_decanatura: 'Complementarias (Decanatura)',
+  complementarias_territorial: 'Complementarias (Territorial)',
+  complementarias_gestion_profesoral: 'Complementarias (Gestión Profesoral)',
   // Legacy
   academicas_admin: 'Actividades Académico-Administrativas',
   academico_admin: 'Actividades Académico-Administrativas',
@@ -2248,13 +2254,15 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     if (!isComponentRestricted || !asig.componente_docencia) return true;
     return allowedComponentKeySet.has(asig.componente_docencia as PTAComponentKey);
   }, [allowedComponentKeySet, isComponentRestricted]);
-  // Mismo patrón que canEditDocenciaAsignatura: Complementarias comparte una sola
-  // pestaña entre 3 componentes de aprobación (sin programa/pregrado/posgrado, ver
-  // COMPONENT_TO_FORM_SECTION). `componente_complementaria` lo anota el backend en
-  // getPTAById a partir de clasificarComplementarias.
-  const canEditComplementariaItem = useCallback((item: { componente_complementaria?: string }) => {
-    if (!isComponentRestricted || !item.componente_complementaria) return true;
-    return allowedComponentKeySet.has(item.componente_complementaria as PTAComponentKey);
+  // Una devolución de Programa o del responsable final habilita corregir la
+  // misma actividad; las demás filas conservan su bloqueo.
+  const canEditComplementariaItem = useCallback((item: { componente_complementaria?: string; componentes_complementaria?: string[]; componentes_edicion_complementaria?: string[] }) => {
+    if (!isComponentRestricted) return true;
+    const etapas = item.componentes_complementaria?.length
+      ? item.componentes_complementaria
+      : item.componente_complementaria ? [item.componente_complementaria] : [];
+    return etapas.length === 0 || [...etapas, ...(item.componentes_edicion_complementaria || [])]
+      .some(etapa => allowedComponentKeySet.has(etapa as PTAComponentKey));
   }, [allowedComponentKeySet, isComponentRestricted]);
 
   useEffect(() => {

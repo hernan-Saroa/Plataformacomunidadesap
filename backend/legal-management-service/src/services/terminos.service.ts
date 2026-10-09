@@ -123,10 +123,9 @@ export class TerminosService {
     }
 
     /**
-     * Dispara (sin bloquear el flujo) la notificación de creación de un término, incondicional
-     * — se envía exista o no responsable asignado — para que la creación quede visible dentro
-     * de la plataforma para el Jefe/Resuelve de Gestión Legal. Complementa, no reemplaza, a
-     * `notificarAsignacionResponsable` (que solo aplica cuando SÍ hay responsable).
+     * Dispara (sin bloquear el flujo) la notificación de creación de un término al Jefe de
+     * Gestión Legal, exista o no responsable. El responsable no sale de aquí: lo cubre
+     * `notificarAsignacionResponsable`.
      */
     private notificarCreacionTermino(termino: TerminoProcesal): void {
         this.legalNotifications.notifyTerminoCreado({

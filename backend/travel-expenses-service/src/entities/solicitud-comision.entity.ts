@@ -44,10 +44,10 @@ export class SolicitudComisionEntity {
   @JoinColumn({ name: 'comisionado_id' })
   comisionado: ComisionadoEntity;
 
-  @Column({ name: 'destino_ciudad', type: 'varchar', length: 100 })
+  @Column({ name: 'destino_ciudad', type: 'text' })
   destinoCiudad: string;
 
-  @Column({ name: 'destino_departamento', type: 'varchar', length: 100 })
+  @Column({ name: 'destino_departamento', type: 'text' })
   destinoDepartamento: string;
 
   @Column({ name: 'fecha_inicio', type: 'timestamp' })
@@ -57,19 +57,19 @@ export class SolicitudComisionEntity {
   @Column({ name: 'fecha_fin', type: 'timestamp' })
   fechaFin: Date;
 
-  @Column({ name: 'objeto_comision', type: 'varchar', length: 250 })
+  @Column({ name: 'objeto_comision', type: 'text' })
   objetoComision: string;
 
   @Column({ name: 'prioridad', type: 'varchar', length: 10 })
   prioridad: string;
 
-  @Column({ name: 'rubro_presupuestal', type: 'varchar', length: 100 })
+  @Column({ name: 'rubro_presupuestal', type: 'text' })
   rubroPresupuestal: string;
 
-  @Column({ name: 'numero_cdp', type: 'varchar', length: 100, nullable: true })
+  @Column({ name: 'numero_cdp', type: 'text', nullable: true })
   numeroCdp: string | null;
 
-  @Column({ name: 'fecha_cdp', type: 'varchar', length: 50, nullable: true })
+  @Column({ name: 'fecha_cdp', type: 'text', nullable: true })
   fechaCdp: string | null;
 
   @Column({ name: 'requiere_tiquetes', type: 'boolean', default: false })
@@ -278,7 +278,7 @@ export class SolicitudComisionEntity {
   @Column({ name: 'id_dependencia', type: 'bigint', nullable: true })
   idDependencia: number | null;
 
-  @Column({ name: 'cargo', type: 'varchar', length: 150, nullable: true })
+  @Column({ name: 'cargo', type: 'text', nullable: true })
   @Index('idx_solicitudes_comision_cargo')
   cargo: string | null;
 

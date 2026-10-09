@@ -24,12 +24,55 @@ const mockSolicitudAutorizada = {
 vi.mock('../services/api/viaticosService', () => {
   const service = {
     expedirRp: vi.fn(),
+    solicitarOtpFirma: vi.fn(),
+    verificarOtpFirma: vi.fn(),
+    exportarFormato023: vi.fn(),
+    obtenerSolicitudCompleta: vi.fn().mockResolvedValue({
+      id: 'sol-aut-42',
+      consecutivoUnico: 'COM-2026-0042',
+      camposAdicionales: {
+        firmasAprobacion: [],
+      },
+    }),
+    obtenerEstadoFirmas: vi.fn().mockResolvedValue({
+      firmantes: [],
+      completado: true,
+    }),
   };
   return {
     default: service,
     viaticosService: service,
   };
 });
+
+vi.mock('./FirmaDigitalViaticosModal', () => ({
+  default: ({ isOpen, onFirmaCompleta, onCancelar }: any) =>
+    isOpen ? (
+      <div data-testid="firma-digital-viaticos-modal">
+        <span>Modal Firma OTP Presupuesto</span>
+        <button
+          type="button"
+          onClick={() =>
+            onFirmaCompleta({
+              codigoOtp: '123456',
+              certificado_id: 'ESAP-CERT-VIAT-PRE-99',
+              hash: 'SHA256:presupuestohash1234567890abcdef',
+              timestamp: new Date().toISOString(),
+              firmante: 'Profesional de Presupuesto',
+              cargo: 'Profesional de Presupuesto / SIIF',
+              pin_verificado: true,
+              solicitudId: 'sol-aut-42',
+            })
+          }
+        >
+          Confirmar Firma OTP Test
+        </button>
+        <button type="button" onClick={onCancelar}>
+          Cancelar Firma OTP
+        </button>
+      </div>
+    ) : null,
+}));
 
 import { viaticosService } from '../services/api/viaticosService';
 
@@ -53,7 +96,7 @@ describe('RegistrarRPModal — [RF-PRE-001] Etapa 7: Expedir RP en SIIF Nación'
     expect(container.firstChild).toBeNull();
   });
 
-  it('Escenario: Registro individual de RP exitoso con nomenclatura válida', async () => {
+  it('Escenario: Registro individual de RP exitoso con nomenclatura válida y flujo OTP', async () => {
     (viaticosService.expedirRp as any).mockResolvedValue({
       id: 'sol-aut-42',
       estadoSolicitud: 'COMPROMETIDA',
@@ -65,6 +108,12 @@ describe('RegistrarRPModal — [RF-PRE-001] Etapa 7: Expedir RP en SIIF Nación'
       },
     });
 
+    (viaticosService.solicitarOtpFirma as any).mockResolvedValue({
+      verificationId: 'viat:sol-aut-42:PRESUPUESTO:usr-1',
+      emailEnviadoA: 'presupuesto@esap.edu.co',
+      devCode: '123456',
+    });
+
     render(
       <RegistrarRPModal
         abierto={true}
@@ -74,9 +123,11 @@ describe('RegistrarRPModal — [RF-PRE-001] Etapa 7: Expedir RP en SIIF Nación'
       />,
     );
 
-    // Verificación de campos renderizados
+    // Verificación de campos y títulos renderizados
     expect(screen.getByText(/Registrar Registro Presupuestal \(RP\)/i)).toBeDefined();
-    expect(screen.getByText(/COM-2026-0042/i)).toBeDefined();
+    expect(screen.getAllByText(/COM-2026-0042/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Apartado de Firmas Digitales y Trazabilidad \(Formato 023\)/i)).toBeDefined();
+    expect(screen.getByText(/Descargar Formato 023/i)).toBeDefined();
 
     // Diligenciar Número de RP '12345'
     const inputNumeroRp = screen.getByPlaceholderText(/Ej. 12345/i);
@@ -99,10 +150,24 @@ describe('RegistrarRPModal — [RF-PRE-001] Etapa 7: Expedir RP en SIIF Nación'
     expect(screen.getByText('20260916_RP_12345.pdf')).toBeDefined();
     expect(screen.getByText(/Nomenclatura oficial válida según estándar SIIF Nación/i)).toBeDefined();
 
-    // Confirmar registro del RP
+    // Confirmar y comprometer -> Inicia flujo OTP
     const botonConfirmar = screen.getByRole('button', { name: /Confirmar y Comprometer/i });
     expect(botonConfirmar).toBeDefined();
     fireEvent.click(botonConfirmar);
+
+    await waitFor(() => {
+      expect(viaticosService.solicitarOtpFirma).toHaveBeenCalledWith(
+        'sol-aut-42',
+        expect.objectContaining({
+          tipoFirma: 'PRESUPUESTO',
+        }),
+      );
+    });
+
+    // Se despliega modal de firma OTP
+    expect(screen.getByTestId('firma-digital-viaticos-modal')).toBeDefined();
+    const botonFirmarOtp = screen.getByText('Confirmar Firma OTP Test');
+    fireEvent.click(botonFirmarOtp);
 
     await waitFor(() => {
       expect(viaticosService.expedirRp).toHaveBeenCalledWith(
@@ -112,11 +177,46 @@ describe('RegistrarRPModal — [RF-PRE-001] Etapa 7: Expedir RP en SIIF Nación'
           fechaRp: '2026-09-16',
           soporteRpPath: '20260916_RP_12345.pdf',
           valorComprometido: 1850000,
+          otp: '123456',
+          certificadoId: 'ESAP-CERT-VIAT-PRE-99',
         }),
       );
       expect(mockOnExito).toHaveBeenCalled();
       expect(mockOnCerrar).toHaveBeenCalled();
     });
+  });
+
+  it('Escenario: Descarga del Formato 023 oficial desde el modal', async () => {
+    const mockBlob = new Blob(['pdf-data'], { type: 'application/pdf' });
+    (viaticosService.exportarFormato023 as any).mockResolvedValue(mockBlob);
+
+    // Mock createObjectURL & revokeObjectURL
+    const originalCreate = window.URL.createObjectURL;
+    const originalRevoke = window.URL.revokeObjectURL;
+    window.URL.createObjectURL = vi.fn(() => 'blob:http://localhost/test-023.pdf');
+    window.URL.revokeObjectURL = vi.fn();
+
+    render(
+      <RegistrarRPModal
+        abierto={true}
+        solicitud={mockSolicitudAutorizada}
+        onCerrar={mockOnCerrar}
+        onExito={mockOnExito}
+      />,
+    );
+
+    const botonDescargar = screen.getByText(/Descargar Formato 023/i);
+    fireEvent.click(botonDescargar);
+
+    await waitFor(() => {
+      expect(viaticosService.exportarFormato023).toHaveBeenCalledWith(
+        'sol-aut-42',
+        'COM-2026-0042',
+      );
+    });
+
+    window.URL.createObjectURL = originalCreate;
+    window.URL.revokeObjectURL = originalRevoke;
   });
 
   it('Escenario: Rechazo de registro de RP por nomenclatura inválida de archivo soporte', async () => {
@@ -171,5 +271,30 @@ describe('RegistrarRPModal — [RF-PRE-001] Etapa 7: Expedir RP en SIIF Nación'
 
     expect(screen.getByText(/Modalidad proyectada según días hábiles \(RF-PRE-003\)/i)).toBeDefined();
     expect(screen.getByText(/AVANCE \(Pago Anticipado\)/i)).toBeDefined();
+  });
+
+  it('Modo solo lectura cuando la comisión ya está COMPROMETIDA', () => {
+    const solicitudComprometida = {
+      ...mockSolicitudAutorizada,
+      estado: 'COMPROMETIDA',
+      estadoSolicitud: 'COMPROMETIDA',
+      numeroRp: '98765',
+      fechaRp: '2026-09-17',
+      soporteRpPath: '20260917_RP_98765.pdf',
+    };
+
+    render(
+      <RegistrarRPModal
+        abierto={true}
+        solicitud={solicitudComprometida}
+        onCerrar={mockOnCerrar}
+        onExito={mockOnExito}
+      />,
+    );
+
+    expect(screen.getByText(/Esta comisión ya cuenta con RP expedido en firme en SIIF Nación/i)).toBeDefined();
+    expect(screen.getByRole('button', { name: /^Cerrar$/i })).toBeDefined();
+    // No debe haber botón "Confirmar y Comprometer"
+    expect(screen.queryByRole('button', { name: /Confirmar y Comprometer/i })).toBeNull();
   });
 });
