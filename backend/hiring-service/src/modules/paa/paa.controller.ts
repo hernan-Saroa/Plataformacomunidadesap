@@ -1,0 +1,134 @@
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { join } from 'path';
+import { unlink } from 'fs/promises';
+
+import { getHiringAccess } from '../../auth/hiring-access';
+import { Puede } from '../../auth/puede.guard';
+import { opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
+import { PaaAdminService } from './paa-admin.service';
+import {
+  ActualizarRegionDto,
+  CrearRegionDto,
+  CrearVigenciaDto,
+  DescartarVersionDto,
+  LineasDeVersionDto,
+} from './dto/paa.dto';
+
+const MIME_XLSX = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+
+/**
+ * Administración del Plan Anual de Adquisiciones (migración 097).
+ *
+ * Todo cuelga del trámite `PAA`: ver para consultar, editar para cargar y
+ * configurar, aprobar para activar o descartar lo que cambia de dónde nacen
+ * los procesos.
+ */
+@ApiTags('Plan Anual de Adquisiciones')
+@Controller('paa')
+export class PaaController {
+  constructor(private readonly admin: PaaAdminService) {}
+
+  // -------------------------------------------------------------- regiones --
+
+  @Get('regiones')
+  @Puede('ver', 'PAA')
+  @ApiOperation({ summary: 'Regiones que contratan con su bloque del PAA' })
+  regiones() {
+    return this.admin.listarRegiones();
+  }
+
+  @Post('regiones')
+  @Puede('editar', 'PAA')
+  @ApiOperation({ summary: 'Crear una región' })
+  crearRegion(@Body() dto: CrearRegionDto, @Req() req: any) {
+    return this.admin.crearRegion(dto, getHiringAccess(req));
+  }
+
+  @Patch('regiones/:id')
+  @Puede('editar', 'PAA')
+  @ApiOperation({ summary: 'Editar o desactivar una región' })
+  actualizarRegion(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ActualizarRegionDto, @Req() req: any) {
+    return this.admin.actualizarRegion(id, dto, getHiringAccess(req));
+  }
+
+  // ------------------------------------------------------------- vigencias --
+
+  @Get('vigencias')
+  @Puede('ver', 'PAA')
+  @ApiOperation({ summary: 'Vigencias con su historial de versiones' })
+  vigencias() {
+    return this.admin.listarVigencias();
+  }
+
+  @Post('vigencias')
+  @Puede('editar', 'PAA')
+  @ApiOperation({ summary: 'Abrir una vigencia; nace sin ser la vigente' })
+  crearVigencia(@Body() dto: CrearVigenciaDto, @Req() req: any) {
+    return this.admin.crearVigencia(dto, getHiringAccess(req));
+  }
+
+  // ------------------------------------------------------------- versiones --
+
+  @Post('vigencias/:id/versiones')
+  @Puede('editar', 'PAA')
+  @UseInterceptors(FileInterceptor('file', opcionesDeCarga(MIME_XLSX, 'El PAA se carga en Excel (.xlsx)')))
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Cargar una versión del PAA',
+    description: 'La valida y la compara con la activa. No la activa: eso es otro paso, con su propio permiso.',
+  })
+  async cargarVersion(@Param('id', ParseUUIDPipe) vigenciaId: string, @UploadedFile() file: any, @Req() req: any) {
+    if (!file) throw new BadRequestException('Falta el archivo del PAA');
+
+    const ruta = join(STORAGE_PATH, file.filename);
+    try {
+      return await this.admin.cargarVersion(vigenciaId, file, await sha256Archivo(ruta), getHiringAccess(req));
+    } catch (error) {
+      await unlink(ruta).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  @Get('versiones/:id')
+  @Puede('ver', 'PAA')
+  @ApiOperation({ summary: 'Una versión: estado, errores, advertencias y resumen de la comparación' })
+  version(@Param('id', ParseUUIDPipe) id: string) {
+    return this.admin.obtenerVersion(id);
+  }
+
+  @Get('versiones/:id/comparacion')
+  @Puede('ver', 'PAA')
+  @ApiOperation({ summary: 'Qué cambió respecto de la versión anterior, línea por línea' })
+  comparacion(@Param('id', ParseUUIDPipe) id: string) {
+    return this.admin.comparacion(id);
+  }
+
+  @Get('versiones/:id/lineas')
+  @Puede('ver', 'PAA')
+  @ApiOperation({ summary: 'Las líneas de una versión, por región y búsqueda' })
+  lineasDeVersion(@Param('id', ParseUUIDPipe) id: string, @Query() filtro: LineasDeVersionDto) {
+    return this.admin.lineasDeVersion(id, filtro);
+  }
+
+  @Post('versiones/:id/descartar')
+  @Puede('aprobar', 'PAA')
+  @ApiOperation({ summary: 'Descartar una versión validada sin activarla' })
+  descartar(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DescartarVersionDto, @Req() req: any) {
+    return this.admin.descartar(id, dto.motivo, getHiringAccess(req));
+  }
+}

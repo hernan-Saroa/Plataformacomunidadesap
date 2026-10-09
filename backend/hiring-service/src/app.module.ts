@@ -116,6 +116,7 @@ import {
 import { SupervisionContrato } from './entities/supervision-contrato.entity';
 import { ParticipacionProceso } from './entities/participacion-proceso.entity';
 import { ENTIDADES_PAA } from './entities/paa.entity';
+import { PaaModule } from './modules/paa/paa.module';
 import { RegistroPresupuestal } from './entities/registro-presupuestal.entity';
 import { PlazoPublicacionContrato, PublicacionContrato } from './entities/publicacion-contrato.entity';
 import { TipologiaContrato } from './entities/tipologia-contrato.entity';
@@ -203,6 +204,7 @@ import {
     AprobacionModule,
     DocumentosActividadModule,
     IncumplimientoModule,
+    PaaModule,
   ],
   controllers: [HealthController],
   providers: [
