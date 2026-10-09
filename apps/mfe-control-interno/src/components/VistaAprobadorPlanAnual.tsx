@@ -13,6 +13,7 @@ import { CalendarDays, ChevronDown, Download, Eye, FileText, Loader2, X } from '
 import { VisorOnlyOffice } from './VisorOnlyOffice';
 import { subirVistaPrevia } from './services/onlyofficeVisor';
 import { exportarProgramaAnualVersionado } from './services/versionesProgramaAnual';
+import { usePlanAnualVigenciaContextOptional } from './PlanAnualVigenciaContext';
 
 const MORADO = '#5b21b6';
 const MORADO_TEXTO = '#4c1d95';
@@ -200,6 +201,13 @@ export function VistaAprobadorPlanAnual({
   const [descargandoPrograma, setDescargandoPrograma] = useState(false);
   const [historialAbierto, setHistorialAbierto] = useState(false);
   const [urlRespaldo, setUrlRespaldo] = useState<string | null>(null);
+  // Mismo camino que el selector de vigencia de arriba, para que los dos queden iguales
+  const contextoVigencia = usePlanAnualVigenciaContextOptional();
+  const verOtroPlan = (planId: string) => {
+    if (contextoVigencia?.cambiarPlan) contextoVigencia.cambiarPlan(planId);
+    else onCambiarPlan?.(planId);
+    setHistorialAbierto(false);
+  };
 
   const estado = String(plan.estado || '').toUpperCase().replace(/-/g, '_');
   const aprobado = estado === 'APROBADO' || estado === 'VIGENTE' || estado === 'CERRADO';
@@ -397,10 +405,10 @@ export function VistaAprobadorPlanAnual({
                   {actual ? (
                     <span className="text-xs font-bold" style={{ color: MORADO }}>Viendo</span>
                   ) : (
-                    onCambiarPlan && (
+                    (contextoVigencia || onCambiarPlan) && (
                       <button
                         type="button"
-                        onClick={() => onCambiarPlan(p.id)}
+                        onClick={() => verOtroPlan(p.id)}
                         className="text-xs font-bold hover:underline"
                         style={{ color: MORADO }}
                       >
