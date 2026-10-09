@@ -125,6 +125,18 @@ describe('leerPaa', () => {
     expect(r.errores[0].mensaje).toContain('«META» no es el prefijo');
   });
 
+  it('rechaza la línea de un territorio que carga su propio PAA, y dice cuál', async () => {
+    const r = await leerPaa(await archivo([fila('META 4 - Objeto', { unidad_contratacion: 'Territorial Meta' })]), {
+      ...contexto,
+      documento: 'Sede Central y Chocó',
+      ajenas: [{ prefijoLinea: 'META', nombre: 'Territorial Meta', documento: 'Territorial Meta' }],
+    });
+    expect(r.lineas).toEqual([]);
+    expect(r.errores[0].mensaje).toBe(
+      '«META» es de Territorial Meta, que carga sus líneas en el PAA de Territorial Meta. Este archivo de Sede Central y Chocó solo puede traer líneas de LINEA, CHOCO.',
+    );
+  });
+
   it('rechaza la descripción sin código', async () => {
     const r = await leerPaa(await archivo([fila('Prestar servicios sin código')]), contexto);
     expect(r.errores[0]).toMatchObject({ fila: 3, columna: 'Descripción' });

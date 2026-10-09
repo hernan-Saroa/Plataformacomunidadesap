@@ -9,7 +9,8 @@ import type { BuscarLineasDto } from './dto/paa.dto';
 /**
  * Las líneas del PAA tal como las ve quien crea un proceso.
  *
- * Solo la versión activa de cada vigencia, y de una región a la vez: es lo que
+ * Solo la versión activa del PAA vigente de la región —el de su documento,
+ * porque cada territorio carga el suyo—, y de una región a la vez: es lo que
  * impide mezclar regiones o años, o tomar una línea de un archivo que ya no
  * rige. Las líneas que ya originaron un proceso vivo se muestran marcadas en
  * vez de ocultarse: quien busca una línea y no la encuentra no sabe si no
@@ -22,35 +23,56 @@ export class PaaLineasService {
     private readonly campos: PaaCamposService,
   ) {}
 
-  /** Regiones y vigencias entre las que se puede elegir al crear un proceso. */
+  /**
+   * Las regiones de las que se puede crear un proceso, cada una con el PAA del
+   * que saldría: el vigente de su documento, si tiene versión activa.
+   *
+   * Cada territorio carga su PAA y cambia de año por su cuenta, así que una
+   * región puede estar lista y otra no. Las que no lo están se listan igual,
+   * con el porqué, en vez de desaparecer.
+   */
   async opciones() {
-    const [regiones, vigencias] = await Promise.all([
+    const [regiones, vigentes] = await Promise.all([
       this.dataSource.getRepository(PaaRegion).find({ where: { activa: true }, order: { nombre: 'ASC' } }),
       this.dataSource.query(
-        `SELECT g.id, g.anio, g.vigente, v.id AS "versionId", v.numero AS "versionNumero", v.activada_at AS "activadaAt"
+        `SELECT g.documento_id AS "documentoId", d.nombre AS documento, g.id, g.anio,
+                v.id AS "versionId", v.numero AS "versionNumero", v.activada_at AS "activadaAt"
            FROM hiring.paa_vigencias g
-           JOIN hiring.paa_versiones v ON v.vigencia_id = g.id AND v.estado = 'ACTIVA'
-          ORDER BY g.anio DESC`,
+           JOIN hiring.paa_documentos d ON d.id = g.documento_id
+           LEFT JOIN hiring.paa_versiones v ON v.vigencia_id = g.id AND v.estado = 'ACTIVA'
+          WHERE g.vigente`,
       ),
     ]);
-    const vigente = vigencias.find((v: { vigente: boolean }) => v.vigente) ?? null;
+    const vigenteDe = new Map(vigentes.map((v: { documentoId: string }) => [v.documentoId, v]));
+
+    const conPaa = regiones.map((r) => {
+      const v = vigenteDe.get(r.documentoId) as
+        | { documento: string; id: string; anio: number; versionId: string | null; versionNumero: number | null }
+        | undefined;
+      const vigente = v?.versionId ? { id: v.id, anio: v.anio, versionId: v.versionId, versionNumero: v.versionNumero! } : null;
+      return {
+        ...r,
+        documento: v?.documento ?? null,
+        vigente,
+        motivo: vigente
+          ? null
+          : `${r.nombre} no tiene un PAA vigente con una versión activa. Lo carga la Dirección de Contratación en Configuración → Plan de adquisiciones.`,
+      };
+    });
+    const listo = conPaa.some((r) => r.vigente);
     return {
-      regiones,
-      // Solo la vigente sirve para crear; las demás se listan para que se vea
-      // por qué no aparecen sus líneas.
-      vigencias,
-      vigente,
-      listo: !!vigente && regiones.length > 0,
-      motivo: !vigente
-        ? 'No hay un Plan Anual de Adquisiciones vigente con una versión activa. Lo carga la Dirección de Contratación en Configuración → Plan de adquisiciones.'
+      regiones: conPaa,
+      listo,
+      motivo: listo
+        ? null
         : !regiones.length
           ? 'No hay regiones activas.'
-          : null,
+          : 'Ninguna región tiene un Plan Anual de Adquisiciones vigente con una versión activa. Lo carga la Dirección de Contratación en Configuración → Plan de adquisiciones.',
     };
   }
 
   async buscar(filtro: BuscarLineasDto) {
-    const { version, vigencia } = await this.versionActiva(filtro.anio);
+    const { version, vigencia } = await this.versionActiva(filtro.region, filtro.anio);
     const pagina = filtro.pagina ?? 1;
 
     const consulta = this.dataSource
@@ -110,12 +132,17 @@ export class PaaLineasService {
     };
   }
 
-  private async versionActiva(anio?: number) {
+  /** La versión activa del PAA de la región: el de su documento, del año pedido o del vigente. */
+  private async versionActiva(regionId: string, anio?: number) {
+    const region = await this.dataSource.getRepository(PaaRegion).findOne({ where: { id: regionId } });
+    if (!region) throw new NotFoundException('La región no existe');
     const vigencia = await this.dataSource
       .getRepository(PaaVigencia)
-      .findOne({ where: anio ? { anio } : { vigente: true } });
+      .findOne({ where: { documentoId: region.documentoId, ...(anio ? { anio } : { vigente: true }) } });
     if (!vigencia) {
-      throw new NotFoundException(anio ? `La vigencia ${anio} no existe` : 'No hay una vigencia del PAA vigente');
+      throw new NotFoundException(
+        anio ? `${region.nombre} no tiene PAA ${anio}` : `${region.nombre} no tiene un PAA vigente`,
+      );
     }
     const version = await this.dataSource.getRepository(PaaVersion).findOne({ where: { vigenciaId: vigencia.id, estado: 'ACTIVA' } });
     if (!version) throw new ConflictException(`La vigencia ${vigencia.anio} no tiene una versión del PAA activa`);

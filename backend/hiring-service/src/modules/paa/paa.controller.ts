@@ -134,18 +134,21 @@ export class PaaController {
     return this.campos.guardar(id, anio, dto, getHiringAccess(req));
   }
 
-  // ------------------------------------------------------------- vigencias --
+  // ---------------------------------------------- documentos y vigencias --
 
-  @Get('vigencias')
+  @Get('documentos')
   @Puede('ver', 'PAA')
-  @ApiOperation({ summary: 'Vigencias con su historial de versiones' })
-  vigencias() {
-    return this.admin.listarVigencias();
+  @ApiOperation({
+    summary: 'El Excel de cada territorio, con sus regiones y sus vigencias',
+    description: 'Cada vigencia trae su historial de versiones.',
+  })
+  documentos() {
+    return this.admin.listarDocumentos();
   }
 
   @Post('vigencias')
   @Puede('editar', 'PAA')
-  @ApiOperation({ summary: 'Abrir una vigencia; nace sin ser la vigente' })
+  @ApiOperation({ summary: 'Abrir un año en el PAA de un documento; nace sin ser el vigente' })
   crearVigencia(@Body() dto: CrearVigenciaDto, @Req() req: any) {
     return this.admin.crearVigencia(dto, getHiringAccess(req));
   }
@@ -160,8 +163,9 @@ export class PaaController {
   @Post('vigencias/:id/declarar-vigente')
   @Puede('aprobar', 'PAA')
   @ApiOperation({
-    summary: 'Declarar vigente un año nuevo del PAA',
-    description: 'No modifica procesos: abre a cada proceso en curso del año anterior una evaluación por cambio anual.',
+    summary: 'Declarar vigente un año nuevo del PAA de un documento',
+    description:
+      'No modifica procesos: abre a cada proceso en curso del año anterior, de las regiones de ese documento, una evaluación por cambio anual.',
   })
   declararVigente(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
     return this.activacion.declararVigente(id, getHiringAccess(req));

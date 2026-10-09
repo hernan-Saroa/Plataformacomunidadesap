@@ -10,6 +10,7 @@ import { join } from 'path';
 
 import {
   PaaComparacion,
+  PaaDocumento,
   PaaLinea,
   PaaRegion,
   PaaVersion,
@@ -54,17 +55,42 @@ export class PaaAdminService {
     return this.dataSource.getRepository(PaaRegion).find({ order: { nombre: 'ASC' } });
   }
 
+  /**
+   * Crea la región y, si publica su propio Excel, su documento.
+   *
+   * Es lo normal: cada territorio carga su PAA. Que sus líneas lleguen dentro
+   * del Excel de otro, como las de Chocó en el de la Sede Central, es la
+   * excepción, y se dice eligiendo ese documento.
+   */
   async crearRegion(dto: CrearRegionDto, acceso: HiringAccess) {
     return this.dataSource.transaction(async (em) => {
       await this.exigirRegionLibre(em, dto.codigo, dto.prefijoLinea);
+
+      let documento: PaaDocumento | null;
+      if (dto.documentoId) {
+        documento = await em.findOne(PaaDocumento, { where: { id: dto.documentoId } });
+        if (!documento) throw new NotFoundException('El documento del PAA no existe');
+      } else {
+        if (await em.findOne(PaaDocumento, { where: { codigo: dto.codigo } })) {
+          throw new ConflictException(`Ya hay un documento del PAA con el código ${dto.codigo}`);
+        }
+        documento = await em.save(PaaDocumento, {
+          codigo: dto.codigo,
+          nombre: dto.nombre.trim(),
+          createdBy: acceso.userName,
+        } as Partial<PaaDocumento>);
+        await this.traza(em, 'paa_documentos', documento.id, 'CREAR', acceso, { codigo: dto.codigo, nombre: documento.nombre });
+      }
+
       const region = await em.save(PaaRegion, {
         codigo: dto.codigo,
         nombre: dto.nombre.trim(),
         prefijoLinea: dto.prefijoLinea,
         unidadContratacion: dto.unidadContratacion.trim(),
+        documentoId: documento.id,
         createdBy: acceso.userName,
       } as Partial<PaaRegion>);
-      await this.traza(em, 'paa_regiones', region.id, 'CONFIGURAR', acceso, { creada: dto });
+      await this.traza(em, 'paa_regiones', region.id, 'CONFIGURAR', acceso, { creada: dto, documento: documento.nombre });
       return region;
     });
   }
@@ -119,9 +145,16 @@ export class PaaAdminService {
 
   // ------------------------------------------------------------- vigencias --
 
-  /** Cada vigencia con sus versiones, de la más reciente a la más antigua. */
-  async listarVigencias() {
-    const vigencias = await this.dataSource.getRepository(PaaVigencia).find({ order: { anio: 'DESC' } });
+  /**
+   * Cada documento con sus regiones y sus vigencias, y cada vigencia con sus
+   * versiones, de la más reciente a la más antigua.
+   */
+  async listarDocumentos() {
+    const [documentos, regiones, vigencias] = await Promise.all([
+      this.dataSource.getRepository(PaaDocumento).find({ order: { nombre: 'ASC' } }),
+      this.listarRegiones(),
+      this.dataSource.getRepository(PaaVigencia).find({ order: { anio: 'DESC' } }),
+    ]);
     const versiones = vigencias.length
       ? await this.dataSource.getRepository(PaaVersion).find({
           where: { vigenciaId: In(vigencias.map((v) => v.id)) },
@@ -129,25 +162,34 @@ export class PaaAdminService {
         })
       : [];
 
-    return vigencias.map((v) => {
-      const suyas = versiones.filter((x) => x.vigenciaId === v.id).map((x) => this.resumenVersion(x));
-      return { ...v, activa: suyas.find((x) => x.estado === 'ACTIVA') ?? null, versiones: suyas };
-    });
+    return documentos.map((d) => ({
+      ...d,
+      regiones: regiones.filter((r) => r.documentoId === d.id),
+      vigencias: vigencias
+        .filter((v) => v.documentoId === d.id)
+        .map((v) => {
+          const suyas = versiones.filter((x) => x.vigenciaId === v.id).map((x) => this.resumenVersion(x));
+          return { ...v, activa: suyas.find((x) => x.estado === 'ACTIVA') ?? null, versiones: suyas };
+        }),
+    }));
   }
 
   async crearVigencia(dto: CrearVigenciaDto, acceso: HiringAccess) {
     return this.dataSource.transaction(async (em) => {
-      if (await em.findOne(PaaVigencia, { where: { anio: dto.anio } })) {
-        throw new ConflictException(`La vigencia ${dto.anio} ya existe`);
+      const documento = await em.findOne(PaaDocumento, { where: { id: dto.documentoId } });
+      if (!documento) throw new NotFoundException('El documento del PAA no existe');
+      if (await em.findOne(PaaVigencia, { where: { documentoId: documento.id, anio: dto.anio } })) {
+        throw new ConflictException(`El PAA ${dto.anio} de ${documento.nombre} ya existe`);
       }
       // Nace sin marca de vigente: hasta que tenga una versión activa y alguien
-      // la declare, los procesos siguen saliendo del año anterior.
+      // la declare, los procesos del territorio siguen saliendo del año anterior.
       const vigencia = await em.save(PaaVigencia, {
+        documentoId: documento.id,
         anio: dto.anio,
         vigente: false,
         createdBy: acceso.userName,
       } as Partial<PaaVigencia>);
-      await this.traza(em, 'paa_vigencias', vigencia.id, 'CREAR', acceso, { anio: dto.anio });
+      await this.traza(em, 'paa_vigencias', vigencia.id, 'CREAR', acceso, { anio: dto.anio, documento: documento.nombre });
       return vigencia;
     });
   }
@@ -172,16 +214,32 @@ export class PaaAdminService {
     const vigencia = await this.dataSource.getRepository(PaaVigencia).findOne({ where: { id: vigenciaId } });
     if (!vigencia) throw new NotFoundException('La vigencia no existe');
 
-    const [regiones, equivalencias] = await Promise.all([
+    const [documento, todas, equivalencias] = await Promise.all([
+      this.dataSource.getRepository(PaaDocumento).findOneOrFail({ where: { id: vigencia.documentoId } }),
       this.dataSource.getRepository(PaaRegion).find({ where: { activa: true } }),
       this.equivalencias(),
     ]);
+    // Solo las regiones de este documento: una línea de otro territorio en
+    // este Excel es un error del archivo, no una línea que se reparte sola.
+    const regiones = todas.filter((r) => r.documentoId === documento.id);
     if (!regiones.length) {
-      throw new BadRequestException('No hay regiones activas: sin ellas no se puede repartir ninguna línea.');
+      throw new BadRequestException(
+        `${documento.nombre} no tiene regiones activas: sin ellas no se puede repartir ninguna línea.`,
+      );
     }
+    const nombresDocumento = new Map(
+      (await this.dataSource.getRepository(PaaDocumento).find()).map((d) => [d.id, d.nombre]),
+    );
 
     const contenido = await readFile(join(STORAGE_PATH, archivo.filename));
-    const lectura = await leerPaa(contenido, { regiones, equivalencias });
+    const lectura = await leerPaa(contenido, {
+      regiones,
+      equivalencias,
+      documento: documento.nombre,
+      ajenas: todas
+        .filter((r) => r.documentoId !== documento.id)
+        .map((r) => ({ prefijoLinea: r.prefijoLinea, nombre: r.nombre, documento: nombresDocumento.get(r.documentoId) ?? '' })),
+    });
 
     const id = await this.dataSource.transaction(async (em) => {
       // Bloquea la vigencia: dos cargas simultáneas no pueden sacar el mismo número.
@@ -247,6 +305,7 @@ export class PaaAdminService {
       }
 
       await this.traza(em, 'paa_versiones', version.id, 'CARGAR', acceso, {
+        documento: documento.nombre,
         anio: vigencia.anio,
         numero,
         archivo: archivo.originalname,
@@ -263,7 +322,8 @@ export class PaaAdminService {
 
   /**
    * Compara contra la activa de la misma vigencia; si la vigencia todavía no
-   * tiene, contra la activa del año anterior más cercano, como referencia.
+   * tiene, contra la activa del año anterior más cercano del mismo documento,
+   * como referencia.
    */
   private async compararConLaAnterior(em: EntityManager, version: PaaVersion, vigencia: PaaVigencia) {
     let base = await em.findOne(PaaVersion, { where: { vigenciaId: vigencia.id, estado: 'ACTIVA' } });
@@ -271,7 +331,7 @@ export class PaaAdminService {
 
     if (!base) {
       const anterior = await em.findOne(PaaVigencia, {
-        where: { anio: LessThan(vigencia.anio) },
+        where: { documentoId: vigencia.documentoId, anio: LessThan(vigencia.anio) },
         order: { anio: 'DESC' },
       });
       base = anterior
@@ -301,8 +361,9 @@ export class PaaAdminService {
     const version = await this.dataSource.getRepository(PaaVersion).findOne({ where: { id } });
     if (!version) throw new NotFoundException('La versión no existe');
 
-    const [vigencia, porRegion, comparacion] = await Promise.all([
-      this.dataSource.getRepository(PaaVigencia).findOneOrFail({ where: { id: version.vigenciaId } }),
+    const vigencia = await this.dataSource.getRepository(PaaVigencia).findOneOrFail({ where: { id: version.vigenciaId } });
+    const [documento, porRegion, comparacion] = await Promise.all([
+      this.dataSource.getRepository(PaaDocumento).findOneOrFail({ where: { id: vigencia.documentoId } }),
       this.dataSource.query(
         `SELECT r.id, r.nombre, count(l.id)::int AS lineas
            FROM hiring.paa_lineas l JOIN hiring.paa_regiones r ON r.id = l.region_id
@@ -315,6 +376,7 @@ export class PaaAdminService {
 
     return {
       ...version,
+      documento: { id: documento.id, nombre: documento.nombre },
       anio: vigencia.anio,
       vigente: vigencia.vigente,
       porRegion,

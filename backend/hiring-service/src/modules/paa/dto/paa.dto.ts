@@ -43,6 +43,16 @@ export class CrearRegionDto {
   @IsNotEmpty({ message: 'La unidad de contratación es obligatoria: con ella se comprueba cada línea' })
   @MaxLength(150)
   unidadContratacion: string;
+
+  /**
+   * En qué Excel vienen sus líneas. Sin él, la región publica su propio PAA y
+   * se le abre un documento con su nombre; con él, sus líneas llegan dentro
+   * del Excel de otro territorio, como las de Chocó en el de la Sede Central.
+   */
+  @ApiPropertyOptional({ description: 'Documento existente; vacío = la región tiene su propio Excel' })
+  @IsOptional()
+  @IsUUID()
+  documentoId?: string;
 }
 
 export class ActualizarRegionDto {
@@ -74,6 +84,10 @@ export class ActualizarRegionDto {
 }
 
 export class CrearVigenciaDto {
+  @ApiProperty({ description: 'El documento (Excel del territorio) al que se le abre el año' })
+  @IsUUID()
+  documentoId: string;
+
   @ApiProperty({ example: 2027 })
   @Type(() => Number)
   @IsInt({ message: 'La vigencia es un año' })
@@ -122,7 +136,7 @@ export class BuscarLineasDto {
   @IsUUID()
   region: string;
 
-  @ApiPropertyOptional({ description: 'Año; por omisión la vigencia vigente' })
+  @ApiPropertyOptional({ description: 'Año; por omisión la vigencia vigente del documento de la región' })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

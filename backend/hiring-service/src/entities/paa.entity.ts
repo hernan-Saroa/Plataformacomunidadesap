@@ -1,17 +1,46 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 /**
- * Plan Anual de Adquisiciones (migración 097).
+ * Plan Anual de Adquisiciones (migraciones 097 y 099).
  *
- * Las ocho tablas van juntas porque solo tienen sentido juntas: una versión sin
+ * Las nueve tablas van juntas porque solo tienen sentido juntas: una versión sin
  * sus líneas, o una revisión sin la versión que la originó, no se entienden.
  */
+
+/**
+ * El Excel del PAA que publica un territorio (migración 099).
+ *
+ * Cada territorio publica el suyo; el de la Sede Central trae además las líneas
+ * de Chocó. Las vigencias, y con ellas las versiones y el cambio de año, son de
+ * cada documento.
+ */
+@Entity('paa_documentos', { schema: 'hiring' })
+export class PaaDocumento {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ length: 40, unique: true })
+  codigo: string;
+
+  @Column({ length: 150 })
+  nombre: string;
+
+  @Column({ name: 'created_by', length: 150, nullable: true })
+  createdBy: string | null;
+
+  @Column({ name: 'created_at', type: 'timestamptz', default: () => 'now()' })
+  createdAt: Date;
+}
 
 /** Quién contrata con su propio bloque del PAA: la Sede Central, el Chocó… */
 @Entity('paa_regiones', { schema: 'hiring' })
 export class PaaRegion {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  /** En qué Excel vienen sus líneas. No cambia. */
+  @Column({ name: 'documento_id', type: 'uuid' })
+  documentoId: string;
 
   @Column({ length: 40, unique: true })
   codigo: string;
@@ -40,13 +69,16 @@ export class PaaRegion {
   updatedAt: Date;
 }
 
-/** Un año del PAA. Solo uno está vigente para crear procesos. */
+/** Un año del PAA de un documento. Solo uno por documento está vigente para crear procesos. */
 @Entity('paa_vigencias', { schema: 'hiring' })
 export class PaaVigencia {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'smallint', unique: true })
+  @Column({ name: 'documento_id', type: 'uuid' })
+  documentoId: string;
+
+  @Column({ type: 'smallint' })
   anio: number;
 
   @Column({ default: false })
@@ -358,6 +390,7 @@ export class PaaRevision {
 }
 
 export const ENTIDADES_PAA = [
+  PaaDocumento,
   PaaRegion,
   PaaVigencia,
   PaaVersion,

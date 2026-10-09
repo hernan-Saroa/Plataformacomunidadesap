@@ -133,7 +133,7 @@ export class PaaCamposService {
 
     if (!guardadas.length) {
       const anterior = await em.findOne(PaaVigencia, {
-        where: { anio: LessThan(vigencia.anio) },
+        where: { documentoId: vigencia.documentoId, anio: LessThan(vigencia.anio) },
         order: { anio: 'DESC' },
       });
       guardadas = anterior
@@ -195,12 +195,13 @@ export class PaaCamposService {
   }
 
   private async regionYVigencia(regionId: string, anio: number) {
-    const [region, vigencia] = await Promise.all([
-      this.dataSource.getRepository(PaaRegion).findOne({ where: { id: regionId } }),
-      this.dataSource.getRepository(PaaVigencia).findOne({ where: { anio } }),
-    ]);
+    const region = await this.dataSource.getRepository(PaaRegion).findOne({ where: { id: regionId } });
     if (!region) throw new NotFoundException('La región no existe');
-    if (!vigencia) throw new NotFoundException(`La vigencia ${anio} no existe`);
+    // El año es el del documento de la región: cada territorio abre los suyos.
+    const vigencia = await this.dataSource
+      .getRepository(PaaVigencia)
+      .findOne({ where: { documentoId: region.documentoId, anio } });
+    if (!vigencia) throw new NotFoundException(`${region.nombre} no tiene PAA ${anio}`);
     return { region, vigencia };
   }
 }

@@ -35,7 +35,12 @@ export interface ResultadoLectura {
 }
 
 export interface ContextoLectura {
+  /** Las regiones del documento que se carga: sus líneas son las únicas que puede traer. */
   regiones: RegionParaLeer[];
+  /** Nombre del documento, para los mensajes. */
+  documento?: string;
+  /** Regiones de otros documentos: para decir de dónde es una línea que se coló. */
+  ajenas?: { prefijoLinea: string; nombre: string; documento: string }[];
   /** Texto normalizado de la modalidad → código de `hiring.modalidades`. */
   equivalencias: Map<string, string>;
 }
@@ -85,6 +90,9 @@ export async function leerPaa(contenido: Buffer, contexto: ContextoLectura): Pro
   if (!columnas) return { ...vacio(), encabezados };
 
   const prefijos = new Map(contexto.regiones.map((r) => [normalizar(r.prefijoLinea), r]));
+  const ajenas = new Map((contexto.ajenas ?? []).map((r) => [normalizar(r.prefijoLinea), r]));
+  const ejemplos = contexto.regiones.map((r) => `«${r.prefijoLinea} 12 - …»`).join(' o ');
+  const delDocumento = contexto.documento ? ` de ${contexto.documento}` : '';
   const lineas: LineaLeida[] = [];
   const vistos = new Map<string, number>();
 
@@ -113,15 +121,24 @@ export async function leerPaa(contenido: Buffer, contexto: ContextoLectura): Pro
     const m = PATRON_DESCRIPCION.exec(descripcion);
     if (!m) {
       errores.push(
-        hallazgo(fila, 'Descripción', recortar(descripcion), 'La descripción no empieza por el código de la línea. Se espera «LINEA 12 - …» o «CHOCO 3 - …».'),
+        hallazgo(fila, 'Descripción', recortar(descripcion), `La descripción no empieza por el código de la línea. Se espera ${ejemplos}.`),
       );
       continue;
     }
 
     const region = prefijos.get(normalizar(m[1]));
     if (!region) {
+      const suyos = contexto.regiones.map((r) => r.prefijoLinea).join(', ');
+      const ajena = ajenas.get(normalizar(m[1]));
       errores.push(
-        hallazgo(fila, 'Descripción', m[1], `«${m[1]}» no es el prefijo de ninguna región. Las configuradas son: ${contexto.regiones.map((r) => r.prefijoLinea).join(', ')}.`),
+        hallazgo(
+          fila,
+          'Descripción',
+          m[1],
+          ajena
+            ? `«${m[1]}» es de ${ajena.nombre}, que carga sus líneas en el PAA de ${ajena.documento}. Este archivo${delDocumento} solo puede traer líneas de ${suyos}.`
+            : `«${m[1]}» no es el prefijo de ninguna región${delDocumento}. Las suyas son: ${suyos}.`,
+        ),
       );
       continue;
     }

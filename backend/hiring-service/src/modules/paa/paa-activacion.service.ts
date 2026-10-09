@@ -40,6 +40,10 @@ export interface ProcesoAfectado {
   plan: PlanDeActualizacion | null;
 }
 
+/** Los procesos cuyas líneas vienen en el Excel de un documento: los de los demás territorios no se tocan. */
+const DE_LAS_REGIONES_DEL_DOCUMENTO =
+  'p.paa_region_id IN (SELECT r.id FROM hiring.paa_regiones r WHERE r.documento_id = :documento)';
+
 const MOTIVO_UMBRAL = 'La nueva cuantía no admite esta modalidad';
 
 /**
@@ -125,7 +129,7 @@ export class PaaActivacionService {
   /** Los procesos en curso de años anteriores que entrarían a evaluación. */
   async afectadosPorCambioDeVigencia(vigenciaId: string) {
     const { vigencia, activa, anterior } = await this.paraDeclarar(this.dataSource.manager, vigenciaId);
-    const procesos = await this.abiertosDeOtrosAnios(this.dataSource.manager, vigencia.anio);
+    const procesos = await this.abiertosDeOtrosAnios(this.dataSource.manager, vigencia);
     const abogados = await this.abogados(this.dataSource.manager, procesos.map((p) => p.id));
     return {
       anio: vigencia.anio,
@@ -169,7 +173,7 @@ export class PaaActivacionService {
         { vigente: true, declaradaVigentePor: acceso.userName, declaradaVigenteAt: ahora },
       );
 
-      const procesos = await this.abiertosDeOtrosAnios(em, vigencia.anio);
+      const procesos = await this.abiertosDeOtrosAnios(em, vigencia);
       const abogados = await this.abogados(em, procesos.map((p) => p.id));
       const comparacion = await em.findOne(PaaComparacion, {
         where: { versionNuevaId: activa.id, tipo: 'CAMBIO_VIGENCIA' },
@@ -220,7 +224,9 @@ export class PaaActivacionService {
     if (!vigencia) throw new NotFoundException('La vigencia no existe');
     if (vigencia.vigente) throw new ConflictException(`La vigencia ${vigencia.anio} ya es la vigente.`);
 
-    const anterior = await em.findOne(PaaVigencia, { where: { vigente: true } });
+    // La vigente del mismo documento: cada territorio cambia de año cuando
+    // carga su PAA, sin arrastrar a los demás.
+    const anterior = await em.findOne(PaaVigencia, { where: { documentoId: vigencia.documentoId, vigente: true } });
     if (anterior && anterior.anio > vigencia.anio) {
       throw new ConflictException(
         `La vigente es ${anterior.anio}: no se vuelve a un año anterior. Los procesos de ${vigencia.anio} siguen consultables sin declararla.`,
@@ -230,11 +236,16 @@ export class PaaActivacionService {
     return { vigencia, activa, anterior };
   }
 
-  /** En curso, con origen en el PAA de un año anterior. Los creados antes del PAA no tienen origen que evaluar. */
-  private abiertosDeOtrosAnios(em: EntityManager, anio: number) {
+  /**
+   * En curso, con origen en el PAA de un año anterior del mismo documento. Los
+   * creados antes del PAA no tienen origen que evaluar, y los de otro
+   * territorio cambian de año con el suyo.
+   */
+  private abiertosDeOtrosAnios(em: EntityManager, vigencia: PaaVigencia) {
     return em
       .createQueryBuilder(Proceso, 'p')
-      .where(`p.estado = 'EN_CURSO' AND p.paa_linea_id IS NOT NULL AND p.paa_anio < :anio`, { anio })
+      .where(`p.estado = 'EN_CURSO' AND p.paa_linea_id IS NOT NULL AND p.paa_anio < :anio`, { anio: vigencia.anio })
+      .andWhere(DE_LAS_REGIONES_DEL_DOCUMENTO, { documento: vigencia.documentoId })
       .orderBy('p.radicado', 'ASC')
       .getMany();
   }
@@ -256,8 +267,8 @@ export class PaaActivacionService {
   }
 
   /**
-   * Cada proceso en curso que nació de esta vigencia, frente a su línea en la
-   * versión nueva.
+   * Cada proceso en curso que nació de esta vigencia —de ese año y de las
+   * regiones de su documento—, frente a su línea en la versión nueva.
    *
    * Se cruza por código y no por id de línea: el proceso puede venir de una
    * versión más vieja que la activa si su línea desapareció y se decidió que
@@ -270,10 +281,12 @@ export class PaaActivacionService {
     vigencia: PaaVigencia,
     activa: PaaVersion,
   ): Promise<ProcesoAfectado[]> {
-    const procesos = await em.find(Proceso, {
-      where: { paaAnio: vigencia.anio, estado: 'EN_CURSO' },
-      order: { radicado: 'ASC' },
-    });
+    const procesos = await em
+      .createQueryBuilder(Proceso, 'p')
+      .where(`p.estado = 'EN_CURSO' AND p.paa_anio = :anio`, { anio: vigencia.anio })
+      .andWhere(DE_LAS_REGIONES_DEL_DOCUMENTO, { documento: vigencia.documentoId })
+      .orderBy('p.radicado', 'ASC')
+      .getMany();
     const conLinea = procesos.filter((p) => p.paaLineaId && p.paaCodigo);
     if (!conLinea.length) return [];
 
