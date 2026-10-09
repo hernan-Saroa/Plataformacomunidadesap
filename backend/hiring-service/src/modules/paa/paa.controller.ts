@@ -4,9 +4,11 @@ import {
   Controller,
   Get,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UploadedFile,
@@ -21,8 +23,10 @@ import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
 import { opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 import { PaaAdminService } from './paa-admin.service';
+import { PaaCamposService } from './paa-campos.service';
 import {
   ActualizarRegionDto,
+  GuardarCamposDto,
   CrearRegionDto,
   CrearVigenciaDto,
   DescartarVersionDto,
@@ -41,7 +45,10 @@ const MIME_XLSX = ['application/vnd.openxmlformats-officedocument.spreadsheetml.
 @ApiTags('Plan Anual de Adquisiciones')
 @Controller('paa')
 export class PaaController {
-  constructor(private readonly admin: PaaAdminService) {}
+  constructor(
+    private readonly admin: PaaAdminService,
+    private readonly campos: PaaCamposService,
+  ) {}
 
   // -------------------------------------------------------------- regiones --
 
@@ -64,6 +71,28 @@ export class PaaController {
   @ApiOperation({ summary: 'Editar o desactivar una región' })
   actualizarRegion(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ActualizarRegionDto, @Req() req: any) {
     return this.admin.actualizarRegion(id, dto, getHiringAccess(req));
+  }
+
+  @Get('regiones/:id/vigencias/:anio/campos')
+  @Puede('ver', 'PAA')
+  @ApiOperation({
+    summary: 'Campos del formulario de la región en esa vigencia',
+    description: 'Si la vigencia no está configurada, propone la del año anterior o la del formato, sin guardarla.',
+  })
+  camposDelFormulario(@Param('id', ParseUUIDPipe) id: string, @Param('anio', ParseIntPipe) anio: number) {
+    return this.campos.campos(id, anio);
+  }
+
+  @Put('regiones/:id/vigencias/:anio/campos')
+  @Puede('editar', 'PAA')
+  @ApiOperation({ summary: 'Guardar qué campos se muestran, en qué orden y con qué nombre' })
+  guardarCampos(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('anio', ParseIntPipe) anio: number,
+    @Body() dto: GuardarCamposDto,
+    @Req() req: any,
+  ) {
+    return this.campos.guardar(id, anio, dto, getHiringAccess(req));
   }
 
   // ------------------------------------------------------------- vigencias --

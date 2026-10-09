@@ -109,8 +109,39 @@ export function clavesConocidas(): string[] {
   ];
 }
 
-/** Las que la configuración no deja ocultar: sin ellas no se sabe qué se eligió. */
-export const CLAVES_SIEMPRE_VISIBLES = ['descripcion', 'objeto'];
+/**
+ * Las que la configuración no deja ocultar: sin el objeto no se sabe qué se
+ * eligió. El código no está aquí porque el formulario lo muestra siempre como
+ * título, no como un campo más.
+ */
+export const CLAVES_SIEMPRE_VISIBLES = ['objeto'];
+
+/**
+ * Las que nacen ocultas mientras la región no configure otra cosa: repiten
+ * algo que ya se ve (la descripción es código más objeto; el código de la
+ * modalidad es la modalidad), son de control interno, o son datos de contacto
+ * de una persona que no hace falta exhibir a quien solo elige la línea.
+ */
+export const OCULTAS_POR_DEFECTO = [
+  'descripcion',
+  'modalidad_codigo',
+  'unidad_contratacion',
+  'responsable_telefono',
+  'responsable_correo',
+  'estado_vigencias_futuras',
+  'alimentos_30',
+  'bienes_distintos_alimentos',
+];
+
+/** Para qué sirve una clave, incluidas las derivadas y las que sobran en el archivo. */
+export function usoDe(clave: string): UsoColumnaPaa {
+  if (clave.startsWith(PREFIJO_EXTRA)) return 'informativo';
+  return (
+    COLUMNAS_PAA.find((c) => c.clave === clave)?.uso ??
+    DERIVADOS_PAA.find((c) => c.clave === clave)?.uso ??
+    'informativo'
+  );
+}
 
 // ----------------------------------------------- lo que el PAA le da al proceso --
 
