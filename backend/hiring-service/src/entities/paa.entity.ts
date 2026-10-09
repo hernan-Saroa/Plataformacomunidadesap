@@ -275,6 +275,23 @@ export class PaaAplicacion {
 }
 
 export type TipoRevisionPaa = 'MODIFICACION' | 'ELIMINACION' | 'CAMBIO_VIGENCIA';
+
+/** Un campo de la línea que cambió entre versiones. */
+export interface CambioDeLinea {
+  campo: string;
+  etiqueta: string;
+  antes: string | number | null;
+  despues: string | number | null;
+}
+
+/**
+ * Lo que vio quien abrió la revisión: qué cambió en la línea (todo, incluso lo
+ * informativo) y qué se le hizo o no al proceso por eso.
+ */
+export interface CambiosRevisionPaa {
+  linea: CambioDeLinea[];
+  proceso: CampoAplicado[];
+}
 export type DecisionRevisionPaa = 'CONTINUAR' | 'DEVOLVER' | 'MIGRAR' | 'CANCELAR';
 
 @Entity('paa_revisiones', { schema: 'hiring' })
@@ -301,7 +318,7 @@ export class PaaRevision {
   tipo: TipoRevisionPaa;
 
   @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
-  cambios: CampoAplicado[];
+  cambios: CambiosRevisionPaa;
 
   @Column({ type: 'text' })
   motivo: string;

@@ -1,4 +1,4 @@
-import type { TipoComparacionPaa, ValoresLineaPaa } from '../../entities/paa.entity';
+import type { CambioDeLinea, TipoComparacionPaa, ValoresLineaPaa } from '../../entities/paa.entity';
 import { etiquetaDe } from './estructura-paa';
 
 /** Lo mínimo de una línea para compararla. */
@@ -9,12 +9,7 @@ export interface LineaComparable {
   huella: string;
 }
 
-export interface CambioDeCampo {
-  campo: string;
-  etiqueta: string;
-  antes: string | number | null;
-  despues: string | number | null;
-}
+export type CambioDeCampo = CambioDeLinea;
 
 export interface LineaResumida {
   codigo: string;

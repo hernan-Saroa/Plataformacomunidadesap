@@ -25,6 +25,7 @@ import { opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 import { PaaAdminService } from './paa-admin.service';
 import { PaaCamposService } from './paa-campos.service';
 import { PaaLineasService } from './paa-lineas.service';
+import { PaaActivacionService } from './paa-activacion.service';
 import {
   ActualizarRegionDto,
   BuscarLineasDto,
@@ -51,6 +52,7 @@ export class PaaController {
     private readonly admin: PaaAdminService,
     private readonly campos: PaaCamposService,
     private readonly lineas: PaaLineasService,
+    private readonly activacion: PaaActivacionService,
   ) {}
 
   // ---------------------------------------------- al crear un proceso --
@@ -184,6 +186,26 @@ export class PaaController {
   @ApiOperation({ summary: 'Las líneas de una versión, por región y búsqueda' })
   lineasDeVersion(@Param('id', ParseUUIDPipe) id: string, @Query() filtro: LineasDeVersionDto) {
     return this.admin.lineasDeVersion(id, filtro);
+  }
+
+  @Get('versiones/:id/afectados')
+  @Puede('ver', 'PAA')
+  @ApiOperation({
+    summary: 'Qué les pasaría a los procesos si se activa esta versión',
+    description: 'Misma lógica que la activación: cuáles se actualizan, cuáles quedan en revisión y cuáles se detienen.',
+  })
+  afectados(@Param('id', ParseUUIDPipe) id: string) {
+    return this.activacion.afectados(id);
+  }
+
+  @Post('versiones/:id/activar')
+  @Puede('aprobar', 'PAA')
+  @ApiOperation({
+    summary: 'Activar una versión validada',
+    description: 'Reemplaza la activa, actualiza los procesos y abre sus revisiones, todo o nada.',
+  })
+  activar(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.activacion.activar(id, getHiringAccess(req));
   }
 
   @Post('versiones/:id/descartar')
