@@ -3,11 +3,12 @@ import { AlertTriangle, MapPin, Pencil, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { RegionPaa } from '../../types';
+import { DocumentoPaa, RegionPaa } from '../../types';
 import { Permitido } from '../shared/Permitido';
 import { Modal } from '../shared/Modal';
 
-const VACIA = { codigo: '', nombre: '', prefijoLinea: '', unidadContratacion: '' };
+/** `documentoId` vacío: la región publica su propio Excel y se le abre un documento. */
+const VACIA = { codigo: '', nombre: '', prefijoLinea: '', unidadContratacion: '', documentoId: '' };
 
 const CLASE_CAMPO =
   'w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20';
@@ -19,9 +20,15 @@ const CLASE_CAMPO =
  * «CHOCO 3») y la unidad de contratación es la comprobación: una línea cuyo
  * prefijo y unidad no casan es un error del archivo. Por eso el prefijo no se
  * cambia cuando ya hay líneas cargadas con él.
+ *
+ * Cada región trae sus líneas en un documento: lo normal es su propio Excel;
+ * la excepción, como Chocó, es venir dentro del de otro territorio. El
+ * documento se elige al crearla y no cambia, porque sus versiones y sus
+ * procesos ya quedaron ligados a él.
  */
 export function RegionesPaa() {
   const [regiones, setRegiones] = useState<RegionPaa[] | null>(null);
+  const [documentos, setDocumentos] = useState<DocumentoPaa[]>([]);
   /** La región que se edita, `'nueva'` al crear, o nada. */
   const [editando, setEditando] = useState<RegionPaa | 'nueva' | null>(null);
   const [form, setForm] = useState(VACIA);
@@ -29,10 +36,10 @@ export function RegionesPaa() {
   const [error, setError] = useState<string | null>(null);
 
   const leer = () =>
-    contratacionService.paa
-      .regiones()
-      .then((r) => {
+    Promise.all([contratacionService.paa.regiones(), contratacionService.paa.documentos()])
+      .then(([r, d]) => {
         setRegiones(r);
+        setDocumentos(d);
         setError(null);
       })
       .catch((err: any) => setError(err.message));
@@ -45,7 +52,13 @@ export function RegionesPaa() {
     setForm(
       r === 'nueva'
         ? VACIA
-        : { codigo: r.codigo, nombre: r.nombre, prefijoLinea: r.prefijoLinea, unidadContratacion: r.unidadContratacion },
+        : {
+            codigo: r.codigo,
+            nombre: r.nombre,
+            prefijoLinea: r.prefijoLinea,
+            unidadContratacion: r.unidadContratacion,
+            documentoId: r.documentoId,
+          },
     );
     setEditando(r);
   };
@@ -60,7 +73,11 @@ export function RegionesPaa() {
     };
     try {
       if (editando === 'nueva') {
-        await contratacionService.paa.crearRegion({ ...datos, codigo: form.codigo.trim().toUpperCase() });
+        await contratacionService.paa.crearRegion({
+          ...datos,
+          codigo: form.codigo.trim().toUpperCase(),
+          ...(form.documentoId && { documentoId: form.documentoId }),
+        });
         toast.success('Región creada');
       } else {
         await contratacionService.paa.actualizarRegion(editando.id, datos);
@@ -85,6 +102,8 @@ export function RegionesPaa() {
     }
   };
 
+  const nombreDocumento = (id: string) => documentos.find((d) => d.id === id)?.nombre ?? '—';
+
   if (error) {
     return (
       <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
@@ -99,7 +118,7 @@ export function RegionesPaa() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="m-0 text-xs text-gray-600">
-          Un mismo archivo del PAA puede traer varias regiones: cada línea se reparte por su prefijo.
+          Cada región carga su PAA en su propio Excel, salvo las que vienen dentro del de otro territorio, como Chocó en el de la Sede Central.
         </p>
         <Permitido accion="editar" punto="PAA">
           <button
@@ -119,6 +138,7 @@ export function RegionesPaa() {
             <tr>
               <th className="px-3 py-2 font-bold">Región</th>
               <th className="px-3 py-2 font-bold">Prefijo</th>
+              <th className="px-3 py-2 font-bold">Sus líneas vienen en</th>
               <th className="px-3 py-2 font-bold">Unidad de contratación</th>
               <th className="px-3 py-2 font-bold">Estado</th>
               <th className="px-3 py-2" />
@@ -135,6 +155,7 @@ export function RegionesPaa() {
                   <span className="block font-mono text-gray-400">{r.codigo}</span>
                 </td>
                 <td className="px-3 py-2 font-mono">{r.prefijoLinea}</td>
+                <td className="px-3 py-2">{nombreDocumento(r.documentoId)}</td>
                 <td className="px-3 py-2">{r.unidadContratacion}</td>
                 <td className="px-3 py-2">
                   <span className={`rounded-full px-2 py-0.5 font-bold ${r.activa ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-600'}`}>
@@ -208,6 +229,31 @@ export function RegionesPaa() {
           <Campo id="region-unidad" etiqueta="Unidad de contratación, como la escribe el PAA">
             <input id="region-unidad" value={form.unidadContratacion} onChange={(e) => setForm({ ...form, unidadContratacion: e.target.value })} className={CLASE_CAMPO} />
           </Campo>
+          {editando === 'nueva' ? (
+            <Campo
+              id="region-documento"
+              etiqueta="Sus líneas vienen en"
+              ayuda="Lo normal es su propio Excel. Elige otro documento solo si sus líneas llegan dentro del PAA de otro territorio. No cambia después."
+            >
+              <select
+                id="region-documento"
+                value={form.documentoId}
+                onChange={(e) => setForm({ ...form, documentoId: e.target.value })}
+                className={CLASE_CAMPO}
+              >
+                <option value="">Su propio Excel</option>
+                {documentos.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    El PAA de {d.nombre}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+          ) : (
+            <p className="m-0 text-xs text-gray-500">
+              Sus líneas vienen en el PAA de <span className="font-bold text-slate-700">{nombreDocumento(form.documentoId)}</span>.
+            </p>
+          )}
         </div>
       </Modal>
     </div>

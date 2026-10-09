@@ -149,6 +149,7 @@ import {
   RevisionPaa,
   VersionPaa,
   VigenciaPaa,
+  DocumentoPaa,
 } from '../types';
 
 const SERVICE_PREFIX = '/hiring/api/v1';
@@ -1849,7 +1850,9 @@ export const contratacionService = {
 
     regiones: () => pedir<RegionPaa[]>('/paa/regiones'),
 
-    crearRegion: (region: Pick<RegionPaa, 'codigo' | 'nombre' | 'prefijoLinea' | 'unidadContratacion'>) =>
+    crearRegion: (
+      region: Pick<RegionPaa, 'codigo' | 'nombre' | 'prefijoLinea' | 'unidadContratacion'> & { documentoId?: string },
+    ) =>
       pedir<RegionPaa>('/paa/regiones', { method: 'POST', body: JSON.stringify(region) }),
 
     actualizarRegion: (
@@ -1857,10 +1860,10 @@ export const contratacionService = {
       cambios: Partial<Pick<RegionPaa, 'nombre' | 'prefijoLinea' | 'unidadContratacion' | 'activa'>>,
     ) => pedir<RegionPaa>(`/paa/regiones/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) }),
 
-    vigencias: () => pedir<VigenciaPaa[]>('/paa/vigencias'),
+    documentos: () => pedir<DocumentoPaa[]>('/paa/documentos'),
 
-    crearVigencia: (anio: number) =>
-      pedir<VigenciaPaa>('/paa/vigencias', { method: 'POST', body: JSON.stringify({ anio }) }),
+    crearVigencia: (documentoId: string, anio: number) =>
+      pedir<VigenciaPaa>('/paa/vigencias', { method: 'POST', body: JSON.stringify({ documentoId, anio }) }),
 
     cargarVersion: (vigenciaId: string, archivo: File) => {
       const cuerpo = new FormData();

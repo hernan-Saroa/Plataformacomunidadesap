@@ -5,7 +5,7 @@ import { RegionesPaa } from './RegionesPaa';
 import { VigenciasYVersiones } from './VigenciasYVersiones';
 
 const SECCIONES = [
-  { clave: 'versiones' as const, etiqueta: 'Vigencias y versiones' },
+  { clave: 'versiones' as const, etiqueta: 'Documentos y versiones' },
   { clave: 'regiones' as const, etiqueta: 'Regiones' },
   { clave: 'campos' as const, etiqueta: 'Campos del formulario' },
 ];

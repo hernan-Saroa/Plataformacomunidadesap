@@ -3636,6 +3636,8 @@ export interface ConfiguracionAvisos {
 
 export interface RegionPaa {
   id: string;
+  /** En qué Excel vienen sus líneas: el suyo, o el de otro territorio (Chocó → Sede Central). */
+  documentoId: string;
   codigo: string;
   nombre: string;
   prefijoLinea: string;
@@ -3671,8 +3673,18 @@ export interface ResumenVersionPaa {
   reemplazadaAt: string | null;
 }
 
+/** El Excel del PAA que publica un territorio, con las regiones que trae y sus años. */
+export interface DocumentoPaa {
+  id: string;
+  codigo: string;
+  nombre: string;
+  regiones: RegionPaa[];
+  vigencias: VigenciaPaa[];
+}
+
 export interface VigenciaPaa {
   id: string;
+  documentoId: string;
   anio: number;
   vigente: boolean;
   declaradaVigentePor: string | null;
@@ -3723,6 +3735,7 @@ export interface ComparacionPaa {
 
 export interface VersionPaa extends Omit<ResumenVersionPaa, 'errores' | 'advertencias'> {
   vigenciaId: string;
+  documento: { id: string; nombre: string };
   anio: number;
   vigente: boolean;
   errores: HallazgoPaa[];
@@ -3815,10 +3828,17 @@ export interface CamposDelFormularioPaa {
   campos: CampoFormularioPaa[];
 }
 
-export interface OpcionesDeCreacionPaa {
-  regiones: RegionPaa[];
-  vigencias: { id: string; anio: number; vigente: boolean; versionId: string; versionNumero: number }[];
+/** Una región con el PAA del que saldría el proceso: el vigente de su documento. */
+export interface RegionParaCrearPaa extends RegionPaa {
+  documento: string | null;
   vigente: { id: string; anio: number; versionId: string; versionNumero: number } | null;
+  /** Por qué no se puede crear desde ella, si no tiene PAA vigente. */
+  motivo: string | null;
+}
+
+export interface OpcionesDeCreacionPaa {
+  regiones: RegionParaCrearPaa[];
+  /** Si al menos una región tiene PAA vigente. */
   listo: boolean;
   motivo: string | null;
 }

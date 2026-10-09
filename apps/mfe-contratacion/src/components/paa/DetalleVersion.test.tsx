@@ -36,6 +36,7 @@ const VERSION = {
   descartadaAt: null,
   motivoDescarte: null,
   reemplazadaAt: null,
+  documento: { id: 'd-sede', nombre: 'Sede Central y Chocó' },
   anio: 2026,
   vigente: true,
   errores: [],

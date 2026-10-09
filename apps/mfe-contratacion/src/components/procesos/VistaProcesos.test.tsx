@@ -44,9 +44,20 @@ const MODALIDADES = [
   { codigo: 'LICITACION_PUBLICA', nombre: 'Licitación Pública', orden: 10 },
 ];
 
-const SEDE = { id: 'r-sede', codigo: 'SEDE_CENTRAL', nombre: 'Sede Central', prefijoLinea: 'LINEA', unidadContratacion: 'Contratación', activa: true };
-const CHOCO = { id: 'r-choco', codigo: 'CHOCO', nombre: 'Territorial Chocó', prefijoLinea: 'CHOCO', unidadContratacion: 'Territorial Choco', activa: true };
-const VIGENTE = { id: 'v-2026', anio: 2026, vigente: true, versionId: 'ver-31', versionNumero: 31 };
+const VIGENTE = { id: 'v-2026', anio: 2026, versionId: 'ver-31', versionNumero: 31 };
+const SEDE = {
+  id: 'r-sede', documentoId: 'd-sede', codigo: 'SEDE_CENTRAL', nombre: 'Sede Central', prefijoLinea: 'LINEA',
+  unidadContratacion: 'Contratación', activa: true, documento: 'Sede Central y Chocó', vigente: VIGENTE, motivo: null,
+};
+const CHOCO = {
+  id: 'r-choco', documentoId: 'd-sede', codigo: 'CHOCO', nombre: 'Territorial Chocó', prefijoLinea: 'CHOCO',
+  unidadContratacion: 'Territorial Choco', activa: true, documento: 'Sede Central y Chocó', vigente: VIGENTE, motivo: null,
+};
+const META_SIN_PAA = {
+  id: 'r-meta', documentoId: 'd-meta', codigo: 'META', nombre: 'Territorial Meta', prefijoLinea: 'META',
+  unidadContratacion: 'Territorial Meta', activa: true, documento: 'Territorial Meta', vigente: null,
+  motivo: 'Territorial Meta no tiene un PAA vigente con una versión activa.',
+};
 
 const busqueda = (lineas: object[]) => ({
   vigencia: { id: 'v-2026', anio: 2026 },
@@ -90,9 +101,7 @@ describe('VistaProcesos · crear desde el PAA', () => {
     vi.clearAllMocks();
     servicio.listarProcesos.mockResolvedValue([]);
     servicio.paa.opcionesDeCreacion.mockResolvedValue({
-      regiones: [SEDE, CHOCO],
-      vigencias: [VIGENTE],
-      vigente: VIGENTE,
+      regiones: [SEDE, CHOCO, META_SIN_PAA],
       listo: true,
       motivo: null,
     });
@@ -108,9 +117,7 @@ describe('VistaProcesos · crear desde el PAA', () => {
 
   it('dice por qué no se puede crear si no hay un PAA vigente', async () => {
     servicio.paa.opcionesDeCreacion.mockResolvedValue({
-      regiones: [SEDE],
-      vigencias: [],
-      vigente: null,
+      regiones: [{ ...SEDE, vigente: null }],
       listo: false,
       motivo: 'No hay un Plan Anual de Adquisiciones vigente con una versión activa.',
     });
@@ -124,6 +131,12 @@ describe('VistaProcesos · crear desde el PAA', () => {
     await userEvent.click(await screen.findByRole('radio', { name: /Territorial Chocó/ }));
 
     await waitFor(() => expect(servicio.paa.buscarLineas).toHaveBeenCalledWith('r-choco', ''));
+  });
+
+  it('no deja elegir la región cuyo territorio no tiene PAA vigente, y dice por qué', async () => {
+    await abrir();
+    expect(await screen.findByRole('radio', { name: /Territorial Meta/ })).toBeDisabled();
+    expect(screen.getByText('Territorial Meta no tiene un PAA vigente con una versión activa.')).toBeInTheDocument();
   });
 
   it('muestra lo que trae la línea y crea el proceso con ella', async () => {

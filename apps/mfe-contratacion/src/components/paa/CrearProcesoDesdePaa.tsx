@@ -29,8 +29,9 @@ const ESPERA_BUSQUEDA_MS = 300;
  * ve lo que trae —en los campos que la región decidió mostrar— antes de
  * confirmar. Lo que la línea no diga, o diga mal, se completa en la 3.1.
  *
- * La vigencia no se elige: es la vigente, la única de la que pueden nacer
- * procesos. Se muestra para que quede claro de qué PAA salen los datos.
+ * La vigencia no se elige: es la vigente del PAA de la región —cada territorio
+ * carga el suyo y cambia de año por su cuenta—, la única de la que pueden
+ * nacer procesos. Se muestra para que quede claro de qué PAA salen los datos.
  */
 export function CrearProcesoDesdePaa({ isOpen, onClose, onCreado }: Props) {
   const [opciones, setOpciones] = useState<OpcionesDeCreacionPaa | null>(null);
@@ -49,14 +50,18 @@ export function CrearProcesoDesdePaa({ isOpen, onClose, onCreado }: Props) {
       .opcionesDeCreacion()
       .then((o) => {
         setOpciones(o);
-        // Con una sola región no hay nada que elegir.
-        if (o.regiones.length === 1) setRegion(o.regiones[0].id);
+        // Con una sola región lista no hay nada que elegir.
+        const listas = o.regiones.filter((r) => r.vigente);
+        if (listas.length === 1) setRegion(listas[0].id);
       })
       .catch((err: any) => setErrorOpciones(err.message));
   }, [isOpen]);
 
+  const elegidaRegion = opciones?.regiones.find((r) => r.id === region) ?? null;
+  const vigente = elegidaRegion?.vigente ?? null;
+
   useEffect(() => {
-    if (!region || !opciones?.listo) return;
+    if (!region || !vigente) return;
     setBuscando(true);
     const temporizador = setTimeout(() => {
       contratacionService.paa
@@ -66,7 +71,7 @@ export function CrearProcesoDesdePaa({ isOpen, onClose, onCreado }: Props) {
         .finally(() => setBuscando(false));
     }, ESPERA_BUSQUEDA_MS);
     return () => clearTimeout(temporizador);
-  }, [region, busqueda, opciones?.listo]);
+  }, [region, busqueda, vigente?.versionId]);
 
   const verMas = async () => {
     if (!resultados) return;
@@ -112,8 +117,6 @@ export function CrearProcesoDesdePaa({ isOpen, onClose, onCreado }: Props) {
     }
   };
 
-  const vigente = opciones?.vigente ?? null;
-
   return (
     <Modal
       isOpen={isOpen}
@@ -121,7 +124,7 @@ export function CrearProcesoDesdePaa({ isOpen, onClose, onCreado }: Props) {
       title="Nuevo proceso contractual"
       description={
         vigente
-          ? `Desde una línea del Plan Anual de Adquisiciones ${vigente.anio} · versión ${vigente.versionNumero}`
+          ? `Desde una línea del PAA ${vigente.anio} de ${elegidaRegion?.documento} · versión ${vigente.versionNumero}`
           : 'Desde una línea del Plan Anual de Adquisiciones'
       }
       icon={<Plus className="w-5 h-5 text-white" />}
@@ -177,6 +180,8 @@ export function CrearProcesoDesdePaa({ isOpen, onClose, onCreado }: Props) {
                     type="button"
                     role="radio"
                     aria-checked={activa}
+                    disabled={!r.vigente}
+                    title={r.motivo ?? undefined}
                     onClick={() => {
                       setRegion(r.id);
                       setResultados(null);
@@ -185,7 +190,7 @@ export function CrearProcesoDesdePaa({ isOpen, onClose, onCreado }: Props) {
                       activa
                         ? 'bg-[#003DA5] border-[#003DA5] text-white'
                         : 'bg-white border-gray-300 text-slate-700 hover:border-[#003DA5]'
-                    }`}
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
                   >
                     <MapPin className="w-3.5 h-3.5" aria-hidden="true" />
                     {r.nombre}
@@ -194,8 +199,15 @@ export function CrearProcesoDesdePaa({ isOpen, onClose, onCreado }: Props) {
               })}
             </div>
             <p className="text-xs text-gray-500 mt-1.5 mb-0">
-              Cada región tiene su bloque en el PAA: solo se ven las líneas de la que elijas.
+              Cada región tiene su bloque en el PAA de su territorio: solo se ven las líneas de la que elijas.
             </p>
+            {opciones.regiones
+              .filter((r) => !r.vigente)
+              .map((r) => (
+                <p key={r.id} className="text-xs text-amber-800 mt-1 mb-0">
+                  {r.motivo}
+                </p>
+              ))}
           </div>
 
           {region && (

@@ -55,7 +55,7 @@ export function DetalleVersion({ versionId, onCambio }: Props) {
   const activar = async () => {
     const r = afectados?.resumen;
     const ok = await dialogo.confirmar({
-      titulo: `Activar la versión ${version.numero} del PAA ${version.anio}`,
+      titulo: `Activar la versión ${version.numero} del PAA ${version.anio} de ${version.documento.nombre}`,
       descripcion: r
         ? `Reemplaza a la activa. ${r.actualizados} proceso(s) se actualizan, ${r.revisiones} quedan con revisión para su abogado y ${r.bloqueados} se detienen hasta que se decida. Si algo falla, no cambia nada.`
         : 'Será la versión de la que salen los procesos nuevos de esta vigencia.',

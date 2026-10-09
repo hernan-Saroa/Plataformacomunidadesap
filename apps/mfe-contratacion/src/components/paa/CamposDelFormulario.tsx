@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, Info, Lock, Save } from 'lucide-reac
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { CampoFormularioPaa, CamposDelFormularioPaa, RegionPaa, VigenciaPaa } from '../../types';
+import { CampoFormularioPaa, CamposDelFormularioPaa, DocumentoPaa } from '../../types';
 import { useAlcance } from '../../auth/alcance';
 
 const ORIGEN: Record<CamposDelFormularioPaa['origen'], string> = {
@@ -31,8 +31,7 @@ const USO: Record<CampoFormularioPaa['uso'], { etiqueta: string; clase: string }
 export function CamposDelFormulario() {
   const { puede } = useAlcance();
   const editable = puede('editar', 'PAA');
-  const [regiones, setRegiones] = useState<RegionPaa[]>([]);
-  const [vigencias, setVigencias] = useState<VigenciaPaa[]>([]);
+  const [documentos, setDocumentos] = useState<DocumentoPaa[]>([]);
   const [region, setRegion] = useState('');
   const [anio, setAnio] = useState<number | null>(null);
   const [datos, setDatos] = useState<CamposDelFormularioPaa | null>(null);
@@ -41,16 +40,28 @@ export function CamposDelFormulario() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const regiones = documentos.flatMap((d) => d.regiones);
+  // Los años son los del documento de la región: cada territorio abre los suyos.
+  const vigencias = documentos.find((d) => d.regiones.some((r) => r.id === region))?.vigencias ?? [];
+  const anioPorDefecto = (doc?: DocumentoPaa) => (doc?.vigencias.find((x) => x.vigente) ?? doc?.vigencias[0])?.anio ?? null;
+
   useEffect(() => {
-    Promise.all([contratacionService.paa.regiones(), contratacionService.paa.vigencias()])
-      .then(([r, v]) => {
-        setRegiones(r);
-        setVigencias(v);
-        setRegion((actual) => actual || r[0]?.id || '');
-        setAnio((actual) => actual ?? (v.find((x) => x.vigente) ?? v[0])?.anio ?? null);
+    contratacionService.paa
+      .documentos()
+      .then((d) => {
+        setDocumentos(d);
+        const primera = d.flatMap((x) => x.regiones)[0];
+        setRegion((actual) => actual || primera?.id || '');
+        setAnio((actual) => actual ?? anioPorDefecto(d.find((x) => x.id === primera?.documentoId)));
       })
       .catch((err: any) => setError(err.message));
   }, []);
+
+  const elegirRegion = (id: string) => {
+    setRegion(id);
+    const doc = documentos.find((d) => d.regiones.some((r) => r.id === id));
+    setAnio((actual) => (doc?.vigencias.some((v) => v.anio === actual) ? actual : anioPorDefecto(doc)));
+  };
 
   useEffect(() => {
     if (!region || !anio) return;
@@ -127,7 +138,7 @@ export function CamposDelFormulario() {
           <select
             id="campos-region"
             value={region}
-            onChange={(e) => setRegion(e.target.value)}
+            onChange={(e) => elegirRegion(e.target.value)}
             className="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white"
           >
             {regiones.map((r) => (

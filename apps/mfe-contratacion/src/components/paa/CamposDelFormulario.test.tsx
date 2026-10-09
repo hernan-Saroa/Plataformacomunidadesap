@@ -9,7 +9,7 @@ import { fijarAlcance } from '../../auth/alcance';
 
 vi.mock('../../services/contratacionService', () => ({
   contratacionService: {
-    paa: { regiones: vi.fn(), vigencias: vi.fn(), campos: vi.fn(), guardarCampos: vi.fn() },
+    paa: { documentos: vi.fn(), campos: vi.fn(), guardarCampos: vi.fn() },
   },
 }));
 
@@ -31,8 +31,15 @@ describe('CamposDelFormulario', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fijarAlcance({ alcances: [{ accion: 'editar', lugar: 'PAA' }], transversales: [] });
-    paa.regiones.mockResolvedValue([{ id: 'r-sede', codigo: 'SEDE_CENTRAL', nombre: 'Sede Central', prefijoLinea: 'LINEA', unidadContratacion: 'Contratación', activa: true }]);
-    paa.vigencias.mockResolvedValue([{ id: 'v-2027', anio: 2027, vigente: true, activa: null, versiones: [] }]);
+    paa.documentos.mockResolvedValue([
+      {
+        id: 'd-sede',
+        codigo: 'SEDE_CENTRAL',
+        nombre: 'Sede Central y Chocó',
+        regiones: [{ id: 'r-sede', documentoId: 'd-sede', codigo: 'SEDE_CENTRAL', nombre: 'Sede Central', prefijoLinea: 'LINEA', unidadContratacion: 'Contratación', activa: true }],
+        vigencias: [{ id: 'v-2027', documentoId: 'd-sede', anio: 2027, vigente: true, activa: null, versiones: [] }],
+      },
+    ]);
     paa.campos.mockResolvedValue({
       region: { id: 'r-sede', nombre: 'Sede Central' },
       vigencia: { id: 'v-2027', anio: 2027, vigente: true },
