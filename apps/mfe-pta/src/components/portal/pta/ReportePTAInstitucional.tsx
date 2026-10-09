@@ -739,6 +739,7 @@ export function ReportePTAInstitucional({
     complementarias_pregrado: 'Complementarias (Pregrado)',
     complementarias_posgrado: 'Complementarias (Posgrado)',
     complementarias_territorial: 'Complementarias (Territorial)',
+    complementarias_decanatura: 'Complementarias (Decanatura)',
     complementarias_gestion_profesoral: 'Complementarias (Gestión Profesoral)',
   };
   // El backend auto-aprueba con aprobadorNombre='Sistema' los componentes sin

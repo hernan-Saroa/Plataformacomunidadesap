@@ -7,8 +7,8 @@ describe('alcance independiente de Complementarias territoriales', () => {
     const auth: any = { ...await resolver.resolveForUser('u1'), territorialIds: ['Meta'], cetapIds: ['Granada'] };
     const service = Object.create(PtaService.prototype) as any;
     service.getCatalogoActividadesComplementarias = jest.fn().mockResolvedValue([
-      { id: 'pre', tipo_aprobacion: 'decanatura', nivel_programa: 'pregrado' },
-      { id: 'pos', tipo_aprobacion: 'decanatura', nivel_programa: 'posgrado' },
+      { id: 'pre', tipo_aprobacion: 'territorial', nivel_programa: 'pregrado' },
+      { id: 'pos', tipo_aprobacion: 'territorial', nivel_programa: 'posgrado' },
     ]);
     service.getCatalogoActividadesAcademicoAdmin = jest.fn().mockResolvedValue([]);
     service.resolveNombrePorSeccionalId = jest.fn().mockResolvedValue(new Map());
@@ -76,11 +76,12 @@ describe('alcance independiente de Complementarias territoriales', () => {
   // territorial capturada ya no entra al componente territorial, así que este
   // alcance no aplica y el PTA se resuelve por su componente normal en vez de
   // quedar trabado con un 403 que nadie —salvo el superusuario— podía levantar.
-  it('no exige alcance territorial por una Decanatura sin territorial capturada', async () => {
+  it('permite Territorial sin depender de una territorial capturada, conservando el nivel autorizado', async () => {
     const { service, auth, pta } = await setup([row('approve')], [
       { actividad_id: 'pre', horas: 10 },
     ]);
-    expect(await service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, 'aprobar')).toBeNull();
+    expect((await service.assertAlcanceTerritorial('complementarias_territorial', pta, auth, 'aprobar')).propios)
+      .toEqual([{ territorialId: '', nivel: 'pregrado' }]);
     const ui = await service.getDecisionPermissions('pta', auth);
     expect(ui.allowedComponents).toContain('complementarias_territorial');
   });

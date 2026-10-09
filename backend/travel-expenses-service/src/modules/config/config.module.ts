@@ -6,6 +6,7 @@ import { CampoFormularioEntity } from '../../entities/config/campo-formulario.en
 import { ConfigTipoComisionadoEntity } from '../../entities/config/config-tipo-comisionado.entity';
 import { TipoDocumentoSoporteEntity } from '../../entities/config/tipo-documento-soporte.entity';
 import { ConfigTipoComisionadoDocumentoEntity } from '../../entities/config/config-tipo-comisionado-documento.entity';
+import { ConfigJornadaLaboralEntity } from '../../entities/config/config-jornada-laboral.entity';
 import { CommonModule } from '../../common/common.module';
 
 @Module({
@@ -15,6 +16,7 @@ import { CommonModule } from '../../common/common.module';
       ConfigTipoComisionadoEntity,
       TipoDocumentoSoporteEntity,
       ConfigTipoComisionadoDocumentoEntity,
+      ConfigJornadaLaboralEntity,
     ]),
     CommonModule,
   ],

@@ -56,5 +56,21 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
+    proxy: {
+      '/services/infraestructura/uploads': {
+        target: process.env.ESAP_INFRA_SERVICE_URL || 'http://127.0.0.1:3014',
+        changeOrigin: true,
+        secure: false,
+        ws: false,
+        rewrite: (path) => path.replace(/^\/services\/infraestructura/, ''),
+      },
+      '/services': {
+        target: process.env.ESAP_API_GATEWAY_URL || 'http://127.0.0.1:4000',
+        changeOrigin: true,
+        secure: false,
+        ws: false,
+        rewrite: (path) => path.replace(/^\/services/, ''),
+      },
+    },
   },
 });

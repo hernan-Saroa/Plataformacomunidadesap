@@ -464,6 +464,11 @@ export enum Permissions {
   VIATICOS_LEGALIZACIONES_VIEW = 'travel_expenses:legalizations.view',
   VIATICOS_RESOLUCIONES_VIEW = 'travel_expenses:resolutions.view',
   VIATICOS_CONFIG_MANAGE = 'travel_expenses:manage_config',
+  VIATICOS_FIRMAR_APROBACION = 'travel_expenses:sign_approval',
+  VIATICOS_BANDEJA_FIRMAS_VIEW = 'travel_expenses:read_approvals',
+  VIATICOS_PROCESAR_PAGO = 'travel_expenses:process_payment',
+  VIATICOS_PAGOS_VIEW = 'travel_expenses:read_payments',
+  VIATICOS_OBLIGACIONES_VIEW = 'travel_expenses:read_obligations',
 
   // Viáticos y Gastos de Viaje - Permisos Generales Inmutables por Rol (Migración 441)
   VIATICOS_GENERAL_ES_ENLACE = 'travel_expenses.general.es_enlace_dependencia',

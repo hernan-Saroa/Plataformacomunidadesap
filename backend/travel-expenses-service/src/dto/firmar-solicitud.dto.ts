@@ -7,6 +7,8 @@ export enum TipoFirmaAprobacion {
   ENLACE_ELABORO = 'ENLACE_ELABORO',
   ANALISTA = 'ANALISTA',
   CONTROL_VIATICOS = 'CONTROL_VIATICOS',
+  PRESUPUESTO = 'PRESUPUESTO',
+  TESORERIA = 'TESORERIA',
 }
 
 export class FirmarSolicitudDto {

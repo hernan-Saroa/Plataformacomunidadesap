@@ -620,10 +620,28 @@ class ControlInternoService {
   }
 
   /**
-   * Elimina una evaluación de proceso
+   * Elimina una evaluación de proceso. Si el proceso tiene auditorías programadas en
+   * Programa Anual, el servidor solo la elimina con archivarAuditorias y las archiva (EFDS-2281).
    */
-  async deleteEvaluacion(id: string): Promise<void> {
-    return client.delete(`/universo-auditorias/evaluaciones/${id}`);
+  async deleteEvaluacion(
+    id: string,
+    opciones: { archivarAuditorias?: boolean } = {},
+  ): Promise<{ archivadas?: Array<{ id: string; codigo: string | null; nombre: string | null; fase: string | null }> } | void> {
+    const query = opciones.archivarAuditorias ? '?archivarAuditorias=true' : '';
+    return client.delete(`/universo-auditorias/evaluaciones/${id}${query}`);
+  }
+
+  /**
+   * Auditorías programadas con el proceso de la evaluación: las que se archivarían al
+   * eliminarla y las que ya empezaron e impiden eliminarla (EFDS-2281).
+   */
+  async getImpactoEliminacionEvaluacion(id: string): Promise<{
+    proceso: string | null;
+    vigencia: number;
+    porArchivar: Array<{ id: string; codigo: string | null; nombre: string | null; fase: string | null }>;
+    iniciadas: Array<{ id: string; codigo: string | null; nombre: string | null; fase: string | null }>;
+  }> {
+    return client.get(`/universo-auditorias/evaluaciones/${id}/impacto-eliminacion`);
   }
 
   /**

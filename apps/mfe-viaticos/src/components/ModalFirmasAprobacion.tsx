@@ -846,7 +846,7 @@ export default function ModalFirmasAprobacion({
                   <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 block">
                     Liquidación Estimada de Gastos
                   </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div className="bg-white p-3 rounded-xl border border-slate-200">
                       <span className="text-[10px] uppercase font-bold text-slate-400 block">Viáticos</span>
                       <span className="font-mono font-bold text-slate-800 text-sm">
@@ -859,12 +859,20 @@ export default function ModalFirmasAprobacion({
                         {formatearMonedaLocal(solicitudDetalle?.montoGastosViaje || 0)}
                       </span>
                     </div>
+                    <div className="bg-white p-3 rounded-xl border border-slate-200">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Tiquetes Aéreos</span>
+                      <span className="font-mono font-bold text-sky-800 text-sm">
+                        {formatearMonedaLocal(solicitudDetalle?.costoEstimadoTiquete || 0)}
+                      </span>
+                    </div>
                     <div className="bg-white p-3 rounded-xl border border-emerald-200 bg-emerald-50/30">
-                      <span className="text-[10px] uppercase font-bold text-emerald-700 block">Monto Total Estimado</span>
+                      <span className="text-[10px] uppercase font-bold text-emerald-700 block">Monto Total Consolidado</span>
                       <span className="font-mono font-black text-emerald-700 text-base">
                         {formatearMonedaLocal(
-                          (Number(solicitudDetalle?.montoViaticos) || 0) +
-                            (Number(solicitudDetalle?.montoGastosViaje) || 0) ||
+                          (Number(solicitudDetalle?.montoTotal) || 0) ||
+                            (Number(solicitudDetalle?.montoViaticos) || 0) +
+                              (Number(solicitudDetalle?.montoGastosViaje) || 0) +
+                              (Number(solicitudDetalle?.costoEstimadoTiquete) || 0) ||
                             (Number(solicitudDetalle?.montoTotalEstimado) || 0),
                         )}
                       </span>

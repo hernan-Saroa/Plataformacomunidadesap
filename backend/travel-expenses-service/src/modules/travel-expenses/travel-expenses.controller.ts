@@ -118,7 +118,7 @@ export class TravelExpensesController {
   private readonly logger = new Logger(TravelExpensesController.name);
   constructor(private readonly service: TravelExpensesService) {}
 
-  @Get('solicitudes')
+  @Get(['solicitudes', 'api/v1/solicitudes', 'requests/comisionado', 'api/v1/requests/comisionado'])
   @Header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
   @Header('Pragma', 'no-cache')
   @Header('Expires', '0')
@@ -126,6 +126,7 @@ export class TravelExpensesController {
     @Req() req: AuthenticatedRequest,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('soloComisionado') soloComisionado?: string,
   ) {
     const usuarioId = req.user?.userId;
     const rawRoles = Array.isArray(req.user?.roles) ? req.user.roles : [];
@@ -213,6 +214,7 @@ export class TravelExpensesController {
 
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
+    const forzarSoloComisionado = soloComisionado === 'true' || soloComisionado === '1';
     const result = await this.service.obtenerSolicitudes(
       usuarioId,
       superAdmin,
@@ -224,6 +226,7 @@ export class TravelExpensesController {
       isTesoreria,
       isSst,
       isComisionado,
+      forzarSoloComisionado,
     );
     return {
       data: result.data,
@@ -299,8 +302,36 @@ export class TravelExpensesController {
     status: HttpStatus.NOT_FOUND,
     description: 'No se encontró el funcionario en ninguna base de datos.',
   })
-  consultarComisionado(@Param('documento') documento: string) {
-    return this.service.consultarComisionado(documento);
+  async consultarComisionado(@Param('documento') documento: string) {
+    const comisionado = await this.service.consultarComisionado(documento);
+    let estadoUsuario = {
+      esUsuario: false,
+      usuarioId: null as string | null,
+      rolesUsuario: [] as string[],
+      idPersona: null as string | null,
+      tieneRolComisionado: false,
+    };
+    try {
+      estadoUsuario = await this.service.identificarUsuarioComisionado(
+        comisionado?.numeroDocumento || documento,
+        comisionado?.email,
+      );
+    } catch {
+      // Si la consulta en auth falla o no está disponible, continuar con los datos del comisionado
+    }
+    return {
+      ...comisionado,
+      ...estadoUsuario,
+    };
+  }
+
+  @Get('comisionados/estado-usuario/:documento')
+  @Public()
+  @ApiOperation({
+    summary: 'Verificar si un comisionado ya tiene usuario y roles en auth-service',
+  })
+  identificarUsuarioComisionado(@Param('documento') documento: string) {
+    return this.service.identificarUsuarioComisionado(documento);
   }
 
   @Post('comisionados/:documento/cuentas-bancarias')
@@ -607,6 +638,10 @@ export class TravelExpensesController {
     'travel_expenses:view_assigned_requests',
     'travel_expenses:double_check_request',
     'travel_expenses:read_siif_requested',
+    'travel_expenses:process_payment',
+    'travel_expenses:register_payment',
+    'travel_expenses.general.es_tesoreria',
+    'travel_expenses.general.es_presupuesto',
   )
   solicitarOtpFirma(
     @Param('id') id: string,
@@ -630,6 +665,10 @@ export class TravelExpensesController {
     'travel_expenses:view_assigned_requests',
     'travel_expenses:double_check_request',
     'travel_expenses:read_siif_requested',
+    'travel_expenses:process_payment',
+    'travel_expenses:register_payment',
+    'travel_expenses.general.es_tesoreria',
+    'travel_expenses.general.es_presupuesto',
   )
   verificarOtpFirma(
     @Param('id') id: string,
@@ -2031,7 +2070,14 @@ export class TravelExpensesController {
     'api/v1/requests/:id/desembolso',
   ])
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions('travel_expenses:process_payment', 'travel_expenses:register_payment', 'travel_expenses:create_obligation', 'travel_expenses:verify_request')
+  @Permissions(
+    'travel_expenses:process_payment',
+    'travel_expenses:register_payment',
+    'travel_expenses:create_obligation',
+    'travel_expenses:verify_request',
+    'travel_expenses:sign_approval',
+    'travel_expenses.general.es_tesoreria',
+  )
   @ApiTags('tesoreria')
   @ApiOperation({
     summary: 'Procesar desembolso y pago de comisión (Etapa 8 — RF-PAG-003)',

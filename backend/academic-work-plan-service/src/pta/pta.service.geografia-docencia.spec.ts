@@ -13,6 +13,16 @@ describe('territorialidad exclusiva de Docencia', () => {
       findOne: jest.fn(async ({ where }: any) => structuredClone([...rows.values()].find(row => matches(row, where)) || null)),
       exists: jest.fn(async ({ where }: any) => [...rows.values()].some(row => matches(row, where))),
       create: jest.fn((value: any) => ({ id: `row-${++nextId}`, ...value })),
+      update: jest.fn(async (where: any, changes: any) => {
+        for (const [id, row] of rows) if (matches(row, where)) {
+          const patch = { ...changes };
+          if (typeof patch.datosEstructurados === 'function') {
+            patch.datosEstructurados = { ...row.datosEstructurados, complementarias_flujo_version:
+              row.datosEstructurados?.complementarias_flujo_version || 'programa_responsable_v1' };
+          }
+          rows.set(id, { ...row, ...patch });
+        }
+      }),
       save: jest.fn(async (value: any) => {
         for (const row of Array.isArray(value) ? value : [value]) rows.set(row.id, structuredClone(row));
         return structuredClone(value);
@@ -55,11 +65,12 @@ describe('territorialidad exclusiva de Docencia', () => {
     service.resolveTerritorialIdsNoCentrales = jest.fn().mockResolvedValue(new Set());
     service.resolveNombrePorSeccionalId = jest.fn().mockResolvedValue(new Map());
     service.getCatalogoActividadesComplementarias = jest.fn().mockResolvedValue(componente === 'complementarias' ? [] : [{
-      id: 'ACT', tipo_aprobacion: componente === 'complementarias_territorial' ? 'decanatura' : 'gestion_profesoral',
+      id: 'ACT', tipo_aprobacion: componente === 'complementarias_territorial' ? 'territorial'
+        : componente === 'complementarias_decanatura' ? 'decanatura' : 'gestion_profesoral',
       nivel_programa: componente === 'complementarias_posgrado' ? 'posgrado'
-        : ['complementarias_pregrado', 'complementarias_territorial'].includes(componente) ? 'pregrado' : null,
+        : componente === 'complementarias_pregrado' ? 'pregrado' : null,
     }]);
-    service.getCatalogoActividadesAcademicoAdmin = jest.fn().mockResolvedValue([]);
+    service.getCatalogoActividadesAcademicoAdmin = service.getCatalogoActividadesComplementarias;
     service.logEvento = jest.fn();
     service.syncResolucionProyectoInvestigacion = jest.fn();
     service.syncPtaSeguimientoEstado = jest.fn();

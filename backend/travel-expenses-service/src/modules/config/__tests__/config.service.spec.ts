@@ -9,6 +9,7 @@ import {
 import { ConfigTipoComisionadoEntity } from '../../../entities/config/config-tipo-comisionado.entity';
 import { TipoDocumentoSoporteEntity } from '../../../entities/config/tipo-documento-soporte.entity';
 import { ConfigTipoComisionadoDocumentoEntity } from '../../../entities/config/config-tipo-comisionado-documento.entity';
+import { ConfigJornadaLaboralEntity } from '../../../entities/config/config-jornada-laboral.entity';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { CreateCampoFormularioDto } from '../../../dto/config/campo-formulario.dto';
@@ -44,6 +45,15 @@ describe('ConfigService — Gestión de Campos Dinámicos y Parametrización', (
     save: jest.fn(),
   };
 
+  const mockJornadaRepo = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
 
@@ -54,6 +64,7 @@ describe('ConfigService — Gestión de Campos Dinámicos y Parametrización', (
         { provide: getRepositoryToken(ConfigTipoComisionadoEntity), useValue: mockConfigRepo },
         { provide: getRepositoryToken(TipoDocumentoSoporteEntity), useValue: mockTipoDocRepo },
         { provide: getRepositoryToken(ConfigTipoComisionadoDocumentoEntity), useValue: mockConfigDocRepo },
+        { provide: getRepositoryToken(ConfigJornadaLaboralEntity), useValue: mockJornadaRepo },
       ],
     }).compile();
 
@@ -179,6 +190,35 @@ describe('ConfigService — Gestión de Campos Dinámicos y Parametrización', (
       });
 
       expect(resultado.orden).toBe(2);
+    });
+
+    it('debe permitir actualizar el límite de caracteres configurable', async () => {
+      const campoExistente: CampoFormularioEntity = {
+        id: 'uuid-4',
+        clave: 'justificacion',
+        etiqueta: 'Justificación',
+        tipoCampo: TipoCampoFormulario.TEXTAREA,
+        placeholder: null,
+        opciones: null,
+        grupo: GrupoCampoFormulario.COMISION,
+        orden: 1,
+        activo: true,
+        limiteCaracteres: 250,
+        creadoEn: new Date(),
+        actualizadoEn: new Date(),
+      };
+
+      mockCampoRepo.findOne.mockResolvedValue({ ...campoExistente });
+      mockCampoRepo.save.mockImplementation((ent) => Promise.resolve(ent));
+
+      const resultado = await service.actualizarCampoFormulario('justificacion', {
+        limiteCaracteres: 500,
+      });
+
+      expect(resultado.limiteCaracteres).toBe(500);
+      expect(mockCampoRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ clave: 'justificacion', limiteCaracteres: 500 }),
+      );
     });
 
     it('debe lanzar NotFoundException si el campo a actualizar no existe', async () => {

@@ -59,7 +59,8 @@ import {
   TipoTransporteTiquete,
   TarifaEstimadaResult,
 } from '../types/viaticos';
-import { ConfigTipoComisionado, CampoFormulario } from '../types/parametrizacion';
+import { ConfigTipoComisionado, CampoFormulario, ConfigJornadaLaboral } from '../types/parametrizacion';
+import { obtenerJornadaLaboralActiva } from '../utils/diasHabilesUtils';
 import viaticosService from '../services/api/viaticosService';
 import { authService } from '../services/api/authService';
 import SearchableSelect, { SearchableSelectOption } from './SearchableSelect';
@@ -197,10 +198,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   const { festivos } = useFestivos();
   // Historial de cuentas bancarias y selección
   const [cuentaBancariaSeleccionadaId, setCuentaBancariaSeleccionadaId] = useState<string>('');
+  const [configJornada, setConfigJornada] = useState<ConfigJornadaLaboral | null>(null);
   const [alertaAnticipacion, setAlertaAnticipacion] = useState<{
     extemporanea: boolean;
     diasHabiles: number;
     radicadoFueraJornada: boolean;
+    anticipacionMinimaRequerida?: number;
+    horaCorteAplicada?: string;
   } | null>(null);
   const [alertaSolapamiento, setAlertaSolapamiento] = useState<{
     mensaje: string;
@@ -996,6 +1000,37 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     return parametrizacion.camposOcultos.includes(clave);
   };
 
+  const obtenerLimiteCampo = (clave: string): number => {
+    const definido = camposCatalogo.find((c) => c.clave === clave);
+    if (definido?.limiteCaracteres !== undefined && definido?.limiteCaracteres !== null && definido.limiteCaracteres > 0) {
+      return definido.limiteCaracteres;
+    }
+    return 250;
+  };
+
+  const renderContadorCaracteres = (valor: string | undefined | null, limite: number) => {
+    const longitud = (valor || '').length;
+    const esCritico = longitud >= limite;
+    const esCercano = longitud >= limite * 0.85;
+
+    return (
+      <div className="flex items-center justify-between text-[10px] mt-1">
+        <span
+          className={`font-mono transition-colors ${
+            esCritico ? 'text-red-600 font-bold' : esCercano ? 'text-amber-600 font-semibold' : 'text-slate-400'
+          }`}
+        >
+          {longitud} / {limite} car.
+        </span>
+        {esCritico && (
+          <span className="text-[10px] text-red-600 font-bold flex items-center gap-0.5">
+            Límite alcanzado
+          </span>
+        )}
+      </div>
+    );
+  };
+
   const actualizarAsignacionBasica = (indice: number, valor: number) => {
     setAsignacionesBasicas((prev) => {
       const nueva = [...prev];
@@ -1331,17 +1366,25 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
   );
 
   useEffect(() => {
+    void obtenerJornadaLaboralActiva().then((cfg) => {
+      setConfigJornada(cfg);
+    });
+  }, []);
+
+  useEffect(() => {
     if (paso === PASOS.length && form.fechaInicio) {
-      const validacion = validarAnticipacionRadicacion(form.fechaInicio, festivos);
+      const validacion = validarAnticipacionRadicacion(form.fechaInicio, festivos, configJornada);
       setAlertaAnticipacion({
         extemporanea: validacion?.extemporanea ?? false,
         diasHabiles: validacion?.diasHabiles ?? 0,
         radicadoFueraJornada: validacion?.radicadoFueraJornada ?? false,
+        anticipacionMinimaRequerida: validacion?.anticipacionMinimaRequerida ?? 14,
+        horaCorteAplicada: validacion?.horaCorteAplicada ?? '16:30',
       });
     } else {
       setAlertaAnticipacion(null);
     }
-  }, [paso, form.fechaInicio, festivos]);
+  }, [paso, form.fechaInicio, festivos, configJornada]);
 
   useEffect(() => {
     if (form.fechaInicio && form.fechaFin) {
@@ -1520,6 +1563,33 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     return null;
   };
 
+  const validarLimitesDeCaracteres = (): string | null => {
+    const limiteObjeto = obtenerLimiteCampo('objetoComision');
+    if (form.objetoComision && form.objetoComision.length > limiteObjeto) {
+      return `El objeto de la comisión supera el límite de ${limiteObjeto} caracteres (actual: ${form.objetoComision.length}).`;
+    }
+    const limiteRubro = obtenerLimiteCampo('rubroPresupuestal');
+    if (form.rubroPresupuestal && form.rubroPresupuestal.length > limiteRubro) {
+      return `El rubro presupuestal supera el límite de ${limiteRubro} caracteres (actual: ${form.rubroPresupuestal.length}).`;
+    }
+    const limiteCdp = obtenerLimiteCampo('numeroCdp');
+    if (form.numeroCdp && form.numeroCdp.length > limiteCdp) {
+      return `El número de CDP supera el límite de ${limiteCdp} caracteres (actual: ${form.numeroCdp.length}).`;
+    }
+
+    for (const campo of camposCatalogo) {
+      if (!campo.activo || camposEstandar.has(campo.clave) || esCampoOculto(campo.clave)) continue;
+      const val = form.camposAdicionales?.[campo.clave];
+      if (typeof val === 'string' && val.length > 0) {
+        const limite = campo.limiteCaracteres && campo.limiteCaracteres > 0 ? campo.limiteCaracteres : 250;
+        if (val.length > limite) {
+          return `El campo "${campo.etiqueta}" supera el límite de ${limite} caracteres (actual: ${val.length}).`;
+        }
+      }
+    }
+    return null;
+  };
+
   const irPaso = (siguiente: number) => {
     if (siguiente === 2 && !tieneComisionadoAutorizado) return;
     if (siguiente === 3) {
@@ -1561,6 +1631,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       const errCamposDinamicos = validarCamposDinamicosObligatorios();
       if (errCamposDinamicos) {
         setErrorValidacion(errCamposDinamicos);
+        return;
+      }
+      const errLimites = validarLimitesDeCaracteres();
+      if (errLimites) {
+        setErrorValidacion(errLimites);
         return;
       }
       if (comisionado && parametrizacion) {
@@ -1619,6 +1694,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     const errCamposDinamicos = validarCamposDinamicosObligatorios();
     if (errCamposDinamicos) {
       setErrorValidacion(errCamposDinamicos);
+      return;
+    }
+    const errLimites = validarLimitesDeCaracteres();
+    if (errLimites) {
+      setErrorValidacion(errLimites);
       return;
     }
 
@@ -2555,12 +2635,33 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         </p>
                       </div>
                     </div>
-                    {infoComisionadoCompleta.origen && (
-                      <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
-                        <BadgeCheck className="w-3.5 h-3.5 text-emerald-600" />
-                        Verificado {infoComisionadoCompleta.origen === 'HUMANO' ? 'Talento Humano' : infoComisionadoCompleta.origen}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {infoComisionadoCompleta.origen && (
+                        <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 inline-flex items-center gap-1">
+                          <BadgeCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          Verificado {infoComisionadoCompleta.origen === 'HUMANO' ? 'Talento Humano' : infoComisionadoCompleta.origen}
+                        </span>
+                      )}
+                      {comisionado?.esUsuario ? (
+                        <span
+                          className="text-xs font-bold px-3 py-1 rounded-full bg-blue-100 text-blue-800 border border-blue-300 inline-flex items-center gap-1"
+                          title={comisionado.rolesUsuario && comisionado.rolesUsuario.length > 0 ? `Roles actuales: ${comisionado.rolesUsuario.join(', ')}` : 'Usuario registrado en ESAP'}
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+                          {comisionado.tieneRolComisionado
+                            ? 'Usuario Comisionado Activo'
+                            : 'Usuario ESAP (se asignará rol Comisionado)'}
+                        </span>
+                      ) : (
+                        <span
+                          className="text-xs font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300 inline-flex items-center gap-1"
+                          title="Se registrará su usuario en el servicio de autenticación con rol Comisionado al crear la solicitud"
+                        >
+                          <User className="w-3.5 h-3.5 text-amber-600" />
+                          Usuario nuevo (se creará cuenta automáticamente)
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs sm:text-sm">
@@ -3300,60 +3401,75 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   </h5>
                 </div>
 
-                {!esCampoOculto('objetoComision') && (
-                  <div>
-                    <label className={labelCls} htmlFor="objetoComision">
-                      {renderLabel('objetoComision', 'Objeto / Justificación de la comisión')}
-                    </label>
-                    <textarea
-                      id="objetoComision"
-                      required={esCampoObligatorio('objetoComision')}
-                      rows={3}
-                      placeholder="Describa el objetivo institucional de la comisión..."
-                      value={form.objetoComision}
-                      onChange={(e) => actualizar('objetoComision', sanitizeObjetoComision(e.target.value))}
-                      className={inputCls}
-                    />
-                    <p className="text-[11px] text-amber-600 font-medium mt-1 flex items-start gap-1">
-                      <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                      {AYUDA_OBJETO_SIIF}
-                    </p>
-                  </div>
-                )}
+                {!esCampoOculto('objetoComision') && (() => {
+                  const limiteObjeto = obtenerLimiteCampo('objetoComision');
+                  return (
+                    <div>
+                      <label className={labelCls} htmlFor="objetoComision">
+                        {renderLabel('objetoComision', 'Objeto / Justificación de la comisión')}
+                      </label>
+                      <textarea
+                        id="objetoComision"
+                        required={esCampoObligatorio('objetoComision')}
+                        rows={3}
+                        maxLength={limiteObjeto}
+                        placeholder="Describa el objetivo institucional de la comisión..."
+                        value={form.objetoComision}
+                        onChange={(e) => actualizar('objetoComision', sanitizeObjetoComision(e.target.value, limiteObjeto))}
+                        className={inputCls}
+                      />
+                      {renderContadorCaracteres(form.objetoComision, limiteObjeto)}
+                      <p className="text-[11px] text-amber-600 font-medium mt-1 flex items-start gap-1">
+                        <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                        {AYUDA_OBJETO_SIIF}
+                      </p>
+                    </div>
+                  );
+                })()}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {!esCampoOculto('rubroPresupuestal') && (
-                    <div>
-                      <label className={labelCls} htmlFor="rubroPresupuestal">
-                        {renderLabel('rubroPresupuestal', 'Rubro Presupuestal')}
-                      </label>
-                      <input
-                        id="rubroPresupuestal"
-                        type="text"
-                        required={esCampoObligatorio('rubroPresupuestal')}
-                        placeholder="Ej. Rubro 01"
-                        value={form.rubroPresupuestal}
-                        onChange={(e) => actualizar('rubroPresupuestal', e.target.value)}
-                        className={inputCls}
-                      />
-                    </div>
-                  )}
-                  {!esCampoOculto('numeroCdp') && (
-                    <div>
-                      <label className={labelCls} htmlFor="numeroCdp">
-                        {renderLabel('numeroCdp', 'Número de CDP')}
-                      </label>
-                      <input
-                        id="numeroCdp"
-                        type="text"
-                        required={esCampoObligatorio('numeroCdp')}
-                        placeholder="Ej. CDP-2026-00123"
-                        value={form.numeroCdp || ''}
-                        onChange={(e) => actualizar('numeroCdp', e.target.value)}
-                        className={inputCls}
-                      />
-                    </div>
-                  )}
+                  {!esCampoOculto('rubroPresupuestal') && (() => {
+                    const limiteRubro = obtenerLimiteCampo('rubroPresupuestal');
+                    return (
+                      <div>
+                        <label className={labelCls} htmlFor="rubroPresupuestal">
+                          {renderLabel('rubroPresupuestal', 'Rubro Presupuestal')}
+                        </label>
+                        <input
+                          id="rubroPresupuestal"
+                          type="text"
+                          maxLength={limiteRubro}
+                          required={esCampoObligatorio('rubroPresupuestal')}
+                          placeholder="Ej. Rubro 01"
+                          value={form.rubroPresupuestal}
+                          onChange={(e) => actualizar('rubroPresupuestal', e.target.value)}
+                          className={inputCls}
+                        />
+                        {renderContadorCaracteres(form.rubroPresupuestal, limiteRubro)}
+                      </div>
+                    );
+                  })()}
+                  {!esCampoOculto('numeroCdp') && (() => {
+                    const limiteCdp = obtenerLimiteCampo('numeroCdp');
+                    return (
+                      <div>
+                        <label className={labelCls} htmlFor="numeroCdp">
+                          {renderLabel('numeroCdp', 'Número de CDP')}
+                        </label>
+                        <input
+                          id="numeroCdp"
+                          type="text"
+                          maxLength={limiteCdp}
+                          required={esCampoObligatorio('numeroCdp')}
+                          placeholder="Ej. CDP-2026-00123"
+                          value={form.numeroCdp || ''}
+                          onChange={(e) => actualizar('numeroCdp', e.target.value)}
+                          className={inputCls}
+                        />
+                        {renderContadorCaracteres(form.numeroCdp, limiteCdp)}
+                      </div>
+                    );
+                  })()}
                   {!esCampoOculto('fechaCdp') && (
                     <div>
                       <label className={labelCls} htmlFor="fechaCdp">
@@ -3526,6 +3642,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                           }
 
                           if (campo.tipoCampo === 'TEXTAREA') {
+                            const limiteTextarea = campo.limiteCaracteres && campo.limiteCaracteres > 0 ? campo.limiteCaracteres : 250;
                             return (
                               <div key={campo.clave} className="col-span-1 sm:col-span-2">
                                 <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
@@ -3535,11 +3652,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                   id={`campo_${campo.clave}`}
                                   required={obligatorio}
                                   rows={2}
+                                  maxLength={limiteTextarea}
                                   placeholder={campo.placeholder || (campo as any).ayuda || ''}
                                   value={String(valorActual)}
                                   onChange={(e) => actualizarCampoAdicional(campo.clave, e.target.value)}
                                   className={inputCls}
                                 />
+                                {renderContadorCaracteres(String(valorActual), limiteTextarea)}
                               </div>
                             );
                           }
@@ -3599,6 +3718,9 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                             campo.clave === 'entidad_bancaria' ||
                             campo.clave === 'banco';
 
+                          const limiteInput = campo.limiteCaracteres && campo.limiteCaracteres > 0 ? campo.limiteCaracteres : 250;
+                          const esTipoTexto = !campo.tipoCampo || campo.tipoCampo === 'TEXT' || campo.tipoCampo === 'EMAIL' || campo.tipoCampo === 'NUMBER';
+
                           return (
                             <div key={campo.clave}>
                               <label className={labelCls} htmlFor={`campo_${campo.clave}`}>
@@ -3609,6 +3731,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                 type={campo.tipoCampo === 'DATE' ? 'date' : 'text'}
                                 list={esCampoBanco ? 'bancos-colombia-list' : undefined}
                                 required={obligatorio}
+                                maxLength={esTipoTexto ? limiteInput : undefined}
                                 placeholder={campo.placeholder || (campo as any).ayuda || ''}
                                 value={campo.tipoCampo === 'CURRENCY' && typeof valorActual === 'number' ? formatearMoneda(valorActual) : String(valorActual)}
                                 onChange={(e) => {
@@ -3617,6 +3740,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                                 }}
                                 className={inputCls}
                               />
+                              {esTipoTexto && renderContadorCaracteres(String(valorActual), limiteInput)}
                               {esCampoBanco && (
                                 <datalist id="bancos-colombia-list">
                                   {LISTA_BANCOS_COLOMBIA.map((b) => (
@@ -4623,12 +4747,13 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                 <div className="space-y-2">
                   {alertaAnticipacion.extemporanea && (
                     <p className="text-xs text-red-700 font-semibold bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                      La solicitud se radicará como <strong>Comisión Extemporánea</strong> porque faltan menos de 14 días hábiles para el inicio ({alertaAnticipacion.diasHabiles} días hábiles).
+                      La solicitud se radicará como <strong>Comisión Extemporánea</strong> porque faltan menos de{' '}
+                      {alertaAnticipacion.anticipacionMinimaRequerida || 14} días hábiles para el inicio ({alertaAnticipacion.diasHabiles} días hábiles).
                     </p>
                   )}
                   {alertaAnticipacion.radicadoFueraJornada && (
                     <p className="text-xs text-amber-700 font-semibold bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                      Radicación fuera de horario laboral: el trámite iniciará formalmente el siguiente día hábil.
+                      Radicación fuera de horario laboral{alertaAnticipacion.horaCorteAplicada ? ` (jornada hasta las ${alertaAnticipacion.horaCorteAplicada} h)` : ''}: el trámite iniciará formalmente el siguiente día hábil.
                     </p>
                   )}
                 </div>

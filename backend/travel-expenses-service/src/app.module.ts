@@ -18,6 +18,7 @@ import { CampoFormularioEntity } from './entities/config/campo-formulario.entity
 import { ConfigTipoComisionadoEntity } from './entities/config/config-tipo-comisionado.entity';
 import { TipoDocumentoSoporteEntity } from './entities/config/tipo-documento-soporte.entity';
 import { ConfigTipoComisionadoDocumentoEntity } from './entities/config/config-tipo-comisionado-documento.entity';
+import { ConfigJornadaLaboralEntity } from './entities/config/config-jornada-laboral.entity';
 import { EscalaViaticoEntity } from './entities/liquidation/escala-viatico.entity';
 import { TarifaInvestigadorEntity } from './entities/liquidation/tarifa-investigador.entity';
 import { TarifaRegionalExcepcionEntity } from './entities/liquidation/tarifa-regional-excepcion.entity';
@@ -64,6 +65,7 @@ import { PazYSalvoModule } from './modules/paz-y-salvo/paz-y-salvo.module';
         ConfigTipoComisionadoEntity,
         TipoDocumentoSoporteEntity,
         ConfigTipoComisionadoDocumentoEntity,
+        ConfigJornadaLaboralEntity,
         EscalaViaticoEntity,
         TarifaInvestigadorEntity,
         TarifaRegionalExcepcionEntity,

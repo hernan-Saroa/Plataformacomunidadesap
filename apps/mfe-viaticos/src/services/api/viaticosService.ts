@@ -87,6 +87,9 @@ import {
   TarifaRegionalExcepcion,
   TarifaTransporteTerminal,
   LiquidationParam,
+  ConfigJornadaLaboral,
+  CrearConfigJornadaLaboralDTO,
+  ActualizarConfigJornadaLaboralDTO,
 } from '../../types/parametrizacion';
 import { fallbackGeopolitica, formatearNombreComisionado } from '../../utils/viaticosUtils';
 
@@ -269,6 +272,11 @@ export class ViaticosService {
   public mapearSolicitudLista(s: SolicitudListaResponse): SolicitudViatico {
     const montoViaticos = Number(s.montoViaticos || 0);
     const montoGastosViaje = Number(s.montoGastosViaje || 0);
+    const costoEstimadoTiquete = Number(s.costoEstimadoTiquete || (s as any).montoEstimadoTiquete || 0);
+    const montoTotal = Number(
+      s.montoTotal ??
+      (montoViaticos + montoGastosViaje + costoEstimadoTiquete)
+    );
     const idDep = (s as any).idDependencia ?? s.comisionado?.idDependencia ?? null;
     const depNombre = this.resolverNombreDependencia(s);
     return {
@@ -291,9 +299,13 @@ export class ViaticosService {
       tipoComision: 'SERVICIOS_INSTITUCIONALES',
       medioTransporte: s.requiereTiquetes ? 'AEREO' : 'TERRESTRE',
       justificacion: s.objetoComision,
+      montoViaticos,
+      montoGastosViaje,
+      costoEstimadoTiquete,
+      montoTotal,
       montoSolicitadoViaticos: montoViaticos,
       montoSolicitadoGastosViaje: montoGastosViaje,
-      montoTotalEstimado: montoViaticos + montoGastosViaje,
+      montoTotalEstimado: montoTotal,
       estado: (s.estadoSolicitud || 'RADICADA') as EstadoSolicitudViatico,
       extemporanea: Boolean(s.extemporanea),
       radicadoFueraJornada: Boolean(s.radicadoFueraJornada),
@@ -347,6 +359,26 @@ export class ViaticosService {
       return { solicitudes, esSuperAdmin };
     } catch (error) {
       console.error('[viaticos] obtenerSolicitudes error=', error);
+      return { solicitudes: [], esSuperAdmin: false };
+    }
+  }
+
+  /**
+   * Obtiene exclusivamente las solicitudes creadas a nombre del funcionario comisionado
+   * autenticado. Invoca el endpoint filtrando por el comisionado.
+   */
+  async obtenerSolicitudesComisionado(): Promise<{ solicitudes: SolicitudViatico[]; esSuperAdmin: boolean }> {
+    try {
+      await this.cargarDependenciasCache();
+      const timestamp = Date.now();
+      const response = await apiClient.get<unknown>(
+        `/viaticos/api/v1/solicitudes?soloComisionado=true&t=${timestamp}`,
+      );
+      const { data, esSuperAdmin } = extraerSolicitudes(response);
+      const solicitudes = data.map((item) => this.mapearSolicitudLista(item));
+      return { solicitudes, esSuperAdmin };
+    } catch (error) {
+      console.error('[viaticos] obtenerSolicitudesComisionado error=', error);
       return { solicitudes: [], esSuperAdmin: false };
     }
   }
@@ -713,6 +745,64 @@ export class ViaticosService {
       return await apiClient.put<ConfigTipoComisionado>(`/viaticos/api/v1/parametrizacion/config-tipo-comisionado/${encodeURIComponent(tipo)}`, dto);
     } catch (error) {
       console.error('Error actualizando configuración de tipo comisionado:', error);
+      throw error;
+    }
+  }
+
+  // ==================== JORNADA LABORAL Y DÍAS HÁBILES ====================
+
+  async obtenerConfiguracionesJornada(): Promise<ConfigJornadaLaboral[]> {
+    try {
+      const res = await apiClient.get<ConfigJornadaLaboral[]>('/viaticos/api/v1/parametrizacion/jornada-laboral');
+      return Array.isArray(res) ? res : (res as any)?.data || [];
+    } catch (error) {
+      console.error('Error obteniendo configuraciones de jornada laboral:', error);
+      return [];
+    }
+  }
+
+  async obtenerJornadaLaboralActiva(): Promise<ConfigJornadaLaboral | null> {
+    try {
+      const res = await apiClient.get<ConfigJornadaLaboral>('/viaticos/api/v1/parametrizacion/jornada-laboral/activa');
+      return res || null;
+    } catch (error) {
+      console.warn('Error obteniendo jornada laboral activa, usando fallback local:', error);
+      return null;
+    }
+  }
+
+  async crearConfigJornada(dto: CrearConfigJornadaLaboralDTO): Promise<ConfigJornadaLaboral> {
+    try {
+      return await apiClient.post<ConfigJornadaLaboral>('/viaticos/api/v1/parametrizacion/jornada-laboral', dto);
+    } catch (error) {
+      console.error('Error creando jornada laboral:', error);
+      throw error;
+    }
+  }
+
+  async actualizarConfigJornada(id: number, dto: ActualizarConfigJornadaLaboralDTO): Promise<ConfigJornadaLaboral> {
+    try {
+      return await apiClient.put<ConfigJornadaLaboral>(`/viaticos/api/v1/parametrizacion/jornada-laboral/${id}`, dto);
+    } catch (error) {
+      console.error('Error actualizando jornada laboral:', error);
+      throw error;
+    }
+  }
+
+  async activarConfigJornada(id: number): Promise<ConfigJornadaLaboral> {
+    try {
+      return await apiClient.put<ConfigJornadaLaboral>(`/viaticos/api/v1/parametrizacion/jornada-laboral/${id}/activar`, {});
+    } catch (error) {
+      console.error('Error activando jornada laboral:', error);
+      throw error;
+    }
+  }
+
+  async eliminarConfigJornada(id: number): Promise<{ success: boolean }> {
+    try {
+      return await apiClient.delete<{ success: boolean }>(`/viaticos/api/v1/parametrizacion/jornada-laboral/${id}`);
+    } catch (error) {
+      console.error('Error eliminando jornada laboral:', error);
       throw error;
     }
   }

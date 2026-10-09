@@ -5,15 +5,15 @@
  * en lectores de archivos planos.
  */
 
-export function sanitizeObjetoComision(texto: string): string {
+export function sanitizeObjetoComision(texto: string, maxLength?: number): string {
   if (!texto) return '';
-  return texto
+  const sanitized = texto
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/ñ/gi, 'n')
     .replace(/[^a-zA-Z0-9\s\-]/g, '')
-    .trim()
-    .slice(0, 250);
+    .trim();
+  return maxLength && maxLength > 0 ? sanitized.slice(0, maxLength) : sanitized;
 }
 
 /**

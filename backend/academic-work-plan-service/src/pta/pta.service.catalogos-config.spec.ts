@@ -15,6 +15,26 @@ const compSections = [
 ];
 
 describe('PtaService - catálogos derivados de la configuración', () => {
+  it.each(['gestion_profesoral', 'decanatura', 'territorial'])('conserva Programa y Aprueba=%s al guardar y leer ambas secciones', async tipo => {
+    const service = Object.create(PtaService.prototype) as any;
+    let stored = { id: 'pta_rules_v2', rules: {} as any };
+    service.configuracionRepo = {
+      findOne: jest.fn(async () => stored),
+      save: jest.fn(async (row: any) => { stored = structuredClone(row); return row; }),
+    };
+    service.notifyConfigChange = jest.fn().mockResolvedValue(undefined);
+    const activities = Object.fromEntries(compSections.map(section => [section.key,
+      [null, 'pregrado', 'posgrado'].map((nivel, index) => ({
+        id: `${section.key}-${index}`, nombre: `Bloque ${index}`, nivel_programa: nivel,
+        tipo_aprobacion: tipo, items: [{ nombre: 'Actividad conservada', tipo: 'hasta', horas: 40 }],
+      })),
+    ]));
+    const result = await service.saveConfiguracionPTAGlobal({ comp_secciones: compSections, comp_actividades_v2: activities });
+    expect(result._error).toBeUndefined();
+    expect(result.comp_actividades_v2).toEqual(activities);
+    expect((await service.getConfiguracionPTAGlobal()).comp_actividades_v2).toEqual(activities);
+  });
+
   it('rechaza en servidor el reordenamiento de columnas configuradas', async () => {
     const service = Object.create(PtaService.prototype) as any;
     const save = jest.fn();

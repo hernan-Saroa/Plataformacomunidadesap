@@ -260,7 +260,7 @@ export function ModalDetallesAsociacion({
             <Button
               variant="outline"
               onClick={onClose}
-              className="border-gray-200 text-gray-700 hover:bg-gray-50"
+              className="border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-gray-900"
             >
               Cerrar
             </Button>

@@ -65,7 +65,12 @@ export const AprobacionPorComponente: React.FC<PropsAprobacionPorComponente> = (
   estadoFirmas,
   cargandoFirmas = false,
 }) => {
-  const estado = solicitud.estado || (solicitud as any).estadoSolicitud || 'PENDIENTE_FIRMAS';
+  const estado =
+    solicitudCompleta?.estado ||
+    (solicitudCompleta as any)?.estadoSolicitud ||
+    solicitud.estado ||
+    (solicitud as any).estadoSolicitud ||
+    'PENDIENTE_FIRMAS';
   const esPendienteFirmas = estado === 'PENDIENTE_FIRMAS';
   const esDevuelta = estado === 'DEVUELTA';
 
@@ -164,241 +169,347 @@ export const AprobacionPorComponente: React.FC<PropsAprobacionPorComponente> = (
     certificado: firmaGerente?.certificadoId || null,
   });
 
-    const esExtemporanea = Boolean(
-      solicitud.extemporanea ||
-        (solicitud as any).estadoSolicitud === 'EXTEMPORANEA' ||
-        (solicitudCompleta as any)?.extemporanea ||
-        (solicitud as any).fechaAutorizacionDireccion ||
-        (solicitud as any).autorizadorDireccionId ||
-        estado === 'EXTEMPORANEA' ||
-        estado === 'AUTORIZACION_DIRECCION',
+  const firmaDirNac =
+    (solicitudCompleta?.camposAdicionales?.firmaDireccionNacional as any) ||
+    (solicitud as any)?.camposAdicionales?.firmaDireccionNacional ||
+    firmasRegistradas.find(
+      (f) =>
+        (f.tipo === 'DIRECCION_NACIONAL' ||
+          f.tipo === 'DIRECTOR_NACIONAL') &&
+        f.estado !== 'RECHAZADO',
     );
 
-    if (esPendienteFirmas) {
-      // Si aún está en PENDIENTE_FIRMAS, los pasos posteriores no aplican en esta fase previa
-      componentes.push(
-        {
-          id: 'revision_analista',
-          etiqueta: 'REVISIÓN — ANALISTA',
-          firmante: '—',
-          cargo: 'Analista de Viáticos',
-          estado: 'NO_APLICA',
-        },
-        {
-          id: 'control_cruzado',
-          etiqueta: 'CONTROL CRUZADO',
-          firmante: '—',
-          cargo: 'Control de Viáticos',
-          estado: 'NO_APLICA',
-        },
-      );
+  const esExtemporanea = Boolean(
+    solicitud.extemporanea ||
+      (solicitud as any).estadoSolicitud === 'EXTEMPORANEA' ||
+      (solicitudCompleta as any)?.extemporanea ||
+      (solicitudCompleta as any)?.estadoSolicitud === 'EXTEMPORANEA' ||
+      (solicitudCompleta as any)?.fechaAutorizacionDireccion ||
+      (solicitud as any)?.fechaAutorizacionDireccion ||
+      (solicitudCompleta as any)?.autorizadorDireccionId ||
+      (solicitud as any)?.autorizadorDireccionId ||
+      firmaDirNac ||
+      estado === 'EXTEMPORANEA' ||
+      estado === 'AUTORIZACION_DIRECCION',
+  );
 
-      if (esExtemporanea) {
-        componentes.push({
-          id: 'autorizacion_direccion',
-          etiqueta: 'AUTORIZACIÓN DIRECCIÓN',
-          firmante: '—',
-          cargo: 'Dirección Nacional (Aval Extemporáneo)',
-          estado: 'NO_APLICA',
-        });
-      }
-
-      componentes.push(
-        {
-          id: 'autorizacion_corporativa',
-          etiqueta: 'AUTORIZACIÓN CORPORATIVA',
-          firmante: '—',
-          cargo: 'Subdirección de Gestión Corporativa',
-          estado: 'NO_APLICA',
-        },
-        {
-          id: 'presupuesto_rp',
-          etiqueta: 'PRESUPUESTO — RP',
-          firmante: '—',
-          cargo: 'Profesional Presupuesto SIIF',
-          estado: 'NO_APLICA',
-        },
-        {
-          id: 'tesoreria_giro',
-          etiqueta: 'TESORERÍA — GIRO',
-          firmante: '—',
-          cargo: 'Profesional Tesorería SIIF',
-          estado: 'NO_APLICA',
-        },
-      );
-    } else {
-      // Si ya pasó las firmas de Jefe y Gerente y tiene estado RADICADA (o superior):
-      // Mostrar el resto de firmas del flujo según los avances del expediente
-
-      // 4. Analista de Viáticos
-      const etapasPostAnalista = [
-        'SOLICITADA_SIIF',
-        'VERIFICADA',
-        'EN_VERIFICACION',
-        'AUTORIZACION_DIRECCION',
-        'EN_AUTORIZACION',
-        'AUTORIZADA',
-        'EN_PRESUPUESTO',
-        'COMPROMETIDA',
-        'OBLIGADA',
-        'PAGADA',
-      ];
-      const analistaAprobado = Boolean(
-        firmaAnalista || etapasPostAnalista.includes(estado),
-      );
-      const nombreAnalista =
-        firmaAnalista?.nombreFirmante ||
-        (solicitudCompleta?.camposAdicionales?.reviso
-          ? String(solicitudCompleta.camposAdicionales.reviso).replace(/^Revisó:\s*/i, '')
-          : solicitud.analistaAsignadoId
-          ? `Analista (${solicitud.analistaAsignadoId})`
-          : '—');
-
-      componentes.push({
-        id: 'analista_viaticos',
+  if (esPendienteFirmas) {
+    // Si aún está en PENDIENTE_FIRMAS, los pasos posteriores no aplican en esta fase previa
+    componentes.push(
+      {
+        id: 'revision_analista',
         etiqueta: 'REVISIÓN — ANALISTA',
-        firmante: analistaAprobado ? nombreAnalista : '—',
+        firmante: '—',
         cargo: 'Analista de Viáticos',
-        estado: analistaAprobado
-          ? 'APROBADO'
-          : esDevuelta
-          ? 'DEVUELTO'
-          : 'PENDIENTE',
-        fecha: firmaAnalista?.fechaFirma || null,
-      });
-
-      // 5. Control Cruzado (Segunda Revisión)
-      const etapasPostControl = [
-        'VERIFICADA',
-        'AUTORIZACION_DIRECCION',
-        'EN_AUTORIZACION',
-        'AUTORIZADA',
-        'EN_PRESUPUESTO',
-        'COMPROMETIDA',
-        'OBLIGADA',
-        'PAGADA',
-      ];
-      const controlAprobado = Boolean(
-        solicitud.observacionesSegundaRevision ||
-          solicitud.fechaSegundaRevision ||
-          etapasPostControl.includes(estado),
-      );
-      const nombreControl =
-        solicitudCompleta?.revisorControlNombre ||
-        solicitud.revisorControlId ||
-        (controlAprobado ? 'Control Viáticos' : '—');
-
-      componentes.push({
+        estado: 'NO_APLICA',
+      },
+      {
         id: 'control_cruzado',
         etiqueta: 'CONTROL CRUZADO',
-        firmante: controlAprobado ? nombreControl : '—',
-        cargo: 'Verificación 2do Nivel',
-        estado: controlAprobado
-          ? 'APROBADO'
-          : estado === 'SOLICITADA_SIIF'
-          ? 'PENDIENTE'
-          : 'PENDIENTE',
-        fecha: solicitud.fechaSegundaRevision || null,
-        observaciones: solicitud.observacionesSegundaRevision || null,
+        firmante: '—',
+        cargo: 'Control de Viáticos',
+        estado: 'NO_APLICA',
+      },
+    );
+
+    if (esExtemporanea) {
+      componentes.push({
+        id: 'autorizacion_direccion',
+        etiqueta: 'AUTORIZACIÓN DIRECCIÓN',
+        firmante: '—',
+        cargo: 'Dirección Nacional (Aval Extemporáneo)',
+        estado: 'NO_APLICA',
       });
+    }
 
-      // Flujo de Autorización:
-      // Si es EXTEMPORÁNEA: primero firma Dirección Nacional (RF-AUT-002) y luego la Subdirección (RF-AUT-001)
-      // Si es de control cruzado / estado NORMAL: NO requiere intervención de Dirección Nacional, sigue directamente la Subdirección
-      if (esExtemporanea) {
-        const etapasPostDireccion = [
-          'EN_AUTORIZACION',
-          'AUTORIZADA',
-          'EN_PRESUPUESTO',
-          'COMPROMETIDA',
-          'OBLIGADA',
-          'PAGADA',
-        ];
-        const direccionAprobada = Boolean(
-          (solicitud as any).fechaAutorizacionDireccion ||
-            (solicitud as any).decisionDireccion === 'AUTORIZADO' ||
-            etapasPostDireccion.includes(estado),
-        );
-        const nombreDireccion =
-          (solicitudCompleta as any)?.autorizadorDireccion?.nombreCompleto ||
-          (solicitudCompleta as any)?.autorizadorDireccionNombre ||
-          (solicitud as any).autorizadorDireccionNombre ||
-          (solicitud as any).camposAdicionales?.firmaDireccionNacional?.nombreFirmante ||
-          (direccionAprobada ? 'Dirección Nacional' : '—');
+    componentes.push(
+      {
+        id: 'autorizacion_corporativa',
+        etiqueta: 'AUTORIZACIÓN CORPORATIVA',
+        firmante: '—',
+        cargo: 'Subdirección de Gestión Corporativa',
+        estado: 'NO_APLICA',
+      },
+      {
+        id: 'presupuesto_rp',
+        etiqueta: 'PRESUPUESTO — RP',
+        firmante: '—',
+        cargo: 'Profesional Presupuesto SIIF',
+        estado: 'NO_APLICA',
+      },
+      {
+        id: 'tesoreria_giro',
+        etiqueta: 'TESORERÍA — GIRO',
+        firmante: '—',
+        cargo: 'Profesional Tesorería SIIF',
+        estado: 'NO_APLICA',
+      },
+    );
+  } else {
+    // Si ya pasó las firmas de Jefe y Gerente y tiene estado RADICADA (o superior):
+    // Mostrar el resto de firmas del flujo según los avances del expediente
 
-        componentes.push({
-          id: 'autorizacion_direccion',
-          etiqueta: 'AUTORIZACIÓN DIRECCIÓN',
-          firmante: direccionAprobada ? nombreDireccion : '—',
-          cargo: 'Dirección Nacional (Aval Extemporáneo)',
-          estado: direccionAprobada
-            ? 'APROBADO'
-            : ['EXTEMPORANEA', 'AUTORIZACION_DIRECCION'].includes(estado)
-            ? 'PENDIENTE'
-            : 'PENDIENTE',
-          fecha: (solicitud as any).fechaAutorizacionDireccion || null,
-          observaciones:
-            (solicitud as any).justificacionDireccion ||
-            (solicitudCompleta as any)?.justificacionDireccion ||
-            null,
-        });
-      }
+    // 4. Analista de Viáticos
+    const etapasPostAnalista = [
+      'SOLICITADA_SIIF',
+      'VERIFICADA',
+      'EN_VERIFICACION',
+      'AUTORIZACION_DIRECCION',
+      'EN_AUTORIZACION',
+      'AUTORIZADA',
+      'EN_PRESUPUESTO',
+      'COMPROMETIDA',
+      'OBLIGADA',
+      'PAGADA',
+    ];
+    const analistaAprobado = Boolean(
+      firmaAnalista || etapasPostAnalista.includes(estado),
+    );
+    const nombreAnalista =
+      firmaAnalista?.nombreFirmante ||
+      (solicitudCompleta?.camposAdicionales?.reviso
+        ? String(solicitudCompleta.camposAdicionales.reviso).replace(/^Revisó:\s*/i, '')
+        : solicitud.analistaAsignadoId
+        ? `Analista (${solicitud.analistaAsignadoId})`
+        : '—');
 
-      // Autorización Corporativa — Subdirección de Gestión Corporativa (Ordenador del Gasto)
-      const etapasPostAutorizacion = [
+    componentes.push({
+      id: 'analista_viaticos',
+      etiqueta: 'REVISIÓN — ANALISTA',
+      firmante: analistaAprobado ? nombreAnalista : '—',
+      cargo: 'Analista de Viáticos',
+      estado: analistaAprobado
+        ? 'APROBADO'
+        : esDevuelta
+        ? 'DEVUELTO'
+        : 'PENDIENTE',
+      fecha: firmaAnalista?.fechaFirma || null,
+    });
+
+    // 5. Control Cruzado (Segunda Revisión)
+    const etapasPostControl = [
+      'VERIFICADA',
+      'AUTORIZACION_DIRECCION',
+      'EN_AUTORIZACION',
+      'AUTORIZADA',
+      'EN_PRESUPUESTO',
+      'COMPROMETIDA',
+      'OBLIGADA',
+      'PAGADA',
+    ];
+    const controlAprobado = Boolean(
+      solicitud.observacionesSegundaRevision ||
+        solicitud.fechaSegundaRevision ||
+        (solicitudCompleta as any)?.fechaSegundaRevision ||
+        (solicitudCompleta as any)?.observacionesSegundaRevision ||
+        etapasPostControl.includes(estado),
+    );
+    const nombreControl =
+      solicitudCompleta?.revisorControlNombre ||
+      solicitud.revisorControlId ||
+      (controlAprobado ? 'Control Viáticos' : '—');
+
+    componentes.push({
+      id: 'control_cruzado',
+      etiqueta: 'CONTROL CRUZADO',
+      firmante: controlAprobado ? nombreControl : '—',
+      cargo: 'Verificación 2do Nivel',
+      estado: controlAprobado
+        ? 'APROBADO'
+        : estado === 'SOLICITADA_SIIF'
+        ? 'PENDIENTE'
+        : 'PENDIENTE',
+      fecha: solicitud.fechaSegundaRevision || (solicitudCompleta as any)?.fechaSegundaRevision || null,
+      observaciones: solicitud.observacionesSegundaRevision || (solicitudCompleta as any)?.observacionesSegundaRevision || null,
+    });
+
+    // Flujo de Autorización:
+    // Si es EXTEMPORÁNEA: primero firma Dirección Nacional (RF-AUT-002) y luego la Subdirección (RF-AUT-001)
+    // Si es de control cruzado / estado NORMAL: NO requiere intervención de Dirección Nacional, sigue directamente la Subdirección
+    if (esExtemporanea) {
+      const etapasPostDireccion = [
+        'EN_AUTORIZACION',
         'AUTORIZADA',
         'EN_PRESUPUESTO',
         'COMPROMETIDA',
         'OBLIGADA',
         'PAGADA',
       ];
-      const autorizacionAprobada =
-        etapasPostAutorizacion.includes(estado) ||
-        Boolean((solicitud as any).fechaAutorizacion);
-      const nombreSubdirector =
-        (solicitudCompleta as any)?.autorizador?.nombreCompleto ||
-        (solicitudCompleta as any)?.autorizadorNombre ||
-        (solicitud as any).autorizadorNombre ||
-        (solicitud as any).camposAdicionales?.firmaSubdireccion?.nombreFirmante ||
-        (autorizacionAprobada ? 'Subdirección G.C.' : '—');
+      const decisionDir = String(
+        (solicitudCompleta as any)?.decisionDireccion ||
+          (solicitud as any)?.decisionDireccion ||
+          '',
+      ).toUpperCase();
+      const fechaDir =
+        (solicitudCompleta as any)?.fechaAutorizacionDireccion ||
+        (solicitud as any)?.fechaAutorizacionDireccion ||
+        firmaDirNac?.fechaFirma ||
+        null;
+      const certDir =
+        firmaDirNac?.certificadoId ||
+        (solicitudCompleta as any)?.camposAdicionales?.firmaDireccionNacional?.certificadoId ||
+        (solicitud as any)?.camposAdicionales?.firmaDireccionNacional?.certificadoId ||
+        null;
+
+      const direccionAprobada = Boolean(
+        fechaDir ||
+          certDir ||
+          firmaDirNac?.firmadoDigitalmente ||
+          decisionDir === 'AUTORIZADO' ||
+          decisionDir === 'AUTORIZADA' ||
+          decisionDir === 'APROBADO' ||
+          decisionDir === 'APROBADA' ||
+          (solicitudCompleta as any)?.autorizadorDireccionId ||
+          (solicitud as any)?.autorizadorDireccionId ||
+          etapasPostDireccion.includes(estado),
+      );
+      const nombreDireccion =
+        firmaDirNac?.nombreFirmante ||
+        (solicitudCompleta as any)?.autorizadorDireccion?.nombreCompleto ||
+        (solicitudCompleta as any)?.autorizadorDireccion?.nomLargo ||
+        (solicitudCompleta as any)?.autorizadorDireccionNombre ||
+        (solicitud as any)?.autorizadorDireccionNombre ||
+        (solicitudCompleta as any)?.camposAdicionales?.firmaDireccionNacional?.nombreFirmante ||
+        (solicitud as any)?.camposAdicionales?.firmaDireccionNacional?.nombreFirmante ||
+        (direccionAprobada ? 'Dirección Nacional' : '—');
 
       componentes.push({
-        id: 'autorizacion_corporativa',
-        etiqueta: 'AUTORIZACIÓN CORPORATIVA',
-        firmante: autorizacionAprobada ? nombreSubdirector : '—',
-        cargo: 'Subdirección de Gestión Corporativa (Ordenador del Gasto)',
-        estado: autorizacionAprobada
+        id: 'autorizacion_direccion',
+        etiqueta: 'AUTORIZACIÓN DIRECCIÓN',
+        firmante: direccionAprobada ? nombreDireccion : '—',
+        cargo: 'Dirección Nacional (Aval Extemporáneo)',
+        estado: direccionAprobada
           ? 'APROBADO'
-          : estado === 'EN_AUTORIZACION'
+          : ['EXTEMPORANEA', 'AUTORIZACION_DIRECCION'].includes(estado)
           ? 'PENDIENTE'
           : 'PENDIENTE',
-        fecha: (solicitud as any).fechaAutorizacion || null,
+        fecha: fechaDir,
+        certificado: certDir,
         observaciones:
-          (solicitud as any).observacionesAutorizacion ||
-          (solicitudCompleta as any)?.observacionesAutorizacion ||
+          (solicitudCompleta as any)?.justificacionDireccion ||
+          (solicitud as any)?.justificacionDireccion ||
           null,
       });
+    }
+
+    // Autorización Corporativa — Subdirección de Gestión Corporativa (Ordenador del Gasto)
+    const firmaSubdir =
+      (solicitudCompleta?.camposAdicionales?.firmaSubdireccion as any) ||
+      (solicitud as any)?.camposAdicionales?.firmaSubdireccion ||
+      firmasRegistradas.find(
+        (f) =>
+          (f.tipo === 'SUBDIRECCION' ||
+            f.tipo === 'SUBDIRECTOR' ||
+            f.tipo === 'SUBDIRECCION_GESTION_CORPORATIVA') &&
+          f.estado !== 'RECHAZADO',
+      );
+    const decisionSubdir = String(
+      (solicitudCompleta as any)?.decisionSubdireccion ||
+        (solicitud as any)?.decisionSubdireccion ||
+        '',
+    ).toUpperCase();
+    const fechaSubdir =
+      (solicitudCompleta as any)?.fechaAutorizacion ||
+      (solicitud as any)?.fechaAutorizacion ||
+      firmaSubdir?.fechaFirma ||
+      null;
+    const certSubdir =
+      firmaSubdir?.certificadoId ||
+      (solicitudCompleta as any)?.camposAdicionales?.firmaSubdireccion?.certificadoId ||
+      (solicitud as any)?.camposAdicionales?.firmaSubdireccion?.certificadoId ||
+      null;
+
+    const etapasPostAutorizacion = [
+      'AUTORIZADA',
+      'EN_PRESUPUESTO',
+      'COMPROMETIDA',
+      'OBLIGADA',
+      'PAGADA',
+    ];
+    const autorizacionAprobada = Boolean(
+      fechaSubdir ||
+        certSubdir ||
+        firmaSubdir?.firmadoDigitalmente ||
+        decisionSubdir === 'AUTORIZADO' ||
+        decisionSubdir === 'AUTORIZADA' ||
+        decisionSubdir === 'APROBADO' ||
+        decisionSubdir === 'APROBADA' ||
+        (solicitudCompleta as any)?.autorizadorId ||
+        (solicitud as any)?.autorizadorId ||
+        etapasPostAutorizacion.includes(estado),
+    );
+    const nombreSubdirector =
+      firmaSubdir?.nombreFirmante ||
+      (solicitudCompleta as any)?.autorizador?.nombreCompleto ||
+      (solicitudCompleta as any)?.autorizador?.nomLargo ||
+      (solicitudCompleta as any)?.autorizadorNombre ||
+      (solicitud as any)?.autorizadorNombre ||
+      (solicitudCompleta as any)?.camposAdicionales?.firmaSubdireccion?.nombreFirmante ||
+      (solicitud as any)?.camposAdicionales?.firmaSubdireccion?.nombreFirmante ||
+      (autorizacionAprobada ? 'Subdirección de Gestión Corporativa' : '—');
+
+    componentes.push({
+      id: 'autorizacion_corporativa',
+      etiqueta: 'AUTORIZACIÓN CORPORATIVA',
+      firmante: autorizacionAprobada ? nombreSubdirector : '—',
+      cargo: 'Subdirección de Gestión Corporativa (Ordenador del Gasto)',
+      estado: autorizacionAprobada
+        ? 'APROBADO'
+        : estado === 'EN_AUTORIZACION'
+        ? 'PENDIENTE'
+        : 'PENDIENTE',
+      fecha: fechaSubdir,
+      certificado: certSubdir,
+      observaciones:
+        (solicitudCompleta as any)?.observacionesAutorizacion ||
+        (solicitud as any)?.observacionesAutorizacion ||
+        null,
+    });
 
     // 7. Presupuesto (Expedición RP)
     const etapasPostPresupuesto = ['COMPROMETIDA', 'OBLIGADA', 'PAGADA'];
+    const firmaPresupuesto =
+      (solicitudCompleta?.camposAdicionales?.firmaPresupuesto as any) ||
+      (solicitud as any).camposAdicionales?.firmaPresupuesto ||
+      firmasRegistradas.find(
+        (f) =>
+          (f.tipo === 'PRESUPUESTO' || f.tipo === 'GRUPO_PRESUPUESTO') &&
+          f.estado !== 'RECHAZADO',
+      );
     const tieneRp = Boolean(
       solicitud.numeroRp ||
         (solicitud as any).codigoRp ||
+        firmaPresupuesto ||
         etapasPostPresupuesto.includes(estado),
     );
+    const nombrePresupuesto =
+      firmaPresupuesto?.nombreFirmante ||
+      (tieneRp
+        ? `RP Nº ${solicitud.numeroRp || (solicitud as any).codigoRp || 'Registrado'}`
+        : '—');
     componentes.push({
       id: 'presupuesto_rp',
       etiqueta: 'PRESUPUESTO — RP',
-      firmante: tieneRp
-        ? `RP Nº ${solicitud.numeroRp || (solicitud as any).codigoRp || 'Registrado'}`
-        : '—',
-      cargo: 'Expedición RP SIIF Nación',
+      firmante: tieneRp ? nombrePresupuesto : '—',
+      cargo:
+        firmaPresupuesto?.cargoFirmante ||
+        'Expedición RP SIIF Nación / Grupo de Presupuesto',
       estado: tieneRp
         ? 'APROBADO'
-        : estado === 'EN_PRESUPUESTO'
+        : estado === 'EN_PRESUPUESTO' || estado === 'AUTORIZADA'
         ? 'PENDIENTE'
         : 'PENDIENTE',
-      fecha: solicitud.fechaRp || (solicitud as any).fechaExpedicionRp || null,
+      fecha:
+        firmaPresupuesto?.fechaFirma ||
+        solicitud.fechaRp ||
+        (solicitud as any).fechaExpedicionRp ||
+        null,
+      certificado: firmaPresupuesto?.certificadoId || null,
+      observaciones:
+        solicitud.observacionesRp ||
+        ((solicitud as any).codigoRp || solicitud.numeroRp
+          ? `RP: ${(solicitud as any).codigoRp || solicitud.numeroRp}`
+          : null),
     });
 
     // 8. Tesorería (Giro y Desembolso)

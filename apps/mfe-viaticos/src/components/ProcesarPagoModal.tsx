@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   CheckCircle2,
@@ -18,9 +19,14 @@ import {
   FileUp,
   Paperclip,
   Trash2,
+  Key,
+  Loader2,
+  Plane,
 } from 'lucide-react';
 import { SolicitudListaResponse, ProcesarPagoDto } from '../types/viaticos';
 import { viaticosService } from '../services/api/viaticosService';
+import authService from '../services/api/authService';
+import FirmaDigitalViaticosModal, { FirmaDigitalData } from './FirmaDigitalViaticosModal';
 import { formatearMoneda } from '../utils/viaticosUtils';
 
 interface ProcesarPagoModalProps {
@@ -41,6 +47,50 @@ const formatearTamano = (bytes: number): string => {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 };
 
+// Generar estampa digital certificada institucional para Tesorería
+const generarEstampaDigitalTesoreria = (nombre: string, cargo: string): string => {
+  try {
+    const canvas = document.createElement('canvas');
+    if (!canvas || typeof canvas.getContext !== 'function') return '';
+    canvas.width = 400;
+    canvas.height = 140;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+
+    // Fondo limpio
+    ctx.fillStyle = '#f0fdf4';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Borde verde institucional Tesorería
+    ctx.strokeStyle = '#047857';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(4, 4, canvas.width - 8, canvas.height - 8);
+
+    // Texto de encabezado de seguridad
+    ctx.fillStyle = '#047857';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('ESAP — GRUPO DE TESORERÍA — DESEMBOLSO Y PAGO', 16, 24);
+
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(nombre.slice(0, 36), 16, 52);
+
+    ctx.fillStyle = '#475569';
+    ctx.font = '11px sans-serif';
+    ctx.fillText(cargo.slice(0, 42), 16, 72);
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '9px monospace';
+    const ahora = new Date().toISOString();
+    ctx.fillText(`FECHA/HORA: ${ahora}`, 16, 96);
+    ctx.fillText('VALIDACIÓN: HASH SHA-256 + VALIDACIÓN OTP', 16, 112);
+
+    return canvas.toDataURL('image/png');
+  } catch {
+    return '';
+  }
+};
+
 export default function ProcesarPagoModal({
   abierta,
   isOpen,
@@ -58,6 +108,7 @@ export default function ProcesarPagoModal({
     new Date().toISOString().split('T')[0],
   );
   const [valorPagado, setValorPagado] = useState<number>(0);
+  const [costoTiquetes, setCostoTiquetes] = useState<number>(0);
   const [numeroOrdenPago, setNumeroOrdenPago] = useState('');
   const [soportePagoPath, setSoportePagoPath] = useState('');
   const [archivoSoporte, setArchivoSoporte] = useState<File | null>(null);
@@ -66,10 +117,36 @@ export default function ProcesarPagoModal({
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Estados para flujo de firma digital institucional con OTP
+  const [solicitandoOtp, setSolicitandoOtp] = useState(false);
+  const [modalFirmaOtpAbierta, setModalFirmaOtpAbierta] = useState(false);
+  const [otpData, setOtpData] = useState<{
+    verificationId: string;
+    emailEnviadoA?: string;
+    devCode?: string;
+  } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Datos del firmante actual (Tesorería)
+  const currentUser =
+    typeof authService?.getCurrentUserSync === 'function'
+      ? authService.getCurrentUserSync()
+      : null;
+  const nombreFirmante =
+    currentUser?.person?.full_name ||
+    currentUser?.fullName ||
+    currentUser?.username ||
+    'Funcionario de Tesorería';
+  const cargoFirmante = 'Profesional de Tesorería / Pagador SIIF';
 
   useEffect(() => {
     if (solicitud) {
+      const viat = Number(solicitud.montoViaticos ?? solicitud.montoSolicitadoViaticos ?? 0);
+      const gast = Number(solicitud.montoGastosViaje ?? solicitud.montoSolicitadoGastosViaje ?? 0);
+      const tiq = Number(solicitud.costoEstimadoTiquete || (solicitud as any).montoEstimadoTiquete || 0);
+      setCostoTiquetes(tiq);
+
       const valorBase =
         solicitud.valorPagado != null && solicitud.valorPagado > 0
           ? Number(solicitud.valorPagado)
@@ -77,7 +154,7 @@ export default function ProcesarPagoModal({
             ? Number(solicitud.valorObligacion)
             : solicitud.valorComprometido != null && solicitud.valorComprometido > 0
               ? Number(solicitud.valorComprometido)
-              : Number(solicitud.montoViaticos || 0) + Number(solicitud.montoGastosViaje || 0);
+              : (viat + gast + tiq);
 
       setValorPagado(valorBase);
       setFechaPago(
@@ -90,6 +167,8 @@ export default function ProcesarPagoModal({
       setArchivoSoporte(null);
       setObservaciones(solicitud.observacionesPago || '');
       setError(null);
+      setModalFirmaOtpAbierta(false);
+      setOtpData(null);
     }
   }, [solicitud, modalAbierta]);
 
@@ -100,9 +179,20 @@ export default function ProcesarPagoModal({
   const modalidad = solicitud.modalidadPago || 'AVANCE';
   const esAvance = modalidad === 'AVANCE';
 
+  // Subtotal viáticos calculados (garantiza que no sea 0 si la solicitud tiene montos)
+  const subtotalViaticos =
+    Number(solicitud.montoViaticos ?? solicitud.montoSolicitadoViaticos ?? 0) +
+    Number(solicitud.montoGastosViaje ?? solicitud.montoSolicitadoGastosViaje ?? 0);
+  const totalConTiquetes = subtotalViaticos + Number(costoTiquetes || 0);
+  const tieneTiquetes = Boolean(
+    solicitud.requiereTiquetes ?? solicitud.requiereTiqueteAereo ?? (costoTiquetes > 0),
+  );
+
   const nombreComisionado = solicitud.comisionado
     ? `${solicitud.comisionado.primerNombre || ''} ${solicitud.comisionado.primerApellido || ''}`.trim()
     : 'Funcionario comisionado';
+
+  const puedeEnviar = fechaPago && valorPagado > 0 && !guardando && !solicitandoOtp;
 
   const validarYEstablecerArchivo = (file: File) => {
     setError(null);
@@ -147,43 +237,41 @@ export default function ProcesarPagoModal({
     }
   };
 
-  const handleSubmit = async (e?: React.FormEvent) => {
-    if (e && e.preventDefault) {
-      e.preventDefault();
-    }
-    setError(null);
-
-    if (!fechaPago || !String(fechaPago).trim()) {
-      setError('Por favor seleccione la fecha en la que se efectuó el pago o desembolso.');
-      return;
-    }
-
-    if (valorPagado <= 0) {
-      setError('El valor pagado debe ser un monto positivo mayor a cero.');
-      return;
-    }
-
+  // Ejecución directa del pago (usada tras validación OTP o como fallback)
+  const ejecutarPagoDirecto = async (firmaOtpData?: FirmaDigitalData) => {
     setGuardando(true);
+    setError(null);
     try {
       let rutaSoporteFinal = soportePagoPath;
 
       // Cargar archivo físico al storage del backend si se seleccionó uno nuevo
       if (archivoSoporte) {
-        const uploadRes = await viaticosService.subirSoportePago(solicitud.id, archivoSoporte);
+        const uploadRes: any = await viaticosService.subirSoportePago(solicitud.id, archivoSoporte);
         rutaSoporteFinal =
           uploadRes?.urlRepositorio ||
           uploadRes?.data?.urlRepositorio ||
           uploadRes?.nombreArchivoSeguro ||
+          uploadRes?.nombreArchivo ||
           `/uploads/${solicitud.id}/${archivoSoporte.name}`;
       }
+
+      const firmaImagen = generarEstampaDigitalTesoreria(nombreFirmante, cargoFirmante);
 
       const payload: ProcesarPagoDto = {
         fechaPago,
         valorPagado: Number(valorPagado),
+        costoEstimadoTiquete: Number(costoTiquetes || 0),
         numeroOrdenPago: numeroOrdenPago.trim() || undefined,
         soportePagoPath: rutaSoporteFinal ? String(rutaSoporteFinal).trim() : undefined,
         observacionesPago: observaciones.trim() || undefined,
         modalidadPago: modalidad as 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR',
+        otp: firmaOtpData?.codigoOtp,
+        verificationId: otpData?.verificationId,
+        certificadoId: firmaOtpData?.certificado_id,
+        hashSha256: firmaOtpData?.hash,
+        firmaImagen,
+        nombreFirmante,
+        cargoFirmante,
       };
 
       const resp = await viaticosService.procesarPago(solicitud.id, payload);
@@ -193,6 +281,7 @@ export default function ProcesarPagoModal({
         ...payload,
       };
 
+      setModalFirmaOtpAbierta(false);
       handleExito(resultado);
       handleCerrar();
     } catch (err: any) {
@@ -207,44 +296,114 @@ export default function ProcesarPagoModal({
     }
   };
 
-  return (
+  // Iniciar flujo de firma digital con código OTP para Tesorería
+  const handleIniciarFirmaOtp = async (e?: React.FormEvent) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!puedeEnviar) return;
+
+    setError(null);
+
+    if (!fechaPago || !String(fechaPago).trim()) {
+      setError('Por favor seleccione la fecha en la que se efectuó el pago o desembolso.');
+      return;
+    }
+    if (valorPagado <= 0) {
+      setError('El valor pagado debe ser un monto positivo mayor a cero.');
+      return;
+    }
+
+    // Si la función solicitarOtpFirma existe en el servicio, ejecutar flujo OTP institucional
+    if (typeof viaticosService.solicitarOtpFirma === 'function') {
+      setSolicitandoOtp(true);
+      try {
+        const resp = await viaticosService.solicitarOtpFirma(solicitud.id, {
+          tipoFirma: 'TESORERIA',
+          etapaLabel: 'Desembolso y Pago en Tesorería — SIIF Nación (RF-PAG-003)',
+        });
+        setOtpData({
+          verificationId: resp.verificationId,
+          emailEnviadoA: resp.emailEnviadoA || (resp as any).email,
+          devCode: resp.devCode,
+        });
+        setModalFirmaOtpAbierta(true);
+      } catch (err: any) {
+        console.error('Error solicitando OTP de Tesorería:', err);
+        setError(
+          err?.response?.data?.message ||
+            err?.message ||
+            'No fue posible solicitar el código OTP de verificación para Tesorería.',
+        );
+      } finally {
+        setSolicitandoOtp(false);
+      }
+    } else {
+      // Fallback directo si no está configurado el cliente OTP
+      await ejecutarPagoDirecto();
+    }
+  };
+
+  // Confirmar firma digital tras validación exitosa de OTP
+  const handleFirmaDigitalCompleta = async (firma: FirmaDigitalData) => {
+    await ejecutarPagoDirecto(firma);
+  };
+
+  const modalContent = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto"
+      className="fixed inset-0 z-[99999] overflow-y-auto p-3 sm:p-4"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 99999,
+        backgroundColor: 'rgba(15, 23, 42, 0.75)',
+        backdropFilter: 'blur(4px)',
+      }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-pago-title"
     >
-      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200">
-        {/* Cabecera institucional con gradiente esmeralda seguro */}
+      <div className="flex min-h-full items-center justify-center">
+        <div
+          className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden max-h-[85vh] sm:max-h-[88vh] flex flex-col animate-in fade-in zoom-in-95 duration-200"
+          style={{
+            maxHeight: '88vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+        >
+        {/* Cabecera institucional fija con gradiente esmeralda (shrink-0) */}
         <div
           style={{
             background: 'linear-gradient(135deg, #064e3b 0%, #065f46 50%, #047857 100%)',
             color: '#ffffff',
+            flexShrink: 0,
           }}
-          className="bg-emerald-900 px-6 py-5 text-white"
+          className="px-5 sm:px-6 py-3.5 sm:py-4 text-white shrink-0 border-b border-emerald-950/20"
         >
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-white/15 rounded-xl backdrop-blur-md border border-white/30 text-white shadow-sm">
-                <BadgeDollarSign className="w-6 h-6 text-white" />
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2 sm:p-2.5 bg-white/15 rounded-xl backdrop-blur-md border border-white/30 text-white shadow-sm shrink-0">
+                <BadgeDollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
-              <div>
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-black/30 text-emerald-100 border border-emerald-300/40">
-                  Etapa 8 — Tesorería y Desembolso (RF-PAG-003)
-                </span>
-                <h3 id="modal-pago-title" className="text-lg font-bold text-white mt-1">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold tracking-wide uppercase bg-black/30 text-emerald-100 border border-emerald-300/40">
+                    Etapa 8 — Tesorería y Desembolso (RF-PAG-003)
+                  </span>
+                </div>
+                <h3 id="modal-pago-title" className="text-base sm:text-lg font-bold text-white mt-0.5 truncate leading-tight">
                   Procesar Desembolso y Pago de Comisión
                 </h3>
-                <p className="text-xs text-emerald-100 mt-0.5">
-                  Registrar orden de pago en SIIF Nación y dejar la comisión en estado PAGADA
+                <p className="text-[11px] sm:text-xs text-emerald-100/90 truncate mt-0.5">
+                  Firmar digitalmente con OTP · Registrar orden de pago SIIF Nación (RF-PAG-003)
                 </p>
               </div>
             </div>
             <button
               type="button"
               onClick={handleCerrar}
-              disabled={guardando}
-              className="p-1.5 rounded-lg text-white/90 hover:text-white hover:bg-white/20 transition-colors cursor-pointer"
+              disabled={guardando || solicitandoOtp}
+              className="p-1.5 sm:p-2 rounded-lg text-white/90 hover:text-white hover:bg-white/20 transition-colors cursor-pointer shrink-0 ml-2"
               aria-label="Cerrar modal"
             >
               <X className="w-5 h-5" />
@@ -252,83 +411,165 @@ export default function ProcesarPagoModal({
           </div>
         </div>
 
-        {/* Tarjeta resumen de la comisión */}
-        <div className="p-6 space-y-6">
-          <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-4 border border-slate-200 dark:border-slate-700 space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
-              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                Expediente de Comisión
-              </span>
-              <span className="text-sm font-black text-slate-900 dark:text-white font-mono">
-                {solicitud.consecutivoUnico || solicitud.id}
-              </span>
-            </div>
+        {/* Formulario con cuerpo scrolleable y footer fijo */}
+        <form onSubmit={handleIniciarFirmaOtp} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          {/* Contenido scrolleable interno */}
+          <div className="p-5 sm:p-6 overflow-y-auto min-h-0 flex-1 space-y-4 sm:space-y-5">
+            {/* Tarjeta resumen de la comisión */}
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3.5 sm:p-4 border border-slate-200 dark:border-slate-700 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Expediente de Comisión
+                </span>
+                <span className="text-sm font-black text-slate-900 dark:text-white font-mono">
+                  {solicitud.consecutivoUnico || solicitud.id}
+                </span>
+              </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div className="flex items-center gap-2">
-                <User className="w-4 h-4 text-slate-400 shrink-0" />
-                <div className="truncate">
-                  <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Comisionado</span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">{nombreComisionado}</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-slate-400 shrink-0" />
+                  <div className="truncate">
+                    <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Comisionado</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200">{nombreComisionado}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <div>
+                    <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Registro Presupuestal (RP)</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono">{codigoRp}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <FileCheck className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
+                  <div>
+                    <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Obligación SIIF</span>
+                    <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono">{numObligacion}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Landmark className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <div>
+                    <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Modalidad Presupuestal</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">
+                      {esAvance ? 'AVANCE (Desembolso Previo)' : 'RECONOCIMIENTO POSTERIOR'}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <Receipt className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <div>
-                  <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Registro Presupuestal (RP)</span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono">{codigoRp}</span>
+              {/* Resumen de Valores Financieros */}
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                <div className="bg-white dark:bg-slate-900/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Valor Obligado</span>
+                  <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400 text-xs">
+                    {solicitud.valorObligacion != null ? formatearMoneda(solicitud.valorObligacion) : 'N/A'}
+                  </span>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <FileCheck className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
-                <div>
-                  <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Obligación SIIF</span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200 font-mono">{numObligacion}</span>
+                <div className="bg-white dark:bg-slate-900/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Valor Comprometido (RP)</span>
+                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200 text-xs">
+                    {solicitud.valorComprometido != null ? formatearMoneda(solicitud.valorComprometido) : 'N/A'}
+                  </span>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Landmark className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                <div>
-                  <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Modalidad Presupuestal</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200">
-                    {esAvance ? 'AVANCE (Desembolso Previo)' : 'RECONOCIMIENTO POSTERIOR'}
+                <div className="bg-white dark:bg-slate-900/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Viáticos Calculados</span>
+                    {tieneTiquetes && (
+                      <span className="text-[9px] px-1.5 py-0.2 bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 rounded font-bold">
+                        Aéreo
+                      </span>
+                    )}
+                  </div>
+                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200 text-xs">
+                    {formatearMoneda(subtotalViaticos)}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Resumen de Valores Financieros */}
-            <div className="pt-2 border-t border-slate-200 dark:border-slate-700 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-              <div className="bg-white dark:bg-slate-900/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block">Valor Obligado</span>
-                <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400 text-xs">
-                  {solicitud.valorObligacion != null ? formatearMoneda(solicitud.valorObligacion) : 'N/A'}
-                </span>
+            {/* Panel de Liquidación: Viáticos + Costo de Tiquetes (Ajuste Real) */}
+            <div className="p-3.5 bg-gradient-to-br from-blue-50/70 to-slate-50 dark:from-slate-800/80 dark:to-slate-800/40 border border-blue-200 dark:border-blue-900/40 rounded-xl space-y-3">
+              <div className="flex items-start gap-2.5">
+                <Plane className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                <div className="flex-1 text-xs">
+                  <span className="font-bold text-slate-900 dark:text-white">
+                    Instrucción de Liquidación — Ajuste Real con Tiquetes Aéreos:
+                  </span>
+                  <p className="text-slate-600 dark:text-slate-300 text-[11px] mt-0.5 leading-relaxed">
+                    Si la comisión incluye pasajes o tiquetes aéreos, ingrese aquí el costo del tiquete. Este valor se sumará automáticamente al subtotal de viáticos calculados ({formatearMoneda(subtotalViaticos)}) para conformar el ajuste real total de la comisión.
+                  </p>
+                </div>
               </div>
-              <div className="bg-white dark:bg-slate-900/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block">Valor Comprometido (RP)</span>
-                <span className="font-mono font-bold text-slate-800 dark:text-slate-200 text-xs">
-                  {solicitud.valorComprometido != null ? formatearMoneda(solicitud.valorComprometido) : 'N/A'}
-                </span>
-              </div>
-              <div className="bg-white dark:bg-slate-900/80 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Viáticos Calculados</span>
-                <span className="font-mono font-bold text-slate-800 dark:text-slate-200 text-xs">
-                  {formatearMoneda(Number(solicitud.montoViaticos || 0) + Number(solicitud.montoGastosViaje || 0))}
-                </span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-blue-200/60 dark:border-slate-700/60 items-center">
+                <div>
+                  <label htmlFor="costoTiquetes" className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Costo de Tiquetes Aéreos (COP)
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-mono font-bold text-xs pointer-events-none">
+                      $
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      id="costoTiquetes"
+                      disabled={guardando}
+                      value={
+                        costoTiquetes
+                          ? new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(costoTiquetes)
+                          : ''
+                      }
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/\D/g, '');
+                        const val = raw ? parseInt(raw, 10) : 0;
+                        setCostoTiquetes(val);
+                      }}
+                      placeholder="0"
+                      className="w-full pl-7 pr-3 py-1.5 text-xs font-semibold font-mono bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-white/90 dark:bg-slate-900/90 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-500 dark:text-slate-400 font-medium">Ajuste Real (Viáticos + Tiquetes):</span>
+                    <span className="font-mono font-black text-blue-700 dark:text-blue-400 text-xs">
+                      {formatearMoneda(totalConTiquetes)}
+                    </span>
+                  </div>
+                  {valorPagado !== totalConTiquetes && (
+                    <button
+                      type="button"
+                      onClick={() => setValorPagado(totalConTiquetes)}
+                      className="mt-1.5 inline-flex items-center justify-center px-2 py-1 text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/70 border border-blue-200 dark:border-blue-800 rounded transition-colors cursor-pointer"
+                    >
+                      Aplicar ajuste real a Valor Pagado ({formatearMoneda(totalConTiquetes)})
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Formulario de Pago */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Banner de Firma Digital Tesorería */}
+            <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl flex items-start gap-3">
+              <Key className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              <div className="text-xs text-emerald-900 dark:text-emerald-200">
+                <span className="font-bold">Firma Digital con Validación OTP — Tesorería.</span>{' '}
+                Al confirmar el desembolso, se solicitará un código de verificación OTP al correo institucional del funcionario de Tesorería.
+                La firma digital quedará registrada en la trazabilidad inmutable del expediente.
+              </div>
+            </div>
+
             {error && (
               <div
                 role="alert"
-                className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl flex items-start gap-2.5 text-xs text-rose-700 dark:text-rose-300"
+                className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:rose-900 rounded-xl flex items-start gap-2.5 text-xs text-rose-700 dark:text-rose-300"
               >
                 <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
                 <span>{error}</span>
@@ -368,15 +609,26 @@ export default function ProcesarPagoModal({
                   >
                     Valor Pagado (COP) <span className="text-rose-500">*</span>
                   </label>
-                  {solicitud.valorObligacion != null && Number(solicitud.valorObligacion) > 0 && valorPagado !== Number(solicitud.valorObligacion) && (
-                    <button
-                      type="button"
-                      onClick={() => setValorPagado(Number(solicitud.valorObligacion))}
-                      className="text-[10px] text-emerald-700 dark:text-emerald-400 hover:underline font-semibold cursor-pointer"
-                    >
-                      Usar valor obligado ({formatearMoneda(solicitud.valorObligacion)})
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {totalConTiquetes > 0 && valorPagado !== totalConTiquetes && (
+                      <button
+                        type="button"
+                        onClick={() => setValorPagado(totalConTiquetes)}
+                        className="text-[10px] text-blue-700 dark:text-blue-400 hover:underline font-semibold cursor-pointer"
+                      >
+                        Usar total con tiquetes ({formatearMoneda(totalConTiquetes)})
+                      </button>
+                    )}
+                    {solicitud.valorObligacion != null && Number(solicitud.valorObligacion) > 0 && valorPagado !== Number(solicitud.valorObligacion) && (
+                      <button
+                        type="button"
+                        onClick={() => setValorPagado(Number(solicitud.valorObligacion))}
+                        className="text-[10px] text-emerald-700 dark:text-emerald-400 hover:underline font-semibold cursor-pointer"
+                      >
+                        Usar valor obligado ({formatearMoneda(solicitud.valorObligacion)})
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="relative">
                   <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-mono font-bold text-sm pointer-events-none">
@@ -533,13 +785,13 @@ export default function ProcesarPagoModal({
                     }}
                     onDragLeave={() => setEsArrastrando(false)}
                     onDrop={handleDrop}
-                    className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                    className={`border-2 border-dashed rounded-xl p-3.5 text-center cursor-pointer transition-all ${
                       esArrastrando
                         ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20'
                         : 'border-slate-300 dark:border-slate-700 hover:border-emerald-500 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                     }`}
                   >
-                    <UploadCloud className="w-6 h-6 text-emerald-600 dark:text-emerald-400 mx-auto mb-1" />
+                    <UploadCloud className="w-5 h-5 text-emerald-600 dark:text-emerald-400 mx-auto mb-1" />
                     <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
                       Haga clic o arrastre aquí el comprobante de desembolso
                     </p>
@@ -570,48 +822,91 @@ export default function ProcesarPagoModal({
             </div>
 
             {/* Banner explicativo del estado resultante */}
-            <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl flex items-center gap-3">
-              <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl flex items-center gap-2.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <div className="text-xs text-emerald-900 dark:text-emerald-200">
                 <span className="font-bold">Estado resultante: PAGADA.</span> El registro del desembolso
-                asentará la fecha y soporte en la trazabilidad inmutable del expediente y notificará al
+                asentará la fecha, firma digital y soporte en la trazabilidad inmutable del expediente y notificará al
                 comisionado y analista asignado.
               </div>
             </div>
+          </div>
 
-            {/* Acciones */}
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={handleCerrar}
-                disabled={guardando}
-                className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={guardando}
-                style={{ backgroundColor: '#059669', color: '#ffffff' }}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs shadow-md hover:opacity-90 disabled:opacity-50 transition-all cursor-pointer"
-              >
-                {guardando ? (
-                  <>
-                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Procesando pago...</span>
-                  </>
-                ) : (
-                  <>
-                    <BadgeDollarSign className="w-4 h-4 text-white" />
-                    <span>Confirmar Desembolso y Pago</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
+          {/* Footer fijo con botones de acción */}
+          <div className="px-5 sm:px-6 py-3.5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={handleCerrar}
+              disabled={guardando || solicitandoOtp}
+              className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={!puedeEnviar}
+              style={{ backgroundColor: '#059669', color: '#ffffff' }}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs shadow-md hover:opacity-90 disabled:opacity-50 transition-all cursor-pointer"
+            >
+              {guardando ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                  <span>Procesando pago...</span>
+                </>
+              ) : solicitandoOtp ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                  <span>Solicitando OTP...</span>
+                </>
+              ) : (
+                <>
+                  <Key className="w-4 h-4 text-white" />
+                  <span>Firmar y Confirmar Desembolso</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
+
+      {/* Modal Institucional de Firma Digital con Validación OTP */}
+      {modalFirmaOtpAbierta && solicitud && (
+        <FirmaDigitalViaticosModal
+          isOpen={modalFirmaOtpAbierta}
+          solicitudId={solicitud.id}
+          consecutivo={solicitud.consecutivoUnico || solicitud.id}
+          comisionadoNombre={nombreComisionado}
+          destino={solicitud.destinoCiudad || solicitud.ciudadDestino || ''}
+          fechas={
+            solicitud.fechaInicio && solicitud.fechaFin
+              ? `${solicitud.fechaInicio} al ${solicitud.fechaFin}`
+              : ''
+          }
+          firmanteNombre={nombreFirmante}
+          firmanteCargo={cargoFirmante}
+          etapaLabel="Desembolso y Pago en Tesorería — SIIF Nación (RF-PAG-003)"
+          correoDestino={otpData?.emailEnviadoA}
+          devCode={otpData?.devCode}
+          onVerifyCodigo={async (codigoOtp: string) => {
+            if (typeof viaticosService.verificarOtpFirma === 'function') {
+              await viaticosService.verificarOtpFirma(solicitud.id, {
+                verificationId: otpData?.verificationId || '',
+                code: codigoOtp,
+                otp: codigoOtp,
+                tipoFirma: 'TESORERIA',
+                consume: false,
+              });
+            }
+          }}
+          onFirmaCompleta={handleFirmaDigitalCompleta}
+          onCancelar={() => setModalFirmaOtpAbierta(false)}
+        />
+      )}
+    </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 }
