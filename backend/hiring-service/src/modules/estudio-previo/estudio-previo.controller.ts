@@ -24,7 +24,7 @@ import {
   AnotarRadicadoDto,
   CambiarCuantiaDto,
   CambiarModalidadDto,
-  CrearProcesoDto,
+  CrearProcesoDesdePaaDto,
   EnviarEstudioPrevioDto,
   GuardarBorradorDto,
   RevisarDto,
@@ -60,9 +60,12 @@ export class EstudioPrevioController {
 
   @Post()
   @Puede('editar', '3.1')
-  @ApiOperation({ summary: 'Crear proceso en etapa 3 y abrir su expediente electrónico' })
-  crearProceso(@Body() dto: CrearProcesoDto, @Req() req: any) {
-    return this.service.crearProceso(dto, getHiringAccess(req));
+  @ApiOperation({
+    summary: 'Crear proceso en etapa 3 desde una línea del PAA y abrir su expediente electrónico',
+    description: 'Objeto, modalidad y valor salen de la línea; la 3.1 nace con lo que el PAA ya dice.',
+  })
+  crearProceso(@Body() dto: CrearProcesoDesdePaaDto, @Req() req: any) {
+    return this.service.crearProcesoDesdePaa(dto, getHiringAccess(req));
   }
 
   @Get()

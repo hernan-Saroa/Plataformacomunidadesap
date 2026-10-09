@@ -36,6 +36,7 @@ import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import {
   CambiarCuantiaDto,
   CambiarModalidadDto,
+  CrearProcesoDesdePaaDto,
   CrearProcesoDto,
   GuardarBorradorDto,
 } from './dto/estudio-previo.dto';
@@ -48,6 +49,9 @@ import {
 } from '../participacion/participacion.service';
 import { respondeElAsignado } from '../participacion/quien-responde';
 import { CdpService } from '../cdp/cdp.service';
+import { PaaAplicacion } from '../../entities/paa.entity';
+import { CAMPOS_CONTROLADOS } from '../paa/estructura-paa';
+import { esLineaOcupada, lineaParaCrear, type OrigenPaa } from '../paa/linea-para-crear';
 import {
   DocumentosActividadService,
   soportesDeDevolucion,
@@ -283,65 +287,144 @@ export class EstudioPrevioService implements OnModuleInit {
     });
   }
 
-  async crearProceso(dto: CrearProcesoDto, acceso: HiringAccess) {
-    return this.dataSource.transaction(async (em) => {
-      const anio = new Date().getFullYear();
-
-      // La FK ya lo impediría, pero devolvería un 500 sin explicación.
-      const modalidad = await em.findOne(Modalidad, {
-        where: { codigo: dto.modalidad, activa: true },
-      });
-      if (!modalidad) {
-        throw new BadRequestException(
-          `La modalidad "${dto.modalidad}" no existe o ya no está vigente`,
+  /**
+   * Crea el proceso desde una línea del PAA (migración 097).
+   *
+   * La línea dice objeto, modalidad y valor, y llena en la 3.1 lo que ya sabe:
+   * objeto, línea, plazo, lugar y responsable. `paa_origen` guarda qué puso,
+   * para que una versión nueva del PAA sepa después qué sigue siendo del Excel
+   * y qué corrigió alguien a mano.
+   */
+  async crearProcesoDesdePaa(dto: CrearProcesoDesdePaaDto, acceso: HiringAccess) {
+    try {
+      return await this.dataSource.transaction(async (em) => {
+        const paa = await lineaParaCrear(em, dto.paaLineaId);
+        return this.crearEn(
+          em,
+          {
+            objeto: String(paa.origen.objeto ?? ''),
+            modalidad: String(paa.origen.modalidad ?? ''),
+            valorEstimado: Number(paa.origen.valorEstimado),
+          },
+          acceso,
+          paa,
         );
+      });
+    } catch (error) {
+      // Dos creaciones que se cruzaron sobre la misma línea: la que perdió
+      // llega aquí por el índice único y no por `lineaParaCrear`.
+      if (esLineaOcupada(error)) {
+        throw new ConflictException('Otra persona acaba de crear un proceso con esta línea del PAA.');
       }
+      throw error;
+    }
+  }
 
-      // Antes de gastar consecutivos: si la cuantía obliga a licitación
-      // pública, el proceso no puede nacer con una modalidad de menor cuantía
-      // (RF-EST-03). Se valida aquí y no solo en el formulario porque es una
-      // regla de negocio, no una ayuda de interfaz.
-      await this.umbrales.exigirModalidadPermitida(dto.valorEstimado, modalidad);
+  /** Crea el proceso con datos dados, sin PAA: lo usan las pruebas e2e de las etapas siguientes. */
+  async crearProceso(dto: CrearProcesoDto, acceso: HiringAccess) {
+    return this.dataSource.transaction((em) => this.crearEn(em, dto, acceso, null));
+  }
 
-      // Secuencias en vez de SELECT MAX: dos creaciones simultáneas no colisionan.
-      const [{ n: nRad }] = await em.query(`SELECT nextval('hiring.radicado_seq') AS n`);
-      const [{ n: nExp }] = await em.query(`SELECT nextval('hiring.expediente_seq') AS n`);
+  private async crearEn(em: EntityManager, dto: CrearProcesoDto, acceso: HiringAccess, paa: OrigenPaa | null) {
+    const anio = new Date().getFullYear();
 
-      const proceso = await em.save(Proceso, {
-        radicado: `CTO-${anio}-${String(nRad).padStart(4, '0')}`,
-        objeto: dto.objeto,
-        modalidad: modalidad.codigo,
-        valorEstimado: dto.valorEstimado,
-        etapa: ETAPA_ESTUDIOS_PREVIOS,
-        createdBy: acceso.userName,
-      } as Partial<Proceso>);
-
-      const expediente = await em.save(Expediente, {
-        procesoId: proceso.id,
-        numeroExpediente: `EXP-${anio}-${String(nExp).padStart(4, '0')}`,
-      } as Partial<Expediente>);
-
-      // Instancia las 63 actividades de la matriz según la modalidad: las que
-      // no aplican quedan en NO_APLICA en vez de omitirse, para que el
-      // expediente deje constancia de por qué el proceso tuvo menos pasos.
-      await this.configuracionService.instanciarActividades(em, proceso.id, modalidad.codigo);
-
-      // El estudio previo (3.1) es la primera con la que trabaja el gestor.
-      const actividad = await em.findOneOrFail(ProcesoActividad, {
-        where: { procesoId: proceso.id, numeral: NUMERAL_ESTUDIO_PREVIO },
-      });
-
-      // La modalidad queda en la traza: si el catálogo cambia, el expediente
-      // sigue mostrando con cuál nació el proceso.
-      await this.traza(em, proceso.id, 'proceso', proceso.id, 'CREAR', acceso, {
-        radicado: proceso.radicado,
-        expediente: expediente.numeroExpediente,
-        modalidad: modalidad.codigo,
-        modalidadNombre: modalidad.nombre,
-      });
-
-      return { ...proceso, expediente, actividad };
+    // La FK ya lo impediría, pero devolvería un 500 sin explicación.
+    const modalidad = await em.findOne(Modalidad, {
+      where: { codigo: dto.modalidad, activa: true },
     });
+    if (!modalidad) {
+      throw new BadRequestException(
+        `La modalidad "${dto.modalidad}" no existe o ya no está vigente`,
+      );
+    }
+
+    // Antes de gastar consecutivos: si la cuantía obliga a licitación
+    // pública, el proceso no puede nacer con una modalidad de menor cuantía
+    // (RF-EST-03). Se valida aquí y no solo en el formulario porque es una
+    // regla de negocio, no una ayuda de interfaz.
+    await this.umbrales.exigirModalidadPermitida(dto.valorEstimado, modalidad);
+
+    // Secuencias en vez de SELECT MAX: dos creaciones simultáneas no colisionan.
+    const [{ n: nRad }] = await em.query(`SELECT nextval('hiring.radicado_seq') AS n`);
+    const [{ n: nExp }] = await em.query(`SELECT nextval('hiring.expediente_seq') AS n`);
+
+    const proceso = await em.save(Proceso, {
+      radicado: `CTO-${anio}-${String(nRad).padStart(4, '0')}`,
+      objeto: dto.objeto,
+      modalidad: modalidad.codigo,
+      valorEstimado: dto.valorEstimado,
+      etapa: ETAPA_ESTUDIOS_PREVIOS,
+      createdBy: acceso.userName,
+      ...(paa && {
+        paaLineaId: paa.linea.id,
+        paaCodigo: paa.linea.codigo,
+        paaRegionId: paa.region.id,
+        paaAnio: paa.vigencia.anio,
+        paaOrigen: paa.origen,
+      }),
+    } as Partial<Proceso>);
+
+    const expediente = await em.save(Expediente, {
+      procesoId: proceso.id,
+      numeroExpediente: `EXP-${anio}-${String(nExp).padStart(4, '0')}`,
+    } as Partial<Expediente>);
+
+    // Instancia las 63 actividades de la matriz según la modalidad: las que
+    // no aplican quedan en NO_APLICA en vez de omitirse, para que el
+    // expediente deje constancia de por qué el proceso tuvo menos pasos.
+    await this.configuracionService.instanciarActividades(em, proceso.id, modalidad.codigo);
+
+    // El estudio previo (3.1) es la primera con la que trabaja el gestor.
+    const actividad = await em.findOneOrFail(ProcesoActividad, {
+      where: { procesoId: proceso.id, numeral: NUMERAL_ESTUDIO_PREVIO },
+    });
+
+    if (paa) {
+      // La 3.1 nace con lo que el PAA ya dice; el área completa el resto.
+      const delEstudio = CAMPOS_CONTROLADOS.filter((c) => c.destino === 'estudio_previo');
+      actividad.datos = {
+        ...actividad.datos,
+        ...Object.fromEntries(
+          delEstudio.filter((c) => paa.origen[c.campo] != null).map((c) => [c.campo, paa.origen[c.campo]]),
+        ),
+      };
+      await em.save(ProcesoActividad, actividad);
+
+      await em.save(PaaAplicacion, {
+        procesoId: proceso.id,
+        lineaOrigenId: null,
+        lineaDestinoId: paa.linea.id,
+        tipo: 'CREACION',
+        campos: CAMPOS_CONTROLADOS.map((c) => ({
+          campo: c.campo,
+          etiqueta: c.etiqueta,
+          antes: null,
+          despues: paa.origen[c.campo] ?? null,
+          aplicado: true,
+        })),
+        aplicadoPor: acceso.userName,
+      } as Partial<PaaAplicacion>);
+    }
+
+    // La modalidad queda en la traza: si el catálogo cambia, el expediente
+    // sigue mostrando con cuál nació el proceso. Y la línea del PAA, con su
+    // versión: el PAA cambia y el expediente tiene que poder decir de cuál salió.
+    await this.traza(em, proceso.id, 'proceso', proceso.id, 'CREAR', acceso, {
+      radicado: proceso.radicado,
+      expediente: expediente.numeroExpediente,
+      modalidad: modalidad.codigo,
+      modalidadNombre: modalidad.nombre,
+      ...(paa && {
+        paa: {
+          region: paa.region.nombre,
+          anio: paa.vigencia.anio,
+          version: paa.version.numero,
+          codigo: paa.linea.codigo,
+        },
+      }),
+    });
+
+    return { ...proceso, expediente, actividad };
   }
 
   /**

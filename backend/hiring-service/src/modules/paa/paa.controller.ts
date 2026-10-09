@@ -24,8 +24,10 @@ import { Puede } from '../../auth/puede.guard';
 import { opcionesDeCarga, sha256Archivo, STORAGE_PATH } from '../archivos';
 import { PaaAdminService } from './paa-admin.service';
 import { PaaCamposService } from './paa-campos.service';
+import { PaaLineasService } from './paa-lineas.service';
 import {
   ActualizarRegionDto,
+  BuscarLineasDto,
   GuardarCamposDto,
   CrearRegionDto,
   CrearVigenciaDto,
@@ -48,7 +50,37 @@ export class PaaController {
   constructor(
     private readonly admin: PaaAdminService,
     private readonly campos: PaaCamposService,
+    private readonly lineas: PaaLineasService,
   ) {}
+
+  // ---------------------------------------------- al crear un proceso --
+  //
+  // Los pide quien crea procesos, no quien administra el PAA: cuelgan de la
+  // 3.1, que es donde nace el proceso.
+
+  @Get('opciones-de-creacion')
+  @Puede('editar', '3.1')
+  @ApiOperation({ summary: 'Regiones y vigencia de las que se puede crear un proceso' })
+  opcionesDeCreacion() {
+    return this.lineas.opciones();
+  }
+
+  @Get('lineas')
+  @Puede('editar', '3.1')
+  @ApiOperation({
+    summary: 'Buscar líneas de la versión activa de una región y vigencia',
+    description: 'Marca las que ya originaron un proceso en curso o adjudicado.',
+  })
+  buscarLineas(@Query() filtro: BuscarLineasDto) {
+    return this.lineas.buscar(filtro);
+  }
+
+  @Get('lineas/:id')
+  @Puede('editar', '3.1')
+  @ApiOperation({ summary: 'Una línea con los campos que su región muestra' })
+  linea(@Param('id', ParseUUIDPipe) id: string) {
+    return this.lineas.detalle(id);
+  }
 
   // -------------------------------------------------------------- regiones --
 

@@ -7,6 +7,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
   ValidateNested,
@@ -14,6 +15,27 @@ import {
 
 import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
+/**
+ * Lo que pide la API para crear un proceso: la línea del PAA de la que nace.
+ *
+ * El objeto, la modalidad y el valor ya no los teclea nadie: salen de la línea
+ * (migración 097). Quien crea elige región, vigencia y línea; el resto lo dice
+ * el PAA, y lo que se corrija después se corrige en la 3.1.
+ */
+export class CrearProcesoDesdePaaDto {
+  @ApiProperty({ description: 'Línea del PAA, de la versión activa de la vigencia vigente' })
+  @IsUUID('4', { message: 'Hay que elegir una línea del Plan Anual de Adquisiciones' })
+  paaLineaId: string;
+}
+
+/**
+ * Los datos con los que nace un proceso.
+ *
+ * Ya no es el cuerpo de ninguna petición: la API crea desde una línea del PAA
+ * (`CrearProcesoDesdePaaDto`) y de ella saca estos tres. Se conserva porque es
+ * lo que la creación necesita por dentro, y las pruebas e2e de las etapas
+ * siguientes arman sus procesos así, sin PAA de por medio.
+ */
 export class CrearProcesoDto {
   @ApiProperty({ description: 'Objeto a contratar', example: 'Adquisición de 50 equipos de cómputo' })
   @IsString()
