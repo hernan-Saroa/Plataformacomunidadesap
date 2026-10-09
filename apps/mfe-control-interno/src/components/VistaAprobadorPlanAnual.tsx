@@ -273,14 +273,14 @@ export function VistaAprobadorPlanAnual({
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
       {/* Resumen del plan */}
-      <div className="bg-white rounded-xl border-2 border-gray-200 p-5 flex flex-col lg:flex-row lg:items-center gap-5">
-        <div className="flex items-center gap-4 flex-1 min-w-0">
+      <div className="bg-white rounded-xl border-2 border-gray-200 p-5 flex flex-col xl:flex-row xl:items-center gap-5">
+        <div className="flex items-center gap-4 flex-shrink-0">
           <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: MORADO }}>
             <FileText className="w-6 h-6 text-white" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-xl font-black text-gray-900">Plan Anual de Auditoría {plan.vigencia}</h2>
+              <h2 className="text-xl font-black text-gray-900 whitespace-nowrap">Plan Anual de Auditoría {plan.vigencia}</h2>
               <span
                 className="px-2.5 py-0.5 rounded-md border text-xs font-bold whitespace-nowrap"
                 style={{ color: MORADO, borderColor: MORADO_BORDE, backgroundColor: '#faf8ff' }}
@@ -294,7 +294,7 @@ export function VistaAprobadorPlanAnual({
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-3 text-sm">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-3 text-sm flex-1 xl:pl-6">
           <div>
             <p className="text-xs text-gray-500">Vigencia</p>
             <p className="font-bold text-gray-900">{plan.vigencia}</p>
