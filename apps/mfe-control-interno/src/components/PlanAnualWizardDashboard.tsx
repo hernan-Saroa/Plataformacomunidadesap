@@ -63,7 +63,7 @@ import {
 } from './services/pdfESAPHeader';
 // S& NUEVO: Exportación Excel con logo
 import { exportarPlanAnualExcel, COLUMNAS_DISPONIBLES } from './services/exportarPlanAnualExcel';
-import { fechaSeguimientoTarea } from './services/fechaSeguimientoTarea';
+import { fechaSeguimientoTarea, fechaCompletadaLegible } from './services/fechaSeguimientoTarea';
 import { seguimientoDespuesDelCorte } from './services/seguimientoDespuesDelCorte';
 import { camposDeSincronizacion, corteDeLaFecha, cortesComoPeriodos, esTareaAutomaticaDelRol4, esTareaDelProgramaAnual, estadoDelCorte, fechaEntregaDeTarea, fechaSeguimientoPorDefecto, repartirTareasAutomaticasEnCortes, tareasEnElAñoDeLosCortes } from './services/cortesPlanAnual';
 import { exportarCertificadoAprobacionPDF } from './services/exportarCertificadoPDF';
@@ -7805,6 +7805,7 @@ function SeccionGestionYSeguimiento({
       responsables: (t.responsables || []).map(r => typeof r === 'string' ? { id: r, nombre: r } : r),
       fechaLimite: t.fechaEntrega || (t as any).fechaLimite || (t as any).fecha_limite || null,
       fechaCompletada: t.fechaCompletado || (t as any).fechaCompletada || (t as any).fecha_completada || null,
+      completadaPor: (t as any).completadaPor || (t as any).completada_por || null,
       // Campos extendidos para no perder requisitos/evidencias al recargar
       requiereAdjuntos: !!t.requiereAdjuntos,
       requiereObservaciones: !!t.requiereObservaciones,
@@ -7918,8 +7919,20 @@ function SeccionGestionYSeguimiento({
         return;
       }
     }
-    const tareasActualizadas = tareasActuales.map(t => 
-      t.id === tareaId ? { ...t, completada: !t.completada, fechaCompletado: !t.completada ? new Date().toISOString() : undefined } : t
+    // La fecha de completada es el día local (no el ISO en UTC, que de noche cae al día siguiente)
+    // y queda aparte de la fecha de seguimiento configurada (EFDS-2324)
+    const completarAhora = !tarea.completada;
+    const nombreUsuario = String(currentUser?.nombre || currentUser?.nombre_completo || currentUser?.fullName || currentUser?.email || currentUser?.username || '').trim();
+    const tareasActualizadas = tareasActuales.map(t =>
+      t.id === tareaId
+        ? {
+            ...t,
+            completada: completarAhora,
+            fechaCompletado: completarAhora ? new Date().toLocaleDateString('en-CA') : undefined,
+            fechaCompletada: undefined,
+            completadaPor: completarAhora ? nombreUsuario || undefined : undefined,
+          }
+        : t
     );
 
     const actividadConTareas = { ...actividadActual, tareasSeguimiento: tareasActualizadas } as Actividad;
@@ -10122,6 +10135,12 @@ function SeccionGestionYSeguimiento({
                                                       ⏰ Límite: {new Date(`${String((tarea as any).fechaLimite).slice(0, 10)}T00:00:00`).toLocaleDateString('es-CO')}
                                                     </span>
                                                   )}
+                                                  {/* La fecha real de completada va aparte de la fecha de seguimiento configurada (EFDS-2324) */}
+                                                  {tarea.completada && (
+                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-green-100 text-green-700 border border-green-200" title="Fecha en que se completó la tarea">
+                                                      ✓ {fechaCompletadaLegible(tarea) ? `Completada el ${fechaCompletadaLegible(tarea)}` : 'Completada'}
+                                                    </span>
+                                                  )}
                                                 </div>
                                                 {/* Fecha de seguimiento a la derecha, como en el asistente del plan (EFDS-2237) */}
                                                 <div className="ml-7 mt-2 pt-1.5 border-t border-gray-100 flex items-center gap-4 flex-wrap">
@@ -10430,10 +10449,10 @@ function SeccionGestionYSeguimiento({
                                           {tieneObservacion ? 'Añadir otra observación' : 'Observación'}
                                         </button>
 
-                                        {/* S& Completada */}
+                                        {/* Fecha real de completada, aparte de la fecha de seguimiento configurada (EFDS-2324) */}
                                         {tarea.completada && (
-                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded text-[11px] font-semibold border border-green-200">
-                                            {tarea.fechaCompletado ? new Date(tarea.fechaCompletado).toLocaleDateString('es-CO') : 'Completada'}
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded text-[11px] font-semibold border border-green-200" title="Fecha en que se completó la tarea">
+                                            ✓ {fechaCompletadaLegible(tarea) ? `Completada el ${fechaCompletadaLegible(tarea)}` : 'Completada'}
                                           </span>
                                         )}
 
