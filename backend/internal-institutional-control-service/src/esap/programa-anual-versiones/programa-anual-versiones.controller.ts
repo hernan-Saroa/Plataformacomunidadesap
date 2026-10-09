@@ -39,7 +39,8 @@ export class ProgramaAnualVersionesController {
    * creándola si lo que imprime el documento cambió desde la última.
    */
   @Post(':vigencia/resolver')
-  @Permissions(CIP.AUDITORIA_VIEW, CIP.PLAN_ANUAL_EXPORT)
+  // El aprobador del Plan Anual revisa el Programa que firma (EFDS-2320)
+  @Permissions(CIP.AUDITORIA_VIEW, CIP.PLAN_ANUAL_EXPORT, CIP.PLAN_ANUAL_APPROVE)
   @HttpCode(HttpStatus.OK)
   resolver(@Param('vigencia') vigencia: string, @Body() body: GenerarVersionDto, @Req() req: any) {
     return this.service.resolverVersion(this.aVigencia(vigencia), this.usuario(req), {

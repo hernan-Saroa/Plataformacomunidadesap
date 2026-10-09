@@ -20,8 +20,9 @@ export async function exportarAuditoriasTemplate(
   // encabezado, que es la del formato EM-FO-001.
   // `borrador`: sin versión porque el Plan Anual no está aprobado; `borradorDe`:
   // cambios sin versionar, es el borrador de esa versión.
-  opciones: { version?: number; fechaVersion?: string; borrador?: boolean; borradorDe?: number } = {}
-): Promise<{ exito: boolean; nombreArchivo: string; mensaje?: string; error?: string }> {
+  // `soloArchivo`: devuelve el archivo sin descargarlo, para la vista previa (EFDS-2320)
+  opciones: { version?: number; fechaVersion?: string; borrador?: boolean; borradorDe?: number; soloArchivo?: boolean } = {}
+): Promise<{ exito: boolean; nombreArchivo: string; archivo?: Blob; mensaje?: string; error?: string }> {
   try {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'ESAP';
@@ -498,9 +499,6 @@ export async function exportarAuditoriasTemplate(
     // Descargar
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    const url = window.URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
     const nombreArchivo = opciones.borradorDe
       ? `PAI_${vigenciaActiva}_V${opciones.borradorDe}_Borrador.xlsx`
       : opciones.borrador
@@ -508,6 +506,10 @@ export async function exportarAuditoriasTemplate(
         : opciones.version
           ? `PAI_${vigenciaActiva}_V${opciones.version}.xlsx`
           : `PAI_${vigenciaActiva}_Exportado.xlsx`;
+    if (opciones.soloArchivo) return { exito: true, nombreArchivo, archivo: blob };
+
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
     link.href = url;
     link.download = nombreArchivo;
     document.body.appendChild(link);
