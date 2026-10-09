@@ -353,7 +353,7 @@ export class PaaActivacionService {
    * el valor ni la modalidad, porque van juntos: aplicar uno solo dejaría al
    * proceso en una combinación que la 3.1 no admitiría.
    */
-  private async revisarUmbral(em: EntityManager, proceso: Proceso, plan: PlanDeActualizacion) {
+  async revisarUmbral(em: EntityManager, proceso: Proceso, plan: PlanDeActualizacion) {
     if (plan.proceso.valorEstimado === undefined && plan.proceso.modalidad === undefined) return;
     const codigo = plan.proceso.modalidad ?? proceso.modalidad;
     const modalidad = codigo ? await em.findOne(Modalidad, { where: { codigo } }) : null;
@@ -388,50 +388,11 @@ export class PaaActivacionService {
     }
 
     if (p.tratamiento !== 'ELIMINADA' && p.plan) {
-      const proceso = await em.findOneOrFail(Proceso, { where: { id: p.procesoId } });
-      const lineaOrigenId = proceso.paaLineaId;
-      const modalidadAnterior = proceso.modalidad;
-      Object.assign(proceso, p.plan.proceso, { paaLineaId: p.lineaNuevaId, paaOrigen: p.plan.origen });
-      await em.save(Proceso, proceso);
-
-      if (p.plan.proceso.modalidad && p.plan.proceso.modalidad !== modalidadAnterior) {
-        await this.configuracion.reaplicarModalidad(em, p.procesoId, p.plan.proceso.modalidad);
-      }
-      if (Object.keys(p.plan.estudio).length) {
-        const estudio = await em.findOneOrFail(ProcesoActividad, {
-          where: { procesoId: p.procesoId, numeral: NUMERAL_ESTUDIO_PREVIO },
-        });
-        estudio.datos = { ...estudio.datos, ...p.plan.estudio };
-        // Quien tenga la 3.1 abierta tiene que recargar antes de guardar
-        // encima de lo que acaba de traer el PAA.
-        estudio.version += 1;
-        await em.save(ProcesoActividad, estudio);
-      }
-
-      await em.save(PaaAplicacion, {
-        procesoId: p.procesoId,
-        lineaOrigenId,
-        lineaDestinoId: p.lineaNuevaId!,
-        tipo: 'ACTUALIZACION',
-        campos: p.plan.campos,
-        aplicadoPor: acceso.userName,
-      } as Partial<PaaAplicacion>);
-
-      await this.admin.traza(
-        em,
-        'procesos',
-        p.procesoId,
-        'ACTUALIZAR_DESDE_PAA',
-        acceso,
-        {
-          codigo: p.codigo,
-          versionAnterior: anterior.numero,
-          versionNueva: version.numero,
-          aplicados: p.plan.campos.filter((c) => c.aplicado).map((c) => c.campo),
-          noAplicados: p.plan.campos.filter((c) => !c.aplicado).map((c) => c.campo),
-        },
-        p.procesoId,
-      );
+      await this.aplicarPlan(em, p.procesoId, p.plan, p.lineaNuevaId!, 'ACTUALIZACION', acceso, {
+        codigo: p.codigo,
+        versionAnterior: anterior.numero,
+        versionNueva: version.numero,
+      });
     }
 
     if (!p.revision) return;
@@ -457,6 +418,68 @@ export class PaaActivacionService {
       },
       version.numero,
       acceso,
+    );
+  }
+
+  /**
+   * Escribe en el proceso lo que dice un plan: proceso, 3.1, riel si cambió la
+   * modalidad, la aplicación con su antes y después, y la traza.
+   *
+   * Lo usan la activación de una versión, y la migración y la devolución de una
+   * revisión: las tres actualizan el proceso desde una línea, y tienen que
+   * dejar el mismo rastro.
+   */
+  async aplicarPlan(
+    em: EntityManager,
+    procesoId: string,
+    plan: PlanDeActualizacion,
+    lineaDestinoId: string,
+    tipo: 'ACTUALIZACION' | 'MIGRACION',
+    acceso: HiringAccess,
+    detalle: Record<string, unknown>,
+    referencia: Partial<Pick<Proceso, 'paaCodigo' | 'paaRegionId' | 'paaAnio'>> = {},
+  ) {
+    const proceso = await em.findOneOrFail(Proceso, { where: { id: procesoId } });
+    const lineaOrigenId = proceso.paaLineaId;
+    const modalidadAnterior = proceso.modalidad;
+    Object.assign(proceso, plan.proceso, referencia, { paaLineaId: lineaDestinoId, paaOrigen: plan.origen });
+    await em.save(Proceso, proceso);
+
+    if (plan.proceso.modalidad && plan.proceso.modalidad !== modalidadAnterior) {
+      await this.configuracion.reaplicarModalidad(em, procesoId, plan.proceso.modalidad);
+    }
+    if (Object.keys(plan.estudio).length) {
+      const estudio = await em.findOneOrFail(ProcesoActividad, {
+        where: { procesoId, numeral: NUMERAL_ESTUDIO_PREVIO },
+      });
+      estudio.datos = { ...estudio.datos, ...plan.estudio };
+      // Quien tenga la 3.1 abierta tiene que recargar antes de guardar
+      // encima de lo que acaba de traer el PAA.
+      estudio.version += 1;
+      await em.save(ProcesoActividad, estudio);
+    }
+
+    await em.save(PaaAplicacion, {
+      procesoId,
+      lineaOrigenId,
+      lineaDestinoId,
+      tipo,
+      campos: plan.campos,
+      aplicadoPor: acceso.userName,
+    } as Partial<PaaAplicacion>);
+
+    await this.admin.traza(
+      em,
+      'procesos',
+      procesoId,
+      tipo === 'MIGRACION' ? 'MIGRAR' : 'ACTUALIZAR_DESDE_PAA',
+      acceso,
+      {
+        ...detalle,
+        aplicados: plan.campos.filter((c) => c.aplicado).map((c) => c.campo),
+        noAplicados: plan.campos.filter((c) => !c.aplicado).map((c) => c.campo),
+      },
+      procesoId,
     );
   }
 

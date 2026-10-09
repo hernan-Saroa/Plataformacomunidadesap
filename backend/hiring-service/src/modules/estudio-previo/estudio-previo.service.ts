@@ -1139,6 +1139,50 @@ export class EstudioPrevioService implements OnModuleInit {
    * Devuelve el estudio previo al gestor con observaciones. Vuelve a
    * BORRADOR para que pueda corregirlo y reenviarlo.
    */
+  /**
+   * Devuelve el estudio previo porque cambió la línea del PAA de la que nació.
+   *
+   * La misma devolución que hace el abogado en la 3.4 —la 3.1 vuelve al área
+   * con la observación y la 3.4 se reabre para cuando regrese—, pero sin exigir
+   * que esté en revisión: el cambio puede llegar con la 3.1 ya aprobada,
+   * mientras la etapa 3 sigue abierta. Si el área todavía la tiene, no hay nada
+   * que devolver y solo queda la constancia.
+   *
+   * Recibe el EntityManager porque corre dentro de la decisión de la revisión:
+   * si algo falla, ni la revisión queda resuelta ni el estudio devuelto.
+   */
+  async devolverPorCambioDelPaa(em: EntityManager, procesoId: string, observaciones: string, acceso: HiringAccess) {
+    const actividad = await this.obtenerActividad(em, procesoId, true);
+    const estabaCerrado = actividad.estado === 'EN_REVISION' || actividad.estado === 'APROBADO';
+
+    if (estabaCerrado) {
+      await em.save(Revision, {
+        procesoActividadId: actividad.id,
+        decision: 'DEVUELTO',
+        observaciones: observaciones.trim(),
+        versionRevisada: actividad.version,
+        revisadoPor: acceso.userName,
+        revisadoPorId: acceso.userId,
+      } as Partial<Revision>);
+
+      actividad.estado = 'DEVUELTO';
+      actividad.revisadoPor = acceso.userName;
+      actividad.revisadoAt = new Date();
+      await em.save(ProcesoActividad, actividad);
+      await this.cerrarLaRevision(em, procesoId, 'DEVUELTO', acceso);
+    }
+
+    // La traza de siempre: el motor de avisos le dice al área que le devolvieron
+    // el estudio previo y por qué, sin un aviso nuevo para esto.
+    await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'DEVOLVER', acceso, {
+      version: actividad.version,
+      observaciones,
+      porCambioDelPaa: true,
+      estabaCerrado,
+    });
+    return { estado: actividad.estado, estabaCerrado };
+  }
+
   async devolver(procesoId: string, observaciones: string, acceso: HiringAccess) {
     if (!observaciones?.trim()) {
       throw new BadRequestException(

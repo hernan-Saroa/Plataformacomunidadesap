@@ -26,12 +26,15 @@ import { PaaAdminService } from './paa-admin.service';
 import { PaaCamposService } from './paa-campos.service';
 import { PaaLineasService } from './paa-lineas.service';
 import { PaaActivacionService } from './paa-activacion.service';
+import { PaaRevisionesService } from './paa-revisiones.service';
+import { PaaOrigenService } from './paa-origen.service';
 import {
   ActualizarRegionDto,
   BuscarLineasDto,
   GuardarCamposDto,
   CrearRegionDto,
   CrearVigenciaDto,
+  DecidirRevisionPaaDto,
   DescartarVersionDto,
   LineasDeVersionDto,
 } from './dto/paa.dto';
@@ -53,6 +56,8 @@ export class PaaController {
     private readonly campos: PaaCamposService,
     private readonly lineas: PaaLineasService,
     private readonly activacion: PaaActivacionService,
+    private readonly revisiones: PaaRevisionesService,
+    private readonly origen: PaaOrigenService,
   ) {}
 
   // ---------------------------------------------- al crear un proceso --
@@ -230,5 +235,46 @@ export class PaaController {
   @ApiOperation({ summary: 'Descartar una versión validada sin activarla' })
   descartar(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DescartarVersionDto, @Req() req: any) {
     return this.admin.descartar(id, dto.motivo, getHiringAccess(req));
+  }
+
+  // ------------------------------------------------------------- revisiones --
+
+  @Get('revisiones')
+  @Puede('ver', 'PAA.R')
+  @ApiOperation({ summary: 'Revisiones abiertas por cambios del PAA' })
+  listarRevisiones(
+    @Query('estado') estado?: 'PENDIENTE' | 'RESUELTA',
+    @Query('procesoId', new ParseUUIDPipe({ optional: true })) procesoId?: string,
+  ) {
+    return this.revisiones.listar(estado === 'PENDIENTE' || estado === 'RESUELTA' ? estado : undefined, procesoId);
+  }
+
+  @Get('revisiones/:id')
+  @Puede('ver', 'PAA.R')
+  @ApiOperation({ summary: 'Una revisión, con las decisiones que admite y si quien pregunta la puede tomar' })
+  revision(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.revisiones.obtener(id, getHiringAccess(req));
+  }
+
+  @Post('revisiones/:id/decidir')
+  @Puede('decidir', 'PAA.R')
+  @ApiOperation({
+    summary: 'Continuar, devolver, migrar o cancelar el proceso afectado',
+    description: 'La decide el abogado del proceso; sin abogado, quien tenga decidir en las revisiones del PAA.',
+  })
+  decidir(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DecidirRevisionPaaDto, @Req() req: any) {
+    return this.revisiones.decidir(id, dto, getHiringAccess(req));
+  }
+
+  // ------------------------------------------------------- origen del proceso --
+
+  @Get('procesos/:id')
+  @Puede('ver')
+  @ApiOperation({
+    summary: 'De qué línea, versión y vigencia sale un proceso, y qué le ha cambiado el PAA',
+    description: 'Lo ve quien puede ver el proceso.',
+  })
+  origenDelProceso(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.origen.deProceso(id, getHiringAccess(req));
   }
 }

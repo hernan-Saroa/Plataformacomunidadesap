@@ -51,5 +51,8 @@ import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.modu
   ],
   controllers: [EstudioPrevioController, ModalidadesController, PersonasController, FilesController],
   providers: [EstudioPrevioService],
+  // Una revisión por cambio del PAA puede devolver el estudio previo, con la
+  // misma mecánica con que lo devuelve el abogado en la 3.4.
+  exports: [EstudioPrevioService],
 })
 export class EstudioPrevioModule {}

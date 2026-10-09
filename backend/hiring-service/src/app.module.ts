@@ -117,6 +117,7 @@ import { SupervisionContrato } from './entities/supervision-contrato.entity';
 import { ParticipacionProceso } from './entities/participacion-proceso.entity';
 import { ENTIDADES_PAA } from './entities/paa.entity';
 import { PaaModule } from './modules/paa/paa.module';
+import { ProcesoSinBloqueoGuard } from './modules/paa/proceso-sin-bloqueo.guard';
 import { RegistroPresupuestal } from './entities/registro-presupuestal.entity';
 import { PlazoPublicacionContrato, PublicacionContrato } from './entities/publicacion-contrato.entity';
 import { TipologiaContrato } from './entities/tipologia-contrato.entity';
@@ -210,6 +211,9 @@ import {
   providers: [
     // Todo endpoint queda autenticado salvo que se marque con @Public().
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // Después de autenticar: un proceso detenido por una revisión del PAA, o
+    // cancelado, no admite escrituras por ningún controlador.
+    { provide: APP_GUARD, useExisting: ProcesoSinBloqueoGuard },
   ],
 })
 export class AppModule {}
