@@ -152,10 +152,12 @@ interface ModalEditarTerminoProps {
 }
 
 export function ModalEditarTermino({ open, onOpenChange, solicitud, onSuccess }: ModalEditarTerminoProps) {
-    const { getDestinatariosInformeActivos, getEntesSolicitantesInformeActivos, getTiposFuenteNormativaActivos } = useConfiguracionesSIGL();
+    const { getDestinatariosInformeActivos, getEntesSolicitantesInformeActivos, getTiposFuenteNormativaActivos, getRolesResponsablesTermino } = useConfiguracionesSIGL();
     const destinatariosDisponibles = getDestinatariosInformeActivos();
     const entesSolicitantesDisponibles = getEntesSolicitantesInformeActivos();
     const tiposFuenteNormativaDisponibles = getTiposFuenteNormativaActivos();
+    const rolesResponsables = getRolesResponsablesTermino();
+    const rolesResponsablesKey = rolesResponsables.join('|');
 
     const [cargando, setCargando] = useState(false);
     const [guardando, setGuardando] = useState(false);
@@ -177,6 +179,17 @@ export function ModalEditarTermino({ open, onOpenChange, solicitud, onSuccess }:
     const [enteSolicitanteOtro, setEnteSolicitanteOtro] = useState('');
 
     const terminoId = solicitud?.metadata?.uuid || solicitud?.id || null;
+
+    // Responsables: usuarios activos con alguno de los roles parametrizados en Configuración.
+    useEffect(() => {
+        if (!open) return;
+        let cancelado = false;
+        legalService.getResponsablesTermino(rolesResponsables)
+            .then((data: any[]) => { if (!cancelado) setProfesionales(Array.isArray(data) ? data : []); })
+            .catch(() => undefined);
+        return () => { cancelado = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, rolesResponsablesKey]);
 
     // Carga del detalle real: el listado mapea el término a `SolicitudInforme` y por el camino
     // pierde campos que aquí sí hay que editar (tipoDias, prioridad, responsableId, fechaBase).
@@ -252,9 +265,6 @@ export function ModalEditarTermino({ open, onOpenChange, solicitud, onSuccess }:
         };
 
         cargar();
-        legalService.getAbogados()
-            .then((data: any[]) => { if (!cancelado) setProfesionales(Array.isArray(data) ? data : []); })
-            .catch(() => undefined);
         legalService.listarReglasAlertaTerminos()
             .then((data: any[]) => { if (!cancelado) setReglasGlobales(Array.isArray(data) ? data : []); })
             .catch(() => undefined);
@@ -720,10 +730,10 @@ export function ModalEditarTermino({ open, onOpenChange, solicitud, onSuccess }:
                         <div className="space-y-2">
                             <Label className="text-sm font-bold text-gray-700 flex items-center gap-1.5">
                                 <User className="w-4 h-4" />
-                                Responsable / Abogado
+                                Responsable
                             </Label>
                             <Select value={form.responsableId} onValueChange={(val: string) => actualizar({ responsableId: val })}>
-                                <SelectTrigger className="w-full border-2 border-gray-300 focus:border-blue-500" aria-label="Responsable / Abogado">
+                                <SelectTrigger className="w-full border-2 border-gray-300 focus:border-blue-500" aria-label="Responsable">
                                     <SelectValue placeholder="Seleccione responsable..." />
                                 </SelectTrigger>
                                 <SelectContent className="bg-white max-h-[200px] z-[9999]">

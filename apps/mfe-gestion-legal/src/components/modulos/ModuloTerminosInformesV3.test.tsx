@@ -18,6 +18,7 @@ vi.mock('../../../../services/api/legal.service', () => ({
     // Los usa ModalEditarTermino, que solo se monta con el permiso gestion-legal.terminos.edit.
     getTerminoDetalle: vi.fn(),
     getAbogados: vi.fn(),
+    getResponsablesTermino: vi.fn().mockResolvedValue([]),
     listarReglasAlertaTerminos: vi.fn(),
     getDocumentosTermino: vi.fn(),
     getNotasTermino: vi.fn(),

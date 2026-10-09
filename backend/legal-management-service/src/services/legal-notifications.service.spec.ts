@@ -283,7 +283,7 @@ describe('LegalNotificationsService — notifyTerminoCreado()', () => {
 
     beforeEach(async () => {
         mockNotificationClient = {
-            notifyByRoles: jest.fn().mockResolvedValue(undefined),
+            notifyByRole: jest.fn().mockResolvedValue(undefined),
         };
 
         const module: TestingModule = await Test.createTestingModule({
@@ -298,7 +298,7 @@ describe('LegalNotificationsService — notifyTerminoCreado()', () => {
 
     afterEach(() => jest.clearAllMocks());
 
-    it('debe notificar a los roles Jefe y Resuelve de Gestión Legal con tipo_notificacion TERMINO_CREADO', async () => {
+    it('debe notificar solo al rol Jefe de Gestión Legal (no a Resuelve) con tipo_notificacion TERMINO_CREADO', async () => {
         await service.notifyTerminoCreado({
             terminoId: 'term-1',
             nombreActuacion: 'Informe nuevo',
@@ -306,8 +306,8 @@ describe('LegalNotificationsService — notifyTerminoCreado()', () => {
             origenModulo: 'MANUAL',
         });
 
-        expect(mockNotificationClient.notifyByRoles).toHaveBeenCalledWith(
-            ['JEFE_GESTION_LEGAL', 'RESUELVE_GESTION_LEGAL'],
+        expect(mockNotificationClient.notifyByRole).toHaveBeenCalledWith(
+            'JEFE_GESTION_LEGAL',
             expect.objectContaining({ tipo_notificacion: 'TERMINO_CREADO' }),
         );
     });
@@ -320,7 +320,7 @@ describe('LegalNotificationsService — notifyTerminoCreado()', () => {
             origenModulo: 'MANUAL',
         });
 
-        const dto = mockNotificationClient.notifyByRoles.mock.calls[0][1];
+        const dto = mockNotificationClient.notifyByRole.mock.calls[0][1];
         expect(dto.mensaje).toContain('sin responsable asignado');
     });
 
@@ -333,13 +333,28 @@ describe('LegalNotificationsService — notifyTerminoCreado()', () => {
             responsableNombre: 'Juan Pérez',
         });
 
-        const dto = mockNotificationClient.notifyByRoles.mock.calls[0][1];
+        const dto = mockNotificationClient.notifyByRole.mock.calls[0][1];
         expect(dto.mensaje).toContain('asignado a Juan Pérez');
         expect(dto.mensaje).not.toContain('sin responsable asignado');
     });
 
-    it('no debe propagar el error si notifyByRoles falla', async () => {
-        mockNotificationClient.notifyByRoles.mockRejectedValue(new Error('DB caída'));
+    it('con responsable: igual avisa al Jefe, y no usa el envío por varios roles (no llega a Resuelve)', async () => {
+        mockNotificationClient.notifyByRoles = jest.fn();
+
+        await service.notifyTerminoCreado({
+            terminoId: 'term-1',
+            nombreActuacion: 'Informe nuevo',
+            numeroRadicado: 'RAD-1',
+            origenModulo: 'MANUAL',
+            responsableNombre: 'Juan Pérez',
+        });
+
+        expect(mockNotificationClient.notifyByRole).toHaveBeenCalledTimes(1);
+        expect(mockNotificationClient.notifyByRoles).not.toHaveBeenCalled();
+    });
+
+    it('no debe propagar el error si notifyByRole falla', async () => {
+        mockNotificationClient.notifyByRole.mockRejectedValue(new Error('DB caída'));
 
         await expect(service.notifyTerminoCreado({
             terminoId: 'term-1',
