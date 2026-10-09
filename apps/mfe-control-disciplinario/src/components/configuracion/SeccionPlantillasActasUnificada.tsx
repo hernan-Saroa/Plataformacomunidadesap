@@ -104,6 +104,8 @@ export interface TipoActa {
   nombre: string;
   descripcion: string;
   tipo: TipoActaId;
+  tipoBackend?: string;
+  codigo?: string;
   plantilla?: PlantillaArchivo | null;
   plantillas: PlantillaArchivo[];
   activo: boolean;
@@ -149,15 +151,22 @@ export function SeccionPlantillasActasUnificada({
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const handleDescargarPlantilla = (plantilla: PlantillaArchivo) => {
-    const link = document.createElement('a');
-    link.href = disciplinaryService.getAbsoluteFileUrl(plantilla.url);
-    link.download = plantilla.nombreArchivo;
-    link.click();
+  const handleDescargarPlantilla = async (plantilla: PlantillaArchivo | null) => {
+    if (!plantilla || !plantilla.url) {
+      toast.error('No hay archivo para descargar');
+      return;
+    }
 
-    toast.success('Plantilla descargada', {
-      description: plantilla.nombreArchivo
-    });
+    try {
+      const nombreDescarga = plantilla.nombreArchivo || `${plantilla.nombre || 'plantilla'}.docx`;
+      await disciplinaryService.downloadFileFromUrl(plantilla.url, nombreDescarga);
+      toast.success('Plantilla descargada', {
+        description: nombreDescarga
+      });
+    } catch (error) {
+      console.error('Error descargando plantilla de acta:', error);
+      toast.error('Error al descargar la plantilla');
+    }
   };
 
   const toggleExpandirTipo = (tipoId: string) => {

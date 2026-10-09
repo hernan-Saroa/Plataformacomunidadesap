@@ -113,6 +113,7 @@ export class ConfigService {
 
     const entity = this.campoRepo.create({
       ...dto,
+      limiteCaracteres: dto.limiteCaracteres !== undefined ? dto.limiteCaracteres : 250,
       opciones,
       grupo: dto.grupo ?? null,
     });
@@ -122,12 +123,13 @@ export class ConfigService {
     this.notificarCambioParametro({
       tipoConfiguracion: 'Campos del Formulario',
       operacion: 'Creación de Nuevo Campo',
-      descripcionAjuste: `Se configuró el nuevo campo "${guardado.etiqueta}" (clave: ${guardado.clave}) con tipo de dato [${guardado.tipoCampo}] para el diligenciamiento de solicitudes.`,
+      descripcionAjuste: `Se configuró el nuevo campo "${guardado.etiqueta}" (clave: ${guardado.clave}) con tipo [${guardado.tipoCampo}] y límite de [${guardado.limiteCaracteres ?? 250}] caracteres.`,
       detalle: {
         clave: guardado.clave,
         etiqueta: guardado.etiqueta,
         tipoCampo: guardado.tipoCampo,
         grupo: guardado.grupo,
+        limiteCaracteres: guardado.limiteCaracteres,
       },
       usuarioModificador,
     });
@@ -146,6 +148,9 @@ export class ConfigService {
     }
 
     Object.assign(entity, dto);
+    if (dto.limiteCaracteres !== undefined) {
+      entity.limiteCaracteres = dto.limiteCaracteres;
+    }
     if (dto.opciones !== undefined) {
       entity.opciones = dto.opciones
         ? dto.opciones
@@ -162,13 +167,14 @@ export class ConfigService {
     this.notificarCambioParametro({
       tipoConfiguracion: 'Campos del Formulario',
       operacion: 'Actualización de Campo',
-      descripcionAjuste: `Se actualizó la configuración del campo [${clave}] ("${guardado.etiqueta}"). Estado: ${guardado.activo ? 'Activo' : 'Inactivo'}, Tipo: [${guardado.tipoCampo}].`,
+      descripcionAjuste: `Se actualizó la configuración del campo [${clave}] ("${guardado.etiqueta}"). Estado: ${guardado.activo ? 'Activo' : 'Inactivo'}, Tipo: [${guardado.tipoCampo}], Límite: [${guardado.limiteCaracteres ?? 'N/A'} car.].`,
       detalle: {
         clave,
         etiqueta: guardado.etiqueta,
         tipoCampo: guardado.tipoCampo,
         activo: guardado.activo,
         orden: guardado.orden,
+        limiteCaracteres: guardado.limiteCaracteres,
       },
       usuarioModificador,
     });

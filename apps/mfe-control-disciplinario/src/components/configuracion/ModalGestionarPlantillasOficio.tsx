@@ -157,6 +157,8 @@ export function ModalGestionarPlantillasOficio({
               
               plantilla.url = uploadedData.plantilla || (uploadedData as any)?.data?.plantilla || plantilla.url;
               plantilla.nombre = uploadedData.nombre_plantilla || (uploadedData as any)?.data?.nombre_plantilla || plantilla.nombre;
+              plantilla.nombreArchivo = fileToUpload.name;
+              (plantilla as any).yaSincronizado = true;
               plantilla.file = undefined;
             }
           } catch (uploadError) {

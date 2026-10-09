@@ -1125,10 +1125,9 @@ export class LegalNotificationsService {
   }
 
   /**
-   * Notifica al Jefe de Gestión Legal (y a Resuelve) que se creó un nuevo término/informe,
-   * de forma incondicional — igual que `notifyProcesoCreado` en los demás módulos — para que
-   * la creación quede visible dentro de la plataforma incluso cuando el término aún no tiene
-   * responsable asignado (`notifyResponsableAsignadoTermino` solo se dispara cuando sí lo tiene).
+   * Avisa al Jefe de Gestión Legal de la creación de un nuevo término/informe, exista o no
+   * responsable. No se avisa al rol Resuelve: quien debe enterarse es el responsable elegido,
+   * y ese ya recibe `notifyResponsableAsignadoTermino` (fechas y periodicidad) al crearse.
    */
   async notifyTerminoCreado(params: {
     terminoId: string;
@@ -1162,7 +1161,7 @@ export class LegalNotificationsService {
     };
 
     try {
-      await this.notificationClient.notifyByRoles([ROLE_JEFE, ROLE_RESUELVE], dto);
+      await this.notificationClient.notifyByRole(ROLE_JEFE, dto);
     } catch (err: any) {
       this.logger.warn(`No se pudo notificar creación de término ${params.terminoId}: ${err?.message}`);
     }

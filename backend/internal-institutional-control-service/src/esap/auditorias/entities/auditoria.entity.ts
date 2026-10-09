@@ -148,6 +148,10 @@ export class Auditoria {
   @Column({ type: 'jsonb', name: 'semanas_excluidas', default: () => "'[]'::jsonb" })
   semanasExcluidas: string[];
 
+  // Unidades auditables del proceso que cubre la auditoría (EFDS-2316)
+  @Column({ type: 'jsonb', name: 'unidades_auditables', default: () => "'[]'::jsonb" })
+  unidadesAuditables: string[];
+
   @Column({ type: 'integer', default: 0 })
   progreso: number; // 0-100
 

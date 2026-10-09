@@ -2370,16 +2370,6 @@ export class TravelExpensesService implements OnModuleInit {
               [roleId, pid],
             );
           } catch {}
-          try {
-            await this.dataSource.query(
-              `INSERT INTO auth.role_permission (id, id_role, id_permission)
-               SELECT gen_random_uuid(), $1, $2
-               WHERE NOT EXISTS (
-                 SELECT 1 FROM auth.role_permission WHERE id_role = $1 AND id_permission = $2
-               )`,
-              [roleId, pid],
-            );
-          } catch {}
         }
       }
     } catch (e: any) {
@@ -2711,6 +2701,12 @@ export class TravelExpensesService implements OnModuleInit {
       throw new BadRequestException(
         `Faltan los siguientes campos obligatorios para el tipo de comisionado ${comisionado.tipoComisionado}: ${camposFaltantes.join(', ')}`,
       );
+    }
+
+    const { errores: erroresLimite } =
+      await this.validarLimitesCaracteres(datosFormulario);
+    if (erroresLimite.length > 0) {
+      throw new BadRequestException(erroresLimite.join('. '));
     }
 
     const config = await this.configService.obtenerConfiguracionPorTipo(
@@ -3199,6 +3195,16 @@ export class TravelExpensesService implements OnModuleInit {
       throw new BadRequestException(
         'La fecha fin no puede ser anterior a la fecha inicio.',
       );
+    }
+
+    const datosActualizacion = {
+      ...(dto as any),
+      ...(dto.camposAdicionales || {}),
+    };
+    const { errores: erroresLimite } =
+      await this.validarLimitesCaracteres(datosActualizacion);
+    if (erroresLimite.length > 0) {
+      throw new BadRequestException(erroresLimite.join('. '));
     }
 
     if (dto.objetoComision !== undefined) {
@@ -5356,6 +5362,34 @@ if (dto.costoEstimadoTiquete !== undefined) {
     });
 
     return { camposFaltantes };
+  }
+
+  async validarLimitesCaracteres(
+    datosFormulario: Record<string, any>,
+  ): Promise<{ errores: string[] }> {
+    if (!this.configService || typeof this.configService.obtenerCamposFormulario !== 'function') {
+      return { errores: [] };
+    }
+    const camposCatalogo = await this.configService.obtenerCamposFormulario();
+    const errores: string[] = [];
+
+    for (const campo of camposCatalogo) {
+      if (!campo.activo) continue;
+      const valor = datosFormulario[campo.clave];
+      if (typeof valor === 'string' && valor.length > 0) {
+        const limite =
+          campo.limiteCaracteres !== undefined && campo.limiteCaracteres !== null
+            ? campo.limiteCaracteres
+            : 250;
+        if (limite > 0 && valor.length > limite) {
+          errores.push(
+            `El campo "${campo.etiqueta}" (${campo.clave}) supera el límite permitido de ${limite} caracteres (actual: ${valor.length})`,
+          );
+        }
+      }
+    }
+
+    return { errores };
   }
 
   /**

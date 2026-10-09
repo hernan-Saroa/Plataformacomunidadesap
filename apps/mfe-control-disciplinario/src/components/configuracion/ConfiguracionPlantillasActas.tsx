@@ -20,6 +20,26 @@ import { ModalNuevoTipoActa } from './ModalNuevoTipoActa';
 import { ModalGestionarPlantillasActa } from './ModalGestionarPlantillasActa';
 import { ModalConfirmacion } from './ModalConfirmacion';
 
+// Función para resolver el nombre real del archivo de plantilla
+export const resolverNombreArchivo = (url?: string, nombrePlantilla?: string): string => {
+  if (url) {
+    const raw = url.split(/[/\\]/).pop()?.split('?')[0] || '';
+    if (raw) {
+      const match = raw.match(/^plantilla-(?:oficio|acta|auto)-[^-]+-\d+-(.+)$/);
+      if (match && match[1]) {
+        return decodeURIComponent(match[1]);
+      }
+      return raw;
+    }
+  }
+  if (nombrePlantilla) {
+    return /\.(docx|doc|pdf|rtf)$/i.test(nombrePlantilla)
+      ? nombrePlantilla
+      : `${nombrePlantilla}.docx`;
+  }
+  return 'plantilla.docx';
+};
+
 // Función para convertir ActaConfiguration del backend al formato TipoActa del frontend
 const mapBackendToFrontend = (config: ActaConfiguration): TipoActa => {
   // Mapear el tipo del backend al tipo del frontend
@@ -40,10 +60,13 @@ const mapBackendToFrontend = (config: ActaConfiguration): TipoActa => {
     tipo = 'CIERRE';
   }
   
-  const plantillaData: PlantillaArchivo | null = config.nombre_plantilla ? {
-    id: config.id,
-    nombre: config.nombre_plantilla,
-    nombreArchivo: config.nombre_plantilla,
+  const tienePlantilla = Boolean(config.plantilla || config.nombre_plantilla);
+  const nombreArchivo = resolverNombreArchivo(config.plantilla, config.nombre_plantilla);
+
+  const plantillaData: PlantillaArchivo | null = tienePlantilla ? {
+    id: `plt-${config.id}`,
+    nombre: config.nombre_plantilla || nombreArchivo,
+    nombreArchivo: nombreArchivo,
     descripcion: config.descripcion_plantilla || '',
     url: config.plantilla || '',
     tamano: 0,
@@ -58,6 +81,8 @@ const mapBackendToFrontend = (config: ActaConfiguration): TipoActa => {
     nombre: config.nombre,
     descripcion: config.descripcion || '',
     tipo,
+    tipoBackend: config.tipo,
+    codigo: config.codigo,
     plantilla: plantillaData,
     plantillas: plantillaData ? [plantillaData] : [],
     activo: config.estado === 'activo',
@@ -145,7 +170,6 @@ export function ConfiguracionPlantillasActas() {
         const targetId = tipoActaEdicion.id;
         const updateDto: UpdateActaConfigurationDto = {
           nombre: nuevoTipo.nombre,
-          tipo: nuevoTipo.tipo,
           descripcion: nuevoTipo.descripcion,
           estado: nuevoTipo.activo ? 'activo' : 'inactivo',
           orden: nuevoTipo.orden
@@ -340,7 +364,7 @@ export function ConfiguracionPlantillasActas() {
             console.error('❌ Error subiendo plantilla:', error);
             toast.error('Error al subir la plantilla');
           }
-        } else if (!plantilla.url?.startsWith('blob:')) {
+        } else if (!(plantilla as any)?.yaSincronizado && !plantilla.url?.startsWith('blob:')) {
           try {
             const updateDto: UpdateActaConfigurationDto = {
               nombre_plantilla: plantilla.nombre,

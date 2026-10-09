@@ -20,6 +20,7 @@ export interface CampoFormulario {
   grupo: GrupoCampoFormulario | null;
   orden: number;
   activo: boolean;
+  limiteCaracteres?: number | null;
 }
 
 export interface TipoDocumentoSoporte {
@@ -66,6 +67,7 @@ export interface CrearCampoFormularioDTO {
   grupo?: GrupoCampoFormulario;
   orden?: number;
   activo?: boolean;
+  limiteCaracteres?: number | null;
 }
 
 export interface ActualizarCampoFormularioDTO {
@@ -76,6 +78,7 @@ export interface ActualizarCampoFormularioDTO {
   grupo?: GrupoCampoFormulario;
   orden?: number;
   activo?: boolean;
+  limiteCaracteres?: number | null;
 }
 
 export interface CrearConfigTipoComisionadoDTO {

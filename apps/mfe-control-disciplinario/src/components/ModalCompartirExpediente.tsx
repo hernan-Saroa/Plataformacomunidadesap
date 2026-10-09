@@ -431,7 +431,7 @@ const descargarQR = async () => {
                   onClick={generarClaveAleatoria}
                   variant="outline"
                   size="sm"
-                  className="border-blue-600 text-blue-700 hover:bg-blue-50 whitespace-nowrap"
+                  className="border-blue-600 text-blue-700 hover:bg-blue-50 hover:text-blue-800 whitespace-nowrap"
                 >
                   Generar
                 </Button>
@@ -499,7 +499,7 @@ const descargarQR = async () => {
                     className={
                       linkCopiado 
                         ? 'border-green-600 text-green-700 bg-green-50' 
-                        : 'border-blue-600 text-blue-700 hover:bg-blue-50'
+                        : 'border-blue-600 text-blue-700 hover:bg-blue-50 hover:text-blue-800'
                     }
                   >
                     {linkCopiado ? (
@@ -554,7 +554,7 @@ const descargarQR = async () => {
                 <Button
                   onClick={descargarQR}
                   variant="outline"
-                  className="border-purple-600 text-purple-700 hover:bg-purple-50"
+                  className="border-purple-600 text-purple-700 hover:bg-purple-50 hover:text-purple-800"
                 >
                   <Download className="w-4 h-4 mr-2" />
                   Descargar QR

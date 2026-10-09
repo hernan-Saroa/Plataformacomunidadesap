@@ -302,7 +302,7 @@ export function EditorDocumentos({
                 onClick={handleImportarWord}
                 variant="outline"
                 size="sm"
-                className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                className="border-blue-300 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
               >
                 <Upload className="w-4 h-4 mr-2" />
                 Importar Word

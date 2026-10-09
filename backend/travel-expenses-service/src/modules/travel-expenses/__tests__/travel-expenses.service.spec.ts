@@ -72,6 +72,7 @@ describe('TravelExpensesService', () => {
         obtenerConfiguracionPorCodigoFormulario: jest
           .fn()
           .mockResolvedValue(null),
+        obtenerCamposFormulario: jest.fn().mockResolvedValue([]),
       },
       humanResourcesClient = {
         consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
@@ -5903,5 +5904,51 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(qbMock.andWhere).toHaveBeenCalled();
       });
     });
+
+    describe('validarLimitesCaracteres — Validación dinámica de límite de caracteres por campo', () => {
+      it('debe rechazar cuando un campo supera su límite configurado', async () => {
+        const configService = {
+          obtenerCamposFormulario: jest.fn().mockResolvedValue([
+            {
+              clave: 'objetoComision',
+              etiqueta: 'Objeto de la Comisión',
+              activo: true,
+              limiteCaracteres: 50,
+            },
+          ]),
+        };
+        const module = await createMockModuleEtapa5({ configService });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const res = await svc.validarLimitesCaracteres({
+          objetoComision: 'A'.repeat(60),
+        });
+
+        expect(res.errores).toHaveLength(1);
+        expect(res.errores[0]).toContain('supera el límite permitido de 50 caracteres');
+      });
+
+      it('debe aceptar cuando los campos respetan el límite configurado o el valor por defecto', async () => {
+        const configService = {
+          obtenerCamposFormulario: jest.fn().mockResolvedValue([
+            {
+              clave: 'objetoComision',
+              etiqueta: 'Objeto de la Comisión',
+              activo: true,
+              limiteCaracteres: 500,
+            },
+          ]),
+        };
+        const module = await createMockModuleEtapa5({ configService });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const res = await svc.validarLimitesCaracteres({
+          objetoComision: 'A'.repeat(300),
+        });
+
+        expect(res.errores).toHaveLength(0);
+      });
+    });
   });
 });
+

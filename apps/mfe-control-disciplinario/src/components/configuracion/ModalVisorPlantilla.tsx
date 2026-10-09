@@ -153,9 +153,12 @@ export function ModalVisorPlantilla({
         if (plantillaSeleccionada.file) {
           arrayBuffer = await plantillaSeleccionada.file.arrayBuffer();
         } else if (urlRaw) {
-          const fetchUrl = urlRaw.startsWith('blob:') || /^https?:\/\//i.test(urlRaw)
+          const rawUrl = urlRaw.startsWith('blob:') || /^https?:\/\//i.test(urlRaw)
             ? urlRaw
             : disciplinaryService.getAbsoluteFileUrl(urlRaw);
+          const fetchUrl = rawUrl.startsWith('blob:')
+            ? rawUrl
+            : `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
 
           const response = await fetch(fetchUrl, {
             method: 'GET',
@@ -406,7 +409,7 @@ export function ModalVisorPlantilla({
                         ? 'bg-white text-gray-900 shadow-sm border border-slate-300 ring-2'
                         : 'text-gray-600 hover:bg-white/60 hover:text-gray-900 border border-transparent'
                     }`}
-                    style={{ ringColor: esActiva ? colorTema : 'transparent' }}
+                    style={{ borderColor: esActiva ? colorTema : 'transparent' }}
                   >
                     <span>{p.nombre}</span>
                     <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-100 font-mono text-slate-600">

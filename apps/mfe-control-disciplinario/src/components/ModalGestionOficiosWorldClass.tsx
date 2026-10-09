@@ -238,7 +238,7 @@ export function ModalGestionOficiosWorldClass({
                           variant="outline"
                           onClick={() => setVisorDocumento({ show: true, documento: oficio })}
                           title="Ver oficio"
-                          className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                          className="border-blue-600 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
@@ -248,7 +248,7 @@ export function ModalGestionOficiosWorldClass({
                           variant="outline"
                           onClick={() => handleDescargarOficio(oficio)}
                           title="Descargar oficio"
-                          className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                          className="border-blue-600 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
                         >
                           <Download className="w-4 h-4" />
                         </Button>

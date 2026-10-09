@@ -43,6 +43,20 @@ const externalRedirectPlugin = () => ({
   },
 });
 
+const excludeUploadsFromSpaFallbackPlugin = () => ({
+  name: 'esap-dev-exclude-uploads-spa-fallback',
+  configureServer(server: { middlewares: { use: (handler: (req: { url?: string; originalUrl?: string }, res: unknown, next: () => void) => void) => void } }) {
+    server.middlewares.use((req, _res, next) => {
+      const url = req.originalUrl ?? req.url ?? '';
+      const uploadsPattern = /^\/services\/[^/]+\/uploads\/.+\.(jpe?g|png|pdf|webp|gif|heic|svg|docx?|xlsx?|pptx?|txt|zip|rar|csv)$/i;
+      if (uploadsPattern.test(url.split('?')[0])) {
+        return next();
+      }
+      next();
+    });
+  },
+});
+
 export default defineConfig(({ command }) => ({
   root: __dirname,
   define: {
@@ -53,6 +67,7 @@ export default defineConfig(({ command }) => ({
     cspNonceBootstrap(shellApp.appDir),
     stripBundleComments(),
     externalRedirectPlugin(),
+    excludeUploadsFromSpaFallbackPlugin(),
     federation({
       name: shellApp.federationName,
       remotes: getRemoteDefinitions(command === 'serve' ? 'serve' : 'build'),
@@ -112,5 +127,21 @@ export default defineConfig(({ command }) => ({
   server: {
     port: 3000,
     open: true,
+    proxy: {
+      '/services/infraestructura/uploads': {
+        target: process.env.ESAP_INFRA_SERVICE_URL || 'http://127.0.0.1:3014',
+        changeOrigin: true,
+        secure: false,
+        ws: false,
+        rewrite: (path) => path.replace(/^\/services\/infraestructura/, ''),
+      },
+      '/services': {
+        target: process.env.ESAP_API_GATEWAY_URL || 'http://127.0.0.1:4000',
+        changeOrigin: true,
+        secure: false,
+        ws: false,
+        rewrite: (path) => path.replace(/^\/services/, ''),
+      },
+    },
   },
 }));

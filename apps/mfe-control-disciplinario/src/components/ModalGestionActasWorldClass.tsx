@@ -241,7 +241,7 @@ export function ModalGestionActasWorldClass({
                           variant="outline"
                           onClick={() => setVisorDocumento({ show: true, documento: acta })}
                           title="Ver acta"
-                          className="border-green-600 text-green-600 hover:bg-green-50"
+                          className="border-green-600 text-green-600 hover:bg-green-50 hover:text-green-700"
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
@@ -251,7 +251,7 @@ export function ModalGestionActasWorldClass({
                           variant="outline"
                           onClick={() => handleDescargarActa(acta)}
                           title="Descargar acta"
-                          className="border-green-600 text-green-600 hover:bg-green-50"
+                          className="border-green-600 text-green-600 hover:bg-green-50 hover:text-green-700"
                         >
                           <Download className="w-4 h-4" />
                         </Button>
