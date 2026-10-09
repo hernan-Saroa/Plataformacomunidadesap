@@ -145,6 +145,23 @@ export class PaaController {
     return this.admin.crearVigencia(dto, getHiringAccess(req));
   }
 
+  @Get('vigencias/:id/afectados')
+  @Puede('ver', 'PAA')
+  @ApiOperation({ summary: 'Procesos en curso de años anteriores que entrarían a evaluación por cambio anual' })
+  afectadosPorCambioDeVigencia(@Param('id', ParseUUIDPipe) id: string) {
+    return this.activacion.afectadosPorCambioDeVigencia(id);
+  }
+
+  @Post('vigencias/:id/declarar-vigente')
+  @Puede('aprobar', 'PAA')
+  @ApiOperation({
+    summary: 'Declarar vigente un año nuevo del PAA',
+    description: 'No modifica procesos: abre a cada proceso en curso del año anterior una evaluación por cambio anual.',
+  })
+  declararVigente(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.activacion.declararVigente(id, getHiringAccess(req));
+  }
+
   // ------------------------------------------------------------- versiones --
 
   @Post('vigencias/:id/versiones')

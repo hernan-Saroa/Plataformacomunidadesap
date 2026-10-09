@@ -120,6 +120,125 @@ export class PaaActivacionService {
     });
   }
 
+  // --------------------------------------------------- cambio de vigencia --
+
+  /** Los procesos en curso de años anteriores que entrarían a evaluación. */
+  async afectadosPorCambioDeVigencia(vigenciaId: string) {
+    const { vigencia, activa, anterior } = await this.paraDeclarar(this.dataSource.manager, vigenciaId);
+    const procesos = await this.abiertosDeOtrosAnios(this.dataSource.manager, vigencia.anio);
+    const abogados = await this.abogados(this.dataSource.manager, procesos.map((p) => p.id));
+    return {
+      anio: vigencia.anio,
+      version: activa ? { id: activa.id, numero: activa.numero } : null,
+      vigenteActual: anterior ? { id: anterior.id, anio: anterior.anio } : null,
+      procesos: procesos.map((p) => ({
+        procesoId: p.id,
+        radicado: p.radicado,
+        objeto: p.objeto,
+        etapa: p.etapa,
+        codigo: p.paaCodigo,
+        anio: p.paaAnio,
+        abogado: abogados.get(p.id) ?? null,
+      })),
+    };
+  }
+
+  /**
+   * Declara vigente un año nuevo del PAA (escenario B).
+   *
+   * No es una actualización: no modifica ningún proceso. Los del año anterior
+   * que siguen en curso conservan su línea, su versión y sus datos, y a cada
+   * uno se le abre una evaluación por cambio anual que lo detiene hasta que
+   * alguien decida si continúa con las condiciones con que nació, se devuelve,
+   * se migra a una línea del año nuevo o se cancela. Un código de un año no
+   * equivale al del otro aunque se escriba igual, así que nada se empareja solo.
+   */
+  async declararVigente(vigenciaId: string, acceso: HiringAccess) {
+    return this.dataSource.transaction(async (em) => {
+      const { vigencia, activa, anterior } = await this.paraDeclarar(em, vigenciaId, true);
+      if (!activa) {
+        throw new ConflictException(`La vigencia ${vigencia.anio} no tiene una versión activa: primero se carga y se activa su PAA.`);
+      }
+
+      const ahora = new Date();
+      // Primero se apaga la anterior: el índice admite una sola vigente.
+      if (anterior) await em.update(PaaVigencia, { id: anterior.id }, { vigente: false });
+      await em.update(
+        PaaVigencia,
+        { id: vigencia.id },
+        { vigente: true, declaradaVigentePor: acceso.userName, declaradaVigenteAt: ahora },
+      );
+
+      const procesos = await this.abiertosDeOtrosAnios(em, vigencia.anio);
+      const abogados = await this.abogados(em, procesos.map((p) => p.id));
+      const comparacion = await em.findOne(PaaComparacion, {
+        where: { versionNuevaId: activa.id, tipo: 'CAMBIO_VIGENCIA' },
+      });
+
+      let abiertas = 0;
+      for (const p of procesos) {
+        const linea = await em.findOneOrFail(PaaLinea, { where: { id: p.paaLineaId! } });
+        const abogado = abogados.get(p.id) ?? null;
+        const abierta = await this.abrirRevision(
+          em,
+          {
+            procesoId: p.id,
+            comparacionId: comparacion?.id ?? null,
+            versionAnteriorId: linea.versionId,
+            versionNuevaId: activa.id,
+            codigo: p.paaCodigo!,
+            tipo: 'CAMBIO_VIGENCIA',
+            cambios: { linea: [], proceso: [] },
+            motivo:
+              `Evaluación por cambio anual, no una actualización de la misma vigencia: el PAA ${vigencia.anio} ` +
+              `reemplaza al de ${p.paaAnio}. El proceso conserva los datos de ${p.paaCodigo} (${p.paaAnio}) ` +
+              'hasta que se decida si continúa, se devuelve, se migra o se cancela.',
+            bloquea: true,
+            responsableId: abogado?.id ?? null,
+            responsableNombre: abogado?.nombre ?? null,
+          },
+          activa.numero,
+          acceso,
+        );
+        if (abierta) abiertas++;
+      }
+
+      await this.admin.traza(em, 'paa_vigencias', vigencia.id, 'DECLARAR_VIGENTE', acceso, {
+        anio: vigencia.anio,
+        anterior: anterior?.anio ?? null,
+        version: activa.numero,
+        evaluaciones: abiertas,
+      });
+
+      return { anio: vigencia.anio, anterior: anterior?.anio ?? null, evaluaciones: abiertas };
+    });
+  }
+
+  private async paraDeclarar(em: EntityManager, vigenciaId: string, bloquear = false) {
+    const consulta = em.createQueryBuilder(PaaVigencia, 'v').where('v.id = :id', { id: vigenciaId });
+    const vigencia = await (bloquear ? consulta.setLock('pessimistic_write') : consulta).getOne();
+    if (!vigencia) throw new NotFoundException('La vigencia no existe');
+    if (vigencia.vigente) throw new ConflictException(`La vigencia ${vigencia.anio} ya es la vigente.`);
+
+    const anterior = await em.findOne(PaaVigencia, { where: { vigente: true } });
+    if (anterior && anterior.anio > vigencia.anio) {
+      throw new ConflictException(
+        `La vigente es ${anterior.anio}: no se vuelve a un año anterior. Los procesos de ${vigencia.anio} siguen consultables sin declararla.`,
+      );
+    }
+    const activa = await em.findOne(PaaVersion, { where: { vigenciaId, estado: 'ACTIVA' } });
+    return { vigencia, activa, anterior };
+  }
+
+  /** En curso, con origen en el PAA de un año anterior. Los creados antes del PAA no tienen origen que evaluar. */
+  private abiertosDeOtrosAnios(em: EntityManager, anio: number) {
+    return em
+      .createQueryBuilder(Proceso, 'p')
+      .where(`p.estado = 'EN_CURSO' AND p.paa_linea_id IS NOT NULL AND p.paa_anio < :anio`, { anio })
+      .orderBy('p.radicado', 'ASC')
+      .getMany();
+  }
+
   // ------------------------------------------------------------------------
 
   private async cargar(em: EntityManager, versionId: string, bloquear = false) {
@@ -321,12 +440,9 @@ export class PaaActivacionService {
         ? `La línea ${p.codigo} ya no está en la versión ${version.numero} del PAA. El proceso no avanza hasta que se decida si continúa o se cancela.`
         : `La línea ${p.codigo} cambió en la versión ${version.numero} del PAA en datos que usa el proceso.`;
 
-    // ON CONFLICT: la misma versión no abre dos revisiones al mismo proceso.
-    const insertada = await em
-      .createQueryBuilder()
-      .insert()
-      .into(PaaRevision)
-      .values({
+    await this.abrirRevision(
+      em,
+      {
         procesoId: p.procesoId,
         comparacionId: comparacion?.id ?? null,
         versionAnteriorId: anterior.id,
@@ -338,23 +454,43 @@ export class PaaActivacionService {
         bloquea: p.revision.bloquea,
         responsableId: p.abogado?.id ?? null,
         responsableNombre: p.abogado?.nombre ?? null,
-      })
+      },
+      version.numero,
+      acceso,
+    );
+  }
+
+  /**
+   * Abre una revisión, salvo que esa misma versión ya le haya abierto una al
+   * proceso: el índice único lo garantiza y `orIgnore` lo vuelve silencioso.
+   */
+  private async abrirRevision(
+    em: EntityManager,
+    datos: Partial<PaaRevision>,
+    numeroVersion: number,
+    acceso: HiringAccess,
+  ): Promise<boolean> {
+    const insertada = await em
+      .createQueryBuilder()
+      .insert()
+      .into(PaaRevision)
+      .values(datos)
       .orIgnore()
       .returning(['id'])
       .execute();
 
     const revisionId = insertada.raw?.[0]?.id;
-    if (revisionId) {
-      await this.admin.traza(
-        em,
-        'paa_revisiones',
-        revisionId,
-        'ABRIR_REVISION_PAA',
-        acceso,
-        { tipo: p.revision.tipo, codigo: p.codigo, bloquea: p.revision.bloquea, version: version.numero, motivo },
-        p.procesoId,
-      );
-    }
+    if (!revisionId) return false;
+    await this.admin.traza(
+      em,
+      'paa_revisiones',
+      revisionId,
+      'ABRIR_REVISION_PAA',
+      acceso,
+      { tipo: datos.tipo, codigo: datos.codigo, bloquea: datos.bloquea, version: numeroVersion, motivo: datos.motivo },
+      datos.procesoId!,
+    );
+    return true;
   }
 
   /** El abogado vigente de cada proceso: él decide la revisión. */
