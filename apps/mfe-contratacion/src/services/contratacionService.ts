@@ -133,6 +133,22 @@ import {
   UmbralesVigentes,
   UmbralVigente,
   UnidadUmbral,
+  AfectadosPaa,
+  AfectadosPorCambioDeVigencia,
+  BusquedaLineasPaa,
+  CamposDelFormularioPaa,
+  ComparacionPaa,
+  DecisionRevisionPaa,
+  DetalleLineaPaa,
+  DetalleRevisionPaa,
+  OpcionesDeCreacionPaa,
+  OrigenPaaDelProceso,
+  RegionPaa,
+  ResumenAfectadosPaa,
+  ResumenVersionPaa,
+  RevisionPaa,
+  VersionPaa,
+  VigenciaPaa,
 } from '../types';
 
 const SERVICE_PREFIX = '/hiring/api/v1';
@@ -1805,12 +1821,106 @@ export const contratacionService = {
       body: JSON.stringify(cambio),
     }),
 
-  crearProceso: (objeto: string, modalidad: string, valorEstimado: number) =>
-
+  /**
+   * Crea el proceso desde una línea del PAA (migración 097).
+   *
+   * Objeto, modalidad y valor salen de la línea: ya no se teclean. Lo que haya
+   * que corregir se corrige en la 3.1, que nace con lo que el PAA dice.
+   */
+  crearProceso: (paaLineaId: string) =>
     pedir<ProcesoResumen>('/procesos', {
       method: 'POST',
-      body: JSON.stringify({ objeto, modalidad, valorEstimado }),
+      body: JSON.stringify({ paaLineaId }),
     }),
+
+  // -------------------------------------------- Plan Anual de Adquisiciones --
+
+  paa: {
+    opcionesDeCreacion: () => pedir<OpcionesDeCreacionPaa>('/paa/opciones-de-creacion'),
+
+    buscarLineas: (region: string, q: string, pagina = 1, anio?: number) => {
+      const consulta = new URLSearchParams({ region, pagina: String(pagina) });
+      if (q.trim()) consulta.set('q', q.trim());
+      if (anio) consulta.set('anio', String(anio));
+      return pedir<BusquedaLineasPaa>(`/paa/lineas?${consulta}`);
+    },
+
+    linea: (id: string) => pedir<DetalleLineaPaa>(`/paa/lineas/${id}`),
+
+    regiones: () => pedir<RegionPaa[]>('/paa/regiones'),
+
+    crearRegion: (region: Pick<RegionPaa, 'codigo' | 'nombre' | 'prefijoLinea' | 'unidadContratacion'>) =>
+      pedir<RegionPaa>('/paa/regiones', { method: 'POST', body: JSON.stringify(region) }),
+
+    actualizarRegion: (
+      id: string,
+      cambios: Partial<Pick<RegionPaa, 'nombre' | 'prefijoLinea' | 'unidadContratacion' | 'activa'>>,
+    ) => pedir<RegionPaa>(`/paa/regiones/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) }),
+
+    vigencias: () => pedir<VigenciaPaa[]>('/paa/vigencias'),
+
+    crearVigencia: (anio: number) =>
+      pedir<VigenciaPaa>('/paa/vigencias', { method: 'POST', body: JSON.stringify({ anio }) }),
+
+    cargarVersion: (vigenciaId: string, archivo: File) => {
+      const cuerpo = new FormData();
+      cuerpo.append('file', archivo);
+      return pedir<VersionPaa>(`/paa/vigencias/${vigenciaId}/versiones`, { method: 'POST', body: cuerpo });
+    },
+
+    version: (id: string) => pedir<VersionPaa>(`/paa/versiones/${id}`),
+
+    comparacion: (id: string) => pedir<ComparacionPaa>(`/paa/versiones/${id}/comparacion`),
+
+    afectados: (id: string) => pedir<AfectadosPaa>(`/paa/versiones/${id}/afectados`),
+
+    activar: (id: string) =>
+      pedir<{ version: { id: string; numero: number }; anio: number; resumen: ResumenAfectadosPaa }>(
+        `/paa/versiones/${id}/activar`,
+        { method: 'POST' },
+      ),
+
+    descartar: (id: string, motivo: string) =>
+      pedir<ResumenVersionPaa>(`/paa/versiones/${id}/descartar`, {
+        method: 'POST',
+        body: JSON.stringify({ motivo }),
+      }),
+
+    afectadosPorCambioDeVigencia: (vigenciaId: string) =>
+      pedir<AfectadosPorCambioDeVigencia>(`/paa/vigencias/${vigenciaId}/afectados`),
+
+    declararVigente: (vigenciaId: string) =>
+      pedir<{ anio: number; anterior: number | null; evaluaciones: number }>(
+        `/paa/vigencias/${vigenciaId}/declarar-vigente`,
+        { method: 'POST' },
+      ),
+
+    campos: (regionId: string, anio: number) =>
+      pedir<CamposDelFormularioPaa>(`/paa/regiones/${regionId}/vigencias/${anio}/campos`),
+
+    guardarCampos: (
+      regionId: string,
+      anio: number,
+      campos: { clave: string; visible: boolean; etiqueta?: string | null }[],
+    ) =>
+      pedir<CamposDelFormularioPaa>(`/paa/regiones/${regionId}/vigencias/${anio}/campos`, {
+        method: 'PUT',
+        body: JSON.stringify({ campos }),
+      }),
+
+    revisiones: (estado?: 'PENDIENTE' | 'RESUELTA') =>
+      pedir<RevisionPaa[]>(`/paa/revisiones${estado ? `?estado=${estado}` : ''}`),
+
+    revision: (id: string) => pedir<DetalleRevisionPaa>(`/paa/revisiones/${id}`),
+
+    decidir: (id: string, decision: DecisionRevisionPaa, justificacion: string, lineaDestinoId?: string) =>
+      pedir<{ id: string; decision: DecisionRevisionPaa }>(`/paa/revisiones/${id}/decidir`, {
+        method: 'POST',
+        body: JSON.stringify({ decision, justificacion, lineaDestinoId }),
+      }),
+
+    origenDelProceso: (procesoId: string) => pedir<OrigenPaaDelProceso>(`/paa/procesos/${procesoId}`),
+  },
 
   obtenerEstudioPrevio: (procesoId: string) =>
     pedir<EstudioPrevio>(`/procesos/${procesoId}/estudio-previo`),

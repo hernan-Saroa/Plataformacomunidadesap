@@ -508,7 +508,16 @@ export interface ProcesoResumen {
   participacion?: ParticipacionEnLista;
   /** Quien mira radicó el proceso: es el área que redacta el estudio previo. */
   radicadoPorMi?: boolean;
+  /** Desenlace: en curso, adjudicado, desierto, negado o cancelado por el PAA. */
+  estado?: EstadoDelProceso;
+  /** La línea del PAA de la que nació, si nació de una (migración 097). */
+  paaCodigo?: string | null;
+  paaAnio?: number | null;
+  /** Una revisión del PAA lo tiene detenido hasta que se decida. */
+  paaDetenido?: boolean;
 }
+
+export type EstadoDelProceso = 'EN_CURSO' | 'ADJUDICADO' | 'DESIERTO' | 'NEGADO' | 'CANCELADO';
 
 /**
  * Por qué quien mira no puede resolver la 3.4 (EFDS-1183).
@@ -3468,7 +3477,7 @@ export interface ElementoPorRevisar {
    * actividad, quien nombra su regla de aprobación; y las pólizas, las
    * modificaciones y las cuentas de cobro se deciden una por una.
    */
-  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO';
+  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO' | 'REVISION_PAA';
   /** Cuál de ellas, cuando la actividad tiene varias: «Póliza 123 · Seguros X». */
   detalle: string | null;
   procesoId: string;
@@ -3537,7 +3546,9 @@ export type EventoAviso =
   | 'APROBADA'
   | 'RECIBIDO_EN_CONTRATACION'
   | 'PROCESO_RADICADO'
-  | 'DOCUMENTO_ADJUNTO';
+  | 'DOCUMENTO_ADJUNTO'
+  | 'REVISION_PAA'
+  | 'PROCESO_CANCELADO';
 
 /** El papel que alguien cumple en un proceso concreto. */
 export type PapelAviso =
@@ -3611,3 +3622,284 @@ export interface ConfiguracionAvisos {
   avisos: AvisoEvento[];
 }
 
+
+// ================================================ Plan Anual de Adquisiciones --
+//
+// Migración 097: los procesos nacen de una línea del PAA, que se carga en Excel
+// por vigencia, se versiona y se compara antes de activarse.
+
+export interface RegionPaa {
+  id: string;
+  codigo: string;
+  nombre: string;
+  prefijoLinea: string;
+  unidadContratacion: string;
+  activa: boolean;
+}
+
+export type EstadoVersionPaa = 'INVALIDA' | 'VALIDADA' | 'ACTIVA' | 'REEMPLAZADA' | 'DESCARTADA';
+
+/** Un mensaje de validación que señala dónde está el problema. */
+export interface HallazgoPaa {
+  fila: number | null;
+  columna: string | null;
+  valor: string | null;
+  mensaje: string;
+}
+
+export interface ResumenVersionPaa {
+  id: string;
+  numero: number;
+  estado: EstadoVersionPaa;
+  nombreArchivo: string;
+  totalLineas: number;
+  errores: number;
+  advertencias: number;
+  cargadaPor: string | null;
+  cargadaAt: string;
+  activadaPor: string | null;
+  activadaAt: string | null;
+  descartadaPor: string | null;
+  descartadaAt: string | null;
+  motivoDescarte: string | null;
+  reemplazadaAt: string | null;
+}
+
+export interface VigenciaPaa {
+  id: string;
+  anio: number;
+  vigente: boolean;
+  declaradaVigentePor: string | null;
+  declaradaVigenteAt: string | null;
+  activa: ResumenVersionPaa | null;
+  versiones: ResumenVersionPaa[];
+}
+
+export interface ResumenComparacionPaa {
+  nuevas: number;
+  eliminadas: number;
+  modificadas: number;
+  sinCambios: number;
+  columnasNuevas: number;
+  columnasRetiradas: number;
+  porRegion: Record<string, { nuevas: number; eliminadas: number; modificadas: number }>;
+}
+
+export interface CambioDeLineaPaa {
+  campo: string;
+  etiqueta: string;
+  antes: string | number | null;
+  despues: string | number | null;
+}
+
+export interface LineaResumidaPaa {
+  codigo: string;
+  regionId: string;
+  objeto: string | null;
+}
+
+export interface ComparacionPaa {
+  id: string;
+  tipo: 'MISMA_VIGENCIA' | 'CAMBIO_VIGENCIA';
+  confiable: boolean;
+  resumen: ResumenComparacionPaa;
+  detalle: {
+    nuevas: LineaResumidaPaa[];
+    eliminadas: LineaResumidaPaa[];
+    modificadas: (LineaResumidaPaa & { cambios: CambioDeLineaPaa[] })[];
+    columnasNuevas: string[];
+    columnasRetiradas: string[];
+    avisos: string[];
+  };
+  base: { id: string; numero: number; anio: number } | null;
+  regiones: { id: string; nombre: string }[];
+}
+
+export interface VersionPaa extends Omit<ResumenVersionPaa, 'errores' | 'advertencias'> {
+  vigenciaId: string;
+  anio: number;
+  vigente: boolean;
+  errores: HallazgoPaa[];
+  advertencias: HallazgoPaa[];
+  porRegion: { id: string; nombre: string; lineas: number }[];
+  comparacion: {
+    id: string;
+    tipo: ComparacionPaa['tipo'];
+    confiable: boolean;
+    resumen: ResumenComparacionPaa;
+    avisos: string[];
+    base: { id: string; numero: number; anio: number } | null;
+  } | null;
+}
+
+/** Un campo que el PAA cambió en el proceso, o que habría cambiado. */
+export interface CampoAplicadoPaa {
+  campo: string;
+  etiqueta: string;
+  antes: unknown;
+  despues: unknown;
+  aplicado: boolean;
+  motivo?: string;
+}
+
+export type TipoRevisionPaa = 'MODIFICACION' | 'ELIMINACION' | 'CAMBIO_VIGENCIA';
+export type DecisionRevisionPaa = 'CONTINUAR' | 'DEVOLVER' | 'MIGRAR' | 'CANCELAR';
+
+export interface ProcesoAfectadoPaa {
+  procesoId: string;
+  radicado: string;
+  objeto: string;
+  etapa: number;
+  codigo: string;
+  tratamiento: 'SIN_CAMBIOS' | 'ACTUALIZADO' | 'MODIFICADA_SIN_EFECTO' | 'ELIMINADA';
+  revision: { tipo: TipoRevisionPaa; bloquea: boolean } | null;
+  abogado: { id: string | null; nombre: string } | null;
+  cambios: { linea: CambioDeLineaPaa[]; proceso: CampoAplicadoPaa[] };
+  lineaNuevaId: string | null;
+}
+
+export interface ResumenAfectadosPaa {
+  procesos: number;
+  sinCambios: number;
+  actualizados: number;
+  modificadosSinEfecto: number;
+  eliminados: number;
+  revisiones: number;
+  bloqueados: number;
+}
+
+export interface AfectadosPaa {
+  version: { id: string; numero: number; estado: EstadoVersionPaa };
+  anio: number;
+  versionActiva: { id: string; numero: number } | null;
+  resumen: ResumenAfectadosPaa;
+  procesos: ProcesoAfectadoPaa[];
+}
+
+export interface AfectadosPorCambioDeVigencia {
+  anio: number;
+  version: { id: string; numero: number } | null;
+  vigenteActual: { id: string; anio: number } | null;
+  procesos: {
+    procesoId: string;
+    radicado: string;
+    objeto: string;
+    etapa: number;
+    codigo: string | null;
+    anio: number | null;
+    abogado: { id: string | null; nombre: string } | null;
+  }[];
+}
+
+export interface CampoFormularioPaa {
+  clave: string;
+  etiquetaFormato: string;
+  etiqueta: string;
+  visible: boolean;
+  orden: number;
+  uso: 'identificador' | 'proceso' | 'informativo';
+  siempreVisible: boolean;
+  estado: 'normal' | 'nueva' | 'huerfana';
+}
+
+export interface CamposDelFormularioPaa {
+  region: RegionPaa;
+  vigencia: { id: string; anio: number; vigente: boolean };
+  origen: 'guardada' | 'vigencia_anterior' | 'formato';
+  campos: CampoFormularioPaa[];
+}
+
+export interface OpcionesDeCreacionPaa {
+  regiones: RegionPaa[];
+  vigencias: { id: string; anio: number; vigente: boolean; versionId: string; versionNumero: number }[];
+  vigente: { id: string; anio: number; versionId: string; versionNumero: number } | null;
+  listo: boolean;
+  motivo: string | null;
+}
+
+export interface LineaEncontradaPaa {
+  id: string;
+  codigo: string;
+  objeto: string | null;
+  modalidad: string | null;
+  valorTotal: number | null;
+  enUso: { procesoId: string; radicado: string } | null;
+}
+
+export interface BusquedaLineasPaa {
+  vigencia: { id: string; anio: number };
+  version: { id: string; numero: number };
+  total: number;
+  pagina: number;
+  porPagina: number;
+  lineas: LineaEncontradaPaa[];
+}
+
+export interface DetalleLineaPaa {
+  id: string;
+  codigo: string;
+  region: { id: string; nombre: string };
+  vigencia: { id: string; anio: number; vigente: boolean };
+  version: { id: string; numero: number; estado: EstadoVersionPaa };
+  campos: { clave: string; etiqueta: string; valor: string | number | null }[];
+  enUso: { procesoId: string; radicado: string } | null;
+}
+
+export interface RevisionPaa {
+  id: string;
+  procesoId: string;
+  radicado: string;
+  objeto: string;
+  etapa: number;
+  estadoProceso: EstadoDelProceso;
+  region: string | null;
+  codigo: string;
+  tipo: TipoRevisionPaa;
+  porCambioAnual: boolean;
+  versionAnterior: { numero: number; anio: number };
+  versionNueva: { numero: number; anio: number };
+  cambios: { linea: CambioDeLineaPaa[]; proceso: CampoAplicadoPaa[] };
+  motivo: string;
+  bloquea: boolean;
+  responsable: { id: string | null; nombre: string; usuario: string } | null;
+  estado: 'PENDIENTE' | 'RESUELTA';
+  decision: DecisionRevisionPaa | null;
+  justificacion: string | null;
+  decididaPor: string | null;
+  decididaAt: string | null;
+  createdAt: string;
+}
+
+export interface DetalleRevisionPaa extends RevisionPaa {
+  decisiones: { decision: DecisionRevisionPaa; disponible: boolean; motivo: string | null }[];
+  puedeDecidir: boolean;
+}
+
+export interface OrigenPaaDelProceso {
+  tieneOrigen: boolean;
+  linea: {
+    id: string;
+    codigo: string;
+    fila: number;
+    objeto: string | null;
+    region: string;
+    anio: number;
+    vigente: boolean;
+    version: { id: string; numero: number; estado: EstadoVersionPaa };
+  } | null;
+  aplicaciones: {
+    id: string;
+    tipo: 'CREACION' | 'ACTUALIZACION' | 'MIGRACION';
+    campos: CampoAplicadoPaa[];
+    aplicadoPor: string | null;
+    aplicadoAt: string;
+    codigoOrigen: string | null;
+    versionOrigen: number | null;
+    anioOrigen: number | null;
+    codigoDestino: string;
+    versionDestino: number;
+    anioDestino: number;
+  }[];
+  revisiones: RevisionPaa[];
+  bloqueado: boolean;
+}
