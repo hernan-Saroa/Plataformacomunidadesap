@@ -139,6 +139,7 @@ const COMPONENT_LEVELS = PTA_COMPONENT_LEVELS as Record<string, number>;
 const COMPONENT_PERMISSION = PTA_COMPONENT_PERMISSION as Record<string, string>;
 
 function getResponsableRoleLabel(key: string): string {
+  if (key === 'complementarias_territorial') return 'Responsable Territorial';
   const lvl = COMPONENT_LEVELS[key];
   if (lvl === 1) return 'Jefatura de Programa';
   if (lvl === 2) return 'Decanatura';
@@ -979,6 +980,15 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     const cambio = Object.fromEntries(campos.filter(campo => initialPta[campo] !== undefined)
       .map(campo => [campo, initialPta[campo]]));
     setPta((prev: any) => prev.id === initialPta.id ? { ...prev, ...cambio } : prev);
+    setComponentesAprobacion(prev => prev.map(row => {
+      const confirmada = initialPta.componentes_aprobacion_estado?.find((item: any) => item.componente === row.componente);
+      return confirmada ? { ...row, ...confirmada, estado_visual: confirmada.estado } : row;
+    }));
+    setComponentesRevision(prev => prev.map(row => {
+      const confirmada = initialPta.componentes_revision_estado?.find((item: any) => item.componente === row.componente
+        && (item.subseccion || 'general') === (row.subseccion || 'general'));
+      return confirmada ? { ...row, ...confirmada } : row;
+    }));
     // Gestión ya confirmó el avance propio. No dejar que las filas del panel
     // permanezcan antiguas si falla la lectura auxiliar de cada territorial.
     setAprobacionTerritorial(prev => mergeTerritorialProgress(prev, initialPta.componentes_aprobacion_usuario || []));
@@ -1044,6 +1054,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     // EFDS-1353 agregó estos dos ámbitos; sin su rótulo el correo de firma OTP
     // mostraba la clave técnica cruda.
     complementarias_territorial: 'Complementarias (Territorial)',
+    complementarias_decanatura: 'Complementarias (Decanatura)',
     complementarias_gestion_profesoral: 'Complementarias (Gestión Profesoral)',
     academicas_admin: 'Acad. Admin.',
   };
@@ -2017,7 +2028,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
       porComponente && typeof porComponente === 'object' ? Number((porComponente as any)[key] || 0) : null;
 
     const cards = PTA_COMPLEMENTARIAS_COMPONENT_KEYS.map(key => {
-      const propias = actividades.filter(a => componenteDeComplementaria(a) === key);
+      const propias = actividades.filter(a => a.componentes_complementaria?.includes(key) || componenteDeComplementaria(a) === key);
       const backend = horasBackend(key);
       const horas = backend != null && backend > 0
         ? backend
@@ -2080,6 +2091,7 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
     const paresAccionablesTerritorial = paresPropiosTerritorial.filter(t => t.estado === 'pendiente');
     const paresListosTerritorial = paresAccionablesTerritorial.filter(t => revisionDelParCompleta(t));
     const canEvaluateComponent = puedeActuarSobreComponentes && componentAuthorized && !isAutoAprobado &&
+      !(approval.dependencias_pendientes?.length) &&
       (key === 'academica_territorial' && territorialParticionado ? paresListosTerritorial.length > 0 : revisionCompleta)
       && !hayOtroComponenteDevuelto && !territorialSinPendientesPropios &&
       ((key === 'academica_territorial' && territorialParticionado) || estado === 'pendiente' || !!evaluandoComponente[key]);
@@ -2955,6 +2967,8 @@ export const PTADetallePanelBackoffice = React.forwardRef<HTMLDivElement, PTADet
                 ? (() => {
                     return 'Ya registraste tu decisión sobre la territorial que te corresponde. Quedan decisiones pendientes de otros responsables.';
                   })()
+                : approval.dependencias_pendientes?.length
+                ? `Pendiente de aprobación previa: ${approval.dependencias_pendientes.map((componente: string) => labelDeComponente(componente)).join(', ')}.`
                 : !componentAuthorized
                 ? (decisionPermissions?.componentReasons?.[key]?.aprobar || (key === 'academica_territorial' && decisionPermissions?.territorial.aprobar.reason) || 'No tienes los permisos para aprobar este componente.')
                 : hayOtroComponenteDevuelto

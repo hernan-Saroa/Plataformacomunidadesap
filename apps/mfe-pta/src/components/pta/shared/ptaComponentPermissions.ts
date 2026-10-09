@@ -15,6 +15,7 @@ export type PTAComponentKey =
   | 'complementarias'
   | 'complementarias_pregrado'
   | 'complementarias_posgrado'
+  | 'complementarias_decanatura'
   | 'complementarias_territorial'
   | 'complementarias_gestion_profesoral';
 
@@ -37,7 +38,7 @@ export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   ext_gobierno: 'pta.approve.extension.alto_gobierno',
   // 'complementarias' cubre ambas secciones: complementarias a la docencia y
   // académico-administrativas (AADM se fusionó como sección de complementarias).
-  // Es el catch-all "sin programa asociado" (ver COMPLEMENTARIAS_COMPONENT_KEYS).
+  // Conserva el ámbito general de actividades históricas sin catálogo.
   complementarias: 'pta.approve.complementarias',
   // EFDS-1353: permiso propio (antes reutilizaban el de Docencia por nivel, lo
   // que hacía imposible separar quién revisa Complementarias de quién revisa
@@ -45,8 +46,8 @@ export const PTA_COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   // — ver clasificarComplementarias en el backend.
   complementarias_pregrado: 'pta.approve.complementarias.pregrado',
   complementarias_posgrado: 'pta.approve.complementarias.posgrado',
-  // Decanatura (Territorial): informativo; la autorización real se resuelve por
-  // nivel, igual que academica_territorial.
+  complementarias_decanatura: 'pta.approve.complementarias.decanatura',
+  // Responsable Territorial; también admite los permisos históricos por nivel.
   complementarias_territorial: 'pta.approve.complementarias.territorial',
   complementarias_gestion_profesoral: 'pta.approve.complementarias.gestion_profesoral',
 };
@@ -75,7 +76,7 @@ export const PTA_TERRITORIAL_NIVEL_REVIEW_PERMISSION: Record<PTANivelDocencia, s
   posgrado: 'pta.review.academica.territorial.posgrado',
 };
 
-/** EFDS-1353: mismo esquema por nivel para Complementarias de tipo Decanatura. */
+/** Compatibilidad con los permisos históricos de Complementarias Territorial. */
 export const PTA_COMPLEMENTARIAS_TERRITORIAL_NIVEL_APPROVE_PERMISSION: Record<PTANivelDocencia, string> = {
   pregrado: 'pta.approve.complementarias.territorial.pregrado',
   posgrado: 'pta.approve.complementarias.territorial.posgrado',
@@ -112,6 +113,7 @@ export function hasComponentPermission(
   can: (permission: string) => boolean,
   key: PTAComponentKey,
 ): boolean {
+  if (key === 'complementarias_territorial' && can(PTA_COMPONENT_PERMISSION[key])) return true;
   const porNivel = PTA_TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT[key];
   if (porNivel) {
     return can(porNivel.approve.pregrado) || can(porNivel.approve.posgrado);
@@ -128,13 +130,14 @@ export const PTA_DOCENCIA_COMPONENT_KEYS: PTAComponentKey[] = [
 
 /**
  * Componentes que en conjunto forman el rótulo visible "Complementarias".
- * 'complementarias' es el catch-all "sin programa asociado"; los otros dos se
- * enrutan según el `nivel_programa` configurado por TIPO de actividad.
+ * Incluye Programa opcional, los tres responsables finales y el ámbito general
+ * que conserva las actividades históricas sin catálogo.
  */
 export const PTA_COMPLEMENTARIAS_COMPONENT_KEYS: PTAComponentKey[] = [
   'complementarias',
   'complementarias_pregrado',
   'complementarias_posgrado',
+  'complementarias_decanatura',
   'complementarias_territorial',
   'complementarias_gestion_profesoral',
 ];
@@ -159,6 +162,7 @@ export const PTA_COMPONENT_LEVELS: Record<PTAComponentKey, number> = {
   complementarias: 1,
   complementarias_pregrado: 1,
   complementarias_posgrado: 1,
+  complementarias_decanatura: 2,
   complementarias_territorial: 2,
   complementarias_gestion_profesoral: 3,
   investigacion: 2,
@@ -193,6 +197,7 @@ export type PTABulkApprovalGroupKey =
   | 'complementarias'
   | 'complementarias_pregrado'
   | 'complementarias_posgrado'
+  | 'complementarias_decanatura'
   | 'complementarias_territorial'
   | 'complementarias_gestion_profesoral';
 
@@ -312,6 +317,14 @@ export const PTA_BULK_APPROVAL_GROUPS: PTABulkApprovalGroup[] = [
     colorBg: '#FEF9C3',
   },
   {
+    key: 'complementarias_decanatura',
+    label: 'Complementarias Decanatura',
+    permission: PTA_COMPONENT_PERMISSION.complementarias_decanatura,
+    componentKeys: ['complementarias_decanatura'],
+    color: '#A16207',
+    colorBg: '#FEF9C3',
+  },
+  {
     key: 'complementarias_territorial',
     label: 'Complementarias Territorial',
     permission: PTA_COMPONENT_PERMISSION.complementarias_territorial,
@@ -348,6 +361,7 @@ export const REVIEW_SUBSECCIONES_BY_COMPONENT: Record<PTAComponentKey, PTAReview
   complementarias: ['docencia', 'academico_administrativas'],
   complementarias_pregrado: ['docencia', 'academico_administrativas'],
   complementarias_posgrado: ['docencia', 'academico_administrativas'],
+  complementarias_decanatura: ['docencia', 'academico_administrativas'],
   complementarias_territorial: ['docencia', 'academico_administrativas'],
   complementarias_gestion_profesoral: ['docencia', 'academico_administrativas'],
   investigacion: ['general'],
@@ -376,8 +390,9 @@ export const PTA_COMPONENT_REVIEW_PERMISSION: Record<string, string> = {
   'complementarias_pregrado:academico_administrativas': 'pta.review.complementarias.pregrado',
   'complementarias_posgrado:docencia': 'pta.review.complementarias.posgrado',
   'complementarias_posgrado:academico_administrativas': 'pta.review.complementarias.posgrado',
-  // Territorial: informativo; la autorización real se resuelve por nivel vía
-  // PTA_TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT.
+  'complementarias_decanatura:docencia': 'pta.review.complementarias.decanatura',
+  'complementarias_decanatura:academico_administrativas': 'pta.review.complementarias.decanatura',
+  // Responsable Territorial; también admite los permisos históricos por nivel.
   'complementarias_territorial:docencia': 'pta.review.complementarias.territorial',
   'complementarias_territorial:academico_administrativas': 'pta.review.complementarias.territorial',
   'complementarias_gestion_profesoral:docencia': 'pta.review.complementarias.gestion_profesoral',
@@ -400,7 +415,7 @@ export function reviewPermissionFor(componente: string, subseccion: string): str
 /**
  * ¿El predicado de permisos habilita la revisión de esta subsección? Mismo
  * caso especial que hasComponentPermission: en los componentes territoriales
- * (Docencia y, desde EFDS-1353, Complementarias de tipo Decanatura) basta
+ * (Docencia y los permisos históricos de Complementarias Territorial) basta
  * cualquiera de los dos permisos por nivel.
  */
 export function hasReviewPermission(
@@ -408,6 +423,7 @@ export function hasReviewPermission(
   componente: string,
   subseccion: string,
 ): boolean {
+  if (componente === 'complementarias_territorial' && can('pta.review.complementarias.territorial')) return true;
   const porNivel = PTA_TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT[componente];
   if (porNivel) {
     return can(porNivel.review.pregrado) || can(porNivel.review.posgrado);
@@ -500,30 +516,41 @@ export function hasComponentApprovalData(pta: any, key: PTAComponentKey): boolea
       const backend = pta?.complementarias_por_componente;
       if (backend && typeof backend === 'object') return Number(backend.complementarias_pregrado || 0) > 0;
       const items: any[] = Array.isArray(pta?.complementarias) ? pta.complementarias : [];
-      return items.some((item: any) => item?.componente_complementaria === 'complementarias_pregrado');
+      return items.some((item: any) => item?.componente_complementaria === 'complementarias_pregrado'
+        || item?.componentes_complementaria?.includes('complementarias_pregrado'));
     }
     case 'complementarias_posgrado': {
       const backend = pta?.complementarias_por_componente;
       if (backend && typeof backend === 'object') return Number(backend.complementarias_posgrado || 0) > 0;
       const items: any[] = Array.isArray(pta?.complementarias) ? pta.complementarias : [];
-      return items.some((item: any) => item?.componente_complementaria === 'complementarias_posgrado');
+      return items.some((item: any) => item?.componente_complementaria === 'complementarias_posgrado'
+        || item?.componentes_complementaria?.includes('complementarias_posgrado'));
     }
     // EFDS-1353 agregó estos dos ámbitos pero no sus casos aquí, así que caían en
     // `default: false`. Como este predicado decide qué PTAs ve cada usuario según
     // sus componentes autorizados, un revisor/aprobador cuyo alcance de
     // Complementarias fuera Territorial o Gestión Profesoral no veía NINGÚN PTA
     // ("Sin resultados"), aunque existieran.
+    case 'complementarias_decanatura': {
+      const backend = pta?.complementarias_por_componente;
+      if (backend && typeof backend === 'object') return Number(backend.complementarias_decanatura || 0) > 0;
+      return (Array.isArray(pta?.complementarias) ? pta.complementarias : []).some((item: any) =>
+        item?.componente_complementaria === 'complementarias_decanatura'
+        || item?.componentes_complementaria?.includes('complementarias_decanatura'));
+    }
     case 'complementarias_territorial': {
       const backend = pta?.complementarias_por_componente;
       if (backend && typeof backend === 'object') return Number(backend.complementarias_territorial || 0) > 0;
       const items: any[] = Array.isArray(pta?.complementarias) ? pta.complementarias : [];
-      return items.some((item: any) => item?.componente_complementaria === 'complementarias_territorial');
+      return items.some((item: any) => item?.componente_complementaria === 'complementarias_territorial'
+        || item?.componentes_complementaria?.includes('complementarias_territorial'));
     }
     case 'complementarias_gestion_profesoral': {
       const backend = pta?.complementarias_por_componente;
       if (backend && typeof backend === 'object') return Number(backend.complementarias_gestion_profesoral || 0) > 0;
       const items: any[] = Array.isArray(pta?.complementarias) ? pta.complementarias : [];
-      return items.some((item: any) => item?.componente_complementaria === 'complementarias_gestion_profesoral');
+      return items.some((item: any) => item?.componente_complementaria === 'complementarias_gestion_profesoral'
+        || item?.componentes_complementaria?.includes('complementarias_gestion_profesoral'));
     }
     default:
       return false;
@@ -690,6 +717,7 @@ export const PTA_COMPONENT_LABEL: Record<PTAComponentKey, string> = {
   complementarias: 'Complementarias',
   complementarias_pregrado: 'Complementarias — Pregrado',
   complementarias_posgrado: 'Complementarias — Posgrado',
+  complementarias_decanatura: 'Complementarias — Decanatura',
   complementarias_territorial: 'Complementarias — Territorial',
   complementarias_gestion_profesoral: 'Complementarias — Gestión Profesoral',
 };
@@ -707,6 +735,7 @@ export const PTA_COMPONENT_PROGRESS_ORDER: PTAComponentKey[] = [
   'complementarias',
   'complementarias_pregrado',
   'complementarias_posgrado',
+  'complementarias_decanatura',
   'complementarias_territorial',
   'complementarias_gestion_profesoral',
 ];
