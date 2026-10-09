@@ -116,7 +116,7 @@ export interface ElementoPorRevisar {
    * las modificaciones y las cuentas de cobro se deciden una por una dentro de
    * su actividad.
    */
-  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO';
+  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO' | 'REVISION_PAA';
   /** Cuál de ellas, cuando la actividad tiene varias: «Póliza 123 · Seguros X». */
   detalle: string | null;
   procesoId: string;
@@ -570,10 +570,11 @@ export class AlertasService {
       };
     };
 
-    const [garantias, modificaciones, pagos] = await Promise.all([
+    const [garantias, modificaciones, pagos, revisionesPaa] = await Promise.all([
       this.garantiasPorAprobar(acceso),
       this.modificacionesPorDecidir(acceso),
       this.pagosPorAvalar(acceso),
+      this.revisionesDelPaa(acceso),
     ]);
 
     return [
@@ -584,9 +585,56 @@ export class AlertasService {
       ...garantias.map(aElemento('GARANTIA')),
       ...modificaciones.map(aElemento('MODIFICACION')),
       ...pagos.map(aElemento('PAGO')),
+      ...revisionesPaa.map(aElemento('REVISION_PAA')),
     ]
       // Lo que más lleva esperando, arriba.
       .sort((a, b) => b.diasEsperando - a.diasEsperando || a.desde.localeCompare(b.desde));
+  }
+
+  /**
+   * Revisiones abiertas por un cambio del Plan Anual de Adquisiciones.
+   *
+   * Las decide el abogado del proceso; las de un proceso sin abogado van a la
+   * bandeja de quien tenga `decidir` en `PAA.R`, para que una revisión que
+   * detiene el proceso no se quede esperando a que alguien lo asigne.
+   */
+  private async revisionesDelPaa(acceso: HiringAccess): Promise<any[]> {
+    const nombre = (acceso.userName ?? '').trim();
+    const id = (acceso.userId ?? '').trim();
+    const bandeja = !!this.alcance && (await this.alcance.puedeEn(acceso, 'decidir', 'PAA.R'));
+    if (!nombre && !id && !bandeja) return [];
+
+    return this.dataSource.query(
+      `
+      SELECT p.id           AS proceso_id,
+             p.radicado     AS radicado,
+             p.objeto       AS objeto,
+             m.nombre       AS modalidad,
+             '3.1'          AS numeral,
+             CASE r.tipo
+               WHEN 'CAMBIO_VIGENCIA' THEN 'Evaluación por cambio de vigencia del PAA'
+               WHEN 'ELIMINACION' THEN 'Línea retirada del PAA'
+               ELSE 'Línea modificada en el PAA'
+             END            AS actividad,
+             p.etapa        AS etapa,
+             NULL           AS version,
+             NULL           AS enviado_por,
+             r.codigo || CASE WHEN r.bloquea THEN ' · detiene el proceso' ELSE '' END AS detalle,
+             r.created_at   AS desde
+        FROM hiring.paa_revisiones r
+        JOIN hiring.procesos p ON p.id = r.proceso_id
+        LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
+        LEFT JOIN hiring.participaciones_proceso pp
+               ON pp.proceso_id = p.id AND pp.papel = 'ABOGADO' AND pp.estado = 'VIGENTE'
+       WHERE r.estado = 'PENDIENTE'
+         AND (
+           ($1 <> '' AND LOWER(pp.usuario_nombre) = LOWER($1))
+           OR ($2 <> '' AND pp.usuario_id::text = $2)
+           OR (pp.id IS NULL AND $3)
+         )
+      `,
+      [nombre, id, bandeja],
+    );
   }
 
   /**

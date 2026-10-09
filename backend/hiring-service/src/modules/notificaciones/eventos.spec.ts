@@ -28,6 +28,26 @@ const traza = (parcial: Partial<TrazaLeida>): TrazaLeida => ({
 });
 
 describe('eventosDeTraza · qué pasó, dicho en un solo vocabulario', () => {
+  it('avisa al abogado cuando un cambio del PAA le abre una revisión al proceso', () => {
+    const [ev] = eventosDeTraza(
+      traza({
+        entidad: 'paa_revisiones',
+        accion: 'ABRIR_REVISION_PAA',
+        detalle: { observaciones: 'La línea CHOCO 3 ya no está en la versión 4 del PAA.' },
+      }),
+    );
+    expect(ev).toMatchObject({ evento: 'REVISION_PAA', numeral: '3.1', observaciones: expect.stringContaining('CHOCO 3') });
+    expect(mensajeDeAviso(ev, 'Estudio previo', 'CTO-2026-0001').mensaje).toContain('CHOCO 3');
+  });
+
+  it('avisa que el proceso se canceló por el PAA, con la justificación', () => {
+    const [ev] = eventosDeTraza(
+      traza({ entidad: 'paa_revisiones', accion: 'CANCELAR', detalle: { observaciones: 'No sigue en 2027' } }),
+    );
+    expect(ev).toMatchObject({ evento: 'PROCESO_CANCELADO', numeral: '3.1' });
+    expect(mensajeDeAviso(ev, null, 'CTO-2026-0001')).toMatchObject({ titulo: 'Se canceló un proceso', prioridad: 'Alta' });
+  });
+
   it('reconoce la devolución de la aprobación genérica, con su actividad', () => {
     const [ev] = eventosDeTraza(traza({ detalle: { numeral: '3.4', observaciones: ' Falta el CDP ' } }));
 

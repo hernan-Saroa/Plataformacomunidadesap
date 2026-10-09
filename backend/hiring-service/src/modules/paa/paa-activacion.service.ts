@@ -510,7 +510,8 @@ export class PaaActivacionService {
       revisionId,
       'ABRIR_REVISION_PAA',
       acceso,
-      { tipo: datos.tipo, codigo: datos.codigo, bloquea: datos.bloquea, version: numeroVersion, motivo: datos.motivo },
+      // `observaciones` es lo que el motor de avisos pone en el mensaje.
+      { tipo: datos.tipo, codigo: datos.codigo, bloquea: datos.bloquea, version: numeroVersion, observaciones: datos.motivo },
       datos.procesoId!,
     );
     return true;

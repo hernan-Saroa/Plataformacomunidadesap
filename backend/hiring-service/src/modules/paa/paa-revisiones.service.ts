@@ -154,7 +154,7 @@ export class PaaRevisionesService {
         revision.id,
         dto.decision === 'CONTINUAR' ? 'CONTINUAR' : dto.decision === 'DEVOLVER' ? 'DEVOLVER' : dto.decision === 'MIGRAR' ? 'MIGRAR' : 'CANCELAR',
         acceso,
-        { tipo: revision.tipo, codigo: revision.codigo, justificacion, ...detalle },
+        { tipo: revision.tipo, codigo: revision.codigo, observaciones: justificacion, ...detalle },
         proceso.id,
       );
 
