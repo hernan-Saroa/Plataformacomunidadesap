@@ -26,7 +26,7 @@ import { tienePermiso } from './permisos';
 
 const PATRON_NUMERAL = /^(\d{1,2})\.(\d{1,2})$/;
 const PATRON_ETAPA = /^E(\d{1,2})$/;
-const TRAMITES = ['INC.1', 'INC.2'];
+const TRAMITES = ['INC.1', 'INC.2', 'PAA', 'PAA.R'];
 
 const LA_SATISFACEN: Record<AccionAlcance, AccionAlcance[]> = {
   // Editar, aprobar o decidir en un punto implican verlo.
@@ -40,7 +40,8 @@ const LA_SATISFACEN: Record<AccionAlcance, AccionAlcance[]> = {
 export function cubre(lugar: string, destino: string): boolean {
   if (lugar === 'TODO') return true;
   if (destino === 'TODO') return false;
-  // El incumplimiento no cuelga de la etapa 9: solo su fila o todo el módulo.
+  // El incumplimiento no cuelga de la etapa 9, ni el PAA de la 3: solo su
+  // fila o todo el módulo.
   if (TRAMITES.includes(destino)) return lugar === destino;
   // Una etapa entera solo la cubre una fila de etapa.
   if (PATRON_ETAPA.test(destino)) return lugar === destino;
