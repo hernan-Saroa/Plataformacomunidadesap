@@ -135,12 +135,12 @@ index b34ce6139..eeeae07d1 100644
  import { GestionOfertas } from './GestionOfertas';
  import { AprobacionJefatura } from './AprobacionJefatura';
 +import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
- 
+
  interface FranjaHoraria {
    id: string;
 @@ -105,6 +106,7 @@ function sesionAFranja(s: FranjaConContexto): FranjaHoraria {
  }
- 
+
  export function ProgramacionAcademicaModule() {
 +  const revisionProgramacion = useRevisionProgramacion('programacion');
    const [seccion, setSeccion] = useState<Seccion>('horarios');
@@ -152,9 +152,9 @@ index b34ce6139..eeeae07d1 100644
      return () => { vivo = false; };
 -  }, [periodoSel, periodos]);
 +  }, [periodoSel, periodos, revisionProgramacion]);
- 
+
    // Form state
- 
+
    const totalFranjas = scheduleList.length;
    // Confirmadas = aprobadas por la jefatura (estado real, no el inventado 'CONFIRMADO').
    const totalConfirmados = scheduleList.filter(s => s.estado === 'APROBADA').length;
@@ -164,7 +164,7 @@ index b34ce6139..eeeae07d1 100644
 +  // de conflictos vivos; el cero expresa esa regla, no un conteo del histórico.
 +  const totalConflictos = 0;
 +  const totalConflictosHistoricos = historico?.resumen?.total ?? 0;
- 
+
    const gruposNav: MenuGroup[] = [
      {
 @@ -249,7 +253,7 @@ export function ProgramacionAcademicaModule() {
@@ -199,5 +199,5 @@ index b34ce6139..eeeae07d1 100644
 +              <option value="DISTANCIA">Distancia</option>
              </select>
            </div>
- 
+
 ```
