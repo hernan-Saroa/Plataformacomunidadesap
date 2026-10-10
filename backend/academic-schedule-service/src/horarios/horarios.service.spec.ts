@@ -102,6 +102,16 @@ describe('EFDS-1371 :: horario del grupo', () => {
     expect(TIPOS_SESION).toEqual(['presencial', 'mediada_tecnologia']);
   });
 
+  it('EFDS-2308 :: la jornada DISTANCIA se acepta declarada, y el fin de semana se sigue sugiriendo', async () => {
+    const { service } = montar();
+    const dist = await service.crearSesion(sesion({ diaSemana: 'SABADO', horaInicio: '08:00', horaFin: '10:00', jornada: 'DISTANCIA' }));
+    expect(dist.jornada).toBe('DISTANCIA');
+    const sinDeclarar = await service.crearSesion(sesion({ diaSemana: 'SABADO', horaInicio: '14:00', horaFin: '16:00' }));
+    expect(sinDeclarar.jornada).toBe('FIN_DE_SEMANA');
+    await expect(service.crearSesion(sesion({ horaInicio: '06:00', horaFin: '07:00', jornada: 'VIRTUAL' as any })))
+      .rejects.toThrow(/jornada/i);
+  });
+
   it('EFDS-1371 :: AC-03 :: se acepta una franja de domingo', async () => {
     const { service } = montar();
     const f = await service.crearSesion(sesion({ diaSemana: 'DOMINGO', horaInicio: '08:00', horaFin: '14:00' }));
