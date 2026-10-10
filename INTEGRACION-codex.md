@@ -2,7 +2,7 @@
 
 ## Entrega y alcance
 
-✅ Rama `feature/pa/ronda-codex`, carpeta `Plataforma-pa-codex`, base `b3ccebf9c`. Esta instrucción sustituye el informe anterior. Se conserva la corrección previa de cierre; EFDS-2309, EFDS-2312 y EFDS-2314 siguen en espera. EFDS-2306 y todo el backend quedan con Claude. No se ha copiado ni retirado el importador; aulas quedan fuera de esta ronda. La futura mudanza de pantalla debe conservar alta manual de asignaturas y llamar al servicio existente sobre el periodo único.
+✅ Rama `feature/pa/ronda-codex`, carpeta `Plataforma-pa-codex`, base `b3ccebf9c`. Esta instrucción sustituye el informe anterior. La sección «Continuación» documenta el desbloqueo y la implementación de EFDS-2309, EFDS-2312 y EFDS-2314. EFDS-2306 y todo el backend quedan con Claude. No se ha copiado ni retirado el importador; aulas quedan fuera de esta ronda. Se conserva el alta manual de asignaturas y se llama al servicio existente sobre el periodo único.
 
 ✅ Se implementó el mecanismo común y EFDS-2310 en archivos propios. EFDS-2307 y EFDS-2308 se probaron mediante cambios LOCALES del archivo compartido `ProgramacionAcademicaModule.tsx`: ese archivo NO se incluye en los commits. Claude debe aplicar el parche exacto al final de este documento, adaptándolo a su rama antes de validar con servidor real.
 
@@ -121,32 +121,104 @@ node ../../node_modules/vite/bin/vite.js build
 
 ✅ Tramo conjunto medido de implementación, pruebas, auditoría y documentación: 22:54:18–23:02:35 America/Bogota del 9 de octubre de 2026: **497 segundos = 0,1381 horas**. No incluye la entrega Git posterior. Las duraciones de pruebas por HU están incluidas, no son adicionales.
 
+## Continuación — contrato de periodo único entregado
+
+✅ Se leyó `INTEGRACION-claude.md` del commit remoto `11997ae26495deb78ac388c58f471bcdd010e487`, sin cambiar de rama ni modificar la carpeta de Claude. Su contrato `GET /programacion-academica/api/v1/periodos` desbloqueó EFDS-2309, EFDS-2312 y EFDS-2314.
+
+### EFDS-2309 — cerrar solo la programación
+
+✅ Veredicto: interfaz. La tarjeta antigua se alimentaba de periodos propios y llamaba cerrar sin consultar el modelo unificado. `GestionOfertas.tsx` ahora usa `programacion.estado`, `programable` y `permisos.cerrarProgramacion` de `GET /periodos`; el botón dice «Cerrar programación». Con pendientes permanece visible, deshabilitado, explicado y con acceso a la lista. Tras 2xx vuelve a consultar los periodos. Un 409 muestra el mensaje del servidor. El backend es responsable de preservar el estado del periodo de plataforma.
+
+✅ Navegador con API simulada: botón visible/deshabilitado con dos pendientes; otra tarjeta sin pendientes cierra la programación, vuelve a pedir `GET /periodos` y mantiene el estado de plataforma `en_curso`. El test anterior del cierre fue adaptado al contrato nuevo.
+
+### EFDS-2312 — selector y creación/activación
+
+✅ Veredicto: interfaz. El selector anterior consultaba `/ofertas` una sola vez. Ahora consulta `GET /periodos` al montar y tras invalidar `periodos`, prefiere `esActivo`, conserva una selección válida y agrupa los legados aparte. Permite consultar los no programables. Muestra errores de consulta.
+
+✅ Crear llama `POST /pta/api/v1/periodos-academicos` con año, semestre y fechas; nace en planeación y reaparece en el selector sin recargar. Activar lee primero `GET /pta/api/v1/periodos-academicos/:id/impacto-activacion`, confirma los PTA por periodo y los periodos afectados, muestra `advertencia` cuando exista, y solo entonces llama al PATCH. El botón se muestra únicamente si `permisos.activar` es true.
+
+✅ Navegador con API simulada: impacto de 37 PTA (35 de 2026-1 y 2 de 2025-2) aparece en la confirmación antes del PATCH; periodo creado por el servicio PTA aparece en el selector sin recargar.
+
+### EFDS-2314 — carga masiva asociada al periodo
+
+✅ Veredicto: el importador existente ya trabajaba con `periodo_codigo` del PTA; faltaba ofrecerlo al crear el periodo de Programación. `CargaAsignaturasPeriodo.tsx` llama al mismo servicio `POST /pta/api/v1/asignaturas-import/upload`, primero `dry_run=true` y, si la validación es correcta y el usuario confirma, `dry_run=false`. El código proviene exclusivamente de `GET /periodos`, nunca de un campo libre. Muestra nuevas/actualizadas/omitidas y mensajes de error/advertencia por fila según el DTO. Un resultado de validación con `success:false` deshabilita confirmar. Se conserva el alta manual en Programas Académicos → plan de estudios; no se modificó ni duplicó ese flujo.
+
+✅ Navegador con API simulada: archivo rechazado informa «Fila 7: código de programa inexistente» y bloquea confirmar; archivo válido ejecuta validación y confirmación con `periodo_codigo=2031-1` obtenido del periodo recién creado.
+
+⚠️ No se creó un periodo de prueba real: el contrato propone `2099-2` para Codex pero dice expresamente que espera aprobación de Tomás. Todas las pruebas anteriores interceptaron HTTP; Claude validará la integración con servidor real. El MFE construye con Vite; la comprobación de TypeScript conserva los diagnósticos de React/`import.meta.env` ya reportados. No se modificó backend, PTA ni archivos de Claude.
+
+⚠️ Tiempo de esta continuación: las pruebas en navegador se midieron en ejecución por el proceso de tests; no se inició cronómetro de implementación por subtarea antes de recibir el contrato. Para no inventar horas, no se atribuyen tiempos manuales a EFDS-2309/2312/2314. La entrega anterior conserva sus 0,1381 h medidas por tramo conjunto; no deben sumarse a esta continuación.
+
+### Integración del módulo compartido
+
+✅ El parche completo siguiente actualiza el selector al contrato y conserva el parche anterior de EFDS-2307/2308. `ProgramacionAcademicaModule.tsx` sigue **sin commitear** en la rama Codex. Claude debe incorporar este diff en su archivo propio, adaptando cualquier cambio concurrente de concertación y conteo vivo. La prueba `periodo-unico.browser.mjs` requiere este parche local para ejecutarse; después de integrarlo, Claude puede correrla contra su módulo con API simulada.
+
 ## Parche exacto del archivo compartido
 
 ✅ Este diff corresponde exclusivamente a cambios locales de Codex sobre la base indicada. Claude debe integrarlo en su versión del módulo. No reemplazar el archivo entero ni aplicar a ciegas si su contexto cambió.
 
 ```diff
 diff --git a/apps/mfe-programacion-academica/src/components/ProgramacionAcademicaModule.tsx b/apps/mfe-programacion-academica/src/components/ProgramacionAcademicaModule.tsx
-index b34ce6139..eeeae07d1 100644
+index b34ce6139..c317fa74b 100644
 --- a/apps/mfe-programacion-academica/src/components/ProgramacionAcademicaModule.tsx
 +++ b/apps/mfe-programacion-academica/src/components/ProgramacionAcademicaModule.tsx
-@@ -37,6 +37,7 @@ import { AsignacionDocente } from './AsignacionDocente';
+@@ -37,6 +37,8 @@ import { AsignacionDocente } from './AsignacionDocente';
  import { DisponibilidadAulas } from './DisponibilidadAulas';
  import { GestionOfertas } from './GestionOfertas';
  import { AprobacionJefatura } from './AprobacionJefatura';
 +import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
++import { getPeriodos, type PeriodoVista } from '../services/api/periodosApi';
 
  interface FranjaHoraria {
    id: string;
-@@ -105,6 +106,7 @@ function sesionAFranja(s: FranjaConContexto): FranjaHoraria {
+@@ -105,6 +107,8 @@ function sesionAFranja(s: FranjaConContexto): FranjaHoraria {
  }
 
  export function ProgramacionAcademicaModule() {
 +  const revisionProgramacion = useRevisionProgramacion('programacion');
++  const revisionPeriodos = useRevisionProgramacion('periodos');
    const [seccion, setSeccion] = useState<Seccion>('horarios');
    const [searchTerm, setSearchTerm] = useState('');
    const [selectedJornada, setSelectedJornada] = useState<string>('TODAS');
-@@ -191,15 +193,17 @@ export function ProgramacionAcademicaModule() {
+@@ -124,23 +128,31 @@ export function ProgramacionAcademicaModule() {
+
+   // §1.0 — El periodo como CONTEXTO. Todo lo que se ve debajo pertenece al
+   // periodo seleccionado en la cabecera; se persiste entre recargas.
+-  const [periodos, setPeriodos] = useState<Oferta[]>([]);
++  const [periodos, setPeriodos] = useState<PeriodoVista[]>([]);
++  const [periodoError, setPeriodoError] = useState('');
+   const [periodoSel, setPeriodoSel] = useState<string>(() => {
+     try { return localStorage.getItem('prog-periodo-sel') || ''; } catch { return ''; }
+   });
+   const periodoActual = periodos.find((p) => p.idPeriodo === periodoSel) || null;
++  const periodoProgramable = periodoActual?.modelo === 'plataforma'
++    ? periodoActual.programable
++    : periodoActual?.estado !== 'cerrado';
+
+   useEffect(() => {
+-    getOfertas().then((lista) => {
++    let vigente = true;
++    getPeriodos().then((respuesta) => {
++      if (!vigente) return;
++      const lista: PeriodoVista[] = [...respuesta.periodos, ...respuesta.legado];
++      setPeriodoError('');
+       setPeriodos(lista);
+       setPeriodoSel((actual) => {
+         if (actual && lista.some((p) => p.idPeriodo === actual)) return actual;
+-        // Por defecto, el primer periodo activo; si no hay, el primero.
+-        const def = lista.find((p) => p.estado === 'activo') || lista[0];
++        const def = respuesta.periodos.find((p) => p.esActivo) || respuesta.periodos[0] || respuesta.legado[0];
+         return def ? def.idPeriodo : '';
+       });
+-    }).catch(() => {});
+-  }, []);
++    }).catch((e) => { if (vigente) setPeriodoError(e?.message || 'No se pudieron consultar los periodos.'); });
++    return () => { vigente = false; };
++  }, [revisionPeriodos]);
+
+   const elegirPeriodo = (id: string) => {
+     setPeriodoSel(id);
+@@ -191,15 +203,17 @@ export function ProgramacionAcademicaModule() {
        .catch(() => { if (vivo) setTotalAulas(null); })
        .finally(() => { if (vivo) setCargando(false); });
      return () => { vivo = false; };
@@ -167,7 +239,7 @@ index b34ce6139..eeeae07d1 100644
 
    const gruposNav: MenuGroup[] = [
      {
-@@ -249,7 +253,7 @@ export function ProgramacionAcademicaModule() {
+@@ -249,7 +263,7 @@ export function ProgramacionAcademicaModule() {
            subtitle: 'Alertas y traslapes de horario',
            icon: <AlertTriangle className="w-5 h-5" />,
            color: '#D97706',
@@ -176,7 +248,45 @@ index b34ce6139..eeeae07d1 100644
          },
          // EFDS-1939 — solo para jefaturas territoriales.
          ...(esJefatura ? [{
-@@ -337,7 +341,7 @@ export function ProgramacionAcademicaModule() {
+@@ -293,21 +307,33 @@ export function ProgramacionAcademicaModule() {
+             onChange={(e) => elegirPeriodo(e.target.value)}
+             className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-[#003DA5] focus:outline-none focus:ring-2 focus:ring-[#003DA5]/20"
+           >
+-            {periodos.length === 0 && <option value="">Cargando…</option>}
+-            {periodos.map((p) => (
++            {periodos.length === 0 && <option value="">Sin periodos</option>}
++            <optgroup label="Periodos de la plataforma">
++            {periodos.filter((p) => p.modelo === 'plataforma').map((p) => (
+               <option key={p.idPeriodo} value={p.idPeriodo}>
+-                {p.codigo} — {p.estado === 'activo' ? 'Activo' : p.estado === 'cerrado' ? 'Cerrado' : 'En planeación'}
++                {p.codigo} — {p.esActivo ? 'Activo' : p.estadoPlataforma.replace('_', ' ')}{p.programacion.estado === 'cerrada' ? ' · programación cerrada' : ''}
+               </option>
+             ))}
++            </optgroup>
++            {periodos.some((p) => p.modelo === 'legado') && (
++              <optgroup label="Periodos anteriores al modelo único">
++                {periodos.filter((p) => p.modelo === 'legado').map((p) => (
++                  <option key={p.idPeriodo} value={p.idPeriodo}>{p.codigo} — {p.nombre}</option>
++                ))}
++              </optgroup>
++            )}
+           </select>
+           {periodoActual && (
+-            <span className="text-xs text-slate-500 hidden sm:inline">{periodoActual.nombre}</span>
++            <span className="text-xs text-slate-500 hidden sm:inline">
++              {periodoActual.modelo === 'plataforma' ? (periodoActual.programable ? 'Programación abierta' : 'Solo consulta') : periodoActual.motivo}
++            </span>
+           )}
+         </div>
+         <p className="text-[11px] text-slate-400">
+           Todo lo que ves —franjas, validación, disponibilidad— pertenece a este periodo.
+         </p>
+       </div>
++      {periodoError && <p role="alert" className="mb-4 text-sm text-red-700">{periodoError}</p>}
+
+       {/* ── KPI HEADER ── */}
+       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+@@ -337,7 +363,7 @@ export function ProgramacionAcademicaModule() {
            <div>
              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Alertas de Cruce</p>
              <h3 className="text-2xl font-black text-slate-800 mt-1">{totalConflictos}</h3>
@@ -185,7 +295,16 @@ index b34ce6139..eeeae07d1 100644
            </div>
            <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
              <AlertTriangle className="w-6 h-6" />
-@@ -417,12 +421,13 @@ export function ProgramacionAcademicaModule() {
+@@ -357,7 +383,7 @@ export function ProgramacionAcademicaModule() {
+       </div>
+
+       {/* ── PUBLICAR EL PERIODO (§1.2) — desde la vista de programación ── */}
+-      {seccion === 'horarios' && estadoPub && periodoActual && periodoActual.estado !== 'cerrado' && (
++      {seccion === 'horarios' && estadoPub && periodoActual && periodoProgramable && (
+         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-4">
+           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+             <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1">
+@@ -417,12 +443,13 @@ export function ProgramacionAcademicaModule() {
                className="bg-transparent font-semibold text-slate-800 focus:outline-none"
              >
                {/* §2.1 — Los valores deben ser los del dato del backend
