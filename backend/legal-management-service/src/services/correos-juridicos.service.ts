@@ -355,6 +355,23 @@ export class CorreosJuridicosService {
      * o bounce automático del MTA. Estos correos los genera el servidor (no un humano) y no
      * deben aparecer como comunicaciones reales en la bandeja.
      */
+    /**
+     * Remitentes cuyos correos no deben entrar al Centro de Comunicaciones: la cuenta de
+     * notificaciones de la plataforma (NOTIFICATIONS_EMAIL_ACCOUNT) y los definidos en
+     * LEGAL_SYNC_EXCLUDED_SENDERS (separados por coma). Nunca se excluye la propia cuenta
+     * del buzón, para no perder los envíos legítimos hechos desde el Centro.
+     * Ver docs/CONFIGURACION_CORREOS_CENTRO_COMUNICACIONES.md
+     */
+    private esRemitenteExcluido(email: any, buzonAccount: string): boolean {
+        const from = (email.from?.emailAddress?.address || '').toLowerCase().trim();
+        if (!from || from === (buzonAccount || '').toLowerCase().trim()) return false;
+        const excluidos = [
+            process.env.NOTIFICATIONS_EMAIL_ACCOUNT || '',
+            ...(process.env.LEGAL_SYNC_EXCLUDED_SENDERS || '').split(','),
+        ].map(e => e.toLowerCase().trim()).filter(Boolean);
+        return excluidos.includes(from);
+    }
+
     private esDeliveryReceiptOrDSN(email: any): boolean {
         const subject = (email.subject || '').toLowerCase().trim();
         const fromAddress = (email.from?.emailAddress?.address || '').toLowerCase();
@@ -437,6 +454,13 @@ export class CorreosJuridicosService {
                     // Estos correos los genera automáticamente el MTA y no son comunicaciones reales.
                     if (this.esDeliveryReceiptOrDSN(email)) {
                         this.logger.log(`  ⏭️  DSN/Auto-reply omitido: "${email.subject?.substring(0, 60)}"`);
+                        continue;
+                    }
+
+                    // Correos automáticos de otros módulos (autos aprobados, asignaciones, etc.)
+                    // enviados por la cuenta de notificaciones: no son comunicaciones del buzón.
+                    if (this.esRemitenteExcluido(email, account)) {
+                        this.logger.log(`  ⏭️  Remitente excluido omitido: "${email.subject?.substring(0, 60)}"`);
                         continue;
                     }
 

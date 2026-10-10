@@ -124,9 +124,13 @@ export class MicrosoftGraphService {
                 response = await client.api(nextLink).get();
             } else {
                 // First request
+                // Solo la Bandeja de entrada. NO usar /messages: incluye Elementos enviados, y las
+                // notificaciones de la plataforma (autos, asignaciones) se envían desde la misma cuenta,
+                // por lo que terminaban importadas como comunicaciones del buzón Judiciales.
+                // Ver docs/CONFIGURACION_CORREOS_CENTRO_COMUNICACIONES.md
                 this.logger.log(`Fetching first page from ${mailbox} (limit: ${limit})...`);
                 response = await client
-                    .api(`/users/${mailbox}/messages`)
+                    .api(`/users/${mailbox}/mailFolders/inbox/messages`)
                     .top(limit)
                     .orderby('receivedDateTime desc')
                     .select('id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,hasAttachments,isRead,internetMessageId,conversationId')
