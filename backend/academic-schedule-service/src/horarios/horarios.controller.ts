@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 
 import { HorariosService, type CrearSesionDto, type PeriodoGrupoDto } from './horarios.service.js';
+import { EscrituraEn } from '../acceso/escritura.decorator.js';
 
 @Controller('horarios')
 export class HorariosController {
@@ -24,17 +25,20 @@ export class HorariosController {
 
   /** POST /horarios — crea una sesión con franja arbitraria (AC-01, AC-03). */
   @Post()
+  @EscrituraEn({ grupo: { body: 'idGrupo' } }, { exigeNivel: true })
   async crear(@Body() body: CrearSesionDto) {
     return { success: true, data: await this.horarios.crearSesion(body) };
   }
 
   @Delete(':id')
+  @EscrituraEn({ franja: { param: 'id' } }, { exigeNivel: true })
   async eliminar(@Param('id') id: string) {
     return { success: true, data: await this.horarios.eliminarSesion(id) };
   }
 
   /** PUT /horarios/grupo/:id/periodo — ciclo de clases del grupo. */
   @Put('grupo/:id/periodo')
+  @EscrituraEn({ grupo: { param: 'id' } }, { exigeNivel: true })
   async periodo(@Param('id') id: string, @Body() body: PeriodoGrupoDto) {
     return { success: true, data: await this.horarios.definirPeriodo(id, body) };
   }

@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import { PERMISO_PORTAL_TOMAR, PERMISO_PORTAL_VER } from '../auth/programacion-permissions.js';
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 import { PortalDocenteService } from './portal-docente.service.js';
+import { EscrituraEn } from '../acceso/escritura.decorator.js';
 
 /**
  * Portal del docente — EFDS-1938.
@@ -65,6 +66,7 @@ export class PortalDocenteController {
 
   /** POST /portal-docente/tomar/:idFranja — toma una franja (transacción + lock). */
   @Post('tomar/:idFranja')
+  @EscrituraEn({ franja: { param: 'idFranja' } })
   async tomar(@Req() req: Request, @Param('idFranja') idFranja: string) {
     await this.exigir(req, PERMISO_PORTAL_TOMAR);
     const docente = await this.portal.resolverDocente(this.idUser(req));
@@ -73,6 +75,7 @@ export class PortalDocenteController {
 
   /** POST /portal-docente/soltar/:idFranja — suelta una franja tomada no aprobada. */
   @Post('soltar/:idFranja')
+  @EscrituraEn({ franja: { param: 'idFranja' } })
   async soltar(@Req() req: Request, @Param('idFranja') idFranja: string) {
     await this.exigir(req, PERMISO_PORTAL_TOMAR);
     const docente = await this.portal.resolverDocente(this.idUser(req));

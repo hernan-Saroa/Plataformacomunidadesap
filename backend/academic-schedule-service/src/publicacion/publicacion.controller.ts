@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import { PERMISO_PROGRAMACION_ALL } from '../auth/programacion-permissions.js';
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 import { PublicacionService } from './publicacion.service.js';
+import { EscrituraEn } from '../acceso/escritura.decorator.js';
 
 /**
  * Publicación de la programación — NUEVA-1 / EFDS-1937.
@@ -47,6 +48,7 @@ export class PublicacionController {
 
   /** POST /publicaciones/:idPeriodo/publicar — valida sin cruces y publica. */
   @Post(':idPeriodo/publicar')
+  @EscrituraEn({ periodo: { param: 'idPeriodo' } })
   async publicar(@Req() req: Request, @Param('idPeriodo') idPeriodo: string) {
     await this.exigirAdministracion(req);
     return { success: true, data: await this.publicacion.publicar(idPeriodo) };
@@ -54,6 +56,7 @@ export class PublicacionController {
 
   /** POST /publicaciones/:idPeriodo/retirar — retira si nadie tomó franjas. */
   @Post(':idPeriodo/retirar')
+  @EscrituraEn({ periodo: { param: 'idPeriodo' } })
   async retirar(@Req() req: Request, @Param('idPeriodo') idPeriodo: string) {
     await this.exigirAdministracion(req);
     return { success: true, data: await this.publicacion.retirar(idPeriodo) };
@@ -67,6 +70,7 @@ export class PublicacionController {
 
   /** POST /publicaciones/:idPeriodo/cerrar — cierra si todo está aprobado o en excepción. */
   @Post(':idPeriodo/cerrar')
+  @EscrituraEn({ periodo: { param: 'idPeriodo' } })
   async cerrar(@Req() req: Request, @Param('idPeriodo') idPeriodo: string) {
     await this.exigirAdministracion(req);
     return { success: true, data: await this.publicacion.cerrar(idPeriodo) };
@@ -74,6 +78,7 @@ export class PublicacionController {
 
   /** POST /publicaciones/:idPeriodo/excepcion/:idFranja — marca/desmarca excepción. */
   @Post(':idPeriodo/excepcion/:idFranja')
+  @EscrituraEn({ periodo: { param: 'idPeriodo' }, franja: { param: 'idFranja' } })
   async excepcion(
     @Req() req: Request,
     @Param('idPeriodo') idPeriodo: string,
