@@ -1,32 +1,25 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { CalendarDays, Loader2, Gauge, Search } from 'lucide-react';
+import { useRevisionProgramacion, invalidarProgramacion } from '../services/actualizacionProgramacion';
+import {
+  getPeriodos, crearPeriodoPlataforma, getImpactoActivacion, activarPeriodoPlataforma,
+  type PeriodoPlataforma, type RespuestaPeriodos,
+} from '../services/api/periodosApi';
+import { CargaAsignaturasPeriodo } from './CargaAsignaturasPeriodo';
 
 import {
-  getOfertas, getConsumoPorOferta, crearPeriodo, activarPeriodo,
+  getConsumoPorOferta,
   getEstadoPublicacion, publicarProgramacion, retirarProgramacion, cerrarProgramacion,
   getPendientesCierre, marcarExcepcion,
-  type Oferta, type AcumuladoDocente, type EstadoPublicacion, type PendienteCierre,
+  type AcumuladoDocente, type EstadoPublicacion, type PendienteCierre,
 } from '../services/api/catalogoApi';
 
-/**
- * EFDS-1375 — Gestión de ofertas académicas.
- *
- * Cinco ofertas: dos periodos regulares, dos de créditos con estrategia virtual,
- * un interperiodo. Al programar el interperiodo, ver el CONSUMO PREVIO del
- * docente en los regulares es lo que evita pasarse del tope: ese consumo se
- * acumula por semestre ENTRE ofertas (dimensión de EFDS-1373, aquí solo se
- * muestra). Las fechas son de referencia hasta que llegue el calendario (C-5).
- *
- * Estética ESAP: azul institucional #003DA5.
- */
-const ETIQUETA_TIPO: Record<string, string> = {
-  periodo_regular: 'Periodo regular',
-  creditos_virtual: 'Créditos · virtual',
-  interperiodo: 'Interperiodo',
-};
+/** Periodos compartidos de la plataforma; las ofertas pasan a ser del grupo. */
 
 export function GestionOfertas() {
-  const [ofertas, setOfertas] = useState<Oferta[]>([]);
+  const [periodos, setPeriodos] = useState<RespuestaPeriodos | null>(null);
+  const [importarId, setImportarId] = useState<string | null>(null);
+  const revisionPeriodos = useRevisionProgramacion('periodos');
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [documento, setDocumento] = useState('');
@@ -36,9 +29,7 @@ export function GestionOfertas() {
   // NUEVA-5a — Crear y activar. Requieren el permiso de administración; si
   // falta, el backend responde 403 y el mensaje se muestra tal cual, sin
   // traducirlo a un genérico.
-  const [nuevo, setNuevo] = useState({
-    codigo: '', nombre: '', tipo: 'periodo_regular', fechaInicio: '', fechaFin: '',
-  });
+  const [nuevo, setNuevo] = useState({ anio: new Date().getFullYear(), semestre: 1 as 1 | 2, fechaInicio: '', fechaFin: '' });
   const [guardando, setGuardando] = useState(false);
   const [avisoAdmin, setAvisoAdmin] = useState('');
 
@@ -51,7 +42,7 @@ export function GestionOfertas() {
   const [verPend, setVerPend] = useState<string | null>(null);
   const [pendCierre, setPendCierre] = useState<Record<string, PendienteCierre[]>>({});
 
-  const cargarPubs = (lista: Oferta[]) =>
+  const cargarPubs = (lista: PeriodoPlataforma[]) =>
     Promise.all(lista.map((o) =>
       getEstadoPublicacion(o.idPeriodo).then((e) => [o.idPeriodo, e] as const).catch(() => null),
     )).then((pares) => {
@@ -60,7 +51,12 @@ export function GestionOfertas() {
       setPubs(map);
     });
 
-  const recargar = () => getOfertas().then((l) => { setOfertas(l); return cargarPubs(l); }).catch(() => {});
+  const recargar = async () => {
+    const datos = await getPeriodos();
+    setPeriodos(datos);
+    await cargarPubs(datos.periodos);
+    return datos;
+  };
 
   const publicar = async (id: string) => {
     setAvisoPub('');
@@ -119,11 +115,16 @@ export function GestionOfertas() {
   const cerrar = async (id: string) => {
     setAvisoPub('');
     setPubOcupado(id);
+    let cerrado = false;
     try {
       await cerrarProgramacion(id);
+      cerrado = true;
+      invalidarProgramacion('periodos', 'programacion', 'publicaciones');
       await recargar();
     } catch (err: any) {
-      setAvisoPub(err?.message || 'No se pudo cerrar el periodo.');
+      setAvisoPub(cerrado
+        ? 'La programación se cerró, pero no se pudo actualizar la lista. Vuelva a consultarla.'
+        : err?.message || 'No se pudo cerrar la programación.');
     } finally {
       setPubOcupado(null);
     }
@@ -133,12 +134,18 @@ export function GestionOfertas() {
     e.preventDefault();
     setGuardando(true);
     setAvisoAdmin('');
+    let creado = false;
     try {
-      await crearPeriodo({ ...nuevo, tipo: nuevo.tipo || null });
-      setNuevo({ codigo: '', nombre: '', tipo: 'periodo_regular', fechaInicio: '', fechaFin: '' });
-      await recargar();
+      await crearPeriodoPlataforma(nuevo);
+      creado = true;
+      const actualizados = await recargar();
+      const periodoCreado = actualizados.periodos.find((p) => p.anio === nuevo.anio && p.semestre === nuevo.semestre);
+      setImportarId(periodoCreado?.idPeriodo ?? null);
+      setNuevo({ ...nuevo, fechaInicio: '', fechaFin: '' });
     } catch (err: any) {
-      setAvisoAdmin(err?.message || 'No se pudo crear el periodo.');
+      setAvisoAdmin(creado
+        ? 'El periodo se creó, pero no se pudo actualizar la lista. Vuelva a consultarla antes de reintentar.'
+        : err?.message || 'No se pudo crear el periodo.');
     } finally {
       setGuardando(false);
     }
@@ -146,20 +153,37 @@ export function GestionOfertas() {
 
   const activar = async (id: string) => {
     setAvisoAdmin('');
+    let activado = false;
     try {
-      await activarPeriodo(id);
+      const impacto = await getImpactoActivacion(id);
+      const detalle = impacto.porPeriodo.map((p) => `${p.codigo}: ${p.ptas}`).join(', ');
+      const terminados = impacto.ptasATerminar === null ? 'un número de PTA aún no disponible' : `${impacto.ptasATerminar} PTA`;
+      const cierre = impacto.periodosACerrar.length ? ` Cerrará ${impacto.periodosACerrar.join(', ')}.` : '';
+      const planeacion = impacto.periodosAPlaneacion.length ? ` Pasarán a planeación: ${impacto.periodosAPlaneacion.join(', ')}.` : '';
+      const aviso = impacto.advertencia ? `\n${impacto.advertencia}` : '';
+      if (!window.confirm(`Activar ${impacto.codigo} terminará ${terminados}${detalle ? ` (${detalle})` : ''}.${cierre}${planeacion}${aviso}\n¿Continuar?`)) return;
+      await activarPeriodoPlataforma(id);
+      activado = true;
       await recargar();
     } catch (err: any) {
-      setAvisoAdmin(err?.message || 'No se pudo activar el periodo.');
+      setAvisoAdmin(activado
+        ? 'El periodo se activó, pero no se pudo actualizar la lista. Vuelva a consultarla.'
+        : err?.message || 'No se pudo activar el periodo.');
     }
   };
 
   useEffect(() => {
-    getOfertas()
-      .then((l) => { setOfertas(l); return cargarPubs(l); })
-      .catch((e) => setError(e?.message || 'No se pudieron cargar las ofertas.'))
-      .finally(() => setCargando(false));
-  }, []);
+    let vigente = true;
+    getPeriodos()
+      .then(async (data) => {
+        if (!vigente) return;
+        setPeriodos(data);
+        await cargarPubs(data.periodos);
+      })
+      .catch((e) => { if (vigente) setError(e?.message || 'No se pudieron cargar los periodos.'); })
+      .finally(() => { if (vigente) setCargando(false); });
+    return () => { vigente = false; };
+  }, [revisionPeriodos]);
 
   const consultar = async () => {
     if (!documento.trim()) return;
@@ -182,9 +206,8 @@ export function GestionOfertas() {
           <CalendarDays className="w-4 h-4 text-[#003DA5]" /> Periodos
         </h3>
         <p className="text-xs text-slate-500">
-          Aquí se crean, activan, publican y cierran los periodos de programación. El consumo de un
-          docente se acumula por semestre entre todos ellos. Las fechas de los periodos sembrados son
-          de referencia hasta que llegue el calendario oficial (C-5).
+          El periodo es el de toda la plataforma. La programación se puede editar en planeación y en curso;
+          al cerrar aquí, solo se cierra su programación.
         </p>
       </div>
 
@@ -198,29 +221,29 @@ export function GestionOfertas() {
 
       {cargando ? (
         <div className="flex items-center gap-2 text-sm text-slate-500 p-4">
-          <Loader2 className="w-4 h-4 animate-spin" /> Cargando ofertas…
+          <Loader2 className="w-4 h-4 animate-spin" /> Cargando periodos…
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {ofertas.map((o) => (
+          {(periodos?.periodos ?? []).map((o) => (
             <div key={o.idPeriodo} className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-2">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-800 text-sm">{o.codigo}</span>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-[#003DA5] font-bold">
-                  {o.tipo ? ETIQUETA_TIPO[o.tipo] || o.tipo : '—'}
+                  {o.esActivo ? 'Activo' : o.estadoPlataforma.replace('_', ' ')}
                 </span>
               </div>
-              <p className="text-xs text-slate-600">{o.nombre}</p>
+              <p className="text-xs text-slate-600">Programación {o.programacion.estado}</p>
               <p className="text-[11px] text-slate-400">
                 {o.fechaInicio || '—'} a {o.fechaFin || '—'}
               </p>
               <div className="flex items-center justify-between pt-1">
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${o.estado === 'activo' ? 'bg-emerald-50 text-emerald-700' : o.estado === 'cerrado' ? 'bg-slate-200 text-slate-600' : 'bg-amber-50 text-amber-700'}`}>
-                  {o.estado === 'activo' ? 'Activo' : o.estado === 'cerrado' ? 'Cerrado' : 'En planeación'}
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${o.programable ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+                  {o.programable ? 'Programable' : 'Solo consulta'}
                 </span>
                 {/* Cerrado es inmutable: no se ofrece reactivar lo que el
                     backend rechazaría por inmutable. */}
-                {o.estado === 'planeacion' && (
+                {periodos?.permisos.activar && !o.esActivo && o.estadoPlataforma !== 'cerrado' && (
                   <button
                     type="button"
                     onClick={() => activar(o.idPeriodo)}
@@ -247,7 +270,7 @@ export function GestionOfertas() {
                       <span className="text-[#003DA5]">{p.tomada} tomadas</span>
                       <span className="text-emerald-700 font-semibold">{p.aprobada} aprobadas</span>
                     </div>
-                    {o.estado !== 'cerrado' && (
+                    {o.programable && (
                     <div className="flex items-center gap-2 flex-wrap">
                       {!publicado ? (
                         <button type="button" disabled={ocupado || p.total === 0}
@@ -268,12 +291,14 @@ export function GestionOfertas() {
                       )}
                       {/* Cerrar: el backend exige todo aprobado o en excepción y lo
                           rechaza verbatim si algo queda pendiente. */}
+                      {periodos?.permisos.cerrarProgramacion && (
                       <button type="button" disabled={ocupado || p.pendientesCierre > 0}
                         onClick={() => cerrar(o.idPeriodo)}
-                        title={p.pendientesCierre > 0 ? `${p.pendientesCierre} franjas pendientes: apruébalas o márcalas como excepción` : 'Cerrar el periodo'}
+                        title={p.pendientesCierre > 0 ? `${p.pendientesCierre} franjas pendientes: apruébalas o márcalas como excepción` : 'Cerrar solo la programación'}
                         className="px-2.5 py-1 rounded-lg bg-slate-700 text-white text-[11px] font-bold hover:bg-slate-800 disabled:opacity-40 active:scale-95 transition-all">
-                        {ocupado ? 'Cerrando…' : 'Cerrar periodo'}
+                        {ocupado ? 'Cerrando…' : 'Cerrar programación'}
                       </button>
+                      )}
                       {p.pendientesCierre > 0 && (
                         <button type="button" onClick={() => abrirExcepciones(o.idPeriodo)}
                           className="px-2.5 py-1 rounded-lg border border-amber-300 text-amber-800 text-[11px] font-bold hover:bg-amber-50 active:scale-95 transition-all">
@@ -308,39 +333,47 @@ export function GestionOfertas() {
                   </div>
                 );
               })()}
+              {periodos?.permisos.importar && o.programable && (
+                <button type="button" onClick={() => setImportarId(importarId === o.idPeriodo ? null : o.idPeriodo)}
+                  className="text-xs font-bold text-[#003DA5] underline">
+                  {importarId === o.idPeriodo ? 'Ocultar carga masiva' : 'Cargar asignaturas desde Excel'}
+                </button>
+              )}
+              {importarId === o.idPeriodo && periodos?.permisos.importar && o.programable && (
+                <CargaAsignaturasPeriodo periodo={o} alTerminar={() => setAvisoAdmin(`Catálogo de ${o.codigo} actualizado.`)} />
+              )}
             </div>
           ))}
         </div>
       )}
 
-      {/* NUEVA-5a — Crear periodo. Nace en planeación; activar es aparte. */}
-      <form onSubmit={crear} className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+      {(periodos?.legado?.length ?? 0) > 0 && (
+        <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+          <h4 className="font-bold text-sm">Periodos anteriores al modelo único</h4>
+          {periodos!.legado.map((p) => <p key={p.idPeriodo} className="text-xs text-slate-600">{p.codigo} · {p.nombre}: {p.motivo}</p>)}
+        </div>
+      )}
+
+      {/* Crear el periodo compartido de la plataforma mediante el PTA. */}
+      {periodos?.permisos.crear && <form onSubmit={crear} className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
         <h4 className="font-bold text-slate-800 text-sm">Crear periodo</h4>
         <p className="text-xs text-slate-500">
-          Nace <strong>en planeación</strong>. Activarlo es un acto aparte, y varios periodos
-          pueden estar activos a la vez.
+          Nace <strong>en planeación</strong>. Activarlo muestra primero cuántos PTA se terminarán.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold text-slate-500 uppercase">Código</span>
-            <input required value={nuevo.codigo} placeholder="2027-1" maxLength={20}
-              onChange={(e) => setNuevo({ ...nuevo, codigo: e.target.value })}
+            <span className="text-[11px] font-bold text-slate-500 uppercase">Año</span>
+            <input required type="number" min={2020} max={2100} value={nuevo.anio}
+              onChange={(e) => setNuevo({ ...nuevo, anio: Number(e.target.value) })}
               className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold text-slate-500 uppercase">Nombre</span>
-            <input required value={nuevo.nombre} placeholder="Periodo Regular 2027-1"
-              onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })}
-              className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-bold text-slate-500 uppercase">Tipo</span>
-            <select value={nuevo.tipo}
-              onChange={(e) => setNuevo({ ...nuevo, tipo: e.target.value })}
+            <span className="text-[11px] font-bold text-slate-500 uppercase">Semestre</span>
+            <select value={nuevo.semestre}
+              onChange={(e) => setNuevo({ ...nuevo, semestre: Number(e.target.value) as 1 | 2 })}
               className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20">
-              <option value="periodo_regular">Periodo regular</option>
-              <option value="creditos_virtual">Créditos virtual</option>
-              <option value="interperiodo">Interperiodo</option>
+              <option value={1}>Primero</option>
+              <option value={2}>Segundo</option>
             </select>
           </label>
           <div className="grid grid-cols-2 gap-2">
@@ -367,7 +400,7 @@ export function GestionOfertas() {
           className="px-4 py-2 rounded-lg bg-[#003DA5] text-white text-xs font-bold disabled:opacity-50 active:scale-95 transition-all">
           {guardando ? 'Creando…' : 'Crear periodo'}
         </button>
-      </form>
+      </form>}
 
       {/* Consumo previo del docente frente al tope, entre ofertas */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">

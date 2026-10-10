@@ -32,7 +32,11 @@ try {
     let status = 200;
     let data = [];
     const path = url.pathname.split('/api/v1/')[1];
-    if (path === 'ofertas') data = [{ idPeriodo: 'p1', codigo: 'PRUEBA-CODEX-2', nombre: 'PRUEBA-CODEX-2', estado: 'activo' }];
+    if (path === 'periodos') data = { periodos: [{
+      idPeriodo: 'p1', modelo: 'plataforma', codigo: 'PRUEBA-CODEX-2', anio: 2026, semestre: 2,
+      fechaInicio: '2026-07-01', fechaFin: '2026-12-31', estadoPlataforma: 'en_curso',
+      programacion: { estado: 'abierta', cerradaEn: null }, programable: true, esActivo: true,
+    }], legado: [], permisos: { crear: true, activar: true, cerrarProgramacion: true, importar: true } };
     else if (path === 'grupos/g1') { lecturasGrupo++; data = grupo; }
     else if (path === 'horarios/grupo/g1/periodo' && r.method() === 'PUT') {
       if (rechazar) { status = 409; data = null; }
