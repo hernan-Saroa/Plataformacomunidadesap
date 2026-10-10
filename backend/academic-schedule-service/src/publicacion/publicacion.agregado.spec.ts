@@ -134,7 +134,8 @@ describe('EFDS-1937 :: publicar la programacion (agregado real)', () => {
   const servicioConFranjas = (franjas: any[]) => {
     const dataSource = {
       query: (sql: string) => {
-        if (/FROM "academic-schedule"\.franja_horaria f/.test(sql) && /JOIN "academic-schedule"\.grupo g/.test(sql)) {
+        // Las franjas del periodo se piden por `f.id_grupo IN (<grupos del alcance>)` (EFDS-2302).
+        if (/FROM "academic-schedule"\.franja_horaria f\s+WHERE f\.id_grupo IN/.test(sql) && /SELECT f\.id_franja/.test(sql)) {
           return Promise.resolve(franjas);
         }
         return Promise.resolve([{ '1': 1 }]); // exigirPeriodo, etc.

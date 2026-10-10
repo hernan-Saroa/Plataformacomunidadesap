@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 
 import { GruposService, type ActualizarGrupoDto, type CrearGrupoDto } from './grupos.service.js';
-import { EscrituraEn } from '../acceso/escritura.decorator.js';
+import { EscrituraEn, LecturaEn } from '../acceso/escritura.decorator.js';
 
 @Controller('grupos')
 export class GruposController {
@@ -17,12 +17,14 @@ export class GruposController {
 
   /** GET /grupos?asignatura=<id> — grupos de la asignatura, por numeración. */
   @Get()
+  @LecturaEn({ asignatura: { query: 'asignatura' } })
   async listar(@Query('asignatura') idAsignatura: string, @Query('periodo') idPeriodo?: string) {
     const data = await this.gruposService.listarPorAsignatura(idAsignatura, idPeriodo);
     return { success: true, data };
   }
 
   @Get(':id')
+  @LecturaEn({ grupo: { param: 'id' } })
   async obtener(@Param('id') id: string) {
     return { success: true, data: await this.gruposService.obtener(id) };
   }

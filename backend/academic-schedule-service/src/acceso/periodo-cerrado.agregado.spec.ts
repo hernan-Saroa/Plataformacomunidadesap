@@ -141,7 +141,7 @@ describe('EFDS-2301 :: con el periodo cerrado, toda escritura se rechaza (agrega
     for (const [tipo, fuente] of Object.entries(regla.anclas ?? {})) {
       const valor = (ids as any)[tipo];
       if ('param' in fuente!) req.params[fuente.param] = valor;
-      else req.body[fuente!.body] = valor;
+      else if ('body' in fuente!) req.body[fuente.body] = valor;
     }
     return req;
   };
