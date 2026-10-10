@@ -288,7 +288,7 @@ export class PlanAnual5RolesController {
     @Body() updateDto: Partial<CreateActividadDto>,
     @Req() req: any,
   ) {
-    return this.service.updateActividad(actividadId, updateDto, req.user?.userId);
+    return this.service.updateActividad(actividadId, updateDto, req.user?.userId, req.user);
   }
 
   // Asignar auditor a actividad
