@@ -11,6 +11,7 @@ import {
 } from './solapamiento.js';
 import { GrupoEntity } from '../grupos/grupo.entity.js';
 import { condicionNivelSql, type NivelAcademico } from '../catalogo/nivel-academico.js';
+import { condicionPeriodoGrupo, parsearPeriodo } from '../periodos/periodo-ref.js';
 
 /**
  * Margen del tope de horas del grupo (§1.3). Se publica solo si las horas
@@ -49,9 +50,14 @@ export interface FranjaConContexto {
   asignatura: string | null;
   programa: string | null;
   docente: string | null;
-  /** Periodo al que pertenece la franja (vía grupo.id_periodo). Null = sin periodo. */
+  /**
+   * Periodo de la franja, vía su grupo: el de plataforma si el grupo ya lo
+   * tiene (EFDS-2328), si no el legado. Null = sin periodo.
+   */
   idPeriodo: string | null;
   periodoCodigo: string | null;
+  /** Oferta del grupo en el periodo de plataforma; null en grupos legado. */
+  tipoOferta: string | null;
 }
 
 export interface PeriodoGrupoDto {
@@ -92,10 +98,14 @@ export class HorariosService {
    * programador de posgrado veía las de pregrado.
    */
   async listarTodas(idPeriodo: string | undefined, niveles: readonly NivelAcademico[]): Promise<FranjaConContexto[]> {
-    const params: unknown[] = idPeriodo ? [idPeriodo] : [];
+    // El periodo puede ser de plataforma o legado (EFDS-2328); un id que no es de
+    // ninguno no devuelve nada, en vez de devolverlo todo.
+    const ref = idPeriodo ? parsearPeriodo(idPeriodo) : null;
+    if (idPeriodo && !ref) return [];
+    const params: unknown[] = ref ? [ref.id] : [];
     const nivel = condicionNivelSql('pr.tipo', niveles, params.length + 1);
     params.push(...nivel.params);
-    const filtro = `WHERE ${nivel.sql}${idPeriodo ? ' AND g.id_periodo = $1' : ''}`;
+    const filtro = `WHERE ${nivel.sql}${ref ? ' AND ' + condicionPeriodoGrupo('g', ref, 1) : ''}`;
     return this.franjaRepo.query(
       `SELECT f.id_franja                       AS "idFranja",
               f.id_grupo::text                  AS "idGrupo",
@@ -109,14 +119,16 @@ export class HorariosService {
               g.numero_grupo                    AS "numeroGrupo",
               g.fecha_inicio::text              AS "fechaInicioGrupo",
               g.fecha_fin::text                 AS "fechaFinGrupo",
-              g.id_periodo::text                AS "idPeriodo",
-              pp.codigo                         AS "periodoCodigo",
+              COALESCE(g.id_periodo_academico::text, g.id_periodo::text) AS "idPeriodo",
+              COALESCE(pa.codigo, pp.codigo)    AS "periodoCodigo",
+              g.tipo_oferta                     AS "tipoOferta",
               a.nombre                          AS "asignatura",
               pr.nombre                         AS "programa",
               per.nom_largo                     AS "docente"
          FROM "academic-schedule".franja_horaria f
          LEFT JOIN "academic-schedule".grupo g          ON g.id_grupo = f.id_grupo
          LEFT JOIN "academic-schedule".periodo_programacion pp ON pp.id_periodo = g.id_periodo
+         LEFT JOIN academic_work_plan.periodo_academico pa      ON pa.id = g.id_periodo_academico
          LEFT JOIN academic_work_plan.asignatura a      ON a.id       = g.id_asignatura
          LEFT JOIN academic_work_plan.programa pr       ON pr.id      = a.id_programa
          LEFT JOIN "academic-schedule".asignacion_docente ad

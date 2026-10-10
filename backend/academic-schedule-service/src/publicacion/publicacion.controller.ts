@@ -76,7 +76,8 @@ export class PublicacionController {
   @EscrituraEn({ periodo: { param: 'idPeriodo' } })
   async cerrar(@Req() req: Request, @Param('idPeriodo') idPeriodo: string) {
     await this.exigirAdministracion(req);
-    return { success: true, data: await this.publicacion.cerrar(idPeriodo) };
+    const usuario = String(req.headers['x-user-id'] || (req as any)?.user?.userId || '') || null;
+    return { success: true, data: await this.publicacion.cerrar(idPeriodo, usuario) };
   }
 
   /** POST /publicaciones/:idPeriodo/excepcion/:idFranja — marca/desmarca excepción. */

@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm';
 import { seSolapan } from '../horarios/solapamiento.js';
 import { FACTOR_TOPE_HORAS } from '../horarios/horarios.service.js';
 import { condicionNivelSql, NIVELES_ACADEMICOS, type NivelAcademico } from '../catalogo/nivel-academico.js';
+import { condicionPeriodoGrupo, parsearPeriodo, type RefPeriodo } from '../periodos/periodo-ref.js';
 
 /**
  * Publicación de la programación — NUEVA-1 / EFDS-1937.
@@ -59,9 +60,18 @@ export interface EstadoPublicacion {
 export class PublicacionService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
+  /** Periodo de plataforma o legado (EFDS-2328). Un id que no es de ninguno no existe. */
+  private ref(idPeriodo: string): RefPeriodo {
+    const ref = parsearPeriodo(idPeriodo);
+    if (!ref) throw new NotFoundException('El periodo no existe.');
+    return ref;
+  }
+
   private async exigirPeriodo(idPeriodo: string): Promise<void> {
-    const p = await this.dataSource.query(
-      `SELECT 1 FROM "academic-schedule".periodo_programacion WHERE id_periodo = $1`, [idPeriodo]);
+    const ref = this.ref(idPeriodo);
+    const p = ref.modelo === 'plataforma'
+      ? await this.dataSource.query(`SELECT 1 FROM academic_work_plan.periodo_academico WHERE id = $1::bigint`, [ref.id])
+      : await this.dataSource.query(`SELECT 1 FROM "academic-schedule".periodo_programacion WHERE id_periodo = $1::uuid`, [ref.id]);
     if (!p.length) throw new NotFoundException('El periodo no existe.');
   }
 
@@ -71,14 +81,15 @@ export class PublicacionService {
    * posgrado). LEFT JOIN: con los dos niveles no se pierde ningún grupo.
    */
   private gruposEnAlcance(idPeriodo: string, niveles: readonly NivelAcademico[]): { sql: string; params: unknown[] } {
+    const ref = this.ref(idPeriodo);
     const nivel = condicionNivelSql('pr.tipo', niveles, 2);
     return {
       sql: `SELECT gn.id_grupo
               FROM "academic-schedule".grupo gn
               LEFT JOIN academic_work_plan.asignatura an ON an.id = gn.id_asignatura
               LEFT JOIN academic_work_plan.programa pr   ON pr.id = an.id_programa
-             WHERE gn.id_periodo = $1 AND ${nivel.sql}`,
-      params: [idPeriodo, ...nivel.params],
+             WHERE ${condicionPeriodoGrupo('gn', ref, 1)} AND ${nivel.sql}`,
+      params: [ref.id, ...nivel.params],
     };
   }
 
@@ -322,34 +333,45 @@ export class PublicacionService {
    */
   async marcarExcepcion(idPeriodo: string, idFranja: string, excepcion: boolean): Promise<EstadoPublicacion> {
     await this.exigirPeriodo(idPeriodo);
+    const ref = this.ref(idPeriodo);
     const r = await this.dataSource.query(
       `UPDATE "academic-schedule".franja_horaria f
           SET excepcion = $3, updated_at = NOW()
          FROM "academic-schedule".grupo g
         WHERE g.id_grupo = f.id_grupo
           AND f.id_franja = $2
-          AND g.id_periodo = $1
+          AND ${condicionPeriodoGrupo('g', ref, 1)}
       RETURNING f.id_franja`,
-      [idPeriodo, idFranja, excepcion],
+      [ref.id, idFranja, excepcion],
     );
     if (!r.length) throw new NotFoundException('La franja no pertenece a este periodo.');
     return this.estado(idPeriodo);
   }
 
   /**
-   * Cierra el periodo: exige que TODA su franja esté APROBADA o marcada como
-   * excepción. Un periodo cerrado es inmutable (ofertas.activar ya rechaza
-   * reactivarlo); aquí se impide re-cerrar.
+   * Cierra la PROGRAMACIÓN del periodo: exige que TODA su franja esté APROBADA o
+   * marcada como excepción. Lo cerrado es inmutable; aquí se impide re-cerrar.
    *
-   * ⚠️ NUEVA-5b: depende de la aprobación de NUEVA-3 (EFDS-1939). Por eso cerrar
-   * no vivía en ofertas.crear/activar: hasta ahora no tenía de qué depender.
+   * ⚠️ EFDS-2328: en un periodo de plataforma esto cierra SOLO la programación
+   * (`programacion_periodo`), NUNCA el periodo de la plataforma: cerrar ese
+   * periodo termina PTA y es acto del PTA, no de este módulo. En un periodo
+   * legado cierra el `periodo_programacion`, como antes.
+   *
+   * ⚠️ NUEVA-5b: depende de la aprobación de NUEVA-3 (EFDS-1939).
    */
-  async cerrar(idPeriodo: string): Promise<EstadoPublicacion> {
-    const p = await this.dataSource.query(
-      `SELECT estado FROM "academic-schedule".periodo_programacion WHERE id_periodo = $1`, [idPeriodo]);
+  async cerrar(idPeriodo: string, cerradoPor?: string | null): Promise<EstadoPublicacion> {
+    const ref = this.ref(idPeriodo);
+    const p = ref.modelo === 'plataforma'
+      ? await this.dataSource.query(
+          `SELECT CASE WHEN COALESCE(pp.estado, 'abierta') = 'cerrada' THEN 'cerrado' ELSE 'abierto' END AS estado
+             FROM academic_work_plan.periodo_academico pa
+             LEFT JOIN "academic-schedule".programacion_periodo pp ON pp.id_periodo_academico = pa.id
+            WHERE pa.id = $1::bigint`, [ref.id])
+      : await this.dataSource.query(
+          `SELECT estado FROM "academic-schedule".periodo_programacion WHERE id_periodo = $1::uuid`, [ref.id]);
     if (!p.length) throw new NotFoundException('El periodo no existe.');
     if (p[0].estado === 'cerrado') {
-      throw new ConflictException('El periodo ya está cerrado y es inmutable.');
+      throw new ConflictException('La programación de este periodo ya está cerrada y es inmutable.');
     }
 
     const est = await this.estado(idPeriodo);
@@ -359,10 +381,24 @@ export class PublicacionService {
       );
     }
 
-    await this.dataSource.query(
-      `UPDATE "academic-schedule".periodo_programacion
-          SET estado = 'cerrado', updated_at = NOW()
-        WHERE id_periodo = $1`, [idPeriodo]);
+    if (ref.modelo === 'plataforma') {
+      await this.dataSource.query(
+        `INSERT INTO "academic-schedule".programacion_periodo (id_periodo_academico, estado, cerrada_en, cerrada_por)
+         VALUES ($1::bigint, 'cerrada', NOW(), $2::uuid)
+         ON CONFLICT (id_periodo_academico) DO UPDATE
+            SET estado = 'cerrada', cerrada_en = NOW(), cerrada_por = EXCLUDED.cerrada_por, updated_at = NOW()`,
+        [ref.id, esUuid(cerradoPor) ? cerradoPor : null]);
+    } else {
+      await this.dataSource.query(
+        `UPDATE "academic-schedule".periodo_programacion
+            SET estado = 'cerrado', updated_at = NOW()
+          WHERE id_periodo = $1::uuid`, [ref.id]);
+    }
     return this.estado(idPeriodo);
   }
+}
+
+function esUuid(valor: unknown): valor is string {
+  return typeof valor === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(valor);
 }

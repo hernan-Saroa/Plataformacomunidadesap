@@ -11,6 +11,10 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
  * docente pueda dictar varios grupos de la misma asignatura. Lo que se prohíbe
  * es el cruce de franjas, y eso se valida sobre el horario (fase 3).
  */
+/** Mismo conjunto cerrado que el CHECK de la migración 036. */
+export const TIPOS_OFERTA = ['periodo_regular', 'creditos_virtual', 'interperiodo'] as const;
+export type TipoOferta = (typeof TIPOS_OFERTA)[number];
+
 @Entity({ schema: 'academic-schedule', name: 'grupo' })
 export class GrupoEntity {
   @PrimaryGeneratedColumn('uuid', { name: 'id_grupo' })
@@ -19,8 +23,17 @@ export class GrupoEntity {
   @Column({ name: 'id_asignatura', type: 'bigint' })
   idAsignatura: string;
 
+  /** Periodo LEGADO (`periodo_programacion`). Se conserva para los no migrados. */
   @Column({ name: 'id_periodo', type: 'uuid', nullable: true })
   idPeriodo: string | null;
+
+  /** Periodo de PLATAFORMA (`periodo_academico`, EFDS-2328). Manda sobre el legado. */
+  @Column({ name: 'id_periodo_academico', type: 'bigint', nullable: true })
+  idPeriodoAcademico: string | null;
+
+  /** Oferta del grupo dentro del periodo de plataforma (migración 036). */
+  @Column({ name: 'tipo_oferta', type: 'varchar', length: 30, nullable: true })
+  tipoOferta: TipoOferta | null;
 
   @Column({ name: 'numero_grupo', type: 'smallint' })
   numeroGrupo: number;

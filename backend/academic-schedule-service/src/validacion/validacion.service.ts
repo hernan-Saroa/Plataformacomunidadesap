@@ -83,7 +83,9 @@ export class ValidacionService {
     const filas: Array<{ tipo: CruceVivo['tipo']; dia: string; horaInicio: string; horaFin: string; recurso: string | null }> =
       await this.dataSource.query(
         `WITH f AS (
-           SELECT f.id_franja, f.id_grupo, g.id_periodo, f.aula_codigo, f.id_docente,
+           -- Periodo efectivo del grupo: el de plataforma si ya lo tiene, si no el legado (EFDS-2328).
+           SELECT f.id_franja, f.id_grupo, COALESCE(g.id_periodo_academico::text, g.id_periodo::text) AS id_periodo,
+                  f.aula_codigo, f.id_docente,
                   f.dia_semana, f.hora_inicio, f.hora_fin
              FROM "academic-schedule".franja_horaria f
              LEFT JOIN "academic-schedule".grupo g ON g.id_grupo = f.id_grupo
@@ -102,7 +104,7 @@ export class ValidacionService {
               AND a.dia_semana = b.dia_semana
               AND a.hora_inicio < b.hora_fin
               AND b.hora_inicio < a.hora_fin
-            WHERE ($1::uuid IS NULL OR a.id_periodo = $1::uuid OR b.id_periodo = $1::uuid)
+            WHERE ($1::text IS NULL OR a.id_periodo = $1::text OR b.id_periodo = $1::text)
          )
          SELECT 'grupo'::text AS tipo, dia, hora_inicio AS "horaInicio", hora_fin AS "horaFin", NULL::text AS recurso
            FROM par WHERE mismo_grupo

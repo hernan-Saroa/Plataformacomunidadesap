@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { NivelAcademico, nivelDeProgramaTipo } from '../catalogo/nivel-academico.js';
+import { parsearPeriodo } from '../periodos/periodo-ref.js';
 
 /** Periodo al que pertenece un recurso, con lo necesario para decidir si admite escrituras. */
 export interface PeriodoDelRecurso {
@@ -40,17 +41,33 @@ export interface Alcance {
 export class AlcanceService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  /** La ÚNICA consulta que decide si un periodo está cerrado. */
+  /**
+   * La ÚNICA consulta que decide si un periodo está cerrado.
+   *
+   * Plataforma (EFDS-2328): cerrado si el periodo de la plataforma está
+   * cerrado O si su programación está cerrada. Se programa en planeación,
+   * concertación y en curso. Legado: el estado de `periodo_programacion`.
+   */
   async periodoPorId(idPeriodo: string): Promise<PeriodoDelRecurso | null> {
-    if (!esUuid(idPeriodo)) return null;
-    const filas = await this.dataSource.query(
-      `SELECT id_periodo::text AS "idPeriodo", codigo, estado
-         FROM "academic-schedule".periodo_programacion
-        WHERE id_periodo = $1`,
-      [idPeriodo],
-    );
+    const ref = parsearPeriodo(idPeriodo);
+    if (!ref) return null;
+    const filas = ref.modelo === 'plataforma'
+      ? await this.dataSource.query(
+          `SELECT pa.id::text AS "idPeriodo", pa.codigo,
+                  (pa.estado = 'cerrado' OR COALESCE(pp.estado, 'abierta') = 'cerrada') AS cerrado
+             FROM academic_work_plan.periodo_academico pa
+             LEFT JOIN "academic-schedule".programacion_periodo pp ON pp.id_periodo_academico = pa.id
+            WHERE pa.id = $1::bigint`,
+          [ref.id],
+        )
+      : await this.dataSource.query(
+          `SELECT id_periodo::text AS "idPeriodo", codigo, (estado = 'cerrado') AS cerrado
+             FROM "academic-schedule".periodo_programacion
+            WHERE id_periodo = $1::uuid`,
+          [ref.id],
+        );
     if (!filas.length) return null;
-    return { idPeriodo: filas[0].idPeriodo, codigo: filas[0].codigo, cerrado: filas[0].estado === 'cerrado' };
+    return { idPeriodo: filas[0].idPeriodo, codigo: filas[0].codigo, cerrado: filas[0].cerrado === true };
   }
 
   private async nivelDeAsignatura(idAsignatura: unknown): Promise<NivelAcademico | null> {
@@ -69,7 +86,8 @@ export class AlcanceService {
   private async grupo(idGrupo: string): Promise<{ idPeriodo: string | null; idAsignatura: number } | null> {
     if (!esUuid(idGrupo)) return null;
     const filas = await this.dataSource.query(
-      `SELECT id_periodo::text AS "idPeriodo", id_asignatura AS "idAsignatura"
+      // Un grupo de plataforma cuelga de su periodo de plataforma; si no, del legado.
+      `SELECT COALESCE(id_periodo_academico::text, id_periodo::text) AS "idPeriodo", id_asignatura AS "idAsignatura"
          FROM "academic-schedule".grupo WHERE id_grupo = $1`,
       [idGrupo],
     );
