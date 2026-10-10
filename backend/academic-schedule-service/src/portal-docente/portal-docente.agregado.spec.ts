@@ -53,11 +53,11 @@ describe('EFDS-1938 :: portal del docente (agregado real)', () => {
   };
   const servicio = () => new PortalDocenteService(dataSource, null as any);
 
-  const insertar = async (etiqueta: string, dia: string, ini: string, fin: string, aula: string) => {
+  const insertar = async (etiqueta: string, dia: string, ini: string, fin: string, aula: string, grupo = idGrupo) => {
     const r = await client!.query(
       `INSERT INTO "${S}".franja_horaria (id_grupo, dia_semana, hora_inicio, hora_fin, tipo_sesion, aula_codigo, estado)
        VALUES ($1,$2,$3::time,$4::time,'presencial',$5,'PUBLICADA') RETURNING id_franja`,
-      [idGrupo, dia, ini, fin, aula]);
+      [grupo, dia, ini, fin, aula]);
     franjas[etiqueta] = r.rows[0].id_franja;
   };
 
@@ -75,8 +75,13 @@ describe('EFDS-1938 :: portal del docente (agregado real)', () => {
          VALUES (2, $1, 902, 'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
       idGrupo = g.rows[0].id_grupo;
       // A y B cruzan en tiempo (LUNES), aulas distintas (no es cruce de aula). C no cruza.
+      // B va en OTRO grupo: dos sesiones del mismo grupo a la vez son un cruce que la
+      // API prohíbe, y el canario de cruces vivos (EFDS-2307) lo vería en paralelo.
+      const g2 = await client.query(
+        `INSERT INTO "${S}".grupo (id_asignatura, id_periodo, numero_grupo, estado)
+         VALUES (2, $1, 903, 'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
       await insertar('A', 'LUNES', '08:00', '10:00', '201');
-      await insertar('B', 'LUNES', '09:00', '11:00', '202');
+      await insertar('B', 'LUNES', '09:00', '11:00', '202', g2.rows[0].id_grupo);
       await insertar('C', 'MARTES', '08:00', '10:00', '201');
       hayBase = true;
     } catch {

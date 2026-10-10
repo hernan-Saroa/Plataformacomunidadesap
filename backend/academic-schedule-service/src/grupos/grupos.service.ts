@@ -1,19 +1,30 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 
-import { GrupoEntity } from './grupo.entity.js';
+import { GrupoEntity, TIPOS_OFERTA, type TipoOferta } from './grupo.entity.js';
+import { parsearPeriodo, type RefPeriodo } from '../periodos/periodo-ref.js';
 import { siguienteNumeroGrupo } from './numeracion-grupo.js';
 import { AsignaturaCatalogoEntity } from '../catalogo/entities/asignatura.readonly.entity.js';
 
 export interface CrearGrupoDto {
   idAsignatura: string;
+  /** `idPeriodo` de GET /periodos: de plataforma (número) o legado (UUID). */
   idPeriodo?: string | null;
+  /** Solo en periodos de plataforma: la oferta es del grupo (EFDS-2328). */
+  tipoOferta?: TipoOferta;
   idDocente?: string | null;
   cupoMaximo?: number;
   observaciones?: string | null;
   /** Cantidad de grupos a crear de una vez (AC-01). Por defecto 1. */
   cantidad?: number;
+}
+
+/** Dónde vive el grupo según su periodo; `null` = sin periodo. */
+function ubicacion(ref: RefPeriodo | null, tipoOferta?: TipoOferta) {
+  if (!ref) return { idPeriodo: null, idPeriodoAcademico: null, tipoOferta: null };
+  if (ref.modelo === 'legado') return { idPeriodo: ref.id, idPeriodoAcademico: null, tipoOferta: null };
+  return { idPeriodo: null, idPeriodoAcademico: ref.id, tipoOferta: tipoOferta ?? 'periodo_regular' };
 }
 
 export interface ActualizarGrupoDto {
@@ -52,8 +63,21 @@ export class GruposService {
     });
     if (!asignatura) throw new NotFoundException('La asignatura no existe en el catálogo.');
 
+    const ref = dto.idPeriodo ? parsearPeriodo(dto.idPeriodo) : null;
+    if (dto.idPeriodo && !ref) throw new BadRequestException('El periodo no es válido.');
+    if (dto.tipoOferta !== undefined && !TIPOS_OFERTA.includes(dto.tipoOferta)) {
+      throw new BadRequestException(`La oferta debe ser una de: ${TIPOS_OFERTA.join(', ')}.`);
+    }
+    const donde = ubicacion(ref, dto.tipoOferta);
+
+    // Numeración por asignatura, periodo y oferta (índice de la migración 036).
     const existentes = await this.grupoRepo.find({
-      where: { idAsignatura: String(dto.idAsignatura), idPeriodo: (dto.idPeriodo ?? null) as any },
+      where: {
+        idAsignatura: String(dto.idAsignatura),
+        idPeriodo: (donde.idPeriodo ?? IsNull()) as any,
+        idPeriodoAcademico: (donde.idPeriodoAcademico ?? IsNull()) as any,
+        ...(donde.tipoOferta ? { tipoOferta: donde.tipoOferta } : {}),
+      },
       select: ['numeroGrupo'],
     });
     const numeros = existentes.map((g) => g.numeroGrupo);
@@ -65,7 +89,9 @@ export class GruposService {
       creados.push(
         this.grupoRepo.create({
           idAsignatura: String(dto.idAsignatura),
-          idPeriodo: dto.idPeriodo ?? null,
+          idPeriodo: donde.idPeriodo,
+          idPeriodoAcademico: donde.idPeriodoAcademico,
+          tipoOferta: donde.tipoOferta,
           numeroGrupo: numero,
           idDocente: dto.idDocente ?? null,
           cupoMaximo: dto.cupoMaximo ?? 30,
@@ -84,7 +110,12 @@ export class GruposService {
     // Con periodo, solo los grupos de ESE periodo: un grupo creado en 2027-1 no
     // debe aparecer al programar 2026-1. Sin periodo, todos (compatibilidad).
     const where: any = { idAsignatura: String(idAsignatura) };
-    if (idPeriodo) where.idPeriodo = idPeriodo;
+    if (idPeriodo) {
+      const ref = parsearPeriodo(idPeriodo);
+      if (!ref) return Promise.resolve([]);
+      if (ref.modelo === 'plataforma') where.idPeriodoAcademico = ref.id;
+      else { where.idPeriodo = ref.id; where.idPeriodoAcademico = IsNull(); }
+    }
     return this.grupoRepo.find({ where, order: { numeroGrupo: 'ASC' } });
   }
 

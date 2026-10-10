@@ -150,9 +150,9 @@ describe('EFDS-1937 :: publicar la programacion (agregado real)', () => {
       { idFranja: 'b', aulaCodigo: '101', idDocente: null, diaSemana: 'MARTES', horaInicio: '09:00', horaFin: '11:00' },
     ];
     const servicio = servicioConFranjas(franjas);
-    const cruces = await servicio.validarCruces('periodo-stub');
+    const cruces = await servicio.validarCruces('00000000-0000-4000-8000-0000000000a1');
     expect(cruces.some((c) => c.tipo === 'aula' && c.recurso === '101')).toBe(true);
-    await expect(servicio.publicar('periodo-stub')).rejects.toThrow(/cruce/i);
+    await expect(servicio.publicar('00000000-0000-4000-8000-0000000000a1')).rejects.toThrow(/cruce/i);
   });
 
   it('un docente cruza consigo mismo aunque una sesion sea virtual (sin aula)', async () => {
@@ -163,7 +163,7 @@ describe('EFDS-1937 :: publicar la programacion (agregado real)', () => {
       { idFranja: 'b', aulaCodigo: null, idDocente: doc, diaSemana: 'MIERCOLES', horaInicio: '09:00', horaFin: '11:00' },
     ];
     const servicio = servicioConFranjas(franjas);
-    const cruces = await servicio.validarCruces('periodo-stub');
+    const cruces = await servicio.validarCruces('00000000-0000-4000-8000-0000000000a1');
     expect(cruces.some((c) => c.tipo === 'docente')).toBe(true);
     expect(cruces.some((c) => c.tipo === 'aula')).toBe(false); // la virtual no aporta cruce de aula
   });

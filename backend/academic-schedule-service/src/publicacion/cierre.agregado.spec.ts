@@ -32,11 +32,13 @@ describe('EFDS-1941 :: cerrar el periodo (agregado real)', () => {
     query: (sql: string, params?: any[]) => client!.query(sql, params).then((r) => r.rows),
   } as any);
 
-  const insertar = async (etq: string, estado: string) => {
+  // Horas distintas: dos sesiones del mismo grupo a la vez son un cruce que la API
+  // prohíbe (y que el canario de cruces vivos, EFDS-2307, vería en paralelo).
+  const insertar = async (etq: string, estado: string, hora = '06:00') => {
     const r = await client!.query(
       `INSERT INTO "${S}".franja_horaria (id_grupo, dia_semana, hora_inicio, hora_fin, tipo_sesion, aula_codigo, estado)
-       VALUES ($1,'DOMINGO','06:00'::time,'07:00'::time,'mediada_tecnologia',NULL,$2) RETURNING id_franja`,
-      [idGrupo, estado]);
+       VALUES ($1,'DOMINGO',$3::time,($3::time + interval '1 hour'),'mediada_tecnologia',NULL,$2) RETURNING id_franja`,
+      [idGrupo, estado, hora]);
     F[etq] = r.rows[0].id_franja;
   };
 
@@ -54,7 +56,7 @@ describe('EFDS-1941 :: cerrar el periodo (agregado real)', () => {
          VALUES (2,$1,906,'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
       idGrupo = g.rows[0].id_grupo;
       await insertar('APROB', 'APROBADA');
-      await insertar('TOM', 'TOMADA'); // pendiente: ni aprobada ni excepción
+      await insertar('TOM', 'TOMADA', '07:00'); // pendiente: ni aprobada ni excepción
       hayBase = true;
     } catch {
       client = null; hayBase = false;
@@ -95,6 +97,6 @@ describe('EFDS-1941 :: cerrar el periodo (agregado real)', () => {
   });
 
   siHayBase('un periodo cerrado es inmutable: no se vuelve a cerrar', async () => {
-    await expect(servicio().cerrar(idPeriodo)).rejects.toThrow(/ya está cerrado/i);
+    await expect(servicio().cerrar(idPeriodo)).rejects.toThrow(/ya está cerrad[ao]/i);
   });
 });
