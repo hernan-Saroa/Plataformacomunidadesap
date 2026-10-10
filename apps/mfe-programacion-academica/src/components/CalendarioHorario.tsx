@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, Clock, Loader2, MapPin, Monitor, Trash2, X } from 'lucide-react';
+import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
 
 import {
-  crearSesion, eliminarSesion, getSesiones, definirPeriodoGrupo, getAulas, getHorasGrupo,
+  crearSesion, eliminarSesion, getSesiones, definirPeriodoGrupo, getGrupo, getAulas, getHorasGrupo,
   type Sesion, type TipoSesion, type Aula, type HorasGrupo,
 } from '../services/api/catalogoApi';
 
@@ -51,29 +52,44 @@ interface Props {
   idGrupo: string;
   numeroGrupo: number;
   nombreAsignatura: string;
-  /** Ciclo ya guardado del grupo. Sin esto los campos salían vacíos aunque
-   *  estuviera persistido, y parecía que "no se guarda". */
+  /** Compatibilidad con padres existentes. El ciclo se lee por idGrupo;
+   * estas props pueden estar obsoletas y no son la fuente de los campos. */
   fechaInicioGrupo?: string | null;
   fechaFinGrupo?: string | null;
 }
 
 export function CalendarioHorario({
-  idGrupo, numeroGrupo, nombreAsignatura, fechaInicioGrupo, fechaFinGrupo,
+  idGrupo, numeroGrupo, nombreAsignatura,
 }: Props) {
   const [sesiones, setSesiones] = useState<Sesion[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
   const [guardando, setGuardando] = useState(false);
 
-  const [fechaInicio, setFechaInicio] = useState(fechaInicioGrupo ?? '');
-  const [fechaFin, setFechaFin] = useState(fechaFinGrupo ?? '');
-
-  // Al cambiar de grupo, los campos siguen al grupo elegido.
-  useEffect(() => {
-    setFechaInicio(fechaInicioGrupo ?? '');
-    setFechaFin(fechaFinGrupo ?? '');
-  }, [idGrupo, fechaInicioGrupo, fechaFinGrupo]);
+  const [fechaInicio, setFechaInicio] = useState('');
+  const [fechaFin, setFechaFin] = useState('');
+  const [cicloCargado, setCicloCargado] = useState<string | null>(null);
+  const [guardandoCiclo, setGuardandoCiclo] = useState(false);
+  const revisionGrupo = useRevisionProgramacion(`grupo:${idGrupo}`);
+  const revisionHorario = useRevisionProgramacion('horarios');
+  const revisionAulas = useRevisionProgramacion('aulas');
   const [avisoPeriodo, setAvisoPeriodo] = useState('');
+
+  // EFDS-2310: leer siempre el grupo persistido, también al reabrir con props antiguas.
+  useEffect(() => {
+    let vigente = true;
+    setCicloCargado(null);
+    setFechaInicio(''); setFechaFin('');
+    getGrupo(idGrupo).then((grupo) => {
+      if (!vigente) return;
+      setFechaInicio(grupo.fechaInicio?.slice(0, 10) ?? '');
+      setFechaFin(grupo.fechaFin?.slice(0, 10) ?? '');
+      setCicloCargado(idGrupo);
+    }).catch((e) => {
+      if (vigente) setAvisoPeriodo(e?.message || 'No se pudo consultar el ciclo guardado.');
+    });
+    return () => { vigente = false; };
+  }, [idGrupo, revisionGrupo]);
 
   /**
    * Arrastre para crear una franja (3.3). La rejilla es propia y la conversión
@@ -89,25 +105,30 @@ export function CalendarioHorario({
   }>(null);
   // Lista CERRADA de salones (3.4): no se puede escribir uno que no exista.
   const [aulas, setAulas] = useState<Aula[]>([]);
-  useEffect(() => { getAulas().then(setAulas).catch(() => setAulas([])); }, []);
+  useEffect(() => {
+    let vigente = true;
+    getAulas().then((datos) => { if (vigente) setAulas(datos); })
+      .catch(() => { if (vigente) setAulas([]); });
+    return () => { vigente = false; };
+  }, [revisionAulas]);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   // §1.3 — Horas programadas vs requeridas por el catálogo, en vivo.
   const [resumenHoras, setResumenHoras] = useState<HorasGrupo | null>(null);
-  const cargarHoras = () => getHorasGrupo(idGrupo).then(setResumenHoras).catch(() => setResumenHoras(null));
-
-  const recargar = () => {
+  useEffect(() => {
+    let vigente = true;
     setCargando(true);
     setError('');
     getSesiones(idGrupo)
-      .then(setSesiones)
-      .catch((e) => setError(e?.message || 'No se pudieron cargar las sesiones.'))
-      .finally(() => setCargando(false));
-    cargarHoras();
-  };
-
-  useEffect(recargar, [idGrupo]);
+      .then((datos) => { if (vigente) setSesiones(datos); })
+      .catch((e) => { if (vigente) setError(e?.message || 'No se pudieron cargar las sesiones.'); })
+      .finally(() => { if (vigente) setCargando(false); });
+    getHorasGrupo(idGrupo)
+      .then((datos) => { if (vigente) setResumenHoras(datos); })
+      .catch(() => { if (vigente) setResumenHoras(null); });
+    return () => { vigente = false; };
+  }, [idGrupo, revisionHorario]);
 
   /**
    * Minuto del día que corresponde a una posición vertical dentro de la columna.
@@ -153,7 +174,6 @@ export function CalendarioHorario({
         aulaCodigo: nueva.tipoSesion === 'presencial' ? (nueva.aulaCodigo || null) : null,
       });
       setNueva(null);
-      recargar();
     } catch (e: any) {
       // El cruce intra-grupo llega como mensaje del backend: se muestra tal cual
       // para que el programador sepa contra qué sesión choca.
@@ -167,13 +187,14 @@ export function CalendarioHorario({
     setError('');
     try {
       await eliminarSesion(s.idFranja);
-      recargar();
     } catch (e: any) {
       setError(e?.message || 'No se pudo eliminar la sesión.');
     }
   };
 
   const guardarPeriodo = async () => {
+    if (cicloCargado !== idGrupo || guardandoCiclo) return;
+    setGuardandoCiclo(true);
     setAvisoPeriodo('');
     try {
       await definirPeriodoGrupo(idGrupo, {
@@ -181,9 +202,10 @@ export function CalendarioHorario({
         fechaFin: fechaFin || null,
       });
       setAvisoPeriodo('Periodo guardado.');
-      cargarHoras(); // las semanas cambian ⇒ recalcular horas programadas.
     } catch (e: any) {
       setAvisoPeriodo(e?.message || 'No se pudo guardar el periodo.');
+    } finally {
+      setGuardandoCiclo(false);
     }
   };
 
@@ -234,15 +256,15 @@ export function CalendarioHorario({
       <div className="p-4 border-b border-slate-100 bg-slate-50/60 flex items-end gap-3 flex-wrap">
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Inicio del ciclo</span>
-          <input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)}
+          <input type="date" disabled={cicloCargado !== idGrupo || guardandoCiclo} value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)}
             className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20" />
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Fin del ciclo</span>
-          <input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)}
+          <input type="date" disabled={cicloCargado !== idGrupo || guardandoCiclo} value={fechaFin} onChange={(e) => setFechaFin(e.target.value)}
             className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20" />
         </label>
-        <button onClick={guardarPeriodo}
+        <button onClick={guardarPeriodo} disabled={cicloCargado !== idGrupo || guardandoCiclo}
           className="px-4 py-2 rounded-lg text-white text-xs font-bold active:scale-95 transition-all"
           style={{ background: '#003DA5' }}>
           Guardar periodo

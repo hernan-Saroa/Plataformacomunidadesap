@@ -268,17 +268,22 @@ export function GestionOfertas() {
                       )}
                       {/* Cerrar: el backend exige todo aprobado o en excepción y lo
                           rechaza verbatim si algo queda pendiente. */}
-                      <button type="button" disabled={ocupado}
+                      <button type="button" disabled={ocupado || p.pendientesCierre > 0}
                         onClick={() => cerrar(o.idPeriodo)}
-                        title={p.pendientesCierre > 0 ? `${p.pendientesCierre} franja(s) sin aprobar` : 'Cerrar el periodo'}
+                        title={p.pendientesCierre > 0 ? `${p.pendientesCierre} franjas pendientes: apruébalas o márcalas como excepción` : 'Cerrar el periodo'}
                         className="px-2.5 py-1 rounded-lg bg-slate-700 text-white text-[11px] font-bold hover:bg-slate-800 disabled:opacity-40 active:scale-95 transition-all">
                         {ocupado ? 'Cerrando…' : 'Cerrar periodo'}
                       </button>
                       {p.pendientesCierre > 0 && (
                         <button type="button" onClick={() => abrirExcepciones(o.idPeriodo)}
                           className="px-2.5 py-1 rounded-lg border border-amber-300 text-amber-800 text-[11px] font-bold hover:bg-amber-50 active:scale-95 transition-all">
-                          {verPend === o.idPeriodo ? 'Ocultar' : `Excepción (${p.pendientesCierre})`}
+                          {verPend === o.idPeriodo ? 'Ocultar pendientes' : `Ver pendientes (${p.pendientesCierre})`}
                         </button>
+                      )}
+                      {p.pendientesCierre > 0 && (
+                        <p className="w-full text-[11px] text-amber-800">
+                          {p.pendientesCierre} franjas pendientes: apruébalas o márcalas como excepción.
+                        </p>
                       )}
                     </div>
                     )}

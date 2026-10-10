@@ -1,4 +1,5 @@
 import { getApiGatewayBaseUrl } from '../../../config/environment';
+import { invalidarEscrituraProgramacion } from '../actualizacionProgramacion';
 
 /**
  * Cliente del catálogo académico (EFDS-1368).
@@ -114,8 +115,15 @@ async function pedirJson<T>(ruta: string, init: RequestInit): Promise<T> {
     }
     throw new Error(detalle || `No se pudo completar la operación (error ${res.status}).`);
   }
-  const cuerpo = await res.json();
+  const cuerpo = res.status === 204 ? null : await res.json();
+  if (!['GET', 'HEAD'].includes((init.method ?? 'GET').toUpperCase())) {
+    invalidarEscrituraProgramacion(ruta);
+  }
   return (cuerpo?.data ?? cuerpo) as T;
+}
+
+export function getGrupo(idGrupo: string): Promise<Grupo> {
+  return pedirJson<Grupo>(`${BASE_GRUPOS}/${encodeURIComponent(idGrupo)}`, { method: 'GET' });
 }
 
 export function getGrupos(idAsignatura: string, idPeriodo?: string): Promise<Grupo[]> {
