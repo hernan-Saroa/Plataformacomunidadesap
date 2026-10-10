@@ -35,5 +35,11 @@ export async function getCrucesVivos(idPeriodo: string): Promise<ConteoCrucesViv
     throw new Error(detalle || `No se pudieron contar los cruces (error ${res.status}).`);
   }
   const cuerpo = await res.json();
-  return (cuerpo?.data ?? cuerpo) as ConteoCrucesVivos;
+  const conteo = (cuerpo?.data ?? cuerpo) as ConteoCrucesVivos;
+  // Sin un número no hay conteo: se informa el error en vez de pintar un
+  // valor vacío o inventado.
+  if (!conteo || typeof conteo.total !== 'number') {
+    throw new Error('El servidor no devolvió el conteo de cruces.');
+  }
+  return conteo;
 }
