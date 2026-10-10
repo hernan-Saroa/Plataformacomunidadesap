@@ -3,6 +3,7 @@ import type { Request } from 'express';
 
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 import { JefaturaService } from './jefatura.service.js';
+import { EscrituraEn } from '../acceso/escritura.decorator.js';
 
 const PERMISO_APROBACION = 'programacion-academica.aprobacion.territorial';
 
@@ -49,6 +50,7 @@ export class JefaturaController {
 
   /** POST /jefatura/aprobar/:idFranja — TOMADA → APROBADA. */
   @Post('aprobar/:idFranja')
+  @EscrituraEn({ franja: { param: 'idFranja' } })
   async aprobar(@Req() req: Request, @Param('idFranja') idFranja: string) {
     await this.exigirAprobacion(req);
     return { success: true, data: await this.jefatura.aprobar(this.idUser(req), idFranja) };
@@ -56,6 +58,7 @@ export class JefaturaController {
 
   /** POST /jefatura/devolver/:idFranja — TOMADA → PUBLICADA con comentario. */
   @Post('devolver/:idFranja')
+  @EscrituraEn({ franja: { param: 'idFranja' } })
   async devolver(@Req() req: Request, @Param('idFranja') idFranja: string, @Body() body: { comentario?: string }) {
     await this.exigirAprobacion(req);
     return { success: true, data: await this.jefatura.devolver(this.idUser(req), idFranja, body?.comentario ?? '') };

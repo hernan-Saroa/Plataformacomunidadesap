@@ -10,6 +10,7 @@ import {
   buscarSolapeIntraGrupo, esMultiploDeGranularidad, jornadaSugerida, aMinutos, seSolapan,
 } from './solapamiento.js';
 import { GrupoEntity } from '../grupos/grupo.entity.js';
+import { condicionNivelSql, type NivelAcademico } from '../catalogo/nivel-academico.js';
 
 /**
  * Margen del tope de horas del grupo (§1.3). Se publica solo si las horas
@@ -85,8 +86,16 @@ export class HorariosService {
    * grupo.id_periodo). Es lo que permite que cada vista del módulo pertenezca al
    * periodo seleccionado en la cabecera: sin él, la tabla mezclaba periodos.
    */
-  async listarTodas(idPeriodo?: string): Promise<FranjaConContexto[]> {
-    const filtro = idPeriodo ? 'WHERE g.id_periodo = $1' : '';
+  /**
+   * Programación General. `niveles` son los que el usuario puede programar: el
+   * filtro es del SERVIDOR (EFDS-2302); antes devolvía todas las franjas y el
+   * programador de posgrado veía las de pregrado.
+   */
+  async listarTodas(idPeriodo: string | undefined, niveles: readonly NivelAcademico[]): Promise<FranjaConContexto[]> {
+    const params: unknown[] = idPeriodo ? [idPeriodo] : [];
+    const nivel = condicionNivelSql('pr.tipo', niveles, params.length + 1);
+    params.push(...nivel.params);
+    const filtro = `WHERE ${nivel.sql}${idPeriodo ? ' AND g.id_periodo = $1' : ''}`;
     return this.franjaRepo.query(
       `SELECT f.id_franja                       AS "idFranja",
               f.id_grupo::text                  AS "idGrupo",
@@ -115,7 +124,7 @@ export class HorariosService {
          LEFT JOIN auth.personas per                    ON per.id_person = ad.id_docente
         ${filtro}
         ORDER BY f.dia_semana ASC, f.hora_inicio ASC`,
-      idPeriodo ? [idPeriodo] : undefined,
+      params.length ? params : undefined,
     );
   }
 

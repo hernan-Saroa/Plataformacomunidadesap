@@ -1,72 +1,79 @@
 import { Body, Controller, ForbiddenException, Get, Param, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 
-import { PERMISO_PROGRAMACION_ALL } from '../auth/programacion-permissions.js';
+import { PERMISO_PROGRAMACION_ALL, PERMISO_PUBLICAR } from '../auth/programacion-permissions.js';
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
+import { EscrituraEn } from '../acceso/escritura.decorator.js';
+import { NivelesRequestService } from '../acceso/niveles-request.service.js';
+import { rolesDe } from '../acceso/roles.js';
 import { PublicacionService } from './publicacion.service.js';
 
 /**
  * Publicación de la programación — NUEVA-1 / EFDS-1937.
  *
- * Publicar y retirar son actos de administración del periodo: exigen
- * `programacion-academica.all`, igual que crear/activar periodos y el CRUD de
- * aulas. Consultar el estado queda abierto a cualquier perfil del módulo.
+ * Publicar y retirar los hace el PROGRAMADOR, cada uno sobre los niveles que
+ * programa (EFDS-2303, permiso `programacion-academica.publicar`). Cerrar el
+ * periodo y marcar excepciones son actos sobre el periodo completo y siguen
+ * exigiendo `programacion-academica.all`.
+ *
+ * Las consultas devuelven solo los niveles del usuario (EFDS-2302, RN-08).
  */
 @Controller('publicaciones')
 export class PublicacionController {
   constructor(
     private readonly publicacion: PublicacionService,
     private readonly permisos: ProgramacionPermissionsService,
+    private readonly niveles: NivelesRequestService,
   ) {}
 
-  private async permisosDe(req: Request): Promise<Set<string>> {
-    const desdeHeader = String(req.headers['x-user-roles'] || '')
-      .split(',').map((r) => r.trim()).filter(Boolean);
-    const desdeUser = Array.isArray((req as any)?.user?.roles)
-      ? (req as any).user.roles
-          .map((r: any) => (typeof r === 'string' ? r : r?.code ?? r?.name)).filter(Boolean)
-      : [];
-    const codes = desdeHeader.length > 0 ? desdeHeader : desdeUser;
-    return this.permisos.resolveForRoles(codes);
-  }
-
-  private async exigirAdministracion(req: Request): Promise<void> {
-    const permisos = await this.permisosDe(req);
-    if (!permisos.has(PERMISO_PROGRAMACION_ALL)) {
-      throw new ForbiddenException(
-        'Publicar la programación requiere el permiso de administración del módulo.',
-      );
+  private async exigir(req: Request, permiso: string, mensaje: string): Promise<void> {
+    const permisos = await this.permisos.resolveForRoles(rolesDe(req));
+    if (!permisos.has(permiso) && !permisos.has(PERMISO_PROGRAMACION_ALL)) {
+      throw new ForbiddenException(mensaje);
     }
   }
 
-  /** GET /publicaciones/:idPeriodo — conteos por estado de las franjas del periodo. */
+  private exigirAdministracion(req: Request): Promise<void> {
+    return this.exigir(req, PERMISO_PROGRAMACION_ALL,
+      'Cerrar el periodo o marcar excepciones requiere el permiso de administración del módulo.');
+  }
+
+  private exigirPublicar(req: Request): Promise<void> {
+    return this.exigir(req, PERMISO_PUBLICAR,
+      'Publicar la programación requiere el permiso de publicar del programador.');
+  }
+
+  /** GET /publicaciones/:idPeriodo — conteos por estado de las franjas de sus niveles. */
   @Get(':idPeriodo')
-  async estado(@Param('idPeriodo') idPeriodo: string) {
-    return { success: true, data: await this.publicacion.estado(idPeriodo) };
+  async estado(@Req() req: Request, @Param('idPeriodo') idPeriodo: string) {
+    return { success: true, data: await this.publicacion.estado(idPeriodo, await this.niveles.de(req)) };
   }
 
-  /** POST /publicaciones/:idPeriodo/publicar — valida sin cruces y publica. */
+  /** POST /publicaciones/:idPeriodo/publicar — valida sin cruces y publica sus niveles. */
   @Post(':idPeriodo/publicar')
+  @EscrituraEn({ periodo: { param: 'idPeriodo' } })
   async publicar(@Req() req: Request, @Param('idPeriodo') idPeriodo: string) {
-    await this.exigirAdministracion(req);
-    return { success: true, data: await this.publicacion.publicar(idPeriodo) };
+    await this.exigirPublicar(req);
+    return { success: true, data: await this.publicacion.publicar(idPeriodo, await this.niveles.de(req)) };
   }
 
-  /** POST /publicaciones/:idPeriodo/retirar — retira si nadie tomó franjas. */
+  /** POST /publicaciones/:idPeriodo/retirar — retira la de sus niveles si nadie tomó franjas. */
   @Post(':idPeriodo/retirar')
+  @EscrituraEn({ periodo: { param: 'idPeriodo' } })
   async retirar(@Req() req: Request, @Param('idPeriodo') idPeriodo: string) {
-    await this.exigirAdministracion(req);
-    return { success: true, data: await this.publicacion.retirar(idPeriodo) };
+    await this.exigirPublicar(req);
+    return { success: true, data: await this.publicacion.retirar(idPeriodo, await this.niveles.de(req)) };
   }
 
-  /** GET /publicaciones/:idPeriodo/pendientes-cierre — franjas que impiden cerrar. */
+  /** GET /publicaciones/:idPeriodo/pendientes-cierre — franjas de sus niveles que impiden cerrar. */
   @Get(':idPeriodo/pendientes-cierre')
-  async pendientesCierre(@Param('idPeriodo') idPeriodo: string) {
-    return { success: true, data: await this.publicacion.pendientesCierre(idPeriodo) };
+  async pendientesCierre(@Req() req: Request, @Param('idPeriodo') idPeriodo: string) {
+    return { success: true, data: await this.publicacion.pendientesCierre(idPeriodo, await this.niveles.de(req)) };
   }
 
   /** POST /publicaciones/:idPeriodo/cerrar — cierra si todo está aprobado o en excepción. */
   @Post(':idPeriodo/cerrar')
+  @EscrituraEn({ periodo: { param: 'idPeriodo' } })
   async cerrar(@Req() req: Request, @Param('idPeriodo') idPeriodo: string) {
     await this.exigirAdministracion(req);
     return { success: true, data: await this.publicacion.cerrar(idPeriodo) };
@@ -74,6 +81,7 @@ export class PublicacionController {
 
   /** POST /publicaciones/:idPeriodo/excepcion/:idFranja — marca/desmarca excepción. */
   @Post(':idPeriodo/excepcion/:idFranja')
+  @EscrituraEn({ periodo: { param: 'idPeriodo' }, franja: { param: 'idFranja' } })
   async excepcion(
     @Req() req: Request,
     @Param('idPeriodo') idPeriodo: string,

@@ -6,6 +6,7 @@ import type { Request } from 'express';
 import { PERMISO_PROGRAMACION_ALL } from '../auth/programacion-permissions.js';
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 import { AulasService, type ActualizarAulaDto, type CrearAulaDto } from './aulas.service.js';
+import { EscrituraEn, EscrituraSinPeriodo } from '../acceso/escritura.decorator.js';
 
 /**
  * Aulas y disponibilidad de espacio — EFDS-1374.
@@ -75,12 +76,14 @@ export class AulasController {
 
   /** POST /aulas/publicar/:idGrupo — publica la oferta; exige aula en toda franja. */
   @Post('publicar/:idGrupo')
+  @EscrituraEn({ grupo: { param: 'idGrupo' } }, { exigeNivel: true })
   async publicar(@Param('idGrupo') idGrupo: string) {
     return { success: true, data: await this.aulas.publicarGrupo(idGrupo) };
   }
 
   /** POST /aulas — crea un aula (EFDS-1942). */
   @Post()
+  @EscrituraSinPeriodo('Catálogo de aulas: es transversal a los periodos.')
   async crear(@Req() req: Request, @Body() body: CrearAulaDto) {
     await this.exigirAdministracion(req);
     return { success: true, data: await this.aulas.crear(body) };
@@ -88,6 +91,7 @@ export class AulasController {
 
   /** PATCH /aulas/:codigo — actualiza nombre, capacidad, sede, tipo o piso. */
   @Patch(':codigo')
+  @EscrituraSinPeriodo('Catálogo de aulas: es transversal a los periodos.')
   async actualizar(@Req() req: Request, @Param('codigo') codigo: string, @Body() body: ActualizarAulaDto) {
     await this.exigirAdministracion(req);
     return { success: true, data: await this.aulas.actualizar(codigo, body) };
@@ -95,6 +99,7 @@ export class AulasController {
 
   /** DELETE /aulas/:codigo — elimina un aula sin franjas que la referencien. */
   @Delete(':codigo')
+  @EscrituraSinPeriodo('Catálogo de aulas: es transversal a los periodos.')
   async eliminar(@Req() req: Request, @Param('codigo') codigo: string) {
     await this.exigirAdministracion(req);
     return { success: true, data: await this.aulas.eliminar(codigo) };

@@ -37,9 +37,85 @@ export interface CruceHistorico {
   programaB: string;
 }
 
+/** Cruce de la programación VIVA: sin grupo ni asignatura del otro lado (RN-07). */
+export interface CruceVivo {
+  tipo: 'grupo' | 'aula' | 'docente';
+  dia: string;
+  horaInicio: string;
+  horaFin: string;
+  /** Código del aula; para grupo y docente no se expone quién (RN-07/08). */
+  recurso: string | null;
+}
+
+export interface ConteoCrucesVivos {
+  total: number;
+  grupo: number;
+  aula: number;
+  docente: number;
+  cruces: CruceVivo[];
+}
+
 @Injectable()
 export class ValidacionService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+
+  /**
+   * Cruces REALES de la programación viva — EFDS-2307.
+   *
+   * La API no deja crear cruces, así que este conteo debería dar 0. No es un
+   * número quemado: se CUENTA, y por eso funciona como canario de la regla. Si
+   * algún día no da 0, alguna ruta dejó pasar un cruce y el panel lo muestra.
+   *
+   * ⚠️ MISMA REGLA QUE AL GUARDAR, para no inventar alarmas:
+   *   · grupo   — dos sesiones del mismo grupo el mismo día con horas solapadas
+   *               (`buscarSolapeIntraGrupo`);
+   *   · aula    — mismo salón, mismo día, horas solapadas, en CUALQUIER periodo
+   *               (`buscarChoqueAula` no filtra por periodo ni por ciclo);
+   *   · docente — el mismo docente (`franja.id_docente`, registro único de la
+   *               docencia, EFDS-2306) en dos sesiones solapadas.
+   * Solape estricto, igual que `seSolapan`: inicio < fin del otro, en ambos sentidos.
+   * A diferencia del histórico, aquí NO se mira el ciclo: la regla viva tampoco.
+   *
+   * @param idPeriodo si viene, cuenta los pares en que al menos una franja es de
+   * ese periodo (el aula se compara contra todas, como al guardar).
+   */
+  async crucesVivos(idPeriodo?: string): Promise<ConteoCrucesVivos> {
+    const filas: Array<{ tipo: CruceVivo['tipo']; dia: string; horaInicio: string; horaFin: string; recurso: string | null }> =
+      await this.dataSource.query(
+        `WITH f AS (
+           SELECT f.id_franja, f.id_grupo, g.id_periodo, f.aula_codigo, f.id_docente,
+                  f.dia_semana, f.hora_inicio, f.hora_fin
+             FROM "academic-schedule".franja_horaria f
+             LEFT JOIN "academic-schedule".grupo g ON g.id_grupo = f.id_grupo
+         ),
+         par AS (
+           SELECT a.dia_semana AS dia,
+                  to_char(GREATEST(a.hora_inicio, b.hora_inicio), 'HH24:MI') AS hora_inicio,
+                  to_char(LEAST(a.hora_fin, b.hora_fin), 'HH24:MI')          AS hora_fin,
+                  a.aula_codigo,
+                  (a.id_grupo IS NOT NULL AND a.id_grupo = b.id_grupo)        AS mismo_grupo,
+                  (a.aula_codigo IS NOT NULL AND a.aula_codigo = b.aula_codigo) AS misma_aula,
+                  (a.id_docente IS NOT NULL AND a.id_docente = b.id_docente)  AS mismo_docente
+             FROM f a
+             JOIN f b
+               ON a.id_franja < b.id_franja
+              AND a.dia_semana = b.dia_semana
+              AND a.hora_inicio < b.hora_fin
+              AND b.hora_inicio < a.hora_fin
+            WHERE ($1::uuid IS NULL OR a.id_periodo = $1::uuid OR b.id_periodo = $1::uuid)
+         )
+         SELECT 'grupo'::text AS tipo, dia, hora_inicio AS "horaInicio", hora_fin AS "horaFin", NULL::text AS recurso
+           FROM par WHERE mismo_grupo
+         UNION ALL
+         SELECT 'aula', dia, hora_inicio, hora_fin, aula_codigo FROM par WHERE misma_aula
+         UNION ALL
+         SELECT 'docente', dia, hora_inicio, hora_fin, NULL FROM par WHERE mismo_docente
+         ORDER BY 1, 2, 3`,
+        [idPeriodo ?? null],
+      );
+    const cuenta = (t: CruceVivo['tipo']) => filas.filter((c) => c.tipo === t).length;
+    return { total: filas.length, grupo: cuenta('grupo'), aula: cuenta('aula'), docente: cuenta('docente'), cruces: filas };
+  }
 
   /**
    * Cruces detectados en la programación histórica cargada.

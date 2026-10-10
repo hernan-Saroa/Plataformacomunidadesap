@@ -3,6 +3,7 @@ import type { Request } from 'express';
 
 import { AcumuladoService } from './acumulado.service.js';
 import { AsignacionesService, type AsignarDocenteDto } from './asignaciones.service.js';
+import { EscrituraEn } from '../acceso/escritura.decorator.js';
 
 /**
  * Asignación de docente a grupo con bloqueo duro (EFDS-1372) y descuento de horas
@@ -61,6 +62,7 @@ export class AsignacionesController {
    * contrato; el cliente no lo fija.
    */
   @Post()
+  @EscrituraEn({ grupo: { body: 'idGrupo' } }, { exigeNivel: true })
   async asignar(@Req() req: Request, @Body() body: AsignarDocenteDto) {
     const data = await this.asignaciones.asignar(body, this.tokenDe(req));
     return { success: true, data };
@@ -68,6 +70,7 @@ export class AsignacionesController {
 
   /** DELETE /asignaciones/grupo/:idGrupo — retira la asignación y libera sus franjas. */
   @Delete('grupo/:idGrupo')
+  @EscrituraEn({ grupo: { param: 'idGrupo' } }, { exigeNivel: true })
   async retirar(@Param('idGrupo') idGrupo: string) {
     const data = await this.asignaciones.retirar(idGrupo);
     return { success: true, data };

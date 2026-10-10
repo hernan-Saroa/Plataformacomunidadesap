@@ -18,6 +18,8 @@ import { PortalDocenteModule } from './portal-docente/portal-docente.module.js';
 import { JefaturaModule } from './jefatura/jefatura.module.js';
 import { JwtStrategy } from './auth/jwt.strategy.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
+import { AccesoModule } from './acceso/acceso.module.js';
+import { EscrituraGuard } from './acceso/escritura.guard.js';
 
 @Module({
   imports: [
@@ -45,6 +47,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
         synchronize: false,
       }),
     }),
+    AccesoModule,
     CatalogoModule,
     GruposModule,
     HorariosModule,
@@ -64,6 +67,10 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
     // tres entornos; sin esto la API quedaba accesible sin autenticar y el RBAC
     // se saltaba escribiendo una cabecera. El PTA ya tenia su equivalente.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // EFDS-2301 / EFDS-2302: toda escritura declara de qué periodo cuelga; si está
+    // cerrado se rechaza, y en el backoffice se exige el nivel (RN-08). Va después
+    // del guard de token: los guards globales corren en orden de registro.
+    { provide: APP_GUARD, useClass: EscrituraGuard },
   ],
 })
 export class AppModule {}

@@ -80,13 +80,13 @@ describe('§1.0 :: filtrado por periodo (agregado real)', () => {
         { query: (sql: string, params?: any[]) => client!.query(sql, params).then((r) => r.rows) } as any,
         {} as any,
       );
-      const mias = await svc.listarTodas(idPeriodo);
+      const mias = await svc.listarTodas(idPeriodo, ['pregrado', 'posgrado']);
       expect(mias.length).toBe(1);
       expect(mias.every((f) => f.idPeriodo === idPeriodo)).toBe(true);
       expect(mias[0].periodoCodigo).toBe(cod);
 
       // Otro periodo cualquiera (una de las semillas) no incluye mi franja.
-      const otras = await svc.listarTodas('00000000-0000-0000-0000-000000000000');
+      const otras = await svc.listarTodas('00000000-0000-0000-0000-000000000000', ['pregrado', 'posgrado']);
       expect(otras.some((f) => f.idPeriodo === idPeriodo)).toBe(false);
     } finally {
       await client!.query(`DELETE FROM "${S}".grupo WHERE id_periodo=$1`, [idPeriodo]);

@@ -16,7 +16,11 @@ export type DiaSemana = (typeof DIAS_SEMANA)[number];
 export const TIPOS_SESION = ['presencial', 'mediada_tecnologia'] as const;
 export type TipoSesion = (typeof TIPOS_SESION)[number];
 
-export const JORNADAS = ['DIURNA', 'NOCTURNA', 'FIN_DE_SEMANA'] as const;
+/**
+ * Mismo conjunto cerrado que el CHECK (migración 035). DISTANCIA es una
+ * modalidad (EFDS-2308): no se sugiere por día u hora, se declara.
+ */
+export const JORNADAS = ['DIURNA', 'NOCTURNA', 'FIN_DE_SEMANA', 'DISTANCIA'] as const;
 export type Jornada = (typeof JORNADAS)[number];
 
 @Entity({ schema: 'academic-schedule', name: 'franja_horaria' })
