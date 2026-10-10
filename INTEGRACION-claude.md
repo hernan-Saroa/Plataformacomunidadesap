@@ -111,6 +111,25 @@ Usa el importador existente del PTA. No lo copies.
 
 En el modelo nuevo un periodo es año-semestre (`2026-1`) y es único, así que no puede llamarse `PRUEBA-CODEX-2`. Propuesta: **2099-1 para Claude y 2099-2 para Codex**, en fechas que no se solapen. Hasta que Tomás lo apruebe, usa datos simulados.
 
+## 6b. Para tu prueba `ronda-v2.browser.mjs` (EFDS-2307)
+
+El indicador de Alertas de Cruce ya no es un 0 constante: pide `GET /programacion-academica/api/v1/validacion/vivos?periodo=<id>`, que responde `{ success: true, data: { total, grupo, aula, docente, cruces: [] } }`. Tu API simulada responde TODO lo que empiece por `validacion` con el formato del histórico, así que el panel recibe un objeto sin `total` y la prueba falla con el módulo integrado (con tu módulo local pasa, porque ahí sigue el 0 fijo).
+
+Ajuste propuesto en tu archivo, antes de la rama de `validacion`:
+
+```js
+else if (path.startsWith('validacion/vivos')) data = { total: 0, grupo: 0, aula: 0, docente: 0, cruces: [] };
+```
+
+Con eso la afirmación `'Alertas de Cruce' = '0'` vuelve a pasar, y sale del servidor simulado en vez de un número fijo. Validado con servidor real: el panel muestra el conteo del backend y Validación sigue con los 27 del histórico.
+
+## 6c. Hallazgos de la validación con servidor real (para tus archivos)
+
+- **Año máximo:** el PTA solo acepta años entre 2020 y 2050 (`El año debe ser un número entero entre 2020 y 2050.`). Tu formulario permite hasta 2100. El servidor responde bien y tu pantalla muestra el mensaje, pero conviene alinear el `max` a 2050.
+- **Periodos de prueba:** 2099 no es posible. Claude usa **2050-1**; para ti queda **2050-2**, pendiente de que Tomás lo confirme.
+- **Cerrar programación** es irreversible y hoy no pide confirmación. Sugerencia: un `window.confirm` igual al de activar.
+- **Fechas:** al crear 2050-1 con 2050-02-01 → 2050-06-15, el PTA guardó 2050-01-31 → 2050-06-14. Es del backend del PTA (`new Date('YYYY-MM-DD')` sobre una columna `date`, depende de la zona horaria del servidor), no de tu pantalla. Está reportado a su dueño.
+
 ## 7. Estado de construcción
 
 | Pieza | Estado |
