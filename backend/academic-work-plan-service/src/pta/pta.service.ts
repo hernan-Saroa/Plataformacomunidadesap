@@ -41,6 +41,29 @@ import { obtenerNombreVisibleAsignatura } from './utils/asignatura-nombre.util';
 type SavePtaInput = Record<string, any>;
 type ComponentResponseMap = Record<string, string>;
 
+/** Estados que el cierre por nuevo periodo no toca. */
+const ESTADOS_PTA_TERMINALES_CIERRE = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
+
+/**
+ * Qué PTA quedan terminados al activar un periodo ($1 = código del periodo que
+ * se activa, $2 = ESTADOS_PTA_TERMINALES_CIERRE). La comparten la terminación
+ * (`finalizarPtasPorNuevoPeriodo`) y su vista previa
+ * (`contarPtasAFinalizarPorNuevoPeriodo`, EFDS-2328): si cambia, cambian las dos.
+ */
+const CONDICION_PTA_A_FINALIZAR = `
+        p.estado <> ALL($2::text[])
+        AND ($1 = '' OR p.periodo IS DISTINCT FROM $1)
+        -- Un PTA terminado que fue reabierto mediante solicitud debe poder
+        -- completar su edición aunque pertenezca a un periodo anterior. Al
+        -- finalizar la reaprobación recuperará por sí mismo "Terminado".
+        AND NOT EXISTS (
+          SELECT 1
+          FROM academic_work_plan."SolicitudPTA" s
+          WHERE s."ptaId" = p.id
+            AND s."tipoSolicitud" = 'edicion_componentes'
+            AND s.estado IN ('aprobado', 'en_aprobacion')
+        )`;
+
 const CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION = 'Resolución proyecto de investigación';
 const CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION_CREACION =
   `${CATEGORIA_RESOLUCION_PROYECTO_INVESTIGACION} · Creación`;
@@ -7094,7 +7117,6 @@ export class PtaService {
   // estaba (Borrador, aprobación, concertación, seguimiento, etc.).
   async finalizarPtasPorNuevoPeriodo(nuevoCodigo?: string | null): Promise<{ finalizados: number }> {
     const codigo = coalesceString(nuevoCodigo) || '';
-    const terminales = ['Terminado', 'TERMINADO', 'Finalizado', 'FINALIZADO', 'Rechazado', 'RECHAZADO'];
 
     const rows = await this.ptaRepo.manager.query(
       `
@@ -7102,21 +7124,10 @@ export class PtaService {
       SET estado = 'Terminado',
           "estadoAntesCierrePeriodo" = estado,
           "cerradoPorPeriodo" = NULLIF($1, '')
-      WHERE p.estado <> ALL($2::text[])
-        AND ($1 = '' OR p.periodo IS DISTINCT FROM $1)
-        -- Un PTA terminado que fue reabierto mediante solicitud debe poder
-        -- completar su edición aunque pertenezca a un periodo anterior. Al
-        -- finalizar la reaprobación recuperará por sí mismo "Terminado".
-        AND NOT EXISTS (
-          SELECT 1
-          FROM academic_work_plan."SolicitudPTA" s
-          WHERE s."ptaId" = p.id
-            AND s."tipoSolicitud" = 'edicion_componentes'
-            AND s.estado IN ('aprobado', 'en_aprobacion')
-        )
+      WHERE ${CONDICION_PTA_A_FINALIZAR}
       RETURNING p.id
       `,
-      [codigo, terminales],
+      [codigo, ESTADOS_PTA_TERMINALES_CIERRE],
     );
     const finalizados = Array.isArray(rows) ? rows.length : 0;
     if (finalizados > 0) {
@@ -7125,6 +7136,29 @@ export class PtaService {
       );
     }
     return { finalizados };
+  }
+
+  /**
+   * Cuántos PTA terminaría activar `codigo`, por periodo — EFDS-2328.
+   *
+   * Solo lectura. Usa EXACTAMENTE la misma condición que
+   * `finalizarPtasPorNuevoPeriodo` (CONDICION_PTA_A_FINALIZAR), para que la
+   * confirmación que ve el administrador no pueda diferir de lo que pasa.
+   * `restaurarPtasPorReactivacionPeriodo` corre antes al activar, pero solo
+   * toca los PTA de `codigo`, que esta condición ya excluye.
+   */
+  async contarPtasAFinalizarPorNuevoPeriodo(codigo: string): Promise<Array<{ codigo: string | null; ptas: number }>> {
+    const rows = await this.ptaRepo.manager.query(
+      `
+      SELECT p.periodo AS codigo, COUNT(*)::int AS ptas
+        FROM academic_work_plan."PlanTrabajoAcademico" AS p
+       WHERE ${CONDICION_PTA_A_FINALIZAR}
+       GROUP BY p.periodo
+       ORDER BY p.periodo
+      `,
+      [coalesceString(codigo) || '', ESTADOS_PTA_TERMINALES_CIERRE],
+    );
+    return (rows || []).map((r: any) => ({ codigo: r.codigo ?? null, ptas: Number(r.ptas) }));
   }
 
   /**

@@ -18,6 +18,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Public } from '../auth/public.decorator';
 import { PtaService } from './pta.service';
+import { efectoDeActivar } from './periodo-activacion';
 
 @UseGuards(RolesGuard)
 @Controller(['periodos-academicos', 'pta/periodos-academicos'])
@@ -54,7 +55,7 @@ export class PeriodoAcademicoController {
     return periods;
   }
 
-  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @Roles('GESTION_PROFESORAL', 'ADMIN_PROGRAMACION', 'SUPER_ADMIN', 'super_admin')
   @Post()
   async create(@Body() body: any) {
     const { anio, semestre, fechaInicio, fechaFin } = body;
@@ -117,7 +118,7 @@ export class PeriodoAcademicoController {
     }
   }
 
-  @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin')
+  @Roles('GESTION_PROFESORAL', 'ADMIN_PROGRAMACION', 'SUPER_ADMIN', 'super_admin')
   @Patch(':id')
   async update(@Param('id') id: string, @Body() body: any) {
     const period = await this.repo.findOne({ where: { id } });
@@ -225,17 +226,9 @@ export class PeriodoAcademicoController {
         const allOtherPeriods = await this.repo.find();
         for (const p of allOtherPeriods) {
           if (p.id !== period.id) {
-            if (
-              p.anio < period.anio ||
-              (p.anio === period.anio && p.semestre < period.semestre)
-            ) {
-              p.estado = 'cerrado'; // Histórico
-            } else if (
-              p.anio > period.anio ||
-              (p.anio === period.anio && p.semestre > period.semestre)
-            ) {
-              p.estado = 'planeacion'; // Planeación
-            }
+            // Misma regla que la vista previa de impacto (periodo-activacion.ts).
+            const efecto = efectoDeActivar(period, p);
+            if (efecto) p.estado = efecto;
             await this.repo.save(p);
           }
         }
@@ -294,6 +287,48 @@ export class PeriodoAcademicoController {
       id,
       codigo: period.codigo,
       message: `Periodo ${period.codigo} eliminado correctamente.`,
+    };
+  }
+
+  /**
+   * GET /periodos-academicos/:id/impacto-activacion — EFDS-2328.
+   *
+   * Vista previa, de solo lectura, de lo que haría activar el periodo: cuántos
+   * PTA quedan terminados y de qué periodos, y qué periodos se cierran o
+   * vuelven a planeación. Usa las MISMAS reglas que la activación
+   * (CONDICION_PTA_A_FINALIZAR y efectoDeActivar), para que la confirmación no
+   * pueda diferir de lo que pasa. La consume la pantalla de periodos de
+   * Programación Académica antes de activar.
+   */
+  @Roles('GESTION_PROFESORAL', 'ADMIN_PROGRAMACION', 'SUPER_ADMIN', 'super_admin')
+  @Get(':id/impacto-activacion')
+  async impactoActivacion(@Param('id') id: string) {
+    const period = await this.repo.findOne({ where: { id } as any });
+    if (!period) {
+      throw new NotFoundException('Periodo académico no encontrado.');
+    }
+    // Si la regla de terminación falla en esta base, la activación también falla
+    // (la atrapa como advertencia y NO termina ningún PTA). La vista previa lo
+    // dice en vez de inventar un número: `ptasATerminar: null` + `advertencia`.
+    let porPeriodo: Array<{ codigo: string | null; ptas: number }> | null = null;
+    let advertencia: string | null = null;
+    try {
+      porPeriodo = await this.ptaService.contarPtasAFinalizarPorNuevoPeriodo(period.codigo);
+    } catch (e: any) {
+      advertencia = 'La regla que termina los PTA al activar falla en esta base de datos'
+        + ` (${e?.message ?? 'error de consulta'}). Activar NO terminará ningún PTA hasta corregirla.`;
+    }
+    const otros = await this.repo.find();
+    const cerrar = otros.filter((p) => efectoDeActivar(period, p) === 'cerrado' && p.estado !== 'cerrado');
+    const aPlaneacion = otros.filter((p) => efectoDeActivar(period, p) === 'planeacion' && p.estado !== 'planeacion');
+    return {
+      codigo: period.codigo,
+      yaActivo: period.estado === 'en_curso',
+      ptasATerminar: porPeriodo ? porPeriodo.reduce((s, x) => s + x.ptas, 0) : null,
+      porPeriodo: porPeriodo ?? [],
+      periodosACerrar: cerrar.map((p) => p.codigo),
+      periodosAPlaneacion: aPlaneacion.map((p) => p.codigo),
+      advertencia,
     };
   }
 

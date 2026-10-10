@@ -91,7 +91,7 @@ Estas rutas son **los servicios del PTA**. Programación Académica los llama; n
 | Acción | Ruta (gateway) | Notas |
 |---|---|---|
 | Crear | `POST /pta/api/v1/periodos-academicos` con `{ anio, semestre, fechaInicio, fechaFin }` | Nace en `planeacion`. El servidor valida duplicados y que las fechas no se solapen con otro periodo. |
-| Impacto de activar | `GET /pta/api/v1/periodos-academicos/:id/impacto-activacion` | **Nuevo.** `{ codigo, ptasATerminar: number, porPeriodo: [{ codigo, ptas }], periodosACerrar: string[] }`. Es de solo lectura. |
+| Impacto de activar | `GET /pta/api/v1/periodos-academicos/:id/impacto-activacion` | **Nuevo.** `{ codigo, yaActivo, ptasATerminar: number \| null, porPeriodo: [{ codigo, ptas }], periodosACerrar: string[], periodosAPlaneacion: string[], advertencia: string \| null }`. Es de solo lectura. **Si `advertencia` no es null, muéstrala tal cual** en la confirmación: hoy, en la base local, la regla que termina los PTA falla y `ptasATerminar` viene en `null`. |
 | Activar | `PATCH /pta/api/v1/periodos-academicos/:id` con `{ estado: 'en_curso' }` | Cierra los periodos anteriores y termina los PTA de los demás. **Antes de llamarla, muestra la confirmación con el impacto.** |
 
 La confirmación de activar es obligatoria y usa los números del servidor, no una cuenta del navegador:
@@ -115,10 +115,11 @@ En el modelo nuevo un periodo es año-semestre (`2026-1`) y es único, así que 
 
 | Pieza | Estado |
 |---|---|
-| `GET /periodos` | en construcción (Claude) |
-| `idPeriodo` de plataforma en las rutas de la sección 2 | en construcción (Claude) |
-| Cerrar solo la programación | en construcción (Claude) |
-| Impacto de activar y permiso del administrador en el PTA | en construcción (Claude) |
+| `GET /periodos` | ✅ listo |
+| `idPeriodo` de plataforma en las rutas de la sección 2 | ✅ listo |
+| Cerrar solo la programación | ✅ listo |
+| Impacto de activar y permiso del administrador en el PTA | ✅ listo en la rama; el contenedor del PTA en local sigue con la imagen anterior |
+| Grupo devuelve `idPeriodoAcademico` y `tipoOferta` | ✅ listo (nuevos campos de `Grupo`) |
 | Importador | existe, sin cambios |
 
 Te aviso en este archivo cuando cada pieza esté en `feature/pa/ronda-pruebas`.
