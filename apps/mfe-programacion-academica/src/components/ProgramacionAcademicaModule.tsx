@@ -37,6 +37,8 @@ import { AsignacionDocente } from './AsignacionDocente';
 import { DisponibilidadAulas } from './DisponibilidadAulas';
 import { GestionOfertas } from './GestionOfertas';
 import { AprobacionJefatura } from './AprobacionJefatura';
+import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
+import { getCrucesVivos, type ConteoCrucesVivos } from '../services/api/crucesVivosApi';
 
 interface FranjaHoraria {
   id: string;
@@ -105,6 +107,7 @@ function sesionAFranja(s: FranjaConContexto): FranjaHoraria {
 }
 
 export function ProgramacionAcademicaModule() {
+  const revisionProgramacion = useRevisionProgramacion('programacion');
   const [seccion, setSeccion] = useState<Seccion>('horarios');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedJornada, setSelectedJornada] = useState<string>('TODAS');
@@ -191,15 +194,30 @@ export function ProgramacionAcademicaModule() {
       .catch(() => { if (vivo) setTotalAulas(null); })
       .finally(() => { if (vivo) setCargando(false); });
     return () => { vivo = false; };
-  }, [periodoSel, periodos]);
+  }, [periodoSel, periodos, revisionProgramacion]);
+
+  // EFDS-2307 — Cruces REALES de la programación viva, contados por el servidor
+  // con la misma regla que rechaza los cruces al guardar. Debe dar 0; si no, el
+  // panel avisa. `null` mientras carga o si falla: no se muestra un 0 inventado.
+  const [crucesVivos, setCrucesVivos] = useState<ConteoCrucesVivos | null>(null);
+  const [errorCrucesVivos, setErrorCrucesVivos] = useState('');
+  useEffect(() => {
+    if (!periodoSel) return;
+    let vivo = true;
+    setCrucesVivos(null); setErrorCrucesVivos('');
+    getCrucesVivos(periodoSel)
+      .then((c) => { if (vivo) setCrucesVivos(c); })
+      .catch((e) => { if (vivo) setErrorCrucesVivos(e?.message || 'No se pudieron contar los cruces.'); });
+    return () => { vivo = false; };
+  }, [periodoSel, revisionProgramacion]);
 
   // Form state
 
   const totalFranjas = scheduleList.length;
   // Confirmadas = aprobadas por la jefatura (estado real, no el inventado 'CONFIRMADO').
   const totalConfirmados = scheduleList.filter(s => s.estado === 'APROBADA').length;
-  // Alertas de cruce = las de validación del periodo (0 en un periodo nuevo).
-  const totalConflictos = historico?.resumen?.total ?? 0;
+  // El histórico (hallazgos del Excel) es otro contador: va en el badge de Validación.
+  const totalConflictosHistoricos = historico?.resumen?.total ?? 0;
 
   const gruposNav: MenuGroup[] = [
     {
@@ -249,7 +267,7 @@ export function ProgramacionAcademicaModule() {
           subtitle: 'Alertas y traslapes de horario',
           icon: <AlertTriangle className="w-5 h-5" />,
           color: '#D97706',
-          badge: totalConflictos > 0 ? totalConflictos : undefined,
+          badge: totalConflictosHistoricos > 0 ? totalConflictosHistoricos : undefined,
         },
         // EFDS-1939 — solo para jefaturas territoriales.
         ...(esJefatura ? [{
@@ -336,8 +354,21 @@ export function ProgramacionAcademicaModule() {
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Alertas de Cruce</p>
-            <h3 className="text-2xl font-black text-slate-800 mt-1">{totalConflictos}</h3>
-            <p className="text-xs text-amber-600 font-medium mt-1">Requieren resolución</p>
+            <h3 className={`text-2xl font-black mt-1 ${crucesVivos && crucesVivos.total > 0 ? 'text-red-600' : 'text-slate-800'}`}>
+              {crucesVivos ? crucesVivos.total : '—'}
+            </h3>
+            {errorCrucesVivos ? (
+              <p className="text-xs text-red-600 font-medium mt-1">{errorCrucesVivos}</p>
+            ) : !crucesVivos ? (
+              <p className="text-xs text-slate-400 font-medium mt-1">Contando cruces…</p>
+            ) : crucesVivos.total === 0 ? (
+              <p className="text-xs text-emerald-600 font-medium mt-1">Programación viva · sin cruces</p>
+            ) : (
+              <p className="text-xs text-red-600 font-medium mt-1">
+                Cruces reales en la programación ({crucesVivos.aula} de aula, {crucesVivos.docente} de docente,
+                {' '}{crucesVivos.grupo} de grupo): el sistema debió impedirlos. Repórtelo.
+              </p>
+            )}
           </div>
           <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
             <AlertTriangle className="w-6 h-6" />
@@ -417,12 +448,13 @@ export function ProgramacionAcademicaModule() {
               className="bg-transparent font-semibold text-slate-800 focus:outline-none"
             >
               {/* §2.1 — Los valores deben ser los del dato del backend
-                  (DIURNA/NOCTURNA/FIN_DE_SEMANA), no 'Diurna': la comparacion es
+                  (DIURNA/NOCTURNA/FIN_DE_SEMANA/DISTANCIA), no 'Diurna': la comparacion es
                   exacta y con la etiqueta bonita nunca casaba. */}
               <option value="TODAS">Todas las jornadas</option>
               <option value="DIURNA">Diurna</option>
               <option value="NOCTURNA">Nocturna</option>
               <option value="FIN_DE_SEMANA">Fin de semana</option>
+              <option value="DISTANCIA">Distancia</option>
             </select>
           </div>
 
