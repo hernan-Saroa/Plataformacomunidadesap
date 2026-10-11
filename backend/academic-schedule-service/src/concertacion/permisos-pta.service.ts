@@ -32,6 +32,11 @@ export class PermisosPtaService {
   async resolver(roleCodes: string[]): Promise<PermisoPta[]> {
     const codes = (roleCodes || []).map((r) => String(r || '')).filter(Boolean);
     if (!codes.length) return [];
+    // Mismo criterio que el PTA (SUPER_ADMIN_ROLE_CODES): el superusuario decide
+    // todo, sin depender del alcance del rol.
+    if (codes.some((c) => SUPER_ADMIN_ROLE_CODES.includes(c))) {
+      return ['pta.review.all', 'pta.approve.all'].map((codigo) => ({ codigo, alcance: 'global' as const }));
+    }
     try {
       const filas: Array<{ code: string; alcance: any }> = await this.dataSource.query(
         `SELECT DISTINCT p.code, r.alcance
@@ -51,6 +56,9 @@ export class PermisosPtaService {
     }
   }
 }
+
+/** Copia de SUPER_ADMIN_ROLE_CODES del PTA (otro servicio, no importable). */
+const SUPER_ADMIN_ROLE_CODES = ['SUPER_ADMIN', 'super_admin'];
 
 function esGlobal(alcance: unknown): boolean {
   let a: any = alcance;
