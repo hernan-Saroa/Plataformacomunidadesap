@@ -6,16 +6,8 @@ import { Client } from 'pg';
 import { AlcanceService } from './alcance.service.js';
 import { CLAVE_ESCRITURA, type ReglaEscritura } from './escritura.decorator.js';
 import { EscrituraGuard } from './escritura.guard.js';
-import { AsignacionesController } from '../asignaciones/asignaciones.controller.js';
-import { AulasController } from '../aulas/aulas.controller.js';
-import { GruposController } from '../grupos/grupos.controller.js';
-import { HorariosController } from '../horarios/horarios.controller.js';
-import { JefaturaController } from '../jefatura/jefatura.controller.js';
-import { OfertasController } from '../ofertas/ofertas.controller.js';
-import { PortalDocenteController } from '../portal-docente/portal-docente.controller.js';
-import { PublicacionController } from '../publicacion/publicacion.controller.js';
-import { CatalogoController } from '../catalogo/catalogo.controller.js';
-import { ValidacionController } from '../validacion/validacion.controller.js';
+import { readdirSync } from 'fs';
+import { join } from 'path';
 
 /**
  * EFDS-2301 :: un periodo cerrado no admite escrituras.
@@ -28,11 +20,30 @@ import { ValidacionController } from '../validacion/validacion.controller.js';
  *      a él (grupo, franja, ciclo, asignación, aula del grupo, aprobación,
  *      portal, publicación) se rechaza con 409.
  */
-const CONTROLADORES = [
-  AsignacionesController, AulasController, GruposController, HorariosController,
-  JefaturaController, OfertasController, PortalDocenteController, PublicacionController,
-  CatalogoController, ValidacionController,
-];
+/**
+ * TODOS los controladores del servicio, descubiertos recorriendo src/: una
+ * lista escrita a mano dejaba fuera al controlador nuevo (pasó con el de la
+ * concertación). Un controlador que nadie registra aquí también se revisa.
+ */
+function descubrirControladores(): Function[] {
+  const encontrados: Function[] = [];
+  const recorrer = (dir: string) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const ruta = join(dir, e.name);
+      if (e.isDirectory()) recorrer(ruta);
+      else if (e.name.endsWith('.controller.ts')) {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const mod = require(ruta);
+        for (const exp of Object.values(mod)) {
+          if (typeof exp === 'function' && Reflect.getMetadata(PATH_METADATA, exp) !== undefined) encontrados.push(exp);
+        }
+      }
+    }
+  };
+  recorrer(join(__dirname, '..'));
+  return encontrados;
+}
+const CONTROLADORES = descubrirControladores();
 
 /** RequestMethod de Nest: POST=1, PUT=2, DELETE=3, PATCH=4. */
 const ESCRITURA = new Set([1, 2, 3, 4]);
@@ -60,7 +71,8 @@ function rutasDeEscritura(): RutaEscritura[] {
 describe('EFDS-2301 :: toda escritura declara su periodo (estructural)', () => {
   it('ninguna ruta de escritura queda sin regla', () => {
     const rutas = rutasDeEscritura();
-    expect(rutas.length).toBeGreaterThanOrEqual(22);
+    expect(CONTROLADORES.map((c) => c.name)).toEqual(expect.arrayContaining(['ConcertacionController', 'PeriodosController', 'JefaturaController']));
+    expect(rutas.length).toBeGreaterThanOrEqual(26);
     const sinRegla = rutas.filter((r) => !r.regla).map((r) => r.nombre);
     expect(sinRegla).toEqual([]);
   });
@@ -99,7 +111,7 @@ const S = 'academic-schedule';
 describe('EFDS-2301 :: con el periodo cerrado, toda escritura se rechaza (agregado real)', () => {
   let client: Client | null = null;
   let hayBase = false;
-  const ids = { periodo: '', grupo: '', franja: '', asignatura: '' };
+  const ids = { periodo: '', grupo: '', franja: '', asignatura: '', concertacion: '' };
 
   beforeAll(async () => {
     try {
@@ -120,6 +132,12 @@ describe('EFDS-2301 :: con el periodo cerrado, toda escritura se rechaza (agrega
         `INSERT INTO "${S}".franja_horaria (id_grupo, dia_semana, hora_inicio, hora_fin, tipo_sesion, estado)
          VALUES ($1,'DOMINGO','06:00'::time,'07:00'::time,'mediada_tecnologia','APROBADA') RETURNING id_franja`, [ids.grupo]);
       ids.franja = f.rows[0].id_franja;
+      // EFDS-2315: una concertación del periodo cerrado, para anclar sus rutas.
+      const c = await client.query(
+        `INSERT INTO "${S}".concertacion_docencia (id_docente, periodo_ref, nivel, estado, huella)
+         VALUES ((SELECT id_person FROM auth.personas ORDER BY id_person LIMIT 1), $1, 'pregrado', 'ENVIADA', repeat('0', 64))
+         RETURNING id_concertacion`, [ids.periodo]);
+      ids.concertacion = c.rows[0].id_concertacion;
       hayBase = true;
     } catch {
       hayBase = false;
@@ -128,6 +146,7 @@ describe('EFDS-2301 :: con el periodo cerrado, toda escritura se rechaza (agrega
 
   afterAll(async () => {
     if (client && ids.periodo) {
+      await client.query(`DELETE FROM "${S}".concertacion_docencia WHERE periodo_ref=$1`, [ids.periodo]).catch(() => {});
       await client.query(`DELETE FROM "${S}".franja_horaria WHERE id_grupo=$1`, [ids.grupo]).catch(() => {});
       await client.query(`DELETE FROM "${S}".grupo WHERE id_periodo=$1`, [ids.periodo]).catch(() => {});
       await client.query(`DELETE FROM "${S}".periodo_programacion WHERE id_periodo=$1`, [ids.periodo]).catch(() => {});

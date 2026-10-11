@@ -18,6 +18,7 @@ import { PortalDocenteModule } from './portal-docente/portal-docente.module.js';
 import { JefaturaModule } from './jefatura/jefatura.module.js';
 import { PeriodosModule } from './periodos/periodos.module.js';
 import { DocenciaModule } from './docencia/docencia.module.js';
+import { ConcertacionModule } from './concertacion/concertacion.module.js';
 import { JwtStrategy } from './auth/jwt.strategy.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 import { AccesoModule } from './acceso/acceso.module.js';
@@ -62,6 +63,7 @@ import { EscrituraGuard } from './acceso/escritura.guard.js';
     PortalDocenteModule,
     JefaturaModule,
     PeriodosModule,
+    ConcertacionModule,
   ],
   controllers: [AppController],
   providers: [
