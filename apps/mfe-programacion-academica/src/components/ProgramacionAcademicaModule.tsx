@@ -107,7 +107,15 @@ function sesionAFranja(s: FranjaConContexto): FranjaHoraria {
   };
 }
 
-export function ProgramacionAcademicaModule() {
+interface ProgramacionAcademicaModuleProps {
+  puedeAbrirProgramasAcademicos?: boolean;
+  abrirProgramasAcademicos?: () => void;
+}
+
+export function ProgramacionAcademicaModule({
+  puedeAbrirProgramasAcademicos = false,
+  abrirProgramasAcademicos,
+}: ProgramacionAcademicaModuleProps) {
   const revisionProgramacion = useRevisionProgramacion('programacion');
   const revisionPeriodos = useRevisionProgramacion('periodos');
   const [seccion, setSeccion] = useState<Seccion>('horarios');
@@ -594,7 +602,10 @@ export function ProgramacionAcademicaModule() {
       {seccion === 'docentes' && <AsignacionDocente />}
 
       {/* EFDS-1375: gestión de las cinco ofertas académicas. */}
-      {seccion === 'ofertas' && <GestionOfertas />}
+      {seccion === 'ofertas' && <GestionOfertas
+        puedeAbrirProgramasAcademicos={puedeAbrirProgramasAcademicos}
+        abrirProgramasAcademicos={abrirProgramasAcademicos}
+      />}
 
       {seccion === 'aprobacion' && <AprobacionJefatura />}
 
