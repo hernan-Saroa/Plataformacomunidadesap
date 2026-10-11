@@ -14,3 +14,8 @@ export function rolesDe(req: Request): string[] {
     : [];
   return desdeHeader.length > 0 ? desdeHeader : desdeUser;
 }
+
+/** Usuario autenticado: cabecera del gateway o, sin ella, el del token. */
+export function idUserDe(req: Request): string {
+  return String(req.headers['x-user-id'] || (req as any)?.user?.userId || '').trim();
+}

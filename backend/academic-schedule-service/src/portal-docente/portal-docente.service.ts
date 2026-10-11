@@ -218,7 +218,7 @@ export class PortalDocenteService {
   }
 
   /** Acumulado del docente contra su tope (RN-04). Reusa EFDS-1373; no escribe RUND. */
-  acumulado(documento: string): Promise<AcumuladoDocente> {
-    return this.acumuladoSvc.consumo(documento);
+  acumulado(documento: string, token: string | null): Promise<AcumuladoDocente> {
+    return this.acumuladoSvc.consumo(documento, token);
   }
 }
