@@ -162,7 +162,7 @@ export class OfertasService {
    * aquí para la vista de programación interperiodo, donde ver el consumo previo
    * de los regulares es lo que evita pasarse del tope.
    */
-  consumoPorOferta(documento: string): Promise<AcumuladoDocente> {
-    return this.acumulado.consumo(documento);
+  consumoPorOferta(documento: string, token: string | null): Promise<AcumuladoDocente> {
+    return this.acumulado.consumo(documento, token);
   }
 }

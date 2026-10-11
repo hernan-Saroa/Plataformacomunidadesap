@@ -3,12 +3,13 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { categoriaVinculacion } from './situacion-docente.js';
+import { DocenciaService } from '../docencia/docencia.service.js';
 
 /**
  * Acumulado de horas del docente frente a su tope — RN-04, RN-05, RN-06 (EFDS-1373).
  *
  * ⚠️ LA OFERTA ES UNA DIMENSIÓN DESDE EL DISEÑO. El acumulado se agrupa por
- * periodo de programación (`periodo_programacion`), que es la oferta académica.
+ * periodo (de plataforma o legado, EFDS-2328) y por tipo de oferta.
  * Hoy suele haber una sola, pero EFDS-1375 acumula por semestre entre las cinco;
  * atar el acumulado a una sola oferta obligaría a rehacer esto. Por eso el
  * desglose por oferta se calcula aunque exista una.
@@ -28,6 +29,8 @@ export const TOPE_CATEDRA = 304;
 export interface ConsumoPorOferta {
   idPeriodo: string | null;
   periodo: string | null;
+  /** Oferta dentro del periodo de plataforma (EFDS-2328); null en periodos legado. */
+  tipoOferta: string | null;
   horas: number;
 }
 
@@ -49,9 +52,17 @@ export interface AcumuladoDocente {
 
 @Injectable()
 export class AcumuladoService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly docencia: DocenciaService,
+  ) {}
 
-  async consumo(documento: string): Promise<AcumuladoDocente> {
+  /**
+   * `token` se reenvía al contrato PROG↔PTA, que calcula las horas de cada
+   * asignatura (cálculo único). Sin él, el contrato responde 401 y esto falla
+   * cerrado (503): no se inventa un acumulado.
+   */
+  async consumo(documento: string, token: string | null): Promise<AcumuladoDocente> {
     const limpio = String(documento ?? '').trim();
     const docFilas = await this.dataSource.query(
       `SELECT p.id_person             AS id_docente,
@@ -76,21 +87,24 @@ export class AcumuladoService {
     const horasAsignables = Number(drow.horas_asignables ?? 0);
     const tope = categoria === 'CATEDRA' ? TOPE_CATEDRA : horasAsignables;
 
-    // Consumo por oferta (periodo). Agrupar por periodo es lo que da la dimensión.
-    const porOferta: ConsumoPorOferta[] = await this.dataSource.query(
-      `SELECT g.id_periodo::text                      AS "idPeriodo",
-              pp.nombre                               AS periodo,
-              COALESCE(SUM(ad.horas_asignadas), 0)::int AS horas
-         FROM "academic-schedule".asignacion_docente ad
-         JOIN "academic-schedule".grupo g ON g.id_grupo = ad.id_grupo
-         LEFT JOIN "academic-schedule".periodo_programacion pp ON pp.id_periodo = g.id_periodo
-        WHERE ad.id_docente = $1 AND ad.estado = 'ASIGNADO'
-        GROUP BY g.id_periodo, pp.nombre
-        ORDER BY pp.nombre NULLS LAST`,
-      [drow.id_docente],
-    );
+    // EFDS-2306: la docencia sale de la FRANJA (registro único), con las horas
+    // del cálculo único del contrato y el reparto por días entre docentes. Antes
+    // se sumaba asignacion_docente y lo tomado en el portal no contaba.
+    const grupos = await this.docencia.porGrupo(drow.id_docente, drow.vinculacion ?? null, token);
 
-    const totalAsignado = porOferta.reduce((s, o) => s + Number(o.horas), 0);
+    // Consumo por oferta (periodo y tipo de oferta). Es la dimensión de EFDS-1375.
+    const porClave = new Map<string, ConsumoPorOferta>();
+    for (const g of grupos) {
+      const clave = `${g.idPeriodo ?? ''}|${g.tipoOferta ?? ''}`;
+      const actual = porClave.get(clave)
+        ?? { idPeriodo: g.idPeriodo, periodo: g.periodo, tipoOferta: g.tipoOferta, horas: 0 };
+      actual.horas = Math.round((actual.horas + g.horas) * 10) / 10;
+      porClave.set(clave, actual);
+    }
+    const porOferta = [...porClave.values()]
+      .sort((a, b) => String(a.periodo ?? '').localeCompare(String(b.periodo ?? '')));
+
+    const totalAsignado = Math.round(porOferta.reduce((s, o) => s + Number(o.horas), 0) * 10) / 10;
 
     return {
       documento: limpio,
