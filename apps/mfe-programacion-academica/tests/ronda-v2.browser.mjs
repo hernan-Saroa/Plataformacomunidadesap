@@ -15,12 +15,13 @@ try {
   let rechazar = false;
   let lecturasGrupo = 0;
   let lecturasProgramacion = 0;
+  let conteoVivoValido = true;
   const franjas = ['DIURNA', 'DISTANCIA', 'FIN_DE_SEMANA'].map((jornada, i) => ({
     idFranja: `franja-${i}`, idGrupo: 'g1', numeroGrupo: 1, jornada,
     asignatura: `Materia ${jornada}`, programa: 'Programa de prueba',
     diaSemana: 'LUNES', horaInicio: '08:00', horaFin: '10:00',
     tipoSesion: 'mediada_tecnologia', estado: 'PROGRAMADO',
-    periodoCodigo: 'PRUEBA-CODEX-2', fechaInicioGrupo: null, fechaFinGrupo: null,
+    periodoCodigo: '2050-2', fechaInicioGrupo: null, fechaFinGrupo: null,
   }));
   await page.setRequestInterception(true);
   page.on('request', (r) => {
@@ -33,9 +34,9 @@ try {
     let data = [];
     const path = url.pathname.split('/api/v1/')[1];
     if (path === 'periodos') data = { periodos: [{
-      idPeriodo: 'p1', modelo: 'plataforma', codigo: 'PRUEBA-CODEX-2', anio: 2026, semestre: 2,
-      fechaInicio: '2026-07-01', fechaFin: '2026-12-31', estadoPlataforma: 'en_curso',
-      programacion: { estado: 'abierta', cerradaEn: null }, programable: true, esActivo: true,
+      idPeriodo: 'p1', modelo: 'plataforma', codigo: '2050-2', anio: 2050, semestre: 2,
+      fechaInicio: '2050-07-01', fechaFin: '2050-12-31', estadoPlataforma: 'planeacion',
+      programacion: { estado: 'abierta', cerradaEn: null }, programable: true, esActivo: false,
     }], legado: [], permisos: { crear: true, activar: true, cerrarProgramacion: true, importar: true } };
     else if (path === 'grupos/g1') { lecturasGrupo++; data = grupo; }
     else if (path === 'horarios/grupo/g1/periodo' && r.method() === 'PUT') {
@@ -47,6 +48,9 @@ try {
       data = url.searchParams.has('grupo') ? [] : franjas;
     } else if (path.endsWith('/horas')) data = { programadas: 0, requeridas: 48, semanas: 4, excede: false };
     else if (path.startsWith('publicaciones/')) data = { total: 3, programado: 3, pendientesCierre: 3 };
+    else if (path.startsWith('validacion/vivos')) data = conteoVivoValido
+      ? { total: 0, grupo: 0, aula: 0, docente: 0, cruces: [] }
+      : { grupo: 0, aula: 0, docente: 0, cruces: [] };
     else if (path.startsWith('validacion')) data = {
       periodos: ['2026-1'], resumen: { total: 27, aula: 27, docente: 0 },
       cruces: [{ tipo: 'aula', recurso: 'HISTORICA', periodo: '2026-1', asignaturaA: 'A', asignaturaB: 'B' }],
@@ -142,6 +146,19 @@ try {
     await invalidar('grupo:g1');
     await page.waitForNetworkIdle();
     assert.ok(lecturasGrupo > antes);
+  });
+  await prueba('EFDS-2307 :: sin conteo numérico el panel muestra error', async () => {
+    conteoVivoValido = false;
+    await page.evaluate(async (base) => {
+      const api = await import(`${base}src/services/actualizacionProgramacion.ts`);
+      api.invalidarProgramacion('programacion');
+    }, base);
+    await page.waitForFunction(() => document.body.textContent.includes('El servidor no devolvió el conteo de cruces.'));
+    const panel = await page.evaluate(() => {
+      const titulo = [...document.querySelectorAll('p')].find((e) => e.textContent === 'Alertas de Cruce');
+      return titulo?.parentElement.textContent;
+    });
+    assert.match(panel, /Alertas de Cruce—El servidor no devolvió el conteo de cruces\./);
   });
   assert.deepEqual(errores, [], 'Sin errores de React en el navegador');
 } finally {

@@ -16,7 +16,12 @@ import {
 
 /** Periodos compartidos de la plataforma; las ofertas pasan a ser del grupo. */
 
-export function GestionOfertas() {
+interface GestionOfertasProps {
+  puedeAbrirProgramasAcademicos?: boolean;
+  abrirProgramasAcademicos?: () => void;
+}
+
+export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirProgramasAcademicos }: GestionOfertasProps) {
   const [periodos, setPeriodos] = useState<RespuestaPeriodos | null>(null);
   const [importarId, setImportarId] = useState<string | null>(null);
   const revisionPeriodos = useRevisionProgramacion('periodos');
@@ -110,9 +115,11 @@ export function GestionOfertas() {
     }
   };
 
-  // NUEVA-5b (EFDS-1941) — Cerrar el periodo. Al cerrarse queda inmutable, así
-  // que se recarga para que la tarjeta muestre el estado 'cerrado'.
-  const cerrar = async (id: string) => {
+  // NUEVA-5b (EFDS-1941) — Cerrar solo la programación. Al cerrarse queda
+  // inmutable, así que se recarga para que la tarjeta muestre el estado.
+  const cerrar = async (periodo: PeriodoPlataforma) => {
+    if (!window.confirm(`Cerrar la programación del periodo ${periodo.codigo} impedirá crear grupos y no se puede deshacer. ¿Desea continuar?`)) return;
+    const id = periodo.idPeriodo;
     setAvisoPub('');
     setPubOcupado(id);
     let cerrado = false;
@@ -293,7 +300,7 @@ export function GestionOfertas() {
                           rechaza verbatim si algo queda pendiente. */}
                       {periodos?.permisos.cerrarProgramacion && (
                       <button type="button" disabled={ocupado || p.pendientesCierre > 0}
-                        onClick={() => cerrar(o.idPeriodo)}
+                        onClick={() => cerrar(o)}
                         title={p.pendientesCierre > 0 ? `${p.pendientesCierre} franjas pendientes: apruébalas o márcalas como excepción` : 'Cerrar solo la programación'}
                         className="px-2.5 py-1 rounded-lg bg-slate-700 text-white text-[11px] font-bold hover:bg-slate-800 disabled:opacity-40 active:scale-95 transition-all">
                         {ocupado ? 'Cerrando…' : 'Cerrar programación'}
@@ -339,6 +346,12 @@ export function GestionOfertas() {
                   {importarId === o.idPeriodo ? 'Ocultar carga masiva' : 'Cargar asignaturas desde Excel'}
                 </button>
               )}
+              {puedeAbrirProgramasAcademicos && abrirProgramasAcademicos && (
+                <button type="button" onClick={abrirProgramasAcademicos}
+                  className="text-xs font-bold text-[#003DA5] underline">
+                  Agregar asignatura manualmente en Programas Académicos
+                </button>
+              )}
               {importarId === o.idPeriodo && periodos?.permisos.importar && o.programable && (
                 <CargaAsignaturasPeriodo periodo={o} alTerminar={() => setAvisoAdmin(`Catálogo de ${o.codigo} actualizado.`)} />
               )}
@@ -363,7 +376,7 @@ export function GestionOfertas() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-bold text-slate-500 uppercase">Año</span>
-            <input required type="number" min={2020} max={2100} value={nuevo.anio}
+            <input required type="number" min={2020} max={2050} value={nuevo.anio}
               onChange={(e) => setNuevo({ ...nuevo, anio: Number(e.target.value) })}
               className="border border-slate-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" />
           </label>

@@ -27,6 +27,7 @@ const periodos = [p13, p12];
 const permisos = { crear: true, activar: true, cerrarProgramacion: true, importar: true };
 const llamadas = [];
 const mensajes = [];
+let aceptarDialogo = true;
 let consultaPeriodos = 0;
 let impactoLeido = false;
 let crearId = 14;
@@ -35,7 +36,11 @@ let validarConErrores = false;
 try {
   const page = await browser.newPage();
   await page.setViewport({ width: 1440, height: 1000 });
-  page.on('dialog', async (dialog) => { mensajes.push(dialog.message()); await dialog.accept(); });
+  page.on('dialog', async (dialog) => {
+    mensajes.push(dialog.message());
+    if (aceptarDialogo) await dialog.accept();
+    else await dialog.dismiss();
+  });
   await page.setRequestInterception(true);
   page.on('request', async (r) => {
     const url = new URL(r.url());
@@ -100,6 +105,8 @@ try {
   await page.evaluate(() => [...document.querySelectorAll('*')]
     .find((e) => !e.children.length && e.textContent === 'Periodos')?.click());
   await page.waitForFunction(() => document.body.textContent.includes('Cargar asignaturas desde Excel'));
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll('button')]
+    .some((button) => button.textContent.includes('Agregar asignatura manualmente en Programas Académicos'))), false);
   assert.equal(await page.$eval('button[title*="pendientes"]', (el) => el.disabled), true);
   assert.equal(await page.$eval('button[title*="pendientes"]', (el) => el.textContent), 'Cerrar programación');
   await page.evaluate(() => [...document.querySelectorAll('button')]
@@ -118,6 +125,11 @@ try {
   console.log('PASS EFDS-2312 :: selector y confirmación de activar usan contrato y permiso');
 
   const consultasAntesDeCerrar = consultaPeriodos;
+  aceptarDialogo = false;
+  await page.click('button[title="Cerrar solo la programación"]');
+  assert.ok(mensajes.at(-1)?.includes('2026-2') && mensajes.at(-1)?.includes('no se puede deshacer'));
+  assert.equal(llamadas.some((x) => x.tipo.endsWith('/publicaciones/13/cerrar')), false);
+  aceptarDialogo = true;
   await page.click('button[title="Cerrar solo la programación"]');
   await page.waitForFunction(() => document.body.textContent.includes('Programación cerrada'));
   assert.equal(p13.estadoPlataforma, 'en_curso');
