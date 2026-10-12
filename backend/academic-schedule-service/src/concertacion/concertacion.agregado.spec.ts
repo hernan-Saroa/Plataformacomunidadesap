@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException } from '@nes
 import { Client } from 'pg';
 
 import { DocenciaService } from '../docencia/docencia.service.js';
+import { TerritorialService } from '../acceso/territorial.service.js';
 import { ConcertacionService } from './concertacion.service.js';
 import type { PermisoPta } from './permisos-pta.service.js';
 
@@ -22,7 +23,9 @@ const conexion = {
 const S = 'academic-schedule';
 const REVISOR: PermisoPta[] = [{ codigo: 'pta.review.academica.pregrado', alcance: 'global' }];
 const APROBADOR: PermisoPta[] = [{ codigo: 'pta.approve.academica.pregrado', alcance: 'global' }];
-const APROBADOR_LIMITADO: PermisoPta[] = [{ codigo: 'pta.approve.academica.pregrado', alcance: 'limitado' }];
+// Sin alcance en el rol = por persona: decide sobre docentes de SU seccional (migración 038).
+const APROBADOR_POR_PERSONA: PermisoPta[] = [{ codigo: 'pta.approve.academica.pregrado', alcance: 'persona' }];
+const REVISOR_POR_PERSONA: PermisoPta[] = [{ codigo: 'pta.review.academica.pregrado', alcance: 'persona' }];
 const APROBADOR_POSGRADO: PermisoPta[] = [{ codigo: 'pta.approve.academica.posgrado', alcance: 'global' }];
 
 describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccion)', () => {
@@ -30,12 +33,16 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
   let hayBase = false;
   const entregas: any[] = [];
   const envAntes = process.env.PROG_CONCERTACION_HABILITADA;
+  const desdeAntes = process.env.PROG_CONCERTACION_DESDE_PERIODO;
+  /** Interruptor del PTA simulado: true, false o 'caido'. */
+  let ptaEstado: boolean | 'caido' = true;
 
   beforeAll(async () => {
     try { client = new Client(conexion); await client.connect(); hayBase = true; } catch { hayBase = false; }
   });
   afterAll(async () => {
     process.env.PROG_CONCERTACION_HABILITADA = envAntes;
+    process.env.PROG_CONCERTACION_DESDE_PERIODO = desdeAntes;
     if (client) await client.end().catch(() => {});
   });
 
@@ -43,7 +50,10 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     const ds: any = { query: (sql: string, p?: any[]) => client!.query(sql, p).then((r) => r.rows) };
     ds.transaction = (cb: (m: any) => Promise<any>) => cb(ds); // ya estamos dentro de BEGIN
     const docencia = new DocenciaService(ds, { calcularImpacto: async () => ({ horasImpacto: 96 }) } as any);
-    return new ConcertacionService(ds, docencia, { registrarDecision: async (d: any) => { entregas.push(d); } } as any);
+    return new ConcertacionService(ds, docencia, {
+      registrarDecision: async (d: any) => { entregas.push(d); return { estadoAplicacion: 'aplicada' }; },
+      ptaHabilitada: async () => { if (ptaEstado === 'caido') throw new Error('PTA sin respuesta'); return ptaEstado; },
+    } as any, new TerritorialService(ds));
   };
 
   interface Fixture { docente: { idPerson: string; idUser: string; vinculacion: null }; periodo: string; franjas: string[]; revisor: string; aprobador: string }
@@ -52,20 +62,29 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     it(nombre, async () => {
       if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
       process.env.PROG_CONCERTACION_HABILITADA = encendida ? 'true' : 'false';
+      process.env.PROG_CONCERTACION_DESDE_PERIODO = '2049-1';
+      ptaEstado = true;
       entregas.length = 0;
       await client.query('BEGIN');
       try {
-        const usuarios = await client.query(
+        const docenteHuila = await client.query(
           `SELECT u.id_user::text AS id_user, u.id_person::text AS id_person FROM auth."user" u
-            WHERE u.id_person IS NOT NULL ORDER BY u.id_user LIMIT 3`);
+             JOIN academic_work_plan."Docente" d ON d."personaId" = u.id_person AND d."territorialId" = 'DT-009'
+            ORDER BY u.id_user LIMIT 1`);
+        const otros = await client.query(
+          `SELECT u.id_user::text AS id_user, u.id_person::text AS id_person FROM auth."user" u
+            WHERE u.id_person IS NOT NULL AND u.id_user::text <> $1 ORDER BY u.id_user LIMIT 2`, [docenteHuila.rows[0].id_user]);
+        const usuarios = { rows: [docenteHuila.rows[0], ...otros.rows] };
         const asig = await client.query(
           `SELECT a.id FROM academic_work_plan.asignatura a JOIN academic_work_plan.programa pr ON pr.id = a.id_programa
             WHERE pr.tipo = 'pregrado' ORDER BY a.id LIMIT 1`);
+        // Periodo de PLATAFORMA dentro del corte (2049-1 >= 2049-1), solo en esta transacción.
         const p = await client.query(
-          `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
-           VALUES ('QA-2315-TX','QA concertacion','periodo_regular','2032-02-01','2032-06-15','activo') RETURNING id_periodo::text`);
+          `INSERT INTO academic_work_plan.periodo_academico (codigo, anio, semestre, fecha_inicio, fecha_fin, estado)
+           VALUES ('2049-1', 2049, 1, '2049-02-01', '2049-06-15', 'planeacion') RETURNING id::text AS id_periodo`);
         const g = await client.query(
-          `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado) VALUES ($1,$2::uuid,981,'PROGRAMADO') RETURNING id_grupo`,
+          `INSERT INTO "${S}".grupo (id_asignatura,id_periodo_academico,tipo_oferta,numero_grupo,estado,fecha_inicio,fecha_fin)
+           VALUES ($1,$2::bigint,'periodo_regular',981,'PROGRAMADO','2049-02-03','2049-05-30') RETURNING id_grupo`,
           [asig.rows[0].id, p.rows[0].id_periodo]);
         const docente = usuarios.rows[0];
         const franjas: string[] = [];
@@ -101,7 +120,7 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
 
     expect((await svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR, '123456')).estado).toBe('REVISADA');
     // Un aprobador con alcance filtrado o por persona no decide (fail-closed).
-    await expect(svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR_LIMITADO, '123456', null)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR_POR_PERSONA, '123456', null)).rejects.toBeInstanceOf(ForbiddenException);
 
     const final = await svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR, '123456', null);
     expect(final.estado).toBe('APROBADA');
@@ -112,8 +131,29 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
 
     expect(entregas).toHaveLength(1);
     expect(entregas[0]).toMatchObject({ idConcertacion: c.idConcertacion, nivel: 'pregrado', horas: 96, huella: final.huella });
+    // Una asignatura por grupo, con lo que el PTA exige al validar el envío.
+    expect(entregas[0].asignaturas).toHaveLength(1);
+    expect(entregas[0].asignaturas[0]).toMatchObject({ fechaInicio: '2049-02-03', fechaFin: '2049-05-30', horas: 96 });
+    expect(entregas[0].asignaturas[0].asignaturaId).toMatch(/^\d+$/);
+    expect(entregas[0].asignaturas[0].programaId).toMatch(/^\d+$/);
+    expect(final.aplicacionPta).toBe('aplicada');
     expect(entregas[0].firmas.map((x: any) => x.rol)).toEqual(['docente', 'revisor', 'aprobador']);
     expect(final.notificadaPtaEn).not.toBeNull();
+  });
+
+  caso('alcance por persona: decide la seccional del docente (Huila), no otra (Tolima)', async (f) => {
+    const svc = servicio();
+    const [c] = await svc.enviar(f.docente, f.periodo, '123456', null);
+    const seccional = (u: string, id: number) => client!.query(
+      `UPDATE auth.personas SET id_seccional = $2 WHERE id_person = (SELECT id_person FROM auth."user" WHERE id_user::text = $1)`, [u, id]);
+    await seccional(f.revisor, 16); // Tolima
+    await expect(svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR_POR_PERSONA, '123456')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(await svc.bandeja(REVISOR_POR_PERSONA, f.revisor, f.periodo)).toEqual([]);
+    await seccional(f.revisor, 10); // Huila
+    expect((await svc.bandeja(REVISOR_POR_PERSONA, f.revisor, f.periodo)).map((x: any) => x.idConcertacion)).toEqual([c.idConcertacion]);
+    expect((await svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR_POR_PERSONA, '123456')).estado).toBe('REVISADA');
+    await seccional(f.aprobador, 10);
+    expect((await svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR_POR_PERSONA, '123456', null)).estado).toBe('APROBADA');
   });
 
   caso('devolver exige comentario, regresa las franjas al docente y bloquea reenviar hasta resolverlas', async (f) => {
@@ -145,14 +185,36 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     await expect(svc.enviar(f.docente, f.periodo, '123456', null)).rejects.toThrow(/ya fue enviada/);
   });
 
+  caso('interruptor unico: con el PTA apagado o caido, aqui no se concierta', async (f) => {
+    const svc = servicio();
+    ptaEstado = false;
+    expect((await svc.configuracion())).toMatchObject({ habilitada: false });
+    await expect(svc.enviar(f.docente, f.periodo, '123456', null)).rejects.toThrow(/apagada/);
+    ptaEstado = 'caido';
+    (svc as any).ptaCache = null;
+    await expect(svc.enviar(f.docente, f.periodo, '123456', null)).rejects.toThrow(/No se pudo verificar/);
+  });
+
+  caso('corte por periodo: un periodo anterior al corte no se concierta (lo aprueba el PTA)', async (f) => {
+    process.env.PROG_CONCERTACION_DESDE_PERIODO = '2049-2';
+    await expect(servicio().enviar(f.docente, f.periodo, '123456', null)).rejects.toThrow(/aplica desde el periodo 2049-2/);
+  });
+
+  caso('sin el ciclo del grupo no se envia: el PTA exige las fechas', async (f) => {
+    await client!.query(
+      `UPDATE "${S}".grupo SET fecha_inicio = NULL, fecha_fin = NULL
+        WHERE id_grupo = (SELECT id_grupo FROM "${S}".franja_horaria WHERE id_franja = $1)`, [f.franjas[0]]);
+    await expect(servicio().enviar(f.docente, f.periodo, '123456', null)).rejects.toThrow(/ciclo/);
+  });
+
   caso('apagada por configuracion: toda escritura se rechaza', async (f) => {
     const svc = servicio();
-    expect(svc.configuracion().habilitada).toBe(false);
+    expect((await svc.configuracion()).habilitada).toBe(false);
     await expect(svc.enviar(f.docente, f.periodo, '123456', null)).rejects.toThrow(/apagada/);
   }, false);
 
-  it('apagada por defecto: sin la variable, no esta habilitada', () => {
+  it('apagada por defecto: sin la variable, no esta habilitada', async () => {
     delete process.env.PROG_CONCERTACION_HABILITADA;
-    expect(servicio().configuracion().habilitada).toBe(false);
+    expect((await servicio().configuracion()).habilitada).toBe(false);
   });
 });

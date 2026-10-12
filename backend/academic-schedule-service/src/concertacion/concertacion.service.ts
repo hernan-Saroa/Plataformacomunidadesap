@@ -16,11 +16,14 @@ import {
   PTA_REVIEW_ALL,
   REVISIONES_REQUERIDAS,
   concertacionHabilitada,
+  desdePeriodo,
   firmaSimulada,
+  periodoEnCorte,
 } from './configuracion.js';
 import { ContratoPtaClient } from './contrato-pta.client.js';
 import { contextoFirma, huellaDe, verificarCodigo, type RolFirma } from './firma.js';
-import { tieneGlobal, type PermisoPta } from './permisos-pta.service.js';
+import { decide, type ContextoTerritorial, type PermisoPta } from './permisos-pta.service.js';
+import { TerritorialService } from '../acceso/territorial.service.js';
 
 export type EstadoConcertacion = 'ENVIADA' | 'REVISADA' | 'APROBADA' | 'DEVUELTA';
 
@@ -59,22 +62,68 @@ export class ConcertacionService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly docencia: DocenciaService,
     private readonly contratoPta: ContratoPtaClient,
+    private readonly territorial: TerritorialService,
   ) {}
 
-  configuracion() {
+  /** Caché corta del interruptor del PTA: no se consulta en cada petición. */
+  private ptaCache: { valor: boolean; en: number } | null = null;
+
+  /**
+   * ¿Está encendida en los DOS lados? Solo si aquí lo está se consulta al PTA.
+   * Lanza si el PTA no responde: el llamador decide (fallar cerrado).
+   */
+  private async habilitadaEnAmbos(): Promise<boolean> {
+    if (!concertacionHabilitada()) return false;
+    const ahora = Date.now();
+    if (this.ptaCache && ahora - this.ptaCache.en < 30_000) return this.ptaCache.valor;
+    const valor = await this.contratoPta.ptaHabilitada();
+    this.ptaCache = { valor, en: ahora };
+    return valor;
+  }
+
+  /** Configuración EFECTIVA: encendida solo si lo está en los dos servicios. */
+  async configuracion() {
+    let habilitada = false;
+    let motivo: string | null = null;
+    if (!concertacionHabilitada()) {
+      motivo = 'Apagada en Programación Académica.';
+    } else {
+      try {
+        habilitada = await this.habilitadaEnAmbos();
+        if (!habilitada) motivo = 'Encendida aquí pero apagada en el PTA: el PTA sigue aprobando la Docencia.';
+      } catch (e: any) {
+        motivo = `No se pudo verificar el PTA: ${e?.message ?? e}`;
+      }
+    }
     return {
-      habilitada: concertacionHabilitada(),
+      habilitada,
+      motivo,
+      desdePeriodo: desdePeriodo(),
       firmaSimulada: firmaSimulada(),
       revisionesRequeridas: REVISIONES_REQUERIDAS.map((r) => r.tipo),
     };
   }
 
-  private exigirHabilitada(): void {
-    if (!concertacionHabilitada()) {
+  /** Toda escritura exige el régimen nuevo encendido en ambos lados. */
+  private async exigirHabilitada(): Promise<void> {
+    let ok = false;
+    try { ok = await this.habilitadaEnAmbos(); }
+    catch (e: any) {
+      throw new ConflictException(`No se pudo verificar que el PTA tenga la concertación encendida: ${e?.message ?? e}`);
+    }
+    if (!ok) {
       throw new ConflictException(
         'La concertación de la docencia está apagada: el PTA todavía aprueba la Docencia.',
       );
     }
+  }
+
+  /** Código del periodo (plataforma); null si es legado o no existe. */
+  private async codigoPeriodo(periodoRef: string): Promise<string | null> {
+    if (!/^\d+$/.test(periodoRef)) return null;
+    const f = await this.dataSource.query(
+      `SELECT codigo FROM academic_work_plan.periodo_academico WHERE id = $1::bigint`, [periodoRef]);
+    return f[0]?.codigo ?? null;
   }
 
   // ── Docente ────────────────────────────────────────────────────────────────
@@ -104,8 +153,31 @@ export class ConcertacionService {
     codigo: unknown,
     token: string | null,
   ) {
-    this.exigirHabilitada();
+    await this.exigirHabilitada();
     const modo = verificarCodigo(codigo);
+
+    // Solo en el corte: en un periodo anterior (o legado) la Docencia la sigue
+    // aprobando el PTA, y concertarla aquí sería doble aprobación.
+    const codigoPeriodo = await this.codigoPeriodo(periodoRef);
+    if (!periodoEnCorte(codigoPeriodo)) {
+      throw new ConflictException(
+        `La concertación aplica desde el periodo ${desdePeriodo()}. En ${codigoPeriodo ?? 'este periodo'} la Docencia la aprueba el PTA.`);
+    }
+
+    // El PTA exige las fechas del ciclo de cada asignatura: sin ciclo no se envía.
+    const sinCiclo = await this.dataSource.query(
+      `SELECT DISTINCT a.nombre
+         FROM "academic-schedule".franja_horaria f
+         JOIN "academic-schedule".grupo g ON g.id_grupo = f.id_grupo
+         JOIN academic_work_plan.asignatura a ON a.id = g.id_asignatura
+        WHERE f.id_docente = $1 AND f.estado = 'TOMADA'
+          AND COALESCE(g.id_periodo_academico::text, g.id_periodo::text) = $2
+          AND (g.fecha_inicio IS NULL OR g.fecha_fin IS NULL)`,
+      [docente.idPerson, periodoRef]);
+    if (sinCiclo.length) {
+      throw new ConflictException(
+        `Defina el ciclo (fechas) del grupo antes de enviar: ${sinCiclo.map((x: any) => x.nombre).join(', ')}.`);
+    }
 
     const devueltas = await this.dataSource.query(
       `SELECT COUNT(*)::int AS n
@@ -197,18 +269,27 @@ export class ConcertacionService {
 
   // ── Revisores y aprobadores (roles del PTA) ────────────────────────────────
 
-  private puede(permisos: readonly PermisoPta[], nivel: NivelAcademico) {
+  /**
+   * Qué puede hacer el usuario con la docencia de un nivel, según sus permisos
+   * del PTA y la territorial del docente (equivalencia explícita, migración 038).
+   * Territorial no mapeada: solo decide un alcance global.
+   */
+  private puede(permisos: readonly PermisoPta[], nivel: NivelAcademico, ctx: ContextoTerritorial) {
     const revisar = REVISIONES_REQUERIDAS
-      .filter((r) => tieneGlobal(permisos, [r.permiso[nivel], PTA_REVIEW_ALL]))
+      .filter((r) => decide(permisos, [r.permiso[nivel], PTA_REVIEW_ALL], ctx))
       .map((r) => r.tipo);
-    const aprobar = tieneGlobal(permisos, [PERMISO_APROBAR[nivel], PTA_APPROVE_ALL]);
+    const aprobar = decide(permisos, [PERMISO_APROBAR[nivel], PTA_APPROVE_ALL], ctx);
     return { revisar, aprobar, devolver: revisar.length > 0 || aprobar };
   }
 
+  private async contexto(idDocente: string, seccionalesUsuario: readonly string[]): Promise<ContextoTerritorial> {
+    return { seccionalDocente: await this.territorial.seccionalDeDocente(idDocente), seccionalesUsuario };
+  }
+
   /** Bandeja: concertaciones por decidir en los niveles donde el usuario decide. */
-  async bandeja(permisos: readonly PermisoPta[], periodoRef?: string) {
+  async bandeja(permisos: readonly PermisoPta[], idUser: string, periodoRef?: string) {
     const filas = await this.dataSource.query(
-      `SELECT c.id_concertacion AS "idConcertacion", c.periodo_ref AS "idPeriodo", c.nivel, c.estado,
+      `SELECT c.id_concertacion AS "idConcertacion", c.id_docente::text AS "idDocente", c.periodo_ref AS "idPeriodo", c.nivel, c.estado,
               c.horas::float AS horas, jsonb_array_length(c.franjas) AS "numFranjas", c.franjas,
               p.nom_largo AS docente, p.num_identificacion AS documento, c.updated_at AS "actualizadaEn",
               (SELECT COALESCE(array_agg(r.tipo), '{}') FROM "academic-schedule".concertacion_revision r
@@ -219,9 +300,14 @@ export class ConcertacionService {
           AND ($1::text IS NULL OR c.periodo_ref = $1)
         ORDER BY c.updated_at`,
       [periodoRef ?? null]);
-    return filas
-      .map((f: any) => ({ ...f, puede: this.puede(permisos, f.nivel) }))
-      .filter((f: any) => f.puede.devolver);
+    const seccionales = await this.territorial.seccionalesDeUsuario(idUser);
+    const visibles: any[] = [];
+    for (const f of filas) {
+      const { idDocente, ...resto } = f;
+      const puede = this.puede(permisos, f.nivel, await this.contexto(idDocente, seccionales));
+      if (puede.devolver) visibles.push({ ...resto, puede });
+    }
+    return visibles;
   }
 
   private async cargar(m: EntityManager, id: string): Promise<FilaConcertacion> {
@@ -232,12 +318,13 @@ export class ConcertacionService {
   }
 
   async revisar(id: string, tipo: string, idUser: string, permisos: readonly PermisoPta[], codigo: unknown) {
-    this.exigirHabilitada();
+    await this.exigirHabilitada();
     const modo = verificarCodigo(codigo);
     await this.dataSource.transaction(async (m) => {
       const c = await this.cargar(m, id);
       if (c.estado !== 'ENVIADA') throw new ConflictException(`No se puede revisar: la concertación está ${c.estado}.`);
-      if (!this.puede(permisos, c.nivel).revisar.includes(tipo as any)) {
+      const ctx = await this.contexto(c.id_docente, await this.territorial.seccionalesDeUsuario(idUser));
+      if (!this.puede(permisos, c.nivel, ctx).revisar.includes(tipo as any)) {
         throw new ForbiddenException(`No tiene permiso para la revisión ${tipo} de ${c.nivel}.`);
       }
       const hecha = await m.query(
@@ -258,13 +345,14 @@ export class ConcertacionService {
   }
 
   async devolver(id: string, idUser: string, permisos: readonly PermisoPta[], comentario: unknown) {
-    this.exigirHabilitada();
+    await this.exigirHabilitada();
     const texto = String(comentario ?? '').trim();
     if (!texto) throw new BadRequestException('Para devolver debe explicar el motivo.');
     await this.dataSource.transaction(async (m) => {
       const c = await this.cargar(m, id);
       if (!['ENVIADA', 'REVISADA'].includes(c.estado)) throw new ConflictException(`No se puede devolver: la concertación está ${c.estado}.`);
-      if (!this.puede(permisos, c.nivel).devolver) throw new ForbiddenException(`No tiene permiso para decidir la docencia de ${c.nivel}.`);
+      const ctx = await this.contexto(c.id_docente, await this.territorial.seccionalesDeUsuario(idUser));
+      if (!this.puede(permisos, c.nivel, ctx).devolver) throw new ForbiddenException(`No tiene permiso para decidir la docencia de ${c.nivel}.`);
       await m.query(
         `UPDATE "academic-schedule".concertacion_docencia SET estado = 'DEVUELTA', comentario = $2, updated_at = NOW()
           WHERE id_concertacion = $1`, [id, texto]);
@@ -281,12 +369,13 @@ export class ConcertacionService {
   }
 
   async aprobar(id: string, idUser: string, permisos: readonly PermisoPta[], codigo: unknown, token: string | null) {
-    this.exigirHabilitada();
+    await this.exigirHabilitada();
     const modo = verificarCodigo(codigo);
     await this.dataSource.transaction(async (m) => {
       const c = await this.cargar(m, id);
       if (c.estado !== 'REVISADA') throw new ConflictException(`No se puede aprobar: la concertación está ${c.estado} (requiere las revisiones).`);
-      if (!this.puede(permisos, c.nivel).aprobar) throw new ForbiddenException(`No tiene permiso para aprobar la docencia de ${c.nivel}.`);
+      const ctx = await this.contexto(c.id_docente, await this.territorial.seccionalesDeUsuario(idUser));
+      if (!this.puede(permisos, c.nivel, ctx).aprobar) throw new ForbiddenException(`No tiene permiso para aprobar la docencia de ${c.nivel}.`);
 
       // Lo que se aprueba es lo que firmó el docente: si las franjas cambiaron, no.
       const ids = c.franjas.map((f) => f.idFranja);
@@ -321,21 +410,32 @@ export class ConcertacionService {
     const firmas = await this.dataSource.query(
       `SELECT rol, id_user::text AS "idUser", firmado_en AS "firmadoEn", modo_otp AS "modoOtp"
          FROM "academic-schedule".concertacion_firma WHERE id_concertacion = $1 ORDER BY firmado_en`, [id]);
-    const porAsignatura = new Map<string, { codigo: string; nombre: string; horas: number }>();
+    // Una asignatura por GRUPO, con lo que el PTA exige al validar el envío:
+    // ids de catálogo, pensum, créditos, fechas del ciclo y horas > 0.
+    const horasPorGrupo = new Map<string, number>();
     for (const f of c.franjas as FilaConcertacion['franjas']) {
-      const a = porAsignatura.get(f.codigoAsignatura) ?? { codigo: f.codigoAsignatura, nombre: f.asignatura, horas: 0 };
-      a.horas = Math.round((a.horas + f.horas) * 10) / 10;
-      porAsignatura.set(f.codigoAsignatura, a);
+      horasPorGrupo.set(f.idGrupo, Math.round(((horasPorGrupo.get(f.idGrupo) ?? 0) + f.horas) * 10) / 10);
     }
+    const grupos: any[] = await this.dataSource.query(
+      `SELECT g.id_grupo::text AS "idGrupo", a.id::text AS "asignaturaId", a.codigo, a.nombre,
+              a.id_programa::text AS "programaId", a.pensum, a.creditos::float AS creditos,
+              us.orden AS semestre, a.modalidad,
+              to_char(g.fecha_inicio, 'YYYY-MM-DD') AS "fechaInicio", to_char(g.fecha_fin, 'YYYY-MM-DD') AS "fechaFin"
+         FROM "academic-schedule".grupo g
+         JOIN academic_work_plan.asignatura a ON a.id = g.id_asignatura
+         LEFT JOIN academic_work_plan.ubicacion_semestral us ON us.id = a.id_ubicacion_semestral
+        WHERE g.id_grupo = ANY($1::uuid[])`, [[...horasPorGrupo.keys()]]);
+    const asignaturas = grupos.map((g) => ({ ...g, horas: horasPorGrupo.get(g.idGrupo) ?? 0 }));
     try {
-      await this.contratoPta.registrarDecision({
+      const r = await this.contratoPta.registrarDecision({
         idConcertacion: id, documentoDocente: c.documento, periodo: c.periodo_codigo, nivel: c.nivel,
-        horas: Number(c.horas), huella: c.huella, asignaturas: [...porAsignatura.values()],
+        horas: Number(c.horas), huella: c.huella, asignaturas,
         firmas: firmas.map((f: any) => ({ ...f, firmadoEn: new Date(f.firmadoEn).toISOString() })),
       }, token);
       await this.dataSource.query(
-        `UPDATE "academic-schedule".concertacion_docencia SET notificada_pta_en = NOW(), error_notificacion = NULL
-          WHERE id_concertacion = $1`, [id]);
+        `UPDATE "academic-schedule".concertacion_docencia
+            SET notificada_pta_en = NOW(), error_notificacion = NULL, aplicacion_pta = $2
+          WHERE id_concertacion = $1`, [id, r?.estadoAplicacion ?? null]);
     } catch (e: any) {
       await this.dataSource.query(
         `UPDATE "academic-schedule".concertacion_docencia SET error_notificacion = $2 WHERE id_concertacion = $1`,
@@ -348,6 +448,7 @@ export class ConcertacionService {
       `SELECT c.id_concertacion AS "idConcertacion", c.periodo_ref AS "idPeriodo", c.nivel, c.estado,
               c.horas::float AS horas, c.franjas, c.huella, c.comentario,
               c.notificada_pta_en AS "notificadaPtaEn", c.error_notificacion AS "errorNotificacion",
+              c.aplicacion_pta AS "aplicacionPta",
               (SELECT COALESCE(json_agg(json_build_object('rol', f.rol, 'idUser', f.id_user, 'firmadoEn', f.firmado_en,
                         'modoOtp', f.modo_otp, 'contexto', f.contexto) ORDER BY f.firmado_en), '[]'::json)
                  FROM "academic-schedule".concertacion_firma f WHERE f.id_concertacion = c.id_concertacion) AS firmas,

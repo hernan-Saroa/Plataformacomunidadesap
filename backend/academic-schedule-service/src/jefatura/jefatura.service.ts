@@ -54,10 +54,21 @@ export class JefaturaService {
     if (!id) throw new ForbiddenException('No se pudo identificar al usuario autenticado.');
 
     const filas = await this.dataSource.query(
+      // EFDS-2304: además de la tabla propia, la territorial sale de la seccional
+      // de la persona (asignable en la pantalla GENÉRICA de usuarios), traducida
+      // por la equivalencia explícita (migración 038). Sin fila, no hay territorial.
       `SELECT dt.id AS "idDireccion", dt.codigo AS "codigo", dt.nombre AS "nombre"
          FROM "${S}".jefatura_territorial jt
          JOIN academic_work_plan.direccion_territorial dt ON dt.id = jt.id_direccion_territorial
-        WHERE jt.id_user::text = $1`,
+        WHERE jt.id_user::text = $1
+       UNION
+       SELECT dt.id, dt.codigo, dt.nombre
+         FROM auth."user" u
+         JOIN auth.personas p ON p.id_person = u.id_person
+         JOIN "${S}".equivalencia_territorial e ON e.id_seccional = p.id_seccional
+         JOIN academic_work_plan.direccion_territorial dt ON dt.codigo = e.codigo_territorial
+        WHERE u.id_user::text = $1
+        ORDER BY 2`,
       [id],
     );
     if (!filas.length) {

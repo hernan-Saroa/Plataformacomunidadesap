@@ -36,3 +36,12 @@ CREATE TABLE IF NOT EXISTS academic_work_plan.docencia_concertada (
 
 CREATE INDEX IF NOT EXISTS idx_docencia_concertada_docente_periodo
     ON academic_work_plan.docencia_concertada (documento_docente, periodo);
+
+-- Estado de aplicación de cada decisión al PTA del docente (EFDS-2315):
+-- aplicada | no_aplica_apagada | pendiente_sin_pta | pendiente_pta_flujo_anterior |
+-- pendiente_pta_firmado | pendiente_pta_en_aprobacion. Un PTA firmado nunca se
+-- modifica automáticamente: queda pendiente y se reporta.
+ALTER TABLE academic_work_plan.docencia_concertada
+  ADD COLUMN IF NOT EXISTS estado_aplicacion  VARCHAR(40),
+  ADD COLUMN IF NOT EXISTS detalle_aplicacion TEXT,
+  ADD COLUMN IF NOT EXISTS id_pta             TEXT;

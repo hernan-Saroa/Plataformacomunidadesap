@@ -3,6 +3,13 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { PtaPermissionsService } from '../../pta/auth/pta-permissions.service';
+import { aplicarDecision, habilitadaLocal } from '../../pta/docencia-programacion';
+
+export interface AsignaturaConcertadaDto {
+  idGrupo: string; asignaturaId: string; codigo: string; nombre: string; programaId: string;
+  pensum: string | null; creditos: number; semestre: number | null; modalidad: string | null;
+  fechaInicio: string; fechaFin: string; horas: number;
+}
 
 export interface DecisionDocenciaDto {
   idConcertacion: string;
@@ -11,7 +18,7 @@ export interface DecisionDocenciaDto {
   nivel: 'pregrado' | 'posgrado';
   horas: number;
   huella: string;
-  asignaturas: Array<{ codigo: string; nombre: string; horas: number }>;
+  asignaturas: AsignaturaConcertadaDto[];
   firmas: Array<{ rol: string; idUser: string; firmadoEn: string; modoOtp: string }>;
 }
 
@@ -24,10 +31,10 @@ const PERMISO_APROBAR: Record<'pregrado' | 'posgrado', string> = {
 /**
  * Contrato PROG↔PTA v1 — decisiones de concertación de la docencia (EFDS-2315).
  *
- * El PTA REGISTRA lo que Programación Académica concertó y aprobó. No lo aplica
- * todavía a su componente de Docencia: eso es la integración, que va como
- * propuesta de cambio (toca producción). Este servicio solo escribe en su propia
- * tabla `docencia_concertada` (migración 667), nunca en el RUND ni en los PTA.
+ * El PTA REGISTRA lo que Programación Académica concertó y aprobó en su tabla
+ * `docencia_concertada` (migración 667). Con PROG_CONCERTACION_HABILITADA lo
+ * APLICA además al componente de Docencia del PTA (pta/docencia-programacion.ts);
+ * apagado, solo registra. Nunca escribe en el RUND.
  *
  * Autorización en el servidor, con los permisos VIGENTES del PTA: solo quien
  * puede aprobar la Docencia de ese nivel entrega la decisión.
@@ -39,7 +46,12 @@ export class DocenciaDecisionesService {
     private readonly permisos: PtaPermissionsService,
   ) {}
 
-  async registrar(userId: string, d: DecisionDocenciaDto): Promise<{ registrada: true; aplicada: false }> {
+  /** El interruptor de este lado (lo consulta Programación Académica). */
+  configuracion() {
+    return { habilitada: habilitadaLocal() };
+  }
+
+  async registrar(userId: string, d: DecisionDocenciaDto): Promise<{ registrada: true; aplicada: boolean; estadoAplicacion: string | null }> {
     this.validar(d);
     const ctx = await this.permisos.resolveForUser(String(userId ?? ''));
     if (!ctx.approvesAll && !ctx.permissions.has(PERMISO_APROBAR[d.nivel])) {
@@ -56,7 +68,12 @@ export class DocenciaDecisionesService {
       [d.idConcertacion, d.documentoDocente, d.periodo ?? null, d.nivel, d.horas, d.huella,
         JSON.stringify(d.asignaturas), JSON.stringify(d.firmas), String(userId)],
     );
-    return { registrada: true, aplicada: false };
+    // EFDS-2315: con la concertación encendida, la decisión se APLICA al PTA del
+    // docente (Docencia aprobada y cargada como de programación). Un PTA firmado
+    // no se toca: queda pendiente y se reporta. Apagada: solo se registra.
+    if (!habilitadaLocal()) return { registrada: true, aplicada: false, estadoAplicacion: null };
+    const estadoAplicacion = await this.dataSource.transaction((m) => aplicarDecision(m, d.idConcertacion));
+    return { registrada: true, aplicada: estadoAplicacion === 'aplicada', estadoAplicacion };
   }
 
   /** Forma de la decisión: estructurada y completa, o 400. */
@@ -68,6 +85,12 @@ export class DocenciaDecisionesService {
     if (!Number.isFinite(Number(d?.horas)) || Number(d?.horas) < 0) errores.push('horas debe ser un número no negativo');
     if (!/^[0-9a-f]{64}$/.test(String(d?.huella ?? ''))) errores.push('huella debe ser un sha256 en hexadecimal');
     if (!Array.isArray(d?.asignaturas) || d.asignaturas.length === 0) errores.push('asignaturas no puede estar vacío');
+    for (const [i, a] of (Array.isArray(d?.asignaturas) ? d.asignaturas : []).entries()) {
+      // Lo que el PTA exige al validar el envío (validatePtaForSubmission).
+      if (!/^\d+$/.test(String(a?.asignaturaId ?? '')) || !/^\d+$/.test(String(a?.programaId ?? ''))) errores.push(`asignatura ${i + 1}: ids de catálogo`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(a?.fechaInicio ?? '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(a?.fechaFin ?? ''))) errores.push(`asignatura ${i + 1}: fechas del ciclo`);
+      if (!(Number(a?.horas) > 0)) errores.push(`asignatura ${i + 1}: horas > 0`);
+    }
     const roles = Array.isArray(d?.firmas) ? d.firmas.map((f) => f?.rol) : [];
     if (!roles.includes('docente') || !roles.includes('aprobador')) {
       errores.push('firmas debe incluir la del docente y la del aprobador');

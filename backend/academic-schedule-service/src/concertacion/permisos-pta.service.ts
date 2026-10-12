@@ -2,26 +2,34 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
-/** Un permiso del PTA con el alcance del rol que lo otorga. */
+/**
+ * Un permiso del PTA con el alcance del rol que lo otorga. Misma semántica que
+ * el PTA (`territorialGrantsFromRoles` en pta-territorial-role-scope.ts):
+ *   · global    — alcance Global, o Filtrado con territorial "Todas" sin filtros;
+ *   · filtrado  — Filtrado con una territorial concreta (id de auth.seccionales);
+ *   · persona   — sin alcance o "territorial por persona": la(s) seccional(es)
+ *                 de la persona del usuario.
+ * Un alcance desconocido, o filtrado por CETAP/programa (no soportado aquí),
+ * NO se convierte en permiso: falla cerrado.
+ */
 export interface PermisoPta {
   codigo: string;
-  /** 'global' = cualquier territorial; 'limitado' = alcance filtrado o por persona. */
-  alcance: 'global' | 'limitado';
+  alcance: 'global' | 'filtrado' | 'persona';
+  /** Solo en 'filtrado': id de auth.seccionales. */
+  territorial?: string;
+}
+
+/** Contexto territorial de una decisión: dónde está el docente y dónde el usuario. */
+export interface ContextoTerritorial {
+  /** Seccional del docente según la equivalencia; null = no mapeada. */
+  seccionalDocente: string | null;
+  /** Seccionales de la persona del usuario que decide. */
+  seccionalesUsuario: readonly string[];
 }
 
 /**
  * Permisos del PTA del usuario, para la concertación — EFDS-2315.
- *
- * Mismo origen y mismo criterio que el PTA (`auth.role_permissions` y el alcance
- * del rol en `auth.role.alcance`, ver pta-territorial-role-scope.ts): cada
- * permiso conserva el alcance de SU rol.
- *
- * ⚠️ ALCANCE TERRITORIAL. El PTA compara la seccional del aprobador contra
- * dónde se dicta. Aquí la territorial del docente viene del RUND (`DT-009`) y
- * no hay hoy un vínculo estructurado con `auth.seccionales` (el RUND no trae
- * `sedeId`). Por eso solo un alcance GLOBAL habilita decidir; un alcance
- * filtrado o por persona queda 'limitado' y NO decide (fail-closed) hasta que
- * exista ese vínculo. Reportado como decisión pendiente.
+ * Origen: `auth.role_permissions` y el alcance del rol en `auth.role.alcance`.
  */
 @Injectable()
 export class PermisosPtaService {
@@ -48,7 +56,10 @@ export class PermisosPtaService {
             AND p.code LIKE 'pta.%'`,
         [codes],
       );
-      return filas.map((f) => ({ codigo: f.code, alcance: esGlobal(f.alcance) ? 'global' : 'limitado' }));
+      return filas.flatMap((f) => {
+        const a = alcanceDe(f.alcance);
+        return a ? [{ codigo: f.code, ...a }] : [];
+      });
     } catch (error: any) {
       // Fail-closed: sin poder resolver permisos, nadie decide.
       this.logger.error(`No se pudieron resolver permisos del PTA: ${error?.message}`);
@@ -60,13 +71,29 @@ export class PermisosPtaService {
 /** Copia de SUPER_ADMIN_ROLE_CODES del PTA (otro servicio, no importable). */
 const SUPER_ADMIN_ROLE_CODES = ['SUPER_ADMIN', 'super_admin'];
 
-function esGlobal(alcance: unknown): boolean {
-  let a: any = alcance;
-  if (typeof a === 'string') { try { a = JSON.parse(a); } catch { return false; } }
-  return String(a?.tipo ?? '').trim().toLowerCase() === 'global';
+function alcanceDe(valor: unknown): Omit<PermisoPta, 'codigo'> | null {
+  let a: any = valor;
+  if (typeof a === 'string') { try { a = JSON.parse(a); } catch { return null; } }
+  const texto = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const tipo = texto(a?.tipo).toLowerCase();
+  if (!a || tipo === 'territorial' || tipo === 'territorial_por_persona') return { alcance: 'persona' };
+  if (tipo === 'global') return { alcance: 'global' };
+  if (tipo === 'filtrado' && texto(a.territorial)) {
+    const conFiltros = ['cetap', 'programa'].some((k) => texto(a[k]) && texto(a[k]).toLowerCase() !== 'todos');
+    if (conFiltros) return null; // CETAP/programa: no soportado aquí → no decide
+    if (texto(a.territorial).toLowerCase() === 'todas') return { alcance: 'global' };
+    return { alcance: 'filtrado', territorial: texto(a.territorial) };
+  }
+  return null; // alcance desconocido: nunca acceso global
 }
 
-/** ¿Tiene alguno de estos permisos con alcance global? */
-export function tieneGlobal(permisos: readonly PermisoPta[], codigos: readonly string[]): boolean {
-  return permisos.some((p) => p.alcance === 'global' && codigos.includes(p.codigo));
+/** ¿Alguno de estos permisos alcanza la territorial del docente? */
+export function decide(permisos: readonly PermisoPta[], codigos: readonly string[], ctx: ContextoTerritorial): boolean {
+  return permisos.some((p) => {
+    if (!codigos.includes(p.codigo)) return false;
+    if (p.alcance === 'global') return true;
+    if (!ctx.seccionalDocente) return false; // territorial no mapeada: falla cerrado
+    if (p.alcance === 'filtrado') return p.territorial === ctx.seccionalDocente;
+    return ctx.seccionalesUsuario.includes(ctx.seccionalDocente);
+  });
 }

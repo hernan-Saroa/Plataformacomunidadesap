@@ -1,4 +1,6 @@
-import { Body, Controller, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+
+import { Public } from '../../auth/public.decorator';
 
 import { DocenciaDecisionesService, type DecisionDocenciaDto } from './docencia-decisiones.service';
 
@@ -12,6 +14,17 @@ import { DocenciaDecisionesService, type DecisionDocenciaDto } from './docencia-
 @Controller('contrato-programacion/v1/docencia')
 export class DocenciaDecisionesController {
   constructor(private readonly decisiones: DocenciaDecisionesService) {}
+
+  /**
+   * GET /contrato-programacion/v1/docencia/configuracion — el interruptor de este
+   * lado (EFDS-2315). Público: solo dice si está encendido. Lo consulta
+   * Programación Académica para el interruptor único de los dos servicios.
+   */
+  @Public()
+  @Get('configuracion')
+  configuracion() {
+    return { success: true, data: this.decisiones.configuracion() };
+  }
 
   /** POST /contrato-programacion/v1/docencia/decisiones — registra una concertación aprobada. */
   @Post('decisiones')

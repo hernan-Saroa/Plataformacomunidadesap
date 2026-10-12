@@ -31,7 +31,10 @@ const decision = (extra: Partial<DecisionDocenciaDto> = {}): DecisionDocenciaDto
   nivel: 'pregrado',
   horas: 96,
   huella: 'a'.repeat(64),
-  asignaturas: [{ codigo: 'ASIG-00001', nombre: 'Constitución Del Territorio', horas: 96 }],
+  asignaturas: [{
+    idGrupo: '00000000-0000-4000-8000-0000000000g1', asignaturaId: '1', codigo: 'ASIG-00001', nombre: 'Constitución Del Territorio',
+    programaId: '1', pensum: null, creditos: 3, semestre: 1, modalidad: 'Presencial', fechaInicio: '2050-02-03', fechaFin: '2050-05-30', horas: 96,
+  }],
   firmas: [
     { rol: 'docente', idUser: 'u1', firmadoEn: '2050-02-10T10:00:00.000Z', modoOtp: 'simulado' },
     { rol: 'aprobador', idUser: 'u2', firmadoEn: '2050-02-12T10:00:00.000Z', modoOtp: 'simulado' },
@@ -69,7 +72,8 @@ describe('EFDS-2315 :: contrato v1 — docencia concertada (agregado real, en tr
   caso('registra la decision de quien puede aprobar Docencia de ese nivel, sin aplicarla a ningun PTA', async () => {
     const aprobacionesAntes = await contarAprobaciones();
     const r = await servicio(['pta.approve.academica.pregrado']).registrar('u2', decision());
-    expect(r).toEqual({ registrada: true, aplicada: false });
+    // Apagada en el PTA (variable sin definir): solo registra, no aplica.
+    expect(r).toEqual({ registrada: true, aplicada: false, estadoAplicacion: null });
     const fila = (await client!.query(
       `SELECT nivel, horas::float AS horas, aplicada_en, jsonb_array_length(firmas) AS firmas
          FROM academic_work_plan.docencia_concertada WHERE id_concertacion = $1`, [decision().idConcertacion])).rows[0];
@@ -98,6 +102,8 @@ describe('EFDS-2315 :: contrato v1 — docencia concertada (agregado real, en tr
     await expect(svc.registrar('u2', decision({ huella: 'x' }))).rejects.toBeInstanceOf(BadRequestException);
     await expect(svc.registrar('u2', decision({ firmas: [] }))).rejects.toThrow(/docente y la del aprobador/);
     await expect(svc.registrar('u2', decision({ asignaturas: [] }))).rejects.toBeInstanceOf(BadRequestException);
+    const sinFechas = { ...decision().asignaturas[0], fechaInicio: '' };
+    await expect(svc.registrar('u2', decision({ asignaturas: [sinFechas] }))).rejects.toThrow(/fechas del ciclo/);
   });
 
   it('RN-09 sigue intacto: el controlador de docentes solo declara GET y la escritura vive en otro controlador', () => {
@@ -105,6 +111,7 @@ describe('EFDS-2315 :: contrato v1 — docencia concertada (agregado real, en tr
       .filter((n) => n !== 'constructor' && Reflect.getMetadata(PATH_METADATA, C.prototype[n]) !== undefined)
       .map((n) => Reflect.getMetadata(METHOD_METADATA, C.prototype[n]));
     expect(metodos(DocentesContratoController).every((m) => m === 0)).toBe(true); // 0 = GET
-    expect(metodos(DocenciaDecisionesController)).toEqual([1]); // 1 = POST
+    // 1 = POST (la decisión); el único GET es la configuración pública del interruptor.
+    expect(metodos(DocenciaDecisionesController).sort()).toEqual([0, 1]);
   });
 });
