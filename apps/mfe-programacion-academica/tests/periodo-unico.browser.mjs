@@ -71,6 +71,9 @@ try {
       data = { codigo: '2026-2', yaActivo: '2026-1', ptasATerminar: 37,
         porPeriodo: [{ codigo: '2026-1', ptas: 35 }, { codigo: '2025-2', ptas: 2 }],
         periodosACerrar: ['2026-1'], periodosAPlaneacion: [], advertencia: null };
+    } else if (ruta.endsWith('/periodos-academicos/12/impacto-activacion')) {
+      data = { codigo: '2026-1', yaActivo: '2026-2', ptasATerminar: 0,
+        porPeriodo: [], periodosACerrar: [], periodosAPlaneacion: ['2026-2'], advertencia: null };
     } else if (ruta.endsWith('/periodos-academicos/13') && r.method() === 'PATCH') {
       if (!impactoLeido || !mensajes.at(-1)?.includes('37 PTA')) status = 409;
       else { p13.estadoPlataforma = 'en_curso'; p13.esActivo = true; p12.esActivo = false; p12.estadoPlataforma = 'cerrado'; }
@@ -123,6 +126,20 @@ try {
   const activarIndex = llamadas.findIndex((x) => x.tipo.includes('PATCH') && x.tipo.includes('periodos-academicos/13'));
   assert.ok(impactoIndex >= 0 && activarIndex > impactoIndex, JSON.stringify(llamadas.map((x) => x.tipo)));
   console.log('PASS EFDS-2312 :: selector y confirmación de activar usan contrato y permiso');
+
+  // Un periodo cerrado también puede reactivarse. Cancelar no debe llamar al PATCH.
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll('button')]
+    .filter((button) => button.textContent.trim() === 'Activar').length), 1);
+  aceptarDialogo = false;
+  await page.evaluate(() => [...document.querySelectorAll('button')]
+    .find((button) => button.textContent.trim() === 'Activar')?.click());
+  await page.waitForNetworkIdle();
+  assert.ok(mensajes.at(-1)?.includes('Activar 2026-1'), mensajes.at(-1));
+  assert.ok(mensajes.at(-1)?.includes('actualmente activo 2026-2'));
+  assert.ok(mensajes.at(-1)?.includes('pasará a planeación'));
+  assert.equal(llamadas.some((x) => x.tipo === 'PATCH /pta/api/v1/periodos-academicos/12'), false);
+  aceptarDialogo = true;
+  console.log('PASS EFDS-2312 :: periodo cerrado ofrece activar y confirma el impacto sobre el activo actual');
 
   const consultasAntesDeCerrar = consultaPeriodos;
   aceptarDialogo = false;
@@ -177,6 +194,15 @@ try {
   assert.ok(importaciones.every((x) => new URLSearchParams(x.query).get('periodo_codigo') === '2031-1'));
   assert.ok((await page.$eval('section[aria-label="Carga masiva 2031-1"]', (e) => e.textContent)).includes('agregarla manualmente'));
   console.log('PASS EFDS-2314 :: valida y confirma por el importador existente, con código recibido de GET /periodos');
+
+  permisos.activar = false;
+  await page.evaluate(async (base) => {
+    const api = await import(`${base}src/services/actualizacionProgramacion.ts`);
+    api.invalidarProgramacion('periodos');
+  }, urlMfe);
+  await page.waitForFunction(() => ![...document.querySelectorAll('button')]
+    .some((button) => button.textContent.trim() === 'Activar'));
+  console.log('PASS EFDS-2312 :: permiso activar=false oculta también la reactivación');
 } finally {
   await browser.close();
   await unlink(archivo);
