@@ -167,8 +167,16 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
       const terminados = impacto.ptasATerminar === null ? 'un número de PTA aún no disponible' : `${impacto.ptasATerminar} PTA`;
       const cierre = impacto.periodosACerrar.length ? ` Cerrará ${impacto.periodosACerrar.join(', ')}.` : '';
       const planeacion = impacto.periodosAPlaneacion.length ? ` Pasarán a planeación: ${impacto.periodosAPlaneacion.join(', ')}.` : '';
+      const activoActual = periodos?.periodos.find((p) => p.esActivo && p.idPeriodo !== id)?.codigo;
+      const efectoSobreActivo = activoActual
+        ? impacto.periodosACerrar.includes(activoActual)
+          ? ` El periodo actualmente activo ${activoActual} se cerrará.`
+          : impacto.periodosAPlaneacion.includes(activoActual)
+            ? ` El periodo actualmente activo ${activoActual} dejará de estar en curso y pasará a planeación.`
+            : ` El periodo actualmente activo ${activoActual} dejará de estar en curso.`
+        : '';
       const aviso = impacto.advertencia ? `\n${impacto.advertencia}` : '';
-      if (!window.confirm(`Activar ${impacto.codigo} terminará ${terminados}${detalle ? ` (${detalle})` : ''}.${cierre}${planeacion}${aviso}\n¿Continuar?`)) return;
+      if (!window.confirm(`Activar ${impacto.codigo} terminará ${terminados}${detalle ? ` (${detalle})` : ''}.${cierre}${planeacion}${efectoSobreActivo}${aviso}\n¿Continuar?`)) return;
       await activarPeriodoPlataforma(id);
       activado = true;
       await recargar();
@@ -248,9 +256,9 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${o.programable ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
                   {o.programable ? 'Programable' : 'Solo consulta'}
                 </span>
-                {/* Cerrado es inmutable: no se ofrece reactivar lo que el
-                    backend rechazaría por inmutable. */}
-                {periodos?.permisos.activar && !o.esActivo && o.estadoPlataforma !== 'cerrado' && (
+                {/* El PTA permite reactivar un periodo cerrado; el impacto se
+                    confirma antes de cambiar el periodo activo. */}
+                {periodos?.permisos.activar && !o.esActivo && (
                   <button
                     type="button"
                     onClick={() => activar(o.idPeriodo)}
