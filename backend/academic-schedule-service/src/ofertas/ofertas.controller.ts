@@ -6,6 +6,7 @@ import type { Request } from 'express';
 import { PERMISO_PROGRAMACION_ALL } from '../auth/programacion-permissions.js';
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 import { OfertasService, type CrearPeriodoDto } from './ofertas.service.js';
+import { tokenDe } from '../acceso/token.js';
 import { EscrituraEn, EscrituraSinPeriodo } from '../acceso/escritura.decorator.js';
 
 /**
@@ -61,8 +62,8 @@ export class OfertasController {
 
   /** GET /ofertas/consumo/:documento — consumo del docente por oferta vs tope. */
   @Get('consumo/:documento')
-  async consumo(@Param('documento') documento: string) {
-    return { success: true, data: await this.ofertas.consumoPorOferta(documento) };
+  async consumo(@Req() req: Request, @Param('documento') documento: string) {
+    return { success: true, data: await this.ofertas.consumoPorOferta(documento, tokenDe(req)) };
   }
 
   /** POST /ofertas — crea un periodo. Nace en 'planeacion' (NUEVA-5a). */

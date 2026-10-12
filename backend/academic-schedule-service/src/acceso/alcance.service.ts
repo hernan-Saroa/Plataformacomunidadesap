@@ -13,7 +13,7 @@ export interface PeriodoDelRecurso {
 }
 
 /** Desde dónde se ancla una escritura: el recurso que la ruta toca. */
-export type TipoAncla = 'periodo' | 'grupo' | 'franja' | 'asignatura';
+export type TipoAncla = 'periodo' | 'grupo' | 'franja' | 'asignatura' | 'concertacion';
 
 /** Lo que se sabe del recurso tocado: su periodo (si tiene) y su nivel (si tiene). */
 export interface Alcance {
@@ -114,6 +114,17 @@ export class AlcanceService {
           periodo: g.idPeriodo ? await this.periodoPorId(g.idPeriodo) : null,
           nivel: await this.nivelDeAsignatura(g.idAsignatura),
         };
+      }
+      case 'concertacion': {
+        // EFDS-2315: la concertación cuelga del periodo que guarda; su nivel lo
+        // decide el permiso del PTA dentro del servicio, no aquí.
+        if (!esUuid(valor)) return { existe: false, periodo: null, nivel: null };
+        const filas = await this.dataSource.query(
+          `SELECT periodo_ref FROM "academic-schedule".concertacion_docencia WHERE id_concertacion = $1`,
+          [valor],
+        );
+        if (!filas.length) return { existe: false, periodo: null, nivel: null };
+        return { existe: true, periodo: await this.periodoPorId(filas[0].periodo_ref), nivel: null };
       }
       case 'franja': {
         if (!esUuid(valor)) return { existe: false, periodo: null, nivel: null };

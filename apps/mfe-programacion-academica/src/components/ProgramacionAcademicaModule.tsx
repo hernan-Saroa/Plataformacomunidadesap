@@ -37,6 +37,8 @@ import { AsignacionDocente } from './AsignacionDocente';
 import { DisponibilidadAulas } from './DisponibilidadAulas';
 import { GestionOfertas } from './GestionOfertas';
 import { AprobacionJefatura } from './AprobacionJefatura';
+import { ConcertacionBandeja } from './ConcertacionBandeja';
+import { getConfiguracionConcertacion, type ConfiguracionConcertacion } from '../services/api/concertacionApi';
 import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
 import { getCrucesVivos, type ConteoCrucesVivos } from '../services/api/crucesVivosApi';
 import { getPeriodos, type PeriodoVista } from '../services/api/periodosApi';
@@ -67,7 +69,7 @@ interface FranjaHoraria {
   periodoCodigo: string | null;
 }
 
-type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas' | 'aprobacion';
+type Seccion = 'catalogo' | 'horarios' | 'aulas' | 'docentes' | 'ofertas' | 'alertas' | 'aprobacion' | 'concertacion';
 
 /** Los cinco estados del ciclo de la franja, con su etiqueta y color (§1.2). */
 const BADGE_ESTADO: Record<string, { etiqueta: string; clase: string }> = {
@@ -134,6 +136,10 @@ export function ProgramacionAcademicaModule({
   // prueba pidiendo sus pendientes: 200 (aunque vacío) ⇒ jefatura; 403 ⇒ no.
   const [esJefatura, setEsJefatura] = useState(false);
   useEffect(() => { getPendientesJefatura().then(() => setEsJefatura(true)).catch(() => {}); }, []);
+  // EFDS-2315 — La concertación está apagada por defecto: la sección solo aparece
+  // encendida. Quién decide qué lo filtra el backend con los permisos del PTA.
+  const [concertacion, setConcertacion] = useState<ConfiguracionConcertacion | null>(null);
+  useEffect(() => { getConfiguracionConcertacion().then(setConcertacion).catch(() => setConcertacion(null)); }, []);
 
   // §1.0 — El periodo como CONTEXTO. Todo lo que se ve debajo pertenece al
   // periodo seleccionado en la cabecera; se persiste entre recargas.
@@ -237,6 +243,8 @@ export function ProgramacionAcademicaModule({
   // El histórico (hallazgos del Excel) es otro contador: va en el badge de Validación.
   const totalConflictosHistoricos = historico?.resumen?.total ?? 0;
 
+  // Un solo elemento para las dos entradas de aprobación (jefatura y concertación).
+  const iconoAprobacion = <ClipboardCheck className="w-5 h-5" />;
   const gruposNav: MenuGroup[] = [
     {
       title: 'GESTIÓN PRINCIPAL',
@@ -292,8 +300,15 @@ export function ProgramacionAcademicaModule({
           id: 'aprobacion',
           label: 'Aprobación territorial',
           subtitle: 'Aprobar o devolver franjas de tus docentes',
-          icon: <ClipboardCheck className="w-5 h-5" />,
+          icon: iconoAprobacion,
           color: '#059669',
+        }] : []),
+        ...(concertacion?.habilitada ? [{
+          id: 'concertacion',
+          label: 'Concertación de la docencia',
+          subtitle: 'Revisar y aprobar la docencia de los docentes',
+          icon: iconoAprobacion,
+          color: '#003DA5',
         }] : []),
       ],
     },
@@ -608,6 +623,9 @@ export function ProgramacionAcademicaModule({
       />}
 
       {seccion === 'aprobacion' && <AprobacionJefatura />}
+      {seccion === 'concertacion' && concertacion?.habilitada && (
+        <ConcertacionBandeja idPeriodo={periodoSel || undefined} firmaSimulada={concertacion.firmaSimulada} />
+      )}
 
       {/* 3.9 — VALIDACIÓN: cruces del HISTÓRICO, no del sistema.
           Antes esta sección mostraba alertas inventadas en el propio front.

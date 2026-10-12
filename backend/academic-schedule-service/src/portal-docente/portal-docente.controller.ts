@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import { PERMISO_PORTAL_TOMAR, PERMISO_PORTAL_VER } from '../auth/programacion-permissions.js';
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 import { PortalDocenteService } from './portal-docente.service.js';
+import { tokenDe } from '../acceso/token.js';
 import { EscrituraEn } from '../acceso/escritura.decorator.js';
 
 /**
@@ -61,7 +62,7 @@ export class PortalDocenteController {
   async acumulado(@Req() req: Request) {
     await this.exigir(req, PERMISO_PORTAL_VER);
     const docente = await this.portal.resolverDocente(this.idUser(req));
-    return { success: true, data: await this.portal.acumulado(docente.documento) };
+    return { success: true, data: await this.portal.acumulado(docente.documento, tokenDe(req)) };
   }
 
   /** POST /portal-docente/tomar/:idFranja — toma una franja (transacción + lock). */
