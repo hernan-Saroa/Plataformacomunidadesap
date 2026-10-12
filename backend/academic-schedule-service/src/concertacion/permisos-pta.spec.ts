@@ -1,53 +1,55 @@
-import { PermisosPtaService, decide } from './permisos-pta.service.js';
+import { PermisosPtaService, decide, normalizarSeccional, type ContextoTerritorial } from './permisos-pta.service.js';
 
 /**
- * EFDS-2315 :: permisos del PTA para la concertación, con el alcance del rol y
- * la territorial del docente (equivalencia explícita, migración 038).
+ * EFDS-2315 :: la concertación decide con la MISMA regla que el PTA usa hoy para
+ * sus componentes de Docencia (`assertAlcancePersonalDeActividades`): permiso del
+ * componente + seccional de la persona del aprobador contra la territorial de
+ * cada asignatura, por id o nombre normalizado. El alcance del rol no se usa.
  */
-describe('EFDS-2315 :: permisos del PTA con alcance territorial', () => {
+describe('EFDS-2315 :: permisos y alcance territorial, iguales al PTA', () => {
   const servicio = (filas: any[]) => new PermisosPtaService({ query: async () => filas } as any);
   const APROBAR = ['pta.approve.academica.pregrado', 'pta.approve.all'];
-  const HUILA = { seccionalDocente: '10', seccionalesUsuario: ['10'] };
+  const NOMBRES = new Map([['10', 'Seccional Huila'], ['16', 'Seccional Tolima'], ['900022', 'HUILA']]);
+  const ctx = (usuario: string[], asignaturas: Array<string | null>): ContextoTerritorial =>
+    ({ seccionalesUsuario: usuario, territorialesAsignaturas: asignaturas, nombres: NOMBRES });
+  const aprobador = [{ codigo: 'pta.approve.academica.pregrado' }];
 
-  it('SUPER_ADMIN decide todo sin mirar el alcance, incluso con territorial no mapeada', async () => {
-    const p = await servicio([]).resolver(['SUPER_ADMIN']);
-    expect(decide(p, APROBAR, { seccionalDocente: null, seccionalesUsuario: [] })).toBe(true);
+  it('SUPER_ADMIN es superusuario: decide sin restricción geográfica', async () => {
+    const p = await servicio([{ role_code: 'SUPER_ADMIN', permission_code: null }]).resolver('u1');
+    expect(decide(p, APROBAR, ctx(['16'], [null, '10']))).toBe(true);
   });
 
-  it('sin alcance = por persona: decide solo sobre docentes de su seccional', async () => {
-    const p = await servicio([{ code: 'pta.approve.academica.pregrado', alcance: null }]).resolver(['JEFATURA_TERRITORIAL']);
-    expect(p).toEqual([{ codigo: 'pta.approve.academica.pregrado', alcance: 'persona' }]);
-    expect(decide(p, APROBAR, HUILA)).toBe(true);
-    expect(decide(p, APROBAR, { seccionalDocente: '16', seccionalesUsuario: ['10'] })).toBe(false); // Tolima ≠ Huila
-    expect(decide(p, APROBAR, { seccionalDocente: '10', seccionalesUsuario: [] })).toBe(false);     // sin seccional asignada
+  it('sin el permiso del componente no decide, tenga la territorial que tenga', () => {
+    expect(decide([{ codigo: 'pta.approve.academica.posgrado' }], APROBAR, ctx([], []))).toBe(false);
   });
 
-  it('territorial del docente no mapeada en la tabla: falla cerrado para todo alcance no global', async () => {
-    const persona = await servicio([{ code: 'pta.approve.academica.pregrado', alcance: null }]).resolver(['X']);
-    const filtrado = await servicio([{ code: 'pta.approve.academica.pregrado', alcance: { tipo: 'Filtrado', territorial: '10' } }]).resolver(['X']);
-    const sinMapa = { seccionalDocente: null, seccionalesUsuario: ['10'] };
-    expect(decide(persona, APROBAR, sinMapa)).toBe(false);
-    expect(decide(filtrado, APROBAR, sinMapa)).toBe(false);
+  it('con seccional: solo decide asignaturas de su territorial (Huila sí, Tolima no)', () => {
+    expect(decide(aprobador, APROBAR, ctx(['10'], ['10']))).toBe(true);
+    expect(decide(aprobador, APROBAR, ctx(['10'], ['10', '16']))).toBe(false); // todas deben ser suyas
   });
 
-  it('filtrado por seccional decide sobre esa seccional; Global y "Todas" deciden siempre', async () => {
-    const filtrado = await servicio([{ code: 'pta.approve.academica.pregrado', alcance: { tipo: 'Filtrado', territorial: '10' } }]).resolver(['X']);
-    expect(decide(filtrado, APROBAR, HUILA)).toBe(true);
-    expect(decide(filtrado, APROBAR, { seccionalDocente: '16', seccionalesUsuario: [] })).toBe(false);
-    const global = await servicio([{ code: 'pta.approve.academica.pregrado', alcance: '{"tipo":"Global"}' }]).resolver(['X']);
-    const todas = await servicio([{ code: 'pta.approve.academica.pregrado', alcance: { tipo: 'Filtrado', territorial: 'Todas' } }]).resolver(['X']);
-    for (const p of [global, todas]) expect(decide(p, APROBAR, { seccionalDocente: '16', seccionalesUsuario: [] })).toBe(true);
+  it('con seccional y una asignatura sin territorial: no se puede verificar, no decide', () => {
+    expect(decide(aprobador, APROBAR, ctx(['10'], [null]))).toBe(false);
   });
 
-  it('filtros de CETAP/programa o alcance desconocido no se vuelven permiso', async () => {
-    const cetap = await servicio([{ code: 'pta.approve.academica.pregrado', alcance: { tipo: 'Filtrado', territorial: '10', cetap: 'CET-1' } }]).resolver(['X']);
-    const raro = await servicio([{ code: 'pta.approve.academica.pregrado', alcance: { tipo: 'Otro' } }]).resolver(['X']);
-    expect(cetap).toEqual([]);
-    expect(raro).toEqual([]);
+  it('sin seccional en Personas: sin restricción geográfica, como hoy en el PTA (hueco reportado)', () => {
+    expect(decide(aprobador, APROBAR, ctx([], ['16', null]))).toBe(true);
+  });
+
+  it('compara como el PTA: por id o por nombre normalizado; los dos catálogos de auth NO cruzan', () => {
+    expect(normalizarSeccional('Seccional Huíla ')).toBe('seccionalhuila');
+    // Persona en el catálogo heredado (10 "Seccional Huila"); grupo en el de la
+    // carga masiva (900022 "HUILA"): distinto id y distinto nombre → no decide.
+    expect(decide(aprobador, APROBAR, ctx(['10'], ['900022']))).toBe(false);
+  });
+
+  it('pta.approve.all sin ser superusuario conserva la restricción geográfica', () => {
+    expect(decide([{ codigo: 'pta.approve.all' }], APROBAR, ctx(['10'], ['16']))).toBe(false);
   });
 
   it('si no se pueden resolver los permisos, nadie decide', async () => {
     const roto = new PermisosPtaService({ query: async () => { throw new Error('caida'); } } as any);
-    expect(await roto.resolver(['JEFATURA_TERRITORIAL'])).toEqual([]);
+    expect(await roto.resolver('u1')).toEqual([]);
+    expect(await servicio([]).resolver(null)).toEqual([]);
   });
 });

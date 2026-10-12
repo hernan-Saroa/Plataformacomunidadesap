@@ -22,7 +22,7 @@ import {
 } from './configuracion.js';
 import { ContratoPtaClient } from './contrato-pta.client.js';
 import { contextoFirma, huellaDe, verificarCodigo, type RolFirma } from './firma.js';
-import { decide, type ContextoTerritorial, type PermisoPta } from './permisos-pta.service.js';
+import { decide, PermisosPtaService, type ContextoTerritorial, type PermisoPta } from './permisos-pta.service.js';
 import { TerritorialService } from '../acceso/territorial.service.js';
 
 export type EstadoConcertacion = 'ENVIADA' | 'REVISADA' | 'APROBADA' | 'DEVUELTA';
@@ -63,6 +63,7 @@ export class ConcertacionService {
     private readonly docencia: DocenciaService,
     private readonly contratoPta: ContratoPtaClient,
     private readonly territorial: TerritorialService,
+    private readonly permisosPta: PermisosPtaService,
   ) {}
 
   /** Caché corta del interruptor del PTA: no se consulta en cada petición. */
@@ -270,9 +271,8 @@ export class ConcertacionService {
   // ── Revisores y aprobadores (roles del PTA) ────────────────────────────────
 
   /**
-   * Qué puede hacer el usuario con la docencia de un nivel, según sus permisos
-   * del PTA y la territorial del docente (equivalencia explícita, migración 038).
-   * Territorial no mapeada: solo decide un alcance global.
+   * Qué puede hacer el usuario con la docencia de un nivel: los permisos del PTA
+   * y su alcance personal, con la misma regla del PTA (permisos-pta.service.ts).
    */
   private puede(permisos: readonly PermisoPta[], nivel: NivelAcademico, ctx: ContextoTerritorial) {
     const revisar = REVISIONES_REQUERIDAS
@@ -282,14 +282,19 @@ export class ConcertacionService {
     return { revisar, aprobar, devolver: revisar.length > 0 || aprobar };
   }
 
-  private async contexto(idDocente: string, seccionalesUsuario: readonly string[]): Promise<ContextoTerritorial> {
-    return { seccionalDocente: await this.territorial.seccionalDeDocente(idDocente), seccionalesUsuario };
+  /** Territorial de cada asignatura (grupo) concertada y la del usuario, como en el PTA. */
+  private async contexto(franjas: FilaConcertacion['franjas'], seccionalesUsuario: readonly string[]): Promise<ContextoTerritorial> {
+    const porGrupo = await this.territorial.territorialesDeGrupos([...new Set(franjas.map((f) => f.idGrupo))]);
+    const territorialesAsignaturas = [...porGrupo.values()];
+    const nombres = await this.permisosPta.nombresDeSeccionales(
+      [...seccionalesUsuario, ...territorialesAsignaturas.filter((t): t is string => !!t)]);
+    return { seccionalesUsuario, territorialesAsignaturas, nombres };
   }
 
   /** Bandeja: concertaciones por decidir en los niveles donde el usuario decide. */
   async bandeja(permisos: readonly PermisoPta[], idUser: string, periodoRef?: string) {
     const filas = await this.dataSource.query(
-      `SELECT c.id_concertacion AS "idConcertacion", c.id_docente::text AS "idDocente", c.periodo_ref AS "idPeriodo", c.nivel, c.estado,
+      `SELECT c.id_concertacion AS "idConcertacion", c.periodo_ref AS "idPeriodo", c.nivel, c.estado,
               c.horas::float AS horas, jsonb_array_length(c.franjas) AS "numFranjas", c.franjas,
               p.nom_largo AS docente, p.num_identificacion AS documento, c.updated_at AS "actualizadaEn",
               (SELECT COALESCE(array_agg(r.tipo), '{}') FROM "academic-schedule".concertacion_revision r
@@ -300,12 +305,11 @@ export class ConcertacionService {
           AND ($1::text IS NULL OR c.periodo_ref = $1)
         ORDER BY c.updated_at`,
       [periodoRef ?? null]);
-    const seccionales = await this.territorial.seccionalesDeUsuario(idUser);
+    const seccionales = await this.permisosPta.seccionalesDeUsuario(idUser);
     const visibles: any[] = [];
     for (const f of filas) {
-      const { idDocente, ...resto } = f;
-      const puede = this.puede(permisos, f.nivel, await this.contexto(idDocente, seccionales));
-      if (puede.devolver) visibles.push({ ...resto, puede });
+      const puede = this.puede(permisos, f.nivel, await this.contexto(f.franjas, seccionales));
+      if (puede.devolver) visibles.push({ ...f, puede });
     }
     return visibles;
   }
@@ -323,7 +327,7 @@ export class ConcertacionService {
     await this.dataSource.transaction(async (m) => {
       const c = await this.cargar(m, id);
       if (c.estado !== 'ENVIADA') throw new ConflictException(`No se puede revisar: la concertación está ${c.estado}.`);
-      const ctx = await this.contexto(c.id_docente, await this.territorial.seccionalesDeUsuario(idUser));
+      const ctx = await this.contexto(c.franjas, await this.permisosPta.seccionalesDeUsuario(idUser));
       if (!this.puede(permisos, c.nivel, ctx).revisar.includes(tipo as any)) {
         throw new ForbiddenException(`No tiene permiso para la revisión ${tipo} de ${c.nivel}.`);
       }
@@ -351,7 +355,7 @@ export class ConcertacionService {
     await this.dataSource.transaction(async (m) => {
       const c = await this.cargar(m, id);
       if (!['ENVIADA', 'REVISADA'].includes(c.estado)) throw new ConflictException(`No se puede devolver: la concertación está ${c.estado}.`);
-      const ctx = await this.contexto(c.id_docente, await this.territorial.seccionalesDeUsuario(idUser));
+      const ctx = await this.contexto(c.franjas, await this.permisosPta.seccionalesDeUsuario(idUser));
       if (!this.puede(permisos, c.nivel, ctx).devolver) throw new ForbiddenException(`No tiene permiso para decidir la docencia de ${c.nivel}.`);
       await m.query(
         `UPDATE "academic-schedule".concertacion_docencia SET estado = 'DEVUELTA', comentario = $2, updated_at = NOW()
@@ -374,7 +378,7 @@ export class ConcertacionService {
     await this.dataSource.transaction(async (m) => {
       const c = await this.cargar(m, id);
       if (c.estado !== 'REVISADA') throw new ConflictException(`No se puede aprobar: la concertación está ${c.estado} (requiere las revisiones).`);
-      const ctx = await this.contexto(c.id_docente, await this.territorial.seccionalesDeUsuario(idUser));
+      const ctx = await this.contexto(c.franjas, await this.permisosPta.seccionalesDeUsuario(idUser));
       if (!this.puede(permisos, c.nivel, ctx).aprobar) throw new ForbiddenException(`No tiene permiso para aprobar la docencia de ${c.nivel}.`);
 
       // Lo que se aprueba es lo que firmó el docente: si las franjas cambiaron, no.
@@ -425,7 +429,11 @@ export class ConcertacionService {
          JOIN academic_work_plan.asignatura a ON a.id = g.id_asignatura
          LEFT JOIN academic_work_plan.ubicacion_semestral us ON us.id = a.id_ubicacion_semestral
         WHERE g.id_grupo = ANY($1::uuid[])`, [[...horasPorGrupo.keys()]]);
-    const asignaturas = grupos.map((g) => ({ ...g, horas: horasPorGrupo.get(g.idGrupo) ?? 0 }));
+    // territorialId: el mismo dato que el PTA guarda en asignaturas[].territorial_id.
+    const territoriales = await this.territorial.territorialesDeGrupos([...horasPorGrupo.keys()]);
+    const asignaturas = grupos.map((g) => ({
+      ...g, territorialId: territoriales.get(g.idGrupo) ?? null, horas: horasPorGrupo.get(g.idGrupo) ?? 0,
+    }));
     try {
       const r = await this.contratoPta.registrarDecision({
         idConcertacion: id, documentoDocente: c.documento, periodo: c.periodo_codigo, nivel: c.nivel,

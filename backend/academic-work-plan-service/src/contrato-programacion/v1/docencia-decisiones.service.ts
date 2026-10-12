@@ -9,6 +9,8 @@ export interface AsignaturaConcertadaDto {
   idGrupo: string; asignaturaId: string; codigo: string; nombre: string; programaId: string;
   pensum: string | null; creditos: number; semestre: number | null; modalidad: string | null;
   fechaInicio: string; fechaFin: string; horas: number;
+  /** auth.seccionales.id_seccional donde se dicta (asignaturas[].territorial_id); null = sin dato. */
+  territorialId?: string | null;
 }
 
 export interface DecisionDocenciaDto {

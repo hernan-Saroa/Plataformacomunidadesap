@@ -70,7 +70,7 @@ export class ConcertacionController {
   /** GET /concertacion/bandeja?periodo= — por decidir, en los niveles donde el usuario decide. */
   @Get('bandeja')
   async bandeja(@Req() req: Request, @Query('periodo') periodo?: string) {
-    const permisos = await this.permisosPta.resolver(rolesDe(req));
+    const permisos = await this.permisosPta.resolver(idUserDe(req));
     return { success: true, data: await this.concertacion.bandeja(permisos, idUserDe(req), periodo || undefined) };
   }
 
@@ -84,7 +84,7 @@ export class ConcertacionController {
   @Post(':id/revisar')
   @EscrituraEn({ concertacion: { param: 'id' } })
   async revisar(@Req() req: Request, @Param('id') id: string, @Body() body: { tipo?: string; codigo?: string }) {
-    const permisos = await this.permisosPta.resolver(rolesDe(req));
+    const permisos = await this.permisosPta.resolver(idUserDe(req));
     return { success: true, data: await this.concertacion.revisar(id, body?.tipo ?? 'academica', idUserDe(req), permisos, body?.codigo) };
   }
 
@@ -92,7 +92,7 @@ export class ConcertacionController {
   @Post(':id/devolver')
   @EscrituraEn({ concertacion: { param: 'id' } })
   async devolver(@Req() req: Request, @Param('id') id: string, @Body() body: { comentario?: string }) {
-    const permisos = await this.permisosPta.resolver(rolesDe(req));
+    const permisos = await this.permisosPta.resolver(idUserDe(req));
     return { success: true, data: await this.concertacion.devolver(id, idUserDe(req), permisos, body?.comentario) };
   }
 
@@ -100,7 +100,7 @@ export class ConcertacionController {
   @Post(':id/aprobar')
   @EscrituraEn({ concertacion: { param: 'id' } })
   async aprobar(@Req() req: Request, @Param('id') id: string, @Body() body: { codigo?: string }) {
-    const permisos = await this.permisosPta.resolver(rolesDe(req));
+    const permisos = await this.permisosPta.resolver(idUserDe(req));
     return { success: true, data: await this.concertacion.aprobar(id, idUserDe(req), permisos, body?.codigo, tokenDe(req)) };
   }
 }

@@ -54,9 +54,10 @@ export class JefaturaService {
     if (!id) throw new ForbiddenException('No se pudo identificar al usuario autenticado.');
 
     const filas = await this.dataSource.query(
-      // EFDS-2304: además de la tabla propia, la territorial sale de la seccional
-      // de la persona (asignable en la pantalla GENÉRICA de usuarios), traducida
-      // por la equivalencia explícita (migración 038). Sin fila, no hay territorial.
+      // EFDS-2304: además de la tabla propia, la seccional de la persona (pantalla
+      // GENÉRICA de usuarios) cuando su código ES el del RUND (cod_seccional =
+      // 'DT-009', como lo escribe la carga masiva de estructura de auth). Cruce
+      // por código exacto; una seccional del catálogo heredado ('HUI') no cruza.
       `SELECT dt.id AS "idDireccion", dt.codigo AS "codigo", dt.nombre AS "nombre"
          FROM "${S}".jefatura_territorial jt
          JOIN academic_work_plan.direccion_territorial dt ON dt.id = jt.id_direccion_territorial
@@ -65,8 +66,8 @@ export class JefaturaService {
        SELECT dt.id, dt.codigo, dt.nombre
          FROM auth."user" u
          JOIN auth.personas p ON p.id_person = u.id_person
-         JOIN "${S}".equivalencia_territorial e ON e.id_seccional = p.id_seccional
-         JOIN academic_work_plan.direccion_territorial dt ON dt.codigo = e.codigo_territorial
+         JOIN auth.seccionales sc ON sc.id_seccional = p.id_seccional
+         JOIN academic_work_plan.direccion_territorial dt ON dt.codigo = sc.cod_seccional
         WHERE u.id_user::text = $1
         ORDER BY 2`,
       [id],

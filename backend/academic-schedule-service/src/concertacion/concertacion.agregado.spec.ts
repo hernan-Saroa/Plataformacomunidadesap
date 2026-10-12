@@ -4,7 +4,7 @@ import { Client } from 'pg';
 import { DocenciaService } from '../docencia/docencia.service.js';
 import { TerritorialService } from '../acceso/territorial.service.js';
 import { ConcertacionService } from './concertacion.service.js';
-import type { PermisoPta } from './permisos-pta.service.js';
+import { PermisosPtaService, type PermisoPta } from './permisos-pta.service.js';
 
 /**
  * EFDS-2315 :: concertación de la docencia.
@@ -21,12 +21,9 @@ const conexion = {
   database: process.env.DB_NAME || 'esap_db',
 };
 const S = 'academic-schedule';
-const REVISOR: PermisoPta[] = [{ codigo: 'pta.review.academica.pregrado', alcance: 'global' }];
-const APROBADOR: PermisoPta[] = [{ codigo: 'pta.approve.academica.pregrado', alcance: 'global' }];
-// Sin alcance en el rol = por persona: decide sobre docentes de SU seccional (migración 038).
-const APROBADOR_POR_PERSONA: PermisoPta[] = [{ codigo: 'pta.approve.academica.pregrado', alcance: 'persona' }];
-const REVISOR_POR_PERSONA: PermisoPta[] = [{ codigo: 'pta.review.academica.pregrado', alcance: 'persona' }];
-const APROBADOR_POSGRADO: PermisoPta[] = [{ codigo: 'pta.approve.academica.posgrado', alcance: 'global' }];
+const REVISOR: PermisoPta[] = [{ codigo: 'pta.review.academica.pregrado' }];
+const APROBADOR: PermisoPta[] = [{ codigo: 'pta.approve.academica.pregrado' }];
+const APROBADOR_POSGRADO: PermisoPta[] = [{ codigo: 'pta.approve.academica.posgrado' }];
 
 describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccion)', () => {
   let client: Client | null = null;
@@ -53,7 +50,7 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     return new ConcertacionService(ds, docencia, {
       registrarDecision: async (d: any) => { entregas.push(d); return { estadoAplicacion: 'aplicada' }; },
       ptaHabilitada: async () => { if (ptaEstado === 'caido') throw new Error('PTA sin respuesta'); return ptaEstado; },
-    } as any, new TerritorialService(ds));
+    } as any, new TerritorialService(ds), new PermisosPtaService(ds));
   };
 
   interface Fixture { docente: { idPerson: string; idUser: string; vinculacion: null }; periodo: string; franjas: string[]; revisor: string; aprobador: string }
@@ -73,7 +70,8 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
             ORDER BY u.id_user LIMIT 1`);
         const otros = await client.query(
           `SELECT u.id_user::text AS id_user, u.id_person::text AS id_person FROM auth."user" u
-            WHERE u.id_person IS NOT NULL AND u.id_user::text <> $1 ORDER BY u.id_user LIMIT 2`, [docenteHuila.rows[0].id_user]);
+             JOIN auth.personas pe ON pe.id_person = u.id_person AND pe.id_seccional IS NULL AND pe.id_sede IS NULL
+            WHERE u.id_user::text <> $1 AND COALESCE(u.is_active, true) ORDER BY u.id_user LIMIT 2`, [docenteHuila.rows[0].id_user]);
         const usuarios = { rows: [docenteHuila.rows[0], ...otros.rows] };
         const asig = await client.query(
           `SELECT a.id FROM academic_work_plan.asignatura a JOIN academic_work_plan.programa pr ON pr.id = a.id_programa
@@ -119,8 +117,6 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     await expect(svc.revisar(c.idConcertacion, 'academica', f.revisor, APROBADOR_POSGRADO, '123456')).rejects.toBeInstanceOf(ForbiddenException);
 
     expect((await svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR, '123456')).estado).toBe('REVISADA');
-    // Un aprobador con alcance filtrado o por persona no decide (fail-closed).
-    await expect(svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR_POR_PERSONA, '123456', null)).rejects.toBeInstanceOf(ForbiddenException);
 
     const final = await svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR, '123456', null);
     expect(final.estado).toBe('APROBADA');
@@ -136,24 +132,54 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     expect(entregas[0].asignaturas[0]).toMatchObject({ fechaInicio: '2049-02-03', fechaFin: '2049-05-30', horas: 96 });
     expect(entregas[0].asignaturas[0].asignaturaId).toMatch(/^\d+$/);
     expect(entregas[0].asignaturas[0].programaId).toMatch(/^\d+$/);
+    // Sin ubicación del grupo: sin territorial (en el PTA, territorial_id vacío).
+    expect(entregas[0].asignaturas[0].territorialId).toBeNull();
     expect(final.aplicacionPta).toBe('aplicada');
     expect(entregas[0].firmas.map((x: any) => x.rol)).toEqual(['docente', 'revisor', 'aprobador']);
     expect(final.notificadaPtaEn).not.toBeNull();
   });
 
-  caso('alcance por persona: decide la seccional del docente (Huila), no otra (Tolima)', async (f) => {
+  /** Cuenta real (solo lectura) cuya persona tiene esa seccional de auth. */
+  const cuentaDeSeccional = async (idSeccional: number, excepto: string[]) => (await client!.query(
+    `SELECT u.id_user::text AS id FROM auth."user" u JOIN auth.personas p ON p.id_person = u.id_person
+      WHERE p.id_seccional = $1 AND COALESCE(u.is_active, true) AND u.id_user::text <> ALL($2::text[])
+      ORDER BY u.id_user LIMIT 1`, [idSeccional, excepto])).rows[0]?.id as string;
+  /** Ubica el grupo de la concertación (franja.sede_codigo, esquema propio). */
+  const ubicar = (franjas: string[], codigo: string | null) => client!.query(
+    `UPDATE "${S}".franja_horaria SET sede_codigo = $2 WHERE id_franja = ANY($1::uuid[])`, [franjas, codigo]);
+
+  caso('alcance como el PTA: la seccional del aprobador contra la territorial del grupo (Huila sí, Tolima no)', async (f) => {
+    const svc = servicio();
+    await ubicar(f.franjas, 'HUI'); // código de auth.seccionales 10 (Seccional Huila)
+    const [c] = await svc.enviar(f.docente, f.periodo, '123456', null);
+    const tolima = await cuentaDeSeccional(16, [f.docente.idUser]);
+    const huila = await cuentaDeSeccional(10, [f.docente.idUser]);
+    const huila2 = await cuentaDeSeccional(10, [f.docente.idUser, huila]);
+    await expect(svc.revisar(c.idConcertacion, 'academica', tolima, REVISOR, '123456')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(await svc.bandeja(REVISOR, tolima, f.periodo)).toEqual([]);
+    expect((await svc.bandeja(REVISOR, huila, f.periodo)).map((x: any) => x.idConcertacion)).toEqual([c.idConcertacion]);
+    expect((await svc.revisar(c.idConcertacion, 'academica', huila, REVISOR, '123456')).estado).toBe('REVISADA');
+    expect((await svc.aprobar(c.idConcertacion, huila2, APROBADOR, '123456', null)).estado).toBe('APROBADA');
+    // La territorial viaja al PTA como asignaturas[].territorial_id.
+    expect(entregas[0].asignaturas[0].territorialId).toBe('10');
+  });
+
+  caso('alcance como el PTA: un aprobador CON seccional no decide un grupo sin territorial (no se puede verificar)', async (f) => {
     const svc = servicio();
     const [c] = await svc.enviar(f.docente, f.periodo, '123456', null);
-    const seccional = (u: string, id: number) => client!.query(
-      `UPDATE auth.personas SET id_seccional = $2 WHERE id_person = (SELECT id_person FROM auth."user" WHERE id_user::text = $1)`, [u, id]);
-    await seccional(f.revisor, 16); // Tolima
-    await expect(svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR_POR_PERSONA, '123456')).rejects.toBeInstanceOf(ForbiddenException);
-    expect(await svc.bandeja(REVISOR_POR_PERSONA, f.revisor, f.periodo)).toEqual([]);
-    await seccional(f.revisor, 10); // Huila
-    expect((await svc.bandeja(REVISOR_POR_PERSONA, f.revisor, f.periodo)).map((x: any) => x.idConcertacion)).toEqual([c.idConcertacion]);
-    expect((await svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR_POR_PERSONA, '123456')).estado).toBe('REVISADA');
-    await seccional(f.aprobador, 10);
-    expect((await svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR_POR_PERSONA, '123456', null)).estado).toBe('APROBADA');
+    const huila = await cuentaDeSeccional(10, [f.docente.idUser]);
+    await expect(svc.revisar(c.idConcertacion, 'academica', huila, REVISOR, '123456')).rejects.toBeInstanceOf(ForbiddenException);
+    // Sin seccional en Personas no hay restricción geográfica (así lo hace hoy el PTA).
+    expect((await svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR, '123456')).estado).toBe('REVISADA');
+  });
+
+  caso('hueco reportado: el código del RUND (DT-009, catálogo de la carga masiva) no cruza con la seccional heredada (Huila)', async (f) => {
+    const svc = servicio();
+    await ubicar(f.franjas, 'DT-009'); // auth.seccionales 900022 "HUILA"
+    const [c] = await svc.enviar(f.docente, f.periodo, '123456', null);
+    const huila = await cuentaDeSeccional(10, [f.docente.idUser]); // "Seccional Huila"
+    // Igual que en el PTA: ni el id ni el nombre normalizado coinciden → no decide.
+    await expect(svc.revisar(c.idConcertacion, 'academica', huila, REVISOR, '123456')).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   caso('devolver exige comentario, regresa las franjas al docente y bloquea reenviar hasta resolverlas', async (f) => {
