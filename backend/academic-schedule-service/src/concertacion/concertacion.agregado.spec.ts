@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException } from '@nes
 import { Client } from 'pg';
 
 import { DocenciaService } from '../docencia/docencia.service.js';
+import { TerritorialService } from '../acceso/territorial.service.js';
 import { ConcertacionService } from './concertacion.service.js';
 import type { PermisoPta } from './permisos-pta.service.js';
 
@@ -22,7 +23,9 @@ const conexion = {
 const S = 'academic-schedule';
 const REVISOR: PermisoPta[] = [{ codigo: 'pta.review.academica.pregrado', alcance: 'global' }];
 const APROBADOR: PermisoPta[] = [{ codigo: 'pta.approve.academica.pregrado', alcance: 'global' }];
-const APROBADOR_LIMITADO: PermisoPta[] = [{ codigo: 'pta.approve.academica.pregrado', alcance: 'limitado' }];
+// Sin alcance en el rol = por persona: decide sobre docentes de SU seccional (migración 038).
+const APROBADOR_POR_PERSONA: PermisoPta[] = [{ codigo: 'pta.approve.academica.pregrado', alcance: 'persona' }];
+const REVISOR_POR_PERSONA: PermisoPta[] = [{ codigo: 'pta.review.academica.pregrado', alcance: 'persona' }];
 const APROBADOR_POSGRADO: PermisoPta[] = [{ codigo: 'pta.approve.academica.posgrado', alcance: 'global' }];
 
 describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccion)', () => {
@@ -43,7 +46,7 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     const ds: any = { query: (sql: string, p?: any[]) => client!.query(sql, p).then((r) => r.rows) };
     ds.transaction = (cb: (m: any) => Promise<any>) => cb(ds); // ya estamos dentro de BEGIN
     const docencia = new DocenciaService(ds, { calcularImpacto: async () => ({ horasImpacto: 96 }) } as any);
-    return new ConcertacionService(ds, docencia, { registrarDecision: async (d: any) => { entregas.push(d); } } as any);
+    return new ConcertacionService(ds, docencia, { registrarDecision: async (d: any) => { entregas.push(d); } } as any, new TerritorialService(ds));
   };
 
   interface Fixture { docente: { idPerson: string; idUser: string; vinculacion: null }; periodo: string; franjas: string[]; revisor: string; aprobador: string }
@@ -55,9 +58,14 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
       entregas.length = 0;
       await client.query('BEGIN');
       try {
-        const usuarios = await client.query(
+        const docenteHuila = await client.query(
           `SELECT u.id_user::text AS id_user, u.id_person::text AS id_person FROM auth."user" u
-            WHERE u.id_person IS NOT NULL ORDER BY u.id_user LIMIT 3`);
+             JOIN academic_work_plan."Docente" d ON d."personaId" = u.id_person AND d."territorialId" = 'DT-009'
+            ORDER BY u.id_user LIMIT 1`);
+        const otros = await client.query(
+          `SELECT u.id_user::text AS id_user, u.id_person::text AS id_person FROM auth."user" u
+            WHERE u.id_person IS NOT NULL AND u.id_user::text <> $1 ORDER BY u.id_user LIMIT 2`, [docenteHuila.rows[0].id_user]);
+        const usuarios = { rows: [docenteHuila.rows[0], ...otros.rows] };
         const asig = await client.query(
           `SELECT a.id FROM academic_work_plan.asignatura a JOIN academic_work_plan.programa pr ON pr.id = a.id_programa
             WHERE pr.tipo = 'pregrado' ORDER BY a.id LIMIT 1`);
@@ -101,7 +109,7 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
 
     expect((await svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR, '123456')).estado).toBe('REVISADA');
     // Un aprobador con alcance filtrado o por persona no decide (fail-closed).
-    await expect(svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR_LIMITADO, '123456', null)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR_POR_PERSONA, '123456', null)).rejects.toBeInstanceOf(ForbiddenException);
 
     const final = await svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR, '123456', null);
     expect(final.estado).toBe('APROBADA');
@@ -114,6 +122,21 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     expect(entregas[0]).toMatchObject({ idConcertacion: c.idConcertacion, nivel: 'pregrado', horas: 96, huella: final.huella });
     expect(entregas[0].firmas.map((x: any) => x.rol)).toEqual(['docente', 'revisor', 'aprobador']);
     expect(final.notificadaPtaEn).not.toBeNull();
+  });
+
+  caso('alcance por persona: decide la seccional del docente (Huila), no otra (Tolima)', async (f) => {
+    const svc = servicio();
+    const [c] = await svc.enviar(f.docente, f.periodo, '123456', null);
+    const seccional = (u: string, id: number) => client!.query(
+      `UPDATE auth.personas SET id_seccional = $2 WHERE id_person = (SELECT id_person FROM auth."user" WHERE id_user::text = $1)`, [u, id]);
+    await seccional(f.revisor, 16); // Tolima
+    await expect(svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR_POR_PERSONA, '123456')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(await svc.bandeja(REVISOR_POR_PERSONA, f.revisor, f.periodo)).toEqual([]);
+    await seccional(f.revisor, 10); // Huila
+    expect((await svc.bandeja(REVISOR_POR_PERSONA, f.revisor, f.periodo)).map((x: any) => x.idConcertacion)).toEqual([c.idConcertacion]);
+    expect((await svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR_POR_PERSONA, '123456')).estado).toBe('REVISADA');
+    await seccional(f.aprobador, 10);
+    expect((await svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR_POR_PERSONA, '123456', null)).estado).toBe('APROBADA');
   });
 
   caso('devolver exige comentario, regresa las franjas al docente y bloquea reenviar hasta resolverlas', async (f) => {

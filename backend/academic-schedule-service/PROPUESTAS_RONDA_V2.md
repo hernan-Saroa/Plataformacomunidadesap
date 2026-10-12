@@ -59,23 +59,17 @@ Para decisión de Tomás y Nicolás. Nada de esto está construido: son los paso
 
 ---
 
-## 3. El interperiodo
+## 3. El interperiodo — DECIDIDO
 
-**Hoy.**
-- El interperiodo (2026-INT, del 16 de junio al 14 de julio) quedó **fuera de la migración**, con destino NULL en la tabla de equivalencias.
-- Sigue operando en el modelo legado y aparece en el grupo "Periodos anteriores al modelo único".
+**Decisión de Javier:** el interperiodo es un **semestre aparte**. No va ligado al primero ni al segundo.
 
-**Opciones para el negocio:**
+**Qué queda así:**
+- 2026-INT sigue **fuera de la migración**, con destino NULL en `equivalencia_periodo`. Opera en el modelo legado y aparece en "Periodos anteriores al modelo único".
+- No se asigna a 2026-1 ni a 2026-2.
 
-| Opción | Cómo queda | Implica |
-|---|---|---|
-| A. Pertenece al semestre que termina (2026-1) | Grupos con `tipo_oferta = 'interperiodo'` en 2026-1, cada uno con su propio ciclo de fechas | Las horas cuentan para el tope de 2026-1. Se activa con una fila en `equivalencia_periodo` |
-| B. Pertenece al semestre que empieza (2026-2) | Igual, en 2026-2 | Las horas cuentan para el tope de 2026-2 |
-| C. Es un periodo propio | No cabe en el modelo único: el periodo de plataforma es año-semestre | Habría que ampliar `periodo_academico` (dueño: el PTA) con un "semestre intermedio" |
-
-**Recomendación: A o B**, según a qué tope de horas deba cargarse. El modelo ya lo soporta: la oferta es un atributo del grupo, y el grupo tiene su propio ciclo de fechas. Pasarlo es una fila en `equivalencia_periodo` y correr `reapuntar_grupos_por_equivalencia()`.
-
----
+**Lo que falta para modelarlo como periodo propio** (pendiente, sin construir):
+- `periodo_academico` (dueño: el PTA) solo admite `semestre` 1 o 2 y un código año-semestre. Un interperiodo propio necesita ampliar ese modelo, por ejemplo con un tipo de periodo o un código `2026-INT`.
+- Ese cambio es del PTA y de Programas Académicos (Julián Rojas). Cuando exista, entra con una fila en `equivalencia_periodo` y `reapuntar_grupos_por_equivalencia()`, sin otro cambio en Programación Académica.
 
 ## 4. Bloqueantes para encender la concertación
 

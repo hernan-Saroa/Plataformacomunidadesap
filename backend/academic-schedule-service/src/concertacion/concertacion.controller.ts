@@ -67,7 +67,7 @@ export class ConcertacionController {
   @Get('bandeja')
   async bandeja(@Req() req: Request, @Query('periodo') periodo?: string) {
     const permisos = await this.permisosPta.resolver(rolesDe(req));
-    return { success: true, data: await this.concertacion.bandeja(permisos, periodo || undefined) };
+    return { success: true, data: await this.concertacion.bandeja(permisos, idUserDe(req), periodo || undefined) };
   }
 
   /** GET /concertacion/:id — detalle con firmas y revisiones. */

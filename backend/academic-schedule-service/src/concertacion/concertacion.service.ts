@@ -20,7 +20,8 @@ import {
 } from './configuracion.js';
 import { ContratoPtaClient } from './contrato-pta.client.js';
 import { contextoFirma, huellaDe, verificarCodigo, type RolFirma } from './firma.js';
-import { tieneGlobal, type PermisoPta } from './permisos-pta.service.js';
+import { decide, type ContextoTerritorial, type PermisoPta } from './permisos-pta.service.js';
+import { TerritorialService } from '../acceso/territorial.service.js';
 
 export type EstadoConcertacion = 'ENVIADA' | 'REVISADA' | 'APROBADA' | 'DEVUELTA';
 
@@ -59,6 +60,7 @@ export class ConcertacionService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly docencia: DocenciaService,
     private readonly contratoPta: ContratoPtaClient,
+    private readonly territorial: TerritorialService,
   ) {}
 
   configuracion() {
@@ -197,18 +199,27 @@ export class ConcertacionService {
 
   // ── Revisores y aprobadores (roles del PTA) ────────────────────────────────
 
-  private puede(permisos: readonly PermisoPta[], nivel: NivelAcademico) {
+  /**
+   * Qué puede hacer el usuario con la docencia de un nivel, según sus permisos
+   * del PTA y la territorial del docente (equivalencia explícita, migración 038).
+   * Territorial no mapeada: solo decide un alcance global.
+   */
+  private puede(permisos: readonly PermisoPta[], nivel: NivelAcademico, ctx: ContextoTerritorial) {
     const revisar = REVISIONES_REQUERIDAS
-      .filter((r) => tieneGlobal(permisos, [r.permiso[nivel], PTA_REVIEW_ALL]))
+      .filter((r) => decide(permisos, [r.permiso[nivel], PTA_REVIEW_ALL], ctx))
       .map((r) => r.tipo);
-    const aprobar = tieneGlobal(permisos, [PERMISO_APROBAR[nivel], PTA_APPROVE_ALL]);
+    const aprobar = decide(permisos, [PERMISO_APROBAR[nivel], PTA_APPROVE_ALL], ctx);
     return { revisar, aprobar, devolver: revisar.length > 0 || aprobar };
   }
 
+  private async contexto(idDocente: string, seccionalesUsuario: readonly string[]): Promise<ContextoTerritorial> {
+    return { seccionalDocente: await this.territorial.seccionalDeDocente(idDocente), seccionalesUsuario };
+  }
+
   /** Bandeja: concertaciones por decidir en los niveles donde el usuario decide. */
-  async bandeja(permisos: readonly PermisoPta[], periodoRef?: string) {
+  async bandeja(permisos: readonly PermisoPta[], idUser: string, periodoRef?: string) {
     const filas = await this.dataSource.query(
-      `SELECT c.id_concertacion AS "idConcertacion", c.periodo_ref AS "idPeriodo", c.nivel, c.estado,
+      `SELECT c.id_concertacion AS "idConcertacion", c.id_docente::text AS "idDocente", c.periodo_ref AS "idPeriodo", c.nivel, c.estado,
               c.horas::float AS horas, jsonb_array_length(c.franjas) AS "numFranjas", c.franjas,
               p.nom_largo AS docente, p.num_identificacion AS documento, c.updated_at AS "actualizadaEn",
               (SELECT COALESCE(array_agg(r.tipo), '{}') FROM "academic-schedule".concertacion_revision r
@@ -219,9 +230,14 @@ export class ConcertacionService {
           AND ($1::text IS NULL OR c.periodo_ref = $1)
         ORDER BY c.updated_at`,
       [periodoRef ?? null]);
-    return filas
-      .map((f: any) => ({ ...f, puede: this.puede(permisos, f.nivel) }))
-      .filter((f: any) => f.puede.devolver);
+    const seccionales = await this.territorial.seccionalesDeUsuario(idUser);
+    const visibles: any[] = [];
+    for (const f of filas) {
+      const { idDocente, ...resto } = f;
+      const puede = this.puede(permisos, f.nivel, await this.contexto(idDocente, seccionales));
+      if (puede.devolver) visibles.push({ ...resto, puede });
+    }
+    return visibles;
   }
 
   private async cargar(m: EntityManager, id: string): Promise<FilaConcertacion> {
@@ -237,7 +253,8 @@ export class ConcertacionService {
     await this.dataSource.transaction(async (m) => {
       const c = await this.cargar(m, id);
       if (c.estado !== 'ENVIADA') throw new ConflictException(`No se puede revisar: la concertación está ${c.estado}.`);
-      if (!this.puede(permisos, c.nivel).revisar.includes(tipo as any)) {
+      const ctx = await this.contexto(c.id_docente, await this.territorial.seccionalesDeUsuario(idUser));
+      if (!this.puede(permisos, c.nivel, ctx).revisar.includes(tipo as any)) {
         throw new ForbiddenException(`No tiene permiso para la revisión ${tipo} de ${c.nivel}.`);
       }
       const hecha = await m.query(
@@ -264,7 +281,8 @@ export class ConcertacionService {
     await this.dataSource.transaction(async (m) => {
       const c = await this.cargar(m, id);
       if (!['ENVIADA', 'REVISADA'].includes(c.estado)) throw new ConflictException(`No se puede devolver: la concertación está ${c.estado}.`);
-      if (!this.puede(permisos, c.nivel).devolver) throw new ForbiddenException(`No tiene permiso para decidir la docencia de ${c.nivel}.`);
+      const ctx = await this.contexto(c.id_docente, await this.territorial.seccionalesDeUsuario(idUser));
+      if (!this.puede(permisos, c.nivel, ctx).devolver) throw new ForbiddenException(`No tiene permiso para decidir la docencia de ${c.nivel}.`);
       await m.query(
         `UPDATE "academic-schedule".concertacion_docencia SET estado = 'DEVUELTA', comentario = $2, updated_at = NOW()
           WHERE id_concertacion = $1`, [id, texto]);
@@ -286,7 +304,8 @@ export class ConcertacionService {
     await this.dataSource.transaction(async (m) => {
       const c = await this.cargar(m, id);
       if (c.estado !== 'REVISADA') throw new ConflictException(`No se puede aprobar: la concertación está ${c.estado} (requiere las revisiones).`);
-      if (!this.puede(permisos, c.nivel).aprobar) throw new ForbiddenException(`No tiene permiso para aprobar la docencia de ${c.nivel}.`);
+      const ctx = await this.contexto(c.id_docente, await this.territorial.seccionalesDeUsuario(idUser));
+      if (!this.puede(permisos, c.nivel, ctx).aprobar) throw new ForbiddenException(`No tiene permiso para aprobar la docencia de ${c.nivel}.`);
 
       // Lo que se aprueba es lo que firmó el docente: si las franjas cambiaron, no.
       const ids = c.franjas.map((f) => f.idFranja);
