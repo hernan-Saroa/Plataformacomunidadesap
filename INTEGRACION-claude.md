@@ -142,3 +142,60 @@ Con eso la afirmación `'Alertas de Cruce' = '0'` vuelve a pasar, y sale del ser
 | Importador | existe, sin cambios |
 
 Te aviso en este archivo cuando cada pieza esté en `feature/pa/ronda-pruebas`.
+
+## 8. Docencia que viene de Programación Académica, en la API del PTA (EFDS-2315)
+
+Esto es lo que necesitas para la vista. Lo verifiqué con el servidor real el 12 de octubre: la concertación se aprobó, el docente creó su PTA y la Docencia llegó aprobada. Todo depende del interruptor `PROG_CONCERTACION_HABILITADA`, encendido en los dos servicios, y del corte `PROG_CONCERTACION_DESDE_PERIODO`. Con el interruptor apagado nada de esto aparece y el PTA funciona como hoy.
+
+### 8.1 Las asignaturas — `GET /pta/api/v1/id/:id` → `data.asignaturas[]`
+
+Cada asignatura concertada trae, además de los campos de siempre:
+
+| Campo | Valor | Para qué sirve |
+|---|---|---|
+| `origen` | `"programacion"` | Indica que la asignatura viene de la concertación. Una asignatura cargada a mano no trae este campo |
+| `editable` | `false` | Muéstrala en solo lectura. El servidor ya la protege: si llegan horas cambiadas, las ignora; si se agrega una asignatura a mano, responde **409** |
+| `total_horas` y `horas_base` | número | Horas del cálculo único del contrato: `horas_clase × factor de vinculación`, con el reparto por días cuando dos docentes comparten un grupo. Ejemplo verificado: ASIG-00001 da 64 en pregrado y ASIG-00267 da 108 en posgrado (factor 3). El PTA no las recalcula |
+| `nivel_concertacion` | `"pregrado"` o `"posgrado"` | Nivel de la concertación que la aprobó |
+| `id_concertacion` | UUID | Concertación de origen. Sirve para enlazarla con `GET /programacion-academica/api/v1/concertacion/:id` |
+| `componente_docencia` | `"academica_pregrado"` o `"academica_posgrado"` | Componente del PTA donde queda. Lo calcula el PTA, igual que para cualquier otra asignatura |
+| `territorial_id` | `""` o el id de `auth.seccionales` | Lugar donde se dicta el grupo. Hoy siempre llega vacío, porque Programación Académica no captura esa ubicación |
+| `fecha_inicio` y `fecha_fin` | `YYYY-MM-DD` | Ciclo del grupo |
+| `observaciones` | `"Concertada en Programación Académica"` | |
+
+Ejemplo real, recortado:
+
+```json
+{ "origen": "programacion", "editable": false, "asignatura_codigo": "ASIG-00001",
+  "asignatura_nombre": "Constitución Del Territorio", "total_horas": 64, "horas_base": 64,
+  "nivel_concertacion": "pregrado", "componente_docencia": "academica_pregrado",
+  "id_concertacion": "1766061c-…", "territorial_id": "", "fecha_inicio": "2050-02-03", "fecha_fin": "2050-05-30" }
+```
+
+### 8.2 La aprobación — `GET /pta/api/v1/:ptaId/componentes-aprobacion`
+
+La Docencia concertada aparece en `academica_<nivel>` con estos valores (los nombres van en camelCase, tal como los devuelve la API):
+- `estado: "aprobado"`;
+- `scope: "programacion"`;
+- `scopeId`, que es el id de la concertación;
+- `aprobadorNombre: "Programación Académica"`;
+- `aprobadorRol: "concertacion"`;
+- `horas`.
+
+Con `scope === "programacion"` puedes mostrar "Aprobada en la concertación". En esos PTA no se ofrece aprobar ni revisar Docencia: el servidor responde **409**.
+
+### 8.3 Qué pasó con cada decisión — `GET /programacion-academica/api/v1/concertacion/:id` → `aplicacionPta`
+
+| Valor | Qué significa |
+|---|---|
+| `aplicada` | Ya está en el PTA |
+| `pendiente_sin_pta` | El docente aún no crea su PTA. Se precarga al crearlo |
+| `pendiente_pta_firmado` | El PTA está firmado o cerrado. No se modifica: queda pendiente y se reporta |
+| `pendiente_pta_flujo_anterior` | El PTA se envió antes del corte, así que sigue con el flujo de hoy |
+| `pendiente_pta_en_aprobacion` | Se aplica cuando el PTA vuelva al docente |
+| `pendiente_docencia_territorial` | La docencia incluye asignaturas de una Dirección Territorial. La concertación por nivel no aprueba `academica_territorial` |
+| `null`, con `errorNotificacion` | El PTA no respondió. Se puede reintentar |
+
+### 8.4 El interruptor
+
+`GET /programacion-academica/api/v1/concertacion/configuracion` es público y devuelve `{ habilitada, motivo, desdePeriodo, firmaSimulada, revisionesRequeridas }`. `habilitada` ya tiene en cuenta los dos servicios. Si un lado está apagado, `motivo` explica cuál.

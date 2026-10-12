@@ -152,7 +152,7 @@ describe('EFDS-2315 :: Docencia concertada en el PTA', () => {
       const update = q.llamadas.find((l) => l.sql.includes('"PlanTrabajoAcademico" SET'))!;
       const ds = JSON.parse(update.params[1]);
       expect(ds.asignaturas).toHaveLength(1); // la manual previa se quita
-      expect(ds.asignaturas[0]).toMatchObject({ origen: 'programacion', asignatura_id: '1', programa_id: '1', total_horas: 96, territorial_id: '' });
+      expect(ds.asignaturas[0]).toMatchObject({ origen: 'programacion', editable: false, asignatura_id: '1', programa_id: '1', total_horas: 96, territorial_id: '' });
       const aprobacion = q.llamadas.find((l) => l.sql.includes('INSERT INTO academic_work_plan."PtaComponentApproval"'))!;
       expect(aprobacion.params).toEqual(['p1', 'academica_pregrado', expect.any(String), 'programacion', 'c1']);
     });

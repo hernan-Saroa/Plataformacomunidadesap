@@ -152,6 +152,8 @@ function entradaPta(a: any, d: any, i: number) {
     fecha_inicio: a.fechaInicio,
     fecha_fin: a.fechaFin,
     origen: ORIGEN_PROGRAMACION,
+    // Explícito para la vista: el servidor ya la protege (protegerAsignaturas).
+    editable: false,
     id_concertacion: d.id_concertacion,
     nivel_concertacion: d.nivel,
   };
