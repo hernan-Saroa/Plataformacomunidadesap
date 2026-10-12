@@ -37,6 +37,17 @@ import {
 } from './auth/pta-permissions.constants';
 import { PtaNotificationsService } from './notifications/pta-notifications.service';
 import { obtenerNombreVisibleAsignatura } from './utils/asignatura-nombre.util';
+import {
+  DOCENCIA_KEYS,
+  SCOPE_PROGRAMACION,
+  aplicarPendientesAlCrear,
+  exigirDecisionDocenciaEnPta,
+  exigirDocenciaParaEnviar,
+  habilitadaLocal,
+  protegerAsignaturas,
+  regimenDocencia,
+  regimenDocenciaSeguro,
+} from './docencia-programacion';
 
 type SavePtaInput = Record<string, any>;
 type ComponentResponseMap = Record<string, string>;
@@ -4386,6 +4397,19 @@ export class PtaService {
     // No confiar en el total enviado por el navegador: puede venir de un
     // borrador abierto antes de una modificación de cupos. La oferta académica
     // es la fuente única y se vuelve a consultar antes de validar/persistir.
+    // EFDS-2315: en el régimen nuevo la docencia "de programación" no se edita ni
+    // se agregan asignaturas a mano. Apagado, no se consulta nada.
+    if (habilitadaLocal()) {
+      const previo = existingForDocenteEdit ?? (id ? await this.ptaRepo.findOne({ where: { id } }) : null);
+      const regimen = await regimenDocencia({
+        periodo, estado: previo?.estado ?? 'BORRADOR', datosEstructurados: previo?.datosEstructurados ?? null,
+      });
+      input = { ...input, asignaturas: protegerAsignaturas(regimen, previo?.datosEstructurados, input?.asignaturas) };
+      if (isPendingRoleApprovalState(estado)) {
+        await exigirDocenciaParaEnviar({ periodo, estado: previo?.estado ?? 'BORRADOR', datosEstructurados: input });
+      }
+    }
+
     if (Array.isArray(input?.asignaturas)) {
       const asignaturasConPensum = await this.syncAsignaturasPensum(input.asignaturas, false);
       input = {
@@ -4525,6 +4549,11 @@ export class PtaService {
       }
     } else {
       saved = await this.ptaRepo.save(this.ptaRepo.create({ ...patch, version: 1 }));
+    }
+
+    if (!estadoAnteriorSave && habilitadaLocal()) {
+      // EFDS-2315: un PTA nuevo del régimen nuevo recibe la docencia ya concertada.
+      await aplicarPendientesAlCrear(this.ptaRepo.manager, saved as any);
     }
 
     if (isPtaHabilitadoParaSeguimientoPorEstado(saved.estado)) {
@@ -5016,6 +5045,11 @@ export class PtaService {
       }
     }
 
+    if (isPendingRoleApprovalState(nuevoEstado) && habilitadaLocal()) {
+      // EFDS-2315: sin la docencia concertada no se envía un PTA del régimen nuevo.
+      await exigirDocenciaParaEnviar(existing);
+    }
+
     if (isPendingRoleApprovalState(nuevoEstado)) {
       await this.validatePtaBeforeApproval(
         existing, a === 'reenviar_corregido' ? solicitudEdicionParcial : null,
@@ -5389,6 +5423,15 @@ export class PtaService {
           );
         }
       }
+    } else if (habilitadaLocal()) {
+      // EFDS-2315: un reenvío no borra la Docencia aprobada en la concertación.
+      await this.ptaComponentApprovalRepo.createQueryBuilder().delete()
+        .where('pta_id = :ptaId AND componente IN (:...keys)', { ptaId, keys: componentKeys })
+        .andWhere('scope IS DISTINCT FROM :scope', { scope: SCOPE_PROGRAMACION })
+        .execute();
+      await this.ptaComponentReviewRepo.delete({ ptaId, componente: In(componentKeys) } as any);
+      await this.ptaTerritorialApprovalRepo.delete({ ptaId } as any);
+      await this.ptaTerritorialReviewRepo.delete({ ptaId } as any);
     } else {
       await this.ptaComponentApprovalRepo.delete({
         ptaId,
@@ -10108,6 +10151,11 @@ export class PtaService {
 
     const byComponent = new Map(componentList.map(item => [item.componente, item]));
     const toSave: PtaComponentApprovalEntity[] = [];
+    // EFDS-2315: en el régimen nuevo la Docencia sin horas NO se auto-aprueba:
+    // sería aprobarla sin concertación. Ante la duda (no responde PA), tampoco.
+    const docenciaDeProgramacion = habilitadaLocal() && ptaEntity
+      ? (await regimenDocenciaSeguro(ptaEntity)) === 'programacion'
+      : false;
 
     for (const c of todosComponentes) {
       const tieneContenido = horasPorComponente[c] > 0 || complementariasConContenido[c] === true;
@@ -10120,7 +10168,8 @@ export class PtaService {
       const requiereReaprobacionManual =
         existing?.scope === 'solicitud_edicion'
         && ['pendiente', 'devuelto'].includes(String(existing.estado || '').toLowerCase());
-      const autoAprobar = hayActividades && !tieneContenido && !requiereReaprobacionManual;
+      const autoAprobar = hayActividades && !tieneContenido && !requiereReaprobacionManual
+        && !(docenciaDeProgramacion && DOCENCIA_KEYS.has(c));
 
       if (!existing) {
         const item = this.ptaComponentApprovalRepo.create({
@@ -10307,6 +10356,10 @@ export class PtaService {
     const estado = coalesceString(body?.estado); // 'revisado' o 'devuelto'
     if (!componente || !estado) {
       throw new BadRequestException('Componente y estado son requeridos');
+    }
+    // EFDS-2315: la Docencia del régimen nuevo tampoco se revisa en el PTA.
+    if (habilitadaLocal() && DOCENCIA_KEYS.has(componente)) {
+      await exigirDecisionDocenciaEnPta(await this.ptaRepo.findOne({ where: { id: ptaId } }), componente);
     }
     if (!COMPONENT_APPROVAL_KEY_SET.has(componente)) {
       throw new BadRequestException(`Componente PTA no soportado: ${componente}`);
@@ -10567,6 +10620,11 @@ export class PtaService {
     }
     if (!COMPONENT_APPROVAL_KEY_SET.has(componente)) {
       throw new BadRequestException(`Componente PTA no soportado: ${componente}`);
+    }
+    // EFDS-2315: con la concertación encendida, la Docencia del periodo de corte
+    // se aprueba en Programación Académica; aquí no (ni aprobar ni devolver).
+    if (habilitadaLocal() && DOCENCIA_KEYS.has(componente)) {
+      await exigirDecisionDocenciaEnPta(await this.ptaRepo.findOne({ where: { id: ptaId } }), componente);
     }
     if (!['aprobado', 'devuelto'].includes(estado)) {
       throw new BadRequestException('El estado del componente debe ser "aprobado" o "devuelto".');
