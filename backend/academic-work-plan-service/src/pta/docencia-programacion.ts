@@ -170,8 +170,8 @@ export async function aplicarDecision(q: Queryable, idConcertacion: string): Pro
   const marcar = async (estado: string, detalle: string | null, idPta: string | null) => {
     await q.query(
       `UPDATE academic_work_plan.docencia_concertada
-          SET estado_aplicacion = $2, detalle_aplicacion = $3, id_pta = $4,
-              aplicada_en = CASE WHEN $2 = 'aplicada' THEN NOW() ELSE aplicada_en END, actualizada_en = NOW()
+          SET estado_aplicacion = $2::varchar, detalle_aplicacion = $3::text, id_pta = $4::text,
+              aplicada_en = CASE WHEN $2::varchar = 'aplicada' THEN NOW() ELSE aplicada_en END, actualizada_en = NOW()
         WHERE id_concertacion = $1`, [idConcertacion, estado, detalle, idPta]);
     return estado;
   };
@@ -214,7 +214,8 @@ export async function aplicarDecision(q: Queryable, idConcertacion: string): Pro
   await q.query(
     `INSERT INTO academic_work_plan."PtaComponentApproval"
        (pta_id, componente, estado, aprobador_nombre, aprobador_rol, comentarios, fecha_aprobacion, scope, scope_id)
-     VALUES ($1::uuid, $2, 'aprobado', 'Programación Académica', 'concertacion', $3, NOW(), $4, $5)
+     -- pta_id sin cast: es uuid (327, entidad) o text (340) según el ambiente.
+     VALUES ($1, $2, 'aprobado', 'Programación Académica', 'concertacion', $3, NOW(), $4, $5)
      ON CONFLICT (pta_id, componente) DO UPDATE SET
        estado = 'aprobado', aprobador_nombre = EXCLUDED.aprobador_nombre, aprobador_rol = EXCLUDED.aprobador_rol,
        comentarios = EXCLUDED.comentarios, fecha_aprobacion = NOW(), scope = EXCLUDED.scope,
