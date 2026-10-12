@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req, SetMetadata } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
@@ -6,6 +6,7 @@ import { DataSource } from 'typeorm';
 import { PERMISO_PORTAL_VER } from '../auth/programacion-permissions.js';
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
 import { EscrituraEn } from '../acceso/escritura.decorator.js';
+import { CLAVE_PUBLICA } from '../auth/jwt-auth.guard.js';
 import { idUserDe, rolesDe } from '../acceso/roles.js';
 import { tokenDe } from '../acceso/token.js';
 import { ConcertacionService } from './concertacion.service.js';
@@ -43,9 +44,12 @@ export class ConcertacionController {
   }
 
   /** GET /concertacion/configuracion — si está encendida, modo de firma y revisiones requeridas. */
+  // Pública: solo dice si está encendida y el corte. La consulta el PTA para el
+  // interruptor único (EFDS-2315), sin token de usuario.
+  @SetMetadata(CLAVE_PUBLICA, true)
   @Get('configuracion')
-  configuracion() {
-    return { success: true, data: this.concertacion.configuracion() };
+  async configuracion() {
+    return { success: true, data: await this.concertacion.configuracion() };
   }
 
   /** GET /concertacion/mia?periodo= — concertaciones del docente autenticado. */

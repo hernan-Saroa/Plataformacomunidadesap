@@ -33,12 +33,16 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
   let hayBase = false;
   const entregas: any[] = [];
   const envAntes = process.env.PROG_CONCERTACION_HABILITADA;
+  const desdeAntes = process.env.PROG_CONCERTACION_DESDE_PERIODO;
+  /** Interruptor del PTA simulado: true, false o 'caido'. */
+  let ptaEstado: boolean | 'caido' = true;
 
   beforeAll(async () => {
     try { client = new Client(conexion); await client.connect(); hayBase = true; } catch { hayBase = false; }
   });
   afterAll(async () => {
     process.env.PROG_CONCERTACION_HABILITADA = envAntes;
+    process.env.PROG_CONCERTACION_DESDE_PERIODO = desdeAntes;
     if (client) await client.end().catch(() => {});
   });
 
@@ -46,7 +50,10 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     const ds: any = { query: (sql: string, p?: any[]) => client!.query(sql, p).then((r) => r.rows) };
     ds.transaction = (cb: (m: any) => Promise<any>) => cb(ds); // ya estamos dentro de BEGIN
     const docencia = new DocenciaService(ds, { calcularImpacto: async () => ({ horasImpacto: 96 }) } as any);
-    return new ConcertacionService(ds, docencia, { registrarDecision: async (d: any) => { entregas.push(d); } } as any, new TerritorialService(ds));
+    return new ConcertacionService(ds, docencia, {
+      registrarDecision: async (d: any) => { entregas.push(d); return { estadoAplicacion: 'aplicada' }; },
+      ptaHabilitada: async () => { if (ptaEstado === 'caido') throw new Error('PTA sin respuesta'); return ptaEstado; },
+    } as any, new TerritorialService(ds));
   };
 
   interface Fixture { docente: { idPerson: string; idUser: string; vinculacion: null }; periodo: string; franjas: string[]; revisor: string; aprobador: string }
@@ -55,6 +62,8 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     it(nombre, async () => {
       if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
       process.env.PROG_CONCERTACION_HABILITADA = encendida ? 'true' : 'false';
+      process.env.PROG_CONCERTACION_DESDE_PERIODO = '2049-1';
+      ptaEstado = true;
       entregas.length = 0;
       await client.query('BEGIN');
       try {
@@ -69,11 +78,13 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
         const asig = await client.query(
           `SELECT a.id FROM academic_work_plan.asignatura a JOIN academic_work_plan.programa pr ON pr.id = a.id_programa
             WHERE pr.tipo = 'pregrado' ORDER BY a.id LIMIT 1`);
+        // Periodo de PLATAFORMA dentro del corte (2049-1 >= 2049-1), solo en esta transacción.
         const p = await client.query(
-          `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
-           VALUES ('QA-2315-TX','QA concertacion','periodo_regular','2032-02-01','2032-06-15','activo') RETURNING id_periodo::text`);
+          `INSERT INTO academic_work_plan.periodo_academico (codigo, anio, semestre, fecha_inicio, fecha_fin, estado)
+           VALUES ('2049-1', 2049, 1, '2049-02-01', '2049-06-15', 'planeacion') RETURNING id::text AS id_periodo`);
         const g = await client.query(
-          `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado) VALUES ($1,$2::uuid,981,'PROGRAMADO') RETURNING id_grupo`,
+          `INSERT INTO "${S}".grupo (id_asignatura,id_periodo_academico,tipo_oferta,numero_grupo,estado,fecha_inicio,fecha_fin)
+           VALUES ($1,$2::bigint,'periodo_regular',981,'PROGRAMADO','2049-02-03','2049-05-30') RETURNING id_grupo`,
           [asig.rows[0].id, p.rows[0].id_periodo]);
         const docente = usuarios.rows[0];
         const franjas: string[] = [];
@@ -120,6 +131,12 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
 
     expect(entregas).toHaveLength(1);
     expect(entregas[0]).toMatchObject({ idConcertacion: c.idConcertacion, nivel: 'pregrado', horas: 96, huella: final.huella });
+    // Una asignatura por grupo, con lo que el PTA exige al validar el envío.
+    expect(entregas[0].asignaturas).toHaveLength(1);
+    expect(entregas[0].asignaturas[0]).toMatchObject({ fechaInicio: '2049-02-03', fechaFin: '2049-05-30', horas: 96 });
+    expect(entregas[0].asignaturas[0].asignaturaId).toMatch(/^\d+$/);
+    expect(entregas[0].asignaturas[0].programaId).toMatch(/^\d+$/);
+    expect(final.aplicacionPta).toBe('aplicada');
     expect(entregas[0].firmas.map((x: any) => x.rol)).toEqual(['docente', 'revisor', 'aprobador']);
     expect(final.notificadaPtaEn).not.toBeNull();
   });
@@ -168,14 +185,36 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     await expect(svc.enviar(f.docente, f.periodo, '123456', null)).rejects.toThrow(/ya fue enviada/);
   });
 
+  caso('interruptor unico: con el PTA apagado o caido, aqui no se concierta', async (f) => {
+    const svc = servicio();
+    ptaEstado = false;
+    expect((await svc.configuracion())).toMatchObject({ habilitada: false });
+    await expect(svc.enviar(f.docente, f.periodo, '123456', null)).rejects.toThrow(/apagada/);
+    ptaEstado = 'caido';
+    (svc as any).ptaCache = null;
+    await expect(svc.enviar(f.docente, f.periodo, '123456', null)).rejects.toThrow(/No se pudo verificar/);
+  });
+
+  caso('corte por periodo: un periodo anterior al corte no se concierta (lo aprueba el PTA)', async (f) => {
+    process.env.PROG_CONCERTACION_DESDE_PERIODO = '2049-2';
+    await expect(servicio().enviar(f.docente, f.periodo, '123456', null)).rejects.toThrow(/aplica desde el periodo 2049-2/);
+  });
+
+  caso('sin el ciclo del grupo no se envia: el PTA exige las fechas', async (f) => {
+    await client!.query(
+      `UPDATE "${S}".grupo SET fecha_inicio = NULL, fecha_fin = NULL
+        WHERE id_grupo = (SELECT id_grupo FROM "${S}".franja_horaria WHERE id_franja = $1)`, [f.franjas[0]]);
+    await expect(servicio().enviar(f.docente, f.periodo, '123456', null)).rejects.toThrow(/ciclo/);
+  });
+
   caso('apagada por configuracion: toda escritura se rechaza', async (f) => {
     const svc = servicio();
-    expect(svc.configuracion().habilitada).toBe(false);
+    expect((await svc.configuracion()).habilitada).toBe(false);
     await expect(svc.enviar(f.docente, f.periodo, '123456', null)).rejects.toThrow(/apagada/);
   }, false);
 
-  it('apagada por defecto: sin la variable, no esta habilitada', () => {
+  it('apagada por defecto: sin la variable, no esta habilitada', async () => {
     delete process.env.PROG_CONCERTACION_HABILITADA;
-    expect(servicio().configuracion().habilitada).toBe(false);
+    expect((await servicio().configuracion()).habilitada).toBe(false);
   });
 });
