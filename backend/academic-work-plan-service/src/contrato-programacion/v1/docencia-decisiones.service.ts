@@ -57,7 +57,7 @@ export class DocenciaDecisionesService {
     if (!ctx.approvesAll && !ctx.permissions.has(PERMISO_APROBAR[d.nivel])) {
       throw new ForbiddenException(`Registrar la docencia concertada de ${d.nivel} requiere poder aprobarla en el PTA.`);
     }
-    await this.dataSource.query(
+    const guardar = (q: { query(sql: string, p?: any[]): Promise<any> }) => q.query(
       `INSERT INTO academic_work_plan.docencia_concertada
          (id_concertacion, documento_docente, periodo, nivel, horas, huella, asignaturas, firmas, registrada_por)
        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9)
@@ -71,8 +71,16 @@ export class DocenciaDecisionesService {
     // EFDS-2315: con la concertación encendida, la decisión se APLICA al PTA del
     // docente (Docencia aprobada y cargada como de programación). Un PTA firmado
     // no se toca: queda pendiente y se reporta. Apagada: solo se registra.
-    if (!habilitadaLocal()) return { registrada: true, aplicada: false, estadoAplicacion: null };
-    const estadoAplicacion = await this.dataSource.transaction((m) => aplicarDecision(m, d.idConcertacion));
+    if (!habilitadaLocal()) {
+      await guardar(this.dataSource);
+      return { registrada: true, aplicada: false, estadoAplicacion: null };
+    }
+    // Registrar y aplicar en UNA transacción: si aplicar falla, no queda una
+    // decisión registrada a medias; Programación Académica reintenta (idempotente).
+    const estadoAplicacion = await this.dataSource.transaction(async (m) => {
+      await guardar(m);
+      return aplicarDecision(m, d.idConcertacion);
+    });
     return { registrada: true, aplicada: estadoAplicacion === 'aplicada', estadoAplicacion };
   }
 
