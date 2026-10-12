@@ -320,3 +320,9 @@ index b34ce6139..c317fa74b 100644
            </div>
 
 ```
+
+## Continuación — reactivación de un periodo cerrado (11 de octubre de 2026)
+
+- En Programación Académica, la opción Activar se ofrece también para un periodo de plataforma cerrado, solo con `permisos.activar`. Reutiliza `GET /pta/api/v1/periodos-academicos/:id/impacto-activacion`, la confirmación existente y el `PATCH` del PTA. Las pruebas simuladas verifican que cancelar no hace `PATCH` y que sin permiso el botón desaparece. No se activó ningún periodo real.
+- Diferencia de contrato para Claude: al reactivar un periodo cerrado anterior al periodo actualmente activo, `efectoDeActivar` en el PTA pone el activo posterior en `planeacion`, no en `cerrado`. La confirmación muestra ese efecto real y nombra expresamente el periodo activo. Si negocio requiere cerrarlo, hace falta un cambio del PTA antes de prometerlo en pantalla. Codex no modificó backend ni shell en esta continuación.
+- Corrección del registro anterior: el commit `b32a36206` sí modificó el archivo compartido `apps/mfe-programacion-academica/src/components/ProgramacionAcademicaModule.tsx` para pasar el callback de navegación, y `apps/shell/src/components/esap/BackofficeApp.tsx` más `apps/shell/src/remotes.d.ts` para verificar acceso a Programas Académicos y cambiar de módulo. Esos archivos afectaban a la integración; debieron quedar descritos aquí antes de su commit. Claude ya los integró. En adelante, los cambios propuestos al shell o a archivos compartidos se dejarán en este documento sin commitearlos desde esta rama.
