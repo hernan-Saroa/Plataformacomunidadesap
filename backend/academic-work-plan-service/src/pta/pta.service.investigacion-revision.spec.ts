@@ -41,7 +41,7 @@ describe('Investigación: revisión persistida antes de la aprobación', () => {
     service.splitHorasDocenciaPorNivel = jest.fn().mockResolvedValue({ pregrado: 480, posgrado: 0, territorial: 0 });
     service.clasificarComplementarias = jest.fn().mockResolvedValue({
       complementarias: [], complementarias_pregrado: [], complementarias_posgrado: [],
-      complementarias_territorial: [], complementarias_gestion_profesoral: [],
+      complementarias_decanatura: [], complementarias_territorial: [], complementarias_gestion_profesoral: [],
     });
     service.resolveTerritorialIdsNoCentrales = jest.fn().mockResolvedValue(new Set());
     service.getCatalogoActividadesComplementarias = jest.fn().mockResolvedValue([]);

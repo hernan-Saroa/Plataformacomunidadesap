@@ -23,6 +23,7 @@ export type PTAComponentKey =
   | 'complementarias'
   | 'complementarias_pregrado'
   | 'complementarias_posgrado'
+  | 'complementarias_decanatura'
   | 'complementarias_territorial'
   | 'complementarias_gestion_profesoral'
   | 'investigacion'
@@ -53,6 +54,7 @@ export const PTA_COMPONENT_KEYS: PTAComponentKey[] = [
   'complementarias',
   'complementarias_pregrado',
   'complementarias_posgrado',
+  'complementarias_decanatura',
   'complementarias_territorial',
   'complementarias_gestion_profesoral',
   'investigacion',
@@ -63,15 +65,15 @@ export const PTA_COMPONENT_KEYS: PTAComponentKey[] = [
 ];
 
 /**
- * Los tres componentes en los que se enruta Complementarias, según el `nivel_programa`
- * configurado por TIPO de actividad (no por instancia, ver clasificarComplementarias en
- * pta.service.ts). 'complementarias' es el catch-all "sin programa asociado" — es el
- * mismo componente/permiso que existía antes del split, sin cambios ni deprecación.
+ * Etapas de Complementarias: Programa opcional y responsable final.
+ * 'complementarias' conserva el permiso general para actividades históricas
+ * que ya no se encuentran en el catálogo.
  */
 export const COMPLEMENTARIAS_COMPONENT_KEYS: PTAComponentKey[] = [
   'complementarias',
   'complementarias_pregrado',
   'complementarias_posgrado',
+  'complementarias_decanatura',
   'complementarias_territorial',
   'complementarias_gestion_profesoral',
 ];
@@ -80,17 +82,12 @@ export const COMPLEMENTARIAS_COMPONENT_KEYS: PTAComponentKey[] = [
  * EFDS-1353 — Tipo de aprobación de una actividad complementaria, configurable
  * por actividad en Configuración PTA (campo `tipo_aprobacion`):
  *
- *   'gestion_profesoral' (default): flujo único, NO se ramifica por territorial.
- *   'decanatura':                   usa Complementarias Territorial con permisos
- *                                   por nivel y una decisión para todo el componente,
- *                                   sin restricción geográfica del responsable.
- *
- * Una actividad marcada como Decanatura y con territorial registrada va a
- * `complementarias_territorial` aunque tenga
- * nivel_programa pregrado/posgrado. El nivel determina el permiso requerido;
- * la territorial de la actividad no limita quién puede decidir.
+ * Cada responsable (Gestión Profesoral, Decanatura o Territorial) tiene sus
+ * permisos propios. Si existe nivel_programa, Pregrado/Posgrado es una etapa
+ * adicional cuya aprobación precede a la del responsable. Ninguna de estas
+ * etapas restringe la geografía; esa regla pertenece únicamente a Docencia.
  */
-export type PTATipoAprobacionComplementaria = 'gestion_profesoral' | 'decanatura';
+export type PTATipoAprobacionComplementaria = 'gestion_profesoral' | 'decanatura' | 'territorial';
 
 /** Componentes con permisos por nivel; solo Docencia se decide por territorial. */
 export const TERRITORIAL_COMPONENT_KEYS: PTAComponentKey[] = [
@@ -137,8 +134,8 @@ export const TERRITORIAL_NIVEL_REVIEW_PERMISSION: Record<PTANivelDocencia, strin
 };
 
 /**
- * EFDS-1353 — mismo esquema por nivel que Docencia territorial, pero para
- * Complementarias de tipo Decanatura (migración 400).
+ * Compatibilidad con los permisos por nivel de Complementarias Territorial
+ * introducidos en la migración 400; no implican alcance geográfico.
  */
 export const COMPLEMENTARIAS_TERRITORIAL_NIVEL_APPROVE_PERMISSION: Record<PTANivelDocencia, string> = {
   pregrado: 'pta.approve.complementarias.territorial.pregrado',
@@ -180,8 +177,8 @@ export const COMPONENT_PERMISSION: Record<PTAComponentKey, string> = {
   // permiso nuevo a quien ya tenía el de Docencia, así nadie pierde acceso.
   complementarias_pregrado: 'pta.approve.complementarias.pregrado',
   complementarias_posgrado: 'pta.approve.complementarias.posgrado',
-  // Igual que academica_territorial, la autorización real se resuelve por nivel
-  // vía TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT; este código es informativo.
+  complementarias_decanatura: 'pta.approve.complementarias.decanatura',
+  // Responsable Territorial; también admite los permisos históricos por nivel.
   complementarias_territorial: 'pta.approve.complementarias.territorial',
   complementarias_gestion_profesoral: 'pta.approve.complementarias.gestion_profesoral',
   investigacion: 'pta.approve.investigacion',
@@ -201,6 +198,7 @@ export const COMPONENT_LEVEL: Record<PTAComponentKey, 1 | 2 | 3> = {
   complementarias: 1,
   complementarias_pregrado: 1,
   complementarias_posgrado: 1,
+  complementarias_decanatura: 2,
   // Decanatura territorial: la resuelve la Decanatura de la territorial → nivel 2.
   complementarias_territorial: 2,
   // Gestión Profesoral es el nivel 3 del organigrama de aprobación.
@@ -230,6 +228,7 @@ export const SUPER_ADMIN_ROLE_CODES = ['SUPER_ADMIN', 'super_admin'];
  * assertAlcanceTerritorial en pta.service.ts).
  */
 export function hasComponentPermission(permissions: Set<string>, key: PTAComponentKey): boolean {
+  if (key === 'complementarias_territorial' && permissions.has(COMPONENT_PERMISSION[key])) return true;
   const porNivel = TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT[key];
   if (porNivel) {
     return permissions.has(porNivel.approve.pregrado)
@@ -274,6 +273,7 @@ export const REVIEW_SUBSECCIONES_BY_COMPONENT: Record<PTAComponentKey, PTAReview
   complementarias: ['docencia', 'academico_administrativas'],
   complementarias_pregrado: ['docencia', 'academico_administrativas'],
   complementarias_posgrado: ['docencia', 'academico_administrativas'],
+  complementarias_decanatura: ['docencia', 'academico_administrativas'],
   complementarias_territorial: ['docencia', 'academico_administrativas'],
   complementarias_gestion_profesoral: ['docencia', 'academico_administrativas'],
   investigacion: ['general'],
@@ -309,8 +309,9 @@ export const COMPONENT_REVIEW_PERMISSION: Record<string, string> = {
   [reviewKey('complementarias_pregrado', 'academico_administrativas')]: 'pta.review.complementarias.pregrado',
   [reviewKey('complementarias_posgrado', 'docencia')]: 'pta.review.complementarias.posgrado',
   [reviewKey('complementarias_posgrado', 'academico_administrativas')]: 'pta.review.complementarias.posgrado',
-  // Territorial: informativo; la autorización real se resuelve por nivel vía
-  // TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT (igual que academica_territorial).
+  [reviewKey('complementarias_decanatura', 'docencia')]: 'pta.review.complementarias.decanatura',
+  [reviewKey('complementarias_decanatura', 'academico_administrativas')]: 'pta.review.complementarias.decanatura',
+  // Responsable Territorial; también admite los permisos históricos por nivel.
   [reviewKey('complementarias_territorial', 'docencia')]: 'pta.review.complementarias.territorial',
   [reviewKey('complementarias_territorial', 'academico_administrativas')]: 'pta.review.complementarias.territorial',
   [reviewKey('complementarias_gestion_profesoral', 'docencia')]: 'pta.review.complementarias.gestion_profesoral',
@@ -328,11 +329,12 @@ export const PTA_REVIEW_ALL = 'pta.review.all';
 /**
  * ¿El conjunto de permisos habilita la revisión de esta subsección? Mismo caso
  * especial que hasComponentPermission: en los componentes territoriales
- * (Docencia y, desde EFDS-1353, Complementarias de tipo Decanatura) basta
+ * (Docencia y los permisos históricos de Complementarias Territorial) basta
  * cualquiera de los dos permisos por nivel; cuál nivel concreto puede revisar
  * se resuelve fila por fila en pta.service.ts.
  */
 export function hasReviewPermission(permissions: Set<string>, componente: string, subseccion: string): boolean {
+  if (componente === 'complementarias_territorial' && permissions.has('pta.review.complementarias.territorial')) return true;
   const porNivel = TERRITORIAL_NIVEL_PERMISSION_BY_COMPONENT[componente];
   if (porNivel) {
     return permissions.has(porNivel.review.pregrado)

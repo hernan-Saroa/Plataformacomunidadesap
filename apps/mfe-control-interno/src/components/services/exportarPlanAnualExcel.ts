@@ -198,7 +198,8 @@ export async function exportarPlanAnualExcel(plan: any, options?: any) {
         case 'estado': return act.estado === 'COMPLETADA' ? 100 : pct;
         case 'seguimiento': return tarea ? (tarea.nombre || tarea.descripcion || '') : 'Sin tareas';
         case 'fecha': return formatearFecha(fechaSeguimientoTarea(act, tarea));
-        case 'evaluacion_tarea': return tarea ? (tarea.estado === 'Completada' ? 100 : (tarea.avance || 0)) : 0;
+        // La tarea completada vale 100, como en el PDF (EFDS-2324)
+        case 'evaluacion_tarea': return tarea ? (tarea.completada || tarea.estado === 'Completada' ? 100 : (tarea.avance || 0)) : 0;
         case 'evidencias': return tarea ? (tarea.evidencia || 'Sin evidencia') : 'Sin evidencia';
         default: return '';
       }
