@@ -564,6 +564,97 @@ describe('TravelExpensesService', () => {
         /vinculación laboral\/contractual está vencida/i,
       );
     });
+
+    it('debe rechazar con BadRequestException si el comisionado pertenece a otra dependencia que la solicitada', async () => {
+      const comisionadoOtraDep = {
+        ...mockComisionado,
+        id: 'com-dep-2',
+        numeroDocumento: '10203040',
+        idDependencia: 2,
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoOtraDep),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+
+      const module = await createMockModule({ comisionadoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      // Enlace de dependencia 1 consulta comisionado de dependencia 2
+      await expect(
+        svc.consultarComisionado('10203040', 1),
+      ).rejects.toThrow(/está asignado a otra dependencia/);
+    });
+
+    it('debe permitir consultar comisionado cuando coincide con la dependencia solicitada', async () => {
+      const comisionadoMismaDep = {
+        ...mockComisionado,
+        id: 'com-dep-1',
+        numeroDocumento: '10203040',
+        idDependencia: 1,
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoMismaDep),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+
+      const module = await createMockModule({ comisionadoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const res = await svc.consultarComisionado('10203040', 1);
+      expect(res.idDependencia).toBe(1);
+    });
+
+    it('debe asociar la dependencia del enlace si el comisionado local no tenía idDependencia asignada', async () => {
+      const comisionadoSinDep = {
+        ...mockComisionado,
+        id: 'com-sin-dep',
+        numeroDocumento: '10203040',
+        idDependencia: null,
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoSinDep),
+        save: jest.fn().mockImplementation(async (x) => x),
+        create: jest.fn((x) => x),
+      };
+
+      const module = await createMockModule({ comisionadoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const res = await svc.consultarComisionado('10203040', 3);
+      expect(comisionadoRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ idDependencia: 3 }),
+      );
+      expect(res.idDependencia).toBe(3);
+    });
+  });
+
+  describe('listarComisionados', () => {
+    it('debe filtrar comisionados por idDependencia y término de búsqueda', async () => {
+      const qb = {
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([
+          { id: 'com-1', numeroDocumento: '123', idDependencia: 5 },
+        ]),
+      };
+      const comisionadoRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+      };
+
+      const module = await createMockModule({ comisionadoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.listarComisionados(5, 'carlos');
+      expect(comisionadoRepo.createQueryBuilder).toHaveBeenCalledWith('c');
+      expect(qb.andWhere).toHaveBeenCalledWith('c.idDependencia = :depNum', { depNum: 5 });
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('com-1');
+    });
   });
 
 

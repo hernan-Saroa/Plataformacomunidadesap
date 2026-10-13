@@ -249,6 +249,68 @@ function getApoderadoCelular(apoderado?: Apoderado): string {
   return apoderado?.celular || apoderado?.telefono || '';
 }
 
+interface ParsedPerson {
+  id?: string;
+  nombre: string;
+  identificacion: string;
+  tipoIdentificacion?: string;
+  cargo?: string;
+  dependencia?: string;
+  entidad?: string;
+  correo?: string;
+  telefono?: string;
+  tipo?: string;
+  apoderado?: {
+    nombre: string;
+    cedula?: string;
+    correo?: string;
+    celular?: string;
+    telefono?: string;
+    direccion?: string;
+  };
+}
+
+function extractPersonList(source: any): ParsedPerson[] {
+  if (!source) return [];
+  let parsed = source;
+  if (typeof source === 'string') {
+    try {
+      parsed = JSON.parse(source);
+    } catch {
+      return [{ nombre: source, identificacion: '' }];
+    }
+  }
+  const arr = Array.isArray(parsed) ? parsed : [parsed];
+  return arr.filter(Boolean).map((p: any, idx: number) => {
+    if (typeof p === 'string') {
+      return { nombre: p, identificacion: '' };
+    }
+    const idVal = p.identificacion || p.cedula || p.numeroIdentificacion || p.documento || '';
+    const tipoIdVal = p.tipoIdentificacion || p.tipoDocumento || '';
+    const nombreVal = p.nombre || p.nombreCompleto || p.full_name || '';
+    return {
+      id: p.id || `${idx}-${idVal || nombreVal}`,
+      nombre: nombreVal || (idVal ? `ID: ${idVal}` : 'Sin información'),
+      identificacion: idVal,
+      tipoIdentificacion: tipoIdVal,
+      cargo: p.cargo || '',
+      dependencia: p.dependencia || p.lugarHechos || '',
+      entidad: p.entidad || '',
+      correo: p.correo || p.email || '',
+      telefono: p.telefono || p.celular || '',
+      tipo: p.tipo || '',
+      apoderado: p.apoderado ? {
+        nombre: p.apoderado.nombre || '',
+        cedula: p.apoderado.cedula || p.apoderado.identificacion || '',
+        correo: p.apoderado.correo || p.apoderado.email || '',
+        celular: p.apoderado.celular || p.apoderado.telefono || '',
+        telefono: p.apoderado.telefono || p.apoderado.celular || '',
+        direccion: p.apoderado.direccion || '',
+      } : undefined,
+    };
+  });
+}
+
 const SEMAFORO: Record<string, { bg: string; text: string; border: string; label: string }> = {
   verde:     { bg: '#D1FAE5', text: '#065F46', border: '#6EE7B7', label: 'Al día'      },
   amarillo:  { bg: '#FEF3C7', text: '#92400E', border: '#FCD34D', label: 'Por vencer'  },
@@ -4432,16 +4494,8 @@ export function ModalDetallesProceso({
                                 denunciados = proceso.denunciados;
                               } else if (Array.isArray(proceso.denunciado) && proceso.denunciado.length > 0) {
                                 denunciados = proceso.denunciado;
-                              } else if (noticia?.disciplinable) {
-                                denunciados = [{
-                                  id: 'noticia-disciplinable',
-                                  nombre: noticia.disciplinable.nombre,
-                                  identificacion: noticia.disciplinable.documento || noticia.disciplinable.cedula || '',
-                                  cargo: noticia.disciplinable.cargo || '',
-                                  lugarHechos: noticia.disciplinable.lugarHechos || '',
-                                  dependencia: noticia.disciplinable.dependencia || '',
-                                  apoderado: noticia.disciplinable.apoderado
-                                }];
+                              } else if (noticia?.disciplinable || (noticia as any)?.disciplinables || (noticia as any)?.denunciados) {
+                                denunciados = extractPersonList(noticia.disciplinable || (noticia as any)?.disciplinables || (noticia as any)?.denunciados);
                               } else if (proceso.denunciado && !Array.isArray(proceso.denunciado)) {
                                 denunciados = [{
                                   id: 'fallback-denunciado',
@@ -4529,19 +4583,8 @@ export function ModalDetallesProceso({
                                 denunciantes = proceso.denunciantes;
                               } else if (Array.isArray(proceso.denunciante) && proceso.denunciante.length > 0) {
                                 denunciantes = proceso.denunciante;
-                              } else if (noticia?.denunciante) {
-                                denunciantes = [{
-                                  id: 'noticia-denunciante',
-                                  nombre: noticia.denunciante.nombre,
-                                  identificacion: noticia.denunciante.documento || noticia.denunciante.cedula || '',
-                                  direccion: noticia.denunciante.direccion || '',
-                                  telefono: noticia.denunciante.telefono || '',
-                                  correo: noticia.denunciante.email || '',
-                                  cargo: noticia.denunciante.cargo || '',
-                                  entidad: noticia.denunciante.entidad || '',
-                                  tipo: (noticia.denunciante.tipo as 'Denunciante' | 'Víctima') || 'Denunciante',
-                                  apoderado: noticia.denunciante.apoderado
-                                }];
+                              } else if (noticia?.denunciante || (noticia as any)?.denunciantes) {
+                                denunciantes = extractPersonList(noticia.denunciante || (noticia as any)?.denunciantes);
                               } else if (proceso.denunciante && !Array.isArray(proceso.denunciante)) {
                                 denunciantes = [{
                                   id: 'fallback-denunciante',
@@ -4939,7 +4982,14 @@ export function ModalDetallesProceso({
                           </div>
                         ) : (
                           <div className="space-y-2">
-                            {noticiasAsociadas.map((noticia: any, idx: number) => (
+                            {noticiasAsociadas.map((noticia: any, idx: number) => {
+                              const disciplinablesNoticia = extractPersonList(
+                                noticia.disciplinables || noticia.disciplinable || noticia.denunciados || noticia.denunciado
+                              );
+                              const denunciantesNoticia = extractPersonList(
+                                noticia.denunciantes || noticia.denunciante
+                              );
+                              return (
                               <div key={`${noticia.id || 'no-id'}-${idx}`} className="flex items-start gap-3 p-3 rounded-lg border border-purple-100 bg-white hover:bg-purple-50/30 transition-colors">
                                 <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F3E8FF' }}>
                                   <Share2 className="w-4 h-4" style={{ color: '#7C3AED' }} />
@@ -4982,102 +5032,80 @@ export function ModalDetallesProceso({
                                     </div>
                                   )}
                                   {/* Disciplinable(s) / Denunciado(s) */}
-                                  {(noticia.disciplinable || (noticia.denunciados && noticia.denunciados.length > 0)) && (
+                                  {disciplinablesNoticia.length > 0 && (
                                     <div className="mt-2 p-2 rounded-md bg-red-50 border border-red-100">
                                       <p className="text-[9px] font-medium text-red-800">
-                                        Disciplinado{((noticia.denunciados?.length || 0) > 1) ? 's' : ''}:
+                                        Disciplinado{disciplinablesNoticia.length > 1 ? 's' : ''}:
                                       </p>
                                       <div className="mt-1 space-y-2">
-                                        {noticia.denunciados && noticia.denunciados.length > 0 ? (
-                                          noticia.denunciados.map((d: any, dIdx: number) => (
-                                            <div key={dIdx} className={dIdx > 0 ? 'pt-1.5 border-t border-red-100/50' : ''}>
-                                              <p className="text-[8px] font-bold text-red-700">{d.nombre || 'Sin información'}</p>
-                                              <div className="grid grid-cols-2 gap-x-2 text-[7px] text-red-600">
-                                                {d.identificacion && <p>ID: {d.identificacion}</p>}
-                                                {d.cargo && <p>Cargo: {d.cargo}</p>}
-                                                {d.dependencia && <p className="col-span-2">Dep: {d.dependencia}</p>}
-                                              </div>
-                                              {d.apoderado && (
-                                                <p className="text-[7px] text-red-800 font-medium mt-0.5">Apoderado: {d.apoderado.nombre}</p>
+                                        {disciplinablesNoticia.map((d: any, dIdx: number) => (
+                                          <div key={dIdx} className={dIdx > 0 ? 'pt-1.5 border-t border-red-100/50' : ''}>
+                                            <p className="text-[8px] font-bold text-red-700">{d.nombre || 'Sin información'}</p>
+                                            <div className="grid grid-cols-2 gap-x-2 text-[7px] text-red-600">
+                                              {d.identificacion && (
+                                                <p>ID: {d.tipoIdentificacion ? `${d.tipoIdentificacion} ` : ''}{d.identificacion}</p>
                                               )}
+                                              {d.cargo && <p>Cargo: {d.cargo}</p>}
+                                              {d.dependencia && <p className="col-span-2">Dep: {d.dependencia}</p>}
                                             </div>
-                                          ))
-                                        ) : (
-                                          <div>
-                                            <p className="text-[8px] text-red-700">Nombre: {noticia.disciplinable.nombre || 'Sin información'}</p>
-                                            {noticia.disciplinable.cargo && <p className="text-[8px] text-red-700">Cargo: {noticia.disciplinable.cargo}</p>}
-                                            {noticia.disciplinable.dependencia && <p className="text-[8px] text-red-700">Dependencia: {noticia.disciplinable.dependencia}</p>}
-                                            {noticia.disciplinable.numeroIdentificacion && (
-                                              <p className="text-[8px] text-red-700">
-                                                ID: {noticia.disciplinable.tipoIdentificacion || ''} {noticia.disciplinable.numeroIdentificacion}
+                                            {d.apoderado && (
+                                              <p className="text-[7px] text-red-800 font-medium mt-0.5">
+                                                Apoderado: {d.apoderado.nombre}{d.apoderado.cedula ? ` (${d.apoderado.cedula})` : ''}
                                               </p>
                                             )}
                                           </div>
-                                        )}
+                                        ))}
                                       </div>
                                     </div>
                                   )}
                                   {/* Denunciante(s) */}
-                                  {(noticia.denunciante || (noticia.denunciantes && noticia.denunciantes.length > 0)) && (
+                                  {denunciantesNoticia.length > 0 && (
                                     <div className="mt-2 p-2 rounded-md bg-blue-50 border border-blue-100">
                                       <p className="text-[9px] font-medium text-blue-800">
-                                        Denunciante{((noticia.denunciantes?.length || 0) > 1) ? 's' : ''}:
+                                        Denunciante{denunciantesNoticia.length > 1 ? 's' : ''}:
                                       </p>
                                       <div className="mt-1 space-y-2">
-                                        {noticia.denunciantes && noticia.denunciantes.length > 0 ? (
-                                          noticia.denunciantes.map((d: any, dIdx: number) => (
-                                            <div key={dIdx} className={dIdx > 0 ? 'pt-1.5 border-t border-blue-100/50' : ''}>
-                                              <p className="text-[8px] font-bold text-blue-700">{d.nombre || 'Sin información'}</p>
-                                              <div className="grid grid-cols-2 gap-x-2 text-[7px] text-blue-600">
-                                                {d.identificacion && <p>ID: {d.identificacion}</p>}
-                                                {d.tipo && <p className="font-medium">{d.tipo}</p>}
-                                                {d.cargo && <p>Cargo: {d.cargo}</p>}
-                                                {d.entidad && <p>Entidad: {d.entidad}</p>}
-                                                {d.correo && <p className="col-span-2 truncate">Email: {d.correo}</p>}
-                                              </div>
-                                              {d.apoderado && (
-                                                <p className="text-[7px] text-blue-800 font-medium mt-0.5">Apoderado: {d.apoderado.nombre}</p>
+                                        {denunciantesNoticia.map((d: any, dIdx: number) => (
+                                          <div key={dIdx} className={dIdx > 0 ? 'pt-1.5 border-t border-blue-100/50' : ''}>
+                                            <p className="text-[8px] font-bold text-blue-700">{d.nombre || 'Sin información'}</p>
+                                            <div className="grid grid-cols-2 gap-x-2 text-[7px] text-blue-600">
+                                              {d.identificacion && (
+                                                <p>ID: {d.tipoIdentificacion ? `${d.tipoIdentificacion} ` : ''}{d.identificacion}</p>
                                               )}
+                                              {d.tipo && <p className="font-medium">{d.tipo}</p>}
+                                              {d.cargo && <p>Cargo: {d.cargo}</p>}
+                                              {d.entidad && <p>Entidad: {d.entidad}</p>}
+                                              {d.correo && <p className="col-span-2 truncate">Email: {d.correo}</p>}
+                                              {d.telefono && <p>Tel: {d.telefono}</p>}
                                             </div>
-                                          ))
-                                        ) : (
-                                          <div>
-                                            <p className="text-[8px] text-blue-700">Nombre: {noticia.denunciante.nombre || 'Sin información'}</p>
-                                            {noticia.denunciante.cargo && <p className="text-[8px] text-blue-700">Cargo: {noticia.denunciante.cargo}</p>}
-                                            {noticia.denunciante.entidad && <p className="text-[8px] text-blue-700">Entidad: {noticia.denunciante.entidad}</p>}
-                                            {noticia.denunciante.numeroIdentificacion && (
-                                              <p className="text-[8px] text-blue-700">
-                                                ID: {noticia.denunciante.tipoIdentificacion || ''} {noticia.denunciante.numeroIdentificacion}
+                                            {d.apoderado && (
+                                              <p className="text-[7px] text-blue-800 font-medium mt-0.5">
+                                                Apoderado: {d.apoderado.nombre}{d.apoderado.cedula ? ` (${d.apoderado.cedula})` : ''}
                                               </p>
                                             )}
-                                            {noticia.denunciante.telefono && <p className="text-[8px] text-blue-700">Teléfono: {noticia.denunciante.telefono}</p>}
-                                            {noticia.denunciante.correo && <p className="text-[8px] text-blue-700">Correo: {noticia.denunciante.correo}</p>}
                                           </div>
-                                        )}
+                                        ))}
                                       </div>
                                     </div>
                                   )}
                                   {(noticia.origen) && (
                                     <div className="mt-2 p-2 rounded-md bg-green-50 border border-green-100">
-                                      
                                       <div className="mt-1 space-y-0.5">
                                         {noticia.origen && <p className="text-[8px] text-green-700">Origen: {noticia.origen}</p>}
-                                        
                                       </div>
                                     </div>
                                   )}
                                   {(noticia.territorial) && (
                                     <div className="mt-2 p-2 rounded-md bg-green-50 border border-green-100">
-                                      
                                       <div className="mt-1 space-y-0.5">
-                                        
                                         {noticia.territorial && <p className="text-[8px] text-green-700">Territorial: {noticia.territorial}</p>}
                                       </div>
                                     </div>
                                   )}
                                 </div>
                               </div>
-                            ))}
+                            );
+                            })}
                           </div>
                         )}
                       </div>

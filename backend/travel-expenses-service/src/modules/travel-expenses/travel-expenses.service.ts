@@ -338,6 +338,8 @@ export class TravelExpensesService implements OnModuleInit {
     'ADMIN',
     'SUPER_ADMIN',
     'ADMINISTRATIVO',
+    'ADMINISTRADOR',
+    'ADMINISTRADOR_SISTEMA',
     'SUPER_ADMINISTRADOR',
     'super_administrador',
     'SUPERUSER',
@@ -1055,13 +1057,21 @@ export class TravelExpensesService implements OnModuleInit {
    *      * Si está vigente: se materializa en la tabla `travel_expenses.comisionados` y se retorna.
    *    - Si NO existe tampoco en Talento Humano: arroja NotFoundException ("no es un comisionado").
    */
-  async consultarComisionado(documento: string): Promise<ComisionadoEntity> {
+  async consultarComisionado(
+    documento: string,
+    idDependencia?: string | number,
+  ): Promise<ComisionadoEntity> {
     const doc = (documento || '').trim();
     if (!doc) {
       throw new BadRequestException(
         'Debe proporcionar el número de documento del comisionado.',
       );
     }
+
+    const depEsperada =
+      idDependencia != null && idDependencia !== ''
+        ? Number(idDependencia)
+        : null;
 
     const adjuntarSolicitudesPendientes = async (com: ComisionadoEntity) => {
       try {
@@ -1167,6 +1177,18 @@ export class TravelExpensesService implements OnModuleInit {
         );
       }
 
+      // Validar restricción de dependencia si se solicita como enlace de dependencia
+      if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0) {
+        if (comisionadoLocal.idDependencia != null && Number(comisionadoLocal.idDependencia) !== depEsperada) {
+          throw new BadRequestException(
+            `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
+          );
+        } else if (comisionadoLocal.idDependencia == null) {
+          comisionadoLocal.idDependencia = depEsperada;
+          comisionadoLocal = await this.comisionadoRepo.save(comisionadoLocal);
+        }
+      }
+
       return await adjuntarSolicitudesPendientes(comisionadoLocal);
     }
 
@@ -1200,6 +1222,14 @@ export class TravelExpensesService implements OnModuleInit {
         );
       }
 
+      const idDepAsignar = idDependenciaFnc != null ? idDependenciaFnc : depEsperada;
+
+      if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0 && idDependenciaFnc != null && Number(idDependenciaFnc) !== depEsperada) {
+        throw new BadRequestException(
+          `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
+        );
+      }
+
       this.logger.log(
         `[consultarComisionado] Registrando nuevo comisionado ${doc} desde Talento Humano con contrato vigente`,
       );
@@ -1214,7 +1244,7 @@ export class TravelExpensesService implements OnModuleInit {
         tipoComisionado: 'FUNCIONARIO',
         origenDatos: 'HUMANO',
         autorizacionHabeasData: false,
-        idDependencia: idDependenciaFnc,
+        idDependencia: idDepAsignar,
         cuentasBancarias: [],
         cargos: cargo
           ? [
@@ -1222,7 +1252,7 @@ export class TravelExpensesService implements OnModuleInit {
                 id: `crg-${Date.now()}`,
                 cargo,
                 salario: salario || 0,
-                idDependencia: idDependenciaFnc,
+                idDependencia: idDepAsignar,
                 esPrincipal: true,
               },
             ]
@@ -1276,8 +1306,15 @@ export class TravelExpensesService implements OnModuleInit {
       apellidos.shift() || persona.pri_apellido || 'SIN APELLIDO';
     const segundoApellido = apellidos.join(' ') || null;
 
-    const idDependencia =
+    const idDepPersona =
       persona.id_dependencia != null ? Number(persona.id_dependencia) : null;
+    const idDependenciaFinal = idDepPersona != null ? idDepPersona : depEsperada;
+
+    if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0 && idDepPersona != null && Number(idDepPersona) !== depEsperada) {
+      throw new BadRequestException(
+        `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
+      );
+    }
 
     const nuevo = this.comisionadoRepo.create({
       numeroDocumento: doc,
@@ -1290,11 +1327,43 @@ export class TravelExpensesService implements OnModuleInit {
       tipoComisionado: 'FUNCIONARIO',
       origenDatos: 'ESAP',
       autorizacionHabeasData: false,
-      idDependencia,
+      idDependencia: idDependenciaFinal,
     } as Partial<ComisionadoEntity>);
 
     const guardado = await this.comisionadoRepo.save(nuevo);
     return await adjuntarSolicitudesPendientes(guardado);
+  }
+
+  /**
+   * Lista los comisionados registrados en la base local, opcionalmente filtrados
+   * por dependencia y/o texto de búsqueda (nombre, apellido, cédula, cargo).
+   */
+  async listarComisionados(
+    idDependencia?: string | number,
+    search?: string,
+  ): Promise<ComisionadoEntity[]> {
+    const qb = this.comisionadoRepo.createQueryBuilder('c');
+
+    if (idDependencia != null && idDependencia !== '') {
+      const depNum = Number(idDependencia);
+      if (!isNaN(depNum) && depNum > 0) {
+        qb.andWhere('c.idDependencia = :depNum', { depNum });
+      }
+    }
+
+    if (search && search.trim().length > 0) {
+      const term = `%${search.trim().toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(c.numeroDocumento) LIKE :term OR LOWER(c.primerNombre) LIKE :term OR LOWER(c.primerApellido) LIKE :term OR LOWER(c.cargo) LIKE :term)',
+        { term },
+      );
+    }
+
+    qb.orderBy('c.primerApellido', 'ASC')
+      .addOrderBy('c.primerNombre', 'ASC')
+      .limit(100);
+
+    return await qb.getMany();
   }
 
 
@@ -9268,6 +9337,49 @@ if (itinerarioGeneral) {
   }
 
   /**
+   * RF-AUT-003 — Valida que el usuario tenga rol de Jefe de Dependencia o Super Administrador
+   * para proceder con la cancelación de la comisión de viáticos.
+   */
+  private validarAutorizacionCancelacion(rolesUsuario: string[]): void {
+    if (!rolesUsuario || rolesUsuario.length === 0) {
+      return;
+    }
+
+    if (this.esSuperAdmin(rolesUsuario)) {
+      return;
+    }
+
+    const rolesPermitidosJefe = [
+      'JEFE_DEPENDENCIA',
+      'ROL_JEFE_DEPENDENCIA',
+      'SUPERVISOR',
+      'JEFE',
+      'DIRECTOR_TERRITORIAL',
+      'LIDER_DEPENDENCIA',
+      'LIDER_DE_DEPENDENCIA',
+      'JEFE_DE_DEPENDENCIA',
+    ];
+
+    const esAutorizado = rolesUsuario.some((r: any) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        rolesPermitidosJefe.includes(normalized) ||
+        normalized.includes('JEFE_DEPENDENCIA') ||
+        normalized === 'SUPERVISOR' ||
+        r === 'travel_expenses:cancel_request' ||
+        r === 'travel_expenses.general.es_jefe_dependencia'
+      );
+    });
+
+    if (!esAutorizado) {
+      throw new ForbiddenException(
+        'Solo el Jefe de Dependencia o un administrador está autorizado para cancelar solicitudes de comisiones de viáticos.',
+      );
+    }
+  }
+
+  /**
    * RF-AUT-001 — Obtener bandeja de comisiones para la Subdirección de Gestión Corporativa (Etapa 6).
    *
    * Criterio de aceptación 1 (Gherkin):
@@ -10664,6 +10776,8 @@ if (itinerarioGeneral) {
       throw new BadRequestException('solicitudId es obligatorio.');
     }
 
+    this.validarAutorizacionCancelacion(rolesUsuario);
+
     const motivo = (dto?.motivoCancelacion || '').trim();
     if (motivo.length < 5) {
       throw new BadRequestException(
@@ -10672,7 +10786,7 @@ if (itinerarioGeneral) {
     }
 
     const responsable =
-      (dto?.responsableCancelacion || '').trim() || 'Dependencia solicitante / Grupo de Viáticos';
+      (dto?.responsableCancelacion || '').trim() || 'Jefe de Dependencia / Dirección Territorial';
 
     const result = await this.dataSource.transaction(async (manager) => {
       const solicitud = await manager
