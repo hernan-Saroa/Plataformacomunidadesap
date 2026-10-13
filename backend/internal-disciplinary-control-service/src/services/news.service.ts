@@ -247,7 +247,7 @@ export class NewsService {
   /**
    * Obtiene las noticias asociadas a un proceso específico
    */
-  async findAssociatedToProcess(processId: string): Promise<DisciplinaryNews[]> {
+  async findAssociatedToProcess(processId: string): Promise<any[]> {
     // Buscar las asociaciones en la tabla puente
     const associations = await this.newsProcessRepository.find({
       where: { processId },
@@ -255,8 +255,45 @@ export class NewsService {
       order: { fechaAsociacion: 'ASC' },
     });
 
-    // Extraer las noticias
-    return associations.map(association => association.news);
+    // Extraer y enriquecer las noticias
+    return associations
+      .filter(association => !!association.news)
+      .map(association => {
+        const news = association.news;
+        let disciplinable = news.disciplinable;
+        if (typeof disciplinable === 'string') {
+          try {
+            disciplinable = JSON.parse(disciplinable);
+          } catch {
+            // mantener como está
+          }
+        }
+        let denunciante = news.denunciante;
+        if (typeof denunciante === 'string') {
+          try {
+            denunciante = JSON.parse(denunciante);
+          } catch {
+            // mantener como está
+          }
+        }
+
+        const disciplinableList = Array.isArray(disciplinable)
+          ? disciplinable
+          : (disciplinable ? [disciplinable] : []);
+        const denuncianteList = Array.isArray(denunciante)
+          ? denunciante
+          : (denunciante ? [denunciante] : []);
+
+        return {
+          ...news,
+          disciplinable,
+          denunciante,
+          denunciados: disciplinableList,
+          denunciantes: denuncianteList,
+          fechaAsociacion: association.fechaAsociacion,
+          justificacion: association.justificacion,
+        };
+      });
   }
 
   /**
@@ -294,6 +331,10 @@ export class NewsService {
       // Si no tiene otras asociaciones, cambiar estado a RADICADA
       const noticia = await this.findById(newsId);
       noticia.estado = NewsStatus.RADICADA;
+      noticia.procesoAsociadoId = null;
+      noticia.procesoAsociadoNumero = null;
+      noticia.procesoAsociadoFecha = null;
+      noticia.procesoAsociadoJustificacion = null;
 
       // Registrar en auditoría
       const historyEntry = {
@@ -1020,6 +1061,10 @@ export class NewsService {
   
       // Solo si la asociación se guarda exitosamente, cambiar el estado de la noticia
       noticia.estado = NewsStatus.ASOCIADA;
+      noticia.procesoAsociadoId = procesoDestinoId;
+      noticia.procesoAsociadoNumero = proceso.radicadoProceso;
+      noticia.procesoAsociadoFecha = associationData.fechaAsociacion;
+      noticia.procesoAsociadoJustificacion = justificacion;
   
       // Registrar en auditoría de la noticia
       const historyEntry = {
