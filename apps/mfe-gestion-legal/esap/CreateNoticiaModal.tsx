@@ -150,8 +150,12 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
 
   const [formData, setFormData] = useState({
     origen: origenInicial,
-    fechaQueja: (noticiaToEdit as any)?.fechaQueja || noticiaToEdit?.fechaRecepcion || new Date().toISOString().split('T')[0],
-    fechaHechos: noticiaToEdit?.fechaHechos || '',
+    fechaQueja: ((noticiaToEdit as any)?.fechaQueja || noticiaToEdit?.fechaRecepcion)
+      ? String((noticiaToEdit as any)?.fechaQueja || noticiaToEdit?.fechaRecepcion).split('T')[0]
+      : new Date().toISOString().split('T')[0],
+    fechaHechos: noticiaToEdit?.fechaHechos
+      ? String(noticiaToEdit.fechaHechos).split('T')[0]
+      : '',
     territorial: noticiaToEdit?.territorial || '',
     denunciado: {
       nombre: noticiaToEdit?.denunciado?.nombre || '',

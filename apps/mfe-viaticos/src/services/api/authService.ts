@@ -432,19 +432,21 @@ export class AuthService {
   /**
    * Determina si el usuario autenticado tiene permiso para cancelar una
    * comisión (RF-AUT-003, Etapa 6).
+   * Restringido exclusivamente al Jefe de Dependencia o Super Administrador.
    */
   canCancelarComision(): boolean {
     const user = this.getCurrentUserSync();
     if (!user) return false;
-    if (user.esAdmin) return true;
-    return user.permissions.some((p) =>
-      ['travel_expenses:cancel_request',
-        'travel_expenses:create_request',
-        'travel_expenses:read_inbox',
-        'travel_expenses:authorize_expense',
-        'travel_expenses:*',
-        '*'].includes(p),
-    );
+    if (user.esAdmin || this.isSuperAdmin()) return true;
+    if (this.isJefeDependencia()) return true;
+    if (
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA) ||
+      this.hasPermission('travel_expenses.general.es_jefe_dependencia') ||
+      this.hasPermission('travel_expenses:cancel_request')
+    ) {
+      return true;
+    }
+    return false;
   }
 
   /**
