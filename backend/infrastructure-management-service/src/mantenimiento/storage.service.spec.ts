@@ -51,7 +51,7 @@ describe('StorageService - Almacenamiento local en disco (uploads/)', () => {
 
     expect(res.rutaObjeto).toBe('mantenimiento/2026/09/foto-test.txt');
     expect(res.bucket).toBe('infraestructura-evidencias');
-    expect(res.urlPublica).toContain('/uploads/mantenimiento/2026/09/foto-test.txt');
+    expect(res.urlPublica).toContain('/services/infraestructura/uploads/mantenimiento/2026/09/foto-test.txt');
     expect(res.urlPresigned).toBe(res.urlPublica);
     expect(res.vencimientoPresigned).toBeInstanceOf(Date);
 
@@ -70,7 +70,7 @@ describe('StorageService - Almacenamiento local en disco (uploads/)', () => {
     const svc = new StorageService(cfg);
 
     const re = await svc.regenerarUrlPresigned('mantenimiento/2026/09/foto-test.txt');
-    expect(re.urlPresigned).toContain('/uploads/mantenimiento/2026/09/foto-test.txt');
+    expect(re.urlPresigned).toContain('/services/infraestructura/uploads/mantenimiento/2026/09/foto-test.txt');
     expect(re.vencimientoPresigned.getTime()).toBeGreaterThan(Date.now());
   });
 
