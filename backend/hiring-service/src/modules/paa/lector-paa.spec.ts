@@ -8,10 +8,6 @@ import { leerPaa, type ContextoLectura } from './lector-paa';
  */
 
 const contexto: ContextoLectura = {
-  regiones: [
-    { id: 'sede', nombre: 'Sede Central', prefijoLinea: 'LINEA', unidadContratacion: 'Contratación' },
-    { id: 'choco', nombre: 'Territorial Chocó', prefijoLinea: 'CHOCO', unidadContratacion: 'Territorial Choco' },
-  ],
   equivalencias: new Map([
     ['contratacion directa', 'CONTRATACION_DIRECTA'],
     ['minima cuantia', 'MINIMA_CUANTIA'],
@@ -70,7 +66,7 @@ async function archivo(filas: Fila[], opciones: Opciones = {}): Promise<Buffer> 
 }
 
 describe('leerPaa', () => {
-  it('reparte las líneas por región y separa código, código interno y objeto', async () => {
+  it('saca las regiones del archivo y separa código, código interno y objeto', async () => {
     const r = await leerPaa(
       await archivo([
         fila('LINEA 1 - 0060OT1-7068 - Prestar servicios de soporte'),
@@ -80,9 +76,13 @@ describe('leerPaa', () => {
     );
 
     expect(r.errores).toEqual([]);
-    expect(r.lineas.map((l) => [l.codigo, l.regionId, l.fila])).toEqual([
-      ['LINEA 1', 'sede', 3],
-      ['CHOCO 3', 'choco', 4],
+    expect(r.lineas.map((l) => [l.codigo, l.prefijo, l.fila])).toEqual([
+      ['LINEA 1', 'LINEA', 3],
+      ['CHOCO 3', 'CHOCO', 4],
+    ]);
+    expect(r.regiones).toEqual([
+      { prefijo: 'LINEA', unidadContratacion: 'Contratación', fila: 3, lineas: 1 },
+      { prefijo: 'CHOCO', unidadContratacion: 'Territorial Choco', fila: 4, lineas: 1 },
     ]);
     expect(r.lineas[0].valores).toMatchObject({
       codigo_interno: '0060OT1-7068',
@@ -119,22 +119,10 @@ describe('leerPaa', () => {
     expect(r.errores).toHaveLength(1);
   });
 
-  it('rechaza un prefijo que no es de ninguna región', async () => {
-    const r = await leerPaa(await archivo([fila('META 4 - Objeto', { unidad_contratacion: 'Territorial Meta' })]), contexto);
-    expect(r.lineas).toEqual([]);
-    expect(r.errores[0].mensaje).toContain('«META» no es el prefijo');
-  });
-
-  it('rechaza la línea de un territorio que carga su propio PAA, y dice cuál', async () => {
-    const r = await leerPaa(await archivo([fila('META 4 - Objeto', { unidad_contratacion: 'Territorial Meta' })]), {
-      ...contexto,
-      documento: 'Sede Central y Chocó',
-      ajenas: [{ prefijoLinea: 'META', nombre: 'Territorial Meta', documento: 'Territorial Meta' }],
-    });
-    expect(r.lineas).toEqual([]);
-    expect(r.errores[0].mensaje).toBe(
-      '«META» es de Territorial Meta, que carga sus líneas en el PAA de Territorial Meta. Este archivo de Sede Central y Chocó solo puede traer líneas de LINEA, CHOCO.',
-    );
+  it('escribe el prefijo en mayúsculas y sin tildes', async () => {
+    const r = await leerPaa(await archivo([fila('Chocó 3 - Objeto', { unidad_contratacion: 'Territorial Choco' })]), contexto);
+    expect(r.lineas[0].codigo).toBe('CHOCO 3');
+    expect(r.regiones[0].prefijo).toBe('CHOCO');
   });
 
   it('rechaza la descripción sin código', async () => {
@@ -142,13 +130,14 @@ describe('leerPaa', () => {
     expect(r.errores[0]).toMatchObject({ fila: 3, columna: 'Descripción' });
   });
 
-  it('rechaza una línea cuyo prefijo y unidad no casan', async () => {
+  it('rechaza una línea con otra unidad que las demás de su prefijo', async () => {
     const r = await leerPaa(
-      await archivo([fila('CHOCO 1 - Objeto', { unidad_contratacion: 'Contratación' })]),
+      await archivo([fila('CHOCO 1 - Objeto'), fila('CHOCO 2 - Objeto', { unidad_contratacion: 'Contratación' })]),
       contexto,
     );
-    expect(r.lineas).toEqual([]);
-    expect(r.errores[0].mensaje).toContain('Territorial Chocó');
+    expect(r.lineas.map((l) => l.codigo)).toEqual(['CHOCO 1']);
+    expect(r.errores[0]).toMatchObject({ fila: 4, columna: 'Unidad de contratación (referencia)' });
+    expect(r.errores[0].mensaje).toContain('«Territorial Choco» (fila 3)');
   });
 
   it('rechaza una modalidad sin equivalencia en el catálogo', async () => {

@@ -21,15 +21,11 @@ import {
 import { Trazabilidad, type AccionTraza } from '../../entities/trazabilidad.entity';
 import type { HiringAccess } from '../../auth/hiring-access';
 import { STORAGE_PATH } from '../archivos';
-import { leerPaa } from './lector-paa';
+import { leerPaa, type RegionLeida } from './lector-paa';
 import { compararVersiones } from './comparador-paa';
 import { normalizar } from './estructura-paa';
-import type {
-  ActualizarRegionDto,
-  CrearRegionDto,
-  CrearVigenciaDto,
-  LineasDeVersionDto,
-} from './dto/paa.dto';
+import { nombreDeDocumento, ubicarArchivo } from './regiones-del-archivo';
+import type { ActualizarRegionDto, LineasDeVersionDto } from './dto/paa.dto';
 
 /** Líneas por página al consultar una versión: el PAA real tiene 1.500. */
 export const LINEAS_POR_PAGINA = 50;
@@ -55,68 +51,16 @@ export class PaaAdminService {
     return this.dataSource.getRepository(PaaRegion).find({ order: { nombre: 'ASC' } });
   }
 
-  /**
-   * Crea la región y, si publica su propio Excel, su documento.
-   *
-   * Es lo normal: cada territorio carga su PAA. Que sus líneas lleguen dentro
-   * del Excel de otro, como las de Chocó en el de la Sede Central, es la
-   * excepción, y se dice eligiendo ese documento.
-   */
-  async crearRegion(dto: CrearRegionDto, acceso: HiringAccess) {
-    return this.dataSource.transaction(async (em) => {
-      await this.exigirRegionLibre(em, dto.codigo, dto.prefijoLinea);
-
-      let documento: PaaDocumento | null;
-      if (dto.documentoId) {
-        documento = await em.findOne(PaaDocumento, { where: { id: dto.documentoId } });
-        if (!documento) throw new NotFoundException('El documento del PAA no existe');
-      } else {
-        if (await em.findOne(PaaDocumento, { where: { codigo: dto.codigo } })) {
-          throw new ConflictException(`Ya hay un documento del PAA con el código ${dto.codigo}`);
-        }
-        documento = await em.save(PaaDocumento, {
-          codigo: dto.codigo,
-          nombre: dto.nombre.trim(),
-          createdBy: acceso.userName,
-        } as Partial<PaaDocumento>);
-        await this.traza(em, 'paa_documentos', documento.id, 'CREAR', acceso, { codigo: dto.codigo, nombre: documento.nombre });
-      }
-
-      const region = await em.save(PaaRegion, {
-        codigo: dto.codigo,
-        nombre: dto.nombre.trim(),
-        prefijoLinea: dto.prefijoLinea,
-        unidadContratacion: dto.unidadContratacion.trim(),
-        documentoId: documento.id,
-        createdBy: acceso.userName,
-      } as Partial<PaaRegion>);
-      await this.traza(em, 'paa_regiones', region.id, 'CONFIGURAR', acceso, { creada: dto, documento: documento.nombre });
-      return region;
-    });
-  }
-
   async actualizarRegion(id: string, dto: ActualizarRegionDto, acceso: HiringAccess) {
     return this.dataSource.transaction(async (em) => {
       const region = await em.findOne(PaaRegion, { where: { id } });
       if (!region) throw new NotFoundException('La región no existe');
 
-      if (dto.prefijoLinea && dto.prefijoLinea !== region.prefijoLinea) {
-        // Las líneas guardadas llevan el prefijo en su código y los procesos lo
-        // llevan en `paa_codigo`: cambiarlo dejaría a los dos hablando de
-        // códigos que el archivo ya no trae.
-        const conLineas = await em.count(PaaLinea, { where: { regionId: id } });
-        if (conLineas) {
-          throw new ConflictException(
-            'La región ya tiene líneas cargadas con su prefijo. Si el PAA cambió de prefijo, cree otra región.',
-          );
-        }
-        await this.exigirRegionLibre(em, null, dto.prefijoLinea, id);
-      }
-
+      // El prefijo no se edita: sale del archivo, y las líneas y los procesos
+      // ya lo llevan en su código.
       const antes = { ...region };
       Object.assign(region, {
         ...(dto.nombre !== undefined && { nombre: dto.nombre.trim() }),
-        ...(dto.prefijoLinea !== undefined && { prefijoLinea: dto.prefijoLinea }),
         ...(dto.unidadContratacion !== undefined && { unidadContratacion: dto.unidadContratacion.trim() }),
         ...(dto.activa !== undefined && { activa: dto.activa }),
         updatedAt: new Date(),
@@ -125,22 +69,6 @@ export class PaaAdminService {
       await this.traza(em, 'paa_regiones', id, 'CONFIGURAR', acceso, { antes, despues: dto });
       return region;
     });
-  }
-
-  private async exigirRegionLibre(em: EntityManager, codigo: string | null, prefijo: string, salvo?: string) {
-    const choque = await em.findOne(PaaRegion, {
-      where: [
-        ...(codigo ? [{ codigo }] : []),
-        { prefijoLinea: prefijo, ...(salvo && { id: Not(salvo) }) },
-      ],
-    });
-    if (choque) {
-      throw new ConflictException(
-        choque.prefijoLinea === prefijo
-          ? `El prefijo ${prefijo} ya es de ${choque.nombre}`
-          : `Ya hay una región con el código ${codigo}`,
-      );
-    }
   }
 
   // ------------------------------------------------------------- vigencias --
@@ -174,30 +102,15 @@ export class PaaAdminService {
     }));
   }
 
-  async crearVigencia(dto: CrearVigenciaDto, acceso: HiringAccess) {
-    return this.dataSource.transaction(async (em) => {
-      const documento = await em.findOne(PaaDocumento, { where: { id: dto.documentoId } });
-      if (!documento) throw new NotFoundException('El documento del PAA no existe');
-      if (await em.findOne(PaaVigencia, { where: { documentoId: documento.id, anio: dto.anio } })) {
-        throw new ConflictException(`El PAA ${dto.anio} de ${documento.nombre} ya existe`);
-      }
-      // Nace sin marca de vigente: hasta que tenga una versión activa y alguien
-      // la declare, los procesos del territorio siguen saliendo del año anterior.
-      const vigencia = await em.save(PaaVigencia, {
-        documentoId: documento.id,
-        anio: dto.anio,
-        vigente: false,
-        createdBy: acceso.userName,
-      } as Partial<PaaVigencia>);
-      await this.traza(em, 'paa_vigencias', vigencia.id, 'CREAR', acceso, { anio: dto.anio, documento: documento.nombre });
-      return vigencia;
-    });
-  }
-
   // ------------------------------------------------------------- versiones --
 
   /**
-   * Carga un archivo como versión nueva de la vigencia.
+   * Carga el Excel de un territorio como versión nueva de su PAA del año.
+   *
+   * Basta con el archivo y el año: las regiones salen de sus líneas (el
+   * prefijo del código y la unidad de contratación), y con ellas se sabe de
+   * qué documento es. Un archivo con regiones nuevas las crea, y si ninguna
+   * existía, crea también su documento; el año se abre si no estaba.
    *
    * Un archivo con errores queda `INVALIDA` con su reporte y no se guardan sus
    * líneas: no se puede activar, y guardarlas solo invitaría a usarlas. Uno
@@ -205,43 +118,55 @@ export class PaaAdminService {
    * activar, se descarta, porque dos candidatas a la vez es justo la ambigüedad
    * que el versionado quiere evitar.
    */
-  async cargarVersion(
-    vigenciaId: string,
+  async cargarPaa(
+    anio: number,
     archivo: { filename: string; originalname: string },
     sha256: string,
     acceso: HiringAccess,
   ) {
-    const vigencia = await this.dataSource.getRepository(PaaVigencia).findOne({ where: { id: vigenciaId } });
-    if (!vigencia) throw new NotFoundException('La vigencia no existe');
-
-    const [documento, todas, equivalencias] = await Promise.all([
-      this.dataSource.getRepository(PaaDocumento).findOneOrFail({ where: { id: vigencia.documentoId } }),
-      this.dataSource.getRepository(PaaRegion).find({ where: { activa: true } }),
-      this.equivalencias(),
-    ]);
-    // Solo las regiones de este documento: una línea de otro territorio en
-    // este Excel es un error del archivo, no una línea que se reparte sola.
-    const regiones = todas.filter((r) => r.documentoId === documento.id);
-    if (!regiones.length) {
+    const contenido = await readFile(join(STORAGE_PATH, archivo.filename));
+    const lectura = await leerPaa(contenido, { equivalencias: await this.equivalencias() });
+    if (!lectura.regiones.length) {
       throw new BadRequestException(
-        `${documento.nombre} no tiene regiones activas: sin ellas no se puede repartir ninguna línea.`,
+        `No se pudo saber de qué territorio es el archivo: no se leyó ninguna línea con su región. ${resumenDeErrores(lectura.errores)}`,
       );
     }
-    const nombresDocumento = new Map(
-      (await this.dataSource.getRepository(PaaDocumento).find()).map((d) => [d.id, d.nombre]),
-    );
 
-    const contenido = await readFile(join(STORAGE_PATH, archivo.filename));
-    const lectura = await leerPaa(contenido, {
-      regiones,
-      equivalencias,
-      documento: documento.nombre,
-      ajenas: todas
-        .filter((r) => r.documentoId !== documento.id)
-        .map((r) => ({ prefijoLinea: r.prefijoLinea, nombre: r.nombre, documento: nombresDocumento.get(r.documentoId) ?? '' })),
-    });
+    const [registradas, documentos] = await Promise.all([
+      this.dataSource.getRepository(PaaRegion).find(),
+      this.dataSource.getRepository(PaaDocumento).find(),
+    ]);
+    const ubicacion = ubicarArchivo(lectura.regiones, registradas, new Map(documentos.map((d) => [d.id, d.nombre])));
+    if (ubicacion.errores.length && !ubicacion.documentoId) {
+      throw new BadRequestException(resumenDeErrores(ubicacion.errores));
+    }
+    lectura.errores.unshift(...ubicacion.errores);
 
     const id = await this.dataSource.transaction(async (em) => {
+      const documento = ubicacion.documentoId
+        ? await em.findOneOrFail(PaaDocumento, { where: { id: ubicacion.documentoId } })
+        : await this.crearDocumento(em, ubicacion.nuevas, acceso);
+
+      // Con un error de regiones no se crea ninguna: el archivo queda inválido
+      // en su documento y se corrige antes de que algo nazca de él.
+      const regiones = registradas.filter((r) => r.documentoId === documento.id);
+      const advertencias: HallazgoPaa[] = [...lectura.advertencias];
+      if (!ubicacion.errores.length) {
+        for (const leida of ubicacion.nuevas) {
+          regiones.push(await this.crearRegion(em, leida, documento, acceso));
+          advertencias.unshift({
+            fila: leida.fila,
+            columna: 'Descripción',
+            valor: leida.prefijo,
+            mensaje: `Región nueva: ${leida.unidadContratacion}, con el prefijo ${leida.prefijo} (${leida.lineas} líneas).`,
+          });
+        }
+      }
+      const regionDe = new Map(regiones.map((r) => [normalizar(r.prefijoLinea), r.id]));
+
+      const vigencia = await this.vigenciaDelAnio(em, documento, anio, acceso);
+      const vigenciaId = vigencia.id;
+
       // Bloquea la vigencia: dos cargas simultáneas no pueden sacar el mismo número.
       await em
         .createQueryBuilder(PaaVigencia, 'v')
@@ -256,7 +181,6 @@ export class PaaAdminService {
       const numero = Number(max) + 1;
       const valida = lectura.errores.length === 0;
 
-      const advertencias: HallazgoPaa[] = [...lectura.advertencias];
       const activa = await em.findOne(PaaVersion, { where: { vigenciaId, estado: 'ACTIVA' } });
       if (activa?.sha256 === sha256) {
         advertencias.unshift({
@@ -286,7 +210,14 @@ export class PaaAdminService {
         for (let i = 0; i < lectura.lineas.length; i += LOTE_DE_INSERCION) {
           await em.insert(
             PaaLinea,
-            lectura.lineas.slice(i, i + LOTE_DE_INSERCION).map((l) => ({ ...l, versionId: version.id })),
+            lectura.lineas.slice(i, i + LOTE_DE_INSERCION).map((l) => ({
+              versionId: version.id,
+              regionId: regionDe.get(normalizar(l.prefijo))!,
+              codigo: l.codigo,
+              fila: l.fila,
+              valores: l.valores,
+              huella: l.huella,
+            })),
           );
         }
 
@@ -318,6 +249,63 @@ export class PaaAdminService {
     });
 
     return this.obtenerVersion(id);
+  }
+
+  /** El documento de un territorio que carga su PAA por primera vez. */
+  private async crearDocumento(em: EntityManager, regiones: RegionLeida[], acceso: HiringAccess) {
+    const codigo = await this.codigoLibre(em, PaaDocumento, regiones.map((r) => r.prefijo).join('_'));
+    const documento = await em.save(PaaDocumento, {
+      codigo,
+      nombre: nombreDeDocumento(regiones),
+      createdBy: acceso.userName,
+    } as Partial<PaaDocumento>);
+    await this.traza(em, 'paa_documentos', documento.id, 'CREAR', acceso, { codigo, nombre: documento.nombre });
+    return documento;
+  }
+
+  private async crearRegion(em: EntityManager, leida: RegionLeida, documento: PaaDocumento, acceso: HiringAccess) {
+    const region = await em.save(PaaRegion, {
+      codigo: await this.codigoLibre(em, PaaRegion, leida.prefijo),
+      nombre: leida.unidadContratacion.trim(),
+      prefijoLinea: leida.prefijo,
+      unidadContratacion: leida.unidadContratacion.trim(),
+      documentoId: documento.id,
+      createdBy: acceso.userName,
+    } as Partial<PaaRegion>);
+    await this.traza(em, 'paa_regiones', region.id, 'CREAR', acceso, {
+      prefijo: leida.prefijo,
+      unidad: region.unidadContratacion,
+      documento: documento.nombre,
+      origen: 'archivo del PAA',
+    });
+    return region;
+  }
+
+  /** El código pedido, o con un sufijo si ya lo usa otro: «META», «META_2». */
+  private async codigoLibre(em: EntityManager, entidad: typeof PaaDocumento | typeof PaaRegion, base: string) {
+    const raiz = base.slice(0, 36);
+    for (let n = 1; ; n++) {
+      const codigo = n === 1 ? raiz : `${raiz}_${n}`;
+      if (!(await em.findOne(entidad as typeof PaaRegion, { where: { codigo } }))) return codigo;
+    }
+  }
+
+  /**
+   * El año del documento; si no existía, se abre. Nace sin marca de vigente:
+   * hasta que tenga una versión activa y alguien lo declare, los procesos del
+   * territorio siguen saliendo del año anterior.
+   */
+  private async vigenciaDelAnio(em: EntityManager, documento: PaaDocumento, anio: number, acceso: HiringAccess) {
+    const existente = await em.findOne(PaaVigencia, { where: { documentoId: documento.id, anio } });
+    if (existente) return existente;
+    const vigencia = await em.save(PaaVigencia, {
+      documentoId: documento.id,
+      anio,
+      vigente: false,
+      createdBy: acceso.userName,
+    } as Partial<PaaVigencia>);
+    await this.traza(em, 'paa_vigencias', vigencia.id, 'CREAR', acceso, { anio, documento: documento.nombre });
+    return vigencia;
   }
 
   /**
@@ -506,4 +494,11 @@ export class PaaAdminService {
       } as Partial<Trazabilidad>),
     );
   }
+}
+
+/** Los primeros errores, para un mensaje que no cabe en un reporte de versión. */
+function resumenDeErrores(errores: HallazgoPaa[]): string {
+  const primeros = errores.slice(0, 5).map((e) => (e.fila ? `Fila ${e.fila}: ${e.mensaje}` : e.mensaje));
+  const resto = errores.length > 5 ? ` Y ${errores.length - 5} más.` : '';
+  return primeros.join(' ') + resto;
 }

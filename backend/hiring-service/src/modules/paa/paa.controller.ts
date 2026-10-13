@@ -31,9 +31,8 @@ import { PaaOrigenService } from './paa-origen.service';
 import {
   ActualizarRegionDto,
   BuscarLineasDto,
+  CargarPaaDto,
   GuardarCamposDto,
-  CrearRegionDto,
-  CrearVigenciaDto,
   DecidirRevisionPaaDto,
   DescartarVersionDto,
   LineasDeVersionDto,
@@ -93,21 +92,17 @@ export class PaaController {
 
   @Get('regiones')
   @Puede('ver', 'PAA')
-  @ApiOperation({ summary: 'Regiones que contratan con su bloque del PAA' })
+  @ApiOperation({
+    summary: 'Regiones que contratan con su bloque del PAA',
+    description: 'No se crean a mano: salen de los archivos que se cargan.',
+  })
   regiones() {
     return this.admin.listarRegiones();
   }
 
-  @Post('regiones')
-  @Puede('editar', 'PAA')
-  @ApiOperation({ summary: 'Crear una región' })
-  crearRegion(@Body() dto: CrearRegionDto, @Req() req: any) {
-    return this.admin.crearRegion(dto, getHiringAccess(req));
-  }
-
   @Patch('regiones/:id')
   @Puede('editar', 'PAA')
-  @ApiOperation({ summary: 'Editar o desactivar una región' })
+  @ApiOperation({ summary: 'Renombrar, corregir la unidad o desactivar una región' })
   actualizarRegion(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ActualizarRegionDto, @Req() req: any) {
     return this.admin.actualizarRegion(id, dto, getHiringAccess(req));
   }
@@ -146,13 +141,6 @@ export class PaaController {
     return this.admin.listarDocumentos();
   }
 
-  @Post('vigencias')
-  @Puede('editar', 'PAA')
-  @ApiOperation({ summary: 'Abrir un año en el PAA de un documento; nace sin ser el vigente' })
-  crearVigencia(@Body() dto: CrearVigenciaDto, @Req() req: any) {
-    return this.admin.crearVigencia(dto, getHiringAccess(req));
-  }
-
   @Get('vigencias/:id/afectados')
   @Puede('ver', 'PAA')
   @ApiOperation({ summary: 'Procesos en curso de años anteriores que entrarían a evaluación por cambio anual' })
@@ -173,20 +161,22 @@ export class PaaController {
 
   // ------------------------------------------------------------- versiones --
 
-  @Post('vigencias/:id/versiones')
+  @Post('versiones')
   @Puede('editar', 'PAA')
   @UseInterceptors(FileInterceptor('file', opcionesDeCarga(MIME_XLSX, 'El PAA se carga en Excel (.xlsx)')))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Cargar una versión del PAA',
-    description: 'La valida y la compara con la activa. No la activa: eso es otro paso, con su propio permiso.',
+    summary: 'Cargar el PAA de un territorio',
+    description:
+      'Del archivo salen sus regiones y su documento; los que no existían se crean, y el año se abre si hace falta. ' +
+      'La valida y la compara con la activa. No la activa: eso es otro paso, con su propio permiso.',
   })
-  async cargarVersion(@Param('id', ParseUUIDPipe) vigenciaId: string, @UploadedFile() file: any, @Req() req: any) {
+  async cargarPaa(@Body() dto: CargarPaaDto, @UploadedFile() file: any, @Req() req: any) {
     if (!file) throw new BadRequestException('Falta el archivo del PAA');
 
     const ruta = join(STORAGE_PATH, file.filename);
     try {
-      return await this.admin.cargarVersion(vigenciaId, file, await sha256Archivo(ruta), getHiringAccess(req));
+      return await this.admin.cargarPaa(dto.anio, file, await sha256Archivo(ruta), getHiringAccess(req));
     } catch (error) {
       await unlink(ruta).catch(() => undefined);
       throw error;

@@ -148,7 +148,6 @@ import {
   ResumenVersionPaa,
   RevisionPaa,
   VersionPaa,
-  VigenciaPaa,
   DocumentoPaa,
 } from '../types';
 
@@ -1850,25 +1849,22 @@ export const contratacionService = {
 
     regiones: () => pedir<RegionPaa[]>('/paa/regiones'),
 
-    crearRegion: (
-      region: Pick<RegionPaa, 'codigo' | 'nombre' | 'prefijoLinea' | 'unidadContratacion'> & { documentoId?: string },
-    ) =>
-      pedir<RegionPaa>('/paa/regiones', { method: 'POST', body: JSON.stringify(region) }),
-
+    /** Las regiones no se crean aquí: salen de los archivos que se cargan. */
     actualizarRegion: (
       id: string,
-      cambios: Partial<Pick<RegionPaa, 'nombre' | 'prefijoLinea' | 'unidadContratacion' | 'activa'>>,
+      cambios: Partial<Pick<RegionPaa, 'nombre' | 'unidadContratacion' | 'activa'>>,
     ) => pedir<RegionPaa>(`/paa/regiones/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) }),
 
     documentos: () => pedir<DocumentoPaa[]>('/paa/documentos'),
 
-    crearVigencia: (documentoId: string, anio: number) =>
-      pedir<VigenciaPaa>('/paa/vigencias', { method: 'POST', body: JSON.stringify({ documentoId, anio }) }),
-
-    cargarVersion: (vigenciaId: string, archivo: File) => {
+    /**
+     * Carga el Excel de un territorio para un año. El servidor saca del archivo
+     * sus regiones y su documento, y abre el año si hace falta.
+     */
+    cargarPaa: (anio: number, archivo: File) => {
       const cuerpo = new FormData();
       cuerpo.append('file', archivo);
-      return pedir<VersionPaa>(`/paa/vigencias/${vigenciaId}/versiones`, { method: 'POST', body: cuerpo });
+      return pedir<VersionPaa>('/paa/versiones', { method: 'POST', body: cuerpo });
     },
 
     version: (id: string) => pedir<VersionPaa>(`/paa/versiones/${id}`),
@@ -1919,6 +1915,7 @@ export const contratacionService = {
     decidir: (id: string, decision: DecisionRevisionPaa, justificacion: string, lineaDestinoId?: string) =>
       pedir<{ id: string; decision: DecisionRevisionPaa }>(`/paa/revisiones/${id}/decidir`, {
         method: 'POST',
+      cuerpo.append('anio', String(anio));
         body: JSON.stringify({ decision, justificacion, lineaDestinoId }),
       }),
 

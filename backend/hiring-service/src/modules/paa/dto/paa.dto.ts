@@ -10,50 +10,11 @@ import {
   IsOptional,
   IsString,
   IsUUID,
-  Matches,
   Max,
   MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
-
-export class CrearRegionDto {
-  @ApiProperty({ example: 'META' })
-  @IsString()
-  @Matches(/^[A-Z][A-Z0-9_]*$/, { message: 'El código va en mayúsculas, sin espacios ni tildes' })
-  @MaxLength(40)
-  codigo: string;
-
-  @ApiProperty({ example: 'Territorial Meta' })
-  @IsString()
-  @IsNotEmpty({ message: 'El nombre de la región es obligatorio' })
-  @MaxLength(150)
-  nombre: string;
-
-  /** Lo que antecede al número de la línea en la descripción del PAA. */
-  @ApiProperty({ example: 'META' })
-  @IsString()
-  @Matches(/^[A-Z]+$/, { message: 'El prefijo son solo letras en mayúscula, como LINEA o CHOCO' })
-  @MaxLength(30)
-  prefijoLinea: string;
-
-  /** Como la escribe la columna «Unidad de contratación (referencia)». */
-  @ApiProperty({ example: 'Territorial Meta' })
-  @IsString()
-  @IsNotEmpty({ message: 'La unidad de contratación es obligatoria: con ella se comprueba cada línea' })
-  @MaxLength(150)
-  unidadContratacion: string;
-
-  /**
-   * En qué Excel vienen sus líneas. Sin él, la región publica su propio PAA y
-   * se le abre un documento con su nombre; con él, sus líneas llegan dentro
-   * del Excel de otro territorio, como las de Chocó en el de la Sede Central.
-   */
-  @ApiPropertyOptional({ description: 'Documento existente; vacío = la región tiene su propio Excel' })
-  @IsOptional()
-  @IsUUID()
-  documentoId?: string;
-}
 
 export class ActualizarRegionDto {
   @ApiPropertyOptional()
@@ -62,13 +23,6 @@ export class ActualizarRegionDto {
   @IsNotEmpty()
   @MaxLength(150)
   nombre?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @Matches(/^[A-Z]+$/, { message: 'El prefijo son solo letras en mayúscula, como LINEA o CHOCO' })
-  @MaxLength(30)
-  prefijoLinea?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -83,11 +37,8 @@ export class ActualizarRegionDto {
   activa?: boolean;
 }
 
-export class CrearVigenciaDto {
-  @ApiProperty({ description: 'El documento (Excel del territorio) al que se le abre el año' })
-  @IsUUID()
-  documentoId: string;
-
+/** Lo único que el archivo no dice: a qué año pertenece. */
+export class CargarPaaDto {
   @ApiProperty({ example: 2027 })
   @Type(() => Number)
   @IsInt({ message: 'La vigencia es un año' })

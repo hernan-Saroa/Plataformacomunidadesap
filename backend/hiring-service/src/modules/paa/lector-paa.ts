@@ -11,36 +11,37 @@ import {
   type ColumnaPaa,
 } from './estructura-paa';
 
-/** Lo que el lector necesita saber de cada región para repartir las líneas. */
-export interface RegionParaLeer {
-  id: string;
-  nombre: string;
-  prefijoLinea: string;
-  unidadContratacion: string;
-}
-
 export interface LineaLeida {
   codigo: string;
-  regionId: string;
+  /** El prefijo de su código, en mayúsculas y sin tildes: «LINEA», «CHOCO». */
+  prefijo: string;
   fila: number;
   valores: ValoresLineaPaa;
   huella: string;
 }
 
+/**
+ * Una región tal como aparece en el archivo: un prefijo y la unidad de
+ * contratación que escriben sus líneas. De aquí salen las regiones; nadie las
+ * crea a mano.
+ */
+export interface RegionLeida {
+  prefijo: string;
+  unidadContratacion: string;
+  /** La primera fila con ese prefijo, para señalarla en los mensajes. */
+  fila: number;
+  lineas: number;
+}
+
 export interface ResultadoLectura {
   encabezados: string[];
   lineas: LineaLeida[];
+  regiones: RegionLeida[];
   errores: HallazgoPaa[];
   advertencias: HallazgoPaa[];
 }
 
 export interface ContextoLectura {
-  /** Las regiones del documento que se carga: sus líneas son las únicas que puede traer. */
-  regiones: RegionParaLeer[];
-  /** Nombre del documento, para los mensajes. */
-  documento?: string;
-  /** Regiones de otros documentos: para decir de dónde es una línea que se coló. */
-  ajenas?: { prefijoLinea: string; nombre: string; documento: string }[];
   /** Texto normalizado de la modalidad → código de `hiring.modalidades`. */
   equivalencias: Map<string, string>;
 }
@@ -56,15 +57,15 @@ const FILAS_PARA_ENCABEZADOS = 10;
 /**
  * Lee un PAA y dice qué tiene y qué le falta.
  *
- * No escribe nada: devuelve las líneas ya repartidas por región y la lista de
- * errores y advertencias. Con un solo error el archivo no se puede activar,
+ * No escribe nada: devuelve las líneas con su prefijo, las regiones que
+ * aparecen en el archivo y la lista de errores y advertencias. Con un solo error el archivo no se puede activar,
  * pero se sigue leyendo para que quien lo corrige vea todo de una vez y no
  * suba el archivo diez veces para descubrir diez errores.
  */
 export async function leerPaa(contenido: Buffer, contexto: ContextoLectura): Promise<ResultadoLectura> {
   const errores: HallazgoPaa[] = [];
   const advertencias: HallazgoPaa[] = [];
-  const vacio = (): ResultadoLectura => ({ encabezados: [], lineas: [], errores, advertencias });
+  const vacio = (): ResultadoLectura => ({ encabezados: [], lineas: [], regiones: [], errores, advertencias });
 
   const libro = new Workbook();
   try {
@@ -89,11 +90,8 @@ export async function leerPaa(contenido: Buffer, contexto: ContextoLectura): Pro
   const columnas = ubicarColumnas(encabezados, filaEncabezados, errores, advertencias);
   if (!columnas) return { ...vacio(), encabezados };
 
-  const prefijos = new Map(contexto.regiones.map((r) => [normalizar(r.prefijoLinea), r]));
-  const ajenas = new Map((contexto.ajenas ?? []).map((r) => [normalizar(r.prefijoLinea), r]));
-  const ejemplos = contexto.regiones.map((r) => `«${r.prefijoLinea} 12 - …»`).join(' o ');
-  const delDocumento = contexto.documento ? ` de ${contexto.documento}` : '';
   const lineas: LineaLeida[] = [];
+  const regiones = new Map<string, RegionLeida>();
   const vistos = new Map<string, number>();
 
   for (let fila = filaEncabezados + 1; fila <= hoja.rowCount; fila++) {
@@ -121,29 +119,13 @@ export async function leerPaa(contenido: Buffer, contexto: ContextoLectura): Pro
     const m = PATRON_DESCRIPCION.exec(descripcion);
     if (!m) {
       errores.push(
-        hallazgo(fila, 'Descripción', recortar(descripcion), `La descripción no empieza por el código de la línea. Se espera ${ejemplos}.`),
+        hallazgo(fila, 'Descripción', recortar(descripcion), 'La descripción no empieza por el código de la línea. Se espera «LINEA 12 - …» o el prefijo de la región, como «CHOCO 3 - …».'),
       );
       continue;
     }
 
-    const region = prefijos.get(normalizar(m[1]));
-    if (!region) {
-      const suyos = contexto.regiones.map((r) => r.prefijoLinea).join(', ');
-      const ajena = ajenas.get(normalizar(m[1]));
-      errores.push(
-        hallazgo(
-          fila,
-          'Descripción',
-          m[1],
-          ajena
-            ? `«${m[1]}» es de ${ajena.nombre}, que carga sus líneas en el PAA de ${ajena.documento}. Este archivo${delDocumento} solo puede traer líneas de ${suyos}.`
-            : `«${m[1]}» no es el prefijo de ninguna región${delDocumento}. Las suyas son: ${suyos}.`,
-        ),
-      );
-      continue;
-    }
-
-    const codigo = `${region.prefijoLinea} ${Number(m[2])}`;
+    const prefijo = normalizar(m[1]).toUpperCase();
+    const codigo = `${prefijo} ${Number(m[2])}`;
     const resto = m[3].trim();
     const interno = PATRON_CODIGO_INTERNO.exec(resto);
     valores.codigo_interno = interno ? interno[1] : null;
@@ -153,10 +135,16 @@ export async function leerPaa(contenido: Buffer, contexto: ContextoLectura): Pro
       filaValida = false;
     }
 
+    // La región es el prefijo, y la unidad la comprueba: todas las líneas de un
+    // prefijo dicen la misma. Una que dice otra está mal escrita en el prefijo
+    // o en la unidad, y repartirla sería adivinar.
     const unidad = valores.unidad_contratacion as string | null;
-    if (normalizar(unidad) !== normalizar(region.unidadContratacion)) {
+    const region = regiones.get(prefijo);
+    if (!region) {
+      if (unidad) regiones.set(prefijo, { prefijo, unidadContratacion: unidad, fila, lineas: 0 });
+    } else if (unidad && normalizar(unidad) !== normalizar(region.unidadContratacion)) {
       errores.push(
-        hallazgo(fila, 'Unidad de contratación (referencia)', unidad, `La línea ${codigo} es de ${region.nombre}, cuya unidad es «${region.unidadContratacion}». Un prefijo y una unidad que no casan pueden repartir la línea en la región equivocada.`),
+        hallazgo(fila, 'Unidad de contratación (referencia)', unidad, `Las líneas ${prefijo} son de «${region.unidadContratacion}» (fila ${region.fila}) y la ${codigo} dice otra unidad. O el prefijo o la unidad están mal escritos.`),
       );
       filaValida = false;
     }
@@ -189,7 +177,9 @@ export async function leerPaa(contenido: Buffer, contexto: ContextoLectura): Pro
     vistos.set(codigo, fila);
 
     if (filaValida) {
-      lineas.push({ codigo, regionId: region.id, fila, valores, huella: huellaDe(valores) });
+      lineas.push({ codigo, prefijo, fila, valores, huella: huellaDe(valores) });
+      const suya = regiones.get(prefijo);
+      if (suya) suya.lineas++;
     }
   }
 
@@ -197,7 +187,7 @@ export async function leerPaa(contenido: Buffer, contexto: ContextoLectura): Pro
     errores.push(hallazgo(null, null, null, 'El archivo no tiene ninguna línea debajo de los encabezados.'));
   }
 
-  return { encabezados, lineas, errores, advertencias };
+  return { encabezados, lineas, regiones: [...regiones.values()], errores, advertencias };
 }
 
 /** sha256 de los valores con las claves ordenadas: igual contenido, igual huella. */
