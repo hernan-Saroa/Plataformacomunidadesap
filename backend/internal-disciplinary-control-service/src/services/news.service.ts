@@ -67,6 +67,17 @@ export class NewsService {
     return await this.terminosService.diasHabilesRestantes(fechaVencimiento);
   }
 
+  private normalizeOrig(orig?: string | null): NewsOrigin {
+    if (!orig) return NewsOrigin.POR_DETERMINAR;
+    const s = String(orig).trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (s.includes('ANONIM')) return NewsOrigin.ANONIMO;
+    if (s.includes('QUEJ') || s.includes('INFORMANT')) return NewsOrigin.QUEJOSO;
+    if (s.includes('OFICIO')) return NewsOrigin.OFICIO;
+    if (s.includes('REMISI') || s.includes('COMPETENC')) return NewsOrigin.REMISION;
+    if (s.includes('DETERMINAR')) return NewsOrigin.POR_DETERMINAR;
+    return (orig as NewsOrigin) || NewsOrigin.POR_DETERMINAR;
+  }
+
   /**
    * Radica una nueva noticia disciplinaria
    */
@@ -138,6 +149,7 @@ export class NewsService {
       const noticia = this.newsRepository.create({
         radicado,
         ...createNewsDto,
+        origen: this.normalizeOrig(createNewsDto.origen),
         radicadorId: createNewsDto.radicadorId || userId,
         adjuntos,
         fechaCaducidad,
@@ -443,9 +455,9 @@ export class NewsService {
       if (!orig) return '';
       const s = String(orig).trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       if (s.includes('ANONIM')) return NewsOrigin.ANONIMO;
-      if (s.includes('QUEJ')) return NewsOrigin.QUEJOSO;
+      if (s.includes('QUEJ') || s.includes('INFORMANT')) return NewsOrigin.QUEJOSO;
       if (s.includes('OFICIO')) return NewsOrigin.OFICIO;
-      if (s.includes('REMISI')) return NewsOrigin.REMISION;
+      if (s.includes('REMISI') || s.includes('COMPETENC')) return NewsOrigin.REMISION;
       if (s.includes('DETERMINAR')) return NewsOrigin.POR_DETERMINAR;
       return s;
     };

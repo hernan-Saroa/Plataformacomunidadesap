@@ -129,6 +129,75 @@ function normalizeText(text: string): string {
     .toLowerCase();
 }
 
+// ==================== UTILIDAD: Normalización y mapeo de Origen de Noticia ====================
+export const MAP_ORIGEN_TO_BACKEND_ENUM: Record<string, string> = {
+  'ANONIMO': 'ANONIMO',
+  'QUEJOSO': 'QUEJOSO',
+  'OFICIO': 'OFICIO',
+  'REMISION': 'REMISION',
+  'POR_DETERMINAR': 'POR_DETERMINAR',
+  'Anónimo': 'ANONIMO',
+  'Anonimo': 'ANONIMO',
+  'Quejoso': 'QUEJOSO',
+  'Queja ciudadana': 'QUEJOSO',
+  'Denuncia Ciudadana': 'QUEJOSO',
+  'Informante': 'QUEJOSO',
+  'De oficio': 'OFICIO',
+  'Oficio': 'OFICIO',
+  'Informe servidor público': 'OFICIO',
+  'Remisión por competencia': 'REMISION',
+  'Remision por competencia': 'REMISION',
+  'Remisión': 'REMISION',
+  'Remision': 'REMISION',
+  'Por determinar': 'POR_DETERMINAR',
+  'Por Determinar': 'POR_DETERMINAR',
+};
+
+export const ORIGEN_DB_A_LABEL: Record<string, string> = {
+  ANONIMO: 'Anónimo',
+  QUEJOSO: 'Quejoso',
+  OFICIO: 'De oficio',
+  REMISION: 'Remisión por competencia',
+  POR_DETERMINAR: 'Por determinar',
+  'Anónimo': 'Anónimo',
+  'Quejoso': 'Quejoso',
+  'Informante': 'Informante',
+  'De oficio': 'De oficio',
+  'Remisión por competencia': 'Remisión por competencia',
+  'Por determinar': 'Por determinar',
+};
+
+export function normalizeOrigenToEnum(origen?: string | null): string {
+  if (!origen) return 'POR_DETERMINAR';
+  const clean = String(origen).trim();
+  if (MAP_ORIGEN_TO_BACKEND_ENUM[clean]) {
+    return MAP_ORIGEN_TO_BACKEND_ENUM[clean];
+  }
+  const s = clean.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (s.includes('ANONIM')) return 'ANONIMO';
+  if (s.includes('QUEJ') || s.includes('INFORMANT') || s.includes('CIUDADAN')) return 'QUEJOSO';
+  if (s.includes('OFICIO') || s.includes('SERVIDOR')) return 'OFICIO';
+  if (s.includes('REMISI') || s.includes('COMPETENC')) return 'REMISION';
+  if (s.includes('DETERMINAR')) return 'POR_DETERMINAR';
+  return 'POR_DETERMINAR';
+}
+
+export function formatOrigenLabel(origen?: string | null): string {
+  if (!origen) return 'Por determinar';
+  const clean = String(origen).trim();
+  if (ORIGEN_DB_A_LABEL[clean]) return ORIGEN_DB_A_LABEL[clean];
+  const s = clean.toUpperCase();
+  if (ORIGEN_DB_A_LABEL[s]) return ORIGEN_DB_A_LABEL[s];
+  const norm = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (norm.includes('REMISI') || norm.includes('COMPETENC')) return 'Remisión por competencia';
+  if (norm.includes('ANONIM')) return 'Anónimo';
+  if (norm.includes('QUEJ')) return 'Quejoso';
+  if (norm.includes('INFORMANT')) return 'Informante';
+  if (norm.includes('OFICIO')) return 'De oficio';
+  if (norm.includes('DETERMINAR')) return 'Por determinar';
+  return clean;
+}
+
 // ==================== HELPERS: ROLES Y ETAPAS PARA DRAG & DROP ====================
 export const isSecretarioRadicadorUser = (): boolean => {
   try {
@@ -465,7 +534,7 @@ function TarjetaNoticia({ noticia, onConvertir, onDevolver, onDevolverCompetenci
             icon={<FileText className={`w-4 h-4 ${tieneRemision ? 'text-purple-600' : 'text-orange-600'}`} />}
             iconBg={tieneRemision ? '#EDE9FE' : '#FEF3C7'}
             title={noticia.numero}
-            subtitle={noticia.origen}
+            subtitle={formatOrigenLabel(noticia.origen)}
             rightContent={
               <div className="flex items-center gap-1">
                 {noticia.estado === 'devuelta' && esJefe && (
@@ -3396,7 +3465,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
       fechaRecepcion: fecha.toISOString().split('T')[0],
       fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
       fechaHechos: fechaHechos ? fechaHechos.toISOString().split('T')[0] : undefined,
-      origen: (noticia as any).origen || 'Noticia',
+      origen: formatOrigenLabel((noticia as any).origen),
       territorial: (noticia as any).territorial,
       dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
       
@@ -4197,7 +4266,7 @@ export function DashboardKanbanOperativo({
       fechaRecepcion: fecha.toISOString().split('T')[0],
       fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
       fechaHechos: fechaHechos ? fechaHechos.toISOString().split('T')[0] : undefined,
-      origen: (noticia as any).origen || 'Noticia',
+      origen: formatOrigenLabel((noticia as any).origen),
       territorial: (noticia as any).territorial,
       dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
       
@@ -4783,20 +4852,7 @@ export function DashboardKanbanOperativo({
     }));
 
     // ✅ MAPEO DE VALORES AL FORMATO DEL BACKEND
-    // origen: debe ser uno de ANONIMO, QUEJOSO, OFICIO, REMISION, POR_DETERMINAR
-    const origenMap: Record<string, string> = {
-      'Anónimo': 'ANONIMO',
-      'Anonimo': 'ANONIMO',
-      'Denuncia Ciudadana': 'QUEJOSO',
-      'Quejoso': 'QUEJOSO',
-      'Oficio': 'OFICIO',
-      'Remisión': 'REMISION',
-      'Remision': 'REMISION',
-      'Por Determinar': 'POR_DETERMINAR',
-      'Por determinar': 'POR_DETERMINAR'
-    };
-
-    const origenNormalizado = origenMap[data.origen] || 'POR_DETERMINAR';
+    const origenNormalizado = normalizeOrigenToEnum(data.origen);
 
     console.log('Origen normalizado:', origenNormalizado);
 
@@ -4952,19 +5008,8 @@ export function DashboardKanbanOperativo({
           if (newsId) {
             console.log('🔄 Actualizando noticia asociada ID:', newsId);
             console.log('[KANBAN] Llamando updateNoticia para NEWS (asociada) con archivosAdjuntos.length =', data?.archivosAdjuntos?.length || 0);
-            const origenMap: Record<string, string> = {
-            'AnÃ³nimo': 'ANONIMO',
-            'Anonimo': 'ANONIMO',
-            'Quejoso': 'QUE_JOSO',
-            'De oficio': 'OFICIO',
-            'Oficio': 'OFICIO',
-            'RemisiÃ³n': 'REMISION',
-            'Remision': 'REMISION',
-            'Por determinar': 'POR_DETERMINAR'
-          };
-
           const updatedAssociatedNews = await disciplinaryService.updateNoticia(newsId, {
-            origen: origenMap[data.origen] || data.origen || 'POR_DETERMINAR',
+            origen: normalizeOrigenToEnum(data.origen),
             territorial: data.territorial,
             dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
             hechos: hechosEdit,
@@ -4996,22 +5041,9 @@ export function DashboardKanbanOperativo({
           disciplinable: Array.isArray(disciplinableSingular) ? disciplinableSingular[0] : disciplinableSingular
         } as any);
       } else {
-        const origenMap: Record<string, string> = {
-          'AnÃ³nimo': 'ANONIMO',
-          'Anonimo': 'ANONIMO',
-          'Quejoso': 'QUEJOSO',
-          'De oficio': 'OFICIO',
-          'Oficio': 'OFICIO',
-          'RemisiÃ³n por competencia': 'REMISION',
-          'RemisiÃ³n': 'REMISION',
-          'Remision': 'REMISION',
-          'Por determinar': 'POR_DETERMINAR',
-          'Por Determinar': 'POR_DETERMINAR'
-        };
-
         console.log('[KANBAN] Llamando updateNoticia DIRECTA (noticia) con archivosAdjuntos.length =', data?.archivosAdjuntos?.length || 0);
         const updatedNoticia = await disciplinaryService.updateNoticia(noticiaAEditar.id, {
-          origen: origenMap[data.origen] || data.origen || 'POR_DETERMINAR',
+          origen: normalizeOrigenToEnum(data.origen),
           territorial: data.territorial,
           dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
           hechos: hechosEdit,
@@ -5077,7 +5109,7 @@ export function DashboardKanbanOperativo({
         }));
         return {
           ...item,
-          origen: data.origen,
+          origen: formatOrigenLabel(data.origen),
           fechaRecepcion: data.fechaQueja || data.fechaRecepcion,
           fechaHechos: data.fechaHechos,
           territorial: data.territorial,
@@ -7468,7 +7500,7 @@ export function DashboardKanbanOperativo({
                             <div className="grid grid-cols-2 gap-2 text-sm">
                               <div>
                                 <p className="text-gray-600">Origen:</p>
-                                <p className="font-bold text-gray-900">{(itemSeleccionado as Noticia).origen}</p>
+                                <p className="font-bold text-gray-900">{formatOrigenLabel((itemSeleccionado as Noticia).origen)}</p>
                               </div>
                               <div>
                                 <p className="text-gray-600">Fecha Recepción:</p>

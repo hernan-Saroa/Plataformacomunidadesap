@@ -150,6 +150,36 @@ interface HistorialEntry {
 const getApoderadoCorreo = (apoderado?: Apoderado) => apoderado?.correo || apoderado?.email || '';
 const getApoderadoCelular = (apoderado?: Apoderado) => apoderado?.celular || apoderado?.telefono || '';
 
+const ORIGEN_LABELS: Record<string, string> = {
+  ANONIMO: 'Anónimo',
+  QUEJOSO: 'Quejoso',
+  OFICIO: 'De oficio',
+  REMISION: 'Remisión por competencia',
+  POR_DETERMINAR: 'Por determinar',
+  'Anónimo': 'Anónimo',
+  'Quejoso': 'Quejoso',
+  'Informante': 'Informante',
+  'De oficio': 'De oficio',
+  'Remisión por competencia': 'Remisión por competencia',
+  'Por determinar': 'Por determinar',
+};
+
+const formatOrigenLabel = (origen?: string | null): string => {
+  if (!origen) return '—';
+  const clean = String(origen).trim();
+  if (ORIGEN_LABELS[clean]) return ORIGEN_LABELS[clean];
+  const s = clean.toUpperCase();
+  if (ORIGEN_LABELS[s]) return ORIGEN_LABELS[s];
+  const norm = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (norm.includes('REMISI') || norm.includes('COMPETENC')) return 'Remisión por competencia';
+  if (norm.includes('ANONIM')) return 'Anónimo';
+  if (norm.includes('QUEJ')) return 'Quejoso';
+  if (norm.includes('INFORMANT')) return 'Informante';
+  if (norm.includes('OFICIO')) return 'De oficio';
+  if (norm.includes('DETERMINAR')) return 'Por determinar';
+  return clean;
+};
+
 // ═══════════════════════════════════════════════════════════════
 // UTILIDADES DE FECHA - Parseo local para fechas sin timezone
 // ═══════════════════════════════════════════════════════════════
@@ -613,7 +643,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
                 </span>
               </div>
               <p className="text-[11px] text-blue-200 mt-0.5 truncate">
-                {n.origen} · {getDenunciadoNombre()}
+                {formatOrigenLabel(n.origen)} · {getDenunciadoNombre()}
               </p>
             </div>
           </div>
@@ -891,7 +921,7 @@ function TabGeneral({
 <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
             {[
               { label: 'NÚMERO', value: n.numero },
-              { label: 'ORIGEN', value: n.origen || '—' },
+              { label: 'ORIGEN', value: formatOrigenLabel(n.origen) },
               { label: 'FECHA RECEPCIÓN', value: formatFechaLocal(n.fechaRecepcion) },
               { label: 'FECHA QUEJA / NOTIFICACIÓN', value: formatFechaLocal(n.createdAt || n.fechaQueja || n.fechaRegistro) },
             ].map(({ label, value }) => (

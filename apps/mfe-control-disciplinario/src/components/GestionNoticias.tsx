@@ -1469,12 +1469,14 @@ export function GestionNoticias() {
       'INFORMANTE': 'Informante',
       'OFICIO': 'De oficio',
       'REMISION': 'Remisión por competencia',
+      'POR_DETERMINAR': 'Por determinar',
       // Fallbacks
       'Anónimo': 'Anónimo',
       'Quejoso': 'Quejoso',
       'Informante': 'Informante',
       'De oficio': 'De oficio',
-      'Remisión por competencia': 'Remisión por competencia'
+      'Remisión por competencia': 'Remisión por competencia',
+      'Por determinar': 'Por determinar'
     }[origen] || 'Anónimo';
 
     const configs: Record<string, { bg: string; text: string }> = {
@@ -1482,7 +1484,8 @@ export function GestionNoticias() {
       'Quejoso': { bg: '#DBEAFE', text: '#1E40AF' },
       'Informante': { bg: '#E0E7FF', text: '#4338CA' },
       'De oficio': { bg: '#F3E8FF', text: '#6B21A8' },
-      'Remisión por competencia': { bg: '#FEE2E2', text: '#991B1B' }
+      'Remisión por competencia': { bg: '#FEE2E2', text: '#991B1B' },
+      'Por determinar': { bg: '#FEF3C7', text: '#92400E' }
     };
     const config = configs[normalized] || configs['Anónimo'];
 
