@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { ArrowRight, Check, ClipboardCheck, Undo2 } from 'lucide-react';
+import { ArrowRight, Ban, Check, ClipboardCheck, Undo2 } from 'lucide-react';
 
 import { usarAprobacion } from './usarAprobacion';
 import { useFirma } from './useFirma';
+import { useDialogo } from './useDialogo';
 import { HistorialRevisiones } from './HistorialRevisiones';
 import { ElegirSoportes } from './ElegirSoportes';
+import { EscalonesDeLaRonda } from './EscalonesDeLaRonda';
 
 interface Props {
   procesoId: string;
@@ -113,6 +115,30 @@ export function AprobacionDeLaActividad({
    * propia acción (EFDS-2070). Devolver no la pide, porque no cierra nada.
    */
   const firma = useFirma(numeral, `Aprobar la actividad ${numeral}`);
+  const dialogo = useDialogo();
+
+  /*
+   * En qué escalón va y cuál sigue (migración 101). La firma solo la pide la
+   * aprobación definitiva, que es la que deja la actividad por buena; una
+   * intermedia la pasa al siguiente escalón y no cierra nada.
+   */
+  const escalones = a.ronda?.escalones ?? [];
+  const actual = escalones.find((e) => e.estado === 'PENDIENTE');
+  const siguiente = actual ? escalones.find((e) => e.orden > actual.orden) : undefined;
+  const puede = (accion: 'APROBAR' | 'DEVOLVER' | 'NEGAR') => a.acciones.includes(accion);
+
+  const negar = async () => {
+    const motivo = await dialogo.pedirMotivo({
+      titulo: `Negar la actividad ${numeral}`,
+      descripcion:
+        'Negar no es devolver: no hay nada que corregir y el proceso termina aquí. Quien la envió no podrá volver a enviarla.',
+      etiqueta: 'Por qué se niega',
+      placeholder: 'El motivo queda en el expediente y le llega a quien la envió',
+      confirmar: 'Negar la actividad',
+      tono: 'peligro',
+    });
+    if (motivo) await a.negar(motivo);
+  };
 
   /**
    * Si hay algo que decidir aquí, hacia quien monta el bloque.
@@ -122,7 +148,7 @@ export function AprobacionDeLaActividad({
    */
   const hayDecision =
     parte === 'decision' && !a.cargando && a.requiereAprobacion &&
-    a.estado === 'EN_REVISION' && a.puedoAprobar;
+    a.estado === 'EN_REVISION' && a.acciones.length > 0;
 
   React.useEffect(() => {
     onHayDecision?.(hayDecision);
@@ -180,8 +206,29 @@ export function AprobacionDeLaActividad({
           a.decididaPor ? `La aprobó ${a.decididaPor}.` : undefined,
         )}
 
+        <EscalonesDeLaRonda ronda={a.ronda} />
+
         {/* Aprobada no quiere decir que fuera a la primera: el recorrido
             explica por qué tardó lo que tardó. */}
+        <HistorialRevisiones revisiones={a.revisiones} />
+      </>,
+    );
+  }
+
+  /*
+   * Negada: no se vuelve a enviar y el proceso terminó. Se dice quién y por
+   * qué, sin ofrecer corregir lo que ya nadie va a mirar.
+   */
+  if (a.estado === 'NEGADO') {
+    if (parte === 'decision') return null;
+    return marco(
+      'aviso',
+      <>
+        {encabezado(
+          `Negada${a.decididaPor ? ` por ${a.decididaPor}` : ''}`,
+          a.observaciones ?? 'El proceso terminó con esta decisión.',
+        )}
+        <EscalonesDeLaRonda ronda={a.ronda} />
         <HistorialRevisiones revisiones={a.revisiones} />
       </>,
     );
@@ -191,7 +238,7 @@ export function AprobacionDeLaActividad({
     // El aviso va encima del panel y la decisión al final de los documentos:
     // quien aprueba tiene que ver lo que le cargaron antes de resolver.
     if (parte === 'decision') {
-      if (!a.puedoAprobar) return null;
+      if (!a.acciones.length) return null;
 
       // Marco propio, y no el de los documentos: aprobar o devolver es el acto
       // que cierra la actividad, no un anexo más del expediente. Dentro de la
@@ -207,6 +254,9 @@ export function AprobacionDeLaActividad({
               <p className="text-[12.5px] font-bold text-[#00307f] m-0">Tu decisión</p>
               <p className="text-[11px] text-[#1E40AF]/80 m-0 mt-0.5">
                 Sobre la actividad {numeral}
+                {actual && escalones.length > 1
+                  ? ` · escalón ${actual.orden} de ${escalones.length}: ${actual.nombre}`
+                  : ''}
               </p>
             </div>
           </div>
@@ -226,7 +276,19 @@ export function AprobacionDeLaActividad({
                 : 'Revisa los documentos antes de resolver.'}
             </p>
 
-            {pasaA && !devolviendo ? (
+            {/* Con escalones, aprobar aquí no cierra la actividad: la pasa al
+                siguiente. Decirlo evita que crea que dio el visto bueno final. */}
+            {siguiente && !devolviendo ? (
+              <p className="text-[11.5px] text-slate-600 m-0 flex items-start gap-1.5">
+                <ArrowRight className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-emerald-700" aria-hidden="true" />
+                <span>
+                  Si la apruebas, sigue el escalón {siguiente.orden}:{' '}
+                  <strong className="text-slate-900">{siguiente.nombre}</strong>
+                </span>
+              </p>
+            ) : null}
+
+            {pasaA && !devolviendo && !siguiente ? (
               <p className="text-[11.5px] text-slate-600 m-0 flex items-start gap-1.5">
                 <ArrowRight className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-emerald-700" aria-hidden="true" />
                 <span>
@@ -269,29 +331,46 @@ export function AprobacionDeLaActividad({
               /* Apilados y a todo el ancho: en una columna de 17rem, dos
                  botones en fila se parten a media palabra. */
               <div className="flex flex-col gap-1.5">
-                <button
-                  type="button"
-                  className={`${primario} justify-center w-full`}
-                  onClick={() => firma.conFirma(a.aprobar)}
-                  disabled={a.guardando || faltanDocumentos > 0}
-                  title={
-                    faltanDocumentos > 0
-                      ? 'No se puede aprobar mientras falten formatos por cargar'
-                      : undefined
-                  }
-                >
-                  <Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" />
-                  Aprobar
-                </button>
-                <button
-                  type="button"
-                  className={`${secundario} justify-center w-full`}
-                  onClick={() => setDevolviendo(true)}
-                  disabled={a.guardando}
-                >
-                  <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
-                  Devolver con observaciones
-                </button>
+                {puede('APROBAR') ? (
+                  <button
+                    type="button"
+                    className={`${primario} justify-center w-full`}
+                    // La firma es de la aprobación definitiva: en un escalón
+                    // intermedio no se pide.
+                    onClick={() => (siguiente ? a.aprobar() : firma.conFirma(a.aprobar))}
+                    disabled={a.guardando || faltanDocumentos > 0}
+                    title={
+                      faltanDocumentos > 0
+                        ? 'No se puede aprobar mientras falten formatos por cargar'
+                        : undefined
+                    }
+                  >
+                    <Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" />
+                    {siguiente ? 'Aprobar y pasar al siguiente' : 'Aprobar'}
+                  </button>
+                ) : null}
+                {puede('DEVOLVER') ? (
+                  <button
+                    type="button"
+                    className={`${secundario} justify-center w-full`}
+                    onClick={() => setDevolviendo(true)}
+                    disabled={a.guardando}
+                  >
+                    <Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
+                    Devolver a quien la envió
+                  </button>
+                ) : null}
+                {puede('NEGAR') ? (
+                  <button
+                    type="button"
+                    className={`${secundario} justify-center w-full`}
+                    onClick={negar}
+                    disabled={a.guardando}
+                  >
+                    <Ban className="w-3.5 h-3.5" aria-hidden="true" />
+                    Negar
+                  </button>
+                ) : null}
               </div>
             )}
 
@@ -300,6 +379,7 @@ export function AprobacionDeLaActividad({
             <HistorialRevisiones revisiones={a.revisiones} />
           </div>
           {firma.modal}
+          {dialogo.elemento}
         </div>
       );
     }
@@ -308,17 +388,23 @@ export function AprobacionDeLaActividad({
       'espera',
       <>
         {encabezado(
-          'En revisión · pendiente de aprobación',
-          a.puedoAprobar
+          actual && escalones.length > 1
+            ? `En revisión · escalón ${actual.orden} de ${escalones.length}`
+            : 'En revisión · pendiente de aprobación',
+          a.acciones.length
             ? // Aquí cae también quien la trabajó, si tiene el rol: aprobar lo
               // propio dejó de estar bloqueado.
               'Te toca resolverla en la pantalla de revisión.'
-            : a.quienAprueba.length
-              ? `Espera a ${a.quienAprueba.join(' o ')}.`
-              : undefined,
+            : a.motivo
+              ? a.motivo
+              : a.quienAprueba.length
+                ? `Espera a ${a.quienAprueba.join(' o ')}.`
+                : undefined,
         )}
 
-        {a.puedoAprobar && onRevisar ? (
+        <EscalonesDeLaRonda ronda={a.ronda} />
+
+        {a.acciones.length > 0 && onRevisar ? (
           <button type="button" className={primario} onClick={onRevisar}>
             <ClipboardCheck className="w-3.5 h-3.5" aria-hidden="true" />
             Abrir la revisión
@@ -354,6 +440,10 @@ export function AprobacionDeLaActividad({
           )
         : encabezado('Esta actividad requiere aprobación', quien)}
 
+      {/* Hasta dónde llegó la ronda devuelta: quién ya la había aprobado y en
+          qué escalón se devolvió. Al reenviarla empieza otra vez desde el 1. */}
+      {a.estado === 'DEVUELTO' ? <EscalonesDeLaRonda ronda={a.ronda} /> : null}
+
       {/* Las vueltas anteriores, para el gestor que corrige: si ya se la
           devolvieron por lo mismo dos veces, conviene que lo vea antes de
           volver a enviarla. */}
@@ -365,7 +455,9 @@ export function AprobacionDeLaActividad({
           dos formas de cerrar la misma actividad que se ignoraban entre si. */}
       <p className="text-[11.5px] text-slate-600 m-0">
         {a.estado === 'DEVUELTO'
-          ? 'Corrige lo señalado abajo y vuelve a registrar la actividad: con eso se envía de nuevo.'
+          ? (a.ronda?.escalones.length ?? 0) > 1
+            ? 'Corrige lo señalado abajo y vuelve a registrar la actividad: se envía de nuevo y la revisión empieza otra vez desde el escalón 1.'
+            : 'Corrige lo señalado abajo y vuelve a registrar la actividad: con eso se envía de nuevo.'
           : 'Se envía sola al registrar la actividad, abajo.'}
       </p>
 

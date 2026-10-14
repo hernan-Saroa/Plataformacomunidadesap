@@ -83,7 +83,7 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
     montar(estado({ estado: 'EN_REVISION', puedoAprobar: true }), 'decision');
 
     expect(await screen.findByRole('button', { name: /^Aprobar/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Devolver con observaciones/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Devolver a quien la envió/ })).toBeInTheDocument();
   });
 
   it('no pone los botones arriba, donde se decidiría sin ver nada', async () => {
@@ -107,7 +107,7 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
   it('no deja devolver sin decir qué corregir', async () => {
     montar(estado({ estado: 'EN_REVISION', puedoAprobar: true }), 'decision');
 
-    await userEvent.click(await screen.findByRole('button', { name: /Devolver con observaciones/ }));
+    await userEvent.click(await screen.findByRole('button', { name: /Devolver a quien la envió/ }));
 
     // Devolver en blanco deja al gestor adivinando qué cambiar.
     expect(screen.getByRole('button', { name: /^Devolver/ })).toBeDisabled();
@@ -166,7 +166,7 @@ describe('AprobacionDeLaActividad · EFDS-1183', () => {
 
     // Devolver por falta de soporte es exactamente para lo que sirve devolver.
     expect(
-      await screen.findByRole('button', { name: /Devolver con observaciones/ }),
+      await screen.findByRole('button', { name: /Devolver a quien la envió/ }),
     ).toBeEnabled();
     expect(screen.getByText(/Faltan 2 formatos por cargar/)).toBeInTheDocument();
   });
@@ -382,7 +382,7 @@ describe('AprobacionDeLaActividad · quien la trabajó también decide', () => {
     montar(estado({ estado: 'EN_REVISION', esMia: true, puedoAprobar: true }), 'decision');
 
     expect(await screen.findByRole('button', { name: /^Aprobar/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Devolver con observaciones/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Devolver a quien la envió/ })).toBeInTheDocument();
   });
 
   it('sigue pudiendo retirarla en vez de decidir', async () => {
@@ -397,5 +397,102 @@ describe('AprobacionDeLaActividad · quien la trabajó también decide', () => {
     montar(estado({ estado: 'EN_REVISION', esMia: true, puedoAprobar: false }));
 
     expect(await screen.findByText(/Espera a Director de Contratación/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * Con una cadena de escalones (migración 101): el servidor dice qué puede
+ * hacer quien mira en el escalón que espera, y la pantalla no ofrece más.
+ */
+describe('AprobacionDeLaActividad · cadena de escalones', () => {
+  beforeEach(() => vi.restoreAllMocks());
+
+  const escalon = (orden: number, nombre: string, estadoEscalon: string) => ({
+    orden,
+    nombre,
+    estado: estadoEscalon,
+    reglaDecision: 'UNO',
+    acciones: ['APROBAR', 'DEVOLVER'],
+    responsables: [nombre],
+    activadoAt: estadoEscalon === 'BLOQUEADO' ? null : '2026-10-10T10:00:00Z',
+    resueltoAt: null,
+    decisiones: [],
+  });
+
+  const ronda = (acciones: string[], actual = 2) => ({
+    id: 'r-1',
+    ronda: 1,
+    nombre: 'Técnico, coordinador y director',
+    estado: 'EN_CURSO',
+    escalonActual: actual,
+    iniciadaPor: 'laura',
+    iniciadaAt: '2026-10-09T10:00:00Z',
+    cerradaAt: null,
+    acciones,
+    motivo: null,
+    escalones: [
+      escalon(1, 'Técnico', actual > 1 ? 'APROBADO' : 'PENDIENTE'),
+      escalon(2, 'Coordinador', actual === 2 ? 'PENDIENTE' : actual > 2 ? 'APROBADO' : 'BLOQUEADO'),
+      escalon(3, 'Director', actual === 3 ? 'PENDIENTE' : 'BLOQUEADO'),
+    ],
+  });
+
+  it('en un escalón intermedio aprobar pasa al siguiente, y lo dice', async () => {
+    montar(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'DEVOLVER'], ronda: ronda(['APROBAR', 'DEVOLVER']) }),
+      'decision',
+    );
+
+    expect(await screen.findByRole('button', { name: /Aprobar y pasar al siguiente/ })).toBeInTheDocument();
+    expect(screen.getByText(/sigue el escalón 3/)).toBeInTheDocument();
+    expect(screen.getByText(/escalón 2 de 3: Coordinador/)).toBeInTheDocument();
+  });
+
+  it('en el último, aprobar es aprobar', async () => {
+    montar(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'DEVOLVER'], ronda: ronda(['APROBAR', 'DEVOLVER'], 3) }),
+      'decision',
+    );
+
+    expect(await screen.findByRole('button', { name: /^Aprobar$/ })).toBeInTheDocument();
+  });
+
+  it('solo ofrece negar donde el escalón lo tiene permitido', async () => {
+    const { unmount } = montar(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'DEVOLVER'], ronda: ronda(['APROBAR', 'DEVOLVER']) }),
+      'decision',
+    );
+    await screen.findByRole('button', { name: /Aprobar/ });
+    expect(screen.queryByRole('button', { name: /^Negar/ })).toBeNull();
+    unmount();
+
+    montar(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'NEGAR'], ronda: ronda(['APROBAR', 'NEGAR']) }),
+      'decision',
+    );
+    expect(await screen.findByRole('button', { name: /^Negar/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Devolver/ })).toBeNull();
+  });
+
+  it('a quien no le toca le muestra los escalones y a quién espera', async () => {
+    montar(estado({ estado: 'EN_REVISION', aprobadores: { roles: ['Coordinador'], personas: [] }, acciones: [], ronda: ronda([]) }));
+
+    expect(await screen.findByText(/escalón 2 de 3/)).toBeInTheDocument();
+    expect(screen.getByText('1. Técnico')).toBeInTheDocument();
+    expect(screen.getByText('3. Director')).toBeInTheDocument();
+    expect(screen.getByText(/Espera a Coordinador/)).toBeInTheDocument();
+  });
+
+  it('a quien ya aprobó otro escalón le dice por qué no puede este', async () => {
+    montar(
+      estado({
+        estado: 'EN_REVISION',
+        acciones: [],
+        motivo: 'Ya aprobaste otro escalón de esta ronda: este lo tiene que decidir otra persona',
+        ronda: ronda([]),
+      }),
+    );
+
+    expect(await screen.findByText(/Ya aprobaste otro escalón/)).toBeInTheDocument();
   });
 });

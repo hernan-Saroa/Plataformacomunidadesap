@@ -151,6 +151,11 @@ import {
   RevisionPaa,
   VersionPaa,
   DocumentoPaa,
+  AccionEscalon,
+  CadenaDeAprobacion,
+  EscalonConfigurado,
+  PapelEscalon,
+  RondaDeAprobacion,
 } from '../types';
 
 const SERVICE_PREFIX = '/hiring/api/v1';
@@ -2859,11 +2864,14 @@ export const contratacionService = {
     pedir<{
       requiereAprobacion: boolean;
       aprobadores: { clase: 'rol' | 'persona'; id: string; nombre: string }[];
+      /** La cadena de escalones que la aprueba, si se eligió una (migración 101). */
+      cadena: { id: string; nombre: string; escalones: number; activa: boolean } | null;
     }>(`/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion`),
 
+  /** Con `cadenaId`, la aprueba esa cadena; si no, los roles y personas, en un escalón. */
   guardarAprobacionDeActividad: (
     numeral: string,
-    datos: { requiereAprobacion: boolean; roles: string[]; personas: string[] },
+    datos: { requiereAprobacion: boolean; roles: string[]; personas: string[]; cadenaId?: string },
   ) =>
     pedir(`/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion`, {
       method: 'PUT',
@@ -2882,6 +2890,29 @@ export const contratacionService = {
       body: JSON.stringify(datos),
     }),
 
+  /** Las cadenas de aprobación por escalones (migración 101). */
+  cadenasDeAprobacion: () => pedir<CadenaDeAprobacion[]>('/configuracion/cadenas-aprobacion'),
+
+  papelesDeEscalon: () =>
+    pedir<{ codigo: PapelEscalon; nombre: string }[]>('/configuracion/cadenas-aprobacion/papeles'),
+
+  guardarCadenaDeAprobacion: (
+    id: string | null,
+    datos: {
+      nombre: string;
+      descripcion?: string;
+      escalones: EscalonConfigurado[];
+      permiteMismoAprobador: boolean;
+    },
+  ) =>
+    pedir<{ id: string }>(`/configuracion/cadenas-aprobacion${id ? `/${id}` : ''}`, {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  archivarCadenaDeAprobacion: (id: string) =>
+    pedir(`/configuracion/cadenas-aprobacion/${id}/archivar`, { method: 'PUT', body: JSON.stringify({}) }),
+
   /** Roles que pueden aparecer como aprobadores: los que trabajan en el módulo. */
   rolesAprobadores: () =>
     pedir<{ code: string; name: string }[]>('/configuracion/roles-aprobadores'),
@@ -2892,7 +2923,12 @@ export const contratacionService = {
       requiereAprobacion: boolean;
       aprobadores: { roles: string[]; personas: string[] } | null;
       puedoAprobar: boolean;
-      estado: 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO';
+      /** Lo que quien mira puede hacer ahora en el escalón que espera (101). */
+      acciones: AccionEscalon[];
+      motivo: string | null;
+      cadena: { nombre: string; escalones: string[] } | null;
+      ronda: RondaDeAprobacion | null;
+      estado: 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO' | 'NEGADO';
       esMia: boolean;
       observaciones: string | null;
       decididaPor: string | null;
@@ -2941,6 +2977,13 @@ export const contratacionService = {
 
   devolverActividad: (procesoId: string, numeral: string, observaciones: string) =>
     pedir(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/devolver`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
+
+  /** Solo en un escalón configurado para negar: termina el proceso (migración 101). */
+  negarActividad: (procesoId: string, numeral: string, observaciones: string) =>
+    pedir(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/negar`, {
       method: 'POST',
       body: JSON.stringify({ observaciones }),
     }),

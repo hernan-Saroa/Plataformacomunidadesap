@@ -3534,6 +3534,8 @@ export interface ElementoPorRevisar {
   enviadoPor: string | null;
   desde: string;
   diasEsperando: number;
+  /** En qué escalón espera, cuando se aprueba por una cadena (migración 101). */
+  escalon?: { orden: number; de: number; nombre: string } | null;
 }
 
 /** Una actividad cuyo plazo está por vencer o ya venció; los días son hábiles. */
@@ -3966,4 +3968,75 @@ export interface OrigenPaaDelProceso {
   }[];
   revisiones: RevisionPaa[];
   bloqueado: boolean;
+}
+
+
+// ================================================= aprobación por escalones --
+//
+// Migración 101: una actividad puede aprobarse por una cadena de escalones que
+// deciden en orden. Toda devolución regresa a quien la envió y el reenvío abre
+// una ronda nueva desde el escalón 1.
+
+export type AccionEscalon = 'APROBAR' | 'DEVOLVER' | 'NEGAR';
+export type ReglaDecision = 'UNO' | 'TODOS';
+export type PapelEscalon = 'ABOGADO' | 'CONTRATACION' | 'FINANCIERA' | 'SUPERVISOR';
+export type EstadoEscalon = 'BLOQUEADO' | 'PENDIENTE' | 'APROBADO' | 'DEVUELTO' | 'NEGADO' | 'ANULADO';
+
+/** Un escalón tal como se configura en la plantilla. */
+export interface EscalonConfigurado {
+  nombre: string;
+  roles: string[];
+  /** Ids de persona del directorio. */
+  personas: string[];
+  papeles: PapelEscalon[];
+  reglaDecision: ReglaDecision;
+  acciones: AccionEscalon[];
+}
+
+/** Una plantilla de cadena, como la lista Configuración. */
+export interface CadenaDeAprobacion {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  permiteMismoAprobador: boolean;
+  escalones: (EscalonConfigurado & {
+    nombresRoles: string[];
+    nombresPersonas: string[];
+    nombresPapeles: string[];
+  })[];
+  /** Las actividades que la exigen hoy. */
+  usadaEn: { numeral: string; nombre: string }[];
+  updatedAt: string;
+  updatedBy: string | null;
+}
+
+/** Un escalón dentro de la ronda de una actividad. */
+export interface EscalonDeRonda {
+  orden: number;
+  nombre: string;
+  estado: EstadoEscalon;
+  reglaDecision: ReglaDecision;
+  acciones: AccionEscalon[];
+  /** Nombres legibles: roles, personas y papeles del proceso. */
+  responsables: string[];
+  activadoAt: string | null;
+  resueltoAt: string | null;
+  decisiones: { decision: 'APROBADO' | 'DEVUELTO' | 'NEGADO'; revisadoPor: string; fecha: string }[];
+}
+
+/** La ronda en curso de una actividad, o la última si ya se cerró. */
+export interface RondaDeAprobacion {
+  id: string;
+  ronda: number;
+  nombre: string | null;
+  estado: 'EN_CURSO' | 'APROBADA' | 'DEVUELTA' | 'NEGADA' | 'RETIRADA' | 'CANCELADA';
+  escalonActual: number | null;
+  iniciadaPor: string | null;
+  iniciadaAt: string;
+  cerradaAt: string | null;
+  /** Lo que quien mira puede hacer ahora, ya resuelto en el servidor. */
+  acciones: AccionEscalon[];
+  /** Por qué no puede aprobar, cuando es responsable pero algo se lo impide. */
+  motivo: string | null;
+  escalones: EscalonDeRonda[];
 }

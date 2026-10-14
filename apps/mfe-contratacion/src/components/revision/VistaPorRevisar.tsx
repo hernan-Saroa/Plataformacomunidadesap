@@ -196,6 +196,14 @@ export function VistaPorRevisar({
                         {e.detalle ? (
                           <span className="font-bold text-slate-700"> · {e.detalle}</span>
                         ) : null}
+                        {/* En una cadena, qué escalón le toca a quien mira
+                            (migración 101): «escalón 2 de 3 · Coordinador». */}
+                        {e.escalon && e.escalon.de > 1 ? (
+                          <span className="font-bold text-slate-700">
+                            {' '}
+                            · escalón {e.escalon.orden} de {e.escalon.de}: {e.escalon.nombre}
+                          </span>
+                        ) : null}
                       </span>
                       <span className="block text-[13px] text-slate-800 mt-0.5 leading-snug">{e.objeto}</span>
                       <span className="block text-[12px] text-slate-500 mt-1">
