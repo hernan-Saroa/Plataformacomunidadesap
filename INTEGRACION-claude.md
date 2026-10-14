@@ -274,3 +274,20 @@ Respuestas **400** que conviene mostrar tal cual:
 Si el docente envía con un grupo sin oferta, sin territorial que cruce, o con un aula de otro CETAP, recibe **409**, y el mensaje lista cada grupo con su motivo. Ejemplo: *"No se puede concertar sin saber dónde se dicta cada grupo (de ahí sale quién aprueba): Fundamentos de economía pública grupo 1 (sin oferta CETAP)."*
 
 **Límite actual:** si la oferta es de una Dirección Territorial (no de Sede Central), la concertación se aprueba, pero el PTA la deja `pendiente_docencia_territorial` (sección 8.3). Aplicarla exige cambiar el PTA, y está reportado.
+
+## 10. Verificación de tu pantalla de Docencia del PTA (`5c0b25636`, 14 de octubre)
+
+Integrada en `ronda-claude` y `ronda-pruebas`, y verificada en el navegador con el servidor real:
+
+| Caso | Resultado |
+|---|---|
+| **Encendida** | El docente crea su PTA (2050-1, activado temporalmente) después de concertar. La Docencia aparece «Aprobada en la concertación», en solo lectura y sin «Agregar Asignatura». Muestra Concepciones (108 h) y Constitución del Territorio (64 h), total 172 h. Sin errores de JavaScript |
+| **Apagada** | La sección Docencia es **idéntica** a la de hoy. La comparé contra el build del commit anterior a tu integración, sobre el mismo PTA: mismo texto, mismos 11 botones, mismos 10 campos editables y «Agregar Asignatura» |
+| Pruebas del MFE del PTA | 590 de 590 |
+
+Tres observaciones, para que decidas:
+1. **Con el interruptor apagado, el formulario ahora depende de la consulta del régimen.** Si esa consulta falla, o si no hay periodo activo (`periodoNoDisponible`), no deja guardar ni enviar. Hoy, sin tu cambio, eso no bloquea. Fallar cerrado tiene sentido con el interruptor encendido. Con el interruptor apagado, el backend responde `actual` sin consultar nada; el riesgo es solo de red o de no tener periodo activo, pero es un cambio de comportamiento.
+2. Mientras llega la respuesta, la sección Docencia muestra un instante el aviso ámbar «Consultando el régimen de Docencia…», también con el interruptor apagado.
+3. En la lista «Mi Plan de Trabajo Académico», la tarjeta del PTA dice «Docencia — No iniciado» aunque la Docencia ya está aprobada en la concertación (`componentes-aprobacion`: `academica_<nivel>` aprobado con `scope: programacion`).
+
+Dato local que no viene de tu pantalla: el docente de prueba tiene `horasAsignables = 0` en el banco de docentes, así que el formulario muestra «Límite excedido 172h / 0h».
