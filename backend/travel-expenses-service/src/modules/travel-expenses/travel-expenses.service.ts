@@ -411,6 +411,35 @@ export class TravelExpensesService implements OnModuleInit {
     return null;
   }
 
+  async obtenerDependenciaUsuario(usuarioId?: string): Promise<number | null> {
+    if (!usuarioId) return null;
+    try {
+      const rows = await this.solicitudRepo.query(
+        `SELECT p.id_dependencia
+         FROM auth."user" u
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.id_user::text = $1
+         LIMIT 1`,
+        [usuarioId],
+      );
+      if (rows?.[0]?.id_dependencia != null) {
+        return Number(rows[0].id_dependencia);
+      }
+      const aRows = await this.solicitudRepo.query(
+        `SELECT dependencia_id FROM travel_expenses.analistas_viaticos WHERE usuario_id = $1 LIMIT 1`,
+        [usuarioId],
+      );
+      if (aRows?.[0]?.dependencia_id != null) {
+        return Number(aRows[0].dependencia_id);
+      }
+    } catch (e: any) {
+      this.logger.warn(
+        `[obtenerDependenciaUsuario] Error consultando dependencia para ${usuarioId}: ${e?.message}`,
+      );
+    }
+    return null;
+  }
+
   async obtenerSolicitudes(
     usuarioId?: string,
     isSuperAdmin = false,
@@ -423,6 +452,8 @@ export class TravelExpensesService implements OnModuleInit {
     isSst = false,
     isComisionado = false,
     soloComisionado = false,
+    isJefe = false,
+    isGerente = false,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     console.log(
       '[travel-expenses] service obtenerSolicitudes usuarioId=',
@@ -443,6 +474,10 @@ export class TravelExpensesService implements OnModuleInit {
       isComisionado,
       'soloComisionado=',
       soloComisionado,
+      'isJefe=',
+      isJefe,
+      'isGerente=',
+      isGerente,
       'page=',
       page,
       'limit=',
@@ -452,8 +487,8 @@ export class TravelExpensesService implements OnModuleInit {
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.comisionado', 'comisionado');
 
-    if ((!isSuperAdmin && !isSecretario) || soloComisionado) {
-      if (soloComisionado || (isComisionado && !isTesoreria && !isSst && !isControlViaticos && !isAnalista)) {
+    if (!isSuperAdmin || soloComisionado) {
+      if (soloComisionado || (isComisionado && !isTesoreria && !isSst && !isControlViaticos && !isAnalista && !isSecretario && !isJefe && !isGerente)) {
         if (usuarioId) {
           const datosPersona = await this.obtenerDatosPersonaPorUsuarioId(usuarioId);
           const docs = [datosPersona?.numIdentificacion].filter(Boolean) as string[];
@@ -475,6 +510,30 @@ export class TravelExpensesService implements OnModuleInit {
               }
             }),
           );
+        }
+      } else if (isSecretario) {
+        if (usuarioId) {
+          const depId = await this.obtenerDependenciaUsuario(usuarioId);
+          if (depId != null) {
+            query.andWhere(
+              '(s.id_dependencia = :secDepId OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :secDepId))',
+              { secDepId: depId },
+            );
+          } else {
+            query.andWhere('1 = 0');
+          }
+        }
+      } else if (isJefe || isGerente) {
+        if (usuarioId) {
+          const depId = await this.obtenerDependenciaUsuario(usuarioId);
+          if (depId != null) {
+            query.andWhere(
+              '(s.id_dependencia = :dirDepId OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :dirDepId))',
+              { dirDepId: depId },
+            );
+          } else {
+            query.andWhere('1 = 0');
+          }
         }
       } else if (isTesoreria) {
         query.andWhere('s.estado_solicitud IN (:...estadosTesoreria)', {
@@ -4579,6 +4638,38 @@ if (dto.costoEstimadoTiquete !== undefined) {
       );
     }
 
+    // Validación de pertenencia a la misma dependencia para Jefe y Gerente
+    const tipoFirmaStr = String(dto.tipoFirma || '').toUpperCase();
+    const esFirmaJefeOGerente =
+      tipoFirmaStr === 'JEFE_DEPENDENCIA' ||
+      tipoFirmaStr === 'GERENTE_PROYECTO';
+
+    const esSuperAdmin = this.esSuperAdmin(userRoles);
+
+    if (esFirmaJefeOGerente && !esSuperAdmin && usuarioId) {
+      const depSolicitud =
+        solicitud.idDependencia != null
+          ? Number(solicitud.idDependencia)
+          : solicitud.comisionado?.idDependencia != null
+          ? Number(solicitud.comisionado.idDependencia)
+          : null;
+
+      if (depSolicitud != null) {
+        const depFirmante = await this.obtenerDependenciaUsuario(usuarioId);
+        const firmantesAprobacion = this.determinarFirmantesAprobacion(solicitud);
+        const esReglaEspecial =
+          firmantesAprobacion.reglaDesplazamiento !== 'REGULAR';
+
+        if (!esReglaEspecial) {
+          if (depFirmante == null || depFirmante !== depSolicitud) {
+            throw new BadRequestException(
+              `No es posible firmar la aprobación: el usuario firmante pertenece a una dependencia distinta (${depFirmante ?? 'Sin asignar'}) a la de la solicitud (${depSolicitud}). Solo directivos de la misma dependencia pueden firmar la aprobación.`,
+            );
+          }
+        }
+      }
+    }
+
     // Validación de código OTP si fue suministrado o requerido
     if (dto.otp && dto.verificationId) {
       this.verificarOtpFirma({
@@ -4845,10 +4936,27 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
+      relations: ['comisionado'],
     });
 
     if (!solicitud) {
       throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    const depSolicitud =
+      solicitud.idDependencia != null
+        ? Number(solicitud.idDependencia)
+        : solicitud.comisionado?.idDependencia != null
+        ? Number(solicitud.comisionado.idDependencia)
+        : null;
+
+    if (depSolicitud != null && usuarioId) {
+      const depUsuario = await this.obtenerDependenciaUsuario(usuarioId);
+      if (depUsuario != null && depUsuario !== depSolicitud) {
+        throw new BadRequestException(
+          `No es posible devolver la solicitud: su dependencia (${depUsuario}) no coincide con la dependencia de la solicitud (${depSolicitud}).`,
+        );
+      }
     }
 
     const estadoAnterior = solicitud.estadoSolicitud;
@@ -5070,6 +5178,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
     page = 1,
     limit = 20,
     busqueda?: string,
+    usuarioId?: string,
+    isSuperAdmin = false,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     const query = this.solicitudRepo
       .createQueryBuilder('s')
@@ -5077,6 +5187,18 @@ if (dto.costoEstimadoTiquete !== undefined) {
       .where('s.estado_solicitud = :estado', {
         estado: EstadoSolicitud.PENDIENTE_FIRMAS,
       });
+
+    if (!isSuperAdmin && usuarioId) {
+      const depUsuario = await this.obtenerDependenciaUsuario(usuarioId);
+      if (depUsuario != null) {
+        query.andWhere(
+          '(s.id_dependencia = :depUsuario OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :depUsuario))',
+          { depUsuario },
+        );
+      } else {
+        query.andWhere('1 = 0');
+      }
+    }
 
     if (busqueda && busqueda.trim()) {
       const term = `%${busqueda.trim().toLowerCase()}%`;

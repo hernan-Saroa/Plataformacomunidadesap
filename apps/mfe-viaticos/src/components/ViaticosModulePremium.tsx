@@ -732,9 +732,10 @@ export default function ViaticosModulePremium() {
       setAnalistaSeleccionadoId(null);
       cargarDatos();
       setSolicitudSeleccionada(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error asignando analista:', error);
-      setMensajeExito('No fue posible asignar la comisión al analista.');
+      const serverMsg = error?.response?.data?.message || error?.message;
+      setMensajeExito(serverMsg || 'No fue posible asignar la comisión al analista.');
     } finally {
       setAsignando(false);
     }
