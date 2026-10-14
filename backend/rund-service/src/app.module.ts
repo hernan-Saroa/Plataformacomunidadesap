@@ -15,6 +15,7 @@ import { EstadisticasModule } from './modules/estadisticas/estadisticas.module';
 import { BancoDocentesModule } from './modules/banco-docentes/banco-docentes.module';
 import { MacroDocenteModule } from './modules/macro-docente/macro-docente.module';
 
+import { InternalModule } from './internal/internal.module';
 import { DocenteEntity } from './entities/docente.entity';
 import { FormacionAcademicaEntity } from './entities/formacion-academica.entity';
 import { ExperienciaDocenteEntity } from './entities/experiencia-docente.entity';
@@ -62,6 +63,7 @@ import { PermissionsGuard } from './auth/permissions.guard';
     EstadisticasModule,
     BancoDocentesModule,
     MacroDocenteModule,
+    InternalModule,
   ],
   controllers: [AppController],
   providers: [

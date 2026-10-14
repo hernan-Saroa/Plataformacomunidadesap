@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, InternalServerErrorException, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { PlanTrabajoAcademicoEntity } from './entities/plan-trabajo-academico.entity';
@@ -37,6 +37,8 @@ import {
 } from './auth/pta-permissions.constants';
 import { PtaNotificationsService } from './notifications/pta-notifications.service';
 import { obtenerNombreVisibleAsignatura } from './utils/asignatura-nombre.util';
+import { RundSyncService } from '../integracion-rund/rund-sync.service';
+import { RundDocentesClient } from '../integracion-rund/rund-docentes.client';
 
 type SavePtaInput = Record<string, any>;
 type ComponentResponseMap = Record<string, string>;
@@ -1078,6 +1080,9 @@ export class PtaService {
     @InjectRepository(PtaTerritorialReviewEntity)
     private readonly ptaTerritorialReviewRepo: Repository<PtaTerritorialReviewEntity>,
     private readonly ptaNotifications: PtaNotificationsService,
+    // Integración con rund-service (dueño del dato RUND). Opcionales: sin ellos PTA usa solo su copia local.
+    @Optional() private readonly rundSync?: RundSyncService,
+    @Optional() private readonly rundClient?: RundDocentesClient,
   ) {}
 
   private safeUsuario(usuario: any) {
@@ -1262,6 +1267,17 @@ export class PtaService {
           )
           .getOne();
         if (byDoc) return { personId: byDoc.id, email, fullName };
+      }
+    }
+
+    // El docente puede existir ya en RUND (dueño del dato) sin tener todavía copia local: se trae de allí
+    // antes de aprovisionar uno vacío. Si rund-service no responde se sigue con el aprovisionamiento.
+    if (this.rundSync) {
+      try {
+        const idLocal = await this.rundSync.sincronizarDocente(personId, options?.periodo);
+        if (idLocal) return { personId: idLocal, email, fullName };
+      } catch (err: any) {
+        console.warn(`[PTA] No se pudo traer al docente ${personId} desde RUND: ${err?.message}`);
       }
     }
 
@@ -4832,9 +4848,13 @@ export class PtaService {
     }
 
     if (nuevoEstado === 'Aprobado' && existing.estado !== 'Aprobado') {
-      const validation = await this.getRUNDDocente(existing.docenteId);
+      // La validación documental vive en RUND. La aprobación del PTA no es bloqueante: si RUND no responde, se omite.
+      const validation = await this.getRUNDDocenteRemoto(existing.docenteId).catch((err: any) => {
+        console.warn(`[RUND] No se pudo consultar la validación documental: ${err?.message}`);
+        return { validaciones: [] as any[] };
+      });
       const criticos = ['DOCUMENTO_IDENTIDAD', 'VINCULACION', 'DEDICACION', 'ACTO_ADMINISTRATIVO'];
-      const noValidados = validation.validaciones.filter(v =>
+      const noValidados = (validation?.validaciones ?? []).filter((v: any) =>
         criticos.includes(v.campo_rund) && v.estado_documento !== 'Aceptado'
       );
 
@@ -10938,6 +10958,18 @@ export class PtaService {
     }, { total: 0, revisados: 0, devueltos: 0, omitidos: 0, fallidos: 0 });
 
     return { resumen, resultados };
+  }
+
+  /** Validación documental del docente, consultada a RUND (dueño del dato). Sin cliente configurado, usa la copia local. */
+  async getRUNDDocenteRemoto(docenteId: string) {
+    if (!this.rundClient) return this.getRUNDDocente(docenteId);
+    return this.rundClient.validacion(docenteId);
+  }
+
+  /** Recorre todo el RUND y actualiza la copia local de docentes. */
+  async sincronizarDocentesDesdeRund() {
+    if (!this.rundSync) throw new BadRequestException('La integración con RUND no está disponible.');
+    return this.rundSync.sincronizarTodo();
   }
 
   async getRUNDDocente(docenteId: string) {

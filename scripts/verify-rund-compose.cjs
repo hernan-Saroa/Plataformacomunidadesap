@@ -103,6 +103,10 @@ try {
     assert.equal(env.AUTH_INTERNAL_SERVICE_TOKEN, '');
     assert.equal(env.RUND_AUTH_SYNC_TIMEOUT_MS, '15000');
     assert.equal(env.RUND_AUTH_SYNC_MAX_PAGES, '1000');
+    for (const name of ['rund-service', 'auth-service', 'academic-work-plan-service', 'academic-schedule-service']) {
+      assert.equal(config.services[name].environment.INTERNAL_SERVICE_TOKEN, '', `${testCase.name}: ${name} requiere un token explícito, separado del JWT`);
+    }
+    assert.equal(config.services['academic-work-plan-service'].environment.RUND_SYNC_ENABLED, 'false', `${testCase.name}: no sincroniza PTA al arrancar sin activación explícita`);
     if (carpetaMode) {
       const authEnv = config.services['auth-service'].environment;
       assert.equal(authEnv.RUND_CARPETA_ENABLED, 'false');
@@ -140,8 +144,12 @@ try {
     assert.equal(custom.AUTH_INTERNAL_SERVICE_TOKEN, 'auth-ficticio');
     assert.equal(custom.RUND_AUTH_SYNC_TIMEOUT_MS, '5000');
     assert.equal(custom.RUND_AUTH_SYNC_MAX_PAGES, '20');
-    const shared = render(cases.find(item => item.name === 'dev'), { INTERNAL_SERVICE_TOKEN: 'compartido-ficticio' }).services['rund-service'].environment;
-    assert.equal(shared.AUTH_INTERNAL_SERVICE_TOKEN, 'compartido-ficticio');
+    const sharedConfig = render(cases.find(item => item.name === 'dev'), { INTERNAL_SERVICE_TOKEN: 'compartido-ficticio', RUND_SYNC_ENABLED: 'true' });
+    assert.equal(sharedConfig.services['rund-service'].environment.AUTH_INTERNAL_SERVICE_TOKEN, 'compartido-ficticio');
+    for (const name of ['rund-service', 'auth-service', 'academic-work-plan-service', 'academic-schedule-service']) {
+      assert.equal(sharedConfig.services[name].environment.INTERNAL_SERVICE_TOKEN, 'compartido-ficticio');
+    }
+    assert.equal(sharedConfig.services['academic-work-plan-service'].environment.RUND_SYNC_ENABLED, 'true');
     console.log('PASS configuración explícita de enlaces, OpenKM, límites y OCR con valores ficticios.');
     const report = { verifiedAt: new Date().toISOString(), passed: true, daemonUsed: false, containersStarted: false,
       realEnvironmentFilesRead: false, serviceEnvFilesOmittedForValidation: true,
@@ -165,7 +173,7 @@ try {
       assert.equal(sharedFolder.services['auth-service'].environment.RUND_CARPETA_SYNC_TOKEN, 'compartido-ficticio');
       assert.equal(sharedFolder.services['rund-service'].environment.RUND_CARPETA_SYNC_TOKEN, 'compartido-ficticio');
     }
-    report.scope = carpetaMode ? 'RUND y auth-service; demás módulos comparados' : 'RUND; demás módulos comparados';
+    report.scope = `${carpetaMode ? 'RUND y auth-service' : 'RUND'}; contratos internos PTA/Programación; ${previous ? 'demás módulos comparados' : 'sin comparación de otros módulos'}`;
     fs.writeFileSync(path.join(root, `docs/rund/${carpetaMode ? 'validacion-carpeta-compose' : 'validacion-compose'}.json`), JSON.stringify(report, null, 2) + '\n');
   }
 } finally {

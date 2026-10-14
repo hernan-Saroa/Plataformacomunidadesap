@@ -1,146 +1,146 @@
 {
-  "verifiedAt": "2026-10-14T09:41:07.690Z",
+  "verifiedAt": "2026-10-14T10:07:34.471Z",
   "passed": true,
   "daemonUsed": false,
   "containersStarted": false,
   "realEnvironmentFilesRead": false,
   "serviceEnvFilesOmittedForValidation": true,
-  "otherModulesCompared": true,
+  "otherModulesCompared": false,
   "checks": [
     {
       "composition": "base",
       "persistentStorage": "bind",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "a6442410c919976a41641abbb8ee61712ee7b62e953d11b7e75c8dcab1533de9",
-      "otherModulesHashAfter": "a6442410c919976a41641abbb8ee61712ee7b62e953d11b7e75c8dcab1533de9"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "80b91f930b3704af1a988b518b9ac46c1941b1b9d01fdee1d75d11b9da376c94"
     },
     {
       "composition": "backend",
       "persistentStorage": "bind",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "afb9d24b9b0fddc343983165c765354114d375bfb42e54c8d2454df4b97705db",
-      "otherModulesHashAfter": "afb9d24b9b0fddc343983165c765354114d375bfb42e54c8d2454df4b97705db"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "dd1dab8560535558c65e576e170e05695a593f28b3935fc043ea4b545f43b4a2"
     },
     {
       "composition": "local",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "1a459fdec30b4d8565bb2edb101f12c3d5a4cbd862de4917a5e0c237a359466d",
-      "otherModulesHashAfter": "1a459fdec30b4d8565bb2edb101f12c3d5a4cbd862de4917a5e0c237a359466d"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "b227eb1b291b39007c36d0aa5a052de3013c08797a883fa8828e0459d25695c8"
     },
     {
       "composition": "dev",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "a32dfbdf52924179368fec56573107e0c7a6bc70452d2fe7b140ec5d6cfc0934",
-      "otherModulesHashAfter": "a32dfbdf52924179368fec56573107e0c7a6bc70452d2fe7b140ec5d6cfc0934"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "11ebf43a1856ebdd7a9b8b221a783bb6b9d0a266d5150f51d88cd3e9dfb98fc7"
     },
     {
       "composition": "dev-ghcr",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "85d7a404a0e7dd182530c5082ac7b726701e724ddc22d8a1d065ac1e7b328514",
-      "otherModulesHashAfter": "85d7a404a0e7dd182530c5082ac7b726701e724ddc22d8a1d065ac1e7b328514"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "29b3f6f3eeb9c6d7838f8a934d8e51e22c3113e0ae979638c3e149e8b28c035c"
     },
     {
       "composition": "dev-mfe",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "9a45ce5b92ae252121b95dba4add902117e8725aa84aa53182fed97642d3fa0d",
-      "otherModulesHashAfter": "9a45ce5b92ae252121b95dba4add902117e8725aa84aa53182fed97642d3fa0d"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "def4f0776e7691ab28aab95441cc96db4a815629e70dc485eee13fe3d8524e46"
     },
     {
       "composition": "dev-mfe-ghcr",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "c45d3341747ab36c8a8942560a4975d1d6fb69fd7ff9389b4b367e5bbff97686",
-      "otherModulesHashAfter": "c45d3341747ab36c8a8942560a4975d1d6fb69fd7ff9389b4b367e5bbff97686"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "a6de959f861f84da6f99b8c883b8891704fd9c62588feddd410422459943d4aa"
     },
     {
       "composition": "qa",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "e84bf41a14a9ec0d38bac0a00fbc64ba84beb291302b666c328f28649bd2d3dd",
-      "otherModulesHashAfter": "e84bf41a14a9ec0d38bac0a00fbc64ba84beb291302b666c328f28649bd2d3dd"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "7b963aa1b182dd256e103578bf7681bb2e1f5d1c149ae426cb295abe024928ac"
     },
     {
       "composition": "qa-ghcr",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "bc8ebbc7b6afb0559138c9f2878b1c68944ca34a2f53384a1686153a7d4ab658",
-      "otherModulesHashAfter": "bc8ebbc7b6afb0559138c9f2878b1c68944ca34a2f53384a1686153a7d4ab658"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "6128dd8e07d561569f6ce1a686c4392db9a8623984b912abb136038a1ebc1ccc"
     },
     {
       "composition": "qa-mfe",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "67672b70799a0834d5ccc64937a4130245a52444c5633b56d558a191b90861f6",
-      "otherModulesHashAfter": "67672b70799a0834d5ccc64937a4130245a52444c5633b56d558a191b90861f6"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "6d7bb6acc3127615bc9fd2644d001fba6b89a0756a962d1451a2a2cffaa07805"
     },
     {
       "composition": "qa-mfe-ghcr",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "ec5ceece36146c230fd88e7164341cb27c6eb57f0f32d3f6d5d6532d6e81f727",
-      "otherModulesHashAfter": "ec5ceece36146c230fd88e7164341cb27c6eb57f0f32d3f6d5d6532d6e81f727"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "065c2f9ce26abdb331a3ae902d36078142f7baba17dd911e1cd78045411d909f"
     },
     {
       "composition": "pre",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "6fd8929721b925dafdb1434d2a31614c9f0c28f7487e9779e42ad60359532b60",
-      "otherModulesHashAfter": "6fd8929721b925dafdb1434d2a31614c9f0c28f7487e9779e42ad60359532b60"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "07a505af9854dacd60c53cf5e3ae25f261b596629e75fb791983d7d9dc0b57a3"
     },
     {
       "composition": "pre-ghcr",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "0371924b02deccafc9407e36f1787d03497030dc1ae6315be01c76b286c888ba",
-      "otherModulesHashAfter": "0371924b02deccafc9407e36f1787d03497030dc1ae6315be01c76b286c888ba"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "9b900a1a8d83fd9d2cde0cc11eff89ab1231d1612acbf2f0b62c4208363d65a3"
     },
     {
       "composition": "pre-mfe",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "9d3d3c3cb2a0c1cba61499ca01a3e0ed2c6142fda18fdb747e33375d14a7883c",
-      "otherModulesHashAfter": "9d3d3c3cb2a0c1cba61499ca01a3e0ed2c6142fda18fdb747e33375d14a7883c"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "8bcb6c73a15c97c9c033f0a9f707d420506adcb866c7312084f9e45f26fb406e"
     },
     {
       "composition": "pre-mfe-ghcr",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "146bb3a010c75051ac843b8fd457a6b9e1394d61fa59bbf079ffbdef8e3b3e43",
-      "otherModulesHashAfter": "146bb3a010c75051ac843b8fd457a6b9e1394d61fa59bbf079ffbdef8e3b3e43"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "903b899e31555200b520b42b2a9aae3d546e72d05d10badbd0ace738fc4eb12d"
     },
     {
       "composition": "prod",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "bcee45faa91872468394a22248e877fbb4e72ce576a34826e17fe9fdb3552152",
-      "otherModulesHashAfter": "bcee45faa91872468394a22248e877fbb4e72ce576a34826e17fe9fdb3552152"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "6b8f24de1f32cbaf8dcbd209d2a5e6a645751b98b303ba55f29d1009fa0ce6af"
     },
     {
       "composition": "prod-ghcr",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "03dc501500db8e9a7cbed7c4a519f00776b5c3f4bfe61f5cb6e59d17deaed929",
-      "otherModulesHashAfter": "03dc501500db8e9a7cbed7c4a519f00776b5c3f4bfe61f5cb6e59d17deaed929"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "d3d71b7dc47d233c7f31372467f49efeee7f58b6b02639519dbf7cac8840d20f"
     },
     {
       "composition": "prod-mfe",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "2a199651ffb0f9478738b00a70815dc6658bb0c3163f563c1df2529070701343",
-      "otherModulesHashAfter": "2a199651ffb0f9478738b00a70815dc6658bb0c3163f563c1df2529070701343"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "b996d772de8f2521e4e76411335b78f294c702b1af55f1541e0dd9199b6c1c74"
     },
     {
       "composition": "prod-mfe-ghcr",
       "persistentStorage": "volume",
-      "otherModulesUnchanged": true,
-      "otherModulesHashBefore": "8e07e135b3b04f181414526982b5132fa52f7f6fd91b0ff24b5dedc6cbdeaa60",
-      "otherModulesHashAfter": "8e07e135b3b04f181414526982b5132fa52f7f6fd91b0ff24b5dedc6cbdeaa60"
+      "otherModulesUnchanged": false,
+      "otherModulesHashBefore": null,
+      "otherModulesHashAfter": "e330fe1b6d2251f11705ce8547e4821c7fb5faf0d8702654f6b7fd0b13244a0f"
     }
   ],
   "explicitOverrides": true,
-  "scope": "RUND y auth-service; demás módulos comparados"
+  "scope": "RUND y auth-service; contratos internos PTA/Programación; sin comparación de otros módulos"
 }

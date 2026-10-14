@@ -4,6 +4,7 @@ import { AcumuladoService } from './acumulado.service.js';
 import { AsignacionesController } from './asignaciones.controller.js';
 import { AsignacionesService } from './asignaciones.service.js';
 import { ContratoClient } from './contrato-client.js';
+import { RundClient } from './rund-client.js';
 
 /**
  * Asignación de docente a grupo, con bloqueo duro (EFDS-1372) y descuento de
@@ -15,7 +16,7 @@ import { ContratoClient } from './contrato-client.js';
  */
 @Module({
   controllers: [AsignacionesController],
-  providers: [AsignacionesService, AcumuladoService, ContratoClient],
+  providers: [AsignacionesService, AcumuladoService, ContratoClient, RundClient],
   exports: [AsignacionesService, AcumuladoService],
 })
 export class AsignacionesModule {}

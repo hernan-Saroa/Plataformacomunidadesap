@@ -5,6 +5,7 @@ import { Person } from '../users/person.entity';
 import { CarpetaDigital } from './carpeta-digital.entity';
 import { TipoDocumento } from './tipo-documento.entity';
 import { DocumentoCarpetaDigital } from './documento-carpeta-digital.entity';
+import { RundClient } from './rund-client';
 import { auditRundDocuments, protectRundFolderDocument, isRundFolderDocument, rundOriginalResourceId } from './rund-document-access';
 import { RundCarpetaClient } from './rund-carpeta.client';
 import { CarpetaDocumentVersionsService } from './carpeta-document-versions.service';
@@ -24,6 +25,7 @@ export class CarpetaDigitalService {
     private readonly dataSource: DataSource,
     private readonly rundCarpetaClient: RundCarpetaClient,
     @Optional() private readonly documentVersions?: CarpetaDocumentVersionsService,
+    @Optional() private readonly rund?: RundClient,
   ) {}
 
   async getAllCarpetas(user?: any, sessionToken?: string) {
@@ -91,7 +93,7 @@ export class CarpetaDigitalService {
       if(legacy.length>200) throw new Error();
     } catch {throw new ServiceUnavailableException('No fue posible confirmar los perfiles históricos de PTA.');}
     const independent=this.rundCarpetaClient?.enabled ? await this.rundCarpetaClient.profiles(carpeta.personaId,sessionToken) : [];
-    if(legacy.length) await auditRundDocuments(this.dataSource,user,'CARPETA_DIGITAL_PERFILES_PTA',carpeta.personaId);
+    if(legacy.length) await auditRundDocuments(this.rund || this.dataSource,user,'CARPETA_DIGITAL_PERFILES_PTA',carpeta.personaId);
     const perfil=(p:any,propietario:string)=>({id:String(p.id),persona_id:carpeta.personaId,propietario,
       periodo_carga:p.periodo_carga ?? null,estado:p.estado,clave:`${propietario}:${p.id}`});
     return {persona_id:carpeta.personaId,complete:true,propietario_predeterminado:this.rundCarpetaClient?.enabled?'rund':'pta',
@@ -216,7 +218,7 @@ export class CarpetaDigitalService {
     }
 
     if (docsDto.some(isRundFolderDocument)) {
-      await auditRundDocuments(this.dataSource, user, 'CARPETA_DIGITAL_LISTADO_RUND', personaId);
+      await auditRundDocuments(this.rund || this.dataSource, user, 'CARPETA_DIGITAL_LISTADO_RUND', personaId);
     }
     const independent = this.rundCarpetaClient?.enabled
       ? await this.rundCarpetaClient.listDocumentos(carpeta.personaId, sessionToken) : [];
@@ -260,7 +262,7 @@ export class CarpetaDigitalService {
       fechaSubida: new Date(),
     });
     if (isRundFolderDocument(doc)) {
-      await auditRundDocuments(this.dataSource, user, 'CARPETA_DIGITAL_CARGAR_RUND', rundOriginalResourceId(doc.urlArchivo));
+      await auditRundDocuments(this.rund || this.dataSource, user, 'CARPETA_DIGITAL_CARGAR_RUND', rundOriginalResourceId(doc.urlArchivo));
     }
     const saved = await this.documentoRepo.save(doc);
     return protectRundFolderDocument(this.toDocumentoDto(saved, carpeta.personaId), user);
@@ -283,7 +285,7 @@ export class CarpetaDigitalService {
     }
     const doc = await this.documentoRepo.findOne({ where: { id }, relations: ['carpetaDigital'] });
     if (!doc) throw new NotFoundException('Documento no encontrado.');
-    if (isRundFolderDocument(doc)) await auditRundDocuments(this.dataSource, user, 'CARPETA_DIGITAL_CONSULTAR_RUND', rundOriginalResourceId(doc.urlArchivo));
+    if (isRundFolderDocument(doc)) await auditRundDocuments(this.rund || this.dataSource, user, 'CARPETA_DIGITAL_CONSULTAR_RUND', rundOriginalResourceId(doc.urlArchivo));
     return protectRundFolderDocument(this.toDocumentoDto(doc, doc.carpetaDigital?.personaId), user);
   }
 
@@ -302,7 +304,7 @@ export class CarpetaDigitalService {
           throw new BadRequestException('El tipo de documento no está disponible para esta carpeta.');
         }
       }
-      if (isRund || isRundFolderDocument(data)) await auditRundDocuments(db, user, 'CARPETA_DIGITAL_RECLASIFICAR_RUND', rundOriginalResourceId(existing.urlArchivo));
+      if (isRund || isRundFolderDocument(data)) await auditRundDocuments(this.rund || db, user, 'CARPETA_DIGITAL_RECLASIFICAR_RUND', rundOriginalResourceId(existing.urlArchivo));
       const changed = !isRund && ((!!data.tipoDocumentoId && data.tipoDocumentoId !== existing.tipoDocumentoId)
         || (!!data.categoria && data.categoria !== existing.categoria));
       if (data.tipoDocumentoId) existing.tipoDocumentoId = data.tipoDocumentoId;
@@ -316,7 +318,7 @@ export class CarpetaDigitalService {
   async validateDocumento(documentoId: string, data: { estado: 'validado' | 'rechazado'; comentarios?: string; validadoPor?: string; revisionDocumento?: unknown }, user?: any) {
     return this.mutateDocumento(documentoId, data.revisionDocumento, async (existing, repo, db) => {
       if (!['validado', 'rechazado'].includes(data.estado)) throw new BadRequestException('estado debe ser validado o rechazado');
-      if (isRundFolderDocument(existing)) await auditRundDocuments(db, user, 'CARPETA_DIGITAL_VALIDAR_RUND', rundOriginalResourceId(existing.urlArchivo));
+      if (isRundFolderDocument(existing)) await auditRundDocuments(this.rund || db, user, 'CARPETA_DIGITAL_VALIDAR_RUND', rundOriginalResourceId(existing.urlArchivo));
       const signedId = user?.userId || user?.sub;
       const actors = typeof signedId === 'string' && /^[0-9a-f-]{36}$/i.test(signedId)
         ? await db.query('SELECT id_user FROM auth."user" WHERE id_user::text=$1 OR public_id::text=$1 LIMIT 1', [signedId]) : [];
@@ -329,7 +331,7 @@ export class CarpetaDigitalService {
 
   async deleteDocumento(documentoId: string, user?: any, revisionDocumento?: unknown) {
     return this.mutateDocumento(documentoId, revisionDocumento, async (existing, repo, db) => {
-      if (isRundFolderDocument(existing)) await auditRundDocuments(db, user, 'CARPETA_DIGITAL_RETIRAR_RUND', rundOriginalResourceId(existing.urlArchivo));
+      if (isRundFolderDocument(existing)) await auditRundDocuments(this.rund || db, user, 'CARPETA_DIGITAL_RETIRAR_RUND', rundOriginalResourceId(existing.urlArchivo));
       await repo.delete(existing.id);
       return { id: existing.id };
     });
@@ -478,7 +480,7 @@ export class CarpetaDigitalService {
       const owners = { auth: this.documentStats(docs), pta: this.documentStats(legacy.map(s => ({ estado: this.mapRundEstado(s.estado) }))),
         rund: remote.get(carpeta.personaId) };
       if (!owners.rund) throw new ServiceUnavailableException('RUND no confirmó todas las carpetas.');
-      if (legacy.length || links.size) await auditRundDocuments(this.dataSource,user,'CARPETA_DIGITAL_CONTEO_RUND',carpeta.personaId);
+      if (legacy.length || links.size) await auditRundDocuments(this.rund || this.dataSource,user,'CARPETA_DIGITAL_CONTEO_RUND',carpeta.personaId);
       const total = this.documentStats([]);
       for (const name of Object.keys(total)) total[name] = owners.auth[name]+owners.pta[name]+owners.rund[name];
       const { persona_id: _identity, ...rund } = owners.rund;

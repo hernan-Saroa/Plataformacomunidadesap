@@ -10,6 +10,14 @@ describe('Gateway: la auditoría general no duplica datos sensibles RUND', () =>
     expect(isRundAuditUrl('/pta/api/v1/pta/banco-docentes/bulk')).toBe(true);
   });
 
+  it('cubre las rutas del microservicio RUND y redacta la cédula de interoperabilidad', () => {
+    for (const url of ['/rund/api/v1/docentes/abc', '/rund/api/v1/soportes', '/rund/api/v1/tarjeta-digital/1', '/rund/api/v1/rund/docente/abc/sync-documents', '/rund/api/v1/pta/banco-docentes/12/documentos']) {
+      expect(isRundAuditUrl(url)).toBe(true);
+    }
+    expect(redactRundAuditUrl('/rund/api/v1/rund/interoperabilidad/perfiles/1020304050?x=1')).not.toContain('1020304050');
+    expect(isRundAuditUrl('/rund/api/v1/health')).toBe(true);
+  });
+
   it('conserva operación y resultado pero omite cuerpos de la petición y respuesta RUND', async () => {
     const audit = { logRequest: jest.fn().mockResolvedValue(undefined) };
     const interceptor = new AuditInterceptor(audit as any);

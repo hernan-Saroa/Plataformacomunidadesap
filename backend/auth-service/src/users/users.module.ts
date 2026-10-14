@@ -16,6 +16,7 @@ import { RolesService } from './roles.service';
 import { ModulesService } from './modules.service';
 import { EstructuraOrganizacionalService } from './estructura-organizacional.service';
 import { BackofficeDashboardService } from './backoffice-dashboard.service';
+import { RundClientModule } from '../carpeta-digital/rund.module';
 import { UsersController } from './users.controller';
 import { RolesController } from './roles.controller';
 import { ModulesController } from './modules.controller';
@@ -26,6 +27,7 @@ import { DatosMaestrosModule } from './datos-maestros.module';
 
 @NestModule({
   imports: [
+    RundClientModule,
     TypeOrmModule.forFeature([
       User,
       Person,

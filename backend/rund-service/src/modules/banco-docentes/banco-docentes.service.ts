@@ -3441,10 +3441,11 @@ export class BancoDocentesService implements OnModuleInit {
   async getSoportesProximosVencer(diasUmbral = 30): Promise<any[]> {
     const rows = await this.dataSource.query(
       `SELECT sc.*, d."correoInstitucional", 
-              p.primer_nombre || ' ' || COALESCE(p.primer_apellido, '') AS nombre_docente
+              p.nom_largo AS nombre_docente
        FROM rund."RundSoporteCampo" sc
-       JOIN rund."Docente" d ON d.id = sc.docente_id
-       JOIN academic_work_plan."Persona" p ON p.id = d."personaId"
+       -- "Docente".id es text y docente_id es uuid: se compara como texto.
+       JOIN rund."Docente" d ON d.id = sc.docente_id::text
+       JOIN auth.personas p ON p.id_person = d."personaId"
        WHERE sc.fecha_vencimiento IS NOT NULL
          AND sc.estado != 'Rechazado'
          AND sc.fecha_vencimiento <= (NOW() + INTERVAL '${diasUmbral} days')

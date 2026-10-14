@@ -23,7 +23,7 @@ import { UnifiedStatsCards, type StatCardData } from './UnifiedStatsCards';
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { EmptyStatePremium } from './EmptyStatesPremium';
 
-const BD_BASE = '/pta/api/v1/pta/banco-docentes';
+const BD_BASE = '/rund/api/v1/pta/banco-docentes';
 const PERIODOS_BASE = '/pta/api/v1/periodos-academicos';
 
 interface PeriodoAcademico {

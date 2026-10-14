@@ -8,6 +8,7 @@ import { ResponseInterceptor } from './common/response.interceptor';
 import { DataSource } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import { rundFolderStaticAccess } from './carpeta-digital/rund-document-access';
+import { RundClient } from './carpeta-digital/rund-client';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -18,7 +19,7 @@ async function bootstrap() {
   // y __dirname apunta a /dist (prod) o /src (dev): con un único '..' caemos en la
   // raíz del service donde vive la carpeta uploads/.
   const uploadsDir = join(__dirname, '..', 'uploads');
-  app.use(rundFolderStaticAccess(app.get(DataSource), app.get(JwtService)));
+  app.use(rundFolderStaticAccess(app.get(DataSource), app.get(JwtService), app.get(RundClient)));
   app.useStaticAssets(uploadsDir, {
     prefix: '/uploads/',
   });

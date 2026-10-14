@@ -1,0 +1,254 @@
+{
+  "verifiedAt": "2026-10-14T10:14:35.975Z",
+  "branch": "feat/agregar_modulo_rund",
+  "parents": [
+    "bbedccebb1b74150e3b75ba65a2fcc479702f9c6",
+    "c959f2fe387ef8c910f3e2bf0c050da43b38d38a"
+  ],
+  "initialConflictedPaths": [
+    "apps/mfe-gestion-personas/src/components/admin/UsersPersonsModulePremium.tsx",
+    "apps/mfe-gestion-personas/src/components/shared/CarpetaDigitalSharedView.tsx",
+    "apps/mfe-gestion-personas/src/services/api/supabase.service.ts",
+    "apps/shell/src/components/esap/BackofficeApp.tsx",
+    "apps/shell/src/components/shared/CarpetaDigitalSharedView.tsx",
+    "apps/shell/src/services/api/supabase.service.ts",
+    "backend/api-gateway/src/audit/rund-audit-redaction.ts",
+    "backend/auth-service/.env.example",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.module.ts",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.service.ts",
+    "backend/auth-service/src/carpeta-digital/rund-document-access.spec.ts",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.controller.ts",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts",
+    "backend/rund-service/src/modules/banco-docentes/rund-documentos.service.ts",
+    "backend/rund-service/src/modules/macro-docente/macro-docente.service.ts",
+    "docker-compose.local.yml",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md"
+  ],
+  "resolutionValidated": true,
+  "backendAndFrontendTestsPassed": 2059,
+  "tests": [
+    {
+      "component": "backend/rund-service",
+      "suitesPassed": 44,
+      "testsPassed": 531,
+      "suitesFailed": 0,
+      "knownFailure": null
+    },
+    {
+      "component": "backend/api-gateway",
+      "suitesPassed": 6,
+      "testsPassed": 83,
+      "suitesFailed": 0,
+      "knownFailure": null
+    },
+    {
+      "component": "backend/auth-service",
+      "suitesPassed": 13,
+      "testsPassed": 115,
+      "suitesFailed": 0,
+      "knownFailure": null
+    },
+    {
+      "component": "backend/academic-work-plan-service",
+      "suitesPassed": 86,
+      "testsPassed": 786,
+      "suitesFailed": 0,
+      "knownFailure": null
+    },
+    {
+      "component": "backend/academic-schedule-service",
+      "suitesPassed": 14,
+      "testsPassed": 90,
+      "suitesFailed": 0,
+      "knownFailure": null
+    },
+    {
+      "component": "apps/mfe-rund",
+      "suitesPassed": 19,
+      "testsPassed": 180,
+      "suitesFailed": 0,
+      "knownFailure": null
+    },
+    {
+      "component": "apps/mfe-gestion-personas",
+      "suitesPassed": 8,
+      "testsPassed": 106,
+      "suitesFailed": 0,
+      "knownFailure": null
+    },
+    {
+      "component": "apps/mfe-reportes",
+      "suitesPassed": 3,
+      "testsPassed": 25,
+      "suitesFailed": 0,
+      "knownFailure": null
+    },
+    {
+      "component": "apps/shell",
+      "suitesPassed": 14,
+      "testsPassed": 143,
+      "suitesFailed": 1,
+      "knownFailure": "Inherited disciplinary.service.spec.ts: jest is not defined"
+    }
+  ],
+  "builds": [
+    {
+      "component": "backend/rund-service",
+      "passed": true,
+      "frontendOutputIsolated": false
+    },
+    {
+      "component": "backend/auth-service",
+      "passed": true,
+      "frontendOutputIsolated": false
+    },
+    {
+      "component": "backend/api-gateway",
+      "passed": true,
+      "frontendOutputIsolated": false
+    },
+    {
+      "component": "backend/academic-work-plan-service",
+      "passed": true,
+      "frontendOutputIsolated": false
+    },
+    {
+      "component": "backend/academic-schedule-service",
+      "passed": true,
+      "frontendOutputIsolated": false
+    },
+    {
+      "component": "apps/mfe-rund",
+      "passed": true,
+      "frontendOutputIsolated": true
+    },
+    {
+      "component": "apps/mfe-gestion-personas",
+      "passed": true,
+      "frontendOutputIsolated": true
+    },
+    {
+      "component": "apps/shell",
+      "passed": true,
+      "frontendOutputIsolated": true
+    },
+    {
+      "component": "apps/mfe-reportes",
+      "passed": true,
+      "frontendOutputIsolated": true
+    }
+  ],
+  "rundFrontendTypecheckPassed": true,
+  "integration": {
+    "postgresTemporaryClusterChecks": 127,
+    "compiledClients": [
+      "Auth",
+      "PTA",
+      "Programación"
+    ],
+    "gatewayLoopbackHttpChecks": 10,
+    "composeCompositions": 19,
+    "composeComparedOtherModules": false
+  },
+  "isolation": {
+    "existingDatabaseUsed": false,
+    "realEnvironmentFilesRead": false,
+    "deployed": false,
+    "pushed": false,
+    "dataCopyExecuted": false,
+    "manualCopyOutsideAutomaticMigrations": true,
+    "ptaScheduledSyncEnabledByDefault": false,
+    "browserExecuted": false,
+    "dockerImagesBuilt": false
+  },
+  "migrationStatus": {
+    "mainStepsCompletedLocally": 11,
+    "currentMainStep": 12,
+    "remainingWorkstreamsIncludingCurrent": 5,
+    "operationalAcceptanceCertified": false,
+    "embeddedPtaRetired": false
+  },
+  "limits": [
+    "Inherited shell disciplinary suite fails before collecting tests: jest is not defined.",
+    "Shell global TypeScript check was not repeated; previous checkpoint reported 586 diagnostics.",
+    "New API consumers require operational preparation of RUND URL/network/token/schema/data before deployment.",
+    "Historical PTA original references and permanent protection marks still require compatibility reads.",
+    "Incoming internal RUND SQL still reads identity from Auth and territory catalog from PTA."
+  ],
+  "sourceHashes": {
+    ".env.example": "edcf02eafa99255ced50436caed1d6e1cdb28a1077986185c55ebdce08acb745",
+    "apps/mfe-gestion-personas/src/components/admin/UsersPersonsModulePremium.tsx": "98fb79dcebd67e4dccae69c7b59a9cc78666f5d71e6432b4d18c4da17aee8841",
+    "apps/mfe-gestion-personas/src/components/shared/CarpetaDigitalSharedView.tsx": "3cc0a7866754ef518f8f77ef86c5cdd1f9458d718fea636e74a7b0798034a6a5",
+    "apps/mfe-gestion-personas/src/services/api/supabase.service.ts": "518ec9c3f9651fac82db30496b51bffa8518b6ebf3458d660ded82899e47cc4c",
+    "apps/mfe-reportes/src/components/MacroDocenteReportView.tsx": "20b2ab98692e743acfb1b1927541c3c061d6f07d8abe2f20817a9e5ed5466bb2",
+    "apps/mfe-reportes/src/components/PlantaDocenteReportView.tsx": "ac088b0e4a9e0741e8916df7e92bfe14e69b880422340a033b65940b8e2cc18e",
+    "apps/shell/src/App.tsx": "3cc3d6d9021213261ffd2e1619e432b988531c255c54c026c7fbb47bd60bfc97",
+    "apps/shell/src/components/esap/BackofficeApp.tsx": "3c60cadfce2466e173c16ff44c7c2ba150e13b3c13e47cf6ebd38a06d4653159",
+    "apps/shell/src/components/shared/CarpetaDigitalSharedView.tsx": "9b2b287f980110a3c4bbe3647077bb0868b115ae85734f45a821b7381d7516be",
+    "apps/shell/src/services/api/rundCachePolicy.test.ts": "190a2245a2bcde8ae3d3964e9353c4ac4b95d95fc87c4b38dd3e586420a33f69",
+    "apps/shell/src/services/api/rundCachePolicy.ts": "78fa42756808e9b40366fd45e9eef6ec60843676f2557fb49bc945670274a910",
+    "apps/shell/src/services/api/supabase.service.ts": "e9645dce442165bd9e0d08b85d4761cfcf5584970d198c8d32eda091eed2eab2",
+    "apps/shell/src/test/rund-autogestion.test.tsx": "522cb18d6549a18d6fa92409f74762b7c60f83447e9380f687533ba8d7a6fb5b",
+    "backend/academic-schedule-service/.env.example": "8ab5f118ddfed436eae15f45de9bd6d5d2faf18a9565d3daeb58cb141f9b7258",
+    "backend/academic-schedule-service/src/asignaciones/acumulado.service.ts": "b1585bd2c25a406c1f17858a1ef3adcaef879c6676292feab03ab688d648d6ad",
+    "backend/academic-schedule-service/src/asignaciones/asignaciones.module.ts": "e70cdf4839f0e0b494a14b13435aa7a9392bc94a7b796a3813c36f7c4842e3af",
+    "backend/academic-schedule-service/src/asignaciones/asignaciones.service.ts": "e3b2805b83fc8722016107c9c79aab7df5307c44a731da0c44570a1a78e69759",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.spec.ts": "4c4ef10dd3bbd88cb1e6d4d3191cb25b6c34b54a35ed52c52cc27b3f0507f2c8",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.ts": "91105f2de5100ceac77aebc56836db749e0988a8347d50ee8873ae1b6e9839c2",
+    "backend/academic-schedule-service/src/asignaciones/situacion-docente.spec.ts": "45c9ab7daba7549e5e7dcffcc5f357a5dbe46ee2a614d3c1f14f5aeac264aeaa",
+    "backend/academic-work-plan-service/.env.example": "afa3fc30499ea76610473110d5c7f60be95d3c1a05cb3cf3015d32269b969157",
+    "backend/academic-work-plan-service/src/contrato-programacion/contrato-programacion.module.ts": "1c3a0a1fd537f8c129519709b4f6d0f494cedcc649766024c27dffa21c7f39b9",
+    "backend/academic-work-plan-service/src/contrato-programacion/v1/docentes-contrato.rund.spec.ts": "d467ec349051867a006c747dddcd64064e391c44c8e3f52bc1ef0248e270e70f",
+    "backend/academic-work-plan-service/src/contrato-programacion/v1/docentes-contrato.service.ts": "0cbaa2d1379f0a1ef68c1f470a413496af35a22ebe749f319974826e0abc836a",
+    "backend/academic-work-plan-service/src/contrato-programacion/v1/situacion-administrativa.agregado.spec.ts": "ad07d160087db13b52627f9068d4b32d8b779b69363b356cc5debcde6fea9ce4",
+    "backend/academic-work-plan-service/src/integracion-rund/integracion-rund.module.ts": "0c95c970fa7913618c1cac0055af24e74df817c58ae2a387b0f375f47dd1de97",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.ts": "3d15e8a405552c9f8354247077beed0dd14ae829467d67e862e605e35581c141",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.spec.ts": "00fe1216a3a034d0fbe81f0356aa7c2e16e1672d861e5298ae62a14b33a3e1f2",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.ts": "f0874e02e3a228a474bc7565983a8e57b3ee28d0a30037c5caf74ad2ef7b7759",
+    "backend/academic-work-plan-service/src/pta/pta.controller.ts": "5ac4e19205258dd130037cb7f895e09377f7da3bd4f26de149df35ece10bf26a",
+    "backend/academic-work-plan-service/src/pta/pta.module.ts": "496a458e0d5a87165515275437a05a75ff170883c006b0deec906f350beccd3b",
+    "backend/academic-work-plan-service/src/pta/pta.service.ts": "2e3a82f1f70dc06a46cd4cf44859419a7345e524df833a1c01d5232e6eb6d482",
+    "backend/api-gateway/src/audit/rund-audit-redaction.spec.ts": "95a7460c037f844841793b95fa15611cf01f125c3a92994f04055810bf54a0be",
+    "backend/api-gateway/src/audit/rund-audit-redaction.ts": "961cecfc8e6ed9821c3357ac704c2b00c19755842c585f6d8131bf2bb7c5a969",
+    "backend/api-gateway/src/gateway/gateway.service.spec.ts": "6d1b0cc682c6fb38d8c774b36bec24af61602122ad4509798af3d7a822e1f6d9",
+    "backend/api-gateway/src/gateway/gateway.service.ts": "c8782a545f8130739056f43e106d2d21219276d58a49a4bbebac068e59ada70f",
+    "backend/auth-service/.env.example": "f8ad439974bb311673f1a78dc0c985462dea6542925e4bf3cf756a132300e7a1",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.module.ts": "b12e4ddca09234021a1b797d636d75a2c692fa9f1192248e70ef86b7a55d0eb4",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.service.ts": "ccbf0d9fe59dfc0b3fd47aa491a60caca97f837315021a6b735332267af1af88",
+    "backend/auth-service/src/carpeta-digital/rund-client.spec.ts": "f0ea8f1f8c779c61b0df87edb559c67c3da43f7163b5a52141c29c19f74e0954",
+    "backend/auth-service/src/carpeta-digital/rund-client.ts": "77fe1a441c1d0d00b0c71c9033d4a7419419f72a486c4de06c7104921c91f18e",
+    "backend/auth-service/src/carpeta-digital/rund-document-access.spec.ts": "7692ac50f7fd597ef0ae2d4962c3ad6cbe2b412f14c66b08b63dc50aff90db95",
+    "backend/auth-service/src/carpeta-digital/rund-document-access.ts": "c3d1c9bfde636772e3b470cc48228e805a4ffdae0f024dd2bb942352d24b9ada",
+    "backend/auth-service/src/carpeta-digital/rund.module.ts": "5510e391f385a659c51e8405e6f900899515aa5d8809dae8f70a4fa75c5961a8",
+    "backend/auth-service/src/main.ts": "527f1d1411e9869316e99228dafea579f5c21b194ad98e3cd6dc93f6967a6cdb",
+    "backend/auth-service/src/users/backoffice-dashboard.service.ts": "85d31c6fef0905cdc9af6e79dd508fd1f8fa9bfad7dbdc9dd0f9eb0e54fc9224",
+    "backend/auth-service/src/users/users.module.ts": "71ff032f02e960b4db51cefaf7cea7137129fab5e345feee56f0d2558b5ba79d",
+    "backend/rund-service/.env.example": "2623121bdee4736341c010b01d70ec967058c080cd0cb343b0812a7885ab157f",
+    "backend/rund-service/db/manual/copy_rund_data_from_pta.sql": "93ca2f3eb3b701c3a0288a526d1cb7ae616cfeb81ad378ddc937377b769b04e9",
+    "backend/rund-service/src/app.module.ts": "37111869ac6c88f272878e1d205b952ae467aae80867ea2f3ac9e94fab9f3f5d",
+    "backend/rund-service/src/common/rund-public-paths.spec.ts": "0f6e302d2f477b5112fe7e080911589a25d0f0967404b4cbdad6ace949b3c525",
+    "backend/rund-service/src/common/rund-public-paths.ts": "88c155856b970a49d1411b9f6bf1e57fb79146c03d6e62982b91349dbc6a0c22",
+    "backend/rund-service/src/internal/internal-rund.controller.ts": "5ce1d40c32617c36846d947967a336811caf6b2a42dc7abe62b7c51ab326d269",
+    "backend/rund-service/src/internal/internal-rund.service.ts": "4b3c0a2c15db7ad6f3aeeb2234d08794872f134367e4cb16723cf81f01893725",
+    "backend/rund-service/src/internal/internal-rund.spec.ts": "962853af3815d7e1a6002f612d5dc155b1ddddde269a6889f0b73da5f1c1478b",
+    "backend/rund-service/src/internal/internal-service.guard.ts": "219b9a920803f2fccf45c40ad074a17fecb5485f1def69d60fb34b22ab350666",
+    "backend/rund-service/src/internal/internal.module.ts": "bade7789fa240b942fefe0df0afc76f949df13d582134b808afaffd82196154e",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.controller.ts": "dd16dc9b4114d8a83c6bc064b9f22e80048a6e7c3f1ecc987ae9bdb0eb8d1864",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts": "c5d02f8e2fd4003c578b829db3b2c43940fdb5b726ce71c1502eb0a361379d82",
+    "backend/rund-service/src/modules/banco-docentes/rund-documentos.service.ts": "6088f9d41f88b2b90f5d77be6fdaf9ef472455d3d91b2b84daeba49c5b571a6e",
+    "backend/rund-service/src/modules/macro-docente/macro-docente.module.ts": "1ab07aa0fdc1bfedad82844e6117bfb3d8331cb9e5059e586f25787855a9e1b9",
+    "backend/rund-service/src/modules/macro-docente/macro-docente.service.ts": "7a0c0471107ae8d090e2bcef8f35cd7c452858c9a2bb17ec8f42b6c2bc65138e",
+    "docker-compose.backend.yml": "75ba5ef40cc0617ba20b74164be9743c4a231a2f7a2bfe431a9a97c3e99886ac",
+    "docker-compose.dev.yml": "d380be64f31c45fe3322a81e946f06fcc593c36f751f8b059f07739c76dc4f80",
+    "docker-compose.local.yml": "3bba2a42289de3350a9c9fc9c07df750a2d41b98a7f5f03d8ea7bb3d929b38a7",
+    "docker-compose.pre.yml": "76c1979436c5e3eb4a95b006eac31b46135a26ff954808c2978a6bfae36d6976",
+    "docker-compose.prod.yml": "2c5b18810b5753a12aa81f3549c7f073beb02e5415aba7c3d91cca3bb2c3faa0",
+    "docker-compose.qa.yml": "7c540d8804769d2fc109fb85634671549767a41d27fc71c52f713d9c7d498477",
+    "docker-compose.yml": "361d6f716ce5cf408510c20554b5110ef1c299bd8728f27883627e1c5300c4ec",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "cf8c8a7afd4115c0c67d7500257ccb2a9b6f5eb4f8070ec4743ddb7f39422410",
+    "docs/rund/ESTADO-REMOTO-c959f2fe3.md": "25aa6ca16ec89c245289d7f0195eb825fef739141fe6a034c8e4d50c06fd7898",
+    "scripts/verify-rund-compose.cjs": "5d0174132d6f489570d7268d91b86a02b8286b5b4289c5c27fa06a0c57b47c13",
+    "scripts/verify-rund-gateway-audit.cjs": "3d0b28fa97ba8c347ce64028598386a3fb098f00fab1624c30dd0886edb121db",
+    "scripts/verify-rund-service-integration.cjs": "6a23a38f146f416219b08064d90ffa1dbe183c4ac088392d54c1db06a9174dae"
+  }
+}

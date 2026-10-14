@@ -33,6 +33,8 @@ services:
       file: ./docker-compose.dev.yml
       service: auth-service
     environment:
+      RUND_SERVICE_URL: http://rund-service:3016
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
       DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
       DB_PORT: ${LOCAL_DB_PORT:-5432}
       DB_USER: ${LOCAL_DB_USER:-postgres}
@@ -61,6 +63,9 @@ services:
       file: ./docker-compose.dev.yml
       service: academic-work-plan-service
     environment:
+      RUND_SERVICE_URL: http://rund-service:3016
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
+      RUND_SYNC_ENABLED: ${RUND_SYNC_ENABLED:-false}
       DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
       DB_PORT: ${LOCAL_DB_PORT:-5432}
       DB_USER: ${LOCAL_DB_USER:-postgres}
@@ -199,6 +204,8 @@ services:
       file: ./docker-compose.dev.yml
       service: academic-schedule-service
     environment:
+      RUND_SERVICE_URL: http://rund-service:3016
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
       DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
       DB_PORT: ${LOCAL_DB_PORT:-5432}
       DB_USER: ${LOCAL_DB_USER:-postgres}
@@ -237,6 +244,7 @@ services:
     environment:
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-${FRONTEND_URL:-http://localhost}}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-}
       DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
       DB_PORT: ${LOCAL_DB_PORT:-5432}
       DB_USER: ${LOCAL_DB_USER:-postgres}

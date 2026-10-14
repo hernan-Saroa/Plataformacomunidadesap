@@ -2483,3 +2483,92 @@ la rama del cierre operativo y de la independencia completa.
 Después del corte se retoma 12.5d.2: configuración y conexión propias de RUND, migraciones
 controladas al destino correcto, accesos remotos y aceptación operativa. Luego siguen
 los consumidores/dependencias de 9.2 y el retiro final condicionado por 9.3.
+
+## 37. Integración del primer push con el avance remoto (2026-10-14)
+
+El usuario realizó el push e inició un merge de `origin/feat/agregar_modulo_rund`.
+Se integran el corte local `bbedccebb1b74150e3b75ba65a2fcc479702f9c6` y el avance remoto
+`c959f2fe387ef8c910f3e2bf0c050da43b38d38a`, que presentaban **17 archivos en conflicto**.
+La documentación del remoto se conserva como [snapshot histórico](ESTADO-REMOTO-c959f2fe3.md);
+sus afirmaciones de datos migrados no certifican la instalación local ni los ambientes.
+`PRIMER-PUSH.md` y sus manifiestos siguen describiendo el corte anterior, no este merge.
+
+### Decisiones de compatibilidad
+
+- Se conservan la persistencia documental, historial, revisión/concurrencia, actor
+  autenticado y separación de persona/perfil/período/propietario del corte local.
+  Personas y shell mantienen los adaptadores compartidos; Backoffice mantiene la
+  entrada federada con sesión y permisos. No se recuperan implementaciones obsoletas
+  basadas en almacenamiento local ni selección implícita de un perfil.
+- La ruta histórica de autogestión de PTA conserva su componente y API PTA: sus
+  invitaciones y borradores no se convierten en invitaciones RUND por cambiar un import.
+  RUND conserva su entrada pública federada independiente y sus enlaces propios.
+- Se incorporan la API interna de RUND y los clientes de PTA, Programación y Auth,
+  las consultas de Reportes, estadísticas del tablero y sincronización de docentes.
+  Se mantiene la lógica de negocio de cada consumidor. El gateway bloquea `/internal`
+  también con variantes codificadas/normalizadas; la redacción de auditoría conserva
+  toda la protección documental del corte local, incluida la ruta completa de RUND.
+- Auth conserva el contrato documental con propietario explícito y sesión. Si RUND
+  habilitado no responde, no presenta una carpeta incompleta como vacía. La auditoría
+  usa la API cuando está inyectada; la compatibilidad SQL de los consumidores antiguos
+  sin cliente permanece explícita, sin reintento SQL ante una caída de la API.
+- Las referencias y marcas permanentes históricas de originales siguen verificándose
+  antes de consultar al propietario nuevo. Retirar un documento no publica su URL
+  antigua; un fallo de auditoría impide entregar el original. Esa lectura histórica
+  de PTA sigue siendo una dependencia pendiente de retirar de forma controlada.
+- Se conserva la sincronización robusta desde Auth, con token, paginación y rollback,
+  y la generación de rutas a partir del archivo realmente almacenado. Se corrigen
+  imports duplicados y claves `RUND_SERVICE_URL` duplicadas en Compose.
+
+### Operaciones que requieren preparación de ambiente
+
+La copia recibida como `004_copy_rund_data_from_pta.sql` queda fuera del directorio
+automático de migraciones, en
+`backend/rund-service/db/manual/copy_rund_data_from_pta.sql`. **No se ejecutó**.
+Se conserva como herramienta manual: su eventual uso requiere decisión operativa,
+recuperación y verificación por tabla, pues admite resultados parciales con WARNING.
+Se mantiene el acuerdo del corte de no copiar datos PTA automáticamente a RUND.
+
+La sincronización programada RUND → PTA requiere `RUND_SYNC_ENABLED=true`; el valor
+por defecto es `false` en código, ejemplos y Compose. Las operaciones explícitas bajo
+demanda se conservan. `INTERNAL_SERVICE_TOKEN` se transmite a Auth/RUND/PTA/Programación
+como credencial propia; Compose no lo sustituye por `JWT_SECRET` ni por un secreto de
+ejemplo. Antes del despliegue hay que configurarlo igual en los servicios participantes.
+
+**Los nuevos consumidores por API sí cambian sus dependencias de ejecución.** Desactivar
+el worker no desactiva esas lecturas. Deben validarse URL/red/token, esquema, datos del
+propietario y correspondencia de IDs/períodos antes de desplegar el conjunto. El SQL
+interno recibido aún consulta identidad de Auth y catálogo territorial de PTA; conservar
+esas consultas no equivale a independencia física completa de bases de datos.
+
+### Validación del resultado integrado
+
+- **Nueve builds correctos:** backends RUND, Auth, gateway, PTA y Programación;
+  frontends RUND, Personas, shell y Reportes. Salidas frontend aisladas bajo `tmp`.
+- Backend: RUND **44 suites / 531 tests**, gateway **6 / 83**, Auth **13 / 115**,
+  PTA **86 / 786** y Programación **14 / 90**, todos correctos.
+- Frontend: RUND **19 archivos / 180 tests** y TypeScript correcto; Personas **8 / 106**;
+  Reportes **3 / 25**; shell **14 archivos / 143 tests** correctos. La suite completa
+  del shell sigue reportando **una suite disciplinaria previa fallida** por
+  `jest is not defined`; no se cambia ni se omite para anunciar un resultado global verde.
+  El chequeo TypeScript global del shell no se repite en este merge; sus 586 diagnósticos
+  documentados en el corte anterior siguen siendo una limitación previa.
+- **127 comprobaciones con PostgreSQL temporal**, incluidas las API internas nuevas
+  y los clientes compilados de Auth/PTA/Programación contra RUND real. Se comprueban
+  originales, auditoría, perfil/período, IDs textuales, paginación y horas. Se usa un
+  catálogo territorial ficticio mínimo con las columnas requeridas por la API.
+- **10 comprobaciones HTTP del gateway** con upstream ficticio: las rutas internas
+  no alcanzan al propietario incluso con JWT y cabecera de servicio.
+- **19 composiciones Docker** sin daemon, contenedores ni `.env` reales. Se verifican
+  credenciales explícitas y worker apagado por defecto; en este merge no se compara
+  el hash de PTA/Programación con el corte anterior porque sus cambios son intencionales.
+
+Evidencia consolidada: [validacion-merge-rund.json](validacion-merge-rund.json), junto
+con los reportes PostgreSQL, HTTP y Compose regenerados. No se ejecutaron migraciones
+en bases existentes, despliegues ni push durante la resolución. No se ejecutó navegador
+ni se construyeron imágenes Docker en esta revisión.
+
+El merge aporta implementación y validación local de consumidores, sin cerrar la
+aceptación operativa. El conteo se mantiene en **11 pasos principales completados
+localmente, paso 12 en curso y 5 frentes restantes contando el actual**. Continúa
+12.5d.2 y la revisión de consumidores/dependencias de 9.2; no se retira RUND de PTA.

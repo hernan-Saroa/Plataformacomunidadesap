@@ -18,6 +18,7 @@ import {
   UseGuards,
   UseInterceptors,
   SetMetadata,
+  ForbiddenException,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { AnyFilesInterceptor, FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
@@ -786,10 +787,21 @@ export class PtaController {
   // ─────────────────────────────
   // Integraciones externas (stubs)
   // ─────────────────────────────
+  // Fachada: la validación documental vive en rund-service; PTA solo la reenvía.
   @Get('rund/docente/:docenteId')
   async getRUNDDocente(@Param('docenteId') docenteId: string) {
-    const data = await this.ptaService.getRUNDDocente(docenteId);
+    const data = await this.ptaService.getRUNDDocenteRemoto(docenteId);
     return { success: true, data };
+  }
+
+  /** Fuerza la actualización de la copia local de docentes desde RUND (solo superusuario). */
+  @Post('rund/sincronizar')
+  @UseGuards(PtaAuthGuard)
+  async sincronizarRund(@Req() req: Request) {
+    if (!req.ptaAuth?.isSuperUser) {
+      throw new ForbiddenException('Solo un superusuario puede sincronizar el RUND.');
+    }
+    return { success: true, data: await this.ptaService.sincronizarDocentesDesdeRund() };
   }
 
   @Post('rund/docente/:docenteId/sync-documents')

@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-14T09:38:26.893Z",
+  "verifiedAt": "2026-10-14T10:12:38.317Z",
   "step": "12.5b",
   "passed": true,
   "checks": [
@@ -11,6 +11,7 @@
     "Multipart conserva archivo y boundary; el cuerpo no pasa a auditoría",
     "Sin sesión el guard impide CRUD RUND antes de llegar al propietario",
     "La ruta pública OTP sigue llegando a RUND sin JWT y no registra su cuerpo",
+    "Las API internas de servicio no salen por el gateway ni con JWT y token interno",
     "Un módulo ajeno conserva transporte, consultas y cuerpos de auditoría"
   ],
   "gatewayAppModuleReal": true,

@@ -132,6 +132,18 @@ function protectedLog(log) {
       const res = await send('/rund/api/v1/pta/banco-docentes/otp/request', { method: 'POST', headers: { 'content-type': 'application/json' } });
       assert.equal(res.status, 200); await res.arrayBuffer(); protectedLog(await waitForAudit(before));
     });
+    await check('Las API internas de servicio no salen por el gateway ni con JWT y token interno', async () => {
+      const before = forwarded.length;
+      for (const route of ['/rund/api/v1/internal/rund/v1/docentes/sincronizacion',
+        '/rund/api/v1/%69nternal/rund/v1/estadisticas/backoffice',
+        '/auth/api/v1/internal/carpeta-digital/estadisticas']) {
+        const res = await send(route, { method: 'GET', body: undefined,
+          headers: { authorization: `Bearer ${token}`, 'x-internal-service-token': 'ficticio' } });
+        assert.equal(res.status, 404);
+        await res.arrayBuffer();
+        assert.equal(forwarded.length, before);
+      }
+    });
     await check('Un módulo ajeno conserva transporte, consultas y cuerpos de auditoría', async () => {
       const before = audits.length, body = { titulo: 'Expediente ficticio' };
       const res = await send('/legal/api/v1/expedientes/123?estado=abierto', { body: JSON.stringify(body) });

@@ -380,6 +380,8 @@ async function run() {
     await fixture.initialize();
     try { await fixture.synchronize(); } finally { await fixture.destroy(); }
     await database.query(`CREATE TABLE academic_work_plan.periodo_academico (codigo text PRIMARY KEY, estado text);
+      -- Proyección mínima del catálogo existente (326_create_catalog_tables.sql).
+      CREATE TABLE academic_work_plan.direccion_territorial (codigo text PRIMARY KEY, nombre text NOT NULL);
       INSERT INTO academic_work_plan.periodo_academico VALUES ('2026-2','en_curso');
       INSERT INTO auth.seccionales (id_seccional,nom_seccional,cod_seccional) VALUES (999,'Territorial Ficticia','99')`);
 
@@ -444,13 +446,14 @@ async function run() {
     fs.mkdirSync(path.join(appDir, 'uploads'), { recursive: true });
     const secret = randomBytes(32).toString('hex');
     const folderToken = randomBytes(32).toString('hex');
+    const serviceToken = randomBytes(32).toString('hex');
     const env = { ...process.env, NODE_ENV: 'test', PORT: String(appPort), DB_HOST: pgConfig.host,
       DB_PORT: String(pgConfig.port), DB_USER: pgConfig.user, DB_PASS: password, DB_PASSWORD: password,
       DB_NAME: pgConfig.database, JWT_SECRET: secret, JWT_PUBLIC_PATHS: '', RUND_OCR_ENABLED: 'false',
       RUND_ENABLE_DEV_OTP: 'false', RUND_DOCUMENT_ALLOW_LOCAL: 'true', RUND_DOCUMENT_MAX_SIZE_BYTES: '',
       OPENKM_BASE_URL: '', OPENKM_USERNAME: '', OPENKM_PASSWORD: '', AUTH_SERVICE_URL: stubUrl,
       NOTIFICATIONS_SERVICE_URL: stubUrl, NOTIFICATION_SERVICE_URL: stubUrl,
-      AUTH_INTERNAL_SERVICE_TOKEN: authSyncToken, INTERNAL_SERVICE_TOKEN: '', RUND_AUTH_SYNC_TIMEOUT_MS: '5000', RUND_AUTH_SYNC_MAX_PAGES: '1000',
+      AUTH_INTERNAL_SERVICE_TOKEN: authSyncToken, INTERNAL_SERVICE_TOKEN: serviceToken, RUND_AUTH_SYNC_TIMEOUT_MS: '5000', RUND_AUTH_SYNC_MAX_PAGES: '1000',
       RUND_CARPETA_INTERNAL_TOKEN: folderToken,
       RUND_CARPETA_SYNC_ENABLED: 'false', RUND_CARPETA_SYNC_TOKEN: '',
       PUBLIC_APP_URL: publicBase, FRONTEND_URL: publicBase };
@@ -470,7 +473,7 @@ async function run() {
       const response = await fetch(origin + route, { method, headers,
         body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15000) });
       const content = await response.text();
-      assert.equal(response.status, status, `${method} ${route}: ${content}`);
+      assert.equal(response.status, status, `${method} ${route}: ${content}${response.status >= 500 ? '\n' + applicationOutput.slice(-4000) : ''}`);
       return content ? JSON.parse(content) : null;
     }
     await check('Arranque del main real y health/ready con conexión a PostgreSQL', async () => {
@@ -492,6 +495,15 @@ async function run() {
       await request('/banco-docentes', { token: null, status: 401 });
       await request('/docentes', { token: teacherToken, status: 403 });
       await request('/rund/interoperabilidad/perfiles/9000000001', { token: teacherToken, status: 403 });
+    });
+    const internal = (route, options = {}) => request('/internal/rund/v1/' + route,
+      { token: null, ...options, extraHeaders: { 'x-internal-service-token': serviceToken } });
+    await check('API de consumidores exige su token: un JWT de administrador o un token incorrecto no lo sustituyen', async () => {
+      const route = '/internal/rund/v1/docentes/sincronizacion';
+      await request(route, { token: null, status: 401 });
+      await request(route, { status: 401 });
+      await request(route, { token: null, extraHeaders: { 'x-internal-service-token': 'incorrecto' }, status: 401 });
+      assert.deepEqual((await internal('docentes/sincronizacion')).data, { items: [], nextCursor: null });
     });
     await check('CRUD base: creación, consulta por ORM y rechazo de documento duplicado', async () => {
       const body = { numeroDocumento: '9000000099', nombres: 'PRUEBA', apellidos: 'INTEGRACION', tipoDocumento: 'CC' };
@@ -580,6 +592,66 @@ async function run() {
       assert(document.rundSoporteId);
       assert.match(document.contenidoUrl, /^\/rund\/api\/v1\//);
       assert.equal((await request(`/banco-docentes/${docenteId}/documentos`)).data.length, 1);
+    });
+    await check('API de consumidores consulta docente, soportes y validaciones con SQL real del esquema RUND', async () => {
+      const perfil = (await internal('docentes/por-documento/' + row.DOCUMENTO_IDENTIDAD)).data;
+      assert.equal(perfil.idDocente, docenteId);
+      assert.equal(perfil.horasAsignables, 720);
+      const soportes = (await internal('soportes/por-persona/' + perfil.idPersona)).data;
+      assert(soportes.some(s => s.id === document.rundSoporteId));
+      const validacion = (await internal(`docentes/${docenteId}/validacion`)).data;
+      assert.equal(validacion.docenteId, docenteId);
+      assert(validacion.validaciones.length > 0);
+      await internal('docentes/por-documento/NO-EXISTE', { status: 404 });
+    });
+    await check('Clientes compilados de PTA y Programación consumen el perfil HTTP real sin cambiar identidad ni horas', async () => {
+      const { RundDocentesClient } = require(path.join(root, 'backend/academic-work-plan-service/dist/integracion-rund/rund-docentes.client.js'));
+      const { RundClient } = await import(require('node:url').pathToFileURL(path.join(root, 'backend/academic-schedule-service/dist/asignaciones/rund-client.js')).href);
+      const settings = { RUND_SERVICE_URL: base, INTERNAL_SERVICE_TOKEN: serviceToken };
+      const previous = Object.fromEntries(Object.keys(settings).map(key => [key, process.env[key]]));
+      Object.assign(process.env, settings);
+      try {
+        const pta = await new RundDocentesClient().porDocumento(row.DOCUMENTO_IDENTIDAD);
+        const programacion = await new RundClient().docentePorDocumento(row.DOCUMENTO_IDENTIDAD);
+        assert.deepEqual(pta, programacion);
+        assert.equal(pta.idDocente, docenteId);
+        assert.equal(pta.horasAsignables, 720);
+        assert.equal((await new RundDocentesClient().resolver(pta.idPersona, '2026-2')).id, docenteId);
+        assert.equal((await new RundDocentesClient().validacion(docenteId)).docenteId, docenteId);
+      } finally {
+        for (const [key, value] of Object.entries(previous)) {
+          if (value === undefined) delete process.env[key]; else process.env[key] = value;
+        }
+      }
+    });
+    await check('Cliente compilado de Auth registra protección permanente y verifica originales por API real', async () => {
+      const { RundClient } = require(path.join(root, 'backend/auth-service/dist/carpeta-digital/rund-client.js'));
+      const { rundOriginalResourceId } = require(path.join(root, 'backend/auth-service/dist/carpeta-digital/rund-document-access.js'));
+      const settings = { RUND_SERVICE_URL: base, INTERNAL_SERVICE_TOKEN: serviceToken };
+      const previous = Object.fromEntries(Object.keys(settings).map(key => [key, process.env[key]]));
+      Object.assign(process.env, settings);
+      try {
+        const client = new RundClient();
+        const url = '/auth/api/v1/uploads/carpeta-digital/ficticia/original.pdf';
+        const recursoId = rundOriginalResourceId(url);
+        assert.equal(await client.esOriginalRund(url, recursoId, ['CARPETA_DIGITAL_RETIRAR_RUND']), false);
+        await client.registrarAcceso({ actorId, roles: ['SUPER_ADMIN'], endpoint: 'CARPETA_DIGITAL_RETIRAR_RUND', recursoId,
+          campos: ['DOCUMENTO_IDENTIDAD'], resultado: 'COMPLETO' });
+        assert.equal(await client.esOriginalRund(url, recursoId, ['CARPETA_DIGITAL_RETIRAR_RUND']), true);
+        assert.equal(Number((await database.query('SELECT count(*) FROM rund."RundAccesoDatosLog" WHERE recurso_id=$1', [recursoId])).rows[0].count), 1);
+      } finally {
+        for (const [key, value] of Object.entries(previous)) {
+          if (value === undefined) delete process.env[key]; else process.env[key] = value;
+        }
+      }
+    });
+    await check('Estadísticas internas y paginación reflejan docentes reales del propietario RUND', async () => {
+      const stats = (await internal('estadisticas/backoffice')).data;
+      assert.equal(stats.totalDocentes, Number((await database.query('SELECT count(*) FROM rund."Docente"')).rows[0].count));
+      const page = (await internal('docentes/sincronizacion?limite=1')).data;
+      assert.equal(page.items.length, 1);
+      assert.equal(page.items[0].id, docenteId);
+      assert.equal(page.nextCursor, null);
     });
     await check('Descarga del enlace devuelto conserva el PDF y exige sesión autorizada', async () => {
       // El cliente API antepone /services al enlace; el proxy local reproduce su enrutamiento.
@@ -788,6 +860,21 @@ async function run() {
       assert.equal(first.data.horas_programables, 640);
       assert.equal(second.data.horas_programables, 720);
     });
+    await check('API interna resuelve persona y período sin mezclar los dos perfiles', async () => {
+      const personaId = (await database.query('SELECT "personaId" FROM rund."Docente" WHERE id=$1', [docenteId])).rows[0].personaId;
+      const first = (await internal(`docentes/resolver/${personaId}?periodo=2026-1`)).data;
+      const second = (await internal(`docentes/resolver/${personaId}?periodo=2026-2`)).data;
+      assert.notEqual(first.id, second.id);
+      assert.equal(second.id, docenteId);
+      assert.equal(Number(first.horasAsignables), 640);
+      assert.equal(Number(second.horasAsignables), 720);
+      const page = (await internal('docentes/sincronizacion?limite=1')).data;
+      assert(page.nextCursor);
+      const next = (await internal('docentes/sincronizacion?limite=1&cursor=' + encodeURIComponent(page.nextCursor))).data;
+      assert.equal(next.items.length, 1);
+      assert.notEqual(next.items[0].id, page.items[0].id);
+      assert.equal(next.nextCursor, null);
+    });
     await check('Perfil con id textual conserva consultas, documentos, bloques y auditoría', async () => {
       const legacyId = 'DOC-HISTORICO-FICTICIO-001';
       const personId = randomUUID();
@@ -815,6 +902,9 @@ async function run() {
         JOIN rund."RundDocumentoPerfil" f ON f.docente_id=d.id
         JOIN rund."RundAprobacionLog" a ON a.docente_id=d.id WHERE d.id=$1`, [legacyId]);
       assert(joined.rows.length > 0);
+      assert.equal((await internal('docentes/por-documento/9000000002')).data.idDocente, legacyId);
+      assert((await internal(`soportes/por-persona/${personId}`)).data.some(s => s.id === uploaded.data.rundSoporteId));
+      assert.equal((await internal(`docentes/${legacyId}/validacion`)).data.docenteId, legacyId);
       await request('/rund/docente/ID-TEXTUAL-NO-EXISTENTE', { status: 404 });
     });
     const permissionsForRole = async (code, permissions) => {
@@ -1071,7 +1161,7 @@ async function run() {
   }
   const report = { verifiedAt: new Date().toISOString(), postgresVersion, application: 'rund-service/dist/main.js',
     database: 'cluster temporal eliminado', syntheticDataOnly: true, applicationSynchronize: false,
-    externalSchemas: 'auth: DDL + migración 158; academic_work_plan: fixtures ORM y periodo ficticio',
+    externalSchemas: 'auth: DDL + migración 158; academic_work_plan: fixtures ORM, período y catálogo territorial ficticios',
     publicRouting: 'proxy local de prueba: /services/rund/api/v1; no inicia Nginx ni api-gateway',
     authUserRouting: 'fixture HTTP local /users con UUID de rol, token interno, DTO y paginación; no inicia auth-service',
     migrations: migrationNames, passed: true, checks };

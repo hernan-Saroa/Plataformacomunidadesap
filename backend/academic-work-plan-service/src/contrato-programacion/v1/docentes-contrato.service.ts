@@ -1,8 +1,7 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { BadRequestException, Injectable } from '@nestjs/common';
 
 import type { DocenteProgramacionDto } from './dto/docente-programacion.dto';
+import { RundDocentesClient } from '../../integracion-rund/rund-docentes.client';
 import { clasificarSituacion } from './situacion-administrativa.clasificador';
 
 /**
@@ -16,14 +15,14 @@ import { clasificarSituacion } from './situacion-administrativa.clasificador';
  */
 @Injectable()
 export class DocentesContratoService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(private readonly rund: RundDocentesClient) {}
 
   /**
    * Busca por número de documento y devuelve la vista de programación.
    *
-   * Se consulta con SQL y no con el repositorio de `DocenteEntity` a propósito:
-   * el dato vive repartido entre `Docente` y `auth.personas`, y armarlo aquí
-   * evita acoplar el contrato a la forma interna de las entidades del PTA.
+   * El RUND vive en rund-service (dueño del dato): aquí se pide por su API interna y
+   * se le aplica la lógica propia de este contrato (clasificación de la situación
+   * administrativa y forma del DTO), que no se mueve al servicio de datos.
    */
   async buscarPorDocumento(documento: string): Promise<DocenteProgramacionDto> {
     const limpio = String(documento ?? '').trim();
@@ -31,44 +30,8 @@ export class DocentesContratoService {
       throw new BadRequestException('Debe indicar el número de documento del docente.');
     }
 
-    const filas = await this.dataSource.query(
-      `SELECT
-         p.num_identificacion              AS documento,
-         p.nom_largo                       AS nombre_completo,
-         d."correoInstitucional"           AS correo,
-         d."territorialId"                 AS territorial_codigo,
-         dt.nombre                         AS territorial_nombre,
-         d."tipoVinculacion"               AS vinculacion,
-         d."dedicacion"                    AS dedicacion,
-         d."dedicacionHorasSemana"         AS dedicacion_horas_semana,
-         d."escalafon"                     AS escalafon,
-         d."regimenNormativo"              AS regimen_normativo,
-         d."horasAsignables"               AS horas_pta,
-         d."fechaInicioVinculacion"        AS vinculacion_desde,
-         d."fechaFinVinculacion"           AS vinculacion_hasta,
-         d."situacionAdministrativa"       AS situacion,
-         d."situacionCategoria"           AS situacion_categoria,
-         d."estado"                        AS estado,
-         d."nivelFormacion"                AS nivel_formacion,
-         d."nucleoTematico"                AS nucleo_tematico
-       FROM academic_work_plan."Docente" d
-       INNER JOIN auth.personas p ON p.id_person = d."personaId"
-       LEFT JOIN academic_work_plan.direccion_territorial dt ON dt.codigo = d."territorialId"
-       WHERE p.num_identificacion = $1
-       ORDER BY d."updatedAt" DESC NULLS LAST
-       LIMIT 1`,
-      [limpio],
-    );
-
-    if (!filas || filas.length === 0) {
-      // Un documento inexistente es un caso de uso normal --el programador se
-      // equivoca al teclear--, no una falla: 404 con mensaje, nunca 500.
-      throw new NotFoundException(
-        `No existe un docente con documento ${limpio} en el RUND.`,
-      );
-    }
-
-    const f = filas[0];
+    // 404 si no existe; falla cerrado si rund-service no responde.
+    const f = await this.rund.porDocumento(limpio);
     const fechaISO = (v: any): string | null => {
       if (!v) return null;
       const d = v instanceof Date ? v : new Date(v);
@@ -77,28 +40,28 @@ export class DocentesContratoService {
 
     return {
       documento: f.documento,
-      nombreCompleto: f.nombre_completo,
-      correoInstitucional: f.correo ?? null,
-      territorial: f.territorial_codigo
-        ? { codigo: f.territorial_codigo, nombre: f.territorial_nombre ?? f.territorial_codigo }
+      nombreCompleto: f.nombreCompleto,
+      correoInstitucional: f.correoInstitucional ?? null,
+      territorial: f.territorialCodigo
+        ? { codigo: f.territorialCodigo, nombre: f.territorialNombre ?? f.territorialCodigo }
         : null,
-      vinculacion: f.vinculacion ?? null,
+      vinculacion: f.tipoVinculacion ?? null,
       dedicacion: f.dedicacion ?? null,
-      dedicacionHorasSemana: f.dedicacion_horas_semana ?? null,
+      dedicacionHorasSemana: f.dedicacionHorasSemana ?? null,
       escalafon: f.escalafon ?? null,
-      regimenNormativo: f.regimen_normativo ?? null,
+      regimenNormativo: f.regimenNormativo ?? null,
       // Se expone tal cual: los topes dependen del régimen y el consumidor debe
       // leerlos juntos. Aquí no se deriva ningún tope.
-      horasPta: Number(f.horas_pta ?? 0),
-      vinculacion_desde: fechaISO(f.vinculacion_desde),
+      horasPta: Number(f.horasAsignables ?? 0),
+      vinculacion_desde: fechaISO(f.fechaInicioVinculacion),
       // Nulo significa vinculación indefinida, no fecha faltante (RN-10).
-      vinculacion_hasta: fechaISO(f.vinculacion_hasta),
+      vinculacion_hasta: fechaISO(f.fechaFinVinculacion),
       // La categoria es el campo estructurado y manda; la descripcion aporta la
       // vigencia, que vive dentro de la frase.
-      situacion: clasificarSituacion(f.situacion, new Date(), f.situacion_categoria),
+      situacion: clasificarSituacion(f.situacionAdministrativa, new Date(), f.situacionCategoria),
       estado: f.estado ?? null,
-      nivelFormacion: f.nivel_formacion ?? null,
-      nucleoTematico: f.nucleo_tematico ?? null,
+      nivelFormacion: f.nivelFormacion ?? null,
+      nucleoTematico: f.nucleoTematico ?? null,
     };
   }
 }

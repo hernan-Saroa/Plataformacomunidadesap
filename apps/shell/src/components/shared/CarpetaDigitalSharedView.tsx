@@ -930,7 +930,7 @@ export function CarpetaDigitalSharedView({
   }, []);
 
   // Carga del documento para previsualización vía apiClient.getBlob (autenticado, vía gateway).
-  // No podemos poner la ruta relativa (/pta/api/v1/uploads/...) directo en el <iframe src>
+  // No podemos poner la ruta relativa (/rund/api/v1/uploads/...) directo en el <iframe src>
   // porque el navegador la resuelve contra el origin del shell (localhost:3000) → 404.
   // En su lugar descargamos el blob y construimos un object URL (blob:), igual que el panel RUND.
   useEffect(() => {

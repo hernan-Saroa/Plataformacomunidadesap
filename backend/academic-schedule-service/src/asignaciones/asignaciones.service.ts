@@ -11,6 +11,7 @@ import {
 } from './reglas-asignacion.js';
 import { resolverSituacion } from './situacion-docente.js';
 import { ContratoClient } from './contrato-client.js';
+import { RundClient } from './rund-client.js';
 
 export interface AsignarDocenteDto {
   idGrupo: string;
@@ -77,45 +78,27 @@ export class AsignacionesService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly contrato: ContratoClient,
+    private readonly rund: RundClient,
   ) {}
 
   /** Datos del docente, resueltos por documento a su identidad estable. */
   private async cargarDocente(documento: string): Promise<DocenteParaAsignar & { situacionRaw: string | null; categoriaRaw: string | null; vinculacion: string | null }> {
-    const filas = await this.dataSource.query(
-      `SELECT p.id_person                    AS id_docente,
-              p.nom_largo                    AS nombre,
-              d."escalafon"                  AS escalafon,
-              d."horasAsignables"            AS horas_pta,
-              d."tipoVinculacion"            AS vinculacion,
-              d."fechaInicioVinculacion"     AS desde,
-              d."fechaFinVinculacion"        AS hasta,
-              d."situacionAdministrativa"    AS situacion,
-              d."situacionCategoria"         AS categoria
-         FROM academic_work_plan."Docente" d
-         INNER JOIN auth.personas p ON p.id_person = d."personaId"
-        WHERE p.num_identificacion = $1
-        ORDER BY d."updatedAt" DESC NULLS LAST
-        LIMIT 1`,
-      [String(documento).trim()],
-    );
-    if (!filas?.length) {
-      throw new NotFoundException(`No existe un docente con documento ${documento} en el RUND.`);
-    }
-    const f = filas[0];
+    // El RUND vive en rund-service: se consulta por su API (404 si el documento no existe).
+    const f = await this.rund.docentePorDocumento(documento);
     const iso = (v: any) => (v ? new Date(v).toISOString().slice(0, 10) : null);
     return {
-      idDocente: f.id_docente,
-      nombre: f.nombre,
+      idDocente: f.idPersona,
+      nombre: f.nombreCompleto,
       escalafon: f.escalafon ?? null,
-      horasPta: Number(f.horas_pta ?? 0),
-      vinculacion: f.vinculacion ?? null,
-      vinculacionDesde: iso(f.desde),
-      vinculacionHasta: iso(f.hasta),
+      horasPta: Number(f.horasAsignables ?? 0),
+      vinculacion: f.tipoVinculacion ?? null,
+      vinculacionDesde: iso(f.fechaInicioVinculacion),
+      vinculacionHasta: iso(f.fechaFinVinculacion),
       // Las llena el llamador con el clasificador del contrato.
       situacionAsignable: true,
       situacionMotivo: null,
-      situacionRaw: f.situacion ?? null,
-      categoriaRaw: f.categoria ?? null,
+      situacionRaw: f.situacionAdministrativa ?? null,
+      categoriaRaw: f.situacionCategoria ?? null,
     };
   }
 

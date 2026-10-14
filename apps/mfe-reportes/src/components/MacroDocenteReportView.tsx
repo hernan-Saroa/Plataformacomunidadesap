@@ -28,8 +28,8 @@ import { exportRundReportToExcel, exportRundReportToPDF, type RundColumn } from 
 import { PaginationPremium } from '../shared/PaginationPremium';
 import { EmptyStatePremium } from './EmptyStatesPremium';
 
-const MD_BASE = '/pta/api/v1/pta/macro-docente';
-const BD_BASE = '/pta/api/v1/pta/banco-docentes';
+const MD_BASE = '/rund/api/v1/pta/macro-docente';
+const BD_BASE = '/rund/api/v1/pta/banco-docentes';
 
 /**
  * El acceso externo se consume vía GET /macro-docente/externo/:token (público,

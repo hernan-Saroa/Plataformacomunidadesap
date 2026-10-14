@@ -11,6 +11,7 @@ import { RundCarpetaClient } from './rund-carpeta.client';
 import { CarpetaDocumentVersionsService } from './carpeta-document-versions.service';
 import { RundStateSnapshotService } from './rund-state-snapshot.service';
 import { RundStateSnapshotController, RundStateSnapshotGuard } from './rund-state-snapshot.controller';
+import { RundClientModule } from './rund.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { RundStateSnapshotController, RundStateSnapshotGuard } from './rund-stat
       DocumentoCarpetaDigital,
       Person,
     ]),
+    RundClientModule,
   ],
   controllers: [CarpetaDigitalController, RundStateSnapshotController],
   providers: [CarpetaDigitalService, DocumentTypeValidatorService, RundCarpetaClient, CarpetaDocumentVersionsService, RundStateSnapshotService, RundStateSnapshotGuard],

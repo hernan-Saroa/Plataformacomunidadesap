@@ -56,7 +56,7 @@ describe('EFDS-1372 :: clasificador sobre los 263 docentes reales', () => {
                 p.nom_largo          AS nombre,
                 d."situacionAdministrativa" AS situacion,
                 d."situacionCategoria"     AS categoria
-           FROM academic_work_plan."Docente" d
+           FROM rund."Docente" d
            INNER JOIN auth.personas p ON p.id_person = d."personaId"
           WHERE p.nom_largo NOT LIKE '%(DESARROLLO)%'`,
       );
