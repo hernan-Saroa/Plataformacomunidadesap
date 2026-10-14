@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, FileSignature, FileSpreadsheet, Grid3x3, Settings, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, FileSignature, FileSpreadsheet, Grid3x3, Landmark, Settings, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -11,6 +11,7 @@ import { DetalleActividad } from './DetalleActividad';
 import { MatrizGeneral } from './MatrizGeneral';
 import { PermisosPorEtapa } from './PermisosPorEtapa';
 import { TipologiasContrato } from './TipologiasContrato';
+import { CdpAntesDeRadicar } from './CdpAntesDeRadicar';
 import { PlanDeAdquisiciones } from '../paa/PlanDeAdquisiciones';
 import { useAlcance } from '../../auth/alcance';
 import { PETICIONES, Peticion } from './peticiones';
@@ -33,6 +34,12 @@ const PESTANAS = [
     etiqueta: 'Permisos por etapa',
     icono: ShieldCheck,
     color: '#0891B2',
+  },
+  {
+    clave: 'cdp' as const,
+    etiqueta: 'CDP en el estudio previo',
+    icono: Landmark,
+    color: '#B45309',
   },
   {
     clave: 'paa' as const,
@@ -198,6 +205,7 @@ export function VistaConfiguracion() {
           segundo sitio donde tocarlos dejaría dos verdades sin nada que las
           mantuviera de acuerdo. Aquí se verifica la que rige. */}
       {pestana === 'roles' && <PermisosPorEtapa />}
+      {pestana === 'cdp' && <CdpAntesDeRadicar />}
       {pestana === 'paa' && <PlanDeAdquisiciones />}
 
       <Modal

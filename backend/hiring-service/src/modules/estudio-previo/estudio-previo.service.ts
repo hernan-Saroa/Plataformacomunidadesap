@@ -49,6 +49,7 @@ import {
 } from '../participacion/participacion.service';
 import { respondeElAsignado } from '../participacion/quien-responde';
 import { CdpService } from '../cdp/cdp.service';
+import { RegistrarCdpExistenteDto, SolicitarCdpAnticipadoDto } from '../cdp/dto/cdp.dto';
 import { PaaAplicacion } from '../../entities/paa.entity';
 import { CAMPOS_CONTROLADOS } from '../paa/estructura-paa';
 import { esLineaOcupada, lineaParaCrear, type OrigenPaa } from '../paa/linea-para-crear';
@@ -988,6 +989,15 @@ export class EstudioPrevioService implements OnModuleInit {
         });
       }
 
+      /*
+       * Y el CDP, si la modalidad lo exige antes de radicar (migración 100).
+       *
+       * Aquí y no solo en la pantalla: el botón deshabilitado no impide que
+       * alguien llame a la API directamente. Va después de los faltantes para
+       * que el área corrija primero lo que es del estudio previo.
+       */
+      if (proceso) await this.cdp.exigirGestionAntesDeRadicar(em, proceso);
+
       // Copia inmutable de lo enviado: es lo que queda como documento del
       // expediente, con hash para poder probar que no se alteró.
       const snapshot = { ...actividad.datos };
@@ -1051,6 +1061,63 @@ export class EstudioPrevioService implements OnModuleInit {
         enviadoAt: actividad.enviadoAt,
       };
     });
+  }
+
+  // ------------------------------------------- el CDP desde la 3.1 (100) ---
+
+  /**
+   * El CDP visto desde el estudio previo, con lo que quien mira puede hacer.
+   *
+   * `puedeGestionar` lo responde el backend con las mismas reglas que protegen
+   * el borrador: si la pantalla lo dedujera, ofrecería botones que la API
+   * rechaza cuando ya es tarde.
+   */
+  async cdpDelEstudioPrevio(procesoId: string, acceso: HiringAccess) {
+    const gestion = await this.cdp.gestionDesdeElEstudioPrevio(procesoId);
+    let puedeGestionar = gestion.aplica;
+    if (puedeGestionar) {
+      try {
+        await this.exigirPaqueteEditable(this.dataSource.manager, procesoId, acceso);
+      } catch {
+        puedeGestionar = false;
+      }
+    }
+    return { ...gestion, puedeGestionar };
+  }
+
+  /**
+   * Gestionar el CDP es parte de preparar el estudio previo: lo puede hacer
+   * quien lo prepara y mientras lo tiene en sus manos —borrador o devuelto—.
+   * Si se lo devolvieron, lo gestionado se conserva y se puede corregir.
+   */
+  async solicitarCdp(procesoId: string, dto: SolicitarCdpAnticipadoDto, acceso: HiringAccess) {
+    await this.dataSource.transaction(async (em) => {
+      await this.exigirPaqueteEditable(em, procesoId, acceso);
+      await this.cdp.solicitarDesdeElEstudioPrevio(em, procesoId, dto, acceso);
+    });
+    return this.cdpDelEstudioPrevio(procesoId, acceso);
+  }
+
+  async registrarCdp(
+    procesoId: string,
+    dto: RegistrarCdpExistenteDto,
+    archivo: { filename: string; originalname: string; mimetype: string; size: number } | null,
+    hash: string | null,
+    acceso: HiringAccess,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      await this.exigirPaqueteEditable(em, procesoId, acceso);
+      await this.cdp.registrarDesdeElEstudioPrevio(em, procesoId, dto, archivo, hash, acceso);
+    });
+    return this.cdpDelEstudioPrevio(procesoId, acceso);
+  }
+
+  async retirarCdp(procesoId: string, motivo: string | undefined, acceso: HiringAccess) {
+    await this.dataSource.transaction(async (em) => {
+      await this.exigirPaqueteEditable(em, procesoId, acceso);
+      await this.cdp.retirarDesdeElEstudioPrevio(em, procesoId, motivo, acceso);
+    });
+    return this.cdpDelEstudioPrevio(procesoId, acceso);
   }
 
   // -------------------------------------------------- lista de chequeo (3.1) ---

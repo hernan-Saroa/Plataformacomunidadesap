@@ -236,6 +236,21 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
    * lo que queda es ver qué se pidió y quién de la Financiera se hace cargo.
    */
   if (actividad === '4.1') {
+    // El área ya tenía el certificado y lo registró en el estudio previo: no
+    // hubo solicitud ni nadie de la Financiera que tuviera que tomarla.
+    if (cdp?.origen === 'REGISTRADO_EN_ETAPA_3') {
+      return (
+        <Marco>
+          <Titulo>Solicitud de CDP</Titulo>
+          <Aviso tono="ok" titulo="No hizo falta solicitarlo">
+            El área registró desde el estudio previo el CDP {cdp.numero} que ya tenía, por{' '}
+            {cdp.valor !== null ? formatoPesos.format(cdp.valor) : '—'}
+            {cdp.rubro ? ` contra el rubro ${cdp.rubro}` : ''}.
+          </Aviso>
+        </Marco>
+      );
+    }
+
     // ---------------------------------------- paso 1 · la solicitud ----
     const pasoSolicitud: PasoDeLaActividad = cdp
       ? {
@@ -244,7 +259,9 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
           // El rubro solo se nombra si lo hay: el automático nace sin él —lo
           // pone la Financiera al expedir— y un «rubro —» se lee como un dato
           // que falta por diligenciar, que es justo lo que ya no es.
-          detalle: `${cdp.solicitadoPor ? `${cdp.solicitadoPor} · ` : ''}por ${
+          detalle: `${cdp.origen === 'SOLICITADO_EN_ETAPA_3' ? 'Desde el estudio previo · ' : ''}${
+            cdp.solicitadoPor ? `${cdp.solicitadoPor} · ` : ''
+          }por ${
             cdp.valor !== null ? formatoPesos.format(cdp.valor) : '—'
           }${cdp.rubro ? ` contra el rubro ${cdp.rubro}` : ''}`,
         }
@@ -332,7 +349,7 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
             {frente.texto}
           </p>
         )}
-        <Origen conSoporte={respaldo.soporteAdjunto} />
+        <Origen conSoporte={respaldo.soporteAdjunto} registradoPorElArea={cdp.origen === 'REGISTRADO_EN_ETAPA_3'} />
         {/* Solo para los CDP expedidos antes de que el soporte fuera con la
             expedición: los de ahora no pueden quedar sin él. */}
         {!respaldo.soporteAdjunto && respaldo.puedeGestionar && (
@@ -536,10 +553,19 @@ export function PanelCdp({ numeral, procesoId, valorEstimado, onCambio }: Props)
  * registra a mano y el soporte cargado en el expediente es la única evidencia
  * de que existe. Quien consulta debe saberlo, y saber si esa evidencia está.
  */
-const Origen = ({ conSoporte }: { conSoporte: boolean }) => (
+const Origen = ({
+  conSoporte,
+  registradoPorElArea,
+}: {
+  conSoporte: boolean;
+  /** El área ya lo tenía y lo transcribió en el estudio previo (migración 100). */
+  registradoPorElArea: boolean;
+}) => (
   <p className="text-[10.5px] text-slate-500 m-0 flex items-start gap-1.5 leading-relaxed">
     <Info className="w-3.5 h-3.5 flex-shrink-0 mt-px" />
-    {conSoporte
+    {registradoPorElArea
+      ? 'Registrado por el área solicitante desde el estudio previo, con un certificado que ya tenía. El soporte adjunto es la evidencia.'
+      : conSoporte
       ? 'Registrado por la Dirección Financiera. El soporte adjunto es la evidencia del certificado.'
       : 'Registrado por la Dirección Financiera. Aún sin soporte adjunto: el certificado no tiene evidencia en el expediente.'}
   </p>

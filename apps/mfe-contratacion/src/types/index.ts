@@ -125,6 +125,36 @@ export interface SugerenciaModalidad {
  */
 export type EstadoCdp = 'SOLICITADO' | 'VERIFICADO' | 'EXPEDIDO' | 'RECHAZADO' | 'ANULADO';
 
+export type OrigenCdp = 'ETAPA_4' | 'SOLICITADO_EN_ETAPA_3' | 'REGISTRADO_EN_ETAPA_3';
+
+/** El CDP visto desde el estudio previo (3.1), antes de enviarlo a revisión. */
+export interface CdpDelEstudioPrevio {
+  /** False en las modalidades que no comprometen gasto. */
+  aplica: boolean;
+  /** Si la modalidad exige el CDP gestionado para enviar el estudio previo. */
+  obligatorio: boolean;
+  /** El CDP en curso: solicitado, verificado o expedido. */
+  cdp: Cdp | null;
+  /** El último rechazado, si no hay uno en curso: por qué hay que volver a pedirlo. */
+  rechazado: Cdp | null;
+  permiteRadicar: boolean;
+  motivo: string | null;
+  /** Si quien mira puede solicitar, registrar o retirar (lo decide el backend). */
+  puedeGestionar: boolean;
+}
+
+/** Configuración: si una modalidad exige el CDP antes de radicar el estudio previo. */
+export interface CdpAntesDeRadicar {
+  modalidad: string;
+  nombre: string;
+  aplicaCdp: boolean;
+  obligatorio: boolean;
+  fundamento: string | null;
+  confirmado: boolean;
+  actualizadoPor: string | null;
+  updatedAt: string | null;
+}
+
 export interface Cdp {
   id: string;
   numero: string | null;
@@ -136,7 +166,14 @@ export interface Cdp {
   observaciones: string | null;
   documentoId: string | null;
   solicitadoPor: string | null;
+  solicitadoAt?: string;
   expedidoPor: string | null;
+  /**
+   * De dónde salió (migración 100): de la etapa 4 de siempre, de una solicitud
+   * que el área hizo desde el estudio previo, o de un CDP que el área ya tenía
+   * y registró. Los dos últimos pueden quedar expedidos por caminos distintos.
+   */
+  origen?: OrigenCdp;
   /** Avisa si el CDP no alcanza a cubrir el valor estimado del proceso. */
   advertencia?: string | null;
   cubreValorEstimado?: boolean;

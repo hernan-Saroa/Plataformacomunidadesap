@@ -105,6 +105,8 @@ import {
   MiembroPropuesto,
   EstadoPublicacion,
   EstadoRespaldo,
+  CdpDelEstudioPrevio,
+  CdpAntesDeRadicar,
   EstudioPrevio,
   Expediente,
   SimulacionFormulario,
@@ -330,6 +332,56 @@ export const contratacionService = {
     if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
     return pedir<Cdp>(`/procesos/${procesoId}/cdp/expedicion`, { method: 'POST', body: cuerpo });
   },
+
+  // ---------------------------------- el CDP desde el estudio previo (100) --
+
+  cdpDelEstudioPrevio: (procesoId: string) =>
+    pedir<CdpDelEstudioPrevio>(`/procesos/${procesoId}/estudio-previo/cdp`),
+
+  /** Pide el CDP antes de enviar el estudio previo; llega a la bandeja de la Financiera. */
+  solicitarCdpDesdeElEstudioPrevio: (
+    procesoId: string,
+    datos: { valor?: number; rubro?: string; observaciones?: string },
+  ) =>
+    pedir<CdpDelEstudioPrevio>(`/procesos/${procesoId}/estudio-previo/cdp/solicitud`, {
+      method: 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Registra (o corrige) un CDP que el área ya tiene. El soporte es obligatorio al registrar. */
+  registrarCdpDesdeElEstudioPrevio: (
+    procesoId: string,
+    datos: { numero: string; valor: number; rubro: string; fechaExpedicion: string },
+    archivo: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (archivo) cuerpo.append('file', archivo);
+    cuerpo.append('numero', datos.numero);
+    cuerpo.append('valor', String(datos.valor));
+    cuerpo.append('rubro', datos.rubro);
+    cuerpo.append('fechaExpedicion', datos.fechaExpedicion);
+    return pedir<CdpDelEstudioPrevio>(`/procesos/${procesoId}/estudio-previo/cdp/registro`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  retirarCdpDesdeElEstudioPrevio: (procesoId: string, motivo?: string) =>
+    pedir<CdpDelEstudioPrevio>(`/procesos/${procesoId}/estudio-previo/cdp/retiro`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  cdpAntesDeRadicar: () => pedir<CdpAntesDeRadicar[]>('/configuracion/cdp-antes-de-radicar'),
+
+  guardarCdpAntesDeRadicar: (
+    modalidad: string,
+    datos: { obligatorio: boolean; fundamento?: string; confirmado?: boolean },
+  ) =>
+    pedir<CdpAntesDeRadicar>(`/configuracion/cdp-antes-de-radicar/${encodeURIComponent(modalidad)}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
 
   /** Soporte de un CDP expedido antes de la 096 sin él. */
   adjuntarCdp: (procesoId: string, archivo: File) => {
@@ -1863,6 +1915,7 @@ export const contratacionService = {
      */
     cargarPaa: (anio: number, archivo: File) => {
       const cuerpo = new FormData();
+      cuerpo.append('anio', String(anio));
       cuerpo.append('file', archivo);
       return pedir<VersionPaa>('/paa/versiones', { method: 'POST', body: cuerpo });
     },
@@ -1915,7 +1968,6 @@ export const contratacionService = {
     decidir: (id: string, decision: DecisionRevisionPaa, justificacion: string, lineaDestinoId?: string) =>
       pedir<{ id: string; decision: DecisionRevisionPaa }>(`/paa/revisiones/${id}/decidir`, {
         method: 'POST',
-      cuerpo.append('anio', String(anio));
         body: JSON.stringify({ decision, justificacion, lineaDestinoId }),
       }),
 

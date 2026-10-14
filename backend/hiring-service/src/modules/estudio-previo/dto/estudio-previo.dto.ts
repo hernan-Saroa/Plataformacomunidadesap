@@ -171,3 +171,12 @@ export class CampoFaltanteDto {
   @ApiProperty() etiqueta: string;
   @ApiPropertyOptional() grupo?: string;
 }
+
+/** Por qué el área retira el CDP que gestionó desde el estudio previo. */
+export class RetirarCdpDto {
+  @ApiPropertyOptional({ description: 'Motivo del retiro' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  motivo?: string;
+}

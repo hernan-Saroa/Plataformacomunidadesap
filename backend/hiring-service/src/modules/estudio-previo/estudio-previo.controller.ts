@@ -31,7 +31,9 @@ import {
 } from './dto/estudio-previo.dto';
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
-import { NOMBRE_EN_UTF8 } from '../archivos';
+import { NOMBRE_EN_UTF8, MIME_DOCUMENTOS, opcionesDeCarga } from '../archivos';
+import { RegistrarCdpExistenteDto, SolicitarCdpAnticipadoDto } from '../cdp/dto/cdp.dto';
+import { RetirarCdpDto } from './dto/estudio-previo.dto';
 
 
 const STORAGE_PATH = process.env.HIRING_STORAGE_PATH || './uploads';
@@ -145,6 +147,65 @@ export class EstudioPrevioController {
     @Req() req: any,
   ) {
     return this.service.enviar(id, getHiringAccess(req), dto?.firma);
+  }
+
+  // ------------------------------------------- el CDP desde la 3.1 (100) ---
+
+  @Get(':id/estudio-previo/cdp')
+  @Puede('ver', '3.1')
+  @ApiOperation({
+    summary: 'El CDP visto desde el estudio previo',
+    description:
+      'Si la modalidad lo lleva, si es obligatorio para enviar a revisión, el CDP en curso (solicitado o registrado) y si quien consulta puede gestionarlo.',
+  })
+  cdp(@Param('id', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.service.cdpDelEstudioPrevio(id, getHiringAccess(req));
+  }
+
+  @Post(':id/estudio-previo/cdp/solicitud')
+  @Puede('editar', '3.1')
+  @ApiOperation({
+    summary: 'Solicitar el CDP antes de enviar el estudio previo',
+    description:
+      'Crea la solicitud que llega a la bandeja de la Dirección Financiera y cierra la 4.1. No envía ni aprueba el estudio previo.',
+  })
+  solicitarCdp(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SolicitarCdpAnticipadoDto,
+    @Req() req: any,
+  ) {
+    return this.service.solicitarCdp(id, dto, getHiringAccess(req));
+  }
+
+  @Post(':id/estudio-previo/cdp/registro')
+  @Puede('editar', '3.1')
+  @UseInterceptors(
+    FileInterceptor('file', opcionesDeCarga(MIME_DOCUMENTOS, 'Solo se admiten archivos PDF, Word o Excel')),
+  )
+  @ApiOperation({
+    summary: 'Registrar un CDP que el área ya tiene',
+    description:
+      'Número, valor, rubro, fecha y soporte. Queda expedido; al cerrarse la etapa 3, la 4.1 y la 4.2 se dan por atendidas. Si ya hay uno registrado por el área, lo corrige (el soporte es opcional al corregir).',
+  })
+  async registrarCdp(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: any,
+    @Body() dto: RegistrarCdpExistenteDto,
+    @Req() req: any,
+  ) {
+    const hash = file ? await sha256Archivo(join(STORAGE_PATH, file.filename)) : null;
+    return this.service.registrarCdp(id, dto, file ?? null, hash, getHiringAccess(req));
+  }
+
+  @Post(':id/estudio-previo/cdp/retiro')
+  @Puede('editar', '3.1')
+  @ApiOperation({
+    summary: 'Retirar el CDP gestionado desde el estudio previo',
+    description:
+      'Anula la solicitud que la Financiera aún no ha tomado en trámite, o el CDP que registró el área. Queda en la trazabilidad.',
+  })
+  retirarCdp(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RetirarCdpDto, @Req() req: any) {
+    return this.service.retirarCdp(id, dto?.motivo, getHiringAccess(req));
   }
 
   @Post(':id/estudio-previo/aprobar')

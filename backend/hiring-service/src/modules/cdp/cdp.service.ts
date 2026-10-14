@@ -3,10 +3,12 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 
-import { Cdp, EstadoCdp, ESTADOS_CDP_EN_CURSO } from '../../entities/cdp.entity';
+import { Cdp, CdpAntesDeRadicar, EstadoCdp, ESTADOS_CDP_EN_CURSO } from '../../entities/cdp.entity';
+import { Modalidad } from '../../entities/modalidad.entity';
 import { Actividad, ActividadExcluida, ETAPA_CDP } from '../../entities/actividad.entity';
 import { ETAPA_RECEPCION } from '../../entities/recepcion-ofertas.entity';
 import { ETAPA_LIQUIDACION } from '../../entities/informe-final.entity';
@@ -21,7 +23,10 @@ import { AlcanceService } from '../../auth/alcance.service';
 import {
   ExpedirCdpConSoporteDto,
   ExpedirCdpDto,
+  GuardarCdpAntesDeRadicarDto,
   RechazarCdpDto,
+  RegistrarCdpExistenteDto,
+  SolicitarCdpAnticipadoDto,
   SolicitarCdpDto,
   VerificarCdpDto,
 } from './dto/cdp.dto';
@@ -292,6 +297,29 @@ export function cdpCubreElProceso(
 export function laEtapaCerro(estados: (EstadoActividad | undefined)[]): boolean {
   if (estados.length === 0) return false;
   return estados.every((estado) => estado === 'APROBADO' || estado === 'NO_APLICA');
+}
+
+/**
+ * Si el estudio previo se puede enviar a revisión por el lado del CDP.
+ *
+ * Función pura, como `laEtapaCerro`: es la regla que el backend impone al
+ * enviar y la que la pantalla anuncia antes, y tiene que poder fijarse sin base
+ * de datos. Basta con un CDP en curso —solicitado, verificado o expedido—
+ * (decisión de Juan): el área no espera a la Financiera para radicar.
+ */
+export function cdpPermiteRadicar(estado: {
+  aplica: boolean;
+  obligatorio: boolean;
+  enCurso: boolean;
+}): { permite: boolean; motivo: string | null } {
+  if (!estado.aplica || !estado.obligatorio || estado.enCurso) {
+    return { permite: true, motivo: null };
+  }
+  return {
+    permite: false,
+    motivo:
+      'Antes de enviar el estudio previo a revisión gestiona el CDP: solicítalo o registra el que ya tienes.',
+  };
 }
 
 @Injectable()
@@ -812,6 +840,303 @@ export class CdpService {
     );
   }
 
+  // ------------------------------------- gestión desde el estudio previo ---
+
+  /**
+   * Si el estudio previo de la modalidad exige el CDP antes de enviarse.
+   *
+   * Sin fila es opcional: es el comportamiento de antes de la 100, y una
+   * modalidad nueva no debe quedar frenada porque nadie la configuró todavía.
+   */
+  async exigeCdpAntesDeRadicar(modalidad: string | null, em?: EntityManager): Promise<boolean> {
+    if (!modalidad) return false;
+    const fila = await (em ?? this.dataSource.manager)
+      .getRepository(CdpAntesDeRadicar)
+      .findOne({ where: { modalidad } });
+    return fila?.obligatorio === true;
+  }
+
+  /**
+   * El CDP tal como se ve desde el estudio previo: si aplica, si es
+   * obligatorio para radicar, el que está en curso y el último que se cayó.
+   *
+   * El rechazado se devuelve aparte porque ya no ocupa el cupo —el área puede
+   * volver a pedirlo—, pero sin él el área no sabría por qué tiene que hacerlo.
+   */
+  async gestionDesdeElEstudioPrevio(procesoId: string, em?: EntityManager) {
+    const manager = em ?? this.dataSource.manager;
+    const proceso = await this.exigirProceso(manager, procesoId);
+
+    const aplica = await this.aplicaCdp(proceso.modalidad, manager);
+    const obligatorio = aplica && (await this.exigeCdpAntesDeRadicar(proceso.modalidad, manager));
+    const enCurso = aplica ? await this.delProceso(procesoId, manager) : null;
+    const rechazado = enCurso
+      ? null
+      : await manager.getRepository(Cdp).findOne({
+          where: { procesoId, estado: 'RECHAZADO', modificacionId: IsNull() },
+          order: { updatedAt: 'DESC' },
+        });
+
+    const { permite, motivo } = cdpPermiteRadicar({ aplica, obligatorio, enCurso: !!enCurso });
+
+    return {
+      aplica,
+      obligatorio,
+      cdp: enCurso ? this.conAdvertencia(enCurso, proceso) : null,
+      rechazado,
+      /** Si con lo que hay se puede enviar el estudio previo a revisión. */
+      permiteRadicar: permite,
+      motivo,
+    };
+  }
+
+  /**
+   * La regla que frena el envío del estudio previo cuando la modalidad exige
+   * el CDP y nadie lo ha gestionado.
+   *
+   * Corre dentro de la transacción del envío: que el área retire el CDP justo
+   * mientras otro envía no debe dejar pasar un estudio previo sin él.
+   */
+  async exigirGestionAntesDeRadicar(em: EntityManager, proceso: Proceso) {
+    const aplica = await this.aplicaCdp(proceso.modalidad, em);
+    const obligatorio = aplica && (await this.exigeCdpAntesDeRadicar(proceso.modalidad, em));
+    const enCurso = obligatorio ? await this.delProceso(proceso.id, em) : null;
+
+    const { permite, motivo } = cdpPermiteRadicar({ aplica, obligatorio, enCurso: !!enCurso });
+    if (!permite) {
+      throw new UnprocessableEntityException({ message: motivo, cdpPendiente: true });
+    }
+  }
+
+  /**
+   * El área solicita el CDP desde el estudio previo.
+   *
+   * Es la misma solicitud que nace sola al cerrar la etapa 3, solo que antes:
+   * el mismo registro, el mismo estado y la misma bandeja de la Financiera.
+   * Cierra la 4.1, que es justamente «radicar la solicitud», y con eso la
+   * Financiera recibe el aviso de que la 4.2 es suya.
+   *
+   * No mueve el proceso de etapa ni toca el estudio previo: pedir el CDP no es
+   * enviar el estudio a revisión ni aprobarlo.
+   *
+   * Quién puede y cuándo —que el proceso sea suyo y el estudio previo esté en
+   * sus manos— lo comprueba el estudio previo antes de llamar aquí.
+   */
+  async solicitarDesdeElEstudioPrevio(
+    em: EntityManager,
+    procesoId: string,
+    dto: SolicitarCdpAnticipadoDto,
+    acceso: HiringAccess,
+  ) {
+    const proceso = await this.exigirProceso(em, procesoId);
+    await this.exigirQueNoTengaCdp(em, proceso);
+
+    const cdp = await em.save(
+      em.create(Cdp, {
+        procesoId,
+        rubro: dto.rubro?.trim() || null,
+        valor: dto.valor ?? proceso.valorEstimado ?? null,
+        vigenciaFiscal: dto.vigenciaFiscal ?? new Date().getFullYear(),
+        observaciones: dto.observaciones?.trim() || null,
+        estado: 'SOLICITADO' as const,
+        origen: 'SOLICITADO_EN_ETAPA_3' as const,
+        solicitadoPor: acceso.userName,
+        solicitadoAt: new Date(),
+      }),
+    );
+
+    await this.instanciarEtapa4(em, proceso);
+    await this.cierre.resolverCierre(em, procesoId, '4.1', proceso.modalidad ?? null, acceso);
+
+    await this.traza(em, procesoId, cdp.id, 'SOLICITAR', acceso, {
+      desdeElEstudioPrevio: true,
+      valor: cdp.valor,
+      rubro: cdp.rubro,
+    });
+
+    return this.conAdvertencia(cdp, proceso);
+  }
+
+  /**
+   * El área registra un CDP que ya tiene.
+   *
+   * Queda EXPEDIDO de una vez, sin pasar por la Financiera (decisión de Juan):
+   * el certificado ya existe y pedirlo otra vez sería duplicarlo. La 4.1 y la
+   * 4.2 se dan por atendidas al cerrarse la etapa 3, no aquí: mientras el
+   * estudio previo esté en manos del área, el registro todavía se corrige.
+   *
+   * Si ya hay uno registrado por el área, esto lo corrige: mismo registro, sin
+   * duplicar. El soporte es obligatorio al registrar y opcional al corregir.
+   */
+  async registrarDesdeElEstudioPrevio(
+    em: EntityManager,
+    procesoId: string,
+    dto: RegistrarCdpExistenteDto,
+    archivo: ArchivoCargado | null,
+    hash: string | null,
+    acceso: HiringAccess,
+  ) {
+    const proceso = await this.exigirProceso(em, procesoId);
+    const actual = await this.delProceso(procesoId, em);
+    const corrige = actual?.origen === 'REGISTRADO_EN_ETAPA_3';
+
+    if (!corrige) await this.exigirQueNoTengaCdp(em, proceso);
+    if (!corrige && !archivo) {
+      throw new BadRequestException('Adjunta el certificado: es la evidencia del CDP en el expediente');
+    }
+
+    const cdp =
+      corrige && actual
+        ? actual
+        : em.create(Cdp, {
+            procesoId,
+            estado: 'EXPEDIDO' as const,
+            origen: 'REGISTRADO_EN_ETAPA_3' as const,
+            solicitadoPor: acceso.userName,
+            solicitadoAt: new Date(),
+          });
+
+    if (archivo && hash) {
+      const documento = await this.guardarSoporte(em, procesoId, archivo, hash, acceso);
+      cdp.documentoId = documento.id;
+    }
+    cdp.numero = dto.numero.trim();
+    cdp.valor = dto.valor;
+    cdp.rubro = dto.rubro.trim();
+    cdp.fechaExpedicion = dto.fechaExpedicion;
+    cdp.vigenciaFiscal = dto.vigenciaFiscal ?? Number(dto.fechaExpedicion.slice(0, 4));
+    // Quién lo transcribió, que no es quien lo expidió: `origen` dice que lo
+    // registró el área, y este nombre a quién pedirle cuentas del dato.
+    cdp.expedidoPor = acceso.userName;
+    cdp.updatedAt = new Date();
+    const guardado = await em.save(cdp);
+
+    await this.traza(em, procesoId, guardado.id, corrige ? 'GUARDAR' : 'EXPEDIR', acceso, {
+      registradoPorElArea: true,
+      numero: guardado.numero,
+      valor: guardado.valor,
+      rubro: guardado.rubro,
+      fechaExpedicion: guardado.fechaExpedicion,
+      ...(archivo ? { soporte: archivo.originalname } : {}),
+    });
+
+    return this.conAdvertencia(guardado, proceso);
+  }
+
+  /**
+   * El área retira el CDP que gestionó desde el estudio previo.
+   *
+   * Para cambiar de camino —pidió uno y resultó que ya lo tenía, o al revés—
+   * o para corregir un registro equivocado. Solo lo que es suyo y nadie más ha
+   * tocado: una solicitud que la Financiera ya verificó o expidió es trabajo de
+   * otra dirección, y retirarla desde aquí lo borraría sin avisarle.
+   *
+   * Anula, no borra: el expediente conserva que se pidió o se registró.
+   */
+  async retirarDesdeElEstudioPrevio(em: EntityManager, procesoId: string, motivo: string | undefined, acceso: HiringAccess) {
+    const cdp = await this.exigirCdp(em, procesoId);
+
+    const esSuSolicitud = cdp.origen === 'SOLICITADO_EN_ETAPA_3' && cdp.estado === 'SOLICITADO';
+    const esSuRegistro = cdp.origen === 'REGISTRADO_EN_ETAPA_3';
+    if (!esSuSolicitud && !esSuRegistro) {
+      throw new ConflictException(
+        cdp.origen === 'SOLICITADO_EN_ETAPA_3'
+          ? `La Dirección Financiera ya tiene el CDP en estado ${cdp.estado}: no se puede retirar desde el estudio previo`
+          : 'Este CDP no se gestionó desde el estudio previo',
+      );
+    }
+
+    await this.transicionar(cdp, 'ANULADO');
+    cdp.observaciones = motivo?.trim() || cdp.observaciones;
+    await em.save(cdp);
+
+    // La 4.1 vuelve a quedar pendiente: la solicitud que la cerró ya no está.
+    if (esSuSolicitud) {
+      await em.update(
+        ProcesoActividad,
+        { procesoId, numeral: '4.1' },
+        { estado: 'BORRADOR', revisadoPor: null, revisadoAt: null } as any,
+      );
+    }
+
+    await this.traza(em, procesoId, cdp.id, 'ANULAR', acceso, {
+      desdeElEstudioPrevio: true,
+      origen: cdp.origen,
+      motivo: motivo?.trim() || null,
+    });
+    return { id: cdp.id, estado: cdp.estado };
+  }
+
+  /** Configuración: la regla de cada modalidad activa, con su fundamento. */
+  async exigenciasAntesDeRadicar() {
+    const [modalidades, filas] = await Promise.all([
+      this.dataSource.getRepository(Modalidad).find({ where: { activa: true }, order: { orden: 'ASC' } }),
+      this.dataSource.getRepository(CdpAntesDeRadicar).find(),
+    ]);
+    const porModalidad = new Map(filas.map((f) => [f.modalidad, f]));
+    const exentas = new Set<string>();
+    for (const m of modalidades) {
+      if (!(await this.aplicaCdp(m.codigo))) exentas.add(m.codigo);
+    }
+
+    return modalidades.map((m) => {
+      const fila = porModalidad.get(m.codigo);
+      return {
+        modalidad: m.codigo,
+        nombre: m.nombre,
+        // Una modalidad sin CDP no tiene nada que exigir: se lista para que no
+        // parezca olvidada, y la pantalla no ofrece el interruptor.
+        aplicaCdp: !exentas.has(m.codigo),
+        obligatorio: fila?.obligatorio ?? false,
+        fundamento: fila?.fundamento ?? null,
+        confirmado: fila?.confirmado ?? false,
+        actualizadoPor: fila?.actualizadoPor ?? null,
+        updatedAt: fila?.updatedAt ?? null,
+      };
+    });
+  }
+
+  /**
+   * Cambia la regla de una modalidad.
+   *
+   * Solo pesa en los envíos que vengan: un estudio previo que ya está en
+   * revisión o aprobado no se devuelve porque la regla cambió.
+   */
+  async guardarExigenciaAntesDeRadicar(
+    modalidad: string,
+    dto: GuardarCdpAntesDeRadicarDto,
+    acceso: HiringAccess,
+  ) {
+    const existe = await this.dataSource.getRepository(Modalidad).findOne({ where: { codigo: modalidad } });
+    if (!existe) throw new NotFoundException('La modalidad no existe');
+
+    const repo = this.dataSource.getRepository(CdpAntesDeRadicar);
+    const fila = (await repo.findOne({ where: { modalidad } })) ?? repo.create({ modalidad });
+    fila.obligatorio = dto.obligatorio;
+    if (dto.fundamento !== undefined) fila.fundamento = dto.fundamento.trim() || null;
+    if (dto.confirmado !== undefined) fila.confirmado = dto.confirmado;
+    fila.actualizadoPor = acceso.userName;
+    fila.updatedAt = new Date();
+    await repo.save(fila);
+
+    return (await this.exigenciasAntesDeRadicar()).find((e) => e.modalidad === modalidad);
+  }
+
+  /** Un solo CDP en curso por proceso, y solo si la modalidad lo lleva. */
+  private async exigirQueNoTengaCdp(em: EntityManager, proceso: Proceso) {
+    if (!(await this.aplicaCdp(proceso.modalidad, em))) {
+      throw new BadRequestException('Esta modalidad no requiere CDP: la entidad no compromete gasto');
+    }
+    const enCurso = await this.delProceso(proceso.id, em);
+    if (enCurso) {
+      throw new ConflictException(
+        enCurso.origen === 'REGISTRADO_EN_ETAPA_3'
+          ? 'El proceso ya tiene registrado un CDP'
+          : `El proceso ya tiene un CDP en estado ${enCurso.estado}`,
+      );
+    }
+  }
+
   // ------------------------------------------------------ apertura (5.7) ---
 
   /**
@@ -1012,11 +1337,16 @@ export class CdpService {
 
     if (!(await this.aplicaCdp(proceso.modalidad, em))) return null;
 
-    // Ya hay solicitud —automática o radicada a mano antes de esto—: volver a
-    // crearla chocaría contra el cupo de «CDP en curso» del proceso.
-    if (await this.delProceso(procesoId, em)) return null;
-
     if (!(await this.etapa3Cerrada(em, proceso))) return null;
+
+    // Ya hay CDP —gestionado desde el estudio previo, o radicado a mano—:
+    // volver a crearlo chocaría contra el cupo de «CDP en curso». Lo que toca
+    // es seguir con el que hay.
+    const existente = await this.delProceso(procesoId, em);
+    if (existente) {
+      await this.continuarConElQueHay(em, proceso, existente, acceso);
+      return null;
+    }
 
     await this.instanciarEtapa4(em, proceso);
 
@@ -1061,6 +1391,71 @@ export class CdpService {
     });
 
     return cdp;
+  }
+
+  /**
+   * La etapa 4 de un proceso que llegó con el CDP ya gestionado.
+   *
+   * Antes de la 100 esto solo pasaba con una 4.1 radicada a mano, que ya había
+   * movido el proceso a la etapa 4; desde que el área puede gestionarlo en el
+   * estudio previo, el proceso llega aquí todavía en la 3, y sin esto se
+   * quedaba ahí con el CDP en curso.
+   *
+   * Lo que se da por atendido, sellado como del sistema:
+   *   · la 4.1 si sigue abierta: ya hay solicitud, o certificado;
+   *   · la 4.2 si el área registró un certificado que ya tenía (decisión de
+   *     Juan): no hay nada que la Financiera tenga que expedir.
+   * Una solicitud anticipada que la Financiera todavía no expide sigue su
+   * trámite normal en la 4.2; si ya la expidió, la 4.2 se cerró entonces.
+   */
+  private async continuarConElQueHay(
+    em: EntityManager,
+    proceso: Proceso,
+    cdp: Cdp,
+    acceso: HiringAccess,
+  ) {
+    await this.instanciarEtapa4(em, proceso);
+    if (proceso.etapa < ETAPA_CDP) {
+      proceso.etapa = ETAPA_CDP;
+      await em.save(proceso);
+    }
+
+    const sistema = { ...acceso, userName: AUTOR_AUTOMATICO };
+    const abiertas = new Map(
+      (
+        await em.getRepository(ProcesoActividad).find({
+          where: { procesoId: proceso.id, numeral: In(['4.1', NUMERAL_EXPEDICION_CDP]) },
+        })
+      ).map((a) => [a.numeral, a.estado !== 'APROBADO' && a.estado !== 'NO_APLICA']),
+    );
+
+    const atendidas: string[] = [];
+    if (abiertas.get('4.1')) {
+      await this.cierre.resolverCierre(em, proceso.id, '4.1', proceso.modalidad ?? null, sistema);
+      atendidas.push('4.1');
+    }
+    if (
+      cdp.origen === 'REGISTRADO_EN_ETAPA_3' &&
+      cdp.estado === 'EXPEDIDO' &&
+      abiertas.get(NUMERAL_EXPEDICION_CDP)
+    ) {
+      await this.cierre.resolverCierre(
+        em,
+        proceso.id,
+        NUMERAL_EXPEDICION_CDP,
+        proceso.modalidad ?? null,
+        sistema,
+      );
+      atendidas.push(NUMERAL_EXPEDICION_CDP);
+    }
+
+    await this.traza(em, proceso.id, cdp.id, 'SOLICITAR', acceso, {
+      automatica: true,
+      yaGestionado: true,
+      origen: cdp.origen,
+      estado: cdp.estado,
+      atendidas,
+    });
   }
 
   /**

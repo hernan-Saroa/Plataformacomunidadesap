@@ -6,7 +6,9 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Req,
+  UseGuards,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -18,6 +20,7 @@ import { CdpService } from './cdp.service';
 import {
   ExpedirCdpConSoporteDto,
   ExpedirCdpDto,
+  GuardarCdpAntesDeRadicarDto,
   RechazarCdpDto,
   SolicitarCdpDto,
   VerificarCdpDto,
@@ -26,6 +29,8 @@ import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 
 import {
   MIME_DOCUMENTOS,
@@ -183,5 +188,41 @@ export class BandejaCdpController {
   })
   bandeja(@Req() req: any) {
     return this.service.bandeja(getHiringAccess(req));
+  }
+}
+
+/**
+ * Configuración: qué modalidades exigen el CDP antes de radicar el estudio
+ * previo (migración 100).
+ *
+ * Lectura abierta a quien ve Configuración, escritura de quien la administra:
+ * igual que los umbrales, el área tiene que poder entender por qué no la dejan
+ * enviar.
+ */
+@ApiTags('CDP')
+@Controller('configuracion/cdp-antes-de-radicar')
+export class CdpAntesDeRadicarController {
+  constructor(private readonly service: CdpService) {}
+
+  @Get()
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
+  @ApiOperation({ summary: 'Si cada modalidad exige el CDP gestionado antes de enviar el estudio previo' })
+  listar() {
+    return this.service.exigenciasAntesDeRadicar();
+  }
+
+  @Put(':modalidad')
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
+  @ApiOperation({
+    summary: 'Cambiar si una modalidad exige el CDP antes de radicar',
+    description: 'Solo afecta los envíos posteriores: lo que ya está en revisión o aprobado no cambia.',
+  })
+  guardar(
+    @Param('modalidad') modalidad: string,
+    @Body() dto: GuardarCdpAntesDeRadicarDto,
+    @Req() req: any,
+  ) {
+    return this.service.guardarExigenciaAntesDeRadicar(modalidad, dto, getHiringAccess(req));
   }
 }
