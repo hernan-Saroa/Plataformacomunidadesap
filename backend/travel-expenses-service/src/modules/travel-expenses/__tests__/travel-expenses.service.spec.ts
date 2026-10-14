@@ -3964,6 +3964,101 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       expect(result.analistaVerificadorNombre).toBeNull();
       expect(result.fechaVerificacionPrimerNivel).toBeNull();
     });
+
+    it('debe consultar tarifa estimada y validar tiquete resolviendo itinerario BOG-PEI cuando requiereTiquetes es true', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        comisionadoId: 'com-001',
+        idDependencia: 42,
+        requiereTiquetes: true,
+        costoEstimadoTiquete: 0,
+        destinoCiudad: 'Pereira',
+        estadoSolicitud: EstadoSolicitud.SOLICITADA_SIIF,
+        comisionado: { id: 'com-001', idDependencia: 42 },
+        itinerario: [
+          {
+            origenCiudad: 'Bogotá, D.C.',
+            destinoCiudad: 'Pereira',
+            tipoTransporte: 'AEREO',
+          },
+          {
+            origenCiudad: 'Pereira',
+            destinoCiudad: 'Bogotá, D.C.',
+            tipoTransporte: 'AEREO',
+          },
+        ],
+      } as any;
+
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue(solicitud),
+        find: jest.fn().mockResolvedValue([]),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          select: jest.fn().mockReturnThis(),
+          addSelect: jest.fn().mockReturnThis(),
+          getRawOne: jest.fn().mockResolvedValue({ total: '100000', cantidad: '1' }),
+        }),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const documentoRepo = {
+        find: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        query: jest.fn().mockResolvedValue([]),
+        transaction: jest.fn(),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        documentoRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const mockTicketsService = {
+        consultarTarifaEstimada: jest.fn().mockResolvedValue({
+          encontrado: true,
+          origen: 'Bogotá',
+          destino: 'Pereira',
+          origenIata: 'BOG',
+          destinoIata: 'PEI',
+          tarifaEstimada: 330000,
+          tarifaMinima: 280000,
+          tarifaMaxima: 420000,
+          fuente: 'API_AMADEUS',
+        }),
+        validarTiquete: jest.fn().mockResolvedValue({
+          is_valid: true,
+          nivel_alerta: 'VERDE',
+          monto_reserva_con_holgura: 759000,
+        }),
+      };
+      (svc as any)['ticketsService'] = mockTicketsService;
+
+      const result = await svc.obtenerSolicitudControlViaticos('sol-001');
+
+      expect(mockTicketsService.consultarTarifaEstimada).toHaveBeenCalledWith('Bogotá, D.C.', 'Pereira');
+      expect(mockTicketsService.validarTiquete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dependenciaId: '42',
+          origenCiudad: 'Bogotá, D.C.',
+          destinoCiudad: 'Pereira',
+          montoEstimadoTiquete: 660000, // 330.000 * 2 (ida y vuelta)
+        }),
+      );
+      expect(result.tarifaEstimada).toBeDefined();
+      expect(result.tarifaEstimada.tarifaEstimada).toBe(330000);
+      expect(result.validacionTiquete).toBeDefined();
+      expect(result.validacionTiquete.is_valid).toBe(true);
+    });
   });
 
   describe('verificarSegundaRevision', () => {

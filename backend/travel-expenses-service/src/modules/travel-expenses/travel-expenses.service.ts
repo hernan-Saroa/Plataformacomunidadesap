@@ -277,6 +277,9 @@ export class TravelExpensesService implements OnModuleInit {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
+        .replace(/[\.,\-_/]/g, ' ')
+        .replace(/\b(d\s*c|distrito\s*capital|ciudad|municipio)\b/g, ' ')
+        .replace(/[^a-z0-9]/g, '')
         .trim();
 
     const esViajeIdaVuelta =
@@ -1978,6 +1981,53 @@ export class TravelExpensesService implements OnModuleInit {
   }
 
 
+  private resolverItinerarioCiudades(
+    itinerario?: any[],
+    destinoFallback?: string,
+    origenFallback?: string,
+  ): {
+    origenCiudad: string;
+    destinoCiudad: string;
+    esViajeIdaVuelta: boolean;
+  } {
+    if (!Array.isArray(itinerario) || itinerario.length === 0) {
+      return {
+        origenCiudad: origenFallback || 'Bogotá',
+        destinoCiudad: destinoFallback || 'Bogotá',
+        esViajeIdaVuelta: false,
+      };
+    }
+    const primerTramo = itinerario[0] || {};
+    const ultimoTramo = itinerario[itinerario.length - 1] || {};
+
+    const normalizarCiudad = (txt?: string) =>
+      (txt || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[\.,\-_/]/g, ' ')
+        .replace(/\b(d\s*c|distrito\s*capital|ciudad|municipio)\b/g, ' ')
+        .replace(/[^a-z0-9]/g, '')
+        .trim();
+
+    const esViajeIdaVuelta =
+      itinerario.length > 1 &&
+      normalizarCiudad(ultimoTramo.destinoCiudad) ===
+        normalizarCiudad(primerTramo.origenCiudad) &&
+      (ultimoTramo.destinoCiudad || '') !== '';
+
+    const origenCiudad = primerTramo.origenCiudad || origenFallback || 'Bogotá';
+    const destinoCiudad = esViajeIdaVuelta
+      ? ultimoTramo.origenCiudad || destinoFallback || ''
+      : ultimoTramo.destinoCiudad || destinoFallback || '';
+
+    return {
+      origenCiudad,
+      destinoCiudad: destinoCiudad || origenCiudad,
+      esViajeIdaVuelta,
+    };
+  }
+
   async obtenerSolicitudCompleta(
     solicitudId: string,
   ): Promise<
@@ -1997,6 +2047,7 @@ export class TravelExpensesService implements OnModuleInit {
       fechaVerificacionPrimerNivel?: string | null;
       liquidacion?: any;
       validacionTiquete?: any;
+      tarifaEstimada?: any;
     }
   > {
     const solicitud = await this.solicitudRepo.findOne({
@@ -2131,15 +2182,34 @@ export class TravelExpensesService implements OnModuleInit {
     }
 
     let validacionTiquete: any = undefined;
+    let tarifaEstimada: any = undefined;
+
     if (solicitud.requiereTiquetes && this.ticketsService) {
       try {
         const idDep = solicitud.idDependencia ?? solicitud.comisionado?.idDependencia ?? 1;
+        const { origenCiudad, destinoCiudad, esViajeIdaVuelta } =
+          this.resolverItinerarioCiudades(solicitud.itinerario, solicitud.destinoCiudad);
+
+        let montoEstimadoTiquete = Number(solicitud.costoEstimadoTiquete || 0);
+
+        try {
+          const respTarifa = await this.ticketsService.consultarTarifaEstimada(origenCiudad, destinoCiudad);
+          if (respTarifa && respTarifa.encontrado && respTarifa.tarifaEstimada > 0) {
+            tarifaEstimada = respTarifa;
+            if (!montoEstimadoTiquete || montoEstimadoTiquete === 0) {
+              montoEstimadoTiquete = respTarifa.tarifaEstimada * (esViajeIdaVuelta ? 2 : 1);
+            }
+          }
+        } catch (err: any) {
+          this.logger.warn(`[travel-expenses] No se pudo consultar tarifa estimada: ${err?.message}`);
+        }
+
         const resTiquete = await this.ticketsService.validarTiquete({
           dependenciaId: String(idDep),
-          origenCiudad: 'Bogotá',
-          destinoCiudad: solicitud.destinoCiudad || 'Bogotá',
+          origenCiudad,
+          destinoCiudad,
           tipoTransporte: 'AEREO',
-          montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete || 0),
+          montoEstimadoTiquete,
         });
         if (resTiquete) {
           validacionTiquete = resTiquete;
@@ -2161,6 +2231,7 @@ export class TravelExpensesService implements OnModuleInit {
         solicitud.fechaExportacionSiif?.toISOString() ?? null,
       liquidacion,
       validacionTiquete,
+      tarifaEstimada,
     };
   }
 
@@ -8640,6 +8711,7 @@ if (itinerarioGeneral) {
        fechaVerificacionPrimerNivel?: string | null;
        liquidacion?: any;
        validacionTiquete?: any;
+       tarifaEstimada?: any;
      }
    > {
      const solicitud = await this.solicitudRepo.findOne({
@@ -8748,21 +8820,44 @@ if (itinerarioGeneral) {
        };
      }
 
-     // Validación proactiva de tiquete aéreo si la solicitud lo requiere
+     // Validación proactiva y consulta de tarifa estimada de tiquete aéreo si la solicitud lo requiere
      let validacionTiquete: any = null;
-     if (solicitud.requiereTiquetes && this.ticketsService && idDependencia != null) {
+     let tarifaEstimada: any = null;
+
+     if (solicitud.requiereTiquetes && this.ticketsService) {
+       const { origenCiudad, destinoCiudad, esViajeIdaVuelta } =
+         this.resolverItinerarioCiudades(solicitud.itinerario, solicitud.destinoCiudad);
+
+       let montoEstimadoTiquete = Number(solicitud.costoEstimadoTiquete || 0);
+
        try {
-         validacionTiquete = await this.ticketsService.validarTiquete({
-           dependenciaId: String(idDependencia),
-           montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete || 0),
-           origenCiudad: 'Bogotá',
-           destinoCiudad: solicitud.destinoCiudad || 'Bogotá',
-           tipoTransporte: 'AEREO',
-         });
+         const respTarifa = await this.ticketsService.consultarTarifaEstimada(origenCiudad, destinoCiudad);
+         if (respTarifa && respTarifa.encontrado && respTarifa.tarifaEstimada > 0) {
+           tarifaEstimada = respTarifa;
+           if (!montoEstimadoTiquete || montoEstimadoTiquete === 0) {
+             montoEstimadoTiquete = respTarifa.tarifaEstimada * (esViajeIdaVuelta ? 2 : 1);
+           }
+         }
        } catch (err: any) {
          this.logger.warn(
-           `[obtenerSolicitudControlViaticos] No se pudo validar tiquete con TicketsService: ${err?.message}`,
+           `[obtenerSolicitudControlViaticos] No se pudo consultar tarifa estimada: ${err?.message}`,
          );
+       }
+
+       if (idDependencia != null) {
+         try {
+           validacionTiquete = await this.ticketsService.validarTiquete({
+             dependenciaId: String(idDependencia),
+             montoEstimadoTiquete,
+             origenCiudad,
+             destinoCiudad,
+             tipoTransporte: 'AEREO',
+           });
+         } catch (err: any) {
+           this.logger.warn(
+             `[obtenerSolicitudControlViaticos] No se pudo validar tiquete con TicketsService: ${err?.message}`,
+           );
+         }
        }
      }
 
@@ -8775,6 +8870,7 @@ if (itinerarioGeneral) {
          solicitud.fechaExportacionSiif?.toISOString() ?? null,
        liquidacion,
        validacionTiquete,
+       tarifaEstimada,
      };
    }
 
@@ -9047,6 +9143,10 @@ if (itinerarioGeneral) {
         firmaControlViaticos: firmaControlData,
         firmasAprobacion: prevFirmas,
       };
+
+      if (dto.costoEstimadoTiquete != null && Number(dto.costoEstimadoTiquete) >= 0) {
+        solicitud.costoEstimadoTiquete = Number(dto.costoEstimadoTiquete);
+      }
 
       const saved = await manager
         .getRepository(SolicitudComisionEntity)
