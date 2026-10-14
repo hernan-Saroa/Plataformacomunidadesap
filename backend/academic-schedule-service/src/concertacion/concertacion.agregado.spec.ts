@@ -53,7 +53,10 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     } as any, new TerritorialService(ds), new PermisosPtaService(ds));
   };
 
-  interface Fixture { docente: { idPerson: string; idUser: string; vinculacion: null }; periodo: string; franjas: string[]; revisor: string; aprobador: string }
+  interface Fixture {
+    docente: { idPerson: string; idUser: string; vinculacion: null }; periodo: string; franjas: string[];
+    grupo: string; ofertas: { sedeCentral: string; neiva: string }; revisor: string; aprobador: string;
+  }
 
   const caso = (nombre: string, fn: (f: Fixture) => Promise<void>, encendida = true) =>
     it(nombre, async () => {
@@ -80,10 +83,18 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
         const p = await client.query(
           `INSERT INTO academic_work_plan.periodo_academico (codigo, anio, semestre, fecha_inicio, fecha_fin, estado)
            VALUES ('2049-1', 2049, 1, '2049-02-01', '2049-06-15', 'planeacion') RETURNING id::text AS id_periodo`);
+        // Ofertas CETAP del programa en ese periodo, como las crea la carga masiva:
+        // Sede Central (CET-0288, SC) y Neiva (CET-0135, DT-009 Huila).
+        const oferta = async (codigoCetap: string) => (await client!.query(
+          `INSERT INTO academic_work_plan.oferta_cetap_programa (id_cetap, id_programa, id_periodo_academico, activa)
+           SELECT c.id, a.id_programa, $3::bigint, TRUE FROM academic_work_plan.cetap c, academic_work_plan.asignatura a
+            WHERE c.codigo = $1 AND a.id = $2 RETURNING id::text`,
+          [codigoCetap, asig.rows[0].id, p.rows[0].id_periodo])).rows[0].id as string;
+        const ofertas = { sedeCentral: await oferta('CET-0288'), neiva: await oferta('CET-0135') };
         const g = await client.query(
-          `INSERT INTO "${S}".grupo (id_asignatura,id_periodo_academico,tipo_oferta,numero_grupo,estado,fecha_inicio,fecha_fin)
-           VALUES ($1,$2::bigint,'periodo_regular',981,'PROGRAMADO','2049-02-03','2049-05-30') RETURNING id_grupo`,
-          [asig.rows[0].id, p.rows[0].id_periodo]);
+          `INSERT INTO "${S}".grupo (id_asignatura,id_periodo_academico,tipo_oferta,numero_grupo,estado,fecha_inicio,fecha_fin,id_oferta_cetap)
+           VALUES ($1,$2::bigint,'periodo_regular',981,'PROGRAMADO','2049-02-03','2049-05-30',$3::bigint) RETURNING id_grupo`,
+          [asig.rows[0].id, p.rows[0].id_periodo, ofertas.sedeCentral]);
         const docente = usuarios.rows[0];
         const franjas: string[] = [];
         for (const dia of ['LUNES', 'JUEVES']) {
@@ -95,7 +106,7 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
         }
         await fn({
           docente: { idPerson: docente.id_person, idUser: docente.id_user, vinculacion: null },
-          periodo: p.rows[0].id_periodo, franjas,
+          periodo: p.rows[0].id_periodo, franjas, grupo: g.rows[0].id_grupo, ofertas,
           revisor: usuarios.rows[1].id_user, aprobador: usuarios.rows[2].id_user,
         });
       } finally {
@@ -132,8 +143,8 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     expect(entregas[0].asignaturas[0]).toMatchObject({ fechaInicio: '2049-02-03', fechaFin: '2049-05-30', horas: 96 });
     expect(entregas[0].asignaturas[0].asignaturaId).toMatch(/^\d+$/);
     expect(entregas[0].asignaturas[0].programaId).toMatch(/^\d+$/);
-    // Sin ubicación del grupo: sin territorial (en el PTA, territorial_id vacío).
-    expect(entregas[0].asignaturas[0].territorialId).toBeNull();
+    // La territorial sale de la oferta CETAP del grupo: Sede Central → auth.seccionales 900001 (SC).
+    expect(entregas[0].asignaturas[0].territorialId).toBe('900001');
     expect(final.aplicacionPta).toBe('aplicada');
     expect(entregas[0].firmas.map((x: any) => x.rol)).toEqual(['docente', 'revisor', 'aprobador']);
     expect(final.notificadaPtaEn).not.toBeNull();
@@ -144,42 +155,46 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     `SELECT u.id_user::text AS id FROM auth."user" u JOIN auth.personas p ON p.id_person = u.id_person
       WHERE p.id_seccional = $1 AND COALESCE(u.is_active, true) AND u.id_user::text <> ALL($2::text[])
       ORDER BY u.id_user LIMIT 1`, [idSeccional, excepto])).rows[0]?.id as string;
-  /** Ubica el grupo de la concertación (franja.sede_codigo, esquema propio). */
-  const ubicar = (franjas: string[], codigo: string | null) => client!.query(
-    `UPDATE "${S}".franja_horaria SET sede_codigo = $2 WHERE id_franja = ANY($1::uuid[])`, [franjas, codigo]);
+  /** Asigna (o quita) la oferta CETAP del grupo (esquema propio). */
+  const ofertaDelGrupo = (grupo: string, oferta: string | null) => client!.query(
+    `UPDATE "${S}".grupo SET id_oferta_cetap = $2::bigint WHERE id_grupo = $1`, [grupo, oferta]);
 
-  caso('alcance como el PTA: la seccional del aprobador contra la territorial del grupo (Huila sí, Tolima no)', async (f) => {
+  caso('alcance como el PTA: la seccional del aprobador contra la territorial de la oferta (Sede Central sí, Tolima no)', async (f) => {
     const svc = servicio();
-    await ubicar(f.franjas, 'HUI'); // código de auth.seccionales 10 (Seccional Huila)
     const [c] = await svc.enviar(f.docente, f.periodo, '123456', null);
+    const sedeCentral = await cuentaDeSeccional(900001, [f.docente.idUser]); // persona con la seccional SC
     const tolima = await cuentaDeSeccional(16, [f.docente.idUser]);
-    const huila = await cuentaDeSeccional(10, [f.docente.idUser]);
-    const huila2 = await cuentaDeSeccional(10, [f.docente.idUser, huila]);
+    expect(sedeCentral).toBeDefined();
     await expect(svc.revisar(c.idConcertacion, 'academica', tolima, REVISOR, '123456')).rejects.toBeInstanceOf(ForbiddenException);
     expect(await svc.bandeja(REVISOR, tolima, f.periodo)).toEqual([]);
-    expect((await svc.bandeja(REVISOR, huila, f.periodo)).map((x: any) => x.idConcertacion)).toEqual([c.idConcertacion]);
-    expect((await svc.revisar(c.idConcertacion, 'academica', huila, REVISOR, '123456')).estado).toBe('REVISADA');
-    expect((await svc.aprobar(c.idConcertacion, huila2, APROBADOR, '123456', null)).estado).toBe('APROBADA');
-    // La territorial viaja al PTA como asignaturas[].territorial_id.
-    expect(entregas[0].asignaturas[0].territorialId).toBe('10');
-  });
-
-  caso('alcance como el PTA: un aprobador CON seccional no decide un grupo sin territorial (no se puede verificar)', async (f) => {
-    const svc = servicio();
-    const [c] = await svc.enviar(f.docente, f.periodo, '123456', null);
-    const huila = await cuentaDeSeccional(10, [f.docente.idUser]);
-    await expect(svc.revisar(c.idConcertacion, 'academica', huila, REVISOR, '123456')).rejects.toBeInstanceOf(ForbiddenException);
+    expect((await svc.bandeja(REVISOR, sedeCentral, f.periodo)).map((x: any) => x.idConcertacion)).toEqual([c.idConcertacion]);
+    expect((await svc.revisar(c.idConcertacion, 'academica', sedeCentral, REVISOR, '123456')).estado).toBe('REVISADA');
     // Sin seccional en Personas no hay restricción geográfica (así lo hace hoy el PTA).
-    expect((await svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR, '123456')).estado).toBe('REVISADA');
+    expect((await svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR, '123456', null)).estado).toBe('APROBADA');
   });
 
-  caso('hueco reportado: el código del RUND (DT-009, catálogo de la carga masiva) no cruza con la seccional heredada (Huila)', async (f) => {
+  caso('hueco reportado: la oferta de Neiva (DT-009, catálogo de la carga masiva) no cruza con la seccional heredada (Huila)', async (f) => {
     const svc = servicio();
-    await ubicar(f.franjas, 'DT-009'); // auth.seccionales 900022 "HUILA"
+    await ofertaDelGrupo(f.grupo, f.ofertas.neiva); // auth.seccionales 900022 "HUILA"
     const [c] = await svc.enviar(f.docente, f.periodo, '123456', null);
     const huila = await cuentaDeSeccional(10, [f.docente.idUser]); // "Seccional Huila"
     // Igual que en el PTA: ni el id ni el nombre normalizado coinciden → no decide.
     await expect(svc.revisar(c.idConcertacion, 'academica', huila, REVISOR, '123456')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  caso('grupo sin oferta CETAP: no se concerta, y se dice por qué (falla cerrado)', async (f) => {
+    const svc = servicio();
+    await ofertaDelGrupo(f.grupo, null);
+    await expect(svc.enviar(f.docente, f.periodo, '123456', null)).rejects.toThrow(/sin oferta CETAP/);
+  });
+
+  caso('grupo presencial con aula de otro CETAP que su oferta: no se concerta', async (f) => {
+    const svc = servicio();
+    await ofertaDelGrupo(f.grupo, f.ofertas.neiva);
+    // El aula 101 es del CETAP de Sede Central (CET-0288); el grupo se dicta en Neiva.
+    await client!.query(
+      `UPDATE "${S}".franja_horaria SET tipo_sesion = 'presencial', aula_codigo = '101' WHERE id_franja = $1`, [f.franjas[0]]);
+    await expect(svc.enviar(f.docente, f.periodo, '123456', null)).rejects.toThrow(/aula de otro CETAP/);
   });
 
   caso('devolver exige comentario, regresa las franjas al docente y bloquea reenviar hasta resolverlas', async (f) => {

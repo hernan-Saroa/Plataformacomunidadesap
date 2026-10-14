@@ -35,6 +35,13 @@ export class GrupoEntity {
   @Column({ name: 'tipo_oferta', type: 'varchar', length: 30, nullable: true })
   tipoOferta: TipoOferta | null;
 
+  /**
+   * Dónde se dicta: la oferta de programa por CETAP del periodo (migración 040,
+   * `academic_work_plan.oferta_cetap_programa`). De ella sale su territorial.
+   */
+  @Column({ name: 'id_oferta_cetap', type: 'bigint', nullable: true })
+  idOfertaCetap: string | null;
+
   @Column({ name: 'numero_grupo', type: 'smallint' })
   numeroGrupo: number;
 

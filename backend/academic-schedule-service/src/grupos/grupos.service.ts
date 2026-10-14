@@ -6,6 +6,7 @@ import { GrupoEntity, TIPOS_OFERTA, type TipoOferta } from './grupo.entity.js';
 import { parsearPeriodo, type RefPeriodo } from '../periodos/periodo-ref.js';
 import { siguienteNumeroGrupo } from './numeracion-grupo.js';
 import { AsignaturaCatalogoEntity } from '../catalogo/entities/asignatura.readonly.entity.js';
+import { aulasQueNoCoinciden, ofertasCetapDe, validarOfertaDelGrupo, type OfertaCetap } from './oferta-cetap.js';
 
 export interface CrearGrupoDto {
   idAsignatura: string;
@@ -18,6 +19,8 @@ export interface CrearGrupoDto {
   observaciones?: string | null;
   /** Cantidad de grupos a crear de una vez (AC-01). Por defecto 1. */
   cantidad?: number;
+  /** Oferta CETAP donde se dicta (EFDS-2315). Opcional al crear; sin ella no se concerta. */
+  idOfertaCetap?: string | number | null;
 }
 
 /** Dónde vive el grupo según su periodo; `null` = sin periodo. */
@@ -28,6 +31,8 @@ function ubicacion(ref: RefPeriodo | null, tipoOferta?: TipoOferta) {
 }
 
 export interface ActualizarGrupoDto {
+  /** Oferta CETAP donde se dicta (EFDS-2315); null la quita. */
+  idOfertaCetap?: string | number | null;
   idDocente?: string | null;
   cupoMaximo?: number;
   estado?: string;
@@ -69,6 +74,10 @@ export class GruposService {
       throw new BadRequestException(`La oferta debe ser una de: ${TIPOS_OFERTA.join(', ')}.`);
     }
     const donde = ubicacion(ref, dto.tipoOferta);
+    const oferta = dto.idOfertaCetap != null
+      ? await validarOfertaDelGrupo(this.grupoRepo.manager, dto.idOfertaCetap,
+        { idAsignatura: String(dto.idAsignatura), idPeriodoAcademico: donde.idPeriodoAcademico })
+      : null;
 
     // Numeración por asignatura, periodo y oferta (índice de la migración 036).
     const existentes = await this.grupoRepo.find({
@@ -99,6 +108,7 @@ export class GruposService {
           // no depende de la semántica de create() del ORM.
           estado: 'PROGRAMADO',
           observaciones: dto.observaciones ?? null,
+          idOfertaCetap: oferta?.idOfertaCetap ?? null,
         }),
       );
     }
@@ -134,6 +144,20 @@ export class GruposService {
    */
   async actualizar(idGrupo: string, dto: ActualizarGrupoDto): Promise<GrupoEntity> {
     const grupo = await this.obtener(idGrupo);
+    if (dto.idOfertaCetap !== undefined) {
+      if (dto.idOfertaCetap === null) {
+        grupo.idOfertaCetap = null;
+      } else {
+        const oferta = await validarOfertaDelGrupo(this.grupoRepo.manager, dto.idOfertaCetap, grupo);
+        // Un grupo presencial ya tiene aulas: deben ser del CETAP de la oferta.
+        const otras = await aulasQueNoCoinciden(this.grupoRepo.manager, idGrupo, oferta.cetap.codigo);
+        if (otras.length) {
+          throw new BadRequestException(
+            `Las aulas ${otras.join(', ')} del grupo no son del CETAP ${oferta.cetap.codigo} (${oferta.cetap.nombre}).`);
+        }
+        grupo.idOfertaCetap = oferta.idOfertaCetap;
+      }
+    }
     if (dto.idDocente !== undefined) grupo.idDocente = dto.idDocente;
     if (dto.cupoMaximo !== undefined) {
       if (!Number.isInteger(dto.cupoMaximo) || dto.cupoMaximo < 1) {
@@ -144,6 +168,18 @@ export class GruposService {
     if (dto.estado !== undefined) grupo.estado = dto.estado;
     if (dto.observaciones !== undefined) grupo.observaciones = dto.observaciones;
     return this.grupoRepo.save(grupo);
+  }
+
+  /**
+   * Ofertas CETAP elegibles para un grupo de la asignatura en un periodo de
+   * plataforma: las del programa de la asignatura en ese periodo, activas.
+   * Un periodo legado no tiene ofertas CETAP.
+   */
+  async ofertasCetap(idAsignatura: string, idPeriodo: string): Promise<OfertaCetap[]> {
+    const ref = parsearPeriodo(idPeriodo);
+    if (!ref) throw new BadRequestException('El periodo no es válido.');
+    if (ref.modelo !== 'plataforma') return [];
+    return ofertasCetapDe(this.grupoRepo.manager, String(idAsignatura), String(ref.id));
   }
 
   /** Elimina el grupo. Sus franjas caen con él (ON DELETE CASCADE): son suyas. */
