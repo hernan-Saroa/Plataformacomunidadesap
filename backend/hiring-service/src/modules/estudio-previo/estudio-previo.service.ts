@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
   OnModuleInit,
+  Optional,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
@@ -31,6 +32,8 @@ import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { PermisosService } from '../../auth/permisos.service';
 import { AlcanceService } from '../../auth/alcance.service';
 import { AprobacionService } from '../aprobacion/aprobacion.service';
+import { CadenaAprobacionService, NOMBRE_PAPEL } from '../cadena-aprobacion/cadena-aprobacion.service';
+import { AccionEscalon } from '../../entities/cadena-aprobacion.entity';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import {
@@ -226,7 +229,17 @@ export class EstudioPrevioService implements OnModuleInit {
      * que la vista de un proceso sin dueño pregunta antes de enseñarlo.
      */
     private readonly alcance: AlcanceService,
-  ) {}
+    /**
+     * La cadena de escalones, cuando la 3.1 se aprueba por una (migración
+     * 101). Opcional para que las pruebas que construyen el servicio a mano
+     * sigan funcionando con solo la fuente de datos.
+     */
+    @Optional() cadenas?: CadenaAprobacionService,
+  ) {
+    this.cadenas = cadenas ?? new CadenaAprobacionService(dataSource);
+  }
+
+  private readonly cadenas: CadenaAprobacionService;
 
   /**
    * Quién es el abogado del proceso y si quien pregunta puede decidir por él.
@@ -760,14 +773,62 @@ export class EstudioPrevioService implements OnModuleInit {
   /** El abogado del proceso y por qué quien pregunta puede o no decidir. */
   private async quienRevisa(procesoId: string, acceso: HiringAccess) {
     const { abogado, motivo } = await this.quienDecide(procesoId, acceso);
+    const datosAbogado = abogado
+      ? { nombre: abogado.nombre, usuarioNombre: abogado.usuarioNombre, cargo: abogado.cargo }
+      : null;
+
+    /*
+     * Con una cadena (migración 101) decide el escalón que espera, no el
+     * abogado por sí solo: puede ser el primer escalón, o ninguno. La ronda va
+     * entera para pintar quién aprobó y a quién le toca.
+     */
+    const actividad = await this.obtenerActividad(this.dataSource.manager, procesoId);
+    const ronda = await this.cadenas.rondaParaMostrar(actividad, acceso);
+    if (ronda) {
+      const pendiente = ronda.estado === 'EN_CURSO' ? ronda.escalones.find((e) => e.estado === 'PENDIENTE') : undefined;
+      const sinAbogado = !!pendiente && !abogado && (await this.pendienteEsDelAbogado(actividad.id));
+      const puede = ronda.acciones.length > 0;
+      return {
+        abogado: datosAbogado,
+        puedeDecidir: puede,
+        motivo: puede ? null : sinAbogado ? ('SIN_ABOGADO' as const) : ('EN_CADENA' as const),
+        /** A quién espera, o por qué no le toca a quien mira, en una frase. */
+        espera:
+          ronda.motivo ??
+          (pendiente
+            ? `Espera al escalón ${pendiente.orden}, ${pendiente.nombre}: ${pendiente.responsables
+                // El papel con nombre propio: «Andrés Rojas», no «el abogado del proceso».
+                .map((r) => (r === NOMBRE_PAPEL.ABOGADO && abogado ? abogado.nombre : r))
+                .join(' o ')}.`
+            : null),
+        ronda,
+        acciones: ronda.acciones,
+      };
+    }
+
     return {
-      abogado: abogado
-        ? { nombre: abogado.nombre, usuarioNombre: abogado.usuarioNombre, cargo: abogado.cargo }
-        : null,
+      abogado: datosAbogado,
       puedeDecidir: motivo === null,
       /** Para que la pantalla explique en vez de esconder sin más. */
       motivo,
+      espera: null,
+      ronda: null,
+      // Sin cadena, el abogado decide las tres cosas, como siempre.
+      acciones: motivo === null ? (['APROBAR', 'DEVOLVER', 'NEGAR'] as AccionEscalon[]) : [],
     };
+  }
+
+  /** Si el escalón que espera nombra al abogado del proceso. */
+  private async pendienteEsDelAbogado(procesoActividadId: string): Promise<boolean> {
+    const [fila] = await this.dataSource.query(
+      `SELECT 1
+         FROM hiring.aprobaciones r
+         JOIN hiring.aprobacion_escalones e ON e.aprobacion_id = r.id AND e.estado = 'PENDIENTE'
+        WHERE r.proceso_actividad_id = $1 AND r.estado = 'EN_CURSO' AND 'ABOGADO' = ANY (e.papeles)
+        LIMIT 1`,
+      [procesoActividadId],
+    );
+    return !!fila;
   }
 
   /**
@@ -1050,6 +1111,15 @@ export class EstudioPrevioService implements OnModuleInit {
       }
       await em.save(ProcesoActividad, actividad);
 
+      /*
+       * Con una cadena de escalones (migración 101), el envío abre la ronda en
+       * el primer escalón. Con la regla de siempre no: la revisión la decide el
+       * abogado asignado en la 3.3, como hasta ahora.
+       */
+      if (revisan?.cadenaId) {
+        await this.cadenas.iniciar(em, actividad, revisan, acceso);
+      }
+
       await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'ENVIAR', acceso, {
         version: actividad.version,
         fundamentoJuridico: snapshot['fundamento_juridico'],
@@ -1262,6 +1332,8 @@ export class EstudioPrevioService implements OnModuleInit {
       actividad.revisadoAt = new Date();
       await em.save(ProcesoActividad, actividad);
       await this.cerrarLaRevision(em, procesoId, 'DEVUELTO', acceso);
+      // Si iba por una cadena, la ronda queda cerrada sin decidirse (101).
+      await this.cadenas.cancelarRonda(em, actividad.id, 'CANCELADA');
     }
 
     // La traza de siempre: el motor de avisos le dice al área que le devolvieron
@@ -1316,6 +1388,12 @@ export class EstudioPrevioService implements OnModuleInit {
     acceso: HiringAccess,
     firma?: FirmaOtpDto,
   ) {
+    // Con una cadena en curso (migración 101), decide el escalón que espera.
+    const actual = await this.obtenerActividad(this.dataSource.manager, procesoId);
+    if (await this.cadenas.rondaEnCurso(this.dataSource.manager, actual.id)) {
+      return this.decidirEnCadena(procesoId, decision, observaciones, acceso, firma);
+    }
+
     // Quién puede decidir se resuelve antes de abrir la transacción: no toca
     // nada y así el error de autorización no arrastra un lock.
     const { abogado, motivo } = await this.quienDecide(procesoId, acceso);
@@ -1399,6 +1477,101 @@ export class EstudioPrevioService implements OnModuleInit {
         decision,
         revisadoPor: actividad.revisadoPor,
         revisadoAt: actividad.revisadoAt,
+      };
+    });
+  }
+
+  /**
+   * La decisión de un escalón de la cadena de la 3.1 (migración 101).
+   *
+   * Los efectos del estudio previo —cerrar la 3.4, radicar el CDP si se cerró
+   * la etapa, terminar el proceso al negar— solo ocurren cuando la ronda se
+   * cierra: una aprobación intermedia pasa el estudio al siguiente escalón y
+   * no ratifica nada. Devolver, en cualquier escalón, lo regresa al área, que
+   * es la única que lo corrige, y al reenviarlo la cadena empieza otra vez.
+   */
+  private async decidirEnCadena(
+    procesoId: string,
+    decision: DecisionRevision,
+    observaciones: string | undefined,
+    acceso: HiringAccess,
+    firma?: FirmaOtpDto,
+  ) {
+    const accion: AccionEscalon =
+      decision === 'APROBADO' ? 'APROBAR' : decision === 'NEGADO' ? 'NEGAR' : 'DEVOLVER';
+
+    return this.dataSource.transaction(async (em) => {
+      const actividad = await this.obtenerActividad(em, procesoId, true);
+      const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
+
+      // Nadie repartió el proceso y el escalón que espera es el del abogado:
+      // decirlo así, y no «no estás entre quienes deciden».
+      if (!(await this.participacion.vigente(procesoId, 'ABOGADO', em)) && (await this.pendienteEsDelAbogado(actividad.id))) {
+        throw new ConflictException(
+          'Este proceso todavía no tiene abogado asignado: se reparte en la actividad 3.3 y después se revisa',
+        );
+      }
+
+      const preparada = await this.cadenas.prepararDecision(
+        em,
+        actividad,
+        proceso?.modalidad ?? null,
+        accion,
+        acceso,
+      );
+      const { tras } = preparada;
+
+      // La firma es de quien da la aprobación definitiva (EFDS-2070).
+      if (tras.aprobacionDefinitiva && (await this.cierre.exigeFirma(em, NUMERAL_REVISION))) {
+        this.cierre.exigirFirmaValida(firma);
+      }
+
+      await this.cadenas.registrarDecision(
+        em,
+        preparada,
+        observaciones?.trim() || null,
+        acceso,
+        estadoTrasDecision('DEVUELTO'),
+      );
+
+      // La 3.4 solo cambia cuando la ronda se cierra.
+      if (tras.ronda !== 'EN_CURSO') {
+        await this.cerrarLaRevision(em, procesoId, decision, acceso, firma);
+      }
+      if (tras.aprobacionDefinitiva) {
+        await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+      }
+      const desenlace = desenlaceTrasDecision(decision);
+      if (desenlace) {
+        await em.update(Proceso, { id: procesoId }, { estado: desenlace });
+      }
+
+      await this.traza(
+        em,
+        procesoId,
+        'estudio_previo',
+        actividad.id,
+        decision === 'APROBADO' ? 'APROBAR' : decision === 'NEGADO' ? 'RECHAZAR' : 'DEVOLVER',
+        acceso,
+        {
+          version: actividad.version,
+          observaciones,
+          ronda: preparada.ronda.ronda,
+          escalon: preparada.escalon.orden,
+          escalonNombre: preparada.escalon.nombre,
+          // Para los avisos: una intermedia no es «se aprobó».
+          definitiva: tras.aprobacionDefinitiva,
+          activado: tras.activado,
+        },
+      );
+
+      return {
+        estado: actividad.estado,
+        decision,
+        revisadoPor: actividad.revisadoPor,
+        revisadoAt: actividad.revisadoAt,
+        escalon: preparada.escalon.orden,
+        definitiva: tras.aprobacionDefinitiva,
       };
     });
   }

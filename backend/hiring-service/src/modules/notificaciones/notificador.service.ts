@@ -373,7 +373,13 @@ export class NotificadorService implements OnApplicationBootstrap {
          * una aprobación intermedia, el escalón que espera es el siguiente, y
          * a él le llega el aviso.
          */
-        const pendientes = await this.cadenas.responsablesPendientes(ocurrido.procesoId, ocurrido.numeral);
+        let pendientes = await this.cadenas.responsablesPendientes(ocurrido.procesoId, ocurrido.numeral);
+        // Sin ronda —la 3.1 con la regla de siempre, que decide el abogado—,
+        // los que nombra la regla, como antes de la 101.
+        if (!pendientes.length) {
+          const cadena = await this.cadenas.cadenaPara(ocurrido.numeral, modalidad);
+          pendientes = cadena && !cadena.cadenaId ? cadena.escalones.slice(0, 1) : [];
+        }
         const ids: string[] = [];
         for (const e of pendientes) {
           if (e.roles?.length) ids.push(...(await this.cuentasConRol(e.roles)));

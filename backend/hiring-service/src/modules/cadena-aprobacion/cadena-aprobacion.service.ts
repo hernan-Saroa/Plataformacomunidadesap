@@ -9,7 +9,7 @@ import {
   PapelEscalon,
   RondaAprobacion,
 } from '../../entities/cadena-aprobacion.entity';
-import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
+import { EstadoActividad, ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
 import { Revision } from '../../entities/revision.entity';
 import {
@@ -345,8 +345,15 @@ export class CadenaAprobacionService {
     preparada: DecisionPreparada,
     observaciones: string | null,
     acceso: HiringAccess,
+    /**
+     * En qué estado queda la actividad devuelta. DEVUELTO en las genéricas;
+     * el estudio previo vuelve a BORRADOR, que es lo que su formulario edita.
+     */
+    estadoAlDevolver: EstadoActividad = 'DEVUELTO',
   ): Promise<Revision> {
-    const { actividad, ronda, escalon, quien, decision, tras } = preparada;
+    const { actividad, ronda, escalon, quien, decision } = preparada;
+    const tras =
+      decision === 'DEVUELTO' ? { ...preparada.tras, actividad: estadoAlDevolver } : preparada.tras;
     const ahora = new Date();
 
     const revision = await em.save(

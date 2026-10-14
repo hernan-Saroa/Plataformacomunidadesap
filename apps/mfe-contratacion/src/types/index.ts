@@ -563,13 +563,20 @@ export type EstadoDelProceso = 'EN_CURSO' | 'ADJUDICADO' | 'DESIERTO' | 'NEGADO'
  * - `SIN_ABOGADO`: nadie ha repartido el proceso todavía; se hace en la 3.3.
  * - `NO_ES_TUYO`: lo revisa otro abogado, el que lo recibió.
  */
-export type MotivoNoDecide = 'SIN_ABOGADO' | 'NO_ES_TUYO' | 'SIN_PERMISO';
+export type MotivoNoDecide = 'SIN_ABOGADO' | 'NO_ES_TUYO' | 'SIN_PERMISO' | 'EN_CADENA';
 
 /** Quién resuelve la 3.4 de este proceso y si le toca a quien mira. */
 export interface RevisionDelProceso {
   abogado: { nombre: string; usuarioNombre: string; cargo: string | null } | null;
   puedeDecidir: boolean;
+  /** `EN_CADENA`: la 3.1 va por una cadena y el escalón que espera no es de quien mira. */
   motivo: MotivoNoDecide | null;
+  /** A quién espera la cadena, o por qué no le toca a quien mira, en una frase (101). */
+  espera?: string | null;
+  /** La ronda de la cadena, cuando la 3.1 se aprueba por una (101). */
+  ronda?: RondaDeAprobacion | null;
+  /** Lo que quien mira puede hacer ahora: sin cadena, las tres si es el abogado. */
+  acciones?: AccionEscalon[];
 }
 
 // ------------------ causal de contratación · 3.6 (3.5.1 de la matriz) ------

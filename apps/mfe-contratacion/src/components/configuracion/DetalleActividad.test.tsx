@@ -88,6 +88,7 @@ describe('DetalleActividad', () => {
     vi.spyOn(contratacionService, 'aprobacionDeActividad').mockResolvedValue({
       requiereAprobacion: false,
       aprobadores: [],
+      cadena: null,
     });
   });
 

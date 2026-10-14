@@ -487,6 +487,10 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
     case 'estudio_previo:ENVIAR':
       return ocurrido('ENVIADA_A_APROBACION', '3.1');
     case 'estudio_previo:APROBAR':
+      // Por cadena (101), igual que las demás: la intermedia pasa al siguiente.
+      if (detalle.definitiva === false) {
+        return detalle.activado ? ocurrido('ENVIADA_A_APROBACION', '3.1') : null;
+      }
       return ocurrido('APROBADA', '3.1');
     case 'estudio_previo:DEVOLVER':
       return ocurrido('DEVUELTA', '3.1');

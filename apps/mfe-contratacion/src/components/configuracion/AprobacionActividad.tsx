@@ -219,9 +219,9 @@ export function AprobacionActividad({ numeral }: Props) {
             aprobadores.length > 1 ? 'Basta con que uno de ellos apruebe.' : undefined
           }
         />
-        {/* La 3.1 la decide el abogado asignado en la 3.3: no admite cadena. */}
-        {numeral !== '3.1' ? (
-          <Opcion
+        {/* En la 3.1 la cadena reemplaza la revisión del abogado a solas: para
+            que él decida primero, su papel va en el escalón 1. */}
+        <Opcion
             marcada={!!cadena || eligiendoCadena}
             disabled={guardando}
             onClick={verCadenas}
@@ -229,10 +229,11 @@ export function AprobacionActividad({ numeral }: Props) {
             ayuda={
               cadena
                 ? `${cadena.escalones} escalones en orden: solo el último la deja aprobada.`
-                : 'Varias revisiones en orden, configuradas en Cadenas de aprobación.'
+                : numeral === '3.1'
+                  ? 'Varias revisiones en orden. Para que el abogado del proceso decida primero, pon su papel en el escalón 1.'
+                  : 'Varias revisiones en orden, configuradas en Cadenas de aprobación.'
             }
           />
-        ) : null}
       </div>
 
       {eligiendoCadena && (

@@ -201,7 +201,9 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
       ? 'Nadie ha repartido este proceso todavía: se asigna abogado en la actividad 3.3.'
       : quienResuelve?.motivo === 'NO_ES_TUYO'
         ? `Lo revisa ${quienResuelve.abogado?.nombre ?? 'otro abogado'}.`
-        : null;
+        : quienResuelve?.motivo === 'EN_CADENA'
+          ? quienResuelve.espera ?? null
+          : null;
 
   /**
    * Tras cargar o sustituir un documento de la lista.

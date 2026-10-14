@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CadenaAprobacionModule } from '../cadena-aprobacion/cadena-aprobacion.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { EstudioPrevioController } from './estudio-previo.controller';
@@ -33,6 +34,8 @@ import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.modu
     UmbralesModule,
     // El envio consulta si alguien revisa la 3.1 antes de dejarla en revision.
     AprobacionModule,
+    // La 3.1 puede aprobarse por una cadena de escalones (migración 101).
+    CadenaAprobacionModule,
     TypeOrmModule.forFeature([
       Proceso,
       Expediente,

@@ -70,12 +70,16 @@ describe('bandeja Por revisar', () => {
     );
   });
 
-  it('no lista la 3.1 dos veces aunque tenga regla de aprobación', async () => {
-    // Su decisión es la del abogado; ofrecerla también por la regla abriría
-    // dos caminos para lo mismo.
-    const { service } = montar({ aprobaciones: [fila('3.1', '2026-09-20')], estudios: [] });
+  it('la 3.1 por cadena sale una vez, como estudio previo, desde el escalón que espera', async () => {
+    // Con cadena (101) decide el escalón; la consulta del abogado excluye los
+    // estudios con ronda en curso, así que no sale por los dos caminos.
+    const { service, consultas } = montar({ aprobaciones: [fila('3.1', '2026-09-20')], estudios: [] });
 
-    await expect(service.porRevisar(acceso)).resolves.toEqual([]);
+    const lista = await service.porRevisar(acceso);
+
+    expect(lista.map((e) => [e.tipo, e.numeral])).toEqual([['ESTUDIO_PREVIO', '3.1']]);
+    const delAbogado = consultas.find((s) => s.includes("pp.papel = 'ABOGADO'")) ?? '';
+    expect(delAbogado).toContain("r.estado = 'EN_CURSO'");
   });
 
   it('lo que más lleva esperando va primero', async () => {

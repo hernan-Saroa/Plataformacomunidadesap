@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ArrowRight, Ban, Check, Scale, Undo2 } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EvidenciaFirmaOtp } from '../../types';
+import { AccionEscalon, EvidenciaFirmaOtp } from '../../types';
 import { Modal } from '../shared/Modal';
 import { useFirma } from '../shared/useFirma';
 import { ElegirSoportes } from '../shared/ElegirSoportes';
@@ -27,6 +27,16 @@ interface Props {
    * actividad aparte para eso, así que se dice al confirmar.
    */
   modalidad?: string | null;
+  /**
+   * Lo que el escalón que espera permite (migración 101). Sin cadena llegan
+   * las tres, que es lo que el abogado ha podido siempre.
+   */
+  acciones?: AccionEscalon[];
+  /**
+   * El escalón que sigue, si aprobar aquí no es la aprobación definitiva: no
+   * ratifica la modalidad ni cierra la 3.4, solo pasa el estudio.
+   */
+  siguiente?: string | null;
 }
 
 /**
@@ -47,6 +57,8 @@ export function DecisionEstudioPrevio({
   variante = 'franja',
   pasaA,
   modalidad,
+  acciones = ['APROBAR', 'DEVOLVER', 'NEGAR'],
+  siguiente = null,
 }: Props) {
   const [accion, setAccion] = useState<Accion | null>(null);
   const [observaciones, setObservaciones] = useState('');
@@ -123,23 +135,24 @@ export function DecisionEstudioPrevio({
         active:scale-95 transition-all ${variante === 'tarjeta' ? 'w-full' : ''}`}
     >
       <Check className="w-3.5 h-3.5" strokeWidth={3} />
-      Aprobar
+      {siguiente ? 'Aprobar y pasar al siguiente' : 'Aprobar'}
     </button>
   );
+  const puede = (a: AccionEscalon) => acciones.includes(a);
 
   return (
     <>
       {variante === 'tarjeta' ? (
         <div className="flex flex-col gap-1.5">
-          {botonAprobar}
-          {botonDevolver}
-          {botonNegar}
+          {puede('APROBAR') ? botonAprobar : null}
+          {puede('DEVOLVER') ? botonDevolver : null}
+          {puede('NEGAR') ? botonNegar : null}
         </div>
       ) : (
         <>
-          {botonNegar}
-          {botonDevolver}
-          {botonAprobar}
+          {puede('NEGAR') ? botonNegar : null}
+          {puede('DEVOLVER') ? botonDevolver : null}
+          {puede('APROBAR') ? botonAprobar : null}
         </>
       )}
 
@@ -155,12 +168,14 @@ export function DecisionEstudioPrevio({
         }
         description={
           accion === 'aprobar'
-            ? 'El proceso podrá continuar a las etapas siguientes'
+            ? siguiente
+              ? `Pasa al siguiente escalón: ${siguiente}. La aprobación definitiva es la del último.`
+              : 'El proceso podrá continuar a las etapas siguientes'
             : accion === 'negar'
               ? // Se dice lo que de verdad va a pasar, y que no tiene vuelta:
                 // es la única decisión de la pantalla que no se puede deshacer.
                 'La contratación no procede. El proceso termina aquí y no admite reenvío.'
-              : 'El área podrá corregirlo y volver a enviarlo'
+              : 'Vuelve al área para que lo corrija; al reenviarlo, la revisión empieza otra vez desde el primer escalón'
         }
         icon={
           accion === 'aprobar' ? (
@@ -177,7 +192,8 @@ export function DecisionEstudioPrevio({
           <>
             <button
               type="button"
-              onClick={() => (accion === 'aprobar' ? firmaAprobacion.conFirma(decidir) : decidir())}
+              // La firma es de la aprobación definitiva: una intermedia no la pide.
+              onClick={() => (accion === 'aprobar' && !siguiente ? firmaAprobacion.conFirma(decidir) : decidir())}
               disabled={procesando || (accion !== 'aprobar' && !observaciones.trim())}
               className={`px-3.5 py-2 text-xs font-extrabold rounded-lg text-white shadow-sm
                 active:scale-95 disabled:opacity-50 transition-all ${
@@ -208,7 +224,7 @@ export function DecisionEstudioPrevio({
       >
         {/* A quién pasa, antes de confirmar: el disciplinario lo pide al
             aprobar —elige el radicador— y aquí la regla ya lo sabe. */}
-        {accion === 'aprobar' && pasaA ? (
+        {accion === 'aprobar' && pasaA && !siguiente ? (
           <p className="text-[12px] text-slate-600 m-0 mb-3 flex items-start gap-1.5">
             <ArrowRight className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-emerald-700" />
             <span>
@@ -217,7 +233,7 @@ export function DecisionEstudioPrevio({
           </p>
         ) : null}
 
-        {accion === 'aprobar' && modalidad ? (
+        {accion === 'aprobar' && modalidad && !siguiente ? (
           <p className="text-[12px] text-slate-600 m-0 mb-3 flex items-start gap-1.5">
             <Scale className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-emerald-700" />
             <span>

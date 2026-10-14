@@ -524,6 +524,12 @@ export class AlertasService {
                    AND pp.estado = 'VIGENTE'
              WHERE pa.numeral = '3.1'
                AND pa.estado = 'EN_REVISION'
+               -- Con una cadena en curso (101) decide el escalón que espera,
+               -- y esa fila sale de las aprobaciones, no de aquí.
+               AND NOT EXISTS (
+                 SELECT 1 FROM hiring.aprobaciones r
+                  WHERE r.proceso_actividad_id = pa.id AND r.estado = 'EN_CURSO'
+               )
                AND (
                  ($1 <> '' AND LOWER(pp.usuario_nombre) = LOWER($1))
                  OR ($2 <> '' AND pp.usuario_id::text = $2)
@@ -567,9 +573,8 @@ export class AlertasService {
 
     return [
       ...estudios.map(aElemento('ESTUDIO_PREVIO')),
-      ...aprobaciones
-        .filter((f: any) => f.numeral !== '3.1')
-        .map(aElemento('ACTIVIDAD')),
+      // La 3.1 por cadena se abre en la revisión del estudio previo.
+      ...aprobaciones.map((f: any) => aElemento(f.numeral === '3.1' ? 'ESTUDIO_PREVIO' : 'ACTIVIDAD')(f)),
       ...garantias.map(aElemento('GARANTIA')),
       ...modificaciones.map(aElemento('MODIFICACION')),
       ...pagos.map(aElemento('PAGO')),

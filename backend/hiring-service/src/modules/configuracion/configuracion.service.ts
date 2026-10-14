@@ -906,15 +906,11 @@ export class ConfiguracionService {
 
       /*
        * Una cadena de escalones (migración 101), o roles y personas como hasta
-       * ahora, que la cadena lee como un solo escalón. La 3.1 no admite cadena
-       * todavía: la decide el abogado del proceso en la 3.4, con su trámite.
+       * ahora, que la cadena lee como un solo escalón. En la 3.1 la cadena
+       * reemplaza la revisión del abogado a solas: si se quiere que él decida
+       * primero, se pone su papel en el escalón 1.
        */
       if (dto.cadenaId) {
-        if (numeral === NUMERAL_ESTUDIO_PREVIO) {
-          throw new BadRequestException(
-            'El estudio previo lo revisa el abogado asignado en la 3.3: todavía no se aprueba por una cadena',
-          );
-        }
         const [plantilla] = await em.query(
           `SELECT id FROM hiring.cadenas_aprobacion WHERE id = $1 AND activa`,
           [dto.cadenaId],
