@@ -1,0 +1,303 @@
+{
+  "reviewedAt": "2026-10-14T08:43:55.351Z",
+  "step": "12.5d.1",
+  "mode": "repository-only",
+  "environment": null,
+  "activationReadiness": "not_verified",
+  "realEnvironmentFilesRead": false,
+  "runtimeModified": false,
+  "deploymentExecuted": false,
+  "repository": {
+    "artifactScope": "local-files-only",
+    "sourceCorrelationVerified": false,
+    "limits": [
+      "Presencia/hash no prueba compilación desde las fuentes actuales, exports/chunks completos ni publicación.",
+      "Las imágenes son plantillas esperadas; no se consulta GHCR ni se identifica el digest desplegado."
+    ],
+    "migrations": [
+      {
+        "file": "db/migrations/158_add_id_person_to_personas_and_user.sql",
+        "status": "present",
+        "bytes": 7433,
+        "sha256": "8bb5946cdff9876b33807c61e9c7df595472303cae6d669ee502c3430eab9a8d"
+      },
+      {
+        "file": "db/migrations/309_create_auth_carpeta_digital.sql",
+        "status": "present",
+        "bytes": 5232,
+        "sha256": "2808f3a0db9908fe5daf4c1b5e386ec71c3172f4b71e193a54298e1a5a7df7da"
+      },
+      {
+        "file": "db/migrations/339_create_documento_carpeta_digital.sql",
+        "status": "present",
+        "bytes": 3634,
+        "sha256": "a06e37766a920611368e7dfeee5bc9572a31721fb2d54714537297f0093fd0ab"
+      },
+      {
+        "file": "backend/rund-service/db/migrations/001_create_rund_schema.sql",
+        "status": "present",
+        "bytes": 10896,
+        "sha256": "8f9012333762811cd35e46901c02bfe2e0c66457ca22fb808d5453ec58128953"
+      },
+      {
+        "file": "backend/rund-service/db/migrations/002_seed_rund_auth_module.sql",
+        "status": "present",
+        "bytes": 4648,
+        "sha256": "2dd622dd365f110334b6c04d6b74cedac83959862524145b2d45fc25fc35e37c"
+      },
+      {
+        "file": "backend/rund-service/db/migrations/003_legacy_rund_tables.sql",
+        "status": "present",
+        "bytes": 32547,
+        "sha256": "f7fee145f6a9b16657cc99cd5112afabf5971d873a1ac547fd076108c3cd2a79"
+      },
+      {
+        "file": "backend/rund-service/db/migrations/004_rund_docente_identificadores_text.sql",
+        "status": "present",
+        "bytes": 1427,
+        "sha256": "7aefde2e629f9209d25ed265fb7981cfba33e8d43a0af5aa6afdfbab4f329e6f"
+      },
+      {
+        "file": "backend/rund-service/db/migrations/005_rund_tarjeta_numero_secuencia.sql",
+        "status": "present",
+        "bytes": 2305,
+        "sha256": "ecb85324bb2c0e327318a2cb9373dfdf938bc142fe8744af70939b2efcec0e71"
+      },
+      {
+        "file": "backend/rund-service/db/migrations/006_rund_catalogo_permisos_compatibles.sql",
+        "status": "present",
+        "bytes": 3143,
+        "sha256": "db63242b14393fe882404ccbc58fbb53678ec27844e1e2db10b3de82c4e09760"
+      },
+      {
+        "file": "backend/rund-service/db/migrations/007_rund_carpeta_auth_proyeccion.sql",
+        "status": "present",
+        "bytes": 871,
+        "sha256": "176bfd7710a1e7d7f0c7f4e0cdb1a545de7b009ac4c5f5dfe2a85be884429d85"
+      },
+      {
+        "file": "db/migrations/667_auth_carpeta_documento_versiones.sql",
+        "status": "present",
+        "bytes": 1204,
+        "sha256": "4bafc25852da545b82d04454b64f2ddc9a2d95f64d12a78b8fa3b343d4f0a12f"
+      },
+      {
+        "file": "db/migrations/668_auth_carpeta_revision_rund.sql",
+        "status": "present",
+        "bytes": 3198,
+        "sha256": "57eed1c16e266ade88a3e1a64156eb996a74a8b94b197acc7d6fd35f30b9378a"
+      }
+    ],
+    "localBuildArtifacts": [
+      {
+        "file": "backend/rund-service/dist/main.js",
+        "status": "present",
+        "bytes": 2207,
+        "sha256": "6262e26be11ff4ebcb3a1a4ba5efc65d842419997a23ec16fc02a3c8e7963703"
+      },
+      {
+        "file": "backend/rund-service/dist/modules/banco-docentes/rund-carpeta-internal.controller.js",
+        "status": "present",
+        "bytes": 6107,
+        "sha256": "3132c2fa253831aa282bb45b438b782fa55c19407a2b94675f10605097398718"
+      },
+      {
+        "file": "backend/rund-service/dist/modules/banco-docentes/rund-auth-state-sync.worker.js",
+        "status": "present",
+        "bytes": 3491,
+        "sha256": "5b8d302e35f559008c1afacc389d35424fd0368f64fbe3512e4f4987768d4756"
+      },
+      {
+        "file": "backend/auth-service/dist/main.js",
+        "status": "present",
+        "bytes": 2834,
+        "sha256": "3637b377e76329663890ce03f7b7a361b78aadd0d0b125e11717885479fc4f1f"
+      },
+      {
+        "file": "backend/auth-service/dist/carpeta-digital/rund-state-snapshot.controller.js",
+        "status": "present",
+        "bytes": 3304,
+        "sha256": "c7d3299500d92118c193931f9e924f44057bd373649b8738e270d5c9f3f818bf"
+      },
+      {
+        "file": "backend/auth-service/dist/carpeta-digital/carpeta-document-versions.service.js",
+        "status": "present",
+        "bytes": 9394,
+        "sha256": "d54c7009c2379ceee3c78529607f69ae74992f0f5e9af7251ebc077c2cfd3900"
+      },
+      {
+        "file": "backend/api-gateway/dist/main.js",
+        "status": "present",
+        "bytes": 2481,
+        "sha256": "cfb1f6934baaf738812af9efab225ae9a3b99f7905bb6761ec064633ca31c2c0"
+      },
+      {
+        "file": "backend/api-gateway/dist/audit/rund-audit-redaction.js",
+        "status": "present",
+        "bytes": 4436,
+        "sha256": "17dcaa011ad609e4ed0c910015efad98664647eb0a9be1929c7bf57321f0cfee"
+      },
+      {
+        "file": "build/index.html",
+        "status": "present",
+        "bytes": 9099,
+        "sha256": "0227f9f7029297711981e17acd199f36174c339fb1138ca71f53f11b01ae2241"
+      },
+      {
+        "file": "build/remotes/mfe-rund/assets/remoteEntry.js",
+        "status": "present",
+        "bytes": 2768,
+        "sha256": "0882dbf4f474e365991ba44d91a7fc3bb5ecc5e40d4176b6bc02761a2b7a43cb"
+      },
+      {
+        "file": "build/remotes/mfe-gestion-personas/assets/remoteEntry.js",
+        "status": "present",
+        "bytes": 3086,
+        "sha256": "97158f5812358f0922342bf7d8afc06faba22aa4d5af0b9ab74a65192e1f225b"
+      }
+    ],
+    "environments": [
+      {
+        "environment": "local",
+        "compose": "docker-compose.local.yml",
+        "overlay": null,
+        "workflow": null,
+        "expectedRundImageTemplate": null,
+        "configuredFiles": [
+          {
+            "file": "docker-compose.local.yml",
+            "status": "present",
+            "bytes": 10642,
+            "sha256": "dd51ddf0b95aa4aec6b271fb52e73916c8dc78091c470789859f704f70a38826"
+          }
+        ],
+        "publishedImageDigest": null,
+        "publishedArtifactsVerified": false,
+        "installationChecked": false
+      },
+      {
+        "environment": "dev",
+        "compose": "docker-compose.dev.yml",
+        "overlay": "docker-compose.ghcr.yml",
+        "workflow": ".github/workflows/build-backend-dev.yml",
+        "expectedRundImageTemplate": "ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-rund-service:dev-latest",
+        "configuredFiles": [
+          {
+            "file": "docker-compose.dev.yml",
+            "status": "present",
+            "bytes": 26778,
+            "sha256": "c816928311f8816ff19aad1c07b4f0362ebe431fa3564593e3da940ade81e6e4"
+          },
+          {
+            "file": "docker-compose.ghcr.yml",
+            "status": "present",
+            "bytes": 2340,
+            "sha256": "11b3dbbc4d1ad9840dc84eab1e222b899d73b1cff5bfe96acf9ef74c40a36e63"
+          },
+          {
+            "file": ".github/workflows/build-backend-dev.yml",
+            "status": "present",
+            "bytes": 1818,
+            "sha256": "cebe5a14c95612db59f7b54fc1db5f5b78075ef109d7efd9298a0d1a38464b67"
+          }
+        ],
+        "publishedImageDigest": null,
+        "publishedArtifactsVerified": false,
+        "installationChecked": false
+      },
+      {
+        "environment": "qa",
+        "compose": "docker-compose.qa.yml",
+        "overlay": "docker-compose.qa.ghcr.yml",
+        "workflow": ".github/workflows/build-backend-qa.yml",
+        "expectedRundImageTemplate": "ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-rund-service:qa-latest",
+        "configuredFiles": [
+          {
+            "file": "docker-compose.qa.yml",
+            "status": "present",
+            "bytes": 26002,
+            "sha256": "9fd6fc5702d69a6b226602b4e7fa634a7d9bb6d224dbaeba0ccf0e7d14bf55d9"
+          },
+          {
+            "file": "docker-compose.qa.ghcr.yml",
+            "status": "present",
+            "bytes": 2322,
+            "sha256": "6f52b82815a11138b6e0f7f0822adb41ca2bba068255243dffc7c1218d56ad7a"
+          },
+          {
+            "file": ".github/workflows/build-backend-qa.yml",
+            "status": "present",
+            "bytes": 1774,
+            "sha256": "0adb52ce2d58f7e8aad1d028270c22b6fcc7d31e1c863b05fa2fe73a451e6879"
+          }
+        ],
+        "publishedImageDigest": null,
+        "publishedArtifactsVerified": false,
+        "installationChecked": false
+      },
+      {
+        "environment": "pre",
+        "compose": "docker-compose.pre.yml",
+        "overlay": "docker-compose.pre.ghcr.yml",
+        "workflow": ".github/workflows/build-backend-pre.yml",
+        "expectedRundImageTemplate": "ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-rund-service:pre-latest",
+        "configuredFiles": [
+          {
+            "file": "docker-compose.pre.yml",
+            "status": "present",
+            "bytes": 25304,
+            "sha256": "48576849e1cc36d288e0c0f93a3a17503fb58e06fab39b6f8bc0cd28d2f74ff8"
+          },
+          {
+            "file": "docker-compose.pre.ghcr.yml",
+            "status": "present",
+            "bytes": 2340,
+            "sha256": "7df66ff3df0f3280ed183b8a62ce9ac9ac6ce1ef6c104d86ab6f68a057a0e93d"
+          },
+          {
+            "file": ".github/workflows/build-backend-pre.yml",
+            "status": "present",
+            "bytes": 1777,
+            "sha256": "38678d5ee12341a6161f1077eb7f39d33b7696d9b99235eabacc873fd1ee7a0d"
+          }
+        ],
+        "publishedImageDigest": null,
+        "publishedArtifactsVerified": false,
+        "installationChecked": false
+      },
+      {
+        "environment": "prod",
+        "compose": "docker-compose.prod.yml",
+        "overlay": "docker-compose.prod.ghcr.yml",
+        "workflow": ".github/workflows/build-backend-prod.yml",
+        "expectedRundImageTemplate": "ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-rund-service:prod-latest",
+        "configuredFiles": [
+          {
+            "file": "docker-compose.prod.yml",
+            "status": "present",
+            "bytes": 25274,
+            "sha256": "ebba97e238b745674e0435323f104e3693ec9789f9e6dd0e2002a2138a512427"
+          },
+          {
+            "file": "docker-compose.prod.ghcr.yml",
+            "status": "present",
+            "bytes": 2358,
+            "sha256": "bc7adfbca1bf55eb88fa5b14f739fc506643d2e8b60594adef221098c491c7f5"
+          },
+          {
+            "file": ".github/workflows/build-backend-prod.yml",
+            "status": "present",
+            "bytes": 1780,
+            "sha256": "cf8d7f2a0e086b4ae53040aeb95702fe6ad3b4cae43fe9b90e19a9c0cb06d8f6"
+          }
+        ],
+        "publishedImageDigest": null,
+        "publishedArtifactsVerified": false,
+        "installationChecked": false
+      }
+    ]
+  },
+  "database": {
+    "status": "not_verified"
+  }
+}

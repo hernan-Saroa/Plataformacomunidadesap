@@ -1,0 +1,71 @@
+{
+  "validatedOn": "2026-10-13",
+  "step": 7,
+  "planItem": "9.1.6",
+  "scope": "apps/mfe-rund",
+  "typecheck": {
+    "command": "tsc --noEmit --pretty false",
+    "beforeDiagnostics": 140,
+    "afterDiagnostics": 0
+  },
+  "tests": {
+    "command": "vitest run --threads=false",
+    "files": 17,
+    "passed": 163,
+    "failed": 0,
+    "baseline": {
+      "files": 16,
+      "passed": 165
+    },
+    "removedPtaOnlyTests": 35,
+    "addedRundTests": 33,
+    "finalPhoneContractCheck": {
+      "command": "vitest run src/utils/rundPhones.test.ts --threads=false",
+      "passed": 19
+    }
+  },
+  "build": {
+    "command": "vite build",
+    "success": true,
+    "modulesTransformed": 2045,
+    "browserSmokeTest": false
+  },
+  "dependencyGraph": {
+    "entries": [
+      "apps/mfe-rund/src/main.tsx",
+      "apps/mfe-rund/src/components/RundModulePremium.tsx",
+      "apps/mfe-rund/src/components/pta/banco-docentes/AutogestionDocenteRUND.tsx"
+    ],
+    "sourceFiles": 47,
+    "reachableSourceFiles": 46,
+    "testFiles": 17,
+    "foreignModuleImports": [],
+    "unusedTypeScriptFiles": [],
+    "federation": {
+      "module": "rund/Module",
+      "export": "RundModulePremium",
+      "chunks": [
+        "/remotes/mfe-rund/assets/__federation_expose_Module-_8uobLWk.js"
+      ]
+    }
+  },
+  "versions": {
+    "vite": "6.3.5",
+    "vitest": "0.34.6",
+    "typescript": "5.9.3"
+  },
+  "hashes": {
+    "apps/mfe-rund/package.json": "2039e2b5c6e11de0653fa8bf0d1e5c8327a72c789cc67737d3eed2f7e7165860",
+    "apps/mfe-rund/src/config/environment.ts": "9cee7cde99a15a85f3155990d279cd931460e7b36bc8381ab5312d1a178c3794",
+    "apps/mfe-rund/src/services/api/apiClient.ts": "53218d906fec99aa508bcd9687b62c4078610794c82dd8d440e4c7a9485225e5",
+    "apps/mfe-rund/src/services/api/rundApi.ts": "6c86e7799006bf7cd76578ee7d6d15d517decfaf36458c2fe6181e4ad56644bc",
+    "scripts/verify-rund-frontend.cjs": "827a6b126cadd6981556977d7815e7fb744452d8bfcd72075c7959237dcd5de6",
+    "build/remotes/mfe-rund/assets/remoteEntry.js": "b3426c732ce5528e514bdf103e1788c4d16d56d6eb873980e15b1d181b2e2cc4"
+  },
+  "limitations": [
+    "Verificado con dependencias locales instaladas; sin instalación limpia ni regeneración del lock global.",
+    "Vitest/Vite ejecutados fuera del sandbox por la restricción de esbuild en Windows.",
+    "Sin despliegue ni E2E del shell en navegador con gateway y cookies reales.",
+    "Las entradas del shell y los consumidores externos todavía usan el RUND original de PTA."
+  ]
+}

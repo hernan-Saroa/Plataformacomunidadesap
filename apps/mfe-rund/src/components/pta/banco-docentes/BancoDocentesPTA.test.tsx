@@ -1,14 +1,14 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BancoDocentesPTA } from './BancoDocentesPTA';
-import { getBancoDocentes } from '../../../services/api/ptaApi';
+import { getBancoDocentes } from '../../../services/api/rundApi';
 
-vi.mock('../../../services/api/ptaApi', () => ({
+vi.mock('../../../services/api/rundApi', () => ({
   getBancoDocentes: vi.fn(),
   getBancoDocenteStats: vi.fn().mockResolvedValue({ success: true, data: { total: 1 } }),
   getCatalogoTerritoriales: vi.fn().mockResolvedValue({ success: true, data: [] }),
 }));
-vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: {
+vi.mock('../../../services/api/apiClient', () => ({ apiClient: {
   get: vi.fn().mockResolvedValue([{ codigo: '2026-2', estado: 'en_curso' }]),
 } }));
 vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => ({ hasPermission: () => true }) }));
@@ -23,7 +23,7 @@ afterEach(cleanup);
 it('conserva el listado del periodo activo cuando una consulta inicial termina tarde', async () => {
   const anteriores: Array<(result: any) => void> = [];
   const result = (nombre_completo: string) => ({ success: true, data: {
-    data: [{ id: nombre_completo, nombre_completo, estado: 'ACTIVO' }], total: 100, pages: 2,
+    data: [{ id: nombre_completo, nombre_completo, estado: 'ACTIVO' }], total: 100, page: 1, pages: 2,
   } });
   vi.mocked(getBancoDocentes).mockImplementation((filters) => filters?.periodoCarga === '2026-2'
     ? Promise.resolve(result('DOCENTE PERIODO ACTUAL'))

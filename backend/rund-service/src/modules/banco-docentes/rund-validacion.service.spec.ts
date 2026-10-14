@@ -1,8 +1,8 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { CAMPOS_SOPORTE_RUND, RundValidacionService } from './rund-validacion.service';
 
 describe('RundValidacionService', () => {
-  const docente = { id: 'doc-1', personaId: 'per-1' };
+  const docente = { id: 'doc-1', personaId: '11111111-1111-4111-8111-111111111111' };
   let docenteRepo: { findOne: jest.Mock };
   let dataSource: { query: jest.Mock };
   let service: RundValidacionService;
@@ -23,11 +23,30 @@ describe('RundValidacionService', () => {
     it('resuelve por persona de auth cuando el id recibido no es del banco', async () => {
       docenteRepo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(docente);
       dataSource.query
-        .mockResolvedValueOnce([{ person_id: 'per-1' }]) // auth.personas
+        .mockResolvedValueOnce([{ person_id: docente.personaId }]) // auth.personas
         .mockResolvedValueOnce([{ campo_rund: 'GENERO', estado_documento: 'Aceptado' }]); // validaciones
       const r = await service.getRundDocente('user-9');
       expect(r.docenteId).toBe('doc-1');
-      expect(docenteRepo.findOne).toHaveBeenLastCalledWith({ where: [{ id: 'per-1' }, { personaId: 'per-1' }] });
+      expect(docenteRepo.findOne).toHaveBeenLastCalledWith({ where: [{ id: docente.personaId }, { personaId: docente.personaId }] });
+    });
+
+    it('consulta identificadores textuales sin compararlos con personaId UUID', async () => {
+      docenteRepo.findOne.mockResolvedValue(docente);
+      dataSource.query.mockResolvedValue([{ estado_documento: 'Sin cargar' }]);
+      const result = await service.getRundDocente('DOC-HISTORICO-001');
+      expect(result.docenteId).toBe('doc-1');
+      expect(docenteRepo.findOne).toHaveBeenCalledWith({ where: [{ id: 'DOC-HISTORICO-001' }] });
+    });
+
+    it.each([
+      '11111111-1111-4111-8111-111111111111',
+      '11111111111141118111111111111111',
+      '{11111111-1111-4111-8111-111111111111}',
+    ])('conserva la búsqueda por persona para el UUID %s', async (key) => {
+      docenteRepo.findOne.mockResolvedValue(docente);
+      dataSource.query.mockResolvedValue([{ estado_documento: 'Sin cargar' }]);
+      await service.getRundDocente(key);
+      expect(docenteRepo.findOne).toHaveBeenCalledWith({ where: [{ id: key }, { personaId: key }] });
     });
 
     it('si no hay validaciones, siembra los 24 campos en "Sin cargar" y los devuelve', async () => {
@@ -66,32 +85,25 @@ describe('RundValidacionService', () => {
       dataSource.query.mockImplementation(async (sql: string) => (sql.startsWith('SELECT') ? [{ estado_documento: 'Sin cargar' }] : []));
     });
 
-    const updates = () => dataSource.query.mock.calls.filter(([sql]) => String(sql).includes('UPDATE rund.validacion_documental'));
-
-    it('mapea categoría y estado de Carpeta Digital al bloque y estado de validación', async () => {
-      await service.syncRundDocuments('doc-1', [{ id: 'carp-1', categoria: 'Formacion', estado: 'validado', comentarios: 'ok' }]);
-      const [[, params]] = updates();
-      expect(params[0]).toBe('Aceptado');
-      expect(params[1]).toBe('carp-1');
-      expect(params[3]).toEqual(expect.any(String)); // fecha_validacion automática al aceptar
-      expect(params[5]).toBe('ok');
-      expect(params[6]).toBe('doc-1');
-      expect(params[7]).toBe('FORMACION');
+    it.each([[], { documentos: [] }, { documentos: [{ categoria: 'personal', estado: 'validado' }] }, { roles: ['SUPER_ADMIN'] }])(
+      'rechaza datos del cliente sin consultar ni modificar el banco', async body => {
+      await expect(service.syncRundDocuments('doc-1', body)).rejects.toBeInstanceOf(ConflictException);
+      expect(dataSource.query).not.toHaveBeenCalled();
+      expect(docenteRepo.findOne).not.toHaveBeenCalled();
     });
 
-    it('ignora categorías desconocidas y usa "Sin cargar" para estados desconocidos', async () => {
-      await service.syncRundDocuments('doc-1', [
-        { categoria: 'inventada', estado: 'validado' },
-        { categoria: 'laboral', estado: 'raro' },
-      ]);
-      expect(updates()).toHaveLength(1);
-      expect(updates()[0][1][0]).toBe('Sin cargar');
-      expect(updates()[0][1][7]).toBe('VINCULACION');
+    it('deshabilitado no consulta Auth ni tablas nuevas', async () => {
+      await expect(service.syncRundDocuments('doc-1', {})).rejects.toBeInstanceOf(ConflictException);
+      expect(dataSource.query).not.toHaveBeenCalled();
     });
 
-    it('no falla si no recibe documentos', async () => {
-      await expect(service.syncRundDocuments('doc-1', undefined as any)).resolves.toBeDefined();
-      expect(updates()).toHaveLength(0);
+    it('usa exclusivamente el perfil exacto y el UUID de persona persistido', async () => {
+      const sync = { enabled: true, syncPersona: jest.fn().mockResolvedValue({ propietario: 'auth' }) };
+      service = new RundValidacionService(docenteRepo as any, dataSource as any, sync as any);
+      await expect(service.syncRundDocuments('doc-1', {})).resolves.toEqual({ propietario: 'auth' });
+      expect(docenteRepo.findOne).toHaveBeenCalledWith({ where: { id: 'doc-1' } });
+      expect(sync.syncPersona).toHaveBeenCalledWith(docente.personaId);
+      expect(dataSource.query).not.toHaveBeenCalled();
     });
   });
 });

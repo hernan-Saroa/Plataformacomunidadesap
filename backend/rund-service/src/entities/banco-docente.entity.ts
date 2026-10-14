@@ -1,8 +1,8 @@
-import {  Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn , BeforeInsert, BeforeUpdate } from 'typeorm';
+import {  Column, CreateDateColumn, Entity, PrimaryColumn, UpdateDateColumn , BeforeInsert, BeforeUpdate } from 'typeorm';
 
 @Entity({ schema: 'rund', name: 'Docente' })
 export class BancoDocenteEntity {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryColumn({ type: 'text', default: () => '(gen_random_uuid())::text' })
   id: string;
 
   @Column({ name: 'personaId', type: 'uuid' })

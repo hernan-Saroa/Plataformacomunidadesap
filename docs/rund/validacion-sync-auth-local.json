@@ -1,0 +1,75 @@
+{
+  "verifiedAt": "2026-10-13T10:16:43.929Z",
+  "step": 9,
+  "scope": "sync-from-auth del servicio RUND y variables de ese servicio en Compose/ejemplos.",
+  "backend": {
+    "build": "npm run build: OK",
+    "testCommand": "jest --runInBand",
+    "suites": 39,
+    "tests": 461,
+    "failed": 0,
+    "addedTests": 26
+  },
+  "postgres": {
+    "version": "15.14",
+    "checks": 52,
+    "passed": true,
+    "syntheticDataOnly": true,
+    "cleanup": "cluster temporal eliminado",
+    "authTransport": "fixture HTTP local /users con UUID de rol, token interno, DTO y paginación; no inicia auth-service",
+    "newChecks": [
+      "sync-from-auth consulta /users con credencial interna y UUID de rol; no altera auth ni perfiles existentes",
+      "Repetir sync-from-auth no cambia perfiles, bloques, validaciones, auditoría ni reserva otro número",
+      "Falla HTTP o una página posterior impide una sincronización parcial o un éxito vacío",
+      "Dos sync-from-auth simultáneos crean un solo perfil/bloques/auditoría de la misma persona",
+      "Falla al auditar sync-from-auth revierte el perfil y todas sus filas; repetirlo recupera la operación",
+      "sync-from-auth conserva autorización RUND y no acepta datos de identidad del body"
+    ]
+  },
+  "compose": {
+    "compositions": 19,
+    "otherModulesUnchanged": true,
+    "realEnvironmentFilesRead": false,
+    "tokenDefaultChecked": true,
+    "specificTokenOverrideChecked": true,
+    "sharedTokenFallbackChecked": true
+  },
+  "preservation": [
+    "Snapshots de auth.personas/auth.user/auth.user_roles/auth.role permanecen idénticos durante la operación.",
+    "Perfiles existentes se conservan; repetir no crea filas, cambia auditoría ni consume secuencia.",
+    "Dos llamadas simultáneas crean un único perfil con seis bloques y una auditoría.",
+    "Falla de la segunda alta revierte también la primera y sus filas auxiliares.",
+    "Nuevos perfiles INACTIVO/PENDIENTE_APROBACION con horas cero y empleo sin definir."
+  ],
+  "configuration": {
+    "required": "AUTH_INTERNAL_SERVICE_TOKEN: valor vigente que auth acepta; no configurado en instalaciones reales por esta tarea.",
+    "explicitFallback": "INTERNAL_SERVICE_TOKEN",
+    "automaticJwtSecretFallback": false,
+    "timeoutMsDefault": 15000,
+    "maxPagesDefault": 1000
+  },
+  "hashes": {
+    "backend/rund-service/src/modules/banco-docentes/rund-auth-sync.ts": "d7ad843ac10fa095fe3af21d0dfec1ae4d3db225f904530b102bd827b0e8fac0",
+    "backend/rund-service/src/modules/banco-docentes/rund-auth-sync.spec.ts": "fa60530e68b0e1cb69905fa67bf92b0d06b05c2d94f4be22507dadc4fa23c40f",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts": "2a7fae2ffda2ef53b6e135af4617c7f870879b98acbbd8ad4863ca87bf994124",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.controller.ts": "dd16dc9b4114d8a83c6bc064b9f22e80048a6e7c3f1ecc987ae9bdb0eb8d1864",
+    "backend/rund-service/dist/modules/banco-docentes/rund-auth-sync.js": "bc0e0c69e26f394d005c55c5d5d6ba45f2f464629bc5033b0dc1c1e1492ae7b5",
+    "backend/rund-service/.env.example": "21b8c2ea5faff4c0172b5e89a079a50152067313d988a7ec5f8edd1b3fbd9426",
+    ".env.example": "762a7c15f3e33ce78655a72c8d8df47898852c0625f04541990b7c3568db8f10",
+    "docker-compose.yml": "9e3bdf5e620a226db6ea68caffc6f1962ae17a0772a9d6b11cb70cbcbcfee881",
+    "docker-compose.backend.yml": "075a916d2370dd53add6d84a5e575cbde9a9f3b816757ce7c42097af746e29ec",
+    "docker-compose.dev.yml": "1a690ce12341e6a28a50c31edf873eac20fbfcdef07da7068029a4b8e0568c73",
+    "docker-compose.qa.yml": "694f6b863ddaa099fa7063710c3cb53869f68176f4f662aa091e73db3fe82444",
+    "docker-compose.pre.yml": "568ebee4d834ae6df33f8256df5a6dddeba71dad3d2be072bdbf95815bf3b81c",
+    "docker-compose.prod.yml": "03332d038a74dcf227b8721669be255aee25232f61b645608adfe47ccb2e8cf2",
+    "scripts/verify-rund-compose.cjs": "d929881e446da460ec378bbd19e9b9d4cdec13f00b45fde6c18e8eda3c5b960a",
+    "scripts/verify-rund-service-integration.cjs": "ad8790528e46f999fd10f4ad9a29573b6af952bacaa2f46c98fb7d5f17b1a027"
+  },
+  "limitations": [
+    "Auth /users usa fixture HTTP local basada en su contrato; no se inició auth-service real.",
+    "No se desplegó ni se redirigió el shell/consumidores; no se cambiaron .env reales ni datos de instalaciones existentes.",
+    "La operación mantiene lectura del esquema auth para rol, identidad y flags; no elimina el resto de dependencias cross-schema del RUND portado.",
+    "La secuencia PostgreSQL puede conservar reservas/saltos tras rollback; no se retrocede."
+  ],
+  "nextStep": "Paso 10: entradas del shell/autogestión hacia RUND; después los consumidores y botones de Gestión de Personas."
+}

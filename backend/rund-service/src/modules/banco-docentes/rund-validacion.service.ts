@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
 import { BancoDocenteEntity } from '../../entities/banco-docente.entity';
+import { RundAuthStateSyncService } from './rund-auth-state-sync.service';
 
 function coalesceString(...values: unknown[]): string | null {
   for (const value of values) {
@@ -38,32 +39,6 @@ export const CAMPOS_SOPORTE_RUND: ReadonlyArray<{ campo: string; tipo: string }>
   { campo: 'ULTIMA_EVALUACION', tipo: 'EVALUACION' },
 ];
 
-const CATEGORIA_A_BLOQUE: Record<string, string> = {
-  personal: 'IDENTIDAD',
-  contacto: 'CONTACTO',
-  academico: 'FORMACION',
-  formacion: 'FORMACION',
-  laboral: 'VINCULACION',
-  vinculacion: 'VINCULACION',
-  certificados: 'ESCALAFON',
-  escalafon: 'ESCALAFON',
-  administrativo: 'SITUACION',
-  situacion: 'SITUACION',
-  otros: 'EVALUACION',
-  evaluacion: 'EVALUACION',
-};
-
-const ESTADO_CARPETA_A_VALIDACION: Record<string, string> = {
-  validado: 'Aceptado',
-  aprobado: 'Aceptado',
-  aceptado: 'Aceptado',
-  pendiente: 'Pendiente',
-  rechazado: 'Rechazado',
-  vencido: 'Rechazado',
-  'sin cargar': 'Sin cargar',
-  'no aplica': 'No aplica',
-};
-
 /**
  * Validación documental por campo del RUND (rund.validacion_documental) y su
  * sincronización desde Carpeta Digital. Antes vivía en el servicio PTA.
@@ -74,21 +49,33 @@ export class RundValidacionService {
     @InjectRepository(BancoDocenteEntity)
     private readonly docenteRepo: Repository<BancoDocenteEntity>,
     @InjectDataSource() private readonly dataSource: DataSource,
+    @Optional() private readonly authState?: RundAuthStateSyncService,
   ) {}
 
   /** Acepta el id del docente o el de su persona (id_person o id de usuario en auth). */
   private async resolverDocente(docenteKey: string): Promise<BancoDocenteEntity> {
-    let docente = await this.docenteRepo.findOne({ where: [{ id: docenteKey }, { personaId: docenteKey }] });
+    let docente = await this.buscarDocente(docenteKey);
 
     if (!docente) {
       const personId = await this.resolverPersonaEnAuth(docenteKey);
       if (personId) {
-        docente = await this.docenteRepo.findOne({ where: [{ id: personId }, { personaId: personId }] });
+        docente = await this.buscarDocente(personId);
       }
     }
 
     if (!docente) throw new NotFoundException(`Docente ${docenteKey} no encontrado`);
     return docente;
+  }
+
+  private buscarDocente(key: string): Promise<BancoDocenteEntity | null> {
+    const where: FindOptionsWhere<BancoDocenteEntity>[] = [{ id: key }];
+    // personaId sigue siendo UUID. Un id textual del banco no puede enviarse a esa columna.
+    // PostgreSQL admite UUID con/sin guiones, mayusculas y llaves externas.
+    const uuidInput = key.startsWith('{') && key.endsWith('}') ? key.slice(1, -1) : key;
+    if (/^[0-9a-f]{4}(?:-?[0-9a-f]{4}){7}$/i.test(uuidInput)) {
+      where.push({ personaId: key });
+    }
+    return this.docenteRepo.findOne({ where });
   }
 
   private async resolverPersonaEnAuth(key: string): Promise<string | null> {
@@ -134,6 +121,7 @@ export class RundValidacionService {
     return {
       docenteId: docente.id,
       personaId: docente.personaId,
+      ...(this.authState?.enabled ? { carpetaAuth: await this.authState.getPersona(docente.personaId) } : {}),
       completitud: total > 0 ? Math.round((aceptados / total) * 100) : 0,
       validaciones: filas.map((r) => ({
         id: r.id,
@@ -148,40 +136,14 @@ export class RundValidacionService {
     };
   }
 
-  async syncRundDocuments(docenteKey: string, documentos: any[]) {
-    const docente = await this.resolverDocente(docenteKey);
-    await this.getRundDocente(docente.id);
-
-    for (const doc of documentos || []) {
-      const categoria = String(doc.categoria || '').toLowerCase().trim();
-      const estadoOrigen = String(doc.estado || '').toLowerCase().trim();
-      const bloque = CATEGORIA_A_BLOQUE[categoria];
-      const estado = ESTADO_CARPETA_A_VALIDACION[estadoOrigen] || 'Sin cargar';
-      if (!bloque) continue;
-
-      await this.dataSource.query(
-        `UPDATE rund.validacion_documental
-         SET estado_documento = $1,
-             id_documento_carpeta = $2,
-             fecha_carga = COALESCE($3, fecha_carga),
-             fecha_validacion = COALESCE($4, fecha_validacion),
-             validado_por = COALESCE($5, validado_por),
-             observacion = COALESCE($6, observacion),
-             updated_at = now()
-         WHERE docente_id = $7 AND tipo_documento_soporte = $8`,
-        [
-          estado,
-          doc.id || null,
-          doc.fecha_subida || new Date().toISOString(),
-          doc.fecha_validacion || (estado === 'Aceptado' ? new Date().toISOString() : null),
-          doc.validado_por || null,
-          doc.comentarios || null,
-          docente.id,
-          bloque,
-        ],
-      );
+  async syncRundDocuments(docenteKey: string, body: unknown = {}) {
+    if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length) {
+      throw new ConflictException('Los estados documentales se consultan al propietario Auth; envíe un objeto vacío.');
     }
-
-    return this.getRundDocente(docente.id);
+    if (!this.authState?.enabled) throw new ConflictException('Sincronización de carpeta deshabilitada.');
+    // Identidad inequívoca del banco: una persona puede tener perfiles en varios periodos.
+    const docente = await this.docenteRepo.findOne({ where: { id: docenteKey } });
+    if (!docente) throw new NotFoundException(`Docente ${docenteKey} no encontrado`);
+    return this.authState.syncPersona(docente.personaId);
   }
 }

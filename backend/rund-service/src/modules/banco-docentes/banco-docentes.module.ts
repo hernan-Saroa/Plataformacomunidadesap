@@ -21,13 +21,23 @@ import { RundExtraccionController } from './rund-extraccion.controller';
 import { RundValidacionController } from './rund-validacion.controller';
 import { RundValidacionService } from './rund-validacion.service';
 import { RundExtraccionNotificationsService } from './rund-extraccion-notifications.service';
+import { AuthModule } from '../../auth/auth.module';
+import { RundCarpetaInternalController, RundCarpetaInternalGuard } from './rund-carpeta-internal.controller';
+import { RundCarpetaConsultaService } from './rund-carpeta-consulta.service';
+import { RundAuthStateSyncService } from './rund-auth-state-sync.service';
+import { RundAuthStateSyncWorker } from './rund-auth-state-sync.worker';
 
 @Module({
   imports: [
+    AuthModule,
     TypeOrmModule.forFeature([BancoDocenteEntity, PersonaEntity, UsuarioEntity, PtaConfiguracionEntity, BancoDocenteInvitacionEntity, RundAprobacionLogEntity, RundCampoEstadoEntity, RundSoporteCampoEntity]),
   ],
-  controllers: [BancoDocentesController, RundPtaConsultaController, RundExtraccionController, RundValidacionController],
+  controllers: [BancoDocentesController, RundPtaConsultaController, RundExtraccionController, RundValidacionController, RundCarpetaInternalController],
   providers: [
+    RundAuthStateSyncService,
+    RundAuthStateSyncWorker,
+    RundCarpetaInternalGuard,
+    RundCarpetaConsultaService,
     BancoDocentesService,
     DocumentTypeValidatorService,
     BancoDocentesRolesGuard,

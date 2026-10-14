@@ -116,6 +116,12 @@ services:
       DB_PASS: ${DB_PASSWORD:-esap_secure_password_2024}
       DB_NAME: esap_db
       DB_SCHEMA: auth
+      RUND_SERVICE_URL: http://rund-service-pre:3016
+      RUND_CARPETA_ENABLED: ${RUND_CARPETA_ENABLED:-false}
+      CARPETA_DOCUMENT_VERSIONING_ENABLED: ${CARPETA_DOCUMENT_VERSIONING_ENABLED:-false}
+      RUND_CARPETA_INTERNAL_TOKEN: ${RUND_CARPETA_INTERNAL_TOKEN:-${INTERNAL_SERVICE_TOKEN:-}}
+      RUND_CARPETA_SYNC_ENABLED: ${RUND_CARPETA_SYNC_ENABLED:-false}
+      RUND_CARPETA_SYNC_TOKEN: ${RUND_CARPETA_SYNC_TOKEN:-${INTERNAL_SERVICE_TOKEN:-}}
 
       SMTP_HOST: ${SMTP_HOST}
       SMTP_PORT: ${SMTP_PORT}
@@ -678,7 +684,31 @@ services:
       JWT_SECRET: ${JWT_SECRET:-esap_jwt_secret_pre_2024}
       API_GATEWAY_URL: http://api-gateway:3000
       AUTH_SERVICE_URL: http://auth-service-pre:3001
+      AUTH_INTERNAL_SERVICE_TOKEN: ${AUTH_INTERNAL_SERVICE_TOKEN:-${INTERNAL_SERVICE_TOKEN:-}}
+      RUND_CARPETA_INTERNAL_TOKEN: ${RUND_CARPETA_INTERNAL_TOKEN:-${INTERNAL_SERVICE_TOKEN:-}}
+      RUND_CARPETA_SYNC_ENABLED: ${RUND_CARPETA_SYNC_ENABLED:-false}
+      RUND_CARPETA_SYNC_TOKEN: ${RUND_CARPETA_SYNC_TOKEN:-${INTERNAL_SERVICE_TOKEN:-}}
+      RUND_AUTH_SYNC_TIMEOUT_MS: ${RUND_AUTH_SYNC_TIMEOUT_MS:-15000}
+      RUND_AUTH_SYNC_MAX_PAGES: ${RUND_AUTH_SYNC_MAX_PAGES:-1000}
       NOTIFICATION_SERVICE_URL: http://notifications-service-pre:3009
+      NOTIFICATIONS_SERVICE_URL: http://notifications-service-pre:3009
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-${FRONTEND_URL:-http://172.16.202.222}}
+      FRONTEND_URL: ${FRONTEND_URL:-http://172.16.202.222}
+      OPENKM_BASE_URL: ${OPENKM_BASE_URL:-}
+      OPENKM_USERNAME: ${OPENKM_USERNAME:-}
+      OPENKM_PASSWORD: ${OPENKM_PASSWORD:-}
+      OPENKM_TIMEOUT_MS: ${OPENKM_TIMEOUT_MS:-15000}
+      # Vacío conserva el límite por categoría y la política del servicio.
+      RUND_DOCUMENT_MAX_SIZE_BYTES: ${RUND_DOCUMENT_MAX_SIZE_BYTES:-}
+      RUND_DOCUMENT_ALLOW_LOCAL: ${RUND_DOCUMENT_ALLOW_LOCAL:-}
+      RUND_ENABLE_DEV_OTP: ${RUND_ENABLE_DEV_OTP:-false}
+      RUND_OCR_ENABLED: ${RUND_OCR_ENABLED:-false}
+      RUND_OCR_URL: ${RUND_OCR_URL:-}
+      RUND_OCR_TOKEN: ${RUND_OCR_TOKEN:-}
+      RUND_OLLAMA_URL: ${RUND_OLLAMA_URL:-}
+      RUND_OLLAMA_MODEL: ${RUND_OLLAMA_MODEL:-}
+    volumes:
+      - rund-uploads:/app/uploads
     ports:
       - "3016:3016"
     depends_on:
@@ -728,6 +758,8 @@ networks:
     driver: bridge
 
 volumes:
+  rund-uploads:
+    name: esap-rund-uploads-pre
   pgdata-pre:
     name: esap-pgdata-pre
   redisdata-pre:

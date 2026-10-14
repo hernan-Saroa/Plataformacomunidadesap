@@ -4,8 +4,9 @@ import {
   Eye, ChevronLeft, ChevronRight, MailPlus, ExternalLink, Sparkles,
   CheckSquare, Square, Filter, BarChart2, XCircle, Inbox, ArrowUpRight
 } from 'lucide-react';
-import { apiClient } from '../../../../../shell/src/services/api';
-import { getBancoDocentes } from '../../../services/api/ptaApi';
+import { apiClient } from '../../../services/api/apiClient';
+import { getBancoDocentes } from '../../../services/api/rundApi';
+import { rundAutogestionLink } from '../../../utils/rundPublicLinks';
 
 /* ═══════════════════════════════════════════════════════════════════
    Types & Constants
@@ -494,7 +495,7 @@ export function TableroInvitacionesRUND() {
             </p>
           </div>
           <a
-            href="/autogestion/docentes"
+            href={rundAutogestionLink()}
             target="_blank"
             rel="noopener noreferrer"
             style={{
@@ -613,7 +614,7 @@ export function TableroInvitacionesRUND() {
                           </button>
                         )}
                         <a
-                          href={`${window.location.origin}/autogestion/docentes?token=${inv.tokenAcceso}`}
+                          href={rundAutogestionLink(inv.tokenAcceso)}
                           target="_blank"
                           rel="noopener noreferrer"
                           title="Abrir formulario"

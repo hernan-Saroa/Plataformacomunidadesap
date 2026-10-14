@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query, Req, HttpCode, HttpStatus, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, Req, HttpCode, HttpStatus, Header, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -7,6 +7,7 @@ import type { Request } from 'express';
 import { PortalService } from './portal.service';
 import { CarpetaDigitalService } from '../carpeta-digital/carpeta-digital.service';
 import { Public } from '../auth/decorators/public.decorator';
+import { carpetaSessionToken } from '../carpeta-digital/rund-carpeta.client';
 
 /**
  * Portal Controller - Endpoints para el Portal Transaccional
@@ -177,12 +178,13 @@ export class PortalController {
    * Documentos persistidos (UNIÓN auth.documento_carpeta_digital + RUND soportes).
    */
   @Get('carpeta-digital/:personaId/documentos')
+  @Header('Cache-Control', 'private, no-store')
   async getDocumentosByPersona(@Param('personaId') personaId: string, @Req() req?: any) {
     try {
-      const data = await this.carpetaDigitalService.listDocumentosByPersona(personaId, req?.user);
+      const data = await this.carpetaDigitalService.listDocumentosByPersona(personaId, req?.user, carpetaSessionToken(req));
       return { success: true, data: Array.isArray(data) ? data : [] };
     } catch (err: any) {
-      return { success: true, data: [], message: err?.message };
+      return { success: false, data: [], message: err?.message };
     }
   }
 
@@ -280,26 +282,27 @@ export class PortalController {
    * Resumen agregado: carpeta + documentos + tipos. Conserva el contrato anterior.
    */
   @Get('carpeta-digital/:id')
+  @Header('Cache-Control', 'private, no-store')
   async getCarpetaDigital(@Param('id') id: string, @Req() req?: any) {
     const cleanId = String(id || '').replace(/^carpeta:/, '');
     try {
       const [carpeta, documentos, checklist] = await Promise.all([
-        this.carpetaDigitalService.getCarpetaByPersona(cleanId).catch(() => null),
-        this.carpetaDigitalService.listDocumentosByPersona(cleanId, req?.user).catch(() => []),
+        this.carpetaDigitalService.getCarpetaByPersona(cleanId, req?.user, carpetaSessionToken(req), true),
+        this.carpetaDigitalService.listDocumentosByPersona(cleanId, req?.user, carpetaSessionToken(req)),
         this.carpetaDigitalService.getChecklistForPersona(cleanId).catch(() => ({ tiposDocumentos: [] })),
       ]);
       return {
         success: true,
         data: {
           carpeta,
-          persona: carpeta ? { id: cleanId, nombre: carpeta.nombre_carpeta, email: carpeta.email_propietario, numero_documento: carpeta.numero_documento } : null,
+          persona: carpeta ? { id: carpeta.persona_id, nombre: carpeta.nombre_carpeta, email: carpeta.email_propietario, numero_documento: carpeta.numero_documento } : null,
           documentos: Array.isArray(documentos) ? documentos : [],
           tipos_requeridos: (checklist as any)?.tiposDocumentos || [],
         },
       };
     } catch (err: any) {
       return {
-        success: true,
+        success: false,
         data: { documentos: [], tipos_requeridos: [], persona: null },
         message: err?.message,
       };

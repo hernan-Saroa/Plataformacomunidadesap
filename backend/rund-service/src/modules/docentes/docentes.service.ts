@@ -93,20 +93,32 @@ export class DocentesService {
       throw new ConflictException(`Ya existe un docente con el número de documento ${createDto.numeroDocumento}`);
     }
 
-    // Generar código RUND si no existe
+    // Reservas atomicas en PostgreSQL; el banco de docentes usa otra secuencia.
     const anio = new Date().getFullYear();
-    const correlativo = Math.floor(100000 + Math.random() * 900000);
-    const numeroTarjetaRund = `RUND-${anio}-${correlativo}`;
-
-    const docente = this.docenteRepository.create({
-      ...createDto,
-      numeroTarjetaRund,
-      fechaExpedicionRund: new Date(),
-      createdBy: userId,
-      updatedBy: userId,
-    });
-
-    return this.docenteRepository.save(docente);
+    for (let intento = 0; intento < 5; intento++) {
+      const [{ correlativo }] = await this.docenteRepository.query(
+        `SELECT nextval('rund.numero_tarjeta_rund_seq')::text AS correlativo`,
+      );
+      // Mantener el valor como texto y no truncar cuando supere seis digitos.
+      const numeroTarjetaRund = `RUND-${anio}-${correlativo.padStart(6, '0')}`;
+      const docente = this.docenteRepository.create({
+        ...createDto,
+        numeroTarjetaRund,
+        fechaExpedicionRund: new Date(),
+        createdBy: userId,
+        updatedBy: userId,
+      });
+      try {
+        return await this.docenteRepository.save(docente);
+      } catch (error) {
+        const databaseError = error?.driverError || error;
+        // Una carga manual posterior puede haber ocupado este numero. No sobrescribirla.
+        if (databaseError?.code !== '23505' || databaseError?.constraint !== 'docente_numero_tarjeta_rund_key') {
+          throw error;
+        }
+      }
+    }
+    throw new ConflictException('No fue posible asignar una tarjeta RUND disponible. Revise la secuencia antes de reintentar.');
   }
 
   async update(id: string, updateDto: UpdateDocenteDto, userId?: string): Promise<DocenteEntity> {

@@ -1,0 +1,146 @@
+{
+  "verifiedAt": "2026-10-14T09:41:07.690Z",
+  "passed": true,
+  "daemonUsed": false,
+  "containersStarted": false,
+  "realEnvironmentFilesRead": false,
+  "serviceEnvFilesOmittedForValidation": true,
+  "otherModulesCompared": true,
+  "checks": [
+    {
+      "composition": "base",
+      "persistentStorage": "bind",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "a6442410c919976a41641abbb8ee61712ee7b62e953d11b7e75c8dcab1533de9",
+      "otherModulesHashAfter": "a6442410c919976a41641abbb8ee61712ee7b62e953d11b7e75c8dcab1533de9"
+    },
+    {
+      "composition": "backend",
+      "persistentStorage": "bind",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "afb9d24b9b0fddc343983165c765354114d375bfb42e54c8d2454df4b97705db",
+      "otherModulesHashAfter": "afb9d24b9b0fddc343983165c765354114d375bfb42e54c8d2454df4b97705db"
+    },
+    {
+      "composition": "local",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "1a459fdec30b4d8565bb2edb101f12c3d5a4cbd862de4917a5e0c237a359466d",
+      "otherModulesHashAfter": "1a459fdec30b4d8565bb2edb101f12c3d5a4cbd862de4917a5e0c237a359466d"
+    },
+    {
+      "composition": "dev",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "a32dfbdf52924179368fec56573107e0c7a6bc70452d2fe7b140ec5d6cfc0934",
+      "otherModulesHashAfter": "a32dfbdf52924179368fec56573107e0c7a6bc70452d2fe7b140ec5d6cfc0934"
+    },
+    {
+      "composition": "dev-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "85d7a404a0e7dd182530c5082ac7b726701e724ddc22d8a1d065ac1e7b328514",
+      "otherModulesHashAfter": "85d7a404a0e7dd182530c5082ac7b726701e724ddc22d8a1d065ac1e7b328514"
+    },
+    {
+      "composition": "dev-mfe",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "9a45ce5b92ae252121b95dba4add902117e8725aa84aa53182fed97642d3fa0d",
+      "otherModulesHashAfter": "9a45ce5b92ae252121b95dba4add902117e8725aa84aa53182fed97642d3fa0d"
+    },
+    {
+      "composition": "dev-mfe-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "c45d3341747ab36c8a8942560a4975d1d6fb69fd7ff9389b4b367e5bbff97686",
+      "otherModulesHashAfter": "c45d3341747ab36c8a8942560a4975d1d6fb69fd7ff9389b4b367e5bbff97686"
+    },
+    {
+      "composition": "qa",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "e84bf41a14a9ec0d38bac0a00fbc64ba84beb291302b666c328f28649bd2d3dd",
+      "otherModulesHashAfter": "e84bf41a14a9ec0d38bac0a00fbc64ba84beb291302b666c328f28649bd2d3dd"
+    },
+    {
+      "composition": "qa-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "bc8ebbc7b6afb0559138c9f2878b1c68944ca34a2f53384a1686153a7d4ab658",
+      "otherModulesHashAfter": "bc8ebbc7b6afb0559138c9f2878b1c68944ca34a2f53384a1686153a7d4ab658"
+    },
+    {
+      "composition": "qa-mfe",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "67672b70799a0834d5ccc64937a4130245a52444c5633b56d558a191b90861f6",
+      "otherModulesHashAfter": "67672b70799a0834d5ccc64937a4130245a52444c5633b56d558a191b90861f6"
+    },
+    {
+      "composition": "qa-mfe-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "ec5ceece36146c230fd88e7164341cb27c6eb57f0f32d3f6d5d6532d6e81f727",
+      "otherModulesHashAfter": "ec5ceece36146c230fd88e7164341cb27c6eb57f0f32d3f6d5d6532d6e81f727"
+    },
+    {
+      "composition": "pre",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "6fd8929721b925dafdb1434d2a31614c9f0c28f7487e9779e42ad60359532b60",
+      "otherModulesHashAfter": "6fd8929721b925dafdb1434d2a31614c9f0c28f7487e9779e42ad60359532b60"
+    },
+    {
+      "composition": "pre-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "0371924b02deccafc9407e36f1787d03497030dc1ae6315be01c76b286c888ba",
+      "otherModulesHashAfter": "0371924b02deccafc9407e36f1787d03497030dc1ae6315be01c76b286c888ba"
+    },
+    {
+      "composition": "pre-mfe",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "9d3d3c3cb2a0c1cba61499ca01a3e0ed2c6142fda18fdb747e33375d14a7883c",
+      "otherModulesHashAfter": "9d3d3c3cb2a0c1cba61499ca01a3e0ed2c6142fda18fdb747e33375d14a7883c"
+    },
+    {
+      "composition": "pre-mfe-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "146bb3a010c75051ac843b8fd457a6b9e1394d61fa59bbf079ffbdef8e3b3e43",
+      "otherModulesHashAfter": "146bb3a010c75051ac843b8fd457a6b9e1394d61fa59bbf079ffbdef8e3b3e43"
+    },
+    {
+      "composition": "prod",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "bcee45faa91872468394a22248e877fbb4e72ce576a34826e17fe9fdb3552152",
+      "otherModulesHashAfter": "bcee45faa91872468394a22248e877fbb4e72ce576a34826e17fe9fdb3552152"
+    },
+    {
+      "composition": "prod-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "03dc501500db8e9a7cbed7c4a519f00776b5c3f4bfe61f5cb6e59d17deaed929",
+      "otherModulesHashAfter": "03dc501500db8e9a7cbed7c4a519f00776b5c3f4bfe61f5cb6e59d17deaed929"
+    },
+    {
+      "composition": "prod-mfe",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "2a199651ffb0f9478738b00a70815dc6658bb0c3163f563c1df2529070701343",
+      "otherModulesHashAfter": "2a199651ffb0f9478738b00a70815dc6658bb0c3163f563c1df2529070701343"
+    },
+    {
+      "composition": "prod-mfe-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "8e07e135b3b04f181414526982b5132fa52f7f6fd91b0ff24b5dedc6cbdeaa60",
+      "otherModulesHashAfter": "8e07e135b3b04f181414526982b5132fa52f7f6fd91b0ff24b5dedc6cbdeaa60"
+    }
+  ],
+  "explicitOverrides": true,
+  "scope": "RUND y auth-service; demás módulos comparados"
+}

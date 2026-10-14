@@ -1,0 +1,110 @@
+{
+  "step": "12.4",
+  "localScopePassed": true,
+  "fullStep12Complete": false,
+  "targetEnvironmentChecked": false,
+  "rolloutEnabled": false,
+  "existingDatabaseUsed": false,
+  "realEnvironmentFilesReadOrChanged": false,
+  "composeChanged": false,
+  "originalPtaModuleChanged": false,
+  "buildsExecuted": {
+    "auth": "passed",
+    "shell": "passed",
+    "rundFrontend": "passed"
+  },
+  "testsExecuted": {
+    "auth": {
+      "suites": 12,
+      "passed": 106,
+      "newPortalTests": 5
+    },
+    "shell": {
+      "passingFiles": 14,
+      "passed": 141,
+      "newPortalTests": 10,
+      "fullSuitePassed": false,
+      "existingFailure": "disciplinary.service.spec.ts: jest is not defined"
+    },
+    "rundFrontend": {
+      "files": 19,
+      "passed": 180
+    }
+  },
+  "unchangedScopesWithPreviousEvidence": {
+    "rundBackend": {
+      "build": "passed",
+      "testsPassed": 512,
+      "suiteRepeatedInThisStep": false
+    },
+    "personas": {
+      "build": "passed",
+      "testsPassed": 106,
+      "suiteRepeatedInThisStep": false
+    }
+  },
+  "typescript": {
+    "shell": {
+      "before": 586,
+      "after": 586,
+      "newDiagnostics": 0,
+      "fullCheckPassed": false
+    },
+    "rundFrontend": {
+      "diagnostics": 0,
+      "fullCheckPassed": true
+    },
+    "comparison": "Firmas archivo/código/mensaje normalizadas por BOM y posición."
+  },
+  "postgres": {
+    "passed": true,
+    "checks": 121,
+    "newViewsChecks": 4,
+    "temporaryClusterRemoved": true,
+    "report": "validacion-vistas-carpeta-postgres-local.json"
+  },
+  "browser": {
+    "views": {
+      "passed": true,
+      "checks": 13,
+      "report": "validacion-vistas-carpeta-navegador-local.json"
+    },
+    "bankAndPublicRoutes": {
+      "passed": true,
+      "checks": 5,
+      "report": "validacion-shell-navegador-local.json"
+    },
+    "realApiTraffic": false,
+    "realBrowserProfileUsed": false
+  },
+  "compose": {
+    "passed": true,
+    "compositions": 19,
+    "otherModulesUnchanged": true,
+    "daemonUsed": false,
+    "report": "validacion-carpeta-compose.json"
+  },
+  "frontendDependencies": {
+    "sourceFiles": 51,
+    "reachableSourceFiles": 50,
+    "testFiles": 19,
+    "foreignModuleImports": [],
+    "unusedTypeScriptFiles": []
+  },
+  "activationGuide": "ACTIVACION-CARPETA-DIGITAL.md",
+  "remaining": [
+    "12.5: verificar el ambiente destino, artefactos, esquema, identidad, permisos, red y almacenamiento",
+    "Comprobar gateway, cookies, JWT y OpenKM reales antes de activar",
+    "Evaluar los fallos globales heredados según el criterio de publicación del proyecto",
+    "Dependencias de sección 9.2 e independencia completa de base de datos"
+  ],
+  "verifiedAt": "2026-10-14T04:31:33.287Z",
+  "hashes": {
+    "apps/shell/src/components/portal/gestion-documental/MisDocumentos.tsx": "17a580304fee670ff093612197bd4fee2c7476c917fd7b2329920b4ade12efcb",
+    "apps/shell/src/components/portal/portalApi.ts": "a841f5880f72ce62aa6358a5f27ab627c72dec514e61e34cd36337c9020b5d69",
+    "backend/auth-service/src/portal/portal.controller.ts": "7f90fbb793e9357565aa6c4a2e1796b20e8d3549ca8012fabedab34e4d33b1b7",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.controller.ts": "60e29bc947417cd52b59564df1fa0b0d06790bb6e2c2c9684ba685a40b70c13b",
+    "scripts/verify-rund-folder-views.cjs": "e7c592059d463b099f81dc618f8e87a1eb7ad944e255f34b5969af012eefcd62",
+    "scripts/verify-rund-personas-browser.cjs": "72c6ad2383133b3605c58b2d998759588b9ac4a61ce915ca8e1b6c3c958633e8"
+  }
+}

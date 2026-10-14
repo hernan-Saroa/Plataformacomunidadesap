@@ -17,7 +17,7 @@ import { config, getDefaultHeaders, getUserContextHeaders, CORS_CONFIG, API_MODE
 import type { ApiResponse, ApiError } from '../../types';
 import { toast } from 'sonner';
 import { offlineCache } from './offlineCache';
-import { isRundRequest } from './rundCachePolicy';
+import { isRundRequest, isCarpetaDocumentRequest } from './rundCachePolicy';
 import { syncEngine } from './syncEngine';
 import { getAppOnlineStatus } from '../../utils/connectivity';
 
@@ -26,6 +26,7 @@ import { getAppOnlineStatus } from '../../utils/connectivity';
 // ============================================================================
 
 interface RequestConfig extends RequestInit {
+  preserveResponse?: boolean;
   skipAuth?: boolean;
   skipErrorToast?: boolean;
   skipErrorLog?: boolean;
@@ -319,6 +320,7 @@ export class ApiClient {
       skipErrorToast = false,
       skipErrorLog = false,
       skipAuthRefresh = false,
+      preserveResponse = false,
       retries = this.retryConfig.attempts,
       ...fetchConfig
     } = customConfig;
@@ -328,7 +330,7 @@ export class ApiClient {
 
     while (attempt <= retries) {
       try {
-        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh, skipErrorLog);
+        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh, skipErrorLog, preserveResponse);
       } catch (error: any) {
         lastError = error;
         attempt++;
@@ -364,13 +366,14 @@ export class ApiClient {
     skipErrorToast: boolean,
     allowRefresh = true,
     skipErrorLog = false,
+    preserveResponse = false,
   ): Promise<T> {
     const isGet = !fetchConfig.method || fetchConfig.method.toUpperCase() === 'GET';
     const isMutation = fetchConfig.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(fetchConfig.method.toUpperCase());
 
     // 🔴 MODO OFFLINE: Interceptar si no hay conexión
     if (!getAppOnlineStatus()) {
-      if (isRundRequest(url)) {
+      if (isRundRequest(url) || isCarpetaDocumentRequest(url)) {
         throw new Error('RUND requiere conexión para verificar los permisos y registrar el acceso.');
       }
       if (isGet) {
@@ -431,7 +434,7 @@ export class ApiClient {
       if (response.status === 401 && !skipAuth && allowRefresh) {
         const newToken = await this.refreshAccessToken();
         if (newToken) {
-          return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false, skipErrorLog);
+          return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false, skipErrorLog, preserveResponse);
         }
         const expiredError: any = new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
         expiredError.status = 401;
@@ -439,7 +442,7 @@ export class ApiClient {
       }
 
       // Manejo de respuesta
-      const responseData = await this.handleResponse<T>(response, skipErrorToast, skipAuth);
+      const responseData = await this.handleResponse<T>(response, skipErrorToast, skipAuth, preserveResponse);
       
       // 💾 CACHÉ SILENCIOSA: Guardar respuestas GET exitosas
       if (isGet && typeof navigator !== 'undefined') {
@@ -561,7 +564,8 @@ export class ApiClient {
   private async handleResponse<T>(
     response: Response,
     skipErrorToast: boolean,
-    skipAuth: boolean
+    skipAuth: boolean,
+    preserveResponse = false,
   ): Promise<T> {
     // Si es 204 No Content, retornar null
     if (response.status === 204) {
@@ -612,6 +616,7 @@ export class ApiClient {
 
     // Success
     if (response.ok) {
+      if (preserveResponse) return data as T;
       if ('data' in data) {
         return data.data;
       }

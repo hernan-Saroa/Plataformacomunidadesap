@@ -1,0 +1,47 @@
+{
+  "checkedAt": "2026-10-14T08:54:58.800Z",
+  "step": "12.5d.2",
+  "environment": "prod",
+  "origin": "https://comunidadesap.esap.edu.co",
+  "originOwnershipVerified": false,
+  "mode": "public-get-only",
+  "credentialsSent": false,
+  "redirectsFollowed": false,
+  "runtimeModified": false,
+  "deploymentExecuted": false,
+  "verifierSha256": "6c10ee53b592bfce032be206343f41d39b3e16de52c2210e4cfcb801a28b18d7",
+  "checks": [
+    {
+      "id": "rund-readiness-through-gateway",
+      "path": "/services/rund/api/v1/health/ready",
+      "status": "not_verified",
+      "httpStatus": null,
+      "reason": "connection_failed",
+      "networkCode": "ENOTFOUND"
+    },
+    {
+      "id": "rund-remote-entry",
+      "path": "/remotes/mfe-rund/assets/remoteEntry.js",
+      "status": "not_verified",
+      "httpStatus": null,
+      "reason": "connection_failed",
+      "networkCode": "ENOTFOUND"
+    },
+    {
+      "id": "personas-remote-entry",
+      "path": "/remotes/mfe-gestion-personas/assets/remoteEntry.js",
+      "status": "not_verified",
+      "httpStatus": null,
+      "reason": "connection_failed",
+      "networkCode": "ENOTFOUND"
+    }
+  ],
+  "activationReadiness": "not_verified",
+  "imageDigestVerified": false,
+  "limits": [
+    "La etiqueta y URL son explícitas; no se descubre ni certifica el propietario de la instalación.",
+    "Una respuesta saludable solo comprueba servicio/conexión; no el esquema ni los permisos.",
+    "El hash identifica únicamente remoteEntry; no prueba todos sus exports, chunks o una revisión Git.",
+    "Sin JWT/cookies, APIs de negocio, cargas, OpenKM, Docker o consultas a bases."
+  ]
+}

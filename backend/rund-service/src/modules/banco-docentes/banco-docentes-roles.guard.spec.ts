@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { BancoDocentesRolesGuard } from './banco-docentes-roles.guard';
+import { RUND_PERMISSION_CODES } from '../../auth/rund-permission-catalog';
 
 function contextFor(user: any): any {
   const request = { user } as any;
@@ -41,6 +42,7 @@ describe('BancoDocentesRolesGuard', () => {
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('auth.role_permissions'), [
       ['ADMIN_RUND_PERSONALIZADO'],
+      RUND_PERMISSION_CODES,
     ]);
     expect(request.rundPermissions).toEqual(new Set(['banco-docentes.rund.documents.manage']));
   });

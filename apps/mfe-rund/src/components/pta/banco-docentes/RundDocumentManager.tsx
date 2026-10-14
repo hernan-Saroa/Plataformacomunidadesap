@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import './RundDocumentManager.css';
-import { apiClient } from '../../../../../shell/src/services/api';
+import { apiClient } from '../../../services/api/apiClient';
 
 type Category = {
   codigo: string;

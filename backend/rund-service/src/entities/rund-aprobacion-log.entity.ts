@@ -13,7 +13,7 @@ export class RundAprobacionLogEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'docente_id', type: 'uuid' })
+  @Column({ name: 'docente_id', type: 'text' })
   docenteId: string;
 
   /** Bloque afectado: IDENTIDAD, FORMACION, VINCULACION, CONTACTO, GENERAL */

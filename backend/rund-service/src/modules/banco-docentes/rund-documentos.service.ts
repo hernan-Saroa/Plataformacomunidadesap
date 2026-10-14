@@ -446,7 +446,7 @@ export class RundDocumentosService {
   }
 
   private contentUrl(docenteId: string, documentId: string) {
-    return `/pta/api/v1/pta/banco-docentes/${docenteId}/documentos/${documentId}/contenido`;
+    return `/rund/api/v1/pta/banco-docentes/${docenteId}/documentos/${documentId}/contenido`;
   }
 
   private checksum(content: Buffer) {

@@ -101,10 +101,10 @@ echo "  Migraciones: $MIGRATIONS_DIR"
 echo "  DB:         $DB_HOST:$DB_PORT/$DB_NAME (schema: $DB_SCHEMA)"
 echo "========================================"
 
-psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA;" >/dev/null
-psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "CREATE TABLE IF NOT EXISTS $DB_SCHEMA.migrations_db_log (filename TEXT PRIMARY KEY, executed_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now());" >/dev/null
+psql -X -v ON_ERROR_STOP=1 -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "CREATE SCHEMA IF NOT EXISTS $DB_SCHEMA;" >/dev/null || { echo "Error preparando migraciones; proceso detenido."; exit 1; }
+psql -X -v ON_ERROR_STOP=1 -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "CREATE TABLE IF NOT EXISTS $DB_SCHEMA.migrations_db_log (filename TEXT PRIMARY KEY, executed_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now());" >/dev/null || { echo "Error preparando migraciones; proceso detenido."; exit 1; }
 
-MIGRATIONS_APPLIED=$(psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -At -c "SELECT filename FROM $DB_SCHEMA.migrations_db_log" 2>/dev/null)
+MIGRATIONS_APPLIED=$(psql -X -v ON_ERROR_STOP=1 -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -At -c "SELECT filename FROM $DB_SCHEMA.migrations_db_log") || { echo "Error consultando historial; no se ejecutaron migraciones."; exit 1; }
 
 MIGRATION_COUNT=0
 MIGRATION_SUCCESS=0
@@ -122,14 +122,19 @@ for file in $MIGRATION_FILES; do
   MIGRATION_COUNT=$((MIGRATION_COUNT + 1))
   echo "[$MIGRATION_COUNT] Ejecutando: $relpath"
 
-  if psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$file" 2>&1; then
-    echo "    OK"
-    MIGRATION_SUCCESS=$((MIGRATION_SUCCESS + 1))
-    escaped_relpath=$(printf "%s" "$relpath" | sed "s/'/''/g")
-    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "INSERT INTO $DB_SCHEMA.migrations_db_log (filename) VALUES ('$escaped_relpath') ON CONFLICT (filename) DO NOTHING;" >/dev/null
+  if psql -X -v ON_ERROR_STOP=1 -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$file" 2>&1; then
+      escaped_relpath=$(printf "%s" "$relpath" | sed "s/'/''/g")
+      if ! psql -X -v ON_ERROR_STOP=1 -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "INSERT INTO $DB_SCHEMA.migrations_db_log (filename) VALUES ('$escaped_relpath') ON CONFLICT (filename) DO NOTHING;" >/dev/null; then
+          echo "ERROR: SQL ejecutado, pero no se pudo registrar $relpath. Revisar antes de reintentar; proceso detenido."
+          MIGRATION_FAILED=$((MIGRATION_FAILED + 1))
+          break
+      fi
+      echo "    OK: $relpath ejecutada y registrada"
+      MIGRATION_SUCCESS=$((MIGRATION_SUCCESS + 1))
   else
-    echo "    ERROR"
-    MIGRATION_FAILED=$((MIGRATION_FAILED + 1))
+      echo "ERROR: fallo SQL en $relpath. Revisar posibles cambios parciales antes de reintentar; proceso detenido."
+      MIGRATION_FAILED=$((MIGRATION_FAILED + 1))
+      break
   fi
 done
 

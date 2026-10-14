@@ -63,6 +63,7 @@ import { ExportUsersBySede } from './ExportUsersBySede';
 import { MOCK_USERS_WITH_SEDES } from '../../data/mockUsersWithSedes';  
 import { usersService, type User, type UserFilters } from '../../services/usersService';  
 import { rolesService } from '../../services/api/roles.service';
+import { syncRundProfilesWithFeedback } from '../../services/api/rundSync.service';
 import type { SystemRole } from '../../services/api/roles.service';
 import { FiltroEstructuraOrganizacional } from '../estructura-organizacional/FiltroEstructuraOrganizacional';  
 import { DigitalFolderSection } from './DigitalFolderSection';  
@@ -146,6 +147,7 @@ export function UsersPersonsModulePremium() {
   const [availableRoles, setAvailableRoles] = useState<SystemRole[]>([]);
   const [rolesLoading, setRolesLoading] = useState(false);
   const [rolesSaving, setRolesSaving] = useState(false);
+  const rolesSaveInFlightRef = useRef(false);
   const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
   const [isRoleFilterOpen, setIsRoleFilterOpen] = useState(false);
   const [roleFilterSearch, setRoleFilterSearch] = useState('');
@@ -794,17 +796,8 @@ export function UsersPersonsModulePremium() {
     });
   };
 
-  const triggerBancoDocentesSync = async () => {
-    try {
-      const ptaBase = import.meta.env.VITE_API_MODE === 'direct'
-        ? 'http://localhost:3003'
-        : (import.meta.env.VITE_API_URL || window.location.origin + '/services') + '/pta/api/v1';
-      await fetch(`${ptaBase}/pta/banco-docentes/sync-from-auth`, { method: 'POST' });
-    } catch { /* best-effort, no bloqueamos al usuario */ }
-  };
-
   const handleSaveAssignedRoles = async () => {
-    if (!selectedUser) return;
+    if (!selectedUser || rolesSaveInFlightRef.current) return;
     if (selectedRoleIds.size === 0) {
       toast.error('Selecciona al menos un rol', {
         description: 'Un usuario debe tener al menos un rol asignado.'
@@ -812,29 +805,30 @@ export function UsersPersonsModulePremium() {
       return;
     }
 
+    const user = selectedUser;
+    const roleIds = Array.from(selectedRoleIds);
+    const hasDocente = availableRoles.some(r => selectedRoleIds.has(r.id) && r.code === 'DOCENTE');
+    rolesSaveInFlightRef.current = true;
     try {
       setRolesSaving(true);
-      await usersService.updateUser(selectedUser.id_user || selectedUser.id, {
-        roleIds: Array.from(selectedRoleIds)
+      await usersService.updateUser(user.id_user || user.id, {
+        roleIds
       });
 
-      // Si se asignó rol DOCENTE, sincronizar con banco de docentes
-      const assignedRoles = availableRoles.filter(r => selectedRoleIds.has(r.id));
-      const hasDocente = assignedRoles.some(r => r.code === 'DOCENTE');
-      if (hasDocente) triggerBancoDocentesSync();
-
       toast.success('Roles asignados', {
-        description: `Se actualizaron los roles de ${selectedUser.firstName} ${selectedUser.lastName}`
+        description: `Se actualizaron los roles de ${user.firstName} ${user.lastName}`
       });
       setShowAssignRolesModal(false);
       setSelectedUser(null);
       await loadUsers();
+      if (hasDocente) await syncRundProfilesWithFeedback();
     } catch (error: any) {
       console.error('Error al asignar roles:', error);
       toast.error('Error al asignar roles', {
         description: error?.message || 'No se pudieron actualizar los roles'
       });
     } finally {
+      rolesSaveInFlightRef.current = false;
       setRolesSaving(false);
     }
   };
@@ -990,13 +984,8 @@ export function UsersPersonsModulePremium() {
          idCargo: userData.idCargo ? Number(userData.idCargo) : null,
        };
 
-       const newUser = await usersService.createUser(createUserData);
-
-      // Si se creó con rol DOCENTE, sincronizar con banco de docentes
-      if (createUserData.roleIds?.length) {
-        const assignedRoles = availableRoles.filter(r => createUserData.roleIds!.includes(r.id));
-        if (assignedRoles.some(r => r.code === 'DOCENTE')) triggerBancoDocentesSync();
-      }
+      await usersService.createUser(createUserData);
+      const hasDocente = availableRoles.some(r => createUserData.roleIds.includes(r.id) && r.code === 'DOCENTE');
 
       toast.success('Usuario Creado Exitosamente', {
         description: `${userData.firstName} ${userData.lastName} ha sido registrado.`
@@ -1004,6 +993,7 @@ export function UsersPersonsModulePremium() {
 
       setShowCreateModal(false);
       await loadUsers();
+      if (hasDocente) await syncRundProfilesWithFeedback('user');
     } catch (error: any) {
       console.error('Error al crear usuario:', error);
       toast.error('Error al crear usuario', {
@@ -1069,6 +1059,8 @@ export function UsersPersonsModulePremium() {
   // Si estamos en la vista de carpeta digital, mostrar esa sección
   if (viewMode === "digital-folder") {
     return (
+      <>
+      <Toaster position="top-right" richColors />
       <DigitalFolderSection
         onBack={() => setViewMode('users')}
         initialUserId={selectedUser?.id_user || selectedUser?.id}
@@ -1082,6 +1074,7 @@ export function UsersPersonsModulePremium() {
         }))}
         canUpload={true}
       />
+      </>
     );
   }
 

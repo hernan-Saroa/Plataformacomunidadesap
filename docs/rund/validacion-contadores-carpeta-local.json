@@ -1,0 +1,70 @@
+{
+  "verifiedAt": "2026-10-14T01:38:36.809Z",
+  "step": "12.3b.3",
+  "changedScopePassed": true,
+  "fullStep12Complete": false,
+  "rolloutEnabled": false,
+  "existingDatabaseUsed": false,
+  "realEnvironmentFilesChanged": false,
+  "composeChanged": false,
+  "builds": {
+    "auth": "passed",
+    "rund": "passed",
+    "shell": "passed",
+    "personas": "passed"
+  },
+  "tests": {
+    "auth": {
+      "suites": 10,
+      "passed": 92
+    },
+    "rund": {
+      "suites": 41,
+      "passed": 509
+    },
+    "personas": {
+      "files": 7,
+      "passed": 83
+    },
+    "shell": {
+      "passingFiles": 11,
+      "passed": 108,
+      "fullSuitePassed": false,
+      "existingFailure": "disciplinary.service.spec.ts: jest is not defined",
+      "runner": "apps/shell/node_modules/vitest 2.1.9"
+    }
+  },
+  "typescript": {
+    "shell": {
+      "before": 586,
+      "after": 586,
+      "newDiagnostics": 0,
+      "fullCheckPassed": false
+    },
+    "personas": {
+      "before": 192,
+      "after": 192,
+      "newDiagnostics": 0,
+      "fullCheckPassed": false
+    },
+    "comparison": "Mismas firmas archivo/código/mensaje, normalizando rutas, BOM y posiciones."
+  },
+  "postgres": {
+    "passed": true,
+    "checks": 112,
+    "newCountChecks": 7,
+    "temporaryClusterRemoved": true,
+    "report": "validacion-contadores-carpeta-postgres-local.json"
+  },
+  "browser": {
+    "passed": true,
+    "checks": 9,
+    "realApiTraffic": false,
+    "report": "validacion-contadores-carpeta-navegador-local.json"
+  },
+  "remaining": [
+    "12.3b.4: panel inline según propietario",
+    "Validación y preparación de activación del paso 12",
+    "Dependencias pendientes de sección 9.2"
+  ]
+}

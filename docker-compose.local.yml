@@ -235,6 +235,8 @@ services:
       file: ./docker-compose.dev.yml
       service: rund-service
     environment:
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-${FRONTEND_URL:-http://localhost}}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
       DB_HOST: ${LOCAL_DB_HOST:-host.docker.internal}
       DB_PORT: ${LOCAL_DB_PORT:-5432}
       DB_USER: ${LOCAL_DB_USER:-postgres}
@@ -352,6 +354,8 @@ networks:
     name: superapp-net
 
 volumes:
+  rund-uploads:
+    name: esap-rund-uploads-local
   redisdata-dev:
     name: esap-redisdata-dev
   onlyoffice-data:

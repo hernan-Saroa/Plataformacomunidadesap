@@ -40,6 +40,6 @@ export class RundMacroDocenteConsultaLogEntity {
   @Column({ type: 'text', nullable: true })
   ip: string | null;
 
-  @CreateDateColumn({ name: 'createdAt', default: () => 'CURRENT_TIMESTAMP' })
+  @CreateDateColumn({ name: 'createdAt', type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 }

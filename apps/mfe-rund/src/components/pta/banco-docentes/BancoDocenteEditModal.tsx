@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X, Save, User, Briefcase, GraduationCap, Mail, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Sparkles, Upload } from 'lucide-react';
-import { createBancoDocente, updateBancoDocente, vincularRundSoporte } from '../../../services/api/ptaApi';
+import { createBancoDocente, updateBancoDocente, vincularRundSoporte } from '../../../services/api/rundApi';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { RundSuggestion } from './RundExtractionPanel';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../../../../shared/territoriales-cetaps-esap';

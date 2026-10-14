@@ -1,13 +1,14 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { PtaPermissionsService } from '../../auth/pta-permissions.service';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
+import { resolveRundRequestPermissions } from '../../auth/rund-effective-permissions';
 import { getRequestRoleCodes } from '../banco-docentes/banco-docentes-sensitive-data';
 import { MACRO_DOCENTE_PERMISSION_KEY } from './macro-docente-permission.decorator';
 
 /**
- * Reutiliza PtaPermissionsService (auth.role_permissions / auth.permission)
- * para resolver, en el momento de la petición, si los roles del usuario
- * tienen el permiso pta.macro_docente.* requerido. Rutas sin
+ * Exige el permiso activo de Macro Docente mediante el resolver compartido de RUND.
+ * Se conservan los códigos pta.macro_docente.* y la excepción SUPER_ADMIN. Rutas sin
  * @RequierePermisoMacroDocente (p. ej. el acceso externo público) pasan
  * directo, igual que BancoDocentesRolesGuard con rutas sin @Roles().
  */
@@ -15,7 +16,7 @@ import { MACRO_DOCENTE_PERMISSION_KEY } from './macro-docente-permission.decorat
 export class MacroDocentePermissionGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    private readonly ptaPermissions: PtaPermissionsService,
+    @InjectDataSource() private readonly db: DataSource,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -29,8 +30,9 @@ export class MacroDocentePermissionGuard implements CanActivate {
     if (!req?.user) throw new UnauthorizedException('Usuario no autenticado.');
 
     const roles = getRequestRoleCodes(req.user);
-    const ctx = await this.ptaPermissions.resolveForRoles(roles);
-    if (ctx.isSuperUser || ctx.permissions.has(requiredPermission)) return true;
+    if (roles.includes('SUPER_ADMIN')) return true;
+    const permissions = await resolveRundRequestPermissions(this.db, req);
+    if (permissions.has(requiredPermission)) return true;
 
     throw new ForbiddenException(
       `No tienes el permiso requerido (${requiredPermission}) para esta acción del Macro Docente.`,

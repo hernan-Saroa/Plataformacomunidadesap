@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { RundValidacionService } from './rund-validacion.service';
+import { BancoDocentesRolesGuard } from './banco-docentes-roles.guard';
+import { RequireRundPermissions, RUND_PERMISSIONS } from './rund-permissions';
 
 /**
  * Validación documental por campo del RUND. Rutas compatibles con las que
@@ -15,8 +17,10 @@ export class RundValidacionController {
   }
 
   @Post('docente/:docenteId/sync-documents')
+  @UseGuards(BancoDocentesRolesGuard)
+  @RequireRundPermissions(RUND_PERMISSIONS.MANAGE, RUND_PERMISSIONS.DOCUMENTS_MANAGE)
   async syncRundDocuments(@Param('docenteId') docenteId: string, @Body() body: any) {
-    return { success: true, data: await this.service.syncRundDocuments(docenteId, body?.documentos || []) };
+    return { success: true, data: await this.service.syncRundDocuments(docenteId, body ?? {}) };
   }
 
   /** Reservado: el PTA original devolvía `data: null`; se mantiene el contrato. */

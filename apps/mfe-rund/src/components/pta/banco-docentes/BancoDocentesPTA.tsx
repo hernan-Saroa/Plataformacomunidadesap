@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import {
   getBancoDocentes, getBancoDocenteStats, getCatalogoTerritoriales, bulkUploadBancoDocentes
-} from '../../../services/api/ptaApi';
+} from '../../../services/api/rundApi';
 import { downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel';
 import { BancoDocenteDetalleInline } from './BancoDocenteDetalleInline';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
@@ -67,7 +67,7 @@ function DonutChart({ segments, size = 160 }: { segments: { value: number; color
   const cx = size / 2;
   const cy = size / 2;
   let angle = -Math.PI / 2;
-  const paths: JSX.Element[] = [];
+  const paths: React.ReactElement[] = [];
 
   segments.forEach((seg, i) => {
     if (seg.value === 0) return;
@@ -184,7 +184,7 @@ export function BancoDocentesPTA() {
   };
 
   useEffect(() => {
-    import('../../../../../shell/src/services/api').then(({ apiClient }) => {
+    import('../../../services/api/apiClient').then(({ apiClient }) => {
       apiClient.get<any[]>('/pta/api/v1/periodos-academicos')
         .then(res => {
           // Si el API retorna un array directamente o está envuelto en data
@@ -279,7 +279,7 @@ export function BancoDocentesPTA() {
       ]);
       if (requestId !== listadoRequest.current) return;
       if (res.success && res.data) {
-        const apiItems = res.data.items || res.data.data || [];
+        const apiItems = res.data.data || [];
         const normalizedItems = apiItems.map((docente: any) => ({
           ...docente,
           estado: getDocenteEstadoKey(docente),
@@ -367,7 +367,7 @@ export function BancoDocentesPTA() {
 
   const allTerritorialData: { key: string; label: string; value: number; id?: string }[] = stats?.por_territorial
     ? Array.from(
-        stats.por_territorial.reduce((acc: Map<string, any>, item: any) => {
+        (stats.por_territorial as any[]).reduce<Map<string, { key: string; label: string; value: number; id?: string }>>((acc, item: any) => {
           const label = String(item.territorial || 'Sin territorial');
           const key = statKey('territorial', label);
           const current = acc.get(key) || { key, label, value: 0, id: item.territorial_id || undefined };
@@ -375,7 +375,7 @@ export function BancoDocentesPTA() {
           if (!current.id && item.territorial_id) current.id = item.territorial_id;
           acc.set(key, current);
           return acc;
-        }, new Map<string, any>()).values()
+        }, new Map<string, { key: string; label: string; value: number; id?: string }>()).values()
       ).sort((a: any, b: any) => b.value - a.value)
     : [];
 

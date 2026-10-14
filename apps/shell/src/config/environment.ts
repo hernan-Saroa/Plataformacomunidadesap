@@ -182,6 +182,7 @@ export const MICROSERVICE_URLS = {
   'programacion-academica': withLocalhost(3013),
   'gestion-infraestructura': withLocalhost(3014),
   chatbot: withLocalhost(3015),
+  rund: withLocalhost(3016, import.meta.env.VITE_RUND_URL as string | undefined),
 };
 
 // Helper para otras variables de entorno (solo para variables no críticas)

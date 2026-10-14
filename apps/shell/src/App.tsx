@@ -25,6 +25,7 @@ import { NotificacionesProvider } from './contexts/NotificacionesContext';
 import { EditorPlantillasPage } from './pages/EditorPlantillasPage';
 import { ExpedienteCompartidoPage } from './pages/ExpedienteCompartidoPage';
 import { getAppOnlineStatus } from './utils/connectivity';
+import { RundPublicAutogestionPage, RUND_PUBLIC_AUTOGESTION_PATH } from './components/rund/RundEntries';
 
 
 // Importar componentes de servicios públicos
@@ -76,7 +77,7 @@ import ValidarCertificadoGraduado from './components/portal/ValidarCertificadoGr
 import { VisualizadorPTAAjustes } from './components/gestion-profesoral/VisualizadorPTAAjustes';
 // import { Toaster } from './components/ui/sonner';
 
-// Lazy-load AutogestionDocenteRUND (ruta pública)
+// Compatibilidad: invitaciones y borradores de PTA conservan su ruta pública anterior.
 const AutogestionDocenteRUND = React.lazy(() =>
   import('../../mfe-pta/src/components/pta/banco-docentes/AutogestionDocenteRUND').then(m => ({ default: m.AutogestionDocenteRUND }))
 );
@@ -1251,6 +1252,7 @@ export default function App() {
               </Suspense>
             }
           />
+          <Route path={RUND_PUBLIC_AUTOGESTION_PATH} element={<RundPublicAutogestionPage />} />
           <Route path="*" element={isRestoringSession ? (
             <div className="min-h-screen flex items-center justify-center bg-white">
               <div className="text-center">

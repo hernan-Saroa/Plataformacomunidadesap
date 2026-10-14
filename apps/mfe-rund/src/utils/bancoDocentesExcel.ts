@@ -138,11 +138,10 @@ const HEADER_ALIASES = {
   estadoRegistro: ['estadoregistro', 'estadodocente', 'estado'],
 } as const;
 
-const HEADER_KEYS = new Set(
-  Object.values(HEADER_ALIASES)
-    .flat()
-    .concat(BANCO_DOCENTES_HEADERS.map((header) => normalizeHeaderKey(header))),
-);
+const HEADER_KEYS = new Set<string>([
+  ...Object.values(HEADER_ALIASES).flat(),
+  ...BANCO_DOCENTES_HEADERS.map((header) => normalizeHeaderKey(header)),
+]);
 
 function normalizeHeaderKey(value: string): string {
   return sanitizeText(String(value))

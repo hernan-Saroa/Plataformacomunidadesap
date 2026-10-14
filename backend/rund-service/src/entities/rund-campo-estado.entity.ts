@@ -10,8 +10,8 @@ export class RundCampoEstadoEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'docente_id', type: 'uuid', nullable: true })
-  docenteId: string | null;
+  @Column({ name: 'docente_id', type: 'text' })
+  docenteId: string;
 
   /**
    * Bloque de campos:
@@ -20,26 +20,26 @@ export class RundCampoEstadoEntity {
    * - VINCULACION: tipo, regimen, categoria, dedicacion, acto_administrativo, puntaje_salarial, etc.
    * - CONTACTO: correo_institucional, correo_alternativo, telefono
    */
-  @Column({ name: 'bloque', type: 'text', nullable: true })
-  bloque: string | null;
+  @Column({ name: 'bloque', type: 'varchar', length: 50 })
+  bloque: string;
 
   /**
    * BR-044 — Estados: Pendiente | En revisión | Aprobado | Devuelto | Soporte faltante
    */
-  @Column({ name: 'estado', type: 'text', default: 'Pendiente' })
+  @Column({ name: 'estado', type: 'varchar', length: 50, default: 'Pendiente' })
   estado: string;
 
   /**
    * BR-043 — Segregación maker-checker: quién cargó los datos de este bloque.
    */
-  @Column({ name: 'cargado_por', type: 'text', nullable: true })
+  @Column({ name: 'cargado_por', type: 'varchar', length: 255, nullable: true })
   cargadoPor: string | null;
 
   /**
    * BR-043 — Segregación maker-checker: quién revisó/aprobó este bloque.
    * Debe ser distinto de cargadoPor.
    */
-  @Column({ name: 'revisado_por', type: 'text', nullable: true })
+  @Column({ name: 'revisado_por', type: 'varchar', length: 255, nullable: true })
   revisadoPor: string | null;
 
   /**
@@ -57,7 +57,7 @@ export class RundCampoEstadoEntity {
   /**
    * Canal de origen del último cambio: MASIVO | MODAL | AUTOGESTION
    */
-  @Column({ name: 'canal_origen', type: 'text', nullable: true })
+  @Column({ name: 'canal_origen', type: 'varchar', length: 50, nullable: true })
   canalOrigen: string | null;
 
   /**

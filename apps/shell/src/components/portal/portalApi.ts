@@ -18,6 +18,7 @@
 import { apiClient } from '../../services/api/apiClient';
 
 const PORTAL_PREFIX = '/auth/api/v1/portal';
+const DOCUMENT_OPTIONS = { retries: 0, skipErrorToast: true, preserveResponse: true };
 
 // ────────────────────────────────────────────────────────────────────────────
 // Perfil
@@ -134,10 +135,10 @@ export async function solicitarCertificadoLaboral(params: {
 
 export async function getCarpetaDigitalPortal(personaId: string) {
   try {
-    return await apiClient.get(`${PORTAL_PREFIX}/carpeta-digital/${personaId}`, undefined, { skipErrorToast: true });
+    return await apiClient.get(`${PORTAL_PREFIX}/carpeta-digital/${encodeURIComponent(personaId)}`, undefined, DOCUMENT_OPTIONS);
   } catch (err) {
     console.warn('[portalApi] getCarpetaDigitalPortal no disponible:', err);
-    return { success: true, data: { documentos: [], tipos_requeridos: [], persona: null } };
+    return { success: false, error: 'No fue posible confirmar los documentos del propietario.' };
   }
 }
 
@@ -176,10 +177,10 @@ export async function getTiposDocumentos() {
 
 export async function getDocumentosByCarpeta(personaId: string) {
   try {
-    return await apiClient.get(`${PORTAL_PREFIX}/carpeta-digital/${personaId}/documentos`, undefined, { skipErrorToast: true });
+    return await apiClient.get(`${PORTAL_PREFIX}/carpeta-digital/${encodeURIComponent(personaId)}/documentos`, undefined, DOCUMENT_OPTIONS);
   } catch (err) {
     console.warn('[portalApi] getDocumentosByCarpeta no disponible:', err);
-    return { success: true, data: [] };
+    return { success: false, data: [], error: 'No fue posible confirmar los documentos del propietario.' };
   }
 }
 

@@ -4,6 +4,7 @@ import { DocentesService } from './docentes.service';
 function buildRepo() {
   return {
     findOne: jest.fn(),
+    query: jest.fn().mockResolvedValue([{ correlativo: '1' }]),
     create: jest.fn((v) => ({ ...v })),
     save: jest.fn(async (v) => v),
   };
@@ -38,6 +39,7 @@ describe('DocentesService', () => {
       repo.findOne.mockResolvedValue({ idDocente: 'previo' });
       await expect(service.create({ numeroDocumento: '123' } as any)).rejects.toBeInstanceOf(ConflictException);
       expect(repo.save).not.toHaveBeenCalled();
+      expect(repo.query).not.toHaveBeenCalled();
     });
 
     it('genera tarjeta RUND del año vigente y registra al autor', async () => {
@@ -49,6 +51,47 @@ describe('DocentesService', () => {
       expect(saved.createdBy).toBe('user-1');
       expect(saved.updatedBy).toBe('user-1');
       expect(saved.fechaExpedicionRund).toBeInstanceOf(Date);
+      expect(saved.numeroTarjetaRund).toBe(`RUND-${anio}-000001`);
+    });
+
+    it.each(['1000000', '9007199254740993'])('conserva el correlativo %s sin truncarlo ni perder precision', async (correlativo) => {
+      repo.findOne.mockResolvedValue(null);
+      repo.query.mockResolvedValue([{ correlativo }]);
+      const saved: any = await service.create({ numeroDocumento: '123' } as any);
+      expect(saved.numeroTarjetaRund).toBe(`RUND-${new Date().getFullYear()}-${correlativo}`);
+    });
+
+    it('reserva otro numero si la tarjeta fue ocupada sin sobrescribir el registro previo', async () => {
+      repo.findOne.mockResolvedValue(null);
+      repo.query.mockResolvedValueOnce([{ correlativo: '1' }]).mockResolvedValueOnce([{ correlativo: '2' }]);
+      repo.save.mockRejectedValueOnce({ driverError: { code: '23505', constraint: 'docente_numero_tarjeta_rund_key' } });
+      const saved: any = await service.create({ numeroDocumento: '123' } as any);
+      expect(saved.numeroTarjetaRund).toBe(`RUND-${new Date().getFullYear()}-000002`);
+      expect(repo.save).toHaveBeenCalledTimes(2);
+    });
+
+    it('no reintenta conflictos de documento ni otros errores de persistencia', async () => {
+      repo.findOne.mockResolvedValue(null);
+      const error = { driverError: { code: '23505', constraint: 'uq_rund_docente_documento' } };
+      repo.save.mockRejectedValue(error);
+      await expect(service.create({ numeroDocumento: '123' } as any)).rejects.toBe(error);
+      expect(repo.query).toHaveBeenCalledTimes(1);
+      expect(repo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('detiene los reintentos si cinco reservas estan ocupadas', async () => {
+      repo.findOne.mockResolvedValue(null);
+      repo.save.mockRejectedValue({ code: '23505', constraint: 'docente_numero_tarjeta_rund_key' });
+      await expect(service.create({ numeroDocumento: '123' } as any)).rejects.toBeInstanceOf(ConflictException);
+      expect(repo.query).toHaveBeenCalledTimes(5);
+    });
+
+    it('propaga el fallo de la secuencia sin generar un numero aleatorio ni guardar', async () => {
+      repo.findOne.mockResolvedValue(null);
+      const error = new Error('secuencia no disponible');
+      repo.query.mockRejectedValue(error);
+      await expect(service.create({ numeroDocumento: '123' } as any)).rejects.toBe(error);
+      expect(repo.save).not.toHaveBeenCalled();
     });
   });
 
@@ -59,6 +102,13 @@ describe('DocentesService', () => {
       const r: any = await service.update('d1', { nombres: 'Luisa' } as any, 'u2');
       expect(r.nombres).toBe('Luisa');
       expect(r.updatedBy).toBe('u2');
+    });
+
+    it('editar conserva la tarjeta emitida y no consume secuencia', async () => {
+      repo.findOne.mockResolvedValue({ idDocente: 'd1', numeroTarjetaRund: 'RUND-2024-923456', isActive: true });
+      const saved: any = await service.update('d1', { nombres: 'Luisa' } as any, 'u2');
+      expect(saved.numeroTarjetaRund).toBe('RUND-2024-923456');
+      expect(repo.query).not.toHaveBeenCalled();
     });
 
     it('changeEstado cambia solo el estado', async () => {

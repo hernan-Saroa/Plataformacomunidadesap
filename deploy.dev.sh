@@ -471,7 +471,7 @@ cmd_rebuild_changed() {
             compose_dev build "$service_name"
             compose_dev up -d --no-deps "$service_name"
             echo -e "${YELLOW}Ejecutando migraciones para: ${service_name}...${NC}"
-            cmd_db_migrate "$service_name" || echo -e "${YELLOW}Advertencia: Algunas migraciones de ${service_name} pueden haber fallado${NC}"
+            cmd_db_migrate "$service_name" || return 1
         done
     fi
 
@@ -493,7 +493,7 @@ cmd_rebuild_changed() {
 
     if [ $run_migrations -eq 1 ]; then
         echo -e "${YELLOW}Ejecutando migraciones generales de base de datos (db/migrations)...${NC}"
-        cmd_db_migrate "global" || echo -e "${YELLOW}Advertencia: Algunas migraciones globales pueden haber fallado${NC}"
+        cmd_db_migrate "global" || return 1
     fi
 
     echo -e "${GREEN}Deploy inteligente completado.${NC}"
@@ -607,7 +607,6 @@ cmd_up() {
     echo -e "${GREEN}Iniciando servicios...${NC}"
     compose_dev up -d
     restart_frontend_nginx
-    echo -e "${GREEN}Servicios iniciados exitosamente${NC}"
     echo -e "${YELLOW}Nota: si hiciste git pull y esperas publicar cambios nuevos, usa ./deploy.dev.sh rebuild${NC}"
     echo ""
 
@@ -617,7 +616,8 @@ cmd_up() {
 
     # Ejecutar migraciones automáticamente
     echo -e "${YELLOW}Ejecutando migraciones de base de datos...${NC}"
-    cmd_db_migrate || echo -e "${YELLOW}Advertencia: Algunas migraciones pueden haber fallado${NC}"
+    cmd_db_migrate || return 1
+    echo -e "${GREEN}Servicios iniciados exitosamente${NC}"
 
     echo ""
     echo -e "${YELLOW}URLs de acceso:${NC}"
@@ -659,10 +659,10 @@ cmd_rebuild() {
     # Ejecutar migraciones por microservicio y globales
     echo -e "${YELLOW}Ejecutando migraciones de base de datos por microservicio...${NC}"
     for svc in "${BACKEND_DEV_SERVICES[@]}"; do
-        cmd_db_migrate "$svc" || true
+        cmd_db_migrate "$svc" || return 1
     done
     echo -e "${YELLOW}Ejecutando migraciones globales...${NC}"
-    cmd_db_migrate "global" || true
+    cmd_db_migrate "global" || return 1
     echo -e "${GREEN}Nueva versión publicada. Servicios reconstruidos y reiniciados.${NC}"
 }
 
@@ -707,10 +707,10 @@ cmd_rebuild_fresh() {
 
     echo -e "${YELLOW}Ejecutando migraciones de base de datos por microservicio...${NC}"
     for svc in "${BACKEND_DEV_SERVICES[@]}"; do
-        cmd_db_migrate "$svc" || true
+        cmd_db_migrate "$svc" || return 1
     done
     echo -e "${YELLOW}Ejecutando migraciones globales...${NC}"
-    cmd_db_migrate "global" || true
+    cmd_db_migrate "global" || return 1
 
     restart_frontend_nginx
     echo -e "${GREEN}Reconstrucción fresca DEV completada sin borrar la DB.${NC}"
@@ -753,10 +753,10 @@ cmd_rebuild_all_mfe() {
 
     echo -e "${YELLOW}Ejecutando migraciones de base de datos por microservicio...${NC}"
     for svc in "${BACKEND_DEV_SERVICES[@]}"; do
-        cmd_db_migrate "$svc" || true
+        cmd_db_migrate "$svc" || return 1
     done
     echo -e "${YELLOW}Ejecutando migraciones globales...${NC}"
-    cmd_db_migrate "global" || true
+    cmd_db_migrate "global" || return 1
 
     restart_frontend_nginx
     echo -e "${GREEN}App completa publicada: microservicios + microfrontends.${NC}"
@@ -786,7 +786,7 @@ cmd_rebuild_service() {
     compose_dev build "$service"
     compose_dev up -d --no-deps "$service"
     echo -e "${YELLOW}Ejecutando migraciones asociadas al servicio ${service}...${NC}"
-    cmd_db_migrate "$service" || echo -e "${YELLOW}Advertencia: Algunas migraciones del servicio pueden haber fallado${NC}"
+    cmd_db_migrate "$service" || return 1
     echo -e "${GREEN}Servicio ${service} reconstruido y reiniciado${NC}"
 }
 
@@ -1030,8 +1030,8 @@ cmd_db_migrate() {
     fi
 
     # Preparar carpeta temporal limpia en el contenedor
-    docker exec superapp-db rm -rf /tmp/migrations
-    docker exec superapp-db mkdir -p /tmp/migrations
+    docker exec superapp-db rm -rf /tmp/migrations || { echo "Error preparando migraciones; proceso detenido."; return 1; }
+    docker exec superapp-db mkdir -p /tmp/migrations || { echo "Error preparando migraciones; proceso detenido."; return 1; }
 
     local found_migrations=0
 
@@ -1039,8 +1039,8 @@ cmd_db_migrate() {
         if [ "$target_service" = "global" ] || [ "$target_service" = "root" ]; then
             echo -e "${YELLOW}Copiando migraciones globales (./db/migrations)...${NC}"
             if [ -d "./db/migrations" ]; then
-                docker cp ./db/migrations/. superapp-db:/tmp/migrations/global/
-                docker exec superapp-db sh -c "find /tmp/migrations/global -mindepth 2 -type f -delete 2>/dev/null || true"
+                docker cp ./db/migrations/. superapp-db:/tmp/migrations/global/ || { echo "Error preparando migraciones; proceso detenido."; return 1; }
+                docker exec superapp-db sh -c "find /tmp/migrations/global -mindepth 2 -type f -delete 2>/dev/null || true" || { echo "Error preparando migraciones; proceso detenido."; return 1; }
                 found_migrations=1
             fi
         else
@@ -1058,22 +1058,22 @@ cmd_db_migrate() {
                 # Buscar en backend/<dir>/db/migrations
                 if [ -d "./backend/$dir/db/migrations" ] && [ -n "$(find "./backend/$dir/db/migrations" -maxdepth 2 -type f -name '*.sql' 2>/dev/null)" ]; then
                     echo -e "${GREEN}  Encontrado en backend/${dir}/db/migrations${NC}"
-                    docker exec superapp-db mkdir -p "/tmp/migrations/backend-$dir"
-                    docker cp "./backend/$dir/db/migrations/." "superapp-db:/tmp/migrations/backend-$dir/"
+                    docker exec superapp-db mkdir -p "/tmp/migrations/backend-$dir" || { echo "Error preparando migraciones; proceso detenido."; return 1; }
+                    docker cp "./backend/$dir/db/migrations/." "superapp-db:/tmp/migrations/backend-$dir/" || { echo "Error preparando migraciones; proceso detenido."; return 1; }
                     found_migrations=1
                 fi
                 # Buscar en db/migrations/<dir>
                 if [ -d "./db/migrations/$dir" ] && [ -n "$(find "./db/migrations/$dir" -maxdepth 2 -type f -name '*.sql' 2>/dev/null)" ]; then
                     echo -e "${GREEN}  Encontrado en db/migrations/${dir}${NC}"
-                    docker exec superapp-db mkdir -p "/tmp/migrations/db-$dir"
-                    docker cp "./db/migrations/$dir/." "superapp-db:/tmp/migrations/db-$dir/"
+                    docker exec superapp-db mkdir -p "/tmp/migrations/db-$dir" || { echo "Error preparando migraciones; proceso detenido."; return 1; }
+                    docker cp "./db/migrations/$dir/." "superapp-db:/tmp/migrations/db-$dir/" || { echo "Error preparando migraciones; proceso detenido."; return 1; }
                     found_migrations=1
                 fi
             done
 
             if [ $found_migrations -eq 0 ]; then
                 echo -e "${YELLOW}No se encontraron archivos de migración específicos para el servicio: ${target_service}${NC}"
-                docker exec superapp-db rm -rf /tmp/migrations
+                docker exec superapp-db rm -rf /tmp/migrations || { echo "Error preparando migraciones; proceso detenido."; return 1; }
                 return 0
             fi
         fi
@@ -1081,7 +1081,7 @@ cmd_db_migrate() {
         # Caso 2: Migraciones globales + todos los microservicios
         echo -e "${YELLOW}Copiando migraciones globales (./db/migrations) al contenedor...${NC}"
         if [ -d "./db/migrations" ]; then
-            docker cp ./db/migrations/. superapp-db:/tmp/migrations/global/
+            docker cp ./db/migrations/. superapp-db:/tmp/migrations/global/ || { echo "Error preparando migraciones; proceso detenido."; return 1; }
             found_migrations=1
         fi
 
@@ -1090,25 +1090,26 @@ cmd_db_migrate() {
             if [ -d "$svc_dir" ] && [ -n "$(find "$svc_dir" -maxdepth 2 -type f -name '*.sql' 2>/dev/null)" ]; then
                 svc_name=$(basename "$(dirname "$svc_dir")")
                 echo -e "${GREEN}  Incluyendo migraciones de: backend/${svc_name}/db/migrations${NC}"
-                docker exec superapp-db mkdir -p "/tmp/migrations/services/$svc_name"
-                docker cp "$svc_dir/." "superapp-db:/tmp/migrations/services/$svc_name/"
+                docker exec superapp-db mkdir -p "/tmp/migrations/services/$svc_name" || { echo "Error preparando migraciones; proceso detenido."; return 1; }
+                docker cp "$svc_dir/." "superapp-db:/tmp/migrations/services/$svc_name/" || { echo "Error preparando migraciones; proceso detenido."; return 1; }
                 found_migrations=1
             fi
         done
     fi
 
     # Obtener lista de archivos SQL ordenados recursivamente (excluyendo la carpeta 'old' y 'archive')
-    MIGRATION_FILES=$(docker exec superapp-db sh -c "find /tmp/migrations -type f -name '*.sql' ! -path '*/old/*' ! -path '*/archive/*' ! -path '*/.*' 2>/dev/null | sort")
+    MIGRATION_FILES=$(docker exec superapp-db sh -c "find /tmp/migrations -type f -name '*.sql' ! -path '*/old/*' ! -path '*/archive/*' ! -path '*/.*' 2>/dev/null") || { echo "Error listando migraciones; proceso detenido."; return 1; }
+    MIGRATION_FILES=$(printf '%s\n' "$MIGRATION_FILES" | sort)
 
     if [ -z "$MIGRATION_FILES" ]; then
         echo -e "${YELLOW}No hay archivos de migración para ejecutar${NC}"
-        docker exec superapp-db rm -rf /tmp/migrations
+        docker exec superapp-db rm -rf /tmp/migrations || { echo "Error preparando migraciones; proceso detenido."; return 1; }
         return 0
     fi
 
     # Asegurar tabla de control de migraciones en esquema auth
-    docker exec superapp-db psql -U postgres -d esap_db -c "CREATE TABLE IF NOT EXISTS auth.migrations_db_log (filename TEXT PRIMARY KEY, executed_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now());" >/dev/null
-    MIGRATIONS_APPLIED=$(docker exec superapp-db psql -U postgres -d esap_db -At -c "SELECT filename FROM auth.migrations_db_log" 2>/dev/null)
+    docker exec superapp-db psql -X -v ON_ERROR_STOP=1 -U postgres -d esap_db -c "CREATE TABLE IF NOT EXISTS auth.migrations_db_log (filename TEXT PRIMARY KEY, executed_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now());" >/dev/null || { echo "Error preparando migraciones; proceso detenido."; return 1; }
+    MIGRATIONS_APPLIED=$(docker exec superapp-db psql -X -v ON_ERROR_STOP=1 -U postgres -d esap_db -At -c "SELECT filename FROM auth.migrations_db_log") || { echo "Error consultando historial; no se ejecutaron migraciones."; return 1; }
 
     # Ejecutar cada migración
     MIGRATION_COUNT=0
@@ -1130,21 +1131,25 @@ cmd_db_migrate() {
         echo -e "${YELLOW}[$MIGRATION_COUNT] Ejecutando: $relpath${NC}"
 
         # Ejecutar migración
-        if docker exec superapp-db psql -U postgres -d esap_db -f "$file" 2>&1; then
-            echo -e "${GREEN}    ✓ OK${NC}"
-            MIGRATION_SUCCESS=$((MIGRATION_SUCCESS + 1))
+        if docker exec superapp-db psql -X -v ON_ERROR_STOP=1 -U postgres -d esap_db -f "$file" 2>&1; then
             escaped_relpath=$(printf "%s" "$relpath" | sed "s/'/''/g")
             escaped_filename=$(printf "%s" "$filename" | sed "s/'/''/g")
-            docker exec superapp-db psql -U postgres -d esap_db -c "INSERT INTO auth.migrations_db_log (filename) VALUES ('$escaped_relpath') ON CONFLICT (filename) DO NOTHING;" >/dev/null
-            docker exec superapp-db psql -U postgres -d esap_db -c "INSERT INTO auth.migrations_db_log (filename) VALUES ('$escaped_filename') ON CONFLICT (filename) DO NOTHING;" >/dev/null
+            if ! docker exec superapp-db psql -X -v ON_ERROR_STOP=1 -U postgres -d esap_db -c "INSERT INTO auth.migrations_db_log (filename) VALUES ('$escaped_relpath'), ('$escaped_filename') ON CONFLICT (filename) DO NOTHING;" >/dev/null; then
+                echo "ERROR: SQL ejecutado, pero no se pudo registrar $relpath. Revisar antes de reintentar; proceso detenido."
+                MIGRATION_FAILED=$((MIGRATION_FAILED + 1))
+                break
+            fi
+            echo "    OK: $relpath ejecutada y registrada"
+            MIGRATION_SUCCESS=$((MIGRATION_SUCCESS + 1))
         else
-            echo -e "${RED}    ✗ ERROR${NC}"
+            echo "ERROR: fallo SQL en $relpath. Revisar posibles cambios parciales antes de reintentar; proceso detenido."
             MIGRATION_FAILED=$((MIGRATION_FAILED + 1))
+            break
         fi
     done
 
     # Limpiar archivos temporales
-    docker exec superapp-db rm -rf /tmp/migrations
+    docker exec superapp-db rm -rf /tmp/migrations || { echo "Error preparando migraciones; proceso detenido."; return 1; }
 
     echo ""
     echo -e "${GREEN}========================================${NC}"
@@ -1154,6 +1159,7 @@ cmd_db_migrate() {
     if [ $MIGRATION_FAILED -gt 0 ]; then
         return 1
     fi
+    echo "Migraciones completadas y registradas"
 }
 
 # Comando: db-reset (PELIGROSO)

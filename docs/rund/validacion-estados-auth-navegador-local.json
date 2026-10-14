@@ -1,0 +1,21 @@
+{
+  "verifiedAt": "2026-10-14T01:34:50.252Z",
+  "step": "12.3b.1",
+  "passed": true,
+  "browser": "Chrome/155.0.8059.40",
+  "compiledShellAndRemote": true,
+  "apiResponses": "fixtures interceptadas; sin tráfico API real",
+  "realBrowserProfileUsed": false,
+  "checks": [
+    "El remote real guarda roles en auth y sincroniza con RUND después",
+    "Fallo 503 muestra aviso y reintento sin reasignar roles",
+    "Los resultados parciales se muestran como sincronización incompleta",
+    "Asignar otros roles conserva auth sin llamar a RUND",
+    "Rechazo de auth mantiene el modal y no inicia sincronización",
+    "Historial Auth en remote real restaura una versión elegida y recarga el estado confirmado",
+    "La decisión en Personas conserva la revisión vista; 409 no se repite ni se anuncia como aprobación",
+    "Carpeta de Personas usa documentos del servidor y conserva locales pendientes"
+  ],
+  "apiRequestCount": 90,
+  "javascriptErrors": []
+}

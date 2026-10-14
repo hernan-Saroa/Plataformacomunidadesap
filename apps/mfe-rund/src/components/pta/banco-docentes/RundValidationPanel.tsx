@@ -6,7 +6,7 @@ import {
   UploadCloud, FileText, FolderOpen, X, Edit2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { apiClient } from '../../../../../shell/src/services/api';
+import { apiClient } from '../../../services/api/apiClient';
 import { useAuth } from '../../../contexts/AuthContext';
 import { sanitizeText } from '../../../utils/textSanitizer';
 import { BancoDocenteEditModal } from './BancoDocenteEditModal';
@@ -695,7 +695,7 @@ export function RundValidationPanel({ docenteId, cleanPersonaId, docente, onUpda
           <p style={{ fontSize: 12, color: '#64748B' }}>Últimas 50 acciones. Se conserva el historial de cargas, versiones y decisiones.</p>
           {auditError ? <p role="alert" style={{ fontSize: 12, color: '#B91C1C' }}>No fue posible consultar la trazabilidad. <button onClick={fetchRundData}>Reintentar</button></p> : rundAuditLog.length === 0 && <p style={{ fontSize: 12 }}>Sin acciones registradas.</p>}
           {rundAuditLog.map((entry: any) => <div key={entry.id} style={{ borderLeft: '2px solid #CBD5E1', padding: '8px 14px', marginBottom: 8, fontSize: 12 }}>
-            <strong>{String(entry.accion).replaceAll('_', ' ')} · {CATALOGO_BR039[entry.bloque]?.label || entry.bloque}</strong>
+            <strong>{String(entry.accion).replace(/_/g, ' ')} · {CATALOGO_BR039[entry.bloque]?.label || entry.bloque}</strong>
             <div style={{ color: '#64748B', marginTop: 4 }}>{entry.actorId || entry.actor_id} · {new Date(entry.createdAt).toLocaleString('es-CO')}</div>
             {entry.metadata?.campo && <div>Fila: {CATALOGO_BR039[entry.bloque]?.campos.find(c => (c.revisionId || c.tipoSoporte) === entry.metadata.campo)?.campo || entry.metadata.campo}</div>}
             {entry.metadata?.nombreArchivo && <div>{entry.metadata.nombreArchivo}</div>}

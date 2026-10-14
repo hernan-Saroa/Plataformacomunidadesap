@@ -21,6 +21,17 @@ describe('Autogestión: sesión OTP, borradores y propiedad', () => {
     return { service: service as BancoDocentesService, invitation, repo, db };
   }
 
+  it('el correo de invitación abre la entrada pública propia de RUND y conserva su token', async () => {
+    const { service, invitation } = build();
+    jest.spyOn(service as any, 'resolvePublicAppUrl').mockReturnValue('https://comunidad.example');
+    const result = await service.createInvitacion(invitation.correoInstitucional);
+    const [, , text, html] = (service as any).sendEmail.mock.calls[0];
+    const expected = `https://comunidad.example/rund/autogestion/docentes?token=${result.tokenAcceso}`;
+    expect(text).toContain(expected);
+    expect(html).toContain(`href="${expected}"`);
+    expect(invitation.tokenAcceso).toBe(result.tokenAcceso);
+  });
+
   it('el enlace del tablero no sirve como sesión, ni siquiera después de validar OTP', async () => {
     const { service, invitation } = build();
     await expect(service.getDraft(invitation.tokenAcceso)).rejects.toThrow(ForbiddenException);

@@ -22,6 +22,8 @@ import { toast } from 'sonner';
 // ============================================================================
 
 interface RequestConfig extends RequestInit {
+  /** Conserva el sobre para comprobar el resultado de sincronizaciones. */
+  preserveResponse?: boolean;
   skipAuth?: boolean;
   skipErrorToast?: boolean;
   skipAuthRefresh?: boolean;
@@ -294,6 +296,7 @@ export class ApiClient {
       skipAuth = false,
       skipErrorToast = false,
       skipAuthRefresh = false,
+      preserveResponse = false,
       retries = this.retryConfig.attempts,
       ...fetchConfig
     } = customConfig;
@@ -303,7 +306,7 @@ export class ApiClient {
 
     while (attempt <= retries) {
       try {
-        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh);
+        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh, preserveResponse);
       } catch (error: any) {
         lastError = error;
         attempt++;
@@ -337,6 +340,7 @@ export class ApiClient {
     skipAuth: boolean,
     skipErrorToast: boolean,
     allowRefresh = true,
+    preserveResponse = false,
   ): Promise<T> {
     const headers = skipAuth
       ? { 'Content-Type': 'application/json; charset=utf-8' }
@@ -367,7 +371,7 @@ export class ApiClient {
       if (response.status === 401 && !skipAuth && allowRefresh) {
         const newToken = await this.refreshAccessToken();
         if (newToken) {
-          return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false);
+          return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false, preserveResponse);
         }
         const expiredError: any = new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
         expiredError.status = 401;
@@ -375,7 +379,7 @@ export class ApiClient {
       }
 
       // Manejo de respuesta
-      return await this.handleResponse<T>(response, skipErrorToast, skipAuth);
+      return await this.handleResponse<T>(response, skipErrorToast, skipAuth, preserveResponse);
     } catch (error: any) {
       clearTimeout(timeoutId);
       if (!error.status && (error.name === 'TypeError' || error.name === 'AbortError')) {
@@ -484,7 +488,8 @@ export class ApiClient {
   private async handleResponse<T>(
     response: Response,
     skipErrorToast: boolean,
-    skipAuth: boolean
+    skipAuth: boolean,
+    preserveResponse = false,
   ): Promise<T> {
     // Si es 204 No Content, retornar null
     if (response.status === 204) {
@@ -535,6 +540,7 @@ export class ApiClient {
 
     // Success
     if (response.ok) {
+      if (preserveResponse) return data as T;
       if ('data' in data) {
         return data.data;
       }

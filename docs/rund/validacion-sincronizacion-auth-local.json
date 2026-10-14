@@ -1,0 +1,46 @@
+{
+  "verifiedAt": "2026-10-14T00:56:27.175Z",
+  "step": "12.3b.2",
+  "changedScopePassed": true,
+  "fullStep12Complete": false,
+  "rolloutEnabled": false,
+  "existingDatabaseUsed": false,
+  "realEnvironmentFilesChanged": false,
+  "builds": {
+    "auth": "passed",
+    "rund": "passed"
+  },
+  "unitTests": {
+    "auth": {
+      "suites": 9,
+      "tests": 80,
+      "passed": true
+    },
+    "rund": {
+      "suites": 41,
+      "tests": 509,
+      "passed": true
+    }
+  },
+  "postgres": {
+    "checks": 105,
+    "syncChecks": 16,
+    "passed": true,
+    "temporaryClusterRemoved": true,
+    "report": "validacion-sincronizacion-auth-postgres-local.json"
+  },
+  "compose": {
+    "compositions": 19,
+    "passed": true,
+    "otherModulesCompared": true,
+    "otherModulesUnchanged": true,
+    "report": "validacion-carpeta-compose.json"
+  },
+  "frontendChanged": false,
+  "remaining": [
+    "Contadores agregados según propietario (12.3b.3)",
+    "Panel inline con rutas PTA",
+    "Validación y preparación de activación del paso 12",
+    "Dependencias de otros módulos enumeradas en sección 9.2"
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "verifiedAt": "2026-10-13T21:03:21.808Z",
+  "step": "12.2",
+  "passedForChangedScope": true,
+  "entireStep12Complete": false,
+  "scope": "Interfaces shell/Personas, documentos persistidos de auth y consulta/versiones reales RUND; almacenamiento local anterior preservado.",
+  "verification": {
+    "frontend": {
+      "personas": {
+        "testFiles": 5,
+        "tests": 63,
+        "build": "OK"
+      },
+      "shell": {
+        "testFilesPassed": 9,
+        "testsPassed": 90,
+        "build": "OK",
+        "fullSuitePassed": false,
+        "preexistingFailedSuite": "disciplinary.service.spec.ts: jest is not defined"
+      },
+      "types": {
+        "shell": {
+          "before": 591,
+          "after": 586,
+          "newDiagnosticSignatures": [],
+          "fullTypecheckPassed": false
+        },
+        "personas": {
+          "before": 194,
+          "after": 192,
+          "newDiagnosticSignatures": [],
+          "fullTypecheckPassed": false
+        }
+      }
+    },
+    "backend": {
+      "rund": {
+        "suites": 40,
+        "tests": 484,
+        "build": "OK"
+      },
+      "auth": {
+        "suites": 6,
+        "tests": 59,
+        "build": "OK",
+        "runnerConfig": "scripts/jest-auth-carpeta.config.cjs"
+      }
+    },
+    "postgres": {
+      "checks": 59,
+      "syntheticDataOnly": true,
+      "report": "docs/rund/validacion-servicio-postgres-local.json"
+    },
+    "browser": {
+      "checks": 6,
+      "compiledShellAndRemote": true,
+      "apiResponses": "fixtures interceptadas; sin tráfico API real",
+      "javascriptErrors": [],
+      "report": "docs/rund/validacion-carpeta-interfaz-navegador-local.json"
+    }
+  },
+  "behavior": {
+    "newUploadsPersistInAuth": true,
+    "newUploadsWriteLocalStorage": false,
+    "localRecordsPreserved": true,
+    "localRecordsMarkedPending": true,
+    "localRecordsCompleteRequirements": false,
+    "oldQueueEntriesReplayed": false,
+    "oldQueueEntriesDeleted": false,
+    "actualRundVersionIds": true,
+    "wrongVersionFallback": false,
+    "simulatedZipContent": false,
+    "rawEnvelopeFailuresRejected": true,
+    "actorResolvedByServer": true
+  },
+  "hashes": {
+    "packages/shared-hooks/src/createCarpetaDigitalDocuments.ts": "80cfa98ba0749d10daf3abd5bd5214107dd0e2903acca41d4c5849c11e2c31d2",
+    "packages/shared-hooks/src/carpetaDigitalDocumentCases.ts": "d0893d85ad0f502af2cd48fe7efc833a80324f4a4be0f1ab132127a20cb46ef3",
+    "packages/shared-ui/src/carpeta-document-history.tsx": "e3bb60880c451b77a04d0dd6ffa15bcaf8fb122f0110ea8383ced3d29226d7d5",
+    "apps/shell/src/services/api/supabase.service.ts": "e0812b5e08b3f2983e197f0df7c024f7ad6b419af17e1173fec90da9013a6d21",
+    "apps/shell/src/components/shared/CarpetaDigitalSharedView.tsx": "9cbb86d41ac8797e1e0ab2e7584c5033bf2f9e0e9a08fb4ded0e591a5628878d",
+    "apps/mfe-gestion-personas/src/services/api/supabase.service.ts": "cf5623baf2c8a4bce5c38d226f9bae900562403f39f21cb856b46b49770251be",
+    "apps/mfe-gestion-personas/src/components/shared/CarpetaDigitalSharedView.tsx": "9ad0deb1f9aabb0b7841724c3f0e2e8f1c3e7595c6babdb07428ab5cdad33c08",
+    "apps/shell/src/services/api/apiClient.ts": "5cfbba85d1e9cb945eb0d65c876c789b943badb1c0db4e409e7d1d9a7d609e79",
+    "apps/shell/src/services/api/rundCachePolicy.ts": "ca3bedbc51899b223d19b4ac94a0fcafb72ba24ca27b6b582b48273246ffa2df",
+    "apps/shell/src/services/api/syncEngine.ts": "004f347694247bbc4b5ea3debbb924979e359b99e2c9a57b4c9d70cd014467f3",
+    "apps/shell/src/components/esap/DigitalFolderSection.tsx": "216dbca9205faf4dba2e161bb4e7b91867fccc32e96b909c19f429811b905a9d",
+    "apps/mfe-gestion-personas/src/components/admin/DigitalFolderSection.tsx": "25480233a4c10c274d4d3b15f39875d4167509a7604063b8dc7aa0105d359815",
+    "apps/shell/src/components/esap/DocumentVersionHistoryModal.tsx": "5ea8ca122ce53518cb6edee61e37b7184bdeaaf6563e1d4fafd024811abc7e79",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.controller.ts": "1df2e1bc4d095a57c134ca99828dc017dcef594061ebc2c3b17db5d81f7a2a3b",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.service.ts": "d9b6ea9ae105270fe3014da1e8a6896089c3f8ea12ec172d6ed4c63d2dd0258e",
+    "backend/auth-service/src/carpeta-digital/rund-carpeta.client.ts": "ef444c97686ca402abfed296f35b1ce5105c854b778a15b223dad323f9666c6b",
+    "backend/auth-service/src/carpeta-digital/carpeta-documentos-persistidos.spec.ts": "a8422e0ebb83d181091be2226276a80820c29a71b883ba05730c4b90396d957e",
+    "backend/rund-service/src/modules/banco-docentes/rund-carpeta-consulta.service.ts": "9a100c9e02c8ca97d23019fc0f6b7877c85dfc83db3d2fc007e1bf0fd3f73c9d",
+    "backend/rund-service/src/modules/banco-docentes/rund-carpeta-internal.controller.ts": "17a9905aa81cd967367c8572054cd39eee53109658fbdd784bc4d2bd57b1f36a",
+    "scripts/verify-rund-personas-browser.cjs": "5844e1db07723320216db394e5ab3197cde841dbfa0fb48d4ded308df2663796",
+    "scripts/verify-rund-service-integration.cjs": "6a3acff9b680b6b00e066120ac594a12b20908b41f9d0d8eb0dbb857584e284f"
+  },
+  "limitations": [
+    "Conexión RUND deshabilitada por defecto, sin despliegue ni cambios en .env reales.",
+    "Historial/restauración/etiquetas de documentos generales auth y sincronización autoritativa de estados pendientes del paso 12.3.",
+    "Operaciones de versiones sin backend y borrado masivo devuelven error; no producen éxito simulado.",
+    "Panel inline RUND conserva sus rutas históricas PTA hasta 12.3; no se copian sus registros.",
+    "Typechecks completos tienen diagnósticos heredados y una suite shell sigue sin arrancar; no se ocultaron.",
+    "Navegador usa APIs ficticias; bytes y rollback auth se probaron con HTTP/repositorios dobles y archivos temporales, sin base auth real."
+  ],
+  "nextPoint": "12.3: historial/restauración auth, sincronización de estados autoritativos, contadores entre propietarios y panel inline RUND."
+}

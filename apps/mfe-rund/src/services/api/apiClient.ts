@@ -13,9 +13,11 @@
  * - Direct Mode: Cada servicio en su puerto http://localhost:300X/{path}
  */
 
-import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../../config/environment';
-import type { ApiResponse, ApiError } from '../../types';
+import { config, getDefaultHeaders, CORS_CONFIG, API_MODE, MICROSERVICE_URLS, API_ENDPOINTS } from '../../config/environment';
+import type { ApiResponse, ApiError } from './responseTypes';
 import { toast } from 'sonner';
+import { getAppOnlineStatus } from '../../utils/connectivity';
+import { rundUploadEndpoint } from './rundUploadEndpoint';
 
 // ============================================================================
 // TIPOS INTERNOS
@@ -24,6 +26,7 @@ import { toast } from 'sonner';
 interface RequestConfig extends RequestInit {
   skipAuth?: boolean;
   skipErrorToast?: boolean;
+  skipErrorLog?: boolean;
   skipAuthRefresh?: boolean;
   retries?: number;
 }
@@ -44,6 +47,8 @@ export interface UploadRequestOptions {
   onProgressDetail?: (detail: UploadProgressDetail) => void;
   signal?: AbortSignal;
   timeoutMs?: number;
+  skipAuthRefresh?: boolean;
+  _authRetry?: boolean;
 }
 
 // ============================================================================
@@ -188,10 +193,12 @@ export class ApiClient {
       onProgressDetail,
       signal,
       timeoutMs,
+      skipAuthRefresh = false,
+      _authRetry = false,
     } = resolvedOptions;
 
     // Para upload, no enviamos Content-Type header (el browser lo setea automáticamente con boundary)
-    const headers = getDefaultHeaders(true);
+    const headers = this.addAuthHeader(getDefaultHeaders(true));
     delete (headers as any)['Content-Type'];
 
     return new Promise((resolve, reject) => {
@@ -218,7 +225,7 @@ export class ApiClient {
       }
 
       // Success
-      xhr.addEventListener('load', () => {
+      xhr.addEventListener('load', async () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const responseText = xhr.responseText;
@@ -231,6 +238,20 @@ export class ApiClient {
             resolve((response.data !== undefined ? response.data : response) as T);
           } catch (error) {
             reject(new Error('Error al parsear respuesta del servidor'));
+          }
+        } else if (xhr.status === 401 && !skipAuthRefresh && !_authRetry) {
+          try {
+            const newToken = await this.refreshAccessToken();
+            if (newToken) {
+              resolve(this.upload<T>(endpoint, formData, {
+                ...resolvedOptions,
+                _authRetry: true,
+              }));
+              return;
+            }
+            reject(new Error('Sesión expirada. Por favor, inicia sesión nuevamente.'));
+          } catch {
+            reject(new Error('Sesión expirada. Por favor, inicia sesión nuevamente.'));
           }
         } else {
           try {
@@ -257,6 +278,7 @@ export class ApiClient {
       });
 
       xhr.open('POST', url);
+      xhr.withCredentials = true;
 
       // Set headers
       Object.entries(headers).forEach(([key, value]) => {
@@ -293,6 +315,7 @@ export class ApiClient {
     const {
       skipAuth = false,
       skipErrorToast = false,
+      skipErrorLog = false,
       skipAuthRefresh = false,
       retries = this.retryConfig.attempts,
       ...fetchConfig
@@ -303,18 +326,19 @@ export class ApiClient {
 
     while (attempt <= retries) {
       try {
-        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh);
+        return await this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, !skipAuthRefresh, skipErrorLog);
       } catch (error: any) {
         lastError = error;
         attempt++;
 
         // No reintentar en estos casos
         if (
+          error.status === 400 || // Bad Request: error de validación/negocio, determinista — reintentar repite el mismo rechazo
           error.status === 401 || // Unauthorized
           error.status === 403 || // Forbidden
           error.status === 404 || // Not found
           error.status === 422 || // Validation error
-          !error.status ||        // Error de red: servicio no disponible
+          !error.status ||        // Error de red: servicio no disponible (ERR_CONNECTION_REFUSED, timeout, etc.)
           attempt > retries
         ) {
           throw error;
@@ -337,10 +361,16 @@ export class ApiClient {
     skipAuth: boolean,
     skipErrorToast: boolean,
     allowRefresh = true,
+    skipErrorLog = false,
   ): Promise<T> {
+    // Cada petición se valida con el servidor; no persistir perfiles ni encolar cambios.
+    if (!getAppOnlineStatus()) {
+      throw new Error('RUND requiere conexión para verificar los permisos y registrar el acceso.');
+    }
+
     const headers = skipAuth
       ? { 'Content-Type': 'application/json; charset=utf-8' }
-      : getDefaultHeaders(true);
+      : this.addAuthHeader(getDefaultHeaders(true));
 
     // Si el body es FormData, quitamos el Content-Type para que el navegador lo ponga con el boundary
     if (fetchConfig.body instanceof FormData) {
@@ -367,7 +397,7 @@ export class ApiClient {
       if (response.status === 401 && !skipAuth && allowRefresh) {
         const newToken = await this.refreshAccessToken();
         if (newToken) {
-          return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false);
+          return this.executeRequest<T>(url, fetchConfig, skipAuth, skipErrorToast, false, skipErrorLog);
         }
         const expiredError: any = new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
         expiredError.status = 401;
@@ -375,13 +405,18 @@ export class ApiClient {
       }
 
       // Manejo de respuesta
-      return await this.handleResponse<T>(response, skipErrorToast, skipAuth);
+      const responseData = await this.handleResponse<T>(response, skipErrorToast, skipAuth);
+
+      return responseData;
     } catch (error: any) {
       clearTimeout(timeoutId);
-      if (!error.status && (error.name === 'TypeError' || error.name === 'AbortError')) {
-        console.warn('?? Servicio no disponible:', url);
-      } else if (!url.includes(':3009/') && !url.includes('/notificaciones/')) {
-        console.log('?? Error en request:', error);
+      // Errores de red (servicio no disponible) — solo warn, no spam
+      if (!skipErrorLog && !url.includes('/notificaciones/') && !url.includes(':3009/') && !url.includes('/notifications')) {
+        if (!error.status && (error.name === 'TypeError' || error.name === 'AbortError')) {
+          // console.warn('⚠️ Servicio no disponible:', url);
+        } else {
+          // console.log('🔴 Error en request:', error);
+        }
       }
 
       if (error.name === 'AbortError') {
@@ -404,7 +439,7 @@ export class ApiClient {
   ): Promise<Blob> {
     const headers = skipAuth
       ? { Accept: '*/*' }
-      : getDefaultHeaders(true);
+      : this.addAuthHeader(getDefaultHeaders(true));
 
     // Para descargas no enviamos Content-Type JSON.
     delete (headers as any)['Content-Type'];
@@ -432,6 +467,9 @@ export class ApiClient {
         if (newToken) {
           return this.executeBlobRequest(url, fetchConfig, skipAuth, skipErrorToast, false);
         }
+        const expiredError: any = new Error('Sesión expirada. Por favor, inicia sesión nuevamente.');
+        expiredError.status = 401;
+        throw expiredError;
       }
 
       if (!response.ok) {
@@ -510,7 +548,7 @@ export class ApiClient {
       if (response.ok) {
         data = {} as any; // For 200 OK with empty body
       } else {
-        const emptyError: any = new Error('Error en la petición (sin detalles)');
+        const emptyError: any = new Error(`Error en la petición (status: ${response.status})`);
         emptyError.status = response.status;
         emptyError.response = { status: response.status, data: null };
         throw emptyError;
@@ -547,11 +585,20 @@ export class ApiClient {
     // Error
     if ('error' in data) {
       let errorMessage = 'Error desconocido';
-      let details = data.error.details;
-      if (typeof data.error === 'string') { // 1. Si error es string
+      let details = (data as any).error?.details || null;
+
+      // 1. Preferir siempre `message` si existe en el objeto raíz y es un string o array
+      if ('message' in data && data.message) {
+        if (typeof data.message === 'string' && data.message.trim() !== '') {
+          errorMessage = data.message;
+        } else if (Array.isArray(data.message) && data.message.length > 0) {
+          errorMessage = data.message.join(', ');
+        }
+      } else if (typeof data.error === 'string') {
+        // 2. Si error es string
         errorMessage = data.error || errorMessage;
-      }
-      if (typeof data.error === 'object' && data.error !== null) { // 2. Si error es objeto con message
+      } else if (typeof data.error === 'object' && data.error !== null) {
+        // 3. Si error es objeto con message
         const errObj = data.error as any;
         if (typeof errObj.message === 'string') {
           errorMessage = errObj.message || errorMessage;
@@ -559,18 +606,9 @@ export class ApiClient {
           errorMessage = errObj.message.join(', ');
         }
       }
-      if ((data as any).error === 'Unauthorized' && 'message' in data && typeof (data as any).message === 'string') { // 3. Caso especial Unauthorized con message en la raíz
-        errorMessage = (data as any).message;
+
+      if ((data as any).error === 'Unauthorized' && 'message' in data && typeof (data as any).message === 'string') {
         details = (data as any).message;
-      }
-      // 4. Caso NestJS standard exception filter (statusCode, message, error)
-      if ('message' in data && 'statusCode' in data) {
-        const msg = (data as any).message;
-        if (typeof msg === 'string') {
-          errorMessage = msg;
-        } else if (Array.isArray(msg)) {
-          errorMessage = msg.join(', ');
-        }
       }
 
       const error: any = new Error(errorMessage);
@@ -644,6 +682,10 @@ export class ApiClient {
     this.refreshSubscribers.forEach((callback) => callback(token || ''));
     this.refreshSubscribers = [];
   }
+
+  public addAuthHeader(headers: HeadersInit = {}): HeadersInit {
+    return headers;
+  }
   /**
    * Muestra toast de error según el código HTTP
    */
@@ -675,6 +717,7 @@ export class ApiClient {
    * En modo 'direct':  /auth/api/v1/login -> http://localhost:3002/login
    */
   private buildURL(endpoint: string, params?: Record<string, any>): string {
+    endpoint = rundUploadEndpoint(endpoint);
     let fullUrl: string;
 
     // En modo directo, extraer el servicio del endpoint y redirigir al puerto correcto
@@ -697,7 +740,7 @@ export class ApiClient {
           fullUrl = `${serviceUrl}${path}`;
         } else {
           // Servicio no encontrado, usar baseURL normal
-          console.warn(`?? Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);
+          console.warn(`⚠️ Servicio '${serviceName}' no encontrado en MICROSERVICE_URLS, usando baseURL`);
           fullUrl = `${this.baseURL}${endpoint}`;
         }
       } else {
@@ -740,18 +783,7 @@ export class ApiClient {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  /**
-   * Limpia cache (si está habilitado)
-   */
-  public clearCache(): void {
-    if (config.FEATURES.enableCache) {
-      Object.keys(localStorage)
-        .filter((key) => key.startsWith(config.STORAGE_KEYS.CACHE_PREFIX))
-        .forEach((key) => localStorage.removeItem(key));
-    }
-  }
 }
 
-// Singleton instance
 export const apiClient = new ApiClient();
 export default apiClient;

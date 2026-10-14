@@ -7,7 +7,7 @@ import {
   Check, Globe, Building2, ArrowRight, Shield, Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { bulkUploadBancoDocentes } from '../../../services/api/ptaApi';
+import { bulkUploadBancoDocentes } from '../../../services/api/rundApi';
 import { downloadBancoDocentesTemplate } from '../../../utils/bancoDocentesExcel';
 import * as XLSX from 'xlsx';
 

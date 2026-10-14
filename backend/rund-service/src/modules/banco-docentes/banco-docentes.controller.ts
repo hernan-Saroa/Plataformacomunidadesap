@@ -14,6 +14,7 @@ import { Roles } from '../../auth/roles.decorator';
 import { BancoDocentesRolesGuard } from './banco-docentes-roles.guard';
 import { RundDocumentosService } from './rund-documentos.service';
 import { validateEvidenceType } from './rund-evidence-workflow';
+import { rundLegacyUploadDirectory, rundUploadUrlForFile } from './rund-upload-paths';
 import { RequireRundPermissions, RUND_PERMISSIONS } from './rund-permissions';
 import {
   canViewRundSensitiveData,
@@ -500,9 +501,9 @@ export class BancoDocentesController {
   @Post('sync-from-auth')
   @Roles('GESTION_PROFESORAL', 'SUPER_ADMIN', 'super_admin', 'ADMIN')
   @RequireRundPermissions(RUND_PERMISSIONS.MANAGE)
-  async syncFromAuth() {
+  async syncFromAuth(@Req() req: any) {
     const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-    const result = await this.service.syncFromAuthService(authUrl);
+    const result = await this.service.syncFromAuthService(authUrl, this.requestActor(req));
     return { success: true, data: result };
   }
 
@@ -813,13 +814,15 @@ export class BancoDocentesController {
     limits: { fileSize: 10 * 1024 * 1024, files: 1 },
     storage: diskStorage({
       destination: (req, file, cb) => {
-        const docenteId = req.params.id || 'desconocido';
+        const docenteId = String(req.params.id || 'desconocido');
         const docenteNombre = req.body.docenteNombre ? String(req.body.docenteNombre).replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase() : docenteId;
-        const uploadPath = `./uploads/carpeta-digital/${docenteNombre}/RUND`;
-        if (!fs.existsSync(uploadPath)) {
+        try {
+          const uploadPath = rundLegacyUploadDirectory(docenteNombre);
           fs.mkdirSync(uploadPath, { recursive: true });
+          cb(null, uploadPath);
+        } catch (error) {
+          cb(error as Error, '');
         }
-        cb(null, uploadPath);
       },
       filename: (req, file, cb) => {
         const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
@@ -854,9 +857,7 @@ export class BancoDocentesController {
       let validacionTipo: any = undefined;
       if (file) {
         body.nombreArchivo = file.originalname;
-        const docenteId = id || 'desconocido';
-        const docenteNombre = body.docenteNombre ? String(body.docenteNombre).replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase() : docenteId;
-        body.documentoCarpetaId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file.filename}`;
+        body.documentoCarpetaId = rundUploadUrlForFile(file.path);
 
         // Validación SOFT de tipo de documento: escanea el PDF y compara contra
         // palabras clave derivadas del código de soporte (+ nombre/descripción si vienen).

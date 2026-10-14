@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Mail, ShieldCheck, ChevronRight, CheckCircle, Save, Loader2, User, Briefcase, GraduationCap, FileText, Upload, X, Paperclip } from 'lucide-react';
-import { apiClient } from '../../../../../shell/src/services/api';
-import { ESAPLogo } from '../../../../../shell/src/components/assets/ESAPLogo';
-import { vincularRundSoporte } from '../../../services/api/ptaApi';
+import { apiClient } from '../../../services/api/apiClient';
+import { ESAPLogo } from '../../assets/ESAPLogo';
+import { vincularRundSoporte } from '../../../services/api/rundApi';
 import { PerfilDocenteCabezote } from './PerfilDocenteCabezote';
 
 // Catálogo de soportes por bloque RUND (alineado con BancoDocentesService.CATALOGO_SOPORTE).

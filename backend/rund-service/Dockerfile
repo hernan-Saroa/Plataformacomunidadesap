@@ -5,7 +5,13 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci --prefer-offline --no-audit
+# El lock no está versionado: si falta, resolverlo una vez para ambas etapas.
+RUN --mount=type=cache,target=/root/.npm \
+    if [ -f package-lock.json ]; then \
+      npm ci --prefer-offline --no-audit; \
+    else \
+      npm install --package-lock=true --prefer-offline --no-audit; \
+    fi
 
 COPY . .
 RUN npm run build
@@ -15,8 +21,9 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN --mount=type=cache,target=/root/.npm npm install --omit=dev --prefer-offline --no-audit
+# Producción usa exactamente las versiones resueltas para compilar.
+COPY --from=builder /app/package*.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --prefer-offline --no-audit
 
 COPY --from=builder /app/dist ./dist
 

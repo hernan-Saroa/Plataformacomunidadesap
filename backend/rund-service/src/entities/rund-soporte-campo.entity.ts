@@ -10,7 +10,7 @@ export class RundSoporteCampoEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'docente_id', type: 'uuid', nullable: true })
+  @Column({ name: 'docente_id', type: 'text', nullable: true })
   docenteId: string | null;
 
   /**
@@ -48,7 +48,7 @@ export class RundSoporteCampoEntity {
   /**
    * Estado del soporte: Pendiente | Aprobado | Rechazado
    */
-  @Column({ name: 'estado', type: 'text', default: 'Pendiente' })
+  @Column({ name: 'estado', type: 'varchar', length: 50, default: 'Pendiente' })
   estado: string;
 
   @Column({ name: 'revisiones_campos', type: 'jsonb', default: () => "'{}'::jsonb" })
@@ -64,7 +64,7 @@ export class RundSoporteCampoEntity {
   /**
    * Quién cargó el soporte.
    */
-  @Column({ name: 'cargado_por', type: 'text', nullable: true })
+  @Column({ name: 'cargado_por', type: 'varchar', length: 255, nullable: true })
   cargadoPor: string | null;
 
   /**

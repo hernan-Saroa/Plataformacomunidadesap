@@ -338,7 +338,7 @@ describe('MacroDocenteService - REQ-RUND-F022 acceso externo temporal', () => {
     expect(notifyMock).toHaveBeenCalledWith(expect.objectContaining({
       enteNombre: 'MEN',
       enteContacto: 'contacto@men.gov.co',
-      path: expect.stringContaining('/externo/'),
+      path: expect.stringMatching(/^\/services\/rund\/api\/v1\/pta\/macro-docente\/externo\/[\w-]+$/),
     }));
   });
 

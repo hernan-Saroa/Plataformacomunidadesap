@@ -13,6 +13,7 @@ import { ProfileModal } from './ProfileModal';
 import { NotificationsProvider } from './NotificationsContext';
 import { TourProvider } from './gestion-legal/design-system/TourContext';
 import { modulesService, type ActiveModuleInfo } from '../../services/api/modules.service';
+import { RundShellModule } from '../rund/RundEntries';
 
 function isReactComponentCandidate(value: unknown): boolean {
   if (typeof value === 'function') {
@@ -104,7 +105,6 @@ const GestionUsuariosPasswordTracking = lazyRemote(() => import('gestion_persona
 const GestionProfesoralApp = lazyRemote(() => import('gestion_profesoral/Module'), ['GestionProfesoralApp']);
 const ContratacionModulePremium = lazyRemote(() => import('contratacion/Module'), ['ContratacionModulePremium']);
 const ViaticosModulePremium = lazyRemote(() => import('viaticos/Module'), ['ViaticosModulePremium']);
-const RundModulePremium = lazyRemote(() => import('rund/Module'), ['RundModulePremium']);
 const ProgramacionAcademicaModule = lazyRemote(() => import('programacion_academica/Module'), ['ProgramacionAcademicaModule']);
 const GestionInfraestructuraModule = lazyRemote(() => import('gestion_infraestructura/Module'), ['GestionInfraestructuraModule']);
 const ChatbotModule = lazyRemote(() => import('chatbot/Module'), ['ChatbotModule', 'default']);
@@ -311,6 +311,7 @@ const MODULE_TO_DEFAULT_SIDEBAR: Partial<Record<ModuleView, string>> = {
   'gestion-infraestructura': 'gestion-infraestructura',
   'banco-docentes-pta': 'banco-docentes-pta',
   'gestion-profesoral': 'gestion-profesoral',
+  'rund': 'rund',
 };
 
 const CONTROL_INTERNO_ROLE_CODES = new Set([
@@ -458,9 +459,10 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
     .map(normalizeRoleCode)
     .some((role) => CONTROL_INTERNO_ROLE_CODES.has(role));
   
-  const urlParamModule = typeof window !== 'undefined'
-    ? (new URLSearchParams(window.location.search).get('module') as ModuleView | null)
+  const requestedModule = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('module')
     : null;
+  const urlParamModule = (requestedModule === 'banco-docentes' ? 'banco-docentes-pta' : requestedModule) as ModuleView | null;
   const isUrlDisciplinario = typeof window !== 'undefined' && (
     urlParamModule === 'control-disciplinario' ||
     window.location.pathname.startsWith('/control-disciplinario')
@@ -800,19 +802,15 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         );
 
       case 'banco-docentes-pta':
+      case 'rund':
         return (
-          <Suspense fallback={<ModuleLoader />}>
-            <PTAModule
-              key="pta-banco-docentes"
+            <RundShellModule
               userPersonId={currentUser.personId}
               userName={currentUser.name}
               userEmail={currentUser.email}
               userRoles={userData?.roles || userRoles || []}
               userPermissions={userPermissionsList}
-              embedded
-              initialView="banco_docentes"
             />
-          </Suspense>
         );
 
       case 'certificados-laborales':
@@ -872,20 +870,6 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
         return (
           <Suspense fallback={<ModuleLoader />}>
             <ViaticosModulePremium />
-          </Suspense>
-        );
-
-      case 'rund':
-        return (
-          <Suspense fallback={<ModuleLoader />}>
-            <RundModulePremium
-              userPersonId={currentUser.personId}
-              userName={currentUser.name}
-              userEmail={currentUser.email}
-              userRoles={userData?.roles || userRoles || []}
-              userPermissions={userPermissionsList}
-              embedded
-            />
           </Suspense>
         );
 

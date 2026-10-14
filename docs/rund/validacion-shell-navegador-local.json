@@ -1,0 +1,17 @@
+{
+  "verifiedAt": "2026-10-14T04:26:37.403Z",
+  "passed": true,
+  "browser": "Chrome/155.0.8059.40",
+  "compiledShellAndRemote": true,
+  "apiResponses": "fixtures interceptadas; sin tráfico API real",
+  "realBrowserProfileUsed": false,
+  "checks": [
+    "Menú histórico carga el remote real RUND y consulta su servicio",
+    "Entrada module=rund conserva carga y sesión del shell",
+    "El alias module=banco-docentes sigue abriendo el banco RUND",
+    "Autogestión federada funciona sin login y solicita OTP a RUND",
+    "La ruta pública anterior conserva el formulario y OTP de PTA"
+  ],
+  "apiRequestCount": 43,
+  "javascriptErrors": []
+}

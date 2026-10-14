@@ -45,6 +45,6 @@ export class RundAccesoExternoEntity {
   @Column({ name: 'revoked_by', type: 'text', nullable: true })
   revokedBy: string | null;
 
-  @CreateDateColumn({ name: 'createdAt', default: () => 'CURRENT_TIMESTAMP' })
+  @CreateDateColumn({ name: 'createdAt', type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   createdAt: Date;
 }

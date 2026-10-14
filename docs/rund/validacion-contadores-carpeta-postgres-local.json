@@ -1,0 +1,16 @@
+{
+  "verifiedAt": "2026-10-14T09:38:39.913Z",
+  "step": "12.3b.3",
+  "passed": true,
+  "syntheticDataOnly": true,
+  "existingDatabaseUsed": false,
+  "checks": [
+    "global, carpeta y listado coinciden por estado, con UUID/nombres iguales en tres propietarios",
+    "dos soportes de una misma versión no duplican el documento vigente",
+    "estados, reclasificación y retiro Auth se reflejan sin modificar originales PTA/RUND",
+    "credencial interna obligatoria y lotes inválidos no producen contadores exitosos",
+    "PTA no disponible falla explícitamente y no bloquea la subida propia de Auth",
+    "auditoría RUND fallida impide anunciar un agregado parcial o un cero",
+    "bandera apagada conserva el alcance Auth explícito sin consultar al propietario remoto"
+  ]
+}

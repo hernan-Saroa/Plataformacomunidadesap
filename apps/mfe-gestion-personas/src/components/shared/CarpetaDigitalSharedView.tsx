@@ -1,3 +1,5 @@
+import { CarpetaDocumentHistory } from '../../../../../packages/shared-ui/src/carpeta-document-history';
+import { documentosService } from '../../services/api/supabase.service';
 /**
  * CARPETA DIGITAL - VISTA UNIFICADA COMPARTIDA
  * 
@@ -15,6 +17,9 @@
  */
 
 import React, { useState, useMemo, useCallback, useRef, Fragment, useEffect } from 'react';
+import { carpetaDocumentStats } from '../../../../../packages/shared-hooks/src/carpetaDocumentStats';
+import { useRundInline } from '../../../../../packages/shared-hooks/src/useRundInline';
+import { RundInlineSelector } from '../../../../../packages/shared-ui/src/rund-inline-selector';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -58,6 +63,16 @@ export interface CarpetaDocumento {
   fecha_vencimiento?: string;
   tipo_documento_id?: string;
   url_archivo?: string;
+  contenido_restringido?: boolean;
+  pendiente_de_guardar?: boolean;
+  servicio_propietario?: 'auth' | 'rund' | 'pta' | 'local';
+  rund_perfil_id?: string;
+  rund_perfil_propietario?: 'rund' | 'pta';
+  tipo_soporte_rund?: string;
+  bloque_rund?: string;
+  versionado_disponible?: boolean;
+  revision_documento?: string | null;
+  requiere_revision_documento?: boolean;
 }
 
 export interface TipoDocumentoRequerido {
@@ -462,7 +477,7 @@ function DetailPanel({ doc, reqTipo, mode, userRole, onClose, onPreview, onDownl
               <Icon style={{ width: 28, height: 28, color: '#003DA5' }} />
             </div>
             <h4 style={{ fontSize: 15, fontWeight: 700, color: '#1F2937', wordBreak: 'break-word', padding: '0 16px' }}>{doc.nombre}</h4>
-            <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>{formatSize(doc.tamano_bytes)} · v{doc.version_actual || 1}</p>
+            <p style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>{formatSize(doc.tamano_bytes)}{doc.version_actual ? ` · v${doc.version_actual}` : ''}</p>
           </div>
 
           {/* Status Badge */}
@@ -650,26 +665,15 @@ export function CarpetaDigitalSharedView({
     setCurrentSubfolder(null);
   }, []);
 
-  // ========== RUND STATE & HANDLERS ==========
-  const [tarjetaRund, setTarjetaRund] = useState<any | null>(null);
-  const [rundBloques, setRundBloques] = useState<any[]>([]);
-  const [rundAuditLog, setRundAuditLog] = useState<any[]>([]);
-  const [loadingRund, setLoadingRund] = useState(false);
-  const [rundError, setRundError] = useState<string | null>(null);
-  const [expandedRundBloques, setExpandedRundBloques] = useState<Set<string>>(new Set(['IDENTIDAD']));
-  const [isRundExpanded, setIsRundExpanded] = useState(false);
-  const [showRundAudit, setShowRundAudit] = useState(false);
+  // Perfil explícito: nunca resolver por cédula, nombre ni un periodo elegido arbitrariamente.
+  const cleanPersonaId = useMemo(() => String(personaId || '').replace(/^(persona|carpeta):/, ''), [personaId]);
+  const rund = useRundInline(apiClient, cleanPersonaId, documentos, onRefresh);
+  const tarjetaRund = rund.selected ? { docenteId: rund.selected.id } : null;
+  const fetchRundData = rund.refresh;
   const [rundActionLoading, setRundActionLoading] = useState<string | null>(null);
-  const [devolverRundBloque, setDevolverRundBloque] = useState<string | null>(null);
-  const [devolverRundObs, setDevolverRundObs] = useState('');
-  const [uploadingRundDoc, setUploadingRundDoc] = useState<{ bloque: string; tipo: string } | null>(null);
+  const [uploadingRundDoc, setUploadingRundDoc] = useState<{ bloque: string; tipo: string; profileKey: string } | null>(null);
   const rundFileInputRef = useRef<HTMLInputElement>(null);
   const [rundPreviewUrl, setRundPreviewUrl] = useState<{ url: string; name: string } | null>(null);
-
-  const cleanPersonaId = useMemo(() => {
-    if (!personaId) return '';
-    return personaId.replace('persona:', '');
-  }, [personaId]);
 
   const isDocInCategory = useCallback((doc: CarpetaDocumento, cat: string) => {
     const categories = ['personal', 'rund', 'academico', 'laboral', 'certificados', 'administrativo', 'otros'];
@@ -680,114 +684,11 @@ export function CarpetaDigitalSharedView({
   }, []);
 
   // ========== MAPPED RUND DOCUMENTS & TYPES ==========
-  const mappedRundDocs = useMemo<CarpetaDocumento[]>(() => {
-    if (!tarjetaRund) return [];
-    const docs: CarpetaDocumento[] = [];
-    const seenIds = new Set<string>();
-    const seenTipos = new Set<string>();
-    
-    /**
-     * processSoporte: ONLY creates a document entry if the soporte record
-     * represents a REAL uploaded file (has nombre_archivo or documento_carpeta_id).
-     */
-    const processSoporte = (sop: any) => {
-      const hasRealFile = !!(sop.nombre_archivo || sop.documento_carpeta_id || sop.url);
-      if (!hasRealFile) return;
-
-      const tipoCode = (sop.tipo || sop.tipo_soporte || '').toLowerCase();
-      if (!tipoCode) return;
-
-      const rowId = sop.id ? String(sop.id) : null;
-      if (rowId && seenIds.has(rowId)) return;
-      if (rowId) seenIds.add(rowId);
-      if (seenTipos.has(tipoCode)) return;
-      seenTipos.add(tipoCode);
-
-      const fileName = sop.nombre_archivo || sop.nombre || `${tipoCode}.pdf`;
-      const fileUrl = sop.documento_carpeta_id || sop.url || '';
-      const estadoRaw = (sop.estado || '').toLowerCase();
-      const estado: 'validado' | 'rechazado' | 'pendiente' =
-        estadoRaw === 'aprobado' || estadoRaw === 'aceptado' || estadoRaw === 'ok'
-          ? 'validado'
-          : estadoRaw === 'rechazado' || estadoRaw === 'devuelto'
-            ? 'rechazado'
-            : 'pendiente';
-
-      docs.push({
-        id: sop.id || `rund-soporte-${tipoCode}`,
-        carpeta_id: `carpeta:${cleanPersonaId}`,
-        nombre: fileName,
-        categoria: 'rund',
-        tipo_documento_id: `rund_${tipoCode}`,
-        tipo_archivo: fileName.split('.').pop()?.toLowerCase() || 'pdf',
-        tamano_bytes: sop.tamano || sop.tamano_bytes || 0,
-        estado,
-        fecha_subida: sop.createdAt || sop.fecha_carga || new Date().toISOString(),
-        url_archivo: fileUrl,
-        version_actual: 1,
-        comentarios: sop.observacion || ''
-      });
-    };
-    
-    // ── Source 0: resumenSoportes de la tarjeta (fuente más directa y confiable) ──
-    // El backend ahora incluye en getTarjetaRUND un array plano con todos los soportes
-    // que tienen archivo real. Esto elimina la necesidad de llamar /bloques por separado.
-    if (Array.isArray(tarjetaRund.resumenSoportes) && tarjetaRund.resumenSoportes.length > 0) {
-      tarjetaRund.resumenSoportes.forEach(processSoporte);
-    }
-
-    // ── Source 1: Real soportes from /bloques API (RundSoporteCampo table, per docente) ──
-    if (rundBloques && rundBloques.length > 0) {
-      rundBloques.forEach(bloque => {
-        if (Array.isArray(bloque.soportes)) {
-          bloque.soportes.forEach(processSoporte);
-        }
-      });
-    }
-    
-    // Source 2: soportes embedded in /tarjeta-rund response (from the IDENTIDAD/FORMACION/etc. sub-objects)
-    // Always runs (deduplication via seenTipos/seenIds prevents double-counting with Source 1).
-    if (tarjetaRund.bloques && typeof tarjetaRund.bloques === 'object') {
-      Object.values(tarjetaRund.bloques).forEach((bloqueData: any) => {
-        if (Array.isArray(bloqueData?.soportes)) {
-          bloqueData.soportes.forEach(processSoporte);
-        }
-      });
-    }
-
-    // Source 3: validacionDocumental entries with a real Carpeta Digital file link
-    // STRICT: only rows with id_documento_carpeta are real uploaded files.
-    if (Array.isArray(tarjetaRund.validacionDocumental)) {
-      tarjetaRund.validacionDocumental.forEach((val: any) => {
-        if (!val.id_documento_carpeta) return;
-        const campoRund = (val.campo_rund || '').toLowerCase();
-        if (!campoRund || seenTipos.has(campoRund)) return;
-        seenTipos.add(campoRund);
-        const estadoDoc = (val.estado_documento || '').toLowerCase();
-        docs.push({
-          id: val.id || `rund-val-${campoRund}`,
-          carpeta_id: `carpeta:${cleanPersonaId}`,
-          nombre: val.nombre_archivo || `${campoRund}.pdf`,
-          categoria: 'rund',
-          tipo_documento_id: `rund_${campoRund}`,
-          tipo_archivo: 'pdf',
-          tamano_bytes: 0,
-          estado: estadoDoc === 'aceptado' || estadoDoc === 'aprobado' ? 'validado'
-                : estadoDoc === 'rechazado' ? 'rechazado' : 'pendiente',
-          fecha_subida: val.fecha_carga || val.created_at || new Date().toISOString(),
-          url_archivo: val.id_documento_carpeta,
-          version_actual: 1,
-          comentarios: val.observacion || '',
-        });
-      });
-    }
-    
-    return docs;
-  }, [tarjetaRund, rundBloques, cleanPersonaId]);
-
-  const combinedDocumentos = useMemo<CarpetaDocumento[]>(() => {
-    return [...documentos, ...mappedRundDocs];
-  }, [documentos, mappedRundDocs]);
+  const mappedRundDocs = useMemo<CarpetaDocumento[]>(() => rund.selectedDocs.map(doc => ({ ...doc,
+    tipo_documento_id: doc.tipo_soporte_rund ? 'rund_' + doc.tipo_soporte_rund.toLowerCase() : doc.tipo_documento_id,
+  })), [rund.selectedDocs]);
+  // El panel no añade copias, versiones antiguas ni campos convertidos en archivos.
+  const combinedDocumentos = documentos;
 
   const mappedRundTipos = useMemo<TipoDocumentoRequerido[]>(() => {
     if (!tarjetaRund) return [];
@@ -855,11 +756,13 @@ export function CarpetaDigitalSharedView({
     return 'OTROS';
   };
 
+  const getBloqueForDocument = (doc: CarpetaDocumento) => doc.bloque_rund || getBloqueForTipoSoporte(doc.tipo_soporte_rund || String(doc.tipo_documento_id || '').replace(/^rund_/, ''));
+
   const currentFolderDocs = useMemo(() => {
     if (!currentFolder) return [];
     return combinedDocumentos.filter(d => 
       isDocInCategory(d, currentFolder) && 
-      (currentFolder !== 'rund' || getBloqueForTipoSoporte(d.id.replace('rund-soporte-', '')) === currentSubfolder)
+      (currentFolder !== 'rund' || getBloqueForDocument(d) === currentSubfolder)
     );
   }, [combinedDocumentos, currentFolder, currentSubfolder, isDocInCategory]);
 
@@ -903,24 +806,10 @@ export function CarpetaDigitalSharedView({
         const doc = currentFolderDocs[i];
         setZipProgress(Math.round((i / currentFolderDocs.length) * 100));
 
-        let fileBlob: Blob;
-        try {
-          if (doc.url_archivo) {
-            const res = await fetch(doc.url_archivo);
-            if (res.ok) {
-              fileBlob = await res.blob();
-            } else {
-              throw new Error(`Status ${res.status}`);
-            }
-          } else {
-            throw new Error('Sin URL de archivo');
-          }
-        } catch (err) {
-          console.warn(`Error al descargar ${doc.nombre}, usando fallback simulado`, err);
-          fileBlob = new Blob([
-            `Contenido simulado de soporte\nNombre: ${doc.nombre}\nEstado: ${doc.estado}\nSubido: ${doc.fecha_subida}\nObservaciones: ${doc.comentarios || 'Ninguna'}`
-          ], { type: 'text/plain' });
+        if (doc.contenido_restringido || doc.pendiente_de_guardar || !doc.url_archivo) {
+          throw new Error('Hay archivos restringidos o pendientes de guardar en esta carpeta.');
         }
+        const fileBlob = await apiClient.getBlob(doc.url_archivo);
 
         const ext = doc.nombre.includes('.') ? '' : `.${doc.tipo_archivo}`;
         zip.file(`${doc.nombre}${ext}`, fileBlob);
@@ -952,157 +841,37 @@ export function CarpetaDigitalSharedView({
     }
   }, [currentFolderDocs, currentFolder, currentSubfolder, persona]);
 
-  const currentUserId = useMemo(() => {
-    if (typeof window === 'undefined') return 'admin-user';
-    const authUser = (window as any).__esap_auth_cache;
-    if (authUser) {
-      return authUser.id || authUser.id_user || authUser.userId || authUser.sub || 'admin-user';
-    }
-    return 'admin-user';
-  }, []);
-
-  const fetchRundData = useCallback(async () => {
-    if (!cleanPersonaId) {
-      setTarjetaRund(null);
-      setRundBloques([]);
-      setRundAuditLog([]);
-      return;
-    }
-    setLoadingRund(true);
-    setRundError(null);
-    try {
-      const res = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/by-persona/${cleanPersonaId}/tarjeta-rund`);
-      const data = res?.data || res;
-      if (data && data.docenteId) {
-        setTarjetaRund(data);
-        
-        const bloquesRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${data.docenteId}/bloques?_t=${Date.now()}`);
-        const bloquesData = bloquesRes?.data || bloquesRes;
-        const bloquesArr = Array.isArray(bloquesData) ? bloquesData : [];
-        setRundBloques(bloquesArr);
-
-        const auditRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${data.docenteId}/auditoria`);
-        const auditData = Array.isArray(auditRes?.data) ? auditRes.data : Array.isArray(auditRes) ? auditRes : [];
-        setRundAuditLog(auditData);
-      } else {
-        setTarjetaRund(null);
-        setRundBloques([]);
-        setRundAuditLog([]);
-      }
-    } catch (err) {
-      setTarjetaRund(null);
-      setRundBloques([]);
-      setRundAuditLog([]);
-    } finally {
-      setLoadingRund(false);
-    }
-  }, [cleanPersonaId]);
-
+  useEffect(() => { handleSetFolder(null); setUploadingRundDoc(null); }, [cleanPersonaId]);
   useEffect(() => {
-    fetchRundData();
-  }, [fetchRundData]);
-
-  // Escuchar el evento de sincronización disparado por RundValidationPanel.
-  // Cuando cualquier panel RUND sube un documento, refrescamos automáticamente
-  // los datos RUND de la Carpeta Digital SIN necesidad de recargar la página.
-  // Esto garantiza que todos los docentes del banco queden sincronizados.
-  useEffect(() => {
-    const handleRundUpload = () => {
-      fetchRundData();
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (rund.busy || (detail?.personaId && detail.personaId !== cleanPersonaId)) return;
+      void fetchRundData(); onRefresh?.();
     };
-    window.addEventListener('rund:soporte-uploaded', handleRundUpload);
-    return () => window.removeEventListener('rund:soporte-uploaded', handleRundUpload);
-  }, [fetchRundData]);
+    window.addEventListener('rund:soporte-uploaded', handler);
+    return () => window.removeEventListener('rund:soporte-uploaded', handler);
+  }, [fetchRundData, rund.busy, cleanPersonaId, onRefresh]);
 
-  useEffect(() => {
-    handleSetFolder(null);
-  }, [cleanPersonaId, fetchRundData]);
-
-  const toggleRundBloque = (bloque: string) => {
-    setExpandedRundBloques(prev => {
-      const next = new Set(prev);
-      if (next.has(bloque)) next.delete(bloque); else next.add(bloque);
-      return next;
-    });
-  };
-
-  const handleAprobarRund = async (bloque: string) => {
-    if (!tarjetaRund?.docenteId) return;
+  const performRundUpload = useCallback(async (file: File, bloque: string, tipo: string, profileKey: string): Promise<boolean> => {
     setRundActionLoading(bloque);
     try {
-      const res = await apiClient.post<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/aprobar`, {
-        aprobadorId: currentUserId,
-      });
-      if (res?.success || res) {
-        toast.success(`Bloque ${bloque} aprobado.`);
-        await fetchRundData();
-      } else {
-        toast.error('No se pudo aprobar el bloque.');
-      }
-    } catch (err: any) {
-      toast.error(err?.message || 'Error al aprobar el bloque.');
-    } finally {
-      setRundActionLoading(null);
-    }
-  };
-
-  const handleDevolverRund = async () => {
-    if (!devolverRundBloque || !devolverRundObs.trim() || !tarjetaRund?.docenteId) return;
-    setRundActionLoading(devolverRundBloque);
-    try {
-      const res = await apiClient.post<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${devolverRundBloque}/devolver`, {
-        aprobadorId: currentUserId,
-        observacion: devolverRundObs,
-      });
-      if (res?.success || res) {
-        toast.success(`Bloque ${devolverRundBloque} devuelto.`);
-        setDevolverRundBloque(null);
-        setDevolverRundObs('');
-        await fetchRundData();
-      } else {
-        toast.error('No se pudo devolver el bloque.');
-      }
-    } catch (err: any) {
-      toast.error(err?.message || 'Error al devolver el bloque.');
-    } finally {
-      setRundActionLoading(null);
-    }
-  };
+      await rund.upload(file, bloque, tipo, profileKey);
+      toast.success('El propietario confirmó el archivo guardado.');
+      return true;
+    } catch (error: any) { toast.error(error?.message || 'No fue posible guardar el soporte.'); return false; }
+    finally { setRundActionLoading(null); }
+  }, [rund.upload]);
 
   const handleVincularRundClick = (bloque: string, tipo: string) => {
-    setUploadingRundDoc({ bloque, tipo });
-    if (rundFileInputRef.current) {
-      rundFileInputRef.current.value = '';
-      rundFileInputRef.current.click();
-    }
+    if (!rund.selected || rund.loading || rund.error || rund.busy) { toast.info('Seleccione un perfil disponible antes de adjuntar.'); return; }
+    setUploadingRundDoc({ bloque, tipo, profileKey: rund.key });
+    if (rundFileInputRef.current) { rundFileInputRef.current.value = ''; rundFileInputRef.current.click(); }
   };
-
   const handleRundFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !uploadingRundDoc || !tarjetaRund?.docenteId) return;
-    
-    const { bloque, tipo } = uploadingRundDoc;
-    setRundActionLoading(bloque);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('tipoSoporte', tipo);
-      formData.append('nombreArchivo', file.name);
-      formData.append('cargadoPor', currentUserId);
-
-      const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
-      if (res?.success || res) {
-        toast.success(`Documento "${file.name}" cargado exitosamente.`);
-        await fetchRundData();
-      } else {
-        toast.error('Error al cargar el documento.');
-      }
-    } catch (err: any) {
-      toast.error(err?.message || 'Error al cargar el documento.');
-    } finally {
-      setRundActionLoading(null);
-      setUploadingRundDoc(null);
-    }
+    const file = event.target.files?.[0], queued = uploadingRundDoc;
+    if (!file || !queued) return;
+    await performRundUpload(file, queued.bloque, queued.tipo, queued.profileKey);
+    setUploadingRundDoc(null);
   };
 
   const handleDirectUpload = useCallback(async (file: File, tipo: TipoDocumentoRequerido): Promise<boolean> => {
@@ -1118,44 +887,19 @@ export function CarpetaDigitalSharedView({
     }
 
     if (tipo.id.startsWith('rund_')) {
-      if (!tarjetaRund?.docenteId) {
-        toast.error('No hay docente RUND activo');
-        return false;
-      }
-      const tipoSoporteCode = tipo.id.replace('rund_', '');
-      const bloque = getBloqueForTipoSoporte(tipoSoporteCode);
-      setRundActionLoading(bloque);
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('tipoSoporte', tipoSoporteCode);
-        formData.append('nombreArchivo', file.name);
-        formData.append('cargadoPor', currentUserId);
-
-        const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
-        if (res?.success || res) {
-          toast.success(`Soporte "${file.name}" cargado para RUND - ${tipo.nombre}`);
-          await fetchRundData();
-          return true;
-        } else {
-          toast.error('Error al cargar el soporte en RUND.');
-        }
-      } catch (err: any) {
-        toast.error(err?.message || 'Error al cargar el soporte.');
-      } finally {
-        setRundActionLoading(null);
-      }
-      return false;
+      const type = tipo.id.replace('rund_', '');
+      return performRundUpload(file, getBloqueForTipoSoporte(type), type, rund.key);
     } else if (onUploadDirect) {
       return await onUploadDirect(file, tipo.id, tipo.categoria);
     }
     return false;
-  }, [tarjetaRund, currentUserId, onUploadDirect, fetchRundData]);
-
-  const findRundSoporte = (soportes: any[], tipo: string) =>
-    soportes?.find((s: any) => s.tipo_soporte === tipo || s.tipo === tipo);
+  }, [rund.key, performRundUpload, onUploadDirect]);
 
   const handlePreview = useCallback((doc: CarpetaDocumento) => {
+    if (doc.contenido_restringido || doc.pendiente_de_guardar) {
+      toast.info('Este original está restringido o pendiente de guardar.');
+      return;
+    }
     setPreviewDoc(doc);
     setZoomScale(1);
     setRotateAngle(0);
@@ -1184,29 +928,28 @@ export function CarpetaDigitalSharedView({
     }
   }, [activePreviewIndex, currentFolderDocs]);
 
-  const handleDownload = useCallback((doc: CarpetaDocumento) => {
-    if (doc.categoria === 'rund') {
-      if (doc.url_archivo) {
-        window.open(doc.url_archivo, '_blank');
-      } else {
-        toast.error('No hay URL de descarga disponible para este documento.');
-      }
-    } else if (onDownload) {
-      onDownload(doc);
+  const handleDownload = useCallback(async (doc: CarpetaDocumento) => {
+    if (doc.contenido_restringido || doc.pendiente_de_guardar) {
+      toast.info('Este original está restringido o pendiente de guardar.');
+      return;
     }
+    if (onDownload && (doc.servicio_propietario === 'auth' || doc.servicio_propietario === 'rund')) {
+      onDownload(doc);
+      return;
+    }
+    try {
+      if (!doc.url_archivo) throw new Error('No hay un original disponible.');
+      const blob = await apiClient.getBlob(doc.url_archivo);
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener,noreferrer');
+      setTimeout(() => URL.revokeObjectURL(url), 120000);
+    } catch (error: any) { toast.error(error?.message || 'No se pudo descargar el documento.'); }
   }, [onDownload]);
 
   const handleRefresh = useCallback(() => {
     fetchRundData();
     if (onRefresh) onRefresh();
   }, [fetchRundData, onRefresh]);
-
-  const sortedRundBloques = useMemo(() => {
-    const blockOrder = ['IDENTIDAD', 'CONTACTO', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'];
-    return [...rundBloques].sort((a, b) => {
-      return blockOrder.indexOf(a.bloque) - blockOrder.indexOf(b.bloque);
-    });
-  }, [rundBloques]);
 
   // ========== DRAG AND DROP ==========
   const [isDragOver, setIsDragOver] = useState(false);
@@ -1355,13 +1098,7 @@ export function CarpetaDigitalSharedView({
   }, [combinedDocumentos]);
 
   // ========== METRICS ==========
-  const metrics = useMemo(() => {
-    const total = combinedDocumentos.length;
-    const validados = combinedDocumentos.filter(d => d.estado === 'validado').length;
-    const pendientes = combinedDocumentos.filter(d => d.estado === 'pendiente').length;
-    const rechazados = combinedDocumentos.filter(d => d.estado === 'rechazado').length;
-    return { total, validados, pendientes, rechazados };
-  }, [combinedDocumentos]);
+  const metrics = useMemo(() => carpetaDocumentStats(documentos), [documentos]);
 
   // ========== GROUPED TIPOS ==========
   const groupedTipos = useMemo(() => {
@@ -1383,7 +1120,7 @@ export function CarpetaDigitalSharedView({
     let result = [...combinedDocumentos];
     if (currentFolder) result = result.filter(d => isDocInCategory(d, currentFolder));
     if (currentFolder === 'rund' && currentSubfolder) {
-      result = result.filter(d => getBloqueForTipoSoporte(d.id.replace('rund-soporte-', '')) === currentSubfolder);
+      result = result.filter(d => getBloqueForDocument(d) === currentSubfolder);
     }
     if (filterStatus !== 'all') result = result.filter(d => d.estado === filterStatus);
     if (searchQuery) {
@@ -1396,6 +1133,7 @@ export function CarpetaDigitalSharedView({
 
   // ========== HELPERS ==========
   const getDocsForTipo = useCallback((tipo: TipoDocumentoRequerido): CarpetaDocumento[] => {
+    if (tipo.id.startsWith('rund_')) return mappedRundDocs.filter(doc => doc.tipo_documento_id === tipo.id);
     if (tipo.documento) return [tipo.documento];
     const tipoNombre = normalizeDocumentText(tipo.nombre);
     return combinedDocumentos.filter(d => {
@@ -1404,7 +1142,7 @@ export function CarpetaDigitalSharedView({
       const docNombre = normalizeDocumentText(d.nombre);
       return !!tipoNombre && !!docNombre && (docNombre.includes(tipoNombre) || tipoNombre.includes(docNombre));
     });
-  }, [combinedDocumentos]);
+  }, [combinedDocumentos, mappedRundDocs]);
 
   const folderListItems = useMemo(() => {
     if (!currentFolder) return [];
@@ -1446,7 +1184,7 @@ export function CarpetaDigitalSharedView({
 
     const folderDocs = combinedDocumentos.filter(d => 
       isDocInCategory(d, currentFolder) && 
-      (currentFolder !== 'rund' || getBloqueForTipoSoporte(d.id.replace('rund-soporte-', '')) === currentSubfolder)
+      (currentFolder !== 'rund' || getBloqueForDocument(d) === currentSubfolder)
     );
 
     folderDocs.forEach(doc => {
@@ -1565,7 +1303,7 @@ export function CarpetaDigitalSharedView({
 
     subfolders.forEach(sub => {
       const tipos = combinedTiposDocumentos.filter(t => t.categoria === 'rund' && getBloqueForTipoSoporte(t.id.replace('rund_', '')) === sub);
-      const docs = combinedDocumentos.filter(d => d.categoria === 'rund' && getBloqueForTipoSoporte(d.id.replace('rund-soporte-', '')) === sub);
+      const docs = combinedDocumentos.filter(d => d.categoria === 'rund' && getBloqueForDocument(d) === sub);
 
       let completedTypes = 0;
       tipos.forEach(tipo => {
@@ -1613,7 +1351,7 @@ export function CarpetaDigitalSharedView({
 
     const subfolders = ['IDENTIDAD', 'FORMACION', 'VINCULACION', 'ACADEMICO', 'TRANSVERSAL'];
     subfolders.forEach(sub => {
-      const docs = combinedDocumentos.filter(d => d.categoria === 'rund' && getBloqueForTipoSoporte(d.id.replace('rund-soporte-', '')) === sub);
+      const docs = combinedDocumentos.filter(d => d.categoria === 'rund' && getBloqueForDocument(d) === sub);
       let expired = 0, rejected = 0, warning = 0;
 
       docs.forEach(d => {
@@ -1841,23 +1579,18 @@ export function CarpetaDigitalSharedView({
 
             {/* Stat pills — show checklist-aware metrics when tipos exist */}
             <div className="flex-1 flex gap-2">
-              {(checklistMetrics.totalTipos > 0 ? [
-                { key: 'total', label: 'TOTAL DOCS', value: metrics.total, color: '#003DA5', bg: '#EFF6FF' },
-                { key: 'validados', label: 'VALIDADOS', value: checklistMetrics.tiposValidados, color: '#059669', bg: '#ECFDF5' },
-                { key: 'pendientes', label: 'PENDIENTES', value: checklistMetrics.tiposPendientes, color: '#D97706', bg: '#FFFBEB' },
-                { key: 'rechazados', label: 'RECHAZADOS', value: checklistMetrics.tiposRechazados, color: '#DC2626', bg: '#FEF2F2' },
-                { key: 'sinDoc', label: 'SIN SUBIR', value: checklistMetrics.tiposSinDoc, color: '#6B7280', bg: '#F3F4F6' },
-              ] : [
-                { key: 'total', label: 'TOTAL', value: metrics.total, color: '#003DA5', bg: '#EFF6FF' },
+              {([
+                { key: 'total', label: 'GUARDADOS', value: metrics.total, color: '#003DA5', bg: '#EFF6FF' },
                 { key: 'validados', label: 'VALIDADOS', value: metrics.validados, color: '#059669', bg: '#ECFDF5' },
                 { key: 'pendientes', label: 'PENDIENTES', value: metrics.pendientes, color: '#D97706', bg: '#FFFBEB' },
                 { key: 'rechazados', label: 'RECHAZADOS', value: metrics.rechazados, color: '#DC2626', bg: '#FEF2F2' },
+                { key: 'vencidos', label: 'VENCIDOS', value: metrics.vencidos, color: '#7C3AED', bg: '#F5F3FF' },
               ]).map(s => (
                 <button
                   key={s.key}
                   onClick={() => {
                     if (s.key === 'total' || s.key === 'sinDoc') { setFilterStatus('all'); setViewMode('lista'); }
-                    else { setFilterStatus(s.key === 'validados' ? 'validado' : s.key === 'pendientes' ? 'pendiente' : 'rechazado'); setViewMode('lista'); }
+                    else { setFilterStatus(s.key === 'validados' ? 'validado' : s.key === 'pendientes' ? 'pendiente' : s.key === 'vencidos' ? 'vencido' : 'rechazado'); setViewMode('lista'); }
                   }}
                   className={`flex-1 min-h-[44px] rounded-lg px-3 py-1.5 text-left border-none cursor-pointer transition-all hover:brightness-95`}
                   style={{ background: s.bg }}
@@ -1992,10 +1725,9 @@ export function CarpetaDigitalSharedView({
       {/* ═══════════════════════════════════════════════════════════════
           VIEW: POR TIPO
           ═══════════════════════════════════════════════════════════════ */}
-      {viewMode === 'tipos' && (
-        <div className="flex flex-col gap-4">
-          
-          {/* RUND HIDDEN INPUT & MODALS */}
+
+          <RundInlineSelector panel={rund} person={cleanPersonaId} />
+
           <input
             type="file"
             ref={rundFileInputRef}
@@ -2003,6 +1735,10 @@ export function CarpetaDigitalSharedView({
             accept=".pdf,.jpg,.jpeg,.png"
             onChange={handleRundFileChange}
           />
+      {viewMode === 'tipos' && (
+        <div className="flex flex-col gap-4">
+
+          {/* RUND HIDDEN INPUT & MODALS */}
 
           {rundPreviewUrl && (
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(4px)', zIndex: 99999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
@@ -2043,7 +1779,7 @@ export function CarpetaDigitalSharedView({
                 <h3 style={{ fontSize: 13, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Carpetas</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   {['personal', 'rund', 'academico', 'laboral', 'certificados', 'administrativo', 'otros']
-                    .filter(cat => cat !== 'rund' || !!tarjetaRund)
+                    .filter(cat => cat !== 'rund' || !!tarjetaRund || documentos.some(doc => doc.categoria === 'rund'))
                     .map(cat => {
                     const catConf = CATEGORY_CONFIG[cat] || CATEGORY_CONFIG.otros;
                     const CatIcon = catConf.icon;
@@ -2589,7 +2325,7 @@ export function CarpetaDigitalSharedView({
                 </thead>
                 <tbody>
                   {['personal', 'rund', 'academico', 'laboral', 'certificados', 'administrativo', 'otros']
-                    .filter(cat => cat !== 'rund' || !!tarjetaRund)
+                    .filter(cat => cat !== 'rund' || !!tarjetaRund || documentos.some(doc => doc.categoria === 'rund'))
                     .map(cat => {
                       const catConf = CATEGORY_CONFIG[cat] || CATEGORY_CONFIG.otros;
                       const CatIcon = catConf.icon;
@@ -2696,7 +2432,7 @@ export function CarpetaDigitalSharedView({
                     const SubIcon = subConf.icon;
                     const stats = rundSubfolderStats[sub] || { totalDocs: 0, completedTypes: 0, totalTypes: 0, pct: 0 };
                     
-                    const subDocs = combinedDocumentos.filter(d => d.categoria === 'rund' && getBloqueForTipoSoporte(d.id.replace('rund-soporte-', '')) === sub);
+                    const subDocs = combinedDocumentos.filter(d => d.categoria === 'rund' && getBloqueForDocument(d) === sub);
                     const latestDoc = subDocs.length > 0
                       ? [...subDocs].sort((a, b) => new Date(b.fecha_subida).getTime() - new Date(a.fecha_subida).getTime())[0]
                       : null;
@@ -3161,7 +2897,7 @@ export function CarpetaDigitalSharedView({
             onValidate={detailDoc.categoria === 'rund' ? undefined : onValidate}
             onReject={detailDoc.categoria === 'rund' ? undefined : onReject}
             onDelete={onDelete && detailDoc.categoria !== 'rund' ? (d) => { setDetailDoc(null); handleDeleteWithConfirm(d); } : undefined}
-            onShowVersionHistory={detailDoc.categoria === 'rund' ? undefined : (onShowVersionHistory || ((d) => setShowHistoryDoc(d)))}
+            onShowVersionHistory={detailDoc.versionado_disponible === false ? undefined : (onShowVersionHistory || ((d) => setShowHistoryDoc(d)))}
             onEditCategory={detailDoc.categoria === 'rund' ? undefined : onEditCategory}
           />
         )}
@@ -3355,143 +3091,7 @@ export function CarpetaDigitalSharedView({
       </AnimatePresence>
 
       {/* ═══════════ VERSION HISTORY MODAL ═══════════ */}
-      <AnimatePresence>
-        {showHistoryDoc && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 99999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '2rem' }}>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(4px)' }}
-              onClick={() => setShowHistoryDoc(null)}
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              style={{
-                position: 'relative', background: '#fff', borderRadius: 16, width: '100%', maxWidth: 550,
-                maxHeight: '85vh', display: 'flex', flexDirection: 'column', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-                overflow: 'hidden', zIndex: 100000,
-              }}
-            >
-              {/* Header */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 24px', borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ background: '#f5f3ff', color: '#7c3aed', padding: 8, borderRadius: 8 }}>
-                    <History size={20} />
-                  </div>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a', fontWeight: 700 }}>Historial de Versiones</h3>
-                    <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b', marginTop: 2 }}>{showHistoryDoc.nombre}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowHistoryDoc(null)}
-                  style={{ background: '#f1f5f9', border: 'none', cursor: 'pointer', padding: 8, borderRadius: '50%', display: 'flex', alignItems: 'center', color: '#64748b' }}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              {/* Body */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
-                <div style={{ position: 'relative', paddingLeft: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
-                  <div style={{ position: 'absolute', left: 11, top: 8, bottom: 8, width: 2, background: '#e2e8f0' }} />
-                  {(() => {
-                    const events = [];
-                    events.push({
-                      version: showHistoryDoc.version_actual || 1,
-                      estado: showHistoryDoc.estado,
-                      fecha: showHistoryDoc.fecha_subida,
-                      usuario: showHistoryDoc.modificado_por || persona?.nombre || 'Docente',
-                      comentarios: showHistoryDoc.comentarios || (showHistoryDoc.estado === 'validado' ? 'Documento aprobado tras verificación' : 'Pendiente de revisión por analista'),
-                      icon: showHistoryDoc.estado === 'validado' ? CheckCircle : showHistoryDoc.estado === 'rechazado' ? XCircle : Clock,
-                      color: showHistoryDoc.estado === 'validado' ? '#059669' : showHistoryDoc.estado === 'rechazado' ? '#DC2626' : '#D97706',
-                    });
-
-                    const versionCount = showHistoryDoc.version_actual || 1;
-                    const baseTime = new Date(showHistoryDoc.fecha_subida).getTime();
-
-                    if (versionCount > 1 || showHistoryDoc.estado === 'validado' || showHistoryDoc.estado === 'rechazado') {
-                      const timeOffset = 2 * 24 * 60 * 60 * 1000;
-                      events.push({
-                        version: Math.max(1, versionCount - 1),
-                        estado: 'rechazado',
-                        fecha: new Date(baseTime - timeOffset).toISOString(),
-                        usuario: 'Analista de Verificación ESAP',
-                        comentarios: 'Devuelto: El documento cargado no coincide con la fecha de vigencia solicitada. Por favor subir el soporte actual.',
-                        icon: XCircle,
-                        color: '#DC2626',
-                      });
-
-                      events.push({
-                        version: Math.max(1, versionCount - 1),
-                        estado: 'pendiente',
-                        fecha: new Date(baseTime - timeOffset - 12 * 60 * 60 * 1000).toISOString(),
-                        usuario: persona?.nombre || 'Docente',
-                        comentarios: 'Subida inicial del soporte del documento.',
-                        icon: Upload,
-                        color: '#003DA5',
-                      });
-                    }
-
-                    return events.map((ev, idx) => {
-                      const EvIcon = ev.icon;
-                      return (
-                        <div key={idx} style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 6 }}>
-                          <div style={{
-                            position: 'absolute', left: -24, width: 22, height: 22, borderRadius: '50%',
-                            border: `2px solid ${ev.color}`, background: 'white',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10,
-                          }}>
-                            <EvIcon style={{ width: 12, height: 12, color: ev.color }} />
-                          </div>
-                          
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: '#1E293B' }}>
-                              Versión {ev.version}
-                            </span>
-                            <span style={{
-                              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 12,
-                              background: ev.color + '15', color: ev.color, textTransform: 'capitalize'
-                            }}>
-                              {ev.estado}
-                            </span>
-                          </div>
-
-                          <div style={{ background: '#f8fafc', borderRadius: 8, padding: 12, border: '1px solid #f1f5f9' }}>
-                            <p style={{ margin: 0, fontSize: 12, color: '#475569', fontWeight: 500 }}>
-                              {ev.comentarios}
-                            </p>
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: '1px solid #e2e8f0', fontSize: 10, color: '#94A3B8' }}>
-                              <span>Por: <strong>{ev.usuario}</strong></span>
-                              <span>{formatDate(ev.fecha)}</span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div style={{ padding: '16px 24px', borderTop: '1px solid #e2e8f0', background: '#f8fafc', display: 'flex', justifyContent: 'flex-end' }}>
-                <button
-                  onClick={() => setShowHistoryDoc(null)}
-                  style={{
-                    padding: '8px 16px', borderRadius: 8, border: '1px solid #cbd5e1',
-                    background: 'white', color: '#334155', fontSize: 12, fontWeight: 600, cursor: 'pointer'
-                  }}
-                >
-                  Cerrar
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {showHistoryDoc && <CarpetaDocumentHistory key={showHistoryDoc.id} documentId={showHistoryDoc.id} name={showHistoryDoc.nombre} onClose={() => setShowHistoryDoc(null)} load={documentosService.getVersiones} download={documentosService.downloadVersion} replace={showHistoryDoc.servicio_propietario === 'auth' ? documentosService.crearNuevaVersion : undefined} restore={documentosService.restaurarVersion} onChanged={onRefresh} />}
 
       {/* ═══════════ DELETE CONFIRMATION MODAL ═══════════ */}
       <ConfirmDeleteModal

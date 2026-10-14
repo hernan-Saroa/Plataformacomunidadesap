@@ -2,7 +2,7 @@
  * REQ-RUND-F002 — Modelo de vista del cabezote del perfil docente.
  *
  * Espeja el contrato del backend
- * (`backend/academic-work-plan-service/src/pta/banco-docentes/rund-perfil-cabezote.ts`)
+ * (`backend/rund-service/src/modules/banco-docentes/rund-perfil-cabezote.ts`)
  * y resuelve los textos que se pintan en pantalla. Es una función pura: no
  * consulta el API y no depende de React, para poder probarla aparte de la vista.
  *

@@ -1,0 +1,73 @@
+{
+  "step": "12.3b.4",
+  "changedScopePassed": true,
+  "fullStep12Complete": false,
+  "rolloutEnabled": false,
+  "existingDatabaseUsed": false,
+  "realEnvironmentFilesChanged": false,
+  "composeChanged": false,
+  "originalPtaModuleChanged": false,
+  "builds": {
+    "auth": "passed",
+    "rund": "passed",
+    "shell": "passed",
+    "personas": "passed"
+  },
+  "tests": {
+    "auth": {
+      "suites": 11,
+      "passed": 101
+    },
+    "rund": {
+      "suites": 42,
+      "passed": 512
+    },
+    "personas": {
+      "files": 8,
+      "passed": 106
+    },
+    "shell": {
+      "passingFiles": 12,
+      "passed": 131,
+      "fullSuitePassed": false,
+      "existingFailure": "disciplinary.service.spec.ts: jest is not defined",
+      "runner": "apps/shell/node_modules/vitest 2.1.9"
+    },
+    "inlineCasesPerFrontend": 23,
+    "finalPanelAndSectionVerificationPerFrontend": 26
+  },
+  "typescript": {
+    "shell": {
+      "before": 586,
+      "after": 586,
+      "newDiagnostics": 0,
+      "fullCheckPassed": false
+    },
+    "personas": {
+      "before": 192,
+      "after": 192,
+      "newDiagnostics": 0,
+      "fullCheckPassed": false
+    },
+    "comparison": "Mismas firmas archivo/código/mensaje, normalizando BOM y posiciones."
+  },
+  "postgres": {
+    "passed": true,
+    "checks": 117,
+    "newInlineChecks": 5,
+    "temporaryClusterRemoved": true,
+    "report": "validacion-panel-rund-postgres-local.json"
+  },
+  "browser": {
+    "passed": true,
+    "checks": 10,
+    "realApiTraffic": false,
+    "report": "validacion-panel-rund-navegador-local.json"
+  },
+  "remaining": [
+    "12.4: validación conjunta de vistas y preparación de activación controlada",
+    "Activación en ambiente existente pendiente de sus prerrequisitos",
+    "Dependencias de sección 9.2 y aislamiento de base de datos"
+  ],
+  "verifiedAt": "2026-10-14T03:26:33.096Z"
+}

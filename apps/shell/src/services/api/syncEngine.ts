@@ -3,6 +3,7 @@
 import { offlineCache } from './offlineCache';
 import { toast } from 'sonner';
 import { getAppOnlineStatus } from '../../utils/connectivity';
+import { isCarpetaDocumentRequest, isRundRequest } from './rundCachePolicy';
 
 class SyncEngine {
   private isSyncing = false;
@@ -43,6 +44,11 @@ class SyncEngine {
       let errorCount = 0;
 
       for (const mutation of queue) {
+        if (isCarpetaDocumentRequest(mutation.url) || isRundRequest(mutation.url)) {
+          // Conservar la entrada antigua: requiere revisión y sesión actual; no se reenvía ni elimina.
+          errorCount++;
+          continue;
+        }
         try {
           // Re-enviar la petición original usando fetch directamente
           // para no pasar de nuevo por el interceptor del apiClient

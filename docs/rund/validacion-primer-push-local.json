@@ -1,0 +1,166 @@
+{
+  "verifiedAt": "2026-10-14T09:48:25.557Z",
+  "cut": "first-source-review-push",
+  "branch": "feat/agregar_modulo_rund",
+  "head": "fe9f5a927feb289732fdf7bfdad16f51b7105703",
+  "status": "source_checkpoint_prepared_with_known_global_limits",
+  "activationReadiness": "not_verified",
+  "releaseReady": false,
+  "stageExecuted": false,
+  "commitCreated": false,
+  "pushExecuted": false,
+  "deploymentExecuted": false,
+  "realEnvironmentFilesModified": false,
+  "existingDatabaseUsedForThisValidation": false,
+  "selectedFileCount": 391,
+  "newFiles": 154,
+  "deletedFiles": 127,
+  "manifestSha256": "16717ea3e9e7f4f139319e695ccd46fde0f0efd613b0570692f830a791702a11",
+  "sourceReport": "revision-primer-push.json",
+  "builds": [
+    {
+      "component": "rund-backend",
+      "status": "passed",
+      "output": "ignored backend dist"
+    },
+    {
+      "component": "gateway",
+      "status": "passed",
+      "output": "ignored backend dist"
+    },
+    {
+      "component": "auth",
+      "status": "passed",
+      "output": "ignored backend dist"
+    },
+    {
+      "component": "rund-frontend",
+      "status": "passed",
+      "output": "tmp/primer-push-build/remotes/mfe-rund"
+    },
+    {
+      "component": "personas",
+      "status": "passed",
+      "output": "tmp/primer-push-build/remotes/mfe-gestion-personas"
+    },
+    {
+      "component": "shell",
+      "status": "passed",
+      "output": "tmp/primer-push-shell-build"
+    }
+  ],
+  "tests": {
+    "rundBackend": {
+      "suites": 42,
+      "passed": 512,
+      "failed": 0
+    },
+    "gateway": {
+      "suites": 6,
+      "passed": 67,
+      "failed": 0
+    },
+    "auth": {
+      "suites": 12,
+      "passed": 106,
+      "groups": [
+        {
+          "suites": 9,
+          "passed": 96,
+          "failed": 0
+        },
+        {
+          "suites": 2,
+          "passed": 8,
+          "failed": 0
+        },
+        {
+          "suites": 1,
+          "passed": 2,
+          "failed": 0
+        }
+      ]
+    },
+    "rundFrontend": {
+      "files": 19,
+      "passed": 180,
+      "failed": 0
+    },
+    "personas": {
+      "files": 8,
+      "passed": 106,
+      "failed": 0
+    },
+    "shell": {
+      "passingFiles": 14,
+      "passed": 141,
+      "failedSuites": 1,
+      "fullSuitePassed": false,
+      "existingFailure": "disciplinary.service.spec.ts: jest is not defined"
+    },
+    "offline": {
+      "passed": 115,
+      "failed": 0
+    },
+    "postgres": {
+      "passed": 121,
+      "temporaryClusterRemoved": true
+    },
+    "gatewayHttp": {
+      "passed": 9
+    },
+    "compose": {
+      "passed": 19,
+      "otherModulesCompared": true
+    }
+  },
+  "typescript": {
+    "rundFrontend": "passed",
+    "shell": {
+      "fullCheckPassed": false,
+      "diagnostics": 586,
+      "baselineDiagnostics": 586,
+      "newSignatures": 0,
+      "removedSignatures": 0
+    }
+  },
+  "federation": [
+    {
+      "app": "mfe-rund",
+      "entrySha256": "0882dbf4f474e365991ba44d91a7fc3bb5ecc5e40d4176b6bc02761a2b7a43cb",
+      "declaredExports": [
+        "./Module",
+        "./Autogestion"
+      ],
+      "chunksPresent": 2,
+      "realBrowserRepeated": false
+    },
+    {
+      "app": "mfe-gestion-personas",
+      "entrySha256": "97158f5812358f0922342bf7d8afc06faba22aa4d5af0b9ab74a65192e1f225b",
+      "declaredExports": [
+        "./Module"
+      ],
+      "chunksPresent": 3,
+      "realBrowserRepeated": false
+    }
+  ],
+  "packageReview": {
+    "localImportTargetsChecked": 450,
+    "findings": 0,
+    "sourceHashesChecked": true
+  },
+  "progress": {
+    "mainStepsLocallyCompleted": 11,
+    "currentMainStep": 12,
+    "currentSubstep": "12.5d.2",
+    "remainingWorkstreamsIncludingCurrent": 5
+  },
+  "limits": [
+    "Publicación de fuentes en la rama para respaldo/revisión; no certifica integración o despliegue.",
+    "La suite disciplinaria y TypeScript global del shell siguen fallando como antes.",
+    "No se construyó una imagen Docker ni repitió Chrome; las pruebas de navegador previas no se presentan como actuales.",
+    "Pruebas integrales con servidores/bases temporales y datos ficticios, sin bases existentes.",
+    "Configuración/migraciones/aceptación de instalaciones reales pendientes en 12.5d.2."
+  ]
+}

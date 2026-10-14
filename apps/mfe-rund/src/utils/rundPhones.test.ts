@@ -1,12 +1,26 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeRundPhones } from './rundPhones';
 import { sanitizeManualPhone, validateManualBancoDocenteStep } from './bancoDocenteManual';
-import { normalizeRundPhones as backendNormalize } from '../../../../backend/academic-work-plan-service/src/pta/banco-docentes/rund-phones';
 
 describe('Telefonos multiples en el formulario RUND', () => {
-  it.each(['3106791787 - 6723168', '3106791787-3001234567', '+57 (310) 6791787 - +57 3001234567', '3106791787 / 6723168', '3106791787\n6723168', '3106791787\r\n6723168', '31067917876723168', '310ABC1787', '3106791787 - 123', '3106791787 - ', '', '06723168', '601-1234567', '3106791787 3001234567'])('conserva lo escrito y usa el mismo contrato del servidor: %s', raw => {
+  it.each<[string, string | null]>([
+    ['3106791787 - 6723168', '3106791787 - 6723168'],
+    ['3106791787-3001234567', '3106791787 - 3001234567'],
+    ['+57 (310) 6791787 - +57 3001234567', '+573106791787 - +573001234567'],
+    ['3106791787 / 6723168', '3106791787 - 6723168'],
+    ['3106791787\n6723168', '3106791787 - 6723168'],
+    ['3106791787\r\n6723168', '3106791787 - 6723168'],
+    ['31067917876723168', null],
+    ['310ABC1787', null],
+    ['3106791787 - 123', null],
+    ['3106791787 - ', null],
+    ['', ''],
+    ['06723168', '06723168'],
+    ['601-1234567', '6011234567'],
+    ['3106791787 3001234567', '3106791787 - 3001234567'],
+  ])('conserva lo escrito y usa el contrato RUND: %s', (raw, expected) => {
     expect(sanitizeManualPhone(raw)).toBe(raw);
-    expect(normalizeRundPhones(raw)).toBe(backendNormalize(raw));
+    expect(normalizeRundPhones(raw)).toBe(expected);
   });
 });
 

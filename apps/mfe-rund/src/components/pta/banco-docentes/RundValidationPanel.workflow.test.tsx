@@ -2,9 +2,9 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { RundValidationPanel } from './RundValidationPanel';
-import { apiClient } from '../../../../../shell/src/services/api';
+import { apiClient } from '../../../services/api/apiClient';
 
-vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), upload: vi.fn() } }));
+vi.mock('../../../services/api/apiClient', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), upload: vi.fn() } }));
 vi.mock('../../../contexts/AuthContext', () => ({ useAuth: () => ({ userRole: 'SUPER_ADMIN', isSuperUser: true, hasAnyPermission: () => true }) }));
 vi.mock('./BancoDocenteEditModal', () => ({ BancoDocenteEditModal: () => null }));
 vi.mock('./RundDocumentManager', () => ({ RundDocumentManager: ({ onChanged }: any) => <button onClick={onChanged}>Recargar expediente</button> }));

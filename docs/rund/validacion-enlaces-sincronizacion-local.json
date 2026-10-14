@@ -1,0 +1,87 @@
+{
+  "verifiedAt": "2026-10-13T07:45:14.777Z",
+  "step": 8,
+  "scope": "Enlaces de archivos, diagnóstico y reparación local de rund-service; transporte de descargas de mfe-rund.",
+  "backend": {
+    "build": "npm run build: OK",
+    "testCommand": "jest --runInBand",
+    "suites": 38,
+    "tests": 435,
+    "failed": 0,
+    "addedTests": 41
+  },
+  "frontend": {
+    "build": "vite build: OK",
+    "typecheck": "tsc --noEmit --pretty false: 0 errores",
+    "testCommand": "vitest run --threads=false",
+    "suites": 18,
+    "tests": 178,
+    "failed": 0,
+    "addedTests": 15,
+    "dependencyGraph": {
+      "entries": [
+        "apps/mfe-rund/src/main.tsx",
+        "apps/mfe-rund/src/components/RundModulePremium.tsx",
+        "apps/mfe-rund/src/components/pta/banco-docentes/AutogestionDocenteRUND.tsx"
+      ],
+      "sourceFiles": 49,
+      "reachableSourceFiles": 48,
+      "testFiles": 18,
+      "foreignModuleImports": [],
+      "unusedTypeScriptFiles": [],
+      "federation": {
+        "module": "rund/Module",
+        "export": "RundModulePremium",
+        "chunks": [
+          "/remotes/mfe-rund/assets/__federation_expose_Module-D0LKes2n.js"
+        ]
+      }
+    }
+  },
+  "postgres": {
+    "version": "15.14",
+    "checks": 46,
+    "passed": true,
+    "syntheticDataOnly": true,
+    "cleanup": "cluster temporal eliminado",
+    "newChecks": [
+      "Soporte técnico genera URL RUND y descarga el original con JWT/auditoría",
+      "Diagnóstico reconoce el soporte técnico y la versión PDF vigente en su ruta de disco",
+      "Reparación conserva referencias PTA y RUND y es idempotente con PostgreSQL real"
+    ],
+    "migrations": [
+      "001_create_rund_schema.sql",
+      "002_seed_rund_auth_module.sql",
+      "003_legacy_rund_tables.sql",
+      "004_rund_docente_identificadores_text.sql",
+      "005_rund_tarjeta_numero_secuencia.sql",
+      "006_rund_catalogo_permisos_compatibles.sql"
+    ],
+    "publicRouting": "proxy local de prueba: /services/rund/api/v1; no inicia Nginx ni api-gateway"
+  },
+  "preservation": [
+    "Filas ficticias con URLs PTA/RUND quedan íntegras tras dos reparaciones secuenciales.",
+    "Las referencias persistidas y documentoVersionId no se reescriben para redirigir descargas.",
+    "No se aplicaron migraciones/reparaciones en instalaciones existentes ni se copiaron archivos entre servicios."
+  ],
+  "hashes": {
+    "backend/rund-service/src/modules/banco-docentes/rund-upload-paths.ts": "9a84c3a19310f63a310698c05c6f4244cb7e942625910bf887b4251884522d07",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.controller.ts": "57695c50c5183e405a1eef6f1e1b8789dd2aefb600e921c22f7a38a19a238343",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts": "bbffbdb31ae83374c6e3bb1b87f3465a615451709c268decc72a52d7a45244d8",
+    "backend/rund-service/src/modules/banco-docentes/rund-document-storage.service.ts": "64491122e967f4c79e668cce49c967b5c2e0585a7db5f6affed7baf001ca3ccb",
+    "apps/mfe-rund/src/services/api/rundUploadEndpoint.ts": "8d39eaae013efdb90078b9f76216efd4d84e9a0986c489fabdd18bf680bd755e",
+    "apps/mfe-rund/src/services/api/apiClient.ts": "542a5caa80780b166b86ac397de7461e7ee5eb994af7d10335c61325817e4912",
+    "scripts/verify-rund-service-integration.cjs": "1d04efe4f99619759440de4e710c8efcf8a05a22ce22690b22852594ac48c3c8",
+    "build/remotes/mfe-rund/assets/remoteEntry.js": "64d387c541e902306b6a1cbfac86efce1604a8107166c3c6b3a54bdd585445e2"
+  },
+  "pending": [
+    "sync-from-auth: adaptar /users de auth-service, credencial interna, DTO, IDs, paginación y manejo de fallos.",
+    "Conectar shell/autogestión y consumidores externos antes de retirar RUND embebido de PTA."
+  ],
+  "limitations": [
+    "Sin despliegue ni prueba del shell en navegador; Nginx/gateway sustituidos por proxy local en la integración.",
+    "OpenKM no se levantó: contrato HTTP cubierto por las pruebas existentes; sync-check comprueba solo disco.",
+    "Reparación administrativa validada secuencialmente, sin agregar exclusión de ejecuciones simultáneas.",
+    "Dependencias locales existentes; Vite/Vitest fuera del sandbox por la restricción de esbuild en Windows."
+  ]
+}

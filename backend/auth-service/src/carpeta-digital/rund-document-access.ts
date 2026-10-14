@@ -15,7 +15,7 @@ export function rundDocumentActor(user: any) {
 
 export function isRundFolderDocument(document: any): boolean {
   return Boolean(document.rund_soporte_id || document.rundSoporteId
-    || String(document.origen || '').toLowerCase() === 'rund'
+    || ['rund', 'rund-service'].includes(String(document.origen || '').toLowerCase())
     || String(document.categoria || '').toLowerCase() === 'rund');
 }
 
@@ -37,6 +37,7 @@ export async function auditRundDocuments(db: { query: Function }, user: any, end
 
 export function protectRundFolderDocument(document: any, user: any) {
   if (!isRundFolderDocument(document)) return document;
+  if (document.servicio_propietario === 'rund' && document.contenido_restringido === true) return document;
   const fullAccess = rundDocumentActor(user).fullAccess;
   return { ...document, contenido_restringido: !fullAccess,
     ...(fullAccess ? {} : { nombre: 'Documento del perfil', comentarios: null, url_archivo: null }),

@@ -1,0 +1,62 @@
+{
+  "verifiedAt": "2026-10-14T07:37:34.687Z",
+  "step": "12.5b",
+  "localScopePassed": true,
+  "targetEnvironments": [
+    "local",
+    "dev",
+    "qa",
+    "pre",
+    "prod"
+  ],
+  "gatewayBuild": "passed",
+  "gatewayTests": {
+    "suites": 6,
+    "passed": 67,
+    "fullSuitePassed": true
+  },
+  "http": {
+    "passed": true,
+    "checks": 9,
+    "report": "validacion-auditoria-gateway-http-local.json",
+    "appModuleReal": true,
+    "upstreamAndAuditFictitious": true
+  },
+  "unchangedBaselineFiles": {
+    "backend/api-gateway/src/auth/jwt-auth.guard.ts": "fb679f9d0306b940bc394c51fb207fd7f97cd314a06d20213b3390e01be311af",
+    "backend/api-gateway/src/gateway/proxy.config.ts": "a5223621926f0989a02c078a11d12de77fb0ffde5d5b21efea42c63f4698acfd",
+    "backend/api-gateway/src/audit/microservice.enum.ts": "c5126595afba5cd12879169c1a8510451861ff6fd3b2ecebc54c441a21871b6a",
+    ".github/workflows/build-backend-dev.yml": "cebe5a14c95612db59f7b54fc1db5f5b78075ef109d7efd9298a0d1a38464b67",
+    ".github/workflows/build-backend-qa.yml": "0adb52ce2d58f7e8aad1d028270c22b6fcc7d31e1c863b05fa2fe73a451e6879",
+    ".github/workflows/build-backend-pre.yml": "38678d5ee12341a6161f1077eb7f39d33b7696d9b99235eabacc873fd1ee7a0d",
+    ".github/workflows/build-backend-prod.yml": "cf8d7f2a0e086b4ae53040aeb95702fe6ad3b4cae43fe9b90e19a9c0cb06d8f6"
+  },
+  "guardsChanged": false,
+  "permissionsChanged": false,
+  "serviceDestinationsChanged": false,
+  "workflowsChanged": false,
+  "composeChanged": false,
+  "newDependencies": false,
+  "realEnvironmentFilesRead": false,
+  "existingDatabaseUsed": false,
+  "deploymentExecuted": false,
+  "flagsActivated": false,
+  "fullStep12Complete": false,
+  "remaining": [
+    "MIGRATION_SQL_FAILURE_NOT_EXPLICITLY_FATAL",
+    "DEPLOY_CONTINUES_AFTER_MIGRATION_FAILURE"
+  ],
+  "limits": [
+    "Validación HTTP en loopback sin main/dotenv; no es una prueba de servicios Auth/RUND/OpenKM reales.",
+    "Validación de publicación y ejecución en cada instalación pendiente.",
+    "La auditoría general conserva su política de escrituras; los servicios mantienen su auditoría propietaria."
+  ],
+  "hashes": {
+    "backend/api-gateway/src/audit/rund-audit-redaction.ts": "1ce021f12a1893a1aa2e1991fbd5b621422f407ec4a4ee3278565e70fc3052ae",
+    "backend/api-gateway/src/audit/rund-audit-redaction.spec.ts": "67aa65711cd3b0ee1044faa02e85b41c3a466cb0ab6853131d05ca392d721aca",
+    "backend/api-gateway/src/audit/audit.interceptor.ts": "378e3a34289101ae3a4f7f97f1b530fe5f0729476aa37eddc93a5de5ed69e376",
+    "backend/api-gateway/src/gateway/gateway.service.ts": "e8df06cbb976faf82285473394f9ff62327a8317f1c2f816f3ff8af712aef333",
+    "backend/api-gateway/src/gateway/gateway.rund-audit.spec.ts": "11e54c72ecc6bc5eb5c410df56b972924cbcd6166df3e550294439f4d61edb31",
+    "scripts/verify-rund-gateway-audit.cjs": "07c4fb80baaab0cf0de0c49bccd7ad0c1e6ffbee03b981095daffff25d99883f"
+  }
+}

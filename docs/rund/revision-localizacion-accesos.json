@@ -1,0 +1,256 @@
+{
+  "reviewedAt": "2026-10-14T09:31:35.016Z",
+  "step": "12.5d.2",
+  "scope": "project-worktree-and-local-git-metadata",
+  "status": "remote_access_not_located_in_reviewed_checkout",
+  "runtimeModified": false,
+  "configurationModified": false,
+  "connectionsAttempted": false,
+  "secretValuesIncluded": false,
+  "githubRemoteConfigurationInspected": false,
+  "personalKeysOutsideProjectInspected": false,
+  "searchScope": [
+    "Deployment guides, scripts and all eight workflow files.",
+    "Environment/config candidate names, including ignored/hidden checkout paths.",
+    "SSH/SFTP/VPN and infrastructure/pipeline references; dependency/build directories and business data excluded."
+  ],
+  "destinations": [
+    {
+      "environment": "dev",
+      "guide": "DEPLOY_DEV.md",
+      "script": "deploy.dev.sh",
+      "compose": "docker-compose.dev.yml",
+      "environmentFile": ".env.dev",
+      "environmentFilePresentInCheckout": false,
+      "explicitlyGitIgnored": true,
+      "documentedExecutionLocation": "project checkout on the destination server",
+      "scriptLoadsEnvironmentFile": true,
+      "remoteConnectionIdentified": false
+    },
+    {
+      "environment": "qa",
+      "guide": "DEPLOY_QA.md",
+      "script": "deploy.qa.sh",
+      "compose": "docker-compose.qa.yml",
+      "environmentFile": ".env.qa",
+      "environmentFilePresentInCheckout": false,
+      "explicitlyGitIgnored": true,
+      "documentedExecutionLocation": "project checkout on the destination server",
+      "scriptLoadsEnvironmentFile": true,
+      "remoteConnectionIdentified": false
+    },
+    {
+      "environment": "pre",
+      "guide": "DEPLOY_PRE.md",
+      "script": "deploy.pre.sh",
+      "compose": "docker-compose.pre.yml",
+      "environmentFile": ".env.pre",
+      "environmentFilePresentInCheckout": false,
+      "explicitlyGitIgnored": true,
+      "documentedExecutionLocation": "project checkout on the destination server",
+      "scriptLoadsEnvironmentFile": true,
+      "remoteConnectionIdentified": false
+    },
+    {
+      "environment": "prod",
+      "guide": "DEPLOY_PROD.md",
+      "script": "deploy.prod.sh",
+      "compose": "docker-compose.prod.yml",
+      "environmentFile": ".env.prod",
+      "environmentFilePresentInCheckout": false,
+      "explicitlyGitIgnored": true,
+      "documentedExecutionLocation": "project checkout on the destination server",
+      "scriptLoadsEnvironmentFile": true,
+      "remoteConnectionIdentified": false
+    }
+  ],
+  "workflows": [
+    {
+      "file": ".github/workflows/build-backend-dev.yml",
+      "runners": [
+        "ubuntu-latest"
+      ],
+      "actionReferences": [
+        "actions/checkout@v4",
+        "docker/login-action@v3",
+        "docker/metadata-action@v5",
+        "docker/build-push-action@v5"
+      ],
+      "secretReferenceNames": [
+        "GITHUB_TOKEN"
+      ],
+      "remoteCommandReferencesDetected": false
+    },
+    {
+      "file": ".github/workflows/build-backend-pre.yml",
+      "runners": [
+        "ubuntu-latest"
+      ],
+      "actionReferences": [
+        "actions/checkout@v4",
+        "docker/login-action@v3",
+        "docker/metadata-action@v5",
+        "docker/build-push-action@v5"
+      ],
+      "secretReferenceNames": [
+        "GITHUB_TOKEN"
+      ],
+      "remoteCommandReferencesDetected": false
+    },
+    {
+      "file": ".github/workflows/build-backend-prod.yml",
+      "runners": [
+        "ubuntu-latest"
+      ],
+      "actionReferences": [
+        "actions/checkout@v4",
+        "docker/login-action@v3",
+        "docker/metadata-action@v5",
+        "docker/build-push-action@v5"
+      ],
+      "secretReferenceNames": [
+        "GITHUB_TOKEN"
+      ],
+      "remoteCommandReferencesDetected": false
+    },
+    {
+      "file": ".github/workflows/build-backend-qa.yml",
+      "runners": [
+        "ubuntu-latest"
+      ],
+      "actionReferences": [
+        "actions/checkout@v4",
+        "docker/login-action@v3",
+        "docker/metadata-action@v5",
+        "docker/build-push-action@v5"
+      ],
+      "secretReferenceNames": [
+        "GITHUB_TOKEN"
+      ],
+      "remoteCommandReferencesDetected": false
+    },
+    {
+      "file": ".github/workflows/build-dev.yml",
+      "runners": [
+        "ubuntu-latest"
+      ],
+      "actionReferences": [
+        "actions/checkout@v4",
+        "docker/login-action@v3",
+        "docker/metadata-action@v5",
+        "docker/build-push-action@v5"
+      ],
+      "secretReferenceNames": [
+        "GITHUB_TOKEN",
+        "VITE_MICROSOFT_TENANT_ID",
+        "VITE_MICROSOFT_CLIENT_ID"
+      ],
+      "remoteCommandReferencesDetected": false
+    },
+    {
+      "file": ".github/workflows/build-pre.yml",
+      "runners": [
+        "ubuntu-latest"
+      ],
+      "actionReferences": [
+        "actions/checkout@v4",
+        "docker/login-action@v3",
+        "docker/metadata-action@v5",
+        "docker/build-push-action@v5"
+      ],
+      "secretReferenceNames": [
+        "GITHUB_TOKEN",
+        "VITE_MICROSOFT_TENANT_ID",
+        "VITE_MICROSOFT_CLIENT_ID"
+      ],
+      "remoteCommandReferencesDetected": false
+    },
+    {
+      "file": ".github/workflows/build-prod.yml",
+      "runners": [
+        "ubuntu-latest"
+      ],
+      "actionReferences": [
+        "actions/checkout@v4",
+        "docker/login-action@v3",
+        "docker/metadata-action@v5",
+        "docker/build-push-action@v5"
+      ],
+      "secretReferenceNames": [
+        "GITHUB_TOKEN",
+        "VITE_MICROSOFT_TENANT_ID",
+        "VITE_MICROSOFT_CLIENT_ID"
+      ],
+      "remoteCommandReferencesDetected": false
+    },
+    {
+      "file": ".github/workflows/build-qa.yml",
+      "runners": [
+        "ubuntu-latest"
+      ],
+      "actionReferences": [
+        "actions/checkout@v4",
+        "docker/login-action@v3",
+        "docker/metadata-action@v5",
+        "docker/build-push-action@v5"
+      ],
+      "secretReferenceNames": [
+        "GITHUB_TOKEN",
+        "VITE_MICROSOFT_TENANT_ID",
+        "VITE_MICROSOFT_CLIENT_ID"
+      ],
+      "remoteCommandReferencesDetected": false
+    }
+  ],
+  "absentProjectConfigCandidates": [
+    {
+      "file": ".vscode/sftp.json",
+      "present": false
+    },
+    {
+      "file": ".vscode/settings.json",
+      "present": false
+    },
+    {
+      "file": ".devcontainer/devcontainer.json",
+      "present": false
+    }
+  ],
+  "findings": [
+    "Environment definitions and execution procedure exist; expected per-server runtime files are absent in this checkout.",
+    "Workflows build/push GHCR images, without identified remote-server deployment steps.",
+    "No usable SSH/SFTP/VPN or remote Docker connection configuration found in reviewed project files.",
+    "Microsoft Graph configuration references do not establish VM administration access."
+  ],
+  "activationReadiness": "not_verified",
+  "limits": [
+    "Does not prove that access is absent outside this checkout, on destination servers or in private GitHub settings.",
+    "Did not recover secret values from Git history or access personal key stores.",
+    "No deployment scripts executed and no services, databases or feature flags changed."
+  ],
+  "hashes": {
+    "DEPLOY_RUNBOOK.md": "fcd6d6b6a79cd8cf8533df8725e49ad3848bdde8c8d40a0cf692d2df80aa243f",
+    "docs/CONFIGURACION_GENERAL_INICIO_PLATAFORMA.md": "e7a542ea9c21427e9c4a95aed101a3fd97bb62e5e405fa1caadc0adfc7df04dc",
+    ".gitignore": "e3c1b8e3277b57c8ead9b9d3972cc98d63b61e3916fc8d4886186a4a41e406cd",
+    ".github/workflows/build-backend-dev.yml": "cebe5a14c95612db59f7b54fc1db5f5b78075ef109d7efd9298a0d1a38464b67",
+    ".github/workflows/build-backend-pre.yml": "38678d5ee12341a6161f1077eb7f39d33b7696d9b99235eabacc873fd1ee7a0d",
+    ".github/workflows/build-backend-prod.yml": "cf8d7f2a0e086b4ae53040aeb95702fe6ad3b4cae43fe9b90e19a9c0cb06d8f6",
+    ".github/workflows/build-backend-qa.yml": "0adb52ce2d58f7e8aad1d028270c22b6fcc7d31e1c863b05fa2fe73a451e6879",
+    ".github/workflows/build-dev.yml": "b2094dd801431f73621faed085812477199e705d64039ed78580cfb8c10f6723",
+    ".github/workflows/build-pre.yml": "8413e09d408715718f440ac3987a9a11668516179b147021904415134190ff7a",
+    ".github/workflows/build-prod.yml": "bb59336726a260fa5791b6ff17ec8567b54d2303679c6191511ae6829af9bad1",
+    ".github/workflows/build-qa.yml": "425462f60550c32d4a598d5bc1a6f9ffc6ea93489b448f3ad56be42f1d32f9c0",
+    "DEPLOY_DEV.md": "4551fff92015b63556652734c17fda71540a4688398e718314dffe50b4ad9b37",
+    "deploy.dev.sh": "d96df5523db649f7a0fd4fabd2a83a0e2e17297ec86d47514d7d613b1fa2770f",
+    "docker-compose.dev.yml": "c816928311f8816ff19aad1c07b4f0362ebe431fa3564593e3da940ade81e6e4",
+    "DEPLOY_QA.md": "3ec83ce98e2a018263573d4db3d75bc9535d8f8f7bc9262c038541b0dc4af7bb",
+    "deploy.qa.sh": "fd952204c43e271595bdb0c225717c2d06683a96a408f7c7de66626a69ece5db",
+    "docker-compose.qa.yml": "9fd6fc5702d69a6b226602b4e7fa634a7d9bb6d224dbaeba0ccf0e7d14bf55d9",
+    "DEPLOY_PRE.md": "980f595229cd1b90239832d2edd296aa70f8978f870c3d7e6895e2081e0c9d73",
+    "deploy.pre.sh": "fe1b5194038722ff2d2a49ca7ce5cff076336ea570ba948982de4666c640bcb8",
+    "docker-compose.pre.yml": "48576849e1cc36d288e0c0f93a3a17503fb58e06fab39b6f8bc0cd28d2f74ff8",
+    "DEPLOY_PROD.md": "bacde43b18d1291a583726782a89aaeca21f88cfa2e32479812f34df43a806ee",
+    "deploy.prod.sh": "ee1159f8bb9c4ba46f8ff2d0c105c61726f743060c3c7602747c2fe0496a52ac",
+    "docker-compose.prod.yml": "ebba97e238b745674e0435323f104e3693ec9789f9e6dd0e2002a2138a512427"
+  }
+}

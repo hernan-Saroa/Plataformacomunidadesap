@@ -1,0 +1,389 @@
+{
+  "checkedAt": "2026-10-14T08:49:41.212Z",
+  "step": "12.5d.2",
+  "environment": "local",
+  "realEnvironmentFilesRead": true,
+  "configurationSource": "backend/auth-service/.env",
+  "rundServiceEnvironmentFilePresent": false,
+  "runtimeModified": false,
+  "deploymentExecuted": false,
+  "databaseConnectionScope": "Auth local; conexión propia de RUND sin verificar",
+  "database": {
+    "transactionReadOnly": true,
+    "checks": [
+      {
+        "id": "relation:auth.personas",
+        "status": "pass",
+        "exists": true,
+        "readableByReviewRole": true
+      },
+      {
+        "id": "relation:auth.module",
+        "status": "pass",
+        "exists": true,
+        "readableByReviewRole": true
+      },
+      {
+        "id": "relation:auth.permission",
+        "status": "pass",
+        "exists": true,
+        "readableByReviewRole": true
+      },
+      {
+        "id": "relation:auth.carpeta_digital",
+        "status": "pass",
+        "exists": true,
+        "readableByReviewRole": true
+      },
+      {
+        "id": "relation:auth.tipo_documento",
+        "status": "pass",
+        "exists": true,
+        "readableByReviewRole": true
+      },
+      {
+        "id": "relation:auth.documento_carpeta_digital",
+        "status": "pass",
+        "exists": true,
+        "readableByReviewRole": true
+      },
+      {
+        "id": "relation:auth.documento_carpeta_version",
+        "status": "fail",
+        "exists": false,
+        "readableByReviewRole": false
+      },
+      {
+        "id": "relation:auth.carpeta_revision_rund",
+        "status": "fail",
+        "exists": false,
+        "readableByReviewRole": false
+      },
+      {
+        "id": "relation:rund.docente",
+        "status": "fail",
+        "exists": false,
+        "readableByReviewRole": false
+      },
+      {
+        "id": "relation:rund.Docente",
+        "status": "fail",
+        "exists": false,
+        "readableByReviewRole": false
+      },
+      {
+        "id": "relation:rund.RundCampoEstado",
+        "status": "fail",
+        "exists": false,
+        "readableByReviewRole": false
+      },
+      {
+        "id": "relation:rund.RundSoporteCampo",
+        "status": "fail",
+        "exists": false,
+        "readableByReviewRole": false
+      },
+      {
+        "id": "relation:rund.RundAprobacionLog",
+        "status": "fail",
+        "exists": false,
+        "readableByReviewRole": false
+      },
+      {
+        "id": "relation:rund.RundDocumentoPerfil",
+        "status": "fail",
+        "exists": false,
+        "readableByReviewRole": false
+      },
+      {
+        "id": "relation:rund.RundExtraccionTrabajo",
+        "status": "fail",
+        "exists": false,
+        "readableByReviewRole": false
+      },
+      {
+        "id": "relation:rund.RundAccesoDatosLog",
+        "status": "fail",
+        "exists": false,
+        "readableByReviewRole": false
+      },
+      {
+        "id": "relation:rund.carpeta_auth_sync",
+        "status": "fail",
+        "exists": false,
+        "readableByReviewRole": false
+      },
+      {
+        "id": "relation:rund.carpeta_auth_documento",
+        "status": "fail",
+        "exists": false,
+        "readableByReviewRole": false
+      },
+      {
+        "id": "relation:rund.carpeta_auth_sync_evento",
+        "status": "fail",
+        "exists": false,
+        "readableByReviewRole": false
+      },
+      {
+        "id": "column:auth.personas.id_person",
+        "status": "pass"
+      },
+      {
+        "id": "column:auth.carpeta_digital.persona_id",
+        "status": "pass"
+      },
+      {
+        "id": "column:auth.documento_carpeta_digital.id_documento",
+        "status": "pass"
+      },
+      {
+        "id": "column:auth.documento_carpeta_digital.carpeta_digital_id",
+        "status": "pass"
+      },
+      {
+        "id": "column:auth.documento_carpeta_digital.updated_at",
+        "status": "pass"
+      },
+      {
+        "id": "column:auth.documento_carpeta_version.id_version",
+        "status": "fail"
+      },
+      {
+        "id": "column:auth.documento_carpeta_version.documento_id",
+        "status": "fail"
+      },
+      {
+        "id": "column:auth.documento_carpeta_version.numero_version",
+        "status": "fail"
+      },
+      {
+        "id": "column:auth.documento_carpeta_version.tamano_bytes",
+        "status": "fail"
+      },
+      {
+        "id": "column:auth.documento_carpeta_version.checksum_sha256",
+        "status": "fail"
+      },
+      {
+        "id": "column:auth.carpeta_revision_rund.persona_id",
+        "status": "fail"
+      },
+      {
+        "id": "column:auth.carpeta_revision_rund.revision",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.Docente.id",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.Docente.personaId",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.Docente.periodoCarga",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.RundCampoEstado.docente_id",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.RundSoporteCampo.docente_id",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.RundAprobacionLog.docente_id",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.RundDocumentoPerfil.docente_id",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.RundExtraccionTrabajo.docente_id",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.carpeta_auth_sync.persona_id",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.carpeta_auth_sync.revision",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.carpeta_auth_sync.deleted",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.carpeta_auth_documento.persona_id",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.carpeta_auth_documento.documento_id",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.carpeta_auth_documento.metadata",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.carpeta_auth_sync_evento.revision",
+        "status": "fail"
+      },
+      {
+        "id": "column:rund.carpeta_auth_sync_evento.fingerprint",
+        "status": "fail"
+      },
+      {
+        "id": "trigger:documento_revision_rund",
+        "status": "fail"
+      },
+      {
+        "id": "trigger:carpeta_revision_rund",
+        "status": "fail"
+      },
+      {
+        "id": "trigger:persona_revision_rund",
+        "status": "fail"
+      },
+      {
+        "id": "constraints:version-identity",
+        "status": "fail"
+      },
+      {
+        "id": "catalog:rund-permissions",
+        "status": "fail",
+        "missingCodes": [
+          "rund.view",
+          "rund.create",
+          "rund.edit",
+          "rund.validate",
+          "rund.admin",
+          "rund.export",
+          "banco-docentes.rund.manage",
+          "banco-docentes.rund.view",
+          "banco-docentes.rund.edit",
+          "banco-docentes.rund.validate",
+          "banco-docentes.rund.import",
+          "banco-docentes.rund.export",
+          "banco-docentes.rund.invite",
+          "banco-docentes.rund.documents.manage",
+          "pta.macro_docente.consultar",
+          "pta.macro_docente.gestionar_accesos_externos"
+        ]
+      },
+      {
+        "id": "history:158_add_id_person_to_personas_and_user.sql",
+        "status": "pass",
+        "recorded": true,
+        "appliedSqlHashVerified": false
+      },
+      {
+        "id": "history:309_create_auth_carpeta_digital.sql",
+        "status": "pass",
+        "recorded": true,
+        "appliedSqlHashVerified": false
+      },
+      {
+        "id": "history:339_create_documento_carpeta_digital.sql",
+        "status": "pass",
+        "recorded": true,
+        "appliedSqlHashVerified": false
+      },
+      {
+        "id": "history:001_create_rund_schema.sql",
+        "status": "not_verified",
+        "recorded": false,
+        "appliedSqlHashVerified": false
+      },
+      {
+        "id": "history:002_seed_rund_auth_module.sql",
+        "status": "not_verified",
+        "recorded": false,
+        "appliedSqlHashVerified": false
+      },
+      {
+        "id": "history:003_legacy_rund_tables.sql",
+        "status": "not_verified",
+        "recorded": false,
+        "appliedSqlHashVerified": false
+      },
+      {
+        "id": "history:004_rund_docente_identificadores_text.sql",
+        "status": "not_verified",
+        "recorded": false,
+        "appliedSqlHashVerified": false
+      },
+      {
+        "id": "history:005_rund_tarjeta_numero_secuencia.sql",
+        "status": "not_verified",
+        "recorded": false,
+        "appliedSqlHashVerified": false
+      },
+      {
+        "id": "history:006_rund_catalogo_permisos_compatibles.sql",
+        "status": "not_verified",
+        "recorded": false,
+        "appliedSqlHashVerified": false
+      },
+      {
+        "id": "history:007_rund_carpeta_auth_proyeccion.sql",
+        "status": "not_verified",
+        "recorded": false,
+        "appliedSqlHashVerified": false
+      },
+      {
+        "id": "history:667_auth_carpeta_documento_versiones.sql",
+        "status": "not_verified",
+        "recorded": false,
+        "appliedSqlHashVerified": false
+      },
+      {
+        "id": "history:668_auth_carpeta_revision_rund.sql",
+        "status": "not_verified",
+        "recorded": false,
+        "appliedSqlHashVerified": false
+      },
+      {
+        "id": "identity:canonical-person",
+        "status": "not_verified",
+        "reason": "query_failed",
+        "sqlState": "42P01"
+      },
+      {
+        "id": "identity:duplicate-periods",
+        "status": "not_verified",
+        "reason": "query_failed",
+        "sqlState": "42P01"
+      },
+      {
+        "id": "sequence:base-card",
+        "status": "fail"
+      }
+    ],
+    "status": "requires_review",
+    "activationReadiness": "not_verified",
+    "limits": [
+      "Comprobación parcial de estructura; no compara todo el DDL ni ejecuta funciones/triggers.",
+      "El historial no prueba el SQL aplicado ni corrige registros erróneos anteriores.",
+      "Los permisos SELECT son del rol de revisión; no certifican los grants del rol de aplicación.",
+      "No comprueba JWT, roles efectivos, conectividad interna, archivos, OpenKM ni imágenes desplegadas."
+    ]
+  },
+  "rundHealthCandidate": {
+    "reachable": false,
+    "source": "puerto esperado del repositorio; no prueba identidad de instalación"
+  },
+  "activationReadiness": "not_verified",
+  "reviewScope": "Conexión local configurada por Auth; no certifica la base que deba utilizar RUND.",
+  "docker": {
+    "status": "not_verified",
+    "reason": "local_engine_endpoint_unavailable",
+    "containersModified": false
+  },
+  "ownRundDatabaseConnectionVerified": false,
+  "publishedArtifactsVerified": false
+}

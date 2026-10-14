@@ -33,6 +33,7 @@ jobs:
           - travel-expenses-service
           - audit-service
           - hiring-service
+          - rund-service
 
     steps:
       - name: Checkout repository

@@ -1,0 +1,109 @@
+{
+  "verifiedAt": "2026-10-13T14:44:58.847Z",
+  "step": 11,
+  "passedForChangedScope": true,
+  "scope": "Consumidores sync-from-auth (crear/asignar DOCENTE) y sync-documents del remote Gestión de Personas.",
+  "endpoints": {
+    "profiles": "/rund/api/v1/banco-docentes/sync-from-auth",
+    "documents": "/rund/api/v1/rund/docente/:persona/sync-documents",
+    "directDefaultPort": 3016,
+    "directConfiguredUrlSupported": true
+  },
+  "session": {
+    "credentials": "include",
+    "jwtCopiedToStorage": false,
+    "internalTokenSentByBrowser": false,
+    "sessionRefreshPreserved": true,
+    "mutationRetriesAfter5xx": 0
+  },
+  "checks": {
+    "authMustConfirmFirst": true,
+    "nonDocenteRolesDoNotTriggerSync": true,
+    "authFailureDoesNotTriggerSync": true,
+    "duplicateRoleSavePrevented": true,
+    "rawEnvelopeFailureRejected": true,
+    "malformedCountersRejected": true,
+    "partialSummaryReported": true,
+    "secondaryFailurePreservesPrimaryResult": true,
+    "retryDoesNotRecreateUserOrReassignRoles": true,
+    "documentSyncRetainsCurrentPayload": true,
+    "retryUsesCurrentFolderState": true
+  },
+  "verification": {
+    "frontend": {
+      "buildBefore": "OK",
+      "buildAfter": "OK",
+      "testFiles": 4,
+      "tests": 50,
+      "failures": 0,
+      "testsBefore": 3,
+      "vitestVersion": "0.34.6",
+      "typecheckPassed": false,
+      "typeDiagnosticsBefore": 194,
+      "typeDiagnosticsAfter": 194,
+      "newDiagnosticSignatures": [],
+      "typecheckScope": "Grafo src Gestión de Personas y dependencias; extiende tsconfig raíz con strict y tipos Vite, sin excluir tests."
+    },
+    "browser": {
+      "checks": 5,
+      "compiledShellAndRemote": true,
+      "apiResponses": "fixtures interceptadas; sin tráfico API real",
+      "javascriptErrors": [],
+      "report": "docs/rund/validacion-personas-navegador-local.json"
+    },
+    "priorStepSourceHashesPreserved": [
+      "apps/shell/src/App.tsx",
+      "apps/shell/src/components/esap/BackofficeApp.tsx",
+      "apps/shell/src/components/rund/RundEntries.tsx",
+      "apps/shell/src/services/api/rundCachePolicy.ts",
+      "apps/shell/src/config/environment.ts",
+      "apps/shell/src/remotes.d.ts",
+      "apps/shell/src/vite-env.d.ts",
+      "apps/shell/vitest.config.ts",
+      "apps/mfe-rund/vite.config.ts",
+      "apps/mfe-rund/src/utils/rundPublicLinks.ts",
+      "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts"
+    ],
+    "backendChangedThisStep": false,
+    "realApiOrDatabaseTraffic": false,
+    "deployments": false
+  },
+  "commands": [
+    "cd apps/mfe-gestion-personas; ../../node_modules/.bin/vitest.cmd run --threads=false",
+    "cd apps/mfe-gestion-personas; ../../node_modules/.bin/vite.cmd build",
+    "node scripts/verify-rund-personas-browser.cjs"
+  ],
+  "typecheckProject": {
+    "extends": "../tsconfig.json",
+    "compilerOptions": {
+      "types": [
+        "vite/client"
+      ],
+      "composite": false
+    },
+    "include": [
+      "../apps/mfe-gestion-personas/src"
+    ],
+    "references": []
+  },
+  "hashes": {
+    "apps/mfe-gestion-personas/src/components/admin/UsersPersonsModulePremium.tsx": "3900f642bc02cecd18dbe0d1ee38da865741ef25122d8edcad52ee20db95986d",
+    "apps/mfe-gestion-personas/src/components/admin/UsersPersonsModulePremium.rund.test.tsx": "c5f3702a361651f3a52dee1a3295cdeeba618959b33d04b28ea6587eed371e43",
+    "apps/mfe-gestion-personas/src/services/api/apiClient.ts": "7495aff81c3c93a462ab451fc54ab26e779b8ff91696eb8daf0c9bfe84449a15",
+    "apps/mfe-gestion-personas/src/services/api/rundSync.service.ts": "1d0d8ab579d4720cd112fc8da9e103704952264cc46470aa41c8608b40e6f421",
+    "apps/mfe-gestion-personas/src/services/api/rundSync.service.test.ts": "7e96cb95da6c907ba78e3d01496630c4003c2e3957ed7c9c9b553925295425d3",
+    "apps/mfe-gestion-personas/src/services/api/supabase.service.ts": "c591786940051682050685963ada4589a39781301a059efb3bf4a5a3e4192642",
+    "apps/mfe-gestion-personas/src/services/api/supabase.rund-sync.test.ts": "c6a5407bcc7ea5c6a5ecc41c19093b864ca1129982d3dc183b8c28c6602b6ff3",
+    "apps/mfe-gestion-personas/vitest.config.ts": "afbe6f4893f63c0de84166c862c97fad9cc95baa42330949b99811be7cf3a4ef",
+    "scripts/verify-rund-personas-browser.cjs": "95c416e94436c351a83d14d3358d7f41bfa53ce8b2278689a5cbe9f11db2eea4",
+    "build/remotes/mfe-gestion-personas/assets/remoteEntry.js": "831d3f6e8c6561d355874f9746208aadb065184930b899b453f524245a95e307"
+  },
+  "limitations": [
+    "194 diagnósticos TypeScript previos permanecen: ninguna firma nueva, pero el typecheck completo no pasa.",
+    "Pruebas con fixtures y navegador real sobre assets compilados; no acreditan despliegue ni cookies/API de servidores reales.",
+    "El adaptador documental de Gestión de Personas conserva su almacenamiento local; aún no es persistencia documental del backend.",
+    "sync-documents conserva el contrato previo por categoría: una lista vacía no limpia validaciones antiguas.",
+    "Carpeta Digital del shell/auth-service y otros consumidores siguen pendientes; no se retiró PTA ni se copió información real."
+  ],
+  "nextStep": "Paso 12: Carpeta Digital auth-service/shell, persistencia documental, soportes, permisos y estados; luego reportes/PTA/Programación."
+}

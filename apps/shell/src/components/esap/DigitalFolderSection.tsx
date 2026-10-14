@@ -85,6 +85,7 @@ export function DigitalFolderSection({
       const result = await supabaseService.documentos.getDocumentosByCarpeta(carpetaId);
       if (result.success && result.data) {
         const docs: CarpetaDocumento[] = (result.data as any[]).map((d: any) => ({
+          ...d,
           id: d.id || d.documento_id || crypto.randomUUID(),
           carpeta_id: d.carpeta_id || carpetaId,
           nombre: d.nombre || d.name || 'Sin nombre',
@@ -94,7 +95,7 @@ export function DigitalFolderSection({
           estado: d.estado || 'pendiente',
           fecha_subida: d.fecha_subida || d.uploadedAt || new Date().toISOString(),
           fecha_validacion: d.fecha_validacion,
-          version_actual: d.version_actual || 1,
+          version_actual: d.version_actual,
           validado_por: d.validado_por || d.aprobadoPorNombre,
           comentarios: d.comentarios,
           tipo_documento_id: d.tipo_documento_id,
@@ -139,9 +140,11 @@ export function DigitalFolderSection({
       const tiposChecklist: TipoDocumentoRequerido[] = tiposRaw.map((tipo: any) => {
         const tipoNombre = normalizeDocumentText(tipo.nombre_documento || tipo.nombre);
         const matchedDoc = documentos.find((d) => {
+          if (d.pendiente_de_guardar) return false;
           if (d.tipo_documento_id && d.tipo_documento_id === tipo.id) return true;
           return false;
         }) || documentos.find((d) => {
+          if (d.pendiente_de_guardar) return false;
           if (d.tipo_documento_id) return false;
           const docNombre = normalizeDocumentText(d.nombre);
           return !!tipoNombre && !!docNombre && (docNombre.includes(tipoNombre) || tipoNombre.includes(docNombre));
@@ -227,6 +230,7 @@ export function DigitalFolderSection({
         carpetaId: activeCarpetaId,
         tipo_documento_id: reclassifyTipoId,
         categoria: selectedTipo?.categoria || reclassifyDoc.categoria,
+        revision_documento: reclassifyDoc.revision_documento || undefined,
       });
       if (data.success) {
         toast.success('Documento reclasificado', { description: `Vinculado a "${selectedTipo?.nombre}"` });
@@ -359,7 +363,7 @@ export function DigitalFolderSection({
           }
           return false;
         } : undefined}
-        onRefresh={() => { if (selectedUserId) cargarDocumentos(selectedUserId); }}
+        onRefresh={() => selectedUserId ? cargarDocumentos(selectedUserId) : undefined}
         onPreview={handlePreview}
         onDownload={handleDownload}
         onDelete={handleDelete}

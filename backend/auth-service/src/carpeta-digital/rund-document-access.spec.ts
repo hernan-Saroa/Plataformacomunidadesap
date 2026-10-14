@@ -83,7 +83,7 @@ describe('Carpeta Digital: integración de la política RUND', () => {
     const doc = { id: 'doc-1', categoria: rund ? 'rund' : 'otros', nombre: '1020304050.pdf', urlArchivo: '/original.pdf', rundSoporteId: null };
     const service = Object.create(CarpetaDigitalService.prototype) as any;
     const repo = { findOne: jest.fn().mockResolvedValue(doc), save: jest.fn(async (value) => value) };
-    Object.assign(service, { documentoRepo: repo, dataSource: { query: jest.fn().mockResolvedValue([]) } });
+    Object.assign(service, { documentoRepo: repo, tipoDocumentoRepo: { findOne: jest.fn().mockResolvedValue({ id: 'tipo-2', activo: true, carpetaDigitalId: null }) }, dataSource: { query: jest.fn().mockResolvedValue([]) } });
     const result = await service.reclassifyDocumento('doc-1', { categoria: 'FORMACION', tipoDocumentoId: 'tipo-2' }, { sub: 'admin', roles: ['ADMIN'] });
     expect(doc.tipoDocumentoId).toBe('tipo-2');
     expect(result.categoria).toBe(rund ? 'rund' : 'FORMACION');

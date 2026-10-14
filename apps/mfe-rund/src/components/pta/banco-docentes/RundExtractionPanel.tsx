@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Sparkles, RefreshCw, FileText, Loader2, Bell, Clock3, ChevronDown, AlertTriangle, CheckCircle2, ArrowRight, Eye, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { apiClient } from '../../../../../shell/src/services/api';
-import { getAppOnlineStatus } from '../../../../../shell/src/utils/connectivity';
+import { apiClient } from '../../../services/api/apiClient';
+import { getAppOnlineStatus } from '../../../utils/connectivity';
 import './RundExtractionPanel.css';
 
 export type RundSuggestion = { id:string; campo:string; label:string; valor:string; valor_previo:string; pagina:number; evidencia:string;

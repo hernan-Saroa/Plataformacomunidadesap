@@ -2,10 +2,10 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { RundDocumentManager } from './RundDocumentManager';
-import { apiClient } from '../../../../../shell/src/services/api';
+import { apiClient } from '../../../services/api/apiClient';
 import { toast } from 'sonner';
 
-vi.mock('../../../../../shell/src/services/api', () => ({ apiClient: { get: vi.fn(), upload: vi.fn(), getBlob: vi.fn(), delete: vi.fn() } }));
+vi.mock('../../../services/api/apiClient', () => ({ apiClient: { get: vi.fn(), upload: vi.fn(), getBlob: vi.fn(), delete: vi.fn() } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const docs = [

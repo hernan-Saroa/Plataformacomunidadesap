@@ -6,13 +6,10 @@ export const MACRO_DOCENTE_PERMISSION_KEY = 'macroDocentePermiso';
  * Autorización del Macro Docente por PERMISO granular (no por rol fijo en
  * código): cualquier rol al que el administrador le asigne este permiso en
  * auth.role_permissions puede realizar la acción — así se agregan/quitan
- * roles sin tocar código. Ver pta-permissions.service.ts (mismo mecanismo
- * que ya usa la aprobación del PTA por componente).
+ * roles sin tocar código. La resolución compartida pertenece a RUND
+ * (auth/rund-effective-permissions.ts); los códigos pta.* se conservan por compatibilidad.
  */
 export const RequierePermisoMacroDocente = (permission: string) =>
   SetMetadata(MACRO_DOCENTE_PERMISSION_KEY, permission);
 
-export const MACRO_DOCENTE_PERMISOS = {
-  CONSULTAR: 'pta.macro_docente.consultar',
-  GESTIONAR_ACCESOS_EXTERNOS: 'pta.macro_docente.gestionar_accesos_externos',
-} as const;
+export { RUND_MACRO_PERMISSIONS as MACRO_DOCENTE_PERMISOS } from '../../auth/rund-permission-catalog';

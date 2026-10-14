@@ -1,0 +1,145 @@
+{
+  "verifiedAt": "2026-10-13T09:51:34.439Z",
+  "passed": true,
+  "daemonUsed": false,
+  "containersStarted": false,
+  "realEnvironmentFilesRead": false,
+  "serviceEnvFilesOmittedForValidation": true,
+  "otherModulesCompared": true,
+  "checks": [
+    {
+      "composition": "base",
+      "persistentStorage": "bind",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "303068b9be5d9619fa5747270f63f26c0ea3c2f2774fe66c26f5c3561e66d345",
+      "otherModulesHashAfter": "303068b9be5d9619fa5747270f63f26c0ea3c2f2774fe66c26f5c3561e66d345"
+    },
+    {
+      "composition": "backend",
+      "persistentStorage": "bind",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "5d4a861171b76357456b393e3a38f7047e2ffbf0498af50ac6ff7db253859e65",
+      "otherModulesHashAfter": "5d4a861171b76357456b393e3a38f7047e2ffbf0498af50ac6ff7db253859e65"
+    },
+    {
+      "composition": "local",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "3983f95e99610085dbdf12547e054b0c0cf76e2dfe9476ba1b28919f3e3ea265",
+      "otherModulesHashAfter": "3983f95e99610085dbdf12547e054b0c0cf76e2dfe9476ba1b28919f3e3ea265"
+    },
+    {
+      "composition": "dev",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "ac020e9fc358dcdce49019c52ea536f06a670ee417f657e17db0ac737fe5c93f",
+      "otherModulesHashAfter": "ac020e9fc358dcdce49019c52ea536f06a670ee417f657e17db0ac737fe5c93f"
+    },
+    {
+      "composition": "dev-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "42eae6b243a4537747212df99211118a3a3aae9229c2180aeffec349f4a5b38b",
+      "otherModulesHashAfter": "42eae6b243a4537747212df99211118a3a3aae9229c2180aeffec349f4a5b38b"
+    },
+    {
+      "composition": "dev-mfe",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "4c3ad6140dcfa1e9022063739f47f758469779143cacecd692f008594d3e43ae",
+      "otherModulesHashAfter": "4c3ad6140dcfa1e9022063739f47f758469779143cacecd692f008594d3e43ae"
+    },
+    {
+      "composition": "dev-mfe-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "375e3c87e0f61440a2a0fcddc32435fd591c8914125b6eeb1f4a2c79a2fc1bf5",
+      "otherModulesHashAfter": "375e3c87e0f61440a2a0fcddc32435fd591c8914125b6eeb1f4a2c79a2fc1bf5"
+    },
+    {
+      "composition": "qa",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "7f34a967045661369aa962d4d2aa6495cb3a817482e04bdf5f7974e29834575c",
+      "otherModulesHashAfter": "7f34a967045661369aa962d4d2aa6495cb3a817482e04bdf5f7974e29834575c"
+    },
+    {
+      "composition": "qa-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "8117bf44920b948bc0b0a0c5699dc175d4eff270019b837f08501d25680db9a7",
+      "otherModulesHashAfter": "8117bf44920b948bc0b0a0c5699dc175d4eff270019b837f08501d25680db9a7"
+    },
+    {
+      "composition": "qa-mfe",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "b3ace237de0c4e9bc8856a071d60a1a16fab36f9f3061405d6bbff1238c77956",
+      "otherModulesHashAfter": "b3ace237de0c4e9bc8856a071d60a1a16fab36f9f3061405d6bbff1238c77956"
+    },
+    {
+      "composition": "qa-mfe-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "1f6c69fd62b470bca41306f8480bc565b043c55ddb1b577c6cc215cf8dbb36fa",
+      "otherModulesHashAfter": "1f6c69fd62b470bca41306f8480bc565b043c55ddb1b577c6cc215cf8dbb36fa"
+    },
+    {
+      "composition": "pre",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "1120ab7c43b5d91feac071dd2b077e35601ace3717cec2f8ecb69a889b3c12f4",
+      "otherModulesHashAfter": "1120ab7c43b5d91feac071dd2b077e35601ace3717cec2f8ecb69a889b3c12f4"
+    },
+    {
+      "composition": "pre-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "3a5c657b21f3a0ece061d1d94290d41073b082d3f1fe7e1bc55b8a142e1523cc",
+      "otherModulesHashAfter": "3a5c657b21f3a0ece061d1d94290d41073b082d3f1fe7e1bc55b8a142e1523cc"
+    },
+    {
+      "composition": "pre-mfe",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "0e9924ef2954677f21af9d828bf32bf91f28b50e4886130e43ca57c1fbc6a78c",
+      "otherModulesHashAfter": "0e9924ef2954677f21af9d828bf32bf91f28b50e4886130e43ca57c1fbc6a78c"
+    },
+    {
+      "composition": "pre-mfe-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "5d157de990fe9b02492ba3e432f06f0c895ee39b3d7bcb6617c4749823a55eb8",
+      "otherModulesHashAfter": "5d157de990fe9b02492ba3e432f06f0c895ee39b3d7bcb6617c4749823a55eb8"
+    },
+    {
+      "composition": "prod",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "27576ed26d7e78a6d073112798b4d0a7ef480c2f6479a13fedd1efb3d544836e",
+      "otherModulesHashAfter": "27576ed26d7e78a6d073112798b4d0a7ef480c2f6479a13fedd1efb3d544836e"
+    },
+    {
+      "composition": "prod-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "2ba71c77ff9e3e9c060afbc2dda2ca04dce3517ff0c6dca10187cf8aa84ec245",
+      "otherModulesHashAfter": "2ba71c77ff9e3e9c060afbc2dda2ca04dce3517ff0c6dca10187cf8aa84ec245"
+    },
+    {
+      "composition": "prod-mfe",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "c26ec38c2ee36dd4e984a8333665235d373bc4f2c0b90080984c5f6674bf2534",
+      "otherModulesHashAfter": "c26ec38c2ee36dd4e984a8333665235d373bc4f2c0b90080984c5f6674bf2534"
+    },
+    {
+      "composition": "prod-mfe-ghcr",
+      "persistentStorage": "volume",
+      "otherModulesUnchanged": true,
+      "otherModulesHashBefore": "6f3d071e55c7b106321eaa51639dc4443f1d313897ba90d9cd62c18773ac7d02",
+      "otherModulesHashAfter": "6f3d071e55c7b106321eaa51639dc4443f1d313897ba90d9cd62c18773ac7d02"
+    }
+  ],
+  "explicitOverrides": true
+}

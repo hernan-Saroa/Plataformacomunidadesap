@@ -1,12 +1,16 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 import { PERMISSIONS_KEY, IS_PUBLIC_KEY } from './auth.decorators';
+import { getRequestRoleCodes } from '../modules/banco-docentes/banco-docentes-sensitive-data';
+import { resolveRundRequestPermissions } from './rund-effective-permissions';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
-  constructor(private reflector: Reflector) {}
+  constructor(private reflector: Reflector, @InjectDataSource() private readonly db: DataSource) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -23,18 +27,19 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
-    const { user } = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest();
+    const { user } = request;
     if (!user) {
       return false;
     }
 
     // Superadmins bypass explicit permission checks
-    const userRoles: string[] = (user.roles || []).map((r: string) => r.toUpperCase());
+    const userRoles = getRequestRoleCodes(user);
     if (userRoles.includes('SUPER_ADMIN') || userRoles.includes('SUPERADMIN') || userRoles.includes('ADMIN_SISTEMA')) {
       return true;
     }
 
-    const userPermissions: string[] = user.permissions || [];
-    return requiredPermissions.some((perm) => userPermissions.includes(perm));
+    const permissions = await resolveRundRequestPermissions(this.db, request);
+    return requiredPermissions.some((perm) => permissions.has(perm));
   }
 }

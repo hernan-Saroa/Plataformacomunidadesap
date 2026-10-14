@@ -1,0 +1,22 @@
+{
+  "verifiedAt": "2026-10-14T09:38:26.893Z",
+  "step": "12.5b",
+  "passed": true,
+  "checks": [
+    "JSON RUND y alias v2 conservan petición/respuesta y omiten sus datos en auditoría",
+    "Carpeta Auth y portal conservan cookie y revisión documental sin duplicarlas en logs",
+    "Un 409 conserva estado/respuesta del propietario sin copiar su cuerpo a auditoría",
+    "Una caída del upstream conserva el error HTTP sin registrar su URL privada",
+    "El archivo PDF conserva bytes y cabeceras; GET mantiene la política previa sin auditoría de escritura",
+    "Multipart conserva archivo y boundary; el cuerpo no pasa a auditoría",
+    "Sin sesión el guard impide CRUD RUND antes de llegar al propietario",
+    "La ruta pública OTP sigue llegando a RUND sin JWT y no registra su cuerpo",
+    "Un módulo ajeno conserva transporte, consultas y cuerpos de auditoría"
+  ],
+  "gatewayAppModuleReal": true,
+  "mainImported": false,
+  "fictitiousUpstreamOnly": true,
+  "realEnvironmentFilesRead": false,
+  "existingDatabaseUsed": false,
+  "runtimeEnvironmentCertified": false
+}

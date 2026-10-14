@@ -1,10 +1,21 @@
 /** Las consultas RUND se revalidan con el servidor y el rol de la sesión actual. */
+import { API_MODE, MICROSERVICE_URLS } from '../../config/environment';
+
 export function isRundRequest(url: string): boolean {
-  return /\/(banco-docentes|macro-docente|docentes-disponibles)(\/|\?|$)/i.test(url);
+  let parsed: URL;
+  try { parsed = new URL(url, 'http://ruta-local'); } catch { return false; }
+  const path = parsed.pathname;
+  if (/\/(?:rund|rund-service)\/api\/v\d+(?:\/|$)/i.test(path)) return true;
+  if (/\/(banco-docentes|macro-docente|docentes-disponibles)(\/|$)/i.test(path)) return true;
+  if (/\/pta\/api\/v\d+\/rund(?:\/|$)/i.test(path)) return true;
+  if (API_MODE === 'direct') {
+    try { return parsed.origin === new URL(MICROSERVICE_URLS.rund).origin; } catch { return false; }
+  }
+  return false;
 }
 
 export function excludesRundCache(url: string, data?: unknown): boolean {
-  if (isRundRequest(url)) return true;
+  if (isRundRequest(url) || isCarpetaDocumentRequest(url)) return true;
   // Solo inspeccionar canales que pueden incluir perfiles o documentos RUND.
   if (!/\/(pta|auth)\/api\//i.test(url)) return false;
   const visit = (value: unknown): boolean => {
@@ -18,4 +29,11 @@ export function excludesRundCache(url: string, data?: unknown): boolean {
     });
   };
   return visit(data);
+}
+
+export function isCarpetaDocumentRequest(url: string): boolean {
+  let parsed: URL;
+  try { parsed = new URL(url, 'http://ruta-local'); } catch { return false; }
+  return /\/(?:portal\/)?carpeta-digital(?:\/|$)/i.test(parsed.pathname)
+    || /\/uploads\/carpeta-digital(?:\/|$)/i.test(parsed.pathname);
 }

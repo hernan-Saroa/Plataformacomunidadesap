@@ -1,6 +1,7 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { promises as fs } from 'fs';
 import { dirname, join, resolve, sep } from 'path';
+import { localRundUploadPath } from './rund-upload-paths';
 
 export type StoredRundDocument = {
   provider: 'OPENKM' | 'LOCAL';
@@ -74,10 +75,7 @@ export class RundDocumentStorageService {
     }
 
     if (provider === 'LEGACY_LOCAL') {
-      const relative = storagePath
-        .replace(/^\/pta\/api\/v1\/uploads\//, '')
-        .replace(/^\/uploads\//, '');
-      return fs.readFile(this.safeLocalPath(relative));
+      return fs.readFile(this.legacyLocalPath(storagePath));
     }
 
     return fs.readFile(this.safeLocalPath(storagePath));
@@ -92,10 +90,8 @@ export class RundDocumentStorageService {
       return;
     }
 
-    const relative = provider === 'LEGACY_LOCAL'
-      ? storagePath.replace(/^\/pta\/api\/v1\/uploads\//, '').replace(/^\/uploads\//, '')
-      : storagePath;
-    await fs.unlink(this.safeLocalPath(relative)).catch((error: NodeJS.ErrnoException) => {
+    const localPath = provider === 'LEGACY_LOCAL' ? this.legacyLocalPath(storagePath) : this.safeLocalPath(storagePath);
+    await fs.unlink(localPath).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT') throw error;
     });
   }
@@ -108,6 +104,17 @@ export class RundDocumentStorageService {
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '');
     return normalized || 'sin-clasificar';
+  }
+
+  private legacyLocalPath(storagePath: string): string {
+    const local = localRundUploadPath(storagePath, this.uploadsRoot);
+    if (local) return local;
+    // Las filas LEGACY_LOCAL también pueden conservar una clave relativa de almacenamiento.
+    if (!storagePath.startsWith('/') && !/^[a-z][a-z0-9+.-]*:/i.test(storagePath)) {
+      const relative = localRundUploadPath('/uploads/' + storagePath, this.uploadsRoot);
+      if (relative) return relative;
+    }
+    throw new Error('Referencia documental local no permitida.');
   }
 
   private safeLocalPath(relativePath: string): string {

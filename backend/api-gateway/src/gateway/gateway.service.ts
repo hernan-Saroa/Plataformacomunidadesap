@@ -147,6 +147,7 @@ export class GatewayService {
     // Para otras versiones, incluir el prefijo de versión
     const versionPrefix = version === '1' ? '' : `/v${version}`;
     const targetUrl = `${serviceUrl}${versionPrefix}${pathWithoutPrefix}`;
+    const protectedAudit = isRundAuditUrl(req.originalUrl || req.url);
     
     const contentType = (req.headers['content-type'] as string) || '';
     const isMultipart = contentType.toLowerCase().includes('multipart/form-data');
@@ -226,7 +227,7 @@ export class GatewayService {
                                 acceptHeader.includes('image/') ||
                                 isBinaryFileRoute;
 
-      console.log(`[Gateway] Forwarding to: ${redactRundAuditUrl(targetUrl)}`);
+      console.log(`[Gateway] Forwarding to: ${redactRundAuditUrl(targetUrl, protectedAudit)}`);
       console.log(`[Gateway] Expects binary: ${expectsBinaryFile}`);
       console.log(`[Gateway] Accept header: ${acceptHeader}`);
 
@@ -282,7 +283,7 @@ export class GatewayService {
       } catch (_) { /* no es JSON */ }
 
       // Guardar cuerpo de respuesta para el interceptor de auditoría
-      res.locals.auditResponseBody = parsedResponseBody;
+      res.locals.auditResponseBody = protectedAudit ? null : parsedResponseBody;
       res.locals.auditResponseStatus = response.status;
 
       // Si la respuesta es un error (4xx, 5xx), intentar parsear el arraybuffer como JSON
@@ -296,11 +297,11 @@ export class GatewayService {
       return res.status(response.status).send(response.data);
     } catch (error: any) {
       console.error(`[Gateway] Error caught:`, {
-        message: isRundAuditUrl(req.originalUrl || req.url) ? 'Error al consultar RUND' : error.message,
+        message: protectedAudit ? 'Error al consultar RUND' : error.message,
         code: error.code,
         responseStatus: error.response?.status,
         config: {
-          url: redactRundAuditUrl(error.config?.url || ''),
+          url: redactRundAuditUrl(error.config?.url || '', protectedAudit),
           method: error.config?.method,
           responseType: error.config?.responseType,
         }

@@ -1,0 +1,109 @@
+{
+  "verifiedAt": "2026-10-13T22:05:50.077Z",
+  "step": "12.3a",
+  "passedForChangedScope": true,
+  "entireStep12Complete": false,
+  "productionEnabled": false,
+  "deployed": false,
+  "realDataMigrated": false,
+  "originalPtaSourcesChanged": false,
+  "flag": {
+    "name": "CARPETA_DOCUMENT_VERSIONING_ENABLED",
+    "default": "false",
+    "migrationRequired": "667_auth_carpeta_documento_versiones.sql"
+  },
+  "builds": {
+    "auth": true,
+    "shell": true,
+    "personas": true
+  },
+  "tests": {
+    "auth": {
+      "suites": 7,
+      "passed": 62,
+      "runner": "scripts/jest-auth-carpeta.config.cjs con Jest de RUND"
+    },
+    "personas": {
+      "files": 5,
+      "passed": 72
+    },
+    "shell": {
+      "passingFiles": 9,
+      "passed": 97,
+      "failedSuites": 1,
+      "fullSuitePassed": false,
+      "inheritedFailure": "disciplinary.service.spec.ts: jest is not defined"
+    }
+  },
+  "types": [
+    {
+      "app": "shell",
+      "before": 586,
+      "after": 586,
+      "addedDiagnostics": [],
+      "fullTypecheckPassed": false
+    },
+    {
+      "app": "personas",
+      "before": 192,
+      "after": 192,
+      "addedDiagnostics": [],
+      "fullTypecheckPassed": false
+    }
+  ],
+  "postgres": {
+    "passed": 77,
+    "rundRegression": 59,
+    "authVersions": 18,
+    "syntheticDataOnly": true,
+    "fullAuthAppStarted": false
+  },
+  "browser": {
+    "passed": 7,
+    "compiledShellAndRemote": true,
+    "apiResponses": "fixtures interceptadas",
+    "realBrowserProfileUsed": false,
+    "javascriptErrors": []
+  },
+  "compose": {
+    "passed": 19,
+    "otherModulesUnchanged": true,
+    "daemonUsed": false,
+    "realEnvironmentFilesRead": false
+  },
+  "limitations": [
+    "Historia de originales Auth locales con ruta UUID; no transforma documentos RUND/PTA/locales ni URLs históricas/remotas.",
+    "Primera consulta explícita inicializa versión real; no hay importación masiva.",
+    "Etiquetas, eliminación individual de versiones y borrado masivo no habilitados.",
+    "Pendiente 12.3b: convergencia de estados y revisión contra versión vista, contadores entre propietarios y panel inline según propietario.",
+    "Conserva diagnósticos TypeScript y suite heredada del shell; no se declaran corregidos."
+  ],
+  "hashes": {
+    "backend/auth-service/src/carpeta-digital/carpeta-document-versions.service.ts": "a889610e2afa0a997db31c754dcdeb5c4ed9e4f2385d150c491e592f98b3f004",
+    "backend/auth-service/src/carpeta-digital/carpeta-document-storage.ts": "8305659d36786b723dfa4966336d16ba56110188d809a6a3d4c5221a2449d57e",
+    "backend/auth-service/src/carpeta-digital/carpeta-document-storage.spec.ts": "00957826f18038a7ec874e5f527ec94dccaa550720eebc3015208d25733c7544",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.service.ts": "d23155a1735bfdc55a249addde9442351efcde0c4de747530dd8dc7066f6fa8a",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.controller.ts": "7d062f6bafab812bb9409c828061ecd0359d686a75e04ca1c150e4e661254797",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.module.ts": "9912babbc374152dda468e79d2610d8c440e2c6ba388db97512be577d9f7370e",
+    "db/migrations/667_auth_carpeta_documento_versiones.sql": "4bafc25852da545b82d04454b64f2ddc9a2d95f64d12a78b8fa3b343d4f0a12f",
+    "packages/shared-hooks/src/createCarpetaDigitalDocuments.ts": "13b8f0e60b256b2f820fc4c9a2726de33c606c1217608bc6e06262f9a9fa482a",
+    "packages/shared-hooks/src/carpetaDigitalDocumentCases.ts": "52d758bb04f634ea2f4425378146cc14abbc3e98a97cbb5205662c8055f439b4",
+    "packages/shared-ui/src/carpeta-document-history.tsx": "1b06a5f44a96da94cac80ffb4661e267d2275891c9a066459e28416c360ea922",
+    "apps/shell/src/components/shared/CarpetaDigitalSharedView.tsx": "b498150e3811ac4e9555ecf720bfeb8d8826af46bf046696238cd6856b0b138d",
+    "apps/mfe-gestion-personas/src/components/shared/CarpetaDigitalSharedView.tsx": "6ae5665accd96e43cc32db883da983e192ebdaca401aeaf3351b1373ebd115f7",
+    "apps/mfe-gestion-personas/src/components/shared/CarpetaDocumentHistory.test.tsx": "53eba9bb02e8c39983d4e494571fc93dc3c0131eb424732ee120fe755ad80e8d",
+    "apps/shell/src/components/esap/DocumentVersionHistoryModal.tsx": "19a9b64fda2d2d81f768fc86912588010cab264ff641ddf42ca22c0feb871df4",
+    "scripts/verify-auth-document-versions.cjs": "2fe5989b452bcb00ad64ff5cbf79c580adf7f5ee5d754f27ac4daa92d506eb16",
+    "scripts/verify-rund-service-integration.cjs": "5f19c69863ab59d8e4abbabd415fb1e45b7772f085ac780b88c016eeb51cab85",
+    "scripts/verify-rund-personas-browser.cjs": "6747585323227add23344fab054a6d81f43d7cf9567f73f37669989b315549ce",
+    "scripts/verify-rund-compose.cjs": "dce2f476a39c5542d1e1b849d03d01db08942529f03d9381e8be61b97e5c8454",
+    ".env.example": "66eb4189766701e8133b417fec2e5b0b34b620a6a0ddbb80d36f203735e26323",
+    "backend/auth-service/.env.example": "cc49b6558bdd7657f22180b60b6143fef625be71bcf06c9c2ac44826e86cdbea",
+    "docker-compose.yml": "9d0dda795018ecf6a134c2e0fb33f221597bb60e9619be97161658ca78e38653",
+    "docker-compose.backend.yml": "d51d1bf62414587165a4dbd928f0945cff0c8412bcaf0137941b272c49b2af63",
+    "docker-compose.dev.yml": "dab6bc2ec375567fd43d755f53d3bfb2bc413235da9d5533e1cad471a0a3ccf6",
+    "docker-compose.qa.yml": "f85bff2fbe664238d2970775c7402fc8d47731db1f1816bed9b083c7529a46fd",
+    "docker-compose.pre.yml": "6e443c53466ae5bc739d3a52db4a17f257200efcc701fd56539b6584dd70a850",
+    "docker-compose.prod.yml": "964cc128cafa3000a6265c4de9c373f07f0c5bda49c655609ff14ce0afae68a2"
+  }
+}

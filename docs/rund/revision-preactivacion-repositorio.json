@@ -1,0 +1,171 @@
+{
+  "reviewedAt": "2026-10-14T08:08:06.642Z",
+  "step": "12.5",
+  "scope": "repository-only",
+  "targetEnvironments": [
+    "local",
+    "dev",
+    "qa",
+    "pre",
+    "prod"
+  ],
+  "targetEnvironmentChecked": false,
+  "activationReadiness": "not_verified",
+  "runtimeModified": false,
+  "realEnvironmentFilesRead": false,
+  "existingDatabaseUsed": false,
+  "findings": [],
+  "workflows": [
+    {
+      "file": ".github/workflows/build-backend-dev.yml",
+      "environment": "dev",
+      "expectedImage": "ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-rund-service:dev-latest",
+      "matrixContainsRund": true
+    },
+    {
+      "file": ".github/workflows/build-backend-qa.yml",
+      "environment": "qa",
+      "expectedImage": "ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-rund-service:qa-latest",
+      "matrixContainsRund": true
+    },
+    {
+      "file": ".github/workflows/build-backend-pre.yml",
+      "environment": "pre",
+      "expectedImage": "ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-rund-service:pre-latest",
+      "matrixContainsRund": true
+    },
+    {
+      "file": ".github/workflows/build-backend-prod.yml",
+      "environment": "prod",
+      "expectedImage": "ghcr.io/${GITHUB_REPOSITORY_OWNER:-hernan-saroa}/esap-rund-service:prod-latest",
+      "matrixContainsRund": true
+    }
+  ],
+  "migrations": [
+    {
+      "file": "migrate.local.sh",
+      "psqlFileInvocations": [
+        "if psql -X -v ON_ERROR_STOP=1 -h \"$DB_HOST\" -p \"$DB_PORT\" -U \"$DB_USER\" -d \"$DB_NAME\" -f \"$file\" 2>&1; then"
+      ],
+      "declaresOnErrorStop": true,
+      "migrationFailureIgnored": 0
+    },
+    {
+      "file": "migrate.service.local.sh",
+      "psqlFileInvocations": [
+        "if psql -X -v ON_ERROR_STOP=1 -h \"$DB_HOST\" -p \"$DB_PORT\" -U \"$DB_USER\" -d \"$DB_NAME\" -f \"$file\" 2>&1; then"
+      ],
+      "declaresOnErrorStop": true,
+      "migrationFailureIgnored": 0
+    },
+    {
+      "file": "deploy.dev.sh",
+      "psqlFileInvocations": [
+        "if docker exec superapp-db psql -X -v ON_ERROR_STOP=1 -U postgres -d esap_db -f \"$file\" 2>&1; then"
+      ],
+      "declaresOnErrorStop": true,
+      "migrationFailureIgnored": 0
+    },
+    {
+      "file": "deploy.qa.sh",
+      "psqlFileInvocations": [
+        "if docker exec superapp-db-qa psql -X -v ON_ERROR_STOP=1 -U postgres -d esap_db -f \"$file\" 2>&1; then"
+      ],
+      "declaresOnErrorStop": true,
+      "migrationFailureIgnored": 0
+    },
+    {
+      "file": "deploy.pre.sh",
+      "psqlFileInvocations": [
+        "if docker exec superapp-db-pre psql -X -v ON_ERROR_STOP=1 -U postgres -d esap_db -f \"$file\" 2>&1; then"
+      ],
+      "declaresOnErrorStop": true,
+      "migrationFailureIgnored": 0
+    },
+    {
+      "file": "deploy.prod.sh",
+      "psqlFileInvocations": [
+        "if docker exec superapp-db-prod psql -X -v ON_ERROR_STOP=1 -U postgres -d esap_db -f \"$file\" 2>&1; then"
+      ],
+      "declaresOnErrorStop": true,
+      "migrationFailureIgnored": 0
+    }
+  ],
+  "auditCoverage": [
+    {
+      "route": "/rund/api/v1/pta/banco-docentes/PERFIL/documentos",
+      "usesRundAuditPolicy": true,
+      "redacted": "/rund/api/v1/pta/banco-docentes/[REDACTED]/documentos"
+    },
+    {
+      "route": "/rund/api/v1/docentes/PERFIL",
+      "usesRundAuditPolicy": true,
+      "redacted": "/rund/api/v1/docentes/[REDACTED]"
+    },
+    {
+      "route": "/rund/api/v1/rund/interoperabilidad/perfiles/00000000?periodo=2099-1",
+      "usesRundAuditPolicy": true,
+      "redacted": "/rund/api/v1/rund/interoperabilidad/perfiles/[REDACTED]"
+    },
+    {
+      "route": "/auth/api/v1/carpeta-digital/persona/PERSONA/documentos",
+      "usesRundAuditPolicy": true,
+      "redacted": "/auth/api/v1/carpeta-digital/persona/[REDACTED]/[REDACTED]"
+    },
+    {
+      "route": "/auth/api/v1/portal/carpeta-digital/documentos/ARCHIVO/reclassify",
+      "usesRundAuditPolicy": true,
+      "redacted": "/auth/api/v1/portal/carpeta-digital/documentos/[REDACTED]/reclassify"
+    }
+  ],
+  "previousEvidenceFiles": [
+    {
+      "file": "apps/shell/src/components/portal/gestion-documental/MisDocumentos.tsx",
+      "unchanged": true
+    },
+    {
+      "file": "apps/shell/src/components/portal/portalApi.ts",
+      "unchanged": true
+    },
+    {
+      "file": "backend/auth-service/src/portal/portal.controller.ts",
+      "unchanged": true
+    },
+    {
+      "file": "backend/auth-service/src/carpeta-digital/carpeta-digital.controller.ts",
+      "unchanged": true
+    },
+    {
+      "file": "scripts/verify-rund-folder-views.cjs",
+      "unchanged": true
+    },
+    {
+      "file": "scripts/verify-rund-personas-browser.cjs",
+      "unchanged": true
+    }
+  ],
+  "limits": [
+    "Destinos local, DEV, QA, PRE y PROD confirmados; sus instalaciones reales no se verifican con este script.",
+    "Sin consultar imágenes GHCR, gateway, cookies, JWT, OpenKM, esquema ni identidades reales.",
+    "Las pruebas previas no certifican rutas o fallos fuera de su cobertura.",
+    "Una coincidencia de hashes se limita a los archivos registrados en la evidencia previa."
+  ],
+  "hashes": {
+    ".github/workflows/build-backend-dev.yml": "cebe5a14c95612db59f7b54fc1db5f5b78075ef109d7efd9298a0d1a38464b67",
+    "docker-compose.ghcr.yml": "11b3dbbc4d1ad9840dc84eab1e222b899d73b1cff5bfe96acf9ef74c40a36e63",
+    ".github/workflows/build-backend-qa.yml": "0adb52ce2d58f7e8aad1d028270c22b6fcc7d31e1c863b05fa2fe73a451e6879",
+    "docker-compose.qa.ghcr.yml": "6f52b82815a11138b6e0f7f0822adb41ca2bba068255243dffc7c1218d56ad7a",
+    ".github/workflows/build-backend-pre.yml": "38678d5ee12341a6161f1077eb7f39d33b7696d9b99235eabacc873fd1ee7a0d",
+    "docker-compose.pre.ghcr.yml": "7df66ff3df0f3280ed183b8a62ce9ac9ac6ce1ef6c104d86ab6f68a057a0e93d",
+    ".github/workflows/build-backend-prod.yml": "cf8d7f2a0e086b4ae53040aeb95702fe6ad3b4cae43fe9b90e19a9c0cb06d8f6",
+    "docker-compose.prod.ghcr.yml": "bc7adfbca1bf55eb88fa5b14f739fc506643d2e8b60594adef221098c491c7f5",
+    "migrate.local.sh": "9936ccc4020b56fd68fcb31d4feb19df58a72c12703facc66b69947dab3d300a",
+    "migrate.service.local.sh": "25789ca3936fbc98ed2d041cf92d49cca1ebb510cfd54ff1e870bb378955de61",
+    "deploy.dev.sh": "d96df5523db649f7a0fd4fabd2a83a0e2e17297ec86d47514d7d613b1fa2770f",
+    "deploy.qa.sh": "fd952204c43e271595bdb0c225717c2d06683a96a408f7c7de66626a69ece5db",
+    "deploy.pre.sh": "fe1b5194038722ff2d2a49ca7ce5cff076336ea570ba948982de4666c640bcb8",
+    "deploy.prod.sh": "ee1159f8bb9c4ba46f8ff2d0c105c61726f743060c3c7602747c2fe0496a52ac",
+    "backend/api-gateway/src/audit/rund-audit-redaction.ts": "1ce021f12a1893a1aa2e1991fbd5b621422f407ec4a4ee3278565e70fc3052ae",
+    "docs/rund/validacion-vistas-carpeta-local.json": "efb83cb0d8f5858bded37f304a31ac3e44a2dd3e094db6243bd1350f50a56bc9"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "verifiedAt": "2026-10-14T09:38:39.450Z",
+  "step": "12.4",
+  "passed": true,
+  "syntheticDataOnly": true,
+  "existingDatabaseUsed": false,
+  "checks": [
+    "portal y administración conservan archivos, propietarios, perfiles, versiones y totales",
+    "sin sesión el portal conserva el enmascaramiento de originales RUND",
+    "una credencial RUND incorrecta produce fallo explícito sin una carpeta parcial exitosa",
+    "el catálogo de periodos del navegador no admite caché HTTP"
+  ]
+}

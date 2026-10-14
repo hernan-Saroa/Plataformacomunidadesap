@@ -140,13 +140,15 @@ export function DocumentVersionHistoryModal({
   onVersionRestored
 }: DocumentVersionHistoryModalProps) {
   const [versiones, setVersiones] = useState<DocumentVersion[]>([]);
-  const [versionActual, setVersionActual] = useState<number>(1);
+  const [versionActual, setVersionActual] = useState<number | null>(null);
+  const [historyError, setHistoryError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<DocumentVersion | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [restoreComentarios, setRestoreComentarios] = useState('');
   const [isRestoring, setIsRestoring] = useState(false);
   const [showTagEditor, setShowTagEditor] = useState<string | null>(null);
+  const [versionCapabilities, setVersionCapabilities] = useState({ restore: false, tag: false, remove: false });
   const [selectedTag, setSelectedTag] = useState<VersionTag>('');
 
   // ========== EFFECTS ==========
@@ -169,22 +171,24 @@ export function DocumentVersionHistoryModal({
   const cargarVersiones = async () => {
     try {
       setIsLoading(true);
+      setHistoryError('');
+      setVersionCapabilities({ restore: false, tag: false, remove: false });
       const result = await supabaseService.documentos.getVersiones(documentoId);
       
       if (result.success && result.data) {
         setVersiones(result.data.versiones || []);
-        setVersionActual(result.data.version_actual || 1);
+        setVersionCapabilities({ restore: result.data.permite_restaurar === true, tag: result.data.permite_etiquetar === true, remove: result.data.permite_eliminar_version === true });
+        setVersionActual(result.data.version_actual || null);
       } else {
-        // ✅ Manejo graceful: Si no se encuentra el documento, mostrar versiones vacías
-        console.warn('⚠️ No se encontraron versiones para el documento:', documentoId);
         setVersiones([]);
-        setVersionActual(1);
+        setVersionActual(null);
+        setHistoryError(result.error || 'No se pudo consultar el historial.');
       }
     } catch (err: any) {
       console.warn('⚠️ Error al cargar versiones del documento:', err.message);
-      // Fallback silencioso en caso de no existir versiones reales
       setVersiones([]);
-      setVersionActual(1);
+      setVersionActual(null);
+      setHistoryError(err.message || 'No se pudo consultar el historial.');
     } finally {
       setIsLoading(false);
     }
@@ -346,7 +350,7 @@ export function DocumentVersionHistoryModal({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mt-4">
             <div className="bg-white rounded-lg border border-gray-200 p-3">
               <p className="text-xs text-gray-600 mb-1">Versión actual</p>
-              <p className="text-2xl font-bold text-blue-600">v{versionActual}</p>
+              <p className="text-2xl font-bold text-blue-600">{versionActual ? `v${versionActual}` : '—'}</p>
             </div>
             <div className="bg-white rounded-lg border border-gray-200 p-3">
               <p className="text-xs text-gray-600 mb-1">Total versiones</p>
@@ -368,12 +372,14 @@ export function DocumentVersionHistoryModal({
                 <p className="text-sm text-gray-600">Cargando historial...</p>
               </div>
             </div>
+          ) : historyError ? (
+            <p role="alert" className="text-red-700">{historyError}</p>
           ) : versiones.length === 0 ? (
             <div className="text-center py-12">
               <History className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-bold text-gray-900 mb-2">Sin versiones adicionales</h3>
               <p className="text-sm text-gray-600">
-                Este documento solo tiene la versión original
+                No hay versiones disponibles para este documento.
               </p>
             </div>
           ) : (
@@ -502,6 +508,7 @@ export function DocumentVersionHistoryModal({
                                     setShowTagEditor(version.id);
                                     setSelectedTag(version.etiqueta);
                                   }}
+                                  disabled={!versionCapabilities.tag}
                                   className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                                   title="Editar etiqueta"
                                 >
@@ -518,6 +525,7 @@ export function DocumentVersionHistoryModal({
                                   <>
                                     <button
                                       onClick={() => handleRestoreVersion(version)}
+                                      disabled={!versionCapabilities.restore}
                                       className="p-2 hover:bg-green-50 rounded-lg transition-colors"
                                       title="Restaurar"
                                     >
@@ -525,6 +533,7 @@ export function DocumentVersionHistoryModal({
                                     </button>
                                     <button
                                       onClick={() => handleDeleteVersion(version)}
+                                      disabled={!versionCapabilities.remove}
                                       className="p-2 hover:bg-red-50 rounded-lg transition-colors"
                                       title="Eliminar"
                                     >
@@ -554,7 +563,7 @@ export function DocumentVersionHistoryModal({
         <div className="px-6 py-4 border-t-2 border-gray-200 bg-gray-50 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-gray-600">
             <Info className="w-4 h-4" />
-            Las versiones se mantienen por {versiones.length > 10 ? '90 días' : 'tiempo ilimitado'}
+            Restaurar conserva las versiones anteriores y requiere validar el nuevo original.
           </div>
           <button
             onClick={onClose}

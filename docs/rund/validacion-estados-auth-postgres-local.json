@@ -1,0 +1,22 @@
+{
+  "verifiedAt": "2026-10-14T09:38:56.322Z",
+  "step": "12.3b.1",
+  "passed": true,
+  "syntheticDataOnly": true,
+  "existingDatabaseUsed": false,
+  "synchronize": false,
+  "application": "Auth controller/guard/strategy/servicios/repositorios compilados reales; Nest y PostgreSQL temporales",
+  "checks": [
+    "metadata/listado comparten una revisión persistida y el historial no la altera",
+    "validar/rechazar sin revisión o con revisión ajena falla sin modificar el documento",
+    "validación vigente persiste, cambia la revisión y no crea otra versión de archivo",
+    "reclasificación vigente reinicia aprobación, conserva original y evita revalidación con la vista anterior",
+    "un no-op de reclasificación conserva aprobación y revisión sin tocar la fila",
+    "revisión previa a un reemplazo no permite aprobar, rechazar, reclasificar ni retirar el nuevo original",
+    "dos decisiones simultáneas de la misma revisión producen una sola decisión guardada",
+    "tipo individual de otra carpeta o inactivo se rechaza; cambio de tipo propio reinicia aprobación",
+    "fallo al guardar la decisión revierte estado y revisión, sin tocar bytes/historial",
+    "deshabilitar historial permite clientes anteriores y sigue rechazando una revisión enviada obsoleta",
+    "revisión general antigua no permite decidir sobre un documento reclasificado como RUND"
+  ]
+}

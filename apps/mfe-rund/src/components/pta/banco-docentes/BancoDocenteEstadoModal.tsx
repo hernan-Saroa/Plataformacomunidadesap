@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { FileText, Loader2, ShieldCheck, ToggleLeft, ToggleRight, X } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
-import { toggleBancoDocenteEstado, vincularRundSoporte } from '../../../services/api/ptaApi';
+import { toggleBancoDocenteEstado, vincularRundSoporte } from '../../../services/api/rundApi';
 
 interface Props {
   docente: any;

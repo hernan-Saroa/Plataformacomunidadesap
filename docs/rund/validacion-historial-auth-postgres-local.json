@@ -1,0 +1,29 @@
+{
+  "verifiedAt": "2026-10-14T09:38:56.320Z",
+  "passed": true,
+  "syntheticDataOnly": true,
+  "database": "auth_document_versions dentro del cluster temporal eliminado al finalizar",
+  "application": "Controller/Auth JWT guard/strategy, servicio y repositorios compilados reales; Nest de prueba, no todo AppModule",
+  "migration": "667_auth_carpeta_documento_versiones.sql",
+  "synchronize": false,
+  "checks": [
+    "deshabilitado no consulta la tabla nueva ni cambia documentos",
+    "migración 667 repetible sin copiar archivos ni modificar documentos",
+    "endpoints nuevos requieren la sesión JWT real incluso para historial",
+    "primera consulta captura bytes/fecha reales y no duplica la versión inicial",
+    "descarga versión específica devuelve sus bytes y no permite versiones ajenas",
+    "subida HTTP real conserva versión anterior y limpia la validación previa",
+    "dos reemplazos simultáneos con igual precondición producen un éxito y un conflicto",
+    "restaurar crea versión 4 con bytes de versión 1 y conserva las intermedias",
+    "versión ajena o precondición antigua no escribe archivos ni cambia documento",
+    "fallo de INSERT revierte documento y limpia exclusivamente el nuevo archivo",
+    "checksum detecta un original modificado y no lo restaura ni sustituye por la actual",
+    "copias RUND, soportes enlazados, URLs PTA y namespaces ajenos se rechazan",
+    "un historial general no se reclasifica como soporte privado RUND",
+    "archivo vacío, formato no admitido y URL con traversal no modifican documentos",
+    "directorio sustituido por enlace fuera de uploads impide escribir/restaurar",
+    "reclasificar y reemplazar simultáneamente no revierte la URL ni pierde el archivo nuevo",
+    "retirar un documento elimina solo su historial y conserva originales y el otro documento",
+    "metadatos propios habilitan historial; deshabilitar conserva versiones/bytes y vuelve al contrato previo"
+  ]
+}

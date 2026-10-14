@@ -14,7 +14,7 @@ for(const environment of ['qa','pre','prod','dev']) {
     const match=source.match(new RegExp(`^${name}\\(\\) \\{[\\s\\S]*?^\\}`,'m'));
     assert(match,`La función ${name} debe existir`);return match[0];
   }
-  function run(files,failConfig=false) {
+  function run(files,failConfig=false,migrationFailure='') {
     const script=`set -e
 RED= GREEN= YELLOW= NC=
 FRONTEND_MFE_SERVICES=(frontend frontend-shell frontend-mfe-pta frontend-mfe-chatbot frontend-mfe-rund)
@@ -23,7 +23,7 @@ ensure_docker_disk_space() { echo test:disk; }
 cleanup_build_artifacts() { echo test:cleanup; }
 restart_frontend_nginx() { echo test:nginx; }
 restart_ssl_proxy() { echo test:ssl-proxy; }
-cmd_db_migrate() { printf 'test:migration:%s\\n' "$1"; }
+cmd_db_migrate() { printf 'test:migration:%s\\n' "$1"; [ "$1" != "$DEPLOY_TEST_MIGRATION_FAIL" ]; }
 compose_env() {
   if [ "$1" = config ]; then
     if [ "$DEPLOY_TEST_CONFIG_FAIL" = true ]; then return 1; fi
@@ -44,7 +44,7 @@ ${extract('cmd_rebuild_changed')}
 cmd_rebuild_changed rebuild-changed fixture-range
 `;
     const result=spawnSync(bash,['--noprofile','--norc','-s'],{cwd:root,input:script,encoding:'utf8',timeout:15000,
-      env:{...process.env,DEPLOY_TEST_FILES:files.join('\n'),DEPLOY_TEST_CONFIG_FAIL:String(failConfig)}});
+      env:{...process.env,DEPLOY_TEST_FILES:files.join('\n'),DEPLOY_TEST_CONFIG_FAIL:String(failConfig),DEPLOY_TEST_MIGRATION_FAIL:migrationFailure}});
     if(result.error)throw result.error;return result;
   }
   test(`${environment}: sintaxis Bash`,()=>{
@@ -100,4 +100,66 @@ cmd_rebuild_changed rebuild-changed fixture-range
     assert.notEqual(result.status,0);assert(result.stdout.includes('No se pudo validar el Compose'));
     assert(!result.stdout.includes('test:cleanup'));assert(!result.stdout.includes('test:backend-build:'));
   });
+  test(`${environment}: error de migración backend detiene rebuild-changed antes del frontend y SQL global`,()=>{
+    const result=run(['backend/rund-service/src/main.ts','apps/mfe-rund/src/main.ts','db/migrations/fixture.sql'],false,'rund-service');
+    assert.notEqual(result.status,0,result.stdout+result.stderr);
+    assert(result.stdout.includes('test:migration:rund-service'));
+    assert(!result.stdout.includes('test:frontend:'));
+    assert(!result.stdout.includes('test:migration:global'));
+    assert(!result.stdout.includes('Deploy inteligente completado'));
+  });
+  test(`${environment}: error de migración global impide anunciar rebuild-changed completo`,()=>{
+    const result=run(['db/migrations/fixture.sql'],false,'global');
+    assert.notEqual(result.status,0,result.stdout+result.stderr);
+    assert(result.stdout.includes('test:migration:global'));
+    assert(!result.stdout.includes('Deploy inteligente completado'));
+  });
+  // Extract only the function under test. Every external/destructive command is a mock.
+  for(const name of ['cmd_up','cmd_rebuild','cmd_rebuild_fresh','cmd_rebuild_all_mfe','cmd_rebuild_service']) {
+    for(const failure of ['rund-service','global','none']) {
+      if((name==='cmd_up'||name==='cmd_rebuild_service')&&failure==='global')continue;
+      test(`${environment}: ${name}, migración ${failure==='none'?'correcta':`fallida (${failure})`}`,()=>{
+        const script=`set -e
+RED= GREEN= YELLOW= CYAN= NC=
+COMPOSE_FILE_MFE=${JSON.stringify(__filename.replace(/\\/g,'/'))}
+BACKEND_ENV_SERVICES=(rund-service auth-service)
+BACKEND_DEV_SERVICES=(rund-service auth-service)
+REBUILD_FRESH_CONFIRM=true
+MFE_DOCKER_BUILD_ONLY=true
+ensure_docker_disk_space() { :; }
+cleanup_build_artifacts() { :; }
+restart_frontend_nginx() { :; }
+restart_ssl_proxy() { :; }
+sleep() { :; }
+docker() { echo test:docker-mocked; }
+compose_env() { echo test:compose-mocked; }
+compose_dev() { compose_env "$@"; }
+compose_env_mfe() { compose_env "$@"; }
+compose_dev_mfe() { compose_env "$@"; }
+cmd_db_migrate() {
+  printf 'test:migration:%s\\n' "\${1:-all}"
+  [ "$DEPLOY_TEST_MIGRATION_FAIL" = none ] && return 0
+  [ "\${1:-rund-service}" != "$DEPLOY_TEST_MIGRATION_FAIL" ]
+}
+${extract(name)}
+${name} rund-service || exit $?
+echo test:completed
+`;
+        const result=spawnSync(bash,['--noprofile','--norc','-s'],{cwd:root,input:script,encoding:'utf8',timeout:10000,
+          windowsHide:true,env:{...process.env,DEPLOY_TEST_MIGRATION_FAIL:failure}});
+        if(result.error)throw result.error;
+        assert.equal(result.status,failure==='none'?0:1,result.stdout+result.stderr);
+        if(failure==='none')assert(result.stdout.includes('test:completed'));
+        else {
+          assert(!result.stdout.includes('test:completed'));
+          const afterMigration=result.stdout.slice(result.stdout.lastIndexOf('test:migration:'));
+          assert(!/iniciados exitosamente|publicada|completada|reconstruido y reiniciado/.test(afterMigration),afterMigration);
+          if(failure==='rund-service') {
+            assert(!result.stdout.includes('test:migration:auth-service'));
+            assert(!result.stdout.includes('test:migration:global'));
+          }
+        }
+      });
+    }
+  }
 }

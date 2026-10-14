@@ -1,0 +1,117 @@
+{
+  "verifiedAt": "2026-10-13T19:01:01.396Z",
+  "step": "12.1",
+  "passedForChangedScope": true,
+  "entireStep12Complete": false,
+  "scope": "Consulta documental auth → API interna RUND; proyección, sesión y credencial entre backends; compatibilidad PTA conservada.",
+  "endpoint": {
+    "direct": "/internal/carpeta-digital/personas/:personaId/documentos",
+    "method": "POST",
+    "status": 200,
+    "cacheControl": "private, no-store",
+    "serviceCredentialHeader": "X-Rund-Carpeta-Token",
+    "browserReceivesServiceCredential": false
+  },
+  "safety": {
+    "incomingPersonUuidRequired": true,
+    "signedUserJwtRequiredForFullMetadata": true,
+    "rolesInBodyCannotElevateAccess": true,
+    "anonymousAndInvalidSessionsMasked": true,
+    "ownerMasksCannotBeElevatedByAuth": true,
+    "ownerAuditFailureBlocksResponse": true,
+    "mutableAuthRepositoryRejectsRundOwnedIds": true,
+    "falseEmptySuccessOnOwnerFailure": false,
+    "defaultEnabled": false,
+    "newDataCopy": false,
+    "profileOrVersionWrites": false,
+    "realEnvironmentFilesModified": false,
+    "deploymentPerformed": false
+  },
+  "verification": {
+    "rund": {
+      "build": "OK",
+      "suites": 40,
+      "tests": 482,
+      "failures": 0
+    },
+    "auth": {
+      "build": "OK",
+      "suites": 5,
+      "tests": 52,
+      "failures": 0,
+      "preexistingTests": 23,
+      "defaultJestCommandFixed": false,
+      "runner": "backend/rund-service/node_modules/jest (30.5.2)",
+      "config": "scripts/jest-auth-carpeta.config.cjs; contrato/package config de auth, ts-jest explícito, todas sus suites"
+    },
+    "postgres": {
+      "checks": 58,
+      "previousChecks": 53,
+      "temporaryCluster": true,
+      "onlySyntheticData": true,
+      "realRundMainAndCompiledAuthClient": true,
+      "fullAuthServiceStarted": false,
+      "report": "docs/rund/validacion-servicio-postgres-local.json"
+    },
+    "compose": {
+      "checks": 19,
+      "otherModulesCompared": true,
+      "daemonUsed": false,
+      "realEnvironmentFilesRead": false,
+      "report": "docs/rund/validacion-carpeta-compose.json"
+    },
+    "unchangedFrontendHashes": [
+      "apps/shell/src/App.tsx",
+      "apps/shell/src/components/esap/BackofficeApp.tsx",
+      "apps/shell/src/components/rund/RundEntries.tsx",
+      "apps/shell/src/services/api/rundCachePolicy.ts",
+      "apps/shell/src/config/environment.ts",
+      "apps/shell/src/remotes.d.ts",
+      "apps/shell/src/vite-env.d.ts",
+      "apps/shell/vitest.config.ts",
+      "apps/mfe-rund/vite.config.ts",
+      "apps/mfe-rund/src/utils/rundPublicLinks.ts",
+      "apps/mfe-gestion-personas/src/components/admin/UsersPersonsModulePremium.tsx",
+      "apps/mfe-gestion-personas/src/components/admin/UsersPersonsModulePremium.rund.test.tsx",
+      "apps/mfe-gestion-personas/src/services/api/apiClient.ts",
+      "apps/mfe-gestion-personas/src/services/api/rundSync.service.ts",
+      "apps/mfe-gestion-personas/src/services/api/rundSync.service.test.ts",
+      "apps/mfe-gestion-personas/src/services/api/supabase.service.ts",
+      "apps/mfe-gestion-personas/src/services/api/supabase.rund-sync.test.ts",
+      "apps/mfe-gestion-personas/vitest.config.ts"
+    ]
+  },
+  "hashes": {
+    "backend/rund-service/src/modules/banco-docentes/rund-carpeta-internal.controller.ts": "1295d6400b1cdf18837a167ce54a23de2255a26e01b83f289468ce43d70c783c",
+    "backend/rund-service/src/modules/banco-docentes/rund-carpeta-consulta.service.ts": "d9b99a215572fc9a0142dd789675eeae17b5e0b2ee96f3758098939101ee67d3",
+    "backend/rund-service/src/modules/banco-docentes/rund-carpeta-consulta.spec.ts": "9b6e35e13d4a3c0b552e85eb5daf0515bc9d2b3381f3338a1953b755d242c624",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.module.ts": "90bad1708a87eeafd1836cb5007610e83f79e57a3f981e9472ad2c50bc016c16",
+    "backend/auth-service/src/carpeta-digital/rund-carpeta.client.ts": "f215bd92b7e7f8a0d85a9c410b67a43c722e7e653709b10fdf5439a91ae933e0",
+    "backend/auth-service/src/carpeta-digital/rund-carpeta.client.spec.ts": "491c540fa2202b38814e73160cd83a2331eaa69c1c51aafb7be3881e023c0137",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.controller.ts": "ff1ce52bbb658a4782f51ccca98dc83b400bed8e0675a89f77f52a97a84c765f",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.service.ts": "8d1b6fb8f8ba3413f8b42381425a58774cf376d27b66a23d2297313b6678f976",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.module.ts": "193c6e79a436894e6d23de20d2155008aa86cab4576a37be802fbb4b81ca3d76",
+    "backend/auth-service/src/carpeta-digital/rund-document-access.ts": "e0f9d0a41c7314c41420f0cab00fefb5198faff296bad3167297421c6a19b6da",
+    "backend/auth-service/src/portal/portal.controller.ts": "7f03104bde441b3ae992c1541483b334fbcee837114adbcad5b8042d57393cd5",
+    "scripts/jest-auth-carpeta.config.cjs": "cb8ba16cafc4a54e47dc6e8f7c24cda632548a710a0665fde9ef2a1506035037",
+    "scripts/verify-rund-service-integration.cjs": "b4d0a0991e3cbf9fd3aab6d2b3e480b1439442aaf40a635ad02d0b3953c90968",
+    "scripts/verify-rund-compose.cjs": "eac07537ad0bd990690180ea79408201b21aa146e2ddb3ee338318ef65405e8f",
+    ".env.example": "549db177019b4486792fd5d1939c3cca972c1ffb89be85ecd9298d34035cf120",
+    "backend/auth-service/.env.example": "5645a8233f149f30b4fa43249467e54fe8f483c603ea4ec22c7439b892bf5006",
+    "backend/rund-service/.env.example": "1fa6d5086a0f046084cc27e514ff13a4584c5f3d25de19584dd330bc7cf0fb6b",
+    "docker-compose.yml": "8d778a24f2b20b28bd245bcb43a115fadee13d614f37fdfaf99cc3917b4962c3",
+    "docker-compose.backend.yml": "645f0f9a0c019320f4b41f821bc35199e5f35252db9403a829a1e758d27d0ea4",
+    "docker-compose.dev.yml": "48ba3e7e5952fd3c6682efebb3f290fdd46afa855c8ccacad1494e3074c2e561",
+    "docker-compose.qa.yml": "71e38d3a01f9888322d8de5216d1abc7a0b875c815ca64c673dbfaacd448e860",
+    "docker-compose.pre.yml": "736930b03d24b88c222dae9f1e161d74d87a8f99d2255eaf78b6245415c9e1ad",
+    "docker-compose.prod.yml": "69803660246570920e9d99685a57999ed2fa4ee9048a0578f67f58ce4cd9ea39"
+  },
+  "limitations": [
+    "Paso 12.1 preparado y probado; conexión por defecto deshabilitada y sin desplegar.",
+    "Las interfaces conservan almacenamiento local/versiones simuladas hasta 12.2; no se declara persistencia documental completa.",
+    "Auth conserva lecturas/protección SQL de soportes PTA históricos; las tablas nuevas solo las consulta RUND.",
+    "HTTP nuevo usa cliente auth real y RUND/PostgreSQL reales; combinación de repositorios auth/compatibilidad PTA validada con fixtures Jest.",
+    "El comando Jest por defecto de auth no resuelve ts-jest en este checkout; se verificó su grafo completo con configuración explícita."
+  ],
+  "nextPoint": "Paso 12.2: interfaces shell/Personas, persistencia documental real, identidad, operaciones según propietario, descargas/caché y versiones."
+}

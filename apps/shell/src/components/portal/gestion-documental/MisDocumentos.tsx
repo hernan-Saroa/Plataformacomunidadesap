@@ -22,7 +22,6 @@ import {
   uploadDocumentoCarpetaDigital,
   getChecklistForPersona,
   getTiposDocumentos,
-  getDocumentosByCarpeta,
   reclassifyDocumento,
 } from '../portalApi';
 import { toast } from 'sonner';
@@ -34,6 +33,7 @@ import {
   type PersonaInfo,
 } from '../../shared/CarpetaDigitalSharedView';
 import { useDocumentActions } from '../../../hooks/useDocumentActions';
+import { RUND_PUBLIC_AUTOGESTION_PATH } from '../../rund/RundEntries';
 
 interface MisDocumentosProps {
   personaId: string;
@@ -60,6 +60,10 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
   const [tiposDocumentos, setTiposDocumentos] = useState<TipoDocumentoRequerido[]>([]);
   const [persona, setPersona] = useState<PersonaInfo>({ nombre: userName || 'Carpeta Digital' });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadRequest = useRef(0);
+  const currentPersona = useRef(personaId);
+  currentPersona.current = personaId;
   const [showUpload, setShowUpload] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,34 +85,33 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
   const { handlePreview: signedPreview, handleDownload: signedDownload } = useDocumentActions({});
 
   const loadData = useCallback(async () => {
+    const request = ++loadRequest.current;
+    const isCurrent = () => request === loadRequest.current && currentPersona.current === personaId;
     try {
       setLoading(true);
+      setLoadError(null);
       const res = await getCarpetaDigitalPortal(personaId);
-      if (res?.success) {
+      if (!isCurrent()) return;
+      if (res?.success && Array.isArray(res.data?.documentos)) {
         // Map portal documents to shared format
         const rawDocs = Array.isArray(res.data?.documentos) ? res.data.documentos : [];
-        let mappedDocs: CarpetaDocumento[] = rawDocs.map((d: any) => ({
+        const mappedDocs: CarpetaDocumento[] = rawDocs.map((d: any) => ({
+          ...d,
           id: d.id || crypto.randomUUID(),
           carpeta_id: d.carpeta_id || '',
           nombre: d.nombre || d.name || 'Documento',
           categoria: mapCategoria(d.categoria || d.category || 'otros'),
-          tipo_archivo: d.tipo || d.type || 'PDF',
-          tamano_bytes: parseTamano(d.tamano || d.size || '0'),
-          estado: mapEstado(d.estado || d.status || 'Vigente'),
-          fecha_subida: d.fechaCarga || d.fecha_subida || new Date().toISOString(),
+          tipo_archivo: d.tipo_archivo || d.tipo || d.type || 'archivo',
+          tamano_bytes: d.tamano_bytes ?? parseTamano(d.tamano || d.size || '0'),
+          estado: mapEstado(d.estado || d.status || 'pendiente'),
+          fecha_subida: d.fecha_subida || d.fechaCarga || '',
           fecha_validacion: d.fecha_validacion,
-          version_actual: d.version_actual || 1,
+          version_actual: d.version_actual,
           validado_por: d.validado_por,
           comentarios: d.comentarios,
           tipo_documento_id: d.tipo_documento_id,
-          url_archivo: d.url,
+          url_archivo: d.contenido_restringido ? null : d.url_archivo ?? d.url ?? null,
         }));
-        const syncedPersonaId = personaId;
-
-        if (mappedDocs.length === 0) {
-          const localDocs = await getDocumentosByCarpeta(`carpeta:${syncedPersonaId}`);
-          mappedDocs = Array.isArray(localDocs.data) ? localDocs.data : [];
-        }
         setDocumentos(mappedDocs);
 
         // Extract persona info from response
@@ -126,14 +129,15 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
           });
         }
       } else {
-        setDocumentos([]);
+        throw new Error(res?.message || res?.error || 'El servidor no confirmó el listado de documentos.');
       }
     } catch (err) {
+      if (!isCurrent()) return;
       console.error('[CarpetaDigital] Error cargando documentos:', err);
+      setLoadError('No se pudieron confirmar los documentos de esta carpeta. Reintente antes de continuar.');
       toast.error('Error al cargar documentos de la carpeta digital');
-      setDocumentos([]);
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, [personaId]);
 
@@ -175,9 +179,11 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
       const tiposChecklist: TipoDocumentoRequerido[] = tiposRaw.map((tipo: any) => {
         const tipoNombre = normalizeDocumentText(tipo.nombre_documento || tipo.nombre);
         const matchedDoc = documentos.find((d) => {
+          if (d.pendiente_de_guardar) return false;
           if (d.tipo_documento_id && d.tipo_documento_id === tipo.id) return true;
           return false;
         }) || documentos.find((d) => {
+          if (d.pendiente_de_guardar) return false;
           if (d.tipo_documento_id) return false;
           const docNombre = normalizeDocumentText(d.nombre);
           return !!tipoNombre && !!docNombre && (docNombre.includes(tipoNombre) || tipoNombre.includes(docNombre));
@@ -259,6 +265,7 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
         carpetaId,
         tipo_documento_id: reclassifyTipoId,
         categoria: selectedTipo?.categoria || reclassifyDoc.categoria,
+        revision_documento: reclassifyDoc.revision_documento || undefined,
       });
       if (data.success) {
         toast.success('Documento vinculado', { description: `Asignado a "${selectedTipo?.nombre}"` });
@@ -278,7 +285,7 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
 
   const abrirAutogestionRund = () => {
     const correo = persona.email || '';
-    const url = `/autogestion/docentes${correo ? `?email=${encodeURIComponent(correo)}` : ''}`;
+    const url = `${RUND_PUBLIC_AUTOGESTION_PATH}${correo ? `?email=${encodeURIComponent(correo)}` : ''}`;
     window.open(url, '_blank', 'noopener');
   };
 
@@ -315,7 +322,10 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
       </div>
 
       {/* ═══ UNIFIED SHARED VIEW ═══ */}
-      <CarpetaDigitalSharedView
+      {loadError ? <div role="alert">
+        <p>{loadError}</p>
+        <button type="button" onClick={() => void loadData()}>Reintentar documentos</button>
+      </div> : <CarpetaDigitalSharedView
         personaId={syncedPersonaId}
         persona={persona}
         documentos={documentos}
@@ -359,6 +369,8 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
         }}
         onRefresh={loadData}
         onPreview={(doc) => {
+          if (doc.contenido_restringido) { toast.info('El original está restringido para su rol.'); return; }
+          if (doc.servicio_propietario) { void signedPreview(doc); return; }
           if (doc.url_archivo) {
             window.open(doc.url_archivo, '_blank');
           } else {
@@ -366,6 +378,8 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
           }
         }}
         onDownload={(doc) => {
+          if (doc.contenido_restringido) { toast.info('El original está restringido para su rol.'); return; }
+          if (doc.servicio_propietario) { void signedDownload(doc); return; }
           if (doc.url_archivo) {
             window.open(doc.url_archivo, '_blank');
             toast.success('Descarga iniciada');
@@ -383,10 +397,13 @@ export function MisDocumentos({ personaId, userName, onBack }: MisDocumentosProp
           }
         }}
         onEditCategory={(doc) => {
+          if (doc.contenido_restringido || (doc.servicio_propietario && doc.servicio_propietario !== 'auth')) {
+            toast.info('Gestione este soporte desde su módulo propietario.'); return;
+          }
           setReclassifyDoc(doc);
           setReclassifyTipoId('');
         }}
-      />
+      />}
 
       {/* ═══ UPLOAD MODAL ═══ */}
       <AnimatePresence>
@@ -741,6 +758,7 @@ function mapCategoriaToUpload(cat: string): string {
 
 function mapCategoria(cat: string): string {
   const lower = (cat || '').toLowerCase();
+  if (lower === 'rund' || lower === 'rund-service') return 'rund';
   if (lower.includes('personal') || lower.includes('vincula')) return 'personal';
   if (lower.includes('academ') || lower.includes('formac')) return 'academico';
   if (lower.includes('certif')) return 'certificados';

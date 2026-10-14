@@ -1,0 +1,350 @@
+{
+  "reviewedAt": "2026-10-14T08:58:42.995Z",
+  "step": "12.5d.2",
+  "status": "requires_review",
+  "activationReadiness": "not_verified",
+  "realEnvironmentFilesRead": true,
+  "existingDatabaseRead": true,
+  "databaseWritesExecuted": false,
+  "deploymentExecuted": false,
+  "realEnvironmentConfigurationModified": false,
+  "scope": "Auth local READ ONLY y GET públicos sin credenciales de cuatro orígenes documentados",
+  "environments": [
+    {
+      "environment": "local",
+      "databaseConnectionScope": "Auth local; RUND propio sin verificar",
+      "databaseStatus": "requires_review",
+      "results": {
+        "pass": 14,
+        "fail": 42,
+        "not_verified": 11
+      },
+      "rundHealthCandidateResponded": false,
+      "dockerStatus": "not_verified",
+      "publishedArtifactsVerified": false,
+      "evidence": "revision-instalacion-local.json"
+    },
+    {
+      "environment": "dev",
+      "originSource": "DEPLOY_RUNBOOK.md; vigencia/propiedad sin certificar",
+      "observedEndpoints": 0,
+      "checks": [
+        {
+          "id": "rund-readiness-through-gateway",
+          "path": "/services/rund/api/v1/health/ready",
+          "status": "not_verified",
+          "httpStatus": null,
+          "reason": "timeout"
+        },
+        {
+          "id": "rund-remote-entry",
+          "path": "/remotes/mfe-rund/assets/remoteEntry.js",
+          "status": "not_verified",
+          "httpStatus": null,
+          "reason": "timeout"
+        },
+        {
+          "id": "personas-remote-entry",
+          "path": "/remotes/mfe-gestion-personas/assets/remoteEntry.js",
+          "status": "not_verified",
+          "httpStatus": null,
+          "reason": "timeout"
+        }
+      ],
+      "publishedArtifactsVerified": false,
+      "databaseStatus": "not_verified",
+      "localEnvironmentFilePresent": false,
+      "evidence": "revision-endpoints-dev.json"
+    },
+    {
+      "environment": "qa",
+      "originSource": "DEPLOY_RUNBOOK.md; vigencia/propiedad sin certificar",
+      "observedEndpoints": 0,
+      "checks": [
+        {
+          "id": "rund-readiness-through-gateway",
+          "path": "/services/rund/api/v1/health/ready",
+          "status": "not_verified",
+          "httpStatus": null,
+          "reason": "timeout"
+        },
+        {
+          "id": "rund-remote-entry",
+          "path": "/remotes/mfe-rund/assets/remoteEntry.js",
+          "status": "not_verified",
+          "httpStatus": null,
+          "reason": "timeout"
+        },
+        {
+          "id": "personas-remote-entry",
+          "path": "/remotes/mfe-gestion-personas/assets/remoteEntry.js",
+          "status": "not_verified",
+          "httpStatus": null,
+          "reason": "timeout"
+        }
+      ],
+      "publishedArtifactsVerified": false,
+      "databaseStatus": "not_verified",
+      "localEnvironmentFilePresent": false,
+      "evidence": "revision-endpoints-qa.json"
+    },
+    {
+      "environment": "pre",
+      "originSource": "DEPLOY_RUNBOOK.md; vigencia/propiedad sin certificar",
+      "observedEndpoints": 0,
+      "checks": [
+        {
+          "id": "rund-readiness-through-gateway",
+          "path": "/services/rund/api/v1/health/ready",
+          "status": "not_verified",
+          "httpStatus": null,
+          "reason": "timeout"
+        },
+        {
+          "id": "rund-remote-entry",
+          "path": "/remotes/mfe-rund/assets/remoteEntry.js",
+          "status": "not_verified",
+          "httpStatus": null,
+          "reason": "timeout"
+        },
+        {
+          "id": "personas-remote-entry",
+          "path": "/remotes/mfe-gestion-personas/assets/remoteEntry.js",
+          "status": "not_verified",
+          "httpStatus": null,
+          "reason": "timeout"
+        }
+      ],
+      "publishedArtifactsVerified": false,
+      "databaseStatus": "not_verified",
+      "localEnvironmentFilePresent": false,
+      "evidence": "revision-endpoints-pre.json"
+    },
+    {
+      "environment": "prod",
+      "originSource": "DEPLOY_RUNBOOK.md; vigencia/propiedad sin certificar",
+      "observedEndpoints": 0,
+      "checks": [
+        {
+          "id": "rund-readiness-through-gateway",
+          "path": "/services/rund/api/v1/health/ready",
+          "status": "not_verified",
+          "httpStatus": null,
+          "reason": "connection_failed",
+          "networkCode": "ENOTFOUND"
+        },
+        {
+          "id": "rund-remote-entry",
+          "path": "/remotes/mfe-rund/assets/remoteEntry.js",
+          "status": "not_verified",
+          "httpStatus": null,
+          "reason": "connection_failed",
+          "networkCode": "ENOTFOUND"
+        },
+        {
+          "id": "personas-remote-entry",
+          "path": "/remotes/mfe-gestion-personas/assets/remoteEntry.js",
+          "status": "not_verified",
+          "httpStatus": null,
+          "reason": "connection_failed",
+          "networkCode": "ENOTFOUND"
+        }
+      ],
+      "publishedArtifactsVerified": false,
+      "databaseStatus": "not_verified",
+      "localEnvironmentFilePresent": false,
+      "evidence": "revision-endpoints-prod.json"
+    }
+  ],
+  "sourceChecks": [
+    {
+      "file": "backend/api-gateway/src/audit/rund-audit-redaction.ts",
+      "unchanged": true
+    },
+    {
+      "file": "backend/api-gateway/src/audit/rund-audit-redaction.spec.ts",
+      "unchanged": true
+    },
+    {
+      "file": "backend/api-gateway/src/audit/audit.interceptor.ts",
+      "unchanged": true
+    },
+    {
+      "file": "backend/api-gateway/src/gateway/gateway.service.ts",
+      "unchanged": true
+    },
+    {
+      "file": "backend/api-gateway/src/gateway/gateway.rund-audit.spec.ts",
+      "unchanged": true
+    },
+    {
+      "file": "scripts/verify-rund-gateway-audit.cjs",
+      "unchanged": true
+    },
+    {
+      "file": "migrate.local.sh",
+      "unchanged": true
+    },
+    {
+      "file": "migrate.service.local.sh",
+      "unchanged": true
+    },
+    {
+      "file": "deploy.dev.sh",
+      "unchanged": true
+    },
+    {
+      "file": "deploy.qa.sh",
+      "unchanged": true
+    },
+    {
+      "file": "deploy.pre.sh",
+      "unchanged": true
+    },
+    {
+      "file": "deploy.prod.sh",
+      "unchanged": true
+    },
+    {
+      "file": "scripts/verify-migration-runners.test.cjs",
+      "unchanged": true
+    },
+    {
+      "file": "scripts/verify-deploy-service-selection.test.cjs",
+      "unchanged": true
+    },
+    {
+      "file": "scripts/review-rund-preactivation.cjs",
+      "unchanged": true
+    },
+    {
+      "file": "scripts/review-rund-installation.cjs",
+      "unchanged": true
+    },
+    {
+      "file": "scripts/lib/rund-installation-review.cjs",
+      "unchanged": true
+    },
+    {
+      "file": "scripts/verify-rund-installation.test.cjs",
+      "unchanged": true
+    },
+    {
+      "file": "db/migrations/158_add_id_person_to_personas_and_user.sql",
+      "unchanged": true
+    },
+    {
+      "file": "db/migrations/309_create_auth_carpeta_digital.sql",
+      "unchanged": true
+    },
+    {
+      "file": "db/migrations/339_create_documento_carpeta_digital.sql",
+      "unchanged": true
+    },
+    {
+      "file": "backend/rund-service/db/migrations/001_create_rund_schema.sql",
+      "unchanged": true
+    },
+    {
+      "file": "backend/rund-service/db/migrations/002_seed_rund_auth_module.sql",
+      "unchanged": true
+    },
+    {
+      "file": "backend/rund-service/db/migrations/003_legacy_rund_tables.sql",
+      "unchanged": true
+    },
+    {
+      "file": "backend/rund-service/db/migrations/004_rund_docente_identificadores_text.sql",
+      "unchanged": true
+    },
+    {
+      "file": "backend/rund-service/db/migrations/005_rund_tarjeta_numero_secuencia.sql",
+      "unchanged": true
+    },
+    {
+      "file": "backend/rund-service/db/migrations/006_rund_catalogo_permisos_compatibles.sql",
+      "unchanged": true
+    },
+    {
+      "file": "backend/rund-service/db/migrations/007_rund_carpeta_auth_proyeccion.sql",
+      "unchanged": true
+    },
+    {
+      "file": "db/migrations/667_auth_carpeta_documento_versiones.sql",
+      "unchanged": true
+    },
+    {
+      "file": "db/migrations/668_auth_carpeta_revision_rund.sql",
+      "unchanged": true
+    }
+  ],
+  "publicVerifierTests": {
+    "passed": 14,
+    "failed": 0
+  },
+  "pendingLocalMigrations": [
+    {
+      "file": "backend/rund-service/db/migrations/001_create_rund_schema.sql",
+      "sha256": "8f9012333762811cd35e46901c02bfe2e0c66457ca22fb808d5453ec58128953",
+      "automaticallyApplied": false
+    },
+    {
+      "file": "backend/rund-service/db/migrations/002_seed_rund_auth_module.sql",
+      "sha256": "2dd622dd365f110334b6c04d6b74cedac83959862524145b2d45fc25fc35e37c",
+      "automaticallyApplied": false
+    },
+    {
+      "file": "backend/rund-service/db/migrations/003_legacy_rund_tables.sql",
+      "sha256": "f7fee145f6a9b16657cc99cd5112afabf5971d873a1ac547fd076108c3cd2a79",
+      "automaticallyApplied": false
+    },
+    {
+      "file": "backend/rund-service/db/migrations/004_rund_docente_identificadores_text.sql",
+      "sha256": "7aefde2e629f9209d25ed265fb7981cfba33e8d43a0af5aa6afdfbab4f329e6f",
+      "automaticallyApplied": false
+    },
+    {
+      "file": "backend/rund-service/db/migrations/005_rund_tarjeta_numero_secuencia.sql",
+      "sha256": "ecb85324bb2c0e327318a2cb9373dfdf938bc142fe8744af70939b2efcec0e71",
+      "automaticallyApplied": false
+    },
+    {
+      "file": "backend/rund-service/db/migrations/006_rund_catalogo_permisos_compatibles.sql",
+      "sha256": "db63242b14393fe882404ccbc58fbb53678ec27844e1e2db10b3de82c4e09760",
+      "automaticallyApplied": false
+    },
+    {
+      "file": "backend/rund-service/db/migrations/007_rund_carpeta_auth_proyeccion.sql",
+      "sha256": "176bfd7710a1e7d7f0c7f4e0cdb1a545de7b009ac4c5f5dfe2a85be884429d85",
+      "automaticallyApplied": false
+    },
+    {
+      "file": "db/migrations/667_auth_carpeta_documento_versiones.sql",
+      "sha256": "4bafc25852da545b82d04454b64f2ddc9a2d95f64d12a78b8fa3b343d4f0a12f",
+      "automaticallyApplied": false
+    },
+    {
+      "file": "db/migrations/668_auth_carpeta_revision_rund.sql",
+      "sha256": "57eed1c16e266ade88a3e1a64156eb996a74a8b94b197acc7d6fd35f30b9378a",
+      "automaticallyApplied": false
+    }
+  ],
+  "nextActions": [
+    "Confirmar conexión/configuración propia de RUND y modo de ejecución local antes de aplicar migraciones.",
+    "Revisar/aplicar únicamente migraciones pendientes al destino correcto mediante el proceso de despliegue y con recuperación prevista; no usar un runner global para forzar resultados.",
+    "Obtener acceso de lectura vigente a las instalaciones remotas para contrastar esquema, digests/commits y composición efectiva.",
+    "Revalidar salud, JWT/cookies, rutas internas, persistencia/OpenKM y recorridos de los consumidores antes de activar funciones."
+  ],
+  "limits": [
+    "La base inspeccionada pertenece a la configuración Auth local; no se infiere que sea la base definitiva de RUND.",
+    "Un fallo de red desde este PC no demuestra que una instalación remota esté caída ni tenga un fallo funcional.",
+    "Las URLs documentadas no certifican vigencia, propiedad, imagen, commit o configuración publicados.",
+    "Sin inspección de imágenes/contenedores remotos, secretos remotos, sesión de usuario ni operaciones de negocio."
+  ],
+  "hashes": {
+    "scripts/review-rund-public-endpoints.cjs": "6c10ee53b592bfce032be206343f41d39b3e16de52c2210e4cfcb801a28b18d7",
+    "scripts/verify-rund-public-endpoints.test.cjs": "502daaf8f666681c1b1adafe2d0e051bd6788733e8dda7a2d8f378411f95bbaa",
+    "scripts/lib/rund-installation-review.cjs": "77eb0b639ed14f6338fa0c7d5aa1132d49dd1336c259f33a6316edd94f0f1dc1",
+    "DEPLOY_RUNBOOK.md": "fcd6d6b6a79cd8cf8533df8725e49ad3848bdde8c8d40a0cf692d2df80aa243f"
+  }
+}

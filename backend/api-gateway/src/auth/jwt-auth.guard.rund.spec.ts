@@ -13,6 +13,7 @@ describe('JwtAuthGuard: rutas públicas del RUND', () => {
     '/rund/api/v1/banco-docentes/submit/abc123',
     '/rund/api/v1/pta/banco-docentes/12/bloques/formacion/soportes/autogestion',
     '/rund/api/v1/pta/macro-docente/externo/tok-1',
+    '/services/rund/api/v1/pta/macro-docente/externo/tok-1',
     '/rund/uploads/rund-documentos/x.pdf',
   ])('permite %s sin JWT', (url) => {
     expect(isPublic(url)).toBe(true);

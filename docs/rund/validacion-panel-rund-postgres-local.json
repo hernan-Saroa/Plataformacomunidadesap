@@ -1,0 +1,14 @@
+{
+  "verifiedAt": "2026-10-14T09:38:39.313Z",
+  "step": "12.3b.4",
+  "passed": true,
+  "syntheticDataOnly": true,
+  "existingDatabaseUsed": false,
+  "checks": [
+    "catalogar perfiles conserva periodos y propietarios, sin crear bloques/perfiles al consultar",
+    "el listado documental identifica el perfil real sin duplicar archivos de otras fuentes",
+    "sin perfiles devuelve catálogo vacío completo sin aprovisionar un docente",
+    "fallos del propietario y credenciales inválidas no habilitan sustitución por PTA",
+    "bandera apagada conserva catálogo PTA explícito sin llamar a RUND"
+  ]
+}

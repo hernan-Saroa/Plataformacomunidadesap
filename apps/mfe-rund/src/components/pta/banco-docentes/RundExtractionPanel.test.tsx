@@ -1,11 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RundExtractionPanel } from './RundExtractionPanel';
-import { apiClient } from '../../../../../shell/src/services/api';
-import { getAppOnlineStatus } from '../../../../../shell/src/utils/connectivity';
+import { apiClient } from '../../../services/api/apiClient';
+import { getAppOnlineStatus } from '../../../utils/connectivity';
 
-vi.mock('../../../../../shell/src/services/api',()=>({apiClient:{get:vi.fn(),post:vi.fn()}}));
-vi.mock('../../../../../shell/src/utils/connectivity',()=>({getAppOnlineStatus:vi.fn()}));
+vi.mock('../../../services/api/apiClient',()=>({apiClient:{get:vi.fn(),post:vi.fn()}}));
+vi.mock('../../../utils/connectivity',()=>({getAppOnlineStatus:vi.fn()}));
 vi.mock('sonner',()=>({toast:{success:vi.fn(),error:vi.fn()}}));
 
 const suggestion={id:'s-1',campo:'pregrado',label:'Pregrado',valor:'Administración Pública',valor_previo:'',pagina:1,evidencia:'Título: Administración Pública',estado:'PENDIENTE',baja_confianza:true};

@@ -1,0 +1,104 @@
+{
+  "verifiedAt": "2026-10-13T22:58:42.199Z",
+  "step": "12.3b.1",
+  "passedForChangedScope": true,
+  "entireStep12Complete": false,
+  "autoSyncAuthToRundImplemented": false,
+  "deployed": false,
+  "realDataChanged": false,
+  "newMigration": false,
+  "composeChanged": false,
+  "gatewayGuardsChanged": false,
+  "originalPtaSourcesChanged": false,
+  "builds": {
+    "auth": true,
+    "shell": true,
+    "personas": true
+  },
+  "tests": {
+    "auth": {
+      "suites": 8,
+      "passed": 73,
+      "runner": "scripts/jest-auth-carpeta.config.cjs con Jest de RUND"
+    },
+    "personas": {
+      "files": 6,
+      "passed": 81
+    },
+    "shell": {
+      "passingFiles": 10,
+      "passed": 106,
+      "failedSuites": 1,
+      "fullSuitePassed": false,
+      "inheritedFailure": "disciplinary.service.spec.ts: jest is not defined"
+    }
+  },
+  "types": [
+    {
+      "app": "shell",
+      "before": 586,
+      "after": 586,
+      "newDiagnostics": [],
+      "fullTypecheckPassed": false
+    },
+    {
+      "app": "personas",
+      "before": 192,
+      "after": 192,
+      "newDiagnostics": [],
+      "fullTypecheckPassed": false
+    }
+  ],
+  "postgres": {
+    "passed": 88,
+    "rundRegression": 59,
+    "authHistory": 18,
+    "authStates": 11,
+    "syntheticDataOnly": true,
+    "fullAuthAppStarted": false
+  },
+  "browser": {
+    "passed": 8,
+    "compiledShellAndRemote": true,
+    "apiResponses": "fixtures interceptadas",
+    "realBrowserProfileUsed": false,
+    "javascriptErrors": [],
+    "visible409": true,
+    "decisionRetried": false
+  },
+  "guarantees": [
+    "Revisión opaca de Auth preservada en las secciones y comprobada dentro del bloqueo antes de decidir/reclasificar/retirar.",
+    "Cambio de tipo/categoría reinicia aprobación, conserva bytes/identidad/historial y rechaza tipos ajenos/inactivos.",
+    "No-op conserva aprobación y revisión; una revisión general antigua no decide sobre el flujo RUND.",
+    "Un archivo local pendiente no completa el requisito de las secciones por coincidencia de nombre.",
+    "Personas mantiene avisos al entrar en Carpeta Digital; el 409 se muestra sin anunciar aprobación."
+  ],
+  "limitations": [
+    "Revisión obligatoria con CARPETA_DOCUMENT_VERSIONING_ENABLED=true; clientes anteriores sin revisión conservan contrato mientras esté apagado.",
+    "Los adaptadores nuevos envían la revisión recibida; no se declara migrada toda interfaz histórica.",
+    "Pendiente 12.3b.2: contrato interno Auth→RUND, procedencia, convergencia ordenada y recuperación ante retiro/reclasificación/fallos.",
+    "Pendientes contadores agregados de todos los propietarios y panel inline; las dos banderas siguen apagadas por defecto.",
+    "Conserva errores TypeScript y suite heredada del shell."
+  ],
+  "hashes": {
+    "backend/auth-service/src/carpeta-digital/carpeta-document-revision.ts": "566f09567ad31dcbf6bb05e632b31d4e9173d65e8e782296bf79b023f0724cee",
+    "backend/auth-service/src/carpeta-digital/carpeta-document-states.spec.ts": "893dedf45f9b64fd3ba197fcba96489ed7c95bee146d1563c1113f5a02a0867c",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.service.ts": "53b4795b64dd02d3eca50e1c30a14b2c5a61c0da098e881d461a22203edde3c0",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.controller.ts": "8582c832de9391c9b2ce7fb264ab01b3c8047d988ba026dbf0ef826d73506280",
+    "backend/auth-service/src/carpeta-digital/rund-document-access.spec.ts": "032d57fe9caa03a69c73a05f751fb8842f44599357b02b11c11f9ae21436a589",
+    "packages/shared-hooks/src/createCarpetaDigitalDocuments.ts": "49b9c7bf0cffa20969f2c9e1a564042da0c86dafcd374d2fec61428ecc6d924f",
+    "packages/shared-hooks/src/carpetaDigitalDocumentCases.ts": "a19902226789408815aeac2c92d1438dcd59acd0fbbed886bcd8c7536b99890a",
+    "packages/shared-hooks/src/carpetaReviewInterfaceCases.tsx": "e5efdf29b0b09d1d1a46a8df536248e012f0d2af750dc6986622622bed601f94",
+    "apps/shell/src/hooks/useDocumentActions.ts": "57573ea9821e1f10eb896afc329686c70b28ef27ea58c44de352a145a2d03320",
+    "apps/mfe-gestion-personas/src/hooks/useDocumentActions.ts": "57573ea9821e1f10eb896afc329686c70b28ef27ea58c44de352a145a2d03320",
+    "apps/shell/src/components/esap/DigitalFolderSection.tsx": "eaa53b18120ca7b898b1afecf0fdf2840e86d2f059e6a771a89574d09583dcce",
+    "apps/mfe-gestion-personas/src/components/admin/DigitalFolderSection.tsx": "2f677cdadae002a876669928ee37b42196e815801b1b5d4b33368bc7e9458e0d",
+    "apps/shell/src/components/esap/DigitalFolderSection.review.test.tsx": "c885408afdd7f0c822f26ab54d55b32c9b239961c81c9efff121c1bc77471a98",
+    "apps/mfe-gestion-personas/src/components/admin/DigitalFolderSection.review.test.tsx": "f8640c38eedce2e0547f5e0e23bc25a78b0238f556d60e33c8718af2504cb18a",
+    "apps/shell/src/components/shared/CarpetaDigitalSharedView.tsx": "62033035338a0710a2d5f48ff584ce64442d166c5ee90f45855572dd3433b0f7",
+    "apps/mfe-gestion-personas/src/components/shared/CarpetaDigitalSharedView.tsx": "df22ba364e8b1b869742b9727b21af67a72ff47065d1bc7997fb4d7ab711b98f",
+    "apps/mfe-gestion-personas/src/components/admin/UsersPersonsModulePremium.tsx": "98fb79dcebd67e4dccae69c7b59a9cc78666f5d71e6432b4d18c4da17aee8841",
+    "scripts/verify-auth-document-versions.cjs": "bc263317fb5eaaf9b3064ab506752ae2ec5d7ba673ddb5589bacdbee4c611157",
+    "scripts/verify-rund-personas-browser.cjs": "71bf952fdd5a9c167a14285c29faac21c438290bea024d994479ecfd9cbd7df2"
+  }
+}

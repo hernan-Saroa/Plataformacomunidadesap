@@ -18,6 +18,7 @@ export default defineConfig({
       filename: 'remoteEntry.js',
       exposes: {
         './Module': path.resolve(__dirname, './src/components/RundModulePremium.tsx'),
+        './Autogestion': path.resolve(__dirname, './src/components/pta/banco-docentes/AutogestionDocenteRUND.tsx'),
       },
       shared: ['react', 'react-dom', 'react-router-dom'],
     }),

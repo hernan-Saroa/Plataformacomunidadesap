@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { getBancoDocenteById } from '../../../services/api/ptaApi';
+import { getBancoDocenteById } from '../../../services/api/rundApi';
 import { BancoDocenteDetalleInline } from './BancoDocenteDetalleInline';
 
 /** Abre el expediente por id, incluso si no está en la página o periodo actual del listado. */

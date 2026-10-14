@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { getDatoExtraido } from './RundValidationPanel';
-vi.mock('../../../../../shell/src/services/api', () => ({apiClient:{}}));
+vi.mock('../../../services/api/apiClient', () => ({apiClient:{}}));
 vi.mock('./BancoDocenteEditModal', () => ({BancoDocenteEditModal:()=>null}));
 vi.mock('./RundDocumentManager', () => ({RundDocumentManager:()=>null}));
 

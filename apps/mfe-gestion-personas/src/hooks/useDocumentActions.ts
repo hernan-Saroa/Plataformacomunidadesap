@@ -2,11 +2,9 @@
  * HOOK: useDocumentActions
  * 
  * Acciones reales de documentos de Carpeta Digital:
- * - Upload: Subida real a Supabase Storage via POST /documentos/upload
- * - Preview: Obtiene signed URL y abre en nueva pestaña
- * - Download: Obtiene signed URL y dispara descarga
- * - Delete: Elimina documento del KV y del storage
- * - Validate/Reject: Cambia estado del documento
+ * - Subidas y operaciones persistentes mediante el adaptador del servicio propietario.
+ * - Vista previa/descarga autenticada del original confirmado por el servidor.
+ * - Decisiones y retiro conservan la revisión del documento mostrado al usuario.
  * 
  * Reutilizable en las 4 vistas de carpeta digital.
  * 
@@ -101,7 +99,7 @@ export function useDocumentActions({ carpetaId, onRefresh, onDeleteSuccess }: Us
   const handlePreview = useCallback(async (doc: DocInfo) => {
     const toastId = toast.loading(`Cargando vista previa de ${doc.nombre}...`);
     try {
-      const data = await documentosService.getDownloadUrl(doc.id);
+      const data = await documentosService.getDownloadUrl(doc.id, doc.revision_documento || undefined);
 
       if (data.success && data.data?.url) {
         toast.dismiss(toastId);
@@ -119,7 +117,7 @@ export function useDocumentActions({ carpetaId, onRefresh, onDeleteSuccess }: Us
   const handleDownload = useCallback(async (doc: DocInfo) => {
     const toastId = toast.loading(`Preparando descarga de ${doc.nombre}...`);
     try {
-      const data = await documentosService.getDownloadUrl(doc.id);
+      const data = await documentosService.getDownloadUrl(doc.id, doc.revision_documento || undefined);
 
       if (data.success && data.data?.url) {
         // Trigger download via temporary anchor
@@ -144,7 +142,7 @@ export function useDocumentActions({ carpetaId, onRefresh, onDeleteSuccess }: Us
   const handleDelete = useCallback(async (doc: DocInfo) => {
     const toastId = toast.loading(`Eliminando ${doc.nombre}...`);
     try {
-      const data = await documentosService.delete(doc.id);
+      const data = await documentosService.delete(doc.id, doc.revision_documento || undefined);
 
       if (data.success) {
         toast.success('Documento eliminado', { id: toastId, description: doc.nombre });
@@ -165,7 +163,7 @@ export function useDocumentActions({ carpetaId, onRefresh, onDeleteSuccess }: Us
   const handleValidate = useCallback(async (doc: DocInfo) => {
     const toastId = toast.loading(`Validando ${doc.nombre}...`);
     try {
-      const data = await documentosService.validarDocumento(doc.id, 'admin');
+      const data = await documentosService.validarDocumento(doc.id, undefined, doc.revision_documento || undefined);
 
       if (data.success) {
         toast.success('Documento validado', { id: toastId, description: doc.nombre });
@@ -186,7 +184,7 @@ export function useDocumentActions({ carpetaId, onRefresh, onDeleteSuccess }: Us
 
     const toastId = toast.loading(`Rechazando ${doc.nombre}...`);
     try {
-      const data = await documentosService.rechazarDocumento(doc.id, 'admin', motivo || 'Rechazado por el administrador');
+      const data = await documentosService.rechazarDocumento(doc.id, undefined, motivo || 'Rechazado por el administrador', doc.revision_documento || undefined);
 
       if (data.success) {
         toast.success('Documento rechazado', { id: toastId, description: doc.nombre });

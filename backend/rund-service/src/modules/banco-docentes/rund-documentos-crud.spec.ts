@@ -82,7 +82,10 @@ describe('RundDocumentosService - ciclo CRUD documental', () => {
       '10.0.0.1',
     );
 
-    expect(result).toEqual(expect.objectContaining({ id: 'doc-v1', version: 1, estado: 'ACTIVO' }));
+    expect(result).toEqual(expect.objectContaining({
+      id: 'doc-v1', version: 1, estado: 'ACTIVO',
+      contenidoUrl: `/rund/api/v1/pta/banco-docentes/${docente.id}/documentos/doc-v1/contenido`,
+    }));
     expect(storage.store).toHaveBeenCalledWith(expect.objectContaining({
       documentNumber: '123456',
       category: 'TITULOS',

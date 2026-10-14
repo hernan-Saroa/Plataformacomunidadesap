@@ -1,0 +1,28 @@
+{
+  "verifiedAt": "2026-10-14T09:38:56.315Z",
+  "step": "12.3b.2",
+  "passed": true,
+  "syntheticDataOnly": true,
+  "existingDatabaseUsed": false,
+  "synchronize": false,
+  "application": "Auth HTTP real y RUND controller/guards/consumer compilados; Nest de prueba, PostgreSQL temporal",
+  "nativeDecisionsAndPtaUnchanged": true,
+  "checks": [
+    "apagado no consulta la migración Auth ausente ni escribe proyecciones",
+    "668 y 007 repetibles sin copiar documentos ni cambiar decisiones",
+    "API interna exige su credencial, incluso con una sesión de administrador",
+    "primer snapshot completo sin URLs, nombres, comentarios o actores privados",
+    "reintentos y pulls simultáneos no duplican documentos ni eventos",
+    "POST exige JWT y permisos efectivos, ignora permisos del JWT/body y exige perfil exacto",
+    "decisiones y clasificación persistidas en Auth actualizan solo su proyección",
+    "reemplazo HTTP real en Auth cambia revisión y deja pendiente su proyección sin alterar RUND/PTA",
+    "retirar o pasar a otro dueño elimina exclusivamente documentos de la proyección Auth",
+    "mover la carpeta entre personas avanza ambas revisiones sin borrar evidencia nativa",
+    "fallo, snapshot parcial, revisión vieja y fingerprint inconsistente conservan último estado",
+    "timeout HTTP real revierte el intento sin vaciar la carpeta",
+    "un fallo anterior registrado tarde no marca como fallida una sincronización posterior exitosa",
+    "fallo de auditoría revierte upserts, bajas y checkpoint; worker recupera sin duplicar",
+    "carpeta de más de 5000 documentos falla completa, sin guardar una página parcial",
+    "baja de carpeta y persona producen vacío explícito con revisión creciente; desconocida sigue 404"
+  ]
+}

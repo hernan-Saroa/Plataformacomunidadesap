@@ -18,6 +18,8 @@ import { findRundSensitiveFields, maskIdentityDocument, protectRundSensitiveData
 import { recordRundAccess } from './rund-access-audit';
 import { buildRundPerfilCabezote, RundPerfilCabezote } from './rund-perfil-cabezote';
 import { capturarDatosCarga, fechaCivilPersistencia } from './rund-carga-original';
+import { rundLegacyUploadDirectory, rundSupportLocalPath, rundUploadUrlForFile } from './rund-upload-paths';
+import { RundAuthSyncActor, RundAuthSyncResult, syncRundProfilesFromAuth } from './rund-auth-sync';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
@@ -2568,74 +2570,11 @@ export class BancoDocentesService implements OnModuleInit {
     };
   }
 
-  async syncFromAuthService(authServiceUrl: string): Promise<{ total: number; created: number; skipped: number; failed: number }> {
-    // Traer todos los usuarios con rol DOCENTE desde auth-service
-    let page = 1;
-    const allUsers: any[] = [];
-    while (true) {
-      const res = await fetch(`${authServiceUrl}/api/v1/users?role=DOCENTE&limit=100&page=${page}`);
-      if (!res.ok) break;
-      const body = await res.json().catch(() => ({}));
-      const items: any[] = body?.data?.data || body?.data || [];
-      allUsers.push(...items);
-      const meta = body?.data?.meta || body?.meta || {};
-      if (page >= (meta.totalPages ?? 1) || items.length === 0) break;
-      page++;
-    }
-
-    let created = 0;
-    let skipped = 0;
-    let failed = 0;
-
-    for (const item of allUsers) {
-      const person = item.person || item;
-      const email = (person.email || '').toLowerCase().trim();
-      const identification = person.identification_number || '';
-      if (!email && !identification) { skipped++; continue; }
-
-      // Â¿Ya existe en banco de docentes?
-      const existing = await this.docenteRepo.findOne({
-        where: [
-          { personaId: person.id || person.id_person } as any,
-          { correoInstitucional: email } as any,
-        ],
-      });
-      if (existing) { skipped++; continue; }
-
-      // Crear con datos mínimos
-      try {
-        const fullName = `${person.first_name || ''} ${person.last_name || ''}`.trim() || email;
-        await this.upsertDocente({
-          documento_identidad: identification || email,
-          nombre_completo: fullName,
-          correo_institucional: email,
-          territorial: 'Sede Central',
-          vinculacion: 'Ocasional',
-          dedicacion: 'TC',
-          estado: 'ACTIVO',
-        }, {
-          rejectExisting: false,
-          audit: {
-            actorId: 'SISTEMA',
-            canalOrigen: 'API',
-            soporteId: 'AUTH_SYNC',
-            observacion: 'Sincronización controlada desde el servicio de autenticación',
-            metadata: { fuente: 'auth-service' },
-          },
-        });
-        created++;
-      } catch {
-        failed++;
-      }
-    }
-
-    return { total: allUsers.length, created, skipped, failed };
+  async syncFromAuthService(authServiceUrl: string, actor: RundAuthSyncActor = { actorId: 'SISTEMA' }): Promise<RundAuthSyncResult> {
+    return syncRundProfilesFromAuth(this.dataSource, authServiceUrl, actor);
   }
 
-  // —————————————————————————————————————————
-  // Autogestión (Canal 3)
-  // —————————————————————————————————————————
-
+  // Autogestión (Canal 3).
   async createInvitacion(correoInstitucional: string) {
     let invitacion = await this.invitacionRepo.findOne({ where: { correoInstitucional } });
     const token = randomUUID();
@@ -2662,7 +2601,7 @@ export class BancoDocentesService implements OnModuleInit {
     await this.invitacionRepo.save(invitacion);
 
     // Enviar el enlace de autogestión por correo (vía notifications-service).
-    const link = `${this.resolvePublicAppUrl()}/autogestion/docentes?token=${token}`;
+    const link = `${this.resolvePublicAppUrl()}/rund/autogestion/docentes?token=${token}`;
     const subject = 'Invitación RUND — Actualiza tus datos docentes (ESAP)';
     const text = [
       'Hola,',
@@ -3876,13 +3815,13 @@ export class BancoDocentesService implements OnModuleInit {
 
     const path = require('path');
     const fs = require('fs');
-    const uploadPath = path.join(process.cwd(), 'uploads', 'carpeta-digital', docenteNombre, 'RUND');
+    const uploadPath = rundLegacyUploadDirectory(docenteNombre);
 
     let diskFiles: string[] = [];
     if (fs.existsSync(uploadPath)) {
       diskFiles = fs.readdirSync(uploadPath).filter((file: string) => {
         try {
-          return fs.statSync(path.join(uploadPath, file)).isFile();
+          return fs.lstatSync(path.join(uploadPath, file)).isFile();
         } catch {
           return false;
         }
@@ -3890,17 +3829,18 @@ export class BancoDocentesService implements OnModuleInit {
     }
 
     const dbSoportes = await this.dataSource.query(
-      `SELECT * FROM rund."RundSoporteCampo" WHERE docente_id = $1`,
+      `SELECT s.*, d.proveedor_almacenamiento, d.almacenamiento_ruta
+       FROM rund."RundSoporteCampo" s
+       LEFT JOIN rund."RundDocumentoPerfil" d ON d.id = s.documento_perfil_id AND d.docente_id = s.docente_id
+       WHERE s.docente_id = $1`,
       [docenteId]
     );
 
     const details = dbSoportes.map((soporte: any) => {
       let fileExists = false;
-      if (soporte.documento_carpeta_id) {
-        const relativePath = soporte.documento_carpeta_id.replace(/^\/pta\/api\/v1\/uploads\//, 'uploads/');
-        const absolutePath = path.join(process.cwd(), relativePath);
-        fileExists = fs.existsSync(absolutePath);
-      }
+      const absolutePath = rundSupportLocalPath(soporte);
+      try { fileExists = Boolean(absolutePath && fs.lstatSync(absolutePath).isFile()); }
+      catch { /* Referencia sin archivo local: conservar el diagnóstico false. */ }
       return {
         id: soporte.id,
         bloque: soporte.bloque,
@@ -3951,7 +3891,7 @@ export class BancoDocentesService implements OnModuleInit {
         console.error('Error resolving persona', e);
       }
 
-      const uploadPath = path.join(process.cwd(), 'uploads', 'carpeta-digital', docenteNombre, 'RUND');
+      const uploadPath = rundLegacyUploadDirectory(docenteNombre);
       console.log(`Checking path for ${docenteNombre}: ${uploadPath}`);
       if (!fs.existsSync(uploadPath)) {
         continue;
@@ -3959,7 +3899,10 @@ export class BancoDocentesService implements OnModuleInit {
 
       const diskFiles = fs.readdirSync(uploadPath).filter((file: string) => {
         try {
-          return fs.statSync(path.join(uploadPath, file)).isFile();
+          if (!fs.lstatSync(path.join(uploadPath, file)).isFile()) return false;
+          // No crear una referencia que el diagnóstico local no pueda interpretar con seguridad.
+          rundUploadUrlForFile(path.join(uploadPath, file));
+          return true;
         } catch {
           return false;
         }
@@ -3972,20 +3915,23 @@ export class BancoDocentesService implements OnModuleInit {
       totalProcessed++;
 
       const dbSoportes = await this.dataSource.query(
-        `SELECT * FROM rund."RundSoporteCampo" WHERE docente_id = $1`,
+        `SELECT s.*, d.proveedor_almacenamiento, d.almacenamiento_ruta
+         FROM rund."RundSoporteCampo" s
+         LEFT JOIN rund."RundDocumentoPerfil" d ON d.id = s.documento_perfil_id AND d.docente_id = s.docente_id
+         WHERE s.docente_id = $1`,
         [docente.id]
       );
 
       const unlinkedFiles = diskFiles.filter((file: string) => {
-        const expectedDocId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file}`;
-        return !dbSoportes.some((s: any) => s.documento_carpeta_id === expectedDocId);
+        const expectedPath = path.join(uploadPath, file);
+        return !dbSoportes.some((s: any) => rundSupportLocalPath(s) === expectedPath);
       });
 
       if (unlinkedFiles.length === 0) {
         continue;
       }
 
-      const unlinkedDbRecords = dbSoportes.filter((s: any) => !s.documento_carpeta_id);
+      const unlinkedDbRecords = dbSoportes.filter((s: any) => !s.documento_carpeta_id && !s.documento_perfil_id);
 
       let linkedForDocente = 0;
       let createdForDocente = 0;
@@ -3994,7 +3940,7 @@ export class BancoDocentesService implements OnModuleInit {
       while (filesToLink.length > 0 && unlinkedDbRecords.length > 0) {
         const file = filesToLink.shift();
         const record = unlinkedDbRecords.shift();
-        const expectedDocId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file}`;
+        const expectedDocId = rundUploadUrlForFile(path.join(uploadPath, file));
 
         await this.dataSource.query(
           `UPDATE rund."RundSoporteCampo" 
@@ -4008,7 +3954,7 @@ export class BancoDocentesService implements OnModuleInit {
 
       while (filesToLink.length > 0) {
         const file = filesToLink.shift();
-        const expectedDocId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file}`;
+        const expectedDocId = rundUploadUrlForFile(path.join(uploadPath, file));
         const newId = randomUUID();
 
         let bloque = 'FORMACION';

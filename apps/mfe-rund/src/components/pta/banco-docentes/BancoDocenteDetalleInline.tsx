@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getBancoDocenteCabezote } from '../../../services/api/ptaApi';
+import { getBancoDocenteCabezote } from '../../../services/api/rundApi';
 import { RundValidationPanel } from './RundValidationPanel';
 import { PerfilDocenteCabezote } from './PerfilDocenteCabezote';
 

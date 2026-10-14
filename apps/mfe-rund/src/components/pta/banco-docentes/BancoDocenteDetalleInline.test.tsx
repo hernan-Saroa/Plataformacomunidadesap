@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { BancoDocenteDetalleInline } from './BancoDocenteDetalleInline';
-import { getBancoDocenteCabezote } from '../../../services/api/ptaApi';
+import { getBancoDocenteCabezote } from '../../../services/api/rundApi';
 
-vi.mock('../../../services/api/ptaApi', () => ({ getBancoDocenteCabezote: vi.fn() }));
+vi.mock('../../../services/api/rundApi', () => ({ getBancoDocenteCabezote: vi.fn() }));
 vi.mock('./RundValidationPanel', () => ({ RundValidationPanel: () => <div>Validación existente</div> }));
 afterEach(cleanup);
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => { vi.clearAllMocks(); });
 
 const fila = { id: 'docente-1', nombre_completo: 'NOMBRE DEL LISTADO', periodoCarga: '2026-2' };
 const perfil = {
@@ -35,7 +35,7 @@ describe('Integración del cabezote en el detalle RUND', () => {
   it('descarta respuestas de otro periodo que terminan después de la consulta actual', async () => {
     let resolverAnterior!: (value: any) => void;
     vi.mocked(getBancoDocenteCabezote)
-      .mockImplementationOnce(() => new Promise((resolve) => { resolverAnterior = resolve; }))
+      .mockImplementationOnce(() => new Promise<Awaited<ReturnType<typeof getBancoDocenteCabezote>>>((resolve) => { resolverAnterior = resolve; }))
       .mockResolvedValueOnce({ success: true, data: perfil });
     const { rerender } = render(vista(fila, '2025-2'));
     rerender(vista(fila));

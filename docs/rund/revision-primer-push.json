@@ -1,0 +1,1811 @@
+{
+  "generatedAt": "2026-10-14T09:48:25.335Z",
+  "scope": "first-source-review-push",
+  "branch": "feat/agregar_modulo_rund",
+  "head": "fe9f5a927feb289732fdf7bfdad16f51b7105703",
+  "activationReadiness": "not_verified",
+  "deploymentApproved": false,
+  "gitIndexModified": false,
+  "commitCreated": false,
+  "pushExecuted": false,
+  "runtimeModified": false,
+  "manifestFile": "docs/rund/primer-push-rund.paths",
+  "selectedFileCount": 391,
+  "newFiles": 154,
+  "deletedFiles": 127,
+  "outsideCut": [],
+  "findings": [],
+  "localImportTargetsChecked": 450,
+  "manifestSha256": "16717ea3e9e7f4f139319e695ccd46fde0f0efd613b0570692f830a791702a11",
+  "files": [
+    {
+      "status": " M",
+      "file": ".env.example"
+    },
+    {
+      "status": " M",
+      "file": ".github/workflows/build-backend-dev.yml"
+    },
+    {
+      "status": " M",
+      "file": ".github/workflows/build-backend-pre.yml"
+    },
+    {
+      "status": " M",
+      "file": ".github/workflows/build-backend-prod.yml"
+    },
+    {
+      "status": " M",
+      "file": ".github/workflows/build-backend-qa.yml"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-gestion-personas/src/components/admin/DigitalFolderSection.review.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-gestion-personas/src/components/admin/DigitalFolderSection.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-gestion-personas/src/components/admin/UsersPersonsModulePremium.rund.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-gestion-personas/src/components/admin/UsersPersonsModulePremium.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-gestion-personas/src/components/shared/CarpetaDigitalSharedView.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-gestion-personas/src/components/shared/CarpetaDocumentHistory.test.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-gestion-personas/src/components/shared/CarpetaDocumentStats.test.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-gestion-personas/src/components/shared/CarpetaRundInline.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-gestion-personas/src/hooks/useDocumentActions.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-gestion-personas/src/services/api/apiClient.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-gestion-personas/src/services/api/rundSync.service.test.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-gestion-personas/src/services/api/rundSync.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-gestion-personas/src/services/api/supabase.rund-sync.test.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-gestion-personas/src/services/api/supabase.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-gestion-personas/vitest.config.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/package.json"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/apiClient.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/audit.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/auth.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/authService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/certificados.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/certificadosService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/client.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/config.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/dashboard.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/enrollmentService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/entidadesRemisionService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/estructura.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/gestionProfesoralService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/graduados.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/index.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/legal.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/listasChequeoService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/modules.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/notificationsService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/portal.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/profileCompletenessService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/programas.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/ptaAPI.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/publico.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/README.md"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/roles-permissions-api.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/roles.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/rolesService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/tablerosKanbanService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/terminosAlertas.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/tiposAuditoriaService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/tiposRemisionService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/twoFactorAuthService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/types.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/userRolesService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/usersService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/api/usuarios.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/auditService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/certificadosService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/controlInternoUsersService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/documentGeneratorService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/estructuraService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/notificacionesPersonasPTA.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/notifications/ptaNotificationsService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/notificationService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/periodParametersService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/personasPTAIntegrationService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/pta/ptaAprobacionGranularService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/pta/ptaEnFirmeService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/ptaPersonasService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/situacionesAdministrativasService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/tableros-kanban.service.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/services/usersService.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/components/assets/ESAPLogo.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/components/assets/ESAPLogoSVG.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/design-system/ModalHeaderClean.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/DashboardAprobador.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/DashboardAprobadorIntegrado.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/DashboardDocente.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/DashboardDocenteIntegrado.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/Fase1PlanificacionSemestral.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/FlujoSecuencialGestionProfesoral.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/FormularioComplementarias.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/FormularioDocencia.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/FormularioExtension.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/FormularioInvestigacion.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/GestionProfesoralApp.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/index.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/ModalAprobacion.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/ModalProrrateo.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/PanelRevision.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/VistaDetallePTA.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/VisualizadorPTAAjustes.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/WizardCrearPTA.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/gestion-profesoral/WizardCrearPTAIntegrado.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/notifications/NotificationCenter.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/AutogestionDocenteRUND.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/AutogestionDocenteRUND.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteAprobacion.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteDetalle.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteDetalleInline.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteDetalleInline.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteEditModal.extraction.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteEditModal.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteEstadoModal.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocentesBulkUpload.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocentesPTA.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocentesPTA.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/DocenteExpandedView.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/RundDocumentManager.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/RundDocumentManager.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/RundExtractionNotificationDetail.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/RundExtractionNotificationDetail.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/RundExtractionPanel.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/RundExtractionPanel.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/RundValidationPanel.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/RundValidationPanel.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/RundValidationPanel.workflow.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/TableroInvitacionesRUND.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/RundDashboard.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/RundDocente360Detail.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/RundDocentesList.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/RundFormularioDocente.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/RundTarjetaDigitalModal.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/components/RundValidacionDocumental.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/config/environment.test.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/config/environment.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/contexts/NotificacionesContext.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/contexts/PermissionsContext.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/contexts/PTAContext.tsx"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/data/mockUsersWithSedes.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/hooks/usePTAConPersonas.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/modules/gestion-profesoral/components/portal/index.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/modules/gestion-profesoral/components/portal/MiPTA.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/apiClient.test.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/services/api/apiClient.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/services/api/client.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/services/api/config.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/services/api/gestionProfesoralService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/services/api/ptaApi.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/responseTypes.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/rundApi.test.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/rundApi.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/services/api/rundService.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/rundUploadEndpoint.test.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/rundUploadEndpoint.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/services/api/types.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/services/notificacionesPersonasPTA.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/services/notificationService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/services/periodParametersService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/services/personasPTAIntegrationService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/services/ptaPersonasService.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/calendario-academico.types.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/certificados.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/community.types.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/control-interno.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/estructura-organizacional.types.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/gestion-profesoral.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/index.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/integracion-personas-pta.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/ocig.types.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/periodParameters.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/pta.types.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/roles-permissions.types.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/roles-sistema.types.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/rund.types.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/types/situacionesAdministrativas.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/utils/bancoDocentesExcel.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/utils/bancoDocentesUi.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/utils/connectivity.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/utils/officePreview.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/utils/prorrateo.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/utils/ptaCompletion.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/utils/ptaHistoryActor.test.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/utils/ptaHistoryActor.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/utils/ptaInstitutionalDisplay.test.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/utils/ptaInstitutionalDisplay.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/utils/ptaPensumCompatibility.test.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/utils/ptaPensumCompatibility.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/utils/rundPerfilCabezote.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/utils/rundPhones.test.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/utils/rundPublicLinks.test.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/utils/rundPublicLinks.ts"
+    },
+    {
+      "status": " D",
+      "file": "apps/mfe-rund/src/utils/supabase/info.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/vite-env.d.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/vite.config.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/App.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/shell/src/components/esap/BackofficeApp.rund.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/components/esap/BackofficeApp.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/shell/src/components/esap/DigitalFolderSection.review.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/components/esap/DigitalFolderSection.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/components/esap/DocumentVersionHistoryModal.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/shell/src/components/portal/gestion-documental/MisDocumentos.rund.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/components/portal/gestion-documental/MisDocumentos.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/shell/src/components/portal/portalApi.carpeta.test.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/components/portal/portalApi.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/shell/src/components/rund/RundEntries.test.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/shell/src/components/rund/RundEntries.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/components/shared/CarpetaDigitalSharedView.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/shell/src/components/shared/CarpetaDocumentStats.test.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/shell/src/components/shared/CarpetaRundInline.test.tsx"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/config/environment.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/hooks/useDocumentActions.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/remotes.d.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/services/api/apiClient.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/services/api/rundCachePolicy.test.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/services/api/rundCachePolicy.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/shell/src/services/api/supabase.documentos.test.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/services/api/supabase.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/shell/src/services/api/syncEngine.documentos.test.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/src/services/api/syncEngine.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/shell/src/vite-env.d.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/shell/vitest.config.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/api-gateway/src/audit/audit.interceptor.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/api-gateway/src/audit/rund-audit-redaction.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/api-gateway/src/audit/rund-audit-redaction.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/api-gateway/src/auth/jwt-auth.guard.rund.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/api-gateway/src/gateway/gateway.rund-audit.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/api-gateway/src/gateway/gateway.service.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/auth-service/.env.example"
+    },
+    {
+      "status": " M",
+      "file": "backend/auth-service/src/carpeta-digital/carpeta-digital.controller.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/auth-service/src/carpeta-digital/carpeta-digital.module.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/auth-service/src/carpeta-digital/carpeta-digital.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/carpeta-digital/carpeta-document-revision.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/carpeta-digital/carpeta-document-states.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/carpeta-digital/carpeta-document-stats.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/carpeta-digital/carpeta-document-storage.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/carpeta-digital/carpeta-document-storage.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/carpeta-digital/carpeta-document-versions.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/carpeta-digital/carpeta-documentos-persistidos.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/carpeta-digital/portal-carpeta.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/carpeta-digital/rund-carpeta.client.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/carpeta-digital/rund-carpeta.client.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/auth-service/src/carpeta-digital/rund-document-access.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/auth-service/src/carpeta-digital/rund-document-access.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/carpeta-digital/rund-profiles.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/carpeta-digital/rund-state-snapshot.controller.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/carpeta-digital/rund-state-snapshot.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/carpeta-digital/rund-state-snapshot.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/auth-service/src/portal/portal.controller.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/.dockerignore"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/.env.example"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/004_rund_docente_identificadores_text.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/005_rund_tarjeta_numero_secuencia.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/006_rund_catalogo_permisos_compatibles.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/007_rund_carpeta_auth_proyeccion.sql"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/Dockerfile"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/app.module.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/auth/permissions.guard.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/auth/permissions.guard.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/auth/rund-effective-permissions.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/auth/rund-permission-catalog.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/entities/banco-docente.entity.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/entities/rund-acceso-externo.entity.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/entities/rund-aprobacion-log.entity.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/entities/rund-campo-estado.entity.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/entities/rund-macro-docente-consulta-log.entity.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/entities/rund-soporte-campo.entity.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/banco-docentes/banco-docentes-roles.guard.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/banco-docentes/banco-docentes-roles.guard.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/banco-docentes/banco-docentes-session-security.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/banco-docentes/banco-docentes.controller.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/banco-docentes/banco-docentes.module.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-auth-state-sync.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-auth-state-sync.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-auth-state-sync.worker.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-auth-sync.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-auth-sync.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-carpeta-consulta.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-carpeta-consulta.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-carpeta-internal.controller.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-carpeta-profiles.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-document-storage.service.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-documentos-crud.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-documentos.service.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-permissions.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-soportes-sync.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-upload-paths.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-upload-paths.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-validacion.controller.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/docentes/docentes.service.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/docentes/docentes.service.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/macro-docente/macro-docente-permission.decorator.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/macro-docente/macro-docente-permission.guard.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/macro-docente/macro-docente-permission.guard.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/macro-docente/macro-docente.module.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/macro-docente/macro-docente.service.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/macro-docente/macro-docente.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "db/migrations/667_auth_carpeta_documento_versiones.sql"
+    },
+    {
+      "status": "??",
+      "file": "db/migrations/668_auth_carpeta_revision_rund.sql"
+    },
+    {
+      "status": " M",
+      "file": "deploy.dev.sh"
+    },
+    {
+      "status": " M",
+      "file": "deploy.pre.sh"
+    },
+    {
+      "status": " M",
+      "file": "deploy.prod.sh"
+    },
+    {
+      "status": " M",
+      "file": "deploy.qa.sh"
+    },
+    {
+      "status": " M",
+      "file": "docker-compose.backend.yml"
+    },
+    {
+      "status": " M",
+      "file": "docker-compose.dev.yml"
+    },
+    {
+      "status": " M",
+      "file": "docker-compose.local.yml"
+    },
+    {
+      "status": " M",
+      "file": "docker-compose.pre.yml"
+    },
+    {
+      "status": " M",
+      "file": "docker-compose.prod.yml"
+    },
+    {
+      "status": " M",
+      "file": "docker-compose.qa.yml"
+    },
+    {
+      "status": " M",
+      "file": "docker-compose.yml"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/ACTIVACION-CARPETA-DIGITAL.md"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/primer-push-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/PRIMER-PUSH.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-artefactos-repositorio.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-endpoints-dev.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-endpoints-pre.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-endpoints-prod.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-endpoints-qa.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-instalacion-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-localizacion-accesos.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-operativa-ambientes.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-preactivacion-repositorio.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-primer-push.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-auditoria-gateway-http-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-auditoria-gateway-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-carpeta-compose.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-carpeta-consulta-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-carpeta-interfaces-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-carpeta-interfaz-navegador-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-compose.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-conexion-shell-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-construccion-rund-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-contadores-carpeta-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-contadores-carpeta-navegador-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-contadores-carpeta-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-enlaces-sincronizacion-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-estados-auth-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-estados-auth-navegador-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-estados-auth-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-frontend-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-historial-auth-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-historial-auth-navegador-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-historial-auth-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-migraciones-despliegue-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-migraciones-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-panel-rund-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-panel-rund-navegador-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-panel-rund-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-personas-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-personas-navegador-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-primer-push-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-servicio-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-shell-navegador-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-sincronizacion-auth-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-sincronizacion-auth-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-sync-auth-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-verificador-instalacion-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-vistas-carpeta-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-vistas-carpeta-navegador-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-vistas-carpeta-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/VERIFICACION-INSTALACION.md"
+    },
+    {
+      "status": " M",
+      "file": "migrate.local.sh"
+    },
+    {
+      "status": " M",
+      "file": "migrate.service.local.sh"
+    },
+    {
+      "status": "??",
+      "file": "packages/shared-hooks/src/carpetaDigitalDocumentCases.ts"
+    },
+    {
+      "status": "??",
+      "file": "packages/shared-hooks/src/carpetaDocumentStats.ts"
+    },
+    {
+      "status": "??",
+      "file": "packages/shared-hooks/src/carpetaReviewInterfaceCases.tsx"
+    },
+    {
+      "status": "??",
+      "file": "packages/shared-hooks/src/carpetaStatsInterfaceCases.tsx"
+    },
+    {
+      "status": "??",
+      "file": "packages/shared-hooks/src/createCarpetaDigitalDocuments.ts"
+    },
+    {
+      "status": "??",
+      "file": "packages/shared-hooks/src/rundInlineCases.tsx"
+    },
+    {
+      "status": "??",
+      "file": "packages/shared-hooks/src/rundInlineClient.ts"
+    },
+    {
+      "status": "??",
+      "file": "packages/shared-hooks/src/useRundInline.ts"
+    },
+    {
+      "status": "??",
+      "file": "packages/shared-ui/src/carpeta-document-history.tsx"
+    },
+    {
+      "status": "??",
+      "file": "packages/shared-ui/src/rund-inline-selector.tsx"
+    },
+    {
+      "status": "??",
+      "file": "scripts/jest-auth-carpeta.config.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/lib/rund-installation-review.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/review-rund-installation.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/review-rund-preactivation.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/review-rund-public-endpoints.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/review-rund-push-checkpoint.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-auth-document-versions.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-deploy-service-selection.test.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-migration-runners.test.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-auth-state-sync.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-build-workflows.test.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-compose.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-folder-counts.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-folder-views.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-frontend.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-gateway-audit.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-inline-profiles.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-installation.test.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-personas-browser.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-public-endpoints.test.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-service-integration.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-shell-browser.cjs"
+    }
+  ],
+  "sourceHashes": {
+    ".env.example": "e4021b31e3ff69e9845afe46f4348f80965275c4504e42c44328231c5c06593a",
+    ".github/workflows/build-backend-dev.yml": "cebe5a14c95612db59f7b54fc1db5f5b78075ef109d7efd9298a0d1a38464b67",
+    ".github/workflows/build-backend-pre.yml": "38678d5ee12341a6161f1077eb7f39d33b7696d9b99235eabacc873fd1ee7a0d",
+    ".github/workflows/build-backend-prod.yml": "cf8d7f2a0e086b4ae53040aeb95702fe6ad3b4cae43fe9b90e19a9c0cb06d8f6",
+    ".github/workflows/build-backend-qa.yml": "0adb52ce2d58f7e8aad1d028270c22b6fcc7d31e1c863b05fa2fe73a451e6879",
+    "apps/mfe-gestion-personas/src/components/admin/DigitalFolderSection.review.test.tsx": "f8640c38eedce2e0547f5e0e23bc25a78b0238f556d60e33c8718af2504cb18a",
+    "apps/mfe-gestion-personas/src/components/admin/DigitalFolderSection.tsx": "b98db4fc44d7f8134d08aaf5150ab15ff18ced77f09b51487bf68a51c422d1a3",
+    "apps/mfe-gestion-personas/src/components/admin/UsersPersonsModulePremium.rund.test.tsx": "c5f3702a361651f3a52dee1a3295cdeeba618959b33d04b28ea6587eed371e43",
+    "apps/mfe-gestion-personas/src/components/admin/UsersPersonsModulePremium.tsx": "98fb79dcebd67e4dccae69c7b59a9cc78666f5d71e6432b4d18c4da17aee8841",
+    "apps/mfe-gestion-personas/src/components/shared/CarpetaDigitalSharedView.tsx": "4d522c132ac5e55a6d3a2b270e451a356c7231743577ce8e97cfdd19f34a3bed",
+    "apps/mfe-gestion-personas/src/components/shared/CarpetaDocumentHistory.test.tsx": "53eba9bb02e8c39983d4e494571fc93dc3c0131eb424732ee120fe755ad80e8d",
+    "apps/mfe-gestion-personas/src/components/shared/CarpetaDocumentStats.test.tsx": "37a5b47e3950cb738c4d42b40466e7c4605b78c25faa1097a31ec977dceb1a57",
+    "apps/mfe-gestion-personas/src/components/shared/CarpetaRundInline.test.tsx": "ad69ac284a4460220a005086092837a69adf6f8b4ad8393330db4fd48e27b962",
+    "apps/mfe-gestion-personas/src/hooks/useDocumentActions.ts": "57573ea9821e1f10eb896afc329686c70b28ef27ea58c44de352a145a2d03320",
+    "apps/mfe-gestion-personas/src/services/api/apiClient.ts": "7495aff81c3c93a462ab451fc54ab26e779b8ff91696eb8daf0c9bfe84449a15",
+    "apps/mfe-gestion-personas/src/services/api/rundSync.service.test.ts": "7e96cb95da6c907ba78e3d01496630c4003c2e3957ed7c9c9b553925295425d3",
+    "apps/mfe-gestion-personas/src/services/api/rundSync.service.ts": "1d0d8ab579d4720cd112fc8da9e103704952264cc46470aa41c8608b40e6f421",
+    "apps/mfe-gestion-personas/src/services/api/supabase.rund-sync.test.ts": "759060f8593352ccc9b4e7c005ab9b676885638b2cc3ffa1251feea8b2d326e0",
+    "apps/mfe-gestion-personas/src/services/api/supabase.service.ts": "cf5623baf2c8a4bce5c38d226f9bae900562403f39f21cb856b46b49770251be",
+    "apps/mfe-gestion-personas/vitest.config.ts": "afbe6f4893f63c0de84166c862c97fad9cc95baa42330949b99811be7cf3a4ef",
+    "apps/mfe-rund/package.json": "2039e2b5c6e11de0653fa8bf0d1e5c8327a72c789cc67737d3eed2f7e7165860",
+    "apps/mfe-rund/src/components/assets/ESAPLogo.tsx": "41604b5ab75f90eee718ec4832cbc82149524404431e87ccf86f3ae3861d3b04",
+    "apps/mfe-rund/src/components/assets/ESAPLogoSVG.tsx": "0f4346fa4ac08f2357b528a6c151eb3dae4a55476432177553ae03b5b83a7ac5",
+    "apps/mfe-rund/src/components/pta/banco-docentes/AutogestionDocenteRUND.test.tsx": "16f344e2b2ef620850abcf66404af2f7040b4b7dceac394421d3a5cb72a76e6f",
+    "apps/mfe-rund/src/components/pta/banco-docentes/AutogestionDocenteRUND.tsx": "af950ae3da23d6e70ffe40f1dfa963cd98c94e3865eace0ad5ab7829917ae65b",
+    "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteDetalleInline.test.tsx": "9a219275c5aea9303e22c0061d037eeb48ffd8633596b6266861bfa5250669e3",
+    "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteDetalleInline.tsx": "18913c6b6517dd90e83e20f53ca4de6a38f6f37c0251b4f14a081d53260898ab",
+    "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteEditModal.extraction.test.tsx": "eadf92df5e9393d51e889e1b6065a9d31405726b2d3f585fba94585500c877d6",
+    "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteEditModal.tsx": "0c3410277c1831c2023e1928f966c7ab85d22fb89af6180dc2d958cfcb727ff4",
+    "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteEstadoModal.tsx": "a65ff34acc28bac87b14b97b5efa65c76bbdbd0a4f0cfcda9e50ffb8640c87a1",
+    "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocentesBulkUpload.tsx": "285450b41e2e9df6f879106c9ce7318157b3fe697f2086092270fe3cc5ef2dd0",
+    "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocentesPTA.test.tsx": "8eb8d2e7087914ed691c80e3eabaa2cf982174a03aea662b5351b32d81a52138",
+    "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocentesPTA.tsx": "a9291585936b35b5cebd46d05742ccc2bb9cc8140e948df6bdd90fdc794e4019",
+    "apps/mfe-rund/src/components/pta/banco-docentes/RundDocumentManager.test.tsx": "e81d506ad94b14aa12ebc037cdc7f326505a29a9d4603d138d3bb71706697202",
+    "apps/mfe-rund/src/components/pta/banco-docentes/RundDocumentManager.tsx": "8b9c95bb3cd0b54b0e1d90a1d7f0e71c87b82d95d39b6b30d08e2f6feabeb965",
+    "apps/mfe-rund/src/components/pta/banco-docentes/RundExtractionNotificationDetail.test.tsx": "e062af8c1e7c53f123d9e905408ac1ff6237597510a4ef5671b41333700ea8e4",
+    "apps/mfe-rund/src/components/pta/banco-docentes/RundExtractionNotificationDetail.tsx": "7dd3794975cc45d3838e2c7d96acec6126114bcb052db66abfd9c0ce4add261d",
+    "apps/mfe-rund/src/components/pta/banco-docentes/RundExtractionPanel.test.tsx": "0deb6f09986dd8b81c9e95d8bde17fa77b270b7ed45b9a7557071f0702945490",
+    "apps/mfe-rund/src/components/pta/banco-docentes/RundExtractionPanel.tsx": "85ea7648f990721d78f27f9729504ead29fdffb8a27371ad5d4d37a57d9395e4",
+    "apps/mfe-rund/src/components/pta/banco-docentes/RundValidationPanel.test.tsx": "896d0932fcbb4f2ed48ff8d96b7ec98b4cea1df599cac7744c2b420b0250f1f1",
+    "apps/mfe-rund/src/components/pta/banco-docentes/RundValidationPanel.tsx": "b7a37ca8d0ae405f2796523641d28f974de51b330b1e06cca9f3701db0b49a97",
+    "apps/mfe-rund/src/components/pta/banco-docentes/RundValidationPanel.workflow.test.tsx": "f4b8b754119973827cee5c4b97ec697331db6cad893e24ad712ee57602f69693",
+    "apps/mfe-rund/src/components/pta/banco-docentes/TableroInvitacionesRUND.tsx": "5d533d1b0f5aa0177ff7d17ee698108375a8f4b4242a330f07740ec1a9afd184",
+    "apps/mfe-rund/src/config/environment.test.ts": "e0b77853874c583b5922448c5cf3b3d1f4e35745afd706256d9b71eef462310c",
+    "apps/mfe-rund/src/config/environment.ts": "9cee7cde99a15a85f3155990d279cd931460e7b36bc8381ab5312d1a178c3794",
+    "apps/mfe-rund/src/services/api/apiClient.test.ts": "6eccf2c1763cd3d9fccff58cfc1dcfa522e91aa3d3f6c36a9fe6ced4adcd8e63",
+    "apps/mfe-rund/src/services/api/apiClient.ts": "542a5caa80780b166b86ac397de7461e7ee5eb994af7d10335c61325817e4912",
+    "apps/mfe-rund/src/services/api/responseTypes.ts": "a2f86e26091bdedf5e64cb39af9a04f3e67cd331e44986e5501987fa48024fc0",
+    "apps/mfe-rund/src/services/api/rundApi.test.ts": "21d029b13f3948a4bd81329c20a667dad504aa29864f593e764d494e1566aa56",
+    "apps/mfe-rund/src/services/api/rundApi.ts": "6c86e7799006bf7cd76578ee7d6d15d517decfaf36458c2fe6181e4ad56644bc",
+    "apps/mfe-rund/src/services/api/rundUploadEndpoint.test.ts": "47c2266d162a204f69af3ef364e7d756013bc9c1cebf30bb9b4f5f9c95c920eb",
+    "apps/mfe-rund/src/services/api/rundUploadEndpoint.ts": "8d39eaae013efdb90078b9f76216efd4d84e9a0986c489fabdd18bf680bd755e",
+    "apps/mfe-rund/src/utils/bancoDocentesExcel.ts": "cf9cb29a819191f77e250cf6962097b986714cad0450656e4cf256127fde6282",
+    "apps/mfe-rund/src/utils/connectivity.ts": "2ac35b689cf56e175bd1fbc25b0f153068557796e9a9d904fc6fb3f89b419d7b",
+    "apps/mfe-rund/src/utils/rundPerfilCabezote.ts": "08981e76459511badd2860deb11105906b65e4ffd5bc42d45e8c4db70e274b73",
+    "apps/mfe-rund/src/utils/rundPhones.test.ts": "5865ef8266b4357319f5d9d060d59abe1f62f70ba7a151d9440138369e285607",
+    "apps/mfe-rund/src/utils/rundPublicLinks.test.ts": "d8a3e702fa45ee6763d35ed8a85678ba0cb9e0d372a8ea43ef40054836652d9f",
+    "apps/mfe-rund/src/utils/rundPublicLinks.ts": "73fc2acd69b669c27c247a22cbf740d78b41854c8d9a8c930e750dd68529747e",
+    "apps/mfe-rund/src/vite-env.d.ts": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5",
+    "apps/mfe-rund/vite.config.ts": "4ec2610d091042b6d4eda27bbe21253bde5b0e457177010d15a6526de736a3e2",
+    "apps/shell/src/App.tsx": "3cc3d6d9021213261ffd2e1619e432b988531c255c54c026c7fbb47bd60bfc97",
+    "apps/shell/src/components/esap/BackofficeApp.rund.test.tsx": "fad52c26c2394e6f05b8257005f6d9ce41e1f9c746c19358c811e106d054b14f",
+    "apps/shell/src/components/esap/BackofficeApp.tsx": "3c60cadfce2466e173c16ff44c7c2ba150e13b3c13e47cf6ebd38a06d4653159",
+    "apps/shell/src/components/esap/DigitalFolderSection.review.test.tsx": "c885408afdd7f0c822f26ab54d55b32c9b239961c81c9efff121c1bc77471a98",
+    "apps/shell/src/components/esap/DigitalFolderSection.tsx": "f6013ab94c2b38c8af698f3ede7e4d1b28adad59ed557c4cdfb2385d50e5dcdb",
+    "apps/shell/src/components/esap/DocumentVersionHistoryModal.tsx": "19a9b64fda2d2d81f768fc86912588010cab264ff641ddf42ca22c0feb871df4",
+    "apps/shell/src/components/portal/gestion-documental/MisDocumentos.rund.test.tsx": "5512a7d16477fda85a77e55d998c32dcf1b808794aa272f16d8a7f33652d5815",
+    "apps/shell/src/components/portal/gestion-documental/MisDocumentos.tsx": "17a580304fee670ff093612197bd4fee2c7476c917fd7b2329920b4ade12efcb",
+    "apps/shell/src/components/portal/portalApi.carpeta.test.ts": "08575614aa3547bcf01e013e6372689cb287347c7a6cf6677a8f1552c1c661ec",
+    "apps/shell/src/components/portal/portalApi.ts": "a841f5880f72ce62aa6358a5f27ab627c72dec514e61e34cd36337c9020b5d69",
+    "apps/shell/src/components/rund/RundEntries.test.tsx": "62a4a983860333285717e3ccb6c2e5b794e7ccd861a22d491324b040b71e78a8",
+    "apps/shell/src/components/rund/RundEntries.tsx": "17606cb2e45b7c59a4aeb2ff03b60f9eae212cd50bd05dfae67e608d8bc283e1",
+    "apps/shell/src/components/shared/CarpetaDigitalSharedView.tsx": "610850c5b0e3ff7e6a1f40c8f20b3bf6103c214dabd287fdbfdd7ab3f7147005",
+    "apps/shell/src/components/shared/CarpetaDocumentStats.test.tsx": "37a5b47e3950cb738c4d42b40466e7c4605b78c25faa1097a31ec977dceb1a57",
+    "apps/shell/src/components/shared/CarpetaRundInline.test.tsx": "ad69ac284a4460220a005086092837a69adf6f8b4ad8393330db4fd48e27b962",
+    "apps/shell/src/config/environment.ts": "b143d97b9e1ae3fd948bcaf0ed356ee98638c954403067ac2b56ced4cc4c0c37",
+    "apps/shell/src/hooks/useDocumentActions.ts": "57573ea9821e1f10eb896afc329686c70b28ef27ea58c44de352a145a2d03320",
+    "apps/shell/src/remotes.d.ts": "e03314eb713f6da407af459eace5cd3be857a8f03199254ab8ed9854c3352fa1",
+    "apps/shell/src/services/api/apiClient.ts": "5cfbba85d1e9cb945eb0d65c876c789b943badb1c0db4e409e7d1d9a7d609e79",
+    "apps/shell/src/services/api/rundCachePolicy.test.ts": "739371c07fac6ffad8565f76b033aeaebd1d1031508edff80cf33a346a603ebb",
+    "apps/shell/src/services/api/rundCachePolicy.ts": "ca3bedbc51899b223d19b4ac94a0fcafb72ba24ca27b6b582b48273246ffa2df",
+    "apps/shell/src/services/api/supabase.documentos.test.ts": "3cc408fe138e3e437153b3254a9f492f067794d3efcd7215728f3cdd99ac9534",
+    "apps/shell/src/services/api/supabase.service.ts": "e0812b5e08b3f2983e197f0df7c024f7ad6b419af17e1173fec90da9013a6d21",
+    "apps/shell/src/services/api/syncEngine.documentos.test.ts": "ab9684ab56273198fbef6f28e1ab33951f84a689d201de07ecfd5595014129eb",
+    "apps/shell/src/services/api/syncEngine.ts": "004f347694247bbc4b5ea3debbb924979e359b99e2c9a57b4c9d70cd014467f3",
+    "apps/shell/src/vite-env.d.ts": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5",
+    "apps/shell/vitest.config.ts": "ffd435e525a6a0e6bea8ba019989be9a56e1db4d40eca1aaa97f6137b0d3c3f2",
+    "backend/api-gateway/src/audit/audit.interceptor.ts": "378e3a34289101ae3a4f7f97f1b530fe5f0729476aa37eddc93a5de5ed69e376",
+    "backend/api-gateway/src/audit/rund-audit-redaction.spec.ts": "67aa65711cd3b0ee1044faa02e85b41c3a466cb0ab6853131d05ca392d721aca",
+    "backend/api-gateway/src/audit/rund-audit-redaction.ts": "1ce021f12a1893a1aa2e1991fbd5b621422f407ec4a4ee3278565e70fc3052ae",
+    "backend/api-gateway/src/auth/jwt-auth.guard.rund.spec.ts": "e8b0a4fcd07bc84f7bc8aa9d738695d8c1244813fafaf858a1366a33f78e1a0c",
+    "backend/api-gateway/src/gateway/gateway.rund-audit.spec.ts": "11e54c72ecc6bc5eb5c410df56b972924cbcd6166df3e550294439f4d61edb31",
+    "backend/api-gateway/src/gateway/gateway.service.ts": "e8df06cbb976faf82285473394f9ff62327a8317f1c2f816f3ff8af712aef333",
+    "backend/auth-service/.env.example": "5c013a46e9894a6ca0a1cc2d08aac95e5acbd09cae87f2cf5d24a0b68f373f2f",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.controller.ts": "60e29bc947417cd52b59564df1fa0b0d06790bb6e2c2c9684ba685a40b70c13b",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.module.ts": "dbca803466dc847d6fb4f662dc1db5320d25f5ea9624f08bd10175c9673aa0f5",
+    "backend/auth-service/src/carpeta-digital/carpeta-digital.service.ts": "a8a1e5d6eeab2847bee8f06d072528b944a8e9c5d9a3a6f4adece7991915ad89",
+    "backend/auth-service/src/carpeta-digital/carpeta-document-revision.ts": "566f09567ad31dcbf6bb05e632b31d4e9173d65e8e782296bf79b023f0724cee",
+    "backend/auth-service/src/carpeta-digital/carpeta-document-states.spec.ts": "893dedf45f9b64fd3ba197fcba96489ed7c95bee146d1563c1113f5a02a0867c",
+    "backend/auth-service/src/carpeta-digital/carpeta-document-stats.spec.ts": "baf066498cd63652457f8d8ba802071ca152a73842cf162c29815754fd9daeee",
+    "backend/auth-service/src/carpeta-digital/carpeta-document-storage.spec.ts": "00957826f18038a7ec874e5f527ec94dccaa550720eebc3015208d25733c7544",
+    "backend/auth-service/src/carpeta-digital/carpeta-document-storage.ts": "8305659d36786b723dfa4966336d16ba56110188d809a6a3d4c5221a2449d57e",
+    "backend/auth-service/src/carpeta-digital/carpeta-document-versions.service.ts": "a889610e2afa0a997db31c754dcdeb5c4ed9e4f2385d150c491e592f98b3f004",
+    "backend/auth-service/src/carpeta-digital/carpeta-documentos-persistidos.spec.ts": "a8422e0ebb83d181091be2226276a80820c29a71b883ba05730c4b90396d957e",
+    "backend/auth-service/src/carpeta-digital/portal-carpeta.spec.ts": "5e02dd42a017f0d5cf510bbfed57ab72077325839adcf1bb2c9a700c082ed1b5",
+    "backend/auth-service/src/carpeta-digital/rund-carpeta.client.spec.ts": "491c540fa2202b38814e73160cd83a2331eaa69c1c51aafb7be3881e023c0137",
+    "backend/auth-service/src/carpeta-digital/rund-carpeta.client.ts": "3e87fea93e80eab94bd45a34ddcf166236a0b6ebea9c34c666e747dc50a08c59",
+    "backend/auth-service/src/carpeta-digital/rund-document-access.spec.ts": "032d57fe9caa03a69c73a05f751fb8842f44599357b02b11c11f9ae21436a589",
+    "backend/auth-service/src/carpeta-digital/rund-document-access.ts": "e0f9d0a41c7314c41420f0cab00fefb5198faff296bad3167297421c6a19b6da",
+    "backend/auth-service/src/carpeta-digital/rund-profiles.spec.ts": "666f01bed420128f5abbf640e7178befe23cfaea638168d866902b33be359530",
+    "backend/auth-service/src/carpeta-digital/rund-state-snapshot.controller.ts": "d7b23b1abdd9d4581a4c40ee5cc3fce5011a73849ca52916396d368fc9637708",
+    "backend/auth-service/src/carpeta-digital/rund-state-snapshot.service.ts": "2f633f8902f215c675dc729603d2eb2199cfe5ce935d2343c7a971871d89c99c",
+    "backend/auth-service/src/carpeta-digital/rund-state-snapshot.spec.ts": "1b0aa3fb9b63b2489786fac470e97ca3f1ed6f9e7272fb6e465396f3c951ace6",
+    "backend/auth-service/src/portal/portal.controller.ts": "7f90fbb793e9357565aa6c4a2e1796b20e8d3549ca8012fabedab34e4d33b1b7",
+    "backend/rund-service/.dockerignore": "96e1bf5bdbe6effea1422326f454db17e740773e39d94f97cacdabd21de4a668",
+    "backend/rund-service/.env.example": "2d9ccc187dd74b506bee4df844a36785ee4bc0ae314fb1deb9c6891200378a9e",
+    "backend/rund-service/db/migrations/004_rund_docente_identificadores_text.sql": "7aefde2e629f9209d25ed265fb7981cfba33e8d43a0af5aa6afdfbab4f329e6f",
+    "backend/rund-service/db/migrations/005_rund_tarjeta_numero_secuencia.sql": "ecb85324bb2c0e327318a2cb9373dfdf938bc142fe8744af70939b2efcec0e71",
+    "backend/rund-service/db/migrations/006_rund_catalogo_permisos_compatibles.sql": "db63242b14393fe882404ccbc58fbb53678ec27844e1e2db10b3de82c4e09760",
+    "backend/rund-service/db/migrations/007_rund_carpeta_auth_proyeccion.sql": "176bfd7710a1e7d7f0c7f4e0cdb1a545de7b009ac4c5f5dfe2a85be884429d85",
+    "backend/rund-service/Dockerfile": "3698eff4af47f1d4bad06d79478909e5057c1f8c3d47d1b60863c88dadf315ac",
+    "backend/rund-service/src/app.module.spec.ts": "90c8f03555d2d6dd14d4535edea9cb75bae2894ab65698c4be3a07b3d75b4aa2",
+    "backend/rund-service/src/auth/permissions.guard.spec.ts": "107be75632a082fafafe5bafc9a496e6acf66f7a9d684716ee4873f1aad640e6",
+    "backend/rund-service/src/auth/permissions.guard.ts": "a27ee661b7ff6d7520744710d4fe2b156ec17b81677947746b01e9958e360994",
+    "backend/rund-service/src/auth/rund-effective-permissions.ts": "a84857bcd9073024a531d097aa6ec412a1c7e1fe0fb10580a8d3dade83dc8459",
+    "backend/rund-service/src/auth/rund-permission-catalog.ts": "0176d810020de3436b529cf40b808e9daf306227508db9877e1d763caef7a092",
+    "backend/rund-service/src/entities/banco-docente.entity.ts": "65965e1121f1129c23367d31563f18dff74fce6ea4b1f506b87e693ad47c1239",
+    "backend/rund-service/src/entities/rund-acceso-externo.entity.ts": "3698603b56badf082e67d5bf9dfcebba8436ed552b79321573c83c63f8947979",
+    "backend/rund-service/src/entities/rund-aprobacion-log.entity.ts": "b5bd7514e5e159a7696b0c97649482081cfb1850280abb74dc2af3ad6308a00e",
+    "backend/rund-service/src/entities/rund-campo-estado.entity.ts": "1102d1d15020ef49eb46c7b307a8c987f2479f45d8eeb9e2112f0d33b32dd7c8",
+    "backend/rund-service/src/entities/rund-macro-docente-consulta-log.entity.ts": "8f6d570bd8524732e9a24d1cbcac7b7f42f3847dfae19e57a8363f9d9f21ddc3",
+    "backend/rund-service/src/entities/rund-soporte-campo.entity.ts": "0c983c033de12314e0963f8dd984a5483de88a59deab74b36b8983ebd6ef6d49",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes-roles.guard.spec.ts": "0000ec6410eb43027858838a1d00042d2ebbb513cc9e7bb1f42b06b5da2715d2",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes-roles.guard.ts": "6a9d167576dc526582f70ec3f0e444bd3b6c20a27070a071f4b7c68e26900834",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes-session-security.spec.ts": "c1f16e1cfc9b690c4b70066e7831ffee6126fb37e83636279679ea19f6020d11",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.controller.ts": "dd16dc9b4114d8a83c6bc064b9f22e80048a6e7c3f1ecc987ae9bdb0eb8d1864",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.module.ts": "2bd120967a8c5a7425d709dcbfceddc443acbc2ad2699646208c26f367c33637",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts": "d7d3ea57e25a831d01bf95bb95061c932b58af074245a432b9dfee04bc3a9c73",
+    "backend/rund-service/src/modules/banco-docentes/rund-auth-state-sync.service.spec.ts": "c25ab4c365d7572716111db9f30de2d919b7525e66744e8199840b9c61f70b43",
+    "backend/rund-service/src/modules/banco-docentes/rund-auth-state-sync.service.ts": "3af92ea9e9b00249eacd4a81a6313645011c5cf669a8b268afb03331961aea14",
+    "backend/rund-service/src/modules/banco-docentes/rund-auth-state-sync.worker.ts": "3b7d1a618e61a6796fc7238f10b174f220044c82a233ccdb7f4ed9510b3f8f27",
+    "backend/rund-service/src/modules/banco-docentes/rund-auth-sync.spec.ts": "fa60530e68b0e1cb69905fa67bf92b0d06b05c2d94f4be22507dadc4fa23c40f",
+    "backend/rund-service/src/modules/banco-docentes/rund-auth-sync.ts": "d7ad843ac10fa095fe3af21d0dfec1ae4d3db225f904530b102bd827b0e8fac0",
+    "backend/rund-service/src/modules/banco-docentes/rund-carpeta-consulta.service.ts": "33fcf227935fd9a462b44a11d65ed137d67ad97a1537cbadd52fc7474b5985f8",
+    "backend/rund-service/src/modules/banco-docentes/rund-carpeta-consulta.spec.ts": "eb74817245e4a24bceb564cd2d1a7dc3db64e69dc101a0975556841e966bc823",
+    "backend/rund-service/src/modules/banco-docentes/rund-carpeta-internal.controller.ts": "64c8e244fa0ae8edd6a3ec99353be09570ad34f581f36f8b185e475ae43e7c42",
+    "backend/rund-service/src/modules/banco-docentes/rund-carpeta-profiles.spec.ts": "010f6b49fd9e058562397d6d6f9ece1368b0e36d09ac38ffa09cd86c6b40f893",
+    "backend/rund-service/src/modules/banco-docentes/rund-document-storage.service.ts": "64491122e967f4c79e668cce49c967b5c2e0585a7db5f6affed7baf001ca3ccb",
+    "backend/rund-service/src/modules/banco-docentes/rund-documentos-crud.spec.ts": "41efd9f91dadad0be09ac76bb01404f0c13c68fe4e142585cc8d26a592a688a9",
+    "backend/rund-service/src/modules/banco-docentes/rund-documentos.service.ts": "ef9536b9a7ab83bae661bae713f3014cf0cc92b463c1c9a21bd130c13104d493",
+    "backend/rund-service/src/modules/banco-docentes/rund-permissions.ts": "80403f1d998f60ed9d088fbff9b139b3b258a0f823bdb42716743d4f8ff060df",
+    "backend/rund-service/src/modules/banco-docentes/rund-soportes-sync.spec.ts": "0e7c917138c534044d1dcf2f188db04b5f9c0bbd29919b4c44d5659c750aa746",
+    "backend/rund-service/src/modules/banco-docentes/rund-upload-paths.spec.ts": "55430d17a172e49b02cdffd439acd62ce1c51db54bd6546fd9e36a0d65cb37e4",
+    "backend/rund-service/src/modules/banco-docentes/rund-upload-paths.ts": "9a84c3a19310f63a310698c05c6f4244cb7e942625910bf887b4251884522d07",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.controller.ts": "b68432d7e3dde5e55f5cc8b092a3769859aee9cd736f6917d341ce9fe4c0419b",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.spec.ts": "72677b4270e6f7bf74de46a6a721f4a0e5848599138eb210e08426bfa8b6472d",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.ts": "6087eeb6882aa4ab2152e678ff1b10eb30a66ce80ad1f963ffd3ad24e781f013",
+    "backend/rund-service/src/modules/docentes/docentes.service.spec.ts": "1a9ad5493b615407b62cf7656b82ec507be8718389551578666125a7b3ca53a3",
+    "backend/rund-service/src/modules/docentes/docentes.service.ts": "3feeb60299be8832df9213b31837889aef05280a05948e89af4c0018ada033f9",
+    "backend/rund-service/src/modules/macro-docente/macro-docente-permission.decorator.ts": "63ae0a29e847f00a97f85fe6f34c11a10a899d9d6df1fae3c8504638bee25dab",
+    "backend/rund-service/src/modules/macro-docente/macro-docente-permission.guard.spec.ts": "1a726e95c8881055382cc0735bafe58a471fba98167c8ba538440182d615d136",
+    "backend/rund-service/src/modules/macro-docente/macro-docente-permission.guard.ts": "f6f9b78844a96b6b24d30231571f77ac4b3b9a1a9c93393bb07063c297d66fbd",
+    "backend/rund-service/src/modules/macro-docente/macro-docente.module.ts": "ff9198214fed61c2a73d26788d8121e08b59f7687cb86cf6c5e51e1a82f77693",
+    "backend/rund-service/src/modules/macro-docente/macro-docente.service.spec.ts": "872a95b818f31539435f8092cb649a4e5dd11bde982699be3949ba172d040406",
+    "backend/rund-service/src/modules/macro-docente/macro-docente.service.ts": "7a0c0471107ae8d090e2bcef8f35cd7c452858c9a2bb17ec8f42b6c2bc65138e",
+    "db/migrations/667_auth_carpeta_documento_versiones.sql": "4bafc25852da545b82d04454b64f2ddc9a2d95f64d12a78b8fa3b343d4f0a12f",
+    "db/migrations/668_auth_carpeta_revision_rund.sql": "57eed1c16e266ade88a3e1a64156eb996a74a8b94b197acc7d6fd35f30b9378a",
+    "deploy.dev.sh": "d96df5523db649f7a0fd4fabd2a83a0e2e17297ec86d47514d7d613b1fa2770f",
+    "deploy.pre.sh": "fe1b5194038722ff2d2a49ca7ce5cff076336ea570ba948982de4666c640bcb8",
+    "deploy.prod.sh": "ee1159f8bb9c4ba46f8ff2d0c105c61726f743060c3c7602747c2fe0496a52ac",
+    "deploy.qa.sh": "fd952204c43e271595bdb0c225717c2d06683a96a408f7c7de66626a69ece5db",
+    "docker-compose.backend.yml": "91bab745b3a1d87a23ef36cee52347e0f345009a9b326545a8514af734586001",
+    "docker-compose.dev.yml": "c816928311f8816ff19aad1c07b4f0362ebe431fa3564593e3da940ade81e6e4",
+    "docker-compose.local.yml": "dd51ddf0b95aa4aec6b271fb52e73916c8dc78091c470789859f704f70a38826",
+    "docker-compose.pre.yml": "48576849e1cc36d288e0c0f93a3a17503fb58e06fab39b6f8bc0cd28d2f74ff8",
+    "docker-compose.prod.yml": "ebba97e238b745674e0435323f104e3693ec9789f9e6dd0e2002a2138a512427",
+    "docker-compose.qa.yml": "9fd6fc5702d69a6b226602b4e7fa634a7d9bb6d224dbaeba0ccf0e7d14bf55d9",
+    "docker-compose.yml": "0f3507d11fdc86aa3fb096239465603cf147755226ce809ba09c897e2ff68246",
+    "docs/rund/ACTIVACION-CARPETA-DIGITAL.md": "951dd468477929684029871de90ab212d8c915f5785c125c3fc65165f054421a",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "ea037f29dc47e7af8625065ee68d54b7e3c7ceebb6f67629beef8678173310a0",
+    "docs/rund/PRIMER-PUSH.md": "0834e073448b49587d6bace7f571c757dde5e8c1f0afed164328ff8449c1c22c",
+    "docs/rund/VERIFICACION-INSTALACION.md": "cd1bfbdc67fb89191ea2f987b2f2fde06cb45027419164baa9526c20e881c927",
+    "migrate.local.sh": "9936ccc4020b56fd68fcb31d4feb19df58a72c12703facc66b69947dab3d300a",
+    "migrate.service.local.sh": "25789ca3936fbc98ed2d041cf92d49cca1ebb510cfd54ff1e870bb378955de61",
+    "packages/shared-hooks/src/carpetaDigitalDocumentCases.ts": "a19902226789408815aeac2c92d1438dcd59acd0fbbed886bcd8c7536b99890a",
+    "packages/shared-hooks/src/carpetaDocumentStats.ts": "74aad058e6348e603a2be93ee31cdb861c7cd492647b5f088e1e8f6066d8a4a0",
+    "packages/shared-hooks/src/carpetaReviewInterfaceCases.tsx": "e5efdf29b0b09d1d1a46a8df536248e012f0d2af750dc6986622622bed601f94",
+    "packages/shared-hooks/src/carpetaStatsInterfaceCases.tsx": "2042e12e457cbf86ff69fd5ffdb0a1b706198aafb44ed2504b15f4b0b413f4f3",
+    "packages/shared-hooks/src/createCarpetaDigitalDocuments.ts": "38fd9f1ad3f4126c8fe938125055f4c5be768b3cf50c2c345ce5e5112c203269",
+    "packages/shared-hooks/src/rundInlineCases.tsx": "8d02f72abb31eff34fc1e090b9a672821293f205c2dc2f713e2221ae6c511ace",
+    "packages/shared-hooks/src/rundInlineClient.ts": "4a2e89952c4391c2eaeb9d8a6a5d142ee3504ca482a4c7650f4cff2baadf78a6",
+    "packages/shared-hooks/src/useRundInline.ts": "5ffc38a244acbb6061e88a13d2daef86896538fe97ae5aa8d46ed9819aa40aef",
+    "packages/shared-ui/src/carpeta-document-history.tsx": "1b06a5f44a96da94cac80ffb4661e267d2275891c9a066459e28416c360ea922",
+    "packages/shared-ui/src/rund-inline-selector.tsx": "d19dde99ab5b3ee999b7690c8248d1ff8a4279b980ed56c22fd5b70b7fb1bcea",
+    "scripts/jest-auth-carpeta.config.cjs": "cb8ba16cafc4a54e47dc6e8f7c24cda632548a710a0665fde9ef2a1506035037",
+    "scripts/lib/rund-installation-review.cjs": "77eb0b639ed14f6338fa0c7d5aa1132d49dd1336c259f33a6316edd94f0f1dc1",
+    "scripts/review-rund-installation.cjs": "f908c1bc81ea7d4fbe2c5fe7444b31112d54dd87201b0a68a213915ef4485b9e",
+    "scripts/review-rund-preactivation.cjs": "a61b10f216465a54facc7636cd9ad301c84e88b310a5e2926a3f6d576f1a7cb7",
+    "scripts/review-rund-public-endpoints.cjs": "6c10ee53b592bfce032be206343f41d39b3e16de52c2210e4cfcb801a28b18d7",
+    "scripts/review-rund-push-checkpoint.cjs": "a1e7d40816d72e538ca6c1caa3d8bdd748cd9632b9b4b5b01efddfed440064e8",
+    "scripts/verify-auth-document-versions.cjs": "3939f578ea7b95fcd93180f7aaa1886297e2a400e2237ab0b571597c5372ead7",
+    "scripts/verify-deploy-service-selection.test.cjs": "e203e46f7149804090303eee5c0f8ac5251532c57e679922bd02e6ed27d6fb81",
+    "scripts/verify-migration-runners.test.cjs": "b898f4715488fbdb3049202087269620ec4d540a54cf427ace19931bfe2e211b",
+    "scripts/verify-rund-auth-state-sync.cjs": "0724336c89412a243864adc8baa57b519b1aa877913117012f107391b2b5f6ce",
+    "scripts/verify-rund-build-workflows.test.cjs": "61de4b55f955a81f2c7d40851f921f4d24ec6ac1ea76c94486f188ae1d3c3a60",
+    "scripts/verify-rund-compose.cjs": "ff6674c2f4dbe8c864170d8dfa46e959914cb01f16284a658a33af7f1f0b6bc3",
+    "scripts/verify-rund-folder-counts.cjs": "39fa5de426714911088bfd60107c47e5b557df3758c05b83071e03fb5f6f2f28",
+    "scripts/verify-rund-folder-views.cjs": "e7c592059d463b099f81dc618f8e87a1eb7ad944e255f34b5969af012eefcd62",
+    "scripts/verify-rund-frontend.cjs": "6f3ce5a052fa6105b791835935d824202d4356fff377da93fd2323359232792e",
+    "scripts/verify-rund-gateway-audit.cjs": "07c4fb80baaab0cf0de0c49bccd7ad0c1e6ffbee03b981095daffff25d99883f",
+    "scripts/verify-rund-inline-profiles.cjs": "9b5aa1d9436d83d3693fbf14aed547e1e7c45cbd2b328a8ff5167b0e46b7719e",
+    "scripts/verify-rund-installation.test.cjs": "60f64d1299d0ad803266d2696af75dd5163c2a335745085b50b87c82f788b588",
+    "scripts/verify-rund-personas-browser.cjs": "72c6ad2383133b3605c58b2d998759588b9ac4a61ce915ca8e1b6c3c958633e8",
+    "scripts/verify-rund-public-endpoints.test.cjs": "502daaf8f666681c1b1adafe2d0e051bd6788733e8dda7a2d8f378411f95bbaa",
+    "scripts/verify-rund-service-integration.cjs": "5b2ccb31f92230f50e132d959780c47d0c145cd5fd3c03436c7318baa04a808b",
+    "scripts/verify-rund-shell-browser.cjs": "7ee9167772ef14f050266f9c4158656700c86ae85bdeb533f831cc22e0180d3f"
+  },
+  "limits": [
+    "El manifiesto se basa en este worktree; revisar antes de stage/commit y regenerar si cambian las fuentes.",
+    "La búsqueda de secretos cubre firmas concretas, no sustituye revisión de valores/configuración.",
+    "Los imports revisados son los estáticos resolubles por TypeScript; no prueba todos los recursos dinámicos.",
+    "Las evidencias JSON generadas y el propio manifiesto no se huellan como fuentes para evitar referencias circulares.",
+    "Las pruebas y límites del corte se documentan en PRIMER-PUSH.md; este script no ejecuta pruebas ni certifica despliegue."
+  ]
+}

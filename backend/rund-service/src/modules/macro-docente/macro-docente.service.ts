@@ -10,8 +10,8 @@ import { RundAccesoExternoEntity } from '../../entities/rund-acceso-externo.enti
 import { RundMacroDocenteConsultaLogEntity } from '../../entities/rund-macro-docente-consulta-log.entity';
 import { PtaNotificationsService } from '../../notifications/pta-notifications.service';
 
-/** Ruta pública (a través del API Gateway) del endpoint de consulta externa. */
-const RUTA_PUBLICA_MACRO_DOCENTE = '/pta/api/v1/pta/macro-docente';
+/** Nginx retira /services y el gateway retira /rund/api/v1. */
+const RUTA_PUBLICA_MACRO_DOCENTE = '/services/rund/api/v1/pta/macro-docente';
 
 /**
  * REQ-RUND-F020 — Estados de PTA que se consideran "escritura firme": un

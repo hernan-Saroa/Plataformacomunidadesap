@@ -1,0 +1,101 @@
+{
+  "verifiedAt": "2026-10-13T11:37:37.573Z",
+  "step": 10,
+  "passedForChangedScope": true,
+  "scope": "Entradas shell/banco, remote público y enlaces RUND; compatibilidad de autogestión PTA conservada.",
+  "routes": {
+    "bankMenus": [
+      "banco-docentes-pta",
+      "rund"
+    ],
+    "bankBookmarkAlias": "banco-docentes",
+    "rundPublic": "/rund/autogestion/docentes",
+    "legacyPtaPublic": "/autogestion/docentes",
+    "ptaPlansUnchanged": true
+  },
+  "frontend": {
+    "rund": {
+      "files": 19,
+      "tests": 180,
+      "failures": 0,
+      "typecheck": "OK",
+      "build": "OK",
+      "graph": {
+        "entries": [
+          "apps/mfe-rund/src/main.tsx",
+          "apps/mfe-rund/src/components/RundModulePremium.tsx",
+          "apps/mfe-rund/src/components/pta/banco-docentes/AutogestionDocenteRUND.tsx"
+        ],
+        "sourceFiles": 51,
+        "reachableSourceFiles": 50,
+        "testFiles": 19,
+        "foreignModuleImports": [],
+        "unusedTypeScriptFiles": [],
+        "federation": {
+          "module": "rund/Module",
+          "export": "RundModulePremium",
+          "publicModule": "rund/Autogestion",
+          "publicExport": "AutogestionDocenteRUND",
+          "chunks": [
+            "/remotes/mfe-rund/assets/__federation_expose_Module-DDyKSy_c.js",
+            "/remotes/mfe-rund/assets/__federation_expose_Autogestion-CQFLFMT9.js"
+          ]
+        }
+      }
+    },
+    "shell": {
+      "build": "OK",
+      "testFilesPassed": 7,
+      "testsPassed": 65,
+      "fullSuitePassed": false,
+      "preexistingFailedSuite": "src/services/api/disciplinary.service.spec.ts: jest is not defined; reproducido con configuración HEAD",
+      "typeDiagnosticsBefore": 617,
+      "typeDiagnosticsAfter": 591,
+      "newDiagnosticSignatures": [],
+      "fullTypecheckPassed": false,
+      "vitestVersion": "2.1.9"
+    }
+  },
+  "backend": {
+    "suites": 39,
+    "tests": 462,
+    "failures": 0,
+    "build": "OK",
+    "postgresChecks": 53,
+    "syntheticDataOnly": true,
+    "publicLinkCheck": [
+      "La invitación RUND usa la ruta pública propia del shell y conserva el token almacenado"
+    ]
+  },
+  "browser": {
+    "checks": 5,
+    "compiledShellAndRemote": true,
+    "apiResponses": "fixtures interceptadas; sin tráfico API real",
+    "javascriptErrors": [],
+    "report": "docs/rund/validacion-shell-navegador-local.json"
+  },
+  "hashes": {
+    "apps/shell/src/App.tsx": "3cc3d6d9021213261ffd2e1619e432b988531c255c54c026c7fbb47bd60bfc97",
+    "apps/shell/src/components/esap/BackofficeApp.tsx": "3c60cadfce2466e173c16ff44c7c2ba150e13b3c13e47cf6ebd38a06d4653159",
+    "apps/shell/src/components/rund/RundEntries.tsx": "17606cb2e45b7c59a4aeb2ff03b60f9eae212cd50bd05dfae67e608d8bc283e1",
+    "apps/shell/src/services/api/rundCachePolicy.ts": "86c2d6abcf31f606b9cfe1ffa57384980c36ef55f70cc9251f16c5f5e03d43c0",
+    "apps/shell/src/config/environment.ts": "b143d97b9e1ae3fd948bcaf0ed356ee98638c954403067ac2b56ced4cc4c0c37",
+    "apps/shell/src/remotes.d.ts": "e03314eb713f6da407af459eace5cd3be857a8f03199254ab8ed9854c3352fa1",
+    "apps/shell/src/vite-env.d.ts": "65996936fbb042915f7b74a200fcdde7e410f32a669b1ab9597cfaa4b0faddb5",
+    "apps/shell/vitest.config.ts": "ffd435e525a6a0e6bea8ba019989be9a56e1db4d40eca1aaa97f6137b0d3c3f2",
+    "apps/mfe-rund/vite.config.ts": "4ec2610d091042b6d4eda27bbe21253bde5b0e457177010d15a6526de736a3e2",
+    "apps/mfe-rund/src/utils/rundPublicLinks.ts": "73fc2acd69b669c27c247a22cbf740d78b41854c8d9a8c930e750dd68529747e",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts": "d7d3ea57e25a831d01bf95bb95061c932b58af074245a432b9dfee04bc3a9c73",
+    "scripts/verify-rund-shell-browser.cjs": "7ee9167772ef14f050266f9c4158656700c86ae85bdeb533f831cc22e0180d3f",
+    "scripts/verify-rund-frontend.cjs": "6f3ce5a052fa6105b791835935d824202d4356fff377da93fd2323359232792e",
+    "build/index.html": "19d7fd44d5dc4aeb7aeebcddbad7086b1362e659aea05d4852bf80a7bfc3a7b3",
+    "build/remotes/mfe-rund/assets/remoteEntry.js": "0882dbf4f474e365991ba44d91a7fc3bb5ecc5e40d4176b6bc02761a2b7a43cb"
+  },
+  "limitations": [
+    "Suite y typecheck completos del shell tienen fallos heredados; no se ocultaron ni relajaron checks.",
+    "El navegador usa assets reales y respuestas API ficticias; no acredita despliegue con servidores, cookies ni CSP reales.",
+    "Sin despliegue, migración/copia de datos ni modificación de .env de instalaciones existentes.",
+    "La ruta pública PTA permanece disponible; el retiro de su implementación requiere el cierre explícito del plan."
+  ],
+  "nextStep": "Paso 11: consumidores sync-from-auth/sync-documents de Gestión de Personas; luego Carpeta Digital y los demás módulos."
+}

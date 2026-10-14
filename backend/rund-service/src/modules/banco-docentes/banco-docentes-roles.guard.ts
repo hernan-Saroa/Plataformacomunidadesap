@@ -4,6 +4,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { ROLES_KEY } from '../../auth/roles.decorator';
 import { RUND_PERMISSIONS_KEY } from './rund-permissions';
+import { resolveRundRequestPermissions } from '../../auth/rund-effective-permissions';
 
 /**
  * Autoriza rutas RUND por rol de sistema o por permisos administrables.
@@ -11,9 +12,6 @@ import { RUND_PERMISSIONS_KEY } from './rund-permissions';
  */
 @Injectable()
 export class BancoDocentesRolesGuard implements CanActivate {
-  private readonly cache = new Map<string, { at: number; permissions: Set<string> }>();
-  private readonly cacheTtlMs = 60_000;
-
   constructor(
     private readonly reflector: Reflector,
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -46,7 +44,7 @@ export class BancoDocentesRolesGuard implements CanActivate {
 
     let effectivePermissions = new Set<string>();
     if (requiredPermissions?.length && !isSuperAdmin) {
-      effectivePermissions = await this.resolvePermissions(userRoles);
+      effectivePermissions = await resolveRundRequestPermissions(this.dataSource, request);
     }
     request.rundPermissions = effectivePermissions;
 
@@ -61,34 +59,4 @@ export class BancoDocentesRolesGuard implements CanActivate {
     throw new ForbiddenException(`No tienes autorización para esta operación RUND (${requirements}).`);
   }
 
-  private async resolvePermissions(roleCodes: string[]): Promise<Set<string>> {
-    if (!roleCodes.length) return new Set<string>();
-    const cacheKey = roleCodes.slice().sort().join('|');
-    const cached = this.cache.get(cacheKey);
-    const now = Date.now();
-    if (cached && now - cached.at < this.cacheTtlMs) return cached.permissions;
-
-    try {
-      const rows: Array<{ code: string }> = await this.dataSource.query(
-        `SELECT DISTINCT p.code
-           FROM auth.role_permissions rp
-           INNER JOIN auth.role r
-             ON r.id = rp.id_rol
-            AND COALESCE(r.is_active, TRUE) = TRUE
-           INNER JOIN auth.permission p
-             ON p.id_permission = rp.id_permission
-            AND COALESCE(p.is_active, TRUE) = TRUE
-          WHERE COALESCE(rp.is_active, TRUE) = TRUE
-            AND UPPER(r.code) = ANY($1::text[])
-            AND p.code LIKE 'banco-docentes.rund.%'`,
-        [roleCodes],
-      );
-      const permissions = new Set(rows.map((row) => row.code).filter(Boolean));
-      this.cache.set(cacheKey, { at: now, permissions });
-      return permissions;
-    } catch {
-      // Fail-closed para permisos; los roles explícitos conservan compatibilidad.
-      return new Set<string>();
-    }
-  }
 }

@@ -124,6 +124,16 @@ declare module 'gestion_infraestructura/Module' {
   export default Module;
 }
 
+declare module 'rund/Module' {
+  const Module: React.ComponentType<any>;
+  export { Module as RundModulePremium };
+  export default Module;
+}
+
+declare module 'rund/Autogestion' {
+  export const AutogestionDocenteRUND: React.ComponentType;
+}
+
 declare module 'chatbot/Module' {
   const Module: React.ComponentType;
   export { Module as ChatbotModule };
