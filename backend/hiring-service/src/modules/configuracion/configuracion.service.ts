@@ -803,9 +803,27 @@ export class ConfiguracionService {
       where: { numeral, tipo: 'EXIGE_APROBACION', vigenteHasta: IsNull() },
     });
 
-    if (!regla) return { requiereAprobacion: false, aprobadores: [] };
+    if (!regla) return { requiereAprobacion: false, aprobadores: [], cadena: null };
 
     const config = (regla.config ?? {}) as Record<string, unknown>;
+
+    // Una cadena de escalones (migración 101): se nombra la plantilla, y quién
+    // decide cada escalón se ve en la lista de cadenas.
+    if (typeof config.cadenaId === 'string') {
+      const [plantilla] = await this.dataSource.query(
+        `SELECT id, nombre, activa, jsonb_array_length(escalones) AS escalones
+           FROM hiring.cadenas_aprobacion WHERE id = $1`,
+        [config.cadenaId],
+      );
+      return {
+        requiereAprobacion: true,
+        aprobadores: [],
+        cadena: plantilla
+          ? { id: plantilla.id, nombre: plantilla.nombre, escalones: Number(plantilla.escalones), activa: plantilla.activa }
+          : { id: config.cadenaId, nombre: config.cadenaId, escalones: 0, activa: false },
+      };
+    }
+
     const codigos = Array.isArray(config.roles) ? (config.roles as string[]) : [];
     const personas = Array.isArray(config.personas) ? (config.personas as string[]) : [];
 
@@ -829,6 +847,7 @@ export class ConfiguracionService {
 
     return {
       requiereAprobacion: true,
+      cadena: null,
       aprobadores: [
         ...codigos.map((code) => ({
           clase: 'rol' as const,
@@ -882,7 +901,25 @@ export class ConfiguracionService {
       }
 
       if (!dto.requiereAprobacion) {
-        return { requiereAprobacion: false, aprobadores: [] };
+        return { requiereAprobacion: false, aprobadores: [], cadena: null };
+      }
+
+      /*
+       * Una cadena de escalones (migración 101), o roles y personas como hasta
+       * ahora, que la cadena lee como un solo escalón. La 3.1 no admite cadena
+       * todavía: la decide el abogado del proceso en la 3.4, con su trámite.
+       */
+      if (dto.cadenaId) {
+        if (numeral === NUMERAL_ESTUDIO_PREVIO) {
+          throw new BadRequestException(
+            'El estudio previo lo revisa el abogado asignado en la 3.3: todavía no se aprueba por una cadena',
+          );
+        }
+        const [plantilla] = await em.query(
+          `SELECT id FROM hiring.cadenas_aprobacion WHERE id = $1 AND activa`,
+          [dto.cadenaId],
+        );
+        if (!plantilla) throw new BadRequestException('La cadena elegida no existe o se archivó');
       }
 
       await repo.save(
@@ -890,7 +927,9 @@ export class ConfiguracionService {
           numeral,
           modalidad: null,
           tipo: 'EXIGE_APROBACION',
-          config: { roles: dto.roles ?? [], personas: dto.personas ?? [] },
+          config: dto.cadenaId
+            ? { cadenaId: dto.cadenaId }
+            : { roles: dto.roles ?? [], personas: dto.personas ?? [] },
           mensaje: 'Esta actividad requiere aprobación antes de darse por terminada',
           orden: 100,
         } as Partial<ReglaActividad>),

@@ -9,6 +9,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -387,6 +388,15 @@ export class GuardarAprobacionDto {
   @IsArray()
   @IsString({ each: true })
   personas?: string[];
+
+  /**
+   * Una cadena de escalones en vez de roles y personas (migración 101). Si
+   * llega, `roles` y `personas` se ignoran.
+   */
+  @ApiPropertyOptional({ description: 'Id de la cadena de aprobación por escalones.' })
+  @IsOptional()
+  @IsUUID()
+  cadenaId?: string;
 }
 
 /**
