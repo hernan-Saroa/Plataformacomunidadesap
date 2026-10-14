@@ -4,6 +4,7 @@ import { PTAForm } from './PTAForm';
 import { getComponentesAprobacion, getPTAById, savePTA } from '../../../services/api/ptaApi';
 
 vi.mock('../../../../../shell/src/services/api', () => ({ getBaseURL: () => 'http://localhost' }));
+vi.mock('../../../services/api/docenciaConcertadaApi', () => ({ getRegimenDocencia: vi.fn().mockResolvedValue('actual') }));
 vi.mock('../../../services/api/ptaApi', () => {
   const empty = () => Promise.resolve({ success: true, data: [] });
   return {
