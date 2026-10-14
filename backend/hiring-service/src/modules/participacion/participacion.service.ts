@@ -20,6 +20,17 @@ import {
 
 /** Actividad 3.3 de la matriz: la radicación en la Dirección. */
 export const NUMERAL_RADICACION = '3.3';
+
+/**
+ * Cómo se designa un escalón de la cadena de la 3.1 en la 3.3 (102): el del
+ * papel abogado eligiendo al abogado del proceso, uno por rol eligiendo a
+ * alguien con el rol. Los que nombran personas ya dicen quién: no se designan.
+ */
+export function tipoDeEscalon(e: { roles: string[]; papeles: string[] }): 'ROL' | 'ABOGADO' | null {
+  if (e.papeles.includes('ABOGADO')) return 'ABOGADO';
+  if (e.roles.length) return 'ROL';
+  return null;
+}
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_ASIGNAR, tienePermiso } from '../../auth/permisos';
@@ -195,6 +206,8 @@ export class ParticipacionService {
        * quede quieto sin que nadie lo note.
        */
       sinAbogado: !!contratacion && !abogado,
+      /** Si el abogado se elige en su escalón de la cadena de la 3.1 (102). */
+      abogadoEnCadena: await this.abogadoEnCadena(procesoId),
       // Quien llevó el proceso antes respondió por lo que hizo en él: el
       // expediente conserva a los relevados con el motivo del cambio.
       historial: todas
@@ -488,7 +501,9 @@ export class ParticipacionService {
   private async escalonesPorRol(
     em: EntityManager,
     proceso: Proceso,
-  ): Promise<{ orden: number; nombre: string; roles: string[]; estado: EstadoEscalon | null }[]> {
+  ): Promise<
+    { orden: number; nombre: string; roles: string[]; estado: EstadoEscalon | null; tipo: 'ROL' | 'ABOGADO' }[]
+  > {
     const actividad = await em
       .getRepository(ProcesoActividad)
       .findOne({ where: { procesoId: proceso.id, numeral: NUMERAL_CON_DESIGNACION } });
@@ -499,16 +514,29 @@ export class ParticipacionService {
         .getRepository(EscalonRonda)
         .find({ where: { aprobacionId: ronda.id }, order: { orden: 'ASC' } });
       return escalones
-        .filter((e) => e.roles.length > 0)
-        .map((e) => ({ orden: e.orden, nombre: e.nombre, roles: e.roles, estado: e.estado }));
+        .map((e) => ({ orden: e.orden, nombre: e.nombre, roles: e.roles, estado: e.estado, tipo: tipoDeEscalon(e) }))
+        .filter((e): e is typeof e & { tipo: 'ROL' | 'ABOGADO' } => e.tipo !== null);
     }
 
     const cadena = await this.cadenas.cadenaPara(NUMERAL_CON_DESIGNACION, proceso.modalidad ?? null, em);
     // Con la regla de siempre no hay escalones que repartir: decide el abogado.
     if (!cadena?.cadenaId) return [];
     return cadena.escalones
-      .map((e, i) => ({ orden: i + 1, nombre: e.nombre, roles: e.roles, estado: null }))
-      .filter((e) => e.roles.length > 0);
+      .map((e, i) => ({ orden: i + 1, nombre: e.nombre, roles: e.roles, estado: null, tipo: tipoDeEscalon(e) }))
+      .filter((e): e is typeof e & { tipo: 'ROL' | 'ABOGADO' } => e.tipo !== null);
+  }
+
+  /**
+   * Si el abogado se elige como un escalón de la cadena de la 3.1.
+   *
+   * Entonces la 3.3 no tiene un paso aparte para el abogado: se elige en su
+   * escalón, y elegirlo ahí es asignarlo como abogado del proceso, que sigue
+   * siendo quien decide la 3.6, la 3.7 y las revisiones del PAA (Juan,
+   * 2026-10-14).
+   */
+  async abogadoEnCadena(procesoId: string): Promise<boolean> {
+    const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
+    return (await this.escalonesPorRol(this.dataSource.manager, proceso)).some((e) => e.tipo === 'ABOGADO');
   }
 
   /** Lo que la 3.3 enseña de los escalones: quién está designado y si se puede cambiar. */
@@ -524,22 +552,34 @@ export class ParticipacionService {
     });
 
     const contratacion = await this.vigente(procesoId, 'CONTRATACION', em);
+    const abogado = await this.vigente(procesoId, 'ABOGADO', em);
     const puedeDesignar =
       (!!contratacion && esSuya(contratacion, acceso)) || tienePermiso(acceso, PERMISO_PROCESO_ASIGNAR);
 
     return {
       puedeDesignar,
       escalones: escalones.map((e) => {
-        const d = vigentes.get(e.orden);
+        // El escalón del abogado muestra al abogado del proceso.
+        const d =
+          e.tipo === 'ABOGADO'
+            ? abogado
+              ? { usuarioId: abogado.usuarioId, nombre: abogado.nombre, usuarioNombre: abogado.usuarioNombre, asignadoAt: abogado.asignadoAt, asignadoPor: abogado.asignadoPor }
+              : null
+            : vigentes.get(e.orden);
         return {
           orden: e.orden,
           nombre: e.nombre,
-          roles: e.roles.map((r) => nombres.get(r) ?? r),
+          tipo: e.tipo,
+          roles: e.tipo === 'ABOGADO' ? ['Abogado del proceso'] : e.roles.map((r) => nombres.get(r) ?? r),
           designado: d
             ? { usuarioId: d.usuarioId, nombre: d.nombre, usuarioNombre: d.usuarioNombre, asignadoAt: d.asignadoAt, asignadoPor: d.asignadoPor }
             : null,
-          // Lo que ya decidió en la ronda en curso queda como está.
-          cambiable: e.estado === null || e.estado === 'PENDIENTE' || e.estado === 'BLOQUEADO',
+          /*
+           * Lo que ya decidió en la ronda en curso queda como está. El abogado
+           * se puede cambiar siempre, como hasta ahora: también responde por la
+           * 3.6, la 3.7 y el PAA, y su decisión ya tomada no se reescribe.
+           */
+          cambiable: e.tipo === 'ABOGADO' || e.estado === null || e.estado === 'PENDIENTE' || e.estado === 'BLOQUEADO',
           leToca: e.estado === 'PENDIENTE',
         };
       }),
@@ -560,6 +600,8 @@ export class ParticipacionService {
     const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
     const escalon = (await this.escalonesPorRol(this.dataSource.manager, proceso)).find((e) => e.orden === orden);
     if (!escalon) throw new NotFoundException('Ese escalón no se designa: no está definido por un rol');
+    // Para el escalón del abogado, los mismos de siempre, con su carga.
+    if (escalon.tipo === 'ABOGADO') return this.abogados(termino);
     return this.cuentasConRol(escalon.roles, termino);
   }
 
@@ -599,6 +641,27 @@ export class ParticipacionService {
    * se cambia: la designación nueva no reescribe quién aprobó.
    */
   async designarEscalon(procesoId: string, orden: number, dto: DesignarEscalonDto, acceso: HiringAccess) {
+    /*
+     * El escalón del abogado se designa asignando al abogado del proceso: es
+     * el mismo acto, con sus mismas reglas, y así la 3.6, la 3.7 y el PAA
+     * siguen sabiendo quién es.
+     */
+    const previo = await this.exigirProceso(this.dataSource.manager, procesoId);
+    const delAbogado = (await this.escalonesPorRol(this.dataSource.manager, previo)).find(
+      (e) => e.orden === orden && e.tipo === 'ABOGADO',
+    );
+    if (delAbogado) {
+      if (await this.vigente(procesoId, 'ABOGADO')) {
+        if ((dto.motivo ?? '').trim().length < 10) {
+          throw new BadRequestException('Explica por qué se cambia de abogado');
+        }
+        await this.reasignarAbogado(procesoId, { usuarioId: dto.usuarioId, motivo: dto.motivo!.trim() }, acceso);
+      } else {
+        await this.asignarAbogado(procesoId, { usuarioId: dto.usuarioId }, acceso);
+      }
+      return this.escalones(procesoId, acceso);
+    }
+
     await this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId, true);
       await this.exigirQuePuedaRepartir(em, procesoId, acceso);

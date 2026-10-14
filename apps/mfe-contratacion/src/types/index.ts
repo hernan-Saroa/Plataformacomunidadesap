@@ -742,6 +742,8 @@ export interface EstadoParticipacion {
   puedeTomarFinanciera: boolean;
   /** Se quedó sin abogado: no debería, pero pasa, y hay que verlo. */
   sinAbogado: boolean;
+  /** Si el abogado se elige en su escalón de la cadena de la 3.1, sin paso aparte (102). */
+  abogadoEnCadena?: boolean;
   historial: ParticipacionRelevada[];
 }
 
@@ -4052,6 +4054,8 @@ export interface RondaDeAprobacion {
 export interface EscalonPorDesignar {
   orden: number;
   nombre: string;
+  /** `ABOGADO`: se designa eligiendo al abogado del proceso; `ROL`: a alguien con el rol. */
+  tipo: 'ROL' | 'ABOGADO';
   /** Nombres legibles de los roles del escalón. */
   roles: string[];
   designado: {

@@ -419,7 +419,9 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
       ? {
           titulo: 'Designar quién revisa cada escalón',
           estado: 'espera',
-          detalle: 'Los designa quien se haga cargo del proceso, junto al abogado.',
+          detalle: estado.abogadoEnCadena
+            ? 'Los designa quien se haga cargo del proceso, empezando por el abogado.'
+            : 'Los designa quien se haga cargo del proceso, junto al abogado.',
         }
       : {
           titulo: 'Designar quién revisa cada escalón',
@@ -463,8 +465,15 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
       <Titulo>Radicación en la Dirección</Titulo>
       <Ayuda>Recibir el proceso en la Dirección de Contratación y ponerle quién lo revise.</Ayuda>
 
+      {/* Con el abogado en la cadena de la 3.1 (102) no hay paso aparte: se
+          elige en su escalón, junto a los demás. */}
       <PasosDeLaActividad
-        pasos={[pasoCargo, pasoAbogado, ...(pasoEscalones ? [pasoEscalones] : []), pasoRevision]}
+        pasos={[
+          pasoCargo,
+          ...(estado.abogadoEnCadena && pasoEscalones ? [] : [pasoAbogado]),
+          ...(pasoEscalones ? [pasoEscalones] : []),
+          pasoRevision,
+        ]}
       />
 
       {/* ---------------------------------------------------- historial -- */}

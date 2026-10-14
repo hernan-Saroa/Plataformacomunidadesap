@@ -81,8 +81,18 @@ function Escalon({
       <div className="min-w-0">
         <p className="text-[12px] font-bold text-slate-800 m-0">
           Escalón {escalon.orden} · {escalon.nombre}
-          <span className="font-normal text-slate-400"> · {escalon.roles.join(' o ')}</span>
+          <span className="font-normal text-slate-400">
+            {' · '}
+            {escalon.tipo === 'ABOGADO' ? 'abogado del proceso' : escalon.roles.join(' o ')}
+          </span>
         </p>
+        {escalon.tipo === 'ABOGADO' ? (
+          // Elegirlo aquí es asignar el abogado del proceso, que también decide
+          // otras actividades: decirlo evita que parezca solo un revisor más.
+          <p className="text-[11px] text-slate-400 m-0">
+            Es el abogado del proceso: también decide la causal (3.6), el comité (3.7) y las revisiones del PAA.
+          </p>
+        ) : null}
         {escalon.designado ? (
           <p className="text-[11.5px] text-slate-600 m-0 mt-0.5">
             {escalon.designado.nombre} · desde el {momento(escalon.designado.asignadoAt)}
@@ -116,13 +126,23 @@ function Escalon({
             <option value="">{candidatos === null ? 'Cargando…' : 'Elige quién lo revisa…'}</option>
             {opciones.map((c) => (
               <option key={c.usuarioId} value={c.usuarioId}>
-                {c.nombre} · {c.usuarioNombre}
+                {c.nombre} ·{' '}
+                {escalon.tipo === 'ABOGADO' && c.procesosACargo !== undefined
+                  ? // Con su carga, como al repartir el abogado: a quién le cabe otro.
+                    `${c.procesosACargo === 1 ? '1 proceso' : `${c.procesosACargo} procesos`}${
+                      c.revisionesPendientes ? `, ${c.revisionesPendientes} por revisar` : ''
+                    }`
+                  : c.usuarioNombre}
               </option>
             ))}
           </select>
           {candidatos !== null && opciones.length === 0 ? (
             <p className="text-[11.5px] text-slate-500 m-0">
-              {cambiando ? 'No hay otra cuenta con este rol.' : 'Ninguna cuenta activa tiene este rol.'}
+              {escalon.tipo === 'ABOGADO'
+                ? 'No hay otra cuenta con permiso para revisar procesos.'
+                : cambiando
+                  ? 'No hay otra cuenta con este rol.'
+                  : 'Ninguna cuenta activa tiene este rol.'}
             </p>
           ) : null}
           {cambiando ? (
@@ -130,7 +150,7 @@ function Escalon({
               rows={2}
               value={motivo}
               onChange={(ev) => setMotivo(ev.target.value)}
-              placeholder="Por qué cambia quien revisa este escalón"
+              placeholder={escalon.tipo === 'ABOGADO' ? 'Por qué se cambia de abogado' : 'Por qué cambia quien revisa este escalón'}
               aria-label="Motivo del cambio"
               className={campo}
             />
