@@ -553,6 +553,10 @@ export class ParticipacionService {
 
     const contratacion = await this.vigente(procesoId, 'CONTRATACION', em);
     const abogado = await this.vigente(procesoId, 'ABOGADO', em);
+    // Si el rol sigue existiendo y el designado lo sigue teniendo; si el
+    // abogado todavía puede revisar.
+    const validadas = await this.cadenas.designacionesValidadas(em, procesoId, NUMERAL_CON_DESIGNACION, escalones);
+    const abogadoSinPermiso = abogado ? await this.cadenas.abogadoSinPermiso(em, procesoId) : null;
     const puedeDesignar =
       (!!contratacion && esSuya(contratacion, acceso)) || tienePermiso(acceso, PERMISO_PROCESO_ASIGNAR);
 
@@ -581,6 +585,17 @@ export class ParticipacionService {
            */
           cambiable: e.tipo === 'ABOGADO' || e.estado === null || e.estado === 'PENDIENTE' || e.estado === 'BLOQUEADO',
           leToca: e.estado === 'PENDIENTE',
+          /** Qué impide que alguien decida el escalón, dicho con lo que hay que hacer. */
+          problema:
+            e.tipo === 'ABOGADO'
+              ? abogadoSinPermiso
+                ? `${abogadoSinPermiso} ya no tiene permiso para revisar: asigna otro abogado`
+                : null
+              : validadas.get(e.orden)?.problema === 'SIN_DESIGNAR'
+                ? null
+                : (validadas.get(e.orden)?.mensaje ?? null),
+          /** El rol ya no existe: no se arregla designando, sino corrigiendo la cadena. */
+          rolInexistente: e.tipo === 'ROL' && validadas.get(e.orden)?.problema === 'ROL_INEXISTENTE',
         };
       }),
       historial: relevados.map((d) => ({
@@ -616,8 +631,9 @@ export class ParticipacionService {
               NULL::varchar                     AS cargo,
               COALESCE(p.dir_email, u.username) AS email
          FROM auth."user" u
-         JOIN auth.user_roles ur ON ur.id_user = u.id_user
-         JOIN auth.role r ON r.id = ur.id_rol
+         -- Solo roles y asignaciones activas: un rol desactivado no designa.
+         JOIN auth.user_roles ur ON ur.id_user = u.id_user AND ur.is_active = true
+         JOIN auth.role r ON r.id = ur.id_rol AND r.is_active = true
          LEFT JOIN auth.personas p ON p.id_person = u.id_person
         WHERE u.is_active = true
           AND r.code = ANY($1::text[])

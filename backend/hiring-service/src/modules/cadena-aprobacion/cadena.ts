@@ -330,3 +330,43 @@ export const DECISION_DE: Record<AccionEscalon, 'APROBADO' | 'DEVUELTO' | 'NEGAD
   DEVOLVER: 'DEVUELTO',
   NEGAR: 'NEGADO',
 };
+
+/**
+ * Por qué un escalón por rol de la 3.1 no tiene quién lo decida (102).
+ *
+ * - `ROL_INEXISTENTE`: ninguno de sus roles existe o está activo: el rol se
+ *   borró, se desactivó o se le cambió el código. Hay que corregir la cadena.
+ * - `SIN_DESIGNAR`: nadie fue designado en la 3.3.
+ * - `SIN_ROL`: el designado ya no tiene ninguno de los roles del escalón. Hay
+ *   que reasignarlo: decidir con un rol que ya no tiene sería decidir por un
+ *   cargo que ya no ocupa.
+ */
+export type ProblemaDeDesignacion = 'ROL_INEXISTENTE' | 'SIN_DESIGNAR' | 'SIN_ROL';
+
+export function problemaDeDesignacion(
+  rolesDelEscalon: string[],
+  rolesVigentes: Set<string>,
+  designado: { roles: Set<string> } | null,
+): ProblemaDeDesignacion | null {
+  const vivos = rolesDelEscalon.filter((r) => rolesVigentes.has(r));
+  if (!vivos.length) return 'ROL_INEXISTENTE';
+  if (!designado) return 'SIN_DESIGNAR';
+  if (!vivos.some((r) => designado.roles.has(r))) return 'SIN_ROL';
+  return null;
+}
+
+/** El problema dicho para quien mira, con lo que hay que hacer. */
+export function mensajeDeDesignacion(
+  problema: ProblemaDeDesignacion,
+  escalon: { orden: number; nombre: string },
+  designado?: string | null,
+): string {
+  const cual = `escalón ${escalon.orden} (${escalon.nombre})`;
+  if (problema === 'ROL_INEXISTENTE') {
+    return `El rol del ${cual} ya no existe o está inactivo: hay que corregir la cadena en Configuración`;
+  }
+  if (problema === 'SIN_ROL') {
+    return `${designado ?? 'Quien estaba designado'} ya no tiene el rol del ${cual}: hay que reasignarlo en la 3.3`;
+  }
+  return `Falta designar en la 3.3 quién revisa el ${cual}`;
+}

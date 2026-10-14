@@ -2,7 +2,9 @@ import {
   DecisionPrevia,
   escalonCompleto,
   leerConfigDeRegla,
+  mensajeDeDesignacion,
   motivoParaNoDecidir,
+  problemaDeDesignacion,
   responsablesEfectivos,
   trasDecision,
   validarEscalones,
@@ -257,6 +259,40 @@ describe('cadena de aprobación', () => {
     it('un escalón del abogado no se designa: sigue por su papel', () => {
       const abogado = { roles: [], personas: [], papeles: ['ABOGADO' as const] };
       expect(responsablesEfectivos(abogado, true, null)).toEqual({ ...abogado, cuentas: [] });
+    });
+  });
+
+  /*
+   * Si el rol se borra, se desactiva o cambia de código, o el designado lo
+   * pierde, el escalón se queda sin quién lo decida en vez de seguir valiendo.
+   */
+  describe('problemaDeDesignacion', () => {
+    const vigentes = new Set(['DIRECTOR', 'COORDINADOR']);
+
+    it('con el rol vigente y el designado que lo tiene, no hay problema', () => {
+      expect(problemaDeDesignacion(['DIRECTOR'], vigentes, { roles: new Set(['DIRECTOR']) })).toBeNull();
+    });
+
+    it('sin designar', () => {
+      expect(problemaDeDesignacion(['DIRECTOR'], vigentes, null)).toBe('SIN_DESIGNAR');
+    });
+
+    it('el designado perdió el rol', () => {
+      expect(problemaDeDesignacion(['DIRECTOR'], vigentes, { roles: new Set(['GESTOR']) })).toBe('SIN_ROL');
+    });
+
+    it('el rol ya no existe, aunque haya designado: se corrige la cadena', () => {
+      expect(problemaDeDesignacion(['VIEJO_CODIGO'], vigentes, { roles: new Set(['VIEJO_CODIGO']) })).toBe('ROL_INEXISTENTE');
+    });
+
+    it('con dos roles, basta que uno siga y que el designado lo tenga', () => {
+      expect(problemaDeDesignacion(['VIEJO', 'COORDINADOR'], vigentes, { roles: new Set(['COORDINADOR']) })).toBeNull();
+    });
+
+    it('el mensaje dice qué hacer y dónde', () => {
+      expect(mensajeDeDesignacion('SIN_ROL', { orden: 2, nombre: 'Director' }, 'Diana Castro')).toBe(
+        'Diana Castro ya no tiene el rol del escalón 2 (Director): hay que reasignarlo en la 3.3',
+      );
     });
   });
 });

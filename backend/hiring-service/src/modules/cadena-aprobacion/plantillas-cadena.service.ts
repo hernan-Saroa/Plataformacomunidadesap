@@ -37,6 +37,22 @@ export class PlantillasCadenaService {
     );
 
     const roles = await this.cadenas.nombresDeRoles(plantillas.flatMap((p) => p.escalones.flatMap((e) => e.roles)));
+    /*
+     * Los roles que siguen existiendo y activos. La cadena guarda el código: si
+     * se borra, se desactiva o se le cambia el código a un rol, el escalón se
+     * queda sin quién lo decida, y aquí es donde se corrige.
+     */
+    const codigos = [...new Set(plantillas.flatMap((p) => p.escalones.flatMap((e) => e.roles)))];
+    const vigentes = new Set<string>(
+      codigos.length
+        ? (
+            await this.dataSource.query(
+              `SELECT code FROM auth.role WHERE code = ANY($1::text[]) AND is_active = true`,
+              [codigos],
+            )
+          ).map((r: any) => r.code)
+        : [],
+    );
     const personas = await this.cadenas.nombresDePersonas(
       plantillas.flatMap((p) => p.escalones.flatMap((e) => e.personas)),
     );
@@ -54,6 +70,17 @@ export class PlantillasCadenaService {
         nombresPapeles: e.papeles.map((pa) => NOMBRE_PAPEL[pa] ?? pa),
       })),
       usadaEn: usos.filter((u) => u.cadena_id === p.id).map((u) => ({ numeral: u.numeral, nombre: u.nombre })),
+      /** Lo que hay que corregir para que cada escalón tenga quién lo decida. */
+      problemas: p.escalones.flatMap((e, i) => {
+        const muertos = e.roles.filter((r) => !vigentes.has(r));
+        if (!muertos.length) return [];
+        const todos = muertos.length === e.roles.length && !e.personas.length && !e.papeles.length;
+        return [
+          `Escalón ${i + 1} (${e.nombre}): ${muertos.length === 1 ? 'el rol' : 'los roles'} ${muertos.join(', ')} ya no ${
+            muertos.length === 1 ? 'existe o está inactivo' : 'existen o están inactivos'
+          }${todos ? '. Nadie puede decidirlo hasta que lo cambies' : ''}`,
+        ];
+      }),
       updatedAt: p.updatedAt,
       updatedBy: p.updatedBy,
     }));

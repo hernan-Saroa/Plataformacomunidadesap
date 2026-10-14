@@ -4015,6 +4015,8 @@ export interface CadenaDeAprobacion {
   })[];
   /** Las actividades que la exigen hoy. */
   usadaEn: { numeral: string; nombre: string }[];
+  /** Escalones que nombran roles que ya no existen o están inactivos. */
+  problemas?: string[];
   updatedAt: string;
   updatedBy: string | null;
 }
@@ -4069,6 +4071,10 @@ export interface EscalonPorDesignar {
   cambiable: boolean;
   /** Si es el escalón que está esperando decisión. */
   leToca: boolean;
+  /** Qué impide decidirlo: el designado perdió el rol, el abogado el permiso… */
+  problema?: string | null;
+  /** El rol ya no existe: se corrige la cadena, no designando. */
+  rolInexistente?: boolean;
 }
 
 /** Lo que la 3.3 enseña de los escalones por rol de la 3.1 (102). */

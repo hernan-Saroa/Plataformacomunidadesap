@@ -238,6 +238,24 @@ export function CadenasDeAprobacion() {
               ))}
             </ol>
 
+            {c.problemas?.length ? (
+              <div role="alert" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <AlertTriangle className="w-4 h-4 text-amber-700 mt-0.5 flex-shrink-0" />
+                <div className="min-w-0 space-y-0.5">
+                  {c.problemas.map((pr) => (
+                    <p key={pr} className="text-xs text-amber-800 m-0">
+                      {pr}
+                    </p>
+                  ))}
+                  {puedeEditar ? (
+                    <p className="text-xs text-amber-800 m-0 font-bold">
+                      Edita la cadena y elige el rol que corresponde hoy.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+
             <p className="text-[11px] text-slate-500 m-0">
               {c.usadaEn.length
                 ? `La usan: ${c.usadaEn.map((u) => `${u.numeral} ${u.nombre}`).join('; ')}`

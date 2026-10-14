@@ -93,7 +93,11 @@ function Escalon({
             Es el abogado del proceso: también decide la causal (3.6), el comité (3.7) y las revisiones del PAA.
           </p>
         ) : null}
-        {escalon.designado ? (
+        {escalon.problema ? (
+          // Lo que impide decidirlo, antes que el nombre: es lo que hay que resolver.
+          <p className="text-[11.5px] font-bold text-amber-700 m-0 mt-0.5">{escalon.problema}</p>
+        ) : null}
+        {escalon.rolInexistente ? null : escalon.designado ? (
           <p className="text-[11.5px] text-slate-600 m-0 mt-0.5">
             {escalon.designado.nombre} · desde el {momento(escalon.designado.asignadoAt)}
             {escalon.designado.asignadoPor ? ` por ${escalon.designado.asignadoPor}` : ''}
@@ -108,7 +112,7 @@ function Escalon({
         ) : null}
       </div>
 
-      {puedeDesignar && escalon.cambiable && !abierto ? (
+      {puedeDesignar && escalon.cambiable && !escalon.rolInexistente && !abierto ? (
         <BotonSecundario icono={<UserPlus className="w-3.5 h-3.5" />} onClick={() => setAbierto(true)}>
           {cambiando ? 'Cambiar' : 'Designar'}
         </BotonSecundario>
