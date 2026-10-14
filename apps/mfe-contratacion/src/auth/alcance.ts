@@ -194,10 +194,12 @@ export function useAlcance() {
 /**
  * Si quien mira solo mueve presupuesto: la Dirección Financiera.
  *
- * Su trabajo no es un proceso sino una cola —las solicitudes de CDP—, así que
- * entra por su bandeja y ve el recorrido recortado a lo suyo. Se decide por lo
- * que *no* tiene: quien además diligencia el estudio previo, solicita el CDP o
- * revisa en la 3.4 trabaja procesos, y entonces la lista sí es su trabajo.
+ * Ve el recorrido recortado a lo suyo: el RP, los pagos y el cierre. Se decide
+ * por lo que *no* tiene: quien además diligencia el estudio previo o revisa en
+ * la 3.4 trabaja procesos, y entonces el recorrido entero sí es su trabajo.
+ *
+ * Se ancla en el RP (8.3) y no en el CDP: desde la 103 el CDP se tramita por
+ * fuera y lo carga el área, así que la 4.2 dejó de ser de la Financiera.
  *
  * `aprobar` se mira en la 3.4 y no en cualquier parte porque la Financiera
  * aprueba en la 9.5 —el respaldo de las modificaciones— sin dejar de ser solo
@@ -205,8 +207,7 @@ export function useAlcance() {
  */
 export function esSoloPresupuesto(puedeAqui: typeof puedeEn = puedeEn): boolean {
   return (
-    puedeAqui('editar', '4.2') &&
-    !puedeAqui('editar', '4.1') &&
+    puedeAqui('decidir', '8.3') &&
     !puedeAqui('editar', '3.1') &&
     !puedeAqui('aprobar', '3.4')
   );

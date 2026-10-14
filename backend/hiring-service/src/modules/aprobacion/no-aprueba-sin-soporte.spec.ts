@@ -26,7 +26,7 @@ describe('AprobacionService · documentosPendientes', () => {
     };
     const servicio = new AprobacionService(
       {} as never,
-      { crearSolicitudSiCerroLaEtapa3: async () => null } as never,
+      { abrirEtapa4SiCerroLaEtapa3: async () => null } as never,
       {} as never,
       catalogo as never,
       {} as never,

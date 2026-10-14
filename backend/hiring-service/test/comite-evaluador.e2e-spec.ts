@@ -79,11 +79,10 @@ describe('HU EFDS-1156 · comité evaluador (actividad 6.2)', () => {
 
   /** Lleva el proceso hasta abierto, que es cuando arranca el plazo de ofertas. */
   const abrir = async (procesoId: string) => {
-    await cdp.solicitar(procesoId, { rubro: 'A-02-02', valor: 1_000_000 }, gestor);
-    await cdp.verificar(procesoId, {}, financiero);
-    await cdp.expedir(
+    await cdp.cargar(
       procesoId,
-      { numero: 'CDP-2026-156', valor: 1_000_000, fechaExpedicion: hoy() },
+      { rubro: 'A-02-02', numero: 'CDP-2026-156', valor: 1_000_000, fechaExpedicion: hoy() },
+      null,
       financiero,
     );
 

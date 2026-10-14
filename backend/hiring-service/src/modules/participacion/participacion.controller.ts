@@ -42,25 +42,6 @@ export class ParticipacionController {
   }
 
   /**
-   * Lo mismo que verificar: editar la 4.2, y no la 4.1.
-   *
-   * Quien recibe la solicitud es quien la resuelve, y exigir otra cosa solo
-   * permitiría apropiarse de solicitudes que luego no se pueden atender. La
-   * 4.1 tampoco sirve: la edita el gestor al solicitar, y con ella podría
-   * quedarse con la solicitud de la Financiera.
-   */
-  @Post('financiera/tomar')
-  @Puede('editar', '4.2')
-  @ApiOperation({
-    summary: 'Actividad 4.1 · Tomar la solicitud de CDP',
-    description:
-      'Quien la toma responde por ella y pasa a ser el destinatario de sus avisos. La bandeja es compartida: si otro la tomó antes, responde 409.',
-  })
-  tomarFinanciera(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
-    return this.service.tomarFinanciera(procesoId, getHiringAccess(req));
-  }
-
-  /**
    * Sin `@Permisos`: quién puede repartir el abogado depende de quién tomó
    * *este* proceso, y eso el guard no puede saberlo. Lo comprueba el servicio,
    * que sí tiene el proceso a mano.
@@ -170,14 +151,4 @@ export class CandidatosController {
     return this.service.abogados(q ?? '');
   }
 
-  @Get('financieros')
-  @Puede('ver', '4.1')
-  @ApiOperation({
-    summary: 'Cuentas que pueden resolver un CDP',
-    description:
-      'Las que tienen permiso para gestionar el presupuesto, que es lo que hace la Dirección Financiera en la etapa 4. Se resuelve por permiso y no por código de rol.',
-  })
-  financieros(@Query('q') q?: string) {
-    return this.service.financieros(q ?? '');
-  }
 }

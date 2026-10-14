@@ -36,7 +36,7 @@ function montar(
     }),
   };
   const alcance = { puedeEn: jest.fn(async (_a: unknown, accion: string, numeral: string) => permite(accion, numeral)) };
-  const service = new AlertasService(dataSource as never, {} as never, {} as never, alcance as never);
+  const service = new AlertasService(dataSource as never, {} as never, alcance as never);
   return { service, consultas };
 }
 

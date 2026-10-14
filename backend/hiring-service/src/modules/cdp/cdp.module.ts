@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { CdpService } from './cdp.service';
-import { BandejaCdpController, CdpAntesDeRadicarController, CdpController } from './cdp.controller';
+import { CdpAntesDeRadicarController, CdpController } from './cdp.controller';
 import { AperturaController } from './apertura.controller';
 
 import { Cdp, CdpAntesDeRadicar } from '../../entities/cdp.entity';
@@ -31,7 +31,7 @@ import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.modu
     ]),
     CierreActividadModule,
   ],
-  controllers: [CdpController, BandejaCdpController, CdpAntesDeRadicarController, AperturaController],
+  controllers: [CdpController, CdpAntesDeRadicarController, AperturaController],
   providers: [CdpService],
   // Lo consumirán el ciclo del CDP (EFDS-1338) y las validaciones de apertura
   // (EFDS-1340) y de contratación directa (EFDS-1341).

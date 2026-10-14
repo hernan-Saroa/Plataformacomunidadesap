@@ -120,8 +120,8 @@ export interface SugerenciaModalidad {
 }
 
 /**
- * SOLICITADO → VERIFICADO → EXPEDIDO
- *           ↘ RECHAZADO
+ * Desde la 103 el CDP se carga ya EXPEDIDO. SOLICITADO, VERIFICADO y RECHAZADO
+ * quedan de cuando el aplicativo lo tramitaba con la Financiera.
  */
 export type EstadoCdp = 'SOLICITADO' | 'VERIFICADO' | 'EXPEDIDO' | 'RECHAZADO' | 'ANULADO';
 
@@ -131,15 +131,16 @@ export type OrigenCdp = 'ETAPA_4' | 'SOLICITADO_EN_ETAPA_3' | 'REGISTRADO_EN_ETA
 export interface CdpDelEstudioPrevio {
   /** False en las modalidades que no comprometen gasto. */
   aplica: boolean;
-  /** Si la modalidad exige el CDP gestionado para enviar el estudio previo. */
+  /** Si la modalidad exige el CDP cargado para enviar el estudio previo. */
   obligatorio: boolean;
-  /** El CDP en curso: solicitado, verificado o expedido. */
+  /**
+   * El CDP en curso. Desde la 103 se carga ya expedido; uno solicitado o
+   * verificado solo puede venir de antes, cuando el aplicativo lo tramitaba.
+   */
   cdp: Cdp | null;
-  /** El último rechazado, si no hay uno en curso: por qué hay que volver a pedirlo. */
-  rechazado: Cdp | null;
   permiteRadicar: boolean;
   motivo: string | null;
-  /** Si quien mira puede solicitar, registrar o retirar (lo decide el backend). */
+  /** Si quien mira puede cargar, corregir o retirar (lo decide el backend). */
   puedeGestionar: boolean;
 }
 
@@ -169,56 +170,14 @@ export interface Cdp {
   solicitadoAt?: string;
   expedidoPor: string | null;
   /**
-   * De dónde salió (migración 100): de la etapa 4 de siempre, de una solicitud
-   * que el área hizo desde el estudio previo, o de un CDP que el área ya tenía
-   * y registró. Los dos últimos pueden quedar expedidos por caminos distintos.
+   * De dónde salió: cargado en la 4.2 (o, antes de la 103, tramitado en la
+   * etapa 4), pedido desde el estudio previo antes de la 103, o cargado por el
+   * área desde el estudio previo.
    */
   origen?: OrigenCdp;
   /** Avisa si el CDP no alcanza a cubrir el valor estimado del proceso. */
   advertencia?: string | null;
   cubreValorEstimado?: boolean;
-}
-
-/**
- * Una solicitud de CDP en la bandeja de la Dirección Financiera (etapa 4).
- *
- * Lo que la pantalla necesita para decidir a cuál entrar sin abrir el proceso:
- * de qué es, por cuánto, desde cuándo espera y si ya la lleva alguien.
- */
-export interface SolicitudEnBandeja {
-  procesoId: string;
-  radicado: string;
-  objeto: string;
-  modalidad: string | null;
-  valor: number | null;
-  /**
-   * El valor todavía no es el del CDP sino el estimado del proceso.
-   *
-   * Se distingue porque no es lo mismo: el estimado es contra lo que se va a
-   * verificar la disponibilidad, no una cifra ya certificada.
-   */
-  valorEsEstimado: boolean;
-  rubro: string | null;
-  estado: EstadoCdp;
-  solicitadoPor: string | null;
-  solicitadoAt: string;
-  diasEsperando: number;
-  /** Lleva parada más de lo tolerable; es lo mismo que alarma el correo diario. */
-  demorada: boolean;
-  aCargoDe: string | null;
-}
-
-/**
- * La bandeja de la Financiera, en tres montones.
- *
- * No se atienden igual: `sinTomar` es lo que hay que recoger, `mias` el trabajo
- * que ya es mío, y `deOtros` lo que lleva un compañero —que se ve para no
- * duplicar el trabajo, no para hacerlo—.
- */
-export interface BandejaCdp {
-  sinTomar: SolicitudEnBandeja[];
-  mias: SolicitudEnBandeja[];
-  deOtros: SolicitudEnBandeja[];
 }
 
 export interface EstadoRespaldo {
@@ -231,9 +190,8 @@ export interface EstadoRespaldo {
   /** Lo que de verdad decide si el proceso avanza. */
   puedeAbrirse: boolean;
   motivo: string | null;
-  /** Lo resuelve el backend con los roles del token, no el cliente. */
-  puedeSolicitar: boolean;
-  puedeGestionar: boolean;
+  /** Si quien mira puede cargar el CDP (4.2). Lo resuelve el backend con los roles del token. */
+  puedeCargar: boolean;
 }
 
 /**
@@ -587,8 +545,7 @@ export interface RevisionDelProceso {
  * - `NO_APLICA`: la matriz no marca la causal en la modalidad del proceso.
  * - `MODALIDAD_SIN_RATIFICAR`: la 3.1 no está aprobada, así que el área aún
  *   puede cambiar la modalidad de cuya lista sale la causal.
- * - `ETAPA_PASADA`: el proceso salió de la etapa 3 y la causal ya sustentó la
- *   solicitud de CDP.
+ * - `ETAPA_PASADA`: el proceso salió de la etapa 3 y la causal ya quedó.
  */
 export type MotivoNoElige = 'NO_APLICA' | 'MODALIDAD_SIN_RATIFICAR' | 'ETAPA_PASADA';
 
@@ -730,16 +687,11 @@ export interface EstadoParticipacion {
   puedeRepartir: boolean;
   contratacion: Participante | null;
   abogado: Participante | null;
-  /** Quién responde por el CDP en la etapa 4, o nulo si nadie lo ha tomado. */
-  financiera: Participante | null;
   /**
-   * Hay una solicitud de CDP sin atender y quien mira puede hacerse cargo.
-   *
-   * Lo resuelve el backend contra la bandeja y no solo contra el permiso: en un
-   * proceso que no ha pedido CDP, o que ya lo tiene expedido, no hay nada que
-   * tomar y el botón no debe aparecer.
+   * Quién tomó la solicitud de CDP antes de la 103. Desde entonces el CDP se
+   * tramita por fuera y nadie lo toma: queda como historia.
    */
-  puedeTomarFinanciera: boolean;
+  financiera: Participante | null;
   /** Se quedó sin abogado: no debería, pero pasa, y hay que verlo. */
   sinAbogado: boolean;
   /** Si el abogado se elige en su escalón de la cadena de la 3.1, sin paso aparte (102). */
@@ -751,7 +703,7 @@ export interface EstadoParticipacion {
 export interface ParticipacionEnLista {
   contratacion: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
   abogado: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
-  /** Quién atiende el CDP en la Financiera, si alguien lo tomó. */
+  /** Quién tomó la solicitud de CDP en la Financiera antes de la 103, si alguien la tomó. */
   financiera?: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
   /** Llegó a la Dirección y nadie lo ha recibido. */
   enBandeja: boolean;
@@ -3251,8 +3203,6 @@ export interface AlertaVencimiento {
     | 'DEVUELTA_PARA_CORREGIR'
     /** Recibido en la Dirección y sin quien lo revise: el proceso está parado. */
     | 'SIN_ABOGADO'
-    /** Una solicitud de CDP que la Financiera no ha tomado. */
-    | 'CDP_SIN_ATENDER'
     /** Una actividad con plazo por vencer o vencido; sus días son hábiles. */
     | 'PLAZO_ACTIVIDAD';
   procesoId: string;

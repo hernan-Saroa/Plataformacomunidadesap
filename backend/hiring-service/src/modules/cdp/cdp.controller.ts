@@ -17,14 +17,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { join } from 'path';
 
 import { CdpService } from './cdp.service';
-import {
-  ExpedirCdpConSoporteDto,
-  ExpedirCdpDto,
-  GuardarCdpAntesDeRadicarDto,
-  RechazarCdpDto,
-  SolicitarCdpDto,
-  VerificarCdpDto,
-} from './dto/cdp.dto';
+import { CargarCdpDto, GuardarCdpAntesDeRadicarDto } from './dto/cdp.dto';
 import { RolesGuard } from '../../auth/roles.guard';
 
 import { getHiringAccess } from '../../auth/hiring-access';
@@ -40,10 +33,10 @@ import {
 } from '../archivos';
 
 /**
- * Ciclo del CDP — etapa 4 (EFDS-1148).
+ * El CDP del proceso — etapa 4 (EFDS-1148).
  *
- * El área solicitante radica; la Dirección Financiera verifica y expide. Esa
- * separación no es de interfaz: es quién compromete el presupuesto.
+ * Desde la 103 el CDP se pide y se expide por fuera del aplicativo: aquí el
+ * área solo carga el certificado que la Dirección Financiera ya expidió.
  */
 @ApiTags('CDP')
 @Controller('procesos/:id/cdp')
@@ -51,7 +44,7 @@ export class CdpController {
   constructor(private readonly service: CdpService) {}
 
   @Get()
-  @Puede('ver', '4.1')
+  @Puede('ver', '4.2')
   @ApiOperation({
     summary: 'Estado del respaldo presupuestal del proceso',
     description:
@@ -61,18 +54,7 @@ export class CdpController {
     return this.service.estadoRespaldo(procesoId, undefined, getHiringAccess(req));
   }
 
-  @Post()
-  @Puede('editar', '4.1')
-  @ApiOperation({ summary: 'Actividad 4.1 · Radicar la solicitud de CDP' })
-  solicitar(
-    @Param('id', ParseUUIDPipe) procesoId: string,
-    @Body() dto: SolicitarCdpDto,
-    @Req() req: any,
-  ) {
-    return this.service.solicitar(procesoId, dto, getHiringAccess(req));
-  }
-
-  @Post('expedicion')
+  @Post('cargue')
   @Puede('editar', '4.2')
   @UseInterceptors(
     FileInterceptor(
@@ -81,49 +63,19 @@ export class CdpController {
     ),
   )
   @ApiOperation({
-    summary: 'Actividad 4.2 · Verificar, expedir y adjuntar el CDP',
+    summary: 'Actividad 4.2 · Cargar el CDP',
     description:
-      'Una sola actuación de la Dirección Financiera: el rubro con saldo, el número, valor y fecha del certificado y su soporte. Cierra la 4.2.',
+      'El área carga el CDP que la Dirección Financiera expidió por fuera del aplicativo: rubro, número, valor, fecha y el certificado. Cierra la 4.2.',
   })
-  async expedirConSoporte(
+  async cargar(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @UploadedFile() file: any,
-    @Body() dto: ExpedirCdpConSoporteDto,
+    @Body() dto: CargarCdpDto,
     @Req() req: any,
   ) {
     if (!file) throw new BadRequestException('Adjunta el certificado expedido');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
-    return this.service.expedirConSoporte(procesoId, dto, file, hash, getHiringAccess(req));
-  }
-
-  @Post('verificar')
-  @Puede('editar', '4.2')
-  @ApiOperation({
-    summary: 'Paso de la 4.2 · Verificar la disponibilidad presupuestal',
-    description:
-      'Se confirma contra un rubro, que queda en el CDP. No cierra la 4.2: la cierra la expedición.',
-  })
-  verificar(
-    @Param('id', ParseUUIDPipe) procesoId: string,
-    @Body() dto: VerificarCdpDto,
-    @Req() req: any,
-  ) {
-    return this.service.verificar(procesoId, dto, getHiringAccess(req));
-  }
-
-  @Post('expedir')
-  @Puede('editar', '4.2')
-  @ApiOperation({
-    summary: 'Paso de la 4.2 · Expedir el CDP sin soporte',
-    description:
-      'Mientras no exista la integración con KLIC, el número y el valor se registran a mano con el soporte de la Dirección Financiera.',
-  })
-  expedir(
-    @Param('id', ParseUUIDPipe) procesoId: string,
-    @Body() dto: ExpedirCdpDto,
-    @Req() req: any,
-  ) {
-    return this.service.expedir(procesoId, dto, getHiringAccess(req));
+    return this.service.cargar(procesoId, dto, { archivo: file, hash }, getHiringAccess(req));
   }
 
   @Post('documento')
@@ -135,9 +87,9 @@ export class CdpController {
     ),
   )
   @ApiOperation({
-    summary: 'Adjuntar el soporte de un CDP expedido sin él',
+    summary: 'Adjuntar el soporte de un CDP cargado sin él',
     description:
-      'Para los CDP expedidos antes de que la 4.2 pidiera el soporte con la expedición. El soporte queda vinculado al CDP, no solo al numeral.',
+      'Para los CDP expedidos antes de que la 4.2 pidiera el soporte con el certificado. El soporte queda vinculado al CDP, no solo al numeral.',
   })
   async adjuntar(
     @Param('id', ParseUUIDPipe) procesoId: string,
@@ -147,47 +99,6 @@ export class CdpController {
     if (!file) throw new BadRequestException('No se recibió ningún archivo');
     const hash = await sha256Archivo(join(STORAGE_PATH, file.filename));
     return this.service.adjuntarSoporte(procesoId, file, hash, getHiringAccess(req));
-  }
-
-  @Post('rechazar')
-  @Puede('editar', '4.2')
-  @ApiOperation({ summary: 'Cerrar el ciclo por falta de disponibilidad en el rubro' })
-  rechazar(
-    @Param('id', ParseUUIDPipe) procesoId: string,
-    @Body() dto: RechazarCdpDto,
-    @Req() req: any,
-  ) {
-    return this.service.rechazar(procesoId, dto, getHiringAccess(req));
-  }
-}
-
-/**
- * La bandeja de la Dirección Financiera.
- *
- * Ruta propia y no colgada de `procesos/:id` porque la bandeja no es de un
- * proceso: es la lista de los que esperan. Colgarla de uno obligaría a tener un
- * proceso a mano para poder preguntar cuáles hay, que es justo lo que no se
- * sabe todavía.
- *
- * Tampoco cuelga de `procesos` a secas: ese controlador tiene un `@Get(':id')`
- * con `ParseUUIDPipe`, así que `/procesos/bandeja` se estrellaría contra el
- * pipe antes de llegar aquí.
- */
-@ApiTags('CDP')
-@Controller('cdp')
-export class BandejaCdpController {
-  constructor(private readonly service: CdpService) {}
-
-  @Get('bandeja')
-  @Puede('editar', '4.2')
-  @ApiOperation({
-    summary: 'Etapa 4 · Las solicitudes de CDP que esperan a la Financiera',
-    description:
-      'Tres montones: las que nadie ha tomado, las que llevo yo y las que lleva otro. ' +
-      'Solo lo abierto —SOLICITADO y VERIFICADO—: un CDP expedido o rechazado salió del trabajo pendiente.',
-  })
-  bandeja(@Req() req: any) {
-    return this.service.bandeja(getHiringAccess(req));
   }
 }
 
@@ -206,7 +117,7 @@ export class CdpAntesDeRadicarController {
 
   @Get()
   @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
-  @ApiOperation({ summary: 'Si cada modalidad exige el CDP gestionado antes de enviar el estudio previo' })
+  @ApiOperation({ summary: 'Si cada modalidad exige el CDP cargado antes de enviar el estudio previo' })
   listar() {
     return this.service.exigenciasAntesDeRadicar();
   }

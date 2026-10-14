@@ -40,17 +40,17 @@ export const NUMERALES_CDP = ['4.1', '4.2'];
 /**
  * Las etapas en las que interviene la Dirección Financiera.
  *
- * Son las cuatro donde se mueve el presupuesto de la entidad y donde la siembra
- * de la 083 le da alcance: el CDP (4), el registro
- * presupuestal (8.3), el trámite del pago avalado (9.4) y el cierre financiero
- * (10.3). La 8 entra aunque casi todo lo suyo sea del gestor —la 8.3 es de la
- * Financiera y esconderla le quitaría el RP—.
+ * Son las tres donde mueve el presupuesto de la entidad desde el aplicativo: el
+ * registro presupuestal (8.3), el trámite del pago avalado (9.4) y el cierre
+ * financiero (10.3). La 8 entra aunque casi todo lo suyo sea del gestor —la 8.3
+ * es de la Financiera y esconderla le quitaría el RP—. El CDP (4) salió con la
+ * 103: se tramita por fuera y lo carga el área.
  *
  * Se listan por etapa y no por numeral porque el recorte es del recorrido, no
  * del riel: dentro de la etapa se ven todas sus actividades, que es como se
  * entiende en qué punto va el proceso.
  */
-export const ETAPAS_DE_LA_FINANCIERA = [4, 8, 9, 10];
+export const ETAPAS_DE_LA_FINANCIERA = [8, 9, 10];
 
 /**
  * Actividades cuyo panel monta la lista de documentos dentro de sí (EFDS-2066).

@@ -11,7 +11,6 @@ const estado = (cambios: Record<string, unknown> = {}) => ({
   aplica: true,
   obligatorio: false,
   cdp: null,
-  rechazado: null,
   permiteRadicar: true,
   motivo: null,
   puedeGestionar: true,
@@ -25,18 +24,19 @@ const pintar = (e: unknown, onEstado = vi.fn()) => {
 };
 
 /**
- * La gestión del CDP desde el estudio previo (migración 100): dos caminos
- * —pedirlo o registrar el que ya se tiene— y el aviso de si es obligatorio.
+ * El CDP desde el estudio previo (migraciones 100 y 103): desde la 103 se
+ * tramita por fuera, así que aquí solo se carga, con el aviso de si es
+ * obligatorio.
  */
 describe('CdpDelEstudioPrevio', () => {
   beforeEach(() => vi.restoreAllMocks());
 
-  it('opcional y sin CDP: ofrece los dos caminos y dice que se pide solo si no', async () => {
+  it('opcional y sin CDP: solo ofrece cargarlo, y dice que si no se carga en la etapa 4', async () => {
     pintar(estado());
     expect(await screen.findByText('Opcional en esta etapa')).toBeTruthy();
-    expect(screen.getByText('Solicitar el CDP')).toBeTruthy();
-    expect(screen.getByText('Ya tengo el CDP')).toBeTruthy();
-    expect(screen.getByText(/se solicita solo cuando se apruebe/)).toBeTruthy();
+    expect(screen.getByText('Cargar el CDP')).toBeTruthy();
+    expect(screen.queryByText('Solicitar el CDP')).toBeNull();
+    expect(screen.getByText(/lo cargas en la etapa 4/)).toBeTruthy();
   });
 
   it('obligatorio: lo anuncia y le pasa al formulario que no se puede radicar', async () => {
@@ -45,21 +45,41 @@ describe('CdpDelEstudioPrevio', () => {
     expect(onEstado).toHaveBeenCalledWith(expect.objectContaining({ permiteRadicar: false }));
   });
 
-  it('solicitado: dice que está en trámite y deja retirarlo mientras nadie lo toma', async () => {
+  it('una solicitud de antes de la 103: dice que nadie la va a atender y deja retirarla', async () => {
     pintar(
       estado({
         cdp: { id: 'c', estado: 'SOLICITADO', origen: 'SOLICITADO_EN_ETAPA_3', valor: 2_000_000, solicitadoPor: 'Laura' },
       }),
     );
-    expect(await screen.findByText(/en trámite en la Dirección Financiera/)).toBeTruthy();
+    expect(await screen.findByText('Quedó una solicitud de CDP sin atender')).toBeTruthy();
     expect(screen.getByText('Retirar')).toBeTruthy();
-    expect(screen.queryByText('Solicitar el CDP')).toBeNull();
+    expect(screen.queryByText('Cargar el CDP')).toBeNull();
   });
 
-  it('registrar exige número, valor, rubro, fecha y soporte', async () => {
+  it('cargado: lo muestra y deja corregirlo o retirarlo', async () => {
+    pintar(
+      estado({
+        cdp: {
+          id: 'c',
+          estado: 'EXPEDIDO',
+          origen: 'REGISTRADO_EN_ETAPA_3',
+          numero: 'CDP-7',
+          valor: 2_000_000,
+          rubro: 'A-02',
+          fechaExpedicion: '2026-10-01',
+          expedidoPor: 'Laura',
+        },
+      }),
+    );
+    expect(await screen.findByText('CDP CDP-7 cargado')).toBeTruthy();
+    expect(screen.getByText('Corregir los datos')).toBeTruthy();
+    expect(screen.getByText('Retirar')).toBeTruthy();
+  });
+
+  it('cargar exige número, valor, rubro, fecha y soporte', async () => {
     pintar(estado());
-    fireEvent.click(await screen.findByText('Ya tengo el CDP'));
-    const boton = screen.getByText('Registrar el CDP').closest('button')!;
+    fireEvent.click(await screen.findByText('Cargar el CDP'));
+    const boton = screen.getAllByText('Cargar el CDP').at(-1)!.closest('button')!;
     expect(boton.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Número del CDP'), { target: { value: 'CDP-1' } });
     fireEvent.change(screen.getByLabelText('Rubro presupuestal'), { target: { value: 'A-02' } });

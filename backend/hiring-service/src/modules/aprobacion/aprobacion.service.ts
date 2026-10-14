@@ -448,11 +448,11 @@ export class AprobacionService {
         },
       );
 
-      // Si esta era la última que quedaba abierta en la etapa 3, la solicitud
-      // de CDP se radica sola. Solo con la aprobación definitiva: una
+      // Si esta era la última que quedaba abierta en la etapa 3, el proceso
+      // pasa solo a la etapa 4. Solo con la aprobación definitiva: una
       // intermedia no cierra nada.
       if (tras.aprobacionDefinitiva) {
-        await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+        await this.cdp.abrirEtapa4SiCerroLaEtapa3(em, procesoId, acceso);
       }
 
       // Negar termina el proceso, como la negación del estudio previo: dejarlo

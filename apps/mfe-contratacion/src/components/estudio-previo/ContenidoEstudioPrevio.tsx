@@ -90,7 +90,7 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
   const [tokenLista, setTokenLista] = useState(0);
   /**
    * El CDP visto desde aquí, para no ofrecer el envío cuando la modalidad lo
-   * exige y nadie lo ha gestionado. El backend lo vuelve a comprobar al enviar.
+   * exige y nadie lo ha cargado. El backend lo vuelve a comprobar al enviar.
    */
   const [cdp, setCdp] = useState<EstadoCdp | null>(null);
 
@@ -291,8 +291,9 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
       />
 
       {/* El CDP va aparte del formulario y de sus pestañas: es un trámite de la
-          Dirección Financiera, y pedirlo no es guardar ni enviar el estudio
-          previo. Se relee al cambiar la modalidad, que decide si lo exige. */}
+          Dirección Financiera, que va por fuera, y cargarlo no es guardar ni
+          enviar el estudio previo. Se relee al cambiar la modalidad, que decide
+          si lo exige. */}
       <CdpDelEstudioPrevio
         key={datos.proceso.modalidad ?? ''}
         procesoId={procesoId}

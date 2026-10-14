@@ -269,13 +269,14 @@ export function FichaDelProceso({
                   : undefined
               }
             />
-            {etapaActual >= 4 || participacion?.financiera ? (
+            {/* Solo si alguien tomó la solicitud antes de la 103: desde entonces
+                el CDP se tramita por fuera y la Financiera no entra al equipo. */}
+            {participacion?.financiera ? (
               <Miembro
                 Icono={Landmark}
                 papel="Dirección Financiera"
-                nombre={participacion?.financiera?.nombre ?? null}
-                vacio="Nadie ha tomado el CDP"
-                esMio={participacion?.financiera?.esMio}
+                nombre={participacion.financiera.nombre}
+                esMio={participacion.financiera.esMio}
                 accion={{ texto: 'Ver el CDP', hacer: () => onAbrir('4.2') }}
               />
             ) : null}

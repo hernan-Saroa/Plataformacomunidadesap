@@ -249,11 +249,10 @@ describe('HU EFDS-1176 · adición en dinero del contrato (9.5)', () => {
       gestor,
     );
 
-    await cdp.solicitar(proceso.id, { rubro: 'A-02-02', valor: VALOR_CONTRATO }, gestor);
-    await cdp.verificar(proceso.id, {}, financiero);
-    await cdp.expedir(
+    await cdp.cargar(
       proceso.id,
-      { numero: `CDP-2026-176-${n}`, valor: VALOR_CONTRATO, fechaExpedicion: hoy() },
+      { rubro: 'A-02-02', numero: `CDP-2026-176-${n}`, valor: VALOR_CONTRATO, fechaExpedicion: hoy() },
+      null,
       financiero,
     );
 

@@ -248,7 +248,7 @@ export function PanelCausal({ procesoId, onCambio }: Props) {
           {sinRatificar
             ? 'Primero hay que aprobar el estudio previo (3.1), que es donde se ratifica la modalidad: la lista de causales sale de ella.'
             : estado.motivoNoElige === 'ETAPA_PASADA'
-              ? 'El proceso ya pasó de la etapa 3 y la causal sustentó la solicitud de CDP: queda como está.'
+              ? 'El proceso ya pasó de la etapa 3, así que la causal queda como está.'
               : estado.motivoNoDecide === 'SIN_ABOGADO'
                 ? 'Nadie ha repartido este proceso todavía: se asigna abogado en la actividad 3.3.'
                 : estado.motivoNoDecide === 'NO_ES_TUYO'

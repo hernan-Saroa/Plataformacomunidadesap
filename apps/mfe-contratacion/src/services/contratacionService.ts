@@ -12,7 +12,6 @@ import {
   EstadoAdendas,
   EstadoApertura,
   EstadoAudienciaRiesgos,
-  BandejaCdp,
   Cdp,
   CondicionesMipymeConfig,
   ConflictoError,
@@ -295,30 +294,14 @@ export const contratacionService = {
 
   respaldoCdp: (procesoId: string) => pedir<EstadoRespaldo>(`/procesos/${procesoId}/cdp`),
 
-  solicitarCdp: (
-    procesoId: string,
-    datos: {
-      rubro: string;
-      valor: number;
-      vigenciaFiscal?: number;
-      observaciones?: string;
-      firma?: EvidenciaFirmaOtp;
-    },
-  ) => pedir<Cdp>(`/procesos/${procesoId}/cdp`, { method: 'POST', body: JSON.stringify(datos) }),
-
-  rechazarCdp: (procesoId: string, observaciones: string) =>
-    pedir<Cdp>(`/procesos/${procesoId}/cdp/rechazar`, {
-      method: 'POST',
-      body: JSON.stringify({ observaciones }),
-    }),
-
   /**
-   * Actividad 4.2: verificar, expedir y adjuntar el CDP en una sola llamada.
+   * Actividad 4.2: el área carga el CDP que la Financiera expidió por fuera.
    *
-   * Desde la 096 son una sola actividad; el backend lo hace en una transacción
-   * para que no quede un certificado sin soporte ni un soporte sin certificado.
+   * Desde la 103 el aplicativo no tramita el CDP, solo lo carga. El backend lo
+   * hace en una transacción para que no quede un certificado sin soporte ni un
+   * soporte sin certificado.
    */
-  expedirCdpConSoporte: (
+  cargarCdp: (
     procesoId: string,
     datos: {
       rubro: string;
@@ -336,7 +319,7 @@ export const contratacionService = {
     cuerpo.append('valor', String(datos.valor));
     cuerpo.append('fechaExpedicion', datos.fechaExpedicion);
     if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
-    return pedir<Cdp>(`/procesos/${procesoId}/cdp/expedicion`, { method: 'POST', body: cuerpo });
+    return pedir<Cdp>(`/procesos/${procesoId}/cdp/cargue`, { method: 'POST', body: cuerpo });
   },
 
   // ---------------------------------- el CDP desde el estudio previo (100) --
@@ -344,17 +327,7 @@ export const contratacionService = {
   cdpDelEstudioPrevio: (procesoId: string) =>
     pedir<CdpDelEstudioPrevio>(`/procesos/${procesoId}/estudio-previo/cdp`),
 
-  /** Pide el CDP antes de enviar el estudio previo; llega a la bandeja de la Financiera. */
-  solicitarCdpDesdeElEstudioPrevio: (
-    procesoId: string,
-    datos: { valor?: number; rubro?: string; observaciones?: string },
-  ) =>
-    pedir<CdpDelEstudioPrevio>(`/procesos/${procesoId}/estudio-previo/cdp/solicitud`, {
-      method: 'POST',
-      body: JSON.stringify(datos),
-    }),
-
-  /** Registra (o corrige) un CDP que el área ya tiene. El soporte es obligatorio al registrar. */
+  /** Carga (o corrige) el CDP desde el estudio previo. El soporte es obligatorio al cargarlo. */
   registrarCdpDesdeElEstudioPrevio: (
     procesoId: string,
     datos: { numero: string; valor: number; rubro: string; fechaExpedicion: string },
@@ -389,7 +362,7 @@ export const contratacionService = {
       body: JSON.stringify(datos),
     }),
 
-  /** Soporte de un CDP expedido antes de la 096 sin él. */
+  /** Soporte de un CDP que quedó cargado sin él. */
   adjuntarCdp: (procesoId: string, archivo: File) => {
     const cuerpo = new FormData();
     cuerpo.append('file', archivo);
@@ -841,32 +814,6 @@ export const contratacionService = {
   /** A quién se le puede dar el papel de abogado. */
   abogados: (q = '') =>
     pedir<CuentaCandidata[]>(`/participacion/abogados?q=${encodeURIComponent(q)}`),
-
-  /**
-   * Actividad 4.1: toma la solicitud de CDP de la bandeja de la Financiera.
-   *
-   * Igual que `tomarProceso` y por lo mismo: nadie la entrega, la toma quien va
-   * a resolverla. Desde ese momento los avisos de esa solicitud son suyos y
-   * dejan de sonarle al resto de la Dirección Financiera.
-   */
-  tomarSolicitudCdp: (procesoId: string) =>
-    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/financiera/tomar`, {
-      method: 'POST',
-      body: JSON.stringify({}),
-    }),
-
-  /**
-   * La bandeja de la Dirección Financiera: lo que espera en la etapa 4.
-   *
-   * No cuelga de un proceso porque no es de uno: es la lista de los que
-   * esperan, y preguntarla exigiendo un proceso a mano sería preguntar por lo
-   * que aún no se sabe.
-   */
-  bandejaCdp: () => pedir<BandejaCdp>('/cdp/bandeja'),
-
-  /** Quiénes pueden resolver un CDP: los que gestionan presupuesto. */
-  financieros: (q = '') =>
-    pedir<CuentaCandidata[]>(`/participacion/financieros?q=${encodeURIComponent(q)}`),
 
   /** Reparte el abogado que revisará en la 3.4. Lo hace quien tomó el proceso. */
   /** Quién revisa el estudio previo en cada escalón por rol (migración 102). */

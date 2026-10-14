@@ -52,7 +52,7 @@ import {
 } from '../participacion/participacion.service';
 import { respondeElAsignado } from '../participacion/quien-responde';
 import { CdpService } from '../cdp/cdp.service';
-import { RegistrarCdpExistenteDto, SolicitarCdpAnticipadoDto } from '../cdp/dto/cdp.dto';
+import { RegistrarCdpExistenteDto } from '../cdp/dto/cdp.dto';
 import { PaaAplicacion } from '../../entities/paa.entity';
 import { CAMPOS_CONTROLADOS } from '../paa/estructura-paa';
 import { esLineaOcupada, lineaParaCrear, type OrigenPaa } from '../paa/linea-para-crear';
@@ -502,11 +502,7 @@ export class EstudioPrevioService implements OnModuleInit {
       const puedeRecibirlo =
         enElProceso ||
         ((await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION_DIRECCION)) &&
-          (await this.participacion.estaEnLaBandeja(procesoId))) ||
-        // Y la solicitud de CDP sin atender, por lo mismo: el listado se la
-        // enseña a la Financiera y al pulsarla le diría que no existe.
-        ((await this.alcance.puedeEn(acceso, 'editar', '4.2')) &&
-          (await this.participacion.estaEnLaBandejaFinanciera(procesoId)));
+          (await this.participacion.estaEnLaBandeja(procesoId)));
 
       if (!puedeRecibirlo) {
         // 404 y no 403, con el criterio de EFDS-1183: no se le confirma a quien
@@ -562,19 +558,6 @@ export class EstudioPrevioService implements OnModuleInit {
       ]);
       if (await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION_DIRECCION)) {
         for (const id of await this.participacion.idsEnBandeja()) alcanzables.add(id);
-      }
-      /**
-       * Y la bandeja de la Financiera, que es la cuarta vía.
-       *
-       * Sin ella la Dirección Financiera abre el módulo y no ve nada: no radicó
-       * ningún proceso, nadie se lo repartió y no puede tomar de la bandeja de
-       * Contratación, así que las tres vías anteriores le devuelven la lista
-       * vacía aunque tenga solicitudes de CDP esperándola.
-       */
-      if (await this.alcance.puedeEn(acceso, 'editar', '4.2')) {
-        for (const id of await this.participacion.idsEnBandejaFinanciera()) {
-          alcanzables.add(id);
-        }
       }
       if (alcanzables.size) mios.push({ id: In([...alcanzables]) });
     }
@@ -1158,18 +1141,10 @@ export class EstudioPrevioService implements OnModuleInit {
   }
 
   /**
-   * Gestionar el CDP es parte de preparar el estudio previo: lo puede hacer
-   * quien lo prepara y mientras lo tiene en sus manos —borrador o devuelto—.
-   * Si se lo devolvieron, lo gestionado se conserva y se puede corregir.
+   * Cargar el CDP es parte de preparar el estudio previo: lo puede hacer quien
+   * lo prepara y mientras lo tiene en sus manos —borrador o devuelto—. Si se
+   * lo devolvieron, lo cargado se conserva y se puede corregir.
    */
-  async solicitarCdp(procesoId: string, dto: SolicitarCdpAnticipadoDto, acceso: HiringAccess) {
-    await this.dataSource.transaction(async (em) => {
-      await this.exigirPaqueteEditable(em, procesoId, acceso);
-      await this.cdp.solicitarDesdeElEstudioPrevio(em, procesoId, dto, acceso);
-    });
-    return this.cdpDelEstudioPrevio(procesoId, acceso);
-  }
-
   async registrarCdp(
     procesoId: string,
     dto: RegistrarCdpExistenteDto,
@@ -1446,7 +1421,7 @@ export class EstudioPrevioService implements OnModuleInit {
       await this.cerrarLaRevision(em, procesoId, decision, acceso, firma);
 
       /*
-       * Y si con esto se acabó la etapa 3, la solicitud de CDP nace aquí.
+       * Y si con esto se acabó la etapa 3, el proceso pasa aquí a la etapa 4.
        *
        * Solo al aprobar: devolver reabre la revisión y negar termina el
        * proceso, y ni en un caso ni en otro hay etapa cerrada que celebrar. El
@@ -1455,7 +1430,7 @@ export class EstudioPrevioService implements OnModuleInit {
        * disparar nada.
        */
       if (decision === 'APROBADO') {
-        await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+        await this.cdp.abrirEtapa4SiCerroLaEtapa3(em, procesoId, acceso);
       }
 
       // El proceso termina con la actividad cuando la decisión lo cierra.
@@ -1541,7 +1516,7 @@ export class EstudioPrevioService implements OnModuleInit {
         await this.cerrarLaRevision(em, procesoId, decision, acceso, firma);
       }
       if (tras.aprobacionDefinitiva) {
-        await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+        await this.cdp.abrirEtapa4SiCerroLaEtapa3(em, procesoId, acceso);
       }
       const desenlace = desenlaceTrasDecision(decision);
       if (desenlace) {

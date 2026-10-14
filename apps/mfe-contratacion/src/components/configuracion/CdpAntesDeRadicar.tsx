@@ -118,8 +118,9 @@ export function CdpAntesDeRadicar() {
           <div className="min-w-0">
             <h3 className="text-sm font-black text-slate-800 m-0">CDP antes de enviar el estudio previo</h3>
             <p className="text-[12px] text-slate-600 m-0 mt-0.5 leading-relaxed">
-              Decide, para cada modalidad, si el área tiene que gestionar el CDP antes de enviar el
-              estudio previo a revisión.
+              Decide, para cada modalidad, si el área tiene que cargar el CDP antes de enviar el
+              estudio previo a revisión. El CDP se tramita por fuera del aplicativo; aquí solo se
+              carga.
             </p>
           </div>
         </div>
@@ -127,15 +128,14 @@ export function CdpAntesDeRadicar() {
           <div className="rounded-lg border border-gray-200 bg-slate-50 px-3 py-2.5">
             <p className="text-[12px] font-bold text-slate-700 m-0">Opcional</p>
             <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 leading-relaxed">
-              El área puede adelantar el CDP si quiere. Si no lo hace, se solicita solo cuando se
-              aprueba el estudio previo.
+              El área puede cargar el CDP desde el estudio previo si ya lo tiene. Si no, lo carga en
+              la etapa 4, cuando se aprueba el estudio previo.
             </p>
           </div>
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
             <p className="text-[12px] font-bold text-amber-800 m-0">Obligatorio</p>
             <p className="text-[11.5px] text-amber-900 m-0 mt-0.5 leading-relaxed">
-              No se puede enviar el estudio previo sin haber solicitado el CDP o registrado el que ya
-              se tiene.
+              No se puede enviar el estudio previo sin haber cargado el CDP.
             </p>
           </div>
         </div>
@@ -203,7 +203,7 @@ export function CdpAntesDeRadicar() {
                   </p>
                   <p className="text-[11.5px] text-slate-500 m-0 mt-0.5">
                     {b.obligatorio
-                      ? 'El estudio previo no se envía sin el CDP gestionado.'
+                      ? 'El estudio previo no se envía sin el CDP cargado.'
                       : 'El CDP se puede adelantar; si no, se pide al aprobar.'}
                   </p>
                 </div>
