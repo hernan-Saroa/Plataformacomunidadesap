@@ -117,6 +117,26 @@ describe('EFDS-2315 :: aplicar la decisión al PTA (agregado real, en transacci�
       expect(await aprobaciones()).toEqual([]);
     });
 
+    const ubicar = (idSeccional: string) => client!.query(
+      `UPDATE academic_work_plan.docencia_concertada
+          SET asignaturas = jsonb_set(asignaturas, '{0,territorialId}', to_jsonb($2::text))
+        WHERE id_concertacion = $1`, [ID_CONCERTACION, idSeccional]);
+
+    caso('asignatura de una Dirección Territorial: no se aplica (academica_territorial no la aprueba la concertación)', tipo, async () => {
+      await crearPta('BORRADOR');
+      await ubicar('10'); // Seccional Huila
+      expect(await aplicarDecision(q, ID_CONCERTACION)).toBe('pendiente_docencia_territorial');
+      expect(await aprobaciones()).toEqual([]);
+    });
+
+    caso('asignatura de Sede Central: se aplica, con su territorial_id', tipo, async () => {
+      await crearPta('BORRADOR');
+      await ubicar('1'); // Sede Central
+      expect(await aplicarDecision(q, ID_CONCERTACION)).toBe('aplicada');
+      const ds = (await client!.query(`SELECT "datosEstructurados" AS ds FROM academic_work_plan."PlanTrabajoAcademico" WHERE id = $1`, [ID_PTA])).rows[0].ds;
+      expect(ds.asignaturas[0].territorial_id).toBe('1');
+    });
+
     caso('sin PTA: pendiente; al crearlo se precarga', tipo, async () => {
       expect(await aplicarDecision(q, ID_CONCERTACION)).toBe('pendiente_sin_pta');
       expect(await fila()).toEqual({ estado_aplicacion: 'pendiente_sin_pta', id_pta: null, aplicada: false });

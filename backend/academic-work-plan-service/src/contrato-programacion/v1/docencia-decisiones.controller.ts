@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req } from '@nestjs/common';
 
 import { Public } from '../../auth/public.decorator';
 
@@ -24,6 +24,16 @@ export class DocenciaDecisionesController {
   @Get('configuracion')
   configuracion() {
     return { success: true, data: this.decisiones.configuracion() };
+  }
+
+  /**
+   * GET /contrato-programacion/v1/docencia/regimen?ptaId=|periodo= — para la
+   * pantalla del PTA: 'programacion' (Docencia de solo lectura, viene de la
+   * concertación) o 'actual' (la de hoy). Misma regla que aplica el servidor.
+   */
+  @Get('regimen')
+  async regimen(@Query('periodo') periodo?: string, @Query('ptaId') ptaId?: string) {
+    return { success: true, data: await this.decisiones.regimen(periodo, ptaId) };
   }
 
   /** POST /contrato-programacion/v1/docencia/decisiones — registra una concertación aprobada. */

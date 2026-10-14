@@ -1,4 +1,4 @@
-import { Controller, ForbiddenException, Get, Param, Post, Req } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { PERMISO_PORTAL_TOMAR, PERMISO_PORTAL_VER } from '../auth/programacion-permissions.js';
@@ -68,7 +68,7 @@ export class PortalDocenteController {
   /** POST /portal-docente/tomar/:idFranja — toma una franja (transacción + lock). */
   @Post('tomar/:idFranja')
   @EscrituraEn({ franja: { param: 'idFranja' } })
-  async tomar(@Req() req: Request, @Param('idFranja') idFranja: string) {
+  async tomar(@Req() req: Request, @Param('idFranja', ParseUUIDPipe) idFranja: string) {
     await this.exigir(req, PERMISO_PORTAL_TOMAR);
     const docente = await this.portal.resolverDocente(this.idUser(req));
     return { success: true, data: await this.portal.tomar(docente.idPerson, idFranja) };
@@ -77,7 +77,7 @@ export class PortalDocenteController {
   /** POST /portal-docente/soltar/:idFranja — suelta una franja tomada no aprobada. */
   @Post('soltar/:idFranja')
   @EscrituraEn({ franja: { param: 'idFranja' } })
-  async soltar(@Req() req: Request, @Param('idFranja') idFranja: string) {
+  async soltar(@Req() req: Request, @Param('idFranja', ParseUUIDPipe) idFranja: string) {
     await this.exigir(req, PERMISO_PORTAL_TOMAR);
     const docente = await this.portal.resolverDocente(this.idUser(req));
     return { success: true, data: await this.portal.soltar(docente.idPerson, idFranja) };

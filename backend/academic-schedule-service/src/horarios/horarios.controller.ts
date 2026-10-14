@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { HorariosService, type CrearSesionDto, type PeriodoGrupoDto } from './horarios.service.js';
@@ -40,21 +40,21 @@ export class HorariosController {
 
   @Delete(':id')
   @EscrituraEn({ franja: { param: 'id' } }, { exigeNivel: true })
-  async eliminar(@Param('id') id: string) {
+  async eliminar(@Param('id', ParseUUIDPipe) id: string) {
     return { success: true, data: await this.horarios.eliminarSesion(id) };
   }
 
   /** PUT /horarios/grupo/:id/periodo — ciclo de clases del grupo. */
   @Put('grupo/:id/periodo')
   @EscrituraEn({ grupo: { param: 'id' } }, { exigeNivel: true })
-  async periodo(@Param('id') id: string, @Body() body: PeriodoGrupoDto) {
+  async periodo(@Param('id', ParseUUIDPipe) id: string, @Body() body: PeriodoGrupoDto) {
     return { success: true, data: await this.horarios.definirPeriodo(id, body) };
   }
 
   /** GET /horarios/grupo/:id/horas — programadas vs requeridas (§1.3). */
   @Get('grupo/:id/horas')
   @LecturaEn({ grupo: { param: 'id' } })
-  async horas(@Param('id') id: string) {
+  async horas(@Param('id', ParseUUIDPipe) id: string) {
     return { success: true, data: await this.horarios.horasGrupo(id) };
   }
 }

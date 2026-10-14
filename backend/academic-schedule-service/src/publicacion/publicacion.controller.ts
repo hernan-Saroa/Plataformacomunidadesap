@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { PERMISO_PROGRAMACION_ALL, PERMISO_PUBLICAR } from '../auth/programacion-permissions.js';
@@ -86,7 +86,7 @@ export class PublicacionController {
   async excepcion(
     @Req() req: Request,
     @Param('idPeriodo') idPeriodo: string,
-    @Param('idFranja') idFranja: string,
+    @Param('idFranja', ParseUUIDPipe) idFranja: string,
     @Body() body: { excepcion?: boolean },
   ) {
     await this.exigirAdministracion(req);

@@ -88,34 +88,43 @@ Programación Académica guarda la respuesta en `concertacion_docencia.aplicacio
 
 ---
 
+
 ## 4. Lo que falta para encender la concertación
 
-1. **Revisar la tabla de equivalencias territoriales** (sección 4.1). La migración 038 crea la tabla **vacía**. Las 17 filas propuestas están en `db/dev-fixtures/equivalencia_territorial_propuesta.sql` y se cargan solo en local.
-2. **Qué aprueban investigación y extensión.** Si el negocio dice que también revisan la Docencia, se agregan a `REVISIONES_REQUERIDAS`, sin cambiar el esquema ni el flujo.
-3. **Firma.** Hoy es simulada, por decisión de Tomás, pero queda registrada. Para la firma real hay que ampliar de forma aditiva el DTO de OTP de auth-service para aceptar `prog-docencia:<id>:<huella>:<rol>`, como se hizo con el paz y salvo.
-4. **Confirmar en dev** que la activación de periodo no falla por `uuid = text` (sección 6).
-5. **Desplegar los dos servicios juntos** y definir el corte. Si se enciende un solo lado, no pasa nada: el régimen nuevo exige los dos.
+1. **Los huecos del alcance territorial del PTA** (sección 4.1). Son del PTA y los comparten los dos módulos, porque la concertación decide igual que el PTA.
+2. **Revisores reales.** En local solo SUPER_ADMIN tiene permisos `pta.review.academica.*`. JEFATURA_TERRITORIAL y APROBADOR_DOCENCIA solo aprueban. Sin un rol revisor, toda concertación pasa por un superusuario. Asignar ese permiso es gestión de usuarios: no lo toqué.
+3. **Qué aprueban investigación y extensión.** Si el negocio dice que también revisan la Docencia, se agregan a `REVISIONES_REQUERIDAS`, sin cambiar el esquema ni el flujo.
+4. **Firma.** Hoy es simulada, por decisión de Tomás, pero queda registrada. Para la firma real hay que ampliar de forma aditiva el DTO de OTP de auth-service para aceptar `prog-docencia:<id>:<huella>:<rol>`, como se hizo con el paz y salvo.
+5. **Confirmar en dev** que la activación de periodo no falla por `uuid = text` (sección 6).
+6. **Desplegar los dos servicios juntos** y definir el corte. Si se enciende un solo lado, no pasa nada: el régimen nuevo exige los dos.
 
-### 4.1 Alcance territorial — para revisión
+### 4.1 Alcance territorial — igual al del PTA, sin tablas a mano
 
-**Cómo funciona.** JEFATURA_TERRITORIAL y APROBADOR_DOCENCIA deciden **solo** sobre su territorial:
-- la del docente sale del RUND (`DT-xxx`);
-- la del aprobador sale de sus seccionales en auth;
-- se cruzan con la tabla `equivalencia_territorial`, por código.
+Se **descartó** la tabla de equivalencias (migración 038). Nunca se subió ni se aplicó fuera de local. Un dato mantenido a mano queda mal en cuanto cambia la estructura, y la estructura se carga por carga masiva.
 
-Lo que no esté en la tabla falla cerrado: no decide nadie con alcance filtrado. La misma tabla resuelve la territorial de la jefatura que no se podía asignar en EFDS-2304.
+**Cómo decide hoy el PTA la Docencia** (auditado en `pta.service.ts`, `assertAlcancePersonalDeActividades` y `assertAlcanceTerritorial`):
+- **Permiso:** el del componente (`pta.approve.academica.<nivel>`), con los roles vigentes de la cuenta.
+- **Lado del aprobador:** `auth.personas.id_seccional`, o la seccional de su sede.
+- **Lado del docente:** **no** es la territorial del docente. Es la de **cada asignatura** (`asignaturas[].territorial_id`, un id de `auth.seccionales`), que el docente elige al llenar el PTA.
+- **Comparación:** por id o por nombre normalizado. Si una asignatura no tiene territorial, no se puede verificar y el PTA responde 403.
+- **Enrutamiento:** una asignatura de una Dirección Territorial va a `academica_territorial`, que se aprueba por par (territorial, nivel) en otra tabla.
+- El alcance del rol (`auth.role.alcance`) **no se usa** en producción. `territorialGrantsFromRoles` solo aparece en pruebas.
 
-**Filas que hay que revisar:**
+**La concertación hace exactamente eso.** La territorial del grupo sale de datos que mantiene la carga masiva de estructura de auth:
+- el código de la franja o del aula contra `auth.seccionales.cod_seccional`;
+- o el CETAP del aula contra `auth.sede_cetap_mapping`.
 
-| Fila | Por qué es dudosa |
+Viaja al PTA como `territorial_id`. Si una asignatura es de una Dirección Territorial, el PTA no la aplica desde la concertación por nivel: queda `pendiente_docencia_territorial`.
+
+**Huecos del PTA (reportados, no resueltos con datos a mano):**
+
+| Hueco | Dato real (base local) |
 |---|---|
-| SC | La seccional existe también duplicada como 900001 |
-| DT-003 → BOL | Existe también 900004 (BCS) |
-| DT-010 → MET | Su id es 18, fuera de la numeración del resto |
-| DT-012 → NDS | Existe también 900013 (NSA) |
-| Quindío (13, QUI) | No tiene DT en el RUND, así que no tiene fila |
+| **Un aprobador sin seccional en Personas no tiene restricción geográfica**: aprueba cualquier territorial | Los 3 usuarios con roles de Docencia (1 APROBADOR_DOCENCIA y 2 JEFATURA_TERRITORIAL) **no tienen seccional** |
+| **Dos catálogos de seccionales en auth que no cruzan.** Personas usa los heredados (10 "Seccional Huila"); la carga masiva de estructura crea los suyos (900022 `DT-009` "HUILA"), con 337 sedes. Distinto id y distinto nombre normalizado: un aprobador de Huila no cruza con una asignatura de "HUILA" | De 352 docentes, 176 tienen seccional en Personas, todos del catálogo heredado |
+| **Programación Académica no captura dónde se dicta un grupo.** `franja_horaria.sede_codigo` existe pero el formulario no lo llena. Las aulas guardan `DT-009`/`CET-0135`. `auth.sede_cetap_mapping` está vacía en local | Las 19 franjas locales: sin sede. Hoy toda concertación llega sin territorial, y un aprobador **con** seccional no puede decidirla (igual que en el PTA) |
 
-Además, en auth hay un catálogo duplicado de seccionales, 900014 a 900029, con códigos DT. La propuesta usa las seccionales originales, no esas.
+**Jefatura (EFDS-2304):** además de la tabla propia, ahora usa la seccional de la persona cuando su código **es** el del RUND (`cod_seccional = 'DT-009'`), sin tabla intermedia. Con el doble catálogo, una persona del catálogo heredado no cruza. En local solo cruza 1 cuenta (SC).
 
 ---
 
@@ -123,13 +132,24 @@ Además, en auth hay un catálogo duplicado de seccionales, 900014 a 900029, con
 
 - **EFDS-2306:** la docencia sale de la franja (registro único), con las horas del cálculo único del contrato y el reparto por días en una función reemplazable.
 - **EFDS-2315:**
-  - concertación completa (enviar, revisar, devolver, aprobar), con los roles y el alcance territorial del PTA;
+  - concertación completa (enviar, revisar, devolver, aprobar), con los permisos y el alcance territorial del PTA;
   - firma simulada registrada (quién, cuándo, rol, huella, contexto);
   - Docencia desactivada en el PTA y decisión aplicada (secciones 1 y 2);
-  - un solo interruptor, verificado en los dos lados, con corte por periodo.
-- **EFDS-2304:** territorial de la jefatura por la equivalencia, además de la tabla legada.
+  - un solo interruptor, verificado en los dos lados, con corte por periodo;
+  - **flujo principal verificado de punta a punta con el servidor real (14 de octubre):** concertar antes del PTA, crear el PTA y ver la Docencia aprobada con sus asignaturas y horas; y con el PTA ya existente, aplicación directa. El docente no puede agregar ni cambiar la docencia concertada.
+- **EFDS-2304:** territorial de la jefatura por código del RUND, además de la tabla legada.
 - **EFDS-2311:** las vistas vuelven a leer del servidor tras aprobar, con el mecanismo común de Codex.
-- **Carga masiva (EFDS-2314):** verificada **solo hasta el importador** (simulación). **No está confirmada**: ver la sección 6.
+- **EFDS-2314 (carga masiva): confirmada sobre 2050-1**, con respaldo previo. El importador queda como está (decisión de Tomás). El resultado coincide con la simulación:
+
+  | Qué | Resultado |
+  |---|---|
+  | Programas | 14 actualizados |
+  | Asignaturas | 427 actualizadas |
+  | Ofertas | 325 creadas |
+  | Periodo 2050-1 | Sigue en planeación |
+
+  Los cambios campo por campo son los anticipados: campos derivados, tildes y las 3 horas en 0. Para cargar en local hubo que alinear el catálogo de semestres (fila 11 de la sección 6).
+- **Un id que no es UUID responde 400, no 500**, en todas las rutas de Programación Académica.
 
 ---
 
@@ -137,13 +157,15 @@ Además, en auth hay un catálogo duplicado de seccionales, 900014 a 900029, con
 
 | # | Hallazgo | Dueño | Gravedad |
 |---|---|---|---|
-| 1 | **El importador convierte en 0 las horas vacías** de 3 asignaturas: ASIG-00139 y ASIG-00427 (Opciones De Grado AP) y ASIG-00218 (Seminario De Opciones De Grado APT). Un 0 parece un dato real, y el vacío decía "sin definir". Es peor que lo de las tildes | Programas Académicos (Julián Rojas) | Alta |
+| 1 | **El importador convierte en 0 las horas vacías** de 3 asignaturas: ASIG-00139 y ASIG-00427 (Opciones De Grado AP) y ASIG-00218 (Seminario De Opciones De Grado APT). Un 0 parece un dato real, y el vacío decía "sin definir". Además rompe el cálculo único: con vacío, el contrato usa el respaldo (horas de carrera / 3); con 0, el impacto es 0 y esas asignaturas no se pueden concertar | Programas Académicos (Julián Rojas) | Alta |
 | 2 | El importador no es idempotente: recalcula campos derivados (Circular 003, `modalidad_sufijo`) y corrige tildes en 6 nombres ("Publico" → "Público") | Programas Académicos | Media |
 | 3 | La plantilla de carga no trae `pensum` ni las columnas de la Circular 003. El catálogo local tiene 0 asignaturas con pensum | Programas Académicos | Media |
-| 4 | El importador crea periodos en estado `en_curso` | PTA / Programas Académicos | Media |
+| 4 | El importador crea periodos en estado `en_curso` (solo si el periodo no existe; sobre 2050-1, que ya existía, no lo cambió) | PTA / Programas Académicos | Media |
 | 5 | La activación de periodo puede fallar por `uuid = text` al terminar los PTA. En local `PlanTrabajoAcademico.id` es text, así que hay que **confirmarlo en dev** | PTA | Alta si se confirma |
-| 6 | El esquema local del PTA diverge: `id` text sin PK y faltan las tablas de aprobación (`PtaComponentApproval`, Review, Territorial). La migración 327 no aplica en local | PTA / infraestructura | Media (impide probar en local) |
-| 7 | Las fechas del PTA se corren un día por la zona horaria | PTA | Media |
-| 8 | Catálogo de seccionales duplicado en auth (900014–900029, más 900001, 900004 y 900013) | Gestión de usuarios (auth) | Media; no se toca sin aprobación |
+| 6 | Huecos del alcance territorial del PTA: aprobador sin seccional sin restricción, y dos catálogos de seccionales que no cruzan (sección 4.1) | PTA / Gestión de usuarios (auth) | Alta antes de encender |
+| 7 | Programación Académica no captura dónde se dicta un grupo, así que la Docencia territorial no se puede concertar (sección 4.1) | Programación Académica | Alta antes de encender |
+| 8 | Las fechas del PTA se corren un día por la zona horaria | PTA | Media |
 | 9 | auth-service escribe directamente en el esquema del PTA | auth / PTA | Media |
 | 10 | La migración `db/init` 010 (Control Interno) falla en local | Control Interno | Baja |
+| 11 | **Orden entre la siembra de Programación Académica y el importador.** La migración PA 007 (EFDS-1368, está en micro-frontend) siembra `ubicacion_semestral` con `PRE_x`/`POS_x` e ids propios, y además escribe en el esquema del PTA. El importador siembra ids fijos (1–12 pregrado, 13–16 posgrado) y choca por etiqueta. Si el importador cargó primero (lo normal en dev), la 007 no inserta nada. En un ambiente nuevo, la carga falla con `ubicacion_semestral_etiqueta_key`. La simulación (`dry_run`) no lo detecta | Programación Académica / Programas Académicos | Media |
+| 12 | El esquema local venía de los volcados de `db/init`, sin la PK de `PlanTrabajoAcademico` (definida en la 190) y sin las migraciones de aprobación (340, 376, 387, 396, 398, 399, 401) ni la de auditoría del RUND (428), que exige la lectura de un PTA. Ya se aplicaron en local, con respaldo y registradas en `auth.migrations_db_log`. No se aplicaron la 369 ni la 397, que tocan permisos de roles en auth | Infraestructura | Resuelto en local |

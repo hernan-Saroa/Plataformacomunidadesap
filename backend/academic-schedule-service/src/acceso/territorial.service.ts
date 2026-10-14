@@ -3,69 +3,48 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 /**
- * Territorial del docente y del usuario que decide — EFDS-2315 / EFDS-2304.
+ * Territorial de un grupo — EFDS-2315.
  *
- * El ÚNICO lugar que cruza los dos catálogos, y lo hace por la tabla explícita
- * `equivalencia_territorial` (migración 038): código del RUND ('DT-009') ↔
- * seccional de auth (10 'HUI'). Nunca por nombre. Lo que no está en la tabla no
- * se resuelve, y quien decide con alcance territorial falla cerrado.
+ * Sin tablas mantenidas a mano: solo datos que mantiene la carga masiva de la
+ * estructura organizacional de auth (`estructura-import`), que escribe el código
+ * del RUND en `auth.seccionales.cod_seccional` ('DT-009') y el cruce
+ * sede ↔ CETAP en `auth.sede_cetap_mapping`. Cruce por CÓDIGO exacto, nunca por
+ * nombre. Lo que no cruza queda sin territorial.
  */
 @Injectable()
 export class TerritorialService {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  /** Seccional (auth) del docente, por su territorial del RUND. null = no mapeada. */
-  async seccionalDeDocente(idPersonDocente: string): Promise<string | null> {
-    const filas = await this.dataSource.query(
-      `SELECT e.id_seccional::text AS id
-         FROM academic_work_plan."Docente" d
-         JOIN "academic-schedule".equivalencia_territorial e ON e.codigo_territorial = d."territorialId"
-        WHERE d."personaId" = $1
-        ORDER BY d."updatedAt" DESC NULLS LAST
-        LIMIT 1`,
-      [idPersonDocente]);
-    return filas[0]?.id ?? null;
-  }
-
   /**
-   * Seccionales (auth) del usuario: la de su persona y la de su sede. Mismo
-   * criterio que el PTA (`resolvePersonalScopeForUser`). Vacío = sin territorial.
+   * Territorial (auth.seccionales.id_seccional) donde se dicta cada grupo, el
+   * mismo dato que el PTA guarda en `asignaturas[].territorial_id`. Sale de sus
+   * franjas: el código de la franja o de su aula ('DT-009' o código de sede de
+   * auth), o el CETAP del aula por `sede_cetap_mapping`. Si el grupo no tiene el
+   * dato, o sus franjas están en territoriales distintas, queda null.
    */
-  async seccionalesDeUsuario(idUser: string): Promise<string[]> {
-    const filas: Array<{ id: string | null }> = await this.dataSource.query(
-      `SELECT p.id_seccional::text AS id
-         FROM auth."user" u JOIN auth.personas p ON p.id_person = u.id_person
-        WHERE u.id_user::text = $1
-       UNION
-       SELECT s.id_seccional::text
-         FROM auth."user" u JOIN auth.personas p ON p.id_person = u.id_person
-         JOIN auth.sedes s ON s.id_sede = p.id_sede
-        WHERE u.id_user::text = $1`,
-      [idUser]);
-    return [...new Set(filas.map((f) => f.id).filter((x): x is string => !!x))];
-  }
-
-  /**
-   * Territoriales del RUND (ids de direccion_territorial) de una jefatura.
-   *
-   * EFDS-2304: la territorial de la jefatura ahora se asigna desde la pantalla
-   * GENÉRICA de usuarios (la seccional de la persona) y se traduce con la tabla.
-   * Las asignaciones de la tabla propia `jefatura_territorial` se conservan por
-   * compatibilidad mientras la concertación siga apagada.
-   */
-  async territorialesDeJefatura(idUser: string): Promise<number[]> {
-    const filas: Array<{ id: string }> = await this.dataSource.query(
-      `SELECT jt.id_direccion_territorial::text AS id
-         FROM "academic-schedule".jefatura_territorial jt
-        WHERE jt.id_user::text = $1
-       UNION
-       SELECT dt.id::text
-         FROM auth."user" u
-         JOIN auth.personas p ON p.id_person = u.id_person
-         JOIN "academic-schedule".equivalencia_territorial e ON e.id_seccional = p.id_seccional
-         JOIN academic_work_plan.direccion_territorial dt ON dt.codigo = e.codigo_territorial
-        WHERE u.id_user::text = $1`,
-      [idUser]);
-    return [...new Set(filas.map((f) => Number(f.id)))];
+  async territorialesDeGrupos(idsGrupo: readonly string[]): Promise<Map<string, string | null>> {
+    const resultado = new Map<string, string | null>(idsGrupo.map((id) => [id, null]));
+    if (!idsGrupo.length) return resultado;
+    const filas: Array<{ id: string; seccionales: string[] | null }> = await this.dataSource.query(
+      `SELECT f.id_grupo::text AS id,
+              array_agg(DISTINCT COALESCE(sc_f.id_seccional, se_f.id_seccional, sc_a.id_seccional, se_c.id_seccional)::text)
+                FILTER (WHERE COALESCE(sc_f.id_seccional, se_f.id_seccional, sc_a.id_seccional, se_c.id_seccional) IS NOT NULL)
+                AS seccionales
+         FROM "academic-schedule".franja_horaria f
+         LEFT JOIN auth.seccionales sc_f ON sc_f.cod_seccional = f.sede_codigo
+         LEFT JOIN auth.sedes se_f ON se_f.cod_sede::text = f.sede_codigo
+         LEFT JOIN "academic-schedule".aula au ON au.codigo = f.aula_codigo
+         LEFT JOIN auth.seccionales sc_a ON sc_a.cod_seccional = au.sede_codigo
+         LEFT JOIN academic_work_plan.cetap c ON c.codigo = au.codigo_cetap
+         LEFT JOIN auth.sede_cetap_mapping m ON m.id_cetap = c.id
+         LEFT JOIN auth.sedes se_c ON se_c.id_sede = m.id_sede
+        WHERE f.id_grupo = ANY($1::uuid[])
+        GROUP BY f.id_grupo`,
+      [idsGrupo]);
+    for (const f of filas) {
+      const unicas = (f.seccionales ?? []).filter(Boolean);
+      resultado.set(f.id, unicas.length === 1 ? unicas[0] : null);
+    }
+    return resultado;
   }
 }

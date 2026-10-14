@@ -1,5 +1,15 @@
 import {
-  Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req,
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
 
@@ -77,7 +87,7 @@ export class AulasController {
   /** POST /aulas/publicar/:idGrupo — publica la oferta; exige aula en toda franja. */
   @Post('publicar/:idGrupo')
   @EscrituraEn({ grupo: { param: 'idGrupo' } }, { exigeNivel: true })
-  async publicar(@Param('idGrupo') idGrupo: string) {
+  async publicar(@Param('idGrupo', ParseUUIDPipe) idGrupo: string) {
     return { success: true, data: await this.aulas.publicarGrupo(idGrupo) };
   }
 

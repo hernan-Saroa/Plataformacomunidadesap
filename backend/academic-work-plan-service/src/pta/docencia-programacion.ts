@@ -131,7 +131,9 @@ const ESTADOS_CERRADOS = new Set([
 function entradaPta(a: any, d: any, i: number) {
   return {
     id: Date.now() + i,
-    territorial_id: '',            // sin territorial: se clasifica por el nivel del programa
+    // Donde se dicta (auth.seccionales.id_seccional), resuelto por Programación
+    // Académica; vacío = sin dato: se clasifica por el nivel del programa.
+    territorial_id: a.territorialId ? String(a.territorialId) : '',
     cetap_id: '',
     programa_id: String(a.programaId),
     pensum: a.pensum ?? '',
@@ -150,6 +152,8 @@ function entradaPta(a: any, d: any, i: number) {
     fecha_inicio: a.fechaInicio,
     fecha_fin: a.fechaFin,
     origen: ORIGEN_PROGRAMACION,
+    // Explícito para la vista: el servidor ya la protege (protegerAsignaturas).
+    editable: false,
     id_concertacion: d.id_concertacion,
     nivel_concertacion: d.nivel,
   };
@@ -194,6 +198,22 @@ export async function aplicarDecision(q: Queryable, idConcertacion: string): Pro
   }
   if (await regimenDocencia({ periodo: vigente.periodo, estado: vigente.estado, datosEstructurados: vigente.ds }) !== 'programacion') {
     return marcar('pendiente_pta_flujo_anterior', 'El PTA ya se había enviado antes del corte: aprueba su Docencia en el flujo actual.', vigente.id);
+  }
+  // Una asignatura dictada en una Dirección Territorial va en el PTA al componente
+  // academica_territorial, que se aprueba por (territorial, nivel) en otra tabla.
+  // La concertación decide por nivel: aplicarla aprobaría el componente
+  // equivocado. No se aplica; queda pendiente y se reporta.
+  const territoriales = (d.asignaturas as any[]).map((a) => a?.territorialId).filter(Boolean).map(String);
+  if (territoriales.length) {
+    const noCentrales: Array<{ id: string }> = await q.query(
+      `SELECT id_seccional::text AS id FROM auth.seccionales
+        WHERE id_seccional::text = ANY($1::text[])
+          AND lower(regexp_replace(nom_seccional, '[^a-zA-Z0-9]', '', 'g')) <> 'sedecentral'`, [territoriales]);
+    if (noCentrales.length) {
+      return marcar('pendiente_docencia_territorial',
+        'La docencia incluye asignaturas de una Dirección Territorial: su aprobación (academica_territorial) no la da la concertación por nivel.',
+        vigente.id);
+    }
   }
   if (!ESTADOS_EDITABLES.test(estado)) {
     return marcar('pendiente_pta_en_aprobacion', `El PTA está ${vigente.estado}: la docencia nueva se aplica cuando vuelva al docente.`, vigente.id);

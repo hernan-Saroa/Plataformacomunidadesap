@@ -12,6 +12,8 @@ export interface AsignaturaConcertada {
   nombre: string;
   programaId: string;
   pensum: string | null;
+  /** auth.seccionales.id_seccional donde se dicta (asignaturas[].territorial_id del PTA); null = sin dato. */
+  territorialId: string | null;
   creditos: number;
   semestre: number | null;
   modalidad: string | null;
