@@ -4047,3 +4047,37 @@ export interface RondaDeAprobacion {
   motivo: string | null;
   escalones: EscalonDeRonda[];
 }
+
+/** Un escalón por rol de la cadena de la 3.1, con quién lo decide en el proceso (102). */
+export interface EscalonPorDesignar {
+  orden: number;
+  nombre: string;
+  /** Nombres legibles de los roles del escalón. */
+  roles: string[];
+  designado: {
+    usuarioId: string;
+    nombre: string;
+    usuarioNombre: string;
+    asignadoAt: string;
+    asignadoPor: string | null;
+  } | null;
+  /** Lo que ya decidió en la revisión en curso no se cambia. */
+  cambiable: boolean;
+  /** Si es el escalón que está esperando decisión. */
+  leToca: boolean;
+}
+
+/** Lo que la 3.3 enseña de los escalones por rol de la 3.1 (102). */
+export interface EscalonesPorDesignar {
+  puedeDesignar: boolean;
+  escalones: EscalonPorDesignar[];
+  historial: {
+    escalon: number;
+    escalonNombre: string | null;
+    nombre: string;
+    asignadoAt: string;
+    relevadoAt: string | null;
+    relevadoPor: string | null;
+    motivoRelevo: string | null;
+  }[];
+}

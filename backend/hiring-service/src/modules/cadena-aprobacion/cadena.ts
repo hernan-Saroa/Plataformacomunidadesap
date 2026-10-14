@@ -124,14 +124,36 @@ export interface Quien {
   personaId: string | null;
   /** Los papeles que cumple en este proceso: abogado, supervisor… */
   papeles: PapelEscalon[];
+  /** Su cuenta: es como se guarda la designación de la 3.3 (102). */
+  usuarioId?: string | null;
+}
+
+/** Los responsables de un escalón, con las cuentas designadas para el proceso (102). */
+export type Responsables = Pick<EscalonConfigurado, 'roles' | 'personas' | 'papeles'> & {
+  cuentas?: string[];
+};
+
+/**
+ * Quién decide de verdad un escalón en un proceso.
+ *
+ * En la cadena de la 3.1 un escalón por rol no lo decide cualquiera con el
+ * rol: lo decide la persona que la 3.3 designó para ese proceso, y sin
+ * designación nadie (decisión de Juan, 2026-10-14). Los escalones que nombran
+ * personas o un papel no cambian: ya dicen quién.
+ */
+export function responsablesEfectivos<T extends Pick<EscalonConfigurado, 'roles' | 'personas' | 'papeles'>>(
+  escalon: T,
+  exigeDesignacion: boolean,
+  designado: string | null,
+): T & { cuentas: string[] } {
+  if (!exigeDesignacion || !escalon.roles.length) return { ...escalon, cuentas: [] };
+  return { ...escalon, roles: [], cuentas: designado ? [designado] : [] };
 }
 
 /** Si quien mira es responsable del escalón. SUPER_ADMIN lo es de todos. */
-export function esResponsable(
-  escalon: Pick<EscalonConfigurado, 'roles' | 'personas' | 'papeles'>,
-  quien: Quien,
-): boolean {
+export function esResponsable(escalon: Responsables, quien: Quien): boolean {
   if (quien.roles.includes('SUPER_ADMIN')) return true;
+  if (quien.usuarioId && escalon.cuentas?.includes(quien.usuarioId)) return true;
   if (quien.personaId && escalon.personas.includes(quien.personaId)) return true;
   if (escalon.papeles.some((p) => quien.papeles.includes(p))) return true;
   return escalon.roles.some((r) => quien.roles.includes(r));
@@ -159,10 +181,11 @@ function esLaMisma(d: DecisionPrevia, personaId: string | null, usuarioId: strin
  * es peor que no ofrecerlo.
  */
 export function motivoParaNoDecidir(args: {
-  escalon: Pick<EscalonConfigurado, 'roles' | 'personas' | 'papeles' | 'acciones' | 'reglaDecision'> & {
-    orden: number;
-    estado: EstadoEscalon;
-  };
+  escalon: Responsables &
+    Pick<EscalonConfigurado, 'acciones' | 'reglaDecision'> & {
+      orden: number;
+      estado: EstadoEscalon;
+    };
   accion: AccionEscalon;
   quien: Quien;
   usuarioId: string | null;

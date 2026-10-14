@@ -1,4 +1,11 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { DataSource, EntityManager, In } from 'typeorm';
 
 import {
@@ -18,7 +25,14 @@ import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_ASIGNAR, tienePermiso } from '../../auth/permisos';
 import { Accion } from '../../auth/alcance';
 import { AlcanceService } from '../../auth/alcance.service';
-import { AsignarAbogadoDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
+import { AsignarAbogadoDto, DesignarEscalonDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
+import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
+import {
+  DesignacionEscalon,
+  EscalonRonda,
+  EstadoEscalon,
+  NUMERAL_CON_DESIGNACION,
+} from '../../entities/cadena-aprobacion.entity';
 import { CdpService } from '../cdp/cdp.service';
 import { respondeElAsignado } from './quien-responde';
 
@@ -119,7 +133,17 @@ export class ParticipacionService {
     private readonly cdp: CdpService,
     /** Quién puede qué en cada punto (migración 083). */
     private readonly alcance: AlcanceService,
-  ) {}
+    /**
+     * La cadena de la 3.1, para designar quién decide cada escalón por rol
+     * (migración 102). Opcional para que las pruebas que construyen el
+     * servicio a mano sigan funcionando con solo la fuente de datos.
+     */
+    @Optional() cadenas?: CadenaAprobacionService,
+  ) {
+    this.cadenas = cadenas ?? new CadenaAprobacionService(dataSource);
+  }
+
+  private readonly cadenas: CadenaAprobacionService;
 
   // ------------------------------------------------------------- consulta --
 
@@ -449,6 +473,209 @@ export class ParticipacionService {
     });
 
     return this.estado(procesoId, acceso);
+  }
+
+  // ------------------------------- quién decide cada escalón de la 3.1 (102) --
+
+  /**
+   * Los escalones por rol de la cadena de la 3.1, con su estado en la ronda en
+   * curso si la hay.
+   *
+   * Con el estudio previo ya enviado manda la copia de la ronda: es la cadena
+   * con la que de verdad se va a decidir. Antes del envío, la que rige hoy,
+   * para que la Dirección pueda repartir desde que toma el proceso.
+   */
+  private async escalonesPorRol(
+    em: EntityManager,
+    proceso: Proceso,
+  ): Promise<{ orden: number; nombre: string; roles: string[]; estado: EstadoEscalon | null }[]> {
+    const actividad = await em
+      .getRepository(ProcesoActividad)
+      .findOne({ where: { procesoId: proceso.id, numeral: NUMERAL_CON_DESIGNACION } });
+
+    const ronda = actividad ? await this.cadenas.rondaEnCurso(em, actividad.id) : null;
+    if (ronda) {
+      const escalones = await em
+        .getRepository(EscalonRonda)
+        .find({ where: { aprobacionId: ronda.id }, order: { orden: 'ASC' } });
+      return escalones
+        .filter((e) => e.roles.length > 0)
+        .map((e) => ({ orden: e.orden, nombre: e.nombre, roles: e.roles, estado: e.estado }));
+    }
+
+    const cadena = await this.cadenas.cadenaPara(NUMERAL_CON_DESIGNACION, proceso.modalidad ?? null, em);
+    // Con la regla de siempre no hay escalones que repartir: decide el abogado.
+    if (!cadena?.cadenaId) return [];
+    return cadena.escalones
+      .map((e, i) => ({ orden: i + 1, nombre: e.nombre, roles: e.roles, estado: null }))
+      .filter((e) => e.roles.length > 0);
+  }
+
+  /** Lo que la 3.3 enseña de los escalones: quién está designado y si se puede cambiar. */
+  async escalones(procesoId: string, acceso: HiringAccess) {
+    const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
+    const em = this.dataSource.manager;
+    const escalones = await this.escalonesPorRol(em, proceso);
+    const vigentes = await this.cadenas.designacionesDe(em, procesoId, NUMERAL_CON_DESIGNACION);
+    const nombres = await this.cadenas.nombresDeRoles(escalones.flatMap((e) => e.roles));
+    const relevados = await em.getRepository(DesignacionEscalon).find({
+      where: { procesoId, numeral: NUMERAL_CON_DESIGNACION, estado: 'RELEVADO' },
+      order: { relevadoAt: 'DESC' },
+    });
+
+    const contratacion = await this.vigente(procesoId, 'CONTRATACION', em);
+    const puedeDesignar =
+      (!!contratacion && esSuya(contratacion, acceso)) || tienePermiso(acceso, PERMISO_PROCESO_ASIGNAR);
+
+    return {
+      puedeDesignar,
+      escalones: escalones.map((e) => {
+        const d = vigentes.get(e.orden);
+        return {
+          orden: e.orden,
+          nombre: e.nombre,
+          roles: e.roles.map((r) => nombres.get(r) ?? r),
+          designado: d
+            ? { usuarioId: d.usuarioId, nombre: d.nombre, usuarioNombre: d.usuarioNombre, asignadoAt: d.asignadoAt, asignadoPor: d.asignadoPor }
+            : null,
+          // Lo que ya decidió en la ronda en curso queda como está.
+          cambiable: e.estado === null || e.estado === 'PENDIENTE' || e.estado === 'BLOQUEADO',
+          leToca: e.estado === 'PENDIENTE',
+        };
+      }),
+      historial: relevados.map((d) => ({
+        escalon: d.escalon,
+        escalonNombre: d.escalonNombre,
+        nombre: d.nombre,
+        asignadoAt: d.asignadoAt,
+        relevadoAt: d.relevadoAt,
+        relevadoPor: d.relevadoPor,
+        motivoRelevo: d.motivoRelevo,
+      })),
+    };
+  }
+
+  /** Las cuentas activas con alguno de los roles del escalón, para el desplegable. */
+  async candidatosDeEscalon(procesoId: string, orden: number, termino = ''): Promise<CuentaCandidata[]> {
+    const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
+    const escalon = (await this.escalonesPorRol(this.dataSource.manager, proceso)).find((e) => e.orden === orden);
+    if (!escalon) throw new NotFoundException('Ese escalón no se designa: no está definido por un rol');
+    return this.cuentasConRol(escalon.roles, termino);
+  }
+
+  private cuentasConRol(roles: string[], termino: string, soloEsta?: string): Promise<CuentaCandidata[]> {
+    // Parámetros ligados, nunca interpolados: el término viene del navegador.
+    return this.dataSource.query(
+      `SELECT DISTINCT
+              u.id_user   AS "usuarioId",
+              u.username  AS "usuarioNombre",
+              p.id_person AS "personaId",
+              COALESCE(p.nom_largo, p.nom_tercero, u.username) AS nombre,
+              NULL::varchar                     AS cargo,
+              COALESCE(p.dir_email, u.username) AS email
+         FROM auth."user" u
+         JOIN auth.user_roles ur ON ur.id_user = u.id_user
+         JOIN auth.role r ON r.id = ur.id_rol
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+        WHERE u.is_active = true
+          AND r.code = ANY($1::text[])
+          AND ($3::text IS NULL OR u.id_user::text = $3)
+          AND ($2 = ''
+               OR COALESCE(p.nom_largo, p.nom_tercero, u.username) ILIKE '%' || $2 || '%'
+               OR u.username ILIKE '%' || $2 || '%')
+        ORDER BY nombre
+        LIMIT 50`,
+      [roles, termino.trim(), soloEsta ?? null],
+    );
+  }
+
+  /**
+   * Designa quién decide un escalón por rol de la 3.1 en este proceso, o
+   * cambia al que estaba.
+   *
+   * Lo hace quien reparte el abogado —quien tomó el proceso, o el Director—,
+   * en el mismo lugar. Cambiar exige motivo y releva al anterior en vez de
+   * borrarlo: respondió por su tramo. Lo que ya decidió en la ronda en curso no
+   * se cambia: la designación nueva no reescribe quién aprobó.
+   */
+  async designarEscalon(procesoId: string, orden: number, dto: DesignarEscalonDto, acceso: HiringAccess) {
+    await this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId, true);
+      await this.exigirQuePuedaRepartir(em, procesoId, acceso);
+
+      const escalon = (await this.escalonesPorRol(em, proceso)).find((e) => e.orden === orden);
+      if (!escalon) {
+        throw new NotFoundException('Ese escalón no se designa: no está definido por un rol');
+      }
+      if (escalon.estado && escalon.estado !== 'PENDIENTE' && escalon.estado !== 'BLOQUEADO') {
+        throw new ConflictException(
+          `El escalón ${orden} ya decidió en esta revisión: la designación queda como está hasta el próximo envío`,
+        );
+      }
+
+      const [cuenta] = await this.cuentasConRol(escalon.roles, '', dto.usuarioId);
+      if (!cuenta) {
+        throw new BadRequestException(
+          'Esa persona no tiene el rol del escalón: solo se designa a quien lo tiene',
+        );
+      }
+
+      const repo = em.getRepository(DesignacionEscalon);
+      const actual = await repo.findOne({
+        where: { procesoId, numeral: NUMERAL_CON_DESIGNACION, escalon: orden, estado: 'VIGENTE' },
+      });
+      if (actual?.usuarioId === cuenta.usuarioId) {
+        throw new ConflictException('Esa persona ya está designada para este escalón');
+      }
+      if (actual) {
+        if ((dto.motivo ?? '').trim().length < 10) {
+          throw new BadRequestException('Explica por qué cambia quien revisa este escalón');
+        }
+        actual.estado = 'RELEVADO';
+        actual.relevadoAt = new Date();
+        actual.relevadoPor = acceso.userName;
+        actual.motivoRelevo = dto.motivo!.trim();
+        await repo.save(actual);
+      }
+
+      const nueva = await repo.save(
+        repo.create({
+          procesoId,
+          numeral: NUMERAL_CON_DESIGNACION,
+          escalon: orden,
+          escalonNombre: escalon.nombre,
+          usuarioId: cuenta.usuarioId,
+          usuarioNombre: cuenta.usuarioNombre,
+          personaId: cuenta.personaId ?? null,
+          nombre: cuenta.nombre,
+          estado: 'VIGENTE',
+          asignadoPor: acceso.userName,
+        }),
+      );
+
+      await em.save(
+        em.create(Trazabilidad, {
+          procesoId,
+          entidadId: nueva.id,
+          entidad: 'designacion_escalon',
+          accion: 'DESIGNAR',
+          detalle: {
+            numeral: NUMERAL_CON_DESIGNACION,
+            escalon: orden,
+            escalonNombre: escalon.nombre,
+            designado: cuenta.nombre,
+            anterior: actual?.nombre ?? null,
+            motivo: actual ? dto.motivo!.trim() : null,
+            // Si al designado ya le toca, el aviso le dice que tiene algo esperando.
+            pendiente: escalon.estado === 'PENDIENTE',
+          },
+          usuarioNombre: acceso.userName,
+          usuarioId: acceso.userId,
+        } as Partial<Trazabilidad>),
+      );
+    });
+
+    return this.escalones(procesoId, acceso);
   }
 
   // ------------------------------------------------ lo que consumen otras --

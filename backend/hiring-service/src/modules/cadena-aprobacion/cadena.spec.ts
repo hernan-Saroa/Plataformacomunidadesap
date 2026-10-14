@@ -3,6 +3,7 @@ import {
   escalonCompleto,
   leerConfigDeRegla,
   motivoParaNoDecidir,
+  responsablesEfectivos,
   trasDecision,
   validarEscalones,
 } from './cadena';
@@ -218,6 +219,44 @@ describe('cadena de aprobación', () => {
 
     it('una cadena vacía no es una cadena', () => {
       expect(validarEscalones([]).problemas).toEqual(['La cadena necesita al menos un escalón']);
+    });
+  });
+
+  /*
+   * La 3.1 reparte sus escalones por rol en la 3.3 (migración 102): decide la
+   * persona designada en el proceso, no cualquiera con el rol.
+   */
+  describe('responsablesEfectivos', () => {
+    const director = { roles: ['DIRECTOR'], personas: [], papeles: [] as any[] };
+    const motivo = (escalon: any, quien: any) =>
+      motivoParaNoDecidir({
+        escalon: { ...escalon, orden: 2, estado: 'PENDIENTE', acciones: ['APROBAR'], reglaDecision: 'UNO' },
+        accion: 'APROBAR',
+        quien,
+        usuarioId: quien.usuarioId,
+        previas: [],
+        permiteMismoAprobador: false,
+      });
+
+    it('fuera de la 3.1 el rol basta, como siempre', () => {
+      const e = responsablesEfectivos(director, false, null);
+      expect(motivo(e, { roles: ['DIRECTOR'], personaId: null, papeles: [], usuarioId: 'u-1' })).toBeNull();
+    });
+
+    it('en la 3.1 el rol solo no basta: decide el designado', () => {
+      const e = responsablesEfectivos(director, true, 'u-designada');
+      expect(motivo(e, { roles: ['DIRECTOR'], personaId: null, papeles: [], usuarioId: 'u-otro' })).toMatch(/No estás/);
+      expect(motivo(e, { roles: [], personaId: null, papeles: [], usuarioId: 'u-designada' })).toBeNull();
+    });
+
+    it('sin designación no decide nadie', () => {
+      const e = responsablesEfectivos(director, true, null);
+      expect(motivo(e, { roles: ['DIRECTOR'], personaId: null, papeles: [], usuarioId: 'u-1' })).toMatch(/No estás/);
+    });
+
+    it('un escalón del abogado no se designa: sigue por su papel', () => {
+      const abogado = { roles: [], personas: [], papeles: ['ABOGADO' as const] };
+      expect(responsablesEfectivos(abogado, true, null)).toEqual({ ...abogado, cuentas: [] });
     });
   });
 });

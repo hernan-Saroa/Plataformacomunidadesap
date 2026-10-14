@@ -378,13 +378,15 @@ export class NotificadorService implements OnApplicationBootstrap {
         // los que nombra la regla, como antes de la 101.
         if (!pendientes.length) {
           const cadena = await this.cadenas.cadenaPara(ocurrido.numeral, modalidad);
-          pendientes = cadena && !cadena.cadenaId ? cadena.escalones.slice(0, 1) : [];
+          pendientes = cadena && !cadena.cadenaId ? cadena.escalones.slice(0, 1).map((e) => ({ ...e, cuentas: [] })) : [];
         }
         const ids: string[] = [];
         for (const e of pendientes) {
           if (e.roles?.length) ids.push(...(await this.cuentasConRol(e.roles)));
           // Ids de persona: `cuentasDe` las traduce a sus cuentas.
           ids.push(...(e.personas ?? []));
+          // El designado en la 3.3 para el escalón (102): ya es una cuenta.
+          ids.push(...(e.cuentas ?? []));
           for (const papel of e.papeles ?? []) {
             if (papel === 'SUPERVISOR') {
               ids.push(...(await this.quienCumple('SUPERVISOR', ocurrido, modalidad)));

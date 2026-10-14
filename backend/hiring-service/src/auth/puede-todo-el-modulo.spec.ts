@@ -34,6 +34,8 @@ const SIN_DECORADOR: Record<string, string> = {
   'ParticipacionController.asignar': 'quien tomó el proceso o proceso.assign',
   'ParticipacionController.reasignar': 'quien tomó el proceso o proceso.assign',
   'ParticipacionController.quitar': 'quien tomó el proceso o proceso.assign',
+  // Designar quién decide un escalón de la 3.1 lo hace quien reparte (102).
+  'ParticipacionController.designarEscalon': 'quien tomó el proceso o proceso.assign',
   // Los aprobadores los nombra la regla EXIGE_APROBACION, que admite personas
   // concretas: un guard por alcance dejaría fuera a quien la regla nombra.
   'AprobacionController.aprobar': 'la regla EXIGE_APROBACION del punto',

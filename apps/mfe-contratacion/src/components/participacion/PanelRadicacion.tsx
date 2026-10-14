@@ -3,10 +3,11 @@ import { Check, History, Inbox, UserMinus, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
-import { CuentaCandidata, EstadoParticipacion } from '../../types';
+import { CuentaCandidata, EscalonesPorDesignar, EstadoParticipacion } from '../../types';
 import { Aviso, Ayuda, Boton, BotonSecundario, Marco, Titulo, campo } from '../shared/PiezasPanel';
 import { PasoDeLaActividad, PasosDeLaActividad } from '../shared/PasosDeLaActividad';
 import { momento } from '../shared/fechas';
+import { RevisoresDeLosEscalones } from './RevisoresDeLosEscalones';
 
 interface Props {
   procesoId: string;
@@ -133,6 +134,22 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
   const [elegido, setElegido] = useState('');
   const [motivo, setMotivo] = useState('');
   const [historialAbierto, setHistorialAbierto] = useState(false);
+  /**
+   * Los escalones por rol de la cadena de la 3.1 (migración 102). Nulo si la
+   * consulta falla: la radicación sigue sirviendo para tomar y repartir.
+   */
+  const [escalones, setEscalones] = useState<EscalonesPorDesignar | null>(null);
+
+  const leerEscalones = () =>
+    contratacionService
+      .escalonesPorDesignar(procesoId)
+      .then(setEscalones)
+      .catch(() => setEscalones(null));
+
+  useEffect(() => {
+    leerEscalones();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [procesoId]);
 
   useEffect(() => {
     setCargando(true);
@@ -157,6 +174,8 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
     setGuardando(true);
     try {
       setEstado(await accion());
+      // Hacerse cargo es lo que habilita designar los escalones.
+      leerEscalones();
       limpiar();
       toast.success(exito);
       onCambio?.();
@@ -391,8 +410,40 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
             detalle: `Lo elige ${contratacion.nombre}. ${sinQuienRevise}`,
           };
 
+  // ------------------------- paso 2b · quién revisa cada escalón (102) ----
+  const porDesignar = escalones?.escalones ?? [];
+  const faltan = porDesignar.filter((e) => !e.designado).length;
+  const pasoEscalones: PasoDeLaActividad | null = !porDesignar.length
+    ? null
+    : !contratacion
+      ? {
+          titulo: 'Designar quién revisa cada escalón',
+          estado: 'espera',
+          detalle: 'Los designa quien se haga cargo del proceso, junto al abogado.',
+        }
+      : {
+          titulo: 'Designar quién revisa cada escalón',
+          estado: faltan === 0 ? 'hecho' : escalones?.puedeDesignar ? 'te-toca' : 'le-toca',
+          detalle:
+            faltan === 0
+              ? 'El estudio previo se revisa por una cadena: cada escalón por rol ya tiene quién lo decida.'
+              : `${faltan === 1 ? 'Falta 1 escalón' : `Faltan ${faltan} escalones`} por designar: sin designación, ese escalón no lo decide nadie.${
+                  escalones?.puedeDesignar ? '' : ` Los designa ${contratacion.nombre}.`
+                }`,
+          children: (
+            <RevisoresDeLosEscalones procesoId={procesoId} datos={escalones!} onCambio={setEscalones} />
+          ),
+        };
+
   // ----------------------------------------- paso 3 · lo que sigue -------
-  const pasoRevision: PasoDeLaActividad = abogado
+  const pasoRevision: PasoDeLaActividad = porDesignar.length
+    ? {
+        titulo: 'La cadena revisa el estudio previo',
+        estado: 'despues',
+        etiqueta: 'Sigue en 3.4',
+        detalle: 'Cada escalón decide en orden; solo el último lo aprueba. Si alguno lo devuelve, vuelve al área.',
+      }
+    : abogado
     ? {
         titulo: 'El abogado revisa el estudio previo',
         estado: 'despues',
@@ -412,7 +463,9 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
       <Titulo>Radicación en la Dirección</Titulo>
       <Ayuda>Recibir el proceso en la Dirección de Contratación y ponerle quién lo revise.</Ayuda>
 
-      <PasosDeLaActividad pasos={[pasoCargo, pasoAbogado, pasoRevision]} />
+      <PasosDeLaActividad
+        pasos={[pasoCargo, pasoAbogado, ...(pasoEscalones ? [pasoEscalones] : []), pasoRevision]}
+      />
 
       {/* ---------------------------------------------------- historial -- */}
       {historial.length > 0 && (

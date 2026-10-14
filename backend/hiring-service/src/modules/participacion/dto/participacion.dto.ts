@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsNotEmpty, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 
 /**
  * A quien se le asigna el papel de abogado del proceso (EFDS-1183).
@@ -43,4 +43,24 @@ export class ReasignarAbogadoDto extends AsignarAbogadoDto {
   @MinLength(10, { message: 'El motivo debe explicar el cambio, no una palabra suelta' })
   @MaxLength(1000)
   motivo: string;
+}
+
+/**
+ * A quien se designa para un escalón por rol de la cadena de la 3.1
+ * (migración 102). Igual que el abogado: solo el `id_user`, y el servidor
+ * resuelve el resto contra el directorio.
+ *
+ * El motivo se exige al cambiar a quien ya estaba designado, no al designar
+ * por primera vez: es lo que explica el relevo en el historial.
+ */
+export class DesignarEscalonDto {
+  @ApiProperty({ description: 'id_user de la cuenta que decide el escalón en este proceso' })
+  @IsUUID('4', { message: 'La persona se identifica con el id de su cuenta' })
+  usuarioId: string;
+
+  @ApiPropertyOptional({ description: 'Por qué se cambia a quien estaba designado' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  motivo?: string;
 }

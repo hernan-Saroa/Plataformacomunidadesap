@@ -153,6 +153,7 @@ import {
   DocumentoPaa,
   AccionEscalon,
   CadenaDeAprobacion,
+  EscalonesPorDesignar,
   EscalonConfigurado,
   PapelEscalon,
   RondaDeAprobacion,
@@ -868,6 +869,22 @@ export const contratacionService = {
     pedir<CuentaCandidata[]>(`/participacion/financieros?q=${encodeURIComponent(q)}`),
 
   /** Reparte el abogado que revisará en la 3.4. Lo hace quien tomó el proceso. */
+  /** Quién revisa el estudio previo en cada escalón por rol (migración 102). */
+  escalonesPorDesignar: (procesoId: string) =>
+    pedir<EscalonesPorDesignar>(`/procesos/${procesoId}/participacion/escalones`),
+
+  candidatosDeEscalon: (procesoId: string, orden: number, q = '') =>
+    pedir<CuentaCandidata[]>(
+      `/procesos/${procesoId}/participacion/escalones/${orden}/candidatos?q=${encodeURIComponent(q)}`,
+    ),
+
+  /** Designa quién decide el escalón; cambiar a quien estaba exige motivo. */
+  designarEscalon: (procesoId: string, orden: number, usuarioId: string, motivo?: string) =>
+    pedir<EscalonesPorDesignar>(`/procesos/${procesoId}/participacion/escalones/${orden}`, {
+      method: 'POST',
+      body: JSON.stringify({ usuarioId, motivo }),
+    }),
+
   asignarAbogado: (procesoId: string, usuarioId: string) =>
     pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado`, {
       method: 'POST',

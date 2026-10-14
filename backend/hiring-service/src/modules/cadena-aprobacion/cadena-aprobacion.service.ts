@@ -5,7 +5,9 @@ import { HiringAccess } from '../../auth/hiring-access';
 import {
   AccionEscalon,
   CadenaAprobacion,
+  DesignacionEscalon,
   EscalonRonda,
+  NUMERAL_CON_DESIGNACION,
   PapelEscalon,
   RondaAprobacion,
 } from '../../entities/cadena-aprobacion.entity';
@@ -23,6 +25,7 @@ import {
   esResponsable,
   leerConfigDeRegla,
   motivoParaNoDecidir,
+  responsablesEfectivos,
   trasDecision,
 } from './cadena';
 
@@ -209,6 +212,26 @@ export class CadenaAprobacionService {
     });
   }
 
+  // ----------------------------------------------------- designación (102) --
+
+  /** Si los escalones por rol de este numeral se designan en la 3.3. */
+  exigeDesignacion(numeral: string): boolean {
+    return numeral === NUMERAL_CON_DESIGNACION;
+  }
+
+  /** Las designaciones vigentes del proceso para ese numeral, por escalón. */
+  async designacionesDe(
+    em: EntityManager,
+    procesoId: string,
+    numeral: string,
+  ): Promise<Map<number, DesignacionEscalon>> {
+    if (!this.exigeDesignacion(numeral)) return new Map();
+    const filas = await em
+      .getRepository(DesignacionEscalon)
+      .find({ where: { procesoId, numeral, estado: 'VIGENTE' } });
+    return new Map(filas.map((d) => [d.escalon, d]));
+  }
+
   // --------------------------------------------------------------- decidir --
 
   /**
@@ -218,7 +241,7 @@ export class CadenaAprobacionService {
    */
   async quienEs(em: EntityManager, procesoId: string, acceso: HiringAccess): Promise<Quien> {
     const roles = acceso.roles ?? [];
-    if (!acceso.userId) return { roles, personaId: null, papeles: [] };
+    if (!acceso.userId) return { roles, personaId: null, papeles: [], usuarioId: null };
 
     const [cuenta] = await em.query(`SELECT id_person::text AS id FROM auth."user" WHERE id_user::text = $1`, [
       acceso.userId,
@@ -245,7 +268,7 @@ export class CadenaAprobacionService {
       if (supervisa) papeles.push('SUPERVISOR');
     }
 
-    return { roles, personaId, papeles };
+    return { roles, personaId, papeles, usuarioId: acceso.userId };
   }
 
   private async previasDe(em: EntityManager, rondaId: string): Promise<DecisionPrevia[]> {
@@ -307,8 +330,17 @@ export class CadenaAprobacionService {
     const quien = await this.quienEs(em, actividad.procesoId, acceso);
     const previas = await this.previasDe(em, ronda.id);
 
+    // En la 3.1, un escalón por rol lo decide quien designó la 3.3 (102).
+    const exige = this.exigeDesignacion(actividad.numeral);
+    const designado = (await this.designacionesDe(em, actividad.procesoId, actividad.numeral)).get(escalon.orden);
+    if (exige && escalon.roles.length && !designado) {
+      throw new ConflictException(
+        `Nadie ha sido designado para el escalón ${escalon.orden} (${escalon.nombre}): se designa en la 3.3, junto al abogado`,
+      );
+    }
+
     const motivo = motivoParaNoDecidir({
-      escalon,
+      escalon: responsablesEfectivos(escalon, exige, designado?.usuarioId ?? null),
       accion,
       quien,
       usuarioId: acceso.userId || null,
@@ -425,11 +457,19 @@ export class CadenaAprobacionService {
       .getRepository(Revision)
       .find({ where: { aprobacionId: ronda.id }, order: { createdAt: 'ASC' } });
 
+    // En la 3.1 los escalones por rol los decide quien designó la 3.3 (102).
+    const exige = this.exigeDesignacion(actividad.numeral);
+    const designaciones = await this.designacionesDe(em, actividad.procesoId, actividad.numeral);
+    const efectivo = (e: EscalonRonda) =>
+      responsablesEfectivos(e, exige, designaciones.get(e.orden)?.usuarioId ?? null);
+
     const pendiente = viva ? escalones.find((e) => e.estado === 'PENDIENTE') : undefined;
+    const faltaDesignar = !!pendiente && exige && pendiente.roles.length > 0 && !designaciones.has(pendiente.orden);
     const puedo = (accion: AccionEscalon) =>
       !!pendiente &&
+      !faltaDesignar &&
       motivoParaNoDecidir({
-        escalon: pendiente,
+        escalon: efectivo(pendiente),
         accion,
         quien,
         usuarioId: acceso.userId || null,
@@ -450,9 +490,9 @@ export class CadenaAprobacionService {
       acciones: ACCIONES.filter(puedo),
       /** Por qué no puede aprobar, cuando es responsable pero algo se lo impide. */
       motivo:
-        pendiente && esResponsable(pendiente, quien) && !puedo('APROBAR')
+        pendiente && !faltaDesignar && esResponsable(efectivo(pendiente), quien) && !puedo('APROBAR')
           ? motivoParaNoDecidir({
-              escalon: pendiente,
+              escalon: efectivo(pendiente),
               accion: 'APROBAR',
               quien,
               usuarioId: acceso.userId || null,
@@ -460,17 +500,30 @@ export class CadenaAprobacionService {
               permiteMismoAprobador: ronda.permiteMismoAprobador,
             })
           : null,
+      /** A quién espera, dicho para cualquiera que mire. */
+      espera: faltaDesignar
+        ? `Falta designar en la 3.3 quién revisa el escalón ${pendiente!.orden}, ${pendiente!.nombre}`
+        : null,
       escalones: escalones.map((e) => ({
         orden: e.orden,
         nombre: e.nombre,
         estado: e.estado,
         reglaDecision: e.reglaDecision,
         acciones: e.acciones,
-        responsables: [
-          ...e.roles.map((r) => roles.get(r) ?? r),
-          ...e.personas.map((p) => personas.get(p) ?? p),
-          ...e.papeles.map((p) => NOMBRE_PAPEL[p] ?? p),
-        ],
+        responsables:
+          exige && e.roles.length
+            ? // El designado con nombre propio, o que falta designarlo.
+              [
+                designaciones.get(e.orden)?.nombre ??
+                  `Falta designar (${e.roles.map((r) => roles.get(r) ?? r).join(' o ')})`,
+                ...e.personas.map((p) => personas.get(p) ?? p),
+                ...e.papeles.map((p) => NOMBRE_PAPEL[p] ?? p),
+              ]
+            : [
+                ...e.roles.map((r) => roles.get(r) ?? r),
+                ...e.personas.map((p) => personas.get(p) ?? p),
+                ...e.papeles.map((p) => NOMBRE_PAPEL[p] ?? p),
+              ],
         activadoAt: e.activadoAt,
         resueltoAt: e.resueltoAt,
         decisiones: decisiones
@@ -486,13 +539,22 @@ export class CadenaAprobacionService {
    */
   async responsablesPendientes(procesoId: string, numeral: string) {
     return this.dataSource.query(
-      `SELECT e.roles, e.personas, e.papeles
+      // En la 3.1 el escalón por rol avisa solo al designado (102).
+      `SELECT CASE WHEN $3 AND cardinality(e.roles) > 0 THEN '{}'::text[] ELSE e.roles END AS roles,
+              e.personas,
+              e.papeles,
+              ARRAY(
+                SELECT d.usuario_id::text FROM hiring.designaciones_escalon d
+                 WHERE $3 AND cardinality(e.roles) > 0
+                   AND d.proceso_id = pa.proceso_id AND d.numeral = pa.numeral
+                   AND d.escalon = e.orden AND d.estado = 'VIGENTE'
+              ) AS cuentas
          FROM hiring.proceso_actividades pa
          JOIN hiring.aprobaciones r ON r.proceso_actividad_id = pa.id AND r.estado = 'EN_CURSO'
          JOIN hiring.aprobacion_escalones e ON e.aprobacion_id = r.id AND e.estado = 'PENDIENTE'
         WHERE pa.proceso_id = $1 AND pa.numeral = $2 AND pa.estado = 'EN_REVISION'`,
-      [procesoId, numeral],
-    ) as Promise<{ roles: string[]; personas: string[]; papeles: PapelEscalon[] }[]>;
+      [procesoId, numeral, this.exigeDesignacion(numeral)],
+    ) as Promise<{ roles: string[]; personas: string[]; papeles: PapelEscalon[]; cuentas: string[] }[]>;
   }
 
   /**
@@ -540,7 +602,14 @@ export class CadenaAprobacionService {
        WHERE pa.estado = 'EN_REVISION'
          AND (
            'SUPER_ADMIN' = ANY($1::text[])
-           OR e.roles && $1::text[]
+           -- Por rol, salvo en la 3.1, donde el escalón por rol lo decide
+           -- solo quien designó la 3.3 (102).
+           OR (e.roles && $1::text[] AND pa.numeral <> '${NUMERAL_CON_DESIGNACION}')
+           OR ($3 <> '' AND EXISTS (
+             SELECT 1 FROM hiring.designaciones_escalon d
+              WHERE d.proceso_id = p.id AND d.numeral = pa.numeral AND d.escalon = e.orden
+                AND d.estado = 'VIGENTE' AND d.usuario_id::text = $3
+           ))
            OR ($2 <> '' AND $2 = ANY (e.personas))
            OR EXISTS (
              SELECT 1 FROM hiring.participaciones_proceso pp

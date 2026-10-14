@@ -795,6 +795,8 @@ export class EstudioPrevioService implements OnModuleInit {
         /** A quién espera, o por qué no le toca a quien mira, en una frase. */
         espera:
           ronda.motivo ??
+          // Que falta designar en la 3.3 a quien decide el escalón (102).
+          ronda.espera ??
           (pendiente
             ? `Espera al escalón ${pendiente.orden}, ${pendiente.nombre}: ${pendiente.responsables
                 // El papel con nombre propio: «Andrés Rojas», no «el abogado del proceso».

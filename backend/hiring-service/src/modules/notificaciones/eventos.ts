@@ -449,6 +449,9 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
       return ocurrido('PROCESO_RADICADO', '3.1');
     case 'participacion_proceso:RADICAR':
       return ocurrido('RECIBIDO_EN_CONTRATACION', '3.3');
+    // Designado para un escalón que ya está esperando (102): le toca decidir.
+    case 'designacion_escalon:DESIGNAR':
+      return detalle.pendiente ? ocurrido('ENVIADA_A_APROBACION', numeral) : null;
     case 'participacion_proceso:DESIGNAR':
       // Asignar el abogado es el «le toca» de la 3.4: desde ahí puede revisar.
       return detalle.papel === 'ABOGADO' ? ocurrido('HABILITADA', SE_HABILITA_AL_ASIGNAR_ABOGADO) : null;

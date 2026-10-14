@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { ParticipacionService } from './participacion.service';
-import { AsignarAbogadoDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
+import { AsignarAbogadoDto, DesignarEscalonDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
 
@@ -105,6 +105,45 @@ export class ParticipacionController {
     @Req() req: any,
   ) {
     return this.service.quitarAbogado(procesoId, dto, getHiringAccess(req));
+  }
+
+  // ------------------------- quién decide cada escalón de la 3.1 (102) ----
+
+  @Get('escalones')
+  @Puede('ver', '3.3')
+  @ApiOperation({
+    summary: 'Quién revisa el estudio previo en cada escalón por rol',
+    description:
+      'Los escalones de la cadena de la 3.1 que nombran un rol, con la persona designada en este proceso y si se puede cambiar.',
+  })
+  escalones(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.service.escalones(procesoId, getHiringAccess(req));
+  }
+
+  @Get('escalones/:orden/candidatos')
+  @Puede('ver', '3.3')
+  @ApiOperation({ summary: 'Cuentas con el rol del escalón, para designar' })
+  candidatosDeEscalon(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Param('orden', ParseIntPipe) orden: number,
+    @Query('q') q?: string,
+  ) {
+    return this.service.candidatosDeEscalon(procesoId, orden, q ?? '');
+  }
+
+  @Post('escalones/:orden')
+  @ApiOperation({
+    summary: 'Designar quién decide un escalón por rol, o cambiarlo',
+    description:
+      'Lo hace quien tomó el proceso, o el Director. Cambiar a quien estaba exige motivo; lo que el escalón ya decidió en la revisión en curso no se cambia.',
+  })
+  designarEscalon(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Param('orden', ParseIntPipe) orden: number,
+    @Body() dto: DesignarEscalonDto,
+    @Req() req: any,
+  ) {
+    return this.service.designarEscalon(procesoId, orden, dto, getHiringAccess(req));
   }
 }
 
