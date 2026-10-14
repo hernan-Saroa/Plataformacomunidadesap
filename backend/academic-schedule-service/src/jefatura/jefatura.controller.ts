@@ -1,4 +1,4 @@
-import { Body, Controller, ConflictException, ForbiddenException, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, ConflictException, Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { ProgramacionPermissionsService } from '../auth/programacion-permissions.service.js';
@@ -58,7 +58,7 @@ export class JefaturaController {
   /** POST /jefatura/aprobar/:idFranja — TOMADA → APROBADA. */
   @Post('aprobar/:idFranja')
   @EscrituraEn({ franja: { param: 'idFranja' } })
-  async aprobar(@Req() req: Request, @Param('idFranja') idFranja: string) {
+  async aprobar(@Req() req: Request, @Param('idFranja', ParseUUIDPipe) idFranja: string) {
     await this.exigirAprobacion(req);
     return { success: true, data: await this.jefatura.aprobar(this.idUser(req), idFranja) };
   }
@@ -66,7 +66,7 @@ export class JefaturaController {
   /** POST /jefatura/devolver/:idFranja — TOMADA → PUBLICADA con comentario. */
   @Post('devolver/:idFranja')
   @EscrituraEn({ franja: { param: 'idFranja' } })
-  async devolver(@Req() req: Request, @Param('idFranja') idFranja: string, @Body() body: { comentario?: string }) {
+  async devolver(@Req() req: Request, @Param('idFranja', ParseUUIDPipe) idFranja: string, @Body() body: { comentario?: string }) {
     await this.exigirAprobacion(req);
     return { success: true, data: await this.jefatura.devolver(this.idUser(req), idFranja, body?.comentario ?? '') };
   }

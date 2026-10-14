@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 
 import { AcumuladoService } from './acumulado.service.js';
@@ -60,7 +60,7 @@ export class AsignacionesController {
   /** DELETE /asignaciones/grupo/:idGrupo — retira la asignación y libera sus franjas. */
   @Delete('grupo/:idGrupo')
   @EscrituraEn({ grupo: { param: 'idGrupo' } }, { exigeNivel: true })
-  async retirar(@Param('idGrupo') idGrupo: string) {
+  async retirar(@Param('idGrupo', ParseUUIDPipe) idGrupo: string) {
     const data = await this.asignaciones.retirar(idGrupo);
     return { success: true, data };
   }

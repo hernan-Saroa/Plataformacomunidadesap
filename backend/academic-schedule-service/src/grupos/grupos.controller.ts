@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 
 import { GruposService, type ActualizarGrupoDto, type CrearGrupoDto } from './grupos.service.js';
 import { EscrituraEn, LecturaEn } from '../acceso/escritura.decorator.js';
@@ -25,20 +25,20 @@ export class GruposController {
 
   @Get(':id')
   @LecturaEn({ grupo: { param: 'id' } })
-  async obtener(@Param('id') id: string) {
+  async obtener(@Param('id', ParseUUIDPipe) id: string) {
     return { success: true, data: await this.gruposService.obtener(id) };
   }
 
   /** PATCH /grupos/:id — solo campos propios; no mueve de asignatura ni renumera. */
   @Patch(':id')
   @EscrituraEn({ grupo: { param: 'id' } }, { exigeNivel: true })
-  async actualizar(@Param('id') id: string, @Body() body: ActualizarGrupoDto) {
+  async actualizar(@Param('id', ParseUUIDPipe) id: string, @Body() body: ActualizarGrupoDto) {
     return { success: true, data: await this.gruposService.actualizar(id, body) };
   }
 
   @Delete(':id')
   @EscrituraEn({ grupo: { param: 'id' } }, { exigeNivel: true })
-  async eliminar(@Param('id') id: string) {
+  async eliminar(@Param('id', ParseUUIDPipe) id: string) {
     return { success: true, data: await this.gruposService.eliminar(id) };
   }
 }

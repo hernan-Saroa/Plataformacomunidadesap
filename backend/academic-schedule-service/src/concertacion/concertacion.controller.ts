@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Post, Query, Req, SetMetadata } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, Param, ParseUUIDPipe, Post, Query, Req, SetMetadata } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
@@ -76,14 +76,14 @@ export class ConcertacionController {
 
   /** GET /concertacion/:id — detalle con firmas y revisiones. */
   @Get(':id')
-  async detalle(@Param('id') id: string) {
+  async detalle(@Param('id', ParseUUIDPipe) id: string) {
     return { success: true, data: await this.concertacion.detalle(id) };
   }
 
   /** POST /concertacion/:id/revisar — revisión requerida (hoy 'academica'), firmada. */
   @Post(':id/revisar')
   @EscrituraEn({ concertacion: { param: 'id' } })
-  async revisar(@Req() req: Request, @Param('id') id: string, @Body() body: { tipo?: string; codigo?: string }) {
+  async revisar(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() body: { tipo?: string; codigo?: string }) {
     const permisos = await this.permisosPta.resolver(idUserDe(req));
     return { success: true, data: await this.concertacion.revisar(id, body?.tipo ?? 'academica', idUserDe(req), permisos, body?.codigo) };
   }
@@ -91,7 +91,7 @@ export class ConcertacionController {
   /** POST /concertacion/:id/devolver — con comentario obligatorio. */
   @Post(':id/devolver')
   @EscrituraEn({ concertacion: { param: 'id' } })
-  async devolver(@Req() req: Request, @Param('id') id: string, @Body() body: { comentario?: string }) {
+  async devolver(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() body: { comentario?: string }) {
     const permisos = await this.permisosPta.resolver(idUserDe(req));
     return { success: true, data: await this.concertacion.devolver(id, idUserDe(req), permisos, body?.comentario) };
   }
@@ -99,7 +99,7 @@ export class ConcertacionController {
   /** POST /concertacion/:id/aprobar — firmada; entrega la decisión al PTA. */
   @Post(':id/aprobar')
   @EscrituraEn({ concertacion: { param: 'id' } })
-  async aprobar(@Req() req: Request, @Param('id') id: string, @Body() body: { codigo?: string }) {
+  async aprobar(@Req() req: Request, @Param('id', ParseUUIDPipe) id: string, @Body() body: { codigo?: string }) {
     const permisos = await this.permisosPta.resolver(idUserDe(req));
     return { success: true, data: await this.concertacion.aprobar(id, idUserDe(req), permisos, body?.codigo, tokenDe(req)) };
   }

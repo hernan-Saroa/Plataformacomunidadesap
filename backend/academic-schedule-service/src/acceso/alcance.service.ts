@@ -107,6 +107,7 @@ export class AlcanceService {
       case 'asignatura':
         return { existe: true, periodo: null, nivel: await this.nivelDeAsignatura(valor) };
       case 'grupo': {
+        if (!esUuid(valor)) return { existe: false, periodo: null, nivel: null };
         const g = await this.grupo(valor);
         if (!g) return { existe: false, periodo: null, nivel: null };
         return {
