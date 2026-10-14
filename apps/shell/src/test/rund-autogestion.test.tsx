@@ -1,12 +1,12 @@
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { AutogestionDocenteRUND } from '../../../mfe-pta/src/components/pta/banco-docentes/AutogestionDocenteRUND';
+import { AutogestionDocenteRUND } from '../../../mfe-rund/src/components/pta/banco-docentes/AutogestionDocenteRUND';
 import { apiClient } from '../services/api';
-import { vincularRundSoporte } from '../../../mfe-pta/src/services/api/ptaApi';
+import { vincularRundSoporte } from '../../../mfe-rund/src/services/api/ptaApi';
 
 vi.mock('../services/api', () => ({ apiClient: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));
-vi.mock('../../../mfe-pta/src/services/api/ptaApi', () => ({ vincularRundSoporte: vi.fn() }));
+vi.mock('../../../mfe-rund/src/services/api/ptaApi', () => ({ vincularRundSoporte: vi.fn() }));
 vi.mock('../components/assets/ESAPLogo', () => ({ ESAPLogo: () => <span>ESAP</span> }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -66,7 +66,7 @@ describe('Autogestión RUND con respuestas reales del cliente API', () => {
     expect(container.innerHTML).not.toContain('1020304050');
     fireEvent.change(screen.getByDisplayValue('3001234567'), { target: { value: '3007654321' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar borrador/ }));
-    await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith(`/pta/api/v1/banco-docentes/drafts/${session}`,
+    await waitFor(() => expect(apiClient.put).toHaveBeenCalledWith(`/rund/api/v1/banco-docentes/drafts/${session}`,
       expect.objectContaining({ telefono: '3007654321', documento_identidad: '******4050', puntajeSalarial: '' })));
   });
   it('al ingresar otra vez recupera del perfil los soportes aprobados y los motivos de devolución', async () => {

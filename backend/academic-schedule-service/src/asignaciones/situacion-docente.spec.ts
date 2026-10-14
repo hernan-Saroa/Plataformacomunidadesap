@@ -105,7 +105,7 @@ describe('EFDS-1372 :: canario agregado sobre el RUND real', () => {
     async () => {
       const { rows } = await client!.query(
         `SELECT "situacionCategoria" AS categoria, "situacionAdministrativa" AS descripcion
-           FROM academic_work_plan."Docente"`,
+           FROM rund."Docente"`,
       );
       expect(rows.length).toBeGreaterThan(0);
 

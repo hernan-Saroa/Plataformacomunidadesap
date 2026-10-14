@@ -7,6 +7,7 @@ import { CarpetaDigitalService } from './carpeta-digital.service';
 import { DocumentTypeValidatorService } from './document-type-validator.service';
 import { TipoDocumento } from './tipo-documento.entity';
 import { DocumentoCarpetaDigital } from './documento-carpeta-digital.entity';
+import { RundClientModule } from './rund.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { DocumentoCarpetaDigital } from './documento-carpeta-digital.entity';
       DocumentoCarpetaDigital,
       Person,
     ]),
+    RundClientModule,
   ],
   controllers: [CarpetaDigitalController],
   providers: [CarpetaDigitalService, DocumentTypeValidatorService],

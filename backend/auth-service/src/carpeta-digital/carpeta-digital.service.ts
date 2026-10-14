@@ -5,6 +5,7 @@ import { Person } from '../users/person.entity';
 import { CarpetaDigital } from './carpeta-digital.entity';
 import { TipoDocumento } from './tipo-documento.entity';
 import { DocumentoCarpetaDigital } from './documento-carpeta-digital.entity';
+import { RundClient } from './rund-client';
 import { auditRundDocuments, protectRundFolderDocument, isRundFolderDocument, rundOriginalResourceId } from './rund-document-access';
 
 @Injectable()
@@ -19,6 +20,7 @@ export class CarpetaDigitalService {
     @InjectRepository(DocumentoCarpetaDigital)
     private readonly documentoRepo: Repository<DocumentoCarpetaDigital>,
     private readonly dataSource: DataSource,
+    private readonly rund: RundClient,
   ) {}
 
   async getAllCarpetas() {
@@ -113,7 +115,7 @@ export class CarpetaDigitalService {
   /**
    * Lista los documentos de la carpeta de una persona. UNIÓN de:
    *  1) auth.documento_carpeta_digital (uploads genéricos + soportes RUND sincronizados)
-   *  2) academic_work_plan."RundSoporteCampo" (soportes RUND que aún no estén sincronizados)
+   *  2) soportes RUND que aún no estén sincronizados (se piden a rund-service)
    *
    * Acepta personaId puro o el formato "carpeta:<personaId>" (legado del frontend).
    */
@@ -136,16 +138,9 @@ export class CarpetaDigitalService {
     // 2) Soportes RUND cross-schema (los que aún no tienen su fila en auth.documento_carpeta_digital)
     let rundSoportes: any[] = [];
     try {
-      rundSoportes = await this.dataSource.query(
-        `SELECT s.id, s.bloque, s.tipo_soporte, s.documento_carpeta_id, s.nombre_archivo,
-                s.estado, s.fecha_vencimiento, s.observacion, s."createdAt"
-           FROM academic_work_plan."RundSoporteCampo" s
-           JOIN academic_work_plan."Docente" d ON d.id = s.docente_id
-          WHERE d."personaId" = $1`,
-        [personaId],
-      );
+      rundSoportes = await this.rund.soportesPorPersona(personaId);
     } catch {
-      /* schema/tabla no disponible — fallback silencioso */
+      /* rund-service no disponible — los soportes RUND se omiten, no se rompe la carpeta */
     }
 
     for (const sop of rundSoportes) {
@@ -172,7 +167,7 @@ export class CarpetaDigitalService {
     }
 
     if (docsDto.some(isRundFolderDocument)) {
-      await auditRundDocuments(this.dataSource, user, 'CARPETA_DIGITAL_LISTADO_RUND', personaId);
+      await auditRundDocuments(this.rund, user, 'CARPETA_DIGITAL_LISTADO_RUND', personaId);
     }
     return docsDto.map((doc) => protectRundFolderDocument(doc, user));
   }
@@ -213,7 +208,7 @@ export class CarpetaDigitalService {
       fechaSubida: new Date(),
     });
     if (isRundFolderDocument(doc)) {
-      await auditRundDocuments(this.dataSource, user, 'CARPETA_DIGITAL_CARGAR_RUND', rundOriginalResourceId(doc.urlArchivo));
+      await auditRundDocuments(this.rund, user, 'CARPETA_DIGITAL_CARGAR_RUND', rundOriginalResourceId(doc.urlArchivo));
     }
     const saved = await this.documentoRepo.save(doc);
     return protectRundFolderDocument(this.toDocumentoDto(saved, carpeta.personaId), user);
@@ -225,7 +220,7 @@ export class CarpetaDigitalService {
     if (!existing) throw new NotFoundException('Documento no encontrado');
     const isRund = isRundFolderDocument(existing);
     if (isRund || isRundFolderDocument(data)) {
-      await auditRundDocuments(this.dataSource, user, 'CARPETA_DIGITAL_RECLASIFICAR_RUND', rundOriginalResourceId(existing.urlArchivo));
+      await auditRundDocuments(this.rund, user, 'CARPETA_DIGITAL_RECLASIFICAR_RUND', rundOriginalResourceId(existing.urlArchivo));
     }
     if (data.tipoDocumentoId) existing.tipoDocumentoId = data.tipoDocumentoId;
     if (data.categoria && !isRund) existing.categoria = data.categoria;
@@ -241,7 +236,7 @@ export class CarpetaDigitalService {
       throw new BadRequestException('estado debe ser validado o rechazado');
     }
     if (isRundFolderDocument(existing)) {
-      await auditRundDocuments(this.dataSource, user, 'CARPETA_DIGITAL_VALIDAR_RUND', rundOriginalResourceId(existing.urlArchivo));
+      await auditRundDocuments(this.rund, user, 'CARPETA_DIGITAL_VALIDAR_RUND', rundOriginalResourceId(existing.urlArchivo));
     }
     existing.estado = data.estado;
     existing.comentarios = data.comentarios || existing.comentarios;
@@ -256,7 +251,7 @@ export class CarpetaDigitalService {
     const existing = await this.documentoRepo.findOne({ where: { id } });
     if (!existing) throw new NotFoundException('Documento no encontrado');
     if (isRundFolderDocument(existing)) {
-      await auditRundDocuments(this.dataSource, user, 'CARPETA_DIGITAL_RETIRAR_RUND', rundOriginalResourceId(existing.urlArchivo));
+      await auditRundDocuments(this.rund, user, 'CARPETA_DIGITAL_RETIRAR_RUND', rundOriginalResourceId(existing.urlArchivo));
     }
     await this.documentoRepo.delete(id);
     return { id };

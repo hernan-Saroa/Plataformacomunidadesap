@@ -2,7 +2,7 @@ import { assertRundEvidenceData } from './rund-evidence-data';
 import { extractionIds, lockExtractionSuggestions, confirmExtractionSuggestions } from './rund-extraccion-fields';
 import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
 import { RundEvidenceWorkflow, invalidateEditedEvidence } from './rund-evidence-workflow';
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Like, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
@@ -14,6 +14,7 @@ import { BancoDocenteInvitacionEntity } from '../../entities/banco-docente-invit
 import { RundAprobacionLogEntity } from '../../entities/rund-aprobacion-log.entity';
 import { sanitizeText } from '../../common/text-sanitizer';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../../common/catalogos/territoriales-cetaps-esap';
+import { apuntaAlArchivo, urlSoporteCarpetaDigital } from '../../common/rund-public-paths';
 import { findRundSensitiveFields, maskIdentityDocument, protectRundSensitiveData } from './banco-docentes-sensitive-data';
 import { recordRundAccess } from './rund-access-audit';
 import { buildRundPerfilCabezote, RundPerfilCabezote } from './rund-perfil-cabezote';
@@ -2573,7 +2574,12 @@ export class BancoDocentesService implements OnModuleInit {
     let page = 1;
     const allUsers: any[] = [];
     while (true) {
-      const res = await fetch(`${authServiceUrl}/api/v1/users?role=DOCENTE&limit=100&page=${page}`);
+      let res: Response;
+      try {
+        res = await fetch(`${authServiceUrl}/api/v1/users?role=DOCENTE&limit=100&page=${page}`);
+      } catch {
+        throw new ServiceUnavailableException('No se pudo contactar al servicio de autenticación para sincronizar docentes.');
+      }
       if (!res.ok) break;
       const body = await res.json().catch(() => ({}));
       const items: any[] = body?.data?.data || body?.data || [];
@@ -3502,10 +3508,11 @@ export class BancoDocentesService implements OnModuleInit {
   async getSoportesProximosVencer(diasUmbral = 30): Promise<any[]> {
     const rows = await this.dataSource.query(
       `SELECT sc.*, d."correoInstitucional", 
-              p.primer_nombre || ' ' || COALESCE(p.primer_apellido, '') AS nombre_docente
+              p.nom_largo AS nombre_docente
        FROM rund."RundSoporteCampo" sc
-       JOIN rund."Docente" d ON d.id = sc.docente_id
-       JOIN academic_work_plan."Persona" p ON p.id = d."personaId"
+       -- "Docente".id es text y docente_id es uuid: se compara como texto.
+       JOIN rund."Docente" d ON d.id = sc.docente_id::text
+       JOIN auth.personas p ON p.id_person = d."personaId"
        WHERE sc.fecha_vencimiento IS NOT NULL
          AND sc.estado != 'Rechazado'
          AND sc.fecha_vencimiento <= (NOW() + INTERVAL '${diasUmbral} days')
@@ -3977,8 +3984,7 @@ export class BancoDocentesService implements OnModuleInit {
       );
 
       const unlinkedFiles = diskFiles.filter((file: string) => {
-        const expectedDocId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file}`;
-        return !dbSoportes.some((s: any) => s.documento_carpeta_id === expectedDocId);
+        return !dbSoportes.some((s: any) => apuntaAlArchivo(s.documento_carpeta_id, docenteNombre, file));
       });
 
       if (unlinkedFiles.length === 0) {
@@ -3994,7 +4000,7 @@ export class BancoDocentesService implements OnModuleInit {
       while (filesToLink.length > 0 && unlinkedDbRecords.length > 0) {
         const file = filesToLink.shift();
         const record = unlinkedDbRecords.shift();
-        const expectedDocId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file}`;
+        const expectedDocId = urlSoporteCarpetaDigital(docenteNombre, file);
 
         await this.dataSource.query(
           `UPDATE rund."RundSoporteCampo" 
@@ -4008,7 +4014,7 @@ export class BancoDocentesService implements OnModuleInit {
 
       while (filesToLink.length > 0) {
         const file = filesToLink.shift();
-        const expectedDocId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file}`;
+        const expectedDocId = urlSoporteCarpetaDigital(docenteNombre, file);
         const newId = randomUUID();
 
         let bloque = 'FORMACION';

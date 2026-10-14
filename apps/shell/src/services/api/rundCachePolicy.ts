@@ -6,7 +6,7 @@ export function isRundRequest(url: string): boolean {
 export function excludesRundCache(url: string, data?: unknown): boolean {
   if (isRundRequest(url)) return true;
   // Solo inspeccionar canales que pueden incluir perfiles o documentos RUND.
-  if (!/\/(pta|auth)\/api\//i.test(url)) return false;
+  if (!/\/(pta|auth|rund)\/api\//i.test(url)) return false;
   const visit = (value: unknown): boolean => {
     if (!value || typeof value !== 'object') return false;
     if (Array.isArray(value)) return value.some(visit);

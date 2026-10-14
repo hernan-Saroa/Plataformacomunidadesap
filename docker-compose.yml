@@ -77,6 +77,8 @@ services:
     env_file:
       - ./backend/auth-service/.env
     environment:
+      RUND_SERVICE_URL: http://rund-service:3016
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-esap-internal-service-dev-token}
       NODE_ENV: development
       PORT: 3001
 
@@ -139,6 +141,8 @@ services:
     env_file:
       - ./backend/academic-work-plan-service/.env
     environment:
+      RUND_SERVICE_URL: http://rund-service:3016
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-esap-internal-service-dev-token}
       NODE_ENV: development
       PORT: 3003
 
@@ -459,6 +463,8 @@ services:
     env_file:
       - ./backend/academic-schedule-service/.env
     environment:
+      RUND_SERVICE_URL: http://rund-service:3016
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-esap-internal-service-dev-token}
       NODE_ENV: development
       PORT: 3013
 
@@ -545,6 +551,7 @@ services:
     env_file:
       - ./backend/rund-service/.env
     environment:
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-esap-internal-service-dev-token}
       NODE_ENV: development
       PORT: 3016
 

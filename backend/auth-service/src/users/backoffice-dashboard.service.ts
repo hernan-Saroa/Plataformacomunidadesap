@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { RundClient } from '../carpeta-digital/rund-client';
 
 @Injectable()
 export class BackofficeDashboardService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly rund: RundClient,
+  ) {}
 
   private async cnt(sql: string): Promise<number> {
     return this.dataSource.query(sql).then((r: any[]) => +(r[0]?.c || 0)).catch(() => 0);
@@ -16,13 +20,18 @@ export class BackofficeDashboardService {
   }
 
   async getExecutiveStats() {
+    // El RUND vive en rund-service: sus agregados se piden por API. Si no responde, el tablero
+    // sigue (ceros/vacíos), igual que ante una tabla ausente.
+    const rund = await this.rund.estadisticasBackoffice().catch(() => null);
+    const totalDocentes = Number(rund?.totalDocentes ?? 0);
+    const docentesSinCetap = Number(rund?.docentesSinCetap ?? 0);
+
     // ── PHASE 1: parallel counts ──────────────────────────────────────────────
     const [
       totalPersonas, totalUsuarios, usuariosActivos,
       totalTerritoriales, totalCetaps,
       totalCarpetas,
       totalRoles,
-      totalDocentes, docentesSinCetap,
       totalPTAs, totalEvidencias,
       totalProgramas, totalAsignaturas,
       totalCertificados,
@@ -35,8 +44,6 @@ export class BackofficeDashboardService {
       this.cnt(`SELECT COUNT(*)::int AS c FROM auth.sedes`),
       this.cnt(`SELECT COUNT(*)::int AS c FROM auth.carpeta_digital`),
       this.cnt(`SELECT COUNT(*)::int AS c FROM auth.role`),
-      this.cnt(`SELECT COUNT(*)::int AS c FROM academic_work_plan."Docente"`),
-      this.cnt(`SELECT COUNT(*)::int AS c FROM academic_work_plan."Docente" WHERE "sedeId" IS NULL`),
       this.cnt(`SELECT COUNT(*)::int AS c FROM academic_work_plan."PlanTrabajoAcademico"`),
       this.cnt(`SELECT COUNT(*)::int AS c FROM academic_work_plan."PtaEvidencia"`),
       this.cnt(`SELECT COUNT(*)::int AS c FROM academic_work_plan.programas`),
@@ -53,10 +60,10 @@ export class BackofficeDashboardService {
       rolesList, auditByModule,
       personasByGenero, carpetasByEstado,
     ] = await Promise.all([
-      this.dataSource.query(`SELECT "tipoVinculacion" AS key, COUNT(*)::int AS cnt FROM academic_work_plan."Docente" GROUP BY 1 ORDER BY cnt DESC`).catch(() => []),
-      this.dataSource.query(`SELECT dedicacion AS key, COUNT(*)::int AS cnt FROM academic_work_plan."Docente" GROUP BY 1 ORDER BY cnt DESC`).catch(() => []),
-      this.dataSource.query(`SELECT escalafon AS key, COUNT(*)::int AS cnt FROM academic_work_plan."Docente" WHERE escalafon IS NOT NULL GROUP BY 1 ORDER BY cnt DESC`).catch(() => []),
-      this.dataSource.query(`SELECT "nivelFormacion" AS key, COUNT(*)::int AS cnt FROM academic_work_plan."Docente" WHERE "nivelFormacion" IS NOT NULL GROUP BY 1 ORDER BY cnt DESC`).catch(() => []),
+      Promise.resolve(rund?.porVinculacion ?? []),
+      Promise.resolve(rund?.porDedicacion ?? []),
+      Promise.resolve(rund?.porEscalafon ?? []),
+      Promise.resolve(rund?.porNivelFormacion ?? []),
       this.dataSource.query(`SELECT estado AS key, COUNT(*)::int AS cnt FROM academic_work_plan."PlanTrabajoAcademico" GROUP BY 1 ORDER BY cnt DESC`).catch(() => []),
       this.dataSource.query(`SELECT status AS key, COUNT(*)::int AS cnt FROM certification.certificates GROUP BY 1`).catch(() => []),
       this.dataSource.query(`SELECT status AS key, COUNT(*)::int AS cnt FROM certification.certificate_requests GROUP BY 1`).catch(() => []),
@@ -93,27 +100,8 @@ export class BackofficeDashboardService {
       `).catch(() => []),
       this.cnt(`SELECT COUNT(*)::int AS c FROM auth.personas WHERE fec_creacion >= '${ago30}'`),
       this.cnt(`SELECT COUNT(*)::int AS c FROM auth.personas WHERE fec_creacion >= '${ago60}' AND fec_creacion < '${ago30}'`),
-      this.dataSource.query(`
-        SELECT s.nom_seccional AS territorial,
-          COUNT(d.id)::int AS total,
-          COUNT(CASE WHEN d."sedeId" IS NULL THEN 1 END)::int AS sin_cetap,
-          COUNT(CASE WHEN d."sedeId" IS NOT NULL THEN 1 END)::int AS con_cetap
-        FROM academic_work_plan."Docente" d
-        JOIN auth.seccionales s ON d."territorialId" = s.id_seccional::text
-        GROUP BY s.nom_seccional ORDER BY total DESC
-      `).catch(() => []),
-      this.dataSource.query(`
-        SELECT
-          CASE
-            WHEN "nivelFormacion" ILIKE '%doctorado%' OR "nivelFormacion" ILIKE '%doctor%' THEN 'Doctorado'
-            WHEN "nivelFormacion" ILIKE '%maestr%' OR "nivelFormacion" ILIKE '%magíster%' OR "nivelFormacion" ILIKE '%magister%' THEN 'Maestría'
-            WHEN "nivelFormacion" ILIKE '%especializ%' THEN 'Especialización'
-            WHEN "nivelFormacion" ILIKE '%pregrado%' OR "nivelFormacion" ILIKE '%licenciat%' OR "nivelFormacion" ILIKE '%ingenier%' THEN 'Pregrado'
-            ELSE 'Sin información'
-          END AS nivel,
-          COUNT(*)::int AS total
-        FROM academic_work_plan."Docente" GROUP BY nivel ORDER BY total DESC
-      `).catch(() => []),
+      Promise.resolve(rund?.coberturaTerritorial ?? []),
+      Promise.resolve(rund?.formacionAvanzada ?? []),
       this.dataSource.query(`
         SELECT nombre, "nivelFormacion" AS nivel, estado, facultad,
           (SELECT COUNT(*)::int FROM academic_work_plan."Asignatura" a WHERE a."programaId" = p.id) AS asignaturas,

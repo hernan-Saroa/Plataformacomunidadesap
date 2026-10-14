@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { PlanTrabajoAcademicoEntity } from '../../entities/plan-trabajo-academico.entity';
 import { BancoDocenteEntity } from '../../entities/banco-docente.entity';
 import { PersonaEntity } from '../../entities/persona.entity';
+import { FacultadEntity } from '../../entities/facultad.entity';
 import { ProgramaEntity } from '../../entities/programa.entity';
 import { RundAccesoExternoEntity } from '../../entities/rund-acceso-externo.entity';
 import { RundMacroDocenteConsultaLogEntity } from '../../entities/rund-macro-docente-consulta-log.entity';
@@ -19,6 +20,7 @@ import { MacroDocentePermissionGuard } from './macro-docente-permission.guard';
       BancoDocenteEntity,
       PersonaEntity,
       ProgramaEntity,
+      FacultadEntity,
       RundAccesoExternoEntity,
       RundMacroDocenteConsultaLogEntity,
     ]),

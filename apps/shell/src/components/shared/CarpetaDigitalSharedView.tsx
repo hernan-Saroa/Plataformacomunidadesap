@@ -801,7 +801,7 @@ export function CarpetaDigitalSharedView({
           ? val.id_documento_carpeta 
           : val.id_documento_carpeta 
             ? val.id_documento_carpeta
-            : `/pta/api/v1/uploads/carpeta-digital/${cleanPersonaId}/RUND/${val.nombre_archivo}`;
+            : `/rund/api/v1/uploads/carpeta-digital/${cleanPersonaId}/RUND/${val.nombre_archivo}`;
 
         docs.push({
           id: val.id || `rund-val-${campoRund}`,
@@ -1022,18 +1022,18 @@ export function CarpetaDigitalSharedView({
     setLoadingRund(true);
     setRundError(null);
     try {
-      const res = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/by-persona/${cleanPersonaId}/tarjeta-rund`);
+      const res = await apiClient.get<any>(`/rund/api/v1/pta/banco-docentes/by-persona/${cleanPersonaId}/tarjeta-rund`);
       const data = res?.data || res;
       if (data && data.docenteId) {
         setTarjetaRund(data);
         
-        const bloquesRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${data.docenteId}/bloques?_t=${Date.now()}`);
+        const bloquesRes = await apiClient.get<any>(`/rund/api/v1/pta/banco-docentes/${data.docenteId}/bloques?_t=${Date.now()}`);
         const bloquesData = bloquesRes?.data || bloquesRes;
         const bloquesArr = Array.isArray(bloquesData) ? bloquesData : [];
         console.log('📂 CarpetaDigital fetchRundData - docenteId:', data.docenteId, 'bloques:', bloquesArr.length, 'estructura:', bloquesArr.map((b: any) => ({ bloque: b.bloque, estado: b.estado, soportesCount: b.soportes?.length ?? 'NO_SOPORTES', soportes: b.soportes?.slice(0, 2) })));
         setRundBloques(bloquesArr);
 
-        const auditRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${data.docenteId}/auditoria`);
+        const auditRes = await apiClient.get<any>(`/rund/api/v1/pta/banco-docentes/${data.docenteId}/auditoria`);
         const auditData = Array.isArray(auditRes?.data) ? auditRes.data : Array.isArray(auditRes) ? auditRes : [];
         setRundAuditLog(auditData);
       } else {
@@ -1078,7 +1078,7 @@ export function CarpetaDigitalSharedView({
     if (!tarjetaRund?.docenteId) return;
     setRundActionLoading(bloque);
     try {
-      const res = await apiClient.post<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/aprobar`, {
+      const res = await apiClient.post<any>(`/rund/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/aprobar`, {
         aprobadorId: currentUserId,
       });
       if (res?.success || res) {
@@ -1098,7 +1098,7 @@ export function CarpetaDigitalSharedView({
     if (!devolverRundBloque || !devolverRundObs.trim() || !tarjetaRund?.docenteId) return;
     setRundActionLoading(devolverRundBloque);
     try {
-      const res = await apiClient.post<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${devolverRundBloque}/devolver`, {
+      const res = await apiClient.post<any>(`/rund/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${devolverRundBloque}/devolver`, {
         aprobadorId: currentUserId,
         observacion: devolverRundObs,
       });
@@ -1138,7 +1138,7 @@ export function CarpetaDigitalSharedView({
       formData.append('nombreArchivo', file.name);
       formData.append('cargadoPor', currentUserId);
 
-      const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
+      const res = await apiClient.upload<any>(`/rund/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
       if (res?.success || res) {
         toast.success(`Documento "${file.name}" cargado exitosamente.`);
         warnIfWrongDocType(res?.validacionTipo);
@@ -1181,7 +1181,7 @@ export function CarpetaDigitalSharedView({
         formData.append('nombreArchivo', file.name);
         formData.append('cargadoPor', currentUserId);
 
-        const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
+        const res = await apiClient.upload<any>(`/rund/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
         if (res?.success || res) {
           toast.success(`Soporte "${file.name}" cargado para RUND - ${tipo.nombre}`);
           warnIfWrongDocType(res?.validacionTipo);
@@ -1216,7 +1216,7 @@ export function CarpetaDigitalSharedView({
   }, []);
 
   // Carga del documento para previsualización vía apiClient.getBlob (autenticado, vía gateway).
-  // No podemos poner la ruta relativa (/pta/api/v1/uploads/...) directo en el <iframe src>
+  // No podemos poner la ruta relativa (/rund/api/v1/uploads/...) directo en el <iframe src>
   // porque el navegador la resuelve contra el origin del shell (localhost:3000) → 404.
   // En su lugar descargamos el blob y construimos un object URL (blob:), igual que el panel RUND.
   useEffect(() => {

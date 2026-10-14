@@ -796,10 +796,10 @@ export function UsersPersonsModulePremium() {
 
   const triggerBancoDocentesSync = async () => {
     try {
-      const ptaBase = import.meta.env.VITE_API_MODE === 'direct'
-        ? 'http://localhost:3003'
-        : (import.meta.env.VITE_API_URL || window.location.origin + '/services') + '/pta/api/v1';
-      await fetch(`${ptaBase}/pta/banco-docentes/sync-from-auth`, { method: 'POST' });
+      const rundBase = import.meta.env.VITE_API_MODE === 'direct'
+        ? 'http://localhost:3016'
+        : (import.meta.env.VITE_API_URL || window.location.origin + '/services') + '/rund/api/v1';
+      await fetch(`${rundBase}/pta/banco-docentes/sync-from-auth`, { method: 'POST' });
     } catch { /* best-effort, no bloqueamos al usuario */ }
   };
 

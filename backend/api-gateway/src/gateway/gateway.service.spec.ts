@@ -1,6 +1,6 @@
 import { of } from 'rxjs';
 import type { Request, Response } from 'express';
-import { GatewayService } from './gateway.service';
+import { GatewayService, isInternalServicePath } from './gateway.service';
 
 describe('GatewayService', () => {
   it('lets Axios recalculate the length of parsed JSON bodies', async () => {
@@ -36,5 +36,34 @@ describe('GatewayService', () => {
     expect(axiosOptions.headers['content-length']).toBeUndefined();
     expect(axiosOptions.headers['transfer-encoding']).toBeUndefined();
     expect(axiosOptions.data).toEqual(req.body);
+  });
+});
+
+describe('Rutas internas servicio→servicio', () => {
+  it.each([
+    '/internal/rund/v1/docentes/por-documento/123',
+    '/internal',
+    '/INTERNAL/rund/v1/x',
+    '//internal/rund/v1/x',
+    '/%69nternal/rund/v1/x',
+    '/%2569nternal/rund/v1/x',
+    '/pta/../internal/rund/v1/x',
+    '/internal/rund/v1/x?token=1',
+    '\\internal\\rund',
+  ])('bloquea %s', (ruta) => {
+    expect(isInternalServicePath(ruta)).toBe(true);
+  });
+
+  it.each(['/docentes/internal', '/banco-docentes/12/documentos', '/internals/x', '/health/ready', ''])('no bloquea %s', (ruta) => {
+    expect(isInternalServicePath(ruta)).toBe(false);
+  });
+
+  it('responde 404 sin llamar al microservicio', async () => {
+    const request = jest.fn();
+    const service = new GatewayService({ request } as any);
+    const req = { originalUrl: '/rund/api/v1/internal/rund/v1/docentes/por-documento/1', method: 'GET', headers: {}, socket: {} } as unknown as Request;
+    const res = { locals: {}, setHeader: jest.fn(), status: jest.fn().mockReturnThis(), send: jest.fn(), json: jest.fn() } as unknown as Response;
+    await expect(service.forwardRequest('rund', '1', req, res)).rejects.toMatchObject({ status: 404 });
+    expect(request).not.toHaveBeenCalled();
   });
 });

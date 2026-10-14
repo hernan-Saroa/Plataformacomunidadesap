@@ -971,17 +971,17 @@ export function CarpetaDigitalSharedView({
     setLoadingRund(true);
     setRundError(null);
     try {
-      const res = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/by-persona/${cleanPersonaId}/tarjeta-rund`);
+      const res = await apiClient.get<any>(`/rund/api/v1/pta/banco-docentes/by-persona/${cleanPersonaId}/tarjeta-rund`);
       const data = res?.data || res;
       if (data && data.docenteId) {
         setTarjetaRund(data);
         
-        const bloquesRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${data.docenteId}/bloques?_t=${Date.now()}`);
+        const bloquesRes = await apiClient.get<any>(`/rund/api/v1/pta/banco-docentes/${data.docenteId}/bloques?_t=${Date.now()}`);
         const bloquesData = bloquesRes?.data || bloquesRes;
         const bloquesArr = Array.isArray(bloquesData) ? bloquesData : [];
         setRundBloques(bloquesArr);
 
-        const auditRes = await apiClient.get<any>(`/pta/api/v1/pta/banco-docentes/${data.docenteId}/auditoria`);
+        const auditRes = await apiClient.get<any>(`/rund/api/v1/pta/banco-docentes/${data.docenteId}/auditoria`);
         const auditData = Array.isArray(auditRes?.data) ? auditRes.data : Array.isArray(auditRes) ? auditRes : [];
         setRundAuditLog(auditData);
       } else {
@@ -1030,7 +1030,7 @@ export function CarpetaDigitalSharedView({
     if (!tarjetaRund?.docenteId) return;
     setRundActionLoading(bloque);
     try {
-      const res = await apiClient.post<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/aprobar`, {
+      const res = await apiClient.post<any>(`/rund/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/aprobar`, {
         aprobadorId: currentUserId,
       });
       if (res?.success || res) {
@@ -1050,7 +1050,7 @@ export function CarpetaDigitalSharedView({
     if (!devolverRundBloque || !devolverRundObs.trim() || !tarjetaRund?.docenteId) return;
     setRundActionLoading(devolverRundBloque);
     try {
-      const res = await apiClient.post<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${devolverRundBloque}/devolver`, {
+      const res = await apiClient.post<any>(`/rund/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${devolverRundBloque}/devolver`, {
         aprobadorId: currentUserId,
         observacion: devolverRundObs,
       });
@@ -1090,7 +1090,7 @@ export function CarpetaDigitalSharedView({
       formData.append('nombreArchivo', file.name);
       formData.append('cargadoPor', currentUserId);
 
-      const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
+      const res = await apiClient.upload<any>(`/rund/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
       if (res?.success || res) {
         toast.success(`Documento "${file.name}" cargado exitosamente.`);
         await fetchRundData();
@@ -1132,7 +1132,7 @@ export function CarpetaDigitalSharedView({
         formData.append('nombreArchivo', file.name);
         formData.append('cargadoPor', currentUserId);
 
-        const res = await apiClient.upload<any>(`/pta/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
+        const res = await apiClient.upload<any>(`/rund/api/v1/pta/banco-docentes/${tarjetaRund.docenteId}/bloques/${bloque}/soportes`, formData);
         if (res?.success || res) {
           toast.success(`Soporte "${file.name}" cargado para RUND - ${tipo.nombre}`);
           await fetchRundData();

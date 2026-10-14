@@ -107,6 +107,8 @@ services:
       dockerfile: Dockerfile
     container_name: auth-service-pre
     environment:
+      RUND_SERVICE_URL: http://rund-service-pre:3016
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${JWT_SECRET:-esap_jwt_secret_pre_2024}}
       NODE_ENV: production
       PORT: 3001
 
@@ -201,6 +203,8 @@ services:
       dockerfile: Dockerfile
     container_name: academic-work-plan-service-pre
     environment:
+      RUND_SERVICE_URL: http://rund-service-pre:3016
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${JWT_SECRET:-esap_jwt_secret_pre_2024}}
       NODE_ENV: production
       PORT: 3003
 
@@ -580,6 +584,8 @@ services:
       dockerfile: Dockerfile
     container_name: academic-schedule-service-pre
     environment:
+      RUND_SERVICE_URL: http://rund-service-pre:3016
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${JWT_SECRET:-esap_jwt_secret_pre_2024}}
       NODE_ENV: production
       PORT: 3013
 
@@ -665,6 +671,7 @@ services:
       dockerfile: Dockerfile
     container_name: rund-service-pre
     environment:
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-${JWT_SECRET:-esap_jwt_secret_pre_2024}}
       NODE_ENV: production
       PORT: 3016
 

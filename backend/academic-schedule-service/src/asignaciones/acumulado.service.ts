@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { categoriaVinculacion } from './situacion-docente.js';
+import { RundClient } from './rund-client.js';
 
 /**
  * Acumulado de horas del docente frente a su tope — RN-04, RN-05, RN-06 (EFDS-1373).
@@ -49,27 +50,16 @@ export interface AcumuladoDocente {
 
 @Injectable()
 export class AcumuladoService {
-  constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly rund: RundClient,
+  ) {}
 
   async consumo(documento: string): Promise<AcumuladoDocente> {
     const limpio = String(documento ?? '').trim();
-    const docFilas = await this.dataSource.query(
-      `SELECT p.id_person             AS id_docente,
-              p.nom_largo             AS nombre,
-              d."tipoVinculacion"     AS vinculacion,
-              d."horasAsignables"     AS horas_asignables,
-              d."investigacion"       AS investigacion
-         FROM academic_work_plan."Docente" d
-         INNER JOIN auth.personas p ON p.id_person = d."personaId"
-        WHERE p.num_identificacion = $1
-        ORDER BY d."updatedAt" DESC NULLS LAST
-        LIMIT 1`,
-      [limpio],
-    );
-    if (!docFilas?.length) {
-      throw new NotFoundException(`No existe un docente con documento ${limpio} en el RUND.`);
-    }
-    const drow = docFilas[0];
+    // El RUND vive en rund-service: se consulta por su API (404 si el documento no existe).
+    const d = await this.rund.docentePorDocumento(limpio);
+    const drow = { id_docente: d.idPersona, nombre: d.nombreCompleto, vinculacion: d.tipoVinculacion, horas_asignables: d.horasAsignables, investigacion: d.investigacion };
     const categoria = categoriaVinculacion(drow.vinculacion);
 
     // Tope: el catedrático tiene 304 h transversales (RN-04); los demás, su plan.

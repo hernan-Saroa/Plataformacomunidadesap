@@ -13,6 +13,7 @@ import { DataSource, QueryRunner } from 'typeorm';
 import { RundDocumentStorageService } from './rund-document-storage.service';
 import { recordRundAccess, RundAccessActor } from './rund-access-audit';
 import { RUND_SENSITIVE_FIELDS } from './banco-docentes-sensitive-data';
+import { RUND_BANCO_DOCENTES_BASE } from '../../common/rund-public-paths';
 
 type DocumentUploadData = {
   categoria: string;
@@ -446,7 +447,7 @@ export class RundDocumentosService {
   }
 
   private contentUrl(docenteId: string, documentId: string) {
-    return `/pta/api/v1/pta/banco-docentes/${docenteId}/documentos/${documentId}/contenido`;
+    return `${RUND_BANCO_DOCENTES_BASE}/${docenteId}/documentos/${documentId}/contenido`;
   }
 
   private checksum(content: Buffer) {

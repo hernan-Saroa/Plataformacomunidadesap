@@ -10,6 +10,7 @@ import { BancoDocentesService } from './banco-docentes.service';
 import { DocumentTypeValidatorService } from './document-type-validator.service';
 import { sanitizeDeepStrings } from '../../common/text-sanitizer';
 import { Public } from '../../auth/auth.decorators';
+import { urlSoporteCarpetaDigital } from '../../common/rund-public-paths';
 import { Roles } from '../../auth/roles.decorator';
 import { BancoDocentesRolesGuard } from './banco-docentes-roles.guard';
 import { RundDocumentosService } from './rund-documentos.service';
@@ -856,7 +857,7 @@ export class BancoDocentesController {
         body.nombreArchivo = file.originalname;
         const docenteId = id || 'desconocido';
         const docenteNombre = body.docenteNombre ? String(body.docenteNombre).replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase() : docenteId;
-        body.documentoCarpetaId = `/pta/api/v1/uploads/carpeta-digital/${docenteNombre}/RUND/${file.filename}`;
+        body.documentoCarpetaId = urlSoporteCarpetaDigital(docenteNombre, file.filename);
 
         // Validación SOFT de tipo de documento: escanea el PDF y compara contra
         // palabras clave derivadas del código de soporte (+ nombre/descripción si vienen).

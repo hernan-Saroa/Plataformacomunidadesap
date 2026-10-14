@@ -802,15 +802,14 @@ export function BackofficeApp({ onLogout, onBackToSystemSelector, onSystemChange
       case 'banco-docentes-pta':
         return (
           <Suspense fallback={<ModuleLoader />}>
-            <PTAModule
-              key="pta-banco-docentes"
+            <RundModulePremium
+              key="rund-banco-docentes"
               userPersonId={currentUser.personId}
               userName={currentUser.name}
               userEmail={currentUser.email}
               userRoles={userData?.roles || userRoles || []}
               userPermissions={userPermissionsList}
               embedded
-              initialView="banco_docentes"
             />
           </Suspense>
         );

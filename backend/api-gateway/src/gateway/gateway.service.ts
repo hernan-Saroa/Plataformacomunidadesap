@@ -1,3 +1,4 @@
+import { posix } from 'path';
 import { Injectable, HttpException, HttpStatus, Inject, forwardRef } from '@nestjs/common';
 import { serviceMap } from './proxy.config';
 import { HttpService } from '@nestjs/axios';
@@ -96,6 +97,19 @@ const getClientIp = (req: Request): string => {
   return publicIp || candidates[0] || '';
 };
 
+/** Detecta /internal/... aun con codificación porcentual, dobles barras o puntos relativos. */
+export function isInternalServicePath(pathWithQuery: string): boolean {
+  let decoded = String(pathWithQuery || '').split('?')[0];
+  try {
+    // Dos pasadas: cubre %252e%252e y similares.
+    decoded = decodeURIComponent(decodeURIComponent(decoded));
+  } catch {
+    // Codificación inválida: se evalúa el texto tal cual (un literal /internal sigue bloqueado).
+  }
+  const normalizada = posix.normalize(decoded.replace(/\\/g, '/')).replace(/^\/+/, '/');
+  return /^\/internal(\/|$)/i.test(normalizada);
+}
+
 @Injectable()
 export class GatewayService {
   constructor(
@@ -142,6 +156,11 @@ export class GatewayService {
       new RegExp(`^/${serviceName}/api/v\\d+`),
       '',
     );
+
+    // Las rutas /internal/* son servicio→servicio (token de servicio): nunca salen por el gateway.
+    if (isInternalServicePath(pathWithoutPrefix)) {
+      throw new HttpException({ message: 'Not Found' }, HttpStatus.NOT_FOUND);
+    }
 
     // Para v1, enviar directamente al microservicio
     // Para otras versiones, incluir el prefijo de versión

@@ -507,7 +507,7 @@ async function syncPersonDocumentsToPTABackend(carpetaId: string): Promise<void>
     const personKey = normalizeCarpetaId(carpetaId);
     const docs = getDocsForPerson(personKey);
     // Call the sync documents endpoint
-    await apiClient.post(`/pta/api/v1/rund/docente/${personKey}/sync-documents`, {
+    await apiClient.post(`/rund/api/v1/rund/docente/${personKey}/sync-documents`, {
       documentos: docs.map((d: any) => ({
         id: d.id,
         categoria: d.categoria,

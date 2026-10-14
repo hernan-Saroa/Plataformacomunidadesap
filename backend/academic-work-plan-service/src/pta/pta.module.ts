@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
+import { IntegracionRundModule } from '../integracion-rund/integracion-rund.module';
 import { PtaController } from './pta.controller';
 import { PtaService } from './pta.service';
 import { PtaPermissionsService } from './auth/pta-permissions.service';
@@ -51,6 +52,7 @@ import { PeriodoAcademicoController } from './periodo-academico.controller';
 @Module({
   imports: [
     AuthModule,
+    IntegracionRundModule,
     TypeOrmModule.forFeature([
       PlanTrabajoAcademicoEntity,
       HistorialEstadoPtaEntity,

@@ -78,7 +78,7 @@ import { VisualizadorPTAAjustes } from './components/gestion-profesoral/Visualiz
 
 // Lazy-load AutogestionDocenteRUND (ruta pública)
 const AutogestionDocenteRUND = React.lazy(() =>
-  import('../../mfe-pta/src/components/pta/banco-docentes/AutogestionDocenteRUND').then(m => ({ default: m.AutogestionDocenteRUND }))
+  import('../../mfe-rund/src/components/pta/banco-docentes/AutogestionDocenteRUND').then(m => ({ default: m.AutogestionDocenteRUND }))
 );
 
 /**
