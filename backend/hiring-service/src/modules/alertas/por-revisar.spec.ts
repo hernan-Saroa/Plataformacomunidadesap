@@ -25,7 +25,8 @@ function montar(
   const dataSource = {
     query: jest.fn(async (sql: string) => {
       consultas.push(sql);
-      if (sql.includes('reglas_actividad')) return filas.aprobaciones;
+      // Lo que espera un escalón de la cadena (migración 101).
+      if (sql.includes('aprobacion_escalones')) return filas.aprobaciones;
       if (sql.includes('FROM hiring.garantias')) return filas.garantias ?? [];
       if (sql.includes('FROM hiring.modificaciones_contrato')) return filas.modificaciones ?? [];
       if (sql.includes('FROM hiring.pagos_contrato')) return filas.pagos ?? [];

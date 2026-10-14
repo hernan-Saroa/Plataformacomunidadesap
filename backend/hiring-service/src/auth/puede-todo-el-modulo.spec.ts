@@ -38,6 +38,8 @@ const SIN_DECORADOR: Record<string, string> = {
   // concretas: un guard por alcance dejaría fuera a quien la regla nombra.
   'AprobacionController.aprobar': 'la regla EXIGE_APROBACION del punto',
   'AprobacionController.devolver': 'la regla EXIGE_APROBACION del punto',
+  // Negar lo decide el escalón de la cadena que tenga esa acción (101).
+  'AprobacionController.negar': 'la regla EXIGE_APROBACION del punto',
   // La consulta del estudio previo y del proceso filtra por participación en
   // el service. Protegerla por etapa quedó pendiente de decisión (EFDS, 083).
   'EstudioPrevioController.listar': 'participación · pendiente de decidir',

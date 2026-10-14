@@ -456,7 +456,17 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
     // La aprobación genérica guarda el numeral; el estudio previo es la 3.1.
     case 'aprobacion_actividad:ENVIAR':
       return ocurrido('ENVIADA_A_APROBACION', numeral);
+    /*
+     * Con escalones (migración 101), solo la última aprobación aprueba la
+     * actividad. Una intermedia le pasa la actividad al siguiente escalón:
+     * para él es «tienes algo esperando tu visto bueno», y a quien la envió
+     * no se le dice que quedó aprobada. Las trazas anteriores a la 101 no
+     * traen `definitiva` y fueron todas definitivas.
+     */
     case 'aprobacion_actividad:APROBAR':
+      if (detalle.definitiva === false) {
+        return detalle.activado ? ocurrido('ENVIADA_A_APROBACION', numeral) : null;
+      }
       return ocurrido('APROBADA', numeral);
     case 'aprobacion_actividad:DEVOLVER':
       return ocurrido('DEVUELTA', numeral);

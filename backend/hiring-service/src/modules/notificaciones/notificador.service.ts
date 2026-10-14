@@ -5,6 +5,7 @@ import {
   PERMISO_PROCESO_ASIGNAR,
 } from '../../auth/permisos';
 import { AlcanceService } from '../../auth/alcance.service';
+import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
 import { AvisosService } from './avisos.service';
 import { PasoDelFlujo, porEmpezar, SIN_PANEL } from './secuencia';
 import { Campana } from './campana';
@@ -45,11 +46,16 @@ export class NotificadorService implements OnApplicationBootstrap {
      * funcionando con solo la fuente de datos.
      */
     @Optional() alcance?: AlcanceService,
+    /** Quién decide el escalón que está esperando (migración 101). */
+    @Optional() cadenas?: CadenaAprobacionService,
   ) {
     this.campana = new Campana(dataSource, this.logger);
     this.avisos = avisos ?? new AvisosService(dataSource);
     this.alcance = alcance ?? new AlcanceService(dataSource);
+    this.cadenas = cadenas ?? new CadenaAprobacionService(dataSource);
   }
+
+  private readonly cadenas: CadenaAprobacionService;
 
   async despachar(ocurridos: EventoOcurrido[]): Promise<number> {
     if (!motorDeAvisosEncendido() || !ocurridos.length) return 0;
@@ -361,26 +367,33 @@ export class NotificadorService implements OnApplicationBootstrap {
       }
       case 'QUIEN_APRUEBA': {
         /*
-         * Los que la pestaña de Aprobación designó para esta actividad. La regla
-         * de la modalidad manda sobre la general, igual que al aprobar: avisar a
-         * alguien distinto de quien puede decidir sería mandarlo a un botón que
-         * no le va a funcionar.
+         * Los responsables del escalón que está esperando, no los de toda la
+         * cadena (migración 101): avisar al director mientras el técnico aún
+         * no decide sería mandarlo a un botón que no le va a funcionar. Tras
+         * una aprobación intermedia, el escalón que espera es el siguiente, y
+         * a él le llega el aviso.
          */
-        const reglas: { modalidad: string | null; config: any }[] = await this.dataSource.query(
-          `SELECT modalidad, config
-             FROM hiring.reglas_actividad
-            WHERE tipo = 'EXIGE_APROBACION'
-              AND vigente_hasta IS NULL
-              AND numeral = $1
-              AND (modalidad IS NULL OR modalidad = $2)`,
-          [ocurrido.numeral, modalidad],
-        );
-        const regla = reglas.find((r) => r.modalidad) ?? reglas[0];
-        if (!regla) return [];
-
-        const roles: string[] = Array.isArray(regla.config?.roles) ? regla.config.roles : [];
-        const personas: string[] = Array.isArray(regla.config?.personas) ? regla.config.personas : [];
-        return [...(roles.length ? await this.cuentasConRol(roles) : []), ...personas];
+        const pendientes = await this.cadenas.responsablesPendientes(ocurrido.procesoId, ocurrido.numeral);
+        const ids: string[] = [];
+        for (const e of pendientes) {
+          if (e.roles?.length) ids.push(...(await this.cuentasConRol(e.roles)));
+          // Ids de persona: `cuentasDe` las traduce a sus cuentas.
+          ids.push(...(e.personas ?? []));
+          for (const papel of e.papeles ?? []) {
+            if (papel === 'SUPERVISOR') {
+              ids.push(...(await this.quienCumple('SUPERVISOR', ocurrido, modalidad)));
+            } else {
+              const filas = await this.dataSource.query(
+                `SELECT usuario_id::text AS id
+                   FROM hiring.participaciones_proceso
+                  WHERE proceso_id = $1 AND papel = $2 AND estado = 'VIGENTE' AND usuario_id IS NOT NULL`,
+                [ocurrido.procesoId, papel],
+              );
+              ids.push(...filas.map((f: any) => f.id));
+            }
+          }
+        }
+        return ids;
       }
       case 'BANDEJA_CONTRATACION':
         // Quien puede tomar de la bandeja es quien edita la 3.3, y quien

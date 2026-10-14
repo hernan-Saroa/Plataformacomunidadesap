@@ -4,6 +4,7 @@ import { AlertasController } from './alertas.controller';
 import { AlertasCron } from './alertas.cron';
 import { AlertasService } from './alertas.service';
 import { NotificacionesModule } from '../notificaciones/notificaciones.module';
+import { CadenaAprobacionModule } from '../cadena-aprobacion/cadena-aprobacion.module';
 import { ParticipacionModule } from '../participacion/participacion.module';
 import { ParametrosAlertaService } from './parametros-alerta.service';
 
@@ -24,7 +25,7 @@ import { ParametrosAlertaService } from './parametros-alerta.service';
    * nadie ha tomado: es el único aviso que hay que mandar sin responsable, y
    * quién puede resolverla se responde allí y no aquí.
    */
-  imports: [ParticipacionModule, NotificacionesModule],
+  imports: [ParticipacionModule, NotificacionesModule, CadenaAprobacionModule],
   controllers: [AlertasController],
   providers: [AlertasService, AlertasCron, ParametrosAlertaService],
   exports: [AlertasService, ParametrosAlertaService],

@@ -29,6 +29,7 @@ describe('AprobacionService · documentosPendientes', () => {
       { crearSolicitudSiCerroLaEtapa3: async () => null } as never,
       {} as never,
       catalogo as never,
+      {} as never,
     ) as unknown as {
       documentosPendientes(em: unknown, procesoId: string, numeral: string): Promise<string[]>;
     };

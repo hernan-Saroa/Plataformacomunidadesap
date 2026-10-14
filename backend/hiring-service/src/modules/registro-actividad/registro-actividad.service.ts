@@ -508,7 +508,7 @@ export class RegistroActividadService {
     const cierra = cumplida && !revisan;
 
     if (!actividad) {
-      await em.save(
+      const nueva = await em.save(
         em.create(ProcesoActividad, {
           procesoId,
           numeral,
@@ -520,6 +520,8 @@ export class RegistroActividadService {
           ...(cierra ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
         }),
       );
+      // Entrar en revisión es abrir la ronda en el primer escalón (101).
+      if (revisan) await this.aprobacion.abrirRonda(em, nueva, revisan, acceso);
       return { estado, cierra };
     }
 
@@ -531,6 +533,7 @@ export class RegistroActividadService {
     actividad.revisadoPor = cierra ? acceso.userName : (null as any);
     actividad.revisadoAt = cierra ? new Date() : (null as any);
     await em.save(actividad);
+    if (revisan) await this.aprobacion.abrirRonda(em, actividad, revisan, acceso);
     return { estado, cierra };
   }
 

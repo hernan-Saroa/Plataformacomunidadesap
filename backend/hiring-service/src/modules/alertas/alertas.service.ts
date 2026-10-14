@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm';
 import { AlcanceService } from '../../auth/alcance.service';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
+import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
 import { TOLERANCIA_CDP_SIN_ATENDER } from '../cdp/cdp.service';
 import { NOMBRE_TIPO } from '../modificaciones/reglas-por-tipo';
 import { Campana } from '../notificaciones/campana';
@@ -135,6 +136,11 @@ export interface ElementoPorRevisar {
   enviadoPor: string | null;
   desde: string;
   diasEsperando: number;
+  /**
+   * En qué escalón espera, cuando la actividad se aprueba por una cadena
+   * (migración 101): «Escalón 2 de 4 · Coordinador». Nulo en lo demás.
+   */
+  escalon?: { orden: number; de: number; nombre: string } | null;
 }
 
 /** Una actividad cuyo plazo aprieta o ya pasó. */
@@ -241,7 +247,17 @@ export class AlertasService {
      * modalidad: la matriz de permisos, la misma que consultan los guards.
      */
     @Optional() private readonly alcance?: AlcanceService,
-  ) {}
+    /**
+     * Quién decide cada escalón (migración 101). Opcional como los demás, para
+     * que las pruebas que construyen el servicio a mano sigan funcionando con
+     * solo la fuente de datos.
+     */
+    @Optional() cadenas?: CadenaAprobacionService,
+  ) {
+    this.cadenas = cadenas ?? new CadenaAprobacionService(dataSource);
+  }
+
+  private readonly cadenas: CadenaAprobacionService;
 
   private hoy(): string {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
@@ -408,47 +424,9 @@ export class AlertasService {
    * distintas sobre lo mismo.
    */
   private filasPorAprobar(acceso: HiringAccess): Promise<any[]> {
-    const roles = acceso.roles ?? [];
-    const esSuperAdmin = roles.includes('SUPER_ADMIN');
-
-    return this.dataSource.query(
-      `
-      SELECT DISTINCT ON (pa.id)
-             p.id                AS proceso_id,
-             p.radicado          AS radicado,
-             p.objeto            AS objeto,
-             m.nombre            AS modalidad,
-             pa.numeral          AS numeral,
-             a.nombre            AS actividad,
-             a.etapa             AS etapa,
-             pa.version          AS version,
-             pa.enviado_por      AS enviado_por,
-             pa.updated_at       AS desde
-        FROM hiring.proceso_actividades pa
-        JOIN hiring.procesos p ON p.id = pa.proceso_id
-        JOIN hiring.actividades a ON a.numeral = pa.numeral
-        LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
-        JOIN hiring.reglas_actividad r
-              ON r.numeral = pa.numeral
-             AND r.tipo = 'EXIGE_APROBACION'
-             AND r.vigente_hasta IS NULL
-             AND (r.modalidad IS NULL OR r.modalidad = p.modalidad)
-       WHERE pa.estado = 'EN_REVISION'
-         -- Las propias también se ofrecen: quien las trabaja las aprueba si
-         -- tiene el rol, y esconderlas le dejaba pendientes que nadie más iba
-         -- a resolver.
-         AND (
-           $3 = true
-           OR (r.config -> 'personas') ? $2
-           OR EXISTS (
-             SELECT 1 FROM jsonb_array_elements_text(COALESCE(r.config -> 'roles', '[]'::jsonb)) rol
-              WHERE rol = ANY($1::text[])
-           )
-         )
-       ORDER BY pa.id, pa.updated_at ASC
-      `,
-      [roles, acceso.userId ?? '', esSuperAdmin],
-    );
+    // El escalón que espera a quien consulta, con la misma regla con que la
+    // cadena le deja decidir (migración 101).
+    return this.cadenas.filasPorDecidir(acceso);
   }
 
   private async aprobacionesPendientes(
@@ -573,6 +551,10 @@ export class AlertasService {
         enviadoPor: f.enviado_por ?? null,
         desde: desde.toISOString(),
         diasEsperando: Math.max(0, Math.floor((Date.now() - desde.getTime()) / 86_400_000)),
+        escalon:
+          f.escalon !== undefined && f.escalon !== null
+            ? { orden: Number(f.escalon), de: Number(f.escalones), nombre: f.escalon_nombre }
+            : null,
       };
     };
 
