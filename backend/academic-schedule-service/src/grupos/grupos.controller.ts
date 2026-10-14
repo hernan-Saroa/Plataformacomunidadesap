@@ -23,6 +23,16 @@ export class GruposController {
     return { success: true, data };
   }
 
+  /**
+   * GET /grupos/ofertas-cetap?asignatura=<id>&periodo=<idPeriodo> — dónde se
+   * puede dictar un grupo (selector de la pantalla de grupos). EFDS-2315.
+   */
+  @Get('ofertas-cetap')
+  @LecturaEn({ asignatura: { query: 'asignatura' } })
+  async ofertasCetap(@Query('asignatura') idAsignatura: string, @Query('periodo') idPeriodo: string) {
+    return { success: true, data: await this.gruposService.ofertasCetap(idAsignatura, idPeriodo) };
+  }
+
   @Get(':id')
   @LecturaEn({ grupo: { param: 'id' } })
   async obtener(@Param('id', ParseUUIDPipe) id: string) {

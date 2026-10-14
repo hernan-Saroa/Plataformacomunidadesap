@@ -10,6 +10,7 @@ import {
   buscarSolapeIntraGrupo, esMultiploDeGranularidad, jornadaSugerida, aMinutos, seSolapan,
 } from './solapamiento.js';
 import { GrupoEntity } from '../grupos/grupo.entity.js';
+import { exigirAulaDeLaOferta } from '../grupos/oferta-cetap.js';
 import { condicionNivelSql, type NivelAcademico } from '../catalogo/nivel-academico.js';
 import { condicionPeriodoGrupo, parsearPeriodo } from '../periodos/periodo-ref.js';
 
@@ -198,6 +199,8 @@ export class HorariosService {
     // en día y hora. El mensaje NO revela qué grupo lo ocupa (RN-07): otra
     // decanatura puede tener ahí una asignatura de posgrado que este programador
     // no debe ver. Solo se dice el aula, el día y la hora.
+    // EFDS-2315: una sesión presencial con aula se dicta en el CETAP de la oferta del grupo.
+    await exigirAulaDeLaOferta(this.franjaRepo.manager, dto.idGrupo, dto.aulaCodigo, dto.tipoSesion);
     if (dto.aulaCodigo) {
       const choqueAula = await this.buscarChoqueAula(
         dto.aulaCodigo, dto.diaSemana, dto.horaInicio, dto.horaFin,

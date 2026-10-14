@@ -180,6 +180,38 @@ export class ConcertacionService {
         `Defina el ciclo (fechas) del grupo antes de enviar: ${sinCiclo.map((x: any) => x.nombre).join(', ')}.`);
     }
 
+    // EFDS-2315: el PTA decide el aprobador por la territorial de cada asignatura,
+    // que sale de la oferta CETAP del grupo. Sin oferta (o sin territorial que
+    // cruce), o con un aula presencial de otro CETAP, no se concerta: falla cerrado.
+    const sinDonde: Array<{ nombre: string; numero: number; motivo: string }> = await this.dataSource.query(
+      `SELECT DISTINCT a.nombre, g.numero_grupo AS numero,
+              CASE WHEN g.id_oferta_cetap IS NULL THEN 'sin oferta CETAP'
+                   WHEN dt.codigo IS NULL
+                     OR (SELECT COUNT(*) FROM auth.seccionales sc WHERE sc.cod_seccional = dt.codigo) <> 1
+                     THEN 'su CETAP no tiene territorial'
+                   ELSE 'aula de otro CETAP' END AS motivo
+         FROM "academic-schedule".franja_horaria f
+         JOIN "academic-schedule".grupo g ON g.id_grupo = f.id_grupo
+         JOIN academic_work_plan.asignatura a ON a.id = g.id_asignatura
+         LEFT JOIN academic_work_plan.oferta_cetap_programa o ON o.id = g.id_oferta_cetap
+         LEFT JOIN academic_work_plan.cetap c ON c.id = o.id_cetap
+         LEFT JOIN academic_work_plan.direccion_territorial dt ON dt.id = c.id_direccion_territorial
+        WHERE f.id_docente = $1 AND f.estado = 'TOMADA'
+          AND COALESCE(g.id_periodo_academico::text, g.id_periodo::text) = $2
+          AND (g.id_oferta_cetap IS NULL
+               OR dt.codigo IS NULL
+               OR (SELECT COUNT(*) FROM auth.seccionales sc WHERE sc.cod_seccional = dt.codigo) <> 1
+               OR EXISTS (SELECT 1 FROM "academic-schedule".franja_horaria f2
+                            JOIN "academic-schedule".aula au ON au.codigo = f2.aula_codigo
+                           WHERE f2.id_grupo = g.id_grupo AND f2.tipo_sesion = 'presencial'
+                             AND au.codigo_cetap IS DISTINCT FROM c.codigo))`,
+      [docente.idPerson, periodoRef]);
+    if (sinDonde.length) {
+      throw new ConflictException(
+        'No se puede concertar sin saber dónde se dicta cada grupo (de ahí sale quién aprueba): '
+        + sinDonde.map((x) => `${x.nombre} grupo ${x.numero} (${x.motivo})`).join('; ') + '.');
+    }
+
     const devueltas = await this.dataSource.query(
       `SELECT COUNT(*)::int AS n
          FROM "academic-schedule".franja_horaria f

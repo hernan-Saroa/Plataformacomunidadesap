@@ -224,3 +224,70 @@ Verificado con el servidor real: el PTA de prueba y 2050-1 dan `programacion`; 2
 ### 8.5 El interruptor
 
 `GET /programacion-academica/api/v1/concertacion/configuracion` es público y devuelve `{ habilitada, motivo, desdePeriodo, firmaSimulada, revisionesRequeridas }`. `habilitada` ya tiene en cuenta los dos servicios. Si un lado está apagado, `motivo` explica cuál. Sirve como información general; para decidir la pantalla de un PTA usa la sección 8.4.
+
+## 9. Dónde se dicta el grupo: su oferta CETAP (EFDS-2315)
+
+Esto es para el selector de la pantalla de grupos. El PTA decide quién aprueba la Docencia por la territorial de cada asignatura, y esa territorial sale de la **oferta CETAP** del grupo:
+- la oferta es un programa en un CETAP y un periodo;
+- la crea la carga masiva (`academic_work_plan.oferta_cetap_programa`);
+- su territorial es la del CETAP, por código (`DT-009`).
+
+Va en la migración 040 y no se llena nada a mano. Verificado con el servidor real.
+
+No la confundas con `tipoOferta` del grupo (periodo regular, interperiodo…) ni con el módulo `/ofertas` (periodos de oferta, EFDS-1375).
+
+### 9.1 El grupo — `idOfertaCetap`
+
+`GET /grupos/:id` y `GET /grupos?asignatura=` traen `idOfertaCetap: string | null`. Un grupo existente queda en `null` hasta que se le asigna.
+
+### 9.2 Las opciones del selector — `GET /grupos/ofertas-cetap?asignatura=<id>&periodo=<idPeriodo>`
+
+```json
+[{ "idOfertaCetap": "1", "idPrograma": "1", "idPeriodoAcademico": "11",
+   "cetap": { "id": "1", "codigo": "CET-0288", "nombre": "Sede Central" },
+   "territorial": { "codigo": "SC", "nombre": "SEDE_CENTRAL", "idSeccional": "900001" } }]
+```
+
+- Solo trae las ofertas **activas** del programa de la asignatura en ese periodo, ordenadas por territorial y CETAP.
+- En un periodo legado responde `[]`: el modelo legado no tiene ofertas CETAP.
+- El volumen real varía mucho: en 2050-1, APT tiene 271 ofertas y Administración Pública tiene 1. Conviene que el selector permita buscar.
+- `territorial.idSeccional` puede venir `null` si el código del CETAP no cruza con auth. Muéstralo: ese grupo no se podrá concertar.
+
+### 9.3 Asignar o quitar la oferta
+
+| Llamada | Para qué |
+|---|---|
+| `POST /grupos` con `idOfertaCetap` (opcional) | Crea el grupo con su oferta |
+| `PATCH /grupos/:id` con `{ "idOfertaCetap": "165" }` | Asigna la oferta. Con `null` la quita |
+
+Respuestas **400** que conviene mostrar tal cual:
+- *"La oferta CETAP no existe, no está activa, o no es del programa de la asignatura en este periodo."*
+- *"Solo los grupos de un periodo de plataforma tienen oferta CETAP."*
+- *"Las aulas 101 del grupo no son del CETAP CET-0135 (Neiva)."* Sale si el grupo ya tiene sesiones presenciales en aulas de otro CETAP.
+
+### 9.4 El aula de una sesión presencial
+
+`POST /horarios` con `tipoSesion: 'presencial'` y `aulaCodigo` responde **400** si el aula es de otro CETAP que la oferta del grupo: *"El aula 101 es del CETAP CET-0288 y el grupo se dicta en CET-0135."*. Una sesión mediada por tecnología no se verifica, y tampoco un grupo sin oferta (la verificación ocurre al concertar).
+
+### 9.5 Al concertar
+
+Si el docente envía con un grupo sin oferta, sin territorial que cruce, o con un aula de otro CETAP, recibe **409**, y el mensaje lista cada grupo con su motivo. Ejemplo: *"No se puede concertar sin saber dónde se dicta cada grupo (de ahí sale quién aprueba): Fundamentos de economía pública grupo 1 (sin oferta CETAP)."*
+
+**Límite actual:** si la oferta es de una Dirección Territorial (no de Sede Central), la concertación se aprueba, pero el PTA la deja `pendiente_docencia_territorial` (sección 8.3). Aplicarla exige cambiar el PTA, y está reportado.
+
+## 10. Verificación de tu pantalla de Docencia del PTA (`5c0b25636`, 14 de octubre)
+
+Integrada en `ronda-claude` y `ronda-pruebas`, y verificada en el navegador con el servidor real:
+
+| Caso | Resultado |
+|---|---|
+| **Encendida** | El docente crea su PTA (2050-1, activado temporalmente) después de concertar. La Docencia aparece «Aprobada en la concertación», en solo lectura y sin «Agregar Asignatura». Muestra Concepciones (108 h) y Constitución del Territorio (64 h), total 172 h. Sin errores de JavaScript |
+| **Apagada** | La sección Docencia es **idéntica** a la de hoy. La comparé contra el build del commit anterior a tu integración, sobre el mismo PTA: mismo texto, mismos 11 botones, mismos 10 campos editables y «Agregar Asignatura» |
+| Pruebas del MFE del PTA | 590 de 590 |
+
+Tres observaciones, para que decidas:
+1. **Con el interruptor apagado, el formulario ahora depende de la consulta del régimen.** Si esa consulta falla, o si no hay periodo activo (`periodoNoDisponible`), no deja guardar ni enviar. Hoy, sin tu cambio, eso no bloquea. Fallar cerrado tiene sentido con el interruptor encendido. Con el interruptor apagado, el backend responde `actual` sin consultar nada; el riesgo es solo de red o de no tener periodo activo, pero es un cambio de comportamiento.
+2. Mientras llega la respuesta, la sección Docencia muestra un instante el aviso ámbar «Consultando el régimen de Docencia…», también con el interruptor apagado.
+3. En la lista «Mi Plan de Trabajo Académico», la tarjeta del PTA dice «Docencia — No iniciado» aunque la Docencia ya está aprobada en la concertación (`componentes-aprobacion`: `academica_<nivel>` aprobado con `scope: programacion`).
+
+Dato local que no viene de tu pantalla: el docente de prueba tiene `horasAsignables = 0` en el banco de docentes, así que el formulario muestra «Límite excedido 172h / 0h».
