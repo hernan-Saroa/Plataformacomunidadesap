@@ -37,6 +37,8 @@ import {
 } from './auth/pta-permissions.constants';
 import { PtaNotificationsService } from './notifications/pta-notifications.service';
 import { obtenerNombreVisibleAsignatura } from './utils/asignatura-nombre.util';
+import { etapasComplementaria, tipoAprobacionComplementaria, complementariasHistoricas,
+  COMPLEMENTARIAS_FLUJO_SECUENCIAL, COMPLEMENTARIAS_FLUJO_LEGACY } from './utils/complementarias-flujo';
 
 type SavePtaInput = Record<string, any>;
 type ComponentResponseMap = Record<string, string>;
@@ -193,6 +195,7 @@ const COMPONENT_APPROVAL_KEYS = [
   // clasificarComplementarias); estos dos cubren lo asociado a Pregrado/Posgrado.
   'complementarias_pregrado',
   'complementarias_posgrado',
+  'complementarias_decanatura',
   'complementarias_territorial',
   // EFDS-1353 creó este ámbito (y lo dejó como TIPO DE APROBACIÓN POR DEFECTO de
   // toda actividad complementaria del catálogo, ver
@@ -354,6 +357,7 @@ const COMPONENT_REVISION_STATE: Record<string, string> = {
   complementarias_pregrado: 'REVISION_DOCENTE_N1',
   complementarias_posgrado: 'REVISION_DOCENTE_N1',
   complementarias_territorial: 'REVISION_DOCENTE_N2',
+  complementarias_decanatura: 'REVISION_DOCENTE_N2',
   complementarias_gestion_profesoral: 'REVISION_DOCENTE_N3',
   investigacion: 'REVISION_DOCENTE_N2',
   ext_capacitacion: 'REVISION_DOCENTE_N2',
@@ -884,12 +888,10 @@ function flattenConfiguredComplementaryActivity(
     requiere_seleccion_jerarquica: recognitionRows.length > 0,
     consumeTotalidad: consumesFullPTA,
     // Programa asociado a este TIPO de actividad (config-driven, no por instancia):
-    // 'pregrado' | 'posgrado' | ausente = sin programa. Enruta la aprobación/revisión
-    // a complementarias_pregrado / complementarias_posgrado / complementarias (catch-all).
+    // Pregrado/Posgrado añade la aprobación previa del programa; sin programa
+    // solo se requiere la revisión y aprobación del responsable seleccionado.
     nivel_programa: normalizeNivelProgramaComplementaria(activity?.nivel_programa),
-    // EFDS-1353: ámbito de aprobación de este TIPO de actividad.
-    // 'decanatura' abre una aprobación por cada territorial presente en el PTA;
-    // 'gestion_profesoral' (default) mantiene el flujo único.
+    // Responsable final independiente del programa y del alcance geográfico.
     tipo_aprobacion: normalizeTipoAprobacionComplementaria(activity?.tipo_aprobacion),
   };
 }
@@ -907,9 +909,7 @@ function normalizeNivelProgramaComplementaria(value: unknown): 'pregrado' | 'pos
  * de modo que la configuración previa sigue funcionando igual sin migrar datos.
  */
 function normalizeTipoAprobacionComplementaria(value: unknown): PTATipoAprobacionComplementaria {
-  return String(value || '').trim().toLowerCase() === 'decanatura'
-    ? 'decanatura'
-    : 'gestion_profesoral';
+  return tipoAprobacionComplementaria(value);
 }
 
 function normalizeExtensionSections(raw: any): any[] {
@@ -1610,6 +1610,19 @@ export class PtaService {
       ...legacyAadmUnique,
     ];
     return { all: [...comp, ...legacyAadmUnique], docencia, aadm };
+  }
+
+  private complementariaFilaKey(item: any, aadm: boolean): string | null {
+    const id = coalesceLookupKey(item?.id);
+    return id ? `${aadm ? 'aadm' : 'docencia'}:${id}` : null;
+  }
+
+  private correccionesComplementarias(ds: any): Record<string, string[]> {
+    const raw = ds?.complementarias_filas_corregidas;
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    return Object.fromEntries(Object.entries(raw).filter(([, keys]) => Array.isArray(keys)).map(([id, keys]) => [
+      id, (keys as string[]).filter(key => COMPLEMENTARIAS_COMPONENT_KEYS.includes(key as PTAComponentKey)),
+    ]));
   }
 
   private computeHorasTotales(body: any, extMult: Record<string, number> = { capacitacion: 2 }) {
@@ -3178,14 +3191,17 @@ export class PtaService {
     ]);
     const nivelProgramaPorActividadIdLote = new Map<string, 'pregrado' | 'posgrado'>();
     const tipoAprobacionPorActividadIdLote = new Map<string, PTATipoAprobacionComplementaria>();
-    for (const act of [...catComplementariasLote, ...catAadmLote]) {
-      if (!act?.id) continue;
-      const nivel = normalizeNivelProgramaComplementaria((act as any)?.nivel_programa);
-      if (nivel) nivelProgramaPorActividadIdLote.set(String(act.id), nivel);
-      tipoAprobacionPorActividadIdLote.set(
-        String(act.id),
-        normalizeTipoAprobacionComplementaria((act as any)?.tipo_aprobacion),
-      );
+    for (const [seccion, catalogo] of [['docencia', catComplementariasLote], ['aadm', catAadmLote]] as const) {
+      for (const act of catalogo) {
+        if (!act?.id) continue;
+        const clave = `${seccion}:${act.id}`;
+        const nivel = normalizeNivelProgramaComplementaria((act as any)?.nivel_programa);
+        if (nivel) nivelProgramaPorActividadIdLote.set(clave, nivel);
+        tipoAprobacionPorActividadIdLote.set(
+          clave,
+          normalizeTipoAprobacionComplementaria((act as any)?.tipo_aprobacion),
+        );
+      }
     }
 
     // BASE_KEYS ya no incluye Docencia ni Complementarias: ambos se colapsan por
@@ -3261,6 +3277,7 @@ export class PtaService {
         const compAadm = new Set(compSecciones.aadm);
         let horasCompPregrado = 0;
         let horasCompPosgrado = 0;
+        let horasCompDecanatura = 0;
         let horasCompNinguno = 0;
         let horasCompTerritorial = 0;
         let horasCompGestionProfesoral = 0;
@@ -3268,6 +3285,7 @@ export class PtaService {
           complementarias: { docencia: 0, academico_administrativas: 0 },
           complementarias_pregrado: { docencia: 0, academico_administrativas: 0 },
           complementarias_posgrado: { docencia: 0, academico_administrativas: 0 },
+          complementarias_decanatura: { docencia: 0, academico_administrativas: 0 },
           complementarias_territorial: { docencia: 0, academico_administrativas: 0 },
           complementarias_gestion_profesoral: { docencia: 0, academico_administrativas: 0 },
         };
@@ -3278,29 +3296,39 @@ export class PtaService {
           complementarias: h => { horasCompNinguno += h; },
           complementarias_pregrado: h => { horasCompPregrado += h; },
           complementarias_posgrado: h => { horasCompPosgrado += h; },
+          complementarias_decanatura: h => { horasCompDecanatura += h; },
           complementarias_territorial: h => { horasCompTerritorial += h; },
           complementarias_gestion_profesoral: h => { horasCompGestionProfesoral += h; },
         };
+        const etapasCompPorItem = new Map<any, PTAComponentKey[]>();
+        const dependenciasComp = new Map<string, Set<string>>();
         for (const item of complementariasRaw) {
           const horas = Number(item?.horas) || 0;
           const actividadId = coalesceLookupKey(item?.actividad_id ?? item?.id);
-          const nivel = actividadId ? nivelProgramaPorActividadIdLote.get(actividadId) : undefined;
-          const tipoAprob = actividadId ? tipoAprobacionPorActividadIdLote.get(actividadId) : undefined;
-          // Mismo orden de precedencia que clasificarComplementarias: la
-          // territorialidad (Decanatura) manda sobre el nivel, y solo cuenta como
-          // territorial si el ítem trae la territorial capturada (sin ella no hay
-          // Decanatura a la cual enrutarla; ver clasificarComplementarias).
+          const clave = `${compAadm.has(item) ? 'aadm' : 'docencia'}:${actividadId}`;
+          const nivel = actividadId ? nivelProgramaPorActividadIdLote.get(clave) : undefined;
+          const tipoAprob = actividadId ? tipoAprobacionPorActividadIdLote.get(clave) : undefined;
           const territorialItem = coalesceLookupKey(item?.territorial_id, item?.territorialId);
-          const bucket = (tipoAprob === 'decanatura' && territorialItem) ? 'complementarias_territorial'
-            : nivel === 'pregrado' ? 'complementarias_pregrado'
-              : nivel === 'posgrado' ? 'complementarias_posgrado'
-                : (tipoAprob === 'gestion_profesoral' && actividadId) ? 'complementarias_gestion_profesoral'
-                  : 'complementarias';
-          acumularComp[bucket](horas);
+          const etapas = etapasComplementaria(nivel, tipoAprob, territorialItem, complementariasHistoricas(dto));
+          etapasCompPorItem.set(item, etapas);
+          if (etapas.length > 1) {
+            const previas = dependenciasComp.get(etapas[1]) || new Set<string>();
+            previas.add(etapas[0]);
+            dependenciasComp.set(etapas[1], previas);
+          }
           const esAadm = compAadm.has(item);
-          compSubseccionesPorBucket.get(bucket)!.add(esAadm ? 'academico_administrativas' : 'docencia');
-          compSeccionesPorBucket[bucket][esAadm ? 'academico_administrativas' : 'docencia'] += horas;
+          for (const bucket of etapas) {
+            acumularComp[bucket](horas);
+            compSubseccionesPorBucket.get(bucket)!.add(esAadm ? 'academico_administrativas' : 'docencia');
+            compSeccionesPorBucket[bucket][esAadm ? 'academico_administrativas' : 'docencia'] += horas;
+          }
         }
+        const anotarEtapas = (item: any) => ({ ...item,
+          componentes_complementaria: etapasCompPorItem.get(item) || ['complementarias'],
+          componente_complementaria: etapasCompPorItem.get(item)?.slice(-1)[0] || 'complementarias',
+        });
+        if (Array.isArray(dto.complementarias)) dto.complementarias = dto.complementarias.map(anotarEtapas);
+        if (Array.isArray(dto.academico_admin)) dto.academico_admin = dto.academico_admin.map(anotarEtapas);
         // Respaldo cuando el DTO no trae el detalle por ítem (mismo criterio "sin
         // dato, no bloquear" que ya usa Docencia arriba): todo cae en el catch-all.
         if (complementariasRaw.length === 0 && Number(dto?.horas_complementarias || 0) > 0) {
@@ -3317,6 +3345,7 @@ export class PtaService {
           complementarias: horasCompNinguno,
           complementarias_pregrado: horasCompPregrado,
           complementarias_posgrado: horasCompPosgrado,
+          complementarias_decanatura: horasCompDecanatura,
           complementarias_territorial: horasCompTerritorial,
           complementarias_gestion_profesoral: horasCompGestionProfesoral,
         };
@@ -3335,6 +3364,7 @@ export class PtaService {
           complementarias: horasCompNinguno,
           complementarias_pregrado: horasCompPregrado,
           complementarias_posgrado: horasCompPosgrado,
+          complementarias_decanatura: horasCompDecanatura,
           complementarias_territorial: horasCompTerritorial,
           complementarias_gestion_profesoral: horasCompGestionProfesoral,
           ext_capacitacion: extHoras(EXT_SUB_SECTIONS.ext_capacitacion),
@@ -3458,7 +3488,9 @@ export class PtaService {
         // componentes tiene contenido, incluso actividades sin horas;
         // aprobada solo si TODOS los componentes con contenido lo están. El rótulo
         // de salida se mantiene 'complementarias' por compatibilidad.
-        const compHorasTotales = COMPLEMENTARIAS_KEYS_LOTE.reduce((s, k) => s + (horasPorComp[k] || 0), 0);
+        const compHorasTotales = complementariasRaw.length
+          ? complementariasRaw.reduce((s, item) => s + (Number(item?.horas) || 0), 0)
+          : Number(dto?.horas_complementarias || 0);
         const compTieneContenido = COMPLEMENTARIAS_KEYS_LOTE.some(tieneContenido);
         if (compTieneContenido) total++;
         {
@@ -3474,9 +3506,10 @@ export class PtaService {
           else if (compEnRevision) compEstado = 'en_revision';
           else compEstado = 'pendiente';
           // Horas aprobadas por cada componente, no por el booleano colapsado.
-          const compHorasAprobadas = esBorrador ? 0 : COMPLEMENTARIAS_KEYS_LOTE.reduce(
-            (s, k) => s + (estaAprobado(k) ? (horasPorComp[k] || 0) : 0), 0,
-          );
+          const compHorasAprobadas = esBorrador ? 0 : complementariasRaw.length
+            ? complementariasRaw.reduce((s, item) => s + ((etapasCompPorItem.get(item) || [])
+              .every(k => estaAprobado(k)) ? Number(item?.horas) || 0 : 0), 0)
+            : estaAprobado('complementarias') ? compHorasTotales : 0;
           componentesEstado.push({
             key: 'complementarias',
             label: 'Complementarias',
@@ -3545,7 +3578,7 @@ export class PtaService {
           componente: string; subseccion: string; estado: string;
         }> = [];
         const componentesAprobacionEstado: Array<{
-          componente: string; estado: string; revision_completa: boolean;
+          componente: string; estado: string; revision_completa: boolean; dependencias_pendientes?: string[];
         }> = [];
         for (const componente of Object.keys(horasPorComp)) {
           const requiereReaprobacion = Boolean(reaprobaciones?.has(componente));
@@ -3572,7 +3605,10 @@ export class PtaService {
           componentesAprobacionEstado.push({
             componente,
             estado: estadoAprobacion,
-            revision_completa: revisionSatisfecha,
+            revision_completa: revisionSatisfecha && [...(dependenciasComp.get(componente) || [])].every(key => estaAprobado(key)),
+            ...(COMPLEMENTARIAS_COMPONENT_KEYS.includes(componente as PTAComponentKey) ? {
+              dependencias_pendientes: [...(dependenciasComp.get(componente) || [])].filter(key => !estaAprobado(key)),
+            } : {}),
           });
         }
 
@@ -4037,14 +4073,18 @@ export class PtaService {
     // por fila sin reimplementar la clasificación.
     if (this.readComplementariasSecciones(dto).all.length > 0) {
       try {
-        const part = await this.clasificarComplementarias(dto);
-        const componentePorItem = new Map<any, string>();
+        const part = await this.clasificarComplementarias(dto, complementariasHistoricas(pta));
+        const etapasPorItem = new Map<any, string[]>();
+        const aadm = new Set(this.readComplementariasSecciones(dto).aadm);
+        const correcciones = this.correccionesComplementarias(pta.datosEstructurados);
         for (const key of COMPLEMENTARIAS_COMPONENT_KEYS) {
-          for (const item of (part as any)[key]) componentePorItem.set(item, key);
+          for (const item of (part as any)[key]) etapasPorItem.set(item, [...(etapasPorItem.get(item) || []), key]);
         }
         const anotar = (item: any) => ({
           ...item,
-          componente_complementaria: componentePorItem.get(item) || 'complementarias',
+          componente_complementaria: etapasPorItem.get(item)?.slice(-1)[0] || 'complementarias',
+          componentes_complementaria: etapasPorItem.get(item) || ['complementarias'],
+          componentes_edicion_complementaria: correcciones[this.complementariaFilaKey(item, aadm.has(item)) || ''] || [],
         });
         if (Array.isArray(dto.complementarias)) dto.complementarias = dto.complementarias.map(anotar);
         if (Array.isArray(dto.academico_admin)) dto.academico_admin = dto.academico_admin.map(item => ({
@@ -4186,11 +4226,9 @@ export class PtaService {
       preserveField('investigacion_proyecto');
       preserveField('investigacion_actividades');
     }
-    // Complementarias se enruta a TRES componentes (sin programa / pregrado / posgrado,
-    // ver clasificarComplementarias) pero comparte un único array `complementarias`.
-    // Mismo patrón de partición que Docencia arriba: si el alcance autorizado no los
-    // cubre a todos, se aceptan del payload solo los ítems de los componentes
-    // autorizados y se conservan intactos los del resto.
+    // Una complementaria puede pertenecer a Programa y al responsable final.
+    // Cualquiera de sus etapas devueltas habilita corregir la misma fila, una sola
+    // vez, conservando las actividades de etapas ajenas.
     const complementariasAutorizada = COMPLEMENTARIAS_COMPONENT_KEYS.filter(key => allowed.has(key));
     if (complementariasAutorizada.length === 0) {
       // Complementarias ahora incluye la sección académico-administrativa; se preserva
@@ -4203,10 +4241,29 @@ export class PtaService {
         this.clasificarComplementarias({ complementarias: entrantes }),
         this.clasificarComplementarias(existingData),
       ]);
-      merged.complementarias = COMPLEMENTARIAS_COMPONENT_KEYS.flatMap(key =>
-        allowed.has(key) ? (partEntrantes as any)[key] : (partPrevias as any)[key],
-      );
-      preserveField('academico_admin');
+      const previas = this.readComplementariasSecciones(existingData);
+      const aadmPrevias = new Set(previas.aadm);
+      const correcciones = this.correccionesComplementarias(existingData);
+      const puedeEditar = (item: any, part: any) => complementariasAutorizada.some(key => part[key].includes(item)
+        || (correcciones[this.complementariaFilaKey(item, aadmPrevias.has(item)
+          || this.normalizeCompSeccion(item?.seccion, item) === 'academico_administrativas') || ''] || []).includes(key));
+      const identidad = (item: any, aadm = false) => {
+        const id = coalesceLookupKey(item?.id);
+        return id ? `${aadm ? 'academico_administrativas' : this.normalizeCompSeccion(item?.seccion, item)}:${id}` : null;
+      };
+      const previasPorId = new Map(previas.all.map(item => [identidad(item, aadmPrevias.has(item)), item]));
+      merged.complementarias = [
+        ...previas.all.filter(item => !puedeEditar(item, partPrevias))
+          .map(item => aadmPrevias.has(item) ? { ...item, seccion: 'academico_administrativas' } : item),
+        ...entrantes.filter(item => {
+          const clave = identidad(item);
+          const previa = clave ? previasPorId.get(clave) : undefined;
+          return previa ? puedeEditar(previa, partPrevias) : puedeEditar(item, partEntrantes);
+        }),
+      ];
+      // La matriz canónica contiene también las filas legacy; conservar el array
+      // antiguo resucitaría actividades eliminadas o duplicaría su clasificación.
+      merged.academico_admin = [];
     }
 
     const hasAnyExtensionPermission = COMPONENT_APPROVAL_KEYS
@@ -4481,7 +4538,8 @@ export class PtaService {
       estado,
       motivoDevolucion: input?.motivo_devolucion ?? input?.motivoDevolucion ?? null,
       observaciones: input?.observaciones_docente ?? input?.observaciones ?? null,
-      datosEstructurados: input,
+      datosEstructurados: { ...input, complementarias_flujo_version: COMPLEMENTARIAS_FLUJO_SECUENCIAL,
+        complementarias_edicion_sin_contenido: undefined, complementarias_filas_corregidas: undefined },
       horasTotales: horas.total,
       dedicacion: coalesceString(input?.dedicacion) as any,
       horasAsignables: Number.isFinite(horasAProgramar) ? Number(horasAProgramar) : null,
@@ -4498,6 +4556,13 @@ export class PtaService {
         saved = await this.ptaRepo.save(this.ptaRepo.create({ ...patch, id, version: 1 }));
       } else {
         estadoAnteriorSave = existing.estado;
+        (patch.datosEstructurados as any).complementarias_flujo_version =
+          (existing.datosEstructurados as any)?.complementarias_flujo_version
+          || (complementariasHistoricas(existing) ? COMPLEMENTARIAS_FLUJO_LEGACY : COMPLEMENTARIAS_FLUJO_SECUENCIAL);
+        (patch.datosEstructurados as any).complementarias_edicion_sin_contenido =
+          (existing.datosEstructurados as any)?.complementarias_edicion_sin_contenido;
+        (patch.datosEstructurados as any).complementarias_filas_corregidas =
+          await this.filasComplementariasTrasCorreccion(existing, patch.datosEstructurados);
         saved = await this.ptaRepo.save({ ...existing, ...patch });
       }
     } else {
@@ -5039,6 +5104,10 @@ export class PtaService {
         await this.resetParallelApprovalWorkflow(ptaId, existing.datosEstructurados);
       }
       await this.resetComponentApprovalWorkflow(ptaId, veniaDeDevolucionParcial, respuestaDocenteReenvio, respuestasDocentePorComponente);
+      if ((existing.datosEstructurados as any)?.complementarias_filas_corregidas) {
+        existing.datosEstructurados = { ...existing.datosEstructurados };
+        delete (existing.datosEstructurados as any).complementarias_filas_corregidas;
+      }
     }
 
     const estadoAnterior = existing.estado;
@@ -5275,6 +5344,91 @@ export class PtaService {
     }, {});
   }
 
+  /** Conserva las etapas nuevas cuando una fila devuelta cambia de actividad. */
+  private async filasComplementariasTrasCorreccion(pta: PlanTrabajoAcademicoEntity, siguientes: any): Promise<Record<string, string[]>> {
+    const pendientes: Record<string, string[]> = {};
+    if (!REVISION_DOCENTE_STATES.has(pta.estado) || complementariasHistoricas(pta)) return pendientes;
+    const correcciones = this.correccionesComplementarias(pta.datosEstructurados);
+    const fuentes = await this.ptaComponentApprovalRepo.find({ where: {
+      ptaId: pta.id, componente: In(COMPLEMENTARIAS_COMPONENT_KEYS), estado: 'devuelto',
+    } });
+    if (!fuentes.length) return pendientes;
+    const [antes, despues] = await Promise.all([
+      this.clasificarComplementarias(pta.datosEstructurados || {}), this.clasificarComplementarias(siguientes),
+    ]);
+    const leerFilas = (ds: any) => {
+      const { all, aadm } = this.readComplementariasSecciones(ds);
+      const administrativas = new Set(aadm);
+      return new Map(all.filter(item => coalesceLookupKey(item?.id)).map(item => [
+        this.complementariaFilaKey(item, administrativas.has(item))!, item,
+      ]));
+    };
+    const anteriores = leerFilas(pta.datosEstructurados || {});
+    const actuales = leerFilas(siguientes);
+    for (const [id, previa] of anteriores) {
+      const origen = correcciones[id] || fuentes.filter(fuente => antes[fuente.componente]?.includes(previa)).map(fuente => fuente.componente);
+      if (!origen.some(key => fuentes.some(fuente => fuente.componente === key))) continue;
+      const actual = actuales.get(id);
+      if (!actual) continue;
+      const etapasAntes = COMPLEMENTARIAS_COMPONENT_KEYS.filter(key => antes[key].includes(previa));
+      const etapasDespues = COMPLEMENTARIAS_COMPONENT_KEYS.filter(key => despues[key].includes(actual));
+      if (correcciones[id] || etapasAntes.join(',') !== etapasDespues.join(',')) pendientes[id] = origen;
+    }
+    return pendientes;
+  }
+
+  private async reabrirEtapasComplementarias(ptaId: string, devueltos: PtaComponentApprovalEntity[]) {
+    const fuentes = devueltos.filter(row => COMPLEMENTARIAS_COMPONENT_KEYS.includes(row.componente as PTAComponentKey));
+    if (!fuentes.length) return;
+    const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
+    if (!pta || complementariasHistoricas(pta)) return;
+    const part = await this.clasificarComplementarias(pta.datosEstructurados || {});
+    const fuenteSolicitud = fuentes.find(row => row.scope === 'solicitud_edicion' && row.scopeId);
+    const solicitud = fuenteSolicitud ? await this.solicitudRepo.findOne({ where: {
+      id: fuenteSolicitud.scopeId, ptaId, tipoSolicitud: SOLICITUD_EDICION_TIPO,
+      estado: In(['aprobado', 'en_aprobacion']),
+    } as any }) : null;
+    const edicionAutorizada = solicitud && normalizeSolicitudComponentesAprobados(solicitud).includes('complementarias');
+    if (edicionAutorizada && (pta.datosEstructurados as any)?.complementarias_edicion_sin_contenido === solicitud.id
+      && COMPLEMENTARIAS_COMPONENT_KEYS.some(key => part[key].length)) {
+      // El bloque vacío solo habilitaba agregar contenido: no crea una aprobación
+      // fantasma de Gestión Profesoral si el docente eligió otro responsable.
+      for (const row of fuentes.filter(row => !part[row.componente]?.length)) {
+        row.estado = 'aprobado'; row.scope = null; row.scopeId = null;
+        row.aprobadorId = null; row.aprobadorNombre = 'Sistema';
+        row.comentarios = 'Sin actividades - aprobacion automatica';
+        await this.ptaComponentApprovalRepo.save(row);
+        devueltos.splice(devueltos.indexOf(row), 1);
+      }
+    }
+    const afectadas = new Set(fuentes.flatMap(row => part[row.componente] || []));
+    const correcciones = this.correccionesComplementarias(pta.datosEstructurados);
+    const aadm = new Set(this.readComplementariasSecciones(pta.datosEstructurados).aadm);
+    for (const item of this.readComplementariasSecciones(pta.datosEstructurados).all) {
+      if (correcciones[this.complementariaFilaKey(item, aadm.has(item)) || '']) afectadas.add(item);
+    }
+    const requeridas = COMPLEMENTARIAS_COMPONENT_KEYS.filter(key => part[key].some(item => afectadas.has(item))
+      || (edicionAutorizada && part[key].length));
+    for (const componente of requeridas) {
+      let row: PtaComponentApprovalEntity | null | undefined = devueltos.find(row => row.componente === componente);
+      if (!row) {
+        row = await this.ptaComponentApprovalRepo.findOne({ where: { ptaId, componente } });
+        row = row || this.ptaComponentApprovalRepo.create({ ptaId, componente });
+        row.estado = 'devuelto';
+        row.comentarios = 'Nueva revisión y aprobación requerida por corrección de las actividades de Complementarias.';
+        if (edicionAutorizada) { row.scope = 'solicitud_edicion'; row.scopeId = solicitud.id; }
+        await this.ptaComponentApprovalRepo.save(row);
+        devueltos.push(row);
+      }
+      await this.ptaComponentReviewRepo.update({ ptaId, componente }, { estado: 'pendiente' });
+    }
+    if (Object.keys(correcciones).length) {
+      await this.ptaRepo.update({ id: ptaId }, {
+        datosEstructurados: () => `"datosEstructurados" - 'complementarias_filas_corregidas'`,
+      });
+    }
+  }
+
   private async resetComponentApprovalWorkflow(
     ptaId: string,
     soloComponentesDevueltos = false,
@@ -5291,6 +5445,7 @@ export class PtaService {
       const devueltos = await this.ptaComponentApprovalRepo.find({
         where: { ptaId, componente: In(componentKeys), estado: 'devuelto' },
       });
+      await this.reabrirEtapasComplementarias(ptaId, devueltos);
       const docenciaReabierta = devueltos.find(row => DOCENCIA_COMPONENT_KEYS.includes(row.componente as PTAComponentKey)
         && row.scope === 'solicitud_edicion' && row.scopeId);
       if (docenciaReabierta) {
@@ -5914,18 +6069,22 @@ export class PtaService {
   private async validarComponenteJustificacion(ptaId: string, componente: string | null | undefined, seccion: string | null | undefined, permitirLegacySinSeccion = false) {
     const pta = await this.ptaRepo.findOne({ where: { id: ptaId } });
     if (!pta) throw new NotFoundException('PTA no encontrado');
-    const { horasPorComponente } = await this.computeHorasPorComponente(pta.datosEstructurados || {});
+    const { horasPorComponente } = await this.computeHorasPorComponente(pta.datosEstructurados || {}, complementariasHistoricas(pta));
     const campos: Record<string, string[]> = {
       docencia: ['academica_pregrado', 'academica_posgrado', 'academica_territorial'],
       investigacion: ['investigacion'],
       extension: ['ext_capacitacion', 'ext_procesos', 'ext_fortalecimiento', 'ext_gobierno'],
-      complementarias: ['complementarias', 'complementarias_pregrado', 'complementarias_posgrado', 'complementarias_territorial', 'complementarias_gestion_profesoral'],
+      complementarias: [...COMPLEMENTARIAS_COMPONENT_KEYS],
       acad_admin: [],
     };
     if (!componente || !Object.prototype.hasOwnProperty.call(campos, componente)) {
       throw new BadRequestException('Selecciona un componente válido para la justificación.');
     }
     let horas = campos[componente].reduce((total, key) => total + (horasPorComponente[key] || 0), 0);
+    if (componente === 'complementarias') {
+      horas = this.readComplementariasSecciones(pta.datosEstructurados || {}).all
+        .reduce((total: number, item: any) => total + (Number(item.horas) || 0), 0);
+    }
     if (componente === 'acad_admin') {
       horas = this.readComplementariasSecciones(pta.datosEstructurados || {}).aadm
         .reduce((total: number, a: any) => total + (Number(a.horas) || 0), 0);
@@ -6666,9 +6825,15 @@ export class PtaService {
       // Docencia es un área que agrupa varios bloques. Reabrir el área no crea
       // trabajo en sus bloques vacíos e intactos; una incorporación posterior
       // se detecta al reenviar y exige revisión/aprobación nuevas.
-      const clavesReabiertas = approvalKeys.filter(key => !docenciaConContenido
+      const complementariasSeleccionadas = componentes.includes('complementarias');
+      const etapasComplementarias = complementariasSeleccionadas
+        ? (await this.computeHorasPorComponente(pta.datosEstructurados || {}, false)).complementariasConContenido : {};
+      const complementariasConContenido = Object.values(etapasComplementarias).some(Boolean);
+      const clavesReabiertas = approvalKeys.filter(key => (!docenciaConContenido
         || !DOCENCIA_COMPONENT_KEYS.includes(key as PTAComponentKey)
-        || componentesOriginales.find(item => item.componente === key)?.aplica !== false);
+        || componentesOriginales.find(item => item.componente === key)?.aplica !== false)
+        && (!COMPLEMENTARIAS_COMPONENT_KEYS.includes(key as PTAComponentKey)
+          || (complementariasConContenido ? etapasComplementarias[key] : key === 'complementarias_gestion_profesoral')));
 
       const result = await this.ptaRepo.manager.transaction(async manager => {
         const txSolicitudRepo = manager.getRepository(SolicitudPtaEntity);
@@ -6695,6 +6860,13 @@ export class PtaService {
           );
         }
         const estadoAnterior = txPta.estado;
+        txPta.datosEstructurados = { ...txPta.datosEstructurados,
+          complementarias_flujo_version: complementariasSeleccionadas ? COMPLEMENTARIAS_FLUJO_SECUENCIAL
+            : (txPta.datosEstructurados as any)?.complementarias_flujo_version
+              || (complementariasHistoricas(txPta) ? COMPLEMENTARIAS_FLUJO_LEGACY : COMPLEMENTARIAS_FLUJO_SECUENCIAL),
+          ...(complementariasSeleccionadas && !complementariasConContenido
+            ? { complementarias_edicion_sin_contenido: existing.id } : {}),
+        };
         const nuevoEstado = approvalKeys.some(
           key => COMPONENT_REVISION_STATE[key] === 'REVISION_DOCENTE_N1',
         )
@@ -9023,10 +9195,11 @@ export class PtaService {
    * Extraído de getComponentesAprobacion para poder reutilizarlo también desde
    * getRequiredSubsecciones (etapa de Revisión), sin duplicar el cálculo.
    */
-  private async computeHorasPorComponente(ds: any): Promise<{
+  private async computeHorasPorComponente(ds: any, historicas = false): Promise<{
     horasPorComponente: Record<string, number>;
     hayActividades: boolean;
     complementariasConContenido: Record<string, boolean>;
+    dependenciasComplementarias: Record<string, string[]>;
   }> {
     const asignaturas: any[] = Array.isArray(ds.asignaturas) ? ds.asignaturas : [];
     const invActs: any[] = Array.isArray(ds.investigacion_actividades) ? ds.investigacion_actividades : [];
@@ -9044,13 +9217,13 @@ export class PtaService {
     const horasProyectoInvestigacion = Number(ds.investigacion_proyecto?.horas_solicitadas || 0);
     const hInv = horasProyectoInvestigacion +
       invActs.reduce((s: number, a: any) => s + (Number(a?.horas_total ?? a?.horas) || 0), 0);
-    // Complementarias se enruta por programa asociado (sin programa/pregrado/posgrado,
-    // ver clasificarComplementarias), igual patrón que Docencia por nivel arriba.
-    const part = await this.clasificarComplementarias(ds);
+    // Cada etapa evalúa su contenido; estas horas por etapa no se suman entre sí.
+    const part = await this.clasificarComplementarias(ds, historicas);
     const sumarHoras = (arr: any[]) => arr.reduce((s: number, a: any) => s + (Number(a?.horas) || 0), 0);
     const hCompNinguno = sumarHoras(part.complementarias);
     const hCompPregrado = sumarHoras(part.complementarias_pregrado);
     const hCompPosgrado = sumarHoras(part.complementarias_posgrado);
+    const hCompDecanatura = sumarHoras(part.complementarias_decanatura);
     const hCompTerritorial = sumarHoras(part.complementarias_territorial);
     const hCompGestionProfesoral = sumarHoras(part.complementarias_gestion_profesoral);
 
@@ -9082,6 +9255,7 @@ export class PtaService {
       complementarias: hCompNinguno,
       complementarias_pregrado: hCompPregrado,
       complementarias_posgrado: hCompPosgrado,
+      complementarias_decanatura: hCompDecanatura,
       complementarias_territorial: hCompTerritorial,
       complementarias_gestion_profesoral: hCompGestionProfesoral,
     };
@@ -9097,7 +9271,14 @@ export class PtaService {
     const complementariasConContenido = Object.fromEntries(
       COMPLEMENTARIAS_COMPONENT_KEYS.map(key => [key, part[key].length > 0]),
     );
-    return { horasPorComponente, hayActividades, complementariasConContenido };
+    const dependenciasComplementarias = Object.fromEntries(
+      ['complementarias_decanatura', 'complementarias_territorial', 'complementarias_gestion_profesoral'].map(key => {
+        const finales = new Set((part as any)[key]);
+        return [key, ['complementarias_pregrado', 'complementarias_posgrado']
+          .filter(programa => (part as any)[programa].some((item: any) => finales.has(item)))];
+      }),
+    );
+    return { horasPorComponente, hayActividades, complementariasConContenido, dependenciasComplementarias };
   }
 
   /** Normaliza un nombre de seccional para comparar sin acentos ni separadores. */
@@ -9205,12 +9386,14 @@ export class PtaService {
    * captura: el docente no elige programa, cada tipo de actividad ya trae la
    * etiqueta puesta una sola vez en Configuración de Reglas PTA.
    *
-   * Sin etiqueta (o actividad no encontrada en el catálogo) → 'complementarias'
-   * (catch-all: mismo componente/permiso que existía antes del split, sin cambios).
+   * Programa y responsable se clasifican sobre la misma fila. Actividades fuera
+   * del catálogo conservan el ámbito general y los PTA cerrados anteriores
+   * conservan su enrutamiento histórico hasta una edición de Complementarias.
    */
-  private async clasificarComplementarias(ds: any): Promise<{
+  private async clasificarComplementarias(ds: any, historicas = false): Promise<{
     complementarias_pregrado: any[];
     complementarias_posgrado: any[];
+    complementarias_decanatura: any[];
     complementarias_territorial: any[];
     complementarias_gestion_profesoral: any[];
     complementarias: any[];
@@ -9218,11 +9401,12 @@ export class PtaService {
     const out = {
       complementarias_pregrado: [] as any[],
       complementarias_posgrado: [] as any[],
+      complementarias_decanatura: [] as any[],
       complementarias_territorial: [] as any[],
       complementarias_gestion_profesoral: [] as any[],
       complementarias: [] as any[],
     };
-    const { all } = this.readComplementariasSecciones(ds);
+    const { all, aadm } = this.readComplementariasSecciones(ds);
     if (all.length === 0) return out;
 
     const [catDocencia, catAadm] = await Promise.all([
@@ -9231,43 +9415,27 @@ export class PtaService {
     ]);
     const nivelPorActividadId = new Map<string, 'pregrado' | 'posgrado'>();
     const tipoPorActividadId = new Map<string, PTATipoAprobacionComplementaria>();
-    for (const act of [...catDocencia, ...catAadm]) {
-      if (!act?.id) continue;
-      const nivel = normalizeNivelProgramaComplementaria(act?.nivel_programa);
-      if (nivel) nivelPorActividadId.set(String(act.id), nivel);
-      tipoPorActividadId.set(String(act.id), normalizeTipoAprobacionComplementaria(act?.tipo_aprobacion));
+    for (const [seccion, catalogo] of [['docencia', catDocencia], ['aadm', catAadm]] as const) {
+      for (const act of catalogo) {
+        if (!act?.id) continue;
+        const clave = `${seccion}:${act.id}`;
+        const nivel = normalizeNivelProgramaComplementaria(act?.nivel_programa);
+        if (nivel) nivelPorActividadId.set(clave, nivel);
+        tipoPorActividadId.set(clave, normalizeTipoAprobacionComplementaria(act?.tipo_aprobacion));
+      }
     }
 
+    const itemsAadm = new Set(aadm);
     for (const item of all) {
       const actividadId = coalesceLookupKey(item?.actividad_id ?? item?.id);
-      const nivel = actividadId ? nivelPorActividadId.get(actividadId) : undefined;
-      const tipo = actividadId ? tipoPorActividadId.get(actividadId) : undefined;
+      const clave = `${itemsAadm.has(item) ? 'aadm' : 'docencia'}:${actividadId}`;
+      const nivel = actividadId ? nivelPorActividadId.get(clave) : undefined;
+      const tipo = actividadId ? tipoPorActividadId.get(clave) : undefined;
 
-      // Decanatura conserva su componente y sus permisos por nivel. La territorial
-      // capturada participa en el enrutamiento histórico, pero no limita las decisiones
-      // a responsables de esa territorial. Se conserva la clasificación anterior
-      // para registros sin territorial y no se modifican sus permisos requeridos.
-      if (tipo === 'decanatura' && coalesceLookupKey(item?.territorial_id, item?.territorialId)) {
-        out.complementarias_territorial.push(item);
-        continue;
+      for (const etapa of etapasComplementaria(nivel, tipo,
+        coalesceLookupKey(item?.territorial_id, item?.territorialId), historicas)) {
+        (out as Record<string, any[]>)[etapa].push(item);
       }
-      if (tipo === 'decanatura') {
-        // Sin territorial se resuelve por el nivel que declare el catálogo y, si
-        // tampoco lo declara, por el catch-all 'complementarias'. NO va a Gestión
-        // Profesoral: la actividad está configurada explícitamente como Decanatura
-        // y el catch-all es justamente el bucket "sin ámbito resoluble".
-        if (nivel === 'pregrado') out.complementarias_pregrado.push(item);
-        else if (nivel === 'posgrado') out.complementarias_posgrado.push(item);
-        else out.complementarias.push(item);
-        continue;
-      }
-      // Sin nivel configurado, una actividad de Gestión Profesoral va a su
-      // propio componente; el catch-all 'complementarias' queda para lo que no
-      // declara ningún ámbito (config heredada previa a EFDS-1353).
-      if (nivel === 'pregrado') out.complementarias_pregrado.push(item);
-      else if (nivel === 'posgrado') out.complementarias_posgrado.push(item);
-      else if (tipo === 'gestion_profesoral' && actividadId) out.complementarias_gestion_profesoral.push(item);
-      else out.complementarias.push(item);
     }
     return out;
   }
@@ -9486,16 +9654,20 @@ export class PtaService {
   ) {
     const componente = 'complementarias_territorial';
     const ds = pta.datosEstructurados || {};
-    const part = await this.clasificarComplementarias(ds);
+    const part = await this.clasificarComplementarias(ds, complementariasHistoricas(pta));
     const actividades = part.complementarias_territorial;
     if (!actividades.length) return null;
-    const catalogo = [...await this.getCatalogoActividadesComplementarias(), ...await this.getCatalogoActividadesAcademicoAdmin()];
-    const porId = new Map(catalogo.map(item => [String(item.id), item]));
+    const [catDocencia, catAadm] = await Promise.all([
+      this.getCatalogoActividadesComplementarias(), this.getCatalogoActividadesAcademicoAdmin(),
+    ]);
+    const porId = new Map<string, { nivel_programa?: string | null }>([...catDocencia.map(item => [`docencia:${item.id}`, item] as const),
+      ...catAadm.map(item => [`aadm:${item.id}`, item] as const)]);
+    const aadm = new Set(this.readComplementariasSecciones(ds).aadm);
     // La territorial capturada es información del PTA; únicamente el nivel
     // configurado determina qué permiso necesita cada etapa de Complementarias.
     const items = actividades.map(item => ({
       territorialId: coalesceLookupKey(item.territorial_id, item.territorialId) || '',
-      nivel: (normalizeNivelProgramaComplementaria(porId.get(String(item.actividad_id ?? item.id))?.nivel_programa) || 'pregrado') as PTANivelDocencia,
+      nivel: (normalizeNivelProgramaComplementaria(porId.get(`${aadm.has(item) ? 'aadm' : 'docencia'}:${item.actividad_id ?? item.id}`)?.nivel_programa) || 'pregrado') as PTANivelDocencia,
     }));
     const pares = [...new Map(items.map(({ territorialId, nivel }) => [`${territorialId}:${nivel}`, { territorialId, nivel }])).values()];
     if (auth.isSuperUser) return { pares, propios: pares };
@@ -9503,6 +9675,8 @@ export class PtaService {
     const etapaPermiso = accion === 'aprobar' && auth.delegatedReviewComponent === componente
       ? 'revisar' : accion;
     const niveles = (['pregrado', 'posgrado'] as const).filter(nivel =>
+      auth.permissions?.has(etapaPermiso === 'aprobar' ? 'pta.approve.complementarias.territorial' : 'pta.review.complementarias.territorial')
+      ||
       (etapaPermiso === 'aprobar' ? auth.approvesAll : auth.reviewsAll)
       || auth.permissions?.has((etapaPermiso === 'aprobar' ? permissionMap.approve : permissionMap.review)[nivel]));
     const propios = pares.filter(p => niveles.includes(p.nivel));
@@ -9977,20 +10151,28 @@ export class PtaService {
     };
   }
 
-  /**
-   * Subsecciones de revisión que aplican a un PTA concreto para un componente dado
-   * (etapa de Revisión/preaprobación). Con Docencia ya dividida en dos componentes
-   * reales (academica_pregrado/academica_posgrado), el único componente que sigue
-   * necesitando subsecciones es Complementarias (aprobación unificada, pero dos
-   * subtipos de contenido). Todos los demás (incluida Docencia) son de revisión
-   * única ('general'), exigida solo si el componente tiene horas cargadas — mismo
-   * criterio que la auto-aprobación de componentes vacíos.
-   */
-  private async getRequiredSubsecciones(componente: string, ds: any): Promise<string[]> {
+  /** Fija el modelo antes de cambiar el estado, sin reclasificar los PTA históricos. */
+  private async conservarModeloComplementarias(pta: PlanTrabajoAcademicoEntity, componente: string) {
+    if (!COMPLEMENTARIAS_COMPONENT_KEYS.includes(componente as PTAComponentKey)
+      || (pta.datosEstructurados as any)?.complementarias_flujo_version) return;
+    pta.datosEstructurados = { ...pta.datosEstructurados,
+      complementarias_flujo_version: complementariasHistoricas(pta)
+        ? COMPLEMENTARIAS_FLUJO_LEGACY : COMPLEMENTARIAS_FLUJO_SECUENCIAL,
+    };
+    const modelo = pta.datosEstructurados.complementarias_flujo_version;
+    // Modificar solo esta clave, conservando datos que otra operación haya guardado.
+    // El modelo interpolado procede exclusivamente de las dos constantes internas.
+    await this.ptaRepo.update({ id: pta.id }, {
+      datosEstructurados: () => `COALESCE("datosEstructurados", '{}'::jsonb) || jsonb_build_object(`
+        + `'complementarias_flujo_version', COALESCE("datosEstructurados"->>'complementarias_flujo_version', '${modelo}'))`,
+    });
+  }
+
+  private async getRequiredSubsecciones(componente: string, ds: any, historicas = false): Promise<string[]> {
     const posibles = REVIEW_SUBSECCIONES_BY_COMPONENT[componente as PTAComponentKey] || [];
 
     if (COMPLEMENTARIAS_COMPONENT_KEYS.includes(componente as PTAComponentKey)) {
-      const part = await this.clasificarComplementarias(ds);
+      const part = await this.clasificarComplementarias(ds, historicas);
       const items: any[] = (part as any)[componente] || [];
       const aadm = new Set(this.readComplementariasSecciones(ds).aadm);
       const requeridas: string[] = [];
@@ -10029,7 +10211,7 @@ export class PtaService {
     const result: PtaComponentReviewEntity[] = [];
 
     for (const componente of COMPONENT_APPROVAL_KEYS) {
-      const requeridas = await this.getRequiredSubsecciones(componente, ds);
+      const requeridas = await this.getRequiredSubsecciones(componente, ds, complementariasHistoricas(ptaEntity));
 
       for (const subseccion of requeridas) {
         const key = `${componente}:${subseccion}`;
@@ -10062,7 +10244,7 @@ export class PtaService {
     let ptaEntity = await this.ptaRepo.findOne({ where: { id: ptaId } });
     const ds = (ptaEntity?.datosEstructurados as any) || {};
 
-    const { horasPorComponente, hayActividades, complementariasConContenido = {} } = await this.computeHorasPorComponente(ds);
+    const { horasPorComponente, hayActividades, complementariasConContenido = {}, dependenciasComplementarias = {} } = await this.computeHorasPorComponente(ds, complementariasHistoricas(ptaEntity));
     const todosComponentes = Object.keys(horasPorComponente);
 
     if (list.some(row => isObsoleteEmptyComplementaryApproval(row, complementariasConContenido[row.componente] || (horasPorComponente[row.componente] || 0) > 0, ptaEntity?.estado || ''))) {
@@ -10130,12 +10312,14 @@ export class PtaService {
           aplica,
           horas: horasPorComponente[c] || 0,
           estado_visual: aplica ? item.estado : 'no_aplica',
+          dependencias_pendientes: (dependenciasComplementarias[c] || []).filter(key => byComponent.get(key)?.estado !== 'aprobado'),
         });
       })
       .filter((item): item is PtaComponentApprovalEntity & {
         aplica: boolean;
         horas: number;
         estado_visual: string;
+        dependencias_pendientes: string[];
       } => !!item);
   }
 
@@ -10145,7 +10329,7 @@ export class PtaService {
       // Serializa la reparación entre el listado, el detalle y las recargas.
       const pta = await ptaRepo.findOne({ where: { id: ptaId }, lock: { mode: 'pessimistic_write' } });
       if (!pta) return null;
-      const { horasPorComponente, complementariasConContenido = {} } = await this.computeHorasPorComponente(pta.datosEstructurados || {});
+      const { horasPorComponente, complementariasConContenido = {} } = await this.computeHorasPorComponente(pta.datosEstructurados || {}, complementariasHistoricas(pta));
       const tieneContenido = (componente: string) => complementariasConContenido[componente] === true || (horasPorComponente[componente] || 0) > 0;
       const approvalRepo = manager.getRepository(PtaComponentApprovalEntity);
       const rows = await approvalRepo.find({ where: { ptaId } });
@@ -10209,9 +10393,13 @@ export class PtaService {
     ptaId: string,
     componenteActual: string,
     bloquearComplementariaDevuelta = false,
+    validarPrograma = false,
   ): Promise<void> {
     const componentes = await this.getComponentesAprobacion(ptaId);
     const componenteVigente = componentes.find((c) => c.componente === componenteActual);
+    if (validarPrograma && componenteVigente?.dependencias_pendientes?.length) {
+      throw new BadRequestException(`Antes de aprobar este responsable de Complementarias debe aprobarse el programa: ${componenteVigente.dependencias_pendientes.join(', ')}.`);
+    }
 
     if (componenteVigente?.scope === 'solicitud_edicion') {
       const solicitudId = coalesceString(componenteVigente.scopeId);
@@ -10330,7 +10518,7 @@ export class PtaService {
     }
 
     const ds = (existingPta.datosEstructurados as any) || {};
-    const requeridas = await this.getRequiredSubsecciones(componente, ds);
+    const requeridas = await this.getRequiredSubsecciones(componente, ds, complementariasHistoricas(existingPta));
     if (!requeridas.includes(subseccion)) {
       throw new BadRequestException(
         `La subsección "${subseccion}" de "${componente}" no aplica a este PTA (sin actividad o ya satisfecha).`,
@@ -10358,6 +10546,7 @@ export class PtaService {
     review.respuestaDocente = null;
 
     await this.ptaComponentReviewRepo.save(review);
+    await this.conservarModeloComplementarias(existingPta, componente);
 
     let estadoGeneral = existingPta.estado;
 
@@ -10574,7 +10763,7 @@ export class PtaService {
     const esTerritorialConVariosPares = componente === 'academica_territorial'
       && (alcanceTerritorial?.pares?.length ?? 0) >= 2;
 
-    await this.assertComponenteDisponibleParaDecision(ptaId, componente);
+    await this.assertComponenteDisponibleParaDecision(ptaId, componente, false, estado === 'aprobado');
 
     // ── Bloqueo estructural: no se puede aprobar sin revisión previa completa ──
     // Esto aplica sin importar qué permiso tenga quien llama (no es solo un
@@ -10584,7 +10773,7 @@ export class PtaService {
     // permitida aunque falte revisión.
     if (estado === 'aprobado' && !esTerritorialConVariosPares) {
       const dsParaRevision = (existingPta.datosEstructurados as any) || {};
-      const requeridas = await this.getRequiredSubsecciones(componente, dsParaRevision);
+      const requeridas = await this.getRequiredSubsecciones(componente, dsParaRevision, complementariasHistoricas(existingPta));
       if (requeridas.length > 0) {
         const revisiones = await this.ptaComponentReviewRepo.find({ where: { ptaId, componente } });
         const pendientes = requeridas.filter((sub) => {
@@ -10710,6 +10899,7 @@ export class PtaService {
     approval.respuestaDocente = null;
 
     await this.ptaComponentApprovalRepo.save(approval);
+    await this.conservarModeloComplementarias(existingPta, componente);
 
     // Recalcular estado consolidado del PTA
     const todosComponentes = await this.getComponentesAprobacion(ptaId);
@@ -10929,6 +11119,15 @@ export class PtaService {
     if (componenteInvalido) {
       throw new BadRequestException(`Componente PTA no soportado: ${componenteInvalido}`);
     }
+    // En un lote con ambas autorizaciones, Programa se procesa antes del
+    // responsable final, conservando el orden de los demás componentes.
+    const complementariasOrdenadas = componentes.filter(key => COMPLEMENTARIAS_COMPONENT_KEYS.includes(key as PTAComponentKey))
+      .sort((a, b) => Number(!['complementarias_pregrado', 'complementarias_posgrado'].includes(a))
+        - Number(!['complementarias_pregrado', 'complementarias_posgrado'].includes(b)));
+    let indiceComplementarias = 0;
+    componentes.forEach((key, index) => {
+      if (COMPLEMENTARIAS_COMPONENT_KEYS.includes(key as PTAComponentKey)) componentes[index] = complementariasOrdenadas[indiceComplementarias++];
+    });
 
     type ResultadoLote = {
       ptaId: string;

@@ -277,6 +277,9 @@ export class TravelExpensesService implements OnModuleInit {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
+        .replace(/[\.,\-_/]/g, ' ')
+        .replace(/\b(d\s*c|distrito\s*capital|ciudad|municipio)\b/g, ' ')
+        .replace(/[^a-z0-9]/g, '')
         .trim();
 
     const esViajeIdaVuelta =
@@ -338,6 +341,8 @@ export class TravelExpensesService implements OnModuleInit {
     'ADMIN',
     'SUPER_ADMIN',
     'ADMINISTRATIVO',
+    'ADMINISTRADOR',
+    'ADMINISTRADOR_SISTEMA',
     'SUPER_ADMINISTRADOR',
     'super_administrador',
     'SUPERUSER',
@@ -409,6 +414,35 @@ export class TravelExpensesService implements OnModuleInit {
     return null;
   }
 
+  async obtenerDependenciaUsuario(usuarioId?: string): Promise<number | null> {
+    if (!usuarioId) return null;
+    try {
+      const rows = await this.solicitudRepo.query(
+        `SELECT p.id_dependencia
+         FROM auth."user" u
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.id_user::text = $1
+         LIMIT 1`,
+        [usuarioId],
+      );
+      if (rows?.[0]?.id_dependencia != null) {
+        return Number(rows[0].id_dependencia);
+      }
+      const aRows = await this.solicitudRepo.query(
+        `SELECT dependencia_id FROM travel_expenses.analistas_viaticos WHERE usuario_id = $1 LIMIT 1`,
+        [usuarioId],
+      );
+      if (aRows?.[0]?.dependencia_id != null) {
+        return Number(aRows[0].dependencia_id);
+      }
+    } catch (e: any) {
+      this.logger.warn(
+        `[obtenerDependenciaUsuario] Error consultando dependencia para ${usuarioId}: ${e?.message}`,
+      );
+    }
+    return null;
+  }
+
   async obtenerSolicitudes(
     usuarioId?: string,
     isSuperAdmin = false,
@@ -421,6 +455,8 @@ export class TravelExpensesService implements OnModuleInit {
     isSst = false,
     isComisionado = false,
     soloComisionado = false,
+    isJefe = false,
+    isGerente = false,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     console.log(
       '[travel-expenses] service obtenerSolicitudes usuarioId=',
@@ -441,6 +477,10 @@ export class TravelExpensesService implements OnModuleInit {
       isComisionado,
       'soloComisionado=',
       soloComisionado,
+      'isJefe=',
+      isJefe,
+      'isGerente=',
+      isGerente,
       'page=',
       page,
       'limit=',
@@ -450,8 +490,8 @@ export class TravelExpensesService implements OnModuleInit {
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.comisionado', 'comisionado');
 
-    if ((!isSuperAdmin && !isSecretario) || soloComisionado) {
-      if (soloComisionado || (isComisionado && !isTesoreria && !isSst && !isControlViaticos && !isAnalista)) {
+    if (!isSuperAdmin || soloComisionado) {
+      if (soloComisionado || (isComisionado && !isTesoreria && !isSst && !isControlViaticos && !isAnalista && !isSecretario && !isJefe && !isGerente)) {
         if (usuarioId) {
           const datosPersona = await this.obtenerDatosPersonaPorUsuarioId(usuarioId);
           const docs = [datosPersona?.numIdentificacion].filter(Boolean) as string[];
@@ -473,6 +513,30 @@ export class TravelExpensesService implements OnModuleInit {
               }
             }),
           );
+        }
+      } else if (isSecretario) {
+        if (usuarioId) {
+          const depId = await this.obtenerDependenciaUsuario(usuarioId);
+          if (depId != null) {
+            query.andWhere(
+              '(s.id_dependencia = :secDepId OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :secDepId))',
+              { secDepId: depId },
+            );
+          } else {
+            query.andWhere('1 = 0');
+          }
+        }
+      } else if (isJefe || isGerente) {
+        if (usuarioId) {
+          const depId = await this.obtenerDependenciaUsuario(usuarioId);
+          if (depId != null) {
+            query.andWhere(
+              '(s.id_dependencia = :dirDepId OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :dirDepId))',
+              { dirDepId: depId },
+            );
+          } else {
+            query.andWhere('1 = 0');
+          }
         }
       } else if (isTesoreria) {
         query.andWhere('s.estado_solicitud IN (:...estadosTesoreria)', {
@@ -1055,13 +1119,21 @@ export class TravelExpensesService implements OnModuleInit {
    *      * Si está vigente: se materializa en la tabla `travel_expenses.comisionados` y se retorna.
    *    - Si NO existe tampoco en Talento Humano: arroja NotFoundException ("no es un comisionado").
    */
-  async consultarComisionado(documento: string): Promise<ComisionadoEntity> {
+  async consultarComisionado(
+    documento: string,
+    idDependencia?: string | number,
+  ): Promise<ComisionadoEntity> {
     const doc = (documento || '').trim();
     if (!doc) {
       throw new BadRequestException(
         'Debe proporcionar el número de documento del comisionado.',
       );
     }
+
+    const depEsperada =
+      idDependencia != null && idDependencia !== ''
+        ? Number(idDependencia)
+        : null;
 
     const adjuntarSolicitudesPendientes = async (com: ComisionadoEntity) => {
       try {
@@ -1167,6 +1239,18 @@ export class TravelExpensesService implements OnModuleInit {
         );
       }
 
+      // Validar restricción de dependencia si se solicita como enlace de dependencia
+      if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0) {
+        if (comisionadoLocal.idDependencia != null && Number(comisionadoLocal.idDependencia) !== depEsperada) {
+          throw new BadRequestException(
+            `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
+          );
+        } else if (comisionadoLocal.idDependencia == null) {
+          comisionadoLocal.idDependencia = depEsperada;
+          comisionadoLocal = await this.comisionadoRepo.save(comisionadoLocal);
+        }
+      }
+
       return await adjuntarSolicitudesPendientes(comisionadoLocal);
     }
 
@@ -1200,6 +1284,14 @@ export class TravelExpensesService implements OnModuleInit {
         );
       }
 
+      const idDepAsignar = idDependenciaFnc != null ? idDependenciaFnc : depEsperada;
+
+      if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0 && idDependenciaFnc != null && Number(idDependenciaFnc) !== depEsperada) {
+        throw new BadRequestException(
+          `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
+        );
+      }
+
       this.logger.log(
         `[consultarComisionado] Registrando nuevo comisionado ${doc} desde Talento Humano con contrato vigente`,
       );
@@ -1214,7 +1306,7 @@ export class TravelExpensesService implements OnModuleInit {
         tipoComisionado: 'FUNCIONARIO',
         origenDatos: 'HUMANO',
         autorizacionHabeasData: false,
-        idDependencia: idDependenciaFnc,
+        idDependencia: idDepAsignar,
         cuentasBancarias: [],
         cargos: cargo
           ? [
@@ -1222,7 +1314,7 @@ export class TravelExpensesService implements OnModuleInit {
                 id: `crg-${Date.now()}`,
                 cargo,
                 salario: salario || 0,
-                idDependencia: idDependenciaFnc,
+                idDependencia: idDepAsignar,
                 esPrincipal: true,
               },
             ]
@@ -1276,8 +1368,15 @@ export class TravelExpensesService implements OnModuleInit {
       apellidos.shift() || persona.pri_apellido || 'SIN APELLIDO';
     const segundoApellido = apellidos.join(' ') || null;
 
-    const idDependencia =
+    const idDepPersona =
       persona.id_dependencia != null ? Number(persona.id_dependencia) : null;
+    const idDependenciaFinal = idDepPersona != null ? idDepPersona : depEsperada;
+
+    if (depEsperada != null && !isNaN(depEsperada) && depEsperada > 0 && idDepPersona != null && Number(idDepPersona) !== depEsperada) {
+      throw new BadRequestException(
+        `El comisionado con documento ${doc} está asignado a otra dependencia. Como enlace de dependencia solo puede consultar y gestionar comisionados de su propia dependencia.`,
+      );
+    }
 
     const nuevo = this.comisionadoRepo.create({
       numeroDocumento: doc,
@@ -1290,11 +1389,43 @@ export class TravelExpensesService implements OnModuleInit {
       tipoComisionado: 'FUNCIONARIO',
       origenDatos: 'ESAP',
       autorizacionHabeasData: false,
-      idDependencia,
+      idDependencia: idDependenciaFinal,
     } as Partial<ComisionadoEntity>);
 
     const guardado = await this.comisionadoRepo.save(nuevo);
     return await adjuntarSolicitudesPendientes(guardado);
+  }
+
+  /**
+   * Lista los comisionados registrados en la base local, opcionalmente filtrados
+   * por dependencia y/o texto de búsqueda (nombre, apellido, cédula, cargo).
+   */
+  async listarComisionados(
+    idDependencia?: string | number,
+    search?: string,
+  ): Promise<ComisionadoEntity[]> {
+    const qb = this.comisionadoRepo.createQueryBuilder('c');
+
+    if (idDependencia != null && idDependencia !== '') {
+      const depNum = Number(idDependencia);
+      if (!isNaN(depNum) && depNum > 0) {
+        qb.andWhere('c.idDependencia = :depNum', { depNum });
+      }
+    }
+
+    if (search && search.trim().length > 0) {
+      const term = `%${search.trim().toLowerCase()}%`;
+      qb.andWhere(
+        '(LOWER(c.numeroDocumento) LIKE :term OR LOWER(c.primerNombre) LIKE :term OR LOWER(c.primerApellido) LIKE :term OR LOWER(c.cargo) LIKE :term)',
+        { term },
+      );
+    }
+
+    qb.orderBy('c.primerApellido', 'ASC')
+      .addOrderBy('c.primerNombre', 'ASC')
+      .limit(100);
+
+    return await qb.getMany();
   }
 
 
@@ -1850,6 +1981,53 @@ export class TravelExpensesService implements OnModuleInit {
   }
 
 
+  private resolverItinerarioCiudades(
+    itinerario?: any[],
+    destinoFallback?: string,
+    origenFallback?: string,
+  ): {
+    origenCiudad: string;
+    destinoCiudad: string;
+    esViajeIdaVuelta: boolean;
+  } {
+    if (!Array.isArray(itinerario) || itinerario.length === 0) {
+      return {
+        origenCiudad: origenFallback || 'Bogotá',
+        destinoCiudad: destinoFallback || 'Bogotá',
+        esViajeIdaVuelta: false,
+      };
+    }
+    const primerTramo = itinerario[0] || {};
+    const ultimoTramo = itinerario[itinerario.length - 1] || {};
+
+    const normalizarCiudad = (txt?: string) =>
+      (txt || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[\.,\-_/]/g, ' ')
+        .replace(/\b(d\s*c|distrito\s*capital|ciudad|municipio)\b/g, ' ')
+        .replace(/[^a-z0-9]/g, '')
+        .trim();
+
+    const esViajeIdaVuelta =
+      itinerario.length > 1 &&
+      normalizarCiudad(ultimoTramo.destinoCiudad) ===
+        normalizarCiudad(primerTramo.origenCiudad) &&
+      (ultimoTramo.destinoCiudad || '') !== '';
+
+    const origenCiudad = primerTramo.origenCiudad || origenFallback || 'Bogotá';
+    const destinoCiudad = esViajeIdaVuelta
+      ? ultimoTramo.origenCiudad || destinoFallback || ''
+      : ultimoTramo.destinoCiudad || destinoFallback || '';
+
+    return {
+      origenCiudad,
+      destinoCiudad: destinoCiudad || origenCiudad,
+      esViajeIdaVuelta,
+    };
+  }
+
   async obtenerSolicitudCompleta(
     solicitudId: string,
   ): Promise<
@@ -1869,6 +2047,7 @@ export class TravelExpensesService implements OnModuleInit {
       fechaVerificacionPrimerNivel?: string | null;
       liquidacion?: any;
       validacionTiquete?: any;
+      tarifaEstimada?: any;
     }
   > {
     const solicitud = await this.solicitudRepo.findOne({
@@ -2003,15 +2182,34 @@ export class TravelExpensesService implements OnModuleInit {
     }
 
     let validacionTiquete: any = undefined;
+    let tarifaEstimada: any = undefined;
+
     if (solicitud.requiereTiquetes && this.ticketsService) {
       try {
         const idDep = solicitud.idDependencia ?? solicitud.comisionado?.idDependencia ?? 1;
+        const { origenCiudad, destinoCiudad, esViajeIdaVuelta } =
+          this.resolverItinerarioCiudades(solicitud.itinerario, solicitud.destinoCiudad);
+
+        let montoEstimadoTiquete = Number(solicitud.costoEstimadoTiquete || 0);
+
+        try {
+          const respTarifa = await this.ticketsService.consultarTarifaEstimada(origenCiudad, destinoCiudad);
+          if (respTarifa && respTarifa.encontrado && respTarifa.tarifaEstimada > 0) {
+            tarifaEstimada = respTarifa;
+            if (!montoEstimadoTiquete || montoEstimadoTiquete === 0) {
+              montoEstimadoTiquete = respTarifa.tarifaEstimada * (esViajeIdaVuelta ? 2 : 1);
+            }
+          }
+        } catch (err: any) {
+          this.logger.warn(`[travel-expenses] No se pudo consultar tarifa estimada: ${err?.message}`);
+        }
+
         const resTiquete = await this.ticketsService.validarTiquete({
           dependenciaId: String(idDep),
-          origenCiudad: 'Bogotá',
-          destinoCiudad: solicitud.destinoCiudad || 'Bogotá',
+          origenCiudad,
+          destinoCiudad,
           tipoTransporte: 'AEREO',
-          montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete || 0),
+          montoEstimadoTiquete,
         });
         if (resTiquete) {
           validacionTiquete = resTiquete;
@@ -2033,6 +2231,7 @@ export class TravelExpensesService implements OnModuleInit {
         solicitud.fechaExportacionSiif?.toISOString() ?? null,
       liquidacion,
       validacionTiquete,
+      tarifaEstimada,
     };
   }
 
@@ -4510,6 +4709,38 @@ if (dto.costoEstimadoTiquete !== undefined) {
       );
     }
 
+    // Validación de pertenencia a la misma dependencia para Jefe y Gerente
+    const tipoFirmaStr = String(dto.tipoFirma || '').toUpperCase();
+    const esFirmaJefeOGerente =
+      tipoFirmaStr === 'JEFE_DEPENDENCIA' ||
+      tipoFirmaStr === 'GERENTE_PROYECTO';
+
+    const esSuperAdmin = this.esSuperAdmin(userRoles);
+
+    if (esFirmaJefeOGerente && !esSuperAdmin && usuarioId) {
+      const depSolicitud =
+        solicitud.idDependencia != null
+          ? Number(solicitud.idDependencia)
+          : solicitud.comisionado?.idDependencia != null
+          ? Number(solicitud.comisionado.idDependencia)
+          : null;
+
+      if (depSolicitud != null) {
+        const depFirmante = await this.obtenerDependenciaUsuario(usuarioId);
+        const firmantesAprobacion = this.determinarFirmantesAprobacion(solicitud);
+        const esReglaEspecial =
+          firmantesAprobacion.reglaDesplazamiento !== 'REGULAR';
+
+        if (!esReglaEspecial) {
+          if (depFirmante == null || depFirmante !== depSolicitud) {
+            throw new BadRequestException(
+              `No es posible firmar la aprobación: el usuario firmante pertenece a una dependencia distinta (${depFirmante ?? 'Sin asignar'}) a la de la solicitud (${depSolicitud}). Solo directivos de la misma dependencia pueden firmar la aprobación.`,
+            );
+          }
+        }
+      }
+    }
+
     // Validación de código OTP si fue suministrado o requerido
     if (dto.otp && dto.verificationId) {
       this.verificarOtpFirma({
@@ -4776,10 +5007,27 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
+      relations: ['comisionado'],
     });
 
     if (!solicitud) {
       throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    const depSolicitud =
+      solicitud.idDependencia != null
+        ? Number(solicitud.idDependencia)
+        : solicitud.comisionado?.idDependencia != null
+        ? Number(solicitud.comisionado.idDependencia)
+        : null;
+
+    if (depSolicitud != null && usuarioId) {
+      const depUsuario = await this.obtenerDependenciaUsuario(usuarioId);
+      if (depUsuario != null && depUsuario !== depSolicitud) {
+        throw new BadRequestException(
+          `No es posible devolver la solicitud: su dependencia (${depUsuario}) no coincide con la dependencia de la solicitud (${depSolicitud}).`,
+        );
+      }
     }
 
     const estadoAnterior = solicitud.estadoSolicitud;
@@ -5001,6 +5249,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
     page = 1,
     limit = 20,
     busqueda?: string,
+    usuarioId?: string,
+    isSuperAdmin = false,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     const query = this.solicitudRepo
       .createQueryBuilder('s')
@@ -5008,6 +5258,18 @@ if (dto.costoEstimadoTiquete !== undefined) {
       .where('s.estado_solicitud = :estado', {
         estado: EstadoSolicitud.PENDIENTE_FIRMAS,
       });
+
+    if (!isSuperAdmin && usuarioId) {
+      const depUsuario = await this.obtenerDependenciaUsuario(usuarioId);
+      if (depUsuario != null) {
+        query.andWhere(
+          '(s.id_dependencia = :depUsuario OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :depUsuario))',
+          { depUsuario },
+        );
+      } else {
+        query.andWhere('1 = 0');
+      }
+    }
 
     if (busqueda && busqueda.trim()) {
       const term = `%${busqueda.trim().toLowerCase()}%`;
@@ -8449,6 +8711,7 @@ if (itinerarioGeneral) {
        fechaVerificacionPrimerNivel?: string | null;
        liquidacion?: any;
        validacionTiquete?: any;
+       tarifaEstimada?: any;
      }
    > {
      const solicitud = await this.solicitudRepo.findOne({
@@ -8557,21 +8820,44 @@ if (itinerarioGeneral) {
        };
      }
 
-     // Validación proactiva de tiquete aéreo si la solicitud lo requiere
+     // Validación proactiva y consulta de tarifa estimada de tiquete aéreo si la solicitud lo requiere
      let validacionTiquete: any = null;
-     if (solicitud.requiereTiquetes && this.ticketsService && idDependencia != null) {
+     let tarifaEstimada: any = null;
+
+     if (solicitud.requiereTiquetes && this.ticketsService) {
+       const { origenCiudad, destinoCiudad, esViajeIdaVuelta } =
+         this.resolverItinerarioCiudades(solicitud.itinerario, solicitud.destinoCiudad);
+
+       let montoEstimadoTiquete = Number(solicitud.costoEstimadoTiquete || 0);
+
        try {
-         validacionTiquete = await this.ticketsService.validarTiquete({
-           dependenciaId: String(idDependencia),
-           montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete || 0),
-           origenCiudad: 'Bogotá',
-           destinoCiudad: solicitud.destinoCiudad || 'Bogotá',
-           tipoTransporte: 'AEREO',
-         });
+         const respTarifa = await this.ticketsService.consultarTarifaEstimada(origenCiudad, destinoCiudad);
+         if (respTarifa && respTarifa.encontrado && respTarifa.tarifaEstimada > 0) {
+           tarifaEstimada = respTarifa;
+           if (!montoEstimadoTiquete || montoEstimadoTiquete === 0) {
+             montoEstimadoTiquete = respTarifa.tarifaEstimada * (esViajeIdaVuelta ? 2 : 1);
+           }
+         }
        } catch (err: any) {
          this.logger.warn(
-           `[obtenerSolicitudControlViaticos] No se pudo validar tiquete con TicketsService: ${err?.message}`,
+           `[obtenerSolicitudControlViaticos] No se pudo consultar tarifa estimada: ${err?.message}`,
          );
+       }
+
+       if (idDependencia != null) {
+         try {
+           validacionTiquete = await this.ticketsService.validarTiquete({
+             dependenciaId: String(idDependencia),
+             montoEstimadoTiquete,
+             origenCiudad,
+             destinoCiudad,
+             tipoTransporte: 'AEREO',
+           });
+         } catch (err: any) {
+           this.logger.warn(
+             `[obtenerSolicitudControlViaticos] No se pudo validar tiquete con TicketsService: ${err?.message}`,
+           );
+         }
        }
      }
 
@@ -8584,6 +8870,7 @@ if (itinerarioGeneral) {
          solicitud.fechaExportacionSiif?.toISOString() ?? null,
        liquidacion,
        validacionTiquete,
+       tarifaEstimada,
      };
    }
 
@@ -8856,6 +9143,10 @@ if (itinerarioGeneral) {
         firmaControlViaticos: firmaControlData,
         firmasAprobacion: prevFirmas,
       };
+
+      if (dto.costoEstimadoTiquete != null && Number(dto.costoEstimadoTiquete) >= 0) {
+        solicitud.costoEstimadoTiquete = Number(dto.costoEstimadoTiquete);
+      }
 
       const saved = await manager
         .getRepository(SolicitudComisionEntity)
@@ -9263,6 +9554,49 @@ if (itinerarioGeneral) {
     ) {
       throw new ForbiddenException(
         'Violación de Segregación de Funciones: El autorizador corporativo debe ser diferente del comisionado y del enlace solicitante',
+      );
+    }
+  }
+
+  /**
+   * RF-AUT-003 — Valida que el usuario tenga rol de Jefe de Dependencia o Super Administrador
+   * para proceder con la cancelación de la comisión de viáticos.
+   */
+  private validarAutorizacionCancelacion(rolesUsuario: string[]): void {
+    if (!rolesUsuario || rolesUsuario.length === 0) {
+      return;
+    }
+
+    if (this.esSuperAdmin(rolesUsuario)) {
+      return;
+    }
+
+    const rolesPermitidosJefe = [
+      'JEFE_DEPENDENCIA',
+      'ROL_JEFE_DEPENDENCIA',
+      'SUPERVISOR',
+      'JEFE',
+      'DIRECTOR_TERRITORIAL',
+      'LIDER_DEPENDENCIA',
+      'LIDER_DE_DEPENDENCIA',
+      'JEFE_DE_DEPENDENCIA',
+    ];
+
+    const esAutorizado = rolesUsuario.some((r: any) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        rolesPermitidosJefe.includes(normalized) ||
+        normalized.includes('JEFE_DEPENDENCIA') ||
+        normalized === 'SUPERVISOR' ||
+        r === 'travel_expenses:cancel_request' ||
+        r === 'travel_expenses.general.es_jefe_dependencia'
+      );
+    });
+
+    if (!esAutorizado) {
+      throw new ForbiddenException(
+        'Solo el Jefe de Dependencia o un administrador está autorizado para cancelar solicitudes de comisiones de viáticos.',
       );
     }
   }
@@ -10664,6 +10998,8 @@ if (itinerarioGeneral) {
       throw new BadRequestException('solicitudId es obligatorio.');
     }
 
+    this.validarAutorizacionCancelacion(rolesUsuario);
+
     const motivo = (dto?.motivoCancelacion || '').trim();
     if (motivo.length < 5) {
       throw new BadRequestException(
@@ -10672,7 +11008,7 @@ if (itinerarioGeneral) {
     }
 
     const responsable =
-      (dto?.responsableCancelacion || '').trim() || 'Dependencia solicitante / Grupo de Viáticos';
+      (dto?.responsableCancelacion || '').trim() || 'Jefe de Dependencia / Dirección Territorial';
 
     const result = await this.dataSource.transaction(async (manager) => {
       const solicitud = await manager

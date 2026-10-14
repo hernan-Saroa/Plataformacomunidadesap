@@ -23,7 +23,7 @@ vi.mock('../../../../services/api/legal.service', () => ({
     legalService: {
         getTerminoDetalle: vi.fn(),
         updateTermino: vi.fn(),
-        getAbogados: vi.fn(),
+        getResponsablesTermino: vi.fn(),
         listarReglasAlertaTerminos: vi.fn(),
         getConfiguration: vi.fn().mockResolvedValue(null),
         saveConfiguration: vi.fn().mockResolvedValue({}),
@@ -122,7 +122,7 @@ describe('ModalEditarTermino', () => {
         localStorage.clear();
         vi.mocked(legalService.getTerminoDetalle).mockResolvedValue(detalleBackend());
         vi.mocked(legalService.updateTermino).mockResolvedValue({});
-        vi.mocked(legalService.getAbogados).mockResolvedValue([]);
+        vi.mocked(legalService.getResponsablesTermino).mockResolvedValue([]);
         vi.mocked(legalService.listarReglasAlertaTerminos).mockResolvedValue([REGLA_3_DIAS]);
     });
 

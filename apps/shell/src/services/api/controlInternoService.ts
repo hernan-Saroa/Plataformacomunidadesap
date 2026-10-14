@@ -376,6 +376,8 @@ export interface FilaProgramaAnual {
   fechaFin: string | null;
   /** Lunes de las semanas sacadas del cronograma; el Excel no las pinta (EFDS-2132) */
   semanasExcluidas?: string[];
+  /** Columna "Unidad Auditable" (EFDS-2316). Las versiones viejas no la traen. */
+  unidadesAuditables?: string[];
 }
 
 export interface CambioProgramaAnual {

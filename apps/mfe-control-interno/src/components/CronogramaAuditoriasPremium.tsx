@@ -66,6 +66,7 @@ import { festivoDe, fechaYMD, semanasDeVigencia, NOMBRE_BLOQUEO, type BloqueoSem
 const esFestivo = (dia: Date) => !!festivoDe(fechaYMD(dia));
 import { exportarAuditoriasExcel, AuditoriaExcel } from './services/exportarAuditoriasExcel';
 import { exportarAuditoriasTemplate } from './services/exportarAuditoriasTemplate';
+import { unidadesParaExportar } from './utils/unidadesAuditables';
 import { exportarProgramaAnualVersionado } from './services/versionesProgramaAnual';
 import { EVENTO_VERSION_PROGRAMA } from './BannerVersionProgramaAnual';
 
@@ -668,6 +669,8 @@ export function CronogramaAuditoriasPremium({
         tipo: a.tipoOperativo || a.tipoKanban || a.tipo || 'Regular',
         estado: a.estadoKanban || a.fase || a.estado,
         territorial: a.territorial || 'Sede Central',
+        // Columna "Unidad Auditable" (EFDS-2316)
+        unidadesAuditables: unidadesParaExportar(a.nombre, a.unidadesAuditables),
         responsable: responsableAuditado, // responsable del área
         observaciones: a.observaciones || '',
         auditorLider: { nombre: liderNombre },

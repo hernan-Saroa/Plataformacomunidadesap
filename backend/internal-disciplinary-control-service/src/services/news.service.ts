@@ -247,7 +247,7 @@ export class NewsService {
   /**
    * Obtiene las noticias asociadas a un proceso específico
    */
-  async findAssociatedToProcess(processId: string): Promise<DisciplinaryNews[]> {
+  async findAssociatedToProcess(processId: string): Promise<any[]> {
     // Buscar las asociaciones en la tabla puente
     const associations = await this.newsProcessRepository.find({
       where: { processId },
@@ -255,8 +255,45 @@ export class NewsService {
       order: { fechaAsociacion: 'ASC' },
     });
 
-    // Extraer las noticias
-    return associations.map(association => association.news);
+    // Extraer y enriquecer las noticias
+    return associations
+      .filter(association => !!association.news)
+      .map(association => {
+        const news = association.news;
+        let disciplinable = news.disciplinable;
+        if (typeof disciplinable === 'string') {
+          try {
+            disciplinable = JSON.parse(disciplinable);
+          } catch {
+            // mantener como está
+          }
+        }
+        let denunciante = news.denunciante;
+        if (typeof denunciante === 'string') {
+          try {
+            denunciante = JSON.parse(denunciante);
+          } catch {
+            // mantener como está
+          }
+        }
+
+        const disciplinableList = Array.isArray(disciplinable)
+          ? disciplinable
+          : (disciplinable ? [disciplinable] : []);
+        const denuncianteList = Array.isArray(denunciante)
+          ? denunciante
+          : (denunciante ? [denunciante] : []);
+
+        return {
+          ...news,
+          disciplinable,
+          denunciante,
+          denunciados: disciplinableList,
+          denunciantes: denuncianteList,
+          fechaAsociacion: association.fechaAsociacion,
+          justificacion: association.justificacion,
+        };
+      });
   }
 
   /**
@@ -294,6 +331,10 @@ export class NewsService {
       // Si no tiene otras asociaciones, cambiar estado a RADICADA
       const noticia = await this.findById(newsId);
       noticia.estado = NewsStatus.RADICADA;
+      noticia.procesoAsociadoId = null;
+      noticia.procesoAsociadoNumero = null;
+      noticia.procesoAsociadoFecha = null;
+      noticia.procesoAsociadoJustificacion = null;
 
       // Registrar en auditoría
       const historyEntry = {
@@ -373,81 +414,256 @@ export class NewsService {
 
   /**
    * Actualiza los datos de una noticia (edición por Profesional)
-   * Registra los cambios en el historial de auditoría
+   * Registra los cambios en el historial de auditoría únicamente si hubo modificaciones reales
    */
   async update(id: string, data: any, files?: FileData[]): Promise<DisciplinaryNews> {
     const noticia = await this.findById(id);
 
     // Rastrear campos modificados para trazabilidad
     const cambios: string[] = [];
-    if (data.origen && data.origen !== noticia.origen) {
-      cambios.push(`Origen: ${noticia.origen} → ${data.origen}`);
-    }
-    if (data.territorial && data.territorial !== noticia.territorial) {
-      cambios.push(`Territorial: ${noticia.territorial} → ${data.territorial}`);
-    }
-    if (data.hechos && data.hechos !== noticia.hechos) {
-      cambios.push('Hechos modificados');
-    }
-    if (data.fechaHechos === null) {
-      cambios.push('Fecha de hechos: eliminada (por determinar)');
-    } else if (data.fechaHechos) {
-      cambios.push(`Fecha de hechos: ${data.fechaHechos}`);
-    }
-    if (data.denunciante) cambios.push('Datos de denunciante modificados');
-    if (data.disciplinable) cambios.push('Datos de disciplinable modificados');
-    if (data.adjuntosParaEliminar && data.adjuntosParaEliminar.length > 0) {
-      cambios.push(`Documentos eliminados: ${data.adjuntosParaEliminar.length}`);
-    }
-    if (files && files.length > 0) {
-      cambios.push(`Documentos nuevos: ${files.length}`);
+
+    // Helper: normalizar strings
+    const normalizeStr = (val: any): string => (val === null || val === undefined ? '' : String(val).trim());
+
+    // Helper: normalizar fechas en formato YYYY-MM-DD
+    const normalizeDate = (d: any): string | null => {
+      if (!d) return null;
+      if (typeof d === 'string') {
+        const s = d.trim();
+        return s ? s.split('T')[0] : null;
+      }
+      if (d instanceof Date && !isNaN(d.getTime())) {
+        return d.toISOString().split('T')[0];
+      }
+      return null;
+    };
+
+    // Helper: normalizar origen
+    const normalizeOrig = (orig?: string | null): string => {
+      if (!orig) return '';
+      const s = String(orig).trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (s.includes('ANONIM')) return NewsOrigin.ANONIMO;
+      if (s.includes('QUEJ')) return NewsOrigin.QUEJOSO;
+      if (s.includes('OFICIO')) return NewsOrigin.OFICIO;
+      if (s.includes('REMISI')) return NewsOrigin.REMISION;
+      if (s.includes('DETERMINAR')) return NewsOrigin.POR_DETERMINAR;
+      return s;
+    };
+
+    // Helper: comparar listas o entidades de personas (denunciante / disciplinable)
+    const arePersonsEqual = (a: any, b: any): boolean => {
+      const cleanVal = (val: any) =>
+        typeof val === 'string'
+          ? val.trim().toLowerCase()
+          : val !== null && val !== undefined
+          ? String(val).trim().toLowerCase()
+          : '';
+
+      const normalizePerson = (p: any) => {
+        if (!p || typeof p !== 'object') {
+          return { nombre: '', cedula: '', cargo: '', dependencia: '', entidad: '', telefono: '', email: '', direccion: '', tipo: '' };
+        }
+        const apod = p.apoderado && typeof p.apoderado === 'object' ? {
+          nombre: cleanVal(p.apoderado.nombre),
+          cedula: cleanVal(p.apoderado.cedula || p.apoderado.identificacion || p.apoderado.numeroIdentificacion),
+          email: cleanVal(p.apoderado.email || p.apoderado.correo),
+          telefono: cleanVal(p.apoderado.telefono || p.apoderado.celular),
+          direccion: cleanVal(p.apoderado.direccion),
+        } : undefined;
+
+        const hasApodData = apod && Object.values(apod).some(v => v !== '');
+
+        return {
+          nombre: cleanVal(p.nombre),
+          cedula: cleanVal(p.cedula || p.identificacion || p.numeroIdentificacion || p.documento),
+          cargo: cleanVal(p.cargo),
+          dependencia: cleanVal(p.dependencia || p.lugarHechos),
+          entidad: cleanVal(p.entidad),
+          telefono: cleanVal(p.telefono || p.celular),
+          email: cleanVal(p.email || p.correo),
+          direccion: cleanVal(p.direccion),
+          tipo: cleanVal(p.tipo),
+          ...(hasApodData ? { apoderado: apod } : {}),
+        };
+      };
+
+      const toList = (val: any) => {
+        const raw = Array.isArray(val) ? val : val ? [val] : [];
+        return raw.map(normalizePerson).filter((p) => p.nombre || p.cedula || p.cargo || p.dependencia);
+      };
+
+      const listA = toList(a);
+      const listB = toList(b);
+
+      if (listA.length !== listB.length) return false;
+
+      for (let i = 0; i < listA.length; i++) {
+        const pA = listA[i];
+        const pB = listB[i];
+        if (
+          pA.nombre !== pB.nombre ||
+          pA.cedula !== pB.cedula ||
+          pA.cargo !== pB.cargo ||
+          pA.dependencia !== pB.dependencia ||
+          (pA.entidad && pB.entidad && pA.entidad !== pB.entidad) ||
+          (pA.telefono && pB.telefono && pA.telefono !== pB.telefono) ||
+          (pA.email && pB.email && pA.email !== pB.email) ||
+          (pA.direccion && pB.direccion && pA.direccion !== pB.direccion) ||
+          (pA.tipo && pB.tipo && pA.tipo !== pB.tipo)
+        ) {
+          return false;
+        }
+
+        if (Boolean(pA.apoderado) !== Boolean(pB.apoderado)) return false;
+        if (pA.apoderado && pB.apoderado) {
+          if (
+            pA.apoderado.nombre !== pB.apoderado.nombre ||
+            pA.apoderado.cedula !== pB.apoderado.cedula ||
+            pA.apoderado.email !== pB.apoderado.email ||
+            pA.apoderado.telefono !== pB.apoderado.telefono ||
+            pA.apoderado.direccion !== pB.apoderado.direccion
+          ) {
+            return false;
+          }
+        }
+      }
+
+      return true;
+    };
+
+    // 1. Origen
+    if (data.origen !== undefined && data.origen !== null) {
+      const origenActual = normalizeOrig(noticia.origen);
+      const origenNuevo = normalizeOrig(data.origen);
+      if (origenNuevo && origenNuevo !== origenActual) {
+        cambios.push(`Origen: ${noticia.origen || 'No definido'} → ${data.origen}`);
+        noticia.origen = origenNuevo;
+      }
     }
 
-    // Aplicar cambios (todos los valores del enum incluido POR_DETERMINAR)
-    const validOrigens = Object.values(NewsOrigin);
-    if (data.origen !== undefined) {
-      if (validOrigens.includes(data.origen)) noticia.origen = data.origen;
-    }
-    if (data.territorial) noticia.territorial = data.territorial;
-    if (data.dependenciaDenunciado) noticia.dependenciaDenunciado = data.dependenciaDenunciado;
-    if (data.hechos) noticia.hechos = data.hechos;
-    if (data.fechaQueja) {
-      const [y, m, d] = (data.fechaQueja as string).split('T')[0].split('-').map(Number);
-      const fechaSegura = new Date(y, m - 1, d, 12, 0, 0);
-      noticia.fechaQueja = fechaSegura;
-      noticia.fechaRecepcion = fechaSegura;
-    }
-    if (data.denunciante) noticia.denunciante = data.denunciante;
-    if (data.disciplinable) noticia.disciplinable = data.disciplinable;
-    if (data.conductas) noticia.conductas = data.conductas;
-    if (data.fechaHechos === null) {
-      // Limpiar fecha cuando el usuario selecciona "Por determinar"
-      (noticia as any).fechaHechos = null;
-      (noticia as any).fechaCaducidad = null;
-    } else if (data.fechaHechos) {
-      noticia.fechaHechos = new Date(data.fechaHechos);
-      noticia.fechaCaducidad = new Date(data.fechaHechos);
-      noticia.fechaCaducidad.setFullYear(noticia.fechaCaducidad.getFullYear() + 5);
+    // 2. Territorial
+    if (data.territorial !== undefined && data.territorial !== null) {
+      const terrActual = normalizeStr(noticia.territorial);
+      const terrNuevo = normalizeStr(data.territorial);
+      if (terrNuevo && terrNuevo !== terrActual) {
+        cambios.push(`Territorial: ${noticia.territorial || 'No definida'} → ${data.territorial}`);
+        noticia.territorial = data.territorial;
+      }
     }
 
-    // ✅ Gestión de documentos adjuntos en actualización
-    let currentAdjuntos: string[] = Array.isArray((noticia as any).adjuntos) ? [...(noticia as any).adjuntos] : [];
-    if (data.adjuntosParaEliminar && Array.isArray(data.adjuntosParaEliminar)) {
-      for (const toDelete of data.adjuntosParaEliminar) {
-        currentAdjuntos = currentAdjuntos.filter((a) => a !== toDelete);
-        try {
-          await this.storageService.deleteFile(toDelete);
-        } catch (e) {
-          console.warn(`No se pudo eliminar archivo físico ${toDelete}:`, e.message);
+    // 3. Dependencia denunciado
+    if (data.dependenciaDenunciado !== undefined && data.dependenciaDenunciado !== null) {
+      const depActual = normalizeStr(noticia.dependenciaDenunciado);
+      const depNueva = normalizeStr(data.dependenciaDenunciado);
+      if (depNueva && depNueva !== depActual) {
+        cambios.push('Dependencia del denunciado modificada');
+        noticia.dependenciaDenunciado = data.dependenciaDenunciado;
+      }
+    }
+
+    // 4. Hechos
+    if (data.hechos !== undefined && data.hechos !== null) {
+      const hechosActuales = normalizeStr(noticia.hechos);
+      const hechosNuevos = normalizeStr(data.hechos);
+      if (hechosNuevos !== hechosActuales) {
+        cambios.push('Hechos modificados');
+        noticia.hechos = data.hechos;
+      }
+    }
+
+    // 5. Fecha de la queja / recepción
+    if (data.fechaQueja !== undefined && data.fechaQueja !== null && data.fechaQueja !== '') {
+      const fechaActual = normalizeDate(noticia.fechaQueja) || normalizeDate(noticia.fechaRecepcion);
+      const fechaNueva = normalizeDate(data.fechaQueja);
+      if (fechaNueva && fechaNueva !== fechaActual) {
+        cambios.push(`Fecha de la queja modificada: ${fechaNueva}`);
+        const [y, m, d] = (data.fechaQueja as string).split('T')[0].split('-').map(Number);
+        const fechaSegura = new Date(y, m - 1, d, 12, 0, 0);
+        noticia.fechaQueja = fechaSegura;
+        noticia.fechaRecepcion = fechaSegura;
+      }
+    }
+
+    // 6. Fecha de hechos
+    if (data.fechaHechos !== undefined) {
+      const fechaHechosActual = normalizeDate(noticia.fechaHechos);
+      const fechaHechosNueva = normalizeDate(data.fechaHechos);
+      if (fechaHechosNueva !== fechaHechosActual) {
+        if (fechaHechosNueva === null) {
+          cambios.push('Fecha de hechos: eliminada (por determinar)');
+          (noticia as any).fechaHechos = null;
+          (noticia as any).fechaCaducidad = null;
+        } else {
+          cambios.push(`Fecha de hechos: ${fechaHechosNueva}`);
+          noticia.fechaHechos = new Date(data.fechaHechos);
+          noticia.fechaCaducidad = new Date(data.fechaHechos);
+          noticia.fechaCaducidad.setFullYear(noticia.fechaCaducidad.getFullYear() + 5);
         }
       }
     }
-    console.log('[NEWS SERVICE UPDATE] files param length:', files?.length || 0);
+
+    // 7. Denunciante
+    if (data.denunciante !== undefined && data.denunciante !== null) {
+      if (!arePersonsEqual(noticia.denunciante, data.denunciante)) {
+        cambios.push('Datos de denunciante modificados');
+        noticia.denunciante = data.denunciante;
+      }
+    }
+
+    // 8. Disciplinable / Denunciado
+    if (data.disciplinable !== undefined && data.disciplinable !== null) {
+      if (!arePersonsEqual(noticia.disciplinable, data.disciplinable)) {
+        cambios.push('Datos de denunciado modificados');
+        noticia.disciplinable = data.disciplinable;
+      }
+    }
+
+    // 9. Conductas
+    if (data.conductas !== undefined && Array.isArray(data.conductas)) {
+      const normCur = (Array.isArray(noticia.conductas) ? noticia.conductas : [])
+        .map((c) => normalizeStr(c).toLowerCase())
+        .filter(Boolean)
+        .sort();
+      const normNew = data.conductas
+        .map((c: any) => normalizeStr(c).toLowerCase())
+        .filter(Boolean)
+        .sort();
+      const changed =
+        normCur.length !== normNew.length || normCur.some((c, i) => c !== normNew[i]);
+      if (changed) {
+        cambios.push('Conductas disciplinarias modificadas');
+        noticia.conductas = data.conductas;
+      }
+    } else if (data.conducta !== undefined && typeof data.conducta === 'string') {
+      const curConducta = normalizeStr(noticia.conducta).toLowerCase();
+      const newConducta = normalizeStr(data.conducta).toLowerCase();
+      if (newConducta && newConducta !== curConducta) {
+        cambios.push('Conducta disciplinaria modificada');
+        noticia.conducta = data.conducta;
+      }
+    }
+
+    // 10. Gestión de documentos adjuntos en actualización
+    let currentAdjuntos: string[] = Array.isArray((noticia as any).adjuntos) ? [...(noticia as any).adjuntos] : [];
+    if (data.adjuntosParaEliminar && Array.isArray(data.adjuntosParaEliminar) && data.adjuntosParaEliminar.length > 0) {
+      const realEliminados = data.adjuntosParaEliminar.filter((toDelete: string) => currentAdjuntos.includes(toDelete));
+      if (realEliminados.length > 0) {
+        cambios.push(`Documentos eliminados: ${realEliminados.length}`);
+        for (const toDelete of realEliminados) {
+          currentAdjuntos = currentAdjuntos.filter((a) => a !== toDelete);
+          try {
+            await this.storageService.deleteFile(toDelete);
+          } catch (e) {
+            console.warn(`No se pudo eliminar archivo físico ${toDelete}:`, e.message);
+          }
+        }
+      }
+    }
+
     if (files && files.length > 0) {
-      console.log('[NEWS SERVICE UPDATE] nombres:', files.map(f => f.originalname));
+      cambios.push(`Documentos nuevos: ${files.length}`);
       try {
         const storedNew = await this.storageService.saveMultipleFiles(noticia.radicado || 'sin-radicado', files);
-        console.log('[NEWS SERVICE UPDATE] archivos guardados en disco:', storedNew);
         currentAdjuntos.push(...storedNew);
       } catch (e) {
         console.error('Error guardando nuevos adjuntos en update:', e);
@@ -455,17 +671,17 @@ export class NewsService {
     }
     (noticia as any).adjuntos = currentAdjuntos;
 
-    // Registrar en historial de auditoría
-    const historyEntry = {
-      id: Date.now().toString(),
-      tipo: 'edicion',
-      usuario: data.usuario || 'Profesional',
-      fecha: new Date().toISOString(),
-      observaciones: cambios.length > 0
-        ? `Campos modificados: ${cambios.join(', ')}`
-        : 'Noticia actualizada',
-    };
-    noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+    // Registrar en historial de auditoría ÚNICAMENTE si hubo modificaciones reales
+    if (cambios.length > 0) {
+      const historyEntry = {
+        id: Date.now().toString(),
+        tipo: 'edicion',
+        usuario: data.usuario || 'Profesional',
+        fecha: new Date().toISOString(),
+        observaciones: `Campos modificados: ${cambios.join(', ')}`,
+      };
+      noticia.historialAuditoria = [...(noticia.historialAuditoria || []), historyEntry];
+    }
 
     return await this.newsRepository.save(noticia);
   }
@@ -845,6 +1061,10 @@ export class NewsService {
   
       // Solo si la asociación se guarda exitosamente, cambiar el estado de la noticia
       noticia.estado = NewsStatus.ASOCIADA;
+      noticia.procesoAsociadoId = procesoDestinoId;
+      noticia.procesoAsociadoNumero = proceso.radicadoProceso;
+      noticia.procesoAsociadoFecha = associationData.fechaAsociacion;
+      noticia.procesoAsociadoJustificacion = justificacion;
   
       // Registrar en auditoría de la noticia
       const historyEntry = {

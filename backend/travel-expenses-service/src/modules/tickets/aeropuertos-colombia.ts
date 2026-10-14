@@ -52,6 +52,7 @@ export const CATALOGO_AEROPUERTOS_COLOMBIA: Record<string, AeropuertoColombia> =
 
 /**
  * Normaliza una cadena de texto para búsqueda de ciudad.
+ * Remueve tildes, signos y sufijos como D.C. o Distrito Capital.
  */
 export function normalizarClaveCiudad(texto: string): string {
   if (!texto) return '';
@@ -59,26 +60,63 @@ export function normalizarClaveCiudad(texto: string): string {
     .toUpperCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\.,\-_/]/g, ' ')
+    .replace(/\b(D\s*C|DISTRITO\s*CAPITAL|CIUDAD|MUNICIPIO|AEROPUERTO)\b/g, ' ')
     .replace(/[^A-Z]/g, '')
     .trim();
 }
 
 /**
- * Resuelve el código IATA a partir del nombre de la ciudad o del código si ya lo es.
+ * Desglosa una cadena compuesta de ruta (ej: "BOG-PEI", "BOG - PEI", "BOGOTA - PEREIRA", "BOG/PEI")
+ * en sus partes de origen y destino.
+ */
+export function desglosarRuta(texto: string): { origen: string; destino: string } | null {
+  if (!texto) return null;
+  const limpio = texto.trim();
+  const separadores = /\s*(?:-|–|—|\/|->|=>|\ba\b|\bhacia\b)\s*/i;
+  const partes = limpio.split(separadores).map((p) => p.trim()).filter(Boolean);
+  if (partes.length >= 2) {
+    return { origen: partes[0], destino: partes[1] };
+  }
+  return null;
+}
+
+/**
+ * Resuelve el código IATA a partir del nombre de la ciudad, aeropuerto o del código IATA si ya lo es.
+ * Soporta entradas como 'PEI', 'BOG', 'Pereira', 'Bogotá D.C.', 'Matecaña', 'El Dorado', 'BOG-PEI' (origen).
  */
 export function resolverIata(texto: string): string | null {
   if (!texto) return null;
   const limpio = texto.trim().toUpperCase();
 
-  // Si ya es un IATA de 3 letras directo
+  // 1. Si ya es un IATA de 3 letras directo (ej: 'BOG', 'PEI')
   if (/^[A-Z]{3}$/.test(limpio)) {
     const existe = Object.values(CATALOGO_AEROPUERTOS_COLOMBIA).some((a) => a.iata === limpio);
     if (existe) return limpio;
   }
 
+  // 2. Si el texto contiene un código IATA de 3 letras conocido separado por guión, espacio o paréntesis
+  // Ej: "BOGOTA (BOG)", "VUELO A PEI", "BOG-PEI"
+  const tokens = limpio.split(/[^A-Z0-9]+/);
+  for (const token of tokens) {
+    if (token.length === 3) {
+      const match = Object.values(CATALOGO_AEROPUERTOS_COLOMBIA).find((a) => a.iata === token);
+      if (match) return match.iata;
+    }
+  }
+
+  // 3. Buscar por clave de ciudad normalizada (ej: "BOGOTA", "PEREIRA")
   const clave = normalizarClaveCiudad(limpio);
   for (const [k, aerop] of Object.entries(CATALOGO_AEROPUERTOS_COLOMBIA)) {
-    if (clave.includes(k) || k.includes(clave)) {
+    if (clave === k || clave.includes(k) || k.includes(clave)) {
+      return aerop.iata;
+    }
+  }
+
+  // 4. Buscar por nombre de terminal aérea (ej: "Matecaña" -> PEI, "El Dorado" -> BOG, "Palonegro" -> BGA)
+  for (const aerop of Object.values(CATALOGO_AEROPUERTOS_COLOMBIA)) {
+    const nombreNorm = normalizarClaveCiudad(aerop.nombreAeropuerto);
+    if (nombreNorm && (clave.includes(nombreNorm) || nombreNorm.includes(clave))) {
       return aerop.iata;
     }
   }

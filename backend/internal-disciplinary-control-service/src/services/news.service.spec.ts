@@ -294,4 +294,173 @@ describe('NewsService', () => {
       );
     });
   });
+
+  describe('update', () => {
+    it('should NOT add history entry when editing without modifying any fields', async () => {
+      const initialHistory = [
+        {
+          id: 'hist-1',
+          tipo: 'radicacion',
+          usuario: 'Radicador',
+          fecha: '2026-01-01T10:00:00.000Z',
+          observaciones: 'Radicación exitosa en el sistema',
+        },
+      ];
+
+      const mockNoticia: any = {
+        id: 'news-1',
+        radicado: 'ND-2026-0001',
+        origen: 'ANONIMO',
+        territorial: 'Sede Central',
+        dependenciaDenunciado: 'Secretaría General',
+        hechos: 'Hechos originales sin cambios',
+        fechaQueja: new Date('2026-02-15T12:00:00.000Z'),
+        fechaRecepcion: new Date('2026-02-15T12:00:00.000Z'),
+        fechaHechos: new Date('2026-01-10T00:00:00.000Z'),
+        fechaCaducidad: new Date('2031-01-10T00:00:00.000Z'),
+        denunciante: [
+          {
+            nombre: 'Juan Pérez',
+            cedula: '12345678',
+            cargo: 'Docente',
+            dependencia: 'Facultad',
+            telefono: '3001234567',
+            correo: 'juan@test.com',
+            direccion: 'Calle 10',
+            tipo: 'Denunciante',
+          },
+        ],
+        disciplinable: [
+          {
+            nombre: 'Carlos López',
+            cedula: '87654321',
+            cargo: 'Coordinador',
+            dependencia: 'Sede Central',
+          },
+        ],
+        conductas: ['Incumplimiento de deberes'],
+        adjuntos: ['doc1.pdf'],
+        historialAuditoria: [...initialHistory],
+      };
+
+      jest.spyOn(service, 'findById').mockResolvedValue(mockNoticia);
+      jest.spyOn(newsRepository, 'save').mockImplementation(async (n: any) => n);
+
+      // Payload from frontend wizard without modifications
+      const unchangedPayload = {
+        origen: 'Anónimo', // UI label corresponding to ANONIMO
+        territorial: 'Sede Central',
+        dependenciaDenunciado: 'Secretaría General',
+        hechos: 'Hechos originales sin cambios',
+        fechaQueja: '2026-02-15',
+        fechaHechos: '2026-01-10',
+        denunciante: [
+          {
+            nombre: 'Juan Pérez',
+            cedula: '12345678',
+            identificacion: '12345678',
+            cargo: 'Docente',
+            entidad: 'Facultad',
+            dependencia: 'Facultad',
+            telefono: '3001234567',
+            correo: 'juan@test.com',
+            direccion: 'Calle 10',
+            tipo: 'Denunciante',
+          },
+        ],
+        disciplinable: [
+          {
+            nombre: 'Carlos López',
+            cedula: '87654321',
+            identificacion: '87654321',
+            cargo: 'Coordinador',
+            dependencia: 'Sede Central',
+            lugarHechos: 'Sede Central',
+          },
+        ],
+        conductas: ['Incumplimiento de deberes'],
+        adjuntosParaEliminar: [],
+        usuario: 'Profesional',
+      };
+
+      const result = await service.update('news-1', unchangedPayload);
+
+      // historialAuditoria should NOT have grown
+      expect(result.historialAuditoria).toHaveLength(1);
+      expect(result.historialAuditoria[0].tipo).toBe('radicacion');
+    });
+
+    it('should only record actually modified fields in history', async () => {
+      const mockNoticia: any = {
+        id: 'news-2',
+        radicado: 'ND-2026-0002',
+        origen: 'OFICIO',
+        territorial: 'Sede Central',
+        hechos: 'Hechos originales',
+        fechaHechos: new Date('2026-01-10T00:00:00.000Z'),
+        denunciante: [{ nombre: 'Juan Pérez', cedula: '123' }],
+        disciplinable: [{ nombre: 'Carlos López', cedula: '456' }],
+        historialAuditoria: [],
+      };
+
+      jest.spyOn(service, 'findById').mockResolvedValue(mockNoticia);
+      jest.spyOn(newsRepository, 'save').mockImplementation(async (n: any) => n);
+
+      // Only "hechos" is modified, others kept identical
+      const modifiedPayload = {
+        origen: 'De oficio',
+        territorial: 'Sede Central',
+        hechos: 'Nuevos hechos detallados',
+        fechaHechos: '2026-01-10',
+        denunciante: [{ nombre: 'Juan Pérez', cedula: '123' }],
+        disciplinable: [{ nombre: 'Carlos López', cedula: '456' }],
+        usuario: 'Abogado 1',
+      };
+
+      const result = await service.update('news-2', modifiedPayload);
+
+      expect(result.historialAuditoria).toHaveLength(1);
+      const entry = result.historialAuditoria[0];
+      expect(entry.tipo).toBe('edicion');
+      expect(entry.usuario).toBe('Abogado 1');
+      expect(entry.observaciones).toBe('Campos modificados: Hechos modificados');
+      expect(entry.observaciones).not.toContain('denunciante');
+      expect(entry.observaciones).not.toContain('denunciado');
+      expect(entry.observaciones).not.toContain('Fecha');
+    });
+
+    it('should correctly record modification when a person or date actually changes', async () => {
+      const mockNoticia: any = {
+        id: 'news-3',
+        radicado: 'ND-2026-0003',
+        origen: 'OFICIO',
+        territorial: 'Sede Central',
+        hechos: 'Hechos',
+        fechaHechos: new Date('2026-01-10T00:00:00.000Z'),
+        denunciante: [{ nombre: 'Juan Pérez', cedula: '123' }],
+        disciplinable: [{ nombre: 'Carlos López', cedula: '456' }],
+        historialAuditoria: [],
+      };
+
+      jest.spyOn(service, 'findById').mockResolvedValue(mockNoticia);
+      jest.spyOn(newsRepository, 'save').mockImplementation(async (n: any) => n);
+
+      // Modify disciplinable name and fechaHechos
+      const modifiedPayload = {
+        hechos: 'Hechos',
+        fechaHechos: '2026-03-20',
+        denunciante: [{ nombre: 'Juan Pérez', cedula: '123' }],
+        disciplinable: [{ nombre: 'Carlos Mario López', cedula: '456' }],
+        usuario: 'Abogado 2',
+      };
+
+      const result = await service.update('news-3', modifiedPayload);
+
+      expect(result.historialAuditoria).toHaveLength(1);
+      const entry = result.historialAuditoria[0];
+      expect(entry.observaciones).toContain('Fecha de hechos: 2026-03-20');
+      expect(entry.observaciones).toContain('Datos de denunciado modificados');
+      expect(entry.observaciones).not.toContain('denunciante');
+    });
+  });
 });

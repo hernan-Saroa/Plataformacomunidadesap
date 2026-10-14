@@ -57,6 +57,7 @@ const SUBCOMP_LABELS: Record<string, string> = {
   complementarias_pregrado: 'Complementarias (Pregrado)',
   complementarias_posgrado: 'Complementarias (Posgrado)',
   complementarias_territorial: 'Complementarias (Territorial)',
+  complementarias_decanatura: 'Complementarias (Decanatura)',
   complementarias_gestion_profesoral: 'Complementarias (Gestión Profesoral)',
 };
 

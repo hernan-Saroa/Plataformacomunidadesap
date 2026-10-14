@@ -120,6 +120,12 @@ export class CreateAuditoriaDto {
   @IsOptional()
   procesoAuditado?: string;
 
+  // Unidades auditables del proceso que cubre la auditoría (EFDS-2316)
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  unidadesAuditables?: string[];
+
   @IsString()
   @IsOptional()
   alcance?: string;

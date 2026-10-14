@@ -1731,6 +1731,7 @@ const BULK_APPROVAL_GROUP_ICON: Record<PTABulkApprovalGroupKey, React.ComponentT
   complementarias_pregrado: Briefcase,
   complementarias_posgrado: Briefcase,
   complementarias_territorial: Briefcase,
+  complementarias_decanatura: Briefcase,
   complementarias_gestion_profesoral: Briefcase,
 };
 

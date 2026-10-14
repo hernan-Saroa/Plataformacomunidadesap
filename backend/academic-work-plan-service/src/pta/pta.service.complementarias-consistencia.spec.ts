@@ -29,6 +29,11 @@ describe('Complementarias: contenido, aprobación automática y permisos vigente
     service.logger = { warn: jest.fn(), error: jest.fn(), log: jest.fn(), debug: jest.fn() };
     service.resolveNombrePorSeccionalId = jest.fn().mockResolvedValue(new Map());
     service.ptaRepo.save = jest.fn(async (row: any) => row);
+    service.ptaRepo.update = jest.fn(async (_where: any, changes: any) => {
+      if (typeof changes.datosEstructurados === 'function') {
+        pta.datosEstructurados = { ...pta.datosEstructurados, complementarias_flujo_version: 'programa_responsable_v1' };
+      } else Object.assign(pta, changes);
+    });
     service.historialRepo = { create: jest.fn((row: any) => row), save: jest.fn(async (row: any) => row) };
     service.logEvento = jest.fn().mockResolvedValue(undefined);
     const txApprovalRepo = {
@@ -54,7 +59,7 @@ describe('Complementarias: contenido, aprobación automática y permisos vigente
       expect.objectContaining({ componente: 'complementarias_gestion_profesoral', subseccion: 'academico_administrativas' }),
       expect.objectContaining({ componente: 'complementarias_pregrado', subseccion: 'docencia' }),
     ]));
-    expect(rows).not.toContainEqual(expect.objectContaining({ componente: 'complementarias_gestion_profesoral', subseccion: 'docencia' }));
+    expect(rows).toContainEqual(expect.objectContaining({ componente: 'complementarias_gestion_profesoral', subseccion: 'docencia' }));
   });
 
   it('cuenta las actividades anteriores en el listado y las revisiones necesarias coinciden con el detalle', async () => {
@@ -62,7 +67,7 @@ describe('Complementarias: contenido, aprobación automática y permisos vigente
     const dtos = [{ id: 'pta', estado: 'Pendiente Jefatura', ...dsMixto(), horas_complementarias: 140 }];
     await service.attachComponentApprovalProgress(dtos);
     expect((dtos[0] as any).complementarias_por_componente).toMatchObject({
-      complementarias_pregrado: 40, complementarias_gestion_profesoral: 100, complementarias: 0,
+      complementarias_pregrado: 40, complementarias_gestion_profesoral: 140, complementarias: 0,
     });
     expect((dtos[0] as any).subsecciones_con_datos).toContain('complementarias_gestion_profesoral:academico_administrativas');
   });
@@ -72,7 +77,8 @@ describe('Complementarias: contenido, aprobación automática y permisos vigente
     ds.complementarias.push({ ...ds.academico_admin[0], seccion: 'academico_administrativas' });
     const { service } = setup(ds);
     const { horasPorComponente } = await service.computeHorasPorComponente(ds);
-    expect(horasPorComponente.complementarias_gestion_profesoral).toBe(100);
+    expect(horasPorComponente.complementarias_gestion_profesoral).toBe(140);
+    expect(service.computeHorasTotales(ds, {}).total).toBe(140);
   });
 
   it('una aprobación automática por vacío no aprueba las complementarias que ahora tienen actividades', async () => {
@@ -87,6 +93,9 @@ describe('Complementarias: contenido, aprobación automática y permisos vigente
   it.each(['complementarias_docencia', 'academico_administrativas'])('una actividad sin horas requiere revisión y aprobación: %s', async seccion => {
     const ds = { complementarias: [{ actividad_id: 'AADM', horas: 0, seccion, territorial_id: '900001' }] };
     const { service } = setup(ds);
+    if (seccion === 'complementarias_docencia') {
+      service.getCatalogoActividadesComplementarias.mockResolvedValue([{ id: 'AADM', tipo_aprobacion: 'gestion_profesoral' }]);
+    }
     const rows = await service.getComponentesAprobacion('pta');
     expect(rows.find((r: any) => r.componente === 'complementarias_gestion_profesoral')).toMatchObject({
       estado: 'pendiente', estado_visual: 'pendiente', aplica: true, horas: 0,
@@ -179,7 +188,8 @@ describe('Complementarias: contenido, aprobación automática y permisos vigente
     expect(detail.academico_admin[0]).toMatchObject({
       componente_complementaria: 'complementarias_gestion_profesoral', seccion: 'academico_administrativas', horas: 100,
     });
-    expect(detail.complementarias[0].componente_complementaria).toBe('complementarias_pregrado');
+    expect(detail.complementarias[0].componente_complementaria).toBe('complementarias_gestion_profesoral');
+    expect(detail.complementarias[0].componentes_complementaria).toEqual(['complementarias_pregrado', 'complementarias_gestion_profesoral']);
   });
 
   it.each(['900002', undefined])('permite revisión GP con su permiso aunque la territorial sea distinta o no esté registrada: %s', async territorial => {
@@ -220,7 +230,8 @@ describe('Complementarias: contenido, aprobación automática y permisos vigente
 
   it.each([
     ['gestion_profesoral', 'complementarias_gestion_profesoral', 'complementarias.gestion_profesoral', 'REVISION_DOCENTE_N3'],
-    ['decanatura', 'complementarias_territorial', 'complementarias.territorial.pregrado', 'REVISION_DOCENTE_N2'],
+    ['decanatura', 'complementarias_decanatura', 'complementarias.decanatura', 'REVISION_DOCENTE_N2'],
+    ['territorial', 'complementarias_territorial', 'complementarias.territorial', 'REVISION_DOCENTE_N2'],
   ])('el revisor de %s puede devolver una actividad sin horas sin adquirir permiso de aprobación', async (tipo, componente, permiso, estadoDevuelto) => {
     const docenciaAprobada = { ptaId: 'pta', componente: 'academica_pregrado', estado: 'aprobado', aprobadorId: 'aprobador-docencia' };
     const { service, pta, approvals } = setup({
@@ -232,6 +243,7 @@ describe('Complementarias: contenido, aprobación automática y permisos vigente
     service.ptaComponentReviewRepo.findOne = jest.fn(async () => review);
     service.ptaComponentReviewRepo.save = jest.fn(async (value: any) => { review = value; return value; });
     service.ptaComponentReviewRepo.find = jest.fn(async ({ where }: any) => review && (!where.estado || review.estado === where.estado) ? [review] : []);
+    service.ptaComponentReviewRepo.update = jest.fn(async (_where: any, changes: any) => { if (review) Object.assign(review, changes); });
     service.ptaComponentApprovalRepo.find = jest.fn(async ({ where }: any) => approvals.filter(row => !where.estado || row.estado === where.estado));
     service.ptaComponentApprovalRepo.findOne = jest.fn(async ({ where }: any) => approvals.find(row => row.componente === where.componente) || null);
     service.notificaciones = { notificarDecisionComponente: jest.fn(), notificarCambioEstado: jest.fn() };
@@ -274,8 +286,8 @@ describe('Complementarias: contenido, aprobación automática y permisos vigente
     ['Gestión Profesoral', undefined, 'gestion_profesoral', 'complementarias_gestion_profesoral', 'complementarias.gestion_profesoral'],
     ['Pregrado', 'pregrado', 'gestion_profesoral', 'complementarias_pregrado', 'complementarias.pregrado'],
     ['Posgrado', 'posgrado', 'gestion_profesoral', 'complementarias_posgrado', 'complementarias.posgrado'],
-    ['Decanatura Pregrado', 'pregrado', 'decanatura', 'complementarias_territorial', 'complementarias.territorial.pregrado'],
-    ['Decanatura Posgrado', 'posgrado', 'decanatura', 'complementarias_territorial', 'complementarias.territorial.posgrado'],
+    ['Decanatura Pregrado', 'pregrado', 'decanatura', 'complementarias_decanatura', 'complementarias.decanatura'],
+    ['Decanatura Posgrado', 'posgrado', 'decanatura', 'complementarias_decanatura', 'complementarias.decanatura'],
   ])('%s con permisos propios y sin depender del nombre del rol', (_label, nivel, tipo, componente, permissionSuffix) => {
     it.each([0, 10])('requiere las dos revisiones antes de aprobar el PTA, con %s horas por actividad', async horas => {
       const { service, pta, approvals } = setup({
@@ -297,9 +309,9 @@ describe('Complementarias: contenido, aprobación automática y permisos vigente
       service.ptaComponentApprovalRepo.findOne = jest.fn(async ({ where }: any) => approvals.find(row => row.componente === where.componente) || null);
       service.solicitudRepo = { findOne: jest.fn().mockResolvedValue(null) };
       service.notificaciones = { notificarDecisionComponente: jest.fn(), notificarCambioEstado: jest.fn() };
-      const authFor = async (action: string) => {
+      const authFor = async (action: string, suffix = permissionSuffix) => {
         const resolver = new PtaPermissionsService({ query: jest.fn().mockResolvedValue([
-          { role_code: 'ROL_PERSONALIZADO', permission_code: `pta.${action}.${permissionSuffix}` },
+          { role_code: 'ROL_PERSONALIZADO', permission_code: `pta.${action}.${suffix}` },
         ]) } as any);
         return { ...await resolver.resolveForUser(action), userId: action, name: action, territorialIds: ['900001'] };
       };
@@ -309,6 +321,15 @@ describe('Complementarias: contenido, aprobación automática y permisos vigente
       const revisar = (auth: any, subseccion: string) => service.revisarComponente('pta', { componente, subseccion, estado: 'revisado' }, auth);
       await service.getComponentesAprobacion('pta');
       await service.getComponentesRevision('pta');
+      if (nivel && !['complementarias_pregrado', 'complementarias_posgrado'].includes(componente)) {
+        const programa = `complementarias_${nivel}`;
+        const revisorPrograma = await authFor('review', `complementarias.${nivel}`);
+        const aprobadorPrograma = await authFor('approve', `complementarias.${nivel}`);
+        for (const subseccion of ['docencia', 'academico_administrativas']) {
+          await service.revisarComponente('pta', { componente: programa, subseccion, estado: 'revisado' }, revisorPrograma);
+        }
+        await service.aprobarComponente('pta', { componente: programa, estado: 'aprobado' }, aprobadorPrograma);
+      }
       await expect(approve(revisor)).rejects.toThrow(/No tiene permisos/);
       await expect(revisar(aprobador, 'docencia')).rejects.toThrow(/No tiene permisos/);
       await expect(approve(aprobador)).rejects.toThrow(/revisión\(es\) pendiente/);
@@ -317,8 +338,9 @@ describe('Complementarias: contenido, aprobación automática y permisos vigente
       await revisar(revisor, 'academico_administrativas');
       const result = await approve(aprobador);
       expect(result.approval).toMatchObject({ estado: 'aprobado', componente, aprobadorId: 'approve' });
-      expect(result.estadoGeneral).toBe('Aprobado');
-      expect(pta.estado).toBe('Aprobado');
+      const esPrograma = ['complementarias_pregrado', 'complementarias_posgrado'].includes(componente);
+      expect(result.estadoGeneral).toBe(esPrograma ? 'Pendiente Jefatura' : 'Aprobado');
+      expect(pta.estado).toBe(esPrograma ? 'Pendiente Jefatura' : 'Aprobado');
       const reload = await service.getComponentesAprobacion('pta');
       expect(reload.find((row: any) => row.componente === componente)).toMatchObject({ estado: 'aprobado', aplica: true });
     });

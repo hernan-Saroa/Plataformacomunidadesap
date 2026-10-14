@@ -11,6 +11,7 @@
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { fechaSeguimientoTarea } from './fechaSeguimientoTarea';
 import {
   validarDecreto648,
   obtenerEstadisticasPlan,
@@ -180,21 +181,10 @@ export async function generarPDFPlanAnual(plan: PlanAnual, configuracion: Config
         ]);
       } else {
         tareas.forEach((tarea: any) => {
-          // Extraer fecha de seguimiento real de la tarea (no solo fecha límite)
+          // La fecha de seguimiento configurada, con el mismo criterio del Excel; la fecha
+          // en que se completó la tarea no la reemplaza (EFDS-2324)
           let fTarea = '-';
-          const rawFecha =
-            tarea.fechaSeguimiento
-            || tarea.fecha_seguimiento
-            || tarea.fechaEvaluacion
-            || tarea.fecha_evaluacion
-            || tarea.fechaCompletado
-            || tarea.fechaCompletada
-            || tarea.fecha_completada
-            || tarea.fechaEntrega
-            || tarea.fecha_entrega
-            || tarea.fechaLimite
-            || tarea.fecha_limite
-            || tarea.fechaFin;
+          const rawFecha = fechaSeguimientoTarea(act, tarea) || tarea.fechaFin;
           if (rawFecha && rawFecha !== '-') {
             const raw = String(rawFecha).trim();
             // Siempre extraer la porción YYYY-MM-DD y usar T12:00:00

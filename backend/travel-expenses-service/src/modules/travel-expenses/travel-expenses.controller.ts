@@ -212,6 +212,27 @@ export class TravelExpensesController {
       normalizedPermissions.includes('es_comisionado') ||
       normalizedPermissions.includes('travel_expenses:read_own_requests');
 
+    const isJefeDependencia =
+      normalizedRoles.some(
+        (r) =>
+          r === 'JEFE' ||
+          r === 'JEFE_DEPENDENCIA' ||
+          r === 'SUPERVISOR',
+      ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_jefe_dependencia') ||
+      normalizedPermissions.includes('travel_expenses.general.es_jefe') ||
+      normalizedPermissions.includes('general.es_jefe');
+
+    const isGerenteProyecto =
+      normalizedRoles.some(
+        (r) =>
+          r === 'GERENTE' ||
+          r === 'GERENTE_PROYECTO',
+      ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_gerente_proyecto') ||
+      normalizedPermissions.includes('travel_expenses.general.es_gerente') ||
+      normalizedPermissions.includes('general.es_gerente');
+
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
     const forzarSoloComisionado = soloComisionado === 'true' || soloComisionado === '1';
@@ -227,6 +248,8 @@ export class TravelExpensesController {
       isSst,
       isComisionado,
       forzarSoloComisionado,
+      isJefeDependencia,
+      isGerenteProyecto,
     );
     return {
       data: result.data,
@@ -282,6 +305,30 @@ export class TravelExpensesController {
     };
   }
 
+  @Get('comisionados')
+  @Public()
+  @ApiOperation({
+    summary: 'Listar comisionados con filtro por dependencia y búsqueda opcional',
+    description:
+      'Retorna comisionados registrados en travel_expenses.comisionados, opcionalmente filtrados por idDependencia o término de búsqueda.',
+  })
+  @ApiQuery({
+    name: 'idDependencia',
+    required: false,
+    description: 'Filtrar por ID de la dependencia asignada',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Filtrar por texto en documento, nombre o cargo',
+  })
+  async listarComisionados(
+    @Query('idDependencia') idDependencia?: string,
+    @Query('search') search?: string,
+  ) {
+    return this.service.listarComisionados(idDependencia, search);
+  }
+
   @Get('comisionados/:documento')
   @Public()
   @ApiOperation({
@@ -294,6 +341,11 @@ export class TravelExpensesController {
     description: 'Número de documento de identidad del funcionario',
     example: '1019283746',
   })
+  @ApiQuery({
+    name: 'idDependencia',
+    required: false,
+    description: 'ID de la dependencia del usuario enlace para restringir consulta solo a su dependencia',
+  })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Comisionado encontrado o materializado exitosamente.',
@@ -302,8 +354,11 @@ export class TravelExpensesController {
     status: HttpStatus.NOT_FOUND,
     description: 'No se encontró el funcionario en ninguna base de datos.',
   })
-  async consultarComisionado(@Param('documento') documento: string) {
-    const comisionado = await this.service.consultarComisionado(documento);
+  async consultarComisionado(
+    @Param('documento') documento: string,
+    @Query('idDependencia') idDependencia?: string,
+  ) {
+    const comisionado = await this.service.consultarComisionado(documento, idDependencia);
     let estadoUsuario = {
       esUsuario: false,
       usuarioId: null as string | null,
@@ -579,16 +634,29 @@ export class TravelExpensesController {
     'travel_expenses:read_extemporaneous_authorizations',
   )
   async obtenerBandejaFirmas(
+    @Req() req: AuthenticatedRequest,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('busqueda') busqueda?: string,
   ) {
+    const usuarioId = req.user?.userId;
+    const rawRoles = Array.isArray(req.user?.roles) ? req.user.roles : [];
+    const normalizedRoles = rawRoles.map((r: any) =>
+      typeof r === 'string'
+        ? r.toUpperCase().replace(/\s+/g, '_')
+        : (r?.code || '').toUpperCase().replace(/\s+/g, '_'),
+    );
+    const superAdmin = normalizedRoles.some((r) =>
+      SUPER_ADMIN_ROLES.includes(r),
+    );
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
     const result = await this.service.obtenerBandejaFirmas(
       pageNum,
       limitNum,
       busqueda,
+      usuarioId,
+      superAdmin,
     );
     return {
       success: true,
@@ -1718,12 +1786,7 @@ export class TravelExpensesController {
    */
   @Post('requests/:id/cancel')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
-  @Permissions(
-    'travel_expenses:cancel_request',
-    'travel_expenses:create_request',
-    'travel_expenses:read_inbox',
-    'travel_expenses:authorize_expense',
-  )
+  @Permissions('travel_expenses:cancel_request')
   @ApiOperation({
     summary: 'Cancelar comisión con trazabilidad (Etapa 6 — RF-AUT-003)',
     description:

@@ -422,6 +422,37 @@ class AuthService {
     return this.getUsuariosConPermiso(PERMISO_RESPONSABLE_ACTUACION_JUZGAMIENTO);
   }
 
+  /**
+   * Usuarios activos que tengan al menos uno de los roles indicados.
+   * Cada clave es el `code` del rol (o su `id` si el rol no tiene code), que es lo que
+   * se guarda en la configuración de Términos e Informes.
+   */
+  async getUsuariosPorRoles(clavesRoles: string[]): Promise<AbogadoResuelve[]> {
+    const claves = new Set(clavesRoles.map(c => String(c).toUpperCase()));
+    if (claves.size === 0) return [];
+
+    const response = await apiClient.get<{ data: any[]; meta: any } | any[]>(
+      '/auth/api/v1/users',
+      { status: 'active', limit: 1000 }
+    );
+    const users = Array.isArray(response) ? response : (response?.data ?? []);
+    return users
+      .filter((u: any) => {
+        const roles: any[] = u.user?.roles ?? u.roles ?? u.person?.roles ?? [];
+        return roles.some((r: any) => {
+          const code = String(r.code ?? '').toUpperCase();
+          const id = String(r.id ?? r.id_role ?? '').toUpperCase();
+          return (code && claves.has(code)) || (id && claves.has(id));
+        });
+      })
+      .map((u: any) => ({
+        id: u.user?.id_user ?? u.id_user ?? u.id,
+        nombreCompleto: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+        nombre: u.full_name ?? u.person?.full_name ?? `${u.first_name ?? u.person?.first_name ?? ''} ${u.last_name ?? u.person?.last_name ?? ''}`.trim(),
+        email: u.email ?? u.person?.email ?? '',
+      }));
+  }
+
   async getTodosLosUsuariosActivos(): Promise<AbogadoResuelve[]> {
     const response = await apiClient.get<{ data: any[]; meta: any } | any[]>(
       '/auth/api/v1/users',

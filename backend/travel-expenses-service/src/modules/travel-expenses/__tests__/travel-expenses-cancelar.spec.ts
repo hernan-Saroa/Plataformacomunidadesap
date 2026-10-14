@@ -64,8 +64,8 @@ describe('RF-AUT-003 — Etapa 6: Cancelar Comisión con Trazabilidad (CANCELADA
 
       const req: any = {
         user: {
-          userId: 'user-enlace-01',
-          roles: ['ENLACE_DEPENDENCIA'],
+          userId: 'user-jefe-01',
+          roles: ['JEFE_DEPENDENCIA'],
         },
       };
 
@@ -73,8 +73,8 @@ describe('RF-AUT-003 — Etapa 6: Cancelar Comisión con Trazabilidad (CANCELADA
 
       expect(mockService.cancelarComision).toHaveBeenCalledWith(
         'sol-001',
-        'user-enlace-01',
-        ['ENLACE_DEPENDENCIA'],
+        'user-jefe-01',
+        ['JEFE_DEPENDENCIA'],
         dto,
       );
       expect(response.success).toBe(true);
@@ -135,6 +135,9 @@ describe('RF-AUT-003 — Etapa 6: Cancelar Comisión con Trazabilidad (CANCELADA
       mockNotificationClient = {
         send: jest.fn().mockResolvedValue({}),
         notifyByRole: jest.fn().mockResolvedValue({}),
+        notifyUser: jest.fn().mockResolvedValue({}),
+        notifyByPermission: jest.fn().mockResolvedValue({}),
+        sendEmail: jest.fn().mockResolvedValue({}),
       };
 
       const module: TestingModule = await Test.createTestingModule({
@@ -209,15 +212,15 @@ describe('RF-AUT-003 — Etapa 6: Cancelar Comisión con Trazabilidad (CANCELADA
 
       const result = await serviceInstance.cancelarComision(
         'sol-curso-1',
-        'user-analista-01',
-        ['ANALISTA_VIATICOS'],
+        'user-jefe-01',
+        ['JEFE_DEPENDENCIA'],
         dto,
       );
 
       expect(result.estadoSolicitud).toBe(EstadoSolicitud.CANCELADA);
       expect(result.motivoCancelacion).toBe(dto.motivoCancelacion);
       expect(result.responsableCancelacion).toBe('Dirección Territorial Antioquia');
-      expect(result.canceladoPorUsuarioId).toBe('user-analista-01');
+      expect(result.canceladoPorUsuarioId).toBe('user-jefe-01');
       expect(result.pendienteReintegro).toBe(false);
 
       // Verificación de liberación de saldo de tiquetes presupuestal
@@ -233,7 +236,7 @@ describe('RF-AUT-003 — Etapa 6: Cancelar Comisión con Trazabilidad (CANCELADA
           solicitudId: 'sol-curso-1',
           estadoAnterior: EstadoSolicitud.EN_VERIFICACION,
           estadoNuevo: EstadoSolicitud.CANCELADA,
-          usuarioId: 'user-analista-01',
+          usuarioId: 'user-jefe-01',
           comentarios: expect.stringContaining(
             'Cancelada por Dirección Territorial Antioquia: Comisión suspendida',
           ),
@@ -241,11 +244,12 @@ describe('RF-AUT-003 — Etapa 6: Cancelar Comisión con Trazabilidad (CANCELADA
       );
 
       // Verificación de notificación al creador
-      expect(mockNotificationClient.send).toHaveBeenCalledWith(
+      expect(mockNotificationClient.notifyUser).toHaveBeenCalledWith(
+        'user-enlace-99',
         expect.objectContaining({
-          id_usuario_destinatario: 'user-enlace-99',
           tipo_notificacion: 'VIATICOS_COMISION_CANCELADA',
         }),
+        expect.any(Object),
       );
     });
 
@@ -273,8 +277,8 @@ describe('RF-AUT-003 — Etapa 6: Cancelar Comisión con Trazabilidad (CANCELADA
 
       const result = await serviceInstance.cancelarComision(
         'sol-siif-1',
-        'user-control-01',
-        ['CONTROL_VIATICOS'],
+        'user-jefe-01',
+        ['JEFE_DEPENDENCIA'],
         dto,
       );
 
@@ -291,8 +295,8 @@ describe('RF-AUT-003 — Etapa 6: Cancelar Comisión con Trazabilidad (CANCELADA
       );
 
       // Verificación de alerta a Tesorería, Presupuesto y Control de Viáticos para gestión de reintegro y anulación RP
-      expect(mockNotificationClient.notifyByRole).toHaveBeenCalledWith(
-        'TESORERIA',
+      expect(mockNotificationClient.notifyByPermission).toHaveBeenCalledWith(
+        'travel_expenses.general.es_tesoreria',
         expect.objectContaining({
           tipo_notificacion: 'VIATICOS_REINTEGRO_LIBERACION_RECURSOS',
           datos_adicionales: expect.objectContaining({
@@ -300,18 +304,24 @@ describe('RF-AUT-003 — Etapa 6: Cancelar Comisión con Trazabilidad (CANCELADA
             novedad: 'RF-PAG-004',
           }),
         }),
+        expect.any(Object),
+        'TESORERIA',
       );
-      expect(mockNotificationClient.notifyByRole).toHaveBeenCalledWith(
+      expect(mockNotificationClient.notifyByPermission).toHaveBeenCalledWith(
+        'travel_expenses.general.es_presupuesto',
+        expect.objectContaining({
+          tipo_notificacion: 'VIATICOS_REINTEGRO_LIBERACION_RECURSOS',
+        }),
+        expect.any(Object),
         'PRESUPUESTO',
-        expect.objectContaining({
-          tipo_notificacion: 'VIATICOS_REINTEGRO_LIBERACION_RECURSOS',
-        }),
       );
-      expect(mockNotificationClient.notifyByRole).toHaveBeenCalledWith(
-        'CONTROL_VIATICOS',
+      expect(mockNotificationClient.notifyByPermission).toHaveBeenCalledWith(
+        'travel_expenses.general.es_control_viaticos',
         expect.objectContaining({
           tipo_notificacion: 'VIATICOS_REINTEGRO_LIBERACION_RECURSOS',
         }),
+        expect.any(Object),
+        'CONTROL_VIATICOS',
       );
     });
 
@@ -370,12 +380,29 @@ describe('RF-AUT-003 — Etapa 6: Cancelar Comisión con Trazabilidad (CANCELADA
 
       const result = await serviceInstance.cancelarComision(
         'sol-temp-1',
-        'user-enlace-66',
-        ['ENLACE_DEPENDENCIA'],
+        'user-jefe-66',
+        ['JEFE_DEPENDENCIA'],
         dto,
       );
 
       expect(result.pendienteReintegro).toBe(true);
+    });
+
+    it('debe rechazar la cancelación con ForbiddenException si el usuario no tiene rol de Jefe de Dependencia ni Administrador', async () => {
+      const dto: CancelarComisionDto = {
+        motivoCancelacion: 'Intento de cancelación por enlace sin permisos',
+      };
+
+      await expect(
+        serviceInstance.cancelarComision(
+          'sol-01',
+          'user-enlace-01',
+          ['ENLACE_DEPENDENCIA'],
+          dto,
+        ),
+      ).rejects.toThrow(
+        'Solo el Jefe de Dependencia o un administrador está autorizado para cancelar solicitudes de comisiones de viáticos.',
+      );
     });
 
     it('debe rechazar la cancelación si la comisión ya está en estado LEGALIZADO', async () => {
