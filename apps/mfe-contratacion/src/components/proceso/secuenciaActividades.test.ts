@@ -171,6 +171,21 @@ describe('actividadesDisponibles · la 5.3 no detiene a la 5.4 ni a la 5.5', () 
 
     expect(actividadesDisponibles(flujo).has('5.7')).toBe(true);
   });
+
+  it('en el orden de la matriz, la 5.3 no espera a la 5.4 que ahora la antecede', () => {
+    const flujo = [
+      paso('5.1', { estado: 'APROBADO' }),
+      paso('5.2', { estado: 'APROBADO' }),
+      paso('5.4', { estado: 'BORRADOR' }),
+      paso('5.3'),
+      paso('5.5'),
+      paso('5.6'),
+    ];
+    const disponibles = actividadesDisponibles(flujo);
+
+    expect(disponibles.has('5.3')).toBe(true);
+    expect(disponibles.has('5.6')).toBe(false);
+  });
 });
 
 describe('motivoDelBloqueo · con dependencia declarada', () => {

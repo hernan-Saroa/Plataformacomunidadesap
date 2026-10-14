@@ -64,6 +64,11 @@ const ABRE_EL_TRAMO_DE_LA_DIRECCION = '3.1';
  * las trata así: ni `mipyme.service.ts` ni `riesgos.service.ts` exigen la
  * 5.3 aprobada para escribir.
  *
+ * La 5.3 entra por lo mismo, al revés: desde la 104 la 5.4 va antes que ella,
+ * como en la matriz, y sin esto las observaciones esperarían la decisión sobre
+ * MiPymes, que tampoco les hace falta. Las tres cuelgan solo de la
+ * publicación, sea cual sea el orden en que el riel las pinte.
+ *
  * Que se habiliten antes no las exime de bloquear lo que sigue si quedan sin
  * terminar: la 5.6 y la 5.7 las siguen necesitando, igual que necesitan la
  * 5.3 — cada numeral aquí declara de qué depende de verdad, no de qué lo
@@ -76,6 +81,7 @@ const ABRE_EL_TRAMO_DE_LA_DIRECCION = '3.1';
  * esperar a los pagos (9.4) era un candado que el servidor no pone.
  */
 const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
+  '5.3': ['5.2'],
   '5.4': ['5.2'],
   '5.5': ['5.2'],
   '9.5': ['9.1'],
