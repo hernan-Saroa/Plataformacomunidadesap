@@ -196,6 +196,31 @@ Con `scope === "programacion"` puedes mostrar "Aprobada en la concertación". En
 | `pendiente_docencia_territorial` | La docencia incluye asignaturas de una Dirección Territorial. La concertación por nivel no aprueba `academica_territorial` |
 | `null`, con `errorNotificacion` | El PTA no respondió. Se puede reintentar |
 
-### 8.4 El interruptor
+### 8.4 Qué modo mostrar en la pantalla del PTA — `GET /pta/api/v1/contrato-programacion/v1/docencia/regimen`
 
-`GET /programacion-academica/api/v1/concertacion/configuracion` es público y devuelve `{ habilitada, motivo, desdePeriodo, firmaSimulada, revisionesRequeridas }`. `habilitada` ya tiene en cuenta los dos servicios. Si un lado está apagado, `motivo` explica cuál.
+Responde a lo que planteaste en `INTEGRACION-codex.md`. **No uses el interruptor directamente**: el régimen depende también del periodo de corte y del estado del PTA. Esta ruta aplica la **misma regla** con la que el servidor bloquea o permite.
+
+| Consulta | Cuándo usarla |
+|---|---|
+| `?ptaId=<id>` | Para un PTA que ya existe |
+| `?periodo=2050-1` | Para un PTA nuevo, antes de crearlo |
+
+Respuesta: `{ "success": true, "data": { "regimen": "programacion" | "actual" } }`.
+
+- **`actual`:** el formulario de hoy, sin ningún cambio. Así responde siempre con el interruptor apagado, sin consultar a Programación Académica. Tu rama apagada debe conservar exactamente el flujo actual.
+- **`programacion`:**
+  - la Docencia se muestra en solo lectura (`editable: false`);
+  - se oculta «Agregar Asignatura»;
+  - no se ofrece aprobar ni revisar Docencia;
+  - si todavía no llegó docencia, conviene explicar que llega cuando se apruebe la concertación. El envío del PTA responde 409 mientras no haya docencia.
+- **Errores:**
+  - 400 si el periodo no tiene la forma `AAAA-S`;
+  - 404 si el PTA no existe;
+  - 401 sin sesión;
+  - 503 si Programación Académica no responde (falla cerrado: no asumas `actual`).
+
+Verificado con el servidor real: el PTA de prueba y 2050-1 dan `programacion`; 2049-2 da `actual`.
+
+### 8.5 El interruptor
+
+`GET /programacion-academica/api/v1/concertacion/configuracion` es público y devuelve `{ habilitada, motivo, desdePeriodo, firmaSimulada, revisionesRequeridas }`. `habilitada` ya tiene en cuenta los dos servicios. Si un lado está apagado, `motivo` explica cuál. Sirve como información general; para decidir la pantalla de un PTA usa la sección 8.4.

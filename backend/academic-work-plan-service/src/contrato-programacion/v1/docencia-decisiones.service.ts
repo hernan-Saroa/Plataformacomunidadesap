@@ -1,9 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { PtaPermissionsService } from '../../pta/auth/pta-permissions.service';
-import { aplicarDecision, habilitadaLocal } from '../../pta/docencia-programacion';
+import { aplicarDecision, habilitadaLocal, regimenDocencia } from '../../pta/docencia-programacion';
 
 export interface AsignaturaConcertadaDto {
   idGrupo: string; asignaturaId: string; codigo: string; nombre: string; programaId: string;
@@ -47,6 +47,26 @@ export class DocenciaDecisionesService {
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly permisos: PtaPermissionsService,
   ) {}
+
+  /**
+   * Régimen de la Docencia para la pantalla del PTA: la MISMA regla con la que
+   * el servidor bloquea o permite (regimenDocencia). Con `ptaId`, la de ese PTA;
+   * sin él, la de un PTA nuevo (borrador) del periodo. Apagado: 'actual' sin
+   * consultar a nadie.
+   */
+  async regimen(periodo: string | undefined, ptaId: string | undefined): Promise<{ regimen: 'actual' | 'programacion' }> {
+    let pta: { periodo: unknown; estado: unknown; datosEstructurados: any } | null = null;
+    if (ptaId) {
+      pta = (await this.dataSource.query(
+        `SELECT periodo, estado, "datosEstructurados" FROM academic_work_plan."PlanTrabajoAcademico" WHERE id::text = $1`,
+        [String(ptaId)]))[0] ?? null;
+      if (!pta) throw new NotFoundException('PTA no encontrado');
+    } else {
+      if (!/^\d{4}-[12]$/.test(String(periodo ?? ''))) throw new BadRequestException('periodo debe tener la forma AAAA-S o enviarse ptaId');
+      pta = { periodo, estado: 'BORRADOR', datosEstructurados: null };
+    }
+    return { regimen: await regimenDocencia(pta) };
+  }
 
   /** El interruptor de este lado (lo consulta Programación Académica). */
   configuracion() {

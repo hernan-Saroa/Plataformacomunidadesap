@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Client } from 'pg';
 
@@ -111,7 +111,14 @@ describe('EFDS-2315 :: contrato v1 — docencia concertada (agregado real, en tr
       .filter((n) => n !== 'constructor' && Reflect.getMetadata(PATH_METADATA, C.prototype[n]) !== undefined)
       .map((n) => Reflect.getMetadata(METHOD_METADATA, C.prototype[n]));
     expect(metodos(DocentesContratoController).every((m) => m === 0)).toBe(true); // 0 = GET
-    // 1 = POST (la decisión); el único GET es la configuración pública del interruptor.
-    expect(metodos(DocenciaDecisionesController).sort()).toEqual([0, 1]);
+    // 1 = POST (la decisión); los GET son de lectura: configuración del interruptor y régimen.
+    expect(metodos(DocenciaDecisionesController).sort()).toEqual([0, 0, 1]);
+  });
+
+  caso('régimen para la pantalla: apagado es el de hoy; pide periodo válido o un PTA que exista', async () => {
+    const svc = servicio([]);
+    expect(await svc.regimen('2050-1', undefined)).toEqual({ regimen: 'actual' }); // interruptor sin definir
+    await expect(svc.regimen('2050', undefined)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(svc.regimen(undefined, '00000000-0000-4000-8000-0000000000ff')).rejects.toBeInstanceOf(NotFoundException);
   });
 });
