@@ -237,6 +237,106 @@ export class MantenimientoService implements OnModuleInit {
     } catch {}
   }
 
+  private normalizarNombreTecnico(value: unknown): string {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+  }
+
+  private aplicarFiltroTecnicoPorCodigos(
+    qb: any,
+    columnaSql: string,
+    codigosTecnicoFiltro: string[],
+  ): void {
+    const codigos = Array.from(
+      new Set(
+        (codigosTecnicoFiltro || [])
+          .map((x) => String(x || '').trim())
+          .filter((x) => x.length > 0),
+      ),
+    );
+    if (codigos.length === 0) return;
+    const params: Record<string, string> = {};
+    const condiciones = codigos.map((codigo, idx) => {
+      const key = `prefTec${idx}`;
+      params[key] = codigo + SEPARADOR_TECNICO + '%';
+      return `${columnaSql} ILIKE :${key}`;
+    });
+    qb.andWhere(`(${condiciones.join(' OR ')})`, params);
+  }
+
+  private async resolverCodigosTecnicoFiltro(
+    codigoTecnico: string | null,
+  ): Promise<string[]> {
+    const codigoBase = String(codigoTecnico || '').trim();
+    if (!codigoBase) return [];
+
+    const aliases = new Set<string>([codigoBase]);
+    let nombreBase = '';
+
+    try {
+      const tecnicos = await this.listarTecnicos(false);
+      const match = tecnicos.find(
+        (t) => String(t.codigo || '').trim().toUpperCase() === codigoBase.toUpperCase(),
+      );
+      if (match?.nombre) {
+        nombreBase = this.normalizarNombreTecnico(match.nombre);
+      }
+    } catch {
+      // No bloquea el reporte: si falla la resolución del catálogo, se filtra por el código recibido.
+    }
+
+    if (!nombreBase) {
+      try {
+        const rows = await this.dataSource.query(
+          `
+            SELECT TRIM(SPLIT_PART(s.responsable_asignado, $2, 2)) AS nombre
+              FROM "infrastructure-management".solicitud_mantenimiento s
+             WHERE s.responsable_asignado ILIKE $1
+               AND POSITION($2 IN s.responsable_asignado) > 0
+             ORDER BY s.fecha_radicacion DESC NULLS LAST
+             LIMIT 1
+          `,
+          [codigoBase + SEPARADOR_TECNICO + '%', SEPARADOR_TECNICO],
+        );
+        if (Array.isArray(rows) && rows[0]?.nombre) {
+          nombreBase = this.normalizarNombreTecnico(rows[0].nombre);
+        }
+      } catch {
+        // Fallback silencioso: si tampoco sale de histórico, se usa solo el código recibido.
+      }
+    }
+
+    if (!nombreBase) return Array.from(aliases);
+
+    try {
+      const rows = await this.dataSource.query(
+        `
+          SELECT DISTINCT
+                 TRIM(SPLIT_PART(s.responsable_asignado, $1, 1)) AS codigo,
+                 TRIM(SPLIT_PART(s.responsable_asignado, $1, 2)) AS nombre
+            FROM "infrastructure-management".solicitud_mantenimiento s
+           WHERE s.responsable_asignado IS NOT NULL
+             AND POSITION($1 IN s.responsable_asignado) > 0
+             AND (
+               LOWER(REGEXP_REPLACE(TRIM(SPLIT_PART(s.responsable_asignado, $1, 2)), '\\s+', ' ', 'g')) LIKE $2
+               OR $3 LIKE LOWER(REGEXP_REPLACE(TRIM(SPLIT_PART(s.responsable_asignado, $1, 2)), '\\s+', ' ', 'g')) || '%'
+             )
+        `,
+        [SEPARADOR_TECNICO, nombreBase + '%', nombreBase],
+      );
+      for (const row of Array.isArray(rows) ? rows : []) {
+        const codigo = String(row?.codigo || '').trim();
+        if (codigo) aliases.add(codigo);
+      }
+    } catch {
+      // Si el enriquecimiento histórico falla, se conserva el código base sin romper el endpoint.
+    }
+
+    return Array.from(aliases);
+  }
+
   private async asegurarSeedTiemposPorCategoria(): Promise<void> {
     const catalogo8: Array<{ id_cat: number; cod_cs: string; nombre: string; orden: number }> = [
       { id_cat: 47, cod_cs: 'CS_001', nombre: 'Cerrajería y Carpintería', orden: 1 },
@@ -554,6 +654,27 @@ export class MantenimientoService implements OnModuleInit {
 
     const ahora = new Date();
 
+    // Obtener nombre completo del solicitante desde auth.personas (Source of Truth)
+    let solicitanteNombreResuelto: string = user.name || user.username || dto.nombreAreaSolicitante || 'Solicitante';
+    try {
+      const personaRows = await this.dataSource.query(
+        `SELECT p.nom_largo AS "nomLargo"
+           FROM auth."user" u
+           JOIN auth.personas p ON p.id_person = u.id_person
+          WHERE u.id_user = $1
+          LIMIT 1`,
+        [user.userId],
+      );
+      if (Array.isArray(personaRows) && personaRows.length > 0 && personaRows[0]?.nomLargo) {
+        solicitanteNombreResuelto = String(personaRows[0].nomLargo);
+      }
+    } catch (errPersona: any) {
+      Logger.warn(
+        `No se pudo resolver nombre de solicitante desde auth.personas (userId=${user.userId}): ${errPersona?.message || errPersona}. Usando fallback.`,
+        'MantenimientoService.create',
+      );
+    }
+
     const remisionesIniciales: Record<string, any>[] = [];
     if (dto.tipoAtencion === 'TECNOLOGICA') {
       remisionesIniciales.push(
@@ -592,7 +713,7 @@ export class MantenimientoService implements OnModuleInit {
       asignaciones: [],
       usuarioSolicitanteId: userIdUuidOrNull(user.userId) ?? undefined,
       usuarioSolicitanteEmail: user.email,
-      solicitanteNombre: user.username ?? dto.nombreAreaSolicitante,
+      solicitanteNombre: solicitanteNombreResuelto,
       solicitanteEmail: user.email || (user.username || 'solicitante') + '@esap.edu.co',
       evidenciaInicialUrl: dto.evidenciaInicialUrl,
     };
@@ -2172,7 +2293,7 @@ export class MantenimientoService implements OnModuleInit {
       tecnicoCodigo: per.tecnicoCodigo ?? null,
       tecnicoNombreDisplay: per.tecnicoNombre ?? null,
       motivo: 'Inicio de visita de valoración en campo.',
-      observaciones: `idValoracion=${valoracionNonNull.idValoracion}`,
+      observaciones: null,
       user: user as AuthUser,
     });
 
@@ -2325,11 +2446,7 @@ export class MantenimientoService implements OnModuleInit {
           tecnicoCodigo: null,
           tecnicoNombreDisplay: null,
           motivo: `Se extiende la fecha límite en ${solicitud.diasExtendidosPorInsumos} días por materiales pendientes.`,
-          observaciones: JSON.stringify({
-            fechaOriginal: solicitud.fechaLimiteOriginalAntesExtension,
-            fechaNueva: nueva.toISOString(),
-            diasAdicionales: maxDiasAdquisicion,
-          }),
+          observaciones: `Nueva fecha límite: ${nueva.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}.`,
           user: user as AuthUser,
         });
       }
@@ -2344,7 +2461,7 @@ export class MantenimientoService implements OnModuleInit {
       motivo: hayNoDisponible
         ? 'Valoración finalizada con insumos pendientes por solicitar.'
         : 'Valoración finalizada; todos los insumos están en bodega. Inicia ejecución.',
-      observaciones: `idValoracion=${savedValoracion.idValoracion} · totalEstimado=$${Math.round(totalEstimado).toLocaleString('es-CO')} COP`,
+      observaciones: `Costo estimado de materiales: $${Math.round(totalEstimado).toLocaleString('es-CO')} COP`,
       user: user as AuthUser,
     });
 
@@ -2983,12 +3100,16 @@ export class MantenimientoService implements OnModuleInit {
       typeof filtros.codigoTecnico === 'string' && filtros.codigoTecnico.trim().length > 0
         ? filtros.codigoTecnico.trim()
         : null;
+    const codigosTecnicoFiltro = await this.resolverCodigosTecnicoFiltro(codigoTecnico);
     const idAreaSolicitante =
       typeof filtros.idAreaSolicitante === 'string' && filtros.idAreaSolicitante.trim().length > 0
         ? filtros.idAreaSolicitante.trim()
         : null;
 
     const qb = this.mantenimientoRepo.createQueryBuilder('s');
+    // Evita que TypeORM agregue todas las columnas de la entidad (incluida la PK)
+    // al SELECT; sin esto el GROUP BY de agregación falla con "must appear in the GROUP BY clause".
+    qb.select([]);
 
     // ============ JOINS ESPECÍFICOS SEGÚN AGRUPACIÓN ============
     if (por === 'categoria') {
@@ -3001,30 +3122,26 @@ export class MantenimientoService implements OnModuleInit {
     qb.andWhere("s.estado IN (:...estadosCierre)", {
       estadosCierre: ['CERRADA', 'CERRADA_SIN_ATENCION'],
     });
-    qb.andWhere("s.resultadoConformidad = :resuConform", {
+    qb.andWhere("s.resultado_conformidad = :resuConform", {
       resuConform: 'CONFIRMADA',
     });
-    qb.andWhere('s.calificacionServicio IS NOT NULL');
     qb.andWhere('s.calificacion_servicio IS NOT NULL');
 
     // ============ WHERE DINÁMICOS 5 FILTROS OPCIONALES ============
     if (fechaDesde) {
-      qb.andWhere('s.fechaCalificacion >= :fDesde', { fDesde: fechaDesde });
+      qb.andWhere('s.fecha_calificacion >= :fDesde', { fDesde: fechaDesde });
     }
     if (fechaHasta) {
-      qb.andWhere('s.fechaCalificacion <= :fHasta', { fHasta: fechaHasta });
+      qb.andWhere('s.fecha_calificacion <= :fHasta', { fHasta: fechaHasta });
     }
     if (idCategoria != null) {
-      qb.andWhere('s.idCategoria = :idCat', { idCat: idCategoria });
+      qb.andWhere('s.id_categoria = :idCat', { idCat: idCategoria });
     }
-    if (codigoTecnico) {
-      // responsableAsignado formato "TEC-XXX-001 · Nombre Apellido" → prefix LIKE
-      qb.andWhere("s.responsableAsignado ILIKE :prefTec", {
-        prefTec: codigoTecnico + SEPARADOR_TECNICO + '%',
-      });
+    if (codigosTecnicoFiltro.length > 0) {
+      this.aplicarFiltroTecnicoPorCodigos(qb, 's.responsable_asignado', codigosTecnicoFiltro);
     }
     if (idAreaSolicitante) {
-      qb.andWhere('s.idAreaSolicitante = :idArea', {
+      qb.andWhere('s.id_area_solicitante = :idArea', {
         idArea: idAreaSolicitante,
       });
     }
@@ -3032,29 +3149,29 @@ export class MantenimientoService implements OnModuleInit {
     // ============ GROUP BY + SELECT agregados comunes
     qb
       .addSelect('COUNT(*)::bigint', 'numeroCalificaciones')
-      .addSelect('COALESCE(SUM(s.calificacionServicio), 0)::bigint', 'sumaCalificaciones')
+      .addSelect('COALESCE(SUM(s.calificacion_servicio), 0)::bigint', 'sumaCalificaciones')
       .addSelect(
-        'ROUND(COALESCE(AVG(CASE WHEN s.calificacionServicio IS NOT NULL THEN CAST(s.calificacionServicio AS NUMERIC) END), 0), 2)',
+        'ROUND(COALESCE(AVG(CASE WHEN s.calificacion_servicio IS NOT NULL THEN CAST(s.calificacion_servicio AS NUMERIC) END), 0), 2)',
         'promedio',
       )
       .addSelect(
-        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 1 THEN 1 ELSE 0 END), 0)::bigint",
+        "COALESCE(SUM(CASE WHEN s.calificacion_servicio = 1 THEN 1 ELSE 0 END), 0)::bigint",
         'd1',
       )
       .addSelect(
-        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 2 THEN 1 ELSE 0 END), 0)::bigint",
+        "COALESCE(SUM(CASE WHEN s.calificacion_servicio = 2 THEN 1 ELSE 0 END), 0)::bigint",
         'd2',
       )
       .addSelect(
-        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 3 THEN 1 ELSE 0 END), 0)::bigint",
+        "COALESCE(SUM(CASE WHEN s.calificacion_servicio = 3 THEN 1 ELSE 0 END), 0)::bigint",
         'd3',
       )
       .addSelect(
-        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 4 THEN 1 ELSE 0 END), 0)::bigint",
+        "COALESCE(SUM(CASE WHEN s.calificacion_servicio = 4 THEN 1 ELSE 0 END), 0)::bigint",
         'd4',
       )
       .addSelect(
-        "COALESCE(SUM(CASE WHEN s.calificacionServicio = 5 THEN 1 ELSE 0 END), 0)::bigint",
+        "COALESCE(SUM(CASE WHEN s.calificacion_servicio = 5 THEN 1 ELSE 0 END), 0)::bigint",
         'd5',
       );
 
@@ -3063,29 +3180,31 @@ export class MantenimientoService implements OnModuleInit {
       case 'tecnico': {
         // Split prefix "COD · Nombre" = SPLIT_PART (Postgres). Fallback old data = '(sin técnico asignado)'.
         qb.addSelect(
-          `COALESCE(NULLIF(SPLIT_PART(s.responsableAsignado, :sepTec, 1), ''), '')`,
+          `COALESCE(NULLIF(SPLIT_PART(s.responsable_asignado, :sepTec, 1), ''), '')`,
           'idGrupo',
         ).addSelect(
-          `CASE WHEN s.responsableAsignado IS NULL OR TRIM(s.responsableAsignado) = '' THEN :fallbackSinTec ELSE COALESCE(NULLIF(SPLIT_PART(s.responsableAsignado, :sepTec, 2), ''), s.responsableAsignado) END`,
+          `CASE WHEN s.responsable_asignado IS NULL OR TRIM(s.responsable_asignado) = '' THEN :fallbackSinTec ELSE COALESCE(NULLIF(SPLIT_PART(s.responsable_asignado, :sepTec, 2), ''), s.responsable_asignado) END`,
           'nombreGrupo',
         ).setParameter('sepTec', SEPARADOR_TECNICO).setParameter('fallbackSinTec', '(sin técnico asignado)');
-        qb.groupBy('1').addGroupBy('s.responsableAsignado');
+        // Agrupar por la columna (no por el ordinal 1, que es COUNT(*) y PostgreSQL rechaza).
+        // Ambas expresiones del SELECT derivan únicamente de s.responsable_asignado.
+        qb.groupBy('s.responsable_asignado');
         break;
       }
       case 'categoria': {
-        qb.addSelect('CAST(s.idCategoria AS TEXT)', 'idGrupo').addSelect(
-          `COALESCE(NULLIF(TRIM(ci.nombre), ''), '') || CASE WHEN s.idCategoria IS NULL THEN :fallbackSinCat ELSE '' END`,
+        qb.addSelect('CAST(s.id_categoria AS TEXT)', 'idGrupo').addSelect(
+          `COALESCE(NULLIF(TRIM(ci.nombre), ''), '') || CASE WHEN s.id_categoria IS NULL THEN :fallbackSinCat ELSE '' END`,
           'nombreGrupo',
         ).setParameter('fallbackSinCat', '(sin categoría)');
-        qb.groupBy('s.idCategoria').addGroupBy('ci.nombre');
+        qb.groupBy('s.id_categoria').addGroupBy('ci.nombre');
         break;
       }
       case 'area': {
-        qb.addSelect('CAST(s.idAreaSolicitante AS TEXT)', 'idGrupo').addSelect(
-          `COALESCE(NULLIF(TRIM(s.nombreAreaSolicitante), ''), s.idAreaSolicitante, :fallbackSinArea)`,
+        qb.addSelect('CAST(s.id_area_solicitante AS TEXT)', 'idGrupo').addSelect(
+          `COALESCE(NULLIF(TRIM(s.nombre_area_solicitante), ''), s.id_area_solicitante, :fallbackSinArea)`,
           'nombreGrupo',
         ).setParameter('fallbackSinArea', '(sin área solicitante)');
-        qb.groupBy('s.idAreaSolicitante').addGroupBy('s.nombreAreaSolicitante');
+        qb.groupBy('s.id_area_solicitante').addGroupBy('s.nombre_area_solicitante');
         break;
       }
       case 'global': {
@@ -3174,6 +3293,7 @@ export class MantenimientoService implements OnModuleInit {
     const areaRaw = String(filtros.areaResponsable || '').trim().toUpperCase();
     const areaResponsable: AreaFiltroReporte = areaRaw === 'TI' || areaRaw === 'TODAS' ? areaRaw as AreaFiltroReporte : 'UMI';
     const codigoTecnico = typeof filtros.codigoTecnico === 'string' && filtros.codigoTecnico.trim() ? filtros.codigoTecnico.trim() : null;
+    const codigosTecnicoFiltro = await this.resolverCodigosTecnicoFiltro(codigoTecnico);
     const estado = typeof filtros.estado === 'string' && filtros.estado.trim() ? filtros.estado.trim().toUpperCase() : null;
 
     const aplicarFiltrosComunes = (qb: any, campoFecha: string, desde: Date, hasta: Date) => {
@@ -3186,8 +3306,8 @@ export class MantenimientoService implements OnModuleInit {
       } else if (areaResponsable === 'TI') {
         qb.andWhere("s.areaResponsableActual = :areaTI", { areaTI: 'TI' });
       }
-      if (codigoTecnico) {
-        qb.andWhere("s.responsableAsignado ILIKE :prefTec", { prefTec: codigoTecnico + SEPARADOR_TECNICO + '%' });
+      if (codigosTecnicoFiltro.length > 0) {
+        this.aplicarFiltroTecnicoPorCodigos(qb, 's.responsableAsignado', codigosTecnicoFiltro);
       }
       if (estado) qb.andWhere('s.estado = :est', { est: estado });
     };
@@ -3376,7 +3496,9 @@ export class MantenimientoService implements OnModuleInit {
       global = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'global' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
       porCategoriaCons = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'categoria' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
       porTecnicoCons = await this.calificacionesConsolidadas({ ...filtrosComunesPercepcion, por: 'tecnico' }, { userId: '__reporte_bypass__' as any, email: '', roles: ['SUPER_ADMIN'] as any, permissions: new Set<string>(['__ALL__']) });
-    } catch { /* si no hay calificaciones, devuelve vacíos */ }
+    } catch (err) {
+      console.error('[reporte-gestion] Error al cargar percepcionServicio:', err?.message || err);
+    }
     const primerGlobal = global?.[0];
     const dist: DistribucionCalificacion = primerGlobal?.distribucion ? { ...distribucionVacia(), ...primerGlobal.distribucion } : distribucionVacia();
     const sumaDist = (dist[1] + dist[2] + dist[3] + dist[4] + dist[5]) || 0;
