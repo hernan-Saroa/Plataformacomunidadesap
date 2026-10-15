@@ -50,6 +50,15 @@ export const PERMISO_REPORTE_VER = 'contratacion.reporte.view';
 export const PERMISO_PLAZO_TERMINAR = 'contratacion.plazo.terminar';
 
 /**
+ * Borrar un proceso con todo lo suyo: actividades, documentos, trazabilidad.
+ *
+ * Solo el superadministrador (108). No deja nada en la base —la trazabilidad
+ * se va con el proceso—, así que es para limpiar lo que nunca debió existir,
+ * no para terminar uno: para eso están cancelar, negar y declarar desierto.
+ */
+export const PERMISO_PROCESO_BORRAR = 'contratacion.proceso.delete';
+
+/**
  * Los permisos que no dependen de ninguna etapa y la 083 conserva con su
  * código. Todo lo demás se autoriza por acción y alcance (`@Puede`).
  */
@@ -59,6 +68,7 @@ export const PERMISOS_TRANSVERSALES = [
   PERMISO_CONFIG_ADMINISTRAR,
   PERMISO_REPORTE_VER,
   PERMISO_PLAZO_TERMINAR,
+  PERMISO_PROCESO_BORRAR,
 ] as const;
 
 // ------------------------------------------------- de dónde salen hoy --
@@ -97,6 +107,7 @@ export const ROLES_QUE_OTORGAN: Record<string, string[]> = {
   ],
   // El único sin rol funcional: es una llave de pruebas.
   [PERMISO_PLAZO_TERMINAR]: ['SUPER_ADMIN'],
+  [PERMISO_PROCESO_BORRAR]: ['SUPER_ADMIN'],
 };
 
 /**

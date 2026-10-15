@@ -1,4 +1,4 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
 
 /**
  * SOLICITADO → VERIFICADO → EXPEDIDO
@@ -10,6 +10,24 @@ export type EstadoCdp = 'SOLICITADO' | 'VERIFICADO' | 'EXPEDIDO' | 'RECHAZADO' |
 
 /** Los que ocupan el cupo de "CDP en curso" de un proceso. */
 export const ESTADOS_CDP_EN_CURSO: EstadoCdp[] = ['SOLICITADO', 'VERIFICADO', 'EXPEDIDO'];
+
+/**
+ * De dónde salió el CDP (migración 100).
+ *
+ *   · `ETAPA_4`: lo pidió el cierre de la etapa 3 o la 4.1, como siempre.
+ *   · `SOLICITADO_EN_ETAPA_3`: el área lo pidió desde el estudio previo, antes
+ *     de enviarlo a revisión. Sigue el mismo trámite en la Financiera.
+ *   · `REGISTRADO_EN_ETAPA_3`: el área ya tenía el certificado y transcribió
+ *     sus datos. Queda EXPEDIDO sin pasar por la Financiera.
+ *
+ * Los dos últimos quedan en EXPEDIDO por caminos distintos, y el expediente
+ * tiene que poder decir cuál: no prueba lo mismo un certificado que expidió
+ * quien compromete el presupuesto que uno que transcribió quien lo pide.
+ */
+export type OrigenCdp = 'ETAPA_4' | 'SOLICITADO_EN_ETAPA_3' | 'REGISTRADO_EN_ETAPA_3';
+
+/** Los que el área gestionó antes de enviar el estudio previo. */
+export const ORIGENES_ANTICIPADOS: OrigenCdp[] = ['SOLICITADO_EN_ETAPA_3', 'REGISTRADO_EN_ETAPA_3'];
 
 /** `numeric` llega como string desde el driver; se devuelve como número. */
 const aNumero = {
@@ -89,4 +107,44 @@ export class Cdp {
    */
   @Column({ name: 'modificacion_id', type: 'uuid', nullable: true })
   modificacionId: string | null;
+
+  @Column({ length: 30, default: 'ETAPA_4' })
+  origen: OrigenCdp;
+}
+
+/**
+ * Si el estudio previo de una modalidad exige el CDP gestionado antes de
+ * enviarse a revisión (migración 100).
+ *
+ * Por modalidad y no un interruptor global (decisión de Juan): en contratación
+ * directa el CDP ya se exige antes de los documentos del proceso, y puede
+ * tener sentido adelantarlo también aquí sin imponérselo a las demás.
+ *
+ * «Gestionado» es solicitado, verificado o expedido —cualquiera que ocupe el
+ * cupo de CDP en curso—: el área no tiene que esperar a la Financiera para
+ * radicar. Uno rechazado o anulado no cuenta.
+ */
+@Entity('cdp_antes_de_radicar', { schema: 'hiring' })
+export class CdpAntesDeRadicar {
+  @PrimaryColumn({ length: 60 })
+  modalidad: string;
+
+  @Column({ type: 'boolean', default: false })
+  obligatorio: boolean;
+
+  @Column({ type: 'text', nullable: true })
+  fundamento: string | null;
+
+  /** False mientras la Dirección de Contratación no confirme la regla. */
+  @Column({ type: 'boolean', default: false })
+  confirmado: boolean;
+
+  @Column({ name: 'actualizado_por', length: 160, nullable: true })
+  actualizadoPor: string | null;
+
+  @Column({ name: 'created_at', type: 'timestamptz', default: () => 'now()' })
+  createdAt: Date;
+
+  @Column({ name: 'updated_at', type: 'timestamptz', default: () => 'now()' })
+  updatedAt: Date;
 }

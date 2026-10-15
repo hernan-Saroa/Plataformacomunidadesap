@@ -269,8 +269,8 @@ export class CausalContratacionService {
 
       // En menor cuantía esta es la última actividad de la etapa 3 que aplica:
       // la matriz excluye ahí el comité. Sin esta llamada, esa modalidad
-      // cerraría la etapa sin que nadie radicara el CDP.
-      await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+      // cerraría la etapa sin pasar a la del CDP.
+      await this.cdp.abrirEtapa4SiCerroLaEtapa3(em, procesoId, acceso);
     });
 
     return this.estado(procesoId, acceso);

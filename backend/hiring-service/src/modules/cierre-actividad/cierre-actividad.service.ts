@@ -4,12 +4,9 @@ import { EntityManager, IsNull } from 'typeorm';
 import { HiringAccess } from '../../auth/hiring-access';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { ReglaActividad } from '../../entities/regla-actividad.entity';
+import { CadenaResuelta } from '../cadena-aprobacion/cadena';
+import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
 import { FirmaOtpDto } from './dto/firma-otp.dto';
-
-export interface Aprobadores {
-  roles: string[];
-  personas: string[];
-}
 
 /** Cuánto se acepta entre que se verificó el OTP y se guardó el cierre. */
 const VENTANA_FIRMA_MS = 15 * 60 * 1000;
@@ -28,38 +25,22 @@ const VENTANA_FIRMA_MS = 15 * 60 * 1000;
  */
 @Injectable()
 export class CierreActividadService {
-  /**
-   * Quién aprueba esta actividad, o null si no requiere aprobación.
-   *
-   * Misma consulta que `AprobacionService.aprobadoresDe`: se repite porque
-   * evita el ciclo de módulos, no porque la regla sea distinta.
-   */
-  async aprobadoresDe(
+  constructor(
+    /**
+     * Quién revisa y cómo se abre la ronda (migración 101). Antes aquí vivía
+     * una copia de la consulta de `AprobacionService`; ahora las dos preguntan
+     * al mismo sitio y no pueden discrepar.
+     */
+    private readonly cadenas: CadenaAprobacionService,
+  ) {}
+
+  /** La cadena que revisa esta actividad, o null si no requiere aprobación. */
+  aprobadoresDe(
     em: EntityManager,
     numeral: string,
     modalidad: string | null,
-  ): Promise<Aprobadores | null> {
-    const reglas = await em.getRepository(ReglaActividad).find({
-      where: [
-        { numeral, tipo: 'EXIGE_APROBACION', modalidad: IsNull(), vigenteHasta: IsNull() },
-        {
-          numeral,
-          tipo: 'EXIGE_APROBACION',
-          modalidad: modalidad ?? undefined,
-          vigenteHasta: IsNull(),
-        },
-      ],
-    });
-
-    if (!reglas.length) return null;
-
-    const regla = reglas.find((r) => r.modalidad) ?? reglas[0];
-    const config = (regla.config ?? {}) as Record<string, unknown>;
-    const roles = Array.isArray(config.roles) ? (config.roles as string[]) : [];
-    const personas = Array.isArray(config.personas) ? (config.personas as string[]) : [];
-
-    if (!roles.length && !personas.length) return null;
-    return { roles, personas };
+  ): Promise<CadenaResuelta | null> {
+    return this.cadenas.cadenaPara(numeral, modalidad, em);
   }
 
   /** Si la actividad quedó configurada para exigir firma con el token institucional. */
@@ -132,7 +113,15 @@ export class CierreActividadService {
       actividad.datos = { ...(actividad.datos ?? {}), firma };
     }
 
-    await em.save(ProcesoActividad, actividad);
+    const guardada = await em.save(ProcesoActividad, actividad);
+
+    // Con quien revise, el envío abre la ronda en su primer escalón; sin él,
+    // cualquier ronda que quedara abierta de un envío anterior ya no aplica.
+    if (revisan) {
+      await this.cadenas.iniciar(em, guardada ?? actividad, revisan, acceso);
+    } else if (actividad.id) {
+      await this.cadenas.cancelarRonda(em, actividad.id, 'CANCELADA');
+    }
 
     return { estado, cierra };
   }

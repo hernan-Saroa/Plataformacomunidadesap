@@ -64,8 +64,9 @@ export class CampoFormulario {
 
   /**
    * El campo se muestra pero no se edita porque su valor vive fuera del
-   * formulario. Hoy solo aplica a `valor_estimado`, que se captura al crear el
-   * proceso para poder determinar la modalidad por cuantía (EFDS-1147).
+   * formulario. Hoy aplica a `valor_estimado` y `objeto_contratar`: los dos
+   * salen de la línea del PAA y solo cambian con una versión nueva del PAA
+   * (migración 105).
    */
   @Column({ name: 'solo_lectura', default: false })
   soloLectura: boolean;

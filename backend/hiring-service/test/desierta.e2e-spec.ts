@@ -103,11 +103,10 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
       gestor,
     );
 
-    await cdp.solicitar(proceso.id, { rubro: 'A-02-02', valor: 1_000_000 }, gestor);
-    await cdp.verificar(proceso.id, {}, financiero);
-    await cdp.expedir(
+    await cdp.cargar(
       proceso.id,
-      { numero: 'CDP-2026-160', valor: 1_000_000, fechaExpedicion: hoy() },
+      { rubro: 'A-02-02', numero: 'CDP-2026-160', valor: 1_000_000, fechaExpedicion: hoy() },
+      null,
       financiero,
     );
 
@@ -437,11 +436,10 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
         { objeto: OBJETO, modalidad: 'ABREVIADA_MENOR_CUANTIA', valorEstimado: 1_000_000 },
         gestor,
       );
-      await cdp.solicitar(proceso.id, { rubro: 'A-02-02', valor: 1_000_000 }, gestor);
-      await cdp.verificar(proceso.id, {}, financiero);
-      await cdp.expedir(
+      await cdp.cargar(
         proceso.id,
-        { numero: 'CDP-2026-162', valor: 1_000_000, fechaExpedicion: hoy() },
+        { rubro: 'A-02-02', numero: 'CDP-2026-162', valor: 1_000_000, fechaExpedicion: hoy() },
+        null,
         financiero,
       );
       await apertura.registrar(

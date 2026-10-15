@@ -40,16 +40,36 @@ const NOMBRE_ACCION: Record<AccionAlcance, string> = {
 };
 
 /** Los trámites del incumplimiento, que no tienen numeral en la matriz. */
-const TRAMITES = [
-  { lugar: 'INC.1', nombre: 'Reporte de presunto incumplimiento' },
-  { lugar: 'INC.2', nombre: 'Trámite sancionatorio' },
+/**
+ * Lo que no cuelga de ninguna etapa, en grupos: cada grupo explica por qué va
+ * aparte, que es justo lo que quien configura se pregunta al no encontrarlo
+ * dentro de una etapa.
+ */
+const GRUPOS_DE_TRAMITES = [
+  {
+    titulo: 'Incumplimiento',
+    ayuda: 'Se configura aparte de la etapa 9: quien reporta no es quien tramita ni decide',
+    tramites: [
+      { lugar: 'INC.1', nombre: 'Reporte de presunto incumplimiento' },
+      { lugar: 'INC.2', nombre: 'Trámite sancionatorio' },
+    ],
+  },
+  {
+    titulo: 'Plan Anual de Adquisiciones',
+    ayuda: 'Quien carga y activa el PAA no es quien decide si un proceso afectado sigue',
+    tramites: [
+      { lugar: 'PAA', nombre: 'Regiones, vigencias, versiones y campos del formulario' },
+      { lugar: 'PAA.R', nombre: 'Revisiones de procesos afectados (aprobar: autorizar migraciones)' },
+    ],
+  },
 ];
 
 /**
  * Los perfiles por defecto (EFDS-1183), como punto de partida.
  *
  * Catorce roles confunden a quien configura, y la Dirección los resumió en
- * cinco perfiles. Cada uno lo encarna un rol del catálogo; partir de un perfil
+ * cuatro perfiles —la Financiera salió con su rol en la 106—. Cada uno lo
+ * encarna un rol del catálogo; partir de un perfil
  * copia el alcance vigente de ese rol, así que si la Dirección cambia lo que
  * hace el abogado, el perfil cambia con él sin tocar el código.
  */
@@ -68,11 +88,6 @@ const PERFILES = [
     nombre: 'Abogado',
     rol: 'REVISOR_CONTRATACION',
     queHace: 'Revisa en la 3.4 (aprueba, devuelve o niega) y aprueba lo que carga Contratación.',
-  },
-  {
-    nombre: 'Financiera',
-    rol: 'ESTRUCTURADOR_FINANCIERO',
-    queHace: 'Gestiona el CDP, el RP, los pagos avalados y el cierre financiero; el resto del proceso solo lo consulta.',
   },
   { nombre: 'Consulta', rol: 'ENTE_DE_CONTROL', queHace: 'Consulta todo el proceso sin modificar nada.' },
 ];
@@ -469,26 +484,28 @@ export function PermisosPorEtapa() {
                     );
                   })}
 
-                  <tr className="bg-gray-50">
-                    <th scope="row" className="border-b border-gray-100 px-3 py-1.5 text-left text-[12.5px] font-bold text-slate-700">
-                      Incumplimiento
-                      <span className="block text-[10.5px] font-normal text-gray-400">
-                        Se configura aparte de la etapa 9: quien reporta no es quien tramita ni decide
-                      </span>
-                    </th>
-                    <td colSpan={4} className="border-b border-gray-100" />
-                  </tr>
-                  {TRAMITES.map((t) => (
-                    <tr key={t.lugar}>
-                      <th
-                        scope="row"
-                        className="border-b border-gray-100 py-1.5 pl-9 pr-3 text-left text-[12px] font-normal text-slate-600"
-                      >
-                        <span className="font-mono text-gray-400 mr-1.5">{t.lugar}</span>
-                        {t.nombre}
-                      </th>
-                      {ACCIONES.map((a) => celda(a.accion, t.lugar, t.nombre))}
-                    </tr>
+                  {GRUPOS_DE_TRAMITES.map((grupo) => (
+                    <React.Fragment key={grupo.titulo}>
+                      <tr className="bg-gray-50">
+                        <th scope="row" className="border-b border-gray-100 px-3 py-1.5 text-left text-[12.5px] font-bold text-slate-700">
+                          {grupo.titulo}
+                          <span className="block text-[10.5px] font-normal text-gray-400">{grupo.ayuda}</span>
+                        </th>
+                        <td colSpan={4} className="border-b border-gray-100" />
+                      </tr>
+                      {grupo.tramites.map((t) => (
+                        <tr key={t.lugar}>
+                          <th
+                            scope="row"
+                            className="border-b border-gray-100 py-1.5 pl-9 pr-3 text-left text-[12px] font-normal text-slate-600"
+                          >
+                            <span className="font-mono text-gray-400 mr-1.5">{t.lugar}</span>
+                            {t.nombre}
+                          </th>
+                          {ACCIONES.map((a) => celda(a.accion, t.lugar, t.nombre))}
+                        </tr>
+                      ))}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>

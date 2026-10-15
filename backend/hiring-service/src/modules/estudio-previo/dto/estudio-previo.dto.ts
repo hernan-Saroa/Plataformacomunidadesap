@@ -7,6 +7,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
   ValidateNested,
@@ -14,6 +15,27 @@ import {
 
 import { FirmaOtpDto } from '../../cierre-actividad/dto/firma-otp.dto';
 
+/**
+ * Lo que pide la API para crear un proceso: la línea del PAA de la que nace.
+ *
+ * El objeto, la modalidad y el valor ya no los teclea nadie: salen de la línea
+ * (migración 097). Quien crea elige región, vigencia y línea; el resto lo dice
+ * el PAA, y lo que se corrija después se corrige en la 3.1.
+ */
+export class CrearProcesoDesdePaaDto {
+  @ApiProperty({ description: 'Línea del PAA, de la versión activa de la vigencia vigente' })
+  @IsUUID('4', { message: 'Hay que elegir una línea del Plan Anual de Adquisiciones' })
+  paaLineaId: string;
+}
+
+/**
+ * Los datos con los que nace un proceso.
+ *
+ * Ya no es el cuerpo de ninguna petición: la API crea desde una línea del PAA
+ * (`CrearProcesoDesdePaaDto`) y de ella saca estos tres. Se conserva porque es
+ * lo que la creación necesita por dentro, y las pruebas e2e de las etapas
+ * siguientes arman sus procesos así, sin PAA de por medio.
+ */
 export class CrearProcesoDto {
   @ApiProperty({ description: 'Objeto a contratar', example: 'Adquisición de 50 equipos de cómputo' })
   @IsString()
@@ -71,24 +93,23 @@ export class CambiarModalidadDto {
 }
 
 /**
- * El valor estimado corregido, y la modalidad si con él cambia.
+ * Borrar un proceso (108): el radicado escrito a mano y el motivo.
  *
- * Van juntos porque la modalidad depende de la cuantía: subir el valor por
- * encima del umbral de licitación pública obliga a cambiar también la
- * modalidad, y en dos llamadas la primera se rechazaría sin remedio.
+ * El radicado confirma que se borra el que se quiere borrar; el motivo es lo
+ * único que queda, en el log, porque la trazabilidad se va con el proceso.
  */
-export class CambiarCuantiaDto {
-  @ApiProperty({ description: 'Valor estimado del contrato en pesos', example: 10000000 })
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'El valor estimado debe ser un número' })
-  @Min(0, { message: 'El valor estimado no puede ser negativo' })
-  valorEstimado: number;
-
-  @ApiPropertyOptional({ description: 'Código de la modalidad; sin él se conserva la actual' })
-  @IsOptional()
+export class BorrarProcesoDto {
+  @ApiProperty({ description: 'El radicado del proceso, escrito tal cual', example: 'CTO-2026-11691' })
   @IsString()
-  @IsNotEmpty({ message: 'Elige la modalidad de contratación' })
+  @IsNotEmpty({ message: 'Escribe el radicado del proceso para confirmar' })
   @MaxLength(60)
-  modalidad?: string;
+  radicado: string;
+
+  @ApiProperty({ description: 'Por qué se borra', example: 'Proceso de prueba' })
+  @IsString()
+  @IsNotEmpty({ message: 'El motivo es obligatorio: es lo único que queda del proceso' })
+  @MaxLength(1000)
+  motivo: string;
 }
 
 export class RevisarDto {
@@ -148,4 +169,13 @@ export class CampoFaltanteDto {
   @ApiProperty() codigo: string;
   @ApiProperty() etiqueta: string;
   @ApiPropertyOptional() grupo?: string;
+}
+
+/** Por qué el área retira el CDP que gestionó desde el estudio previo. */
+export class RetirarCdpDto {
+  @ApiPropertyOptional({ description: 'Motivo del retiro' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  motivo?: string;
 }

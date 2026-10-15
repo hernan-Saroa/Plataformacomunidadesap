@@ -16,14 +16,15 @@ describe('quién responde por cada actividad', () => {
     }
   });
 
-  it('el abogado se asigna; la Financiera toma la solicitud de la bandeja', () => {
+  it('el abogado se asigna, no se toma de una bandeja', () => {
     expect(respondeElAsignado('3.7')?.seToma).toBe(false);
-    expect(respondeElAsignado('4.2')).toMatchObject({ papel: 'FINANCIERA', seToma: true });
   });
 
   it('lo demás lo responden los roles de su alcance', () => {
     expect(respondeElAsignado('3.1')).toBeNull();
     expect(respondeElAsignado('6.1')).toBeNull();
-    expect(Object.keys(RESPONDE_EL_ASIGNADO)).toEqual(['3.4', '3.6', '3.7', '4.2']);
+    // El cargue del CDP es del área desde la 103: ya no lo toma la Financiera.
+    expect(respondeElAsignado('4.2')).toBeNull();
+    expect(Object.keys(RESPONDE_EL_ASIGNADO)).toEqual(['3.4', '3.6', '3.7']);
   });
 });

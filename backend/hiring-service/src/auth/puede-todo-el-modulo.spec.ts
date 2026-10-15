@@ -19,6 +19,7 @@ const TRANSVERSALES = [
   'contratacion.config.manage',
   'contratacion.reporte.view',
   'contratacion.plazo.terminar',
+  'contratacion.proceso.delete',
 ];
 
 /**
@@ -34,10 +35,14 @@ const SIN_DECORADOR: Record<string, string> = {
   'ParticipacionController.asignar': 'quien tomó el proceso o proceso.assign',
   'ParticipacionController.reasignar': 'quien tomó el proceso o proceso.assign',
   'ParticipacionController.quitar': 'quien tomó el proceso o proceso.assign',
+  // Designar quién decide un escalón de la 3.1 lo hace quien reparte (102).
+  'ParticipacionController.designarEscalon': 'quien tomó el proceso o proceso.assign',
   // Los aprobadores los nombra la regla EXIGE_APROBACION, que admite personas
   // concretas: un guard por alcance dejaría fuera a quien la regla nombra.
   'AprobacionController.aprobar': 'la regla EXIGE_APROBACION del punto',
   'AprobacionController.devolver': 'la regla EXIGE_APROBACION del punto',
+  // Negar lo decide el escalón de la cadena que tenga esa acción (101).
+  'AprobacionController.negar': 'la regla EXIGE_APROBACION del punto',
   // La consulta del estudio previo y del proceso filtra por participación en
   // el service. Protegerla por etapa quedó pendiente de decisión (EFDS, 083).
   'EstudioPrevioController.listar': 'participación · pendiente de decidir',

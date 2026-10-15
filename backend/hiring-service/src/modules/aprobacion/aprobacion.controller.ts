@@ -101,4 +101,19 @@ export class AprobacionController {
       getHiringAccess(req),
     );
   }
+
+  @Post('negar')
+  @ApiOperation({
+    summary: 'Negar la actividad',
+    description:
+      'Solo en los escalones configurados para negar. Termina el proceso, como la negación del estudio previo; el motivo es obligatorio.',
+  })
+  negar(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Param('numeral') numeral: string,
+    @Body() dto: DecidirAprobacionDto,
+    @Req() req: any,
+  ) {
+    return this.service.negar(procesoId, numeral, dto.observaciones ?? '', getHiringAccess(req));
+  }
 }

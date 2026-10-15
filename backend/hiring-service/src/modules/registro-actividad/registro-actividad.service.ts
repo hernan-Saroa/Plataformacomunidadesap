@@ -318,19 +318,19 @@ export class RegistroActividadService {
         acceso,
       );
 
-      // Si con esto no quedaba nada abierto en la etapa 3, la solicitud de CDP
-      // se radica sola. Le toca a este camino y no solo a la aprobación: donde
+      // Si con esto no quedaba nada abierto en la etapa 3, el proceso pasa solo
+      // a la etapa 4. Le toca a este camino y no solo a la aprobación: donde
       // nadie tiene aprobador configurado, el registro *es* el cierre.
       //
       // De la etapa 3 solo queda aquí la 3.2, y el riel obliga a cerrarla antes
       // que las siguientes, así que rara vez será la última. Rara vez no es
       // nunca: anular su registro la devuelve a BORRADOR, y volver a
       // registrarla con todo lo demás ya cerrado deja a este camino cerrando la
-      // etapa. Sin la llamada, ese proceso se quedaba sin CDP.
+      // etapa. Sin la llamada, ese proceso se quedaba en la etapa 3.
       //
       // Solo cuando cierra: si la actividad tiene aprobadores, queda en
       // revisión y quien decida pasará por `aprobacion`, que ya pregunta.
-      if (cerro) await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+      if (cerro) await this.cdp.abrirEtapa4SiCerroLaEtapa3(em, procesoId, acceso);
     });
 
     return this.estado(procesoId, numeral);
@@ -508,7 +508,7 @@ export class RegistroActividadService {
     const cierra = cumplida && !revisan;
 
     if (!actividad) {
-      await em.save(
+      const nueva = await em.save(
         em.create(ProcesoActividad, {
           procesoId,
           numeral,
@@ -520,6 +520,8 @@ export class RegistroActividadService {
           ...(cierra ? { revisadoPor: acceso.userName, revisadoAt: new Date() } : {}),
         }),
       );
+      // Entrar en revisión es abrir la ronda en el primer escalón (101).
+      if (revisan) await this.aprobacion.abrirRonda(em, nueva, revisan, acceso);
       return { estado, cierra };
     }
 
@@ -531,6 +533,7 @@ export class RegistroActividadService {
     actividad.revisadoPor = cierra ? acceso.userName : (null as any);
     actividad.revisadoAt = cierra ? new Date() : (null as any);
     await em.save(actividad);
+    if (revisan) await this.aprobacion.abrirRonda(em, actividad, revisan, acceso);
     return { estado, cierra };
   }
 

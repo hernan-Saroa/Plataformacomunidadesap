@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Lightbulb, Lock, Scale } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -23,36 +23,22 @@ const formatoPesos = new Intl.NumberFormat('es-CO', {
   maximumFractionDigits: 0,
 });
 
-const formatoMiles = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 });
-
 /**
- * Acepta lo que la gente escribe de verdad —"45.000.000", "45000000",
- * "$ 45.000.000"— y devuelve el número, o null si no hay uno válido.
- */
-function aNumero(texto: string): number | null {
-  const limpio = texto.replace(/[^\d,]/g, '').replace(',', '.');
-  if (!limpio) return null;
-  const n = Number(limpio);
-  return Number.isFinite(n) && n >= 0 ? n : null;
-}
-
-/**
- * La modalidad de contratación y el valor estimado, dentro del estudio previo.
+ * La modalidad de contratación dentro del estudio previo, junto al valor que
+ * la determina.
  *
  * Antes la modalidad era la 3.5, y llegaba tarde: la lista de documentos de la
- * 3.1 depende de ella (migración 094). El valor, por su parte, solo se digitaba
- * al crear el proceso y no había dónde corregirlo. Los dos se editan juntos
- * porque la modalidad depende de la cuantía: el valor nuevo pasa por los mismos
- * umbrales que al crear, y si obliga a licitación pública, la modalidad cambia
- * con él. No se ratifican aparte: aprobar el estudio previo es ratificarlos, y
- * si no corresponden, el abogado lo devuelve.
+ * 3.1 depende de ella (migración 094). El valor ya no se corrige aquí: sale de
+ * la línea del PAA y solo cambia con una versión nueva del PAA (migración 105).
+ * Por eso la sugerencia y los umbrales se calculan sobre ese valor. La
+ * modalidad no se ratifica aparte: aprobar el estudio previo es ratificarla, y
+ * si no corresponde, el abogado lo devuelve.
  */
 export function ModalidadDelEstudioPrevio({ procesoId, proceso, puedeCambiar, onCambiada }: Props) {
   const dialogo = useDialogo();
   const [modalidades, setModalidades] = useState<Modalidad[]>([]);
   const [cambiando, setCambiando] = useState(false);
   const [elegida, setElegida] = useState(proceso.modalidad ?? '');
-  const [valorTexto, setValorTexto] = useState('');
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
@@ -60,63 +46,43 @@ export function ModalidadDelEstudioPrevio({ procesoId, proceso, puedeCambiar, on
     contratacionService.modalidades().then(setModalidades).catch(() => undefined);
   }, [cambiando, modalidades.length]);
 
-  const valor = useMemo(() => aNumero(valorTexto), [valorTexto]);
-  const { sugerencia, consultando } = useSugerenciaModalidad(cambiando ? valor : null);
+  const valorActual = typeof proceso.valorEstimado === 'number' ? proceso.valorEstimado : null;
+  const { sugerencia, consultando } = useSugerenciaModalidad(cambiando ? valorActual : null);
   const bloqueadas = sugerencia?.modalidadesBloqueadas ?? [];
 
-  // Igual que al crear el proceso: si el valor obliga a licitación pública, se
-  // fija sola en vez de dejar guardar algo que el servidor va a rechazar. Si la
-  // elegida sigue permitida, se respeta.
+  // Si el valor del PAA obliga a licitación pública —una versión nueva pudo
+  // subirlo—, se fija sola en vez de dejar elegir algo que el servidor va a
+  // rechazar. Si la elegida sigue permitida, se respeta.
   useEffect(() => {
     if (!sugerencia?.forzosa || !sugerencia.modalidad) return;
     if (elegida === '' || bloqueadas.includes(elegida)) setElegida(sugerencia.modalidad);
   }, [sugerencia, elegida]);
 
-  const valorActual = typeof proceso.valorEstimado === 'number' ? proceso.valorEstimado : null;
-  const cambiaValor = valor !== null && valor !== valorActual;
   const cambiaModalidad = elegida !== '' && elegida !== proceso.modalidad;
 
   const abrir = () => {
     setElegida(proceso.modalidad ?? '');
-    setValorTexto(valorActual === null ? '' : formatoMiles.format(valorActual));
     setCambiando(true);
   };
 
   const cambiar = async () => {
-    if (valor === null || !elegida) return;
+    if (!cambiaModalidad) return;
     const nombre = modalidades.find((m) => m.codigo === elegida)?.nombre ?? elegida;
-    const deAa =
-      valorActual === null
-        ? `Queda en ${formatoPesos.format(valor)}.`
-        : `Pasa de ${formatoPesos.format(valorActual)} a ${formatoPesos.format(valor)}.`;
-    const seguro = await dialogo.confirmar(
-      cambiaModalidad
-        ? {
-            titulo: `Cambiar a ${nombre}`,
-            descripcion:
-              (cambiaValor ? `${deAa} ` : '') +
-              'La lista de documentos pasa a ser la de esta modalidad, y también cambia qué ' +
-              'actividades recorre el proceso. Lo que ya cargaste y la lista nueva no pide no se ' +
-              'borra: queda aparte.',
-            confirmar: 'Cambiar la modalidad',
-          }
-        : {
-            titulo: 'Corregir el valor estimado',
-            descripcion: `${deAa} La modalidad sigue siendo ${proceso.modalidadNombre ?? nombre}.`,
-            confirmar: 'Corregir el valor',
-          },
-    );
+    const seguro = await dialogo.confirmar({
+      titulo: `Cambiar a ${nombre}`,
+      descripcion:
+        'La lista de documentos pasa a ser la de esta modalidad, y también cambia qué ' +
+        'actividades recorre el proceso. Lo que ya cargaste y la lista nueva no pide no se ' +
+        'borra: queda aparte.',
+      confirmar: 'Cambiar la modalidad',
+    });
     if (!seguro) return;
 
     setGuardando(true);
     try {
-      const r = await contratacionService.cambiarCuantiaDelEstudioPrevio(procesoId, valor, elegida);
+      const r = await contratacionService.cambiarModalidadDelEstudioPrevio(procesoId, elegida);
       setCambiando(false);
-      toast.success(
-        cambiaModalidad
-          ? `Modalidad cambiada a ${r.proceso.modalidadNombre ?? nombre}`
-          : 'Valor estimado corregido',
-      );
+      toast.success(`Modalidad cambiada a ${r.proceso.modalidadNombre ?? nombre}`);
       onCambiada(r.proceso);
     } catch (err: any) {
       toast.error(err.message);
@@ -142,7 +108,7 @@ export function ModalidadDelEstudioPrevio({ procesoId, proceso, puedeCambiar, on
           {/* La cuantía junto a la modalidad: de ella depende cuál corresponde. */}
           {valorActual !== null && (
             <p className="text-[11.5px] text-slate-600 m-0 mt-0.5 tabular-nums">
-              Valor estimado {formatoPesos.format(valorActual)}
+              Valor estimado {formatoPesos.format(valorActual)} · según el PAA
             </p>
           )}
           <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
@@ -163,30 +129,6 @@ export function ModalidadDelEstudioPrevio({ procesoId, proceso, puedeCambiar, on
 
       {cambiando && (
         <div className="space-y-2">
-          <label htmlFor="ep-valor" className="block text-xs font-bold text-gray-600">
-            Valor estimado del contrato <span className="text-red-600">*</span>
-          </label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">
-              $
-            </span>
-            <input
-              id="ep-valor"
-              type="text"
-              inputMode="numeric"
-              value={valorTexto}
-              disabled={guardando}
-              onChange={(e) => setValorTexto(e.target.value)}
-              className={`${campo} pl-7 tabular-nums`}
-            />
-          </div>
-          {cambiaValor && (
-            <p className="text-[11px] text-slate-500 m-0 tabular-nums">
-              {formatoPesos.format(valor)}
-              {valorActual !== null && ` · antes ${formatoPesos.format(valorActual)}`}
-            </p>
-          )}
-
           <label htmlFor="ep-modalidad" className="block text-xs font-bold text-gray-600">
             Modalidad que corresponde <span className="text-red-600">*</span>
           </label>
@@ -241,7 +183,7 @@ export function ModalidadDelEstudioPrevio({ procesoId, proceso, puedeCambiar, on
           <div className="flex items-center gap-3">
             <button
               type="button"
-              disabled={valor === null || !elegida || (!cambiaValor && !cambiaModalidad) || guardando}
+              disabled={!cambiaModalidad || guardando}
               onClick={cambiar}
               className="px-3 py-1.5 rounded-lg bg-[#003DA5] text-white text-[11.5px] font-bold
                 hover:bg-[#002D7A] disabled:opacity-50 transition-colors"

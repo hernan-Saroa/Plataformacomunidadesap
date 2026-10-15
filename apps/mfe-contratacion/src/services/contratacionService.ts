@@ -12,7 +12,6 @@ import {
   EstadoAdendas,
   EstadoApertura,
   EstadoAudienciaRiesgos,
-  BandejaCdp,
   Cdp,
   CondicionesMipymeConfig,
   ConflictoError,
@@ -105,6 +104,8 @@ import {
   MiembroPropuesto,
   EstadoPublicacion,
   EstadoRespaldo,
+  CdpDelEstudioPrevio,
+  CdpAntesDeRadicar,
   EstudioPrevio,
   Expediente,
   SimulacionFormulario,
@@ -133,6 +134,28 @@ import {
   UmbralesVigentes,
   UmbralVigente,
   UnidadUmbral,
+  AfectadosPaa,
+  AfectadosPorCambioDeVigencia,
+  BusquedaLineasPaa,
+  CamposDelFormularioPaa,
+  ComparacionPaa,
+  DecisionRevisionPaa,
+  DetalleLineaPaa,
+  DetalleRevisionPaa,
+  OpcionesDeCreacionPaa,
+  OrigenPaaDelProceso,
+  RegionPaa,
+  ResumenAfectadosPaa,
+  ResumenVersionPaa,
+  RevisionPaa,
+  VersionPaa,
+  DocumentoPaa,
+  AccionEscalon,
+  CadenaDeAprobacion,
+  EscalonesPorDesignar,
+  EscalonConfigurado,
+  PapelEscalon,
+  RondaDeAprobacion,
 } from '../types';
 
 const SERVICE_PREFIX = '/hiring/api/v1';
@@ -271,30 +294,14 @@ export const contratacionService = {
 
   respaldoCdp: (procesoId: string) => pedir<EstadoRespaldo>(`/procesos/${procesoId}/cdp`),
 
-  solicitarCdp: (
-    procesoId: string,
-    datos: {
-      rubro: string;
-      valor: number;
-      vigenciaFiscal?: number;
-      observaciones?: string;
-      firma?: EvidenciaFirmaOtp;
-    },
-  ) => pedir<Cdp>(`/procesos/${procesoId}/cdp`, { method: 'POST', body: JSON.stringify(datos) }),
-
-  rechazarCdp: (procesoId: string, observaciones: string) =>
-    pedir<Cdp>(`/procesos/${procesoId}/cdp/rechazar`, {
-      method: 'POST',
-      body: JSON.stringify({ observaciones }),
-    }),
-
   /**
-   * Actividad 4.2: verificar, expedir y adjuntar el CDP en una sola llamada.
+   * Actividad 4.2: el área carga el CDP que la Financiera expidió por fuera.
    *
-   * Desde la 096 son una sola actividad; el backend lo hace en una transacción
-   * para que no quede un certificado sin soporte ni un soporte sin certificado.
+   * Desde la 103 el aplicativo no tramita el CDP, solo lo carga. El backend lo
+   * hace en una transacción para que no quede un certificado sin soporte ni un
+   * soporte sin certificado.
    */
-  expedirCdpConSoporte: (
+  cargarCdp: (
     procesoId: string,
     datos: {
       rubro: string;
@@ -312,10 +319,50 @@ export const contratacionService = {
     cuerpo.append('valor', String(datos.valor));
     cuerpo.append('fechaExpedicion', datos.fechaExpedicion);
     if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
-    return pedir<Cdp>(`/procesos/${procesoId}/cdp/expedicion`, { method: 'POST', body: cuerpo });
+    return pedir<Cdp>(`/procesos/${procesoId}/cdp/cargue`, { method: 'POST', body: cuerpo });
   },
 
-  /** Soporte de un CDP expedido antes de la 096 sin él. */
+  // ---------------------------------- el CDP desde el estudio previo (100) --
+
+  cdpDelEstudioPrevio: (procesoId: string) =>
+    pedir<CdpDelEstudioPrevio>(`/procesos/${procesoId}/estudio-previo/cdp`),
+
+  /** Carga (o corrige) el CDP desde el estudio previo. El soporte es obligatorio al cargarlo. */
+  registrarCdpDesdeElEstudioPrevio: (
+    procesoId: string,
+    datos: { numero: string; valor: number; rubro: string; fechaExpedicion: string },
+    archivo: File | null,
+  ) => {
+    const cuerpo = new FormData();
+    if (archivo) cuerpo.append('file', archivo);
+    cuerpo.append('numero', datos.numero);
+    cuerpo.append('valor', String(datos.valor));
+    cuerpo.append('rubro', datos.rubro);
+    cuerpo.append('fechaExpedicion', datos.fechaExpedicion);
+    return pedir<CdpDelEstudioPrevio>(`/procesos/${procesoId}/estudio-previo/cdp/registro`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
+  retirarCdpDesdeElEstudioPrevio: (procesoId: string, motivo?: string) =>
+    pedir<CdpDelEstudioPrevio>(`/procesos/${procesoId}/estudio-previo/cdp/retiro`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
+    }),
+
+  cdpAntesDeRadicar: () => pedir<CdpAntesDeRadicar[]>('/configuracion/cdp-antes-de-radicar'),
+
+  guardarCdpAntesDeRadicar: (
+    modalidad: string,
+    datos: { obligatorio: boolean; fundamento?: string; confirmado?: boolean },
+  ) =>
+    pedir<CdpAntesDeRadicar>(`/configuracion/cdp-antes-de-radicar/${encodeURIComponent(modalidad)}`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Soporte de un CDP que quedó cargado sin él. */
   adjuntarCdp: (procesoId: string, archivo: File) => {
     const cuerpo = new FormData();
     cuerpo.append('file', archivo);
@@ -768,33 +815,23 @@ export const contratacionService = {
   abogados: (q = '') =>
     pedir<CuentaCandidata[]>(`/participacion/abogados?q=${encodeURIComponent(q)}`),
 
-  /**
-   * Actividad 4.1: toma la solicitud de CDP de la bandeja de la Financiera.
-   *
-   * Igual que `tomarProceso` y por lo mismo: nadie la entrega, la toma quien va
-   * a resolverla. Desde ese momento los avisos de esa solicitud son suyos y
-   * dejan de sonarle al resto de la Dirección Financiera.
-   */
-  tomarSolicitudCdp: (procesoId: string) =>
-    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/financiera/tomar`, {
+  /** Reparte el abogado que revisará en la 3.4. Lo hace quien tomó el proceso. */
+  /** Quién revisa el estudio previo en cada escalón por rol (migración 102). */
+  escalonesPorDesignar: (procesoId: string) =>
+    pedir<EscalonesPorDesignar>(`/procesos/${procesoId}/participacion/escalones`),
+
+  candidatosDeEscalon: (procesoId: string, orden: number, q = '') =>
+    pedir<CuentaCandidata[]>(
+      `/procesos/${procesoId}/participacion/escalones/${orden}/candidatos?q=${encodeURIComponent(q)}`,
+    ),
+
+  /** Designa quién decide el escalón; cambiar a quien estaba exige motivo. */
+  designarEscalon: (procesoId: string, orden: number, usuarioId: string, motivo?: string) =>
+    pedir<EscalonesPorDesignar>(`/procesos/${procesoId}/participacion/escalones/${orden}`, {
       method: 'POST',
-      body: JSON.stringify({}),
+      body: JSON.stringify({ usuarioId, motivo }),
     }),
 
-  /**
-   * La bandeja de la Dirección Financiera: lo que espera en la etapa 4.
-   *
-   * No cuelga de un proceso porque no es de uno: es la lista de los que
-   * esperan, y preguntarla exigiendo un proceso a mano sería preguntar por lo
-   * que aún no se sabe.
-   */
-  bandejaCdp: () => pedir<BandejaCdp>('/cdp/bandeja'),
-
-  /** Quiénes pueden resolver un CDP: los que gestionan presupuesto. */
-  financieros: (q = '') =>
-    pedir<CuentaCandidata[]>(`/participacion/financieros?q=${encodeURIComponent(q)}`),
-
-  /** Reparte el abogado que revisará en la 3.4. Lo hace quien tomó el proceso. */
   asignarAbogado: (procesoId: string, usuarioId: string) =>
     pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado`, {
       method: 'POST',
@@ -1805,12 +1842,106 @@ export const contratacionService = {
       body: JSON.stringify(cambio),
     }),
 
-  crearProceso: (objeto: string, modalidad: string, valorEstimado: number) =>
-
+  /**
+   * Crea el proceso desde una línea del PAA (migración 097).
+   *
+   * Objeto, modalidad y valor salen de la línea: ya no se teclean. Lo que haya
+   * que corregir se corrige en la 3.1, que nace con lo que el PAA dice.
+   */
+  crearProceso: (paaLineaId: string) =>
     pedir<ProcesoResumen>('/procesos', {
       method: 'POST',
-      body: JSON.stringify({ objeto, modalidad, valorEstimado }),
+      body: JSON.stringify({ paaLineaId }),
     }),
+
+  // -------------------------------------------- Plan Anual de Adquisiciones --
+
+  paa: {
+    opcionesDeCreacion: () => pedir<OpcionesDeCreacionPaa>('/paa/opciones-de-creacion'),
+
+    buscarLineas: (region: string, q: string, pagina = 1, anio?: number) => {
+      const consulta = new URLSearchParams({ region, pagina: String(pagina) });
+      if (q.trim()) consulta.set('q', q.trim());
+      if (anio) consulta.set('anio', String(anio));
+      return pedir<BusquedaLineasPaa>(`/paa/lineas?${consulta}`);
+    },
+
+    linea: (id: string) => pedir<DetalleLineaPaa>(`/paa/lineas/${id}`),
+
+    regiones: () => pedir<RegionPaa[]>('/paa/regiones'),
+
+    /** Las regiones no se crean aquí: salen de los archivos que se cargan. */
+    actualizarRegion: (
+      id: string,
+      cambios: Partial<Pick<RegionPaa, 'nombre' | 'unidadContratacion' | 'activa'>>,
+    ) => pedir<RegionPaa>(`/paa/regiones/${id}`, { method: 'PATCH', body: JSON.stringify(cambios) }),
+
+    documentos: () => pedir<DocumentoPaa[]>('/paa/documentos'),
+
+    /**
+     * Carga el Excel de un territorio para un año. El servidor saca del archivo
+     * sus regiones y su documento, y abre el año si hace falta.
+     */
+    cargarPaa: (anio: number, archivo: File) => {
+      const cuerpo = new FormData();
+      cuerpo.append('anio', String(anio));
+      cuerpo.append('file', archivo);
+      return pedir<VersionPaa>('/paa/versiones', { method: 'POST', body: cuerpo });
+    },
+
+    version: (id: string) => pedir<VersionPaa>(`/paa/versiones/${id}`),
+
+    comparacion: (id: string) => pedir<ComparacionPaa>(`/paa/versiones/${id}/comparacion`),
+
+    afectados: (id: string) => pedir<AfectadosPaa>(`/paa/versiones/${id}/afectados`),
+
+    activar: (id: string) =>
+      pedir<{ version: { id: string; numero: number }; anio: number; resumen: ResumenAfectadosPaa }>(
+        `/paa/versiones/${id}/activar`,
+        { method: 'POST' },
+      ),
+
+    descartar: (id: string, motivo: string) =>
+      pedir<ResumenVersionPaa>(`/paa/versiones/${id}/descartar`, {
+        method: 'POST',
+        body: JSON.stringify({ motivo }),
+      }),
+
+    afectadosPorCambioDeVigencia: (vigenciaId: string) =>
+      pedir<AfectadosPorCambioDeVigencia>(`/paa/vigencias/${vigenciaId}/afectados`),
+
+    declararVigente: (vigenciaId: string) =>
+      pedir<{ anio: number; anterior: number | null; evaluaciones: number }>(
+        `/paa/vigencias/${vigenciaId}/declarar-vigente`,
+        { method: 'POST' },
+      ),
+
+    campos: (regionId: string, anio: number) =>
+      pedir<CamposDelFormularioPaa>(`/paa/regiones/${regionId}/vigencias/${anio}/campos`),
+
+    guardarCampos: (
+      regionId: string,
+      anio: number,
+      campos: { clave: string; visible: boolean; etiqueta?: string | null }[],
+    ) =>
+      pedir<CamposDelFormularioPaa>(`/paa/regiones/${regionId}/vigencias/${anio}/campos`, {
+        method: 'PUT',
+        body: JSON.stringify({ campos }),
+      }),
+
+    revisiones: (estado?: 'PENDIENTE' | 'RESUELTA') =>
+      pedir<RevisionPaa[]>(`/paa/revisiones${estado ? `?estado=${estado}` : ''}`),
+
+    revision: (id: string) => pedir<DetalleRevisionPaa>(`/paa/revisiones/${id}`),
+
+    decidir: (id: string, decision: DecisionRevisionPaa, justificacion: string, lineaDestinoId?: string) =>
+      pedir<{ id: string; decision: DecisionRevisionPaa }>(`/paa/revisiones/${id}/decidir`, {
+        method: 'POST',
+        body: JSON.stringify({ decision, justificacion, lineaDestinoId }),
+      }),
+
+    origenDelProceso: (procesoId: string) => pedir<OrigenPaaDelProceso>(`/paa/procesos/${procesoId}`),
+  },
 
   obtenerEstudioPrevio: (procesoId: string) =>
     pedir<EstudioPrevio>(`/procesos/${procesoId}/estudio-previo`),
@@ -1821,20 +1952,20 @@ export const contratacionService = {
    * Cambia con ella la lista de documentos de la 3.1 y qué actividades recorre
    * el proceso. Aprobar la 3.1 la ratifica: no hay otra actividad para eso.
    */
+  /**
+   * Borra el proceso con todo lo suyo (108). Solo el superadministrador; pide
+   * el radicado escrito y el motivo, que es lo único que queda.
+   */
+  borrarProceso: (procesoId: string, radicado: string, motivo: string) =>
+    pedir<{ radicado: string; archivosBorrados: number }>(`/procesos/${procesoId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ radicado, motivo }),
+    }),
+
   cambiarModalidadDelEstudioPrevio: (procesoId: string, modalidad: string) =>
     pedir<EstudioPrevio>(`/procesos/${procesoId}/estudio-previo/modalidad`, {
       method: 'PUT',
       body: JSON.stringify({ modalidad }),
-    }),
-
-  /**
-   * Corrige el valor estimado, con la modalidad si la nueva cuantía la cambia.
-   * Pasa por los mismos umbrales que al crear el proceso.
-   */
-  cambiarCuantiaDelEstudioPrevio: (procesoId: string, valorEstimado: number, modalidad: string) =>
-    pedir<EstudioPrevio>(`/procesos/${procesoId}/estudio-previo/cuantia`, {
-      method: 'PUT',
-      body: JSON.stringify({ valorEstimado, modalidad }),
     }),
 
   guardarBorrador: (procesoId: string, datos: Record<string, any>, version: number) =>
@@ -2697,11 +2828,14 @@ export const contratacionService = {
     pedir<{
       requiereAprobacion: boolean;
       aprobadores: { clase: 'rol' | 'persona'; id: string; nombre: string }[];
+      /** La cadena de escalones que la aprueba, si se eligió una (migración 101). */
+      cadena: { id: string; nombre: string; escalones: number; activa: boolean } | null;
     }>(`/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion`),
 
+  /** Con `cadenaId`, la aprueba esa cadena; si no, los roles y personas, en un escalón. */
   guardarAprobacionDeActividad: (
     numeral: string,
-    datos: { requiereAprobacion: boolean; roles: string[]; personas: string[] },
+    datos: { requiereAprobacion: boolean; roles: string[]; personas: string[]; cadenaId?: string },
   ) =>
     pedir(`/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion`, {
       method: 'PUT',
@@ -2720,6 +2854,29 @@ export const contratacionService = {
       body: JSON.stringify(datos),
     }),
 
+  /** Las cadenas de aprobación por escalones (migración 101). */
+  cadenasDeAprobacion: () => pedir<CadenaDeAprobacion[]>('/configuracion/cadenas-aprobacion'),
+
+  papelesDeEscalon: () =>
+    pedir<{ codigo: PapelEscalon; nombre: string }[]>('/configuracion/cadenas-aprobacion/papeles'),
+
+  guardarCadenaDeAprobacion: (
+    id: string | null,
+    datos: {
+      nombre: string;
+      descripcion?: string;
+      escalones: EscalonConfigurado[];
+      permiteMismoAprobador: boolean;
+    },
+  ) =>
+    pedir<{ id: string }>(`/configuracion/cadenas-aprobacion${id ? `/${id}` : ''}`, {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify(datos),
+    }),
+
+  archivarCadenaDeAprobacion: (id: string) =>
+    pedir(`/configuracion/cadenas-aprobacion/${id}/archivar`, { method: 'PUT', body: JSON.stringify({}) }),
+
   /** Roles que pueden aparecer como aprobadores: los que trabajan en el módulo. */
   rolesAprobadores: () =>
     pedir<{ code: string; name: string }[]>('/configuracion/roles-aprobadores'),
@@ -2730,7 +2887,12 @@ export const contratacionService = {
       requiereAprobacion: boolean;
       aprobadores: { roles: string[]; personas: string[] } | null;
       puedoAprobar: boolean;
-      estado: 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO';
+      /** Lo que quien mira puede hacer ahora en el escalón que espera (101). */
+      acciones: AccionEscalon[];
+      motivo: string | null;
+      cadena: { nombre: string; escalones: string[] } | null;
+      ronda: RondaDeAprobacion | null;
+      estado: 'BORRADOR' | 'EN_REVISION' | 'APROBADO' | 'DEVUELTO' | 'NEGADO';
       esMia: boolean;
       observaciones: string | null;
       decididaPor: string | null;
@@ -2779,6 +2941,13 @@ export const contratacionService = {
 
   devolverActividad: (procesoId: string, numeral: string, observaciones: string) =>
     pedir(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/devolver`, {
+      method: 'POST',
+      body: JSON.stringify({ observaciones }),
+    }),
+
+  /** Solo en un escalón configurado para negar: termina el proceso (migración 101). */
+  negarActividad: (procesoId: string, numeral: string, observaciones: string) =>
+    pedir(`/procesos/${procesoId}/actividades/${encodeURIComponent(numeral)}/negar`, {
       method: 'POST',
       body: JSON.stringify({ observaciones }),
     }),

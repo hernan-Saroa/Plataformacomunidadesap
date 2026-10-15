@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, FileSignature, Grid3x3, Settings, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, FileSignature, FileSpreadsheet, Grid3x3, Landmark, ListOrdered, Settings, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
@@ -11,6 +11,10 @@ import { DetalleActividad } from './DetalleActividad';
 import { MatrizGeneral } from './MatrizGeneral';
 import { PermisosPorEtapa } from './PermisosPorEtapa';
 import { TipologiasContrato } from './TipologiasContrato';
+import { CdpAntesDeRadicar } from './CdpAntesDeRadicar';
+import { CadenasDeAprobacion } from './CadenasDeAprobacion';
+import { PlanDeAdquisiciones } from '../paa/PlanDeAdquisiciones';
+import { useAlcance } from '../../auth/alcance';
 import { PETICIONES, Peticion } from './peticiones';
 
 const PESTANAS = [
@@ -32,7 +36,27 @@ const PESTANAS = [
     icono: ShieldCheck,
     color: '#0891B2',
   },
+  {
+    clave: 'cadenas' as const,
+    etiqueta: 'Cadenas de aprobación',
+    icono: ListOrdered,
+    color: '#4338CA',
+  },
+  {
+    clave: 'cdp' as const,
+    etiqueta: 'CDP en el estudio previo',
+    icono: Landmark,
+    color: '#B45309',
+  },
+  {
+    clave: 'paa' as const,
+    etiqueta: 'Plan de adquisiciones',
+    icono: FileSpreadsheet,
+    color: '#047857',
+  },
 ];
+
+type Pestana = (typeof PESTANAS)[number]['clave'];
 
 /** Qué se abrió: la actividad, y la columna desde la que se llegó si fue una celda. */
 interface Seleccion {
@@ -49,7 +73,8 @@ interface Seleccion {
  * queda señalada dentro de la ficha.
  */
 export function VistaConfiguracion() {
-  const [pestana, setPestana] = useState<'matriz' | 'tipologias' | 'roles'>('matriz');
+  const [pestana, setPestana] = useState<Pestana>('matriz');
+  const { puede } = useAlcance();
   const [seleccion, setSeleccion] = useState<Seleccion | null>(null);
   const [fila, setFila] = useState<FilaMatriz | null>(null);
   const [modalidades, setModalidades] = useState<Modalidad[]>([]);
@@ -147,13 +172,15 @@ export function VistaConfiguracion() {
           aquí una pantalla que no se parecía a las otras dos. */}
       <ModuleHeader
         title="Configuraciones"
-        subtitle="Matriz de actividades, tipologías de contrato y roles del módulo"
+        subtitle="Matriz de actividades, tipologías de contrato, roles y Plan Anual de Adquisiciones"
         icon={<Settings className="w-5 h-5" />}
         color="#003DA5"
       />
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-1.5 inline-flex items-center gap-1 flex-wrap">
-        {PESTANAS.map(({ clave, etiqueta, icono: Icono, color }) => {
+        {/* El PAA se lo muestra solo a quien puede verlo: es de la Dirección, no
+            de todo el que configura actividades. */}
+        {PESTANAS.filter((p) => p.clave !== 'paa' || puede('ver', 'PAA')).map(({ clave, etiqueta, icono: Icono, color }) => {
           const activa = pestana === clave;
           return (
             <button
@@ -185,6 +212,9 @@ export function VistaConfiguracion() {
           segundo sitio donde tocarlos dejaría dos verdades sin nada que las
           mantuviera de acuerdo. Aquí se verifica la que rige. */}
       {pestana === 'roles' && <PermisosPorEtapa />}
+      {pestana === 'cadenas' && <CadenasDeAprobacion />}
+      {pestana === 'cdp' && <CdpAntesDeRadicar />}
+      {pestana === 'paa' && <PlanDeAdquisiciones />}
 
       <Modal
         isOpen={seleccion !== null}

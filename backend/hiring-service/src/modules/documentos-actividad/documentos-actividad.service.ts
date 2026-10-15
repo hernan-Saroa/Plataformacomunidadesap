@@ -26,8 +26,10 @@ import { STORAGE_PATH } from '../archivos';
 import { exigirExpedienteAbierto } from '../archivo-expediente/expediente-archivado';
 import {
   aplicaAlProceso,
+  ESTADOS_CERRADOS,
   GuardiaDeDocumentos,
   obligatoriosPendientes,
+  vigentesAlCierre,
 } from './requisitos';
 
 /** Un archivo ya recibido por multer. */
@@ -188,6 +190,9 @@ export class DocumentosActividadService {
    *
    * La tipología sale de los datos de la 3.1, que es donde el área la elige;
    * mientras no la elija, los requisitos que declaran tipología no aplican.
+   *
+   * Cerrada la actividad, la lista ya no sigue al catálogo: se queda con lo
+   * que el proceso entregó (ver `vigentesAlCierre`).
    */
   async requeridosDe(
     procesoId: string,
@@ -203,7 +208,22 @@ export class DocumentosActividadService {
       order: { orden: 'ASC', nombre: 'ASC' },
     });
 
-    return todos.filter((r) => aplicaAlProceso(r, proceso.modalidad, tipologia));
+    const aplican = todos.filter((r) => aplicaAlProceso(r, proceso.modalidad, tipologia));
+
+    const actividad = await manager.getRepository(ProcesoActividad).findOne({
+      where: { procesoId, numeral },
+    });
+    if (!actividad || !ESTADOS_CERRADOS.includes(actividad.estado)) return aplican;
+
+    // Las sustituidas también cuentan: el requisito se pidió aunque su
+    // archivo vigente sea otro.
+    const entregas = await manager
+      .getRepository(DocumentoProceso)
+      .find({ where: { procesoId, numeral } });
+    return vigentesAlCierre(
+      aplican,
+      entregas.map((e) => e.codigo),
+    );
   }
 
   /**

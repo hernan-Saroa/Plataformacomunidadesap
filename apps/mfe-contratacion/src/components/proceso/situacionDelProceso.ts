@@ -1,5 +1,5 @@
 import { cubre } from '../../auth/alcance';
-import { AccionAlcance, RespondeElAsignado, ResponsableDeLugar } from '../../types';
+import { AccionAlcance, EstadoDelProceso, RespondeElAsignado, ResponsableDeLugar } from '../../types';
 import {
   actividadesDisponibles,
   estaTerminada,
@@ -23,7 +23,11 @@ export type Momento =
   | 'tramite'
   | 'ejecucion'
   | 'terminado'
-  | 'negado';
+  | 'negado'
+  // Plan Anual de Adquisiciones (migración 097): una revisión por cambio del
+  // PAA lo detiene, o lo canceló.
+  | 'detenido'
+  | 'cancelado';
 
 /** Un paso del flujo con lo que hace falta para nombrarlo. */
 export interface PasoConDatos extends PasoDelFlujo {
@@ -64,6 +68,10 @@ export interface EntradaSituacion {
    * él, el «te toca» sale solo de las personas a cargo.
    */
   puedo?: (accion: AccionAlcance, lugar: string) => boolean;
+  /** El desenlace del proceso, si ya lo tiene. */
+  estadoProceso?: EstadoDelProceso;
+  /** Una revisión por cambio del PAA lo tiene detenido. */
+  detenidoPorPaa?: boolean;
 }
 
 export interface Situacion {
@@ -220,6 +228,30 @@ export function situacionDelProceso(entrada: EntradaSituacion): Situacion {
   });
 
   const estudio = pasos.find((p) => p.numeral === ESTUDIO_PREVIO) ?? null;
+
+  // Lo que dice el PAA manda sobre el riel: un proceso cancelado o detenido no
+  // le toca a nadie aunque tenga una actividad abierta, y decir «te toca» ahí
+  // lleva a un formulario que el servidor va a rechazar.
+  if (entrada.estadoProceso === 'CANCELADO') {
+    return {
+      ...base(null),
+      momento: 'cancelado',
+      titulo: 'Proceso cancelado',
+      quien: null,
+      teToca: false,
+      espera: 'Se canceló por un cambio del Plan Anual de Adquisiciones',
+    };
+  }
+  if (entrada.detenidoPorPaa) {
+    return {
+      ...base(null),
+      momento: 'detenido',
+      titulo: 'Detenido por un cambio del PAA',
+      quien: participacion.abogado?.nombre ?? null,
+      teToca: !!participacion.abogado?.esMio,
+      espera: 'Sigue cuando el abogado decida la revisión por cambio del Plan Anual de Adquisiciones',
+    };
+  }
 
   if (estudio?.estado === 'NEGADO') {
     return {
@@ -437,6 +469,6 @@ export function situacionTrasAprobar(entrada: EntradaSituacion, numeral: string)
 /** «Verificar disponibilidad presupuestal · Dirección Financiera», o el fin. */
 export function destinoDeLaSituacion(s: Situacion): string {
   if (s.momento === 'terminado') return 'El proceso queda sin pasos pendientes';
-  if (s.momento === 'negado') return 'El proceso termina';
+  if (s.momento === 'negado' || s.momento === 'cancelado') return 'El proceso termina';
   return s.quien ? `${s.titulo} · ${s.quien}` : s.titulo;
 }

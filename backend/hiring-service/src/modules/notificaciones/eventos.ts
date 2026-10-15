@@ -18,7 +18,9 @@ export type EventoAviso =
   | 'APROBADA'
   | 'RECIBIDO_EN_CONTRATACION'
   | 'PROCESO_RADICADO'
-  | 'DOCUMENTO_ADJUNTO';
+  | 'DOCUMENTO_ADJUNTO'
+  | 'REVISION_PAA'
+  | 'PROCESO_CANCELADO';
 
 /**
  * El papel que alguien cumple en un proceso concreto.
@@ -177,6 +179,22 @@ export const EVENTOS: DefinicionEvento[] = [
     sugerido: { activo: true, papeles: ['REPARTE_PROCESOS'] },
   },
   {
+    codigo: 'REVISION_PAA',
+    nombre: 'Un cambio del PAA abre una revisión',
+    ayuda:
+      'Sale cuando una versión nueva del Plan Anual de Adquisiciones cambia o retira la línea del proceso, o cuando empieza un año nuevo, para que el abogado decida si el proceso sigue.',
+    // Se configura en la 3.1 porque ahí nace el proceso desde su línea del PAA.
+    numeral: '3.1',
+    sugerido: { activo: true, papeles: ['ABOGADO'] },
+  },
+  {
+    codigo: 'PROCESO_CANCELADO',
+    nombre: 'Se cancela el proceso por un cambio del PAA',
+    ayuda: 'Para que quien lo radicó y quien lo lleva en Contratación sepan que el proceso terminó y por qué.',
+    numeral: '3.1',
+    sugerido: { activo: true, papeles: ['RADICADOR', 'CONTRATACION'] },
+  },
+  {
     codigo: 'DOCUMENTO_ADJUNTO',
     nombre: 'Se adjunta un documento',
     ayuda: 'Para enterarse cuando llega un soporte nuevo al expediente.',
@@ -192,7 +210,7 @@ export const PAPELES: { codigo: PapelAviso; nombre: string }[] = [
   { codigo: 'CONTRATACION', nombre: 'Quien lo recibió en Contratación' },
   { codigo: 'RADICADOR', nombre: 'Quien radicó el proceso' },
   { codigo: 'BANDEJA_CONTRATACION', nombre: 'Quien puede recibirlo en Contratación' },
-  { codigo: 'EQUIPO_FINANCIERO', nombre: 'El equipo financiero' },
+  { codigo: 'EQUIPO_FINANCIERO', nombre: 'Quien registra el CDP, el RP o el cierre financiero' },
   { codigo: 'COMITE_EVALUADOR', nombre: 'El comité evaluador' },
   { codigo: 'SUPERVISOR', nombre: 'El supervisor del contrato' },
   { codigo: 'REPARTE_PROCESOS', nombre: 'Quien reparte los procesos en Contratación' },
@@ -431,6 +449,9 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
       return ocurrido('PROCESO_RADICADO', '3.1');
     case 'participacion_proceso:RADICAR':
       return ocurrido('RECIBIDO_EN_CONTRATACION', '3.3');
+    // Designado para un escalón que ya está esperando (102): le toca decidir.
+    case 'designacion_escalon:DESIGNAR':
+      return detalle.pendiente ? ocurrido('ENVIADA_A_APROBACION', numeral) : null;
     case 'participacion_proceso:DESIGNAR':
       // Asignar el abogado es el «le toca» de la 3.4: desde ahí puede revisar.
       return detalle.papel === 'ABOGADO' ? ocurrido('HABILITADA', SE_HABILITA_AL_ASIGNAR_ABOGADO) : null;
@@ -438,7 +459,17 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
     // La aprobación genérica guarda el numeral; el estudio previo es la 3.1.
     case 'aprobacion_actividad:ENVIAR':
       return ocurrido('ENVIADA_A_APROBACION', numeral);
+    /*
+     * Con escalones (migración 101), solo la última aprobación aprueba la
+     * actividad. Una intermedia le pasa la actividad al siguiente escalón:
+     * para él es «tienes algo esperando tu visto bueno», y a quien la envió
+     * no se le dice que quedó aprobada. Las trazas anteriores a la 101 no
+     * traen `definitiva` y fueron todas definitivas.
+     */
     case 'aprobacion_actividad:APROBAR':
+      if (detalle.definitiva === false) {
+        return detalle.activado ? ocurrido('ENVIADA_A_APROBACION', numeral) : null;
+      }
       return ocurrido('APROBADA', numeral);
     case 'aprobacion_actividad:DEVOLVER':
       return ocurrido('DEVUELTA', numeral);
@@ -459,6 +490,10 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
     case 'estudio_previo:ENVIAR':
       return ocurrido('ENVIADA_A_APROBACION', '3.1');
     case 'estudio_previo:APROBAR':
+      // Por cadena (101), igual que las demás: la intermedia pasa al siguiente.
+      if (detalle.definitiva === false) {
+        return detalle.activado ? ocurrido('ENVIADA_A_APROBACION', '3.1') : null;
+      }
       return ocurrido('APROBADA', '3.1');
     case 'estudio_previo:DEVOLVER':
       return ocurrido('DEVUELTA', '3.1');
@@ -467,6 +502,13 @@ function eventoUnico(t: TrazaLeida): EventoOcurrido | null {
       return t.detalle?.estado === 'EN_REVISION' ? ocurrido('ENVIADA_A_APROBACION', numeral) : null;
     case 'documento_actividad:ADJUNTAR':
       return ocurrido('DOCUMENTO_ADJUNTO', numeral);
+
+    // Plan Anual de Adquisiciones (migración 097). Devolver por un cambio del
+    // PAA ya avisa como cualquier devolución del estudio previo.
+    case 'paa_revisiones:ABRIR_REVISION_PAA':
+      return ocurrido('REVISION_PAA', '3.1');
+    case 'paa_revisiones:CANCELAR':
+      return ocurrido('PROCESO_CANCELADO', '3.1');
 
     default:
       return null;
@@ -562,6 +604,22 @@ export function mensajeDeAviso(
         titulo: 'Hay un proceso nuevo',
         mensaje: `Se creó el proceso${elProceso}${quien}.`,
         prioridad: 'Media',
+      };
+    case 'REVISION_PAA':
+      return {
+        titulo: 'Un cambio del PAA afecta un proceso',
+        mensaje: `El proceso${elProceso} tiene una revisión por cambio del Plan Anual de Adquisiciones${
+          ocurrido.observaciones ? `: ${ocurrido.observaciones}` : '.'
+        }`,
+        prioridad: 'Alta',
+      };
+    case 'PROCESO_CANCELADO':
+      return {
+        titulo: 'Se canceló un proceso',
+        mensaje: `El proceso${elProceso} se canceló${quien} por un cambio del Plan Anual de Adquisiciones${
+          ocurrido.observaciones ? `: «${ocurrido.observaciones}»` : '.'
+        }`,
+        prioridad: 'Alta',
       };
     case 'DOCUMENTO_ADJUNTO':
       return {

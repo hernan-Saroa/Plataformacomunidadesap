@@ -1,4 +1,11 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { DataSource, EntityManager, In } from 'typeorm';
 
 import {
@@ -13,12 +20,30 @@ import {
 
 /** Actividad 3.3 de la matriz: la radicación en la Dirección. */
 export const NUMERAL_RADICACION = '3.3';
+
+/**
+ * Cómo se designa un escalón de la cadena de la 3.1 en la 3.3 (102): el del
+ * papel abogado eligiendo al abogado del proceso, uno por rol eligiendo a
+ * alguien con el rol. Los que nombran personas ya dicen quién: no se designan.
+ */
+export function tipoDeEscalon(e: { roles: string[]; papeles: string[] }): 'ROL' | 'ABOGADO' | null {
+  if (e.papeles.includes('ABOGADO')) return 'ABOGADO';
+  if (e.roles.length) return 'ROL';
+  return null;
+}
 import { AccionTraza, Trazabilidad } from '../../entities/trazabilidad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_ASIGNAR, tienePermiso } from '../../auth/permisos';
 import { Accion } from '../../auth/alcance';
 import { AlcanceService } from '../../auth/alcance.service';
-import { AsignarAbogadoDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
+import { AsignarAbogadoDto, DesignarEscalonDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
+import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
+import {
+  DesignacionEscalon,
+  EscalonRonda,
+  EstadoEscalon,
+  NUMERAL_CON_DESIGNACION,
+} from '../../entities/cadena-aprobacion.entity';
 import { CdpService } from '../cdp/cdp.service';
 import { respondeElAsignado } from './quien-responde';
 
@@ -119,7 +144,17 @@ export class ParticipacionService {
     private readonly cdp: CdpService,
     /** Quién puede qué en cada punto (migración 083). */
     private readonly alcance: AlcanceService,
-  ) {}
+    /**
+     * La cadena de la 3.1, para designar quién decide cada escalón por rol
+     * (migración 102). Opcional para que las pruebas que construyen el
+     * servicio a mano sigan funcionando con solo la fuente de datos.
+     */
+    @Optional() cadenas?: CadenaAprobacionService,
+  ) {
+    this.cadenas = cadenas ?? new CadenaAprobacionService(dataSource);
+  }
+
+  private readonly cadenas: CadenaAprobacionService;
 
   // ------------------------------------------------------------- consulta --
 
@@ -143,34 +178,25 @@ export class ParticipacionService {
     const soyElDeContratacion = !!contratacion && esSuya(contratacion, acceso);
     const puedeRepartir = soyElDeContratacion || tienePermiso(acceso, PERMISO_PROCESO_ASIGNAR);
 
-    /**
-     * Ofrecer tomar la solicitud solo donde hay una que tomar.
-     *
-     * Se comprueba contra la bandeja y no solo contra el permiso porque si no
-     * la pantalla enseñaría el botón en todos los procesos, incluidos los que
-     * no han pedido CDP y los que ya lo tienen expedido, y la API lo rechazaría
-     * cuando ya es tarde.
-     */
-    const puedeTomarFinanciera =
-      !financiera &&
-      (await this.alcance.puedeEn(acceso, 'editar', '4.2')) &&
-      (await this.estaEnLaBandejaFinanciera(procesoId));
-
     return {
       /** Sin tomar: el proceso está en la bandeja y nadie responde por él. */
       puedeTomar: !contratacion && (await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION)),
       puedeRepartir,
       contratacion: contratacion ? this.aVista(contratacion, acceso) : null,
       abogado: abogado ? this.aVista(abogado, acceso) : null,
-      /** Quién responde por el CDP en la etapa 4, o nulo si nadie lo ha tomado. */
+      /**
+       * Quién tomó la solicitud de CDP antes de la 103. Desde entonces el CDP
+       * se tramita por fuera y nadie lo toma: queda como historia.
+       */
       financiera: financiera ? this.aVista(financiera, acceso) : null,
-      puedeTomarFinanciera,
       /**
        * No debería pasar, pero quitar un abogado sin poner otro es una
        * situación real. En vez de impedirla se dice, para que el proceso no se
        * quede quieto sin que nadie lo note.
        */
       sinAbogado: !!contratacion && !abogado,
+      /** Si el abogado se elige en su escalón de la cadena de la 3.1 (102). */
+      abogadoEnCadena: await this.abogadoEnCadena(procesoId),
       // Quien llevó el proceso antes respondió por lo que hizo en él: el
       // expediente conserva a los relevados con el motivo del cambio.
       historial: todas
@@ -236,22 +262,6 @@ export class ParticipacionService {
     return carga;
   }
 
-  /**
-   * Las cuentas de la Dirección Financiera que pueden resolver un CDP.
-   *
-   * Por alcance y no por rol, igual que los abogados: quien pueda editar la
-   * 4.2 es quien verifica la disponibilidad y expide. Nombrar aquí
-   * `ESTRUCTURADOR_FINANCIERO` ataría la etapa 4 a un código de rol que el
-   * administrador puede renombrar o desdoblar mañana desde el backoffice.
-   *
-   * No lo consume un desplegable —la solicitud no se reparte, se toma— sino el
-   * aviso: mientras nadie la ha tomado no hay responsable a quien notificar, y
-   * esta es la lista a la que se le manda.
-   */
-  async financieros(termino = ''): Promise<CuentaCandidata[]> {
-    return this.cuentasCon('editar', '4.2', termino);
-  }
-
   // ------------------------------------------------------------ el proceso --
 
   /**
@@ -290,66 +300,10 @@ export class ParticipacionService {
         quien: cuenta.nombre,
       });
 
-      // Dentro de la transacción: si la creación del CDP falla, tomar el
-      // proceso tampoco queda hecho, y no hay un estado intermedio en el que la
-      // etapa 3 esté cerrada sin su solicitud.
-      await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
-    });
-
-    return this.estado(procesoId, acceso);
-  }
-
-  /**
-   * Tomar la solicitud de CDP de la bandeja de la Financiera (actividad 4.1).
-   *
-   * Mismo acto que `tomar` y por el mismo motivo: nadie la entrega, la toma
-   * quien va a resolverla. Lo que cambia es de qué bandeja sale —una solicitud
-   * sin atender, no un proceso sin recibir— y que aquí no se cierra ninguna
-   * actividad: la 4.1 la cumple la solicitud misma, no el hecho de tomarla.
-   *
-   * Tomarla es lo que pone nombre al responsable, y con eso el aviso deja de ir
-   * a toda la Dirección Financiera y pasa a ser suyo.
-   */
-  async tomarFinanciera(procesoId: string, acceso: HiringAccess) {
-    await this.dataSource.transaction(async (em) => {
-      await this.exigirProceso(em, procesoId, true);
-
-      const actual = await this.vigente(procesoId, 'FINANCIERA', em);
-      if (actual) {
-        throw new ConflictException(
-          esSuya(actual, acceso)
-            ? 'Ya habías tomado esta solicitud'
-            : `${actual.nombre} tomó esta solicitud antes que tú`,
-        );
-      }
-
-      // Que la solicitud exista y siga sin resolver. Sin esto se podría tomar
-      // el CDP de un proceso que no lo ha pedido —o uno ya expedido—, y el
-      // responsable quedaría puesto sobre algo que nadie tiene que atender.
-      const [solicitud] = await em.query(
-        `SELECT 1
-           FROM hiring.cdp
-          WHERE proceso_id = $1
-            AND modificacion_id IS NULL
-            AND estado = 'SOLICITADO'
-          LIMIT 1`,
-        [procesoId],
-      );
-      if (!solicitud) {
-        throw new ConflictException(
-          'Este proceso no tiene una solicitud de CDP esperando a que la atiendan',
-        );
-      }
-
-      const cuenta = await this.exigirCuenta(acceso.userId, acceso.userName);
-      const nueva = await this.guardar(em, procesoId, 'FINANCIERA', cuenta, acceso);
-
-      // RADICAR y no DESIGNAR, con el criterio con que se eligió para la 3.3:
-      // designar es poner a otro, y aquí nadie entrega nada.
-      await this.traza(em, procesoId, nueva.id, 'RADICAR', acceso, {
-        papel: 'FINANCIERA',
-        quien: cuenta.nombre,
-      });
+      // Dentro de la transacción: si abrir la etapa 4 falla, tomar el proceso
+      // tampoco queda hecho, y no hay un estado intermedio en el que la etapa 3
+      // esté cerrada sin que el proceso haya pasado a la 4.
+      await this.cdp.abrirEtapa4SiCerroLaEtapa3(em, procesoId, acceso);
     });
 
     return this.estado(procesoId, acceso);
@@ -449,6 +403,275 @@ export class ParticipacionService {
     });
 
     return this.estado(procesoId, acceso);
+  }
+
+  // ------------------------------- quién decide cada escalón de la 3.1 (102) --
+
+  /**
+   * Los escalones por rol de la cadena de la 3.1, con su estado en la ronda en
+   * curso si la hay.
+   *
+   * Con el estudio previo ya enviado manda la copia de la ronda: es la cadena
+   * con la que de verdad se va a decidir. Antes del envío, la que rige hoy,
+   * para que la Dirección pueda repartir desde que toma el proceso.
+   */
+  private async escalonesPorRol(
+    em: EntityManager,
+    proceso: Proceso,
+  ): Promise<
+    { orden: number; nombre: string; roles: string[]; estado: EstadoEscalon | null; tipo: 'ROL' | 'ABOGADO' }[]
+  > {
+    const actividad = await em
+      .getRepository(ProcesoActividad)
+      .findOne({ where: { procesoId: proceso.id, numeral: NUMERAL_CON_DESIGNACION } });
+
+    const ronda = actividad ? await this.cadenas.rondaEnCurso(em, actividad.id) : null;
+    if (ronda) {
+      const escalones = await em
+        .getRepository(EscalonRonda)
+        .find({ where: { aprobacionId: ronda.id }, order: { orden: 'ASC' } });
+      return escalones
+        .map((e) => ({ orden: e.orden, nombre: e.nombre, roles: e.roles, estado: e.estado, tipo: tipoDeEscalon(e) }))
+        .filter((e): e is typeof e & { tipo: 'ROL' | 'ABOGADO' } => e.tipo !== null);
+    }
+
+    const cadena = await this.cadenas.cadenaPara(NUMERAL_CON_DESIGNACION, proceso.modalidad ?? null, em);
+    // Con la regla de siempre no hay escalones que repartir: decide el abogado.
+    if (!cadena?.cadenaId) return [];
+    return cadena.escalones
+      .map((e, i) => ({ orden: i + 1, nombre: e.nombre, roles: e.roles, estado: null, tipo: tipoDeEscalon(e) }))
+      .filter((e): e is typeof e & { tipo: 'ROL' | 'ABOGADO' } => e.tipo !== null);
+  }
+
+  /**
+   * Si el abogado se elige como un escalón de la cadena de la 3.1.
+   *
+   * Entonces la 3.3 no tiene un paso aparte para el abogado: se elige en su
+   * escalón, y elegirlo ahí es asignarlo como abogado del proceso, que sigue
+   * siendo quien decide la 3.6, la 3.7 y las revisiones del PAA (Juan,
+   * 2026-10-14).
+   */
+  async abogadoEnCadena(procesoId: string): Promise<boolean> {
+    const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
+    return (await this.escalonesPorRol(this.dataSource.manager, proceso)).some((e) => e.tipo === 'ABOGADO');
+  }
+
+  /** Lo que la 3.3 enseña de los escalones: quién está designado y si se puede cambiar. */
+  async escalones(procesoId: string, acceso: HiringAccess) {
+    const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
+    const em = this.dataSource.manager;
+    const escalones = await this.escalonesPorRol(em, proceso);
+    const vigentes = await this.cadenas.designacionesDe(em, procesoId, NUMERAL_CON_DESIGNACION);
+    const nombres = await this.cadenas.nombresDeRoles(escalones.flatMap((e) => e.roles));
+    const relevados = await em.getRepository(DesignacionEscalon).find({
+      where: { procesoId, numeral: NUMERAL_CON_DESIGNACION, estado: 'RELEVADO' },
+      order: { relevadoAt: 'DESC' },
+    });
+
+    const contratacion = await this.vigente(procesoId, 'CONTRATACION', em);
+    const abogado = await this.vigente(procesoId, 'ABOGADO', em);
+    // Si el rol sigue existiendo y el designado lo sigue teniendo; si el
+    // abogado todavía puede revisar.
+    const validadas = await this.cadenas.designacionesValidadas(em, procesoId, NUMERAL_CON_DESIGNACION, escalones);
+    const abogadoSinPermiso = abogado ? await this.cadenas.abogadoSinPermiso(em, procesoId) : null;
+    const puedeDesignar =
+      (!!contratacion && esSuya(contratacion, acceso)) || tienePermiso(acceso, PERMISO_PROCESO_ASIGNAR);
+
+    return {
+      puedeDesignar,
+      escalones: escalones.map((e) => {
+        // El escalón del abogado muestra al abogado del proceso.
+        const d =
+          e.tipo === 'ABOGADO'
+            ? abogado
+              ? { usuarioId: abogado.usuarioId, nombre: abogado.nombre, usuarioNombre: abogado.usuarioNombre, asignadoAt: abogado.asignadoAt, asignadoPor: abogado.asignadoPor }
+              : null
+            : vigentes.get(e.orden);
+        return {
+          orden: e.orden,
+          nombre: e.nombre,
+          tipo: e.tipo,
+          roles: e.tipo === 'ABOGADO' ? ['Abogado del proceso'] : e.roles.map((r) => nombres.get(r) ?? r),
+          designado: d
+            ? { usuarioId: d.usuarioId, nombre: d.nombre, usuarioNombre: d.usuarioNombre, asignadoAt: d.asignadoAt, asignadoPor: d.asignadoPor }
+            : null,
+          /*
+           * Lo que ya decidió en la ronda en curso queda como está. El abogado
+           * se puede cambiar siempre, como hasta ahora: también responde por la
+           * 3.6, la 3.7 y el PAA, y su decisión ya tomada no se reescribe.
+           */
+          cambiable: e.tipo === 'ABOGADO' || e.estado === null || e.estado === 'PENDIENTE' || e.estado === 'BLOQUEADO',
+          leToca: e.estado === 'PENDIENTE',
+          /** Qué impide que alguien decida el escalón, dicho con lo que hay que hacer. */
+          problema:
+            e.tipo === 'ABOGADO'
+              ? abogadoSinPermiso
+                ? `${abogadoSinPermiso} ya no tiene permiso para revisar: asigna otro abogado`
+                : null
+              : validadas.get(e.orden)?.problema === 'SIN_DESIGNAR'
+                ? null
+                : (validadas.get(e.orden)?.mensaje ?? null),
+          /** El rol ya no existe: no se arregla designando, sino corrigiendo la cadena. */
+          rolInexistente: e.tipo === 'ROL' && validadas.get(e.orden)?.problema === 'ROL_INEXISTENTE',
+        };
+      }),
+      historial: relevados.map((d) => ({
+        escalon: d.escalon,
+        escalonNombre: d.escalonNombre,
+        nombre: d.nombre,
+        asignadoAt: d.asignadoAt,
+        relevadoAt: d.relevadoAt,
+        relevadoPor: d.relevadoPor,
+        motivoRelevo: d.motivoRelevo,
+      })),
+    };
+  }
+
+  /** Las cuentas activas con alguno de los roles del escalón, para el desplegable. */
+  async candidatosDeEscalon(procesoId: string, orden: number, termino = ''): Promise<CuentaCandidata[]> {
+    const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
+    const escalon = (await this.escalonesPorRol(this.dataSource.manager, proceso)).find((e) => e.orden === orden);
+    if (!escalon) throw new NotFoundException('Ese escalón no se designa: no está definido por un rol');
+    // Para el escalón del abogado, los mismos de siempre, con su carga.
+    if (escalon.tipo === 'ABOGADO') return this.abogados(termino);
+    return this.cuentasConRol(escalon.roles, termino);
+  }
+
+  private cuentasConRol(roles: string[], termino: string, soloEsta?: string): Promise<CuentaCandidata[]> {
+    // Parámetros ligados, nunca interpolados: el término viene del navegador.
+    return this.dataSource.query(
+      `SELECT DISTINCT
+              u.id_user   AS "usuarioId",
+              u.username  AS "usuarioNombre",
+              p.id_person AS "personaId",
+              COALESCE(p.nom_largo, p.nom_tercero, u.username) AS nombre,
+              NULL::varchar                     AS cargo,
+              COALESCE(p.dir_email, u.username) AS email
+         FROM auth."user" u
+         -- Solo roles y asignaciones activas: un rol desactivado no designa.
+         JOIN auth.user_roles ur ON ur.id_user = u.id_user AND ur.is_active = true
+         JOIN auth.role r ON r.id = ur.id_rol AND r.is_active = true
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+        WHERE u.is_active = true
+          AND r.code = ANY($1::text[])
+          AND ($3::text IS NULL OR u.id_user::text = $3)
+          AND ($2 = ''
+               OR COALESCE(p.nom_largo, p.nom_tercero, u.username) ILIKE '%' || $2 || '%'
+               OR u.username ILIKE '%' || $2 || '%')
+        ORDER BY nombre
+        LIMIT 50`,
+      [roles, termino.trim(), soloEsta ?? null],
+    );
+  }
+
+  /**
+   * Designa quién decide un escalón por rol de la 3.1 en este proceso, o
+   * cambia al que estaba.
+   *
+   * Lo hace quien reparte el abogado —quien tomó el proceso, o el Director—,
+   * en el mismo lugar. Cambiar exige motivo y releva al anterior en vez de
+   * borrarlo: respondió por su tramo. Lo que ya decidió en la ronda en curso no
+   * se cambia: la designación nueva no reescribe quién aprobó.
+   */
+  async designarEscalon(procesoId: string, orden: number, dto: DesignarEscalonDto, acceso: HiringAccess) {
+    /*
+     * El escalón del abogado se designa asignando al abogado del proceso: es
+     * el mismo acto, con sus mismas reglas, y así la 3.6, la 3.7 y el PAA
+     * siguen sabiendo quién es.
+     */
+    const previo = await this.exigirProceso(this.dataSource.manager, procesoId);
+    const delAbogado = (await this.escalonesPorRol(this.dataSource.manager, previo)).find(
+      (e) => e.orden === orden && e.tipo === 'ABOGADO',
+    );
+    if (delAbogado) {
+      if (await this.vigente(procesoId, 'ABOGADO')) {
+        if ((dto.motivo ?? '').trim().length < 10) {
+          throw new BadRequestException('Explica por qué se cambia de abogado');
+        }
+        await this.reasignarAbogado(procesoId, { usuarioId: dto.usuarioId, motivo: dto.motivo!.trim() }, acceso);
+      } else {
+        await this.asignarAbogado(procesoId, { usuarioId: dto.usuarioId }, acceso);
+      }
+      return this.escalones(procesoId, acceso);
+    }
+
+    await this.dataSource.transaction(async (em) => {
+      const proceso = await this.exigirProceso(em, procesoId, true);
+      await this.exigirQuePuedaRepartir(em, procesoId, acceso);
+
+      const escalon = (await this.escalonesPorRol(em, proceso)).find((e) => e.orden === orden);
+      if (!escalon) {
+        throw new NotFoundException('Ese escalón no se designa: no está definido por un rol');
+      }
+      if (escalon.estado && escalon.estado !== 'PENDIENTE' && escalon.estado !== 'BLOQUEADO') {
+        throw new ConflictException(
+          `El escalón ${orden} ya decidió en esta revisión: la designación queda como está hasta el próximo envío`,
+        );
+      }
+
+      const [cuenta] = await this.cuentasConRol(escalon.roles, '', dto.usuarioId);
+      if (!cuenta) {
+        throw new BadRequestException(
+          'Esa persona no tiene el rol del escalón: solo se designa a quien lo tiene',
+        );
+      }
+
+      const repo = em.getRepository(DesignacionEscalon);
+      const actual = await repo.findOne({
+        where: { procesoId, numeral: NUMERAL_CON_DESIGNACION, escalon: orden, estado: 'VIGENTE' },
+      });
+      if (actual?.usuarioId === cuenta.usuarioId) {
+        throw new ConflictException('Esa persona ya está designada para este escalón');
+      }
+      if (actual) {
+        if ((dto.motivo ?? '').trim().length < 10) {
+          throw new BadRequestException('Explica por qué cambia quien revisa este escalón');
+        }
+        actual.estado = 'RELEVADO';
+        actual.relevadoAt = new Date();
+        actual.relevadoPor = acceso.userName;
+        actual.motivoRelevo = dto.motivo!.trim();
+        await repo.save(actual);
+      }
+
+      const nueva = await repo.save(
+        repo.create({
+          procesoId,
+          numeral: NUMERAL_CON_DESIGNACION,
+          escalon: orden,
+          escalonNombre: escalon.nombre,
+          usuarioId: cuenta.usuarioId,
+          usuarioNombre: cuenta.usuarioNombre,
+          personaId: cuenta.personaId ?? null,
+          nombre: cuenta.nombre,
+          estado: 'VIGENTE',
+          asignadoPor: acceso.userName,
+        }),
+      );
+
+      await em.save(
+        em.create(Trazabilidad, {
+          procesoId,
+          entidadId: nueva.id,
+          entidad: 'designacion_escalon',
+          accion: 'DESIGNAR',
+          detalle: {
+            numeral: NUMERAL_CON_DESIGNACION,
+            escalon: orden,
+            escalonNombre: escalon.nombre,
+            designado: cuenta.nombre,
+            anterior: actual?.nombre ?? null,
+            motivo: actual ? dto.motivo!.trim() : null,
+            // Si al designado ya le toca, el aviso le dice que tiene algo esperando.
+            pendiente: escalon.estado === 'PENDIENTE',
+          },
+          usuarioNombre: acceso.userName,
+          usuarioId: acceso.userId,
+        } as Partial<Trazabilidad>),
+      );
+    });
+
+    return this.escalones(procesoId, acceso);
   }
 
   // ------------------------------------------------ lo que consumen otras --
@@ -591,43 +814,6 @@ export class ParticipacionService {
    */
   async estaEnLaBandeja(procesoId: string): Promise<boolean> {
     return (await this.idsEnBandeja(procesoId)).length > 0;
-  }
-
-  /**
-   * Las solicitudes de CDP que están en la bandeja de la Financiera.
-   *
-   * «Estar» es tener un CDP en SOLICITADO que nadie ha tomado. Se define por el
-   * estado del CDP y no por la etapa del proceso a propósito: `procesos.etapa`
-   * es dónde se está trabajando, y un proceso puede haber avanzado mientras la
-   * solicitud sigue sin resolver.
-   *
-   * `modificacion_id IS NULL` con el criterio de `delProceso`: el CDP de una
-   * adición es suyo y no entra a esta bandeja.
-   */
-  async idsEnBandejaFinanciera(soloEste?: string): Promise<string[]> {
-    const filas: { id: string }[] = await this.dataSource.query(
-      `SELECT p.id
-         FROM hiring.procesos p
-         JOIN hiring.cdp c
-           ON c.proceso_id = p.id
-          AND c.modificacion_id IS NULL
-          AND c.estado = 'SOLICITADO'
-        WHERE p.estado = 'EN_CURSO'
-          AND ($1::uuid IS NULL OR p.id = $1::uuid)
-          AND NOT EXISTS (
-            SELECT 1 FROM hiring.participaciones_proceso pp
-             WHERE pp.proceso_id = p.id
-               AND pp.papel = 'FINANCIERA'
-               AND pp.estado = 'VIGENTE'
-          )`,
-      [soloEste ?? null],
-    );
-    return filas.map((f) => f.id);
-  }
-
-  /** Si esa solicitud concreta sigue en la bandeja de la Financiera. */
-  async estaEnLaBandejaFinanciera(procesoId: string): Promise<boolean> {
-    return (await this.idsEnBandejaFinanciera(procesoId)).length > 0;
   }
 
   /** Quién está en cada proceso del listado, en una sola consulta. */

@@ -12,10 +12,14 @@ import { Accion, Alcance, alcanceDeLugar, puede } from './alcance';
  * rol del módulo —sin contar al SUPER_ADMIN, que lo puede todo y taparía el
  * hueco—.
  */
-const SQL = readFileSync(
-  join(__dirname, '../../db/migrations/092_roles_de_contratacion_desde_cero.sql'),
-  'utf8',
-);
+// La 098 suma los trámites del PAA encima de la 092 sin rehacerla: los roles
+// que los ejercen son los de la 092, así que se leen juntas.
+const SQL = [
+  '092_roles_de_contratacion_desde_cero.sql',
+  '098_permisos_del_plan_anual_de_adquisiciones.sql',
+]
+  .map((archivo) => readFileSync(join(__dirname, '../../db/migrations', archivo), 'utf8'))
+  .join('\n');
 
 const SIEMBRA: Record<string, Alcance[]> = {};
 for (const [, rol, accion, lugar] of SQL.matchAll(

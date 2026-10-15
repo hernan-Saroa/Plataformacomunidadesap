@@ -102,11 +102,10 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       gestor,
     );
 
-    await cdp.solicitar(proceso.id, { rubro: 'A-02-02', valor: 1_000_000 }, gestor);
-    await cdp.verificar(proceso.id, {}, financiero);
-    await cdp.expedir(
+    await cdp.cargar(
       proceso.id,
-      { numero: 'CDP-2026-159', valor: 1_000_000, fechaExpedicion: hoy() },
+      { rubro: 'A-02-02', numero: 'CDP-2026-159', valor: 1_000_000, fechaExpedicion: hoy() },
+      null,
       financiero,
     );
     // La licitación pública no se abre sin la audiencia de asignación de

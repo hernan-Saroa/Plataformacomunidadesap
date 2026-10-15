@@ -120,10 +120,41 @@ export interface SugerenciaModalidad {
 }
 
 /**
- * SOLICITADO → VERIFICADO → EXPEDIDO
- *           ↘ RECHAZADO
+ * Desde la 103 el CDP se carga ya EXPEDIDO. SOLICITADO, VERIFICADO y RECHAZADO
+ * quedan de cuando el aplicativo lo tramitaba con la Financiera.
  */
 export type EstadoCdp = 'SOLICITADO' | 'VERIFICADO' | 'EXPEDIDO' | 'RECHAZADO' | 'ANULADO';
+
+export type OrigenCdp = 'ETAPA_4' | 'SOLICITADO_EN_ETAPA_3' | 'REGISTRADO_EN_ETAPA_3';
+
+/** El CDP visto desde el estudio previo (3.1), antes de enviarlo a revisión. */
+export interface CdpDelEstudioPrevio {
+  /** False en las modalidades que no comprometen gasto. */
+  aplica: boolean;
+  /** Si la modalidad exige el CDP cargado para enviar el estudio previo. */
+  obligatorio: boolean;
+  /**
+   * El CDP en curso. Desde la 103 se carga ya expedido; uno solicitado o
+   * verificado solo puede venir de antes, cuando el aplicativo lo tramitaba.
+   */
+  cdp: Cdp | null;
+  permiteRadicar: boolean;
+  motivo: string | null;
+  /** Si quien mira puede cargar, corregir o retirar (lo decide el backend). */
+  puedeGestionar: boolean;
+}
+
+/** Configuración: si una modalidad exige el CDP antes de radicar el estudio previo. */
+export interface CdpAntesDeRadicar {
+  modalidad: string;
+  nombre: string;
+  aplicaCdp: boolean;
+  obligatorio: boolean;
+  fundamento: string | null;
+  confirmado: boolean;
+  actualizadoPor: string | null;
+  updatedAt: string | null;
+}
 
 export interface Cdp {
   id: string;
@@ -136,52 +167,17 @@ export interface Cdp {
   observaciones: string | null;
   documentoId: string | null;
   solicitadoPor: string | null;
+  solicitadoAt?: string;
   expedidoPor: string | null;
+  /**
+   * De dónde salió: cargado en la 4.2 (o, antes de la 103, tramitado en la
+   * etapa 4), pedido desde el estudio previo antes de la 103, o cargado por el
+   * área desde el estudio previo.
+   */
+  origen?: OrigenCdp;
   /** Avisa si el CDP no alcanza a cubrir el valor estimado del proceso. */
   advertencia?: string | null;
   cubreValorEstimado?: boolean;
-}
-
-/**
- * Una solicitud de CDP en la bandeja de la Dirección Financiera (etapa 4).
- *
- * Lo que la pantalla necesita para decidir a cuál entrar sin abrir el proceso:
- * de qué es, por cuánto, desde cuándo espera y si ya la lleva alguien.
- */
-export interface SolicitudEnBandeja {
-  procesoId: string;
-  radicado: string;
-  objeto: string;
-  modalidad: string | null;
-  valor: number | null;
-  /**
-   * El valor todavía no es el del CDP sino el estimado del proceso.
-   *
-   * Se distingue porque no es lo mismo: el estimado es contra lo que se va a
-   * verificar la disponibilidad, no una cifra ya certificada.
-   */
-  valorEsEstimado: boolean;
-  rubro: string | null;
-  estado: EstadoCdp;
-  solicitadoPor: string | null;
-  solicitadoAt: string;
-  diasEsperando: number;
-  /** Lleva parada más de lo tolerable; es lo mismo que alarma el correo diario. */
-  demorada: boolean;
-  aCargoDe: string | null;
-}
-
-/**
- * La bandeja de la Financiera, en tres montones.
- *
- * No se atienden igual: `sinTomar` es lo que hay que recoger, `mias` el trabajo
- * que ya es mío, y `deOtros` lo que lleva un compañero —que se ve para no
- * duplicar el trabajo, no para hacerlo—.
- */
-export interface BandejaCdp {
-  sinTomar: SolicitudEnBandeja[];
-  mias: SolicitudEnBandeja[];
-  deOtros: SolicitudEnBandeja[];
 }
 
 export interface EstadoRespaldo {
@@ -194,9 +190,8 @@ export interface EstadoRespaldo {
   /** Lo que de verdad decide si el proceso avanza. */
   puedeAbrirse: boolean;
   motivo: string | null;
-  /** Lo resuelve el backend con los roles del token, no el cliente. */
-  puedeSolicitar: boolean;
-  puedeGestionar: boolean;
+  /** Si quien mira puede cargar el CDP (4.2). Lo resuelve el backend con los roles del token. */
+  puedeCargar: boolean;
 }
 
 /**
@@ -508,7 +503,16 @@ export interface ProcesoResumen {
   participacion?: ParticipacionEnLista;
   /** Quien mira radicó el proceso: es el área que redacta el estudio previo. */
   radicadoPorMi?: boolean;
+  /** Desenlace: en curso, adjudicado, desierto, negado o cancelado por el PAA. */
+  estado?: EstadoDelProceso;
+  /** La línea del PAA de la que nació, si nació de una (migración 097). */
+  paaCodigo?: string | null;
+  paaAnio?: number | null;
+  /** Una revisión del PAA lo tiene detenido hasta que se decida. */
+  paaDetenido?: boolean;
 }
+
+export type EstadoDelProceso = 'EN_CURSO' | 'ADJUDICADO' | 'DESIERTO' | 'NEGADO' | 'CANCELADO';
 
 /**
  * Por qué quien mira no puede resolver la 3.4 (EFDS-1183).
@@ -517,13 +521,20 @@ export interface ProcesoResumen {
  * - `SIN_ABOGADO`: nadie ha repartido el proceso todavía; se hace en la 3.3.
  * - `NO_ES_TUYO`: lo revisa otro abogado, el que lo recibió.
  */
-export type MotivoNoDecide = 'SIN_ABOGADO' | 'NO_ES_TUYO' | 'SIN_PERMISO';
+export type MotivoNoDecide = 'SIN_ABOGADO' | 'NO_ES_TUYO' | 'SIN_PERMISO' | 'EN_CADENA';
 
 /** Quién resuelve la 3.4 de este proceso y si le toca a quien mira. */
 export interface RevisionDelProceso {
   abogado: { nombre: string; usuarioNombre: string; cargo: string | null } | null;
   puedeDecidir: boolean;
+  /** `EN_CADENA`: la 3.1 va por una cadena y el escalón que espera no es de quien mira. */
   motivo: MotivoNoDecide | null;
+  /** A quién espera la cadena, o por qué no le toca a quien mira, en una frase (101). */
+  espera?: string | null;
+  /** La ronda de la cadena, cuando la 3.1 se aprueba por una (101). */
+  ronda?: RondaDeAprobacion | null;
+  /** Lo que quien mira puede hacer ahora: sin cadena, las tres si es el abogado. */
+  acciones?: AccionEscalon[];
 }
 
 // ------------------ causal de contratación · 3.6 (3.5.1 de la matriz) ------
@@ -534,8 +545,7 @@ export interface RevisionDelProceso {
  * - `NO_APLICA`: la matriz no marca la causal en la modalidad del proceso.
  * - `MODALIDAD_SIN_RATIFICAR`: la 3.1 no está aprobada, así que el área aún
  *   puede cambiar la modalidad de cuya lista sale la causal.
- * - `ETAPA_PASADA`: el proceso salió de la etapa 3 y la causal ya sustentó la
- *   solicitud de CDP.
+ * - `ETAPA_PASADA`: el proceso salió de la etapa 3 y la causal ya quedó.
  */
 export type MotivoNoElige = 'NO_APLICA' | 'MODALIDAD_SIN_RATIFICAR' | 'ETAPA_PASADA';
 
@@ -677,18 +687,15 @@ export interface EstadoParticipacion {
   puedeRepartir: boolean;
   contratacion: Participante | null;
   abogado: Participante | null;
-  /** Quién responde por el CDP en la etapa 4, o nulo si nadie lo ha tomado. */
-  financiera: Participante | null;
   /**
-   * Hay una solicitud de CDP sin atender y quien mira puede hacerse cargo.
-   *
-   * Lo resuelve el backend contra la bandeja y no solo contra el permiso: en un
-   * proceso que no ha pedido CDP, o que ya lo tiene expedido, no hay nada que
-   * tomar y el botón no debe aparecer.
+   * Quién tomó la solicitud de CDP antes de la 103. Desde entonces el CDP se
+   * tramita por fuera y nadie lo toma: queda como historia.
    */
-  puedeTomarFinanciera: boolean;
+  financiera: Participante | null;
   /** Se quedó sin abogado: no debería, pero pasa, y hay que verlo. */
   sinAbogado: boolean;
+  /** Si el abogado se elige en su escalón de la cadena de la 3.1, sin paso aparte (102). */
+  abogadoEnCadena?: boolean;
   historial: ParticipacionRelevada[];
 }
 
@@ -696,7 +703,7 @@ export interface EstadoParticipacion {
 export interface ParticipacionEnLista {
   contratacion: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
   abogado: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
-  /** Quién atiende el CDP en la Financiera, si alguien lo tomó. */
+  /** Quién tomó la solicitud de CDP en la Financiera antes de la 103, si alguien la tomó. */
   financiera?: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
   /** Llegó a la Dirección y nadie lo ha recibido. */
   enBandeja: boolean;
@@ -715,6 +722,12 @@ export interface EstudioPrevio {
     expediente?: string;
     /** Quien mira radicó el proceso: es el área que redacta el estudio previo. */
     radicadoPorMi?: boolean;
+    /** Desenlace del proceso; CANCELADO si lo canceló una revisión del PAA. */
+    estado?: EstadoDelProceso;
+    /** Una revisión por cambio del PAA lo tiene detenido. */
+    paaDetenido?: boolean;
+    /** Quien mira puede borrar el proceso: solo el superadministrador (108). */
+    puedeBorrar?: boolean;
   };
   estado: EstadoActividad;
   version: number;
@@ -3192,8 +3205,6 @@ export interface AlertaVencimiento {
     | 'DEVUELTA_PARA_CORREGIR'
     /** Recibido en la Dirección y sin quien lo revise: el proceso está parado. */
     | 'SIN_ABOGADO'
-    /** Una solicitud de CDP que la Financiera no ha tomado. */
-    | 'CDP_SIN_ATENDER'
     /** Una actividad con plazo por vencer o vencido; sus días son hábiles. */
     | 'PLAZO_ACTIVIDAD';
   procesoId: string;
@@ -3468,9 +3479,11 @@ export interface ElementoPorRevisar {
    * actividad, quien nombra su regla de aprobación; y las pólizas, las
    * modificaciones y las cuentas de cobro se deciden una por una.
    */
-  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO';
+  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO' | 'REVISION_PAA';
   /** Cuál de ellas, cuando la actividad tiene varias: «Póliza 123 · Seguros X». */
   detalle: string | null;
+  /** La revisión del PAA que se abre, cuando el proceso y el numeral no bastan. */
+  referencia?: string | null;
   procesoId: string;
   radicado: string | null;
   objeto: string;
@@ -3482,6 +3495,8 @@ export interface ElementoPorRevisar {
   enviadoPor: string | null;
   desde: string;
   diasEsperando: number;
+  /** En qué escalón espera, cuando se aprueba por una cadena (migración 101). */
+  escalon?: { orden: number; de: number; nombre: string } | null;
 }
 
 /** Una actividad cuyo plazo está por vencer o ya venció; los días son hábiles. */
@@ -3537,7 +3552,9 @@ export type EventoAviso =
   | 'APROBADA'
   | 'RECIBIDO_EN_CONTRATACION'
   | 'PROCESO_RADICADO'
-  | 'DOCUMENTO_ADJUNTO';
+  | 'DOCUMENTO_ADJUNTO'
+  | 'REVISION_PAA'
+  | 'PROCESO_CANCELADO';
 
 /** El papel que alguien cumple en un proceso concreto. */
 export type PapelAviso =
@@ -3611,3 +3628,418 @@ export interface ConfiguracionAvisos {
   avisos: AvisoEvento[];
 }
 
+
+// ================================================ Plan Anual de Adquisiciones --
+//
+// Migración 097: los procesos nacen de una línea del PAA, que se carga en Excel
+// por vigencia, se versiona y se compara antes de activarse.
+
+export interface RegionPaa {
+  id: string;
+  /** En qué Excel vienen sus líneas: el suyo, o el de otro territorio (Chocó → Sede Central). */
+  documentoId: string;
+  codigo: string;
+  nombre: string;
+  prefijoLinea: string;
+  unidadContratacion: string;
+  activa: boolean;
+}
+
+export type EstadoVersionPaa = 'INVALIDA' | 'VALIDADA' | 'ACTIVA' | 'REEMPLAZADA' | 'DESCARTADA';
+
+/** Un mensaje de validación que señala dónde está el problema. */
+export interface HallazgoPaa {
+  fila: number | null;
+  columna: string | null;
+  valor: string | null;
+  mensaje: string;
+}
+
+export interface ResumenVersionPaa {
+  id: string;
+  numero: number;
+  estado: EstadoVersionPaa;
+  nombreArchivo: string;
+  totalLineas: number;
+  errores: number;
+  advertencias: number;
+  cargadaPor: string | null;
+  cargadaAt: string;
+  activadaPor: string | null;
+  activadaAt: string | null;
+  descartadaPor: string | null;
+  descartadaAt: string | null;
+  motivoDescarte: string | null;
+  reemplazadaAt: string | null;
+}
+
+/** El Excel del PAA que publica un territorio, con las regiones que trae y sus años. */
+export interface DocumentoPaa {
+  id: string;
+  codigo: string;
+  nombre: string;
+  regiones: RegionPaa[];
+  vigencias: VigenciaPaa[];
+}
+
+export interface VigenciaPaa {
+  id: string;
+  documentoId: string;
+  anio: number;
+  vigente: boolean;
+  declaradaVigentePor: string | null;
+  declaradaVigenteAt: string | null;
+  activa: ResumenVersionPaa | null;
+  versiones: ResumenVersionPaa[];
+}
+
+export interface ResumenComparacionPaa {
+  nuevas: number;
+  eliminadas: number;
+  modificadas: number;
+  sinCambios: number;
+  columnasNuevas: number;
+  columnasRetiradas: number;
+  porRegion: Record<string, { nuevas: number; eliminadas: number; modificadas: number }>;
+}
+
+export interface CambioDeLineaPaa {
+  campo: string;
+  etiqueta: string;
+  antes: string | number | null;
+  despues: string | number | null;
+}
+
+export interface LineaResumidaPaa {
+  codigo: string;
+  regionId: string;
+  objeto: string | null;
+}
+
+export interface ComparacionPaa {
+  id: string;
+  tipo: 'MISMA_VIGENCIA' | 'CAMBIO_VIGENCIA';
+  confiable: boolean;
+  resumen: ResumenComparacionPaa;
+  detalle: {
+    nuevas: LineaResumidaPaa[];
+    eliminadas: LineaResumidaPaa[];
+    modificadas: (LineaResumidaPaa & { cambios: CambioDeLineaPaa[] })[];
+    columnasNuevas: string[];
+    columnasRetiradas: string[];
+    avisos: string[];
+  };
+  base: { id: string; numero: number; anio: number } | null;
+  regiones: { id: string; nombre: string }[];
+}
+
+export interface VersionPaa extends Omit<ResumenVersionPaa, 'errores' | 'advertencias'> {
+  vigenciaId: string;
+  documento: { id: string; nombre: string };
+  anio: number;
+  vigente: boolean;
+  errores: HallazgoPaa[];
+  advertencias: HallazgoPaa[];
+  porRegion: { id: string; nombre: string; lineas: number }[];
+  comparacion: {
+    id: string;
+    tipo: ComparacionPaa['tipo'];
+    confiable: boolean;
+    resumen: ResumenComparacionPaa;
+    avisos: string[];
+    base: { id: string; numero: number; anio: number } | null;
+  } | null;
+}
+
+/** Un campo que el PAA cambió en el proceso, o que habría cambiado. */
+export interface CampoAplicadoPaa {
+  campo: string;
+  etiqueta: string;
+  antes: unknown;
+  despues: unknown;
+  aplicado: boolean;
+  motivo?: string;
+}
+
+export type TipoRevisionPaa = 'MODIFICACION' | 'ELIMINACION' | 'CAMBIO_VIGENCIA';
+export type DecisionRevisionPaa = 'CONTINUAR' | 'DEVOLVER' | 'MIGRAR' | 'CANCELAR';
+
+export interface ProcesoAfectadoPaa {
+  procesoId: string;
+  radicado: string;
+  objeto: string;
+  etapa: number;
+  codigo: string;
+  tratamiento: 'SIN_CAMBIOS' | 'ACTUALIZADO' | 'MODIFICADA_SIN_EFECTO' | 'ELIMINADA';
+  revision: { tipo: TipoRevisionPaa; bloquea: boolean } | null;
+  abogado: { id: string | null; nombre: string } | null;
+  cambios: { linea: CambioDeLineaPaa[]; proceso: CampoAplicadoPaa[] };
+  lineaNuevaId: string | null;
+}
+
+export interface ResumenAfectadosPaa {
+  procesos: number;
+  sinCambios: number;
+  actualizados: number;
+  modificadosSinEfecto: number;
+  eliminados: number;
+  revisiones: number;
+  bloqueados: number;
+}
+
+export interface AfectadosPaa {
+  version: { id: string; numero: number; estado: EstadoVersionPaa };
+  anio: number;
+  versionActiva: { id: string; numero: number } | null;
+  resumen: ResumenAfectadosPaa;
+  procesos: ProcesoAfectadoPaa[];
+}
+
+export interface AfectadosPorCambioDeVigencia {
+  anio: number;
+  version: { id: string; numero: number } | null;
+  vigenteActual: { id: string; anio: number } | null;
+  procesos: {
+    procesoId: string;
+    radicado: string;
+    objeto: string;
+    etapa: number;
+    codigo: string | null;
+    anio: number | null;
+    abogado: { id: string | null; nombre: string } | null;
+  }[];
+}
+
+export interface CampoFormularioPaa {
+  clave: string;
+  etiquetaFormato: string;
+  etiqueta: string;
+  visible: boolean;
+  orden: number;
+  uso: 'identificador' | 'proceso' | 'informativo';
+  siempreVisible: boolean;
+  estado: 'normal' | 'nueva' | 'huerfana';
+}
+
+export interface CamposDelFormularioPaa {
+  region: RegionPaa;
+  vigencia: { id: string; anio: number; vigente: boolean };
+  origen: 'guardada' | 'vigencia_anterior' | 'formato';
+  campos: CampoFormularioPaa[];
+}
+
+/** Una región con el PAA del que saldría el proceso: el vigente de su documento. */
+export interface RegionParaCrearPaa extends RegionPaa {
+  documento: string | null;
+  vigente: { id: string; anio: number; versionId: string; versionNumero: number } | null;
+  /** Por qué no se puede crear desde ella, si no tiene PAA vigente. */
+  motivo: string | null;
+}
+
+export interface OpcionesDeCreacionPaa {
+  regiones: RegionParaCrearPaa[];
+  /** Si al menos una región tiene PAA vigente. */
+  listo: boolean;
+  motivo: string | null;
+}
+
+export interface LineaEncontradaPaa {
+  id: string;
+  codigo: string;
+  objeto: string | null;
+  modalidad: string | null;
+  valorTotal: number | null;
+  enUso: { procesoId: string; radicado: string } | null;
+}
+
+export interface BusquedaLineasPaa {
+  vigencia: { id: string; anio: number };
+  version: { id: string; numero: number };
+  total: number;
+  pagina: number;
+  porPagina: number;
+  lineas: LineaEncontradaPaa[];
+}
+
+export interface DetalleLineaPaa {
+  id: string;
+  codigo: string;
+  region: { id: string; nombre: string };
+  vigencia: { id: string; anio: number; vigente: boolean };
+  version: { id: string; numero: number; estado: EstadoVersionPaa };
+  campos: { clave: string; etiqueta: string; valor: string | number | null }[];
+  enUso: { procesoId: string; radicado: string } | null;
+}
+
+export interface RevisionPaa {
+  id: string;
+  procesoId: string;
+  radicado: string;
+  objeto: string;
+  etapa: number;
+  estadoProceso: EstadoDelProceso;
+  region: string | null;
+  regionId: string | null;
+  codigo: string;
+  tipo: TipoRevisionPaa;
+  porCambioAnual: boolean;
+  versionAnterior: { numero: number; anio: number };
+  versionNueva: { numero: number; anio: number };
+  cambios: { linea: CambioDeLineaPaa[]; proceso: CampoAplicadoPaa[] };
+  motivo: string;
+  bloquea: boolean;
+  responsable: { id: string | null; nombre: string; usuario: string } | null;
+  estado: 'PENDIENTE' | 'RESUELTA';
+  decision: DecisionRevisionPaa | null;
+  justificacion: string | null;
+  decididaPor: string | null;
+  decididaAt: string | null;
+  createdAt: string;
+}
+
+export interface DetalleRevisionPaa extends RevisionPaa {
+  decisiones: { decision: DecisionRevisionPaa; disponible: boolean; motivo: string | null }[];
+  puedeDecidir: boolean;
+}
+
+export interface OrigenPaaDelProceso {
+  tieneOrigen: boolean;
+  linea: {
+    id: string;
+    codigo: string;
+    fila: number;
+    objeto: string | null;
+    region: string;
+    anio: number;
+    vigente: boolean;
+    version: { id: string; numero: number; estado: EstadoVersionPaa };
+  } | null;
+  aplicaciones: {
+    id: string;
+    tipo: 'CREACION' | 'ACTUALIZACION' | 'MIGRACION';
+    campos: CampoAplicadoPaa[];
+    aplicadoPor: string | null;
+    aplicadoAt: string;
+    codigoOrigen: string | null;
+    versionOrigen: number | null;
+    anioOrigen: number | null;
+    codigoDestino: string;
+    versionDestino: number;
+    anioDestino: number;
+  }[];
+  revisiones: RevisionPaa[];
+  bloqueado: boolean;
+}
+
+
+// ================================================= aprobación por escalones --
+//
+// Migración 101: una actividad puede aprobarse por una cadena de escalones que
+// deciden en orden. Toda devolución regresa a quien la envió y el reenvío abre
+// una ronda nueva desde el escalón 1.
+
+export type AccionEscalon = 'APROBAR' | 'DEVOLVER' | 'NEGAR';
+export type ReglaDecision = 'UNO' | 'TODOS';
+export type PapelEscalon = 'ABOGADO' | 'CONTRATACION' | 'SUPERVISOR';
+export type EstadoEscalon = 'BLOQUEADO' | 'PENDIENTE' | 'APROBADO' | 'DEVUELTO' | 'NEGADO' | 'ANULADO';
+
+/** Un escalón tal como se configura en la plantilla. */
+export interface EscalonConfigurado {
+  nombre: string;
+  roles: string[];
+  /** Ids de persona del directorio. */
+  personas: string[];
+  papeles: PapelEscalon[];
+  reglaDecision: ReglaDecision;
+  acciones: AccionEscalon[];
+}
+
+/** Una plantilla de cadena, como la lista Configuración. */
+export interface CadenaDeAprobacion {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  permiteMismoAprobador: boolean;
+  escalones: (EscalonConfigurado & {
+    nombresRoles: string[];
+    nombresPersonas: string[];
+    nombresPapeles: string[];
+  })[];
+  /** Las actividades que la exigen hoy. */
+  usadaEn: { numeral: string; nombre: string }[];
+  /** Escalones que nombran roles que ya no existen o están inactivos. */
+  problemas?: string[];
+  updatedAt: string;
+  updatedBy: string | null;
+}
+
+/** Un escalón dentro de la ronda de una actividad. */
+export interface EscalonDeRonda {
+  orden: number;
+  nombre: string;
+  estado: EstadoEscalon;
+  reglaDecision: ReglaDecision;
+  acciones: AccionEscalon[];
+  /** Nombres legibles: roles, personas y papeles del proceso. */
+  responsables: string[];
+  activadoAt: string | null;
+  resueltoAt: string | null;
+  decisiones: { decision: 'APROBADO' | 'DEVUELTO' | 'NEGADO'; revisadoPor: string; fecha: string }[];
+}
+
+/** La ronda en curso de una actividad, o la última si ya se cerró. */
+export interface RondaDeAprobacion {
+  id: string;
+  ronda: number;
+  nombre: string | null;
+  estado: 'EN_CURSO' | 'APROBADA' | 'DEVUELTA' | 'NEGADA' | 'RETIRADA' | 'CANCELADA';
+  escalonActual: number | null;
+  iniciadaPor: string | null;
+  iniciadaAt: string;
+  cerradaAt: string | null;
+  /** Lo que quien mira puede hacer ahora, ya resuelto en el servidor. */
+  acciones: AccionEscalon[];
+  /** Por qué no puede aprobar, cuando es responsable pero algo se lo impide. */
+  motivo: string | null;
+  escalones: EscalonDeRonda[];
+}
+
+/** Un escalón por rol de la cadena de la 3.1, con quién lo decide en el proceso (102). */
+export interface EscalonPorDesignar {
+  orden: number;
+  nombre: string;
+  /** `ABOGADO`: se designa eligiendo al abogado del proceso; `ROL`: a alguien con el rol. */
+  tipo: 'ROL' | 'ABOGADO';
+  /** Nombres legibles de los roles del escalón. */
+  roles: string[];
+  designado: {
+    usuarioId: string;
+    nombre: string;
+    usuarioNombre: string;
+    asignadoAt: string;
+    asignadoPor: string | null;
+  } | null;
+  /** Lo que ya decidió en la revisión en curso no se cambia. */
+  cambiable: boolean;
+  /** Si es el escalón que está esperando decisión. */
+  leToca: boolean;
+  /** Qué impide decidirlo: el designado perdió el rol, el abogado el permiso… */
+  problema?: string | null;
+  /** El rol ya no existe: se corrige la cadena, no designando. */
+  rolInexistente?: boolean;
+}
+
+/** Lo que la 3.3 enseña de los escalones por rol de la 3.1 (102). */
+export interface EscalonesPorDesignar {
+  puedeDesignar: boolean;
+  escalones: EscalonPorDesignar[];
+  historial: {
+    escalon: number;
+    escalonNombre: string | null;
+    nombre: string;
+    asignadoAt: string;
+    relevadoAt: string | null;
+    relevadoPor: string | null;
+    motivoRelevo: string | null;
+  }[];
+}

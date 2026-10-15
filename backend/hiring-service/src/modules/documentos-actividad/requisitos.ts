@@ -58,6 +58,27 @@ export function obligatoriosPendientes<T extends RequisitoExigible>(
   return requeridos.filter((r) => r.obligatorio && !hay.has(r.codigo));
 }
 
+/** Estados en que la actividad ya no se mueve: su lista queda como se cerró. */
+export const ESTADOS_CERRADOS: readonly string[] = ['APROBADO', 'NEGADO', 'NO_APLICA'];
+
+/**
+ * Lo que una actividad cerrada sigue mostrando: lo que alguna vez se entregó.
+ *
+ * El catálogo cambia —se agrega un documento, se suma una modalidad a uno que
+ * ya existía— y la lista viva se lo aplicaría a procesos que pasaron ese punto
+ * hace rato, con un obligatorio nuevo que nadie va a poder cargar. Por fecha
+ * no alcanza: sumarle una modalidad a un requisito viejo no le cambia la
+ * fecha de creación. Lo entregado sí es la huella de lo que se pidió al
+ * cerrar; lo que quedó sin cargar ni contaba ni se va a cargar ya.
+ */
+export function vigentesAlCierre<T extends { codigo: string }>(
+  requeridos: T[],
+  entregados: string[],
+): T[] {
+  const hay = new Set(entregados);
+  return requeridos.filter((r) => hay.has(r.codigo));
+}
+
 /** Lo que se va a hacer con un documento de la lista. */
 export type CambioDeDocumento = 'cargar' | 'anular';
 

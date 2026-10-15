@@ -458,11 +458,11 @@ export class ComiteContratacionService {
       }
 
       // Aprobar cierra la actividad, y con ella la etapa 3 en las modalidades
-      // que pasan por comité: la solicitud de CDP nace ahí. Observar no cierra
+      // que pasan por comité: el proceso pasa ahí a la del CDP. Observar no cierra
       // nada y rechazar cierra el proceso entero, así que ninguno de los dos
       // pregunta.
       if (estado === 'APROBADO') {
-        await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+        await this.cdp.abrirEtapa4SiCerroLaEtapa3(em, procesoId, acceso);
       }
     });
 
@@ -526,7 +526,7 @@ export class ComiteContratacionService {
         umbral: umbral ? { valor: umbral.valor, unidad: umbral.unidad, enPesos } : null,
       });
 
-      await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+      await this.cdp.abrirEtapa4SiCerroLaEtapa3(em, procesoId, acceso);
     });
 
     return this.estado(procesoId, acceso);

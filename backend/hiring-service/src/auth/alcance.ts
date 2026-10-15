@@ -48,8 +48,15 @@ const LA_SATISFACEN: Record<Accion, readonly Accion[]> = {
 
 // ------------------------------------------------------------- lugares --
 
-/** Los trámites que no tienen numeral en la matriz. */
-export const TRAMITES = ['INC.1', 'INC.2'] as const;
+/**
+ * Los trámites que no tienen numeral en la matriz.
+ *
+ * `PAA` es la administración del Plan Anual de Adquisiciones —regiones,
+ * vigencias, versiones, campos— y `PAA.R` las revisiones que abre un cambio del
+ * PAA en los procesos. Van separados porque quien carga el Excel (Planeación,
+ * la Dirección) no es quien decide si un proceso sigue (el abogado).
+ */
+export const TRAMITES = ['INC.1', 'INC.2', 'PAA', 'PAA.R'] as const;
 export type Tramite = (typeof TRAMITES)[number];
 
 /**

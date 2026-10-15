@@ -16,6 +16,7 @@ function montar(
     garantias?: any[];
     modificaciones?: any[];
     pagos?: any[];
+    revisionesPaa?: any[];
   },
   /** Lo que la matriz de permisos le deja a quien consulta. */
   permite: (accion: string, numeral: string) => boolean = () => true,
@@ -24,16 +25,18 @@ function montar(
   const dataSource = {
     query: jest.fn(async (sql: string) => {
       consultas.push(sql);
-      if (sql.includes('reglas_actividad')) return filas.aprobaciones;
+      // Lo que espera un escalón de la cadena (migración 101).
+      if (sql.includes('aprobacion_escalones')) return filas.aprobaciones;
       if (sql.includes('FROM hiring.garantias')) return filas.garantias ?? [];
       if (sql.includes('FROM hiring.modificaciones_contrato')) return filas.modificaciones ?? [];
       if (sql.includes('FROM hiring.pagos_contrato')) return filas.pagos ?? [];
+      if (sql.includes('FROM hiring.paa_revisiones')) return filas.revisionesPaa ?? [];
       if (sql.includes('participaciones_proceso')) return filas.estudios;
       return [];
     }),
   };
   const alcance = { puedeEn: jest.fn(async (_a: unknown, accion: string, numeral: string) => permite(accion, numeral)) };
-  const service = new AlertasService(dataSource as never, {} as never, {} as never, alcance as never);
+  const service = new AlertasService(dataSource as never, {} as never, alcance as never);
   return { service, consultas };
 }
 
@@ -67,12 +70,16 @@ describe('bandeja Por revisar', () => {
     );
   });
 
-  it('no lista la 3.1 dos veces aunque tenga regla de aprobación', async () => {
-    // Su decisión es la del abogado; ofrecerla también por la regla abriría
-    // dos caminos para lo mismo.
-    const { service } = montar({ aprobaciones: [fila('3.1', '2026-09-20')], estudios: [] });
+  it('la 3.1 por cadena sale una vez, como estudio previo, desde el escalón que espera', async () => {
+    // Con cadena (101) decide el escalón; la consulta del abogado excluye los
+    // estudios con ronda en curso, así que no sale por los dos caminos.
+    const { service, consultas } = montar({ aprobaciones: [fila('3.1', '2026-09-20')], estudios: [] });
 
-    await expect(service.porRevisar(acceso)).resolves.toEqual([]);
+    const lista = await service.porRevisar(acceso);
+
+    expect(lista.map((e) => [e.tipo, e.numeral])).toEqual([['ESTUDIO_PREVIO', '3.1']]);
+    const delAbogado = consultas.find((s) => s.includes("pp.papel = 'ABOGADO'")) ?? '';
+    expect(delAbogado).toContain("r.estado = 'EN_CURSO'");
   });
 
   it('lo que más lleva esperando va primero', async () => {
@@ -92,7 +99,30 @@ describe('bandeja Por revisar', () => {
 
     await service.porRevisar({ ...acceso, userId: '', userName: '' });
 
-    expect(consultas.some((c) => c.includes('participaciones_proceso'))).toBe(false);
+    expect(consultas.some((c) => c.includes("pa.numeral = '3.1'"))).toBe(false);
+  });
+
+  it('trae las revisiones del PAA, diciendo cuáles detienen el proceso', async () => {
+    const { service } = montar({
+      aprobaciones: [],
+      estudios: [],
+      revisionesPaa: [{ ...fila('3.1', '2026-09-20'), actividad: 'Línea retirada del PAA', detalle: 'CHOCO 3 · detiene el proceso' }],
+    });
+
+    const lista = await service.porRevisar(acceso);
+
+    expect(lista.map((e) => [e.tipo, e.actividad, e.detalle])).toEqual([
+      ['REVISION_PAA', 'Línea retirada del PAA', 'CHOCO 3 · detiene el proceso'],
+    ]);
+  });
+
+  it('sin abogado, la revisión del PAA es de quien puede decidirlas', async () => {
+    const { service, consultas } = montar({ aprobaciones: [], estudios: [] }, (accion, lugar) => !(accion === 'decidir' && lugar === 'PAA.R'));
+
+    await service.porRevisar({ ...acceso, userId: '', userName: '' });
+
+    // Sin usuario y sin permiso de bandeja no hay a quién buscarle revisiones.
+    expect(consultas.some((c) => c.includes('FROM hiring.paa_revisiones'))).toBe(false);
   });
 
   it('trae las pólizas, modificaciones y cuentas de cobro, cada una con su detalle', async () => {

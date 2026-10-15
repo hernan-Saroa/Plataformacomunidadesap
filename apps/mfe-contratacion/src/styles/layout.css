@@ -912,3 +912,17 @@
   border-color: #e2e8f0;
   color: #94a3b8;
 }
+
+/* ------------------------------------------ Plan Anual de Adquisiciones --- */
+
+/* Pestañas subrayadas: el borde de la activa se monta sobre el de la barra,
+   para que la línea azul se vea como parte de la pestaña y no debajo. */
+.pestana-paa {
+  margin-bottom: -1px;
+}
+
+/* Los cambios de una línea, uno por renglón y sin viñetas. */
+.cambios-paa {
+  list-style: none;
+  padding-left: 0;
+}

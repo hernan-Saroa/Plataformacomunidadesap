@@ -136,7 +136,9 @@ export class AvisosService {
               AND vigente_hasta IS NULL
               AND numeral = $1
               AND (jsonb_array_length(COALESCE(config -> 'roles', '[]'::jsonb)) > 0
-                OR jsonb_array_length(COALESCE(config -> 'personas', '[]'::jsonb)) > 0)
+                OR jsonb_array_length(COALESCE(config -> 'personas', '[]'::jsonb)) > 0
+                -- O una cadena de escalones (migración 101).
+                OR config ? 'cadenaId')
          ) AS requiere`,
         [numeral],
       );

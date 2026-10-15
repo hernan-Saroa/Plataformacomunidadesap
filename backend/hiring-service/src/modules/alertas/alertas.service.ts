@@ -4,10 +4,9 @@ import { DataSource } from 'typeorm';
 import { AlcanceService } from '../../auth/alcance.service';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
-import { TOLERANCIA_CDP_SIN_ATENDER } from '../cdp/cdp.service';
+import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
 import { NOMBRE_TIPO } from '../modificaciones/reglas-por-tipo';
 import { Campana } from '../notificaciones/campana';
-import { ParticipacionService } from '../participacion/participacion.service';
 import { plazoDeActividad } from './plazos-actividad';
 import {
   ClaveParametroAlerta,
@@ -38,18 +37,6 @@ export const ANTICIPACION_POR_DEFECTO = 30;
  * proceso y sentarse a repartirlo.
  */
 export const TOLERANCIA_SIN_ABOGADO = 2;
-
-/**
- * Días que una solicitud de CDP puede estar sin que nadie la atienda.
- *
- * Vive en `cdp.service` y se reexporta aquí para no romper a quien ya la
- * importaba de este archivo. Se mudó cuando la bandeja de la Financiera pasó a
- * marcar con ella qué solicitudes van demoradas: importarla desde el CDP habría
- * cerrado el ciclo `cdp → alertas → participacion → cdp`, y el umbral es una
- * regla del CDP —cuánto puede esperar una solicitud— que la alerta usa, no al
- * revés.
- */
-export { TOLERANCIA_CDP_SIN_ATENDER } from '../cdp/cdp.service';
 
 /**
  * Plazo legal para liquidar de común acuerdo: cuatro meses desde que el
@@ -91,16 +78,6 @@ export type TipoAlerta =
    */
   | 'SIN_ABOGADO'
   /**
-   * Una solicitud de CDP que la Dirección Financiera no ha resuelto.
-   *
-   * Es la única alerta que puede no tener responsable y aun así tener que
-   * enviarse: mientras nadie la toma de la bandeja no hay a quién reclamarle,
-   * y es justo entonces cuando hay que avisar para que no se acumulen. Por eso
-   * `notificar` la expande a una por cada cuenta que pueda resolverla, en vez
-   * de descartarla como al resto de lo que llega sin destinatario.
-   */
-  | 'CDP_SIN_ATENDER'
-  /**
    * Una actividad con plazo que está por vencer o ya se venció (EFDS-1183).
    *
    * Sus días se cuentan hábiles, no calendario como los demás: así se acordó
@@ -116,9 +93,14 @@ export interface ElementoPorRevisar {
    * las modificaciones y las cuentas de cobro se deciden una por una dentro de
    * su actividad.
    */
-  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO';
+  tipo: 'ESTUDIO_PREVIO' | 'ACTIVIDAD' | 'GARANTIA' | 'MODIFICACION' | 'PAGO' | 'REVISION_PAA';
   /** Cuál de ellas, cuando la actividad tiene varias: «Póliza 123 · Seguros X». */
   detalle: string | null;
+  /**
+   * Qué abrir cuando el proceso y el numeral no bastan: la revisión del PAA,
+   * que no es una actividad del riel sino una decisión sobre el proceso.
+   */
+  referencia: string | null;
   procesoId: string;
   radicado: string | null;
   objeto: string;
@@ -130,6 +112,11 @@ export interface ElementoPorRevisar {
   enviadoPor: string | null;
   desde: string;
   diasEsperando: number;
+  /**
+   * En qué escalón espera, cuando la actividad se aprueba por una cadena
+   * (migración 101): «Escalón 2 de 4 · Coordinador». Nulo en lo demás.
+   */
+  escalon?: { orden: number; de: number; nombre: string } | null;
 }
 
 /** Una actividad cuyo plazo aprieta o ya pasó. */
@@ -222,21 +209,23 @@ export class AlertasService {
 
   constructor(
     private readonly dataSource: DataSource,
-    /**
-     * Para saber a quién avisarle de una solicitud que nadie ha tomado.
-     *
-     * Se pide el servicio en vez de repetir aquí la consulta de «cuentas con
-     * este permiso»: quién puede resolver un CDP tiene que responderlo un solo
-     * sitio, o el aviso y la bandeja acabarán discrepando sobre lo mismo.
-     */
-    private readonly participacion: ParticipacionService,
     @Optional() private readonly parametros?: ParametrosAlertaService,
     /**
      * Quién puede aprobar pólizas, decidir modificaciones o ratificar la
      * modalidad: la matriz de permisos, la misma que consultan los guards.
      */
     @Optional() private readonly alcance?: AlcanceService,
-  ) {}
+    /**
+     * Quién decide cada escalón (migración 101). Opcional como los demás, para
+     * que las pruebas que construyen el servicio a mano sigan funcionando con
+     * solo la fuente de datos.
+     */
+    @Optional() cadenas?: CadenaAprobacionService,
+  ) {
+    this.cadenas = cadenas ?? new CadenaAprobacionService(dataSource);
+  }
+
+  private readonly cadenas: CadenaAprobacionService;
 
   private hoy(): string {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
@@ -274,7 +263,6 @@ export class AlertasService {
       aprobaciones,
       devueltas,
       sinAbogado,
-      cdpSinAtender,
       plazosActividad,
     ] = await Promise.all([
       this.amparosPorVencer(),
@@ -283,7 +271,6 @@ export class AlertasService {
       this.aprobacionesPendientes(acceso),
       this.devueltasParaCorregir(acceso),
       this.procesosSinAbogado(hoy, plazos.tolerancia_sin_abogado, acceso),
-      this.solicitudesDeCdpSinAtender(hoy),
       this.plazosDeActividades(acceso),
     ]);
 
@@ -318,7 +305,7 @@ export class AlertasService {
       })
       .filter((a) => a.estado !== 'VIGENTE');
 
-    return [...aprobaciones, ...devueltas, ...sinAbogado, ...cdpSinAtender, ...conPlazo, ...vencimientos]
+    return [...aprobaciones, ...devueltas, ...sinAbogado, ...conPlazo, ...vencimientos]
       // Lo más urgente primero: lo vencido arriba, y dentro de eso lo que lleva
       // más tiempo vencido. Las aprobaciones usan el mismo número en negativo
       // —los días que llevan esperando—, así que una que lleva una semana sin
@@ -403,47 +390,9 @@ export class AlertasService {
    * distintas sobre lo mismo.
    */
   private filasPorAprobar(acceso: HiringAccess): Promise<any[]> {
-    const roles = acceso.roles ?? [];
-    const esSuperAdmin = roles.includes('SUPER_ADMIN');
-
-    return this.dataSource.query(
-      `
-      SELECT DISTINCT ON (pa.id)
-             p.id                AS proceso_id,
-             p.radicado          AS radicado,
-             p.objeto            AS objeto,
-             m.nombre            AS modalidad,
-             pa.numeral          AS numeral,
-             a.nombre            AS actividad,
-             a.etapa             AS etapa,
-             pa.version          AS version,
-             pa.enviado_por      AS enviado_por,
-             pa.updated_at       AS desde
-        FROM hiring.proceso_actividades pa
-        JOIN hiring.procesos p ON p.id = pa.proceso_id
-        JOIN hiring.actividades a ON a.numeral = pa.numeral
-        LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
-        JOIN hiring.reglas_actividad r
-              ON r.numeral = pa.numeral
-             AND r.tipo = 'EXIGE_APROBACION'
-             AND r.vigente_hasta IS NULL
-             AND (r.modalidad IS NULL OR r.modalidad = p.modalidad)
-       WHERE pa.estado = 'EN_REVISION'
-         -- Las propias también se ofrecen: quien las trabaja las aprueba si
-         -- tiene el rol, y esconderlas le dejaba pendientes que nadie más iba
-         -- a resolver.
-         AND (
-           $3 = true
-           OR (r.config -> 'personas') ? $2
-           OR EXISTS (
-             SELECT 1 FROM jsonb_array_elements_text(COALESCE(r.config -> 'roles', '[]'::jsonb)) rol
-              WHERE rol = ANY($1::text[])
-           )
-         )
-       ORDER BY pa.id, pa.updated_at ASC
-      `,
-      [roles, acceso.userId ?? '', esSuperAdmin],
-    );
+    // El escalón que espera a quien consulta, con la misma regla con que la
+    // cadena le deja decidir (migración 101).
+    return this.cadenas.filasPorDecidir(acceso);
   }
 
   private async aprobacionesPendientes(
@@ -541,6 +490,12 @@ export class AlertasService {
                    AND pp.estado = 'VIGENTE'
              WHERE pa.numeral = '3.1'
                AND pa.estado = 'EN_REVISION'
+               -- Con una cadena en curso (101) decide el escalón que espera,
+               -- y esa fila sale de las aprobaciones, no de aquí.
+               AND NOT EXISTS (
+                 SELECT 1 FROM hiring.aprobaciones r
+                  WHERE r.proceso_actividad_id = pa.id AND r.estado = 'EN_CURSO'
+               )
                AND (
                  ($1 <> '' AND LOWER(pp.usuario_nombre) = LOWER($1))
                  OR ($2 <> '' AND pp.usuario_id::text = $2)
@@ -556,6 +511,7 @@ export class AlertasService {
       return {
         tipo,
         detalle: f.detalle ?? null,
+        referencia: f.referencia ?? null,
         procesoId: f.proceso_id,
         radicado: f.radicado,
         objeto: f.objeto,
@@ -567,26 +523,78 @@ export class AlertasService {
         enviadoPor: f.enviado_por ?? null,
         desde: desde.toISOString(),
         diasEsperando: Math.max(0, Math.floor((Date.now() - desde.getTime()) / 86_400_000)),
+        escalon:
+          f.escalon !== undefined && f.escalon !== null
+            ? { orden: Number(f.escalon), de: Number(f.escalones), nombre: f.escalon_nombre }
+            : null,
       };
     };
 
-    const [garantias, modificaciones, pagos] = await Promise.all([
+    const [garantias, modificaciones, pagos, revisionesPaa] = await Promise.all([
       this.garantiasPorAprobar(acceso),
       this.modificacionesPorDecidir(acceso),
       this.pagosPorAvalar(acceso),
+      this.revisionesDelPaa(acceso),
     ]);
 
     return [
       ...estudios.map(aElemento('ESTUDIO_PREVIO')),
-      ...aprobaciones
-        .filter((f: any) => f.numeral !== '3.1')
-        .map(aElemento('ACTIVIDAD')),
+      // La 3.1 por cadena se abre en la revisión del estudio previo.
+      ...aprobaciones.map((f: any) => aElemento(f.numeral === '3.1' ? 'ESTUDIO_PREVIO' : 'ACTIVIDAD')(f)),
       ...garantias.map(aElemento('GARANTIA')),
       ...modificaciones.map(aElemento('MODIFICACION')),
       ...pagos.map(aElemento('PAGO')),
+      ...revisionesPaa.map(aElemento('REVISION_PAA')),
     ]
       // Lo que más lleva esperando, arriba.
       .sort((a, b) => b.diasEsperando - a.diasEsperando || a.desde.localeCompare(b.desde));
+  }
+
+  /**
+   * Revisiones abiertas por un cambio del Plan Anual de Adquisiciones.
+   *
+   * Las decide el abogado del proceso; las de un proceso sin abogado van a la
+   * bandeja de quien tenga `decidir` en `PAA.R`, para que una revisión que
+   * detiene el proceso no se quede esperando a que alguien lo asigne.
+   */
+  private async revisionesDelPaa(acceso: HiringAccess): Promise<any[]> {
+    const nombre = (acceso.userName ?? '').trim();
+    const id = (acceso.userId ?? '').trim();
+    const bandeja = !!this.alcance && (await this.alcance.puedeEn(acceso, 'decidir', 'PAA.R'));
+    if (!nombre && !id && !bandeja) return [];
+
+    return this.dataSource.query(
+      `
+      SELECT p.id           AS proceso_id,
+             p.radicado     AS radicado,
+             p.objeto       AS objeto,
+             m.nombre       AS modalidad,
+             '3.1'          AS numeral,
+             CASE r.tipo
+               WHEN 'CAMBIO_VIGENCIA' THEN 'Evaluación por cambio de vigencia del PAA'
+               WHEN 'ELIMINACION' THEN 'Línea retirada del PAA'
+               ELSE 'Línea modificada en el PAA'
+             END            AS actividad,
+             p.etapa        AS etapa,
+             NULL           AS version,
+             NULL           AS enviado_por,
+             r.codigo || CASE WHEN r.bloquea THEN ' · detiene el proceso' ELSE '' END AS detalle,
+             r.id::text     AS referencia,
+             r.created_at   AS desde
+        FROM hiring.paa_revisiones r
+        JOIN hiring.procesos p ON p.id = r.proceso_id
+        LEFT JOIN hiring.modalidades m ON m.codigo = p.modalidad
+        LEFT JOIN hiring.participaciones_proceso pp
+               ON pp.proceso_id = p.id AND pp.papel = 'ABOGADO' AND pp.estado = 'VIGENTE'
+       WHERE r.estado = 'PENDIENTE'
+         AND (
+           ($1 <> '' AND LOWER(pp.usuario_nombre) = LOWER($1))
+           OR ($2 <> '' AND pp.usuario_id::text = $2)
+           OR (pp.id IS NULL AND $3)
+         )
+      `,
+      [nombre, id, bandeja],
+    );
   }
 
   /**
@@ -712,23 +720,6 @@ export class AlertasService {
   }
 
   /**
-   * Solicitudes de CDP que siguen sin resolverse.
-   *
-   * Entran las dos situaciones y la consulta no las distingue, porque lo que se
-   * mide es lo mismo —cuánto lleva parada la solicitud— pero el destinatario
-   * cambia: si alguien la tomó, el aviso es suyo; si sigue en la bandeja, no
-   * hay responsable y `notificar` se lo manda a toda la Dirección Financiera.
-   * Esa es la diferencia con `procesosSinAbogado`, que deja fuera lo que nadie
-   * ha recibido porque allí sí existe alguien a quien reclamarle el reparto.
-   *
-   * Se cuenta desde `solicitado_at` y no desde que el proceso llegó a la etapa:
-   * lo que está detenido es la solicitud, y es la fecha que el expediente
-   * conserva.
-   *
-   * `modificacion_id IS NULL` con el criterio de `delProceso`: el CDP de una
-   * adición tiene su propio trámite y no es este.
-   */
-  /**
    * Las actividades con plazo que están por vencer o ya se vencieron.
    *
    * El plazo corre desde que la actividad se habilitó —cuando le tocó a
@@ -788,56 +779,6 @@ export class AlertasService {
         ),
       }))
       .filter((p): p is PlazoDeActividad => p.estado !== 'VIGENTE');
-  }
-
-  private async solicitudesDeCdpSinAtender(hoy: string): Promise<Alerta[]> {
-    const filas = await this.dataSource.query(
-      `SELECT p.id            AS proceso_id,
-              p.radicado      AS radicado,
-              cdp.solicitado_at AS desde,
-              f.nombre        AS responsable,
-              f.email         AS responsable_email,
-              f.usuario_id    AS responsable_id
-         FROM hiring.cdp cdp
-         JOIN hiring.procesos p ON p.id = cdp.proceso_id
-         LEFT JOIN hiring.participaciones_proceso f
-                ON f.proceso_id = p.id
-               AND f.papel = 'FINANCIERA'
-               AND f.estado = 'VIGENTE'
-        WHERE cdp.estado = 'SOLICITADO'
-          AND cdp.modificacion_id IS NULL
-          AND p.estado = 'EN_CURSO'
-        ORDER BY cdp.solicitado_at ASC`,
-    );
-
-    return filas
-      .map((f: any) => {
-        const desde = f.desde instanceof Date ? f.desde : new Date(f.desde);
-        const limite = new Date(desde);
-        limite.setDate(limite.getDate() + TOLERANCIA_CDP_SIN_ATENDER);
-        const vence = limite.toISOString().slice(0, 10);
-        const diasRestantes = diasParaVencer(vence, hoy);
-
-        return {
-          tipo: 'CDP_SIN_ATENDER' as TipoAlerta,
-          procesoId: f.proceso_id,
-          radicado: f.radicado,
-          contrato: null,
-          descripcion: '4.1 · la solicitud de CDP espera a la Dirección Financiera',
-          vence,
-          diasRestantes,
-          estado: estadoAlerta(diasRestantes, TOLERANCIA_CDP_SIN_ATENDER),
-          // Nulos mientras nadie la tome: es lo que `notificar` expande al
-          // equipo entero, y lo que hace que el aviso exista antes de que haya
-          // alguien a quien dirigirlo.
-          responsable: f.responsable ?? null,
-          responsableEmail: f.responsable_email ?? null,
-          responsableId: f.responsable_id ?? null,
-        };
-      })
-      // Dentro de la tolerancia no se alarma: es el margen normal entre pedir
-      // el CDP y que la Financiera se siente a resolverlo.
-      .filter((a) => a.estado !== 'VIGENTE');
   }
 
   /**
@@ -1113,31 +1054,7 @@ export class AlertasService {
     // toca cada una y si va por correo; aquí saldrían sin destinatario.
     const brutas = (await this.listar(anticipacion, acceso)).filter((a) => a.tipo !== 'PLAZO_ACTIVIDAD');
 
-    /**
-     * La solicitud que nadie ha tomado se le avisa a todo el equipo.
-     *
-     * Es la excepción a «sin destinatario no se avisa», y existe para lo que
-     * esa regla no preveía: una bandeja compartida donde el trabajo se acumula
-     * precisamente porque todavía no es de nadie. Dirigirla a cada cuenta que
-     * puede resolverla es lo que la saca de ahí; en cuanto alguien la toma, la
-     * siguiente pasada ya trae responsable y el aviso deja de sonarle al resto.
-     *
-     * La lista se pide una sola vez y solo si hace falta: son las cuentas de la
-     * Dirección Financiera, no cambian entre una alerta y la siguiente.
-     */
-    const sinTomar = brutas.filter((a) => a.tipo === 'CDP_SIN_ATENDER' && !a.responsableId);
-    const equipo = sinTomar.length ? await this.participacion.financieros() : [];
-
-    const alertas: Alerta[] = brutas.flatMap((a) =>
-      sinTomar.includes(a)
-        ? equipo.map((cuenta) => ({
-            ...a,
-            responsable: cuenta.nombre,
-            responsableEmail: cuenta.email,
-            responsableId: cuenta.usuarioId,
-          }))
-        : [a],
-    );
+    const alertas = brutas;
 
     // Sin destinatario no hay a quién avisar: se cuentan aparte para que el log
     // distinga «no había nada» de «había y nadie tenía responsable».
@@ -1166,26 +1083,7 @@ export class AlertasService {
     // días» sobre algo que no vence. Además cada una pide algo distinto —una
     // decidir, otra corregir— y el aviso tiene que decir cuál de las dos.
     const mensajes = conDestinatario.map((a) =>
-      a.tipo === 'CDP_SIN_ATENDER'
-        ? {
-            id_usuario_destinatario: a.responsableId as string,
-            tipo_notificacion: 'contratacion_cdp_por_expedir',
-            // El título cambia al pasar la tolerancia, y no es un detalle de
-            // redacción: `sinAvisarYa` compara el mensaje, así que un texto
-            // distinto es lo que permite que el segundo aviso —el de la
-            // solicitud ya detenida— llegue en vez de descartarse como repetido.
-            titulo:
-              a.estado === 'VENCIDO'
-                ? 'Solicitud de CDP sin atender'
-                : 'Tienes una solicitud de CDP por atender',
-            mensaje:
-              a.estado === 'VENCIDO'
-                ? `La solicitud de CDP del proceso ${a.radicado} lleva ${Math.abs(
-                    a.diasRestantes,
-                  )} días sin resolverse. Sin el CDP expedido el proceso no puede abrirse.`
-                : `El proceso ${a.radicado} pide CDP y espera a la Dirección Financiera. Tómala para hacerte cargo de verificarla y expedirla.`,
-          }
-        : a.tipo === 'DEVUELTA_PARA_CORREGIR'
+      a.tipo === 'DEVUELTA_PARA_CORREGIR'
         ? {
             id_usuario_destinatario: a.responsableId as string,
             tipo_notificacion: 'contratacion_devolucion',

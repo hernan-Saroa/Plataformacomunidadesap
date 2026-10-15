@@ -3,13 +3,17 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   OnModuleInit,
+  Optional,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, FindOptionsWhere, In } from 'typeorm';
 import { createHash } from 'crypto';
+import { unlink } from 'fs/promises';
+import { basename, join } from 'path';
 
 import { EstadoProceso, Proceso } from '../../entities/proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
@@ -27,19 +31,23 @@ import { DecisionRevision, Revision } from '../../entities/revision.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { Actividad } from '../../entities/actividad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
+import { PERMISO_PROCESO_BORRAR, PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { PermisosService } from '../../auth/permisos.service';
 import { AlcanceService } from '../../auth/alcance.service';
 import { AprobacionService } from '../aprobacion/aprobacion.service';
+import { CadenaAprobacionService, NOMBRE_PAPEL } from '../cadena-aprobacion/cadena-aprobacion.service';
+import { AccionEscalon } from '../../entities/cadena-aprobacion.entity';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import {
-  CambiarCuantiaDto,
+  BorrarProcesoDto,
   CambiarModalidadDto,
+  CrearProcesoDesdePaaDto,
   CrearProcesoDto,
   GuardarBorradorDto,
 } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
+import { STORAGE_PATH } from '../archivos';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
 import {
   NUMERAL_RADICACION as NUMERAL_RADICACION_DIRECCION,
@@ -48,6 +56,10 @@ import {
 } from '../participacion/participacion.service';
 import { respondeElAsignado } from '../participacion/quien-responde';
 import { CdpService } from '../cdp/cdp.service';
+import { RegistrarCdpExistenteDto } from '../cdp/dto/cdp.dto';
+import { PaaAplicacion } from '../../entities/paa.entity';
+import { CAMPOS_CONTROLADOS } from '../paa/estructura-paa';
+import { esLineaOcupada, lineaParaCrear, type OrigenPaa } from '../paa/linea-para-crear';
 import {
   DocumentosActividadService,
   soportesDeDevolucion,
@@ -192,6 +204,8 @@ function sha256(texto: string): string {
 
 @Injectable()
 export class EstudioPrevioService implements OnModuleInit {
+  private readonly logger = new Logger(EstudioPrevioService.name);
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly umbrales: UmbralesService,
@@ -221,7 +235,17 @@ export class EstudioPrevioService implements OnModuleInit {
      * que la vista de un proceso sin dueño pregunta antes de enseñarlo.
      */
     private readonly alcance: AlcanceService,
-  ) {}
+    /**
+     * La cadena de escalones, cuando la 3.1 se aprueba por una (migración
+     * 101). Opcional para que las pruebas que construyen el servicio a mano
+     * sigan funcionando con solo la fuente de datos.
+     */
+    @Optional() cadenas?: CadenaAprobacionService,
+  ) {
+    this.cadenas = cadenas ?? new CadenaAprobacionService(dataSource);
+  }
+
+  private readonly cadenas: CadenaAprobacionService;
 
   /**
    * Quién es el abogado del proceso y si quien pregunta puede decidir por él.
@@ -283,65 +307,209 @@ export class EstudioPrevioService implements OnModuleInit {
     });
   }
 
-  async crearProceso(dto: CrearProcesoDto, acceso: HiringAccess) {
-    return this.dataSource.transaction(async (em) => {
-      const anio = new Date().getFullYear();
-
-      // La FK ya lo impediría, pero devolvería un 500 sin explicación.
-      const modalidad = await em.findOne(Modalidad, {
-        where: { codigo: dto.modalidad, activa: true },
+  /**
+   * Crea el proceso desde una línea del PAA (migración 097).
+   *
+   * La línea dice objeto, modalidad y valor, y llena en la 3.1 lo que ya sabe:
+   * objeto, línea, plazo, lugar y responsable. `paa_origen` guarda qué puso,
+   * para que una versión nueva del PAA sepa después qué sigue siendo del Excel
+   * y qué corrigió alguien a mano.
+   */
+  async crearProcesoDesdePaa(dto: CrearProcesoDesdePaaDto, acceso: HiringAccess) {
+    try {
+      return await this.dataSource.transaction(async (em) => {
+        const paa = await lineaParaCrear(em, dto.paaLineaId);
+        return this.crearEn(
+          em,
+          {
+            objeto: String(paa.origen.objeto ?? ''),
+            modalidad: String(paa.origen.modalidad ?? ''),
+            valorEstimado: Number(paa.origen.valorEstimado),
+          },
+          acceso,
+          paa,
+        );
       });
-      if (!modalidad) {
+    } catch (error) {
+      // Dos creaciones que se cruzaron sobre la misma línea: la que perdió
+      // llega aquí por el índice único y no por `lineaParaCrear`.
+      if (esLineaOcupada(error)) {
+        throw new ConflictException('Otra persona acaba de crear un proceso con esta línea del PAA.');
+      }
+      throw error;
+    }
+  }
+
+  /** Crea el proceso con datos dados, sin PAA: lo usan las pruebas e2e de las etapas siguientes. */
+  async crearProceso(dto: CrearProcesoDto, acceso: HiringAccess) {
+    return this.dataSource.transaction((em) => this.crearEn(em, dto, acceso, null));
+  }
+
+  private async crearEn(em: EntityManager, dto: CrearProcesoDto, acceso: HiringAccess, paa: OrigenPaa | null) {
+    const anio = new Date().getFullYear();
+
+    // La FK ya lo impediría, pero devolvería un 500 sin explicación.
+    const modalidad = await em.findOne(Modalidad, {
+      where: { codigo: dto.modalidad, activa: true },
+    });
+    if (!modalidad) {
+      throw new BadRequestException(
+        `La modalidad "${dto.modalidad}" no existe o ya no está vigente`,
+      );
+    }
+
+    // Antes de gastar consecutivos: si la cuantía obliga a licitación
+    // pública, el proceso no puede nacer con una modalidad de menor cuantía
+    // (RF-EST-03). Se valida aquí y no solo en el formulario porque es una
+    // regla de negocio, no una ayuda de interfaz.
+    await this.umbrales.exigirModalidadPermitida(dto.valorEstimado, modalidad);
+
+    // Secuencias en vez de SELECT MAX: dos creaciones simultáneas no colisionan.
+    const [{ n: nRad }] = await em.query(`SELECT nextval('hiring.radicado_seq') AS n`);
+    const [{ n: nExp }] = await em.query(`SELECT nextval('hiring.expediente_seq') AS n`);
+
+    const proceso = await em.save(Proceso, {
+      radicado: `CTO-${anio}-${String(nRad).padStart(4, '0')}`,
+      objeto: dto.objeto,
+      modalidad: modalidad.codigo,
+      valorEstimado: dto.valorEstimado,
+      etapa: ETAPA_ESTUDIOS_PREVIOS,
+      createdBy: acceso.userName,
+      ...(paa && {
+        paaLineaId: paa.linea.id,
+        paaCodigo: paa.linea.codigo,
+        paaRegionId: paa.region.id,
+        paaAnio: paa.vigencia.anio,
+        paaOrigen: paa.origen,
+      }),
+    } as Partial<Proceso>);
+
+    const expediente = await em.save(Expediente, {
+      procesoId: proceso.id,
+      numeroExpediente: `EXP-${anio}-${String(nExp).padStart(4, '0')}`,
+    } as Partial<Expediente>);
+
+    // Instancia las 63 actividades de la matriz según la modalidad: las que
+    // no aplican quedan en NO_APLICA en vez de omitirse, para que el
+    // expediente deje constancia de por qué el proceso tuvo menos pasos.
+    await this.configuracionService.instanciarActividades(em, proceso.id, modalidad.codigo);
+
+    // El estudio previo (3.1) es la primera con la que trabaja el gestor.
+    const actividad = await em.findOneOrFail(ProcesoActividad, {
+      where: { procesoId: proceso.id, numeral: NUMERAL_ESTUDIO_PREVIO },
+    });
+
+    if (paa) {
+      // La 3.1 nace con lo que el PAA ya dice; el área completa el resto.
+      const delEstudio = CAMPOS_CONTROLADOS.filter((c) => c.destino === 'estudio_previo');
+      actividad.datos = {
+        ...actividad.datos,
+        ...Object.fromEntries(
+          delEstudio.filter((c) => paa.origen[c.campo] != null).map((c) => [c.campo, paa.origen[c.campo]]),
+        ),
+      };
+      await em.save(ProcesoActividad, actividad);
+
+      await em.save(PaaAplicacion, {
+        procesoId: proceso.id,
+        lineaOrigenId: null,
+        lineaDestinoId: paa.linea.id,
+        tipo: 'CREACION',
+        campos: CAMPOS_CONTROLADOS.map((c) => ({
+          campo: c.campo,
+          etiqueta: c.etiqueta,
+          antes: null,
+          despues: paa.origen[c.campo] ?? null,
+          aplicado: true,
+        })),
+        aplicadoPor: acceso.userName,
+      } as Partial<PaaAplicacion>);
+    }
+
+    // La modalidad queda en la traza: si el catálogo cambia, el expediente
+    // sigue mostrando con cuál nació el proceso. Y la línea del PAA, con su
+    // versión: el PAA cambia y el expediente tiene que poder decir de cuál salió.
+    await this.traza(em, proceso.id, 'proceso', proceso.id, 'CREAR', acceso, {
+      radicado: proceso.radicado,
+      expediente: expediente.numeroExpediente,
+      modalidad: modalidad.codigo,
+      modalidadNombre: modalidad.nombre,
+      ...(paa && {
+        paa: {
+          region: paa.region.nombre,
+          anio: paa.vigencia.anio,
+          version: paa.version.numero,
+          codigo: paa.linea.codigo,
+        },
+      }),
+    });
+
+    return { ...proceso, expediente, actividad };
+  }
+
+  /**
+   * Si puede borrar procesos (108): solo el superadministrador.
+   *
+   * Contra la base y no solo contra el código, con el criterio de
+   * `puedeVerTodos`: el JWT trae los roles, no los permisos.
+   */
+  async puedeBorrar(acceso?: HiringAccess): Promise<boolean> {
+    if (!acceso) return false;
+    if (tienePermiso(acceso, PERMISO_PROCESO_BORRAR)) return true;
+    const suyos = await this.permisos.permisosDeRoles(acceso.roles ?? []);
+    return suyos.includes(PERMISO_PROCESO_BORRAR);
+  }
+
+  /**
+   * Borra el proceso con todo lo suyo (108).
+   *
+   * Las FK en cascada se llevan actividades, expediente, documentos,
+   * participantes y trazabilidad, y la línea del PAA queda libre para otro
+   * proceso. Se pide el radicado escrito, no solo un clic: no hay cómo
+   * deshacerlo, y equivocarse de fila en el listado es fácil.
+   *
+   * Como la trazabilidad se va con el proceso, quién lo borró y por qué queda
+   * en el log del servicio. Los archivos se borran del disco después de
+   * confirmar, y solo los que ningún otro documento usa: si la transacción
+   * fallara, el proceso seguiría ahí con sus archivos.
+   */
+  async borrarProceso(procesoId: string, dto: BorrarProcesoDto, acceso: HiringAccess) {
+    const { radicado, archivos } = await this.dataSource.transaction(async (em) => {
+      const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
+      if (!proceso) throw new NotFoundException('Proceso no encontrado');
+      if (dto.radicado.trim() !== proceso.radicado) {
         throw new BadRequestException(
-          `La modalidad "${dto.modalidad}" no existe o ya no está vigente`,
+          `Para borrarlo escribe el radicado tal cual: ${proceso.radicado}`,
         );
       }
 
-      // Antes de gastar consecutivos: si la cuantía obliga a licitación
-      // pública, el proceso no puede nacer con una modalidad de menor cuantía
-      // (RF-EST-03). Se valida aquí y no solo en el formulario porque es una
-      // regla de negocio, no una ayuda de interfaz.
-      await this.umbrales.exigirModalidadPermitida(dto.valorEstimado, modalidad);
+      const filas: { archivo_url: string }[] = await em.query(
+        `SELECT DISTINCT d.archivo_url
+           FROM hiring.documentos d
+           JOIN hiring.expedientes e ON e.id = d.expediente_id
+          WHERE e.proceso_id = $1 AND d.archivo_url IS NOT NULL`,
+        [procesoId],
+      );
+      await em.delete(Proceso, { id: procesoId });
 
-      // Secuencias en vez de SELECT MAX: dos creaciones simultáneas no colisionan.
-      const [{ n: nRad }] = await em.query(`SELECT nextval('hiring.radicado_seq') AS n`);
-      const [{ n: nExp }] = await em.query(`SELECT nextval('hiring.expediente_seq') AS n`);
-
-      const proceso = await em.save(Proceso, {
-        radicado: `CTO-${anio}-${String(nRad).padStart(4, '0')}`,
-        objeto: dto.objeto,
-        modalidad: modalidad.codigo,
-        valorEstimado: dto.valorEstimado,
-        etapa: ETAPA_ESTUDIOS_PREVIOS,
-        createdBy: acceso.userName,
-      } as Partial<Proceso>);
-
-      const expediente = await em.save(Expediente, {
-        procesoId: proceso.id,
-        numeroExpediente: `EXP-${anio}-${String(nExp).padStart(4, '0')}`,
-      } as Partial<Expediente>);
-
-      // Instancia las 63 actividades de la matriz según la modalidad: las que
-      // no aplican quedan en NO_APLICA en vez de omitirse, para que el
-      // expediente deje constancia de por qué el proceso tuvo menos pasos.
-      await this.configuracionService.instanciarActividades(em, proceso.id, modalidad.codigo);
-
-      // El estudio previo (3.1) es la primera con la que trabaja el gestor.
-      const actividad = await em.findOneOrFail(ProcesoActividad, {
-        where: { procesoId: proceso.id, numeral: NUMERAL_ESTUDIO_PREVIO },
-      });
-
-      // La modalidad queda en la traza: si el catálogo cambia, el expediente
-      // sigue mostrando con cuál nació el proceso.
-      await this.traza(em, proceso.id, 'proceso', proceso.id, 'CREAR', acceso, {
-        radicado: proceso.radicado,
-        expediente: expediente.numeroExpediente,
-        modalidad: modalidad.codigo,
-        modalidadNombre: modalidad.nombre,
-      });
-
-      return { ...proceso, expediente, actividad };
+      const urls = filas.map((f) => f.archivo_url);
+      const enUso: { archivo_url: string }[] = urls.length
+        ? await em.query(
+            `SELECT DISTINCT archivo_url FROM hiring.documentos WHERE archivo_url = ANY($1::text[])`,
+            [urls],
+          )
+        : [];
+      const usados = new Set(enUso.map((f) => f.archivo_url));
+      return { radicado: proceso.radicado, archivos: urls.filter((u) => !usados.has(u)) };
     });
+
+    await Promise.all(
+      archivos.map((url) => unlink(join(STORAGE_PATH, basename(url))).catch(() => undefined)),
+    );
+    this.logger.warn(
+      `Proceso ${radicado} (${procesoId}) borrado por ${acceso.userName}: ${dto.motivo.trim()}`,
+    );
+    return { radicado, archivosBorrados: archivos.length };
   }
 
   /**
@@ -405,11 +573,7 @@ export class EstudioPrevioService implements OnModuleInit {
       const puedeRecibirlo =
         enElProceso ||
         ((await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION_DIRECCION)) &&
-          (await this.participacion.estaEnLaBandeja(procesoId))) ||
-        // Y la solicitud de CDP sin atender, por lo mismo: el listado se la
-        // enseña a la Financiera y al pulsarla le diría que no existe.
-        ((await this.alcance.puedeEn(acceso, 'editar', '4.2')) &&
-          (await this.participacion.estaEnLaBandejaFinanciera(procesoId)));
+          (await this.participacion.estaEnLaBandeja(procesoId)));
 
       if (!puedeRecibirlo) {
         // 404 y no 403, con el criterio de EFDS-1183: no se le confirma a quien
@@ -466,19 +630,6 @@ export class EstudioPrevioService implements OnModuleInit {
       if (await this.alcance.puedeEn(acceso, 'editar', NUMERAL_RADICACION_DIRECCION)) {
         for (const id of await this.participacion.idsEnBandeja()) alcanzables.add(id);
       }
-      /**
-       * Y la bandeja de la Financiera, que es la cuarta vía.
-       *
-       * Sin ella la Dirección Financiera abre el módulo y no ve nada: no radicó
-       * ningún proceso, nadie se lo repartió y no puede tomar de la bandeja de
-       * Contratación, así que las tres vías anteriores le devuelven la lista
-       * vacía aunque tenga solicitudes de CDP esperándola.
-       */
-      if (await this.alcance.puedeEn(acceso, 'editar', '4.2')) {
-        for (const id of await this.participacion.idsEnBandejaFinanciera()) {
-          alcanzables.add(id);
-        }
-      }
       if (alcanzables.size) mios.push({ id: In([...alcanzables]) });
     }
 
@@ -526,6 +677,17 @@ export class EstudioPrevioService implements OnModuleInit {
     // Sin este dato la lista no puede distinguir un proceso que alguien lleva de
     // uno que sigue en la bandeja esperando que lo reciban.
     const participantes = await this.participacion.vigentesDe(ids);
+    // Los que una revisión del PAA tiene detenidos: la lista tiene que decirlo,
+    // o el proceso parece esperando a alguien que no puede hacer nada.
+    const detenidos = new Set<string>(
+      (
+        await this.dataSource.query(
+          `SELECT DISTINCT proceso_id FROM hiring.paa_revisiones
+            WHERE proceso_id = ANY($1) AND estado = 'PENDIENTE' AND bloquea`,
+          [ids],
+        )
+      ).map((f: { proceso_id: string }) => f.proceso_id),
+    );
 
     const porProceso = new Map<string, ProcesoActividad[]>();
     for (const a of actividades) {
@@ -562,6 +724,7 @@ export class EstudioPrevioService implements OnModuleInit {
          */
         /** Para que la lista le diga «te toca» al área cuando el estudio es suyo. */
         radicadoPorMi: this.loRadico(proceso, acceso),
+        paaDetenido: detenidos.has(proceso.id),
         participacion: {
           contratacion,
           abogado: quien('ABOGADO'),
@@ -628,13 +791,24 @@ export class EstudioPrevioService implements OnModuleInit {
         etapa: proceso.etapa,
         expediente: proceso.expediente?.numeroExpediente,
         radicadoPorMi: this.loRadico(proceso, acceso),
+        // El desenlace y si una revisión del PAA lo detiene: la ficha no puede
+        // decir «te toca» de un proceso cancelado o detenido.
+        estado: proceso.estado,
+        paaDetenido: await this.detenidoPorElPaa(procesoId),
+        // Lo decide el servicio, no la pantalla (108): el botón de borrar no
+        // se le enseña a nadie más que al superadministrador.
+        puedeBorrar: await this.puedeBorrar(acceso),
       },
       estado: actividad.estado,
       version: actividad.version,
-      // El valor estimado vive en el proceso desde EFDS-1147. Se inyecta aquí
-      // para que el estudio previo lo siga mostrando en su sitio sin duplicar
-      // el dato en el JSON de la actividad.
-      datos: { ...actividad.datos, valor_estimado: proceso.valorEstimado } as Record<string, any>,
+      // El valor y el objeto viven en el proceso y los dicta la línea del PAA
+      // (105). Se inyectan aquí para que el estudio previo los muestre en su
+      // sitio, y que lo mostrado sea siempre lo del proceso y no una copia.
+      datos: {
+        ...actividad.datos,
+        valor_estimado: proceso.valorEstimado,
+        objeto_contratar: proceso.objeto,
+      } as Record<string, any>,
       definicionCampos: campos,
       editable: actividad.estado === 'BORRADOR',
       /**
@@ -648,17 +822,76 @@ export class EstudioPrevioService implements OnModuleInit {
     };
   }
 
+  /** Si una revisión del PAA pendiente detiene el proceso (migración 097). */
+  private async detenidoPorElPaa(procesoId: string): Promise<boolean> {
+    const [fila] = await this.dataSource.query(
+      `SELECT 1 FROM hiring.paa_revisiones WHERE proceso_id = $1 AND estado = 'PENDIENTE' AND bloquea LIMIT 1`,
+      [procesoId],
+    );
+    return !!fila;
+  }
+
   /** El abogado del proceso y por qué quien pregunta puede o no decidir. */
   private async quienRevisa(procesoId: string, acceso: HiringAccess) {
     const { abogado, motivo } = await this.quienDecide(procesoId, acceso);
+    const datosAbogado = abogado
+      ? { nombre: abogado.nombre, usuarioNombre: abogado.usuarioNombre, cargo: abogado.cargo }
+      : null;
+
+    /*
+     * Con una cadena (migración 101) decide el escalón que espera, no el
+     * abogado por sí solo: puede ser el primer escalón, o ninguno. La ronda va
+     * entera para pintar quién aprobó y a quién le toca.
+     */
+    const actividad = await this.obtenerActividad(this.dataSource.manager, procesoId);
+    const ronda = await this.cadenas.rondaParaMostrar(actividad, acceso);
+    if (ronda) {
+      const pendiente = ronda.estado === 'EN_CURSO' ? ronda.escalones.find((e) => e.estado === 'PENDIENTE') : undefined;
+      const sinAbogado = !!pendiente && !abogado && (await this.pendienteEsDelAbogado(actividad.id));
+      const puede = ronda.acciones.length > 0;
+      return {
+        abogado: datosAbogado,
+        puedeDecidir: puede,
+        motivo: puede ? null : sinAbogado ? ('SIN_ABOGADO' as const) : ('EN_CADENA' as const),
+        /** A quién espera, o por qué no le toca a quien mira, en una frase. */
+        espera:
+          ronda.motivo ??
+          // Que falta designar en la 3.3 a quien decide el escalón (102).
+          ronda.espera ??
+          (pendiente
+            ? `Espera al escalón ${pendiente.orden}, ${pendiente.nombre}: ${pendiente.responsables
+                // El papel con nombre propio: «Andrés Rojas», no «el abogado del proceso».
+                .map((r) => (r === NOMBRE_PAPEL.ABOGADO && abogado ? abogado.nombre : r))
+                .join(' o ')}.`
+            : null),
+        ronda,
+        acciones: ronda.acciones,
+      };
+    }
+
     return {
-      abogado: abogado
-        ? { nombre: abogado.nombre, usuarioNombre: abogado.usuarioNombre, cargo: abogado.cargo }
-        : null,
+      abogado: datosAbogado,
       puedeDecidir: motivo === null,
       /** Para que la pantalla explique en vez de esconder sin más. */
       motivo,
+      espera: null,
+      ronda: null,
+      // Sin cadena, el abogado decide las tres cosas, como siempre.
+      acciones: motivo === null ? (['APROBAR', 'DEVOLVER', 'NEGAR'] as AccionEscalon[]) : [],
     };
+  }
+
+  /** Si el escalón que espera nombra al abogado del proceso. */
+  private async pendienteEsDelAbogado(procesoActividadId: string): Promise<boolean> {
+    const [fila] = await this.dataSource.query(
+      `SELECT 1
+         FROM hiring.aprobaciones r
+         JOIN hiring.aprobacion_escalones e ON e.aprobacion_id = r.id AND e.estado = 'PENDIENTE'
+        WHERE r.proceso_actividad_id = $1 AND r.estado = 'EN_CURSO' AND 'ABOGADO' = ANY (e.papeles)
+        LIMIT 1`,
+      [procesoActividadId],
+    );
+    return !!fila;
   }
 
   /**
@@ -711,73 +944,6 @@ export class EstudioPrevioService implements OnModuleInit {
         modalidadAnterior: anterior,
         actividadesCambiadas,
       });
-    });
-
-    return this.obtener(procesoId, acceso);
-  }
-
-  /**
-   * Corrige el valor estimado, y la modalidad si la nueva cuantía la cambia.
-   *
-   * El valor se digita al crear el proceso y un cero de más se colaba hasta
-   * el final: no había dónde corregirlo. Se corrige en el mismo margen que la
-   * modalidad —la 3.1 en borrador o devuelta—, que es también cuando el abogado
-   * puede devolver el estudio previo porque el valor no es el que es.
-   *
-   * Pasa por los mismos umbrales que al crear: si el valor nuevo obliga a
-   * licitación pública, una modalidad de menor cuantía se rechaza, la actual
-   * incluida. Por eso la modalidad viaja en la misma llamada.
-   */
-  async cambiarCuantia(procesoId: string, dto: CambiarCuantiaDto, acceso: HiringAccess) {
-    await this.dataSource.transaction(async (em) => {
-      await this.exigirPaqueteEditable(em, procesoId, acceso);
-      const proceso = await this.validarEtapa(em, procesoId);
-
-      const codigo = dto.modalidad ?? proceso.modalidad;
-      // La nueva tiene que estar vigente; la que ya tenía el proceso se
-      // conserva aunque el catálogo la haya retirado después.
-      const modalidad = codigo
-        ? await em.findOne(Modalidad, {
-            where: dto.modalidad ? { codigo, activa: true } : { codigo },
-          })
-        : null;
-      if (dto.modalidad && !modalidad) {
-        throw new BadRequestException(
-          `La modalidad "${dto.modalidad}" no existe o ya no está vigente`,
-        );
-      }
-
-      const cambiaValor = dto.valorEstimado !== proceso.valorEstimado;
-      const cambiaModalidad = !!modalidad && modalidad.codigo !== proceso.modalidad;
-      if (!cambiaValor && !cambiaModalidad) return;
-
-      if (modalidad) await this.umbrales.exigirModalidadPermitida(dto.valorEstimado, modalidad);
-
-      const valorAnterior = proceso.valorEstimado;
-      const modalidadAnterior = proceso.modalidad;
-      proceso.valorEstimado = dto.valorEstimado;
-      if (cambiaModalidad) proceso.modalidad = modalidad.codigo;
-      await em.save(Proceso, proceso);
-
-      const actividadesCambiadas = cambiaModalidad
-        ? await this.configuracionService.reaplicarModalidad(em, procesoId, modalidad.codigo)
-        : [];
-
-      const actividad = await this.obtenerActividad(em, procesoId);
-      if (cambiaValor) {
-        await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'CAMBIAR_VALOR', acceso, {
-          valorEstimado: dto.valorEstimado,
-          valorAnterior,
-        });
-      }
-      if (cambiaModalidad) {
-        await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'CAMBIAR_MODALIDAD', acceso, {
-          modalidad: modalidad.codigo,
-          modalidadNombre: modalidad.nombre,
-          modalidadAnterior,
-          actividadesCambiadas,
-        });
-      }
     });
 
     return this.obtener(procesoId, acceso);
@@ -880,6 +1046,15 @@ export class EstudioPrevioService implements OnModuleInit {
         });
       }
 
+      /*
+       * Y el CDP, si la modalidad lo exige antes de radicar (migración 100).
+       *
+       * Aquí y no solo en la pantalla: el botón deshabilitado no impide que
+       * alguien llame a la API directamente. Va después de los faltantes para
+       * que el área corrija primero lo que es del estudio previo.
+       */
+      if (proceso) await this.cdp.exigirGestionAntesDeRadicar(em, proceso);
+
       // Copia inmutable de lo enviado: es lo que queda como documento del
       // expediente, con hash para poder probar que no se alteró.
       const snapshot = { ...actividad.datos };
@@ -932,6 +1107,15 @@ export class EstudioPrevioService implements OnModuleInit {
       }
       await em.save(ProcesoActividad, actividad);
 
+      /*
+       * Con una cadena de escalones (migración 101), el envío abre la ronda en
+       * el primer escalón. Con la regla de siempre no: la revisión la decide el
+       * abogado asignado en la 3.3, como hasta ahora.
+       */
+      if (revisan?.cadenaId) {
+        await this.cadenas.iniciar(em, actividad, revisan, acceso);
+      }
+
       await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'ENVIAR', acceso, {
         version: actividad.version,
         fundamentoJuridico: snapshot['fundamento_juridico'],
@@ -943,6 +1127,55 @@ export class EstudioPrevioService implements OnModuleInit {
         enviadoAt: actividad.enviadoAt,
       };
     });
+  }
+
+  // ------------------------------------------- el CDP desde la 3.1 (100) ---
+
+  /**
+   * El CDP visto desde el estudio previo, con lo que quien mira puede hacer.
+   *
+   * `puedeGestionar` lo responde el backend con las mismas reglas que protegen
+   * el borrador: si la pantalla lo dedujera, ofrecería botones que la API
+   * rechaza cuando ya es tarde.
+   */
+  async cdpDelEstudioPrevio(procesoId: string, acceso: HiringAccess) {
+    const gestion = await this.cdp.gestionDesdeElEstudioPrevio(procesoId);
+    let puedeGestionar = gestion.aplica;
+    if (puedeGestionar) {
+      try {
+        await this.exigirPaqueteEditable(this.dataSource.manager, procesoId, acceso);
+      } catch {
+        puedeGestionar = false;
+      }
+    }
+    return { ...gestion, puedeGestionar };
+  }
+
+  /**
+   * Cargar el CDP es parte de preparar el estudio previo: lo puede hacer quien
+   * lo prepara y mientras lo tiene en sus manos —borrador o devuelto—. Si se
+   * lo devolvieron, lo cargado se conserva y se puede corregir.
+   */
+  async registrarCdp(
+    procesoId: string,
+    dto: RegistrarCdpExistenteDto,
+    archivo: { filename: string; originalname: string; mimetype: string; size: number } | null,
+    hash: string | null,
+    acceso: HiringAccess,
+  ) {
+    await this.dataSource.transaction(async (em) => {
+      await this.exigirPaqueteEditable(em, procesoId, acceso);
+      await this.cdp.registrarDesdeElEstudioPrevio(em, procesoId, dto, archivo, hash, acceso);
+    });
+    return this.cdpDelEstudioPrevio(procesoId, acceso);
+  }
+
+  async retirarCdp(procesoId: string, motivo: string | undefined, acceso: HiringAccess) {
+    await this.dataSource.transaction(async (em) => {
+      await this.exigirPaqueteEditable(em, procesoId, acceso);
+      await this.cdp.retirarDesdeElEstudioPrevio(em, procesoId, motivo, acceso);
+    });
+    return this.cdpDelEstudioPrevio(procesoId, acceso);
   }
 
   // -------------------------------------------------- lista de chequeo (3.1) ---
@@ -1056,6 +1289,52 @@ export class EstudioPrevioService implements OnModuleInit {
    * Devuelve el estudio previo al gestor con observaciones. Vuelve a
    * BORRADOR para que pueda corregirlo y reenviarlo.
    */
+  /**
+   * Devuelve el estudio previo porque cambió la línea del PAA de la que nació.
+   *
+   * La misma devolución que hace el abogado en la 3.4 —la 3.1 vuelve al área
+   * con la observación y la 3.4 se reabre para cuando regrese—, pero sin exigir
+   * que esté en revisión: el cambio puede llegar con la 3.1 ya aprobada,
+   * mientras la etapa 3 sigue abierta. Si el área todavía la tiene, no hay nada
+   * que devolver y solo queda la constancia.
+   *
+   * Recibe el EntityManager porque corre dentro de la decisión de la revisión:
+   * si algo falla, ni la revisión queda resuelta ni el estudio devuelto.
+   */
+  async devolverPorCambioDelPaa(em: EntityManager, procesoId: string, observaciones: string, acceso: HiringAccess) {
+    const actividad = await this.obtenerActividad(em, procesoId, true);
+    const estabaCerrado = actividad.estado === 'EN_REVISION' || actividad.estado === 'APROBADO';
+
+    if (estabaCerrado) {
+      await em.save(Revision, {
+        procesoActividadId: actividad.id,
+        decision: 'DEVUELTO',
+        observaciones: observaciones.trim(),
+        versionRevisada: actividad.version,
+        revisadoPor: acceso.userName,
+        revisadoPorId: acceso.userId,
+      } as Partial<Revision>);
+
+      actividad.estado = 'DEVUELTO';
+      actividad.revisadoPor = acceso.userName;
+      actividad.revisadoAt = new Date();
+      await em.save(ProcesoActividad, actividad);
+      await this.cerrarLaRevision(em, procesoId, 'DEVUELTO', acceso);
+      // Si iba por una cadena, la ronda queda cerrada sin decidirse (101).
+      await this.cadenas.cancelarRonda(em, actividad.id, 'CANCELADA');
+    }
+
+    // La traza de siempre: el motor de avisos le dice al área que le devolvieron
+    // el estudio previo y por qué, sin un aviso nuevo para esto.
+    await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'DEVOLVER', acceso, {
+      version: actividad.version,
+      observaciones,
+      porCambioDelPaa: true,
+      estabaCerrado,
+    });
+    return { estado: actividad.estado, estabaCerrado };
+  }
+
   async devolver(procesoId: string, observaciones: string, acceso: HiringAccess) {
     if (!observaciones?.trim()) {
       throw new BadRequestException(
@@ -1097,6 +1376,12 @@ export class EstudioPrevioService implements OnModuleInit {
     acceso: HiringAccess,
     firma?: FirmaOtpDto,
   ) {
+    // Con una cadena en curso (migración 101), decide el escalón que espera.
+    const actual = await this.obtenerActividad(this.dataSource.manager, procesoId);
+    if (await this.cadenas.rondaEnCurso(this.dataSource.manager, actual.id)) {
+      return this.decidirEnCadena(procesoId, decision, observaciones, acceso, firma);
+    }
+
     // Quién puede decidir se resuelve antes de abrir la transacción: no toca
     // nada y así el error de autorización no arrastra un lock.
     const { abogado, motivo } = await this.quienDecide(procesoId, acceso);
@@ -1147,7 +1432,7 @@ export class EstudioPrevioService implements OnModuleInit {
       await this.cerrarLaRevision(em, procesoId, decision, acceso, firma);
 
       /*
-       * Y si con esto se acabó la etapa 3, la solicitud de CDP nace aquí.
+       * Y si con esto se acabó la etapa 3, el proceso pasa aquí a la etapa 4.
        *
        * Solo al aprobar: devolver reabre la revisión y negar termina el
        * proceso, y ni en un caso ni en otro hay etapa cerrada que celebrar. El
@@ -1156,7 +1441,7 @@ export class EstudioPrevioService implements OnModuleInit {
        * disparar nada.
        */
       if (decision === 'APROBADO') {
-        await this.cdp.crearSolicitudSiCerroLaEtapa3(em, procesoId, acceso);
+        await this.cdp.abrirEtapa4SiCerroLaEtapa3(em, procesoId, acceso);
       }
 
       // El proceso termina con la actividad cuando la decisión lo cierra.
@@ -1180,6 +1465,101 @@ export class EstudioPrevioService implements OnModuleInit {
         decision,
         revisadoPor: actividad.revisadoPor,
         revisadoAt: actividad.revisadoAt,
+      };
+    });
+  }
+
+  /**
+   * La decisión de un escalón de la cadena de la 3.1 (migración 101).
+   *
+   * Los efectos del estudio previo —cerrar la 3.4, radicar el CDP si se cerró
+   * la etapa, terminar el proceso al negar— solo ocurren cuando la ronda se
+   * cierra: una aprobación intermedia pasa el estudio al siguiente escalón y
+   * no ratifica nada. Devolver, en cualquier escalón, lo regresa al área, que
+   * es la única que lo corrige, y al reenviarlo la cadena empieza otra vez.
+   */
+  private async decidirEnCadena(
+    procesoId: string,
+    decision: DecisionRevision,
+    observaciones: string | undefined,
+    acceso: HiringAccess,
+    firma?: FirmaOtpDto,
+  ) {
+    const accion: AccionEscalon =
+      decision === 'APROBADO' ? 'APROBAR' : decision === 'NEGADO' ? 'NEGAR' : 'DEVOLVER';
+
+    return this.dataSource.transaction(async (em) => {
+      const actividad = await this.obtenerActividad(em, procesoId, true);
+      const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
+
+      // Nadie repartió el proceso y el escalón que espera es el del abogado:
+      // decirlo así, y no «no estás entre quienes deciden».
+      if (!(await this.participacion.vigente(procesoId, 'ABOGADO', em)) && (await this.pendienteEsDelAbogado(actividad.id))) {
+        throw new ConflictException(
+          'Este proceso todavía no tiene abogado asignado: se reparte en la actividad 3.3 y después se revisa',
+        );
+      }
+
+      const preparada = await this.cadenas.prepararDecision(
+        em,
+        actividad,
+        proceso?.modalidad ?? null,
+        accion,
+        acceso,
+      );
+      const { tras } = preparada;
+
+      // La firma es de quien da la aprobación definitiva (EFDS-2070).
+      if (tras.aprobacionDefinitiva && (await this.cierre.exigeFirma(em, NUMERAL_REVISION))) {
+        this.cierre.exigirFirmaValida(firma);
+      }
+
+      await this.cadenas.registrarDecision(
+        em,
+        preparada,
+        observaciones?.trim() || null,
+        acceso,
+        estadoTrasDecision('DEVUELTO'),
+      );
+
+      // La 3.4 solo cambia cuando la ronda se cierra.
+      if (tras.ronda !== 'EN_CURSO') {
+        await this.cerrarLaRevision(em, procesoId, decision, acceso, firma);
+      }
+      if (tras.aprobacionDefinitiva) {
+        await this.cdp.abrirEtapa4SiCerroLaEtapa3(em, procesoId, acceso);
+      }
+      const desenlace = desenlaceTrasDecision(decision);
+      if (desenlace) {
+        await em.update(Proceso, { id: procesoId }, { estado: desenlace });
+      }
+
+      await this.traza(
+        em,
+        procesoId,
+        'estudio_previo',
+        actividad.id,
+        decision === 'APROBADO' ? 'APROBAR' : decision === 'NEGADO' ? 'RECHAZAR' : 'DEVOLVER',
+        acceso,
+        {
+          version: actividad.version,
+          observaciones,
+          ronda: preparada.ronda.ronda,
+          escalon: preparada.escalon.orden,
+          escalonNombre: preparada.escalon.nombre,
+          // Para los avisos: una intermedia no es «se aprobó».
+          definitiva: tras.aprobacionDefinitiva,
+          activado: tras.activado,
+        },
+      );
+
+      return {
+        estado: actividad.estado,
+        decision,
+        revisadoPor: actividad.revisadoPor,
+        revisadoAt: actividad.revisadoAt,
+        escalon: preparada.escalon.orden,
+        definitiva: tras.aprobacionDefinitiva,
       };
     });
   }

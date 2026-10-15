@@ -57,11 +57,12 @@ import { CampoFormulario } from './entities/campo-formulario.entity';
 import { Documento } from './entities/documento.entity';
 import { Trazabilidad } from './entities/trazabilidad.entity';
 import { Revision } from './entities/revision.entity';
+import { ENTIDADES_APROBACION } from './entities/cadena-aprobacion.entity';
 import { Plantilla } from './entities/plantilla.entity';
 import { Modalidad } from './entities/modalidad.entity';
 import { UmbralModalidad } from './entities/umbral-modalidad.entity';
 import { Smmlv } from './entities/smmlv.entity';
-import { Cdp } from './entities/cdp.entity';
+import { Cdp, CdpAntesDeRadicar } from './entities/cdp.entity';
 import { Actividad, ActividadExcluida, ActividadSalvedad } from './entities/actividad.entity';
 import { CausalContratacion } from './entities/causal-contratacion.entity';
 import {
@@ -115,6 +116,9 @@ import {
 } from './entities/actuacion-sancionatoria.entity';
 import { SupervisionContrato } from './entities/supervision-contrato.entity';
 import { ParticipacionProceso } from './entities/participacion-proceso.entity';
+import { ENTIDADES_PAA } from './entities/paa.entity';
+import { PaaModule } from './modules/paa/paa.module';
+import { ProcesoSinBloqueoGuard } from './modules/paa/proceso-sin-bloqueo.guard';
 import { RegistroPresupuestal } from './entities/registro-presupuestal.entity';
 import { PlazoPublicacionContrato, PublicacionContrato } from './entities/publicacion-contrato.entity';
 import { TipologiaContrato } from './entities/tipologia-contrato.entity';
@@ -149,7 +153,7 @@ import {
         password: config.get<string>('DB_PASS', 'esap_secure_password_2024'),
         database: config.get<string>('DB_NAME', 'esap_db'),
         schema: config.get<string>('DB_SCHEMA', 'hiring'),
-        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, CausalContratacion, SesionComiteContratacion, UmbralComiteContratacion, UmbralModalidad, Smmlv, Cdp, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, ResultadoEvaluacion, EvidenciaEvaluacion, InformeEvaluacion, Subsanacion, PlazoTraslado, AudienciaAdjudicacion, PiezaAudiencia, SobreEconomico, InformeDefinitivo, ActoAdjudicacion, DeclaratoriaDesierta, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, AfiliacionArl, SupervisionContrato, ParticipacionProceso, RegistroPresupuestal, PublicacionContrato, PlazoPublicacionContrato, ActaInicio, SuscripcionActaInicio, PagoContrato, SoportePago, InformeFinal, EntregableInforme, ActaLiquidacion, CierreFinanciero, PublicacionActa, PlazoPublicacionActa, CierreContrato, ModificacionContrato, TopeAdicion, PublicacionModificacion, SeguimientoContrato, RegistroActividad, ActividadConSoporte, CasoIncumplimiento, AudienciaSancionatoria, ResolucionSancionatoria],
+        entities: [Proceso, Expediente, ProcesoActividad, CampoFormulario, Documento, Trazabilidad, Revision, Plantilla, Modalidad, CausalContratacion, SesionComiteContratacion, UmbralComiteContratacion, UmbralModalidad, Smmlv, Cdp, CdpAntesDeRadicar, Actividad, ActividadExcluida, ActividadSalvedad, ReglaActividad, PublicacionPliego, PlazoPublicacion, DiaNoHabil, ObservacionPliego, ManifestacionMipyme, LimitacionMipyme, ParametroMipyme, DocumentoRequerido, DocumentoProceso, AperturaProceso, AudienciaRiesgos, AudienciaRiesgosConfig, Adenda, RecepcionOfertas, Oferente, PlazoOfertas, ComiteEvaluador, MiembroComite, ResultadoEvaluacion, EvidenciaEvaluacion, InformeEvaluacion, Subsanacion, PlazoTraslado, AudienciaAdjudicacion, PiezaAudiencia, SobreEconomico, InformeDefinitivo, ActoAdjudicacion, DeclaratoriaDesierta, Contrato, TipologiaContrato, FirmaContrato, Garantia, Amparo, TipoAmparo, AfiliacionArl, SupervisionContrato, ParticipacionProceso, RegistroPresupuestal, PublicacionContrato, PlazoPublicacionContrato, ActaInicio, SuscripcionActaInicio, PagoContrato, SoportePago, InformeFinal, EntregableInforme, ActaLiquidacion, CierreFinanciero, PublicacionActa, PlazoPublicacionActa, CierreContrato, ModificacionContrato, TopeAdicion, PublicacionModificacion, SeguimientoContrato, RegistroActividad, ActividadConSoporte, CasoIncumplimiento, AudienciaSancionatoria, ResolucionSancionatoria, ...ENTIDADES_PAA, ...ENTIDADES_APROBACION],
         // El esquema lo gobiernan las migraciones de db/migrations/hiring
         synchronize: false,
         logging: config.get<string>('NODE_ENV') === 'development',
@@ -202,11 +206,15 @@ import {
     AprobacionModule,
     DocumentosActividadModule,
     IncumplimientoModule,
+    PaaModule,
   ],
   controllers: [HealthController],
   providers: [
     // Todo endpoint queda autenticado salvo que se marque con @Public().
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    // Después de autenticar: un proceso detenido por una revisión del PAA, o
+    // cancelado, no admite escrituras por ningún controlador.
+    { provide: APP_GUARD, useExisting: ProcesoSinBloqueoGuard },
   ],
 })
 export class AppModule {}

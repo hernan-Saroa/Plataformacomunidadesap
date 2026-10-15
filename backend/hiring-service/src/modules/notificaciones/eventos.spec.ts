@@ -28,6 +28,52 @@ const traza = (parcial: Partial<TrazaLeida>): TrazaLeida => ({
 });
 
 describe('eventosDeTraza · qué pasó, dicho en un solo vocabulario', () => {
+  /*
+   * Con escalones (migración 101), una aprobación intermedia no es «se
+   * aprobó»: a quien la envió no se le dice que quedó lista, y al siguiente
+   * escalón le llega que tiene algo esperando su visto bueno.
+   */
+  describe('aprobar con escalones', () => {
+    const aprobar = (detalle: Record<string, unknown>) =>
+      eventosDeTraza(traza({ accion: 'APROBAR', detalle: { numeral: '5.2', ...detalle } }));
+
+    it('la intermedia le pasa la actividad al siguiente escalón', () => {
+      expect(aprobar({ definitiva: false, activado: 3 }).map((e) => e.evento)).toEqual(['ENVIADA_A_APROBACION']);
+    });
+
+    it('la que solo suma una firma de varias no avisa a nadie', () => {
+      expect(aprobar({ definitiva: false, activado: null })).toEqual([]);
+    });
+
+    it('la definitiva sí es «se aprobó»', () => {
+      expect(aprobar({ definitiva: true }).map((e) => e.evento)).toEqual(['APROBADA']);
+    });
+
+    it('las trazas de antes de la 101 eran todas definitivas', () => {
+      expect(aprobar({}).map((e) => e.evento)).toEqual(['APROBADA']);
+    });
+  });
+
+  it('avisa al abogado cuando un cambio del PAA le abre una revisión al proceso', () => {
+    const [ev] = eventosDeTraza(
+      traza({
+        entidad: 'paa_revisiones',
+        accion: 'ABRIR_REVISION_PAA',
+        detalle: { observaciones: 'La línea CHOCO 3 ya no está en la versión 4 del PAA.' },
+      }),
+    );
+    expect(ev).toMatchObject({ evento: 'REVISION_PAA', numeral: '3.1', observaciones: expect.stringContaining('CHOCO 3') });
+    expect(mensajeDeAviso(ev, 'Estudio previo', 'CTO-2026-0001').mensaje).toContain('CHOCO 3');
+  });
+
+  it('avisa que el proceso se canceló por el PAA, con la justificación', () => {
+    const [ev] = eventosDeTraza(
+      traza({ entidad: 'paa_revisiones', accion: 'CANCELAR', detalle: { observaciones: 'No sigue en 2027' } }),
+    );
+    expect(ev).toMatchObject({ evento: 'PROCESO_CANCELADO', numeral: '3.1' });
+    expect(mensajeDeAviso(ev, null, 'CTO-2026-0001')).toMatchObject({ titulo: 'Se canceló un proceso', prioridad: 'Alta' });
+  });
+
   it('reconoce la devolución de la aprobación genérica, con su actividad', () => {
     const [ev] = eventosDeTraza(traza({ detalle: { numeral: '3.4', observaciones: ' Falta el CDP ' } }));
 

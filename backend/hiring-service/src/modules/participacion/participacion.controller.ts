@@ -1,8 +1,8 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { ParticipacionService } from './participacion.service';
-import { AsignarAbogadoDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
+import { AsignarAbogadoDto, DesignarEscalonDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
 
@@ -39,25 +39,6 @@ export class ParticipacionController {
   })
   tomar(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
     return this.service.tomar(procesoId, getHiringAccess(req));
-  }
-
-  /**
-   * Lo mismo que verificar: editar la 4.2, y no la 4.1.
-   *
-   * Quien recibe la solicitud es quien la resuelve, y exigir otra cosa solo
-   * permitiría apropiarse de solicitudes que luego no se pueden atender. La
-   * 4.1 tampoco sirve: la edita el gestor al solicitar, y con ella podría
-   * quedarse con la solicitud de la Financiera.
-   */
-  @Post('financiera/tomar')
-  @Puede('editar', '4.2')
-  @ApiOperation({
-    summary: 'Actividad 4.1 · Tomar la solicitud de CDP',
-    description:
-      'Quien la toma responde por ella y pasa a ser el destinatario de sus avisos. La bandeja es compartida: si otro la tomó antes, responde 409.',
-  })
-  tomarFinanciera(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
-    return this.service.tomarFinanciera(procesoId, getHiringAccess(req));
   }
 
   /**
@@ -106,6 +87,45 @@ export class ParticipacionController {
   ) {
     return this.service.quitarAbogado(procesoId, dto, getHiringAccess(req));
   }
+
+  // ------------------------- quién decide cada escalón de la 3.1 (102) ----
+
+  @Get('escalones')
+  @Puede('ver', '3.3')
+  @ApiOperation({
+    summary: 'Quién revisa el estudio previo en cada escalón por rol',
+    description:
+      'Los escalones de la cadena de la 3.1 que nombran un rol, con la persona designada en este proceso y si se puede cambiar.',
+  })
+  escalones(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.service.escalones(procesoId, getHiringAccess(req));
+  }
+
+  @Get('escalones/:orden/candidatos')
+  @Puede('ver', '3.3')
+  @ApiOperation({ summary: 'Cuentas con el rol del escalón, para designar' })
+  candidatosDeEscalon(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Param('orden', ParseIntPipe) orden: number,
+    @Query('q') q?: string,
+  ) {
+    return this.service.candidatosDeEscalon(procesoId, orden, q ?? '');
+  }
+
+  @Post('escalones/:orden')
+  @ApiOperation({
+    summary: 'Designar quién decide un escalón por rol, o cambiarlo',
+    description:
+      'Lo hace quien tomó el proceso, o el Director. Cambiar a quien estaba exige motivo; lo que el escalón ya decidió en la revisión en curso no se cambia.',
+  })
+  designarEscalon(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Param('orden', ParseIntPipe) orden: number,
+    @Body() dto: DesignarEscalonDto,
+    @Req() req: any,
+  ) {
+    return this.service.designarEscalon(procesoId, orden, dto, getHiringAccess(req));
+  }
 }
 
 /**
@@ -131,14 +151,4 @@ export class CandidatosController {
     return this.service.abogados(q ?? '');
   }
 
-  @Get('financieros')
-  @Puede('ver', '4.1')
-  @ApiOperation({
-    summary: 'Cuentas que pueden resolver un CDP',
-    description:
-      'Las que tienen permiso para gestionar el presupuesto, que es lo que hace la Dirección Financiera en la etapa 4. Se resuelve por permiso y no por código de rol.',
-  })
-  financieros(@Query('q') q?: string) {
-    return this.service.financieros(q ?? '');
-  }
 }

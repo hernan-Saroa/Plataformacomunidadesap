@@ -28,7 +28,7 @@ describe('Plazos de actividades', () => {
       }
       return [];
     });
-    return { srv: new AlertasService({ query } as never, { financieros: async () => [] } as never), query };
+    return { srv: new AlertasService({ query } as never), query };
   };
 
   it('trae las que están por vencer o vencidas, con días hábiles', async () => {
@@ -66,7 +66,6 @@ describe('Plazos de actividades', () => {
   it('sin la tabla de habilitaciones la lista sigue, sin los plazos', async () => {
     const srv = new AlertasService(
       { query: jest.fn().mockRejectedValue(new Error('no existe')) } as never,
-      { financieros: async () => [] } as never,
     );
 
     await expect(srv.plazosDeActividades(acceso)).resolves.toEqual([]);

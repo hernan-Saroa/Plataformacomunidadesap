@@ -209,11 +209,10 @@ describe('HU EFDS-1170 · trámite de pagos del contrato (9.4)', () => {
       gestor,
     );
 
-    await cdp.solicitar(proceso.id, { rubro: 'A-02-02', valor: VALOR_CONTRATO }, gestor);
-    await cdp.verificar(proceso.id, {}, financiero);
-    await cdp.expedir(
+    await cdp.cargar(
       proceso.id,
-      { numero: `CDP-2026-170-${n}`, valor: VALOR_CONTRATO, fechaExpedicion: hoy() },
+      { rubro: 'A-02-02', numero: `CDP-2026-170-${n}`, valor: VALOR_CONTRATO, fechaExpedicion: hoy() },
+      null,
       financiero,
     );
 

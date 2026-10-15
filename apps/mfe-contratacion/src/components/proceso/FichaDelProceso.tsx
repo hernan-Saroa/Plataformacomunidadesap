@@ -23,6 +23,7 @@ import { SoloLectura, AvisoSoloLectura } from '../shared/SoloLectura';
 import { momento as fechaDelMomento } from '../shared/fechas';
 import { PanelRadicacion } from '../participacion/PanelRadicacion';
 import { PanelSupervision } from '../supervision/PanelSupervision';
+import { OrigenEnElPaa } from '../paa/OrigenEnElPaa';
 
 interface Props {
   procesoId: string;
@@ -228,79 +229,83 @@ export function FichaDelProceso({
         </ol>
       </section>
 
-      {/* El equipo. */}
-      <aside className="bg-white border border-gray-200 rounded-xl overflow-hidden" aria-label="Equipo del proceso">
-        <h3 className="m-0 px-4 py-3 border-b border-gray-100 text-sm font-bold text-slate-900 flex items-center gap-1.5">
-          <Users className="w-4 h-4 text-slate-500" aria-hidden="true" />
-          Equipo del proceso
-        </h3>
-        <ul className="m-0 p-0 list-none divide-y divide-gray-100">
-          <Miembro
-            Icono={UserCog}
-            papel="Área solicitante"
-            nombre={entrada.radicadoPorMi ? 'Tú radicaste el proceso' : 'Radicó el proceso'}
-          />
-          <Miembro
-            Icono={Landmark}
-            papel="Dirección de Contratación"
-            nombre={participacion?.contratacion?.nombre ?? null}
-            vacio={participacion?.contratacion ? null : 'Sin recibir: está en la bandeja'}
-            esMio={participacion?.contratacion?.esMio}
-            accion={
-              participacion?.puedeTomar
-                ? { texto: 'Recibir', hacer: () => setEquipo('radicacion') }
-                : undefined
-            }
-          />
-          <Miembro
-            Icono={Scale}
-            papel="Abogado"
-            nombre={participacion?.abogado?.nombre ?? null}
-            vacio="Sin asignar"
-            esMio={participacion?.abogado?.esMio}
-            accion={
-              participacion?.puedeRepartir
-                ? {
-                    texto: participacion.abogado ? 'Reasignar' : 'Asignar',
-                    hacer: () => setEquipo('radicacion'),
-                  }
-                : undefined
-            }
-          />
-          {etapaActual >= 4 || participacion?.financiera ? (
+      {/* El equipo y, debajo, de qué línea del PAA salió el proceso. */}
+      <div className="space-y-3">
+        <aside className="bg-white border border-gray-200 rounded-xl overflow-hidden" aria-label="Equipo del proceso">
+          <h3 className="m-0 px-4 py-3 border-b border-gray-100 text-sm font-bold text-slate-900 flex items-center gap-1.5">
+            <Users className="w-4 h-4 text-slate-500" aria-hidden="true" />
+            Equipo del proceso
+          </h3>
+          <ul className="m-0 p-0 list-none divide-y divide-gray-100">
+            <Miembro
+              Icono={UserCog}
+              papel="Área solicitante"
+              nombre={entrada.radicadoPorMi ? 'Tú radicaste el proceso' : 'Radicó el proceso'}
+            />
             <Miembro
               Icono={Landmark}
-              papel="Dirección Financiera"
-              nombre={participacion?.financiera?.nombre ?? null}
-              vacio="Nadie ha tomado el CDP"
-              esMio={participacion?.financiera?.esMio}
-              accion={{ texto: 'Ver el CDP', hacer: () => onAbrir('4.2') }}
-            />
-          ) : null}
-          {etapaActual >= 8 ? (
-            <Miembro
-              Icono={ShieldCheck}
-              papel="Supervisor"
-              nombre={supervision?.supervisor?.nombre ?? null}
-              vacio={supervision?.admiteSupervisor === false ? 'Aún no hay contrato' : 'Sin designar'}
+              papel="Dirección de Contratación"
+              nombre={participacion?.contratacion?.nombre ?? null}
+              vacio={participacion?.contratacion ? null : 'Sin recibir: está en la bandeja'}
+              esMio={participacion?.contratacion?.esMio}
               accion={
-                supervision?.puedeDesignar
+                participacion?.puedeTomar
+                  ? { texto: 'Recibir', hacer: () => setEquipo('radicacion') }
+                  : undefined
+              }
+            />
+            <Miembro
+              Icono={Scale}
+              papel="Abogado"
+              nombre={participacion?.abogado?.nombre ?? null}
+              vacio="Sin asignar"
+              esMio={participacion?.abogado?.esMio}
+              accion={
+                participacion?.puedeRepartir
                   ? {
-                      texto: supervision.supervisor ? 'Reasignar' : 'Designar',
-                      hacer: () => setEquipo('supervision'),
+                      texto: participacion.abogado ? 'Reasignar' : 'Asignar',
+                      hacer: () => setEquipo('radicacion'),
                     }
                   : undefined
               }
             />
+            {/* Solo si alguien tomó la solicitud antes de la 103: desde entonces
+                el CDP se tramita por fuera y la Financiera no entra al equipo. */}
+            {participacion?.financiera ? (
+              <Miembro
+                Icono={Landmark}
+                papel="Dirección Financiera"
+                nombre={participacion.financiera.nombre}
+                esMio={participacion.financiera.esMio}
+                accion={{ texto: 'Ver el CDP', hacer: () => onAbrir('4.2') }}
+              />
+            ) : null}
+            {etapaActual >= 8 ? (
+              <Miembro
+                Icono={ShieldCheck}
+                papel="Supervisor"
+                nombre={supervision?.supervisor?.nombre ?? null}
+                vacio={supervision?.admiteSupervisor === false ? 'Aún no hay contrato' : 'Sin designar'}
+                accion={
+                  supervision?.puedeDesignar
+                    ? {
+                        texto: supervision.supervisor ? 'Reasignar' : 'Designar',
+                        hacer: () => setEquipo('supervision'),
+                      }
+                    : undefined
+                }
+              />
+            ) : null}
+          </ul>
+          {!puedeGestionarReparto && !supervision?.puedeDesignar ? (
+            <p className="m-0 px-4 py-2.5 border-t border-gray-100 text-[12px] text-slate-500 flex items-start gap-1.5">
+              <Lock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />
+              Las asignaciones las hace la Dirección de Contratación.
+            </p>
           ) : null}
-        </ul>
-        {!puedeGestionarReparto && !supervision?.puedeDesignar ? (
-          <p className="m-0 px-4 py-2.5 border-t border-gray-100 text-[12px] text-slate-500 flex items-start gap-1.5">
-            <Lock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />
-            Las asignaciones las hace la Dirección de Contratación.
-          </p>
-        ) : null}
-      </aside>
+        </aside>
+        <OrigenEnElPaa procesoId={procesoId} version={equipo} />
+      </div>
 
       {/* Asignar sin salir de la ficha: los paneles de siempre, en un modal. */}
       <Modal

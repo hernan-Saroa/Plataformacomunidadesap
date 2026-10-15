@@ -37,9 +37,6 @@ const RASGOS: Record<
   // Mismo ámbar y por lo mismo: nada ha vencido, pero el proceso está parado
   // porque no hay quien resuelva su revisión.
   SIN_ABOGADO: { etiqueta: 'Sin abogado', icono: UserX, color: '#D97706' },
-  // Sin rasgo propio la fila se rompía: la alerta llegaba y la pantalla no la
-  // sabía dibujar.
-  CDP_SIN_ATENDER: { etiqueta: 'CDP sin atender', icono: Landmark, color: '#D97706' },
   // Rojo como un vencimiento, porque lo es: el de una actividad del proceso.
   PLAZO_ACTIVIDAD: { etiqueta: 'Plazo', icono: Timer, color: '#DC2626' },
 };
