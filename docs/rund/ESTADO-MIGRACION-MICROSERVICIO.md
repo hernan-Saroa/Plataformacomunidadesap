@@ -1,23 +1,75 @@
 # Estado de la migración del RUND a microservicio
 
-> Rama: `feat/agregar_modulo_rund` · Actualizado: 2026-10-14
+> Rama: `feat/agregar_modulo_rund` · Actualizado: 2026-10-15
 > Documento de contexto para retomar la migración. Describe qué se decidió, qué está hecho,
 > qué falta y qué trampas hay. Complementa `PENDIENTES_RUND_PTA.md` (historias de usuario) y
 > los `REQ-RUND-*` de esta carpeta.
 
-## Resumen de avance para seguimiento (2026-10-14)
+## Resumen de avance para seguimiento (2026-10-15)
 
 - **11 pasos principales completados en código/revisión y validación local:** pasos
   1–11, documentados en las secciones 11–21. No equivale a despliegue completado.
 - **1 paso principal en curso:** el 12, integración de Carpeta Digital y preparación
   de activación. Tiene 13 subhitos terminados en repositorio/validación local (12.1,
   12.2, 12.3a, 12.3b.1–4, 12.4, revisión offline 12.5, 12.5a–c y 12.5d.1).
-  El subpaso actual **12.5d.2 sigue abierto**, con las lecturas reales de la sección 35.
+  **12.5d.2 sigue abierto por aceptación/configuración de las instalaciones**, con las
+  lecturas de la sección 35; no equivale al estado de cada ajuste de código.
+- **24 cortes técnicos terminados localmente desde la revisión posterior al merge:**
+  secciones 38–61. Incluyen contratos e independencia de consultas; tienen tamaños
+  distintos y no se suman al conteo de pasos principales.
+- **Trabajo técnico actual: frente 4, aislamiento SQL.** Quedan completados el perfil
+  público de interoperabilidad PTA (45) y la identidad del listado/ficha/estadísticas del
+  banco (46), las lecturas de tarjeta/autogestión y resolución de alias (47),
+  la identidad confiable de edición/envío OTP (48), unicidad/duplicados (49),
+  vencimientos, diagnóstico y reparación de soportes (50), expediente/evidencias (51),
+  contexto de identidad del proceso OCR (52), destinatario de sus avisos (53)
+  rol/revalidación de la sincronización Auth → RUND (54) y permisos efectivos
+  de las rutas RUND (55), correo propio de acceso externo Macro Docente (56)
+  identidad histórica del historial por API PTA (57), programas de respaldo (58),
+  planes firmes por API PTA (59), preparación transaccional de escrituras Auth (60)
+  y prevalidación propietaria de identidad (61).
+  Siguen otras consultas y escrituras entre propietarios.
+  La aceptación por ambiente es otro pendiente.
 - **Primer corte para push de la rama:** alcance, manifiesto y validaciones consolidados
   en [PRIMER-PUSH.md](PRIMER-PUSH.md) y la sección 36. Es publicación para revisión,
   con límites globales del shell documentados; no cierra activación o despliegue.
 - No se suman padres e hijos como si fueran pasos equivalentes ni se calcula un
   porcentaje de independencia a partir del número de pruebas o secciones.
+
+Para que el avance de código no quede oculto bajo el rótulo del paso 12:
+
+| Corte técnico | Estado local |
+|---|---|
+| 38: contrato documental Auth → RUND | Terminado |
+| 39: contratos PTA/Programación y copias | Terminado |
+| 40: período exacto y catálogo documental del proveedor | Terminado |
+| 41: dos consultas de identidad por API Auth | Terminado |
+| 42: catálogos del perfil interno y cobertura | Terminado |
+| 43: catálogo del banco, rollback y precisión de IDs | Terminado |
+| 44: período activo por API PTA | Terminado |
+| 45: identidad del perfil público para PTA | Terminado |
+| 46: identidad del listado, ficha y estadísticas del banco | Terminado |
+| 47: lecturas de tarjeta/autogestión y resolución de alias | Terminado |
+| 48: cédula confiable y pertenencia en edición/envío OTP | Terminado |
+| 49: unicidad y detección de posibles duplicados | Terminado |
+| 50: identidad de vencimientos, diagnóstico y reparación de soportes | Terminado |
+| 51: identidad del expediente documental y datos de evidencias | Terminado |
+| 52: contexto de identidad del proceso OCR por API Auth | Terminado |
+| 53: destinatario de avisos OCR por API Auth | Terminado |
+| 54: rol y revalidación de sincronización por API Auth | Terminado |
+| 55: permisos efectivos de rutas RUND por API Auth | Terminado |
+| 56: correo propio de acceso externo Macro Docente | Terminado |
+| 57: identidad histórica de Macro Docente por API PTA | Terminado |
+| 58: programas de respaldo de Macro Docente por API PTA | Terminado |
+| 59: planes firmes de Macro Docente por API PTA | Terminado |
+| 60: frontera local de escritura Auth y rollback | Preparación terminada; API de escritura pendiente |
+| 61: contrato de prevalidación de identidad en Auth | Terminado; conexión al escritor pendiente |
+| Otras lecturas/escrituras de identidad y permisos | Pendiente de aislamiento |
+| Aceptación de configuración/datos/despliegues por ambiente | Pendiente operativo |
+
+Cada corte terminado tiene su evidencia y alcance en la sección correspondiente.
+La validación local no certifica que esté desplegado; la dependencia funcional entre
+servicios por API se conserva cuando cada uno consulta datos de su propietario.
 
 Para dar una idea del trabajo restante, se agrupa en **5 frentes, incluido el actual**:
 
@@ -80,7 +132,7 @@ src/
                          #   ConfiguracionSistema (estas 6 son de PTA y siguen en academic_work_plan)
   auth/                  # JWT (Bearer + cookie esap_access_token), guards, roles, permisos PTA
   notifications/         # pta-notifications.service (correo del acceso externo del Macro Docente)
-  common/                # text-sanitizer, require-env, catálogos territoriales/CETAP
+  common/                # text-sanitizer, require-env, catálogos territoriales/CETAP, cliente de identidad Auth
 db/migrations/
   001_create_rund_schema.sql      # tablas del CRUD base (rund.docente, formación, etc.)
   002_seed_rund_auth_module.sql   # permisos rund.view/create/edit/validate/admin/export
@@ -120,7 +172,11 @@ Ejemplo: `/rund/api/v1/pta/banco-docentes/12/documentos` llega al servicio como
 
 En el código, esas 16 tablas apuntan a `rund`. Lo de PTA (`Persona`, `Programa`,
 `PlanTrabajoAcademico`, `cetap`, `periodo_academico`, `ConfiguracionSistema`, `Usuario`,
-`facultad`) se sigue leyendo de `academic_work_plan`, y las consultas a `auth.*` siguen igual.
+`facultad`) se sigue leyendo de `academic_work_plan`. Persisten dependencias con `auth.*`;
+dos lecturas de identidad pasan a la API de Auth en la sección 41. Esto no aísla todavía
+las altas, la carga masiva, los permisos ni todos los catálogos.
+La sección 42 retira los JOIN de catálogos de `InternalRundService`; sus consultas SQL
+quedan en `rund`. Otros servicios del banco todavía acceden a los esquemas externos.
 
 Validación inicial: sintaxis con el parser de PostgreSQL (`libpg-query`), y coherencia columna a columna
 entre el DDL, las entidades y el SQL del código. El 2026-10-09 se aplicaron `001`–`003` y se probó
@@ -224,6 +280,12 @@ paso 8 (sección 18). La sincronización de usuarios del backend RUND con auth s
 validó en el paso 9 (sección 19); requiere configurar la credencial interna antes de usarla.
 Las entradas del banco y la nueva autogestión del shell se conectaron en el paso 10 (sección 20).
 Los consumidores enumerados a continuación mantienen dependencias con la implementación PTA.
+
+En la sección 41 se sustituyen por API dos lecturas directas de identidad de RUND sobre
+Auth (documento y alias de usuario/persona). La selección de perfiles y sus estados
+permanece en RUND. Las demás lecturas/escrituras y catálogos entre esquemas siguen pendientes.
+La sección 42 separa además el nombre territorial del perfil y la cobertura del backoffice,
+conservando código PTA e ID Auth como claves diferentes. No cambia los catálogos públicos de PTA.
 
 Estos módulos aún leen el RUND de `academic_work_plan` / endpoints de PTA:
 
@@ -2572,3 +2634,1956 @@ El merge aporta implementación y validación local de consumidores, sin cerrar 
 aceptación operativa. El conteo se mantiene en **11 pasos principales completados
 localmente, paso 12 en curso y 5 frentes restantes contando el actual**. Continúa
 12.5d.2 y la revisión de consumidores/dependencias de 9.2; no se retira RUND de PTA.
+
+## 38. Paso 12.5d.2: confirmación de originales y auditoría Auth → RUND (2026-10-14)
+
+Se retoma desde el merge `63b9fc07a`. Antes de la aceptación operativa se revisa el
+contrato del cliente interno incorporado por el remoto: la comprobación de originales
+convertía una respuesta incompleta en `false`, y el registro de acceso aceptaba un
+HTTP exitoso sin confirmar que RUND hubiera guardado la marca permanente.
+
+### Ajuste y conservación de funcionalidad
+
+`auth-service/.../carpeta-digital/rund-client.ts` exige ahora un booleano explícito
+en `esOriginalRund` y `registrado: true` en la confirmación de auditoría. Un cuerpo
+vacío, un campo ausente, `data: null`, tipos incorrectos, JSON inválido o una envoltura
+con `success: false` producen `ServiceUnavailableException`. El detalle privado del
+error de parseo no se incluye en la respuesta.
+
+En el acceso HTTP, una verificación incompleta retorna 503 sin llegar al servidor de
+archivos. Al retirar un documento, una auditoría sin confirmación interrumpe la
+operación antes del DELETE; no se intenta registrar el acceso en PTA como alternativa.
+El cliente hace una sola petición en estos casos.
+
+Se conservan las respuestas válidas directas o envueltas en `data`. Un `false` real
+permite el adjunto general; un `true` conserva la comprobación de sesión/rol y auditoría
+previa al original. No cambian rutas, banderas, selección de propietario/período,
+persistencia, SQL ni credenciales. Las comprobaciones históricas de originales y sus
+marcas permanentes continúan vigentes.
+
+### Comprobaciones y siguiente punto
+
+- Se añadieron **20 pruebas de regresión** sobre contrato y recorrido documental.
+  Antes de corregir el cliente, **18 fallaron**, reproduciendo la aceptación indebida
+  y el error JSON sin normalizar; después pasan las **13 suites / 135 tests** de Auth.
+- Compilación de Auth correcta. Se repite la integración completa RUND/Auth con
+  PostgreSQL temporal y los clientes compilados de Auth, PTA y Programación: **127
+  comprobaciones correctas**, conservando historial, concurrencia, permisos y originales.
+- Evidencia de este ajuste: [validacion-contrato-auth-rund.json](validacion-contrato-auth-rund.json).
+  Los reportes del primer corte y del merge son evidencia histórica de sus respectivos
+  estados, no se regeneran como si describieran las fuentes posteriores.
+
+No se accedió a bases existentes, archivos `.env` reales ni ambientes remotos; no se
+ejecutaron migraciones operativas, copias de datos, despliegues o push. Este ajuste
+cierra una condición de aceptación del cliente, **no la aceptación del ambiente**.
+
+Continúa **12.5d.2**: comprobar configuración/red/token, esquema/datos y recorridos en
+las instalaciones cuando se disponga de sus accesos. El próximo ajuste de código que
+puede revisarse sin esos accesos es la validación de respuestas de los nuevos clientes
+PTA/Programación, para que datos incompletos no se interpreten como identidad, situación
+o cupos válidos. El conteo se mantiene en **11 pasos principales completados localmente,
+paso 12 en curso y 5 frentes restantes incluyendo el actual**.
+
+## 39. Paso 12.5d.2: contratos PTA/Programación y conservación de copias (2026-10-14)
+
+Se continúa después de la confirmación documental de Auth de la sección 38. Los
+clientes de PTA y Programación incorporados por el merge aceptaban cualquier JSON
+con HTTP exitoso. Una respuesta incompleta podía tratarse como un perfil confirmado;
+además, `jsonb_populate_record` convierte columnas ausentes en NULL al actualizar
+la copia PTA, con riesgo de perder valores locales.
+
+### Contratos y compatibilidad
+
+- Los dos clientes comprueban ID textual del perfil, UUID de persona canónica,
+  correspondencia con el documento solicitado y presencia/tipo de los campos que
+  consumen. Exigen horas numéricas finitas y no negativas y fechas válidas o nulas.
+  Se mantienen horas numéricas como texto, cero, nulos explícitos y respuestas
+  directas o envueltas en `data`. No cambian topes ni clasificadores de situación.
+- Un JSON inválido, `data: null`, un error de negocio con HTTP 200, otro documento
+  o campos esenciales ausentes producen 503 sin repetir la llamada ni consultar
+  el SQL de otro propietario. Los detalles privados de parseo no salen al consumidor.
+- PTA valida estructura y límite de páginas, identidad de filas, duplicados y
+  coherencia del cursor. Un ciclo de cursores detiene el worker y libera su bloqueo.
+  No se impone orden lexicográfico de JavaScript a IDs ordenados por PostgreSQL.
+- Al resolver una copia puntual, se comprueba la identidad y, si se pidió período,
+  su coincidencia exacta. Si el servidor responde otro período como preferencia
+  alternativa, el cliente falla con 503 en lugar de copiarlo al período solicitado.
+  El 404 real conserva su significado de ausencia (`null` solo en `resolver`).
+- La consulta de validación documental exige identidad, completitud y estados con
+  sus campos identificados; un listado ausente/vacío o campos duplicados no se
+  anuncia como validación confirmada. Esta comprobación no cambia las reglas de
+  aprobación de PTA ante indisponibilidad ni certifica que estén todos los requisitos
+  documentales posibles; esa revisión del proveedor sigue pendiente.
+- Antes del INSERT/UPDATE de la copia, se exige que la fila traiga todas las columnas
+  locales. Si divergen los esquemas o falta un valor, se informa el fallo y se conserva
+  la fila; no se rellenan columnas con NULL. Los NULL explícitos siguen siendo válidos
+  según las restricciones de la tabla. Se conserva el ID local cuando una fila de la
+  misma persona/período ya existe y tiene planes que la referencian.
+
+El campo de investigación conserva su texto del propietario; aquí no se reinterpreta
+como horas ni se cambia su regla de negocio. La sincronización programada mantiene
+su activación explícita, apagada por defecto. Un fallo en una página posterior no
+revierte páginas válidas ya copiadas: el worker conserva su comportamiento incremental.
+
+### Verificación y alcance
+
+- PTA: **87 suites / 830 tests** correctos; Programación: **14 / 112** correctos.
+  Se añaden **66 pruebas** respecto al merge: respuestas incompletas, identidad,
+  situación, horas, fechas, páginas, períodos, copias y compatibilidad de valores.
+  Los canarios que dependen de bases instaladas se ejecutan con conexión dirigida
+  a un puerto local cerrado; su omisión prevista no certifica datos de los ambientes.
+- Compilaciones de ambos servicios correctas.
+- **131 comprobaciones** de integración RUND/Auth correctas con PostgreSQL temporal,
+  incluidos los clientes compilados de Auth/PTA/Programación. Cuatro nuevas comprueban
+  HTTP y SQL reales de la copia PTA: preservación del ID local, rechazo de respuesta
+  parcial sin borrar columnas, rechazo de período/página incorrectos y NULL explícito.
+  Se conserva la protección de originales/historial del paso anterior.
+- `scripts/verify-rund-consumer-copies.cjs` se invoca desde el verificador temporal;
+  crea una base ficticia separada dentro del mismo clúster, que se elimina al terminar.
+  No carga `.env` ni migra una base instalada. Evidencia:
+  [validacion-contratos-consumidores-rund.json](validacion-contratos-consumidores-rund.json).
+
+Los cambios anteriores de Auth permanecen intactos. No se ejecutaron copias operativas,
+activaciones, despliegues ni push. Este punto valida contratos locales y conservación
+de datos ficticios; no cierra la aceptación de las instalaciones.
+
+Continúa **12.5d.2** y la revisión de dependencias de 9.2. El siguiente punto de código
+es revisar en RUND la resolución por período y la integridad de los estados documentales
+que publica a estos consumidores; las dependencias SQL con Auth/PTA y la aceptación
+operativa siguen abiertas. Se mantienen **11 pasos principales completados localmente,
+paso 12 en curso y 5 frentes restantes incluido el actual**.
+
+## 40. Paso 12.5d.2: período exacto y catálogo documental del proveedor RUND (2026-10-14)
+
+Se continúa desde los contratos de consumidores de la sección 39. Se corrigen dos
+causas en el proveedor: la resolución interna usaba el período como preferencia,
+permitiendo devolver otro, y la consulta documental solo inicializaba requisitos
+si la tabla estaba vacía. Un perfil con pocos campos aceptados podía anunciar 100%.
+
+### Resolución y compatibilidad de identidad
+
+`InternalRundService.docentePorClave` filtra por el período solicitado: si no existe
+una fila correspondiente, responde **404**; no sustituye otro semestre. Sin período
+se conserva la selección anterior. Los clientes PTA existentes interpretan ese 404
+como ausencia explícita y no copian una fila ajena al período pedido.
+
+Para consultar estados, un ID de perfil explícito tiene prioridad. Se mantienen
+los alias de persona/usuario cuando identifican un solo perfil; con varios perfiles
+responden **409**, antes de leer/inicializar estados, para exigir el ID concreto.
+Se conservan IDs textuales y UUID de persona en sus formatos admitidos por PostgreSQL.
+Un fallo SQL al resolver la identidad en Auth produce 503, no un 404 engañoso.
+
+### Catálogo único y decisiones persistidas
+
+La integración real confirmó una divergencia previa: la carga de docentes usaba
+**36 campos**, pero la consulta documental y las altas desde Auth usaban un catálogo
+antiguo de 24. Se centraliza el catálogo en `rund-document-fields.ts`, compartido por
+los tres recorridos. Sus **36 nombres, tipos y orden coinciden exactamente** con los
+que ya inicializaba la carga del banco; no se cambia el catálogo del RUND embebido PTA.
+
+La consulta de estados añade únicamente los requisitos faltantes, en una sola
+sentencia con `ON CONFLICT DO NOTHING`. Conserva IDs, aprobaciones, `No aplica`,
+observaciones, fechas, actores y campos adicionales históricos. Si falla la sentencia,
+no deja una parte de los campos nuevos insertada. Una consulta con catálogo completo
+no escribe. Si no puede confirmar todos los campos o encuentra estados duplicados/
+inválidos, falla explícitamente en lugar de publicar una completitud engañosa.
+
+El porcentaje usa los 36 requisitos conocidos: un catálogo histórico de 24 aceptados
+se completa con 12 `Sin cargar` y muestra **67%**, conservando sus decisiones; un único
+requisito aceptado muestra **3%**. Los campos adicionales se devuelven, pero no inflan
+ese porcentaje. `No aplica` conserva la regla previa: no equivale a `Aceptado` en este
+cálculo. La completitud no sustituye las reglas de aprobación por bloque ni las de PTA.
+
+La inicialización de faltantes sucede al consultar estados. No se ejecuta un barrido
+ni una migración sobre registros instalados desde este equipo. La sincronización desde
+Auth sigue creando exclusivamente perfiles nuevos y no altera los estados ya existentes.
+
+### Verificación y pendientes
+
+- RUND: **44 suites / 540 tests** correctos, nueve regresiones nuevas; build correcto.
+  La prueba de sincronización Auth vuelve a pasar por separado (**26 tests**).
+- **138 comprobaciones** correctas con PostgreSQL temporal y HTTP real: siete nuevas
+  cubren período ausente, alias ambiguos, perfiles exactos, fallo atómico, catálogo
+  parcial, inicialización concurrente e idempotencia con conservación de metadatos.
+- Se mantienen las verificaciones de los clientes compilados de Auth/PTA/Programación,
+  originales, copias e historial. El fixture de proyección parte del catálogo completo
+  y conserva la igualdad estricta de todas las filas nativas antes/después de sincronizar;
+  ya no considera un único requisito aceptado como 100%.
+- Los archivos TypeScript de los ajustes previos de Auth/PTA/Programación conservan
+  sus hashes. Evidencia: [validacion-proveedor-rund.json](validacion-proveedor-rund.json),
+  junto con los reportes temporales de integración regenerados.
+
+No se consultaron bases instaladas, `.env` reales ni destinos remotos; no se aplicaron
+migraciones operativas, copias de datos, activaciones, despliegues ni push. Las pruebas
+temporales no certifican las instalaciones de local/DEV/QA/PRE/PROD.
+
+Continúan **12.5d.2** y las dependencias de 9.2: aceptación por ambiente, configuración/
+datos y aislamiento de las consultas de identidad y catálogos con Auth/PTA. El conteo
+permanece en **11 pasos principales completados localmente, paso 12 en curso y 5 frentes
+restantes contando el actual**. No se retira el RUND original de PTA.
+
+## 41. Paso 12.5d.2: dos lecturas de identidad RUND → Auth por API (2026-10-14)
+
+Se continúa el aislamiento de propietarios después de revisar los contratos y el
+catálogo documental de las secciones 38–40. Se sustituyen **dos lecturas directas**:
+la búsqueda de persona por documento del perfil interno y la resolución del alias
+de usuario/persona de la consulta de estados documentales. Auth consulta sus tablas;
+RUND conserva la selección y los datos de sus perfiles. Este punto no elimina todavía
+todas las dependencias SQL de RUND.
+
+### Contrato y conservación de flujos
+
+Auth publica dos GET internos, protegidos por `INTERNAL_SERVICE_TOKEN`:
+
+- `/internal/rund/v1/personas/por-documento/:documento`: devuelve únicamente
+  `personaId`, `documento` y `nombreCompleto` (nullable, como en la consulta anterior).
+- `/internal/rund/v1/personas/resolver/:clave`: devuelve únicamente `personaId`,
+  al resolver el ID de persona o de usuario persistido en Auth.
+
+No se exige usuario activo ni rol para identificar a una persona histórica; no se
+modifican personas, usuarios ni perfiles. Las consultas son parametrizadas. Una
+identidad ausente devuelve 404; un documento duplicado devuelve conflicto y no elige
+una persona arbitraria. Se envía `Cache-Control: private, no-store`.
+
+`@Public` omite exclusivamente el JWT global de Auth: el guard propio exige el token
+interno. Sin credencial configurada falla cerrado; no acepta `JWT_SECRET` como reemplazo.
+El gateway bloquea ambas rutas internas incluso cuando recibe JWT y token de servicio.
+
+RUND usa `AuthIdentityClient`, con plazo de 10 segundos, sin seguir redirecciones ni
+reenviar cookies/JWT. Valida UUID, documento solicitado, nombre y sobre de respuesta.
+Una respuesta parcial, un error de transporte o un rechazo de Auth producen **503**;
+no ejecuta una consulta SQL alternativa sobre tablas de Auth. El 404 conserva ausencia.
+
+La búsqueda por documento conserva el DTO para PTA/Programación y el criterio anterior
+por `updatedAt` para seleccionar el perfil. Se mantiene la consulta territorial existente.
+Los ID de perfil explícitos y los alias de persona que se resuelven dentro de RUND no
+necesitan esta llamada a Auth. Los alias ambiguos entre períodos siguen devolviendo 409;
+la resolución por período y el catálogo de 36 requisitos de la sección 40 se conservan.
+
+### Despliegue y configuración
+
+Para publicar este corte en cada ambiente, desplegar **primero Auth con esta API** y
+comprobar su contrato interno; después desplegar RUND. RUND requiere `AUTH_SERVICE_URL`
+con la URL interna directa de Auth y `AUTH_INTERNAL_SERVICE_TOKEN` coincidente con
+`INTERNAL_SERVICE_TOKEN` de Auth. Si no se define el token específico de RUND, usa su
+`INTERNAL_SERVICE_TOKEN` explícito, que debe coincidir. Nunca deriva el token del JWT.
+Se aclara en los `.env.example`; no se modifican archivos `.env` reales.
+
+Esta dependencia HTTP se utiliza al consultar esos dos recorridos: no está ligada a
+las banderas de proyección de Carpeta Digital. Un Auth antiguo sin estas rutas no es
+compatible con el nuevo RUND para esas consultas. Antes de reemplazar Auth por una
+versión anterior, restaurar primero una versión compatible de RUND. Las demás
+integraciones mantienen sus banderas y configuración actuales.
+
+### Verificación y pendientes
+
+- Auth: **14 suites / 152 tests**; RUND: **45 / 570**, todos correctos; builds de ambos
+  correctos. Se agregan **47 pruebas** respecto al punto anterior: 17 de Auth y 30 de RUND.
+- **144 comprobaciones** correctas con PostgreSQL temporal: seis nuevas verifican
+  token obligatorio, DTO mínimo/sin caché, resolución/ausencia de alias, identidad sin
+  cuenta activa ni rol, fallo de Auth sin modificar estados y disponibilidad del perfil
+  explícito durante la caída/recuperación. Se mantienen los clientes compilados de
+  Auth/PTA/Programación, originales, versiones, auditoría y copias PTA.
+- El fixture ejecuta controlador, guard, servicio e interceptor compilados de Auth,
+  con su guard JWT global y una conexión PostgreSQL en modo de solo lectura. No arranca
+  el AppModule completo de Auth. RUND sí arranca desde su `dist/main.js` real.
+- Gateway: **10 comprobaciones HTTP** correctas; se amplía el bloqueo existente a
+  las rutas de identidad, incluida una variante con `internal` codificado.
+- Evidencia: [validacion-identidad-auth-rund.json](validacion-identidad-auth-rund.json),
+  junto a los reportes temporales de integración regenerados. Se verifican los hashes
+  de los diez archivos TypeScript de los contratos previos de consumidores sin cambios.
+
+No se aplican migraciones ni copias en bases instaladas, no se activan funciones,
+no se despliega ni se hace push. La validación temporal no certifica local/DEV/QA/PRE/PROD.
+
+Continúa **12.5d.2**, con **11 pasos principales completados localmente, paso 12 en curso
+y 5 frentes restantes incluido el actual**. El siguiente corte de aislamiento es revisar
+los catálogos territoriales y sus consultas en el perfil/estadísticas. También siguen
+pendientes las altas/carga masiva sobre Auth, los permisos, otras dependencias de PTA
+y la aceptación por ambiente. El RUND embebido en PTA permanece disponible.
+
+## 42. Paso 12.5d.2: catálogos del perfil y cobertura territorial por API (2026-10-14)
+
+Se sustituyen los dos JOIN de catálogos que quedaban en `InternalRundService`:
+`academic_work_plan.direccion_territorial` para el perfil y `auth.seccionales` para
+la cobertura del backoffice. Este servicio consulta ahora únicamente tablas RUND
+por SQL; los propietarios publican sus catálogos mediante API interna de solo lectura.
+Persisten dependencias externas en otros servicios de RUND.
+
+### Claves y comportamiento conservados
+
+Son catálogos distintos; no se unifican ni se sustituyen entre sí:
+
+- **PTA**: `GET /internal/rund/v1/catalogos/territoriales`, con filas `{ codigo, nombre }`.
+  El perfil conserva la búsqueda por código exacto, incluidos ceros iniciales y texto
+  original. Incluye registros inactivos o con baja lógica, como el JOIN anterior.
+  Si el catálogo confirmado no contiene el código, `territorialNombre` sigue siendo null.
+- **Auth**: `GET /internal/rund/v1/catalogos/seccionales`, con filas `{ id, nombre }`.
+  El ID bigint se transmite como texto, sin convertirlo a Number. La cobertura sigue
+  enlazando el `territorialId` con este ID, no con el código de PTA o `cod_seccional`.
+  RUND agrupa en PostgreSQL usando parámetros `unnest`, preservando nombres homónimos,
+  totales y distribución con/sin CETAP del SQL anterior. No persiste una copia del catálogo.
+
+Ambos endpoints devuelven `{ items, total }` completo, sin paginación, y
+`Cache-Control: private, no-store` (Auth conserva su sobre global de respuesta).
+Los guards exigen `INTERNAL_SERVICE_TOKEN`; `@Public` omite solo el JWT global,
+no esa credencial. El gateway bloquea las rutas normales y codificadas de catálogo.
+No se modifican las rutas públicas de catálogos, sus filtros por período/actividad,
+el RUND embebido ni sus reglas de carga o permisos.
+
+El cliente RUND verifica filas, tipos, claves duplicadas y total completo. Tiene
+plazo de 10 segundos, no sigue redirecciones ni reenvía cookies/JWT. Catálogo vacío
+confirmado es válido; HTTP 404 significa API ausente, no catálogo vacío. Un fallo,
+respuesta parcial o rechazo del propietario devuelve **503** desde el endpoint RUND,
+sin consultar SQL del otro propietario. Para cobertura esto sustituye el anterior
+silencio ante error de la consulta externa, que podía anunciar un listado vacío.
+La tolerancia existente de los agregados SQL nativos no se modifica.
+
+### Configuración y publicación
+
+Publicar primero **Auth y PTA con sus APIs de catálogo** y comprobar los contratos
+internos; después RUND. El orden entre Auth y PTA es indistinto para este corte.
+Mantenerlos disponibles mientras RUND use estas APIs. Para volver a versiones de los
+propietarios sin las rutas nuevas, restaurar primero un RUND compatible.
+
+RUND utiliza `AUTH_SERVICE_URL` y `AUTH_INTERNAL_SERVICE_TOKEN` como en la sección 41.
+Para PTA añade `ACADEMIC_WORK_PLAN_SERVICE_URL` (URL interna directa, no gateway)
+y `PTA_INTERNAL_SERVICE_TOKEN`, que debe coincidir con `INTERNAL_SERVICE_TOKEN` de PTA.
+Si se omite el token específico, utiliza su `INTERNAL_SERVICE_TOKEN` explícito;
+no utiliza `JWT_SECRET`. No depende de las banderas de proyección de Carpeta Digital.
+
+Se añaden URL/token PTA en los seis Compose base de backend, general, DEV, QA, PRE
+y PROD; local los hereda de DEV. Se comprueba estáticamente la herencia de local y los
+cuatro overlays GHCR: **11 combinaciones**. Esta revisión solo valida los valores y la
+herencia de URL/token del catálogo; no ejecuta ni certifica Docker Compose completo.
+Se aclaran los tres `.env.example`; no se leen ni modifican `.env` reales.
+
+### Verificación y siguiente corte
+
+- Builds de Auth, PTA y RUND correctos. Auth: **15 suites / 154 tests**; PTA:
+  **88 / 841**; RUND: **46 / 609**, todos correctos. Se agregan **52 pruebas** respecto
+  al punto anterior: 2 en Auth, 11 en PTA y 39 en RUND. Los canarios de PTA que dependen
+  de bases instaladas se dirigen a un puerto local cerrado y toman su salida prevista;
+  no certifican los datos de las instalaciones.
+- **151 comprobaciones** correctas con PostgreSQL temporal: siete nuevas comprueban
+  credenciales, DTO completo/sin caché, código PTA histórico con ceros, IDs bigint Auth,
+  nombres homónimos y conteos CETAP comparados con el SQL anterior, indisponibilidad,
+  respuesta parcial y recuperación. Perfiles ficticios se comparan antes/después de
+  los fallos. Se conserva el NOT NULL territorial del esquema; no se relaja para pruebas.
+- Controladores, guards y servicios compilados de Auth/PTA se ejecutan por HTTP con
+  conexión de solo lectura sobre datos temporales; no se arrancan sus AppModules.
+  RUND se ejecuta desde su main real. Se mantienen las verificaciones anteriores
+  de identidad, versiones, proyecciones, originales, auditoría, copias y clientes compilados.
+- Gateway: **10 comprobaciones HTTP** correctas, ampliando las rutas internas bloqueadas.
+  Configuración: `node scripts/verify-rund-catalogos-config.cjs`, **11 combinaciones**.
+- Evidencias: [validacion-catalogos-rund.json](validacion-catalogos-rund.json) y
+  [validacion-configuracion-catalogos-rund.json](validacion-configuracion-catalogos-rund.json),
+  más los reportes temporales regenerados. Se conservan los diez archivos TypeScript
+  de contratos previos de consumidores y los seis del núcleo de identidad/validación
+  de la sección 41, verificados por hash.
+
+No se aplican migraciones ni copias operativas, no se activan integraciones ni se
+despliega o hace push. Las validaciones locales no certifican local/DEV/QA/PRE/PROD.
+
+Continúa **12.5d.2**: **11 pasos principales completados localmente, paso 12 en curso
+y 5 frentes pendientes contando el actual**. El siguiente corte es revisar el catálogo
+que usa `BancoDocentesService.getTerritoriales` para carga/edición, preservando sus IDs,
+reglas de búsqueda y tratamiento de históricos. Siguen pendientes altas/sincronización,
+permisos, otros accesos SQL entre propietarios y aceptación operativa por ambiente.
+
+## 43. Paso 12.5d.2: catálogo de carga/edición del banco y rollback de bloques (2026-10-14)
+
+`BancoDocentesService.getTerritoriales` deja de consultar `auth.seccionales` por SQL.
+Auth publica `GET /internal/rund/v1/catalogos/territoriales-banco`, con las tres
+columnas que usaba el banco: `{ id, nombre, codigo }`, en `ORDER BY nom_seccional ASC`.
+Se conserva el ID bigint como texto, el código nullable y el orden del propietario;
+no se filtran históricos. Los endpoints anteriores de seccionales y territoriales
+mantienen sus contratos. La API nueva usa el guard interno de Auth y cabecera sin caché;
+el gateway impide publicarla aun con JWT y token de servicio.
+
+### Carga, edición y autogestión
+
+El cliente comprueba las tres columnas, total completo e IDs únicos; un código ausente
+no se interpreta como null. Permite códigos o nombres compartidos por IDs distintos,
+igual que la tabla original. Conserva el plazo de 10 segundos, sin redirecciones ni
+credenciales de usuario. Ante fallo/contrato parcial devuelve 503, sin SQL alternativo.
+
+La carga obtiene **un solo snapshot por lote no vacío**, antes de guardar el soporte
+o abrir transacciones. Las filas usan ese snapshot interno, sin caché entre peticiones
+ni aceptar un catálogo del body. Una caída de Auth detiene la operación completa antes
+de escribir; ya no se presenta como errores de datos fila por fila con un soporte guardado.
+Las reglas de errores reales de filas, duplicados, previsualización y carga incremental
+se mantienen. La edición obtiene el catálogo antes de bloquear sugerencias/abrir su
+transacción y conserva la segunda comprobación del soporte dentro del guardado.
+
+Se mantienen las reglas de resolución existentes:
+
+- Nombre exacto normalizado, alias y coincidencia parcial; `NORTESANTANDER` conserva
+  su caso específico y no selecciona Santander.
+- Manual: territorial desconocida se rechaza. Masivo: conserva el texto original y
+  la asignación previa si existe; no inventa Sede Central para un nombre desconocido.
+- Autogestión: mantiene su preferencia por Sede Central, o la primera territorial del
+  catálogo, solo cuando el propietario confirmó ese catálogo. Un fallo no activa ese reemplazo.
+- Editar otros campos conserva la territorial operativa cuando no cambia la reportada.
+  La tarjeta mantiene la prioridad del texto reportado y su degradación anterior a null
+  si falla la consulta del nombre informativo; no intenta un SQL alternativo.
+
+### Dos defectos previos detectados con integración ampliada
+
+La comparación completa de la previsualización detectó que `inicializarBloques` usaba
+la conexión global, fuera de la transacción del perfil. Podía dejar `RundCampoEstado`
+guardados aunque se revirtieran la persona y el docente. El alta pasa ahora su manager
+a la inicialización: los seis bloques se confirman/revierten junto al perfil, también
+ante error y rollback por fila. `getBloques` conserva su inicialización predeterminada.
+La auditoría de lectura del resultado de previsualización sigue registrándose como antes;
+no es parte del rollback de datos. Las secuencias pueden avanzar durante previsualizaciones.
+No se ejecuta limpieza de posibles registros anteriores en bases instaladas.
+
+La carga real con ID `9007199254740993` detectó otra conversión previa: `Number(id)`
+redondeaba el ID antes de escribir la FK de la persona. Se transmite como texto a
+PostgreSQL, tanto en persona como en perfil. Los códigos como `001` no sustituyen al ID.
+
+### Verificación y publicación
+
+- Builds de Auth y RUND correctos. Auth: **15 suites / 156 tests**; RUND:
+  **47 / 637**, correctos. Se agregan **30 pruebas** respecto al punto anterior:
+  2 de Auth y 28 de RUND, además de adaptar los fixtures a la dependencia inyectada.
+- **159 comprobaciones** correctas con PostgreSQL temporal y HTTP real: ocho nuevas
+  verifican contrato/credencial/orden, snapshot único multirregistro, igualdad de datos
+  antes/después de previsualizar, fallos de Auth y edición, fallo forzado al inicializar
+  bloques, vacío confirmado, carga real con alias/ID bigint y reimportación conservando
+  asignación y decisiones documentales. Se mantienen las verificaciones anteriores
+  de Auth/PTA/Programación, versiones, proyecciones, permisos y auditoría.
+- Gateway: **10 comprobaciones HTTP** correctas, incluyendo la nueva ruta bloqueada.
+  Las configuraciones del corte anterior siguen sin cambios funcionales; no se añaden
+  variables, migraciones ni banderas de activación.
+- Evidencia: [validacion-catalogo-banco-rund.json](validacion-catalogo-banco-rund.json)
+  y reportes temporales regenerados. Los diez archivos TypeScript de contratos de
+  consumidores y los seis del núcleo de identidad/validación conservan sus hashes.
+
+Desplegar primero Auth con el endpoint nuevo y comprobar el contrato antes de publicar
+este RUND. Se reutilizan `AUTH_SERVICE_URL` y `AUTH_INTERNAL_SERVICE_TOKEN` (o el token
+interno explícito común), coincidente con `INTERNAL_SERVICE_TOKEN` de Auth. También
+siguen vigentes las APIs de PTA y el orden de publicación de la sección 42. Para retirar
+esta API de Auth, restaurar antes un RUND compatible. No se cambian `.env` reales.
+
+Continúa **12.5d.2**: **11 pasos principales completados localmente, paso 12 en curso
+y 5 frentes pendientes incluido el actual**. El siguiente corte es revisar la consulta
+del período activo que la carga masiva todavía hace directamente a PTA. Siguen abiertas
+las altas/actualizaciones de identidad, permisos y demás lecturas SQL entre propietarios,
+así como la aceptación por ambiente. El RUND embebido en PTA sigue disponible.
+
+No se consultan ni modifican bases instaladas, no se copian datos operativos ni se
+activa, despliega o hace push. Las pruebas temporales no certifican local/DEV/QA/PRE/PROD.
+
+## 44. Paso 12.5d.2: período activo de carga masiva por API PTA (2026-10-14)
+
+`BancoDocentesService.bulkUpsert` deja de leer directamente
+`academic_work_plan.periodo_academico`. PTA publica
+`GET /internal/rund/v1/catalogos/periodo-activo`, de solo lectura, protegido con
+`INTERNAL_SERVICE_TOKEN` y `Cache-Control: private, no-store`. Devuelve
+`{ items: [{ codigo, estado: 'en_curso' }], total: 1 }`, o lista vacía y total 0
+si no existe un período en curso. No crea un período por defecto, no elige uno
+por fecha y no utiliza la ruta pública de períodos, que puede inicializar datos.
+La ruta pública y las reglas de administración de períodos de PTA se conservan.
+
+### Prioridad de períodos y dependencia necesaria
+
+Se mantiene la prioridad que ya tenía la carga:
+
+1. El período que trae la fila en `PERIODO_CARGA`, `periodoCarga` o `periodo_carga`.
+2. El período general de la operación, que solo completa las filas sin período.
+3. El período activo de PTA, únicamente si todavía faltan períodos y no hay valor general.
+
+El controlador mantiene la lectura actual del período general desde la consulta o
+el archivo XLSX; no se cambia la interpretación de encabezados ni sus alias. No se
+fuerza que un período explícito sea el activo ni que exista en el catálogo de PTA;
+se conservan los períodos históricos y la validación previa de las filas. Tampoco se
+modifica el formato estricto de período que exige el canal manual.
+
+RUND pide el activo **una sola vez por lote que lo necesite**, antes de consultar el
+catálogo Auth, guardar el soporte o iniciar transacciones. Si todas las filas tienen
+período, o se indica un valor general, no necesita esta API de PTA. Un lote vacío
+tampoco la consulta. Se trabaja sobre copias y no se modifica el objeto de filas recibido.
+La exigencia del soporte de carga definitiva se valida antes de solicitar datos externos.
+
+La ausencia confirmada conserva el comportamiento anterior: no rellena un período y
+la validación informa `PERIODO_CARGA` en las filas que lo necesiten. Un error HTTP,
+404 de ruta ausente, respuesta incompleta, código inválido o estado distinto de
+`en_curso` producen **503** antes de escribir; no se convierten en ausencia ni habilitan
+SQL alternativo. El cliente admite códigos históricos de hasta 10 caracteres, según
+la columna de PTA, sin reinterpretarlos como fechas; mantiene plazo de 10 segundos,
+token interno explícito y prohibición de redirecciones/cookies/JWT de usuario.
+
+PTA exige un único período en curso en su administración. La consulta anterior con
+`LIMIT 1` ocultaba una eventual inconsistencia eligiendo cualquiera. La API interna
+comprueba hasta dos: si hay varios devuelve **409** y RUND informa **503** cuando
+necesita ese valor. Una carga con períodos explícitos sigue sin depender de esta consulta.
+No se modifica ni corrige automáticamente la configuración inconsistente del propietario.
+
+### Verificación y publicación
+
+- Builds de PTA y RUND correctos. PTA: **88 suites / 845 tests**; RUND:
+  **48 / 661**, correctos. Se agregan **28 pruebas**: 4 de PTA y 24 de RUND.
+  Los canarios PTA dependientes de bases instaladas se dirigen a un puerto local cerrado
+  y toman la salida prevista de indisponibilidad; no certifican datos de instalaciones.
+- **166 comprobaciones** correctas con PostgreSQL temporal y HTTP real. Siete nuevas
+  cubren protección y DTO de lectura, persistencia de un lote JSON con períodos distintos,
+  previsualización XLSX sin período con rollback de identidad/perfiles/bloques/soportes,
+  una sola consulta por lote, caída/ruta ausente/respuesta parcial/estado incorrecto,
+  carga con períodos explícitos durante indisponibilidad, ausencia sin sembrar defaults
+  y múltiples períodos en curso sin escrituras. Los fixtures de períodos se restauran.
+- Gateway: **10 comprobaciones HTTP** correctas; la ruta interna del período se bloquea
+  tanto normal como codificada. Se mantienen todos los recorridos anteriores de Auth,
+  PTA, Programación, carga/edición, originales, historial, proyecciones y auditoría.
+- Se ejecutan el controlador/guard/servicio compilados de PTA con su guard JWT global
+  y conexión de solo lectura sobre el clúster temporal; RUND arranca desde su main real.
+  El AppModule completo de PTA no se inicia. Auth y los Compose del corte anterior no
+  cambian; no se añaden variables ni migraciones.
+- Evidencia: [validacion-periodo-activo-rund.json](validacion-periodo-activo-rund.json)
+  y reportes temporales regenerados. Se comprueban los hashes sin cambios de los diez
+  archivos TypeScript de contratos de consumidores, seis del núcleo de identidad/validación
+  y las piezas Auth/configuración del corte anterior.
+
+Desplegar primero **PTA con la nueva API**, comprobar el contrato y después este RUND.
+Se reutilizan `ACADEMIC_WORK_PLAN_SERVICE_URL` y `PTA_INTERNAL_SERVICE_TOKEN`, o el
+token interno común explícito, coincidente con `INTERNAL_SERVICE_TOKEN` de PTA.
+También siguen vigentes las APIs Auth de las secciones 41–43. Antes de retirar esta
+API de PTA, restaurar un RUND compatible. No se cambian archivos `.env` reales.
+
+Seguimos en **12.5d.2**, con **11 pasos principales completados localmente, paso 12 en
+curso y 5 frentes pendientes incluido el actual**. El siguiente corte es revisar los
+JOIN de identidad/seccional de `RundPtaConsultaService`, preservando su contrato público
+de consulta del perfil. Siguen pendientes las altas/actualizaciones de identidad,
+permisos, otras dependencias SQL y la aceptación operativa por ambiente. El RUND
+embebido en PTA permanece disponible.
+
+No se consultan ni modifican bases instaladas, no se copian datos operativos ni se
+activa, despliega o hace push. Las pruebas temporales no certifican local/DEV/QA/PRE/PROD.
+
+## 45. Frente 4: identidad del perfil público para PTA por API Auth (2026-10-14)
+
+**Corte técnico terminado localmente.** Se separan los JOIN de `auth.personas` y
+`auth.seccionales` de `RundPtaConsultaService`. La selección de perfiles y el registro
+de acceso usan únicamente tablas RUND en ese servicio. Los guards de permisos y otros
+servicios todavía tienen dependencias SQL con Auth; no se presenta como aislamiento total.
+
+El número histórico del paso 12 agrupaba contratos, aislamiento y aceptación por
+ambiente y no reflejaba bien el avance. El resumen ahora distingue **8 cortes técnicos
+terminados desde el merge (38–45)**, el trabajo de aislamiento del frente 4 y la
+aceptación operativa pendiente de **12.5d.2**. Se mantienen **11 pasos principales
+completados localmente, paso 12 operativo abierto y 5 frentes por cerrar**; no se suman
+los cortes a los pasos principales ni se estima un porcentaje con ellos.
+
+### Identidad y compatibilidad
+
+Auth añade `GET /internal/rund/v1/personas/perfil-pta/:cedula`, con el mismo guard de
+token interno y cabecera `private, no-store`. Devuelve una proyección limitada:
+`encontrada`, documento normalizado, UUID de persona, nombre compuesto e ID de su
+seccional como texto o null. No consulta ni exige una cuenta de usuario, roles o actividad.
+Se mantienen los contratos anteriores `por-documento` y `resolver`.
+
+La normalización conserva la consulta anterior: `BTRIM` y eliminación de puntos en
+el documento almacenado, manteniendo ceros iniciales y comparación textual. El nombre
+usa `nom_largo` sin espacios externos cuando existe; si está vacío, conserva la misma
+composición `CONCAT_WS` de nombres/apellidos. No se agregan datos de contacto o salario.
+La cédula de entrada sigue exigiendo entre 1 y 20 dígitos, sin separadores.
+
+La ausencia real se confirma con HTTP 200 y `{ encontrada: false, documento }`.
+Así, un 404 porque un Auth anterior no tiene la ruta produce **503 en RUND**, en vez
+de sugerir crear un docente duplicado. Un resultado parcial, documento ajeno, UUID/ID
+inválido, rechazo o caída de Auth también producen 503, sin SQL alternativo. El cliente
+mantiene token explícito, plazo de 10 segundos y prohibición de redirecciones y JWT/cookies
+de usuario. Si varias personas comparten el documento normalizado, Auth devuelve **409**
+y RUND informa **503**, sin elegir una identidad arbitraria ni corregir registros.
+
+### Contrato público, períodos y auditoría
+
+La ruta pública de interoperabilidad conserva su DTO limitado y sus guards JWT/permisos.
+RUND selecciona el perfil con el mismo orden: período solicitado, presencia de `idRund`,
+presencia de período, fecha de actualización e ID. Sin período se mantiene esa prioridad;
+no se añade filtro por estado, usuario activo o rol del docente. Cero horas e inactivos
+se conservan. La ausencia de docente mantiene `RUND_DOCENTE_NO_ENCONTRADO`/`FLUJO_1`;
+la falta de registro para el período mantiene `RUND_DOCENTE_SIN_PERIODO`/`flujo_alta: null`.
+
+La territorial del perfil conserva prioridad sobre la seccional de la persona. Solo
+una territorial vacía o null usa la de Auth; un ID no vacío desconocido no se sustituye.
+El nombre/código se obtienen del catálogo Auth ya separado en la sección 43, no del
+código territorial PTA. Los IDs bigint siguen como texto; sin ambas referencias se
+devuelven null sin necesitar catálogo. Un catálogo no confirmado bloquea la respuesta.
+
+Se mantiene el registro `RUND_PTA_CONSULTA_PERFIL_V1` como `ENMASCARADO`, incluso para
+administradores, y la auditoría de ausencia/período inexistente. No guarda cédula ni
+salario. Si no puede auditar, conserva el **503 anterior** e impide entregar datos.
+Las consultas del perfil no escriben decisiones, perfiles ni identidades.
+
+### Verificación y publicación
+
+- Builds de Auth y RUND correctos. Auth: **15 suites / 163 tests**; RUND:
+  **48 / 681**, correctos. Se agregan **27 pruebas**: 7 de Auth, 15 del cliente de
+  identidad y 5 HTTP del perfil, manteniendo las regresiones de los contratos previos.
+- **174 comprobaciones** correctas con PostgreSQL temporal y HTTP real: ocho nuevas
+  comprueban API protegida sin cuenta de usuario, documento con puntos/ceros, nombre
+  compuesto, igualdad del DTO completo con el SQL anterior por período/sin período,
+  IDs bigint y territoriales históricas/desconocidas/nulas, errores 404 diferenciados,
+  caída/ruta ausente/respuesta parcial, identidad ambigua, recuperación y auditoría
+  indisponible. Las filas nativas se comparan antes/después; las escrituras permitidas
+  de estas consultas son exclusivamente registros de acceso. Se eliminan los fixtures
+  del perfil y el clúster temporal al terminar.
+- Gateway: **10 comprobaciones HTTP** correctas; la API Auth nueva se bloquea tanto
+  normal como codificada. No se cambia el código del gateway ni el RUND embebido de PTA.
+- Se conservan por hash los diez archivos TypeScript de contratos de consumidores,
+  la validación documental, el código de carga/período del corte anterior, PTA y Compose.
+  Evidencia: [validacion-identidad-perfil-pta-rund.json](validacion-identidad-perfil-pta-rund.json)
+  y reportes temporales regenerados.
+
+Publicar primero **Auth con el endpoint nuevo**, comprobar su contrato interno y después
+RUND. Se reutilizan `AUTH_SERVICE_URL` y el token interno de Auth; no hay variables ni
+migraciones nuevas. Siguen vigentes las dependencias PTA de los cortes anteriores.
+Para retirar esta API de Auth, restaurar antes un RUND compatible.
+
+El siguiente corte técnico es revisar la identidad que usa el listado/ficha del banco
+(`authDocentesBaseSql`), separando consultas de las escrituras de alta/edición y de la
+resolución de permisos. Estas últimas requieren conservar transacciones, roles y
+auditoría; siguen pendientes junto con los consumidores/aceptación de los cinco frentes.
+No se consultan o modifican bases instaladas ni `.env` reales; no se despliega, activa,
+copia información operativa o hace push. La validación temporal no certifica los ambientes.
+
+## 46. Frente 4: identidad del listado, ficha y estadísticas del banco por API Auth (2026-10-14)
+
+Se completa el corte anunciado en 45: `authDocentesBaseSql` y el filtro territorial
+del banco dejan de leer tablas de Auth desde RUND. El listado, `getById` y `getStats`
+combinan una proyección interna del propietario con `rund."Docente"`. Las escrituras
+de alta/edición, la carga masiva, sincronización y el mapeador público se conservan.
+No cambia el controlador público ni los guards.
+
+**Contrato y ejecución**
+
+- Auth incorpora `GET /internal/rund/v1/banco/proyeccion`, protegido por
+  `RundIdentityGuard`, token interno obligatorio y `Cache-Control: private, no-store`.
+  `@Public` omite únicamente el JWT de usuario; no permite omitir el token de servicio.
+  Se registra el controlador/servicio en `UsersModule`.
+- Una sentencia de solo lectura obtiene `version: 1`, docentes, seccionales y sedes,
+  con el conteo de cada colección. Devuelve únicamente las columnas de identidad,
+  contacto, estado de usuario, fechas, roles y catálogos que utilizaba la consulta;
+  excluye contraseñas, tokens, dirección, identificadores auxiliares y campos RUND.
+- Conserva elegibilidad por rol activo cuyo código **o nombre** sea DOCENTE,
+  asignación activa y semántica `COALESCE(flag,true)`. No exige usuario activo:
+  una cuenta inactiva con rol vigente conserva sus perfiles históricos. Los usuarios
+  docentes sin perfil RUND siguen presentes; una persona sin usuario queda fuera de
+  este banco, como antes. El perfil público PTA de 45 tiene su contrato independiente.
+- RUND incorpora `AuthBancoClient`/módulo, reutilizando `AUTH_SERVICE_URL` y los tokens
+  específicos/común existentes. Tiene plazo de 10 segundos, no sigue redirecciones,
+  no envía credenciales de usuario y valida versión, campos explícitos, tipos,
+  IDs bigint textuales, conteos y claves duplicadas antes del SQL.
+- Ausencia explícita de las tres colecciones produce listado/estadísticas vacíos y
+  ficha 404. Un Auth anterior sin ruta, caída, credencial inválida o respuesta parcial
+  produce **503**, sin interpretar el fallo como banco vacío ni consultar Auth por SQL.
+- La proyección vive únicamente en la operación: `jsonb_to_recordset($1::jsonb)` la
+  convierte en CTEs tipados y la combina con los perfiles nativos. No crea tablas,
+  replica identidades ni guarda caché. Los IDs se transportan como texto y se tipan
+  como bigint en PostgreSQL, evitando redondeo de JavaScript.
+- Se preservan filtros, búsqueda parametrizada, equivalencias territoriales, prioridad
+  de texto reportado/catálogos, sedes, estados efectivos, período exacto, alias de
+  usuario/persona/documento/ID docente y orden de selección. La paginación se aplica
+  después de combinar y filtrar. Conteo y datos usan la misma proyección; las diez
+  consultas de estadísticas (resumen y nueve grupos) también la reutilizan.
+- Se pasa una copia de los parámetros al conteo para que agregar limit/offset no
+  modifique el arreglo de esa consulta. La forma de respuesta, enmascaramiento,
+  propiedad y auditoría siguen en el controlador existente. Una escritura fallida
+  en `RundAprobacionLog` sigue bloqueando listado/ficha con el error **500** anterior;
+  no se entrega la respuesta. Es distinto de la auditoría del perfil PTA de 45.
+
+**Validación local**
+
+- Builds de Auth y RUND correctos. Auth: **16 suites / 166 tests**; RUND:
+  **50 / 721**, todos correctos. Se agregan **43 pruebas** (3 Auth y 40 RUND).
+  Los fixtures unitarios existentes solo incorporan la nueva dependencia inyectada.
+- **186 comprobaciones** correctas con PostgreSQL temporal y HTTP real: doce nuevas
+  del banco. Se compara el DTO completo del listado/ficha y los nueve grupos de
+  estadísticas contra el CTE anterior congelado en
+  `scripts/fixtures/rund-banco-before-api.sql`, junto con expectativas explícitas.
+  Esa consulta es referencia exclusiva del verificador, sin uso en ejecución del servicio.
+- Incluye documentos con puntos/ceros, fechas y zona horaria, nombres compuestos,
+  usuarios inactivos, rol por nombre, exclusiones por rol/asignación, docente sin
+  perfil, períodos históricos, IDs territoriales/sedes mayores que `MAX_SAFE_INTEGER`,
+  fallos/recuperación de Auth, vacío explícito, ausencia de caché, permisos, propiedad
+  y fallos de auditoría. Los escenarios ficticios respetan las restricciones vigentes.
+- Prueba específica de aislamiento: un rol temporal con SELECT solo sobre
+  `rund."Docente"` no puede consultar `auth.personas`, pero ejecuta listado, ficha
+  y estadísticas con resultados iguales a la referencia. La API Auth usa su propia
+  conexión de solo lectura. No se afirma que los guards ni el servicio completo
+  estén aislados: conservan otras consultas entre esquemas todavía pendientes.
+- Gateway: **10 comprobaciones HTTP**, incluyendo el bloqueo de la nueva ruta
+  interna normal y codificada. Los contratos de consumidores, validación documental,
+  perfil PTA, catálogos y configuración anteriores se verifican por hashes; las
+  secciones de escritura, edición, carga masiva y sincronización del banco permanecen
+  idénticas al inicio del corte. Evidencia:
+  [validacion-identidad-banco-rund.json](validacion-identidad-banco-rund.json).
+
+**Despliegue y límites**
+
+Publicar primero **Auth con la proyección del banco**, verificar su contrato interno y
+después RUND. No hay variables ni migraciones nuevas; siguen vigentes los requisitos
+Auth/PTA anteriores. Si se retira esta API, restaurar primero un RUND compatible.
+
+La proyección contiene el conjunto completo de identidades docentes necesario para
+filtrar por columnas de distintos propietarios; no se pagina en Auth antes de aplicar
+los filtros de RUND. Queda pendiente comprobar volumen, latencia y memoria con los
+datos de cada instalación. El snapshot de Auth es consistente en su sentencia; las
+consultas nativas de conteo/página siguen siendo independientes y no hay transacción
+distribuida entre propietarios. Las pruebas ficticias no certifican carga operativa.
+
+Quedan **9 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**, incluido aislamiento SQL. El paso 12 conserva la aceptación
+operativa pendiente; no se reabre cada corte ya terminado bajo ese rótulo. El siguiente
+corte aborda las lecturas puntuales de identidad de autogestión/tarjeta RUND; después
+siguen escrituras y permisos. No se tocan bases existentes ni `.env` reales, no se
+despliega, hace push o retira el RUND embebido de PTA.
+
+## 47. Frente 4: lecturas de tarjeta/autogestión y resolución de alias por API Auth (2026-10-14)
+
+Se sustituyen cinco lecturas entre propietarios: identidad complementaria del respaldo
+de `getAutogestionInfo`, datos personales de `getTarjetaRUND`, dos consultas de
+`getTarjetaRUNDByPersona` y el JOIN de resolución de alias de `resolveDocenteId`.
+Auth sigue siendo propietario de identidad; los perfiles, períodos, bloques, soportes
+y decisiones permanecen en RUND. Las escrituras y la implementación de envío OTP
+no se modifican en este corte.
+
+**Contrato y compatibilidad**
+
+- Se agregan tres rutas internas en el controlador de identidad existente:
+  `GET /internal/rund/v1/personas/ficha/por-persona/:personaId`,
+  `GET /internal/rund/v1/personas/ficha/por-documento/:documento` y
+  `GET /internal/rund/v1/personas/por-alias/:clave`. Reutilizan guard, token interno
+  obligatorio y `Cache-Control: private, no-store`; no requieren usuario o rol activo
+  para una identidad histórica ni se exponen por gateway.
+- La ficha incluye exclusivamente UUID, identificación/tipo, nombre completo y sus
+  columnas canónicas, género, fecha civil de nacimiento, correo y teléfono. Responde
+  `{consulta,encontrada,persona}`: ausencia confirmada es HTTP 200 con `false/null`.
+  Por documento mantiene comparación **exacta**, incluidos puntos, ceros y espacios;
+  ambigüedad devuelve 409 en Auth y 503 en RUND, sin elegir otra identidad.
+- Alias responde `{clave,personaIds,total}` con todas las personas candidatas de la
+  consulta anterior (UUID persona/usuario o documento normalizado con BTRIM, sin puntos
+  y sin distinción de mayúsculas). No filtra rol ni usuario activo. El período y orden
+  por fecha se siguen resolviendo contra `rund."Docente"`, sin JOIN con Auth. Las dos
+  rutas rápidas UUID de `resolveDocenteId` conservan prioridad y no requieren la API.
+- `AuthIdentityClient` valida estructura, campos explícitos, consulta solicitada,
+  correspondencia de documento/UUID, conteos y duplicados. Conserva plazo de 10 segundos,
+  rechazo de redirecciones y token de servicio. Un 404 de ruta antigua, caída, error
+  de credencial o respuesta parcial produce 503; no confirma ausencia ni usa SQL alternativo.
+- Se corrige un defecto del respaldo de autogestión: consultaba `primer_nombre`,
+  `segundo_nombre`, `email` y `celular`, inexistentes en el DDL de Auth. Ahora usa
+  `nom_tercero`, `pri_apellido`, `seg_apellido`, `dir_email` y `tel_celular` del propietario.
+  `nom_tercero` se conserva completo; `segundo_nombre` queda null porque no existe una
+  columna separada. Se mantienen la prioridad del nombre completo, correo alternativo,
+  vínculo por invitación, sesión OTP, enmascaramiento, auditoría y evidencias.
+- El mapeador de tarjeta y selección nativa por período permanecen idénticos. La ausencia
+  confirmada de persona conserva los campos nulos/fallback anteriores. **Cambio explícito
+  ante fallo:** la tarjeta deja de presentar identidad vacía como resultado válido cuando
+  falla Auth; ambas rutas propagan 503. No se confunde la caída con «No es docente RUND».
+- Tarjeta por persona conserva la rama de aprovisionamiento y su payload, validación,
+  auditoría y llamada a `upsertDocente`, usando identidad confirmada por API. Esto no
+  independiza las escrituras de `upsertDocente` ni certifica de nuevo el alta automática.
+  También se conservan la inicialización nativa de bloques faltantes y el comportamiento
+  previo de errores no relacionados con identidad/auditoría de cada ruta.
+
+**Validación local**
+
+- Builds de Auth y RUND correctos. Auth: **16 suites / 174 tests**; RUND:
+  **51 / 759**, todos correctos. Se agregan **46 pruebas** (8 Auth y 38 RUND).
+- **197 comprobaciones** correctas con PostgreSQL temporal y HTTP real, once nuevas
+  de tarjeta/identidad. Comparan el DTO completo de tarjeta contra las columnas de
+  la lectura anterior y la resolución contra
+  `scripts/fixtures/rund-resolve-docente-before-api.sql`. Incluyen períodos históricos,
+  personas sin usuario, usuarios inactivos, documentos con puntos/ceros/espacios,
+  fecha civil, puntaje cero, identidad ausente, documentos ambiguos y alias con varias
+  personas candidatas, sin perder la selección del perfil actualizado.
+- Autogestión prueba el respaldo corregido sobre el DDL real, sesión válida, enlace
+  insuficiente, sesión vencida, contactos, documento/puntaje enmascarados y evidencias.
+  Se prueban fallos de ficha/alias, ruta ausente, respuesta parcial, recuperación y
+  auditoría fallida sin entregar datos. La auditoría de tarjeta por ID conserva su
+  sobre de error previo; la indisponibilidad de identidad sí se propaga como 503.
+- Un rol temporal sin SELECT sobre Auth ejecuta tarjeta, autogestión y resolución de
+  alias con SQL exclusivo de RUND y APIs del propietario. Esa prueba de lectura omite
+  la escritura de auditoría; la auditoría real se prueba por HTTP en otro escenario.
+  No certifica los guards ni el servicio completo como independientes de Auth SQL.
+- Gateway: **10 comprobaciones HTTP**, incluyendo las tres rutas nuevas normales y
+  codificadas. Hashes confirman preservación del bloque de listado/ficha/estadísticas,
+  altas/edición/carga masiva, envío OTP, bloques/workflow, sincronización/reparación y
+  mapeador de tarjeta, además de consumidores, catálogos y configuración anteriores.
+  Los fixtures existentes incorporan la dependencia de identidad; se adapta la expectativa
+  de SQL del resolver a la consulta nativa y a los alias obtenidos por API.
+- Evidencia: [validacion-identidad-tarjeta-autogestion-rund.json](validacion-identidad-tarjeta-autogestion-rund.json).
+  Auth usa el controlador/guard/servicio compilados en conexión de solo lectura, sin
+  cargar su AppModule completo. RUND arranca desde su `main` real; se elimina el clúster.
+
+Publicar **Auth con las tres rutas primero y después RUND**. No hay variables ni
+migraciones nuevas; se conservan los requisitos Auth/PTA previos. La reversión de
+Auth requiere restaurar primero un RUND compatible con las APIs disponibles.
+
+Quedan **10 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**, incluido el actual. El próximo corte revisa las lecturas de
+cédula confiable/pertenencia de edición y envío OTP, que aún acceden a Auth SQL. También
+quedan unicidad/duplicados, vencimientos/reparación, escrituras, permisos y aceptación
+operativa por ambiente/volumen. No se ejecutan cambios en bases existentes ni `.env`
+reales; no se despliega, hace push o elimina el RUND embebido de PTA.
+
+## 48. Frente 4: cédula confiable y pertenencia en edición/envío OTP por API Auth (2026-10-14)
+
+Se sustituyen tres lecturas SQL de Auth en `updateDocente` y `submitFromToken`,
+reutilizando `AuthIdentityClient.fichaPorPersona` y `fichaPorDocumento` del corte 47.
+No se agregan rutas, variables, migraciones ni cambios en Auth, gateway, controladores
+públicos o clientes. El alcance es la confirmación de identidad y las validaciones
+previas a persistir; `upsertDocente` todavía conserva escrituras en Auth.
+
+**Reglas conservadas y ajuste explícito**
+
+- Edición obtiene la cédula desde la persona del perfil nativo mediante la API Auth.
+  Conserva la verificación previa de soporte/justificación, las equivalencias de cédula
+  con puntos/enmascarada, la prohibición de cambiar identidad/período/estado, el control
+  GGP de sugerencias y el bloqueo/auditoría dentro de la transacción existente.
+- Envío OTP con perfil existente obtiene su cédula de Auth por UUID; ignora los alias
+  de documento recibidos, conserva el institucional cuando se invitó al alternativo,
+  descarta puntaje salarial y mantiene canal, actor, soporte de invitación y respuesta
+  enmascarada. El payload de entrada no se muta. La invitación solo se marca Gestionada
+  después de terminar la persistencia, como antes.
+- En una invitación sin perfil por correo, la búsqueda exacta del documento se delega
+  a Auth. Si existe persona, RUND verifica pertenencia con `docenteRepo.findOne` por
+  `personaId`, sin filtro de período: cualquier perfil histórico impide apropiarse del
+  documento (403). Una ausencia confirmada de persona o de perfil nativo mantiene la
+  ruta de alta anterior, su validación y sus escrituras.
+- Se conserva la normalización de entrada anterior al lookup exacto (trim y eliminación
+  de puntos). No se sustituye por la resolución amplia de alias de tarjeta.
+- Auth caído, ruta ausente, ficha parcial o documento exacto ambiguo producen 503 antes
+  de persistir. No se interpretan como ausencia ni se usa SQL alternativo. La ambigüedad
+  de documento utiliza el 409 de Auth ya definido en 47 y se propaga como 503 en RUND.
+- **Ajuste de seguridad explícito:** si un perfil existente de autogestión no tiene
+  persona/cédula confirmable, el envío devuelve 404 y conserva la invitación sin gestionar.
+  Antes ese caso omitía la sustitución del documento y podía continuar con el valor
+  del body. No se admite ese reemplazo. En edición se conserva el 404 de cédula ausente.
+
+**Validación local**
+
+- Build de RUND correcto. Suite completa: **52 suites / 780 tests**, todos correctos;
+  se agregan **21 pruebas**. Los fixtures de los controles existentes ahora suministran
+  identidad mediante el cliente, y la prueba de apropiación comprueba el perfil nativo.
+- **205 comprobaciones** correctas con HTTP real y PostgreSQL temporal: ocho nuevas
+  verifican fallos/recuperación de Auth, ausencia de identidad, ambigüedad, soporte/cédula/
+  período ajenos y documento ya ligado a otro perfil, sin cambios en identidad, perfiles,
+  estados documentales, auditoría o invitaciones en las rutas bloqueadas.
+- Edición y envío OTP exitosos se ejecutan por HTTP contra el servicio real, incluyendo
+  el `upsertDocente` existente. Conservan el perfil histórico, cédula, institucional,
+  puntaje previo y auditoría por soporte/invitación. El envío enmascara el documento y
+  solo gestiona su invitación. Son datos ficticios que se eliminan con el clúster.
+- Un rol temporal sin SELECT sobre Auth ejecuta las tres validaciones previas usando
+  únicamente consultas RUND y API del propietario. En esa prueba se sustituye la
+  persistencia final/guardado de invitación para delimitar el alcance; las escrituras
+  reales se prueban por HTTP en los dos escenarios anteriores. No se afirma aislamiento
+  de las escrituras ni de todo el servicio.
+- Auth, su cliente y gateway permanecen idénticos por hashes: se reutiliza la evidencia
+  anterior de **174 tests Auth y 10 comprobaciones gateway**, sin repetir esas suites
+  en este corte. La integración completa sí vuelve a ejercitar las APIs reales de Auth
+  compiladas, guard y conexión de solo lectura, además de todos los flujos anteriores.
+- Hashes confirman preservación del resto de métodos del banco, mapeador de tarjeta,
+  listado/ficha/estadísticas, carga masiva, workflow, consumidores y configuración.
+  También se conservan la persistencia/auditoría y controles de edición posteriores a
+  la lectura de cédula, y la persistencia/auditoría/gestión final del envío OTP.
+- Evidencia: [validacion-identidad-edicion-envio-rund.json](validacion-identidad-edicion-envio-rund.json).
+
+No se necesita una API Auth adicional: el RUND actualizado requiere las fichas internas
+ya documentadas en 47. Antes de desplegar sigue siendo necesario tener ese contrato en
+Auth y los requisitos de los cortes anteriores. No se certifican instalaciones ni volumen.
+
+El siguiente corte técnico aborda `validarUnicidad` y `detectarPosibleDuplicado`, que
+todavía consultan identidad por SQL. Continúan pendientes otras consultas, escrituras
+entre propietarios, permisos, consumidores y aceptación operativa: **5 frentes abiertos**,
+con **11 cortes técnicos locales desde el merge**, distintos de los **11 pasos principales
+locales**. El paso 12 mantiene su aceptación operativa pendiente. No se modifican bases
+existentes ni `.env` reales; no se hace push, despliega o retira el RUND embebido de PTA.
+
+## 49. Frente 4: unicidad y detección de posibles duplicados por API Auth (2026-10-14)
+
+`validarUnicidad` y `detectarPosibleDuplicado` dejan de unir `rund."Docente"` con
+`auth.personas`. Auth obtiene las coincidencias de identidad y RUND conserva la
+selección de perfiles activos, períodos, correo, exclusión y respuesta pública.
+No se modifican los controladores públicos, frontend, guard ni escrituras del banco.
+
+**Contrato y reglas conservadas**
+
+- Se agrega `POST /internal/rund/v1/personas/coincidencias` en el controlador de
+  identidad existente: token interno obligatorio, sin sustitución por JWT,
+  `Cache-Control: private, no-store`, HTTP 200 para la consulta confirmada.
+  Los criterios privados viajan en el body. No se agrega configuración ni migración.
+- Acepta dos consultas: `{tipo:'unicidad',documento,personaIds}` y
+  `{tipo:'nombre-fecha',nombre,fechaNacimiento}`. Devuelve `{consulta,items,total}`
+  con UUID, documento y nombre; fecha de nacimiento solo en la segunda modalidad.
+  Cada consulta usa una sentencia de solo lectura en Auth. No exige usuario/rol ni
+  selecciona una sola persona si el documento está repetido: devuelve todas las
+  candidatas, sin límite arbitrario ni truncamiento.
+- El cliente valida modalidad y criterios devueltos, campos, tipos, UUID únicos y
+  total antes de aceptar resultados, reutilizando URL, token y plazo de 10 segundos.
+  El transporte admite este POST y conserva las llamadas GET anteriores. No sigue
+  redirecciones ni guarda caché. Caída, ruta antigua 404, respuesta parcial o error
+  del propietario producen 503; nunca se anuncian como «sin duplicados».
+- Unicidad mantiene documento con BTRIM, sin puntos y sin distinción de mayúsculas;
+  correo de entrada convertido a minúsculas y comparación exacta contra el valor
+  almacenado; combinación documento **OR** correo; exclusión solo del ID solicitado.
+  Conserva únicamente estado exactamente `ACTIVO` y todos los períodos, incluidos
+  históricos. Un perfil sin persona en Auth sigue excluido como en el INNER JOIN anterior.
+- Para el correo se obtienen primero los UUID de perfiles nativos candidatos. Auth
+  devuelve esos registros y/o los del documento normalizado; PostgreSQL combina la
+  proyección con RUND y repite las condiciones finales. Las dos lecturas nativas
+  comparten transacción **REPEATABLE READ de solo lectura**, para que cambios de
+  correo/estado durante la llamada a Auth no mezclen snapshots de RUND. Un correo sin
+  perfiles activos locales y sin criterio de documento no requiere consultar Auth.
+- Nombre/fecha conserva igualdad exacta `UPPER(TRIM(nombre))`, fecha por día UTC
+  como antes y estado exactamente ACTIVO. No agrega aproximación, similitud o filtros
+  de usuario. La fecha seleccionada conserva el tipo PostgreSQL `date` para mantener
+  la serialización del DTO anterior. Entradas incompletas siguen devolviendo vacío.
+  **Ajuste explícito:** fecha inválida devuelve 400 antes de consultar Auth, en lugar
+  del error 500 por `toISOString()` sobre una fecha inválida.
+- Enmascaramiento, permisos y auditoría permanecen en el controlador existente.
+  La auditoría se guarda después de terminar la transacción de lectura; su fallo
+  sigue bloqueando la respuesta. Los diagnósticos no crean ni modifican perfiles,
+  identidad, soportes o decisiones documentales.
+
+**Validación local**
+
+- Builds de Auth y RUND correctos. Auth: **16 suites / 187 tests**; RUND:
+  **53 / 808**, todos correctos. Se agregan **41 pruebas** (13 Auth y 28 RUND),
+  incluyendo regresión de los GET anteriores y validación de contratos parciales.
+- **214 comprobaciones** con PostgreSQL temporal y HTTP real: nueve nuevas comparan
+  el DTO completo contra `scripts/fixtures/rund-duplicados-before-api.cjs`. La
+  referencia del SQL anterior solo se usa en pruebas. Los escenarios incluyen
+  documento repetido entre personas/períodos, puntos/ceros/espacios, OR, exclusión,
+  correo almacenado en mayúsculas, estados exactos, huérfanos, personas sin usuario,
+  identidad sin perfil, nombres con acentos, fecha con desplazamiento horario y nulos.
+- Se comprueban JWT/permisos, enmascaramiento para ADMIN, token interno, proyección
+  mínima, fecha inválida, ausencia confirmada, fallos/recuperación de Auth y auditoría
+  fallida sin entregar filas. Los fallos de Auth no cambian datos nativos ni auditoría.
+- Un rol temporal con SELECT solo sobre `rund."Docente"` no puede leer Auth, pero
+  ejecuta ambos diagnósticos y conserva los resultados de la referencia. Otra prueba
+  cambia un correo desde una conexión distinta durante la llamada al propietario y
+  confirma que unicidad mantiene su snapshot nativo. La prueba restaura ese dato ficticio.
+- Gateway: **10 comprobaciones HTTP**, incluyendo el bloqueo de la nueva ruta normal
+  y codificada. RUND arranca desde su main real y Auth usa controlador/guard/servicio
+  compilados con conexión de solo lectura, sin cargar su AppModule completo.
+- Hashes confirman preservación del banco fuera de los dos métodos de diagnóstico:
+  altas, cargas, edición, envío OTP, perfiles, tarjeta y workflow; además de consumidores,
+  catálogos y configuración anteriores. Evidencia:
+  [validacion-unicidad-duplicados-rund.json](validacion-unicidad-duplicados-rund.json).
+
+Publicar primero **Auth con la API de coincidencias y después RUND**. No hay variables
+ni migraciones nuevas; siguen vigentes los contratos de los cortes anteriores. Para
+retirar la API, restaurar primero un RUND compatible.
+
+El snapshot de lectura de RUND no constituye una transacción distribuida con Auth.
+Siguen pendientes las pruebas de volumen, tamaño de payload, latencia y concurrencia
+de cada instalación; un error de transporte falla explícitamente, sin resultados
+truncados. No se certifican los ambientes a partir de fixtures.
+
+Quedan **12 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**, incluido el aislamiento SQL. El siguiente corte revisa las
+lecturas de identidad de vencimientos, diagnóstico y reparación histórica de soportes.
+También continúan pendientes escrituras entre propietarios, permisos, consumidores
+y aceptación operativa. No se modifican bases existentes ni `.env` reales, no se hace
+push, despliega o elimina el RUND embebido de PTA.
+
+## 50. Frente 4: identidad de vencimientos, diagnóstico y reparación de soportes (2026-10-14)
+
+Los tres flujos dejan de leer identidad en tablas externas desde RUND. Vencimientos
+y reparación consultan Auth; el diagnóstico consulta PTA para conservar exactamente
+el nombre histórico de la carpeta. No se cambian los controladores públicos ni sus
+reglas de permisos, enmascaramiento y auditoría.
+
+**Contratos y compatibilidad**
+
+- PTA publica `GET /internal/rund/v1/personas/:personaId/nombre-historico`, protegido
+  con el token interno ya configurado y `Cache-Control: private, no-store`. Valida el
+  UUID y devuelve `{items,total}` con `personaId`, `primer_nombre`, `segundo_nombre`,
+  `primer_apellido` y `segundo_apellido`, conservando valores, nulos y espacios.
+  La ausencia se confirma con lista vacía. Solo ejecuta SELECT en su propia `Persona`.
+- RUND valida identidad, campos, tipos, total y duplicados de esa proyección. Conserva
+  la composición de las cuatro partes, eliminación de caracteres y conversión a
+  mayúsculas del diagnóstico anterior. **No sustituye los nombres históricos de PTA
+  por `nom_largo` de Auth:** pueden conducir a carpetas diferentes.
+- Para nombres de Auth se reutiliza `POST /internal/rund/v1/personas/coincidencias`
+  con modalidad `unicidad`, documento null y UUID solicitados. No se agrega una API
+  Auth. El consumidor utiliza únicamente UUID y nombre; el contrato existente también
+  devuelve documento. Se deduplican UUID y consultan todos en lotes de hasta 500,
+  sin truncar entradas ni emitir un resultado si falla algún lote. Se rechazan UUID
+  ajenos al lote. No se realiza una llamada por cada docente ni se persisten identidades.
+- Vencimientos conserva todas las columnas públicas, correo, orden por fecha, perfiles
+  históricos/inactivos, vencidos y comparación exacta `estado != 'Rechazado'`. Excluye
+  perfiles sin persona confirmada como el INNER JOIN anterior, conservando nombres
+  vacíos o nulos si el propietario los admite. No expone el UUID auxiliar del ensamblado.
+  El intervalo pasa por parámetro SQL; un umbral no entero válido produce 400. Se
+  conservan el parseo del controlador y los umbrales cero y negativos.
+- La reparación confirma todos los nombres de Auth **antes del primer enlace o INSERT**.
+  Persona ausente o nombre vacío confirmado conserva la carpeta con ID nativo. Una
+  caída, ruta ausente o respuesta inválida produce 503 y no usa esa carpeta como
+  sustitución de una identidad desconocida. El diagnóstico tampoco inventa un nombre
+  cuando PTA falla. Se mantienen plazo de 10 segundos y rechazo de redirecciones.
+- Se conservan URLs PTA/RUND, rutas codificadas, versiones LOCAL/LEGACY_LOCAL/OpenKM,
+  clasificación de archivos nuevos y repetición sin duplicados. No se mueven, renombran
+  ni borran archivos de usuarios.
+- **Corrección encontrada con PostgreSQL real:** el UPDATE que enlazaba un soporte
+  histórico intentaba modificar `updatedAt`, columna ausente tanto en la migración
+  nativa como en la entidad. Se elimina esa asignación; el enlace solo modifica URL y
+  nombre si estaba null. Conserva ID, estado, revisiones, fechas, tipo y demás columnas.
+  No se agrega columna ni migración para encubrir el error.
+
+**Validación local**
+
+- Builds de RUND y PTA correctos. RUND: **54 suites / 837 tests**; PTA: **88 / 847**,
+  todos correctos. Se agregan 29 pruebas de RUND y dos de PTA. Incluyen nombres
+  históricos con segundo nombre, espacios y acentos, ausencia confirmada, umbrales,
+  contratos inválidos y fallo del último lote entre 1.001 UUID.
+- **222 comprobaciones** con PostgreSQL temporal e integración HTTP, ocho nuevas para
+  este corte. Vencimientos compara el DTO completo con el SELECT anterior congelado
+  en `scripts/fixtures/rund-vencimientos-before-api.cjs`, solo usado en pruebas.
+- La API real compilada de PTA verifica token, rechazo de JWT como sustituto, UUID,
+  proyección mínima, ausencia y no caché. Las conexiones de los fixtures propietarios
+  son de solo lectura; no se arrancan sus AppModule completos. RUND usa su main real.
+- Fallos 503/404 y respuestas parciales de ambos propietarios conservan los datos; Auth
+  caído bloquea las dos rutas de reparación antes de escribir. JWT, permisos, datos
+  protegidos y fallo de auditoría siguen bloqueando las respuestas correspondientes.
+- Un rol temporal sin acceso SQL a Auth/PTA ejecuta **los tres métodos de servicio**
+  usando clientes HTTP reales. No representa el aislamiento de toda la aplicación:
+  sus guards y otras operaciones aún tienen SQL externo. La reparación enlaza un
+  archivo ficticio, conserva todas las demás columnas y su contenido, y al repetirse
+  no vuelve a enlazar ni crear. Las pruebas previas de versiones y URLs siguen pasando.
+- Gateway: **10 comprobaciones HTTP** correctas; incluye bloqueo de la nueva ruta PTA
+  normal y codificada. El clúster temporal y la aplicación se eliminan al terminar.
+- Hashes comprueban que el banco fuera de los tres métodos conserva altas, carga,
+  edición, OTP, unicidad, tarjeta, listado y workflow. La evidencia encadena los hashes
+  de los cortes previos y distingue la corrección del UPDATE. Registro:
+  [validacion-identidad-soportes-rund.json](validacion-identidad-soportes-rund.json).
+
+Publicar primero **PTA con la proyección de nombre histórico y después RUND**. Auth
+requiere el contrato de coincidencias del corte 49. No hay variables ni migraciones
+nuevas; siguen vigentes las URLs y credenciales específicas de los cortes anteriores.
+Para retirar la API de PTA, restaurar primero un RUND compatible.
+
+Los lotes de Auth no forman una transacción distribuida con RUND ni entre ellos. La
+reparación conserva el mecanismo previo de escritura por soporte: un fallo SQL o de
+disco posterior al preflight puede dejar avances parciales. Este corte evita escrituras
+por identidad sin confirmar; no introduce atomicidad global ni certifica volumen,
+concurrencia, instalaciones o despliegues.
+
+Quedan **13 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. El frente 4 y la aceptación operativa `12.5d.2` siguen abiertos.
+El siguiente corte revisa las lecturas de identidad del expediente documental y la
+validación de evidencias. Continúan pendientes otras consultas, permisos, notificaciones,
+sincronización y escrituras entre propietarios. No se usan bases existentes ni `.env`
+reales; no se hace push, despliegue o retiro del RUND embebido de PTA.
+
+## 51. Frente 4: identidad del expediente documental y datos de evidencias (2026-10-15)
+
+`RundDocumentosService` y `assertRundEvidenceData` dejan de leer `auth.personas`
+desde RUND. Se reutilizan las APIs de coincidencias y ficha de Auth ya existentes;
+no se agregan rutas, variables, migraciones o copias persistidas de identidad.
+
+**Resolución del expediente y reglas conservadas**
+
+- Conserva ID nativo de perfil **OR** UUID de persona **OR** documento exactamente
+  igual, ordenado por `updatedAt DESC NULLS LAST`, sin filtro de estado/período. No
+  sustituye esta regla por la resolución de alias de usuario o documento normalizado.
+- Primero obtiene los UUID nativos candidatos y consulta Auth con la modalidad de
+  unicidad existente, incluyendo esos UUID. La proyección puede contener documentos
+  normalizados coincidentes: PostgreSQL vuelve a aplicar la comparación **exacta** al
+  combinarla con los perfiles nativos. Conserva personas con documento repetido y la
+  elección del perfil más reciente, aunque otro perfil coincida por ID nativo.
+- Ambas lecturas nativas comparten `REPEATABLE READ` de solo lectura. El resultado
+  conserva `{id,document_number}`; persona ausente o documento null confirmado usa el
+  ID nativo, mientras documento vacío conserva el vacío como el COALESCE anterior.
+  Ausencia de perfil sigue siendo 404; fallo, 404 de contrato o respuesta inválida del
+  propietario produce 503. No hay consulta SQL alternativa ni caché de identidad.
+
+**Validación de evidencias y transacciones**
+
+- Cada fila consulta datos actuales de `rund."Docente"`. Documento, nombre, género y
+  fecha de nacimiento se consultan en la ficha de Auth por el UUID del perfil. Ausencia
+  confirmada conserva los nulos del LEFT JOIN previo; no se usan `datosCargaMasiva`,
+  campos del body o copias nativas como sustitutos de esos campos.
+- Se mantienen el sexo biológico nativo y las reglas de títulos, vinculación, puntaje
+  cero y datos ausentes. Las filas exclusivamente nativas no requieren la ficha de Auth.
+  Esto no implica que todo el CRUD documental funcione con Auth caído: la resolución
+  del perfil y de su ruta documental sigue requiriendo coincidencias confirmadas.
+- Se conserva la validación previa a almacenar una carga y la nueva consulta de datos
+  dentro de la transacción, después del bloqueo nativo del perfil. Si la identidad
+  desaparece o falla en esa segunda validación, se revierte la transacción y se retira
+  el PDF recién almacenado. El reemplazo confirma los datos antes de guardar su nueva
+  versión. No se reutiliza como autorización de escritura una ficha de la primera lectura.
+- No cambian permisos, propiedad docente, metadatos protegidos, auditoría, categorías,
+  versiones, retención del original ni decisiones por documento/campo. La vinculación
+  manual usa el mismo validador con el cliente Auth inyectado.
+- **Corrección relacionada:** la vinculación manual todavía asignaba `updatedAt` en
+  `RundSoporteCampo`, la misma columna inexistente detectada en el corte 50 para la
+  reparación. Se elimina esa asignación en el UPDATE manual. La prueba real comprueba
+  creación y posterior actualización del mismo soporte, sin exigir una migración nueva.
+
+**Validación local**
+
+- Build de RUND correcto y **55 suites / 862 pruebas** correctas, 25 nuevas. Cubren
+  resolución, ausencia, fallos del propietario, datos nativos, filas de identidad,
+  descarte de datos históricos, fallo después de almacenar el PDF y rollback de reemplazo.
+- **231 comprobaciones** de integración con PostgreSQL temporal y HTTP real, nueve
+  nuevas. La resolución y la elegibilidad de filas se comparan con el SQL anterior de
+  `scripts/fixtures/rund-documentos-before-api.cjs`, usado únicamente en pruebas.
+- Incluye documentos repetidos entre personas/períodos, documento con puntos/espacios,
+  mayúsculas diferentes, colisión entre documento e ID nativo, UUID de persona, perfil
+  huérfano, documento vacío, perfiles inactivos/históricos y datos actuales frente a carga
+  histórica. Un cambio concurrente del perfil seleccionado confirma el snapshot nativo.
+- La carga HTTP conserva el directorio derivado del documento confiable. Caídas, ruta
+  ausente o respuesta parcial en coincidencias bloquean listado/carga/reemplazo/borrado
+  sin cambios en datos ni archivos; fallos de ficha bloquean las evidencias de identidad.
+- Bajo un rol sin acceso SQL a Auth/PTA se ejecutan resolución, validación de filas,
+  listado, contenido, reemplazo, historial, eliminación lógica y vinculación manual.
+  Se usan el servicio, almacenamiento y repositorio de auditoría compilados reales.
+  Los guards del main completo conservan sus dependencias pendientes de aislamiento.
+- Se comprueban JWT, propiedad docente, protección de metadatos y originales, auditoría
+  nativa, conservación de ambas versiones y rollback con eliminación del PDF cuando
+  falla la auditoría de carga. Gateway: **10 comprobaciones HTTP** correctas.
+- El main real de RUND y las APIs compiladas de Auth/PTA funcionan con fixtures de solo
+  lectura de los propietarios, sin cargar sus AppModule completos. El clúster temporal
+  y sus archivos se eliminan al terminar. Evidencia:
+  [validacion-identidad-expediente-rund.json](validacion-identidad-expediente-rund.json).
+
+Este corte requiere únicamente actualizar **RUND**, manteniendo en Auth las fichas del
+corte 47 y coincidencias del 49, y los contratos previos de PTA. No se cambian servicios
+propietarios, consumidores o configuración. Los hashes encadenan su preservación y
+comprueban las dos modificaciones concretas del banco manual.
+
+El snapshot nativo no constituye una transacción distribuida con Auth. Sus datos pueden
+cambiar entre llamadas; se conserva la revalidación bajo el bloqueo nativo y se falla
+explícitamente si no se confirma identidad. Las llamadas durante ese bloqueo, latencia,
+volumen y concurrencia requieren aceptación en cada instalación. No se certifica el
+aislamiento SQL de toda la aplicación ni ambientes desplegados.
+
+Quedan **14 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúa el frente 4; la aceptación operativa `12.5d.2` sigue
+pendiente. El siguiente corte revisa las dependencias de identidad de la extracción OCR,
+distinguiendo sus lecturas de la aplicación confirmada de cambios. También quedan
+permisos, sincronización, notificaciones, escrituras entre propietarios y aceptación.
+No se usan bases existentes ni `.env` reales; no se hace push, despliegue o retiro del
+RUND embebido de PTA.
+
+## 52. Frente 4: contexto de identidad del proceso OCR por API Auth (2026-10-15)
+
+El proceso que analiza un documento obtiene su contexto de identidad mediante la ficha
+interna de Auth. La lectura previa de formación, vinculación y demás campos permanece
+en RUND. No se activa OCR en la configuración ni se cambian motores o reglas de extracción.
+
+**Separación de lectura y confirmación**
+
+- `extractionProfile` recibe el cliente de identidad inyectado. Busca el UUID de persona
+  en RUND, confirma su ficha en Auth y combina los cinco campos de identidad con los
+  campos nativos. Ambas lecturas nativas comparten `REPEATABLE READ` de solo lectura,
+  evitando mezclar cambios locales mientras espera la respuesta del propietario.
+- Se reutiliza `GET /internal/rund/v1/personas/ficha/por-persona/:personaId`, con su
+  token interno, validación de respuesta, plazo de 10 segundos y rechazo de redirecciones.
+  No hay ruta, variable, migración, caché persistida o SQL alternativo nuevos.
+- Se conserva el contexto completo y sus claves, recorte de espacios, ceros del documento,
+  nulos como texto vacío, datos nativos y ausencia de sustitución por `datosCargaMasiva`.
+  La fecha de Auth pasa como parámetro `date` a PostgreSQL: conserva el parser y la
+  conversión UTC de `extractionValue` anterior, también en distintas zonas horarias.
+- Perfil nativo o persona confirmada ausentes conservan el rechazo del INNER JOIN anterior.
+  Ficha ausente como contrato HTTP, inválida o no disponible produce error del propietario.
+  El proceso no interpreta esos fallos como un contexto vacío válido.
+- La consulta de la **confirmación humana** se identifica como `lockedExtractionProfile`.
+  Conserva el SELECT anterior dentro de la misma transacción que ya bloquea Auth/RUND
+  y aplicará la edición. No usa la lectura HTTP del proceso OCR como autorización de
+  escritura ni como sustituto de ese bloqueo. Es una dependencia SQL pendiente de
+  aislar junto con las escrituras; no es un mecanismo de fallback del proceso OCR.
+- `lockExtractionSuggestions`, confirmación directa, corrección manual de sugerencias,
+  validación de formatos, duplicados de documento, auditoría y aplicación de cambios
+  conservan sus reglas. Solo se cambia la llamada interna al nombre explícito de la
+  lectura bloqueada; no se alteran la transacción ni sus condiciones de vigencia.
+
+**Fallas y continuidad**
+
+- Auth se confirma antes de leer el PDF o llamar los motores. Si falla, se conserva el
+  esquema de reintentos acotados del trabajo y el mensaje genérico, sin registrar el
+  texto del documento. No se crean sugerencias ni se modifican perfil o identidad.
+- La recuperación puede continuar el mismo trabajo tras reiniciar el proceso. El
+  resultado sigue siendo una sugerencia pendiente de revisión humana.
+- Se mantienen la verificación del PDF/checksum, campos permitidos, evidencia literal,
+  reserva del trabajo, descarte de resultados tardíos y comprobación de la versión
+  activa antes de persistir. Las notificaciones OCR quedan intactas en este corte.
+
+**Validación local**
+
+- Build correcto y **56 suites / 871 pruebas de RUND** correctas, nueve nuevas. Incluyen
+  perfil/persona ausente, propietario caído, contexto completo, datos históricos que no
+  pueden sustituir identidad, ausencia de llamadas al PDF/motores y OCR desactivado.
+- **240 comprobaciones** con PostgreSQL temporal e integración HTTP, nueve nuevas.
+  El contexto completo se compara con el SQL anterior congelado en
+  `scripts/fixtures/rund-extraction-context-before-api.cjs`, solo usado en pruebas,
+  bajo UTC, America/Bogota y Asia/Tokyo. Incluye ID nativo textual y persona ausente.
+- Un cambio concurrente de formación durante la consulta a Auth no altera el snapshot
+  nativo del contexto. Un rol sin acceso SQL a Auth/PTA ejecuta encolado, análisis,
+  generación de sugerencias y consulta usando el cliente Auth real y almacenamiento local.
+- Los motores son servidores HTTP locales **simulados**, con PDF y texto ficticios;
+  no se ejecutan motores instalados ni se mide la calidad real de reconocimiento.
+  Se verifica la sugerencia pendiente y su valor previo, sin cambio automático de datos.
+- Caída, 404 y ficha parcial reintentan tres veces, dejan el trabajo en ERROR y conservan
+  los perfiles y archivos sin llamar los motores. También se comprueban recuperación,
+  documento reemplazado y pérdida de reserva sin publicar sugerencias tardías.
+- La confirmación humana se ejecuta por HTTP en el main real con la transacción anterior:
+  un fallo de auditoría revierte perfil y decisión, una confirmación válida aplica solo
+  el valor elegido y la revisión repetida o con dato previo obsoleto se rechaza.
+  Esa ruta todavía requiere acceso SQL a Auth; no se presenta como aislada.
+- Se verifican JWT/roles y que el main de prueba conserva OCR desactivado. Los procesos
+  manuales de prueba no habilitan el worker del main ni envían avisos a servicios reales.
+  Gateway: **10 comprobaciones HTTP** correctas.
+- Hashes verifican preservación del motor/validadores, confirmación humana y banco manual,
+  expediente, contratos propietarios y consumidores de los cortes previos. Evidencia:
+  [validacion-identidad-contexto-ocr-rund.json](validacion-identidad-contexto-ocr-rund.json).
+
+Se actualiza únicamente **RUND**, manteniendo los contratos existentes de Auth/PTA.
+La conexión y transacción nativas esperan la lectura del propietario: volumen, pool,
+latencia y concurrencia siguen requiriendo aceptación por instalación. No se crea una
+transacción distribuida con Auth ni se certifican ambientes desplegados.
+
+Quedan **15 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúa el frente 4 y la aceptación operativa `12.5d.2`.
+El siguiente corte revisará la resolución del destinatario de los avisos OCR en Auth,
+conservando su idempotencia y la independencia del análisis. Siguen pendientes las
+escrituras/locks entre propietarios, permisos, sincronización y aceptación operativa.
+No se usan bases existentes ni `.env` reales; no se hace push, despliegue o retiro del
+RUND embebido de PTA.
+
+## 53. Frente 4: destinatario de avisos OCR por API Auth (2026-10-15)
+
+Los avisos OCR dejan de consultar `auth."user"` desde RUND. Auth confirma al
+solicitante y RUND conserva la reserva, reintentos, payload y clave de idempotencia.
+El análisis y su confirmación humana no cambian ni se vuelven a ejecutar por el aviso.
+
+**Contrato y selección del destinatario**
+
+- Auth agrega `POST /internal/rund/v1/personas/destinatario-aviso`, con token interno
+  obligatorio, HTTP 200 y `Cache-Control: private, no-store`. La clave va en el body
+  `{clave:string}`; no viaja en la URL. Devuelve únicamente
+  `{consulta,encontrado,usuarioId}`, con UUID o null explícito.
+- Se conserva literalmente el SELECT anterior: ID de usuario **OR** ID de persona
+  **OR** username sin distinguir mayúsculas, `COALESCE(is_active,true)=true`, prioridad
+  del ID de usuario exactamente igual y `LIMIT 1`. No se agregan filtros de rol,
+  documento/public_id, joins con persona ni criterios nuevos de desempate.
+- No se recorta la clave ni se normalizan UUID. Se preservan espacios del username,
+  claves vacías históricas y el estado activo null admitido por la consulta anterior.
+  El input se parametriza. Un body sin clave string se rechaza antes de consultar SQL.
+- RUND valida la consulta devuelta, booleano, UUID y ausencia explícita. Una ruta 404,
+  error HTTP, respuesta parcial o caída de Auth no se convierte en «sin destinatario».
+  Se mantiene el plazo de 10 segundos y rechazo de redirecciones. No hay fallback SQL,
+  caché persistida, reenvío de JWT/cookies ni uso de JWT_SECRET como credencial interna.
+- El transporte de identidad admite este nuevo body POST y conserva sus GET y POST
+  anteriores. La dependencia se inyecta mediante el módulo de identidad existente.
+  No se cambia configuración real, schema ni migración; `.env.example` documenta la ruta.
+
+**Reserva, aplazamiento e idempotencia conservados**
+
+- La reserva de la cola sigue aplazando el aviso un minuto antes de consultar Auth.
+  Si falla esa consulta, no se envía ni se marca notificado y se conserva el reintento
+  corto. Solo una ausencia confirmada aplica el aplazamiento previo de un día.
+- Se mantienen `notificacion_id`, URL del expediente, textos de COMPLETADO/ERROR/OBSOLETO,
+  prioridad y `enviar_email:false`. No se incluyen texto OCR, evidencia ni perfil_base
+  en el payload; el token interno de Auth tampoco se reenvía al receptor del aviso.
+- La confirmación `notificado_en` sigue ocurriendo únicamente tras respuesta HTTP
+  satisfactoria del receptor. Una respuesta perdida o fallo posterior en esa marca
+  reintenta la misma clave. No se reinicia el trabajo OCR ni cambia su estado/intentos.
+- Se conserva la selección con `FOR UPDATE SKIP LOCKED` y la exclusión local `busy`.
+  La consulta nueva vuelve a resolver la cuenta en cada intento: no retiene una cuenta
+  obsoleta. La protección existente del receptor contra reutilizar la clave para otro
+  destinatario/tipo sigue siendo necesaria.
+
+**Validación local**
+
+- Builds de Auth y RUND correctos. Auth: **16 suites / 199 pruebas**; RUND:
+  **56 / 891**, todas correctas. Se agregan 12 pruebas de Auth y 20 de RUND.
+- **250 comprobaciones** con PostgreSQL temporal e HTTP real, diez nuevas. La selección
+  se compara con `scripts/fixtures/rund-ocr-recipient-before-api.cjs` y se compara el
+  payload completo de los tres resultados con la referencia anterior.
+- La API compilada de Auth exige token incluso con JWT, valida el body, conserva
+  proyección mínima/no caché y ejecuta su SELECT con conexión de solo lectura. Se
+  comprueban ID exacto frente a username coincidente, persona, username con espacios,
+  mayúsculas, cuenta inactiva, estado null, cuenta sin persona, clave vacía y ausencia.
+- Dos conexiones independientes con permisos **solo SELECT/UPDATE de la cola RUND**
+  ejecutan los avisos sin poder leer Auth, PTA ni `rund."Docente"`. En concurrencia
+  reservan y envían una sola vez el aviso elegible.
+- Caída/404/contrato parcial de Auth no envía, mantiene el reintento corto y recupera
+  el mismo evento. Ausencia/inactivo aplaza un día; reactivar la cuenta permite resolverla
+  otra vez. El estado, motor, intentos, contexto y datos del perfil permanecen intactos.
+- Un receptor HTTP **ficticio** comprueba rechazo temporal, acuse perdido, fallo de la
+  marca SQL tras aceptar, reintento con la misma clave y conflicto por cambio de cuenta.
+  Su deduplicación reproduce el alcance clave+destinatario+tipo de notifications-service;
+  no se inicia ese servicio real ni se crean avisos para usuarios reales.
+- OCR apagado y trabajos PENDIENTES no consultan Auth ni envían. El main real de RUND
+  conserva su flag desactivado y las 240 comprobaciones anteriores siguen pasando.
+- Gateway: **11 comprobaciones HTTP** correctas; la nueva verifica bloqueo del POST
+  interno normal y codificado, incluso con JWT y token. Se espera la auditoría asíncrona
+  de esos rechazos antes de verificar el módulo ajeno; no se cambia código del gateway.
+- Hashes verifican que solo cambia la resolución de usuario en el worker: reserva,
+  payload, envío, confirmación y manejo de fallos se conservan. Los contratos de identidad
+  previos, extracción, confirmación humana, expediente y consumidores quedan preservados.
+  Evidencia: [validacion-destinatario-avisos-ocr-rund.json](validacion-destinatario-avisos-ocr-rund.json).
+
+Publicar primero **Auth con la nueva ruta y después RUND**. No hay variables ni
+migraciones nuevas. Un RUND actualizado frente a un Auth antiguo conserva el aviso
+pendiente para reintentar, sin dar por confirmada una ausencia de cuenta. Para retirar
+la ruta, restaurar primero un RUND compatible.
+
+La prueba usa un receptor ficticio y no certifica entrega exactamente una vez ni
+instalaciones desplegadas. Siguen pendientes aceptación de notifications-service,
+latencia, volumen y despliegues. Las lecturas y escrituras entre propietarios de otros
+flujos permanecen fuera de este corte; la confirmación humana OCR sigue con SQL Auth.
+
+Quedan **16 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúa el frente 4 y la aceptación operativa `12.5d.2`.
+El siguiente corte revisará la resolución del rol DOCENTE y la revalidación de cuentas
+que todavía hace SQL directo durante la sincronización Auth → RUND, preservando sus
+criterios de elegibilidad y los perfiles existentes. No se usan bases existentes ni
+`.env` reales; no se hace push, despliegue o retiro del RUND embebido de PTA.
+
+## 54. Frente 4: rol y revalidación de sincronización por API Auth (2026-10-15)
+
+La sincronización Auth → RUND deja de leer `auth.role`, `auth.personas`, `auth."user"`,
+`auth.user_roles` y `auth.seccionales` desde su conexión nativa. Auth resuelve el rol
+y revalida la cuenta por API; RUND conserva la paginación y la transacción de alta.
+
+**Contrato y criterios conservados**
+
+- Auth agrega `GET /internal/rund/v1/personas/sincronizacion/rol-docente` y
+  `POST /internal/rund/v1/personas/sincronizacion/revalidar`, con token interno
+  obligatorio y `Cache-Control: private, no-store`. El POST recibe únicamente
+  `{personaId,usuarioId,rolId}` y devuelve `{consulta,encontrada,identidad}` (HTTP 200).
+- Los dos SELECT se trasladan literalmente al propietario. El rol debe ser único,
+  con `UPPER(code)='DOCENTE'` e `is_active=true`; no se recortan sus espacios.
+  La cuenta debe pertenecer a la persona por su ID interno, sin usar `public_id`.
+  La asignación y el rol se revalidan con sus estados exactamente true.
+- Se conserva la proyección mínima de documento, correo, territorial, nombre de
+  territorial, sede y estados. IDs bigint viajan como texto y los null son explícitos.
+  La API no crea ni modifica cuentas, personas o roles y no consulta tablas de RUND.
+- El nuevo cliente usa la misma base HTTP, token y `RUND_AUTH_SYNC_TIMEOUT_MS` que
+  `/users`, sin configuración adicional. Valida UUID, consulta devuelta, estados,
+  columnas completas y ausencia explícita. No reenvía JWT/cookies ni admite redirects.
+  Una ruta 404, fallo HTTP o contrato parcial devuelve 503, sin fallback SQL ni caché.
+
+**Transacción y altas preservadas**
+
+- Se completan todas las páginas de `/users` antes de abrir la transacción. Se conserva
+  su validación, límite de páginas y orden estable de locks por persona. La revalidación
+  HTTP se hace dentro de la transacción nativa, después del advisory lock de esa persona,
+  también si tuvo que esperar a otra conexión. No se reutiliza una revalidación anterior.
+- Ausencia confirmada cuenta como `failed`; cuenta/asignación/rol revocados cuentan
+  como `skipped`. Si Auth falla al revalidar, se aborta la transacción completa y se
+  revierten perfiles, bloques, validaciones y auditoría creados en ese intento.
+- Cualquier perfil existente, de cualquier período o estado, se conserva. El alta sigue
+  siendo mínima: INACTIVO, PENDIENTE_APROBACION, cero horas, seis bloques, 36 campos de
+  validación y auditoría con el actor firmado. Documento/correo válidos y exclusividad
+  del correo siguen siendo obligatorios; los datos de contacto vienen de la revalidación.
+- No cambian el SQL de alta nativa, secuencia, bloques, validación ni auditoría.
+  PostgreSQL puede dejar huecos de secuencia al abortar, igual que antes. La auditoría
+  continúa inmutable; el fixture la conserva hasta eliminar su cluster temporal.
+
+**Validación local**
+
+- Builds de Auth/RUND correctos. RUND: **57 suites / 923 pruebas**; Auth:
+  **16 / 212**, todas correctas. Se agregan 32 pruebas de RUND y 13 de Auth.
+- **260 comprobaciones** con PostgreSQL temporal e HTTP real, diez nuevas. Los
+  resultados del propietario se comparan con los SELECT anteriores guardados en
+  `scripts/fixtures/rund-auth-sync-before-api.cjs`. Auth ejecuta sus consultas con la
+  conexión de solo lectura del fixture y sus controlador, guard e interceptor compilados.
+- Dos conexiones independientes con permisos solo en tablas/secuencias de RUND
+  completan altas y sincronizaciones concurrentes sin poder leer Auth ni PTA.
+  Se verifica una sola alta, repetición sin cambios, precisión bigint y protección
+  del ID interno frente a `public_id` y cuentas de otras personas.
+- Se comprueban rol ausente/ambiguo, minúsculas/espacios y estados false/null de cuenta,
+  asignación y rol. Una cuenta revocada mientras la sincronización espera un advisory
+  lock real no se crea al liberar el bloqueo. Un fallo de Auth tras la primera alta
+  revierte todas las filas del intento; restablecer Auth permite repetirlo correctamente.
+- Caída, ruta 404 y contrato parcial de ambas rutas devuelven error sin éxito vacío
+  ni mutaciones. Se mantienen las 250 comprobaciones anteriores y sus flujos documentales.
+- Gateway: **12 comprobaciones HTTP** correctas, incluida la nueva sobre bloqueo de
+  ambas rutas internas, normales/codificadas, con JWT y token. Su código no cambia.
+- Hashes verifican que el resto de la sincronización y de Auth no cambia y que se
+  preservan los archivos de los cortes anteriores fuera del alcance de este ajuste.
+  Evidencia: [validacion-sincronizacion-propietario-auth-rund.json](validacion-sincronizacion-propietario-auth-rund.json).
+
+Publicar primero **Auth con ambas rutas y después RUND**. No hay variables ni
+migraciones nuevas. Frente a un Auth antiguo, RUND devuelve 503 y no inicia las altas
+si falta la ruta de rol; si falla la revalidación, revierte la transacción nativa.
+Para retirar las rutas, restaurar primero un RUND compatible.
+
+La revalidación HTTP no constituye una transacción distribuida: Auth puede cambiar
+después de responder, igual que podía cambiar después del SELECT anterior. Esta prueba
+mantiene `/users` como fixture de su contrato existente; no inicia Auth AppModule ni
+certifica sus instalaciones, volumen o latencia. Siguen pendientes permisos, otras
+lecturas, escrituras/locks entre propietarios y aceptación operativa por ambiente.
+
+Quedan **17 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúa el frente 4 y la aceptación operativa `12.5d.2`.
+El siguiente corte revisará la resolución de permisos efectivos de las rutas RUND que
+todavía consulta directamente roles/permisos de Auth, preservando autorizaciones y
+revocaciones. No se usan bases existentes ni `.env` reales; no se hace push, despliegue
+o retiro del RUND embebido de PTA.
+
+## 55. Frente 4: permisos efectivos de rutas RUND por API Auth (2026-10-15)
+
+Los guards generales de RUND, Banco de Docentes y Macro Docente dejan de consultar
+`auth.role_permissions`, `auth.role` y `auth.permission` desde RUND. Comparten la
+consulta al propietario Auth y mantienen sus reglas de autorización y excepciones.
+
+**Contrato y política conservada**
+
+- Auth agrega `POST /internal/rund/v1/personas/permisos-roles`, HTTP 200, token interno
+  obligatorio y `Cache-Control: private, no-store`. Recibe `{roles,codigos}` y devuelve
+  `{consulta,items:[{code}],total}`. Los candidatos los construye RUND con los roles de
+  la sesión autenticada y los 16 códigos del catálogo del servidor; no vienen del body
+  del usuario, query params ni de sus claims `permissions`.
+- Se conserva literalmente el SELECT anterior: unión DISTINCT de permisos de los
+  roles solicitados, `UPPER(r.code)`, coincidencia exacta del código de permiso y
+  `COALESCE(is_active,true)=true` para rol, permiso y asignación de permiso al rol.
+  No se agregan implicaciones entre consulta, edición, administración, banco o Macro.
+- El servicio propietario parametriza arrays, valida su estructura y confirma también
+  el conjunto vacío. No cambia códigos persistidos ni recorta espacios de roles en SQL.
+  La normalización/deduplicación de roles de la sesión sigue haciéndola RUND como antes.
+- El cliente valida la consulta completa devuelta, catálogo, total y códigos únicos.
+  Un 404, caída, timeout o contrato parcial no se interpreta como conjunto vacío
+  confirmado. Se reutiliza el transporte interno existente: 10 segundos, sin redirects,
+  sin JWT/cookies y sin fallback a JWT_SECRET, SQL alternativo o caché persistida.
+
+**Guards y fallos**
+
+- Los tres guards reciben AuthIdentityClient por inyección, sin DataSource. AuthModule
+  importa/exporta su módulo y MacroDocenteModule lo importa; Banco ya lo importaba.
+  Se conserva el WeakMap de promesas por request: consultas concurrentes de una misma
+  solicitud comparten un snapshot, incluido el fallo; una solicitud nueva consulta otra vez.
+- Se conserva el rechazo por permiso al fallar la fuente: el resolver registra el aviso
+  genérico y devuelve un conjunto vacío; las rutas protegidas solo por permiso responden
+  403. No se amplían permisos ni se devuelve un éxito vacío del endpoint de negocio.
+- Las rutas públicas/sin requisito, excepciones administrativas de cada guard y acceso
+  por rol explícito conservan sus condiciones previas. En particular, el banco conserva
+  acceso por rol explícito aunque falle la consulta de permisos. Los alias administrativos
+  del guard general no se extienden al banco ni a Macro Docente.
+- La revocación de un grant, permiso o rol se refleja en la siguiente solicitud, sin
+  cerrar la sesión. Se conserva la política anterior de usar los roles firmados de la
+  sesión: no se agrega aquí revalidación de cuenta/pertenencia en `auth.user_roles`.
+  Cambiar esa política o las excepciones por rol requiere un ajuste separado.
+
+**Validación local**
+
+- Builds de Auth/RUND correctos. RUND: **58 suites / 950 pruebas**; Auth:
+  **16 / 221**, todas correctas. Se agregan 27 pruebas de RUND y nueve de Auth.
+  Los fixtures de guards, enmascaramiento, contrato PTA y sincronización documental
+  usan la dependencia API nueva; sus expectativas funcionales se mantienen.
+- **270 comprobaciones** con PostgreSQL temporal e HTTP real, diez nuevas. Auth usa
+  su controlador, servicio, guard e interceptor compilados en conexión de solo lectura.
+  El resultado coincide con `scripts/fixtures/rund-effective-permissions-before-api.cjs`
+  para unión de roles, espacios, mayúsculas, ausencia, códigos exactos y las 27
+  combinaciones true/false/null de rol, permiso y grant.
+- Un módulo HTTP con AuthModule y los tres guards compilados, JWT real y sin DataSource
+  autoriza los permisos correspondientes. Se comprueba que los tres guards comparten
+  una sola consulta por request y que el token/cookie del usuario no llega a Auth.
+- Permisos declarados en JWT/body/query no conceden acceso. Se prueban revocaciones
+  y recuperación con el mismo JWT, caída/404/respuesta parcial, excepciones explícitas
+  y protección contra convertir consulta en administración u otros ámbitos.
+- El main real de RUND conserva las consultas granulares, enmascaramiento y rechazos
+  de edición/administración; Auth caído deniega acceso por permiso y la recuperación
+  no altera perfiles, bloques, validaciones ni auditoría de aprobación. Las 260
+  comprobaciones anteriores, incluida la sincronización del punto 54, siguen pasando.
+- Gateway: **13 comprobaciones HTTP**, incluida la nueva que bloquea el POST interno
+  normal/codificado aun con JWT y token. No se cambia su código de producción.
+- Se verifica por comparación y hashes que no cambian las ramas de decisión de los
+  guards ni los contratos Auth anteriores fuera de la API nueva. Evidencia:
+  [validacion-permisos-propietario-auth-rund.json](validacion-permisos-propietario-auth-rund.json).
+
+Publicar primero **Auth con la ruta de permisos y después RUND**. No hay variables
+ni migraciones nuevas. Un Auth anterior provoca denegación por permiso (403), como
+el fallo SQL anterior; no permite consultar por SQL alternativo. Las excepciones por
+rol conservan su comportamiento. Para retirar la ruta, restaurar primero RUND compatible.
+
+La validación usa PostgreSQL y HTTP locales con datos ficticios; no inicia Auth AppModule
+ni certifica ambientes desplegados, latencia o volumen. Siguen pendientes otras lecturas,
+escrituras/locks entre propietarios y aceptación operativa de las integraciones.
+
+Quedan **18 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúa el frente 4 y la aceptación operativa `12.5d.2`.
+El siguiente corte revisará los destinatarios de notificaciones de Macro Docente que
+todavía consultan cuentas/permisos en Auth, conservando la selección y el transporte.
+No se usan bases existentes ni `.env` reales; no se hace push, despliegue o retiro
+del RUND embebido de PTA.
+
+## 56. Frente 4: correo propio de acceso externo Macro Docente (2026-10-15)
+
+La revisión de destinatarios prevista en 55 confirmó que Macro Docente solo utiliza
+`notifyAccesoExternoOtorgado`: el contacto viene del acceso externo guardado. Las
+consultas `getUsersByPermission` y `resolveUser` pertenecían a una copia del servicio
+PTA cuyos avisos de aprobación no tienen consumidores en RUND. El corte separa el
+correo realmente usado y retira esa copia; no crea una API innecesaria de destinatarios.
+
+**Cambio y preservación funcional**
+
+- RUND incorpora `MacroDocenteNotificationsService`, sin DataSource ni cliente Auth.
+  MacroDocenteService y su módulo reciben el nuevo provider. La creación, auditoría,
+  consulta y revocación del acceso mantienen su implementación anterior.
+- Se elimina únicamente `backend/rund-service/src/notifications/pta-notifications.service.ts`.
+  El servicio original de PTA, PtaService, PtaModule y el Macro Docente embebido de PTA
+  permanecen intactos, comprobados por hashes. No se retira el RUND embebido de PTA.
+- El análisis de referencias confirmó un único consumidor del provider en RUND y una
+  sola llamada de negocio: enviar el enlace al contacto externo. Los avisos de revisión,
+  aprobación, devolución y edición de PTA continúan en su servicio propietario original.
+- Los helpers de URL/HTML/transporte y el método de correo se conservan literalmente.
+  Se mantienen contacto recortado con `@`, fechas es-CO, asunto, texto, HTML, path RUND,
+  payload `{to,subject,text,html}` y POST `/api/v1/emails/send`, sin JWT/cookies/token Auth.
+  La copia retirada contenía dos lecturas SQL ajenas; no se presentan como consultas
+  activas migradas, porque el envío externo nunca las utilizaba.
+- Se conservan las variables y alternativas existentes para receptor y URL pública,
+  así como sus defaults. No cambian rutas públicas, guards, migraciones ni configuración
+  real. Este corte no añade requisitos de despliegue en Auth/PTA.
+
+**Fallos y límites del envío conservados**
+
+- El aviso sigue siendo best-effort. Un rechazo HTTP o error de red no impide guardar
+  el acceso y disponer del enlace para copiarlo. La llamada del caso de negocio sigue
+  sin esperar el correo y conserva su manejo de rechazo.
+- El retorno true mantiene su significado anterior: se intentó el envío para un contacto
+  admitido; no certifica recepción del correo. Sin contacto/con `@` ausente devuelve false
+  y no envía. No se agregan reintentos, cola, deduplicación ni garantía de entrega.
+- No se amplía la validación histórica de email en este ajuste. La consulta externa
+  sigue limitada al docente del acceso y conserva vigencia, auditoría y revocación.
+
+**Validación local**
+
+- Build de RUND correcto: **59 suites / 966 pruebas**, todas correctas, con 16 nuevas.
+  Se comprueba inyección del provider sin base de datos, payload, HTML, fallos HTTP/red,
+  configuración alternativa/defaults y funcionamiento sin credenciales de Auth.
+- **278 comprobaciones** con PostgreSQL temporal e HTTP real, ocho nuevas. El main real
+  conserva las 270 anteriores, incluidas permisos, sincronización, documentos y acceso externo.
+- Se compara el request completo del nuevo provider con el envío anterior extraído en
+  `scripts/fixtures/rund-macro-email-before-decoupling.cjs`, incluyendo cabeceras, destino,
+  ruta, textos y HTML. La referencia contiene únicamente el correo/helpers y no consulta SQL.
+- Un módulo con el provider compilado, sin DataSource y con Auth sin configurar, envía
+  al receptor HTTP ficticio. HTTP 503 y conexión perdida conservan el resultado anterior
+  y no disparan reintentos automáticos; restablecer el receptor permite otro intento.
+- El main envía el payload anterior al contacto guardado. Aunque el receptor rechace el
+  correo, el acceso se guarda, consulta sin JWT y se revoca; sin email también se guarda
+  sin intentar envío. No cambian personas, cuentas, roles, permisos, planes o perfiles.
+- El build limpia la copia compilada anterior. Se verifican por comparación el cuerpo
+  del correo/helpers y los cambios exclusivos de import/provider en Macro Docente.
+  Auth/gateway no cambian ni requieren repetir sus suites independientes en este corte;
+  sus integraciones previas siguen cubiertas por el verificador completo.
+  Evidencia: [validacion-correo-propio-macro-docente-rund.json](validacion-correo-propio-macro-docente-rund.json).
+
+La prueba usa un receptor ficticio; no certifica envío SMTP, entrega real, ambientes
+desplegados o latencia/volumen. Siguen pendientes otras lecturas y escrituras entre
+propietarios y la aceptación operativa de las integraciones por ambiente.
+
+Avance acumulado: **19 cortes técnicos locales desde el merge**, **11 pasos principales
+locales** y **5 frentes abiertos**. Continúa el frente 4 y la aceptación `12.5d.2`.
+El siguiente corte revisará el historial Macro Docente que todavía lee datos de PTA,
+empezando por la identidad histórica en `academic_work_plan."Persona"`, preservando
+la fuente histórica y los filtros de consulta. No se usan bases existentes ni `.env`
+reales; no se hace push, despliegue o retiro del RUND embebido de PTA.
+
+## 57. Frente 4: identidad histórica de Macro Docente por API PTA (2026-10-15)
+
+El historial y la consulta puntual de Macro Docente dejan de leer directamente
+`academic_work_plan."Persona"` desde RUND. Conservan la identidad histórica de PTA:
+no sustituyen sus nombres/documentos por la ficha actual de Auth.
+
+**Contrato y lectura histórica**
+
+- PTA agrega `POST /internal/rund/v1/personas/identidades-historicas`, HTTP 200,
+  `Cache-Control: private, no-store` y token interno obligatorio incluso con JWT.
+  Recibe `{personaIds:string[]}` (UUID únicos, hasta 500 por lote) y devuelve
+  `{consulta,items,total}`. Cada item contiene personaId, cuatro partes del nombre
+  y `identificacion`, con los textos/null guardados en Persona, sin transformarlos.
+- La consulta parametrizada usa solo `academic_work_plan."Persona"`; no exige cuenta
+  activa, rol ni existencia de una identidad en Auth. Una persona ausente no devuelve
+  fila, como el repositorio anterior. No se leen documentos, contacto ni otras columnas.
+- RUND deriva los IDs de los perfiles nativos que ya consultaba. El cliente deduplica
+  UUID y consulta secuencialmente en lotes de 500, sin truncar el total ni devolver un
+  resultado parcial si falla un lote posterior. Valida consulta, total, columnas,
+  unicidad y pertenencia de cada fila al lote. No guarda caché entre solicitudes.
+- Se reutilizan ACADEMIC_WORK_PLAN_SERVICE_URL y PTA_INTERNAL_SERVICE_TOKEN (alternativa
+  INTERNAL_SERVICE_TOKEN), plazo de diez segundos y rechazo de redirecciones. No hay
+  reenvío de JWT/cookies, fallback a JWT_SECRET, Auth actual ni SELECT alternativo.
+  Una ruta 404, caída o respuesta incompatible provoca 503, sin historial vacío exitoso.
+
+**Historial y acceso conservados**
+
+- MacroDocenteService recibe RundCatalogosClient en lugar del repositorio Persona.
+  Su módulo importa el cliente existente. La composición de nombres, recorte de campos,
+  valores null, documento con puntos/ceros, estados firmes, orden y lectura de asignaturas
+  permanecen iguales. La ausencia histórica mantiene filas con nombre/documento null.
+- Se mantienen filtros de período/docente/territorial/CETAP/programa/núcleo, paginación,
+  prioridad del programa embebido y respaldo legacy. Las consultas vacías o sin perfiles
+  nativos no agregan dependencia de la API de identidad.
+- Los controllers, guards, enmascaramiento, auditoría, correo y reglas del enlace externo
+  no cambian. Un fallo de la fuente o de auditoría impide entregar datos. La consulta
+  externa sigue limitada al docente del acceso y respeta su revocación.
+
+**Validación local**
+
+- Builds de PTA/RUND correctos. RUND: **59 suites / 989 pruebas**, todas correctas
+  (23 nuevas). Módulo interno de catálogos PTA: **1 suite / 27 pruebas**, diez nuevas;
+  no se presenta como ejecución de todas las pruebas de negocio de PTA.
+- **288 comprobaciones** con PostgreSQL temporal e HTTP real, diez nuevas. Se comparan
+  el DTO y el historial completo con la operación anterior de Repository<Persona>.find
+  sobre los mismos datos. Hay nombres históricos distintos de Auth, personas sin cuenta
+  activa, ausencia histórica, documento con ceros/puntos y registros de varias fuentes.
+- Un consumidor compilado con repositorios reales y permisos limitados consulta historial
+  y detalle sin poder hacer SELECT sobre Persona ni Auth. Conserva filtros/paginación,
+  programa legacy, prioridad del JSON y exclusión de borradores.
+- Se prueban más de 500 IDs sin truncamiento, fallo del segundo lote, echo/total mínimos,
+  cambios del propietario reflejados en la siguiente solicitud y ausencia confirmada.
+  Caída/404/contrato parcial producen 503 sin mutar personas, cuentas, planes o perfiles.
+- El main de RUND conserva permisos y enmascaramiento de un lector granular y del enlace
+  externo. Se verifica que manipular docenteId no cambia su alcance, que la auditoría
+  fallida bloquea la entrega y que revocar el acceso sigue impidiendo la consulta.
+- Gateway: **14 comprobaciones HTTP**, incluida la nueva sobre bloqueo del POST interno
+  normal/codificado, aun con JWT y token. El código de producción del gateway no cambia.
+- Las 278 comprobaciones anteriores siguen pasando, incluido el correo del punto 56.
+  Hashes/comparaciones verifican que el algoritmo del historial solo cambia su lectura
+  de Persona y que los GET anteriores de PTA y del cliente conservan sus contratos.
+  Evidencia: [validacion-identidad-historica-macro-docente-rund.json](validacion-identidad-historica-macro-docente-rund.json).
+
+Publicar primero **PTA con la nueva ruta y después RUND**. No hay variables nuevas ni
+migraciones. Ante un PTA antiguo, las consultas que necesitan identidad histórica fallan
+con 503; no entregan datos parciales ni vuelven al SELECT cruzado. Para retirar la ruta,
+restaurar primero un RUND compatible. Siguen aplicando los requisitos de cortes anteriores.
+
+La validación usa datos ficticios y la API compilada de PTA con conexión de solo lectura;
+no inicia PTA AppModule ni certifica despliegues, volumen o latencia. Los lotes no forman
+un snapshot distribuido: PTA puede cambiar entre consultas. RUND todavía lee directamente
+planes y catálogo de programas de PTA; este corte aísla específicamente Persona y no
+certifica separación completa de la base ni retiro de sus entidades/flujo embebido.
+
+Avance acumulado: **20 cortes técnicos locales desde el merge**, **11 pasos principales
+locales** y **5 frentes abiertos**. Continúa el frente 4 y la aceptación `12.5d.2`.
+El siguiente corte revisará el catálogo de programas usado como respaldo histórico
+en Macro Docente, conservando la prioridad del nombre embebido y los filtros de registros
+retirados del repositorio actual. No se usan bases existentes ni `.env` reales; no se
+hace push, despliegue o retiro del RUND embebido de PTA.
+
+## 58. Frente 4: programas de respaldo del historial por API PTA (2026-10-15)
+
+Macro Docente deja de consultar `academic_work_plan.programa` mediante un repositorio
+de RUND. PTA publica el catálogo mínimo necesario para los nombres ausentes en el JSON
+histórico, preservando las reglas del repositorio anterior.
+
+**Contrato y selección conservados**
+
+- PTA agrega `POST /internal/rund/v1/catalogos/programas-historicos`, HTTP 200, token
+  interno obligatorio y `Cache-Control: private, no-store`. Recibe `{programaIds:string[]}`
+  (hasta 500 candidatos únicos por lote) y devuelve `{consulta,items:[{id,nombre}],total}`.
+- El SELECT parametrizado usa `id=ANY($1::bigint[]) AND deleted_at IS NULL`. Conserva
+  programas inactivos y excluye cualquier fecha de soft delete, igual que find() sin
+  withDeleted. No añade filtro por activo, facultad, período, rol o identidad de Auth.
+- IDs int8 viajan como texto, sin Number/parseInt: se conservan extremos y valores por
+  encima del entero seguro de JavaScript. El nombre vuelve literalmente, incluidos
+  espacios y vacíos. La ausencia o retiro confirmado no devuelve fila.
+- Se conservan los alias numéricos aceptados por PostgreSQL (signo/ceros iniciales),
+  pero la salida mantiene el ID canónico del repositorio. El historial sigue usando
+  String(programa.id) como clave: no se corrigen ni reasignan aliases del JSON que antes
+  no coincidían con esa clave. Los IDs numéricos del JSON siguen siendo descartados por
+  coalesceString, sin convertirlos a texto ni inventar una consulta nueva.
+
+**Cliente e historial**
+
+- El cliente interno de catálogos admite el nuevo body y conserva GET/POST anteriores.
+  Valida tipo/rango int8, echo, total, unicidad y pertenencia de cada resultado al lote.
+  Consulta en lotes de 500 sin truncar; si falla uno posterior no devuelve resultados
+  anteriores. Mantiene URL/token de PTA, plazo de diez segundos, rechazo de redirects
+  y ausencia de JWT/cookies, fallback SQL, credencial JWT_SECRET o caché persistida.
+- MacroDocenteService elimina la inyección de ProgramaEntity y usa el cliente existente.
+  MacroDocenteModule deja de registrar Programa/Facultad; la prueba de metadatos verifica
+  que no se cargan y que las demás relaciones y entidades nativas se resuelven.
+- Se conserva exactamente el algoritmo: nombre completo embebido, nombre embebido y
+  nombre anidado tienen prioridad; solo se consulta un ID si no hay nombre. Se mantienen
+  deduplicación, filas con programa null, campos históricos, filtros, orden y paginación.
+  Un nombre embebido sigue disponible aunque falle el catálogo de programas.
+- Fallo HTTP, ruta 404 o contrato incompatible devuelve 503 si hace falta el catálogo,
+  sin historial parcial o vacío exitoso. Los IDs incompatibles que requieren lookup se
+  rechazan sin consultas SQL cruzadas; no se convierten silenciosamente en ausencia.
+  Controllers, permisos, enmascaramiento, auditoría y acceso externo no cambian.
+
+**Validación local**
+
+- Builds de PTA/RUND correctos. RUND: **59 suites / 1.021 pruebas**, todas correctas,
+  con 32 nuevas. Catálogos internos de PTA: **1 suite / 39 pruebas**, doce nuevas;
+  no equivale a ejecutar todas las pruebas de negocio de PTA.
+- **298 comprobaciones** con PostgreSQL temporal e HTTP real, diez nuevas. El consumidor
+  usa repositorios reales con permisos que impiden SELECT sobre Programa, Persona y Auth.
+  La referencia usa el find(In(ids)) anterior de Programa, incluido su soft delete.
+- Historial, detalle, filtros y paginación coinciden con el repositorio anterior. Se
+  comprueban programa inactivo, retirado, ausente, nombres con espacios, ID canónico frente
+  a alias, ID numérico del JSON, extremos int8 y precisión mayor que 2^53.
+- Se prueban más de 500 candidatos, fallo del segundo lote, cambios de nombre,
+  retiro/restauración y falta de caché entre solicitudes. Caída/404/contrato parcial
+  produce 503; el período con solo nombres embebidos no llama al catálogo.
+- El main conserva permisos, documento protegido y alcance del enlace externo. Fallos
+  del propietario y de auditoría bloquean la entrega; revocar el acceso sigue impidiendo
+  consultarlo. Consultas y fallos no modifican personas, programas, planes o perfiles.
+- Las 288 comprobaciones anteriores siguen pasando. El fixture del punto 57 adapta su
+  constructor y referencia al nuevo cliente y reduce sus permisos: tampoco puede leer
+  directamente Programa. No se debilitan las comprobaciones del historial anterior.
+- Gateway: **15 comprobaciones HTTP**, incluida la nueva sobre bloqueo del POST interno
+  normal/codificado aun con JWT y token; su código de producción no cambia.
+- Comparaciones/hashes verifican que solo cambia la lectura de respaldo y su registro
+  de dependencia; las reglas de composición, acceso y contratos anteriores se conservan.
+  Evidencia: [validacion-programas-historicos-macro-docente-rund.json](validacion-programas-historicos-macro-docente-rund.json).
+
+Publicar primero **PTA con la nueva ruta y después RUND**. No hay variables nuevas ni
+migraciones. Un PTA anterior provoca 503 cuando se necesita resolver el nombre del
+programa, sin volver al SELECT cruzado. Para retirar la ruta, restaurar primero RUND
+compatible. Siguen aplicando los requisitos de los cortes anteriores.
+
+La validación usa datos ficticios y API PTA compilada en conexión de solo lectura;
+no inicia PTA AppModule ni certifica despliegues, volumen o latencia. Los lotes no
+constituyen un snapshot distribuido. La consulta de planes de PTA sigue siendo SQL
+directo; este punto no certifica separación completa de bases ni retiro del RUND de PTA.
+
+Avance acumulado: **21 cortes técnicos locales desde el merge**, **11 pasos principales
+locales** y **5 frentes abiertos**. Continúa el frente 4 y la aceptación `12.5d.2`.
+El siguiente corte revisará la lectura de planes firmes de PTA para Macro Docente,
+preservando estados, período/docente y datos históricos de las asignaturas. No se usan
+bases existentes ni `.env` reales; no se hace push, despliegue o retiro del RUND embebido.
+
+## 59. Frente 4: planes firmes de Macro Docente por API PTA (2026-10-15)
+
+Macro Docente deja de leer `academic_work_plan."PlanTrabajoAcademico"` mediante un
+repositorio de RUND. PTA selecciona sus planes y publica únicamente los campos que
+necesita el historial. RUND conserva la composición de filas y sus controles de acceso.
+
+**Contrato y compatibilidad**
+
+- Nueva ruta `POST /internal/rund/v1/planes/historial-firme`, HTTP 200, token interno
+  obligatorio y `Cache-Control: private, no-store`, registrada en el módulo interno
+  existente de PTA. No modifica el Macro Docente embebido ni su flujo de aprobación.
+- Recibe docenteId y/o periodo como texto exacto. Rechaza consultas sin docente ni período,
+  valores incompatibles y claves adicionales. No exige UUID de docente, período numérico
+  ni recorta espacios: conserva los identificadores y períodos históricos de tipo text.
+- Mantiene exactamente los siete estados: APROBADO, APROBADO_DEF, EN_FIRME, RADICADO,
+  EN_EJECUCION, FINALIZADO y TERMINADO. No incluye borradores, estados parecidos o CERRADO
+  por reinterpretación de estadoAntesCierrePeriodo. Usa SQL parametrizado y los mismos
+  criterios de igualdad por docente/período y `ORDER BY periodo DESC`.
+- Devuelve `{consulta,items,total}`; cada plan contiene id, docenteId, periodo, estado y
+  datosEstructurados con solo asignaturas. No expone el resto del JSON del plan ni datos
+  de aprobación, observaciones, dedicación u otras columnas que Macro no consume.
+  La extracción JSON conserva asignaturas heterogéneas, valores crudos y nulos; JSON
+  sin asignaturas sigue sin generar filas. No modifica el JSON almacenado.
+- No añade LIMIT/OFFSET ni trunca a 500 planes. La selección completa se procesa antes
+  de paginar asignaturas, igual que antes. El orden entre planes del mismo período
+  sigue sin desempate definido; este corte no introduce un orden secundario nuevo.
+
+**Consumidor y seguridad**
+
+- PtaPlanesClient usa URL/credencial de PTA existentes, con token común como alternativa
+  ya admitida. No usa secretos JWT o credenciales de Auth. No envía JWT/cookies y rechaza
+  redirects; aplica plazo de diez segundos y consulta nuevamente en cada solicitud.
+- Valida echo exacto, total, IDs únicos y campos requeridos, estados firmes y pertenencia
+  al docente/período solicitado. Un 404, caída, error de red/JSON o contrato parcial
+  produce 503. No devuelve historial vacío como sustituto de un fallo, ni consulta SQL
+  alternativo. Incluso la ausencia de planes requiere confirmación del propietario.
+- MacroDocenteService sustituye únicamente la selección de planes. Conserva exactamente
+  la composición posterior: perfil nativo, identidad histórica, prioridad de programas,
+  territorial/CETAP, horas, normalización, filtros, orden recibido y paginación.
+  Controllers, permisos, auditoría, máscaras y alcance del enlace externo no cambian.
+- MacroDocenteModule retira el registro PlanTrabajoAcademico y agrega el cliente. La
+  prueba de metadatos confirma que RUND no carga esa entidad y que las demás relaciones
+  registradas se resuelven con synchronize=false. El archivo de entidad se mantiene
+  para fixtures/referencias; no se eliminan tablas, datos, índices o migraciones.
+
+**Validación local**
+
+- Builds de PTA y RUND correctos. RUND: **60 suites / 1.063 pruebas**, todas correctas,
+  42 nuevas. Módulo interno PTA: **1 suite / 53 pruebas**, catorce nuevas; no equivale
+  a ejecutar toda la suite de negocio de PTA.
+- **309 comprobaciones** con PostgreSQL temporal y HTTP real, once nuevas. Consumidor
+  con repositorios reales y permisos que impiden leer PlanTrabajoAcademico, Persona,
+  Programa y Auth. La referencia conserva el QueryBuilder original para los planes.
+- Se comparan los siete estados, exclusión de borradores y similares, docente/período,
+  filtros posteriores, páginas y consulta puntual. Se verifican JSON histórico irregular,
+  más de 500 planes sin truncado, precisión/valores crudos y cambios de estado/asignaturas
+  reflejados en la siguiente consulta. Los 298 controles anteriores siguen pasando.
+- Ausencia confirmada, caída, 404 y contrato parcial conservan su diferencia. Sesión,
+  enmascaramiento, alcance externo, fallo de auditoría y revocación se comprueban desde
+  el main real. Consultas y fallos conservan las filas de planes, personas y perfiles.
+- Gateway: **16 comprobaciones HTTP**, incluida la nueva sobre bloqueo del POST interno
+  normal y codificado aun con JWT/token. Su código de producción no cambia.
+- Comparaciones de código y hashes conservan el cuerpo de composición del historial y
+  los contratos/clientes anteriores. Evidencia:
+  [validacion-planes-firmes-macro-docente-rund.json](validacion-planes-firmes-macro-docente-rund.json).
+
+Desplegar primero **PTA con la nueva ruta y después RUND**. No hay variables nuevas ni
+migraciones. Con PTA anterior, toda consulta de historial que necesite seleccionar planes
+devuelve 503; no recupera el SELECT cruzado. Para retirar la ruta, restaurar primero un
+RUND compatible. Siguen aplicando los requisitos de los cortes anteriores.
+
+Las pruebas usan datos ficticios y la API PTA compilada con conexión de solo lectura;
+no inician PTA AppModule ni certifican instalaciones existentes. Las llamadas de planes,
+identidades y programas no constituyen un snapshot distribuido. El transporte completo
+conserva el comportamiento anterior, pero el volumen/latencia y el plazo de diez segundos
+deben comprobarse en aceptación por ambiente. Continúan otras escrituras y bloqueos entre
+propietarios: este punto no certifica aislamiento SQL global ni independencia completa.
+
+Avance: **22 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Sigue el frente 4 y la aceptación `12.5d.2`. El siguiente corte
+revisará las escrituras de identidad/cuenta en Auth y su transacción con el perfil nativo
+de RUND, para definir la separación sin perder validaciones, unicidad ni rollback.
+No se usan bases existentes o `.env` reales ni se hace push, despliegue o retiro del
+RUND embebido en PTA.
+
+## 60. Frente 4: frontera de escritura Auth y conservación de la transacción RUND (2026-10-15)
+
+Se revisa la creación/actualización de persona, cuenta y rol realizada por
+`BancoDocentesService.upsertDocente`. Se extrae ese bloque a
+`rund-auth-identity-write.ts`, con entrada y resultado explícitos, conservando el manager
+de la operación. Es preparación del traslado al propietario: **este corte no elimina
+el SQL de Auth ni activa una API de escritura remota**.
+
+**Dependencias comprobadas**
+
+| Flujo | Unidad actual que debe conservarse al separar servicios |
+|---|---|
+| Alta o actualización individual | Persona, cuenta, rol, perfil, bloques, validaciones, invalidación de evidencias y auditoría comparten transacción. |
+| Carga masiva definitiva | Soporte del lote fuera de las transacciones de filas; cada fila conserva su transacción y el tratamiento existente de errores parciales. |
+| Previsualización XLSX | Transacción exterior, savepoint por fila y rollback final; una fila fallida no impide probar la siguiente. |
+| Edición con soporte | El soporte vuelve a comprobarse al final de la misma transacción; si dejó de estar disponible se revierten también persona y username. |
+| Edición con sugerencias OCR | El manager exterior coordina bloqueo de sugerencias, cambios y confirmación. No puede sustituirse por un commit independiente en Auth. |
+| Autogestión | La resolución por email depende de la opción interna relaxValidation y del flujo OTP anterior; no se habilita desde un nuevo body HTTP. |
+| Correo de bienvenida | Solo después del commit propio y cuando se creó cuenta. El manager exterior conserva su comportamiento sin envío desde upsert. |
+
+**Cambio delimitado**
+
+- La función `upsertRundAuthIdentityWithManager` recibe solo el manager, los datos ya
+  normalizados, las dos opciones internas relevantes y las mismas funciones de formato
+  de fecha/nombre/comparación. No obtiene su propio DataSource, abre transacciones,
+  crea conexiones, envía correo, hace HTTP ni controla commit/rollback/savepoints.
+- Devuelve persona, usuario, indicador de cuenta creada, campos de identidad cambiados
+  y sus valores anteriores/nuevos. El mismo mapa de cambios continúa en la auditoría
+  nativa; no se modifica ni se vuelve a construir con reglas distintas.
+- Se conserva el bloque SQL y su orden: búsqueda por documento normalizado; fallback
+  por email solo en autogestión; conflicto de correo/persona/username; creación o cambio
+  de persona; creación o cambio de username; selección y asignación del rol DOCENTE.
+- Se conservan cuentas nuevas inactivas, password_temp=true, bcrypt con coste 10,
+  contraseña temporal derivada del documento, contraseñas existentes intactas, fechas,
+  datos previos y campos que determinan si debe actualizarse una fila.
+- La selección del rol sigue siendo por code o name con la prioridad anterior. No se
+  sustituye por el contrato de sincronización, que exige rol activo y tiene otra regla.
+- El id_tercero conserva las tres variantes anteriores: columna ausente, secuencia
+  configurada o LOCK TABLE con MAX+1. El bloqueo y la reserva usan el mismo manager;
+  los bigint siguen como texto. Las secuencias PostgreSQL no son transaccionales: pueden
+  avanzar aunque se reviertan filas; no se reinician ni se promete recuperar correlativos.
+- El código completo posterior a la identidad —perfil, aprobaciones, validaciones,
+  soporte, auditoría, commit, bienvenida, bulk, OCR y autogestión— se conserva idéntico.
+  Controllers, rutas, proveedores, variables, módulos de Auth/PTA y migraciones no cambian.
+
+**Validación local**
+
+- RUND: **61 suites / 1.073 pruebas**, todas correctas, diez nuevas. Build correcto.
+  No se repiten suites/builds de Auth o PTA porque su código no cambia en este corte.
+- **317 comprobaciones** con PostgreSQL temporal y el main real, ocho nuevas; las 309
+  anteriores siguen pasando. La prueba adicional usa el servicio compilado, repositorios
+  y transacciones TypeORM reales; los correos se capturan en una función ficticia.
+- Rollback real tras crear persona/cuenta/rol; fallos inducidos en perfil, asignación de
+  rol y auditoría; rechazo de existente y comprobación tardía de soporte; cada escenario
+  revierte las filas Auth/RUND y evita el correo de bienvenida de la operación fallida.
+- Una previsualización XLSX falla en la primera fila, procesa la segunda mediante su
+  savepoint y revierte finalmente los datos. La bitácora de lectura de la previsualización
+  se conserva intencionalmente, como en el comportamiento anterior.
+- La conexión independiente de la prueba solo observa persona/cuenta/perfil cuando el
+  commit propio ya ocurrió; entonces se registra la bienvenida ficticia. Reimportar
+  conserva IDs, contraseña y un único rol/perfil, sin repetir bienvenida. No se exige
+  action=unchanged: el algoritmo previo puede reportar update al releer claves JSONB.
+- Comparaciones de código verifican el bloque extraído y el resto del servicio; hashes
+  encadenados comprueban los demás clientes, contratos y flujos anteriores sin cambios.
+  Evidencia: [validacion-frontera-escritura-auth-rund.json](validacion-frontera-escritura-auth-rund.json).
+
+**Condición para el traslado efectivo a Auth**
+
+Una llamada HTTP que confirme Auth antes de guardar el perfil no conserva este rollback.
+El siguiente corte debe preparar el contrato propietario de validación y la coordinación
+de operaciones: identificador estable del servidor, reintentos consultables/idempotentes,
+recuperación ante respuesta perdida, y reglas de confirmación o reversión que no deshagan
+cambios ajenos/concurrentes. La previsualización requiere validación sin persistencia
+remota. Los fallos tardíos de soporte, auditoría y OCR deben seguir impidiendo entregar
+un éxito parcial. Esta sección fija requisitos; no afirma que ese protocolo ya exista.
+
+No hay nuevo orden de despliegue en este corte ni variables/migraciones. Permanecen las
+dependencias y requisitos de los cortes anteriores, incluido PTA antes de RUND para sus
+nuevas lecturas. No se lee ningún `.env` ni se usan bases existentes; solo datos ficticios
+y clúster temporal, eliminado al terminar. Las altas confirmadas de prueba y su auditoría
+inmutable se eliminan con ese clúster; no se borran bitácoras de una instalación.
+
+Avance: **23 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan el frente 4 y la aceptación `12.5d.2`. Este punto deja
+delimitada y probada la escritura actual; su traslado por API y el aislamiento SQL global
+siguen pendientes. No se hace push, despliegue o retiro del RUND embebido en PTA.
+
+## 61. Frente 4: prevalidación propietaria de identidad en Auth (2026-10-15)
+
+Auth incorpora `POST /internal/rund/v1/personas/escritura/validar`, contrato v1 de solo
+lectura para preparar el traslado de escrituras. Se registra en UsersModule con el
+guard interno existente; no modifica rutas o servicios actuales de usuarios/identidad.
+
+- Solicitud con versión, UUID de operación, documento textual, correo ya normalizado y
+  opción interna resolverPorCorreo. Rechaza claves adicionales y tipos incompatibles.
+- Devuelve echo, persona/cuenta/rol, origen de coincidencia, conflicto de correo, huella
+  SHA-256 del comando de consulta/resultado y reserva=false. No devuelve credenciales,
+  passwords, nombres o filas completas ni presenta la prevalidación como autorización.
+- Una sola sentencia SELECT/CTEs comparte snapshot. Conserva documento con BTRIM/puntos/
+  UPPER, prioridad por documento, email solo cuando lo habilita el contexto interno,
+  conflicto de otra persona/username/propietario null y rol por code/name con prioridad
+  por code. Se conservan cuentas/roles inactivos y LIMIT 1 sin nuevo desempate.
+- No reserva identidad/correo, IDs o rol; no consume secuencias, solicita bloqueos explícitos, escribe
+  recibos, crea cuentas ni cambia permisos. Repetir ID vuelve a consultar el estado actual.
+  La huella permite comprobar correspondencia, no garantiza concurrencia/idempotencia
+  de escrituras ni sirve para recuperar el resultado de una escritura remota perdida.
+- Cliente preparatorio de RUND con URL/token Auth existentes, timeout de diez segundos,
+  rechazo de redirects, sin JWT/cookies, credenciales PTA/JWT o caché/SQL alternativo.
+  Valida echo, tipos, UUID, campos mínimos, consistencia y huella. Caída, 404, JSON parcial
+  o alterado produce 503; ausencia/conflicto/rol no encontrado requieren respuesta válida.
+- El cliente todavía no se importa en módulos activos de RUND ni sustituye la escritura
+  local. Normalización, transacción, rollback, soporte, OCR, auditoría y correos del punto
+  60 permanecen idénticos; no hay nueva dependencia de disponibilidad para esos flujos.
+
+Contrato y requisitos de recuperación:
+[CONTRATO-PREVALIDACION-IDENTIDAD-AUTH.md](CONTRATO-PREVALIDACION-IDENTIDAD-AUTH.md).
+Especifica qué confirma cada campo, cómo se calcula la huella y qué sigue pendiente para
+coordinar escrituras: recibo persistido, consulta de estado, reintentos, respuesta perdida,
+confirmación/recuperación, cambios concurrentes y previsualización sin persistencia remota.
+
+**Validación local**
+
+- Builds Auth/RUND correctos. RUND: **62 suites / 1.108 pruebas**, 35 nuevas. Auth:
+  **2 suites de identidad / 98 pruebas**, 19 nuevas; no equivale a toda la suite Auth.
+- **326 comprobaciones** con PostgreSQL temporal e HTTP real, nueve nuevas; se conservan
+  las 317 anteriores, incluidas las de rollback y previsualización del punto 60.
+- Controlador, servicio, guard e interceptor compilados de Auth, con conexiones de solo
+  lectura. El cliente compilado consulta esa API; no se inicia Auth AppModule.
+- Se comparan las selecciones previas a escritura para documento/email/conflictos/cuenta/
+  rol, incluyendo persona sin cuenta, usuario sin persona, inactivos, prioridad code/name
+  y rol ausente. Token obligatorio, body inválido, proyección mínima y no-store verificados.
+- Reintentos y solicitudes simultáneas no generan filas ni avanzan secuencias; cambios de
+  cuenta del propietario se reflejan en la siguiente llamada. Caída/404/contrato parcial
+  no confirman ausencia ni modifican Auth/RUND. No se reenvían JWT/cookies.
+- Gateway: **17 comprobaciones HTTP**, incluida la nueva para bloqueo del POST interno
+  normal/codificado aun con JWT/token. Su código de producción se conserva.
+- Hashes verifican que la escritura local, los flujos activos y contratos anteriores
+  siguen intactos. UsersModule solo incorpora el nuevo controlador/proveedor y su import.
+  Evidencia: [validacion-prevalidacion-identidad-auth-rund.json](validacion-prevalidacion-identidad-auth-rund.json).
+
+Sin variables o migraciones nuevas. Auth puede publicar la ruta sin cambiar consumidores;
+antes de conectar RUND, se requiere Auth compatible. Se mantienen los requisitos previos
+de despliegue. No se usan bases existentes ni `.env` reales: datos ficticios, PostgreSQL
+temporal eliminado al terminar, sin push, despliegue ni retiro del RUND embebido en PTA.
+
+Avance: **24 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Sigue el frente 4 y la aceptación `12.5d.2`. Este corte prepara
+el contrato propietario; la escritura SQL actual sigue local. El siguiente punto debe
+implementar el registro/consulta idempotente de operaciones y su recuperación antes de
+conectar una escritura remota a los flujos de RUND.

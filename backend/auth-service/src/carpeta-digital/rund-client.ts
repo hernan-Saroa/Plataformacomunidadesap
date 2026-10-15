@@ -46,8 +46,17 @@ export class RundClient implements RundDocumentAccessApi {
       throw new ServiceUnavailableException('El servicio RUND no responde.');
     }
     if (!res.ok) throw new ServiceUnavailableException(`El servicio RUND respondió ${res.status}.`);
-    const cuerpo: any = await res.json();
-    return (cuerpo?.data ?? cuerpo) as T;
+    try {
+      const cuerpo: unknown = await res.json();
+      if (!cuerpo || typeof cuerpo !== 'object') throw new Error();
+      if ('success' in cuerpo && cuerpo.success !== true) throw new Error();
+      // Una envoltura incompleta nunca se interpreta como una respuesta directa válida.
+      const data = 'data' in cuerpo ? cuerpo.data : cuerpo;
+      if (!data || typeof data !== 'object') throw new Error();
+      return data as T;
+    } catch {
+      throw new ServiceUnavailableException('El servicio RUND no confirmó una respuesta válida.');
+    }
   }
 
   /** Soportes RUND de la persona. */
@@ -56,12 +65,18 @@ export class RundClient implements RundDocumentAccessApi {
   }
 
   async registrarAcceso(acceso: AccesoDocumentoRund): Promise<void> {
-    await this.llamar('accesos-documentos', { method: 'POST', body: acceso });
+    const result = await this.llamar<{ registrado: boolean }>('accesos-documentos', { method: 'POST', body: acceso });
+    if (result.registrado !== true) {
+      throw new ServiceUnavailableException('El servicio RUND no confirmó el registro del acceso.');
+    }
   }
 
   async esOriginalRund(url: string, recursoId: string, endpoints: string[]): Promise<boolean> {
     const r = await this.llamar<{ esOriginalRund: boolean }>('originales/verificar', { method: 'POST', body: { url, recursoId, endpoints } });
-    return r?.esOriginalRund === true;
+    if (typeof r.esOriginalRund !== 'boolean') {
+      throw new ServiceUnavailableException('El servicio RUND no confirmó la protección del documento.');
+    }
+    return r.esOriginalRund;
   }
 
   /** Agregados del RUND para el tablero del backoffice. */

@@ -30,6 +30,9 @@ describe('BancoDocentesService - autorización documental de autogestión', () =
       invitacionRepo as any,
       {} as any,
       {} as any,
+      { territorialesBanco: jest.fn().mockResolvedValue([]) } as any,
+      { proyeccion: jest.fn().mockResolvedValue({}) } as any,
+      { fichaPorPersona: jest.fn().mockResolvedValue(null), personasPorAlias: jest.fn().mockResolvedValue([]) } as any,
     );
   };
 

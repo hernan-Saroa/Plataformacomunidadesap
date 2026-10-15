@@ -1,7 +1,8 @@
 import { BadGatewayException, GatewayTimeoutException, ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { EVIDENCE_TYPES } from './rund-evidence-workflow';
-import { CAMPOS_SOPORTE_RUND } from './rund-validacion.service';
+import { CAMPOS_SOPORTE_RUND } from './rund-document-fields';
+import { RundAuthSyncOwner } from './rund-auth-sync-owner';
 
 export type RundAuthSyncResult = { total: number; created: number; skipped: number; failed: number };
 export type RundAuthSyncActor = { actorId: string; ip?: string };
@@ -89,11 +90,10 @@ export async function syncRundProfilesFromAuth(db: DataSource, authServiceUrl: s
   } catch { throw new ServiceUnavailableException('AUTH_SERVICE_URL no es una base HTTP válida.'); }
   const timeout = positiveSetting('RUND_AUTH_SYNC_TIMEOUT_MS', 15000, 120000);
   const maxPages = positiveSetting('RUND_AUTH_SYNC_MAX_PAGES', 1000, 10000);
+  const owner = new RundAuthSyncOwner(base, token, timeout);
   let roleId: string;
   try {
-    const roles = await db.query(`SELECT id FROM auth.role WHERE UPPER(code) = 'DOCENTE' AND is_active = true`);
-    if (roles.length !== 1 || !UUID.test(roles[0].id)) throw new Error();
-    roleId = roles[0].id;
+    roleId = await owner.rolDocente();
   } catch { throw new ServiceUnavailableException('No fue posible resolver el rol DOCENTE activo de auth.'); }
   // Completar/validar todas las páginas antes de abrir una transacción que escriba perfiles.
   const people = await readAuthUsers(base, token, roleId, timeout, maxPages);
@@ -111,15 +111,8 @@ export async function syncRundProfilesFromAuth(db: DataSource, authServiceUrl: s
         const personId = person.id.toLowerCase();
         // Serializa sincronizaciones de esta persona, incluso entre instancias de rund-service.
         await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', ['rund-auth-sync:' + personId]);
-        const rows = await manager.query(`SELECT p.id_person, p.num_identificacion, p.dir_email,
-            p.id_seccional::text AS territorial_id, s.nom_seccional AS territorial_nombre, p.id_sede::text AS sede_id,
-            u.is_active AS usuario_activo,
-            EXISTS(SELECT 1 FROM auth.user_roles ur JOIN auth.role r ON r.id = ur.id_rol
-              WHERE ur.id_user = u.id_user AND ur.id_rol = $3 AND ur.is_active = true AND r.is_active = true) AS rol_docente_activo
-          FROM auth.personas p JOIN auth."user" u ON u.id_person = p.id_person
-          LEFT JOIN auth.seccionales s ON s.id_seccional = p.id_seccional
-          WHERE p.id_person = $1 AND u.id_user = $2 LIMIT 1`, [personId, person.user.id_user, roleId]);
-        const identity = rows[0];
+        // Revalidar en el propietario DESPUÉS del lock, también al esperar otra instancia.
+        const identity = await owner.revalidar(personId, person.user.id_user, roleId);
         if (!identity) { result.failed++; continue; }
         if (!identity.usuario_activo || !identity.rol_docente_activo) { result.skipped++; continue; }
         // Cualquier periodo existente se conserva; no crear otro perfil base ni modificarlo.

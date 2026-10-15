@@ -26,10 +26,16 @@ import { RundCarpetaInternalController, RundCarpetaInternalGuard } from './rund-
 import { RundCarpetaConsultaService } from './rund-carpeta-consulta.service';
 import { RundAuthStateSyncService } from './rund-auth-state-sync.service';
 import { RundAuthStateSyncWorker } from './rund-auth-state-sync.worker';
+import { AuthIdentityModule } from '../../common/auth-identity.client';
+import { AuthBancoModule } from '../../common/auth-banco.client';
+import { RundCatalogosModule } from '../../common/rund-catalogos.client';
 
 @Module({
   imports: [
     AuthModule,
+    AuthIdentityModule,
+    AuthBancoModule,
+    RundCatalogosModule,
     TypeOrmModule.forFeature([BancoDocenteEntity, PersonaEntity, UsuarioEntity, PtaConfiguracionEntity, BancoDocenteInvitacionEntity, RundAprobacionLogEntity, RundCampoEstadoEntity, RundSoporteCampoEntity]),
   ],
   controllers: [BancoDocentesController, RundPtaConsultaController, RundExtraccionController, RundValidacionController, RundCarpetaInternalController],

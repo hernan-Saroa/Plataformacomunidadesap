@@ -3,6 +3,7 @@ import request from 'supertest';
 import { JwtService } from '@nestjs/jwt';
 import { protectRundFolderDocument, rundFolderStaticAccess, rundDocumentActor } from './rund-document-access';
 import { CarpetaDigitalService } from './carpeta-digital.service';
+import { RundClient } from './rund-client';
 
 describe('Carpeta Digital: integración de la política RUND', () => {
   const jwt = new JwtService({ secret: 'rund-folder-test-secret' });
@@ -127,5 +128,46 @@ describe('Carpeta Digital: integración de la política RUND', () => {
     expect(result.categoria).toBe(rund ? 'rund' : 'FORMACION');
     expect(result.url_archivo).toBe(rund ? null : '/original.pdf');
     expect(rundFake.registrarAcceso).toHaveBeenCalledTimes(rund ? 1 : 0);
+  });
+});
+
+describe('Contrato Auth → RUND aplicado al acceso y retiro de documentos', () => {
+  const jwt = new JwtService({ secret: 'rund-response-contract-test' });
+  const originalFetch = global.fetch;
+  const originalEnv = { ...process.env };
+  beforeEach(() => { process.env.INTERNAL_SERVICE_TOKEN = 'token-ficticio'; });
+  afterEach(() => { global.fetch = originalFetch; process.env = { ...originalEnv }; });
+  const response = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
+
+  it.each([{}, { success: false, data: { esOriginalRund: false } }])('una verificación incompleta no entrega el archivo (%j)', async (body) => {
+    global.fetch = jest.fn().mockResolvedValue(response(body)) as any;
+    const db = { query: jest.fn().mockResolvedValue([]) };
+    const handler = jest.fn((_req, res) => res.send('ORIGINAL_SENSIBLE'));
+    const app = express(); app.use(rundFolderStaticAccess(db, jwt, new RundClient()));
+    app.get('/uploads/{*path}', handler);
+    const result = await request(app).get('/uploads/carpeta-digital/persona/antiguo.pdf').expect(503);
+    expect(result.text).not.toContain('ORIGINAL_SENSIBLE');
+    expect(handler).not.toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('no retira el documento cuando la API no confirma la marca permanente', async () => {
+    global.fetch = jest.fn().mockResolvedValue(response({ success: true, data: { registrado: false } })) as any;
+    const repo = { findOne: jest.fn().mockResolvedValue({ id: 'doc-1', categoria: 'rund', urlArchivo: '/original.pdf' }), delete: jest.fn() };
+    const service = Object.create(CarpetaDigitalService.prototype) as any;
+    const db = { query: jest.fn() };
+    Object.assign(service, { documentoRepo: repo, dataSource: db, rund: new RundClient() });
+    await expect(service.deleteDocumento('doc-1', { sub: 'admin', roles: ['SUPER_ADMIN'] })).rejects.toThrow('No fue posible registrar');
+    expect(repo.delete).not.toHaveBeenCalled();
+    expect(db.query).not.toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('una confirmación negativa válida conserva el acceso a un adjunto general', async () => {
+    global.fetch = jest.fn().mockResolvedValue(response({ success: true, data: { esOriginalRund: false } })) as any;
+    const app = express(); app.use(rundFolderStaticAccess({ query: async () => [] }, jwt, new RundClient()));
+    app.get('/uploads/{*path}', (_req, res) => res.send('ADJUNTO_GENERAL'));
+    await request(app).get('/uploads/carpeta-digital/persona/general.pdf').expect(200, 'ADJUNTO_GENERAL');
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 });

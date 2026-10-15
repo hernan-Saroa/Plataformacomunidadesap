@@ -1,4 +1,4 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ServiceUnavailableException } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
@@ -15,6 +15,8 @@ import { DocumentTypeValidatorService } from './document-type-validator.service'
 import { RUND_PERMISSIONS } from './rund-permissions';
 import { RundPtaConsultaController } from './rund-pta-consulta.controller';
 import { RundPtaConsultaService } from './rund-pta-consulta.service';
+import { AuthIdentityClient } from '../../common/auth-identity.client';
+import { RundCatalogosClient } from '../../common/rund-catalogos.client';
 
 describe('REQ-RUND-F015: HTTP, JWT real, RBAC y contrato PTA', () => {
   let app: INestApplication;
@@ -24,14 +26,15 @@ describe('REQ-RUND-F015: HTTP, JWT real, RBAC y contrato PTA', () => {
   const actorId = '11111111-1111-4111-8111-111111111111';
   const docenteId = '22222222-2222-4222-8222-222222222222';
   const cedula = '001020304050';
+  const personaId = '33333333-3333-4333-8333-333333333333';
+  const identities = { perfilPta: jest.fn(), permisosRoles: jest.fn(async (roles: string[]) =>
+    roles.includes('CONSULTOR_PTA') ? [RUND_PERMISSIONS.VIEW] : []) };
+  const catalogos = { territorialesBanco: jest.fn() };
   const oldSecret = process.env.JWT_SECRET;
   const oldPublicPaths = process.env.JWT_PUBLIC_PATHS;
   let rows: any[];
   let failAudit: boolean;
   const query = jest.fn(async (sql: string, params?: any[]) => {
-    if (sql.includes('auth.role_permissions')) {
-      return params?.[0].includes('CONSULTOR_PTA') ? [{ code: RUND_PERMISSIONS.VIEW }] : [];
-    }
     if (sql.includes('INSERT INTO')) {
       if (failAudit) throw new Error('audit unavailable');
       return [];
@@ -50,12 +53,14 @@ describe('REQ-RUND-F015: HTTP, JWT real, RBAC y contrato PTA', () => {
     // Prueba deliberada: esta ruta debe exigir JWT aunque el guard global la omita.
     process.env.JWT_PUBLIC_PATHS = 'rund/interoperabilidad';
     const module = await Test.createTestingModule({
-      imports: [ConfigModule.forRoot({ isGlobal: true }), PassportModule.register({ defaultStrategy: 'jwt' })],
+      imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), PassportModule.register({ defaultStrategy: 'jwt' })],
       controllers: [RundPtaConsultaController, BancoDocentesController],
       providers: [
         JwtStrategy, RundPtaConsultaService,
         { provide: APP_GUARD, useClass: JwtAuthGuard },
         { provide: DataSource, useValue: { query } },
+        { provide: AuthIdentityClient, useValue: identities },
+        { provide: RundCatalogosClient, useValue: catalogos },
         { provide: BancoDocentesService, useValue: legacyService },
         { provide: DocumentTypeValidatorService, useValue: {} },
       ],
@@ -74,10 +79,12 @@ describe('REQ-RUND-F015: HTTP, JWT real, RBAC y contrato PTA', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     failAudit = false;
+    identities.perfilPta.mockReset().mockResolvedValue({ personaId, documento: cedula, nombreCompleto: 'DOCENTE DE PRUEBA', territorialId: null });
+    catalogos.territorialesBanco.mockReset().mockResolvedValue([{ id: '50', nombre: 'Meta', codigo: '50' }]);
     rows = [{
       docente_id: docenteId, nombre_completo: 'DOCENTE DE PRUEBA',
       perfil_academico: 'Administración pública', perfil_academico_profesional: 'Docencia', nivel_formacion: 'Maestría',
-      categoria: 'ASOCIADO', territorial_id: 'territorial-prueba', territorial_nombre: 'Meta', territorial_codigo: '50',
+      categoria: 'ASOCIADO', territorial_id: '50', territorial_nombre: 'Meta', territorial_codigo: '50',
       horas_programables: 720, estado_vinculacion: 'ACTIVO', tipo_vinculacion: 'CARRERA', periodo: '2026-2',
       // Aunque se amplíe el origen por error, estos campos nunca pueden salir.
       documento_identidad: cedula, puntaje_salarial: 145.5, salario: 9999999,
@@ -94,11 +101,12 @@ describe('REQ-RUND-F015: HTTP, JWT real, RBAC y contrato PTA', () => {
       expect(response.body).toEqual({ success: true, data: {
         docente_id: docenteId,
         perfil: { nombre_completo: 'DOCENTE DE PRUEBA', perfil_academico: 'Administración pública', perfil_academico_profesional: 'Docencia', nivel_formacion: 'Maestría' },
-        categoria: 'ASOCIADO', territorial: { id: 'territorial-prueba', nombre: 'Meta', codigo: '50' },
+        categoria: 'ASOCIADO', territorial: { id: '50', nombre: 'Meta', codigo: '50' },
         horas_programables: 720, estado_vinculacion: 'ACTIVO', tipo_vinculacion: 'CARRERA', periodo: '2026-2',
       } });
       const [sql, params] = query.mock.calls.find(([sql]) => sql.includes('FROM rund'))!;
-      expect(params).toEqual([cedula, '2026-2']);
+      expect(params).toEqual([personaId, '2026-2']);
+      expect(sql).not.toMatch(/auth\.|academic_work_plan\./);
       expect(sql.split('FROM rund')[0]).not.toMatch(/puntaje|salario|num_identificacion|SELECT\s+\*/i);
       const auditParams = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO'))![1]!;
       expect(auditParams).toEqual([
@@ -132,15 +140,53 @@ describe('REQ-RUND-F015: HTTP, JWT real, RBAC y contrato PTA', () => {
     expect(response.body.data).toBeUndefined();
   });
 
+  it('ausencia confirmada en Auth conserva Flujo 1 y auditoría sin consultar perfiles o catálogos', async () => {
+    identities.perfilPta.mockResolvedValue(null);
+    const response = await request(app.getHttpServer()).get(`${base}/${cedula}`).auth(token(), { type: 'bearer' }).expect(404);
+    expect(response.body).toMatchObject({ code: 'RUND_DOCENTE_NO_ENCONTRADO', flujo_alta: 'FLUJO_1' });
+    expect(query.mock.calls.some(([sql]) => sql.includes('FROM rund'))).toBe(false);
+    expect(query.mock.calls.some(([sql]) => sql.includes('INSERT INTO'))).toBe(true);
+    expect(catalogos.territorialesBanco).not.toHaveBeenCalled();
+  });
+
+  it('fallo de identidad Auth no recomienda crear otro docente ni consulta SQL alternativo', async () => {
+    identities.perfilPta.mockRejectedValue(new ServiceUnavailableException());
+    const response = await request(app.getHttpServer()).get(`${base}/${cedula}`).auth(token(), { type: 'bearer' }).expect(503);
+    expect(response.body.flujo_alta).toBeUndefined(); expect(query).not.toHaveBeenCalled();
+  });
+
+  it('fallo del catálogo no sustituye nombres ni consulta tablas de otro propietario', async () => {
+    catalogos.territorialesBanco.mockRejectedValue(new ServiceUnavailableException());
+    await request(app.getHttpServer()).get(`${base}/${cedula}`).auth(token(), { type: 'bearer' }).expect(503);
+    expect(query.mock.calls.every(([sql]) => !sql.includes('auth.'))).toBe(true);
+  });
+
+  it('territorial vacía del perfil usa la seccional de la persona, con bigint intacto', async () => {
+    rows[0].territorial_id = null; // Resultado de NULLIF sobre el valor vacío persistido.
+    identities.perfilPta.mockResolvedValue({ personaId, documento: cedula, nombreCompleto: null, territorialId: '9007199254740993' });
+    catalogos.territorialesBanco.mockResolvedValue([{ id: '9007199254740993', nombre: 'Histórica', codigo: '001' }]);
+    const response = await request(app.getHttpServer()).get(`${base}/${cedula}`).auth(token(), { type: 'bearer' }).expect(200);
+    expect(response.body.data.territorial).toEqual({ id: '9007199254740993', nombre: 'Histórica', codigo: '001' });
+    expect(response.body.data.perfil.nombre_completo).toBeNull();
+  });
+
+  it('sin territorial del perfil ni de la persona conserva null sin necesitar catálogo', async () => {
+    rows[0].territorial_id = null;
+    const response = await request(app.getHttpServer()).get(`${base}/${cedula}`).auth(token(), { type: 'bearer' }).expect(200);
+    expect(response.body.data.territorial).toEqual({ id: null, nombre: null, codigo: null });
+    expect(catalogos.territorialesBanco).not.toHaveBeenCalled();
+  });
+
   it('sin periodo entrega el registro seleccionado, incluidos inactivos y cero horas', async () => {
     rows[0].estado_vinculacion = 'RETIRADO';
     rows[0].horas_programables = 0;
     rows[0].categoria = null;
     rows[0].territorial_nombre = null;
+    catalogos.territorialesBanco.mockResolvedValue([]);
     const response = await request(app.getHttpServer()).get(`${base}/${cedula}`)
       .auth(token(), { type: 'bearer' }).expect(200);
     expect(response.body.data).toMatchObject({ estado_vinculacion: 'RETIRADO', horas_programables: 0, categoria: null, territorial: { nombre: null } });
-    expect(query.mock.calls.find(([sql]) => sql.includes('FROM rund'))![1]).toEqual([cedula, null]);
+    expect(query.mock.calls.find(([sql]) => sql.includes('FROM rund'))![1]).toEqual([personaId, null]);
   });
 
   it.each(['sin_token', 'malformado', 'vencido', 'firma_invalida', 'sin_sujeto', 'sujeto_en_blanco'])(
@@ -175,7 +221,8 @@ describe('REQ-RUND-F015: HTTP, JWT real, RBAC y contrato PTA', () => {
   it.each(['DOCENTE', 'CONSULTOR_SIN_PERMISOS'])(
     '403: %s no puede consultar otros docentes sin permiso RUND', async (role) => {
       await request(app.getHttpServer()).get(`${base}/${cedula}`).auth(token([role]), { type: 'bearer' }).expect(403);
-      expect(query.mock.calls.every(([sql]) => sql.includes('auth.role_permissions'))).toBe(true);
+      expect(query).not.toHaveBeenCalled();
+      expect(identities.permisosRoles).toHaveBeenCalledWith([role]);
     },
   );
 

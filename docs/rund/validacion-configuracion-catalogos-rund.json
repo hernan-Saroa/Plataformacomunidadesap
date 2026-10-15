@@ -1,0 +1,65 @@
+{
+  "verifiedAt": "2026-10-14T22:37:01.959Z",
+  "passed": true,
+  "checks": [
+    {
+      "file": "docker-compose.yml",
+      "ptaInternalUrl": "http://academic-work-plan-service:3003",
+      "ptaTokenExplicitOrShared": true
+    },
+    {
+      "file": "docker-compose.backend.yml",
+      "ptaInternalUrl": "http://academic-work-plan-service:3003",
+      "ptaTokenExplicitOrShared": true
+    },
+    {
+      "file": "docker-compose.dev.yml",
+      "ptaInternalUrl": "http://academic-work-plan-service:3003",
+      "ptaTokenExplicitOrShared": true
+    },
+    {
+      "file": "docker-compose.qa.yml",
+      "ptaInternalUrl": "http://academic-work-plan-service-qa:3003",
+      "ptaTokenExplicitOrShared": true
+    },
+    {
+      "file": "docker-compose.pre.yml",
+      "ptaInternalUrl": "http://academic-work-plan-service-pre:3003",
+      "ptaTokenExplicitOrShared": true
+    },
+    {
+      "file": "docker-compose.prod.yml",
+      "ptaInternalUrl": "http://academic-work-plan-service-prod:3003",
+      "ptaTokenExplicitOrShared": true
+    },
+    {
+      "file": "docker-compose.local.yml",
+      "ptaInternalUrl": "http://academic-work-plan-service:3003",
+      "ptaTokenExplicitOrShared": true
+    },
+    {
+      "file": "docker-compose.dev.yml + docker-compose.ghcr.yml",
+      "ptaInternalUrl": "http://academic-work-plan-service:3003",
+      "ptaTokenExplicitOrShared": true
+    },
+    {
+      "file": "docker-compose.qa.yml + docker-compose.qa.ghcr.yml",
+      "ptaInternalUrl": "http://academic-work-plan-service-qa:3003",
+      "ptaTokenExplicitOrShared": true
+    },
+    {
+      "file": "docker-compose.pre.yml + docker-compose.pre.ghcr.yml",
+      "ptaInternalUrl": "http://academic-work-plan-service-pre:3003",
+      "ptaTokenExplicitOrShared": true
+    },
+    {
+      "file": "docker-compose.prod.yml + docker-compose.prod.ghcr.yml",
+      "ptaInternalUrl": "http://academic-work-plan-service-prod:3003",
+      "ptaTokenExplicitOrShared": true
+    }
+  ],
+  "mode": "static YAML values and inheritance for catalog URL/token only; does not resolve full Docker Compose runtime",
+  "realEnvironmentFilesRead": false,
+  "servicesContacted": false,
+  "runtimeEnvironmentCertified": false
+}

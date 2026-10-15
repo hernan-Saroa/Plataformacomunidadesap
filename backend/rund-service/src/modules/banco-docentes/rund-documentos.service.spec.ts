@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { RundDocumentosService } from './rund-documentos.service';
 
 describe('RundDocumentosService - validación de archivos REQ-RUND-F010', () => {
-  const service = new RundDocumentosService({} as any, {} as any);
+  const service = new RundDocumentosService({} as any, {} as any, {} as any);
   const category = {
     codigo: 'TITULOS',
     mime_permitidos: ['application/pdf'],

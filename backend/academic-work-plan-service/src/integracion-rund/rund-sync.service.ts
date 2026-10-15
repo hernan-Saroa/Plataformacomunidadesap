@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { RundDocentesClient } from './rund-docentes.client';
@@ -55,8 +55,13 @@ export class RundSyncService implements OnModuleInit, OnModuleDestroy {
     const resultado: ResultadoSincronizacion = { procesados: 0, errores: 0 };
     try {
       let cursor: string | null = null;
+      const cursores = new Set<string>();
       do {
         const pagina = await this.rund.paginaParaSincronizar(cursor, 200);
+        if (pagina.nextCursor !== null) {
+          if (cursores.has(pagina.nextCursor)) throw new ServiceUnavailableException('La paginación RUND no avanzó.');
+          cursores.add(pagina.nextCursor);
+        }
         for (const fila of pagina.items) {
           try {
             await this.guardarCopia(fila);
@@ -99,6 +104,11 @@ export class RundSyncService implements OnModuleInit, OnModuleDestroy {
   /** Inserta o actualiza la copia. Devuelve el id local de la fila. */
   private async guardarCopia(fila: Record<string, any>): Promise<string> {
     const columnas = await this.columnasDeLaTabla();
+    // jsonb_populate_record convierte una propiedad ausente en NULL: no sobrescribir
+    // una copia histórica con una respuesta parcial o un esquema incompatible.
+    if (!columnas.includes('id') || columnas.some(c => !Object.prototype.hasOwnProperty.call(fila, c) || fila[c] === undefined)) {
+      throw new ServiceUnavailableException('El RUND no confirmó todas las columnas de la copia del docente.');
+    }
     const q = (c: string) => `"${c.replace(/"/g, '""')}"`;
     const actualizables = columnas.filter((c) => c !== 'id');
     const json = JSON.stringify(fila);

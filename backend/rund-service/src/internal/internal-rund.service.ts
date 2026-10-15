@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { RundValidacionService } from '../modules/banco-docentes/rund-validacion.service';
+import { AuthIdentityClient } from '../common/auth-identity.client';
+import { RundCatalogosClient } from '../common/rund-catalogos.client';
 
 export interface RegistrarAccesoDocumentoDto {
   actorId: string;
@@ -22,6 +24,8 @@ export class InternalRundService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly validacion: RundValidacionService,
+    private readonly identities: AuthIdentityClient,
+    private readonly catalogos: RundCatalogosClient,
   ) {}
 
   /**
@@ -41,15 +45,15 @@ export class InternalRundService {
     return { items, nextCursor: hayMas ? items[items.length - 1].id : null };
   }
 
-  /** Un docente por id propio o por id de persona; con `periodo`, prefiere la fila de ese período. */
+  /** Un docente por id propio o por persona; un período solicitado nunca se sustituye por otro. */
   async docentePorClave(clave: string, periodo?: string | null) {
     const k = String(clave ?? '').trim();
     if (!k) throw new BadRequestException('Debe indicar la clave del docente.');
     const filas: Array<{ fila: Record<string, any> }> = await this.dataSource.query(
       `SELECT to_jsonb(d) AS fila FROM rund."Docente" d
-        WHERE d.id = $1 OR d."personaId"::text = $1
+        WHERE (d.id = $1 OR d."personaId"::text = $1)
+          AND ($2::text IS NULL OR d."periodoCarga" = $2::text)
         ORDER BY CASE WHEN d.id = $1 THEN 0 ELSE 1 END,
-                 CASE WHEN $2::text IS NOT NULL AND d."periodoCarga" = $2::text THEN 0 ELSE 1 END,
                  CASE WHEN d."idRund" IS NOT NULL THEN 0 ELSE 1 END,
                  d."updatedAt" DESC NULLS LAST, d.id ASC
         LIMIT 1`,
@@ -68,14 +72,12 @@ export class InternalRundService {
   async docentePorDocumento(documento: string) {
     const limpio = String(documento ?? '').trim();
     if (!limpio) throw new BadRequestException('Debe indicar el número de documento del docente.');
+    const identity = await this.identities.porDocumento(limpio);
     const filas = await this.dataSource.query(
       `SELECT d.id                          AS "idDocente",
               d."personaId"                 AS "idPersona",
-              p.num_identificacion          AS documento,
-              p.nom_largo                   AS "nombreCompleto",
               d."correoInstitucional"       AS "correoInstitucional",
               d."territorialId"             AS "territorialCodigo",
-              dt.nombre                     AS "territorialNombre",
               d."tipoVinculacion"           AS "tipoVinculacion",
               d."dedicacion"                AS dedicacion,
               d."dedicacionHorasSemana"     AS "dedicacionHorasSemana",
@@ -91,15 +93,16 @@ export class InternalRundService {
               d."nivelFormacion"            AS "nivelFormacion",
               d."nucleoTematico"            AS "nucleoTematico"
          FROM rund."Docente" d
-         INNER JOIN auth.personas p ON p.id_person = d."personaId"
-         LEFT JOIN academic_work_plan.direccion_territorial dt ON dt.codigo = d."territorialId"
-        WHERE p.num_identificacion = $1
+        WHERE d."personaId" = $1::uuid
         ORDER BY d."updatedAt" DESC NULLS LAST
         LIMIT 1`,
-      [limpio],
+      [identity.personaId],
     );
     if (!filas?.length) throw new NotFoundException(`No existe un docente con documento ${limpio} en el RUND.`);
-    return filas[0];
+    const perfil = filas[0];
+    const territorialNombre = perfil.territorialCodigo === null || perfil.territorialCodigo === undefined ? null
+      : (await this.catalogos.territoriales()).find(item => item.codigo === perfil.territorialCodigo)?.nombre ?? null;
+    return { ...perfil, documento: identity.documento, nombreCompleto: identity.nombreCompleto, territorialNombre };
   }
 
   /** Soportes RUND de una persona (Carpeta Digital los lista junto a sus propios documentos). */
@@ -147,18 +150,23 @@ export class InternalRundService {
   /** Agregados del RUND para el tablero del backoffice. */
   async estadisticasBackoffice() {
     const q = (sql: string) => this.dataSource.query(sql).catch(() => []);
+    const cobertura = async () => {
+      const seccionales = await this.catalogos.seccionales();
+      // PostgreSQL conserva la agrupación por nombre, collation, nulos y totales del JOIN anterior.
+      return this.dataSource.query(`SELECT s.nombre AS territorial, COUNT(d.id)::int AS total,
+          COUNT(CASE WHEN d."sedeId" IS NULL THEN 1 END)::int AS sin_cetap,
+          COUNT(CASE WHEN d."sedeId" IS NOT NULL THEN 1 END)::int AS con_cetap
+        FROM rund."Docente" d
+        JOIN unnest($1::text[], $2::text[]) AS s(id, nombre) ON d."territorialId" = s.id
+        GROUP BY s.nombre ORDER BY total DESC`, [seccionales.map(item => item.id), seccionales.map(item => item.nombre)]).catch(() => []);
+    };
     const [totales, vinculacion, dedicacion, escalafon, nivelFormacion, territoriales, formacionAvanzada] = await Promise.all([
       q(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE "sedeId" IS NULL)::int AS "sinCetap" FROM rund."Docente"`),
       q(`SELECT "tipoVinculacion" AS key, COUNT(*)::int AS cnt FROM rund."Docente" GROUP BY 1 ORDER BY cnt DESC`),
       q(`SELECT dedicacion AS key, COUNT(*)::int AS cnt FROM rund."Docente" GROUP BY 1 ORDER BY cnt DESC`),
       q(`SELECT escalafon AS key, COUNT(*)::int AS cnt FROM rund."Docente" WHERE escalafon IS NOT NULL GROUP BY 1 ORDER BY cnt DESC`),
       q(`SELECT "nivelFormacion" AS key, COUNT(*)::int AS cnt FROM rund."Docente" WHERE "nivelFormacion" IS NOT NULL GROUP BY 1 ORDER BY cnt DESC`),
-      q(`SELECT s.nom_seccional AS territorial, COUNT(d.id)::int AS total,
-                COUNT(CASE WHEN d."sedeId" IS NULL THEN 1 END)::int AS sin_cetap,
-                COUNT(CASE WHEN d."sedeId" IS NOT NULL THEN 1 END)::int AS con_cetap
-           FROM rund."Docente" d
-           JOIN auth.seccionales s ON d."territorialId" = s.id_seccional::text
-          GROUP BY s.nom_seccional ORDER BY total DESC`),
+      cobertura(),
       q(`SELECT CASE
                   WHEN "nivelFormacion" ILIKE '%doctorado%' OR "nivelFormacion" ILIKE '%doctor%' THEN 'Doctorado'
                   WHEN "nivelFormacion" ILIKE '%maestr%' OR "nivelFormacion" ILIKE '%magíster%' OR "nivelFormacion" ILIKE '%magister%' THEN 'Maestría'

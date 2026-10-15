@@ -20,6 +20,9 @@ function createService(overrides: {
     invitacionRepo as any,
     auditLogRepo as any,
     dataSource as any,
+    { territorialesBanco: jest.fn().mockResolvedValue([]) } as any,
+      { proyeccion: jest.fn().mockResolvedValue({}) } as any,
+      { fichaPorPersona: jest.fn().mockResolvedValue({ num_identificacion: '1020304050' }), personasPorAlias: jest.fn().mockResolvedValue([]) } as any,
   );
 
   return { service, docenteRepo, invitacionRepo, dataSource, auditLogRepo };

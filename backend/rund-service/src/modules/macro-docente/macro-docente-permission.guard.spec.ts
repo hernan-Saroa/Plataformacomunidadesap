@@ -14,15 +14,15 @@ function buildContext(user: any) {
 describe('MacroDocentePermissionGuard', () => {
   it('deja pasar rutas sin @RequierePermisoMacroDocente (ej. el acceso externo público)', async () => {
     const reflector = { getAllAndOverride: jest.fn().mockReturnValue(undefined) } as unknown as Reflector;
-    const ptaPermissions = { query: jest.fn() };
+    const ptaPermissions = { permisosRoles: jest.fn() };
     const guard = new MacroDocentePermissionGuard(reflector, ptaPermissions as any);
     await expect(guard.canActivate(buildContext(null))).resolves.toBe(true);
-    expect(ptaPermissions.query).not.toHaveBeenCalled();
+    expect(ptaPermissions.permisosRoles).not.toHaveBeenCalled();
   });
 
   it('exige usuario autenticado cuando la ruta requiere permiso', async () => {
     const reflector = { getAllAndOverride: jest.fn().mockReturnValue(MACRO_DOCENTE_PERMISOS.CONSULTAR) } as unknown as Reflector;
-    const ptaPermissions = { query: jest.fn() };
+    const ptaPermissions = { permisosRoles: jest.fn() };
     const guard = new MacroDocentePermissionGuard(reflector, ptaPermissions as any);
     await expect(guard.canActivate(buildContext(null))).rejects.toBeInstanceOf(UnauthorizedException);
   });
@@ -30,7 +30,7 @@ describe('MacroDocentePermissionGuard', () => {
   it('permite el acceso si el usuario tiene el permiso requerido', async () => {
     const reflector = { getAllAndOverride: jest.fn().mockReturnValue(MACRO_DOCENTE_PERMISOS.CONSULTAR) } as unknown as Reflector;
     const ptaPermissions = {
-      query: jest.fn().mockResolvedValue([{ code: MACRO_DOCENTE_PERMISOS.CONSULTAR }]),
+      permisosRoles: jest.fn().mockResolvedValue([MACRO_DOCENTE_PERMISOS.CONSULTAR]),
     };
     const guard = new MacroDocentePermissionGuard(reflector, ptaPermissions as any);
     await expect(guard.canActivate(buildContext({ roles: ['CONTROL_INTERNO'] }))).resolves.toBe(true);
@@ -39,7 +39,7 @@ describe('MacroDocentePermissionGuard', () => {
   it('permite el acceso a SUPER_ADMIN aunque no tenga el permiso asignado explícitamente', async () => {
     const reflector = { getAllAndOverride: jest.fn().mockReturnValue(MACRO_DOCENTE_PERMISOS.GESTIONAR_ACCESOS_EXTERNOS) } as unknown as Reflector;
     const ptaPermissions = {
-      query: jest.fn(),
+      permisosRoles: jest.fn(),
     };
     const guard = new MacroDocentePermissionGuard(reflector, ptaPermissions as any);
     await expect(guard.canActivate(buildContext({ roles: ['SUPER_ADMIN'] }))).resolves.toBe(true);
@@ -48,7 +48,7 @@ describe('MacroDocentePermissionGuard', () => {
   it('rechaza al usuario que no tiene el permiso requerido', async () => {
     const reflector = { getAllAndOverride: jest.fn().mockReturnValue(MACRO_DOCENTE_PERMISOS.GESTIONAR_ACCESOS_EXTERNOS) } as unknown as Reflector;
     const ptaPermissions = {
-      query: jest.fn().mockResolvedValue([{ code: MACRO_DOCENTE_PERMISOS.CONSULTAR }]),
+      permisosRoles: jest.fn().mockResolvedValue([MACRO_DOCENTE_PERMISOS.CONSULTAR]),
     };
     const guard = new MacroDocentePermissionGuard(reflector, ptaPermissions as any);
     await expect(guard.canActivate(buildContext({ roles: ['CONTROL_INTERNO'] }))).rejects.toBeInstanceOf(ForbiddenException);

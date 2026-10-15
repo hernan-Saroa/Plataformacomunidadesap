@@ -1,30 +1,30 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { PlanTrabajoAcademicoEntity } from '../../entities/plan-trabajo-academico.entity';
+import { PtaPlanesModule } from '../../common/pta-planes.client';
 import { BancoDocenteEntity } from '../../entities/banco-docente.entity';
 import { PersonaEntity } from '../../entities/persona.entity';
-import { FacultadEntity } from '../../entities/facultad.entity';
-import { ProgramaEntity } from '../../entities/programa.entity';
 import { RundAccesoExternoEntity } from '../../entities/rund-acceso-externo.entity';
 import { RundMacroDocenteConsultaLogEntity } from '../../entities/rund-macro-docente-consulta-log.entity';
-import { PtaNotificationsService } from '../../notifications/pta-notifications.service';
+import { MacroDocenteNotificationsService } from '../../notifications/macro-docente-notifications.service';
 import { MacroDocenteController } from './macro-docente.controller';
 import { MacroDocenteService } from './macro-docente.service';
 import { MacroDocentePermissionGuard } from './macro-docente-permission.guard';
+import { AuthIdentityModule } from '../../common/auth-identity.client';
+import { RundCatalogosModule } from '../../common/rund-catalogos.client';
 
 @Module({
   imports: [
+    AuthIdentityModule,
+    RundCatalogosModule,
+    PtaPlanesModule,
     TypeOrmModule.forFeature([
-      PlanTrabajoAcademicoEntity,
       BancoDocenteEntity,
       PersonaEntity,
-      ProgramaEntity,
-      FacultadEntity,
       RundAccesoExternoEntity,
       RundMacroDocenteConsultaLogEntity,
     ]),
   ],
   controllers: [MacroDocenteController],
-  providers: [MacroDocenteService, MacroDocentePermissionGuard, PtaNotificationsService],
+  providers: [MacroDocenteService, MacroDocentePermissionGuard, MacroDocenteNotificationsService],
 })
 export class MacroDocenteModule {}

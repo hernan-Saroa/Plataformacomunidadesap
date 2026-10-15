@@ -1,0 +1,193 @@
+{
+  "verifiedAt": "2026-10-14T23:05:16.902Z",
+  "step": "12.5d.2",
+  "checkpoint": "Período activo de carga masiva por API PTA",
+  "baseCommit": "63b9fc07a97f06cba1d5f99dc4e74616831531ec",
+  "buildsPassed": [
+    "academic-work-plan-service",
+    "rund-service"
+  ],
+  "tests": {
+    "pta": {
+      "suites": 88,
+      "tests": 845,
+      "added": 4
+    },
+    "rund": {
+      "suites": 48,
+      "tests": 661,
+      "added": 24
+    }
+  },
+  "processExits": [
+    {
+      "name": "rund",
+      "exitCode": 0
+    },
+    {
+      "name": "pta",
+      "exitCode": 0
+    },
+    {
+      "name": "gateway",
+      "exitCode": 0
+    },
+    {
+      "name": "integration",
+      "exitCode": 0
+    }
+  ],
+  "commands": {
+    "build": "npm.cmd run build in PTA/RUND",
+    "ptaTests": "cd backend/academic-work-plan-service; node node_modules/jest/bin/jest.js --runInBand",
+    "rundTests": "cd backend/rund-service; node node_modules/jest/bin/jest.js --runInBand",
+    "integration": "node scripts/verify-rund-service-integration.cjs",
+    "gateway": "node scripts/verify-rund-gateway-audit.cjs"
+  },
+  "ptaInstalledDatabaseCanaries": "Closed local port override; expected unavailable branch, does not certify installed data",
+  "contract": {
+    "endpoint": "/internal/rund/v1/catalogos/periodo-activo",
+    "owner": "PTA",
+    "fields": [
+      "codigo",
+      "estado"
+    ],
+    "requiredState": "en_curso",
+    "response": "{ items, total }, zero or one item",
+    "tokenRequired": true,
+    "jwtSecretFallback": false,
+    "cacheControl": "private, no-store",
+    "gatewayExposure": false,
+    "timeoutMs": 10000,
+    "redirectsAllowed": false,
+    "missingRouteIsConfirmedAbsence": false,
+    "sourceWritesOrDefaultSeeding": false,
+    "publicPeriodEndpointsChanged": false,
+    "ambiguousActivePeriodsOwnerStatus": 409,
+    "unconfirmedActivePeriodRundStatus": 503
+  },
+  "bulkBehavior": {
+    "priority": [
+      "own row PERIODO_CARGA/periodoCarga/periodo_carga",
+      "operation general period",
+      "PTA active period"
+    ],
+    "explicitRowPeriodNeverReplacedByGeneralOrActive": true,
+    "activePeriodOnlyRequestedIfMissingRowsAndNoGeneralPeriod": true,
+    "maximumRequestsPerBatch": 1,
+    "confirmedAbsenceNotReplacedByDateOrDefault": true,
+    "missingPeriodRowValidationPreserved": true,
+    "explicitPeriodsNeedNotBeActiveOrExistInPtaCatalog": true,
+    "incomingRowsNotMutated": true,
+    "sourceFailureBeforeSupportCatalogOrRowWrites": true,
+    "supportRequiredBeforeExternalRequests": true,
+    "sqlFallbackOnApiFailure": false,
+    "priorXlsxHeaderInterpretationUnchanged": true
+  },
+  "integration": {
+    "passed": true,
+    "totalChecks": 166,
+    "newActivePeriodChecks": [
+      "Período activo: API PTA exige token y devuelve solo código/estado en curso sin caché ni escrituras",
+      "Período activo: carga JSON multirregistro conserva período de fila y completa faltantes con una sola consulta",
+      "Período activo: XLSX sin período usa PTA una vez y revierte identidad, perfiles, bloques y soportes",
+      "Período activo: caída, ruta ausente, respuesta parcial o estado incorrecto impiden escribir y no usan SQL alternativo",
+      "Período activo: período de fila y valor general explícitos funcionan aunque PTA no esté disponible",
+      "Período activo: ausencia real conserva error por fila sin inventar un período ni sembrar defaults en PTA",
+      "Período activo: varios en curso producen conflicto en PTA y 503 en RUND antes de alterar datos"
+    ],
+    "gatewayHttpChecks": 10,
+    "temporaryPostgresOnly": true,
+    "rundMainReal": true,
+    "ptaControllerGuardAndReadOnlyServiceReal": true,
+    "fullPtaAppModuleStarted": false,
+    "explicitPeriodPersistenceVerifiedDuringPtaOutage": true,
+    "xlsxPreviewIdentityProfilesBlocksAndSupportsRolledBack": true,
+    "periodFixturesRestored": true
+  },
+  "rollout": {
+    "order": [
+      "PTA with internal active-period API",
+      "RUND"
+    ],
+    "reusedSettings": [
+      "ACADEMIC_WORK_PLAN_SERVICE_URL",
+      "PTA_INTERNAL_SERVICE_TOKEN",
+      "explicit INTERNAL_SERVICE_TOKEN fallback"
+    ],
+    "existingAuthApiRequirementsStillApply": true,
+    "newEnvironmentVariables": [],
+    "newMigrations": [],
+    "notDependentOnFolderProjectionFlags": true,
+    "rollbackOrder": [
+      "RUND compatible with prior PTA",
+      "PTA"
+    ]
+  },
+  "previousConsumerTypeScriptSourcesUnchanged": {
+    "backend/auth-service/src/carpeta-digital/rund-client.ts": "d305a4fb5f9f9ecc1894b2454f28b5a916fb3540600f38c107c07ecb9938a4cc",
+    "backend/auth-service/src/carpeta-digital/rund-client.spec.ts": "5b6f5cc59af03df49a4ea2319ace25d34fa6ca3f731349c3530798797e8e1ab5",
+    "backend/auth-service/src/carpeta-digital/rund-document-access.spec.ts": "aefaf510ef6bb8c693a572ce830972ab042aba5e1a6ad2fd9d62f448734f721a",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.ts": "96edfdc416dcef40dcd9ecfe42e825331987a8c82658ab270a83a38b324b3306",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.spec.ts": "7e4b7ace41bf26f4aca75a895030d886743092126b98078f4bf4d9c1ef1202e8",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.ts": "ce98cab2a76186cf6b66606b048849b3e59072b5539c4666c10353b67d95abf2",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.spec.ts": "4e1c12b82cb5d570e24ac3bac4f2ae48882c62399ded648db7b08d26d08c47b7",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.ts": "55e065df1e174fc14d16b7af42d6afa7103aea2a8cd5f5f3a6d54fb092552875",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.spec.ts": "248cc2588b86bb710bb6d5bccb61c0a8daf85d316f2f09a69d5e55d9ba2df244",
+    "backend/academic-work-plan-service/src/contrato-programacion/v1/docentes-contrato.rund.spec.ts": "36576dee75576499ab6660640de9f220835f9de4269ab945b8927e1fd882740e"
+  },
+  "previousIdentityCoreTypeScriptSourcesUnchanged": {
+    "backend/auth-service/src/users/rund-identity.controller.ts": "7bc39396037a8b0f8629c62a85a7a467e649d939313cfb48bfe7d602ee608464",
+    "backend/auth-service/src/users/rund-identity.controller.spec.ts": "adc7199f83e9a65ab031f361d5e1faf04796f44528f7c87da9c7e79231cca490",
+    "backend/rund-service/src/common/auth-identity.client.ts": "251c5469754d1dbdac48587395f9e64e0fe0d927078f156af1b558a33ed568b3",
+    "backend/rund-service/src/common/auth-identity.client.spec.ts": "8c12f8d4e148d41b8c2404722d1b4afd8b70151e881f7b6ec90fd0168587b79e",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.ts": "4aecaf3b734b8e7406fd9849a63abf252f0f6435e2b4b586a28f5524cb13c948",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.spec.ts": "bea969a1cf437d860b5c9d7ae575c67b581cee6805829ba137f5ff525d1beb6f"
+  },
+  "previousAuthAndConfigSourcesUnchanged": {
+    "backend/auth-service/src/users/rund-catalogos.controller.ts": "6558e334a89564a883663db7a407f00a07fb3b57d49208fa6c2caf0467dc1116",
+    "backend/auth-service/src/users/rund-catalogos.controller.spec.ts": "fcb75cc041d8768f82361ea3bb77c284c547d806100a71d5de9414742e0b3a70",
+    "backend/auth-service/.env.example": "f9bbaac02578799a48957458dd65884233e06a53536f686075a7f27bcf702479",
+    "backend/academic-work-plan-service/src/app.module.ts": "c6fa3d7b1942a65ac4bafb9269b5f20657321bb35152501fac37147a027f716c",
+    "scripts/verify-rund-catalogos-config.cjs": "cfc338c6c4b04671605f954023cbf48accff304cb8e1239c5ed405f68dd38619",
+    "docker-compose.yml": "0f2c7f42337fab00c619314ee24269b77478f2e8e7ccdce42fe803da742ab580",
+    "docker-compose.backend.yml": "f09a624a73dba3a76dc69c4c58ec6872250996d56c4d3ac13f51e8b3c5108c87",
+    "docker-compose.dev.yml": "7e835f7b9b5f57433008cc7418dd8d9453608e778dd6dacf3c798c5e8a3b126a",
+    "docker-compose.qa.yml": "0cc9a432cf4c3c6b9e3bf7bf5e34de00a4969813ad3a96b99743c5853e199f19",
+    "docker-compose.pre.yml": "edcd7f710baf381bfa2f020316e478e630490f89d256d3e70d477e58a56328dd",
+    "docker-compose.prod.yml": "3c1b9d91c76644478cb88d6abd4949ed5b35c16b9eb94bbc502a590e5cd0b846"
+  },
+  "existingDatabaseUsed": false,
+  "realEnvironmentFilesRead": false,
+  "operativeMigrationsExecuted": false,
+  "operativeDataCopyExecuted": false,
+  "deployed": false,
+  "pushed": false,
+  "environmentAcceptanceCertified": false,
+  "migrationStatus": {
+    "mainStepsCompletedLocally": 11,
+    "currentMainStep": 12,
+    "remainingWorkstreamsIncludingCurrent": 5
+  },
+  "limits": [
+    "RundPtaConsultaService still joins Auth identity and seccional tables.",
+    "Other identity writes, permissions and cross-owner SQL dependencies remain.",
+    "Environment acceptance remains pending; embedded RUND in PTA preserved."
+  ],
+  "sourceHashes": {
+    "backend/academic-work-plan-service/src/integracion-rund/rund-catalogos.module.ts": "f563a341d155d034595361d9a5aad6a6c80d6d89b399b7b059fc27c8ec26cb0d",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-catalogos.module.spec.ts": "e455b60b2067e5a54b3aaf13bfe9b2a55ae492cc6da57c702ecb2503246ea524",
+    "backend/academic-work-plan-service/.env.example": "6e3c098656081a7be62468d7af1eb30c05a211e5d1baf8da6e753d96936b6f9c",
+    "backend/rund-service/src/common/rund-catalogos.client.ts": "ef70bb95a839785592e64a6a18f2444b36127ab3a827ef238a97b6c62056e7a6",
+    "backend/rund-service/src/common/rund-catalogos.client.spec.ts": "fb37542f4adf55b9b42e0cd20d7499ad2b950e47ec377c56b4eb4e905d65d110",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts": "901ef18014da3d480049d284358d5fa081405dbdd582a4d0ee985a724c673595",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.periodo.spec.ts": "616c8140df508d8d0d63c16be331712eaca70a43f17a58a32b6e920382a27209",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.bulk-traceability.spec.ts": "6b7ecb59a83be2fdb96e62c0cf7c0b16870d80aeada99db0952d8bc88023b18c",
+    "backend/rund-service/.env.example": "004af07beebd902ccaac39442d0fa4c3e7faa949d1d0323f7a6dbd983994db9f",
+    "scripts/verify-rund-active-period.cjs": "70f627ef53fe7301714a87e234f09ef872ca1a19efaba0869113103cadd0d48d",
+    "scripts/verify-rund-catalogos.cjs": "0a730e58a6dbe6793e529e4b7a0889ee76813df0bca2ffdb696d9cfc23487ff3",
+    "scripts/verify-rund-service-integration.cjs": "e74436ae3796275126af14dc53accc065326ae87580752887c594aadb83fdf87",
+    "scripts/verify-rund-gateway-audit.cjs": "a952e3468e85bbc066f0ac7579e764dbe35c2ee1c610a752f6065eb13ae9439c",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "d17bb850c81c78bec6ca9dd4ffd18188e06724c7b6fb6ede937838894397fa55"
+  }
+}

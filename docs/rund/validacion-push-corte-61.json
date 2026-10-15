@@ -1,0 +1,131 @@
+{
+  "verifiedAt": "2026-10-15T10:29:04.946Z",
+  "branch": "feat/agregar_modulo_rund",
+  "head": "63b9fc07a97f06cba1d5f99dc4e74616831531ec",
+  "checkpoint": 61,
+  "sourceCheckpointReady": true,
+  "releaseReady": false,
+  "deploymentOrEnvironmentAcceptanceCertified": false,
+  "sourceEvidence": "docs/rund/validacion-prevalidacion-identidad-auth-rund.json",
+  "sourceEvidenceSha256": "527f1cc71742310ef17f0b7e7c489eeaed4bb086a1ca7561fe94aff8ad944e44",
+  "currentEvidenceSourcesVerified": 137,
+  "sourcePackageReport": "docs/rund/revision-push-corte-61.json",
+  "sourcePackageReportSha256": "c39452becd5b2786573d88dfd1a4b0216af2cd4d0c0aa628c9819beeebfc0553",
+  "manifestFile": "docs/rund/corte-61-rund.paths",
+  "manifestSha256": "70510ad9b43bba01edb5c24aa9850bac429920904d31d64e04a375d7b8a46fd7",
+  "selectedFileCount": 181,
+  "newFiles": 102,
+  "deletedFiles": 1,
+  "findings": [],
+  "outsideCut": [],
+  "localImportTargetsChecked": 335,
+  "mergeConflicts": 0,
+  "diffCheckPassed": true,
+  "protectedGeneratedFilesExcluded": true,
+  "signatureBasedSecretReviewOnly": true,
+  "buildsAndTestsReferencedWithoutRerun": {
+    "rund": {
+      "build": "passed",
+      "suites": 62,
+      "tests": 1108
+    },
+    "authIdentity": {
+      "build": "passed",
+      "suites": 2,
+      "tests": 98,
+      "entireAuthSuite": false
+    },
+    "ptaInternal": {
+      "build": "passed in checkpoint 59",
+      "suites": 1,
+      "tests": 53,
+      "ownerSourcesStillMatch": true
+    },
+    "temporaryPostgresIntegration": 326,
+    "gatewayHttp": 17
+  },
+  "migration": {
+    "technicalCutsSinceMerge": 24,
+    "mainStepsCompletedLocally": 11,
+    "remainingWorkstreams": 5,
+    "currentWorkstream": 4,
+    "operationalSubstepOpen": "12.5d.2",
+    "nextWork": "Persisted idempotent operation/status/recovery before activating remote identity writes"
+  },
+  "localWriteTransactionAndRollbackPreserved": true,
+  "prevalidationClientNotActivatedInRundWriter": true,
+  "versionedWorkflows": [
+    {
+      "file": ".github/workflows/build-backend-dev.yml",
+      "pushBranches": [
+        "dev"
+      ],
+      "sha256": "cebe5a14c95612db59f7b54fc1db5f5b78075ef109d7efd9298a0d1a38464b67"
+    },
+    {
+      "file": ".github/workflows/build-backend-pre.yml",
+      "pushBranches": [
+        "pre"
+      ],
+      "sha256": "38678d5ee12341a6161f1077eb7f39d33b7696d9b99235eabacc873fd1ee7a0d"
+    },
+    {
+      "file": ".github/workflows/build-backend-prod.yml",
+      "pushBranches": [
+        "prod"
+      ],
+      "sha256": "cf8d7f2a0e086b4ae53040aeb95702fe6ad3b4cae43fe9b90e19a9c0cb06d8f6"
+    },
+    {
+      "file": ".github/workflows/build-backend-qa.yml",
+      "pushBranches": [
+        "qa"
+      ],
+      "sha256": "0adb52ce2d58f7e8aad1d028270c22b6fcc7d31e1c863b05fa2fe73a451e6879"
+    },
+    {
+      "file": ".github/workflows/build-dev.yml",
+      "pushBranches": [
+        "dev"
+      ],
+      "sha256": "b2094dd801431f73621faed085812477199e705d64039ed78580cfb8c10f6723"
+    },
+    {
+      "file": ".github/workflows/build-pre.yml",
+      "pushBranches": [
+        "pre"
+      ],
+      "sha256": "8413e09d408715718f440ac3987a9a11668516179b147021904415134190ff7a"
+    },
+    {
+      "file": ".github/workflows/build-prod.yml",
+      "pushBranches": [
+        "prod"
+      ],
+      "sha256": "bb59336726a260fa5791b6ff17ec8567b54d2303679c6191511ae6829af9bad1"
+    },
+    {
+      "file": ".github/workflows/build-qa.yml",
+      "pushBranches": [
+        "qa"
+      ],
+      "sha256": "425462f60550c32d4a598d5bc1a6f9ffc6ea93489b448f3ad56be42f1d32f9c0"
+    }
+  ],
+  "currentFeatureBranchTriggersTheseWorkflows": false,
+  "externalAutomationsInspected": false,
+  "stagedFilesChangedByAgent": false,
+  "commitCreated": false,
+  "pushExecuted": false,
+  "runtimeChanged": false,
+  "realEnvironmentFilesReadOrModified": false,
+  "databaseContactedForThisPackageReview": false,
+  "latestValidationUsesTemporaryDatabaseAndFictitiousData": true,
+  "knownLimits": [
+    "Checkpoint para respaldo/revisión en rama de funcionalidad; no es aprobación de merge/despliegue a ambientes.",
+    "Mantener orden de publicación de API Auth/PTA y consumidores RUND y configuración compatible antes de desplegar.",
+    "Shell conserva los fallos globales históricos documentados; no se repitieron ni resolvieron aquí.",
+    "No se construyeron imágenes Docker ni se certificaron bases, URLs, tokens o aceptación real por ambiente.",
+    "El manifiesto solo cubre el árbol actual y debe regenerarse si cambia; revisión de secretos por firmas concretas."
+  ]
+}

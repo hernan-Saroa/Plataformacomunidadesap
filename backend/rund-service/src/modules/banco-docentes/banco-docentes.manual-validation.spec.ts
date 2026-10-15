@@ -131,6 +131,9 @@ describe('BancoDocentesService - protecciones de edicion manual', () => {
       {} as any,
       {} as any,
       dataSource as any,
+      { territorialesBanco: jest.fn().mockResolvedValue([]) } as any,
+      { proyeccion: jest.fn().mockResolvedValue({}) } as any,
+      { fichaPorPersona: jest.fn().mockResolvedValue({ num_identificacion: '1020304050' }), personasPorAlias: jest.fn().mockResolvedValue([]) } as any,
     );
     return { service, dataSource, docenteRepo, docente };
   }
@@ -263,6 +266,9 @@ describe('BancoDocentesService - consulta por cedula y periodo', () => {
       {} as any,
       {} as any,
       dataSource as any,
+      { territorialesBanco: jest.fn().mockResolvedValue([]) } as any,
+      { proyeccion: jest.fn().mockResolvedValue({}) } as any,
+      { fichaPorPersona: jest.fn().mockResolvedValue(null), personasPorAlias: jest.fn().mockResolvedValue([]) } as any,
     );
 
     const result = await service.getById('1020304050', '2026-2');
@@ -270,8 +276,8 @@ describe('BancoDocentesService - consulta por cedula y periodo', () => {
 
     expect(result).toMatchObject({ documento_identidad: '1020304050', periodoCarga: '2026-2' });
     expect(sql).toContain('UPPER(regexp_replace(BTRIM(documento_identidad)');
-    expect(sql).toContain('AND ($2::text IS NULL OR periodo_carga = $2::text)');
-    expect(params).toEqual(['1020304050', '2026-2']);
+    expect(sql).toContain('AND ($3::text IS NULL OR periodo_carga = $3::text)');
+    expect(params).toEqual(['{}', '1020304050', '2026-2']);
   });
 
 });

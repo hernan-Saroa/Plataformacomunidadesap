@@ -141,7 +141,7 @@ describe('F014: aplicación directa y segura',()=>{
       ];
       return [];
     });
-    const service=new RundExtraccionService(transactionDb(query) as any,{} as any);
+    const service=new RundExtraccionService(transactionDb(query) as any,{} as any,{} as any);
     await expect(service.confirm('doc-1',id,actor)).resolves.toMatchObject({confirmed:true,changed:true,campo:'genero'});
     expect(query).toHaveBeenCalledWith(expect.stringContaining('SET gen_tercero=$2'),['doc-1','F']);
   });
@@ -155,7 +155,7 @@ describe('F014: aplicación directa y segura',()=>{
       if(sql.includes('AS document_type'))return [{document_type:'CC'}];
       return [];
     });
-    const service=new RundExtraccionService(transactionDb(query) as any,{} as any);
+    const service=new RundExtraccionService(transactionDb(query) as any,{} as any,{} as any);
     await expect(service.confirm('doc-1',id,actor)).resolves.toMatchObject({confirmed:true,changed:true,campo:'documentNumber',valor:'1118860393'});
     expect(query).toHaveBeenCalledWith("SELECT set_config('app.rund_ocr_suggestion_id',$1,true)",[id]);
     expect(query).toHaveBeenCalledWith(expect.stringContaining('SET num_identificacion=$2'),['doc-1','1118860393']);
@@ -170,7 +170,7 @@ describe('F014: aplicación directa y segura',()=>{
       if(sql.includes('AS document_type'))return [{document_type:'CC'}];
       return [];
     });
-    const service=new RundExtraccionService(transactionDb(query) as any,{} as any);
+    const service=new RundExtraccionService(transactionDb(query) as any,{} as any,{} as any);
     await expect(service.confirm('doc-1',id,actor)).rejects.toThrow('debe contener');
     expect(query.mock.calls.some(([sql])=>String(sql).includes('SET num_identificacion=$2'))).toBe(false);
   });
@@ -185,7 +185,7 @@ describe('F014: aplicación directa y segura',()=>{
       if(sql.includes('SELECT p.id_person FROM auth.personas'))return [{id_person:'otra-persona'}];
       return [];
     });
-    const service=new RundExtraccionService(transactionDb(query) as any,{} as any);
+    const service=new RundExtraccionService(transactionDb(query) as any,{} as any,{} as any);
     await expect(service.confirm('doc-1',id,actor)).rejects.toThrow('ya está asociado');
     expect(query.mock.calls.some(([sql])=>String(sql).includes('SET num_identificacion=$2'))).toBe(false);
   });
@@ -199,7 +199,7 @@ describe('F014: aplicación directa y segura',()=>{
       if(sql.includes("campo IN ('documentNumber','nombreCompleto')"))return [];
       return [];
     });
-    const service=new RundExtraccionService(transactionDb(query) as any,{} as any);
+    const service=new RundExtraccionService(transactionDb(query) as any,{} as any,{} as any);
     await expect(service.confirm('doc-1',id,actor)).resolves.toMatchObject({confirmed:true,changed:true,campo:'pregrado',valor:'Administración Pública'});
     expect(query).toHaveBeenCalledWith(expect.stringContaining('SET pregrado=$2'),['doc-1','Administración Pública']);
     expect(query).toHaveBeenCalledWith(expect.stringContaining('RundAprobacionLog'),expect.arrayContaining(['APLICAR_SUGERENCIA_OCR']));
@@ -212,14 +212,14 @@ describe('F014: cola independiente del flujo documental',()=>{
   afterEach(()=>{if(previous===undefined)delete process.env.RUND_OCR_ENABLED;else process.env.RUND_OCR_ENABLED=previous;});
   it('no consulta BD ni motores cuando está desactivado',async()=>{
     delete process.env.RUND_OCR_ENABLED;
-    const db={query:jest.fn()}; const storage={read:jest.fn()};const service=new RundExtraccionService(db as any,storage as any);
+    const db={query:jest.fn()}; const storage={read:jest.fn()};const service=new RundExtraccionService(db as any,storage as any,{} as any);
     service.onModuleInit();await service.tick();service.onModuleDestroy();
     expect(db.query).not.toHaveBeenCalled();expect(storage.read).not.toHaveBeenCalled();
   });
   it('un fallo del OCR no propaga errores al flujo principal ni escribe el perfil',async()=>{
     process.env.RUND_OCR_ENABLED='true';
     const db={query:jest.fn().mockRejectedValue(new Error('BD caída'))};
-    const service=new RundExtraccionService(db as any,{} as any);
+    const service=new RundExtraccionService(db as any,{} as any,{} as any);
     await expect(service.tick()).resolves.toBeUndefined();
     expect(db.query.mock.calls.flat().join(' ')).not.toContain('UPDATE auth.personas');
   });
@@ -227,7 +227,7 @@ describe('F014: cola independiente del flujo documental',()=>{
     jest.useFakeTimers();process.env.RUND_OCR_ENABLED='true';
     const job={id,lease_id:id};let done!:()=>void;
     const db={query:jest.fn(async(sql:string)=>sql.includes('SELECT * FROM reservado')?[job]:[])};
-    const service=new RundExtraccionService(db as any,{} as any);
+    const service=new RundExtraccionService(db as any,{} as any,{} as any);
     const processJob=jest.spyOn(service as any,'process').mockImplementation(()=>new Promise<void>(r=>{done=r;}));
     try {
       const pending=service.tick();await jest.advanceTimersByTimeAsync(1);

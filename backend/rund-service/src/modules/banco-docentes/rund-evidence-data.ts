@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { AuthIdentityClient } from '../../common/auth-identity.client';
 
 export function hasRundData(value: unknown): boolean {
   if (value === null || value === undefined || value === false) return false;
@@ -35,15 +36,20 @@ const fields: Record<string, Record<string, string[]>> = {
   acta_evaluacion_desempeno: { acta_evaluacion_desempeno: ['ultimaEvaluacion'] },
 };
 
-export async function assertRundEvidenceData(query: { query: (...args: any[]) => Promise<any> }, docenteId: string, type?: string, campo?: string) {
+export async function assertRundEvidenceData(query: { query: (...args: any[]) => Promise<any> }, docenteId: string,
+  identities: Pick<AuthIdentityClient, 'fichaPorPersona'>, type?: string, campo?: string) {
   // General attachments and workflow documents do not represent a profile-data row.
   if (!type || ['autorizacion_habeas_data', 'soporte_edicion_perfil', 'soporte_cambio_estado_perfil'].includes(type)) return;
   const rows = fields[type];
   if (!rows || (campo && !rows[campo])) throw new BadRequestException('El soporte no corresponde a una fila válida.');
-  const [profile] = await query.query(`SELECT d.*, p.num_identificacion, p.nom_largo, p.gen_tercero, p.fec_nacimiento
-    FROM rund."Docente" d LEFT JOIN auth.personas p ON p.id_person = d."personaId"
-    WHERE d.id::text = $1`, [docenteId]);
+  const [profile] = await query.query(`SELECT d.* FROM rund."Docente" d WHERE d.id::text = $1`, [docenteId]);
   const keys = campo ? rows[campo] : Object.values(rows).flat();
+  const identityFields = ['num_identificacion', 'nom_largo', 'gen_tercero', 'fec_nacimiento'] as const;
+  if (profile && keys.some(key => (identityFields as readonly string[]).includes(key))) {
+    const persona = await identities.fichaPorPersona(profile.personaId);
+    // La ausencia confirmada conserva el LEFT JOIN; los fallos del propietario se propagan.
+    for (const field of identityFields) profile[field] = persona?.[field] ?? null;
+  }
   if (!profile || !keys.some(key => hasRundData(profile[key]))) {
     throw new BadRequestException('Registre primero el dato de la fila antes de cargar o reemplazar su soporte.');
   }

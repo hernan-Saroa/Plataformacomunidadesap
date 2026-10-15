@@ -1,0 +1,187 @@
+{
+  "verifiedAt": "2026-10-14T22:53:41.360Z",
+  "step": "12.5d.2",
+  "checkpoint": "Catálogo de carga/edición del banco y rollback de bloques",
+  "baseCommit": "63b9fc07a97f06cba1d5f99dc4e74616831531ec",
+  "buildsPassed": [
+    "auth-service",
+    "rund-service"
+  ],
+  "tests": {
+    "auth": {
+      "suites": 15,
+      "tests": 156,
+      "added": 2
+    },
+    "rund": {
+      "suites": 47,
+      "tests": 637,
+      "added": 28
+    }
+  },
+  "commands": {
+    "build": "npm.cmd run build in Auth/RUND",
+    "authTests": "node backend/rund-service/node_modules/jest/bin/jest.js --config scripts/jest-auth-carpeta.config.cjs --runInBand",
+    "rundTests": "cd backend/rund-service; node node_modules/jest/bin/jest.js --runInBand",
+    "integration": "node scripts/verify-rund-service-integration.cjs",
+    "gateway": "node scripts/verify-rund-gateway-audit.cjs"
+  },
+  "contract": {
+    "endpoint": "/internal/rund/v1/catalogos/territoriales-banco",
+    "fields": [
+      "id",
+      "nombre",
+      "codigo"
+    ],
+    "codeNullableButRequired": true,
+    "idType": "canonical bigint text",
+    "ordering": "nom_seccional ASC in Auth PostgreSQL",
+    "historicalRowsIncluded": true,
+    "previousCatalogEndpointsChanged": false,
+    "tokenRequired": true,
+    "jwtSecretFallback": false,
+    "cacheControl": "private, no-store",
+    "gatewayExposure": false,
+    "duplicateIdsAndPartialResponsesRejected": true,
+    "repeatedNamesAndCodesAllowed": true,
+    "timeoutMs": 10000,
+    "redirectsAllowed": false,
+    "sqlFallbackOnApiFailure": false
+  },
+  "bankBehavior": {
+    "bulkSnapshot": "one request per nonempty batch, before support write or row transactions",
+    "perRequestOnlyNoSharedCache": true,
+    "bodyCannotSupplyCatalogSnapshot": true,
+    "unconfirmedCatalogHttpStatus": 503,
+    "confirmedEmptyCatalogAllowed": true,
+    "existingAliasAndPartialMatchingPreserved": true,
+    "norteSantanderSpecialCasePreserved": true,
+    "unknownManualRejected": true,
+    "unknownBulkTextAndExistingAssignmentPreserved": true,
+    "selfServiceDefaultRequiresConfirmedCatalog": true,
+    "preserveTerritorialEditRuleUnchanged": true,
+    "catalogReadBeforeSuggestionTransaction": true,
+    "cardReportedTextPriorityAndNullDegradationUnchanged": true
+  },
+  "additionalDefectsReproducedAndFixed": {
+    "previewBlocksPreviouslyOutsideProfileTransaction": true,
+    "initializationNowUsesProfileManager": true,
+    "profileIdentityAndBlockRollbackStrictlyVerified": true,
+    "failedBlockInsertRowRollbackVerified": true,
+    "readAuditAfterPreviewPreserved": true,
+    "sequenceRollbackClaimed": false,
+    "oldInstalledOrphansCleaned": false,
+    "authPersonForeignKeyPreviouslyRoundedByNumber": true,
+    "authSeccionalIdNowSentAsText": true,
+    "largeIdVerified": "9007199254740993",
+    "existingPersonWritesStillInBank": true
+  },
+  "integration": {
+    "passed": true,
+    "totalChecks": 159,
+    "newBankCatalogChecks": [
+      "Banco catálogo: API Auth exige token y conserva tres columnas, orden SQL y cabecera privada",
+      "Banco catálogo: XLSX de varias filas confirma catálogo una sola vez y revierte perfiles, identidad y soportes",
+      "Banco catálogo: Auth caído o parcial impide previsualización/carga sin guardar soporte, perfiles o auditoría",
+      "Banco catálogo: fallo al inicializar bloques revierte la fila completa sin dejar estados huérfanos",
+      "Banco catálogo: edición con soporte válido falla ante Auth sin tocar perfil, identidad o decisiones",
+      "Banco catálogo: vacío confirmado conserva la tolerancia del masivo y el texto reportado",
+      "Banco catálogo: carga real resuelve alias por ID Auth bigint, conserva código y texto original del archivo",
+      "Banco catálogo: reimportación con nombre desconocido conserva ID operativo y decisiones documentales"
+    ],
+    "nativeDocumentDecisionsPreservedOnUnknownReimport": true,
+    "gatewayHttpChecks": 10,
+    "temporaryPostgresOnly": true,
+    "rundMainReal": true,
+    "authReadOnlyControllerFixtureReal": true,
+    "authAppModuleStarted": false
+  },
+  "rollout": {
+    "order": [
+      "Auth with new catalog endpoint",
+      "RUND"
+    ],
+    "existingPtaCatalogRequirementsStillApply": true,
+    "newEnvironmentVariables": [],
+    "newMigrations": [],
+    "authUrlAndTokenReused": true,
+    "notDependentOnFolderProjectionFlags": true,
+    "rollbackOrder": [
+      "RUND compatible with old Auth",
+      "Auth"
+    ]
+  },
+  "previousConsumerTypeScriptSourcesUnchanged": {
+    "backend/auth-service/src/carpeta-digital/rund-client.ts": "d305a4fb5f9f9ecc1894b2454f28b5a916fb3540600f38c107c07ecb9938a4cc",
+    "backend/auth-service/src/carpeta-digital/rund-client.spec.ts": "5b6f5cc59af03df49a4ea2319ace25d34fa6ca3f731349c3530798797e8e1ab5",
+    "backend/auth-service/src/carpeta-digital/rund-document-access.spec.ts": "aefaf510ef6bb8c693a572ce830972ab042aba5e1a6ad2fd9d62f448734f721a",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.ts": "96edfdc416dcef40dcd9ecfe42e825331987a8c82658ab270a83a38b324b3306",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.spec.ts": "7e4b7ace41bf26f4aca75a895030d886743092126b98078f4bf4d9c1ef1202e8",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.ts": "ce98cab2a76186cf6b66606b048849b3e59072b5539c4666c10353b67d95abf2",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.spec.ts": "4e1c12b82cb5d570e24ac3bac4f2ae48882c62399ded648db7b08d26d08c47b7",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.ts": "55e065df1e174fc14d16b7af42d6afa7103aea2a8cd5f5f3a6d54fb092552875",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.spec.ts": "248cc2588b86bb710bb6d5bccb61c0a8daf85d316f2f09a69d5e55d9ba2df244",
+    "backend/academic-work-plan-service/src/contrato-programacion/v1/docentes-contrato.rund.spec.ts": "36576dee75576499ab6660640de9f220835f9de4269ab945b8927e1fd882740e"
+  },
+  "previousIdentityCoreTypeScriptSourcesUnchanged": {
+    "backend/auth-service/src/users/rund-identity.controller.ts": "7bc39396037a8b0f8629c62a85a7a467e649d939313cfb48bfe7d602ee608464",
+    "backend/auth-service/src/users/rund-identity.controller.spec.ts": "adc7199f83e9a65ab031f361d5e1faf04796f44528f7c87da9c7e79231cca490",
+    "backend/rund-service/src/common/auth-identity.client.ts": "251c5469754d1dbdac48587395f9e64e0fe0d927078f156af1b558a33ed568b3",
+    "backend/rund-service/src/common/auth-identity.client.spec.ts": "8c12f8d4e148d41b8c2404722d1b4afd8b70151e881f7b6ec90fd0168587b79e",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.ts": "4aecaf3b734b8e7406fd9849a63abf252f0f6435e2b4b586a28f5524cb13c948",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.spec.ts": "bea969a1cf437d860b5c9d7ae575c67b581cee6805829ba137f5ff525d1beb6f"
+  },
+  "previousConfigAndPtaSourcesUnchanged": {
+    "backend/academic-work-plan-service/src/integracion-rund/rund-catalogos.module.ts": "04e37b04b5e6f8ca224bc4d0f6dd50613ace83507327bbf4492661fa2554c883",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-catalogos.module.spec.ts": "bd5e688aff86ad715c9ff44fe5ba6355ee21e4c7bb06e331893b1f024e4ad32e",
+    "backend/academic-work-plan-service/src/app.module.ts": "c6fa3d7b1942a65ac4bafb9269b5f20657321bb35152501fac37147a027f716c",
+    "backend/academic-work-plan-service/.env.example": "82bfe028379b05fc76ebdbbda8dced2d8c09a6ab96b4fbe9b8903841b96ea94e",
+    "scripts/verify-rund-catalogos-config.cjs": "cfc338c6c4b04671605f954023cbf48accff304cb8e1239c5ed405f68dd38619",
+    "docker-compose.yml": "0f2c7f42337fab00c619314ee24269b77478f2e8e7ccdce42fe803da742ab580",
+    "docker-compose.backend.yml": "f09a624a73dba3a76dc69c4c58ec6872250996d56c4d3ac13f51e8b3c5108c87",
+    "docker-compose.dev.yml": "7e835f7b9b5f57433008cc7418dd8d9453608e778dd6dacf3c798c5e8a3b126a",
+    "docker-compose.qa.yml": "0cc9a432cf4c3c6b9e3bf7bf5e34de00a4969813ad3a96b99743c5853e199f19",
+    "docker-compose.pre.yml": "edcd7f710baf381bfa2f020316e478e630490f89d256d3e70d477e58a56328dd",
+    "docker-compose.prod.yml": "3c1b9d91c76644478cb88d6abd4949ed5b35c16b9eb94bbc502a590e5cd0b846"
+  },
+  "existingDatabaseUsed": false,
+  "realEnvironmentFilesRead": false,
+  "operativeMigrationsExecuted": false,
+  "operativeDataCopyExecuted": false,
+  "deployed": false,
+  "pushed": false,
+  "environmentAcceptanceCertified": false,
+  "migrationStatus": {
+    "mainStepsCompletedLocally": 11,
+    "currentMainStep": 12,
+    "remainingWorkstreamsIncludingCurrent": 5
+  },
+  "limits": [
+    "Active-period SQL in bulk load still reads PTA directly.",
+    "Other bank identity writes, permissions and SQL dependencies still access Auth/PTA schemas.",
+    "Environment acceptance remains pending; embedded RUND in PTA preserved."
+  ],
+  "sourceHashes": {
+    "backend/auth-service/src/users/rund-catalogos.controller.ts": "6558e334a89564a883663db7a407f00a07fb3b57d49208fa6c2caf0467dc1116",
+    "backend/auth-service/src/users/rund-catalogos.controller.spec.ts": "fcb75cc041d8768f82361ea3bb77c284c547d806100a71d5de9414742e0b3a70",
+    "backend/auth-service/.env.example": "f9bbaac02578799a48957458dd65884233e06a53536f686075a7f27bcf702479",
+    "backend/rund-service/src/common/rund-catalogos.client.ts": "a9f2141dd0ce5bd181d5cdd65a4ab9f12ba0d6d93a2d126599c7582d385f4361",
+    "backend/rund-service/src/common/rund-catalogos.client.spec.ts": "0e922f5cb46ee62a84e555bc1114d908febde01b7901b886f0a639a5d7c2e010",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.module.ts": "02e73af8bc3255b01c9efcaf70afa79c4c2a85a61202dd646349c018293dac25",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts": "d04598f089b992af89102683456f5dd18965d404bdcd6aae6547c93b3adc4121",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.catalogos.spec.ts": "2cc91eea044ae965c5a82336d38dd98e86abc0c8ce88fa29f13be698abbcc95b",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes-autogestion-sensitive.spec.ts": "a4183e294ccacf8351961411a2b9b629bacc0e77d52227493852ffa91cda11f2",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes-autogestion-documentos.spec.ts": "348ddc2e6dac46ede823b695c5c87baee9b9091a62bb6054b418a34deca486fb",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.manual-validation.spec.ts": "b1602ae6c864039c9bca503aa912bb6292e15b6c82cfe0e298c1d024168e4ebc",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.bulk-traceability.spec.ts": "d6aa077cc7ee5dd8992f2d134b11d63fe047d56917f05aef294d19a7cc4c53e5",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes-channel-security.spec.ts": "923210b6f204a716d2f7cd08f314ebbb158832af757e12101c999188cbe6a032",
+    "backend/rund-service/src/modules/banco-docentes/rund-carga-original.spec.ts": "dcfb6a7d1ff84b04519bbf46c2410a207fbf6e1646fc7602b56d014a1f1c7cf6",
+    "backend/rund-service/src/modules/banco-docentes/rund-soportes-sync.spec.ts": "72d9d80a4c38de8122d65f34c022374e7a5a8f3602326a9022fe5e830e34a4e1",
+    "backend/rund-service/.env.example": "aafb89c5aa6a1e1a1d0838a8dbc705bee7aeb5dc0c57315d2a4e8a0ef7f221ef",
+    "scripts/verify-rund-bank-catalog.cjs": "1c07431cd567f9c46c92be87fcc950adb656482b02214d66f96857e72409acf7",
+    "scripts/verify-rund-auth-identity.cjs": "6cda8d0dc0cb02b93be72cb65bc0e2a1e27a1639d146116f98bd2c5a88ba0d75",
+    "scripts/verify-rund-service-integration.cjs": "f25e4e3db160b2c826e0fd941b9f487da75c6aa153b5d5b6ed0be8e59416ebe6",
+    "scripts/verify-rund-gateway-audit.cjs": "bb65f1cc8d2fb770ccb30635cf3f7e39ac1d1e07bca958b68db82517a2bc48dd",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "0de5671c9d5cec784b9bc9d19fa23738c1e8f2c9eecba2cafd2858a324259c12"
+  }
+}

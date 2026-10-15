@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { recordRundAccess, type RundAccessActor } from './rund-access-audit';
+import { AuthIdentityClient } from '../../common/auth-identity.client';
+import { RundCatalogosClient } from '../../common/rund-catalogos.client';
 
 export interface RundPtaPerfil {
   docente_id: string;
@@ -21,7 +23,8 @@ export interface RundPtaPerfil {
 
 @Injectable()
 export class RundPtaConsultaService {
-  constructor(@InjectDataSource() private readonly db: DataSource) {}
+  constructor(@InjectDataSource() private readonly db: DataSource,
+    private readonly identities: AuthIdentityClient, private readonly catalogos: RundCatalogosClient) {}
 
   async consultar(cedula: string, periodo: unknown, actor: RundAccessActor): Promise<RundPtaPerfil> {
     // La cédula se conserva como texto: no pierde ceros ni precisión numérica.
@@ -34,30 +37,25 @@ export class RundPtaConsultaService {
 
     // Proyección limitada desde el origen. No depende de que el docente tenga
     // una cuenta de usuario, ni lee documento completo, salario o puntaje.
-    const [row] = await this.db.query(`
+    const identity = await this.identities.perfilPta(cedula);
+    const [row] = identity ? await this.db.query(`
       SELECT d.id AS docente_id,
-        COALESCE(NULLIF(BTRIM(p.nom_largo), ''),
-          NULLIF(CONCAT_WS(' ', p.nom_tercero, p.pri_apellido, p.seg_apellido), '')) AS nombre_completo,
         d."perfilAcademico" AS perfil_academico,
         d."perfilAcademicoPro" AS perfil_academico_profesional,
         d."nivelFormacion" AS nivel_formacion,
         d.escalafon AS categoria,
-        COALESCE(NULLIF(d."territorialId", ''), p.id_seccional::text) AS territorial_id,
-        sec.nom_seccional AS territorial_nombre, sec.cod_seccional AS territorial_codigo,
+        NULLIF(d."territorialId", '') AS territorial_id,
         COALESCE(d."horasAsignables", 0) AS horas_programables,
         d.estado AS estado_vinculacion, d."tipoVinculacion" AS tipo_vinculacion,
         d."periodoCarga" AS periodo
       FROM rund."Docente" d
-      INNER JOIN auth.personas p ON p.id_person = d."personaId"
-      LEFT JOIN auth.seccionales sec
-        ON sec.id_seccional::text = COALESCE(NULLIF(d."territorialId", ''), p.id_seccional::text)
-      WHERE regexp_replace(BTRIM(p.num_identificacion), '\\.', '', 'g') = $1
+      WHERE d."personaId" = $1::uuid
       ORDER BY CASE WHEN d."periodoCarga" = $2::text THEN 0 ELSE 1 END,
         CASE WHEN d."idRund" IS NOT NULL THEN 0 ELSE 1 END,
         CASE WHEN d."periodoCarga" IS NOT NULL THEN 0 ELSE 1 END,
         d."updatedAt" DESC NULLS LAST, d.id ASC
       LIMIT 1
-    `, [cedula, periodo ?? null]);
+    `, [identity.personaId, periodo ?? null]) : [];
 
     await recordRundAccess(this.db, {
       ...actor,
@@ -83,18 +81,22 @@ export class RundPtaConsultaService {
       });
     }
 
+    const territorialId = row.territorial_id ?? identity!.territorialId;
+    const territorial = territorialId === null ? null
+      : (await this.catalogos.territorialesBanco()).find(item => item.id === territorialId);
+
     // Lista permitida también en la salida: nuevos campos de BD nunca se
     // publican automáticamente, independientemente del rol del consumidor.
     return {
       docente_id: row.docente_id,
       perfil: {
-        nombre_completo: row.nombre_completo ?? null,
+        nombre_completo: identity!.nombreCompleto,
         perfil_academico: row.perfil_academico ?? null,
         perfil_academico_profesional: row.perfil_academico_profesional ?? null,
         nivel_formacion: row.nivel_formacion ?? null,
       },
       categoria: row.categoria ?? null,
-      territorial: { id: row.territorial_id ?? null, nombre: row.territorial_nombre ?? null, codigo: row.territorial_codigo ?? null },
+      territorial: { id: territorialId, nombre: territorial?.nombre ?? null, codigo: territorial?.codigo ?? null },
       horas_programables: Number(row.horas_programables ?? 0),
       estado_vinculacion: row.estado_vinculacion ?? null,
       tipo_vinculacion: row.tipo_vinculacion ?? null,

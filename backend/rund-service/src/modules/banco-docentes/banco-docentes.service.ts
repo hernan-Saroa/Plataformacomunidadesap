@@ -2,10 +2,14 @@ import { assertRundEvidenceData } from './rund-evidence-data';
 import { extractionIds, lockExtractionSuggestions, confirmExtractionSuggestions } from './rund-extraccion-fields';
 import { normalizeRundPhones, RUND_PHONE_ERROR, RUND_PHONE_MAX_LENGTH } from './rund-phones';
 import { RundEvidenceWorkflow, invalidateEditedEvidence } from './rund-evidence-workflow';
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { CAMPOS_SOPORTE_RUND } from './rund-document-fields';
+import { AuthBancoClient } from '../../common/auth-banco.client';
+import { AuthIdentityClient } from '../../common/auth-identity.client';
+import { RundCatalogosClient } from '../../common/rund-catalogos.client';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Like, Repository } from 'typeorm';
-import * as bcrypt from 'bcryptjs';
+import { upsertRundAuthIdentityWithManager } from './rund-auth-identity-write';
 import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import { BancoDocenteEntity } from '../../entities/banco-docente.entity';
 import { PersonaEntity } from '../../entities/persona.entity';
@@ -53,6 +57,8 @@ type BulkSupport = {
 };
 
 type UpsertDocenteOptions = {
+  // Snapshot interno del lote, obtenido del propietario; nunca se toma del payload HTTP.
+  territoriales?: AuthSeccionalTerritorial[];
   bulkImport?: boolean;
   preserveTerritorial?: boolean;
   rejectExisting?: boolean;
@@ -949,6 +955,9 @@ export class BancoDocentesService implements OnModuleInit {
     @InjectRepository(RundAprobacionLogEntity)
     private readonly auditLogRepo: Repository<RundAprobacionLogEntity>,
     private readonly dataSource: DataSource,
+    private readonly catalogos: RundCatalogosClient,
+    private readonly authBanco: AuthBancoClient,
+    private readonly identities: AuthIdentityClient,
   ) {}
 
   async onModuleInit() {
@@ -977,51 +986,7 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   private async getTerritoriales(): Promise<AuthSeccionalTerritorial[]> {
-    const rows = await this.dataSource.query(
-      `
-      SELECT
-        id_seccional::text AS id,
-        nom_seccional AS nombre,
-        cod_seccional AS codigo
-      FROM auth.seccionales
-      ORDER BY nom_seccional ASC
-      `,
-    );
-    return rows.map((row: any) => ({
-      id: String(row.id),
-      nombre: row.nombre,
-      codigo: row.codigo ?? null,
-    }));
-  }
-
-  private async getNextAuthLegacyPersonId(manager: any): Promise<string | null> {
-    const [columnInfo] = await manager.query(
-      `
-        SELECT column_default
-        FROM information_schema.columns
-        WHERE table_schema = 'auth'
-          AND table_name = 'personas'
-          AND column_name = 'id_tercero'
-        LIMIT 1
-      `,
-    );
-
-    if (!columnInfo) return null;
-
-    const columnDefault = typeof columnInfo.column_default === 'string' ? columnInfo.column_default : null;
-    if (columnDefault?.includes('nextval')) {
-      const [nextValue] = await manager.query(
-        `SELECT nextval(pg_get_serial_sequence($1, 'id_tercero')) AS next_id`,
-        ['auth.personas'],
-      );
-      return String(nextValue.next_id);
-    }
-
-    await manager.query(`LOCK TABLE auth.personas IN EXCLUSIVE MODE`);
-    const [nextValue] = await manager.query(
-      `SELECT COALESCE(MAX(id_tercero), 0) + 1 AS next_id FROM auth.personas`,
-    );
-    return String(nextValue.next_id);
+    return this.catalogos.territorialesBanco();
   }
 
   private resolveNotificationsBaseUrl(): string {
@@ -1103,7 +1068,18 @@ export class BancoDocentesService implements OnModuleInit {
 
   private authDocentesBaseSql() {
     return `
-      WITH auth_docentes AS (
+      WITH auth_banco AS (
+        SELECT * FROM jsonb_to_recordset($1::jsonb->'items') AS a(
+          id_user uuid, username text, is_active boolean, created_at timestamptz, updated_at timestamptz,
+          id_person uuid, num_identificacion text, tip_identificacion text, nom_largo text, nom_tercero text,
+          pri_apellido text, seg_apellido text, gen_tercero text, fec_nacimiento date, dir_email text,
+          tel_celular text, id_seccional bigint, id_sede bigint, roles text[])
+      ), auth_seccionales AS (
+        SELECT * FROM jsonb_to_recordset($1::jsonb->'seccionales') AS s(
+          id_seccional bigint, nom_seccional text, cod_seccional text)
+      ), auth_sedes AS (
+        SELECT * FROM jsonb_to_recordset($1::jsonb->'sedes') AS s(id_sede bigint, nom_sede text)
+      ), auth_docentes AS (
         SELECT
           u.id_user AS usuario_id,
           u.username,
@@ -1119,21 +1095,21 @@ export class BancoDocentesService implements OnModuleInit {
           END AS estado_efectivo,
           u.created_at,
           u.updated_at,
-          p.id_person AS persona_id,
-          p.num_identificacion AS documento_identidad,
-          p.tip_identificacion AS tipo_documento,
-          p.nom_largo AS nombre_completo,
-          p.nom_tercero AS primer_nombre,
-          p.pri_apellido AS primer_apellido,
-          p.seg_apellido AS segundo_apellido,
-          p.gen_tercero AS genero,
-          p.fec_nacimiento AS fecha_nacimiento,
-          p.dir_email AS email,
-          p.tel_celular AS telefono,
-          p.id_seccional AS auth_territorial_id,
+          u.id_person AS persona_id,
+          u.num_identificacion AS documento_identidad,
+          u.tip_identificacion AS tipo_documento,
+          u.nom_largo AS nombre_completo,
+          u.nom_tercero AS primer_nombre,
+          u.pri_apellido AS primer_apellido,
+          u.seg_apellido AS segundo_apellido,
+          u.gen_tercero AS genero,
+          u.fec_nacimiento AS fecha_nacimiento,
+          u.dir_email AS email,
+          u.tel_celular AS telefono,
+          u.id_seccional AS auth_territorial_id,
           sec.nom_seccional AS auth_territorial,
           sec.cod_seccional AS auth_territorial_codigo,
-          p.id_sede AS auth_sede_id,
+          u.id_sede AS auth_sede_id,
           sede.nom_sede AS auth_sede,
           d.id AS docente_id,
           d."ordenListado" AS orden_listado,
@@ -1142,12 +1118,12 @@ export class BancoDocentesService implements OnModuleInit {
           d.dedicacion AS dedicacion_codigo,
           d."dedicacionDisplay" AS dedicacion,
           d."dedicacionHorasSemana" AS dedicacion_horas_semana,
-          COALESCE(d."territorialId", p.id_seccional::text) AS territorial_id,
+          COALESCE(d."territorialId", u.id_seccional::text) AS territorial_id,
           COALESCE(NULLIF(BTRIM(d."territorialReportada"), ''), doc_sec.nom_seccional, sec.nom_seccional) AS territorial,
           d."territorialReportada" AS territorial_reportada,
           doc_sec.nom_seccional AS territorial_catalogo,
           COALESCE(doc_sec.cod_seccional, sec.cod_seccional) AS territorial_codigo,
-          COALESCE(d."sedeId", p.id_sede::text) AS sede_id,
+          COALESCE(d."sedeId", u.id_sede::text) AS sede_id,
           COALESCE(doc_sede.nom_sede, sede.nom_sede) AS sede,
           d.escalafon AS categoria,
           d."nucleoTematico" AS nucleo_tematico,
@@ -1180,29 +1156,13 @@ export class BancoDocentesService implements OnModuleInit {
           d.observaciones AS observaciones,
           d."idRund" AS id_rund,
           d.estado AS estado,
-          ARRAY(
-            SELECT DISTINCT r2.code
-            FROM auth.user_roles ur2
-            INNER JOIN auth.role r2 ON r2.id = ur2.id_rol AND COALESCE(r2.is_active, true) = true
-            WHERE ur2.id_user = u.id_user
-              AND COALESCE(ur2.is_active, true) = true
-            ORDER BY r2.code
-          ) AS roles
-        FROM auth."user" u
-        INNER JOIN auth.personas p ON p.id_person = u.id_person
-        LEFT JOIN auth.seccionales sec ON sec.id_seccional = p.id_seccional
-        LEFT JOIN auth.sedes sede ON sede.id_sede = p.id_sede
-        LEFT JOIN rund."Docente" d ON d."personaId"::text = p.id_person::text
-        LEFT JOIN auth.seccionales doc_sec ON doc_sec.id_seccional::text = d."territorialId"
-        LEFT JOIN auth.sedes doc_sede ON doc_sede.id_sede::text = d."sedeId"
-        WHERE EXISTS (
-          SELECT 1
-          FROM auth.user_roles ur
-          INNER JOIN auth.role r ON r.id = ur.id_rol AND COALESCE(r.is_active, true) = true
-          WHERE ur.id_user = u.id_user
-            AND COALESCE(ur.is_active, true) = true
-            AND (UPPER(r.code) = 'DOCENTE' OR UPPER(r.name) = 'DOCENTE')
-        )
+          u.roles
+        FROM auth_banco u
+        LEFT JOIN auth_seccionales sec ON sec.id_seccional = u.id_seccional
+        LEFT JOIN auth_sedes sede ON sede.id_sede = u.id_sede
+        LEFT JOIN rund."Docente" d ON d."personaId"::text = u.id_person::text
+        LEFT JOIN auth_seccionales doc_sec ON doc_sec.id_seccional::text = d."territorialId"
+        LEFT JOIN auth_sedes doc_sede ON doc_sede.id_sede::text = d."sedeId"
       )
     `;
   }
@@ -1219,7 +1179,7 @@ export class BancoDocentesService implements OnModuleInit {
         OR auth_territorial ILIKE $${idx}
         OR territorial ILIKE $${idx}
         OR EXISTS (
-          SELECT 1 FROM auth.seccionales filtro_sec
+          SELECT 1 FROM auth_seccionales filtro_sec
           WHERE filtro_sec.id_seccional::text = $${idx}
             AND ${territorialLookupSql('territorial')} = ${territorialLookupSql('filtro_sec.nom_seccional')}
         )
@@ -1294,13 +1254,13 @@ export class BancoDocentesService implements OnModuleInit {
     const page = Math.max(1, filters.page || 1);
     const limit = Math.min(200, Math.max(1, filters.limit || 50));
     const skip = (page - 1) * limit;
-    const params: any[] = [];
+    const params: any[] = [JSON.stringify(await this.authBanco.proyeccion())];
     const where = this.buildAuthDocentesFilters(filters, params);
     const baseSql = this.authDocentesBaseSql();
 
     const countRows = await this.dataSource.query(
       `${baseSql} SELECT COUNT(*)::int AS total FROM auth_docentes ${where}`,
-      params,
+      [...params],
     );
     const total = Number(countRows[0]?.total || 0);
 
@@ -1321,27 +1281,28 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   async getById(id: string, periodoCarga?: string) {
+    const proyeccion = JSON.stringify(await this.authBanco.proyeccion());
     const rows = await this.dataSource.query(
       `
       ${this.authDocentesBaseSql()}
       SELECT *
       FROM auth_docentes
       WHERE (
-        usuario_id::text = $1
-        OR persona_id::text = $1
-        OR docente_id::text = $1
-        OR UPPER(regexp_replace(BTRIM(documento_identidad), '\\.', '', 'g')) = UPPER(regexp_replace(BTRIM($1::text), '\\.', '', 'g'))
+        usuario_id::text = $2
+        OR persona_id::text = $2
+        OR docente_id::text = $2
+        OR UPPER(regexp_replace(BTRIM(documento_identidad), '\\.', '', 'g')) = UPPER(regexp_replace(BTRIM($2::text), '\\.', '', 'g'))
       )
-        AND ($2::text IS NULL OR periodo_carga = $2::text)
+        AND ($3::text IS NULL OR periodo_carga = $3::text)
       ORDER BY
-        CASE WHEN $2::text IS NOT NULL AND periodo_carga = $2::text THEN 0 ELSE 1 END,
+        CASE WHEN $3::text IS NOT NULL AND periodo_carga = $3::text THEN 0 ELSE 1 END,
         CASE WHEN id_rund IS NOT NULL THEN 0 ELSE 1 END,
         CASE WHEN periodo_carga IS NOT NULL THEN 0 ELSE 1 END,
         docente_updated_at DESC NULLS LAST,
         updated_at DESC NULLS LAST
       LIMIT 1
       `,
-      [id, periodoCarga || null],
+      [proyeccion, id, periodoCarga || null],
     );
     if (!rows[0]) {
       const periodMessage = periodoCarga ? ` para el periodo ${periodoCarga}` : '';
@@ -1439,7 +1400,7 @@ export class BancoDocentesService implements OnModuleInit {
       }
     }
 
-    const territoriales = await this.getTerritoriales();
+    const territoriales = options.territoriales ?? await this.getTerritoriales();
     let territorial = territoriales.find((t) => normalizeLookupText(t.nombre) === normalizeLookupText(payload.territorialNombre)) || findTerritorialMatch(territoriales, payload.territorialNombre);
     if (!territorial?.id) {
       // En autogestión el docente puede no conocer su territorial; usamos una por
@@ -1470,236 +1431,11 @@ export class BancoDocentesService implements OnModuleInit {
         valorEsperado: 'Nombres y apellidos completos'
       });
 
-      const existingPersonaRows = await manager.query(
-        `
-        SELECT *
-        FROM auth.personas
-        WHERE UPPER(regexp_replace(BTRIM(num_identificacion::text), '\\.', '', 'g'))
-            = UPPER(regexp_replace(BTRIM($1::text), '\\.', '', 'g'))
-        LIMIT 1
-        `,
-        [payload.documentNumber],
-      );
-      let authPersona = existingPersonaRows[0] || null;
-      const personaChangedFields: string[] = [];
-      const profileChanges: Record<string, { anterior: any; nuevo: any }> = {};
-
-      // Autogestión: el correo fue verificado por OTP y es la llave confiable.
-      // Si no encontramos la persona por documento (p.ej. el docente no recordó/
-      // escribió mal su cédula), la resolvemos por correo para apuntar al registro
-      // correcto y evitar un falso "correo en uso por otra persona".
-      if (!authPersona && options.relaxValidation) {
-        const byEmailRows = await manager.query(
-          `SELECT * FROM auth.personas WHERE LOWER(dir_email) = LOWER($1) LIMIT 1`,
-          [emailFinal],
-        );
-        if (byEmailRows[0]) authPersona = byEmailRows[0];
-      }
-
-      const emailConflictRows = await manager.query(
-        `
-        SELECT owner_id
-        FROM (
-          SELECT p.id_person::text AS owner_id
-          FROM auth.personas p
-          WHERE LOWER(p.dir_email) = LOWER($1)
-          UNION
-          SELECT u.id_person::text AS owner_id
-          FROM auth."user" u
-          WHERE LOWER(u.username) = LOWER($1)
-        ) owners
-        WHERE owner_id IS NULL OR $2::uuid IS NULL OR owner_id::uuid <> $2::uuid
-        LIMIT 1
-        `,
-        [emailFinal, authPersona?.id_person || null],
-      );
-
-      if (emailConflictRows[0]) {
-        throw new BadRequestException({
-          message: `El correo ${emailFinal} ya estÃ¡ en uso por otra persona o usuario.`,
-          columna: 'CORREO_INSTITUCIONAL',
-          datoErrado: emailFinal,
-          valorEsperado: 'Correo Ãºnico'
-        });
-      }
-
-      const authSeccionalId = !options.preserveTerritorial && territorial?.id ? Number(territorial.id) : null;
-      const authPersonId = authPersona?.id_person || randomUUID();
-      const firstName = payload.primer_nombre || splitFullName(finalFullName).primer_nombre || 'Docente';
-      const lastName = payload.primer_apellido || splitFullName(finalFullName).primer_apellido || null;
-      const genderText = normalizeLookupText(payload.genero || 'N');
-      const gender = ['m', 'masculino'].includes(genderText) ? 'M'
-        : ['f', 'femenino'].includes(genderText) ? 'F'
-          : (payload.genero || 'N').trim().toUpperCase().slice(0, 20);
-
-      if (!authPersona) {
-        const legacyPersonId = await this.getNextAuthLegacyPersonId(manager);
-        const columns = [
-          'id_person',
-          ...(legacyPersonId ? ['id_tercero'] : []),
-          'num_identificacion',
-          'tip_identificacion',
-          'nom_largo',
-          'nom_tercero',
-          'pri_apellido',
-          'seg_apellido',
-          'gen_tercero',
-          'fec_nacimiento',
-          'dir_email',
-          'tel_celular',
-          'id_seccional',
-          'fec_creacion',
-          'fec_modificacion',
-        ];
-        const values = [
-          authPersonId,
-          ...(legacyPersonId ? [legacyPersonId] : []),
-          payload.documentNumber,
-          payload.documentType || 'CC',
-          finalFullName,
-          firstName,
-          lastName,
-          payload.segundo_apellido,
-          gender || 'N',
-          formatDateOnly(payload.fechaNacimiento),
-          emailFinal,
-          phoneFinal,
-          authSeccionalId,
-        ];
-        const placeholders = values.map((_, idx) => `$${idx + 1}`);
-        await manager.query(
-          `
-          INSERT INTO auth.personas (${columns.slice(0, -2).join(', ')}, fec_creacion, fec_modificacion)
-          VALUES (${placeholders.join(', ')}, CURRENT_DATE, CURRENT_DATE)
-          `,
-          values,
-        );
-        authPersona = { id_person: authPersonId };
-      } else {
-        const personaCandidates: Record<string, any> = {
-          tip_identificacion: payload.documentType || authPersona.tip_identificacion || 'CC',
-          nom_largo: finalFullName,
-          nom_tercero: firstName,
-          pri_apellido: lastName,
-          seg_apellido: payload.segundo_apellido,
-          gen_tercero: gender || authPersona.gen_tercero || 'N',
-          fec_nacimiento: payload.fechaNacimiento || authPersona.fec_nacimiento || null,
-          dir_email: emailFinal,
-          tel_celular: phoneFinal || authPersona.tel_celular || null,
-          id_seccional: authSeccionalId || authPersona.id_seccional || null,
-        };
-        for (const [field, nextValue] of Object.entries(personaCandidates)) {
-          const previousValue = authPersona[field];
-          const normalizedPrevious = field === 'fec_nacimiento'
-            ? formatDateOnly(previousValue)
-            : String(previousValue ?? '').trim();
-          const normalizedNext = field === 'fec_nacimiento'
-            ? formatDateOnly(nextValue)
-            : String(nextValue ?? '').trim();
-          if (normalizedNext !== normalizedPrevious) {
-            personaChangedFields.push(field);
-            profileChanges[field] = { anterior: previousValue ?? null, nuevo: nextValue ?? null };
-          }
-        }
-        if (personaChangedFields.length > 0) {
-          await manager.query(
-            `
-            UPDATE auth.personas
-            SET
-              tip_identificacion = $2,
-              nom_largo = $3,
-              nom_tercero = $4,
-              pri_apellido = $5,
-              seg_apellido = $6,
-              gen_tercero = $7,
-              fec_nacimiento = $8,
-              dir_email = $9,
-              tel_celular = $10,
-              id_seccional = COALESCE($11, id_seccional),
-              fec_modificacion = CURRENT_DATE
-            WHERE id_person = $1
-            `,
-            [
-              authPersonId,
-              payload.documentType || authPersona.tip_identificacion || 'CC',
-              finalFullName,
-              firstName,
-              lastName,
-              payload.segundo_apellido,
-              gender || authPersona.gen_tercero || 'N',
-              formatDateOnly(payload.fechaNacimiento || authPersona.fec_nacimiento),
-              emailFinal,
-              phoneFinal || authPersona.tel_celular || null,
-              authSeccionalId,
-            ],
-          );
-        }
-      }
-
-      const userRows = await manager.query(
-        `SELECT * FROM auth."user" WHERE id_person = $1 LIMIT 1`,
-        [authPersonId],
-      );
-      let authUser = userRows[0] || null;
-      let authUserCreated = false;
-
-      if (!authUser) {
-        const passwordHash = await bcrypt.hash(payload.documentNumber!, 10);
-        const userId = randomUUID();
-        await manager.query(
-          `
-          INSERT INTO auth."user" (
-            id_user,
-            public_id,
-            username,
-            password_hash,
-            id_person,
-            is_active,
-            password_temp,
-            created_at,
-            updated_at
-          )
-          VALUES ($1, $2, $3, $4, $5, false, true, now(), now())
-          `,
-          [userId, randomUUID(), emailFinal, passwordHash, authPersonId],
-        );
-        authUser = { id_user: userId };
-        authUserCreated = true;
-      } else if (String(authUser.username || '').trim().toLowerCase() !== emailFinal) {
-        personaChangedFields.push('username');
-        profileChanges.username = { anterior: authUser.username || null, nuevo: emailFinal };
-        await manager.query(
-          `
-          UPDATE auth."user"
-          SET username = $2, updated_at = now()
-          WHERE id_user = $1
-          `,
-          [authUser.id_user, emailFinal],
-        );
-      }
-
-      const roleRows = await manager.query(
-        `
-        SELECT id
-        FROM auth.role
-        WHERE UPPER(code) = 'DOCENTE' OR UPPER(name) = 'DOCENTE'
-        ORDER BY CASE WHEN UPPER(code) = 'DOCENTE' THEN 0 ELSE 1 END
-        LIMIT 1
-        `,
-      );
-      const docenteRoleId = roleRows[0]?.id;
-      if (!docenteRoleId) throw new BadRequestException('No existe el rol DOCENTE en auth.role.');
-
-      await manager.query(
-        `
-        INSERT INTO auth.user_roles (id_user, id_rol, is_active, created_at, updated_at)
-        VALUES ($1, $2, true, now(), now())
-        ON CONFLICT (id_user, id_rol)
-        DO UPDATE SET is_active = true, updated_at = now()
-        WHERE user_roles.is_active IS DISTINCT FROM true
-        `,
-        [authUser.id_user, docenteRoleId],
-      );
+      const { authPersonId, authUser, authUserCreated, personaChangedFields, profileChanges } =
+        await upsertRundAuthIdentityWithManager(manager, {
+          payload, options: { relaxValidation: options.relaxValidation, preserveTerritorial: options.preserveTerritorial },
+          territorial, emailFinal, phoneFinal, finalFullName,
+        }, { formatDateOnly, splitFullName, normalizeLookupText });
 
       const targetPeriodoCarga = payload.periodoCarga || null;
       const existingDocente = targetPeriodoCarga
@@ -1805,7 +1541,7 @@ export class BancoDocentesService implements OnModuleInit {
       // Â§6.2 â€” Initialize RUND approval blocks (BR-044) for new records
       if (action === 'insert') {
         try {
-          await this.inicializarBloques(docente.id, rawPayload?.cargadoPor || null, rawPayload?.canal_origen || 'MASIVO');
+          await this.inicializarBloques(docente.id, rawPayload?.cargadoPor || null, rawPayload?.canal_origen || 'MASIVO', manager);
         } catch (e) {
           console.warn(`[RUND] Could not initialize blocks for docente ${docente.id}:`, e);
         }
@@ -1816,46 +1552,7 @@ export class BancoDocentesService implements OnModuleInit {
       }
 
       // Inicializar ValidacionDocumental en el banco de docentes si no existe
-      const camposSoporte = [
-        { campo: 'DOCUMENTO_IDENTIDAD', tipo: 'IDENTIDAD' },
-        { campo: 'TIPO_DOCUMENTO', tipo: 'IDENTIDAD' },
-        { campo: 'NOMBRE_COMPLETO', tipo: 'IDENTIDAD' },
-        { campo: 'FECHA_NACIMIENTO', tipo: 'IDENTIDAD' },
-        { campo: 'GENERO', tipo: 'IDENTIDAD' },
-        { campo: 'SEXO_BIOLOGICO', tipo: 'IDENTIDAD' },
-        { campo: 'CORREO_INSTITUCIONAL', tipo: 'CONTACTO' },
-        { campo: 'CORREO_ALTERNATIVO', tipo: 'CONTACTO' },
-        { campo: 'TELEFONO', tipo: 'CONTACTO' },
-        { campo: 'VINCULACION', tipo: 'VINCULACION' },
-        { campo: 'TERRITORIAL', tipo: 'VINCULACION' },
-        { campo: 'DEDICACION', tipo: 'VINCULACION' },
-        { campo: 'DEDICACION_HORAS_SEMANA', tipo: 'VINCULACION' },
-        { campo: 'HORAS_PTA', tipo: 'VINCULACION' },
-        { campo: 'REGIMEN_NORMATIVO', tipo: 'VINCULACION' },
-        { campo: 'CATEGORIA_ESCALAFON', tipo: 'ESCALAFON' },
-        { campo: 'INICIO_VINCULACION', tipo: 'VINCULACION' },
-        { campo: 'FIN_VINCULACION', tipo: 'VINCULACION' },
-        { campo: 'ORIGEN_VINCULACION', tipo: 'VINCULACION' },
-        { campo: 'ACTO_ADMINISTRATIVO', tipo: 'VINCULACION' },
-        { campo: 'PUNTAJE_SALARIAL', tipo: 'ESCALAFON' },
-        { campo: 'SITUACION_ADMINISTRATIVA', tipo: 'SITUACION' },
-        { campo: 'SITUACION_CATEGORIA', tipo: 'SITUACION' },
-        { campo: 'ESTADO_DOCENTE', tipo: 'VINCULACION' },
-        { campo: 'NIVEL_FORMACION', tipo: 'FORMACION' },
-        { campo: 'TITULO_PREGRADO', tipo: 'FORMACION' },
-        { campo: 'TITULO_ESPECIALIZACION', tipo: 'FORMACION' },
-        { campo: 'TITULO_MAESTRIA', tipo: 'FORMACION' },
-        { campo: 'TITULO_DOCTORADO', tipo: 'FORMACION' },
-        { campo: 'TITULO_POSDOCTORADO', tipo: 'FORMACION' },
-        { campo: 'NUCLEO_TEMATICO', tipo: 'VINCULACION' },
-        { campo: 'PERFIL_ACADEMICO', tipo: 'FORMACION' },
-        { campo: 'INVESTIGACION_ACTIVA', tipo: 'EVALUACION' },
-        { campo: 'ULTIMA_EVALUACION', tipo: 'EVALUACION' },
-        { campo: 'OBSERVACIONES', tipo: 'TRANSVERSAL' },
-        { campo: 'ID_RUND', tipo: 'TRANSVERSAL' }
-      ];
-
-      for (const item of camposSoporte) {
+      for (const item of CAMPOS_SOPORTE_RUND) {
         await manager.query(
           `INSERT INTO rund.validacion_documental (docente_id, campo_rund, tipo_documento_soporte, estado_documento)
            VALUES ($1, $2, $3, 'Sin cargar')
@@ -2023,21 +1720,21 @@ export class BancoDocentesService implements OnModuleInit {
   }
 
   async bulkUpsert(rows: any[], options: BulkUpsertOptions = {}) {
-    const periodRows = await this.dataSource.query(`SELECT codigo FROM academic_work_plan.periodo_academico WHERE estado = 'en_curso' LIMIT 1`);
-    const activePeriod = periodRows.length > 0 ? periodRows[0].codigo : null;
-    const fallbackPeriod = options.periodoCarga || activePeriod;
-    const preparedRows = rows.map((item, index) => {
-      const row = { ...item, __sourceRowNumber: item?.__sourceRowNumber || index + 2 };
-      if (fallbackPeriod && !row.PERIODO_CARGA && !row.periodoCarga && !row.periodo_carga) {
-        row.PERIODO_CARGA = fallbackPeriod;
-      }
-      return row;
-    });
-
     if (!options.dryRun && !options.support) {
       throw new BadRequestException('La carga masiva definitiva requiere conservar el archivo como soporte documental.');
     }
+    const preparedRows = rows.map((item, index) => ({ ...item, __sourceRowNumber: item?.__sourceRowNumber || index + 2 }));
+    const needsActivePeriod = !options.periodoCarga && preparedRows.some(row => !row.PERIODO_CARGA && !row.periodoCarga && !row.periodo_carga);
+    const fallbackPeriod = options.periodoCarga || (needsActivePeriod ? await this.catalogos.periodoActivo() : null);
+    for (const row of preparedRows) {
+      if (fallbackPeriod && !row.PERIODO_CARGA && !row.periodoCarga && !row.periodo_carga) {
+        row.PERIODO_CARGA = fallbackPeriod;
+      }
+    }
 
+    // Confirma una sola vez antes de escribir o abrir transacciones de filas.
+    // Un fallo de Auth no guarda un soporte ni se interpreta como catálogo vacío.
+    const territoriales = preparedRows.length ? await this.getTerritoriales() : [];
     const bulkSupportId = options.dryRun
       ? null
       : await this.createBulkSupport(options.support!, options.actorId || 'SISTEMA', options.ip);
@@ -2064,6 +1761,7 @@ export class BancoDocentesService implements OnModuleInit {
             await manager.query(`SAVEPOINT ${savepointName}`);
           }
           const result = await this.upsertDocente(row, {
+            territoriales,
             bulkImport: true,
             rejectExisting: options.rejectExisting,
             outerManager: manager,
@@ -2327,11 +2025,8 @@ export class BancoDocentesService implements OnModuleInit {
       throw new BadRequestException('El soporte documental de la edicion no existe o no pertenece al docente.');
     }
 
-    const authRows = await this.dataSource.query(
-      `SELECT num_identificacion AS document_number FROM auth.personas WHERE id_person::text = $1 LIMIT 1`,
-      [d.personaId],
-    );
-    const currentDocument = String(authRows[0]?.document_number || '');
+    const identity = await this.identities.fichaPorPersona(d.personaId);
+    const currentDocument = String(identity?.num_identificacion || '');
     if (!currentDocument) throw new NotFoundException(`No se encontro la cedula del docente ${id}`);
     const normalizedCurrentDocument = currentDocument.trim().replace(/\./g, '').toUpperCase();
     const safeBody = { ...body };
@@ -2365,6 +2060,7 @@ export class BancoDocentesService implements OnModuleInit {
 
     const ignoredAuditKeys = new Set(['soporteEdicionId', 'justificacionEdicion', 'actorId', 'cargadoPor', 'canal_origen', 'rundSensitiveAccess', 'rundSuggestionIds']);
     const changedFields = Object.keys(body).filter((key) => !ignoredAuditKeys.has(key));
+    const territoriales = await this.getTerritoriales();
     const execute = async (outerManager?: any) => {
       const suggestions = suggestionIds.length
         ? await lockExtractionSuggestions(outerManager, docenteId, suggestionIds, suggestionPayload) : [];
@@ -2372,10 +2068,11 @@ export class BancoDocentesService implements OnModuleInit {
         ...safeBody,
         canal_origen: 'MODAL',
         periodoCarga: d.periodoCarga,
-        // La cedula siempre se obtiene de auth.personas; nunca se acepta del body al editar.
+        // La cédula procede del propietario Auth; nunca se acepta del body al editar.
         documentNumber: currentDocument,
       }, {
         outerManager,
+        territoriales,
         // Editar otro dato no reconcilia de forma implícita la territorial operativa.
         preserveTerritorial: Boolean(d.territorialReportada && String(safeBody.territorialNombre || '').trim() === d.territorialReportada.trim()),
         audit: {
@@ -2403,7 +2100,8 @@ export class BancoDocentesService implements OnModuleInit {
 
   async getStats(filters?: { territorial?: string; dedicacion?: string; vinculacion?: string; estado?: string; periodoCarga?: string; categoria?: string; genero?: string; nivelFormacion?: string; nucleoTematico?: string }) {
     const baseSql = this.authDocentesBaseSql();
-    const params: any[] = [];
+    const proyeccion = JSON.stringify(await this.authBanco.proyeccion());
+    const params: any[] = [proyeccion];
     const whereClause = filters ? this.buildAuthDocentesFilters(filters, params) : '';
 
     const [summary] = await this.dataSource.query(`
@@ -2419,7 +2117,7 @@ export class BancoDocentesService implements OnModuleInit {
 
     // For grouped queries we need fresh copies of params each time since buildAuthDocentesFilters is stateful
     const mkParams = () => {
-      const p: any[] = [];
+      const p: any[] = [proyeccion];
       const w = filters ? this.buildAuthDocentesFilters(filters, p) : '';
       return { p, w };
     };
@@ -2817,27 +2515,19 @@ export class BancoDocentesService implements OnModuleInit {
       });
 
       if (docenteDirecto) {
-        // Fetch supplementary person data from auth.personas
-        const personRows = docenteDirecto.personaId ? await this.dataSource.query(
-          `SELECT num_identificacion AS document_number, primer_nombre, segundo_nombre,
-                  primer_apellido, segundo_apellido, nom_largo AS full_name,
-                  email AS correo_personal, celular
-           FROM auth.personas WHERE id_person::text = $1 LIMIT 1`,
-          [docenteDirecto.personaId],
-        ) : [];
-        const person = personRows[0] || {};
+        const person = docenteDirecto.personaId ? await this.identities.fichaPorPersona(docenteDirecto.personaId) : null;
 
         match = {
           docente_id: docenteDirecto.id,
-          documento_identidad: person.document_number || null,
-          nombre_completo: person.full_name || [person.primer_nombre, person.primer_apellido].filter(Boolean).join(' ') || docenteDirecto.correoInstitucional,
-          primer_nombre: person.primer_nombre || null,
-          primer_apellido: person.primer_apellido || null,
-          segundo_nombre: person.segundo_nombre || null,
-          segundo_apellido: person.segundo_apellido || null,
+          documento_identidad: person?.num_identificacion || null,
+          nombre_completo: person?.nom_largo || [person?.nom_tercero, person?.pri_apellido].filter(Boolean).join(' ') || docenteDirecto.correoInstitucional,
+          primer_nombre: person?.nom_tercero || null,
+          primer_apellido: person?.pri_apellido || null,
+          segundo_nombre: null,
+          segundo_apellido: person?.seg_apellido || null,
           correo_institucional: docenteDirecto.correoInstitucional,
-          correo_personal: person.correo_personal || docenteDirecto.correoAlternativo,
-          telefono: person.celular || null,
+          correo_personal: person?.dir_email || docenteDirecto.correoAlternativo,
+          telefono: person?.tel_celular || null,
           nivel_formacion: docenteDirecto.nivelFormacion,
           pregrado: docenteDirecto.pregrado,
           especializacion: docenteDirecto.especializacion,
@@ -2910,33 +2600,25 @@ export class BancoDocentesService implements OnModuleInit {
     if (!existingDocente) {
       const document = normalizeBancoDocentePayload(submissionData).documentNumber;
       if (document) {
-        const owners = await this.dataSource.query(
-          `SELECT d.id FROM rund."Docente" d
-           JOIN auth.personas p ON p.id_person = d."personaId"
-           WHERE p.num_identificacion = $1 LIMIT 1`, [document],
-        );
-        if (owners.length) throw new ForbiddenException('El documento ya está vinculado a otro perfil. Contacte a Gestión Profesoral.');
+        const identity = await this.identities.fichaPorDocumento(document);
+        const owner = identity ? await this.docenteRepo.findOne({
+          where: { personaId: identity.personaId }, select: { id: true },
+        }) : null;
+        if (owner) throw new ForbiddenException('El documento ya está vinculado a otro perfil. Contacte a Gestión Profesoral.');
       }
     }
     if (existingDocente?.personaId) {
       // Si la invitación llegó al correo alternativo, conservar el institucional registrado.
       submissionData.CORREO_INSTITUCIONAL = existingDocente.correoInstitucional || invitacion.correoInstitucional;
       submissionData.correoInstitucional = submissionData.CORREO_INSTITUCIONAL;
-      const identityRows = await this.dataSource.query(
-        `SELECT num_identificacion AS document_number
-           FROM auth.personas
-          WHERE id_person::text = $1
-          LIMIT 1`,
-        [existingDocente.personaId],
-      );
-      const trustedDocument = String(identityRows[0]?.document_number || '').trim();
-      if (trustedDocument) {
-        for (const key of Object.keys(submissionData)) {
-          if (findRundSensitiveFields({ [key]: submissionData[key] }).includes('DOCUMENTO_IDENTIDAD')) delete submissionData[key];
-        }
-        submissionData.documentNumber = trustedDocument;
-        submissionData.documento_identidad = trustedDocument;
+      const identity = await this.identities.fichaPorPersona(existingDocente.personaId);
+      const trustedDocument = String(identity?.num_identificacion || '').trim();
+      if (!trustedDocument) throw new NotFoundException('No se encontro la cedula del docente asociado a la invitacion.');
+      for (const key of Object.keys(submissionData)) {
+        if (findRundSensitiveFields({ [key]: submissionData[key] }).includes('DOCUMENTO_IDENTIDAD')) delete submissionData[key];
       }
+      submissionData.documentNumber = trustedDocument;
+      submissionData.documento_identidad = trustedDocument;
       delete submissionData.puntajeSalarial;
       delete submissionData.PUNTAJE_SALARIAL;
     }
@@ -3027,20 +2709,18 @@ export class BancoDocentesService implements OnModuleInit {
     }
 
     // 3. Resolver por usuario, persona o cédula sin convertir la cédula a UUID.
+    const personaIds = await this.identities.personasPorAlias(anyId);
+    if (!personaIds.length) return anyId;
     const resolvedRows = await this.dataSource.query(
       `SELECT d.id
        FROM rund."Docente" d
-       JOIN auth.personas p ON p.id_person = d."personaId"
-       LEFT JOIN auth."user" u ON u.id_person = p.id_person
-       WHERE (p.id_person::text = $1
-          OR u.id_user::text = $1
-          OR UPPER(regexp_replace(BTRIM(p.num_identificacion::text), '\\.', '', 'g')) = UPPER(regexp_replace(BTRIM($1::text), '\\.', '', 'g')))
+       WHERE d."personaId"::text = ANY($1::text[])
          AND ($2::text IS NULL OR d."periodoCarga" = $2::text)
        ORDER BY
          CASE WHEN $2::text IS NOT NULL AND d."periodoCarga" = $2::text THEN 0 ELSE 1 END,
          d."updatedAt" DESC NULLS LAST
        LIMIT 1`,
-      [anyId, periodoCarga || null],
+      [personaIds, periodoCarga || null],
     );
     if (resolvedRows[0]?.id) return resolvedRows[0].id;
 
@@ -3087,10 +2767,11 @@ export class BancoDocentesService implements OnModuleInit {
   /**
    * Inicializar bloques de aprobaciÃ³n al crear/importar un docente.
    */
-  async inicializarBloques(docenteId: string, cargadoPor?: string, canalOrigen?: string) {
+  async inicializarBloques(docenteId: string, cargadoPor?: string, canalOrigen?: string,
+    manager: { query: (sql: string, params?: any[]) => Promise<any[]> } = this.dataSource) {
     const result: any[] = [];
     for (const bloque of BancoDocentesService.BLOQUES) {
-      const existing = await this.dataSource.query(
+      const existing = await manager.query(
         `SELECT id FROM rund."RundCampoEstado" WHERE docente_id = $1 AND bloque = $2 LIMIT 1`,
         [docenteId, bloque],
       );
@@ -3098,7 +2779,7 @@ export class BancoDocentesService implements OnModuleInit {
         const id = randomUUID();
         // BR-038 â€” CONTACTO no es crÃ­tico, no exige soporte
         const estadoInicial = bloque === 'CONTACTO' ? 'Pendiente' : 'Soporte faltante';
-        await this.dataSource.query(
+        await manager.query(
           `INSERT INTO rund."RundCampoEstado" 
            (id, docente_id, bloque, estado, cargado_por, canal_origen, version, soporte_ids, "createdAt", "updatedAt")
            VALUES ($1, $2, $3, $4, $5, $6, 1, '[]', NOW(), NOW())`,
@@ -3223,7 +2904,7 @@ export class BancoDocentesService implements OnModuleInit {
       });
     }
 
-    await assertRundEvidenceData(this.dataSource, docenteId, data.tipoSoporte, data.campo);
+    await assertRundEvidenceData(this.dataSource, docenteId, this.identities, data.tipoSoporte, data.campo);
 
     const { randomUUID } = require('crypto');
     const newId = randomUUID();
@@ -3239,7 +2920,7 @@ export class BancoDocentesService implements OnModuleInit {
       id = existing[0].id;
       await this.dataSource.query(
         `UPDATE rund."RundSoporteCampo" 
-         SET documento_carpeta_id = $1, nombre_archivo = COALESCE($2, nombre_archivo), cargado_por = $3, estado = 'Pendiente', observacion = NULL, revisiones_campos = '{}'::jsonb, "updatedAt" = NOW()
+         SET documento_carpeta_id = $1, nombre_archivo = COALESCE($2, nombre_archivo), cargado_por = $3, estado = 'Pendiente', observacion = NULL, revisiones_campos = '{}'::jsonb
          WHERE id = $4`,
         [data.documentoCarpetaId || null, data.nombreArchivo || null, data.cargadoPor || 'SYSTEM', id]
       );
@@ -3286,38 +2967,31 @@ export class BancoDocentesService implements OnModuleInit {
    * BR-052 â€” ValidaciÃ³n de unicidad de documento y correo institucional.
    */
   async validarUnicidad(documentNumber: string, correoInstitucional: string, excludeDocenteId?: string): Promise<{ duplicados: any[] }> {
-    const conditions: string[] = [];
-    const params: any[] = [];
-    let paramIndex = 1;
-
-    if (documentNumber) {
-      conditions.push(`UPPER(regexp_replace(BTRIM(p.num_identificacion::text), '\\.', '', 'g')) = UPPER(regexp_replace(BTRIM($${paramIndex}::text), '\\.', '', 'g'))`);
-      params.push(documentNumber);
-      paramIndex++;
-    }
-    if (correoInstitucional) {
-      conditions.push(`d."correoInstitucional" = $${paramIndex}`);
-      params.push(correoInstitucional.toLowerCase());
-      paramIndex++;
-    }
-
-    if (conditions.length === 0) return { duplicados: [] };
-
-    let sql = `
-      SELECT d.id, d.estado, p.num_identificacion AS documento, d."correoInstitucional" AS correo,
-             p.nom_largo AS nombre
-      FROM rund."Docente" d
-      JOIN auth.personas p ON p.id_person = d."personaId"
-      WHERE d.estado = 'ACTIVO' AND (${conditions.join(' OR ')})
-    `;
-
-    if (excludeDocenteId) {
-      sql += ` AND d.id != $${paramIndex}`;
-      params.push(excludeDocenteId);
-    }
-
-    const duplicados = await this.dataSource.query(sql, params);
-    return { duplicados };
+    if (!documentNumber && !correoInstitucional) return { duplicados: [] };
+    // Las dos lecturas nativas comparten snapshot: no perder perfiles por cambios
+    // de correo/estado mientras se consulta al propietario de la identidad.
+    return this.dataSource.transaction('REPEATABLE READ', async manager => {
+      await manager.query('SET TRANSACTION READ ONLY');
+      const email = correoInstitucional ? correoInstitucional.toLowerCase() : null;
+      const candidates = email ? await manager.query(`SELECT DISTINCT d."personaId"::text AS persona_id
+        FROM rund."Docente" d WHERE d.estado='ACTIVO' AND d."correoInstitucional"=$1
+          AND ($2::text IS NULL OR d.id<>$2::text)`, [email, excludeDocenteId || null]) : [];
+      if (!documentNumber && !candidates.length) return { duplicados: [] };
+      const identities = await this.identities.coincidenciasUnicidad(documentNumber || null, candidates.map(row => row.persona_id));
+      if (!identities.length) return { duplicados: [] };
+      const params: any[] = [JSON.stringify(identities)], conditions: string[] = [];
+      if (documentNumber) {
+        params.push(documentNumber);
+        conditions.push(`UPPER(regexp_replace(BTRIM(p.documento), '\\.', '', 'g'))
+          = UPPER(regexp_replace(BTRIM($${params.length}::text), '\\.', '', 'g'))`);
+      }
+      if (email) { params.push(email); conditions.push(`d."correoInstitucional"=$${params.length}`); }
+      let sql = `SELECT d.id,d.estado,p.documento,d."correoInstitucional" AS correo,p.nombre
+        FROM rund."Docente" d JOIN jsonb_to_recordset($1::jsonb) AS p("personaId" uuid,documento text,nombre text)
+          ON p."personaId"=d."personaId" WHERE d.estado='ACTIVO' AND (${conditions.join(' OR ')})`;
+      if (excludeDocenteId) { params.push(excludeDocenteId); sql += ` AND d.id<>$${params.length}`; }
+      return { duplicados: await manager.query(sql, params) };
+    });
   }
 
   /**
@@ -3328,17 +3002,21 @@ export class BancoDocentesService implements OnModuleInit {
 
     const nombre = nombreCompleto.toUpperCase().trim();
     const fecha = fechaNacimiento instanceof Date ? fechaNacimiento : new Date(fechaNacimiento);
+    if (!Number.isFinite(fecha.getTime())) throw new BadRequestException('La fecha de nacimiento no es válida.');
+    const date = fecha.toISOString().split('T')[0];
+    const identities = await this.identities.coincidenciasNombreFecha(nombre, date);
+    if (!identities.length) return { posiblesDuplicados: [] };
 
     const rows = await this.dataSource.query(
-      `SELECT d.id, p.num_identificacion AS documento, d."correoInstitucional" AS correo,
-              p.nom_largo AS nombre_completo,
-              p.fec_nacimiento AS fecha_nacimiento
+      `SELECT d.id, p.documento, d."correoInstitucional" AS correo,
+              p.nombre AS nombre_completo, p."fechaNacimiento"::date AS fecha_nacimiento
        FROM rund."Docente" d
-       JOIN auth.personas p ON p.id_person = d."personaId"
+       JOIN jsonb_to_recordset($1::jsonb) AS p("personaId" uuid,documento text,nombre text,"fechaNacimiento" text)
+         ON p."personaId"=d."personaId"
        WHERE d.estado = 'ACTIVO'
-         AND UPPER(TRIM(p.nom_largo)) = $1
-         AND p.fec_nacimiento::date = $2::date`,
-      [nombre, fecha.toISOString().split('T')[0]],
+         AND UPPER(TRIM(p.nombre)) = $2
+         AND p."fechaNacimiento"::date = $3::date`,
+      [JSON.stringify(identities), nombre, date],
     );
 
     return { posiblesDuplicados: rows };
@@ -3439,19 +3117,25 @@ export class BancoDocentesService implements OnModuleInit {
    * BR-055 â€” Verificar soportes prÃ³ximos a vencer.
    */
   async getSoportesProximosVencer(diasUmbral = 30): Promise<any[]> {
+    if (!Number.isSafeInteger(diasUmbral)) throw new BadRequestException('El umbral de días debe ser un entero válido.');
     const rows = await this.dataSource.query(
       `SELECT sc.*, d."correoInstitucional", 
-              p.nom_largo AS nombre_docente
+              d."personaId" AS "_rundPersonaId"
        FROM rund."RundSoporteCampo" sc
        -- "Docente".id es text y docente_id es uuid: se compara como texto.
        JOIN rund."Docente" d ON d.id = sc.docente_id::text
-       JOIN auth.personas p ON p.id_person = d."personaId"
        WHERE sc.fecha_vencimiento IS NOT NULL
          AND sc.estado != 'Rechazado'
-         AND sc.fecha_vencimiento <= (NOW() + INTERVAL '${diasUmbral} days')
+         AND sc.fecha_vencimiento <= (NOW() + $1::interval)
        ORDER BY sc.fecha_vencimiento ASC`,
+      [`${diasUmbral} days`],
     );
-    return rows;
+    const nombres = await this.identities.nombresPorPersonas(rows.map(row => row._rundPersonaId));
+    // Igual que el INNER JOIN anterior: excluir solo la ausencia confirmada, no nombres nulos.
+    return rows.filter(row => nombres.has(row._rundPersonaId.toLowerCase())).map(row => {
+      const { _rundPersonaId, ...soporte } = row;
+      return { ...soporte, nombre_docente: nombres.get(_rundPersonaId.toLowerCase()) };
+    });
   }
 
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -3572,16 +3256,8 @@ export class BancoDocentesService implements OnModuleInit {
     const docente = await this.docenteRepo.findOne({ where: { id: docenteId } });
     if (!docente) throw new NotFoundException('Docente no encontrado.');
 
-    // Obtener datos de persona
-    let p: any = {};
-    try {
-      const persona = await this.dataSource.query(
-        `SELECT nom_largo, num_identificacion, tip_identificacion, gen_tercero, fec_nacimiento, dir_email, tel_celular
-         FROM auth.personas WHERE id_person = $1 LIMIT 1`,
-        [docente.personaId],
-      );
-      p = persona[0] || {};
-    } catch { /* persona data not available */ }
+    // Ausencia confirmada conserva campos nulos; un fallo del propietario bloquea la tarjeta.
+    const p = await this.identities.fichaPorPersona(docente.personaId) || {} as any;
 
     // Obtener bloques de aprobaciÃ³n
     let bloques: any[] = [];
@@ -3732,12 +3408,9 @@ export class BancoDocentesService implements OnModuleInit {
       
       let finalPersonaId = personaId;
       if (!isUuid) {
-        const result = await this.dataSource.query(
-          `SELECT id_person FROM auth.personas WHERE num_identificacion = $1 LIMIT 1`,
-          [personaId]
-        );
-        if (!result || result.length === 0) return null;
-        finalPersonaId = result[0].id_person;
+        const persona = await this.identities.fichaPorDocumento(personaId);
+        if (!persona) return null;
+        finalPersonaId = persona.personaId;
       }
 
       const docenteWhere = periodoCarga
@@ -3747,14 +3420,10 @@ export class BancoDocentesService implements OnModuleInit {
       
       // Auto-provisionar docente si no existe (Necesario para sincronizaciA3n con Carpeta Digital)
       if (!docente) {
-        const authData = await this.dataSource.query(
-          `SELECT id_person, num_identificacion, nom_largo, dir_email FROM auth.personas WHERE id_person = $1 LIMIT 1`,
-          [finalPersonaId]
-        );
-        if (authData && authData.length > 0) {
-          const auth = authData[0];
+        const auth = await this.identities.fichaPorPersona(finalPersonaId);
+        if (auth) {
           await this.upsertDocente({
-            personaId: auth.id_person,
+            personaId: auth.personaId,
             documentNumber: auth.num_identificacion || 'N/A',
             documento_identidad: auth.num_identificacion || 'N/A',
             nombre_completo: auth.nom_largo || 'Sin Nombre',
@@ -3780,6 +3449,7 @@ export class BancoDocentesService implements OnModuleInit {
       if (!docente) return null;
       return this.getTarjetaRUND(docente.id);
     } catch (e) {
+      if (e instanceof ServiceUnavailableException) throw e;
       console.error('Error finding docente by personaId:', e);
       return null;
     }
@@ -3799,9 +3469,7 @@ export class BancoDocentesService implements OnModuleInit {
       throw new NotFoundException(`Docente con ID ${docenteId} no encontrado`);
     }
 
-    const persona = await this.personaRepo.findOne({
-      where: { id: docente.personaId }
-    });
+    const persona = await this.catalogos.nombreHistorico(docente.personaId);
 
     const nameParts = [
       persona?.primer_nombre,
@@ -3869,6 +3537,9 @@ export class BancoDocentesService implements OnModuleInit {
     const { randomUUID } = require('crypto');
 
     const docentes = await this.docenteRepo.find();
+    // Confirmar todos los nombres antes de tocar soportes. Una caída del propietario
+    // no puede convertir su identidad desconocida en una carpeta con ID nativo.
+    const nombres = await this.identities.nombresPorPersonas(docentes.map(docente => docente.personaId));
     let totalProcessed = 0;
     let totalSynced = 0;
     let totalCreated = 0;
@@ -3877,20 +3548,8 @@ export class BancoDocentesService implements OnModuleInit {
 
     for (const docente of docentes) {
       let docenteNombre = docente.id;
-      try {
-        const persona = await this.dataSource.query(
-          `SELECT nom_largo FROM auth.personas WHERE id_person = $1 LIMIT 1`,
-          [docente.personaId]
-        );
-        if (persona && persona.length > 0) {
-          const p = persona[0];
-          if (p.nom_largo) {
-            docenteNombre = p.nom_largo.replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase();
-          }
-        }
-      } catch (e) {
-        console.error('Error resolving persona', e);
-      }
+      const nombre = nombres.get(docente.personaId.toLowerCase());
+      if (nombre) docenteNombre = nombre.replace(/[^a-zA-Z0-9 -]/g, '').trim().toUpperCase();
 
       const uploadPath = rundLegacyUploadDirectory(docenteNombre);
       console.log(`Checking path for ${docenteNombre}: ${uploadPath}`);
@@ -3945,7 +3604,7 @@ export class BancoDocentesService implements OnModuleInit {
 
         await this.dataSource.query(
           `UPDATE rund."RundSoporteCampo" 
-           SET documento_carpeta_id = $1, nombre_archivo = COALESCE(nombre_archivo, $2), "updatedAt" = NOW()
+           SET documento_carpeta_id = $1, nombre_archivo = COALESCE(nombre_archivo, $2)
            WHERE id = $3`,
           [expectedDocId, file, record.id]
         );

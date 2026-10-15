@@ -73,7 +73,8 @@ describe('Autogestión: sesión OTP, borradores y propiedad', () => {
   it('no permite asociar la invitación nueva al documento de otro docente', async () => {
     const { service, invitation, db } = build();
     const { sessionToken } = await service.verifyOtpForEmail(invitation.correoInstitucional, '123456');
-    db.query.mockResolvedValue([{ id: 'docente-ajeno' }]);
+    (service as any).identities = { fichaPorDocumento: jest.fn().mockResolvedValue({ personaId: 'persona-ajena' }) };
+    (service as any).docenteRepo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'docente-ajeno' });
     const upsert = jest.spyOn(service, 'upsertDocente');
     await expect(service.submitFromToken(sessionToken, { documentNumber: '9999999999', correoInstitucional: 'ajeno@example.test' }))
       .rejects.toThrow(ForbiddenException);

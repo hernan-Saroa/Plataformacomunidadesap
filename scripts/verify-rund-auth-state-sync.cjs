@@ -20,6 +20,7 @@ module.exports = async function verifySync({ pgConfig, authDb, authUrl, person, 
   const { RundAuthStateSyncService } = compiled('modules/banco-docentes/rund-auth-state-sync.service');
   const { RundAuthStateSyncWorker } = compiled('modules/banco-docentes/rund-auth-state-sync.worker');
   const { RundValidacionService } = compiled('modules/banco-docentes/rund-validacion.service');
+  const { CAMPOS_SOPORTE_RUND } = compiled('modules/banco-docentes/rund-document-fields');
   const { RundValidacionController } = compiled('modules/banco-docentes/rund-validacion.controller');
   const { BancoDocentesRolesGuard } = compiled('modules/banco-docentes/banco-docentes-roles.guard');
   let db, app, fake;
@@ -69,6 +70,14 @@ module.exports = async function verifySync({ pgConfig, authDb, authUrl, person, 
       (id,"personaId","territorialId","tipoVinculacion",dedicacion,"periodoCarga","updatedAt") VALUES ($1,$2,'TEST','TEST','TEST',$3,now())`, [ownIds[i], person, `TEST-${i}`]);
     await db.query(`INSERT INTO rund.validacion_documental (docente_id,campo_rund,tipo_documento_soporte,estado_documento,id_documento_carpeta)
       VALUES ($1,'DOCUMENTO_IDENTIDAD','IDENTIDAD','Aceptado',$2)`, [ownIds[0], document]);
+    // El fixture de proyección parte de un catálogo nativo completo. La reparación
+    // de catálogos parciales se verifica por separado; aquí debe seguir siendo
+    // estricta la igualdad de todas las filas antes/después de sincronizar Auth.
+    for (const id of ownIds) await db.query(`INSERT INTO rund.validacion_documental
+      (docente_id,campo_rund,tipo_documento_soporte,estado_documento)
+      SELECT $1,campo,tipo,'Sin cargar' FROM unnest($2::text[],$3::text[]) AS catalogo(campo,tipo)
+      ON CONFLICT (docente_id,campo_rund) DO NOTHING`,
+    [id,CAMPOS_SOPORTE_RUND.map(row => row.campo),CAMPOS_SOPORTE_RUND.map(row => row.tipo)]);
     await db.query(`INSERT INTO rund."RundSoporteCampo" (id,docente_id,bloque,estado,nombre_archivo)
       VALUES ($1,$2,'IDENTIDAD','Aprobado','original-nativo-ficticio.pdf')`, [document, ownIds[0]]);
     // El fixture padre no carga el módulo documental PTA. Añadir un original ficticio
@@ -100,12 +109,14 @@ module.exports = async function verifySync({ pgConfig, authDb, authUrl, person, 
     });
     const { Module } = dep('@nestjs/common'), { NestFactory, Reflector } = dep('@nestjs/core'), { ConfigService } = dep('@nestjs/config');
     const { JwtStrategy } = compiled('auth/jwt.strategy'), { JwtAuthGuard } = compiled('auth/jwt-auth.guard');
-    const validation = new RundValidacionService(db.getRepository(BancoDocenteEntity), db, sync);
+    const { AuthIdentityClient } = compiled('common/auth-identity.client');
+    const validation = new RundValidacionService(db.getRepository(BancoDocenteEntity), db, new AuthIdentityClient(), sync);
     class FixtureModule {}
     Module({ controllers: [RundValidacionController], providers: [
       { provide: DataSource, useValue: db },
       { provide: RundValidacionService, useValue: validation },
-      { provide: BancoDocentesRolesGuard, useValue: new BancoDocentesRolesGuard(new Reflector(), db) },
+      { provide: AuthIdentityClient, useValue: new AuthIdentityClient() },
+      { provide: BancoDocentesRolesGuard, useValue: new BancoDocentesRolesGuard(new Reflector(), new AuthIdentityClient()) },
       { provide: JwtStrategy, useValue: new JwtStrategy(new ConfigService({ JWT_SECRET: process.env.JWT_SECRET })) },
     ] })(FixtureModule);
     app = await NestFactory.create(FixtureModule, { logger: false, abortOnError: false }); app.useGlobalGuards(new JwtAuthGuard(new Reflector()));
@@ -121,7 +132,9 @@ module.exports = async function verifySync({ pgConfig, authDb, authUrl, person, 
       await manual(); const second = await manual({ key: ownIds[1] }); assert.equal(second.data.revision, originalState.revision);
       const res = await fetch(`${rundUrl}/rund/docente/${ownIds[0]}`, { headers: { Authorization: `Bearer ${adminToken}` } });
       assert.equal(res.status, 200); const data = (await res.json()).data;
-      assert.equal(data.completitud, 100); assert.equal(data.validaciones[0].estado_documento, 'Aceptado');
+      assert.equal(data.completitud, Math.round(100 / CAMPOS_SOPORTE_RUND.length));
+      assert.equal(data.validaciones.length, CAMPOS_SOPORTE_RUND.length);
+      assert.equal(data.validaciones.find(row => row.campo_rund === 'DOCUMENTO_IDENTIDAD').estado_documento, 'Aceptado');
       assert.equal(data.carpetaAuth.revision, '0'); assert.deepEqual(await native(), nativeBefore);
     });
     await verify('decisiones y clasificación persistidas en Auth actualizan solo su proyección', async () => {

@@ -60,7 +60,6 @@ describe('RundDocumentosService - ciclo CRUD documental', () => {
     });
     const dataSource = {
       query: jest.fn()
-        .mockResolvedValueOnce([docente])
         .mockResolvedValueOnce([category]),
       createQueryRunner: jest.fn(() => runner),
     };
@@ -72,7 +71,8 @@ describe('RundDocumentosService - ciclo CRUD documental', () => {
       }),
       remove: jest.fn(),
     };
-    const service = new RundDocumentosService(dataSource as any, storage as any);
+    const service = new RundDocumentosService(dataSource as any, storage as any, {} as any);
+    jest.spyOn(service as any, 'requireDocente').mockResolvedValue(docente);
 
     const result = await service.create(
       docente.id,
@@ -130,7 +130,6 @@ describe('RundDocumentosService - ciclo CRUD documental', () => {
     });
     const dataSource = {
       query: jest.fn()
-        .mockResolvedValueOnce([docente])
         .mockResolvedValueOnce([current])
         .mockResolvedValueOnce([category]),
       createQueryRunner: jest.fn(() => runner),
@@ -143,7 +142,8 @@ describe('RundDocumentosService - ciclo CRUD documental', () => {
       }),
       remove: jest.fn(),
     };
-    const service = new RundDocumentosService(dataSource as any, storage as any);
+    const service = new RundDocumentosService(dataSource as any, storage as any, {} as any);
+    jest.spyOn(service as any, 'requireDocente').mockResolvedValue(docente);
 
     const result = await service.replace(docente.id, current.id, pdfFile, 'admin-2');
 
@@ -174,11 +174,11 @@ describe('RundDocumentosService - ciclo CRUD documental', () => {
     };
     const dataSource = {
       query: jest.fn()
-        .mockResolvedValueOnce([docente])
         .mockResolvedValueOnce([current]),
     };
     const storage = { read: jest.fn().mockResolvedValue(pdfFile.buffer) };
-    const service = new RundDocumentosService(dataSource as any, storage as any);
+    const service = new RundDocumentosService(dataSource as any, storage as any, {} as any);
+    jest.spyOn(service as any, 'requireDocente').mockResolvedValue(docente);
 
     const result = await service.content(docente.id, current.id, { actorId: 'ggp-1', roles: ['GESTION_PROFESORAL'], fullAccess: true });
 
@@ -207,12 +207,12 @@ describe('RundDocumentosService - ciclo CRUD documental', () => {
     const runner = transaction(() => []);
     const dataSource = {
       query: jest.fn()
-        .mockResolvedValueOnce([docente])
         .mockResolvedValueOnce([current]),
       createQueryRunner: jest.fn(() => runner),
     };
     const storage = { remove: jest.fn().mockResolvedValue(undefined) };
-    const service = new RundDocumentosService(dataSource as any, storage as any);
+    const service = new RundDocumentosService(dataSource as any, storage as any, {} as any);
+    jest.spyOn(service as any, 'requireDocente').mockResolvedValue(docente);
 
     await expect(service.remove(docente.id, current.id, 'admin-3', '10.0.0.3'))
       .resolves.toEqual({ id: current.id, eliminado: true });

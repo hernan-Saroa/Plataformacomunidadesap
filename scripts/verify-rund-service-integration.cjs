@@ -31,9 +31,12 @@ let clusterStarted = false;
 let application;
 let applicationOutput = '';
 let notifications;
+let authIdentityFixture;
+let catalogFixture;
 let publicProxy;
 let notificationCount = 0;
 const notificationBodies = [];
+let macroMailFailure = false;
 const authSyncToken = randomBytes(32).toString('hex');
 let authSyncMode = 'normal';
 let authSyncPageSize = 100;
@@ -267,6 +270,8 @@ async function cleanup() {
   if (database) await database.end();
   if (publicProxy) await new Promise((resolve) => publicProxy.close(resolve));
   if (notifications) await new Promise((resolve) => notifications.close(resolve));
+  if (authIdentityFixture) await authIdentityFixture.close();
+  if (catalogFixture) await catalogFixture.close();
   if (clusterStarted || (runtime && fs.existsSync(path.join(runtime, 'data/postmaster.pid')))) {
     // pg_ctl solo controla el directorio que creó esta ejecución.
     await command(binary('pg_ctl'), ['-D', path.join(runtime, 'data'), '-m', 'fast', '-w', 'stop']);
@@ -381,12 +386,19 @@ async function run() {
     try { await fixture.synchronize(); } finally { await fixture.destroy(); }
     await database.query(`CREATE TABLE academic_work_plan.periodo_academico (codigo text PRIMARY KEY, estado text);
       -- Proyección mínima del catálogo existente (326_create_catalog_tables.sql).
-      CREATE TABLE academic_work_plan.direccion_territorial (codigo text PRIMARY KEY, nombre text NOT NULL);
+      CREATE TABLE academic_work_plan.direccion_territorial (codigo text PRIMARY KEY, nombre text NOT NULL,
+        activo boolean NOT NULL DEFAULT true, deleted_at timestamp);
       INSERT INTO academic_work_plan.periodo_academico VALUES ('2026-2','en_curso');
       INSERT INTO auth.seccionales (id_seccional,nom_seccional,cod_seccional) VALUES (999,'Territorial Ficticia','99')`);
 
+    authIdentityFixture = await require('./verify-rund-auth-identity.cjs')(pgConfig, runtime, authSyncToken);
+    catalogFixture = await require('./verify-rund-catalogos.cjs')(pgConfig, runtime, authSyncToken);
     // Intercepta todos los correos del proceso de prueba; no se contacta ningún servicio real.
     notifications = http.createServer(async (req, res) => {
+      if (req.url.startsWith('/internal/rund/v1/personas/') || req.url.startsWith('/internal/rund/v1/catalogos/')
+        || req.url.startsWith('/internal/rund/v1/banco/')) {
+        authIdentityFixture.forward(req, res); return;
+      }
       if (req.method === 'GET' && req.url.startsWith('/users?')) {
         const url = new URL(req.url, 'http://auth-ficticio');
         authSyncRequests.push({ page: url.searchParams.get('page'), role: url.searchParams.get('role'),
@@ -422,7 +434,7 @@ async function run() {
       req.on('data', (chunk) => { body += chunk; });
       req.on('end', () => {
         notificationBodies.push(JSON.parse(body || '{}'));
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(macroMailFailure && req.url === '/api/v1/emails/send' ? 503 : 200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true }));
       });
     });
@@ -454,6 +466,7 @@ async function run() {
       OPENKM_BASE_URL: '', OPENKM_USERNAME: '', OPENKM_PASSWORD: '', AUTH_SERVICE_URL: stubUrl,
       NOTIFICATIONS_SERVICE_URL: stubUrl, NOTIFICATION_SERVICE_URL: stubUrl,
       AUTH_INTERNAL_SERVICE_TOKEN: authSyncToken, INTERNAL_SERVICE_TOKEN: serviceToken, RUND_AUTH_SYNC_TIMEOUT_MS: '5000', RUND_AUTH_SYNC_MAX_PAGES: '1000',
+      ACADEMIC_WORK_PLAN_SERVICE_URL: catalogFixture.url, PTA_INTERNAL_SERVICE_TOKEN: authSyncToken,
       RUND_CARPETA_INTERNAL_TOKEN: folderToken,
       RUND_CARPETA_SYNC_ENABLED: 'false', RUND_CARPETA_SYNC_TOKEN: '',
       PUBLIC_APP_URL: publicBase, FRONTEND_URL: publicBase };
@@ -565,6 +578,22 @@ async function run() {
       assert(!JSON.stringify(result).includes('145.5'));
       await request(`/rund/interoperabilidad/perfiles/${row.DOCUMENTO_IDENTIDAD}?periodo=2025-1`, { status: 404 });
     });
+    await require('./verify-rund-bank-identity.cjs')(pgConfig, runtime, check, { database, request, docenteId, jwt,
+      authUrl: stubUrl, authFixture: authIdentityFixture, authToken: authSyncToken });
+    await require('./verify-rund-card-identity.cjs')(pgConfig, runtime, check, { database, request, docenteId, jwt,
+      authUrl: stubUrl, authFixture: authIdentityFixture, authToken: authSyncToken });
+    await require('./verify-rund-trusted-identity.cjs')(pgConfig, runtime, check, { database, request, docenteId,
+      authUrl: stubUrl, authFixture: authIdentityFixture, authToken: authSyncToken });
+    await require('./verify-rund-duplicates.cjs')(pgConfig, runtime, check, { database, request, docenteId, jwt,
+      authUrl: stubUrl, authFixture: authIdentityFixture, authToken: authSyncToken });
+    await require('./verify-rund-support-identity.cjs')(pgConfig, runtime, check, { database, request, docenteId, jwt,
+      authUrl: stubUrl, authFixture: authIdentityFixture, authToken: authSyncToken, ptaFixture: catalogFixture, appDir });
+    await require('./verify-rund-document-identity.cjs')(pgConfig, runtime, check, { database, request, docenteId, jwt,
+      authUrl: stubUrl, authFixture: authIdentityFixture, authToken: authSyncToken, appDir });
+    await require('./verify-rund-extraction-identity.cjs')(pgConfig, runtime, check, { database, request, docenteId, jwt,
+      authUrl: stubUrl, authFixture: authIdentityFixture, authToken: authSyncToken, appDir });
+    await require('./verify-rund-ocr-recipient.cjs')(pgConfig, runtime, check, { database, docenteId,
+      authUrl: stubUrl, authFixture: authIdentityFixture, authToken: authSyncToken });
     await check('Bloques, categorías y validación documental funcionan con PostgreSQL real', async () => {
       assert.equal((await request(`/banco-docentes/${docenteId}/bloques`)).data.length, 6);
       assert.equal((await request('/banco-docentes/documentos/categorias')).data.length, 7);
@@ -875,6 +904,9 @@ async function run() {
       assert.notEqual(next.items[0].id, page.items[0].id);
       assert.equal(next.nextCursor, null);
     });
+    await require('./verify-rund-provider-contracts.cjs')(pgConfig, runtime, check, { request, internal, docenteId });
+    await authIdentityFixture.verify(check, { database, request, internal, docenteId });
+    await catalogFixture.verify(check, { database, internal, docenteId, authUrl: stubUrl, authFixture: authIdentityFixture });
     await check('Perfil con id textual conserva consultas, documentos, bloques y auditoría', async () => {
       const legacyId = 'DOC-HISTORICO-FICTICIO-001';
       const personId = randomUUID();
@@ -959,6 +991,8 @@ async function run() {
       try { await request('/docentes', { token, status: 403 }); }
       finally { await database.query('ALTER TABLE auth.permission_ficticia_temporal RENAME TO permission'); }
     });
+    await require('./verify-rund-permissions-owner.cjs')(pgConfig, runtime, check, { database, authUrl: stubUrl,
+      authFixture: authIdentityFixture, authToken: authSyncToken, request, signToken: payload => jwt.sign(payload, { expiresIn: '10m' }) });
     await check('Auditoría y soporte fuente conservan su inmutabilidad', async () => {
       for (const sql of ['UPDATE rund."RundAprobacionLog" SET accion=accion',
         'DELETE FROM rund."RundCargaMasiva"', 'TRUNCATE rund."RundAccesoDatosLog"']) {
@@ -1065,6 +1099,7 @@ async function run() {
     await check('sync-from-auth consulta /users con credencial interna y UUID de rol; no altera auth ni perfiles existentes', async () => {
       const beforeAuth = await authSnapshot();
       const existingProfiles = (await database.query('SELECT * FROM rund."Docente" ORDER BY id')).rows;
+      const existingValidations = (await database.query('SELECT * FROM rund.validacion_documental ORDER BY id')).rows;
       const result = await request('/banco-docentes/sync-from-auth', { method: 'POST', status: 201 });
       assert.equal(result.data.created, 2);
       assert.equal(result.data.failed, 0);
@@ -1073,6 +1108,7 @@ async function run() {
       assert(authSyncRequests.every(item => /^[0-9a-f-]{36}$/.test(item.role)));
       assert.deepEqual(await authSnapshot(), beforeAuth);
       assert.deepEqual((await database.query('SELECT * FROM rund."Docente" WHERE id=ANY($1::text[]) ORDER BY id', [existingProfiles.map(profile => profile.id)])).rows, existingProfiles);
+      assert.deepEqual((await database.query('SELECT * FROM rund.validacion_documental WHERE docente_id=ANY($1::text[]) ORDER BY id', [existingProfiles.map(profile => profile.id)])).rows, existingValidations);
       const rows = (await database.query('SELECT * FROM rund."Docente" WHERE "personaId"=ANY($1::uuid[]) ORDER BY id', [[firstSyncIdentity.pid,secondSyncIdentity.pid]])).rows;
       assert.equal(rows.length, 2);
       for (const row of rows) {
@@ -1080,7 +1116,7 @@ async function run() {
         assert.equal(row.tipoVinculacion, ''); assert.equal(row.dedicacion, ''); assert.equal(row.horasAsignables, 0);
         assert.equal(row.territorialId, '999'); assert.equal(row.puntajeSalarial, null);
         assert.equal(Number((await database.query('SELECT count(*) FROM rund."RundCampoEstado" WHERE docente_id=$1', [row.id])).rows[0].count), 6);
-        assert.equal(Number((await database.query('SELECT count(*) FROM rund.validacion_documental WHERE docente_id=$1', [row.id])).rows[0].count), 24);
+        assert.equal(Number((await database.query('SELECT count(*) FROM rund.validacion_documental WHERE docente_id=$1', [row.id])).rows[0].count), 36);
         const audit = (await database.query(`SELECT actor_id,ip,metadata FROM rund."RundAprobacionLog" WHERE docente_id=$1 AND soporte_id='AUTH_SYNC'`, [row.id])).rows;
         assert.equal(audit.length, 1); assert.equal(audit[0].actor_id, actorId); assert.equal(audit[0].metadata.modo, 'solo_creacion');
       }
@@ -1145,6 +1181,8 @@ async function run() {
         body: { actorId: 'SUPLANTADO', usuarios: [{ id: randomUUID() }], authServiceUrl: 'http://otra.invalid' } });
       assert.deepEqual(await rundSyncSnapshot(), before);
     });
+    await require('./verify-rund-auth-sync-owner.cjs')(pgConfig, runtime, check, { database, authUrl: stubUrl,
+      authFixture: authIdentityFixture, authToken: authSyncToken, setListingMode: mode => { authSyncMode = mode; } });
     await check('La invitación RUND usa la ruta pública propia del shell y conserva el token almacenado', async () => {
       const result = await request('/banco-docentes/invitaciones', { method: 'POST', status: 201,
         body: { correoInstitucional: 'invitacion-rund-ficticia@example.test' } });
@@ -1155,7 +1193,23 @@ async function run() {
       assert.equal((await database.query(`SELECT token_acceso FROM rund."BancoDocentesInvitaciones" WHERE correo_institucional=$1`,
         ['invitacion-rund-ficticia@example.test'])).rows[0].token_acceso, token);
     });
+    await require('./verify-rund-consumer-copies.cjs')(pgConfig, runtime, check, { rundUrl: base, serviceToken, docenteId,
+      personaId: (await database.query('SELECT "personaId" FROM rund."Docente" WHERE id=$1', [docenteId])).rows[0].personaId });
     await require('./verify-auth-document-versions.cjs')(pgConfig, runtime, check, { rundUrl: base, folderToken });
+    await require('./verify-rund-bank-catalog.cjs')(pgConfig, runtime, check, { database, request, row, workbookBody,
+      docenteId, authUrl: stubUrl, authFixture: authIdentityFixture, authToken: authSyncToken });
+    await require('./verify-rund-active-period.cjs')(pgConfig, runtime, check, { database, request, row, workbookBody,
+      catalogFixture, ptaToken: authSyncToken, authFixture: authIdentityFixture });
+    await require('./verify-rund-pta-profile-identity.cjs')(pgConfig, runtime, check, { database, request, docenteId,
+      authUrl: stubUrl, authFixture: authIdentityFixture, authToken: authSyncToken });
+    await require('./verify-rund-macro-notifications.cjs')(pgConfig, runtime, check, { database, request, docenteId, publicBase,
+      notificationBodies, setMailFailure: value => { macroMailFailure = value; } });
+    await require('./verify-rund-macro-historical-identity.cjs')(pgConfig, runtime, check, { database, request, docenteId, publicBase,
+      ptaFixture: catalogFixture, ptaToken: authSyncToken, jwt });
+    await require('./verify-rund-auth-identity-write.cjs')(pgConfig, runtime, check, { database, request, row, workbookBody,
+      docenteId, authUrl: stubUrl, authToken: authSyncToken });
+    await require('./verify-rund-auth-identity-validation.cjs')(pgConfig, runtime, check, { database,
+      authUrl: stubUrl, authToken: authSyncToken, authFixture: authIdentityFixture });
   } finally {
     await cleanup();
   }
@@ -1164,6 +1218,9 @@ async function run() {
     externalSchemas: 'auth: DDL + migración 158; academic_work_plan: fixtures ORM, período y catálogo territorial ficticios',
     publicRouting: 'proxy local de prueba: /services/rund/api/v1; no inicia Nginx ni api-gateway',
     authUserRouting: 'fixture HTTP local /users con UUID de rol, token interno, DTO y paginación; no inicia auth-service',
+    authIdentityRouting: 'controlador, guard, servicio e interceptor compilados de Auth sobre HTTP local y SQL temporal de solo lectura; no inicia Auth AppModule',
+    catalogRouting: 'controladores, guards y servicios compilados de Auth/PTA con HTTP real y SQL temporal de solo lectura; no inicia sus AppModules',
+    ptaCopyRouting: 'cliente/sincronizador compilados con HTTP/SQL real; base temporal separada con Docente mínimo y FK de plan ficticio; no inicia PTA AppModule',
     migrations: migrationNames, passed: true, checks };
   fs.writeFileSync(path.join(root, 'docs/rund/validacion-servicio-postgres-local.json'), JSON.stringify(report, null, 2) + '\n');
   console.log(`OK: ${checks.length} comprobaciones; aplicación detenida y cluster temporal eliminado.`);

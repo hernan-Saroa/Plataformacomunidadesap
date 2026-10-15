@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-14T10:12:38.317Z",
+  "verifiedAt": "2026-10-15T10:17:06.812Z",
   "step": "12.5b",
   "passed": true,
   "checks": [
@@ -12,6 +12,13 @@
     "Sin sesión el guard impide CRUD RUND antes de llegar al propietario",
     "La ruta pública OTP sigue llegando a RUND sin JWT y no registra su cuerpo",
     "Las API internas de servicio no salen por el gateway ni con JWT y token interno",
+    "El nuevo destinatario interno tampoco sale por POST normal o codificado",
+    "La sincronización interna Auth queda bloqueada por GET y POST, incluso codificada y con credenciales",
+    "Los permisos internos Auth no salen por POST normal o codificado, incluso con JWT y token",
+    "La identidad histórica de PTA no sale por POST interno normal o codificado, incluso con JWT y token",
+    "El catálogo de programas PTA no sale por POST interno normal o codificado con JWT y token",
+    "Los planes históricos PTA no salen por POST interno normal o codificado con JWT y token",
+    "La prevalidación de escritura Auth no sale por POST interno normal o codificado con JWT y token",
     "Un módulo ajeno conserva transporte, consultas y cuerpos de auditoría"
   ],
   "gatewayAppModuleReal": true,

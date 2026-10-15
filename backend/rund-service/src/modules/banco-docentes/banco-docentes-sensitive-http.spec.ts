@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { DataSource } from 'typeorm';
+import { AuthIdentityClient } from '../../common/auth-identity.client';
 import request from 'supertest';
 import { BancoDocentesController } from './banco-docentes.controller';
 import { BancoDocentesService } from './banco-docentes.service';
@@ -28,9 +28,9 @@ describe('RBAC RUND por HTTP con el guard real y permisos resueltos', () => {
       providers: [
         { provide: BancoDocentesService, useValue: service },
         { provide: DocumentTypeValidatorService, useValue: {} },
-        { provide: DataSource, useValue: {
-          query: jest.fn(async (_sql: string, [roles]: string[][]) =>
-            roles.includes('CONSULTOR_SIN_PERMISOS') ? [] : [{ code: RUND_PERMISSIONS.VIEW }, { code: RUND_PERMISSIONS.MANAGE }]),
+        { provide: AuthIdentityClient, useValue: {
+          permisosRoles: jest.fn(async (roles: string[]) =>
+            roles.includes('CONSULTOR_SIN_PERMISOS') ? [] : [RUND_PERMISSIONS.VIEW, RUND_PERMISSIONS.MANAGE]),
         } },
       ],
     }).compile();

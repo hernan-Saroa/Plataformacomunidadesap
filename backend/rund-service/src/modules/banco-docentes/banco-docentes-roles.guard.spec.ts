@@ -1,6 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
 import { BancoDocentesRolesGuard } from './banco-docentes-roles.guard';
-import { RUND_PERMISSION_CODES } from '../../auth/rund-permission-catalog';
 
 function contextFor(user: any): any {
   const request = { user } as any;
@@ -21,29 +20,26 @@ describe('BancoDocentesRolesGuard', () => {
         .mockReturnValueOnce(['DOCENTE'])
         .mockReturnValueOnce(undefined),
     };
-    const guard = new BancoDocentesRolesGuard(reflector as any, { query: jest.fn() } as any);
+    const guard = new BancoDocentesRolesGuard(reflector as any, { permisosRoles: jest.fn() } as any);
     const { context } = contextFor({ roles: [{ code: 'docente' }] });
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
   });
 
-  it('autoriza un rol personalizado mediante auth.role_permissions', async () => {
+  it('autoriza un rol personalizado mediante la API propietaria de Auth', async () => {
     const reflector = {
       getAllAndOverride: jest.fn()
         .mockReturnValueOnce(['GESTION_PROFESORAL'])
         .mockReturnValueOnce(['banco-docentes.rund.documents.manage']),
     };
-    const dataSource = {
-      query: jest.fn().mockResolvedValue([{ code: 'banco-docentes.rund.documents.manage' }]),
+    const identities = {
+      permisosRoles: jest.fn().mockResolvedValue(['banco-docentes.rund.documents.manage']),
     };
-    const guard = new BancoDocentesRolesGuard(reflector as any, dataSource as any);
+    const guard = new BancoDocentesRolesGuard(reflector as any, identities as any);
     const { context, request } = contextFor({ roles: ['ADMIN_RUND_PERSONALIZADO'] });
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('auth.role_permissions'), [
-      ['ADMIN_RUND_PERSONALIZADO'],
-      RUND_PERMISSION_CODES,
-    ]);
+    expect(identities.permisosRoles).toHaveBeenCalledWith(['ADMIN_RUND_PERSONALIZADO']);
     expect(request.rundPermissions).toEqual(new Set(['banco-docentes.rund.documents.manage']));
   });
 
@@ -55,7 +51,7 @@ describe('BancoDocentesRolesGuard', () => {
     };
     const guard = new BancoDocentesRolesGuard(
       reflector as any,
-      { query: jest.fn().mockResolvedValue([]) } as any,
+      { permisosRoles: jest.fn().mockResolvedValue([]) } as any,
     );
     const { context } = contextFor({ roles: ['DOCENTE'] });
 
@@ -70,7 +66,7 @@ describe('BancoDocentesRolesGuard', () => {
     };
     const guard = new BancoDocentesRolesGuard(
       reflector as any,
-      { query: jest.fn().mockRejectedValue(new Error('DB no disponible')) } as any,
+      { permisosRoles: jest.fn().mockRejectedValue(new Error('Auth no disponible')) } as any,
     );
     const { context } = contextFor({ roles: ['GESTION_PROFESORAL'] });
 

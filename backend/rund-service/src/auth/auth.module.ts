@@ -6,9 +6,11 @@ import { requireInProduction } from '../common/require-env';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { PermissionsGuard } from './permissions.guard';
+import { AuthIdentityModule } from '../common/auth-identity.client';
 
 @Module({
   imports: [
+    AuthIdentityModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -22,6 +24,6 @@ import { PermissionsGuard } from './permissions.guard';
     }),
   ],
   providers: [JwtStrategy, JwtAuthGuard, PermissionsGuard],
-  exports: [PassportModule, JwtModule, JwtAuthGuard, PermissionsGuard],
+  exports: [PassportModule, JwtModule, JwtAuthGuard, PermissionsGuard, AuthIdentityModule],
 })
 export class AuthModule {}

@@ -1,0 +1,82 @@
+{
+  "verifiedAt": "2026-10-14T15:03:55.930Z",
+  "step": "12.5d.2",
+  "checkpoint": "Contratos PTA/Programación → RUND",
+  "baseCommit": "63b9fc07a97f06cba1d5f99dc4e74616831531ec",
+  "builds": {
+    "ptaPassed": true,
+    "programacionPassed": true,
+    "command": "npm.cmd run build"
+  },
+  "tests": {
+    "pta": {
+      "suitesPassed": 87,
+      "testsPassed": 830
+    },
+    "programacion": {
+      "suitesPassed": 14,
+      "testsPassed": 112
+    },
+    "newRegressionTestsSinceMerge": 66,
+    "command": "node node_modules/jest/bin/jest.js --runInBand",
+    "installedDatabaseCanaries": "isolated with DB_HOST=127.0.0.1, DB_PORT=1; unavailable-database branches do not certify real data"
+  },
+  "integration": {
+    "passed": true,
+    "checks": [
+      "PTA copia: sincronización HTTP/SQL real conserva el ID local y sus referencias al actualizar el perfil",
+      "PTA copia: una respuesta HTTP parcial no convierte las columnas históricas en NULL",
+      "PTA copia: un período ajeno y una página incompleta no alteran la copia ni simulan éxito vacío",
+      "PTA copia: columnas nulas explícitas siguen actualizándose sin perder el ID local"
+    ],
+    "newCopyChecks": 4,
+    "temporaryPostgresOnly": true,
+    "compiledConsumers": [
+      "Auth",
+      "PTA",
+      "Programación"
+    ],
+    "ptaCopyFixture": "minimal Docente table with real foreign key from fictitious plan; direct compiled client/synchronizer, not full PTA AppModule",
+    "command": "node scripts/verify-rund-service-integration.cjs"
+  },
+  "previousAuthSourceHashesUnchanged": true,
+  "behavior": [
+    "Profile identity and requested document are verified before use.",
+    "Required field presence, nullable values, finite nonnegative hours and calendar dates are verified.",
+    "Incomplete/invalid JSON and success:false return 503 without retry or owner SQL fallback.",
+    "PTA pages require explicit terminal cursor, unique identified rows and bounded page size.",
+    "Cursor cycles stop synchronization and release its lock.",
+    "Resolved rows must match requested identity and explicit period; real 404 remains absence.",
+    "Document validation requires identified states and completeness value; empty/missing state lists are not confirmed.",
+    "Missing local columns prevent writes; explicit NULL and existing local IDs remain supported."
+  ],
+  "limits": [
+    "Operational environment acceptance is still pending.",
+    "Valid earlier pages remain copied if a later page fails; no whole-run atomicity claim.",
+    "Provider period selection and completeness of all required document fields still require review.",
+    "Identity/catalog SQL dependencies across Auth/PTA remain.",
+    "Research text and business classification/hour-limit rules are preserved."
+  ],
+  "existingDatabaseUsedForFinalValidation": false,
+  "operativeMigrationsExecuted": false,
+  "realEnvironmentFilesRead": false,
+  "operativeDataCopyExecuted": false,
+  "deployed": false,
+  "pushed": false,
+  "environmentAcceptanceCertified": false,
+  "mainStepsCompletedLocally": 11,
+  "currentMainStep": 12,
+  "remainingWorkstreamsIncludingCurrent": 5,
+  "sourceHashes": {
+    "backend/academic-schedule-service/src/asignaciones/rund-client.ts": "96edfdc416dcef40dcd9ecfe42e825331987a8c82658ab270a83a38b324b3306",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.spec.ts": "7e4b7ace41bf26f4aca75a895030d886743092126b98078f4bf4d9c1ef1202e8",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.ts": "ce98cab2a76186cf6b66606b048849b3e59072b5539c4666c10353b67d95abf2",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.spec.ts": "4e1c12b82cb5d570e24ac3bac4f2ae48882c62399ded648db7b08d26d08c47b7",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.ts": "55e065df1e174fc14d16b7af42d6afa7103aea2a8cd5f5f3a6d54fb092552875",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.spec.ts": "248cc2588b86bb710bb6d5bccb61c0a8daf85d316f2f09a69d5e55d9ba2df244",
+    "backend/academic-work-plan-service/src/contrato-programacion/v1/docentes-contrato.rund.spec.ts": "36576dee75576499ab6660640de9f220835f9de4269ab945b8927e1fd882740e",
+    "scripts/verify-rund-service-integration.cjs": "083557d379aa1dc0a2eda30fd0c94aeb7d277fc0c708f6f0aab870382014b53a",
+    "scripts/verify-rund-consumer-copies.cjs": "dafd9de7aab321f23ad75eb34f807dae6bdb57b9f633ecf5bc2801356ef064ce",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "eb030ff0a0cc498d384899913af43a4e56d8fcd63e962a3435ac55d838fa10b1"
+  }
+}

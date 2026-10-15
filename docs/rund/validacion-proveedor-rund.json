@@ -1,0 +1,109 @@
+{
+  "verifiedAt": "2026-10-14T15:25:00.343Z",
+  "step": "12.5d.2",
+  "checkpoint": "Período exacto y catálogo documental del proveedor RUND",
+  "baseCommit": "63b9fc07a97f06cba1d5f99dc4e74616831531ec",
+  "buildPassed": true,
+  "tests": {
+    "suitesPassed": 44,
+    "testsPassed": 540,
+    "newRegressionTests": 9,
+    "authSyncTestsRepeated": 26
+  },
+  "commands": {
+    "build": "cd backend/rund-service; npm.cmd run build",
+    "tests": "cd backend/rund-service; node node_modules/jest/bin/jest.js --runInBand",
+    "integration": "node scripts/verify-rund-service-integration.cjs"
+  },
+  "catalog": {
+    "fieldCount": 36,
+    "matchesExistingBankNamesTypesAndOrder": true,
+    "sharedByBankValidationAndAuthCreation": true,
+    "initialization": "missing fields only, atomic INSERT ON CONFLICT DO NOTHING, during document-state query",
+    "preserved": [
+      "IDs",
+      "decisions",
+      "No aplica",
+      "actors",
+      "dates",
+      "observations",
+      "additional historical fields"
+    ],
+    "examples": {
+      "accepted24Of36Percent": 67,
+      "accepted1Of36Percent": 3
+    },
+    "wholeInstalledDatabaseSweepExecuted": false
+  },
+  "resolution": {
+    "explicitPeriodRequiredToMatch": true,
+    "absentPeriodHttpStatus": 404,
+    "explicitProfileIdPrecedence": true,
+    "uniquePersonAndUserAliasesPreserved": true,
+    "ambiguousDocumentStateAliasHttpStatus": 409,
+    "authIdentityQueryFailureHttpStatus": 503,
+    "withoutPeriodSelectionPreserved": true
+  },
+  "integration": {
+    "passed": true,
+    "totalChecks": 138,
+    "newProviderChecks": [
+      "Proveedor RUND: período inexistente retorna 404 sin sustituirlo por otro perfil",
+      "Proveedor RUND: alias ambiguos de persona/usuario no eligen estados de un período arbitrario",
+      "Proveedor RUND: cada ID de perfil explícito conserva sus propios estados aunque comparta persona",
+      "Proveedor RUND: fallo al completar el catálogo revierte toda la sentencia y conserva decisiones previas",
+      "Proveedor RUND: completa 36 requisitos sin perder aprobaciones, No aplica, actores ni campos históricos",
+      "Proveedor RUND: inicializaciones concurrentes no duplican campos ni cambian decisiones persistidas",
+      "Proveedor RUND: repetir una consulta completa conserva IDs, fechas, metadatos y estados"
+    ],
+    "temporaryPostgresOnly": true,
+    "compiledConsumers": [
+      "Auth",
+      "PTA",
+      "Programación"
+    ],
+    "authProjectionNativeRowsStrictlyCompared": true
+  },
+  "previousConsumerTypeScriptSourcesUnchanged": {
+    "backend/auth-service/src/carpeta-digital/rund-client.ts": "d305a4fb5f9f9ecc1894b2454f28b5a916fb3540600f38c107c07ecb9938a4cc",
+    "backend/auth-service/src/carpeta-digital/rund-client.spec.ts": "5b6f5cc59af03df49a4ea2319ace25d34fa6ca3f731349c3530798797e8e1ab5",
+    "backend/auth-service/src/carpeta-digital/rund-document-access.spec.ts": "aefaf510ef6bb8c693a572ce830972ab042aba5e1a6ad2fd9d62f448734f721a",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.ts": "96edfdc416dcef40dcd9ecfe42e825331987a8c82658ab270a83a38b324b3306",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.spec.ts": "7e4b7ace41bf26f4aca75a895030d886743092126b98078f4bf4d9c1ef1202e8",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.ts": "ce98cab2a76186cf6b66606b048849b3e59072b5539c4666c10353b67d95abf2",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.spec.ts": "4e1c12b82cb5d570e24ac3bac4f2ae48882c62399ded648db7b08d26d08c47b7",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.ts": "55e065df1e174fc14d16b7af42d6afa7103aea2a8cd5f5f3a6d54fb092552875",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.spec.ts": "248cc2588b86bb710bb6d5bccb61c0a8daf85d316f2f09a69d5e55d9ba2df244",
+    "backend/academic-work-plan-service/src/contrato-programacion/v1/docentes-contrato.rund.spec.ts": "36576dee75576499ab6660640de9f220835f9de4269ab945b8927e1fd882740e"
+  },
+  "existingDatabaseUsed": false,
+  "realEnvironmentFilesRead": false,
+  "operativeMigrationsExecuted": false,
+  "operativeDataCopyExecuted": false,
+  "deployed": false,
+  "pushed": false,
+  "environmentAcceptanceCertified": false,
+  "migrationStatus": {
+    "mainStepsCompletedLocally": 11,
+    "currentMainStep": 12,
+    "remainingWorkstreamsIncludingCurrent": 5
+  },
+  "limits": [
+    "Operational acceptance of installations still pending.",
+    "Identity/catalog SQL dependencies across Auth/PTA remain.",
+    "No-aplica and block/PTA approval rules are preserved; percentage alone does not grant approval."
+  ],
+  "sourceHashes": {
+    "backend/rund-service/src/internal/internal-rund.service.ts": "8dadcae88dbd2fcd2f278e3ebf8a9867a7f0f25c95ac69d0f87a8515a043bfc8",
+    "backend/rund-service/src/internal/internal-rund.spec.ts": "1e70e82ea64b0fc9828e471e7425714572647e2708588f197ec8261980e3ab4f",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts": "cbf8c101e4049d2446eaa94931810e50fc7518236d5718607235c76d43be4dd4",
+    "backend/rund-service/src/modules/banco-docentes/rund-document-fields.ts": "01aa9b9a9934fa911c76ea3f9579ccdf53da3089902cadd9a610c6d81d64d291",
+    "backend/rund-service/src/modules/banco-docentes/rund-auth-sync.ts": "35d397faebb33ef221bbe6c875b38970f5e7f8040d3586f5cf9777dfb5e658a4",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.ts": "d9e402230904ff246b531a4b660f0855e1c46da0eef80eacbb661c4222594a73",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.spec.ts": "688b170cebdd3b285c66b05d38d63c2c9ea508012ef6bcbbd3af16aa41d0357f",
+    "scripts/verify-rund-provider-contracts.cjs": "6e76ad97b2b1f561d962c8aa8f72f13e728792c616e072dd13bad4a7339c44a4",
+    "scripts/verify-rund-service-integration.cjs": "d358a1aa04a08525be99c2880210c3fff77e4063bf03ce31860a7e6b09980163",
+    "scripts/verify-rund-auth-state-sync.cjs": "60934548494ae97c081f7b799fe0b74f25d9339aaadb5e43004faac2830120ca",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "649519f319e11a8140df7bef29b856e5547c0b829905b3356a7f132a9f43def6"
+  }
+}

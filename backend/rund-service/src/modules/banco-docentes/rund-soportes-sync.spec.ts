@@ -3,6 +3,7 @@ import { join, resolve, sep } from 'path';
 import { BancoDocentesService } from './banco-docentes.service';
 import { BancoDocentesController } from './banco-docentes.controller';
 import { RundDocumentStorageService } from './rund-document-storage.service';
+import { ServiceUnavailableException } from '@nestjs/common';
 
 describe('Soportes históricos: diagnóstico y reparación sin duplicar rutas', () => {
   let temp: string;
@@ -11,6 +12,8 @@ describe('Soportes históricos: diagnóstico y reparación sin duplicar rutas', 
   let query: jest.Mock;
   let supports: any[];
   let folder: string;
+  let nombres: jest.Mock;
+  let nombreHistorico: jest.Mock;
   const docente = { id: 'docente-textual', personaId: 'persona-ficticia' };
   const tempParent = resolve(process.cwd(), '../../tmp');
 
@@ -32,7 +35,11 @@ describe('Soportes históricos: diagnóstico y reparación sin duplicar rutas', 
     });
     const repo = { find: jest.fn().mockResolvedValue([docente]), findOne: jest.fn().mockResolvedValue(docente) };
     const personas = { findOne: jest.fn().mockResolvedValue({ primer_nombre: 'DOCENTE', primer_apellido: 'PRUEBA' }) };
-    service = new BancoDocentesService(repo as any, personas as any, {} as any, {} as any, {} as any, { query } as any);
+    nombres = jest.fn().mockResolvedValue(new Map([[docente.personaId, 'DOCENTE PRUEBA']]));
+    nombreHistorico = jest.fn().mockResolvedValue({ primer_nombre: 'DOCENTE', primer_apellido: 'PRUEBA' });
+    service = new BancoDocentesService(repo as any, personas as any, {} as any, {} as any, {} as any, { query } as any,
+      { territorialesBanco: jest.fn().mockResolvedValue([]), nombreHistorico } as any, {} as any,
+      { nombresPorPersonas: nombres, fichaPorPersona: jest.fn().mockResolvedValue(null), personasPorAlias: jest.fn().mockResolvedValue([]) } as any);
     jest.spyOn(service as any, 'resolveDocenteId').mockResolvedValue(docente.id);
   });
   afterEach(() => {
@@ -73,12 +80,54 @@ describe('Soportes históricos: diagnóstico y reparación sin duplicar rutas', 
     expect(JSON.stringify(supports)).toBe(previous);
   });
 
+  it('diagnóstico conserva segundo nombre, espacios, acentos y regla histórica de PTA', async () => {
+    nombreHistorico.mockResolvedValue({ primer_nombre: ' José ', segundo_nombre: ' Luis', primer_apellido: 'Muñoz', segundo_apellido: ' PÉREZ' });
+    const result = await service.syncCheckDocente(docente.id);
+    expect(result.docenteNombre).toBe('JOS   LUIS MUOZ  PREZ');
+    expect(nombres).not.toHaveBeenCalled();
+    expect(nombreHistorico).toHaveBeenCalledWith(docente.personaId);
+  });
+
+  it('ausencia confirmada en PTA conserva nombre de carpeta con ID nativo', async () => {
+    nombreHistorico.mockResolvedValue(null);
+    expect((await service.syncCheckDocente(docente.id)).docenteNombre).toBe(docente.id);
+  });
+
+  it('PTA caído detiene diagnóstico sin inventar carpeta ni consultar Persona local', async () => {
+    nombreHistorico.mockRejectedValue(new ServiceUnavailableException());
+    await expect(service.syncCheckDocente(docente.id)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(query).not.toHaveBeenCalled();
+    expect((service as any).personaRepo.findOne).not.toHaveBeenCalled();
+  });
+
+  it('reparación confirma todas las identidades antes del primer enlace y conserva archivos si Auth falla', async () => {
+    fs.writeFileSync(join(folder, 'nuevo.pdf'), 'contenido original');
+    supports = [{ id: 'sin-url', documento_carpeta_id: null }];
+    nombres.mockRejectedValue(new ServiceUnavailableException());
+    await expect(service.repararSoportesMasivo()).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(query).not.toHaveBeenCalled();
+    expect(supports).toEqual([{ id: 'sin-url', documento_carpeta_id: null }]);
+    expect(fs.readFileSync(join(folder, 'nuevo.pdf'), 'utf8')).toBe('contenido original');
+  });
+
+  it.each([new Map(), new Map([[docente.personaId, null]]), new Map([[docente.personaId, '']])])(
+    'reparación conserva carpeta por ID para persona ausente o nombre vacío confirmado %s', async snapshot => {
+      nombres.mockResolvedValue(snapshot);
+      const nativeFolder = join(temp, 'uploads', 'carpeta-digital', docente.id, 'RUND');
+      fs.mkdirSync(nativeFolder, { recursive: true }); fs.writeFileSync(join(nativeFolder, 'nuevo.pdf'), 'original');
+      expect(await service.repararSoportesMasivo()).toMatchObject({ totalRegistrosCreados: 1 });
+      expect(supports[0].documento_carpeta_id).toContain('/' + docente.id + '/RUND/');
+    });
+
   it('enlaza referencias ausentes y crea solo los archivos sin registro con URLs de RUND', async () => {
     fs.writeFileSync(join(folder, 'uno.pdf'), 'uno');
     fs.writeFileSync(join(folder, 'dos.pdf'), 'dos');
     supports = [{ id: 'sin-url', documento_carpeta_id: null }];
     expect(await service.repararSoportesMasivo()).toMatchObject({ totalRegistrosEnlazados: 1, totalRegistrosCreados: 1 });
     expect(supports.every(s => s.documento_carpeta_id.startsWith('/rund/api/v1/uploads/'))).toBe(true);
+    // La tabla real no tiene updatedAt: el enlace solo modifica estas dos columnas.
+    const update = query.mock.calls.find(([sql]) => sql.includes('UPDATE rund."RundSoporteCampo"'));
+    expect(update?.[0]).not.toContain('updatedAt');
     expect(await service.repararSoportesMasivo()).toMatchObject({ totalRegistrosEnlazados: 0, totalRegistrosCreados: 0 });
     expect(supports).toHaveLength(2);
   });

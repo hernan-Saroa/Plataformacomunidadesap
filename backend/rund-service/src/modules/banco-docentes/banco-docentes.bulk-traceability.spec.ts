@@ -9,6 +9,7 @@ describe('BancoDocentesService - carga masiva trazable REQ-RUND-F001', () => {
     };
     const service = Object.create(BancoDocentesService.prototype) as BancoDocentesService;
     (service as any).dataSource = dataSource;
+    (service as any).catalogos = { territorialesBanco: jest.fn().mockResolvedValue([]) };
     return { service, dataSource };
   }
 
@@ -41,7 +42,7 @@ describe('BancoDocentesService - carga masiva trazable REQ-RUND-F001', () => {
 
     expect(result.created).toBe(1);
     expect(result.soporteCargaMasivaId).toMatch(/^[0-9a-f-]{36}$/i);
-    expect(String(dataSource.query.mock.calls[1][0])).toContain('RundCargaMasiva');
+    expect(dataSource.query.mock.calls.some(([sql]) => sql.includes('INSERT INTO rund."RundCargaMasiva"'))).toBe(true);
     expect(upsertSpy).toHaveBeenCalledWith(expect.any(Object), expect.objectContaining({
       audit: expect.objectContaining({
         actorId: 'usuario-ggp-1',
@@ -87,12 +88,13 @@ describe('BancoDocentesService - resolución segura por cédula', () => {
     (service as any).docenteRepo = docenteRepo;
     (service as any).dataSource = dataSource;
 
+    (service as any).identities = { personasPorAlias: jest.fn().mockResolvedValue(['persona-ficticia']) };
     const result = await service.resolveDocenteId('1.020.304.050', '2026-2');
 
     expect(result).toBe('11111111-1111-4111-8111-111111111111');
     expect(docenteRepo.findOne).not.toHaveBeenCalled();
-    expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('num_identificacion'), [
-      '1.020.304.050',
+    expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('ANY($1::text[])'), [
+      ['persona-ficticia'],
       '2026-2',
     ]);
   });

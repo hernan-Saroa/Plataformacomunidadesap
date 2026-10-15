@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { INTERNAL_TOKEN_HEADER, InternalServiceGuard } from './internal-service.guard';
 import { InternalRundService } from './internal-rund.service';
 
@@ -35,15 +35,28 @@ describe('InternalRundService', () => {
   const validacion = { getRundDocente: jest.fn().mockResolvedValue({ docenteId: 'd1', completitud: 0, validaciones: [] }) };
   const crear = (respuesta: any = []) => {
     const query = jest.fn().mockResolvedValue(respuesta);
-    return { service: new InternalRundService({ query } as any, validacion as any), query };
+    const identities = { porDocumento: jest.fn().mockImplementation(async documento => ({
+      personaId: '11111111-1111-4111-8111-111111111111', documento, nombreCompleto: 'Persona de Auth',
+    })) };
+    const catalogos = { territoriales: jest.fn().mockResolvedValue([]), seccionales: jest.fn().mockResolvedValue([]) };
+    return { service: new InternalRundService({ query } as any, validacion as any, identities as any, catalogos as any), query, identities, catalogos };
   };
 
   it('devuelve el perfil del docente por documento leyendo del esquema rund', async () => {
-    const { service, query } = crear([{ idDocente: 'd1', documento: '123' }]);
-    await expect(service.docentePorDocumento(' 123 ')).resolves.toEqual({ idDocente: 'd1', documento: '123' });
+    const { service, query, identities } = crear([{ idDocente: 'd1' }]);
+    await expect(service.docentePorDocumento(' 123 ')).resolves.toEqual({ idDocente: 'd1', documento: '123', nombreCompleto: 'Persona de Auth', territorialNombre: null });
     expect(query.mock.calls[0][0]).toContain('FROM rund."Docente"');
     expect(query.mock.calls[0][0]).not.toContain('academic_work_plan."Docente"');
-    expect(query.mock.calls[0][1]).toEqual(['123']);
+    expect(query.mock.calls[0][0]).not.toContain('auth.personas');
+    expect(query.mock.calls[0][1]).toEqual(['11111111-1111-4111-8111-111111111111']);
+    expect(identities.porDocumento).toHaveBeenCalledWith('123');
+  });
+
+  it.each([new NotFoundException(), new ServiceUnavailableException()])('no consulta SQL si Auth no confirma la identidad: %s', async error => {
+    const { service, query, identities } = crear();
+    identities.porDocumento.mockRejectedValue(error);
+    await expect(service.docentePorDocumento('123')).rejects.toBe(error);
+    expect(query).not.toHaveBeenCalled();
   });
 
   it('404 si el documento no existe y 400 si viene vacío', async () => {
@@ -75,8 +88,53 @@ describe('InternalRundService', () => {
     const query = jest.fn()
       .mockResolvedValueOnce([{ total: 277, sinCetap: 270 }])
       .mockRejectedValue(new Error('tabla ausente'));
-    const stats = await new InternalRundService({ query } as any, validacion as any).estadisticasBackoffice();
+    const stats = await new InternalRundService({ query } as any, validacion as any, {} as any,
+      { seccionales: async () => [] } as any).estadisticasBackoffice();
     expect(stats).toMatchObject({ totalDocentes: 277, docentesSinCetap: 270, porVinculacion: [], coberturaTerritorial: [] });
+  });
+
+  it('resuelve nombre territorial por código exacto PTA, conservando ceros y nombres históricos', async () => {
+    const { service, query, catalogos } = crear([{ idDocente: 'd1', territorialCodigo: '01' }]);
+    catalogos.territoriales.mockResolvedValue([{ codigo: '1', nombre: 'No corresponde' }, { codigo: '01', nombre: 'Nombre histórico' }]);
+    await expect(service.docentePorDocumento('123')).resolves.toMatchObject({ territorialCodigo: '01', territorialNombre: 'Nombre histórico' });
+    expect(query.mock.calls[0][0]).not.toContain('academic_work_plan.');
+  });
+
+  it('una territorial sin coincidencia mantiene null, sin probar el ID de Auth ni otro catálogo', async () => {
+    const { service, catalogos } = crear([{ territorialCodigo: '999' }]);
+    await expect(service.docentePorDocumento('123')).resolves.toMatchObject({ territorialNombre: null });
+    expect(catalogos.seccionales).not.toHaveBeenCalled();
+  });
+
+  it('sin territorial no necesita PTA para resolver el perfil', async () => {
+    const { service, catalogos } = crear([{ territorialCodigo: null }]);
+    catalogos.territoriales.mockRejectedValue(new ServiceUnavailableException());
+    await expect(service.docentePorDocumento('123')).resolves.toMatchObject({ territorialNombre: null });
+    expect(catalogos.territoriales).not.toHaveBeenCalled();
+  });
+
+  it('no anuncia un catálogo fallido como una territorial desconocida', async () => {
+    const { service, query, catalogos } = crear([{ territorialCodigo: '01' }]);
+    catalogos.territoriales.mockRejectedValue(new ServiceUnavailableException());
+    await expect(service.docentePorDocumento('123')).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('cobertura usa ID Auth textual, sin convertir bigint a Number ni confundirlo con código PTA', async () => {
+    const { service, query, catalogos } = crear([]);
+    catalogos.seccionales.mockResolvedValue([{ id: '9007199254740993', nombre: 'Histórica' }, { id: '2', nombre: null }]);
+    await service.estadisticasBackoffice();
+    const [sql, params] = query.mock.calls.find(([sql]) => sql.includes('unnest'))!;
+    expect(sql).not.toMatch(/auth\.|academic_work_plan\./);
+    expect(params).toEqual([['9007199254740993', '2'], ['Histórica', null]]);
+    expect(catalogos.territoriales).not.toHaveBeenCalled();
+  });
+
+  it('cobertura sin catálogo confirmado falla explícitamente en vez de publicar cero', async () => {
+    const { service, query, catalogos } = crear([]);
+    catalogos.seccionales.mockRejectedValue(new ServiceUnavailableException());
+    await expect(service.estadisticasBackoffice()).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(query.mock.calls.some(([sql]) => sql.includes('auth.'))).toBe(false);
   });
 
   it('pagina los docentes para sincronizar con cursor sobre el id y limita el tamaño', async () => {
@@ -97,6 +155,7 @@ describe('InternalRundService', () => {
     const { service, query } = crear([{ fila: { id: 'd1', personaId: 'p1' } }]);
     await expect(service.docentePorClave('p1', '2026-2')).resolves.toEqual({ id: 'd1', personaId: 'p1' });
     expect(query.mock.calls[0][0]).toContain('rund."Docente"');
+    expect(query.mock.calls[0][0]).toContain('AND ($2::text IS NULL OR d."periodoCarga" = $2::text)');
     expect(query.mock.calls[0][1]).toEqual(['p1', '2026-2']);
     await expect(crear([]).service.docentePorClave('nada')).rejects.toBeInstanceOf(NotFoundException);
     await expect(crear().service.docentePorClave('  ')).rejects.toBeInstanceOf(BadRequestException);

@@ -1,4 +1,6 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { AuthIdentityClient } from '../../common/auth-identity.client';
+import { DataSource } from 'typeorm';
 
 // Lista cerrada: el modelo nunca elige columnas SQL ni cambia identificadores,
 // permisos, estados, horas derivadas o datos sin un soporte pertinente.
@@ -208,7 +210,27 @@ export function validateCandidates(raw: any, pages: any[], allowed: string[]) {
   return candidates.filter(item=>item.campo!=='documentNumber'||!documentType||documentType==='PA'||/^\d+$/.test(item.valor));
 }
 
-export async function extractionProfile(db: any, docenteId: string) {
+/** Contexto del proceso OCR: solo SQL nativo y lectura de identidad por su propietario. */
+export async function extractionProfile(db: Pick<DataSource, 'transaction'>, docenteId: string,
+  identities: Pick<AuthIdentityClient, 'fichaPorPersona'>) {
+  return db.transaction('REPEATABLE READ', async manager => {
+    await manager.query('SET TRANSACTION READ ONLY');
+    const [native] = await manager.query(`SELECT d."personaId" FROM rund."Docente" d WHERE d.id::text=$1`, [docenteId]);
+    if (!native) throw new BadRequestException('Perfil docente no encontrado.');
+    const persona = await identities.fichaPorPersona(native.personaId);
+    if (!persona) throw new BadRequestException('Perfil docente no encontrado.');
+    const [profile] = await manager.query(`SELECT d.*, $2::text AS nom_largo, $3::text AS num_identificacion,
+      $4::text AS tip_identificacion, $5::text AS gen_tercero, $6::date AS fec_nacimiento
+      FROM rund."Docente" d WHERE d.id::text=$1`, [docenteId, persona.nom_largo, persona.num_identificacion,
+      persona.tip_identificacion, persona.gen_tercero, persona.fec_nacimiento]);
+    // El cast date conserva el parser y la conversión UTC de extractionValue del SELECT anterior.
+    return Object.fromEntries(Object.entries(EXTRACTION_FIELDS).map(([key, def]) => [key, extractionValue(profile[def.source])]));
+  });
+}
+
+/** Lectura dentro de la transacción que ya bloqueó Auth y aplicará la edición confirmada.
+ * Su aislamiento de escrituras es otro corte; no sustituir por una lectura HTTP fuera del lock. */
+async function lockedExtractionProfile(db: any, docenteId: string) {
   const [profile] = await db.query(`SELECT d.*, p.nom_largo, p.num_identificacion, p.tip_identificacion, p.gen_tercero, p.fec_nacimiento
     FROM rund."Docente" d JOIN auth.personas p ON p.id_person::text = d."personaId"::text
     WHERE d.id::text = $1`, [docenteId]);
@@ -235,7 +257,7 @@ export async function lockExtractionSuggestions(db: any, docenteId: string, ids:
     JOIN rund."RundDocumentoPerfil" d ON d.id = j.documento_id
     WHERE s.id = ANY($1::uuid[]) AND j.docente_id::text = $2 FOR UPDATE OF s, d`, [ids, docenteId]);
   if (rows.length !== ids.length || new Set(rows.map((s: any) => s.campo)).size !== ids.length) throw new ConflictException('Las sugerencias no corresponden a este perfil o repiten un campo.');
-  const profile = await extractionProfile(db, docenteId);
+  const profile = await lockedExtractionProfile(db, docenteId);
   for (const s of rows) {
     if (s.estado !== 'PENDIENTE' || s.documento_estado !== 'ACTIVO' || s.trabajo_estado !== 'COMPLETADO') throw new ConflictException('La sugerencia ya fue revisada o su PDF dejó de estar vigente. Actualice el expediente.');
     if (!EXTRACTION_FIELDS[s.campo] || typeof payload[s.campo] !== 'string' || !payload[s.campo].trim()) throw new BadRequestException('Revise el valor del campo sugerido antes de confirmar.');

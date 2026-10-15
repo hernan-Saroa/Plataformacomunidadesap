@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors, UseGuards, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req, Res, UploadedFile, UseInterceptors, UseGuards, Logger, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage, diskStorage } from 'multer';
 import type { Response } from 'express';
@@ -978,7 +978,7 @@ export class BancoDocentesController {
       await this.assertOwnProfileForDocente(String(result.docenteId || ''), result.periodoCarga, req);
       return { success: true, data: await this.protectSensitiveResponse(result, req, 'TARJETA_RUND_POR_ID') };
     } catch (e: any) {
-      if (e instanceof ForbiddenException) throw e;
+      if (e instanceof ForbiddenException || e instanceof ServiceUnavailableException) throw e;
       return { success: false, data: null, message: e.message };
     }
   }

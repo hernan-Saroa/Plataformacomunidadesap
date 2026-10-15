@@ -7,6 +7,8 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 import { AppModule } from './app.module';
 import { ProgramaEntity } from './entities/programa.entity';
 import { FacultadEntity } from './entities/facultad.entity';
+import { BancoDocenteEntity } from './entities/banco-docente.entity';
+import { PlanTrabajoAcademicoEntity } from './entities/plan-trabajo-academico.entity';
 
 class MetadataDataSource extends DataSource {
   prepareMetadata() {
@@ -38,10 +40,10 @@ describe('RUND TypeORM configuration', () => {
 
     await dataSource.prepareMetadata();
 
-    const facultyRelation = dataSource.getMetadata(ProgramaEntity)
-      .findRelationWithPropertyPath('facultadRel');
-    expect(facultyRelation?.inverseEntityMetadata.target).toBe(FacultadEntity);
-    expect(facultyRelation?.inverseEntityMetadata.tablePath).toBe('academic_work_plan.facultad');
+    expect(dataSource.hasMetadata(ProgramaEntity)).toBe(false);
+    expect(dataSource.hasMetadata(FacultadEntity)).toBe(false);
+    expect(dataSource.hasMetadata(PlanTrabajoAcademicoEntity)).toBe(false);
+    expect(dataSource.getMetadata(BancoDocenteEntity).tablePath).toBe('rund.Docente');
     expect(dataSource.isInitialized).toBe(false);
     expect(options.synchronize).toBe(false);
   });

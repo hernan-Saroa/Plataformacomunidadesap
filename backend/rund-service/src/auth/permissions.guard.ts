@@ -1,14 +1,13 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { AuthIdentityClient } from '../common/auth-identity.client';
 import { PERMISSIONS_KEY, IS_PUBLIC_KEY } from './auth.decorators';
 import { getRequestRoleCodes } from '../modules/banco-docentes/banco-docentes-sensitive-data';
 import { resolveRundRequestPermissions } from './rund-effective-permissions';
 
 @Injectable()
 export class PermissionsGuard implements CanActivate {
-  constructor(private reflector: Reflector, @InjectDataSource() private readonly db: DataSource) {}
+  constructor(private reflector: Reflector, private readonly identities: AuthIdentityClient) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -39,7 +38,7 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
-    const permissions = await resolveRundRequestPermissions(this.db, request);
+    const permissions = await resolveRundRequestPermissions(this.identities, request);
     return requiredPermissions.some((perm) => permissions.has(perm));
   }
 }

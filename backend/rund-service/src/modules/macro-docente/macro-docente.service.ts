@@ -2,33 +2,15 @@ import { BadRequestException, ForbiddenException, Injectable, Logger } from '@ne
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { In, Repository } from 'typeorm';
-import { PlanTrabajoAcademicoEntity } from '../../entities/plan-trabajo-academico.entity';
+import { PtaPlanesClient } from '../../common/pta-planes.client';
 import { BancoDocenteEntity } from '../../entities/banco-docente.entity';
-import { PersonaEntity } from '../../entities/persona.entity';
-import { ProgramaEntity } from '../../entities/programa.entity';
+import { RundCatalogosClient } from '../../common/rund-catalogos.client';
 import { RundAccesoExternoEntity } from '../../entities/rund-acceso-externo.entity';
 import { RundMacroDocenteConsultaLogEntity } from '../../entities/rund-macro-docente-consulta-log.entity';
-import { PtaNotificationsService } from '../../notifications/pta-notifications.service';
+import { MacroDocenteNotificationsService } from '../../notifications/macro-docente-notifications.service';
 
 /** Nginx retira /services y el gateway retira /rund/api/v1. */
 const RUTA_PUBLICA_MACRO_DOCENTE = '/services/rund/api/v1/pta/macro-docente';
-
-/**
- * REQ-RUND-F020 — Estados de PTA que se consideran "escritura firme": un
- * borrador aún puede cambiar, así que el Macro Docente (historial oficial)
- * solo debe reflejar asignaturas de PTAs que ya pasaron el flujo de
- * aprobación. Misma lista que ESTADOS_PTA_RESTAURABLES_EDICION en
- * pta.service.ts (no se reexporta desde ahí para no acoplar los módulos).
- */
-const ESTADOS_PTA_FIRMES = [
-  'APROBADO',
-  'APROBADO_DEF',
-  'EN_FIRME',
-  'RADICADO',
-  'EN_EJECUCION',
-  'FINALIZADO',
-  'TERMINADO',
-];
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -80,19 +62,15 @@ export class MacroDocenteService {
   private readonly logger = new Logger(MacroDocenteService.name);
 
   constructor(
-    @InjectRepository(PlanTrabajoAcademicoEntity)
-    private readonly ptaRepo: Repository<PlanTrabajoAcademicoEntity>,
+    private readonly planes: PtaPlanesClient,
     @InjectRepository(BancoDocenteEntity)
     private readonly docenteRepo: Repository<BancoDocenteEntity>,
-    @InjectRepository(PersonaEntity)
-    private readonly personaRepo: Repository<PersonaEntity>,
-    @InjectRepository(ProgramaEntity)
-    private readonly programaRepo: Repository<ProgramaEntity>,
+    private readonly catalogos: RundCatalogosClient,
     @InjectRepository(RundAccesoExternoEntity)
     private readonly accesoExternoRepo: Repository<RundAccesoExternoEntity>,
     @InjectRepository(RundMacroDocenteConsultaLogEntity)
     private readonly consultaLogRepo: Repository<RundMacroDocenteConsultaLogEntity>,
-    private readonly notifications: PtaNotificationsService,
+    private readonly notifications: MacroDocenteNotificationsService,
   ) {}
 
   /**
@@ -142,14 +120,10 @@ export class MacroDocenteService {
   }
 
   private async buildHistorialRows(filters: MacroDocenteFilters): Promise<HistorialAsignaturaRow[]> {
-    const qb = this.ptaRepo
-      .createQueryBuilder('pta')
-      .where('pta.estado IN (:...estados)', { estados: ESTADOS_PTA_FIRMES });
-    if (filters.periodo) qb.andWhere('pta.periodo = :periodo', { periodo: filters.periodo });
-    if (filters.docenteId) qb.andWhere('pta.docenteId = :docenteId', { docenteId: filters.docenteId });
-    qb.orderBy('pta.periodo', 'DESC');
-
-    const ptas = await qb.getMany();
+    const ptas = await this.planes.planesFirmes({
+      ...(filters.periodo ? { periodo: filters.periodo } : {}),
+      ...(filters.docenteId ? { docenteId: filters.docenteId } : {}),
+    });
     if (ptas.length === 0) return [];
 
     const docenteIds = [...new Set(ptas.map((p) => p.docenteId).filter(Boolean))];
@@ -158,9 +132,9 @@ export class MacroDocenteService {
       : [];
     const personaIds = [...new Set(docentes.map((d) => d.personaId).filter(Boolean))];
     const personas = personaIds.length
-      ? await this.personaRepo.find({ where: { id: In(personaIds) } })
+      ? await this.catalogos.identidadesHistoricas(personaIds)
       : [];
-    const personaMap = new Map(personas.map((p) => [p.id, p]));
+    const personaMap = new Map(personas.map((p) => [p.personaId, p]));
 
     const docenteMap = new Map<
       string,
@@ -198,7 +172,7 @@ export class MacroDocenteService {
     }
     const programaMap = new Map<string, string>();
     if (programaIdsPendientes.size > 0) {
-      const programas = await this.programaRepo.find({ where: { id: In([...programaIdsPendientes]) } });
+      const programas = await this.catalogos.programasHistoricos([...programaIdsPendientes]);
       for (const programa of programas) programaMap.set(String(programa.id), programa.nombre);
     }
 

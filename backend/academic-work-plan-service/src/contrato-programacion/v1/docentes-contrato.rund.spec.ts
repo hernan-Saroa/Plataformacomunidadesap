@@ -59,9 +59,9 @@ describe('RundDocentesClient', () => {
   it('llama a la API interna con el token de servicio', async () => {
     process.env.RUND_SERVICE_URL = 'http://rund:3016';
     process.env.INTERNAL_SERVICE_TOKEN = 't';
-    const f = jest.fn().mockResolvedValue(resp(200, { data: { documento: '1' } }));
+    const f = jest.fn().mockResolvedValue(resp(200, { data: docente({ documento: '1', idPersona: '00000000-0000-0000-0000-000000000001' }) }));
     global.fetch = f as any;
-    await expect(new RundDocentesClient().porDocumento('1')).resolves.toEqual({ documento: '1' });
+    await expect(new RundDocentesClient().porDocumento('1')).resolves.toEqual(docente({ documento: '1', idPersona: '00000000-0000-0000-0000-000000000001' }));
     expect(f.mock.calls[0][0]).toBe('http://rund:3016/internal/rund/v1/docentes/por-documento/1');
     expect(f.mock.calls[0][1].headers['x-internal-service-token']).toBe('t');
   });

@@ -39,6 +39,7 @@ describe('Información original de la carga RUND', () => {
     service.getBloques = jest.fn().mockResolvedValue([]);
     service.getTerritoriales = jest.fn().mockResolvedValue([]);
     service.dataSource = { query:jest.fn().mockResolvedValue([]) };
+    service.identities = { fichaPorPersona: jest.fn().mockResolvedValue(null) };
     const tarjeta = await service.getTarjetaRUND('docente-1');
     expect(tarjeta.bloques.VINCULACION.campos).toContainEqual(expect.objectContaining({ campo:'TERRITORIAL', valor:'META' }));
     expect(tarjeta.bloques.VINCULACION.campos).toContainEqual(expect.objectContaining({ campo:'PUNTAJE_SALARIAL', valor:0 }));
@@ -79,6 +80,8 @@ describe('Información original de la carga RUND', () => {
     service.docenteRepo = {findOne:jest.fn().mockResolvedValue({id:'docente-1',personaId:'persona-1',periodoCarga:'2026-2',estado:'ACTIVO',territorialReportada:'META',territorialId:'24'})};
     service.dataSource = {query:jest.fn(async (sql:string)=>sql.includes('AS document_number') ? [{document_number:'1020304050'}] : [{id:'soporte-1'}])};
     service.upsertDocente = jest.fn().mockResolvedValue({action:'update'});
+    service.catalogos = { territorialesBanco: jest.fn().mockResolvedValue([]) };
+    service.identities = { fichaPorPersona: jest.fn().mockResolvedValue({ num_identificacion: '1020304050' }) };
     await service.updateDocente('docente-1',{territorialNombre:'META',soporteEdicionId:'soporte-1',justificacionEdicion:'Corrección del teléfono',telefono:'3001234567'});
     expect(service.upsertDocente).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({preserveTerritorial:true}));
   });

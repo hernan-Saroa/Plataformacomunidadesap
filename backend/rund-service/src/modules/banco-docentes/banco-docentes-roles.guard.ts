@@ -1,20 +1,19 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { AuthIdentityClient } from '../../common/auth-identity.client';
 import { ROLES_KEY } from '../../auth/roles.decorator';
 import { RUND_PERMISSIONS_KEY } from './rund-permissions';
 import { resolveRundRequestPermissions } from '../../auth/rund-effective-permissions';
 
 /**
  * Autoriza rutas RUND por rol de sistema o por permisos administrables.
- * Los permisos se resuelven desde auth.role_permissions y nunca desde el body.
+ * Los permisos se resuelven en Auth por API y nunca desde el body.
  */
 @Injectable()
 export class BancoDocentesRolesGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly identities: AuthIdentityClient,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -44,7 +43,7 @@ export class BancoDocentesRolesGuard implements CanActivate {
 
     let effectivePermissions = new Set<string>();
     if (requiredPermissions?.length && !isSuperAdmin) {
-      effectivePermissions = await resolveRundRequestPermissions(this.dataSource, request);
+      effectivePermissions = await resolveRundRequestPermissions(this.identities, request);
     }
     request.rundPermissions = effectivePermissions;
 

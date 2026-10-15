@@ -14,6 +14,7 @@ import { RundDocumentStorageService } from './rund-document-storage.service';
 import { recordRundAccess, RundAccessActor } from './rund-access-audit';
 import { RUND_SENSITIVE_FIELDS } from './banco-docentes-sensitive-data';
 import { RUND_BANCO_DOCENTES_BASE } from '../../common/rund-public-paths';
+import { AuthIdentityClient } from '../../common/auth-identity.client';
 
 type DocumentUploadData = {
   categoria: string;
@@ -28,6 +29,7 @@ export class RundDocumentosService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly storage: RundDocumentStorageService,
+    private readonly identities: AuthIdentityClient,
   ) {}
 
   async listCategories() {
@@ -97,7 +99,7 @@ export class RundDocumentosService {
       }
     }
 
-    await assertRundEvidenceData(this.dataSource, docente.id, data.tipoSoporte, data.campo);
+    await assertRundEvidenceData(this.dataSource, docente.id, this.identities, data.tipoSoporte, data.campo);
     const id = randomUUID();
     const logicalId = randomUUID();
     const checksum = this.checksum(file!.buffer);
@@ -113,7 +115,7 @@ export class RundDocumentosService {
     await runner.startTransaction();
     try {
       await lockEvidenceProfile(runner, docente.id);
-      await assertRundEvidenceData(runner, docente.id, data.tipoSoporte, data.campo);
+      await assertRundEvidenceData(runner, docente.id, this.identities, data.tipoSoporte, data.campo);
       if (data.tipoSoporte) {
         const duplicates = await runner.query(`SELECT id FROM rund."RundDocumentoPerfil"
           WHERE docente_id = $1 AND tipo_soporte = $2 AND estado = 'ACTIVO'`, [docente.id, data.tipoSoporte]);
@@ -186,7 +188,7 @@ export class RundDocumentosService {
     await runner.startTransaction();
     try {
       await lockEvidenceProfile(runner, docente.id);
-      await assertRundEvidenceData(runner, docente.id, current.tipo_soporte, campo);
+      await assertRundEvidenceData(runner, docente.id, this.identities, current.tipo_soporte, campo);
       const [active] = await runner.query(`SELECT id FROM rund."RundDocumentoPerfil" WHERE id = $1 AND estado = 'ACTIVO'`, [current.id]);
       if (!active) throw new ConflictException('El documento fue reemplazado o eliminado. Actualice el listado.');
       stored = await this.storage.store({
@@ -320,17 +322,21 @@ export class RundDocumentosService {
   }
 
   private async requireDocente(identifier: string) {
-    const rows = await this.dataSource.query(
-      `SELECT d.id, COALESCE(p.num_identificacion, d.id::text) AS document_number
-       FROM rund."Docente" d
-       LEFT JOIN auth.personas p ON p.id_person = d."personaId"
-       WHERE d.id::text = $1 OR d."personaId"::text = $1 OR p.num_identificacion = $1
-       ORDER BY d."updatedAt" DESC NULLS LAST
-       LIMIT 1`,
-      [identifier],
-    );
-    if (!rows[0]) throw new NotFoundException('Perfil docente no encontrado.');
-    return rows[0];
+    return this.dataSource.transaction('REPEATABLE READ', async manager => {
+      await manager.query('SET TRANSACTION READ ONLY');
+      const native = await manager.query(`SELECT DISTINCT d."personaId" FROM rund."Docente" d
+        WHERE d.id::text=$1 OR d."personaId"::text=$1`, [identifier]);
+      const personas = await this.identities.coincidenciasUnicidad(identifier, native.map(row => row.personaId));
+      // La API devuelve un superconjunto normalizado. El filtro final conserva documento
+      // EXACTO, los tres criterios OR y el orden previo, incluso con documentos repetidos.
+      const rows = await manager.query(`SELECT d.id, COALESCE(p.documento,d.id::text) AS document_number
+        FROM rund."Docente" d LEFT JOIN jsonb_to_recordset($2::jsonb)
+          AS p("personaId" uuid, documento text) ON p."personaId"=d."personaId"
+        WHERE d.id::text=$1 OR d."personaId"::text=$1 OR p.documento=$1
+        ORDER BY d."updatedAt" DESC NULLS LAST LIMIT 1`, [identifier, JSON.stringify(personas)]);
+      if (!rows[0]) throw new NotFoundException('Perfil docente no encontrado.');
+      return rows[0];
+    });
   }
 
   private async requireCategory(rawCategory: string) {

@@ -1,0 +1,141 @@
+{
+  "verifiedAt": "2026-10-14T21:42:43.017Z",
+  "step": "12.5d.2",
+  "checkpoint": "Dos lecturas de identidad RUND hacia Auth por API interna",
+  "baseCommit": "63b9fc07a97f06cba1d5f99dc4e74616831531ec",
+  "buildPassed": {
+    "auth": true,
+    "rund": true
+  },
+  "tests": {
+    "auth": {
+      "suites": 14,
+      "tests": 152,
+      "addedSincePreviousCheckpoint": 17
+    },
+    "rund": {
+      "suites": 45,
+      "tests": 570,
+      "addedSincePreviousCheckpoint": 30
+    }
+  },
+  "commands": {
+    "authBuild": "cd backend/auth-service; npm.cmd run build",
+    "rundBuild": "cd backend/rund-service; npm.cmd run build",
+    "authTests": "node backend/rund-service/node_modules/jest/bin/jest.js --config scripts/jest-auth-carpeta.config.cjs --runInBand",
+    "rundTests": "cd backend/rund-service; node node_modules/jest/bin/jest.js --runInBand",
+    "integration": "node scripts/verify-rund-service-integration.cjs",
+    "gateway": "node scripts/verify-rund-gateway-audit.cjs"
+  },
+  "identityContract": {
+    "authOwnedReadOnlyEndpoints": [
+      "/internal/rund/v1/personas/por-documento/:documento",
+      "/internal/rund/v1/personas/resolver/:clave"
+    ],
+    "tokenRequired": true,
+    "jwtSecretFallback": false,
+    "gatewayExposure": false,
+    "cacheControl": "private, no-store",
+    "timeoutMs": 10000,
+    "redirectsAllowed": false,
+    "missingIdentityStatus": 404,
+    "rundUnconfirmedIdentityStatus": 503,
+    "ambiguousProfileAliasStatus": 409,
+    "lookupRequiresActiveUserOrRole": false,
+    "personAndUserRecordsModified": false,
+    "removedSqlReads": [
+      "InternalRundService.docentePorDocumento identity join",
+      "RundValidacionService.resolverPersonaEnAuth"
+    ],
+    "authSqlFallbackOnApiFailure": false,
+    "latestUpdatedProfileSelectionPreserved": true,
+    "explicitRundProfileLookupRequiresIdentityApi": false,
+    "documentFieldCatalogChanged": false
+  },
+  "integration": {
+    "totalChecks": 144,
+    "identityChecks": [
+      "Identidad Auth: token interno obligatorio aunque exista un JWT de usuario",
+      "Identidad Auth: DTO mínimo y sin caché, leído por Auth en conexión de solo lectura",
+      "Identidad Auth: alias de usuario y persona conservan su UUID; ausencias siguen siendo 404",
+      "Identidad Auth: no exige cuenta activa ni rol para una identidad histórica",
+      "Identidad RUND: indisponibilidad de Auth devuelve 503 y conserva los estados nativos",
+      "Identidad RUND: perfil explícito sigue disponible sin Auth y recupera búsqueda al restablecerlo"
+    ],
+    "gatewayHttpChecks": 10,
+    "authFixture": "controlador, guard, servicio e interceptor compilados de Auth sobre HTTP local y SQL temporal de solo lectura; no inicia Auth AppModule",
+    "temporaryPostgresOnly": true,
+    "rundMainReal": true,
+    "authAppModuleStarted": false,
+    "compiledPreviousConsumersCovered": [
+      "Auth",
+      "PTA",
+      "Programación"
+    ],
+    "nativeStatesStrictlyComparedOnIdentityOutage": true
+  },
+  "rollout": {
+    "order": [
+      "Auth with new internal identity API",
+      "RUND"
+    ],
+    "url": "AUTH_SERVICE_URL must point directly to internal Auth, not public gateway",
+    "token": "RUND AUTH_INTERNAL_SERVICE_TOKEN (or explicit INTERNAL_SERVICE_TOKEN) must match Auth INTERNAL_SERVICE_TOKEN",
+    "independentOfFolderProjectionFlags": true,
+    "oldAuthWithoutIdentityApiCompatible": false,
+    "rollbackOrder": [
+      "RUND compatible with old Auth",
+      "Auth"
+    ]
+  },
+  "previousConsumerTypeScriptSourcesUnchanged": {
+    "backend/auth-service/src/carpeta-digital/rund-client.ts": "d305a4fb5f9f9ecc1894b2454f28b5a916fb3540600f38c107c07ecb9938a4cc",
+    "backend/auth-service/src/carpeta-digital/rund-client.spec.ts": "5b6f5cc59af03df49a4ea2319ace25d34fa6ca3f731349c3530798797e8e1ab5",
+    "backend/auth-service/src/carpeta-digital/rund-document-access.spec.ts": "aefaf510ef6bb8c693a572ce830972ab042aba5e1a6ad2fd9d62f448734f721a",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.ts": "96edfdc416dcef40dcd9ecfe42e825331987a8c82658ab270a83a38b324b3306",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.spec.ts": "7e4b7ace41bf26f4aca75a895030d886743092126b98078f4bf4d9c1ef1202e8",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.ts": "ce98cab2a76186cf6b66606b048849b3e59072b5539c4666c10353b67d95abf2",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.spec.ts": "4e1c12b82cb5d570e24ac3bac4f2ae48882c62399ded648db7b08d26d08c47b7",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.ts": "55e065df1e174fc14d16b7af42d6afa7103aea2a8cd5f5f3a6d54fb092552875",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.spec.ts": "248cc2588b86bb710bb6d5bccb61c0a8daf85d316f2f09a69d5e55d9ba2df244",
+    "backend/academic-work-plan-service/src/contrato-programacion/v1/docentes-contrato.rund.spec.ts": "36576dee75576499ab6660640de9f220835f9de4269ab945b8927e1fd882740e"
+  },
+  "existingDatabaseUsed": false,
+  "realEnvironmentFilesRead": false,
+  "operativeMigrationsExecuted": false,
+  "operativeDataCopyExecuted": false,
+  "deployed": false,
+  "pushed": false,
+  "environmentAcceptanceCertified": false,
+  "migrationStatus": {
+    "mainStepsCompletedLocally": 11,
+    "currentMainStep": 12,
+    "remainingWorkstreamsIncludingCurrent": 5
+  },
+  "limits": [
+    "Other identity writes, permissions and catalog reads still cross Auth/PTA schemas.",
+    "Territorial join of document profile and statistics catalogs remain for next checkpoint.",
+    "Operational acceptance remains pending for local/DEV/QA/PRE/PROD.",
+    "Embedded RUND in PTA has not been removed."
+  ],
+  "sourceHashes": {
+    "backend/auth-service/src/users/rund-identity.controller.ts": "7bc39396037a8b0f8629c62a85a7a467e649d939313cfb48bfe7d602ee608464",
+    "backend/auth-service/src/users/rund-identity.controller.spec.ts": "adc7199f83e9a65ab031f361d5e1faf04796f44528f7c87da9c7e79231cca490",
+    "backend/auth-service/src/users/users.module.ts": "71ba4e93ca8582facab1e65fea88346748d5364eab5a99a54b6f53e5dfe67cad",
+    "backend/auth-service/.env.example": "c72ba804184dc5a3c3b407d1373f9624ff38168a6450e1c39f3425720dbf901a",
+    "backend/rund-service/src/common/auth-identity.client.ts": "251c5469754d1dbdac48587395f9e64e0fe0d927078f156af1b558a33ed568b3",
+    "backend/rund-service/src/common/auth-identity.client.spec.ts": "8c12f8d4e148d41b8c2404722d1b4afd8b70151e881f7b6ec90fd0168587b79e",
+    "backend/rund-service/src/internal/internal-rund.service.ts": "cd0faea1bf817ef9a5a1ebd6d7acf44266f9a20c49aa13f43ff5d4f1056db0e7",
+    "backend/rund-service/src/internal/internal-rund.spec.ts": "c08d47f918fea8b3d1efe51ba7bea2fcbe1a377e945191a720945a3bbde285d7",
+    "backend/rund-service/src/internal/internal.module.ts": "9c6a2deac2f10ca427c2d966bfbb24e79084d9eb8bac9c38d9a1c5dcc7d498cb",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.module.ts": "7f356ca0b4e9634686beabce9208bee63f4b4a73477eb58fd3bc25b0753d66f2",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.ts": "4aecaf3b734b8e7406fd9849a63abf252f0f6435e2b4b586a28f5524cb13c948",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.spec.ts": "bea969a1cf437d860b5c9d7ae575c67b581cee6805829ba137f5ff525d1beb6f",
+    "backend/rund-service/.env.example": "225fca8ffc48f41e540cd158a255d0ff15de667f8b27e2e105da033bc1d367ab",
+    "scripts/verify-rund-auth-identity.cjs": "e2b6acb7ac2b39c7d4b5fdda5798ef608d56e60cc60cffd27bae8f92c31ca800",
+    "scripts/verify-rund-auth-state-sync.cjs": "1c7bc2dfe8aff1f03cb11ace4b12b1a2e2921bb8cdc531514313109d64cd1022",
+    "scripts/verify-rund-service-integration.cjs": "9cf5f18da044b5cbf08bd9496cb2c1ad94322b30a7c6f3043a4ec07cb9419cef",
+    "scripts/verify-rund-gateway-audit.cjs": "537ed2e3525b3a57268f9422bc0c09d5af17a5c3bf6cbe3ed2b332d22ac88bda",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "7c799686eba5e3761d1bdb0b65de386c2df50a1b3ccba6ddaeeab456d184df28"
+  }
+}

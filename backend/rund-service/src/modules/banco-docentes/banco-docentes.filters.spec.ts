@@ -88,6 +88,7 @@ describe('BancoDocentesService - getStats agregaciones', () => {
       }),
     };
 
+    service.authBanco = { proyeccion: jest.fn().mockResolvedValue({}) };
     const stats = await service.getStats({ periodoCarga: '2025-2' });
 
     expect(stats.por_nucleo_tematico).toEqual(rows.nucleo);

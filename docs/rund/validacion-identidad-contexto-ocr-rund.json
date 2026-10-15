@@ -1,0 +1,267 @@
+{
+  "verifiedAt": "2026-10-15T05:57:38.146Z",
+  "step": "Frente 4: aislamiento SQL",
+  "checkpoint": "Contexto de identidad del proceso OCR por API Auth",
+  "baseCommit": "63b9fc07a97f06cba1d5f99dc4e74616831531ec",
+  "buildsPassed": [
+    "rund-service"
+  ],
+  "tests": {
+    "rund": {
+      "suites": 56,
+      "tests": 871,
+      "added": 9
+    },
+    "ownersChanged": false
+  },
+  "processExits": [
+    {
+      "name": "rund",
+      "exitCode": 0
+    },
+    {
+      "name": "build-rund",
+      "exitCode": 0
+    },
+    {
+      "name": "integration",
+      "exitCode": 0
+    },
+    {
+      "name": "gateway",
+      "exitCode": 0
+    }
+  ],
+  "commands": {
+    "build": "cd backend/rund-service; npm.cmd run build",
+    "rundTests": "cd backend/rund-service; node node_modules/jest/bin/jest.js --runInBand",
+    "integration": "node scripts/verify-rund-service-integration.cjs",
+    "gateway": "node scripts/verify-rund-gateway-audit.cjs"
+  },
+  "contract": {
+    "existingEndpoint": "GET /internal/rund/v1/personas/ficha/por-persona/:personaId",
+    "owner": "Auth",
+    "newEndpoints": [],
+    "newEnvironmentVariables": [],
+    "newMigrations": [],
+    "tokenRequired": true,
+    "jwtSecretFallback": false,
+    "timeoutMs": 10000,
+    "redirectsAllowed": false,
+    "sqlFallback": false,
+    "persistedIdentityCache": false
+  },
+  "behavior": {
+    "workerReadSiteMigrated": 1,
+    "baseline": {
+      "nativeSnapshot": "REPEATABLE READ",
+      "nativeTransactionReadOnly": true,
+      "ownerIdentityFields": [
+        "nom_largo",
+        "num_identificacion",
+        "tip_identificacion",
+        "gen_tercero",
+        "fec_nacimiento"
+      ],
+      "completeContextShapeAndValueNormalizationPreserved": true,
+      "birthDateProjectedAsPostgresDateToPreserveDriverParser": true,
+      "nativeFieldsNeverReadFromBulkHistory": true,
+      "confirmedMissingPersonOrProfileRejectedLikePriorInnerJoin": true,
+      "ownerFailureNeverCreatesValidEmptyContext": true
+    },
+    "worker": {
+      "identityBeforePdfAndEngineCalls": true,
+      "existingThreeAttemptLimitPreserved": true,
+      "ownerOutageDoesNotChangeProfileOrIdentity": true,
+      "suggestionsRemainPendingForHumanReview": true,
+      "recoveryAfterRestartVerified": true,
+      "documentVersionAndLeaseChecksPreserved": true,
+      "workerNativeSqlOnly": true
+    },
+    "humanConfirmation": {
+      "sharedAuthSqlStillRequired": true,
+      "lockedProfileReaderExplicitlySeparate": true,
+      "oldJoinedSelectUnderExistingLockPreserved": true,
+      "existingWriteTransactionPreserved": true,
+      "directConfirmAndManualCorrectionPathsUnchanged": true,
+      "validatorsAndDuplicateChecksAndHumanDecisionAuditUnchanged": true,
+      "notAnHttpReadFallback": true
+    },
+    "ocrNotificationsChanged": false,
+    "ocrEnabledInMain": false
+  },
+  "integration": {
+    "passed": true,
+    "totalChecks": 240,
+    "newOcrIdentityChecks": [
+      "Identidad OCR: contexto completo coincide con SQL anterior en UTC, Bogotá y Tokio, incluidos IDs textuales y fechas",
+      "Identidad OCR: el snapshot nativo no mezcla cambios de formación durante la consulta Auth",
+      "Identidad OCR: proceso completo con SQL solo RUND y motores HTTP ficticios conserva sugerencias pendientes y valor previo",
+      "Identidad OCR: Auth caído, 404 o ficha parcial conserva el perfil y reintenta tres veces sin leer PDF ni llamar motores",
+      "Identidad OCR: la recuperación de Auth permite continuar el mismo trabajo tras reiniciar el worker",
+      "Identidad OCR: reemplazar el PDF durante el análisis marca obsoleto y no publica sugerencias",
+      "Identidad OCR: una reserva perdida no permite al resultado tardío sustituir el trabajo ni crear sugerencias",
+      "Identidad OCR: confirmación humana conserva locks, rollback de auditoría, aplicación exacta y rechazo de revisión obsoleta",
+      "Identidad OCR: el main conserva OCR desactivado, JWT, roles y protección del original sin activar instalaciones"
+    ],
+    "gatewayHttpChecks": 10,
+    "temporaryPostgresOnly": true,
+    "temporaryFilesOnly": true,
+    "rundMainReal": true,
+    "ownerApisCompiledFixturesWithReadOnlyConnections": true,
+    "fullOwnerAppModulesStarted": false,
+    "priorSqlFixture": "scripts/fixtures/rund-extraction-context-before-api.cjs",
+    "fullContextsCompared": true,
+    "timeZones": [
+      "UTC",
+      "America/Bogota",
+      "Asia/Tokyo"
+    ],
+    "textualNativeIdsAndConfirmedMissingOwnerVerified": true,
+    "concurrentNativeChangeSnapshotVerified": true,
+    "workerEnqueueTickListExecutedWithRoleDeniedAuthAndPtaSql": true,
+    "realAuthHttpClientAndNativeQueueAndLocalStorage": true,
+    "ocrAndModelEngines": "Local HTTP simulations with synthetic PDF/text",
+    "installedEnginesExecuted": false,
+    "ocrQualityMeasured": false,
+    "ownerOutageThreeAttemptsNoEngineCallsAndNoSuggestionsVerified": true,
+    "pdfNotReadOnOwnerFailureVerifiedByUnitTests": true,
+    "nativeAndOwnerProfilesUnchangedUntilHumanAction": true,
+    "obsoletePdfAndLostLeaseDoNotPublishSuggestions": true,
+    "humanConfirmationViaMainWithAuthSqlAccess": true,
+    "confirmationAuditFailureRollsBackProfileAndDecision": true,
+    "confirmedValueAppliedExactlyAndStaleOrRepeatedDecisionRejected": true,
+    "mainOcrStillDisabledAndAuthorizationVerified": true,
+    "externalNotificationsSent": false,
+    "temporaryClusterRemoved": true,
+    "wholeApplicationSqlIsolated": false
+  },
+  "rollout": {
+    "order": [
+      "RUND"
+    ],
+    "existingAuthFichaContractFromCut47Required": true,
+    "previousRequirementsStillApply": true,
+    "noOcrActivationRequired": true
+  },
+  "previousSourcesUnchanged": {
+    "backend/auth-service/src/carpeta-digital/rund-client.ts": "d305a4fb5f9f9ecc1894b2454f28b5a916fb3540600f38c107c07ecb9938a4cc",
+    "backend/auth-service/src/carpeta-digital/rund-client.spec.ts": "5b6f5cc59af03df49a4ea2319ace25d34fa6ca3f731349c3530798797e8e1ab5",
+    "backend/auth-service/src/carpeta-digital/rund-document-access.spec.ts": "aefaf510ef6bb8c693a572ce830972ab042aba5e1a6ad2fd9d62f448734f721a",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.ts": "96edfdc416dcef40dcd9ecfe42e825331987a8c82658ab270a83a38b324b3306",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.spec.ts": "7e4b7ace41bf26f4aca75a895030d886743092126b98078f4bf4d9c1ef1202e8",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.ts": "ce98cab2a76186cf6b66606b048849b3e59072b5539c4666c10353b67d95abf2",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.spec.ts": "4e1c12b82cb5d570e24ac3bac4f2ae48882c62399ded648db7b08d26d08c47b7",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.ts": "55e065df1e174fc14d16b7af42d6afa7103aea2a8cd5f5f3a6d54fb092552875",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.spec.ts": "248cc2588b86bb710bb6d5bccb61c0a8daf85d316f2f09a69d5e55d9ba2df244",
+    "backend/academic-work-plan-service/src/contrato-programacion/v1/docentes-contrato.rund.spec.ts": "36576dee75576499ab6660640de9f220835f9de4269ab945b8927e1fd882740e",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.ts": "4aecaf3b734b8e7406fd9849a63abf252f0f6435e2b4b586a28f5524cb13c948",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.spec.ts": "bea969a1cf437d860b5c9d7ae575c67b581cee6805829ba137f5ff525d1beb6f",
+    "backend/auth-service/src/users/rund-catalogos.controller.ts": "6558e334a89564a883663db7a407f00a07fb3b57d49208fa6c2caf0467dc1116",
+    "backend/auth-service/src/users/rund-catalogos.controller.spec.ts": "fcb75cc041d8768f82361ea3bb77c284c547d806100a71d5de9414742e0b3a70",
+    "backend/academic-work-plan-service/src/app.module.ts": "c6fa3d7b1942a65ac4bafb9269b5f20657321bb35152501fac37147a027f716c",
+    "scripts/verify-rund-catalogos-config.cjs": "cfc338c6c4b04671605f954023cbf48accff304cb8e1239c5ed405f68dd38619",
+    "docker-compose.yml": "0f2c7f42337fab00c619314ee24269b77478f2e8e7ccdce42fe803da742ab580",
+    "docker-compose.backend.yml": "f09a624a73dba3a76dc69c4c58ec6872250996d56c4d3ac13f51e8b3c5108c87",
+    "docker-compose.dev.yml": "7e835f7b9b5f57433008cc7418dd8d9453608e778dd6dacf3c798c5e8a3b126a",
+    "docker-compose.qa.yml": "0cc9a432cf4c3c6b9e3bf7bf5e34de00a4969813ad3a96b99743c5853e199f19",
+    "docker-compose.pre.yml": "edcd7f710baf381bfa2f020316e478e630490f89d256d3e70d477e58a56328dd",
+    "docker-compose.prod.yml": "3c1b9d91c76644478cb88d6abd4949ed5b35c16b9eb94bbc502a590e5cd0b846",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.periodo.spec.ts": "616c8140df508d8d0d63c16be331712eaca70a43f17a58a32b6e920382a27209",
+    "backend/rund-service/.env.example": "004af07beebd902ccaac39442d0fa4c3e7faa949d1d0323f7a6dbd983994db9f",
+    "scripts/verify-rund-active-period.cjs": "70f627ef53fe7301714a87e234f09ef872ca1a19efaba0869113103cadd0d48d",
+    "backend/rund-service/src/modules/banco-docentes/rund-pta-consulta.service.ts": "a0cfb27df188a51a19f255dc9780beaa00ee536d705c77d45170872c92ce8cc5",
+    "backend/rund-service/src/modules/banco-docentes/rund-pta-consulta.http.spec.ts": "e4c6bfbbbc9d11cd0770c642dd96ec04ef21ad64379ffc85d590d5362aded2d9",
+    "backend/auth-service/src/users/rund-banco.controller.ts": "99df16828d14ecfa7b8b0f31066c96116ec237848cca9ade4039616c4bd6ae28",
+    "backend/auth-service/src/users/rund-banco.controller.spec.ts": "d89a62505d24297c10418f19e22743e028b9c4122fc05ab0a6fedbe713ce6cae",
+    "backend/auth-service/src/users/users.module.ts": "a3963b0047d4ff5a2cbaefcfd26e80dd4439a27276a89ce4897ce02648679552",
+    "backend/rund-service/src/common/auth-banco.client.ts": "b0cb5475f67e93bed3e923f3499c162f00cc22e93068c483dddf970a24a1fd76",
+    "backend/rund-service/src/common/auth-banco.client.spec.ts": "93a2a0b1c710ae0d971d7cce2f9b4af4e2a97fa03f35229367fd5219d5d60c40",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.module.ts": "314b354999656d281ebeb7227bc817fdda2f6480d0c2bd76c7045f9d95762d6c",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.identidad.spec.ts": "841704e38077a63a3fb5dbe017b24dabc5db9c663eef06605fc186a6576d995c",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.filters.spec.ts": "d24ca40aee04bcd88010c69af01b047cf4077ec9ea3f7fe58d285d46e8e06615",
+    "scripts/fixtures/rund-banco-before-api.sql": "bc89d2f1fdd3d4638e3a99bb0c48f91ee255049426093a244a85106fae6996d6",
+    "scripts/verify-rund-bank-identity.cjs": "13d06f1fe2b1e9050f7c13f2fa5bca71f1e61dad6547153ee5fb97b656abf639",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes-autogestion-documentos.spec.ts": "1c34415e06a79b211f5e5d1d3b39ec7d6f39ec8f5c116d8671687e40190809e1",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.bulk-traceability.spec.ts": "c264e35b2585fb3d3b1f5ad4a7e38684663271e46ef978ec06b550f33b7b4586",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.controller.ts": "73ca49d6c7de7528de6f4c0f62baea0d49a7314b8cb1ecfc7bfaa59ca09fe585",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.tarjeta-identidad.spec.ts": "52d77a7d39f7d05e6f2b63119b950d9cff3dc9b73f61eca0b28a9262c0fa7e8c",
+    "scripts/verify-rund-card-identity.cjs": "82e67e21ecacc4df2f76d15645060f2f91aaf66440f4e494e9a4643e1de87e85",
+    "scripts/fixtures/rund-resolve-docente-before-api.sql": "f080dc4cbc4eaca7767320e724420fd00d8a8985a4b1f52a4e843673dbb40fca",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.manual-validation.spec.ts": "fc3e25ca59f15248aa548e6085d80b6bee30687517e303dc3a70eb623bf29f34",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes-autogestion-sensitive.spec.ts": "342e9a61025a9e42f35f8daf5064d3a039fef816873ceaa9ff735be96a8009a8",
+    "backend/rund-service/src/modules/banco-docentes/rund-carga-original.spec.ts": "5b07470ba621944a58a982b7b4a5f69c58f06862c0fd48200f982bc0e36fd335",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.catalogos.spec.ts": "f28b14d765b147f5c8417700d4ff0c089918d2e8ecf83dc0524ff1e83a1d692b",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes-session-security.spec.ts": "df0d48b9c46c35182b1214925caaa2a5584b3f63d8e2de2fe8846ef226c996e9",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.identidad-edicion.spec.ts": "33a3eebeaadfa719ebc17d863668cd4d57e235917c298c9389824e691b3514b5",
+    "scripts/verify-rund-trusted-identity.cjs": "6104f3d151741e1783fe7f649015f0811a7dce33a2637c0f317c6757e99e2c11",
+    "backend/auth-service/src/users/rund-identity.controller.ts": "4b97b659a50ab58e13d615e271301ddcc40b64bc7a679e540ee864e38e5786aa",
+    "backend/auth-service/src/users/rund-identity.controller.spec.ts": "3f2074781d1f58cd29be2a6ce0775cb5d7fba94462e4c17b88b88ba8e221433b",
+    "backend/auth-service/.env.example": "314aa63e4ed0bdabc2a90305010ca549e2b0e524f7f7e27a104b731e56dff0be",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.duplicados-identidad.spec.ts": "4b1d5d554f11da8fb7c56d9bda8c409455d2cf48899d427e3d65279c23adf961",
+    "scripts/verify-rund-duplicates.cjs": "4ac8682282f2996ec7e8aaf6a6cc588ee7f930476d280da217a474bb79bbb10c",
+    "scripts/fixtures/rund-duplicados-before-api.cjs": "df216220b603659f90b500f01b1f8d6a1b0eb525196dd06a54bc646f6091f652",
+    "scripts/verify-rund-auth-identity.cjs": "57090d16f640fe38b95becceaf2766f1dacc9b3fe15293dba51ed2940012aaf5",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-catalogos.module.ts": "c99278085e0bbd5c097518c3c8a056eeb47f9255d4f37e729009c534708cfbcb",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-catalogos.module.spec.ts": "7f69c0ddb8738d73343a6f142a4d20298ca8b711a4fb789359f115e25f36ebfa",
+    "backend/academic-work-plan-service/.env.example": "c7b32463c848ae4dd165038cac335a41f13d4caeb956ebaa39b6a16f17598a60",
+    "backend/rund-service/src/common/rund-catalogos.client.ts": "86d517d286631c843e56dbe9c76792e3037d225a7e2062c3492a4062a90003ed",
+    "backend/rund-service/src/common/rund-catalogos.client.spec.ts": "0c5f43d4629b6650e4f2c9fb0c85a8b23ba0d3d861275fccba9552055dae3a90",
+    "backend/rund-service/src/common/auth-identity.client.ts": "99b46e8ccba4b18e4661aa75d37e1ce72179abc9f0aff1fcad01067827e15ec0",
+    "backend/rund-service/src/common/auth-identity.client.spec.ts": "abbef937b4d64ac221960995dee840d2479d82ff8c33cab99be6b0156a654375",
+    "backend/rund-service/src/modules/banco-docentes/rund-soportes-sync.spec.ts": "7a46f6ffbeffbcf6fbb587d8165f18e552a303a8fa2a956fc43b11718859f6af",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.vencimientos-identidad.spec.ts": "172aa396f22e475dbd789e65a739544bb2a379b455926084941e1877967f3537",
+    "scripts/verify-rund-support-identity.cjs": "e57cb4a714fba6bd0c0122df378a6eb6bd6e954c54fcffcc211ed43fd4a4430c",
+    "scripts/fixtures/rund-vencimientos-before-api.cjs": "bf9ca841850855cdf3f34e9e6b996804b63f8b23a2e5914eb29bbb7786b545d3",
+    "scripts/verify-rund-catalogos.cjs": "e4a8f8ed5f6adfd43372806b972ef2560a26cf44334f5148d798e92737dc724d",
+    "scripts/verify-rund-gateway-audit.cjs": "f129031228fbc4c2a3453789b1a44499218619c44ead258f0ce492e47cb24422",
+    "backend/rund-service/src/modules/banco-docentes/rund-documentos.service.ts": "8dceee7e2a7125232550a3b622ad214c89d55603059487b53339258048d6a5d8",
+    "backend/rund-service/src/modules/banco-docentes/rund-evidence-data.ts": "26776b7f2fbb7eba6733380b1cb2532a45adf5794cf9d4d864aa6c97dd2cdbc1",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts": "f049511e5eb3d6fef75b654e69eb5f77d3eccf8791b33a0ac76a3ff0f29613fd",
+    "backend/rund-service/src/modules/banco-docentes/rund-documentos.service.spec.ts": "3606f59912facb6cebe013dc769a4fe06dd4c6d98e5f7b600c18ffaf7d39cc23",
+    "backend/rund-service/src/modules/banco-docentes/rund-documentos-crud.spec.ts": "170e2a9417fdd593d3899708659d999608114dd04e98830ed2455a3ec8f37481",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes-channel-security.spec.ts": "b357376edf7fe397158492c800fda5800f53bc3d8063136f6e01a25c7dd8d236",
+    "backend/rund-service/src/modules/banco-docentes/rund-evidence-data.spec.ts": "4712c6504ce0fd9e4b7f63a11726e2427aa28e34498c57f2fde0aac5efd91082",
+    "backend/rund-service/src/modules/banco-docentes/rund-documentos-identidad.spec.ts": "ed36284bb2415c45710e441ff0b647700953130f24a23ecd23fb6a2ba8938f87",
+    "scripts/fixtures/rund-documentos-before-api.cjs": "e5a7336c1941b69166fdf1c9e693f57b6132585f9a4b3a496fda92d8fdacdd69",
+    "scripts/verify-rund-document-identity.cjs": "7bf4a03a1c034de451b56f97da1542c49578fe9fa9274a7bb7b4e7edcd2e4766"
+  },
+  "preservedSectionHashes": {
+    "normalizedEol": true,
+    "ocrServiceOutsideIdentityInjectionAndContextCall": "00277315b65f9b90641db86e5d098052f59d5de597caa4c58b45cdfa988cc4ec",
+    "fieldsAndValidationOutsideContext": "962b398556b8081a57a26e05034681f3c025bb111ae544e73d3dcfc48eafd563",
+    "lockedJoinedProfileSelect": "012096dddd935422a33eddc935e8536350bcd382d6a9f24edc740bf3b81b3d99"
+  },
+  "existingDatabaseUsed": false,
+  "realEnvironmentFilesRead": false,
+  "operativeMigrationsExecuted": false,
+  "operativeDataCopyExecuted": false,
+  "pushed": false,
+  "deployed": false,
+  "environmentAcceptanceCertified": false,
+  "migrationStatus": {
+    "mainStepsCompletedLocally": 11,
+    "currentMainStep": 12,
+    "postMergeTechnicalCutsCompletedLocally": 15,
+    "currentTechnicalWorkstream": 4,
+    "remainingWorkstreamsIncludingCurrent": 5,
+    "operationalAcceptanceSubstepStillOpen": "12.5d.2"
+  },
+  "limits": [
+    "OCR confirmed edits and their Auth locks remain cross-owner SQL; notification recipient lookup, permissions and synchronization remain.",
+    "The native snapshot is not a distributed transaction with Auth; pool usage, latency, volume and concurrency require environment acceptance.",
+    "Engines were simulated locally; installed OCR/model quality and installed environments were not certified.",
+    "Embedded RUND in PTA remains."
+  ],
+  "nextTechnicalCut": "Auth recipient resolution for idempotent OCR notifications",
+  "sourceHashes": {
+    "backend/rund-service/src/modules/banco-docentes/rund-extraccion-fields.ts": "a8d834176e9ba48da876be6b260a03bfd62b1d2dca1a0b6f3596f381bcff2fb5",
+    "backend/rund-service/src/modules/banco-docentes/rund-extraccion.service.ts": "22bb15af5a3751daa6fa16bea4f6daf1dff3f6cd2f5c6f66ed4cf6e2bead37ec",
+    "backend/rund-service/src/modules/banco-docentes/rund-extraccion.spec.ts": "287c7de692f86b8e8824f5cb0543512c4497a541b125ea54363cc0bd1ad5e22c",
+    "backend/rund-service/src/modules/banco-docentes/rund-extraccion-identidad.spec.ts": "949038dd8b50751c876a631acdc762fe4fd4aaa53eb871cc362aa4800829ccb7",
+    "scripts/fixtures/rund-extraction-context-before-api.cjs": "7eab48d1272fcf639c30b55cc981bf4be46a02b435df183d4f7d401bec862319",
+    "scripts/verify-rund-extraction-identity.cjs": "319d1bbcd3d7dadf9165d4b67788a4ed4f49f4ee6847c8eadd5208fac92c8321",
+    "scripts/verify-rund-service-integration.cjs": "c6a4513b457cb8e71dedff260adb8790b51733d0ec2c8ca5201ec9d037411a3a",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "51bf3804a4fd3ca2a32f3cc8b1b13efc7d1e6d1a0359f901e94bcd3ccce63494"
+  }
+}

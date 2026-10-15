@@ -7,12 +7,17 @@ const { execFileSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const ts = require('typescript');
 const root = path.resolve(__dirname, '..');
-const manifestFile = 'docs/rund/primer-push-rund.paths';
-const reportFile = 'docs/rund/revision-primer-push.json';
-const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+const args = process.argv.slice(2);
+if (args.length > 1 || (args.length && !/^--checkpoint=\d+$/.test(args[0])))
+  throw new Error('Uso: node scripts/review-rund-push-checkpoint.cjs [--checkpoint=61]');
+const checkpoint = args.length ? args[0].split('=')[1] : null;
+const manifestFile = checkpoint ? `docs/rund/corte-${checkpoint}-rund.paths` : 'docs/rund/primer-push-rund.paths';
+const reportFile = checkpoint ? `docs/rund/revision-push-corte-${checkpoint}.json` : 'docs/rund/revision-primer-push.json';
+const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' }, stdio: ['ignore', 'pipe', 'ignore'] });
 const normalize = file => file.replace(/\\/g, '/');
 const prefixes = ['apps/mfe-rund/', 'apps/shell/', 'apps/mfe-gestion-personas/',
   'backend/rund-service/', 'backend/auth-service/', 'backend/api-gateway/',
+  ...(checkpoint ? ['backend/academic-work-plan-service/', 'backend/academic-schedule-service/'] : []),
   'packages/shared-hooks/', 'packages/shared-ui/', 'docs/rund/'];
 const rootFiles = new Set(['.env.example', 'migrate.local.sh', 'migrate.service.local.sh',
   'db/migrations/667_auth_carpeta_documento_versiones.sql', 'db/migrations/668_auth_carpeta_revision_rund.sql',
@@ -20,6 +25,7 @@ const rootFiles = new Set(['.env.example', 'migrate.local.sh', 'migrate.service.
   ...['', '.backend', '.local', '.dev', '.qa', '.pre', '.prod'].map(suffix => `docker-compose${suffix}.yml`)]);
 function belongs(file) {
   return prefixes.some(prefix => file.startsWith(prefix)) || rootFiles.has(file) ||
+    (checkpoint && /^scripts\/fixtures\/rund-[^/]+\.(?:cjs|sql)$/.test(file)) ||
     /^\.github\/workflows\/build-backend-(?:dev|qa|pre|prod)\.yml$/.test(file) ||
     /^scripts\/(?:verify-rund-[^/]+|review-rund-[^/]+|verify-auth-document-versions|verify-migration-runners\.test|verify-deploy-service-selection\.test|jest-auth-carpeta\.config)\.cjs$/.test(file) ||
     file === 'scripts/lib/rund-installation-review.cjs';
@@ -60,6 +66,8 @@ for (const item of selected) {
   if (!/^docs\/rund\/(?:revision|validacion)[^/]*\.json$/.test(item.file))
     fingerprints[item.file] = createHash('sha256').update(bytes).digest('hex');
   const source = bytes.toString('utf8');
+  for (const match of source.matchAll(/^(?:<<<<<<< |>>>>>>> )[^\r\n]*$/gm))
+    findings.push({ file: item.file, line: source.slice(0, match.index).split('\n').length, kind: 'merge_conflict_marker' });
   const signatures = [
     ['private_key', /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/g],
     ['github_token_literal', /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\b/g],
@@ -91,7 +99,7 @@ for (const item of selected) {
 }
 const manifest = [...paths].map(file => `:(literal)${file}`).join('\n') + '\n';
 fs.writeFileSync(path.join(root, manifestFile), manifest);
-const report = { generatedAt: new Date().toISOString(), scope: 'first-source-review-push',
+const report = { generatedAt: new Date().toISOString(), scope: checkpoint ? `source-review-push-checkpoint-${checkpoint}` : 'first-source-review-push',
   branch: git(['branch', '--show-current']).trim(), head: git(['rev-parse', 'HEAD']).trim(),
   activationReadiness: 'not_verified', deploymentApproved: false, gitIndexModified: false,
   commitCreated: false, pushExecuted: false, runtimeModified: false,
@@ -103,7 +111,7 @@ const report = { generatedAt: new Date().toISOString(), scope: 'first-source-rev
     'La búsqueda de secretos cubre firmas concretas, no sustituye revisión de valores/configuración.',
     'Los imports revisados son los estáticos resolubles por TypeScript; no prueba todos los recursos dinámicos.',
     'Las evidencias JSON generadas y el propio manifiesto no se huellan como fuentes para evitar referencias circulares.',
-    'Las pruebas y límites del corte se documentan en PRIMER-PUSH.md; este script no ejecuta pruebas ni certifica despliegue.'] };
+    `Las pruebas y límites del corte se documentan en ${checkpoint ? `PUSH-CORTE-${checkpoint}.md` : 'PRIMER-PUSH.md'}; este script no ejecuta pruebas ni certifica despliegue.`] };
 fs.writeFileSync(path.join(root, reportFile), JSON.stringify(report, null, 2) + '\n');
 console.log(`Corte RUND: ${paths.size} archivos; ${findings.length} hallazgos; ${outsideCut.length} cambios fuera del corte. Sin stage/commit/push.`);
 process.exitCode = findings.length ? 1 : 0;

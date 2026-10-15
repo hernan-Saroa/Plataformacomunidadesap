@@ -1,6 +1,7 @@
 import { BadGatewayException, GatewayTimeoutException, ServiceUnavailableException } from '@nestjs/common';
 import { BancoDocentesController } from './banco-docentes.controller';
 import { syncRundProfilesFromAuth } from './rund-auth-sync';
+import { RundAuthSyncOwner } from './rund-auth-sync-owner';
 
 const roleId = '11111111-1111-4111-8111-111111111111';
 const personId = '22222222-2222-4222-8222-222222222222';
@@ -18,6 +19,7 @@ describe('Sincronización RUND desde el contrato de auth', () => {
   let query: jest.Mock;
   let manager: { query: jest.Mock };
   let db: any;
+  let roleLookup: jest.SpyInstance, revalidate: jest.SpyInstance;
   const envKeys = ['AUTH_INTERNAL_SERVICE_TOKEN', 'INTERNAL_SERVICE_TOKEN', 'RUND_AUTH_SYNC_TIMEOUT_MS', 'RUND_AUTH_SYNC_MAX_PAGES'];
   const previous = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
   const actor = { actorId: 'operador-firmado', ip: '127.0.0.1' };
@@ -29,10 +31,14 @@ describe('Sincronización RUND desde el contrato de auth', () => {
     delete process.env.RUND_AUTH_SYNC_TIMEOUT_MS;
     delete process.env.RUND_AUTH_SYNC_MAX_PAGES;
     fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(response({ success: true, data: page() }));
-    query = jest.fn().mockResolvedValue([{ id: roleId }]);
+    query = jest.fn().mockRejectedValue(new Error('No se permite SQL fuera de la transacción nativa'));
+    roleLookup = jest.spyOn(RundAuthSyncOwner.prototype, 'rolDocente').mockResolvedValue(roleId);
+    revalidate = jest.spyOn(RundAuthSyncOwner.prototype, 'revalidar').mockImplementation(async (pid) => ({
+      id_person: pid, num_identificacion: '9000000001', dir_email: pid + '@example.test',
+      territorial_id: '999', territorial_nombre: 'Territorial Prueba', sede_id: '10', usuario_activo: true, rol_docente_activo: true,
+    }));
     manager = { query: jest.fn(async (sql: string, params: any[] = []) => {
-      if (sql.includes('FROM auth.personas p')) return [{ num_identificacion: '9000000001', dir_email: params[0] + '@example.test',
-        territorial_id: '999', territorial_nombre: 'Territorial Prueba', sede_id: '10', usuario_activo: true, rol_docente_activo: true }];
+      if (/auth\.|academic_work_plan\./.test(sql)) throw new Error('SQL de otro propietario');
       if (sql.includes('nextval(')) return [{ next_val: '10000' }];
       if (sql.includes('RETURNING id')) return [{ id: 'perfil-nuevo' }];
       return [];
@@ -41,6 +47,7 @@ describe('Sincronización RUND desde el contrato de auth', () => {
   });
   afterEach(() => {
     fetchMock.mockRestore();
+    roleLookup.mockRestore(); revalidate.mockRestore();
     for (const key of envKeys) {
       if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key];
     }
@@ -57,7 +64,9 @@ describe('Sincronización RUND desde el contrato de auth', () => {
     expect(options).toMatchObject({ headers: { 'x-internal-service-token': 'credencial-ficticia' }, redirect: 'error' });
     expect((options?.headers as any).Authorization).toBeUndefined();
     expect((options?.headers as any).Cookie).toBeUndefined();
-    expect(manager.query.mock.calls.some(([sql]) => /(?:INSERT INTO|UPDATE|DELETE FROM)\s+auth\./.test(sql))).toBe(false);
+    expect(query).not.toHaveBeenCalled();
+    expect(manager.query.mock.calls.some(([sql]) => /auth\./.test(sql))).toBe(false);
+    expect(revalidate).toHaveBeenCalledWith(personId, userId, roleId);
     const insert = manager.query.mock.calls.find(([sql]) => sql.includes('RETURNING id'))!;
     expect(insert[0]).toContain("'INACTIVO', 'PENDIENTE_APROBACION', 0");
     expect(insert[1][0]).toBe(personId);
@@ -96,16 +105,13 @@ describe('Sincronización RUND desde el contrato de auth', () => {
   });
 
   it.each(['usuario_activo', 'rol_docente_activo'])('no reactiva una identidad cuyo %s cambió tras la consulta HTTP', async flag => {
-    const original = manager.query.getMockImplementation()!;
-    manager.query.mockImplementation((sql, params) => sql.includes('FROM auth.personas p')
-      ? Promise.resolve([{ usuario_activo: true, rol_docente_activo: true, [flag]: false }]) : original(sql, params));
+    revalidate.mockResolvedValue({ usuario_activo: true, rol_docente_activo: true, [flag]: false });
     expect(await sync()).toMatchObject({ created: 0, skipped: 1 });
     expect(manager.query.mock.calls.some(([sql]) => sql.startsWith('INSERT'))).toBe(false);
   });
 
   it('no interpreta el public_id del usuario como el id interno y reporta el fallo de identidad', async () => {
-    const original = manager.query.getMockImplementation()!;
-    manager.query.mockImplementation((sql, params) => sql.includes('FROM auth.personas p') ? Promise.resolve([]) : original(sql, params));
+    revalidate.mockResolvedValue(null);
     expect(await sync()).toEqual({ total: 1, created: 0, skipped: 0, failed: 1 });
     expect(manager.query.mock.calls.some(([sql]) => sql.startsWith('INSERT'))).toBe(false);
   });
@@ -181,5 +187,20 @@ describe('Sincronización RUND desde el contrato de auth', () => {
     const controller = new BancoDocentesController({ syncFromAuthService: method } as any, {} as any);
     await controller.syncFromAuth({ user: { userId: 'actor-real', roles: ['SUPER_ADMIN'] }, ip: '127.0.0.1', body: { actorId: 'suplantado' } });
     expect(method).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ actorId: 'actor-real' }));
+  });
+
+  it('un fallo al resolver el rol impide listar o abrir la transacción nativa', async () => {
+    roleLookup.mockRejectedValue(new Error('detalle privado'));
+    await expect(sync()).rejects.toThrow('No fue posible resolver el rol DOCENTE activo de auth.');
+    expect(fetchMock).not.toHaveBeenCalled(); expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it('revalida después del advisory lock y aborta la transacción si Auth deja de responder', async () => {
+    revalidate.mockImplementation(async () => {
+      expect(manager.query.mock.calls.at(-1)?.[0]).toContain('pg_advisory_xact_lock');
+      throw new Error('caída de Auth');
+    });
+    await expect(sync()).rejects.toThrow('No fue posible completar la transacción de sincronización RUND.');
+    expect(manager.query.mock.calls.some(([sql]) => sql.startsWith('INSERT'))).toBe(false);
   });
 });

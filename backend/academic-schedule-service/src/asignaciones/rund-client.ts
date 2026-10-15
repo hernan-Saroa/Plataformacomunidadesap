@@ -20,6 +20,29 @@ export interface DocenteRund {
   situacionCategoria: string | null;
 }
 
+const texto = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+const nullableTexto = (value: unknown) => value === null || typeof value === 'string';
+const horas = (value: unknown) => value === null ||
+  ((typeof value === 'number' || texto(value)) && Number.isFinite(Number(value)) && Number(value) >= 0);
+const fecha = (value: unknown) => {
+  if (value === null) return true;
+  if (!texto(value) || !/^\d{4}-\d{2}-\d{2}(?:$|T| )/.test(value) || !Number.isFinite(Date.parse(value))) return false;
+  const day = value.slice(0, 10);
+  return Number.isFinite(Date.parse(day)) && new Date(day).toISOString().slice(0, 10) === day;
+};
+
+function esPerfil(value: unknown, documento: string): value is DocenteRund {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return texto(row.idDocente) && typeof row.idPersona === 'string'
+    && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(row.idPersona)
+    && row.documento === documento && texto(row.nombreCompleto)
+    && ['tipoVinculacion', 'escalafon', 'situacionAdministrativa', 'situacionCategoria'].every(key => nullableTexto(row[key]))
+    && horas(row.horasAsignables) && fecha(row.fechaInicioVinculacion) && fecha(row.fechaFinVinculacion)
+    // El origen admite texto de investigación; no se transforma en horas ni cambia aquí.
+    && (nullableTexto(row.investigacion) || (typeof row.investigacion === 'number' && Number.isFinite(row.investigacion)));
+}
+
 /**
  * Cliente de rund-service. El RUND es de solo lectura para Programación (RN-09) y
  * el dato vive en otro microservicio: se consulta por su API interna, no por SQL.
@@ -55,7 +78,14 @@ export class RundClient {
     if (!res.ok) {
       throw new ServiceUnavailableException(`No se pudo consultar el RUND (respondió ${res.status}).`);
     }
-    const cuerpo: any = await res.json();
-    return (cuerpo?.data ?? cuerpo) as DocenteRund;
+    try {
+      const cuerpo: unknown = await res.json();
+      if (!cuerpo || typeof cuerpo !== 'object' || ('success' in cuerpo && cuerpo.success !== true)) throw new Error();
+      const data = 'data' in cuerpo ? cuerpo.data : cuerpo;
+      if (!esPerfil(data, limpio)) throw new Error();
+      return data;
+    } catch {
+      throw new ServiceUnavailableException('El RUND no confirmó un perfil válido para el documento solicitado.');
+    }
   }
 }

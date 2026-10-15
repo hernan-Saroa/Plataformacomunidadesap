@@ -5,13 +5,13 @@ import { IS_PUBLIC_KEY, PERMISSIONS_KEY } from './auth.decorators';
 function ctx(user: any, meta: Record<string, any>, codes: string[] = []) {
   const reflector = { getAllAndOverride: (key: string) => meta[key] } as unknown as Reflector;
   const request = { user };
-  const db = { query: jest.fn().mockResolvedValue(codes.map((code) => ({ code }))) };
+  const identities = { permisosRoles: jest.fn().mockResolvedValue(codes) };
   const context: any = {
     getHandler: () => ({}),
     getClass: () => ({}),
     switchToHttp: () => ({ getRequest: () => request }),
   };
-  return { guard: new PermissionsGuard(reflector, db as any), context, db };
+  return { guard: new PermissionsGuard(reflector, identities as any), context, identities };
 }
 
 describe('PermissionsGuard', () => {
@@ -50,21 +50,21 @@ describe('PermissionsGuard', () => {
     await expect(guard.canActivate(context)).resolves.toBe(false);
   });
 
-  it('deniega el acceso por permiso cuando no puede consultar la base', async () => {
-    const { guard, context, db } = ctx({ roles: ['PERSONALIZADO'] }, { [PERMISSIONS_KEY]: ['rund.view'] });
-    db.query.mockRejectedValue(new Error('base no disponible'));
+  it('deniega el acceso por permiso cuando no puede consultar Auth', async () => {
+    const { guard, context, identities } = ctx({ roles: ['PERSONALIZADO'] }, { [PERMISSIONS_KEY]: ['rund.view'] });
+    identities.permisosRoles.mockRejectedValue(new Error('Auth no disponible'));
     await expect(guard.canActivate(context)).resolves.toBe(false);
   });
 
   it('consulta una vez por peticion y comprueba revocaciones en la siguiente', async () => {
     const user = { roles: ['PERSONALIZADO'] };
-    const { guard, context, db } = ctx(user, { [PERMISSIONS_KEY]: ['rund.view'] }, ['rund.view']);
+    const { guard, context, identities } = ctx(user, { [PERMISSIONS_KEY]: ['rund.view'] }, ['rund.view']);
     await expect(guard.canActivate(context)).resolves.toBe(true);
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(db.query).toHaveBeenCalledTimes(1);
-    db.query.mockResolvedValue([]);
+    expect(identities.permisosRoles).toHaveBeenCalledTimes(1);
+    identities.permisosRoles.mockResolvedValue([]);
     const next = { ...context, switchToHttp: () => ({ getRequest: () => ({ user }) }) };
     await expect(guard.canActivate(next)).resolves.toBe(false);
-    expect(db.query).toHaveBeenCalledTimes(2);
+    expect(identities.permisosRoles).toHaveBeenCalledTimes(2);
   });
 });

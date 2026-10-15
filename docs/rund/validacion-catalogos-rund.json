@@ -1,0 +1,267 @@
+{
+  "verifiedAt": "2026-10-14T22:38:36.617Z",
+  "step": "12.5d.2",
+  "checkpoint": "Catálogos del perfil y cobertura territorial por API propietaria",
+  "baseCommit": "63b9fc07a97f06cba1d5f99dc4e74616831531ec",
+  "buildsPassed": [
+    "auth-service",
+    "academic-work-plan-service",
+    "rund-service"
+  ],
+  "tests": {
+    "auth": {
+      "suites": 15,
+      "tests": 154,
+      "added": 2
+    },
+    "pta": {
+      "suites": 88,
+      "tests": 841,
+      "added": 11
+    },
+    "rund": {
+      "suites": 46,
+      "tests": 609,
+      "added": 39
+    }
+  },
+  "processExits": [
+    {
+      "name": "auth-tests",
+      "exitCode": 0
+    },
+    {
+      "name": "rund-tests",
+      "exitCode": 0
+    },
+    {
+      "name": "pta-tests",
+      "exitCode": 0
+    },
+    {
+      "name": "integration",
+      "exitCode": 0
+    },
+    {
+      "name": "gateway",
+      "exitCode": 0
+    }
+  ],
+  "commands": {
+    "build": "npm.cmd run build in each Auth/PTA/RUND service",
+    "authTests": "node backend/rund-service/node_modules/jest/bin/jest.js --config scripts/jest-auth-carpeta.config.cjs --runInBand",
+    "ptaTests": "cd backend/academic-work-plan-service; node node_modules/jest/bin/jest.js --runInBand",
+    "rundTests": "cd backend/rund-service; node node_modules/jest/bin/jest.js --runInBand",
+    "integration": "node scripts/verify-rund-service-integration.cjs",
+    "gateway": "node scripts/verify-rund-gateway-audit.cjs",
+    "staticConfiguration": "node scripts/verify-rund-catalogos-config.cjs"
+  },
+  "ptaInstalledDatabaseCanaries": "Closed local port override; expected unavailable branch, does not certify installed data",
+  "catalogs": {
+    "auth": {
+      "endpoint": "/internal/rund/v1/catalogos/seccionales",
+      "key": "id_seccional::text",
+      "fields": [
+        "id",
+        "nombre"
+      ]
+    },
+    "pta": {
+      "endpoint": "/internal/rund/v1/catalogos/territoriales",
+      "key": "codigo exacto",
+      "fields": [
+        "codigo",
+        "nombre"
+      ]
+    },
+    "response": "{ items, total }, Auth global wrapper preserved",
+    "historicalRowsIncluded": true,
+    "publicCatalogRoutesChanged": false,
+    "tokenRequired": true,
+    "jwtSecretFallback": false,
+    "gatewayExposure": false,
+    "noCache": true,
+    "timeoutMs": 10000,
+    "redirectsAllowed": false,
+    "totalAndUniqueKeysValidated": true,
+    "confirmedEmptyCatalogValid": true,
+    "missingRouteOrUnconfirmedCatalogStatus": 503,
+    "unknownConfirmedTerritorialCodeName": null,
+    "sqlFallbackOnApiFailure": false,
+    "catalogCopiesPersisted": false
+  },
+  "behavior": {
+    "profilePtaCodeNotSubstitutedByAuthId": true,
+    "leadingZeroCodesPreserved": true,
+    "bigintPrecisionPreserved": true,
+    "homonymousAuthRowsGroupedInPostgres": true,
+    "coverageAndCetapCountsComparedToPreviousSql": true,
+    "catalogFailurePreviouslySilentNow503": true,
+    "nativeAggregateSqlErrorToleranceUnchanged": true,
+    "internalRundServiceSqlOnlyOwnTables": true,
+    "otherRundServicesFullyIsolated": false
+  },
+  "integration": {
+    "passed": true,
+    "totalChecks": 151,
+    "newCatalogChecks": [
+      "Catálogos: Auth y PTA exigen token interno incluso con JWT de usuario",
+      "Catálogos: DTO mínimo completo, sin caché ni conversión de IDs en APIs propietarias de solo lectura",
+      "Catálogos: perfil conserva código PTA con ceros e histórico inactivo, sin sustituir ID Auth",
+      "Catálogos: cobertura conserva JOIN histórico por ID Auth, bigint, homónimos y conteos CETAP",
+      "Catálogos: fallo o respuesta parcial de PTA produce 503 sin recurrir al JOIN disponible",
+      "Catálogos: fallo o respuesta parcial de Auth no publica cobertura vacía ni usa sus tablas desde RUND",
+      "Catálogos: código desconocido mantiene null y la recuperación restaura el nombre confirmado"
+    ],
+    "gatewayHttpChecks": 10,
+    "syntheticTemporaryPostgresOnly": true,
+    "fixture": "controladores, guards y servicios compilados de Auth/PTA con HTTP real y SQL temporal de solo lectura; no inicia sus AppModules",
+    "authAndPtaAppModulesStarted": false,
+    "rundMainReal": true,
+    "profilesComparedOnCatalogOutage": true,
+    "previousIdentityAndDocumentVersionTestsPreserved": true
+  },
+  "staticConfiguration": {
+    "passed": true,
+    "combinations": 11,
+    "checks": [
+      {
+        "file": "docker-compose.yml",
+        "ptaInternalUrl": "http://academic-work-plan-service:3003",
+        "ptaTokenExplicitOrShared": true
+      },
+      {
+        "file": "docker-compose.backend.yml",
+        "ptaInternalUrl": "http://academic-work-plan-service:3003",
+        "ptaTokenExplicitOrShared": true
+      },
+      {
+        "file": "docker-compose.dev.yml",
+        "ptaInternalUrl": "http://academic-work-plan-service:3003",
+        "ptaTokenExplicitOrShared": true
+      },
+      {
+        "file": "docker-compose.qa.yml",
+        "ptaInternalUrl": "http://academic-work-plan-service-qa:3003",
+        "ptaTokenExplicitOrShared": true
+      },
+      {
+        "file": "docker-compose.pre.yml",
+        "ptaInternalUrl": "http://academic-work-plan-service-pre:3003",
+        "ptaTokenExplicitOrShared": true
+      },
+      {
+        "file": "docker-compose.prod.yml",
+        "ptaInternalUrl": "http://academic-work-plan-service-prod:3003",
+        "ptaTokenExplicitOrShared": true
+      },
+      {
+        "file": "docker-compose.local.yml",
+        "ptaInternalUrl": "http://academic-work-plan-service:3003",
+        "ptaTokenExplicitOrShared": true
+      },
+      {
+        "file": "docker-compose.dev.yml + docker-compose.ghcr.yml",
+        "ptaInternalUrl": "http://academic-work-plan-service:3003",
+        "ptaTokenExplicitOrShared": true
+      },
+      {
+        "file": "docker-compose.qa.yml + docker-compose.qa.ghcr.yml",
+        "ptaInternalUrl": "http://academic-work-plan-service-qa:3003",
+        "ptaTokenExplicitOrShared": true
+      },
+      {
+        "file": "docker-compose.pre.yml + docker-compose.pre.ghcr.yml",
+        "ptaInternalUrl": "http://academic-work-plan-service-pre:3003",
+        "ptaTokenExplicitOrShared": true
+      },
+      {
+        "file": "docker-compose.prod.yml + docker-compose.prod.ghcr.yml",
+        "ptaInternalUrl": "http://academic-work-plan-service-prod:3003",
+        "ptaTokenExplicitOrShared": true
+      }
+    ],
+    "fullDockerComposeRuntimeCertified": false,
+    "realEnvironmentFilesRead": false
+  },
+  "rollout": {
+    "order": [
+      "Auth and PTA with internal catalog APIs",
+      "RUND"
+    ],
+    "ptaUrlVariable": "ACADEMIC_WORK_PLAN_SERVICE_URL",
+    "ptaTokenVariable": "PTA_INTERNAL_SERVICE_TOKEN",
+    "ptaTokenMustMatch": "PTA INTERNAL_SERVICE_TOKEN; RUND uses its explicit INTERNAL_SERVICE_TOKEN if specific token absent",
+    "independentOfFolderProjectionFlags": true,
+    "rollbackOrder": [
+      "RUND compatible with previous owners",
+      "Auth/PTA"
+    ]
+  },
+  "previousConsumerTypeScriptSourcesUnchanged": {
+    "backend/auth-service/src/carpeta-digital/rund-client.ts": "d305a4fb5f9f9ecc1894b2454f28b5a916fb3540600f38c107c07ecb9938a4cc",
+    "backend/auth-service/src/carpeta-digital/rund-client.spec.ts": "5b6f5cc59af03df49a4ea2319ace25d34fa6ca3f731349c3530798797e8e1ab5",
+    "backend/auth-service/src/carpeta-digital/rund-document-access.spec.ts": "aefaf510ef6bb8c693a572ce830972ab042aba5e1a6ad2fd9d62f448734f721a",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.ts": "96edfdc416dcef40dcd9ecfe42e825331987a8c82658ab270a83a38b324b3306",
+    "backend/academic-schedule-service/src/asignaciones/rund-client.spec.ts": "7e4b7ace41bf26f4aca75a895030d886743092126b98078f4bf4d9c1ef1202e8",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.ts": "ce98cab2a76186cf6b66606b048849b3e59072b5539c4666c10353b67d95abf2",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-docentes.client.spec.ts": "4e1c12b82cb5d570e24ac3bac4f2ae48882c62399ded648db7b08d26d08c47b7",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.ts": "55e065df1e174fc14d16b7af42d6afa7103aea2a8cd5f5f3a6d54fb092552875",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-sync.service.spec.ts": "248cc2588b86bb710bb6d5bccb61c0a8daf85d316f2f09a69d5e55d9ba2df244",
+    "backend/academic-work-plan-service/src/contrato-programacion/v1/docentes-contrato.rund.spec.ts": "36576dee75576499ab6660640de9f220835f9de4269ab945b8927e1fd882740e"
+  },
+  "previousIdentityCoreTypeScriptSourcesUnchanged": {
+    "backend/auth-service/src/users/rund-identity.controller.ts": "7bc39396037a8b0f8629c62a85a7a467e649d939313cfb48bfe7d602ee608464",
+    "backend/auth-service/src/users/rund-identity.controller.spec.ts": "adc7199f83e9a65ab031f361d5e1faf04796f44528f7c87da9c7e79231cca490",
+    "backend/rund-service/src/common/auth-identity.client.ts": "251c5469754d1dbdac48587395f9e64e0fe0d927078f156af1b558a33ed568b3",
+    "backend/rund-service/src/common/auth-identity.client.spec.ts": "8c12f8d4e148d41b8c2404722d1b4afd8b70151e881f7b6ec90fd0168587b79e",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.ts": "4aecaf3b734b8e7406fd9849a63abf252f0f6435e2b4b586a28f5524cb13c948",
+    "backend/rund-service/src/modules/banco-docentes/rund-validacion.service.spec.ts": "bea969a1cf437d860b5c9d7ae575c67b581cee6805829ba137f5ff525d1beb6f"
+  },
+  "existingDatabaseUsed": false,
+  "realEnvironmentFilesRead": false,
+  "operativeMigrationsExecuted": false,
+  "operativeDataCopyExecuted": false,
+  "deployed": false,
+  "pushed": false,
+  "environmentAcceptanceCertified": false,
+  "migrationStatus": {
+    "mainStepsCompletedLocally": 11,
+    "currentMainStep": 12,
+    "remainingWorkstreamsIncludingCurrent": 5
+  },
+  "limits": [
+    "Other RUND bank/catalog queries still access Auth/PTA schemas.",
+    "Next checkpoint: BancoDocentesService.getTerritoriales used for bank load/edit.",
+    "Identity writes, sync, permissions and operational acceptance remain pending.",
+    "Embedded RUND in PTA preserved."
+  ],
+  "sourceHashes": {
+    "backend/auth-service/src/users/rund-catalogos.controller.ts": "c9652048fdcfad969977f844f443eabd92ef595bfc738c2e2eedec6bb03926a6",
+    "backend/auth-service/src/users/rund-catalogos.controller.spec.ts": "4e7134e8828eb5dba3d7a2dae5162736b54c12e4a7ed5a681bab3c1d711a378a",
+    "backend/auth-service/src/users/users.module.ts": "8be8d58d9b87ac519f78da75a14c826e9d1946cae5c935e86eadc4736dabe45c",
+    "backend/auth-service/.env.example": "17192b06ef9226c17b79e8af06a1b812650ee3b3307d198a395fc657e0dacd0f",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-catalogos.module.ts": "04e37b04b5e6f8ca224bc4d0f6dd50613ace83507327bbf4492661fa2554c883",
+    "backend/academic-work-plan-service/src/integracion-rund/rund-catalogos.module.spec.ts": "bd5e688aff86ad715c9ff44fe5ba6355ee21e4c7bb06e331893b1f024e4ad32e",
+    "backend/academic-work-plan-service/src/app.module.ts": "c6fa3d7b1942a65ac4bafb9269b5f20657321bb35152501fac37147a027f716c",
+    "backend/academic-work-plan-service/.env.example": "82bfe028379b05fc76ebdbbda8dced2d8c09a6ab96b4fbe9b8903841b96ea94e",
+    "backend/rund-service/src/common/rund-catalogos.client.ts": "6ee6c9d2e9604186e9035b000334a475cb4444e0352fbd3598116234cd04f9a5",
+    "backend/rund-service/src/common/rund-catalogos.client.spec.ts": "051f4f2b7133e25fabe881d3825d679fe0708203261ae2a395bb4d50276b42c8",
+    "backend/rund-service/src/internal/internal-rund.service.ts": "29590760ac8e4458daefccda645e951b0af0d416b44ee86878ba4b4645c308a9",
+    "backend/rund-service/src/internal/internal-rund.spec.ts": "93379462052363a883fbee644c7d6cf65637baef2e2c1c0c29aa793057913071",
+    "backend/rund-service/src/internal/internal.module.ts": "c62854e7d9fd98e7a9ae12ce0d4a486e68fa75b8309376cb18401432693b35be",
+    "backend/rund-service/.env.example": "e4e92a817513d8a2774e4bd32b510bc22b8ccc98912ec7ec04097be45897dd27",
+    "scripts/verify-rund-catalogos.cjs": "1a276fb65b88836bfc830f347012be45ca7e00a79ec2936a611137e8f0233144",
+    "scripts/verify-rund-catalogos-config.cjs": "cfc338c6c4b04671605f954023cbf48accff304cb8e1239c5ed405f68dd38619",
+    "scripts/verify-rund-auth-identity.cjs": "8ed2365563ad00b8333f0530805b769b85db82c02dc4aa60ad43879bddafd909",
+    "scripts/verify-rund-service-integration.cjs": "a341457646bd525f76c15f39e71607daac09b3fcc41a4dd8d337e07b456027e9",
+    "scripts/verify-rund-gateway-audit.cjs": "1595d5d3c7b57e0e06e9a215cfbae9ee0275b12928c05056663c0052568f2870",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "54df749ebb6b1f9df3c9951c8423d715668c5b93830bd6b1c7cadd36c5cb1200",
+    "docker-compose.yml": "0f2c7f42337fab00c619314ee24269b77478f2e8e7ccdce42fe803da742ab580",
+    "docker-compose.backend.yml": "f09a624a73dba3a76dc69c4c58ec6872250996d56c4d3ac13f51e8b3c5108c87",
+    "docker-compose.dev.yml": "7e835f7b9b5f57433008cc7418dd8d9453608e778dd6dacf3c798c5e8a3b126a",
+    "docker-compose.qa.yml": "0cc9a432cf4c3c6b9e3bf7bf5e34de00a4969813ad3a96b99743c5853e199f19",
+    "docker-compose.pre.yml": "edcd7f710baf381bfa2f020316e478e630490f89d256d3e70d477e58a56328dd",
+    "docker-compose.prod.yml": "3c1b9d91c76644478cb88d6abd4949ed5b35c16b9eb94bbc502a590e5cd0b846"
+  }
+}

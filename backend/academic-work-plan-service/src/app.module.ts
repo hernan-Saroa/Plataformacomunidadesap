@@ -11,6 +11,7 @@ import { ContratoProgramacionModule } from './contrato-programacion/contrato-pro
 import { BancoDocentesModule } from './pta/banco-docentes/banco-docentes.module';
 import { MacroDocenteModule } from './pta/macro-docente/macro-docente.module';
 import { EstructuraImportModule } from './estructura-import/estructura-import.module';
+import { RundCatalogosModule } from './integracion-rund/rund-catalogos.module';
 import { PlanTrabajoAcademicoEntity } from './pta/entities/plan-trabajo-academico.entity';
 import { HistorialEstadoPtaEntity } from './pta/entities/historial-estado-pta.entity';
 import { PtaEvidenciaEntity } from './pta/entities/pta-evidencia.entity';
@@ -86,6 +87,7 @@ import { OfertaCetapProgramaEntity } from './pta/entities/oferta-cetap-programa.
     BancoDocentesModule,
     MacroDocenteModule,
     EstructuraImportModule,
+    RundCatalogosModule,
   ],
   controllers: [AppController],
   providers: [

@@ -6,6 +6,7 @@ import { comparable, confirmExtractionSuggestions, extractionFieldsForDocument, 
 import { recordRundAccess, RundAccessActor } from './rund-access-audit';
 import { postLocalJson } from './rund-local-http';
 import { invalidateEditedEvidence } from './rund-evidence-workflow';
+import { AuthIdentityClient } from '../../common/auth-identity.client';
 
 const EXTRACTION_BLOCK: Record<string,string> = {
   documentType:'IDENTIDAD',documentNumber:'IDENTIDAD',nombreCompleto:'IDENTIDAD',genero:'IDENTIDAD',sexoBiologico:'IDENTIDAD',fechaNacimiento:'IDENTIDAD',
@@ -56,7 +57,8 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
   private heartbeat?: NodeJS.Timeout;
   private activeJob?: any;
   get enabled() { return process.env.RUND_OCR_ENABLED === 'true'; }
-  constructor(private readonly db: DataSource, private readonly storage: RundDocumentStorageService) {}
+  constructor(private readonly db: DataSource, private readonly storage: RundDocumentStorageService,
+    private readonly identities: AuthIdentityClient) {}
 
   onModuleInit() {
     if (!this.enabled) return;
@@ -292,7 +294,7 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
       await this.db.query(`UPDATE rund."RundExtraccionTrabajo" SET estado='OBSOLETO', lease_id=NULL, lease_hasta=NULL WHERE id=$1 AND lease_id=$2`, [job.id, job.lease_id]);
       return;
     }
-    const baseline = await extractionProfile(this.db, job.docente_id);
+    const baseline = await extractionProfile(this.db, job.docente_id, this.identities);
     const fields = extractionFieldsForDocument(document);
     if (!fields.length) {
       await this.db.query(`UPDATE rund."RundExtraccionTrabajo" SET estado='COMPLETADO',lease_id=NULL,lease_hasta=NULL WHERE id=$1 AND lease_id=$2`,[job.id,job.lease_id]);

@@ -3,9 +3,11 @@ import { BancoDocentesModule } from '../modules/banco-docentes/banco-docentes.mo
 import { InternalRundController } from './internal-rund.controller';
 import { InternalRundService } from './internal-rund.service';
 import { InternalServiceGuard } from './internal-service.guard';
+import { AuthIdentityModule } from '../common/auth-identity.client';
+import { RundCatalogosModule } from '../common/rund-catalogos.client';
 
 @Module({
-  imports: [BancoDocentesModule],
+  imports: [BancoDocentesModule, AuthIdentityModule, RundCatalogosModule],
   controllers: [InternalRundController],
   providers: [InternalRundService, InternalServiceGuard],
 })

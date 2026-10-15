@@ -24,6 +24,10 @@ import { EstructuraOrganizacionalController } from './estructura-organizacional.
 import { BackofficeDashboardController } from './backoffice-dashboard.controller';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { DatosMaestrosModule } from './datos-maestros.module';
+import { RundIdentityController, RundIdentityGuard, RundIdentityService } from './rund-identity.controller';
+import { RundCatalogosController, RundCatalogosService } from './rund-catalogos.controller';
+import { RundBancoController, RundBancoService } from './rund-banco.controller';
+import { RundIdentityValidationController, RundIdentityValidationService } from './rund-identity-validation.controller';
 
 @NestModule({
   imports: [
@@ -43,13 +47,18 @@ import { DatosMaestrosModule } from './datos-maestros.module';
     ]),
     DatosMaestrosModule,
   ],
-  providers: [UsersService, RolesService, ModulesService, EstructuraOrganizacionalService, RolesGuard, BackofficeDashboardService],
+  providers: [UsersService, RolesService, ModulesService, EstructuraOrganizacionalService, RolesGuard, BackofficeDashboardService,
+    RundIdentityGuard, RundIdentityService, RundCatalogosService, RundBancoService, RundIdentityValidationService],
   controllers: [
     RolesController,
     UsersController,
     ModulesController,
     EstructuraOrganizacionalController,
     BackofficeDashboardController,
+    RundIdentityController,
+    RundCatalogosController,
+    RundBancoController,
+    RundIdentityValidationController,
   ],
   exports: [UsersService, RolesService, ModulesService, EstructuraOrganizacionalService],
 })

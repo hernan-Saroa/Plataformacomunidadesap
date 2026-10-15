@@ -61,12 +61,13 @@ describe('RUND: carga masiva y archivos originales', () => {
   });
 
   it('deniega la lectura del PDF original antes de acceder al repositorio', async () => {
-    const db = { query: jest.fn().mockResolvedValueOnce([{ id: 'teacher-1' }]).mockResolvedValueOnce([{ id: 'doc-1', estado: 'ACTIVO' }]).mockResolvedValue([]) };
+    const db = { query: jest.fn().mockResolvedValueOnce([{ id: 'doc-1', estado: 'ACTIVO' }]).mockResolvedValue([]) };
     const storage = { read: jest.fn() };
-    const service = new RundDocumentosService(db as any, storage as any);
+    const service = new RundDocumentosService(db as any, storage as any, {} as any);
+    jest.spyOn(service as any, 'requireDocente').mockResolvedValue({ id: 'teacher-1' });
     await expect(service.content('teacher-1', 'doc-1', { actorId: 'admin-1', roles: ['ADMIN'], fullAccess: false })).rejects.toThrow(ForbiddenException);
     expect(storage.read).not.toHaveBeenCalled();
-    expect(db.query.mock.calls[2][1]).toContain('DENEGADO');
+    expect(db.query.mock.calls[1][1]).toContain('DENEGADO');
   });
 
   it.each(['documentNumber', 'DOCUMENTO_IDENTIDAD', 'documento_identidad'])('editar con %s enmascarado conserva la identidad y los cambios ordinarios', async (key) => {
@@ -75,6 +76,8 @@ describe('RUND: carga masiva y archivos originales', () => {
       docenteRepo: { findOne: jest.fn().mockResolvedValue({ id: 'teacher-1', personaId: 'person-1', periodoCarga: '2026-1', estado: 'ACTIVO' }) },
       dataSource: { query: jest.fn().mockResolvedValueOnce([{ id: 'support-1' }]).mockResolvedValueOnce([{ document_number: '1020304050' }]) },
       upsertDocente: jest.fn().mockResolvedValue({ docenteId: 'teacher-1' }),
+      catalogos: { territorialesBanco: jest.fn().mockResolvedValue([]) },
+      identities: { fichaPorPersona: jest.fn().mockResolvedValue({ num_identificacion: '1020304050' }) },
     });
     await service.updateDocente('teacher-1', { [key]: '******4050', telefono: '3001234567', soporteEdicionId: 'support-1', justificacionEdicion: 'Actualizar contacto' });
     const payload = service.upsertDocente.mock.calls[0][0];
@@ -89,6 +92,7 @@ describe('RUND: carga masiva y archivos originales', () => {
       docenteRepo: { findOne: jest.fn().mockResolvedValue({ id: 'teacher-1', personaId: 'person-1', periodoCarga: '2026-1' }) },
       dataSource: { query: jest.fn().mockResolvedValueOnce([{ id: 'support-1' }]).mockResolvedValueOnce([{ document_number: '1020304050' }]) },
       upsertDocente: jest.fn(),
+      identities: { fichaPorPersona: jest.fn().mockResolvedValue({ num_identificacion: '1020304050' }) },
     });
     await expect(service.updateDocente('teacher-1', { DOCUMENTO_IDENTIDAD: '9999999999', soporteEdicionId: 'support-1', justificacionEdicion: 'Actualizar' }))
       .rejects.toThrow('no se puede modificar');

@@ -46,6 +46,50 @@ describe('RundClient (API interna de rund-service)', () => {
     await expect(new RundClient().soportesPorPersona('p')).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(f).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['sin cuerpo', null], ['objeto vacío', {}], ['lista', []],
+    ['data ausente', { success: true }], ['data nula con falso fuera de data', { data: null, esOriginalRund: false }],
+    ['booleano como texto', { data: { esOriginalRund: 'false' } }],
+    ['booleano como número', { data: { esOriginalRund: 0 } }],
+    ['error de negocio con HTTP 200', { success: false, data: { esOriginalRund: false } }],
+  ])('no interpreta %s como un original público', async (_caso, cuerpo) => {
+    const fetchMock = jest.fn().mockResolvedValue(resp(200, cuerpo));
+    global.fetch = fetchMock as any;
+    await expect(new RundClient().esOriginalRund('/u', 'h', ['E'])).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['sin cuerpo', null], ['sin confirmación', {}], ['data ausente', { success: true }],
+    ['no registrado', { data: { registrado: false } }],
+    ['confirmación como texto', { data: { registrado: 'true' } }],
+    ['error de negocio con HTTP 200', { success: false, data: { registrado: true } }],
+  ])('rechaza auditoría con %s aunque HTTP sea exitoso', async (_caso, cuerpo) => {
+    const fetchMock = jest.fn().mockResolvedValue(resp(201, cuerpo));
+    global.fetch = fetchMock as any;
+    await expect(new RundClient().registrarAcceso({} as any)).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('un JSON inválido produce indisponibilidad sin revelar su contenido privado', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200,
+      json: jest.fn().mockRejectedValue(new SyntaxError('CUERPO_PRIVADO')) }) as any;
+    const error = await new RundClient().esOriginalRund('/u', 'h', []).catch(error => error);
+    expect(error).toBeInstanceOf(ServiceUnavailableException);
+    expect(error.message).not.toContain('CUERPO_PRIVADO');
+  });
+
+  it('conserva respuestas directas y distingue explícitamente falso de verdadero', async () => {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce(resp(201, { registrado: true }))
+      .mockResolvedValueOnce(resp(200, { esOriginalRund: false }))
+      .mockResolvedValueOnce(resp(200, { esOriginalRund: true })) as any;
+    const client = new RundClient();
+    await expect(client.registrarAcceso({} as any)).resolves.toBeUndefined();
+    await expect(client.esOriginalRund('/u', 'h', [])).resolves.toBe(false);
+    await expect(client.esOriginalRund('/u', 'h', [])).resolves.toBe(true);
+  });
 });
 
 describe('Carpeta Digital: soportes RUND vienen de rund-service', () => {

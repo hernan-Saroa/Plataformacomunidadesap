@@ -1,43 +1,11 @@
-import { ConflictException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, FindOptionsWhere, Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { BancoDocenteEntity } from '../../entities/banco-docente.entity';
 import { RundAuthStateSyncService } from './rund-auth-state-sync.service';
-
-function coalesceString(...values: unknown[]): string | null {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  return null;
-}
-
-/** Campos del RUND que se validan documentalmente y el bloque al que pertenecen. */
-export const CAMPOS_SOPORTE_RUND: ReadonlyArray<{ campo: string; tipo: string }> = [
-  { campo: 'DOCUMENTO_IDENTIDAD', tipo: 'IDENTIDAD' },
-  { campo: 'TIPO_DOCUMENTO', tipo: 'IDENTIDAD' },
-  { campo: 'NOMBRE_COMPLETO', tipo: 'IDENTIDAD' },
-  { campo: 'FECHA_NACIMIENTO', tipo: 'IDENTIDAD' },
-  { campo: 'GENERO', tipo: 'IDENTIDAD' },
-  { campo: 'CORREO_INSTITUCIONAL', tipo: 'CONTACTO' },
-  { campo: 'VINCULACION', tipo: 'VINCULACION' },
-  { campo: 'TERRITORIAL', tipo: 'VINCULACION' },
-  { campo: 'DEDICACION', tipo: 'VINCULACION' },
-  { campo: 'CATEGORIA_ESCALAFON', tipo: 'ESCALAFON' },
-  { campo: 'INICIO_VINCULACION', tipo: 'VINCULACION' },
-  { campo: 'FIN_VINCULACION', tipo: 'VINCULACION' },
-  { campo: 'ACTO_ADMINISTRATIVO', tipo: 'VINCULACION' },
-  { campo: 'PUNTAJE_SALARIAL', tipo: 'ESCALAFON' },
-  { campo: 'SITUACION_ADMINISTRATIVA', tipo: 'SITUACION' },
-  { campo: 'NIVEL_FORMACION', tipo: 'FORMACION' },
-  { campo: 'TITULO_PREGRADO', tipo: 'FORMACION' },
-  { campo: 'TITULO_ESPECIALIZACION', tipo: 'FORMACION' },
-  { campo: 'TITULO_MAESTRIA', tipo: 'FORMACION' },
-  { campo: 'TITULO_DOCTORADO', tipo: 'FORMACION' },
-  { campo: 'TITULO_POSDOCTORADO', tipo: 'FORMACION' },
-  { campo: 'NUCLEO_TEMATICO', tipo: 'VINCULACION' },
-  { campo: 'PERFIL_ACADEMICO', tipo: 'FORMACION' },
-  { campo: 'ULTIMA_EVALUACION', tipo: 'EVALUACION' },
-];
+import { CAMPOS_SOPORTE_RUND } from './rund-document-fields';
+import { AuthIdentityClient } from '../../common/auth-identity.client';
+export { CAMPOS_SOPORTE_RUND } from './rund-document-fields';
 
 /**
  * Validación documental por campo del RUND (rund.validacion_documental) y su
@@ -49,6 +17,7 @@ export class RundValidacionService {
     @InjectRepository(BancoDocenteEntity)
     private readonly docenteRepo: Repository<BancoDocenteEntity>,
     @InjectDataSource() private readonly dataSource: DataSource,
+    private readonly identities: AuthIdentityClient,
     @Optional() private readonly authState?: RundAuthStateSyncService,
   ) {}
 
@@ -57,7 +26,7 @@ export class RundValidacionService {
     let docente = await this.buscarDocente(docenteKey);
 
     if (!docente) {
-      const personId = await this.resolverPersonaEnAuth(docenteKey);
+      const personId = await this.identities.resolver(docenteKey);
       if (personId) {
         docente = await this.buscarDocente(personId);
       }
@@ -67,32 +36,19 @@ export class RundValidacionService {
     return docente;
   }
 
-  private buscarDocente(key: string): Promise<BancoDocenteEntity | null> {
-    const where: FindOptionsWhere<BancoDocenteEntity>[] = [{ id: key }];
+  private async buscarDocente(key: string): Promise<BancoDocenteEntity | null> {
+    // Un ID de perfil explícito tiene prioridad sobre cualquier alias de persona.
+    const exacto = await this.docenteRepo.findOne({ where: { id: key } });
+    if (exacto) return exacto;
     // personaId sigue siendo UUID. Un id textual del banco no puede enviarse a esa columna.
     // PostgreSQL admite UUID con/sin guiones, mayusculas y llaves externas.
     const uuidInput = key.startsWith('{') && key.endsWith('}') ? key.slice(1, -1) : key;
     if (/^[0-9a-f]{4}(?:-?[0-9a-f]{4}){7}$/i.test(uuidInput)) {
-      where.push({ personaId: key });
+      const perfiles = await this.docenteRepo.find({ where: { personaId: key }, take: 2, order: { id: 'ASC' } });
+      if (perfiles.length > 1) throw new ConflictException('La persona tiene varios perfiles RUND. Consulte el identificador del perfil y su período.');
+      return perfiles[0] || null;
     }
-    return this.docenteRepo.findOne({ where });
-  }
-
-  private async resolverPersonaEnAuth(key: string): Promise<string | null> {
-    try {
-      const rows: Array<{ person_id: string | null }> = await this.dataSource.query(
-        `SELECT p.id_person::text AS person_id
-         FROM auth.personas p
-         LEFT JOIN auth."user" u ON u.id_person = p.id_person
-         WHERE p.id_person::text = $1 OR u.id_user::text = $1
-         LIMIT 1`,
-        [key],
-      );
-      return coalesceString(rows?.[0]?.person_id);
-    } catch {
-      // Algunos ambientes de auth usan id_tercero en lugar de id_person: sin resolución, el llamador recibe 404.
-      return null;
-    }
+    return null;
   }
 
   async getRundDocente(docenteKey: string) {
@@ -103,20 +59,28 @@ export class RundValidacionService {
       [docente.id],
     );
 
-    if (filas.length === 0) {
-      for (const item of CAMPOS_SOPORTE_RUND) {
-        await this.dataSource.query(
-          `INSERT INTO rund.validacion_documental (docente_id, campo_rund, tipo_documento_soporte, estado_documento)
-           VALUES ($1, $2, $3, 'Sin cargar')
-           ON CONFLICT (docente_id, campo_rund) DO NOTHING`,
-          [docente.id, item.campo, item.tipo],
-        );
-      }
+    const existentes = new Set(filas.map(row => row.campo_rund));
+    const faltantes = CAMPOS_SOPORTE_RUND.filter(item => !existentes.has(item.campo));
+    if (faltantes.length) {
+      // Una sentencia atómica: solo añade campos ausentes; nunca cambia decisiones
+      // ni metadatos ya persistidos, incluso si dos consultas inicializan a la vez.
+      await this.dataSource.query(
+        `INSERT INTO rund.validacion_documental (docente_id, campo_rund, tipo_documento_soporte, estado_documento)
+         SELECT $1, campo, tipo, 'Sin cargar'
+         FROM unnest($2::text[], $3::text[]) AS faltantes(campo, tipo)
+         ON CONFLICT (docente_id, campo_rund) DO NOTHING`,
+        [docente.id, faltantes.map(item => item.campo), faltantes.map(item => item.tipo)],
+      );
       filas = await this.dataSource.query(`SELECT * FROM rund.validacion_documental WHERE docente_id = $1`, [docente.id]);
     }
 
-    const total = filas.length;
-    const aceptados = filas.filter((r) => r.estado_documento === 'Aceptado').length;
+    const estados = new Map(filas.map(row => [row.campo_rund, row.estado_documento]));
+    const permitidos = ['Sin cargar', 'Pendiente', 'Aceptado', 'Rechazado', 'No aplica'];
+    if (estados.size !== filas.length || CAMPOS_SOPORTE_RUND.some(item => !permitidos.includes(estados.get(item.campo)))) {
+      throw new ServiceUnavailableException('No fue posible confirmar todos los estados documentales RUND.');
+    }
+    const total = CAMPOS_SOPORTE_RUND.length;
+    const aceptados = CAMPOS_SOPORTE_RUND.filter(item => estados.get(item.campo) === 'Aceptado').length;
 
     return {
       docenteId: docente.id,

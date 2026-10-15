@@ -17,30 +17,23 @@ function fakeRepo(overrides: Partial<Record<string, any>> = {}) {
   };
 }
 
-/** Arma un ptaRepo cuyo createQueryBuilder().getMany() devuelve `ptas`, capturando los where/andWhere aplicados. */
-function ptaRepoWithRows(ptas: any[]) {
-  const where = jest.fn().mockReturnThis();
-  const andWhere = jest.fn().mockReturnThis();
-  const orderBy = jest.fn().mockReturnThis();
-  const getMany = jest.fn().mockResolvedValue(ptas);
-  const qb = { where, andWhere, orderBy, getMany };
-  return { repo: fakeRepo({ createQueryBuilder: jest.fn(() => qb) }), qb };
+/** Datos históricos devueltos por el propietario PTA. */
+function planClientWithRows(ptas: any[]) {
+  return { planes: { planesFirmes: jest.fn().mockResolvedValue(ptas) } };
 }
 
 function buildService(overrides: Partial<Record<string, any>> = {}) {
   const noopRepo = fakeRepo();
-  const ptaRepo = overrides.ptaRepo || noopRepo;
+  const planes = overrides.planes || { planesFirmes: jest.fn().mockResolvedValue([]) };
   const docenteRepo = overrides.docenteRepo || noopRepo;
-  const personaRepo = overrides.personaRepo || noopRepo;
-  const programaRepo = overrides.programaRepo || noopRepo;
+  const catalogos = { identidadesHistoricas: jest.fn().mockResolvedValue([]), programasHistoricos: jest.fn().mockResolvedValue([]), ...overrides.catalogos };
   const accesoExternoRepo = overrides.accesoExternoRepo || noopRepo;
   const consultaLogRepo = overrides.consultaLogRepo || noopRepo;
   const notifications = overrides.notifications || { notifyAccesoExternoOtorgado: jest.fn().mockResolvedValue(false) };
   return new MacroDocenteService(
-    ptaRepo as any,
+    planes as any,
     docenteRepo as any,
-    personaRepo as any,
-    programaRepo as any,
+    catalogos as any,
     accesoExternoRepo as any,
     consultaLogRepo as any,
     notifications as any,
@@ -48,6 +41,45 @@ function buildService(overrides: Partial<Record<string, any>> = {}) {
 }
 
 describe('MacroDocenteService - REQ-RUND-F020 getHistorial (validación)', () => {
+  it('envía únicamente docente/período al propietario y conserva filtros y paginación en RUND', async () => {
+    const planes = { planesFirmes: jest.fn().mockResolvedValue([]) };
+    await buildService({ planes }).getHistorial({ docenteId: ' LEGACY ', periodo: '2099-X', programa: 'x', territorial: 'y', page: 3, limit: 2 });
+    expect(planes.planesFirmes).toHaveBeenCalledWith({ docenteId: ' LEGACY ', periodo: '2099-X' });
+  });
+  it('sin docente ni período no consulta PTA', async () => {
+    const planes = { planesFirmes: jest.fn() }; await expect(buildService({ planes }).getHistorial({})).rejects.toBeInstanceOf(BadRequestException);
+    expect(planes.planesFirmes).not.toHaveBeenCalled();
+  });
+  it('no entrega vacío ni consulta identidades/catálogos si falla la lectura de planes', async () => {
+    const planes = { planesFirmes: jest.fn().mockRejectedValue(new Error('PTA no disponible')) }, catalogos = { identidadesHistoricas: jest.fn(), programasHistoricos: jest.fn() };
+    await expect(buildService({ planes, catalogos }).getHistorial({ periodo: '2099-1' })).rejects.toThrow('PTA no disponible');
+    expect(catalogos.identidadesHistoricas).not.toHaveBeenCalled(); expect(catalogos.programasHistoricos).not.toHaveBeenCalled();
+  });
+  it('sin planes no consulta identidad histórica', async () => {
+    const catalogos = { identidadesHistoricas: jest.fn() };
+    expect((await buildService({ catalogos }).getHistorial({ periodo: '2026-2' })).total).toBe(0);
+    expect(catalogos.identidadesHistoricas).not.toHaveBeenCalled();
+  });
+  it('sin perfil nativo conserva asignaturas con identidad null, sin consultar una persona distinta', async () => {
+    const { planes } = planClientWithRows([{ docenteId: 'perfil-ausente', periodo: '2026-2', datosEstructurados: { asignaturas: [{ codigo: 'A' }] } }]);
+    const catalogos = { identidadesHistoricas: jest.fn() };
+    const result = await buildService({ planes, catalogos }).getHistorial({ periodo: '2026-2' });
+    expect(result.items[0]).toMatchObject({ docente_nombre: null, documento_identidad: null }); expect(catalogos.identidadesHistoricas).not.toHaveBeenCalled();
+  });
+  it('persona histórica ausente conserva filas y núcleo temático sin inventar datos de Auth', async () => {
+    const { planes } = planClientWithRows([{ docenteId: 'doc-1', periodo: '2026-2', datosEstructurados: { asignaturas: [{ codigo: 'A' }] } }]);
+    const docenteRepo = fakeRepo({ find: jest.fn().mockResolvedValue([{ id: 'doc-1', personaId: 'per-1', nucleoTematico: ' HISTÓRICO ' }]) });
+    const catalogos = { identidadesHistoricas: jest.fn().mockResolvedValue([]) };
+    const result = await buildService({ planes, docenteRepo, catalogos }).getHistorial({ periodo: '2026-2' });
+    expect(result.items[0]).toMatchObject({ docente_nombre: null, documento_identidad: null, nucleo_tematico: 'HISTÓRICO' });
+    expect(catalogos.identidadesHistoricas).toHaveBeenCalledWith(['per-1']);
+  });
+  it('fallo de identidad del propietario no entrega un historial parcial ni un vacío exitoso', async () => {
+    const { planes } = planClientWithRows([{ docenteId: 'doc-1', periodo: '2026-2', datosEstructurados: { asignaturas: [{ codigo: 'A' }] } }]);
+    const docenteRepo = fakeRepo({ find: jest.fn().mockResolvedValue([{ id: 'doc-1', personaId: 'per-1' }]) });
+    const catalogos = { identidadesHistoricas: jest.fn().mockRejectedValue(new Error('propietario no disponible')) };
+    await expect(buildService({ planes, docenteRepo, catalogos }).getHistorial({ periodo: '2026-2' })).rejects.toThrow('propietario no disponible');
+  });
   it('rechaza la consulta si no se indica docente ni período (evita recorrer >72.990 registros)', async () => {
     const service = buildService();
     await expect(service.getHistorial({})).rejects.toBeInstanceOf(BadRequestException);
@@ -127,11 +159,11 @@ describe('MacroDocenteService - REQ-RUND-F020 aplanado de asignaturas (datos rea
   const programas = [{ id: 'prog-2', nombre: 'Finanzas Públicas y Territoriales' }];
 
   function buildRealisticService() {
-    const { repo: ptaRepo } = ptaRepoWithRows([ptaMaria, ptaCarlos]);
+    const { planes } = planClientWithRows([ptaMaria, ptaCarlos]);
     const docenteRepo = fakeRepo({ find: jest.fn().mockResolvedValue(docentes) });
-    const personaRepo = fakeRepo({ find: jest.fn().mockResolvedValue(personas) });
-    const programaRepo = fakeRepo({ find: jest.fn().mockResolvedValue(programas) });
-    return buildService({ ptaRepo, docenteRepo, personaRepo, programaRepo });
+    const catalogos = { identidadesHistoricas: jest.fn().mockResolvedValue(personas.map(({ id, ...persona }) => ({ personaId: id, ...persona }))),
+      programasHistoricos: jest.fn().mockResolvedValue(programas) };
+    return buildService({ planes, docenteRepo, catalogos });
   }
 
   it('arma una fila por asignatura, resolviendo nombre/documento del docente y núcleo temático', async () => {
@@ -188,21 +220,20 @@ describe('MacroDocenteService - REQ-RUND-F020 aplanado de asignaturas (datos rea
     expect(pagina2.items).toHaveLength(1);
   });
 
-  it('no llama al repositorio de programas si ninguna asignatura tiene el nombre faltante', async () => {
-    const { repo: ptaRepo } = ptaRepoWithRows([ptaCarlos]); // ptaCarlos ya trae todos los nombres embebidos
+  it('no llama a la API de programas si ninguna asignatura tiene el nombre faltante', async () => {
+    const { planes } = planClientWithRows([ptaCarlos]); // ptaCarlos ya trae todos los nombres embebidos
     const docenteRepo = fakeRepo({ find: jest.fn().mockResolvedValue([docentes[1]]) });
-    const personaRepo = fakeRepo({ find: jest.fn().mockResolvedValue([personas[1]]) });
-    const programaRepo = fakeRepo();
-    const service = buildService({ ptaRepo, docenteRepo, personaRepo, programaRepo });
+    const catalogos = { identidadesHistoricas: jest.fn().mockResolvedValue([{ ...personas[1], personaId: personas[1].id }]), programasHistoricos: jest.fn() };
+    const service = buildService({ planes, docenteRepo, catalogos });
 
     await service.getHistorial({ periodo: '2025-2' });
-    expect(programaRepo.find).not.toHaveBeenCalled();
+    expect(catalogos.programasHistoricos).not.toHaveBeenCalled();
   });
 
   it('devuelve vacío sin tocar Docente/Persona/Programa cuando no hay PTAs firmes', async () => {
-    const { repo: ptaRepo } = ptaRepoWithRows([]);
+    const { planes } = planClientWithRows([]);
     const docenteRepo = fakeRepo();
-    const service = buildService({ ptaRepo, docenteRepo });
+    const service = buildService({ planes, docenteRepo });
 
     const result = await service.getHistorial({ periodo: '2099-1' });
     expect(result.items).toEqual([]);
@@ -224,14 +255,49 @@ describe('MacroDocenteService - REQ-RUND-F022 getConsultaPuntual', () => {
       estado: 'EN_FIRME',
       datosEstructurados: { asignaturas: [{ codigo: 'A1', nombre: 'Asignatura 1', horas: 10 }] },
     };
-    const { repo: ptaRepo } = ptaRepoWithRows([pta]);
+    const { planes } = planClientWithRows([pta]);
     const docenteRepo = fakeRepo({ find: jest.fn().mockResolvedValue([{ id: 'doc-1', personaId: 'per-1', nucleoTematico: null }]) });
-    const personaRepo = fakeRepo({ find: jest.fn().mockResolvedValue([{ id: 'per-1', primer_nombre: 'ANA', primer_apellido: 'LÓPEZ', identificacion: '111' }]) });
-    const service = buildService({ ptaRepo, docenteRepo, personaRepo });
+    const catalogos = { identidadesHistoricas: jest.fn().mockResolvedValue([{ personaId: 'per-1', primer_nombre: 'ANA', primer_apellido: 'LÓPEZ', identificacion: '111' }]) };
+    const service = buildService({ planes, docenteRepo, catalogos });
 
     const items = await service.getConsultaPuntual('doc-1', '2025-2');
     expect(items).toHaveLength(1);
     expect(items[0].docente_nombre).toBe('ANA LÓPEZ');
+  });
+});
+
+describe('Macro Docente: programas históricos por propietario', () => {
+  const setup = (asignaturas: any[], items: any[] = []) => {
+    const { planes } = planClientWithRows([{ docenteId: 'doc-1', periodo: '2026-2', datosEstructurados: { asignaturas } }]);
+    const programasHistoricos = jest.fn().mockResolvedValue(items);
+    return { programasHistoricos, service: buildService({ planes, catalogos: { programasHistoricos } }) };
+  };
+  it('mantiene la prioridad de los tres nombres embebidos y solo consulta IDs sin nombre', async () => {
+    const { service, programasHistoricos } = setup([
+      { codigo: 'A', programa_id: '1', programa_nombre_completo: ' COMPLETO ', programa_nombre: 'CORTO', programa: { nombre: 'ANIDADO' } },
+      { codigo: 'B', programaId: '2', programa_nombre: ' ', programa: { nombre: ' ANIDADO ' } },
+      { codigo: 'C', programa_id: '3' }, { codigo: 'D', programa_id: '3' },
+    ], [{ id: '3', nombre: ' CATÁLOGO ' }]);
+    const rows = (await service.getHistorial({ periodo: '2026-2' })).items;
+    expect(rows.map(row => row.programa)).toEqual(['COMPLETO', 'ANIDADO', ' CATÁLOGO ', ' CATÁLOGO ']);
+    expect(programasHistoricos).toHaveBeenCalledWith(['3']); expect(programasHistoricos).toHaveBeenCalledTimes(1);
+  });
+  it('ausencia o programa retirado conserva null y todas las asignaturas', async () => {
+    const { service } = setup([{ programa_id: '1' }, { programa_id: '2' }]);
+    const result = await service.getHistorial({ periodo: '2026-2' }); expect(result.total).toBe(2); expect(result.items.every(row => row.programa === null)).toBe(true);
+  });
+  it('no reasigna aliases numéricos históricos a la clave canónica del mapa anterior', async () => {
+    const { service } = setup([{ programa_id: '0001' }, { programa_id: '+1' }, { programa_id: '1' }], [{ id: '1', nombre: 'CANÓNICO' }]);
+    expect((await service.getHistorial({ periodo: '2026-2' })).items.map(row => row.programa)).toEqual([null, null, 'CANÓNICO']);
+  });
+  it('ID numérico del JSON conserva el descarte previo sin convertirlo ni agregar consultas', async () => {
+    const { service, programasHistoricos } = setup([{ programa_id: 1 }, { programaId: null }]);
+    expect((await service.getHistorial({ periodo: '2026-2' })).items.every(row => row.programa === null)).toBe(true);
+    expect(programasHistoricos).not.toHaveBeenCalled();
+  });
+  it('fallo del catálogo no entrega un historial parcial ni sustituye por otro programa', async () => {
+    const { service, programasHistoricos } = setup([{ programa_id: '1' }]); programasHistoricos.mockRejectedValue(new Error('propietario no disponible'));
+    await expect(service.getHistorial({ periodo: '2026-2' })).rejects.toThrow('propietario no disponible');
   });
 });
 
@@ -436,16 +502,16 @@ describe('MacroDocenteService - REQ-RUND-F022 acceso externo temporal', () => {
       estado: 'EN_FIRME',
       datosEstructurados: { asignaturas: [{ codigo: 'A1', nombre: 'Asignatura 1', horas: 5 }] },
     };
-    const { repo: ptaRepo, qb } = ptaRepoWithRows([pta]);
+    const { planes } = planClientWithRows([pta]);
     const docenteRepo = fakeRepo({ find: jest.fn().mockResolvedValue([{ id: 'doc-del-acceso', personaId: 'per-1', nucleoTematico: null }]) });
-    const personaRepo = fakeRepo({ find: jest.fn().mockResolvedValue([{ id: 'per-1', primer_nombre: 'X', identificacion: '1' }]) });
-    const service = buildService({ ptaRepo, docenteRepo, personaRepo });
+    const catalogos = { identidadesHistoricas: jest.fn().mockResolvedValue([{ personaId: 'per-1', primer_nombre: 'X', identificacion: '1' }]) };
+    const service = buildService({ planes, docenteRepo, catalogos });
 
     const acceso = { docenteId: 'doc-del-acceso' } as any;
     const result = await service.getHistorialParaAccesoExterno(acceso, { docenteId: 'otro-docente-que-no-deberia-usarse', periodo: '2025-2' });
 
     expect(result.total).toBe(1);
-    expect(qb.andWhere).toHaveBeenCalledWith('pta.docenteId = :docenteId', { docenteId: 'doc-del-acceso' });
+    expect(planes.planesFirmes).toHaveBeenCalledWith({ docenteId: 'doc-del-acceso', periodo: '2025-2' });
   });
 });
 

@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { AuthIdentityClient } from '../../common/auth-identity.client';
 
 /** Entrega persistente independiente: una caída de la campana no repite el OCR. */
 @Injectable()
@@ -7,7 +8,7 @@ export class RundExtraccionNotificationsService implements OnModuleInit, OnModul
   private timer?: NodeJS.Timeout;
   private busy=false;
   private readonly logger=new Logger(RundExtraccionNotificationsService.name);
-  constructor(private readonly db:DataSource) {}
+  constructor(private readonly db:DataSource, private readonly identities:AuthIdentityClient) {}
   onModuleInit() {
     if (process.env.RUND_OCR_ENABLED!=='true') return;
     this.timer=setInterval(()=>void this.tick(),5000);this.timer.unref();void this.tick();
@@ -26,11 +27,8 @@ export class RundExtraccionNotificationsService implements OnModuleInit, OnModul
         SELECT * FROM aviso`);
       if(!job)return;
       // Destinatario concreto: quien solicitó el análisis o cargó el soporte, nunca un envío masivo.
-      const [user]=await this.db.query(`SELECT id_user FROM auth."user"
-        WHERE COALESCE(is_active,true)=true AND
-          (id_user::text=$1 OR id_person::text=$1 OR lower(username)=lower($1))
-        ORDER BY (id_user::text=$1) DESC LIMIT 1`,[job.creado_por]);
-      if(!user) {
+      const userId=await this.identities.destinatarioAviso(job.creado_por);
+      if(!userId) {
         await this.db.query(`UPDATE rund."RundExtraccionTrabajo" SET notificacion_proxima=now()+interval '1 day' WHERE id=$1`,[job.id]);
         return;
       }
@@ -39,7 +37,7 @@ export class RundExtraccionNotificationsService implements OnModuleInit, OnModul
         ((process.env.NODE_ENV||'development')==='production'?'http://notifications-service:3009':'http://localhost:3009')).replace(/\/$/,'');
       const response=await fetch(`${base}/notifications`,{
         method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(10000),redirect:'error',
-        body:JSON.stringify({clave_idempotencia:job.notificacion_id,id_usuario_destinatario:user.id_user,
+        body:JSON.stringify({clave_idempotencia:job.notificacion_id,id_usuario_destinatario:userId,
           tipo_notificacion:'rund_extraccion_finalizada',titulo:complete?'Análisis documental de RUND finalizado':'Revisa tu análisis documental de RUND',
           mensaje:complete?'Tu análisis terminó. Abre el expediente para revisar el resultado; los datos del perfil requieren confirmación humana.':
             job.estado==='OBSOLETO'?'El documento fue reemplazado o eliminado. Puedes consultar el historial del análisis en RUND.':

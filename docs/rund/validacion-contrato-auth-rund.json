@@ -1,0 +1,58 @@
+{
+  "verifiedAt": "2026-10-14T14:45:13.349Z",
+  "step": "12.5d.2",
+  "checkpoint": "Confirmación documental Auth → RUND",
+  "baseCommit": "63b9fc07a97f06cba1d5f99dc4e74616831531ec",
+  "build": {
+    "service": "auth-service",
+    "passed": true,
+    "command": "npm.cmd run build"
+  },
+  "tests": {
+    "suitesPassed": 13,
+    "testsPassed": 135,
+    "newRegressionTests": 20,
+    "beforeFix": {
+      "targetedSuitesFailed": 2,
+      "testsFailed": 18,
+      "testsPassed": 24
+    },
+    "command": "node backend/rund-service/node_modules/jest/bin/jest.js --config scripts/jest-auth-carpeta.config.cjs --runInBand"
+  },
+  "integration": {
+    "passed": true,
+    "checks": 127,
+    "temporaryPostgresOnly": true,
+    "compiledConsumers": [
+      "Auth",
+      "PTA",
+      "Programación"
+    ],
+    "command": "node scripts/verify-rund-service-integration.cjs"
+  },
+  "verifiedBehavior": [
+    "Explicit boolean required to classify an original.",
+    "Permanent access audit requires registrado: true.",
+    "Incomplete body, invalid field types, invalid JSON and success: false return service unavailable.",
+    "Incomplete verification prevents HTTP file delivery.",
+    "Unconfirmed audit prevents document deletion without SQL fallback or retry.",
+    "Valid false preserves general attachment access; existing true/roles/audit behavior remains.",
+    "Direct and data-wrapped valid owner responses remain compatible."
+  ],
+  "existingDatabaseUsed": false,
+  "realEnvironmentFilesRead": false,
+  "operativeMigrationsExecuted": false,
+  "dataCopyExecuted": false,
+  "deployed": false,
+  "pushed": false,
+  "environmentAcceptanceCertified": false,
+  "mainStepsCompletedLocally": 11,
+  "currentMainStep": 12,
+  "remainingWorkstreamsIncludingCurrent": 5,
+  "sourceHashes": {
+    "backend/auth-service/src/carpeta-digital/rund-client.ts": "d305a4fb5f9f9ecc1894b2454f28b5a916fb3540600f38c107c07ecb9938a4cc",
+    "backend/auth-service/src/carpeta-digital/rund-client.spec.ts": "5b6f5cc59af03df49a4ea2319ace25d34fa6ca3f731349c3530798797e8e1ab5",
+    "backend/auth-service/src/carpeta-digital/rund-document-access.spec.ts": "aefaf510ef6bb8c693a572ce830972ab042aba5e1a6ad2fd9d62f448734f721a",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "ca934ba82c4b555d8a41d83a0819510ca298785b3e146e6c9c1992a611370764"
+  }
+}

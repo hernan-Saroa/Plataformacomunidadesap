@@ -136,12 +136,109 @@ function protectedLog(log) {
       const before = forwarded.length;
       for (const route of ['/rund/api/v1/internal/rund/v1/docentes/sincronizacion',
         '/rund/api/v1/%69nternal/rund/v1/estadisticas/backoffice',
-        '/auth/api/v1/internal/carpeta-digital/estadisticas']) {
+        '/auth/api/v1/internal/carpeta-digital/estadisticas',
+        '/auth/api/v1/internal/rund/v1/personas/por-documento/123',
+        '/auth/api/v1/%69nternal/rund/v1/personas/resolver/ficticio',
+        '/auth/api/v1/internal/rund/v1/personas/perfil-pta/123',
+        '/auth/api/v1/internal/rund/v1/personas/coincidencias',
+        '/auth/api/v1/%69nternal/rund/v1/personas/coincidencias',
+        '/auth/api/v1/internal/rund/v1/personas/ficha/por-persona/11111111-1111-4111-8111-111111111111',
+        '/auth/api/v1/%69nternal/rund/v1/personas/ficha/por-persona/11111111-1111-4111-8111-111111111111',
+        '/auth/api/v1/internal/rund/v1/personas/ficha/por-documento/123',
+        '/auth/api/v1/%69nternal/rund/v1/personas/ficha/por-documento/123',
+        '/auth/api/v1/internal/rund/v1/personas/por-alias/123',
+        '/auth/api/v1/%69nternal/rund/v1/personas/por-alias/123',
+        '/auth/api/v1/internal/rund/v1/banco/proyeccion',
+        '/auth/api/v1/%69nternal/rund/v1/banco/proyeccion',
+        '/auth/api/v1/%69nternal/rund/v1/personas/perfil-pta/123',
+        '/auth/api/v1/internal/rund/v1/catalogos/seccionales',
+        '/auth/api/v1/internal/rund/v1/catalogos/territoriales-banco',
+        '/pta/api/v1/internal/rund/v1/catalogos/territoriales',
+        '/pta/api/v1/internal/rund/v1/catalogos/periodo-activo',
+        '/pta/api/v1/internal/rund/v1/personas/11111111-1111-4111-8111-111111111111/nombre-historico',
+        '/pta/api/v1/%69nternal/rund/v1/personas/11111111-1111-4111-8111-111111111111/nombre-historico',
+        '/pta/api/v1/%69nternal/rund/v1/catalogos/periodo-activo',
+        '/pta/api/v1/%69nternal/rund/v1/catalogos/territoriales']) {
         const res = await send(route, { method: 'GET', body: undefined,
           headers: { authorization: `Bearer ${token}`, 'x-internal-service-token': 'ficticio' } });
         assert.equal(res.status, 404);
         await res.arrayBuffer();
         assert.equal(forwarded.length, before);
+      }
+    });
+    await check('El nuevo destinatario interno tampoco sale por POST normal o codificado', async () => {
+      const before = forwarded.length;
+      for (const route of ['/auth/api/v1/internal/rund/v1/personas/destinatario-aviso',
+        '/auth/api/v1/%69nternal/rund/v1/personas/destinatario-aviso']) {
+        const auditBefore = audits.length;
+        const res = await send(route, { method: 'POST', body: JSON.stringify({ clave: 'actor-ficticio' }),
+          headers: { authorization: `Bearer ${token}`, 'x-internal-service-token': 'ficticio', 'content-type': 'application/json' } });
+        assert.equal(res.status, 404); await res.arrayBuffer(); assert.equal(forwarded.length, before);
+        await waitForAudit(auditBefore);
+      }
+    });
+    await check('La sincronización interna Auth queda bloqueada por GET y POST, incluso codificada y con credenciales', async () => {
+      const before = forwarded.length;
+      for (const prefix of ['internal', '%69nternal']) for (const [route, method] of [['rol-docente', 'GET'], ['revalidar', 'POST']]) {
+        const auditBefore = audits.length;
+        const res = await send(`/auth/api/v1/${prefix}/rund/v1/personas/sincronizacion/${route}`, {
+          method, body: method === 'POST' ? JSON.stringify({ personaId: 'ficticio' }) : undefined,
+          headers: { authorization: `Bearer ${token}`, 'x-internal-service-token': 'ficticio', 'content-type': 'application/json' },
+        });
+        assert.equal(res.status, 404); await res.arrayBuffer(); assert.equal(forwarded.length, before);
+        if (method === 'POST') await waitForAudit(auditBefore);
+      }
+    });
+    await check('Los permisos internos Auth no salen por POST normal o codificado, incluso con JWT y token', async () => {
+      const before = forwarded.length;
+      for (const prefix of ['internal', '%69nternal']) {
+        const auditBefore = audits.length;
+        const res = await send(`/auth/api/v1/${prefix}/rund/v1/personas/permisos-roles`, { method: 'POST',
+          body: JSON.stringify({ roles: ['FICTICIO'], codigos: ['rund.view'] }),
+          headers: { authorization: `Bearer ${token}`, 'x-internal-service-token': 'ficticio', 'content-type': 'application/json' } });
+        assert.equal(res.status, 404); await res.arrayBuffer(); assert.equal(forwarded.length, before);
+        await waitForAudit(auditBefore);
+      }
+    });
+    await check('La identidad histórica de PTA no sale por POST interno normal o codificado, incluso con JWT y token', async () => {
+      const before = forwarded.length;
+      for (const prefix of ['internal', '%69nternal']) {
+        const auditBefore = audits.length;
+        const res = await send(`/pta/api/v1/${prefix}/rund/v1/personas/identidades-historicas`, { method: 'POST',
+          body: JSON.stringify({ personaIds: [] }),
+          headers: { authorization: `Bearer ${token}`, 'x-internal-service-token': 'ficticio', 'content-type': 'application/json' } });
+        assert.equal(res.status, 404); await res.arrayBuffer(); assert.equal(forwarded.length, before);
+        await waitForAudit(auditBefore);
+      }
+    });
+    await check('El catálogo de programas PTA no sale por POST interno normal o codificado con JWT y token', async () => {
+      const before = forwarded.length;
+      for (const prefix of ['internal', '%69nternal']) {
+        const auditBefore = audits.length;
+        const res = await send(`/pta/api/v1/${prefix}/rund/v1/catalogos/programas-historicos`, { method: 'POST',
+          body: JSON.stringify({ programaIds: ['1'] }),
+          headers: { authorization: `Bearer ${token}`, 'x-internal-service-token': 'ficticio', 'content-type': 'application/json' } });
+        assert.equal(res.status, 404); await res.arrayBuffer(); assert.equal(forwarded.length, before); await waitForAudit(auditBefore);
+      }
+    });
+    await check('Los planes históricos PTA no salen por POST interno normal o codificado con JWT y token', async () => {
+      const before = forwarded.length;
+      for (const prefix of ['internal', '%69nternal']) {
+        const auditBefore = audits.length;
+        const res = await send(`/pta/api/v1/${prefix}/rund/v1/planes/historial-firme`, { method: 'POST',
+          body: JSON.stringify({ docenteId: 'FICTICIO', periodo: '2099-1' }),
+          headers: { authorization: `Bearer ${token}`, 'x-internal-service-token': 'ficticio', 'content-type': 'application/json' } });
+        assert.equal(res.status, 404); await res.arrayBuffer(); assert.equal(forwarded.length, before); await waitForAudit(auditBefore);
+      }
+    });
+    await check('La prevalidación de escritura Auth no sale por POST interno normal o codificado con JWT y token', async () => {
+      const before = forwarded.length;
+      for (const prefix of ['internal', '%69nternal']) {
+        const auditBefore = audits.length;
+        const res = await send(`/auth/api/v1/${prefix}/rund/v1/personas/escritura/validar`, { method: 'POST',
+          body: JSON.stringify({ version: 1, operacionId: '11111111-1111-4111-8111-111111111111', documento: 'FICTICIO', correo: 'prueba@example.test', resolverPorCorreo: false }),
+          headers: { authorization: `Bearer ${token}`, 'x-internal-service-token': 'ficticio', 'content-type': 'application/json' } });
+        assert.equal(res.status, 404); await res.arrayBuffer(); assert.equal(forwarded.length, before); await waitForAudit(auditBefore);
       }
     });
     await check('Un módulo ajeno conserva transporte, consultas y cuerpos de auditoría', async () => {

@@ -1,7 +1,6 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { AuthIdentityClient } from '../../common/auth-identity.client';
 import { resolveRundRequestPermissions } from '../../auth/rund-effective-permissions';
 import { getRequestRoleCodes } from '../banco-docentes/banco-docentes-sensitive-data';
 import { MACRO_DOCENTE_PERMISSION_KEY } from './macro-docente-permission.decorator';
@@ -16,7 +15,7 @@ import { MACRO_DOCENTE_PERMISSION_KEY } from './macro-docente-permission.decorat
 export class MacroDocentePermissionGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    @InjectDataSource() private readonly db: DataSource,
+    private readonly identities: AuthIdentityClient,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -31,7 +30,7 @@ export class MacroDocentePermissionGuard implements CanActivate {
 
     const roles = getRequestRoleCodes(req.user);
     if (roles.includes('SUPER_ADMIN')) return true;
-    const permissions = await resolveRundRequestPermissions(this.db, req);
+    const permissions = await resolveRundRequestPermissions(this.identities, req);
     if (permissions.has(requiredPermission)) return true;
 
     throw new ForbiddenException(
