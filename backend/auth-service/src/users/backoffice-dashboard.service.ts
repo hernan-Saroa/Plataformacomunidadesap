@@ -248,7 +248,7 @@ export class BackofficeDashboardService {
 
   async getDashboardTemplate(templateName: string): Promise<string> {
     const safeName = templateName.replace(/[^a-zA-Z0-9_-]/g, '');
-    const validTemplates = ['plan_seguimiento', 'desarrollo_otic'];
+    const validTemplates = ['panel_seguimiento', 'desarrollo_otic'];
     if (!validTemplates.includes(safeName)) {
       throw new NotFoundException(`Plantilla '${templateName}' no encontrada.`);
     }
