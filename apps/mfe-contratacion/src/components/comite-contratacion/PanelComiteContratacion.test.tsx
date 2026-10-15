@@ -29,7 +29,8 @@ const estado = (cambios: Record<string, unknown> = {}) => ({
   puedeRegistrar: false,
   puedeDejarConstancia: false,
   motivoNoDecide: null,
-  abogado: { nombre: 'Andrés Rojas', usuarioNombre: 'andres.rojas@esap.edu.co' },
+  responsable: { nombre: 'Andrés Rojas', usuarioNombre: 'andres.rojas@esap.edu.co' },
+  puesto: 'Abogado',
   ...cambios,
 });
 
@@ -380,6 +381,6 @@ describe('PanelComiteContratacion · lo que decidió el comité', () => {
   it('a quien no le toca le dice de quién es', async () => {
     pintar(estado({ motivoNoDecide: 'NO_ES_TUYO' }));
 
-    expect(await screen.findByText(/Lo transcribe Andrés Rojas/)).toBeInTheDocument();
+    expect(await screen.findByText(/Lo registra Andrés Rojas \(Abogado\)/)).toBeInTheDocument();
   });
 });

@@ -35,8 +35,8 @@ const RASGOS: Record<
   // está parado hasta que se resuelva.
   DEVUELTA_PARA_CORREGIR: { etiqueta: 'Corregir', icono: Undo2, color: '#D97706' },
   // Mismo ámbar y por lo mismo: nada ha vencido, pero el proceso está parado
-  // porque no hay quien resuelva su revisión.
-  SIN_ABOGADO: { etiqueta: 'Sin abogado', icono: UserX, color: '#D97706' },
+  // porque un puesto obligatorio no tiene quien lo ocupe (109).
+  SIN_RESPONSABLE: { etiqueta: 'Puesto vacío', icono: UserX, color: '#D97706' },
   // Rojo como un vencimiento, porque lo es: el de una actividad del proceso.
   PLAZO_ACTIVIDAD: { etiqueta: 'Plazo', icono: Timer, color: '#DC2626' },
 };
@@ -225,9 +225,9 @@ function Fila({
   const esDevolucion = a.tipo === 'DEVUELTA_PARA_CORREGIR';
   /**
    * Ninguna de las tres vence: una espera decisión, otra corrección, y la
-   * tercera avisa de un proceso que nadie ha tomado a su cargo.
+   * tercera avisa de un proceso con un puesto obligatorio vacío.
    */
-  const sinPlazo = esAprobacion || esDevolucion || a.tipo === 'SIN_ABOGADO';
+  const sinPlazo = esAprobacion || esDevolucion || a.tipo === 'SIN_RESPONSABLE';
   /** El plazo de una actividad: se cuenta en días hábiles y lleva a la actividad. */
   const esPlazoActividad = a.tipo === 'PLAZO_ACTIVIDAD';
 

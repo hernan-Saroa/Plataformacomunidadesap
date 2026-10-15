@@ -197,7 +197,7 @@ describe('VistaProcesos · la bandeja', () => {
 
   it('señala los que llegaron y nadie ha recibido', async () => {
     servicio.listarProcesos.mockResolvedValue([
-      proceso({ contratacion: null, abogado: null, enBandeja: true }),
+      proceso({ contratacion: null, enBandeja: true }),
     ]);
 
     render(<VistaProcesos onAbrir={vi.fn()} />);
@@ -205,11 +205,11 @@ describe('VistaProcesos · la bandeja', () => {
     expect(await screen.findByText(/En bandeja · sin recibir/)).toBeInTheDocument();
   });
 
-  it('en los recibidos dice quién los lleva y quién los revisa', async () => {
+  it('en los recibidos dice quién los lleva y quién ocupa cada puesto', async () => {
     servicio.listarProcesos.mockResolvedValue([
       proceso({
         contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: true },
-        abogado: { nombre: 'Andrés Rojas', usuarioNombre: 'andres@esap', esMio: false },
+        puestos: [{ puesto: 'Abogado', nombre: 'Andrés Rojas', esMio: false }],
         enBandeja: false,
       }),
     ]);
@@ -217,23 +217,7 @@ describe('VistaProcesos · la bandeja', () => {
     render(<VistaProcesos onAbrir={vi.fn()} />);
 
     expect(await screen.findByText(/Laura Pineda \(tú\)/)).toBeInTheDocument();
-    expect(screen.getByText(/revisa Andrés Rojas/)).toBeInTheDocument();
-  });
-
-  it('avisa cuando un proceso recibido se quedó sin abogado', async () => {
-    // Es el estado que nadie pide pero ocurre: quitar sin poner otro. Mientras
-    // dure, la 3.4 no la puede resolver nadie.
-    servicio.listarProcesos.mockResolvedValue([
-      proceso({
-        contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: false },
-        abogado: null,
-        enBandeja: false,
-      }),
-    ]);
-
-    render(<VistaProcesos onAbrir={vi.fn()} />);
-
-    expect(await screen.findByText(/sin abogado/)).toBeInTheDocument();
+    expect(screen.getByText(/Abogado: Andrés Rojas/)).toBeInTheDocument();
   });
 });
 
@@ -306,7 +290,7 @@ describe('VistaProcesos · a quién le toca', () => {
     fechaRadicacion: '2026-09-09T00:00:00.000Z',
     estudioPrevio: null,
     actividades: [],
-    participacion: { contratacion: null, abogado: null, enBandeja: false },
+    participacion: { contratacion: null, enBandeja: false },
     ...cambios,
   });
 
@@ -316,13 +300,13 @@ describe('VistaProcesos · a quién le toca', () => {
     servicio.modalidades.mockResolvedValue(MODALIDADES);
   });
 
-  it('al abogado del proceso le dice que le toca revisar', async () => {
+  it('a quien ocupa un puesto del proceso le dice que le toca revisar', async () => {
     servicio.listarProcesos.mockResolvedValue([
       proceso({
         estudioPrevio: { estado: 'EN_REVISION', version: 1, camposFaltantes: 0, camposObligatorios: 5, actualizadoEn: '2026-09-20' },
         participacion: {
           contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: false },
-          abogado: { nombre: 'Andrés Rojas', usuarioNombre: 'andres@esap', esMio: true },
+          puestos: [{ puesto: 'Abogado', nombre: 'Andrés Rojas', esMio: true }],
           enBandeja: false,
         },
       }),
@@ -349,14 +333,18 @@ describe('VistaProcesos · a quién le toca', () => {
           actividad('3.3', 'APROBADO', 'Radicación'),
           {
             ...actividad('4.2', 'BORRADOR', 'Verificar disponibilidad presupuestal'),
-            // Lo que manda el backend: de la 4.2 responde la Financiera que la tomó.
-            responde: { papel: 'FINANCIERA', accion: 'editar', seToma: true, soloEnRevision: false },
+            // Lo que manda el backend (109): la 4.2 la hace quien ocupa el puesto.
+            responde: {
+              puesto: 'Presupuesto',
+              persona: { nombre: 'Marta Presupuesto', esMio: false },
+              accion: 'editar',
+              seToma: false,
+              soloEnRevision: false,
+            },
           },
         ],
         participacion: {
           contratacion: { nombre: 'Laura Pineda', usuarioNombre: 'laura@esap', esMio: false },
-          abogado: { nombre: 'Andrés Rojas', usuarioNombre: 'andres@esap', esMio: false },
-          financiera: { nombre: 'Marta Presupuesto', usuarioNombre: 'marta@esap', esMio: false },
           enBandeja: false,
         },
       }),

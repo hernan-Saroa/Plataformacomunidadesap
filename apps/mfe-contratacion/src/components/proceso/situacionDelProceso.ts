@@ -53,8 +53,11 @@ export interface EntradaSituacion {
   pasos: PasoConDatos[];
   participacion?: {
     contratacion?: Persona | null;
-    abogado?: Persona | null;
     financiera?: Persona | null;
+    /** Quién ocupa cada puesto del proceso (109). */
+    puestos?: { puesto: string; nombre: string; esMio?: boolean }[];
+    /** Los puestos obligatorios que nadie ocupa todavía, si se saben. */
+    puestosVacios?: string[];
   };
   /** Quien mira radicó el proceso: es el área que redacta. */
   radicadoPorMi?: boolean;
@@ -99,11 +102,6 @@ const RADICACION = '3.3';
  */
 const REVISION = '3.4';
 /** El papel del backend con el nombre que lleva en la participación. */
-const EN_LA_PARTICIPACION = {
-  CONTRATACION: 'contratacion',
-  ABOGADO: 'abogado',
-  FINANCIERA: 'financiera',
-} as const;
 /** La reunión de inicio: desde ahí el contrato está en ejecución. */
 const INICIO_EJECUCION = '9.1';
 
@@ -170,31 +168,27 @@ export function responsableDelPaso(
   paso: PasoConDatos,
   acciones: Exclude<AccionAlcance, 'ver'>[] = ['editar', 'decidir'],
 ): { quien: string | null; teToca: boolean; accion: Exclude<AccionAlcance, 'ver'> } {
-  const { participacion = {}, responsables = [], puedo } = entrada;
+  const { responsables = [], puedo } = entrada;
   const puedoEn = (accion: AccionAlcance, numeral: string) => puedo?.(accion, numeral) ?? false;
   const accionPrincipal = acciones[0];
 
   /*
-   * Actividades de las que responde una persona del proceso y no un rol: el
-   * abogado de la 3.7, aunque el Gestor tenga el alcance de editarla. Cuáles
-   * son lo dice el backend (`responde`), que es quien lo exige; aquí solo se
-   * lee, para que la pantalla no nombre a quien después no puede actuar.
+   * Actividades que no hace cualquiera con el permiso sino quien dice su regla
+   * «quién la hace» (109): el ocupante de un puesto o unas personas. Lo resuelve
+   * el backend (`responde`), que es quien lo exige; aquí solo se lee, para que
+   * la pantalla no nombre a quien después no puede actuar.
    */
   const regla = paso.responde;
   if (regla && (!regla.soloEnRevision || paso.estado === 'EN_REVISION')) {
-    const persona = participacion[EN_LA_PARTICIPACION[regla.papel]];
-    if (persona) {
-      return { quien: persona.nombre, teToca: !!persona.esMio, accion: regla.accion };
+    if (regla.persona) {
+      return {
+        quien: regla.puesto ? `${regla.persona.nombre} (${regla.puesto})` : regla.persona.nombre,
+        teToca: regla.persona.esMio && puedoEn(regla.accion, paso.numeral),
+        accion: regla.accion,
+      };
     }
-    // Sin nadie en el papel se nombra a los roles configurados para esa
-    // acción. Si el papel se asigna, ninguno puede actuar todavía; si se toma
-    // de la bandeja, le toca a quien pueda tomarlo.
-    const roles = rolesQuePueden(responsables, regla.accion, paso.numeral);
-    return {
-      quien: paso.responsableCargo || unaDeEstas(roles),
-      teToca: regla.seToma && puedoEn(regla.accion, paso.numeral),
-      accion: regla.accion,
-    };
+    // El puesto está vacío: nadie puede hacerla hasta que se asigne en la 3.3.
+    return { quien: `${regla.puesto ?? 'El puesto'}, sin asignar`, teToca: false, accion: regla.accion };
   }
 
   for (const accion of acciones) {
@@ -247,9 +241,10 @@ export function situacionDelProceso(entrada: EntradaSituacion): Situacion {
       ...base(null),
       momento: 'detenido',
       titulo: 'Detenido por un cambio del PAA',
-      quien: participacion.abogado?.nombre ?? null,
-      teToca: !!participacion.abogado?.esMio,
-      espera: 'Sigue cuando el abogado decida la revisión por cambio del Plan Anual de Adquisiciones',
+      // La decide quien tenga decidir en las revisiones del PAA (109).
+      quien: null,
+      teToca: puedoEn('decidir', 'PAA.R'),
+      espera: 'Sigue cuando se decida la revisión por cambio del Plan Anual de Adquisiciones',
     };
   }
 
@@ -315,23 +310,30 @@ export function situacionDelProceso(entrada: EntradaSituacion): Situacion {
       };
     }
 
-    if (!participacion.abogado) {
+    const vacios = participacion.puestosVacios ?? [];
+    if (vacios.length) {
       return {
         ...base(radicacion),
         momento: 'asignacion',
-        titulo: 'Asignar abogado',
+        titulo: 'Asignar los puestos del proceso',
         quien: participacion.contratacion.nombre,
         teToca: !!participacion.contratacion.esMio,
-        espera: 'Sin abogado asignado nadie puede revisar el estudio previo',
+        espera: `Falta asignar: ${vacios.join(', ')}`,
       };
     }
 
+    /*
+     * La revisión es la ronda de la aprobación de la 3.1 (109): la decide el
+     * escalón que espera. Aquí se nombra a quienes ocupan los puestos del
+     * proceso; quién decide exactamente lo dice la pantalla de revisión.
+     */
+    const puestos = participacion.puestos ?? [];
     return {
       ...base(estudio),
       momento: 'revision',
       titulo: 'Revisión del estudio previo',
-      quien: participacion.abogado.nombre,
-      teToca: !!participacion.abogado.esMio,
+      quien: puestos.length ? puestos.map((x) => x.nombre).join(', ') : null,
+      teToca: puestos.some((x) => x.esMio),
       espera: null,
     };
   }

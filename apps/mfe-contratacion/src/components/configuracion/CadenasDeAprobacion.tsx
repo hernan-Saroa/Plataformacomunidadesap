@@ -47,6 +47,7 @@ const escalonVacio = (): EscalonEnEdicion => ({
   roles: [],
   personas: [],
   papeles: [],
+  puestos: [],
   reglaDecision: 'UNO',
   acciones: ['APROBAR', 'DEVOLVER'],
   nombres: {},
@@ -65,12 +66,14 @@ const borradorDe = (c: CadenaDeAprobacion | null): Borrador =>
           roles: e.roles,
           personas: e.personas,
           papeles: e.papeles,
+          puestos: e.puestos ?? [],
           reglaDecision: e.reglaDecision,
           acciones: e.acciones,
           nombres: Object.fromEntries([
             ...e.roles.map((r, i) => [r, e.nombresRoles[i] ?? r]),
             ...e.personas.map((p, i) => [p, e.nombresPersonas[i] ?? p]),
             ...e.papeles.map((p, i) => [p, e.nombresPapeles[i] ?? p]),
+            ...(e.puestos ?? []).map((p, i) => [p, e.nombresPuestos?.[i] ?? p]),
           ]),
         })),
       }
@@ -225,7 +228,7 @@ export function CadenasDeAprobacion() {
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-bold text-slate-800 m-0">{e.nombre}</p>
                     <p className="text-[11px] text-slate-600 m-0">
-                      {[...e.nombresRoles, ...e.nombresPersonas, ...e.nombresPapeles].join(' o ')}
+                      {[...(e.nombresPuestos ?? []), ...e.nombresRoles, ...e.nombresPersonas, ...e.nombresPapeles].join(' o ')}
                       {e.reglaDecision === 'TODOS' ? ' · deben aprobar todos' : ''}
                     </p>
                   </div>
@@ -475,12 +478,14 @@ function EditorCadena({
 }
 
 /**
- * Quién responde por un escalón: roles, personas o un papel del proceso.
+ * Quién responde por un escalón: roles, personas, un puesto o un papel del
+ * proceso.
  *
- * Tres pestañas, como en la aprobación de una actividad: mezclados en una
- * lista no se distingue un rol de una persona. Los papeles —el abogado del
- * proceso, el supervisor del contrato— nombran a quien cumple ese papel en
- * cada expediente, no a alguien fijo.
+ * En pestañas, como en la aprobación de una actividad: mezclados en una lista
+ * no se distingue un rol de una persona. Los puestos (109) —Abogado, Jefe— los
+ * ocupa una persona en cada proceso, asignada en la 3.3; los papeles —quien lo
+ * lleva en Contratación, el supervisor— nombran a quien cumple ese papel en
+ * cada expediente.
  */
 function ResponsablesDelEscalon({
   escalon,
@@ -490,14 +495,15 @@ function ResponsablesDelEscalon({
   onCambio: (c: Partial<EscalonEnEdicion>) => void;
 }) {
   const [abierto, setAbierto] = useState(false);
-  const [donde, setDonde] = useState<'roles' | 'personas' | 'papeles'>('roles');
+  const [donde, setDonde] = useState<'puestos' | 'roles' | 'personas' | 'papeles'>('puestos');
   const [texto, setTexto] = useState('');
   const [roles, setRoles] = useState<{ code: string; name: string }[]>([]);
   const [papeles, setPapeles] = useState<{ codigo: PapelEscalon; nombre: string }[]>([]);
+  const [puestos, setPuestos] = useState<{ id: string; nombre: string }[]>([]);
   const [personas, setPersonas] = useState<{ id: string; nombre: string; cargo?: string }[]>([]);
 
   const elegidos = useMemo(
-    () => new Set([...escalon.roles, ...escalon.personas, ...escalon.papeles]),
+    () => new Set([...escalon.roles, ...escalon.personas, ...escalon.papeles, ...(escalon.puestos ?? [])]),
     [escalon],
   );
 
@@ -505,6 +511,12 @@ function ResponsablesDelEscalon({
     setAbierto(true);
     if (!roles.length) contratacionService.rolesAprobadores().then(setRoles).catch(() => setRoles([]));
     if (!papeles.length) contratacionService.papelesDeEscalon().then(setPapeles).catch(() => setPapeles([]));
+    if (!puestos.length) {
+      contratacionService
+        .puestos()
+        .then((l) => setPuestos(l.map((x) => ({ id: x.id, nombre: x.nombre }))))
+        .catch(() => setPuestos([]));
+    }
   };
 
   useEffect(() => {
@@ -533,9 +545,9 @@ function ResponsablesDelEscalon({
     return () => clearTimeout(t);
   }, [texto, donde, elegidos]);
 
-  const agregar = (clase: 'roles' | 'personas' | 'papeles', id: string, nombre: string) => {
+  const agregar = (clase: 'roles' | 'personas' | 'papeles' | 'puestos', id: string, nombre: string) => {
     onCambio({
-      [clase]: [...(escalon[clase] as string[]), id],
+      [clase]: [...((escalon[clase] ?? []) as string[]), id],
       nombres: { ...escalon.nombres, [id]: nombre },
     } as Partial<EscalonEnEdicion>);
     setTexto('');
@@ -547,10 +559,12 @@ function ResponsablesDelEscalon({
       roles: escalon.roles.filter((x) => x !== id),
       personas: escalon.personas.filter((x) => x !== id),
       papeles: escalon.papeles.filter((x) => x !== id),
+      puestos: (escalon.puestos ?? []).filter((x) => x !== id),
     });
 
   const q = texto.trim().toLowerCase();
   const chips = [
+    ...(escalon.puestos ?? []).map((id) => ({ id, clase: 'Puesto' })),
     ...escalon.roles.map((id) => ({ id, clase: 'Rol' })),
     ...escalon.personas.map((id) => ({ id, clase: 'Persona' })),
     ...escalon.papeles.map((id) => ({ id, clase: 'Papel' })),
@@ -589,6 +603,7 @@ function ResponsablesDelEscalon({
           <div className="flex gap-1 rounded-lg bg-slate-100 p-0.5">
             {(
               [
+                ['puestos', 'Puesto'],
                 ['roles', 'Roles'],
                 ['personas', 'Personas'],
                 ['papeles', 'Papel en el proceso'],
@@ -608,7 +623,7 @@ function ResponsablesDelEscalon({
             ))}
           </div>
 
-          {donde !== 'papeles' ? (
+          {donde === 'roles' || donde === 'personas' ? (
             <label className="relative block">
               <Search
                 className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2"
@@ -626,7 +641,27 @@ function ResponsablesDelEscalon({
             </label>
           ) : null}
 
-          {donde === 'roles'
+          {donde === 'puestos'
+            ? puestos.filter((x) => !elegidos.has(x.id)).length
+              ? puestos
+                  .filter((x) => !elegidos.has(x.id))
+                  .map((x) => (
+                    <button
+                      key={x.id}
+                      type="button"
+                      onClick={() => agregar('puestos', x.id, x.nombre)}
+                      className="w-full text-left px-2 py-1.5 rounded text-xs text-slate-700 hover:bg-slate-50"
+                    >
+                      {x.nombre}
+                      <span className="block text-[10px] text-slate-400">Lo decide quien lo ocupe en cada proceso</span>
+                    </button>
+                  ))
+              : (
+                  <p className="text-xs text-slate-400 m-0 px-1 py-2">
+                    No hay más puestos: créalos en la ficha de la actividad 3.3.
+                  </p>
+                )
+            : donde === 'roles'
             ? roles
                 .filter((r) => !elegidos.has(r.code))
                 .filter((r) => !q || r.name.toLowerCase().includes(q) || r.code.toLowerCase().includes(q))

@@ -8,13 +8,18 @@ import { ACTIVIDADES_CON_REGISTRO, TIENEN_PANEL } from '../proceso/actividadesCo
 
 import { AprobacionActividad } from './AprobacionActividad';
 import { FirmaActividad } from './FirmaActividad';
+import { LaHaceActividad } from './LaHaceActividad';
+import { PuestosConfig } from './PuestosConfig';
 import { NotificacionesActividad } from './NotificacionesActividad';
 import { DocumentosQuePide } from './DocumentosQuePide';
 import { QueSePide } from './QueSePide';
 import { VistaPrevia } from './VistaPrevia';
 import { Peticion } from './peticiones';
 
-type Pestana = 'entrega' | 'documentos' | 'aprobacion' | 'firma' | 'avisos' | 'previa';
+type Pestana = 'puestos' | 'entrega' | 'quien' | 'documentos' | 'aprobacion' | 'firma' | 'avisos' | 'previa';
+
+/** La radicación: donde se ocupan los puestos del proceso, y donde se configuran (109). */
+const NUMERAL_RADICACION = '3.3';
 
 /** La única actividad cuyo formulario se arma con campos configurables. */
 const NUMERAL_FORMULARIO_CONFIGURABLE = '3.1';
@@ -62,13 +67,16 @@ export function DetalleActividad({
   const esFormulario = fila.numeral === NUMERAL_FORMULARIO_CONFIGURABLE;
   const registro = ACTIVIDADES_CON_REGISTRO[fila.numeral];
   const tienePanel = TIENEN_PANEL(fila.numeral);
-  const [pestana, setPestana] = useState<Pestana>('entrega');
+  const [pestana, setPestana] = useState<Pestana>(fila.numeral === NUMERAL_RADICACION ? 'puestos' : 'entrega');
 
   // La vista previa solo donde es cierta: el formulario configurable es el de
   // la 3.1. En las demás el gestor ve su propio panel, y dibujar aquí un
   // formulario genérico mostraría una pantalla que no existe.
+  const esRadicacion = fila.numeral === NUMERAL_RADICACION;
   const pestanas: [Pestana, string][] = [
+    ...(esRadicacion ? ([['puestos', 'Puestos del proceso']] as [Pestana, string][]) : []),
     ['entrega', 'Qué entrega'],
+    ['quien', 'Quién la hace'],
     ['documentos', 'Documentos'],
     ['aprobacion', 'Aprobación'],
     ['firma', 'Firma'],
@@ -137,6 +145,8 @@ export function DetalleActividad({
           <DocumentosQuePide numeral={fila.numeral} modalidades={modalidades} />
         )}
 
+        {pestana === 'puestos' && esRadicacion && <PuestosConfig />}
+        {pestana === 'quien' && <LaHaceActividad numeral={fila.numeral} />}
         {pestana === 'aprobacion' && <AprobacionActividad numeral={fila.numeral} />}
         {pestana === 'firma' && <FirmaActividad numeral={fila.numeral} />}
         {pestana === 'avisos' && <NotificacionesActividad numeral={fila.numeral} />}

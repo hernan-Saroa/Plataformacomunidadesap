@@ -34,15 +34,9 @@ interface Props {
 }
 
 /** Por qué quien mira no puede decidir la 3.4, dicho como lo diría una persona. */
-function porQueNoDecide(
-  motivo: string | null | undefined,
-  abogado?: string | null,
-  espera?: string | null,
-): string {
-  if (motivo === 'SIN_ABOGADO') return 'Nadie ha repartido este proceso: se asigna abogado en la 3.3.';
-  if (motivo === 'EN_CADENA') return espera ?? 'Lo decide otro escalón de la cadena de aprobación.';
-  if (motivo === 'NO_ES_TUYO') return `Lo revisa ${abogado ?? 'otro abogado'}.`;
-  return 'Tu rol no resuelve la revisión del estudio previo.';
+function porQueNoDecide(motivo: string | null | undefined, espera?: string | null): string {
+  if (motivo === 'EN_CADENA') return espera ?? 'Lo decide otro escalón de la aprobación.';
+  return 'El estudio previo no está esperando una decisión tuya.';
 }
 
 /**
@@ -239,11 +233,7 @@ export function RevisionDeActividad({ procesoId, numeral, volverA, onVolver, onV
                     </>
                   ) : (
                     <p className="text-[12px] text-slate-600 m-0">
-                      {porQueNoDecide(
-                        estudio.revision?.motivo,
-                        estudio.revision?.abogado?.nombre,
-                        estudio.revision?.espera,
-                      )}
+                      {porQueNoDecide(estudio.revision?.motivo, estudio.revision?.espera)}
                     </p>
                   )}
                 </div>

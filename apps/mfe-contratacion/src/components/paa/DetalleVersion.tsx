@@ -57,7 +57,7 @@ export function DetalleVersion({ versionId, onCambio }: Props) {
     const ok = await dialogo.confirmar({
       titulo: `Activar la versión ${version.numero} del PAA ${version.anio} de ${version.documento.nombre}`,
       descripcion: r
-        ? `Reemplaza a la activa. ${r.actualizados} proceso(s) se actualizan, ${r.revisiones} quedan con revisión para su abogado y ${r.bloqueados} se detienen hasta que se decida. Si algo falla, no cambia nada.`
+        ? `Reemplaza a la activa. ${r.actualizados} proceso(s) se actualizan, ${r.revisiones} quedan con revisión y ${r.bloqueados} se detienen hasta que se decida. Si algo falla, no cambia nada.`
         : 'Será la versión de la que salen los procesos nuevos de esta vigencia.',
       confirmar: 'Activar la versión',
     });
@@ -362,7 +362,7 @@ function Afectados({ afectados }: { afectados: AfectadosPaa | null }) {
     <div className="space-y-2">
       <p className="m-0 text-xs text-gray-600">
         De {r.procesos} proceso(s) en curso de esta vigencia: {r.actualizados} se actualizan, {r.revisiones} quedan con revisión
-        para su abogado y {r.bloqueados} se detienen. Los adjudicados, desiertos, negados y cancelados no se tocan.
+        y {r.bloqueados} se detienen. Los adjudicados, desiertos, negados y cancelados no se tocan.
       </p>
       {tocados.length === 0 ? (
         <p className="m-0 text-xs text-emerald-700">Ningún proceso en curso usa las líneas que cambian.</p>
@@ -374,7 +374,6 @@ function Afectados({ afectados }: { afectados: AfectadosPaa | null }) {
                 <th className="px-2.5 py-1.5 font-bold">Proceso</th>
                 <th className="px-2.5 py-1.5 font-bold">Línea</th>
                 <th className="px-2.5 py-1.5 font-bold">Qué le pasa</th>
-                <th className="px-2.5 py-1.5 font-bold">Revisa</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -398,7 +397,6 @@ function Afectados({ afectados }: { afectados: AfectadosPaa | null }) {
                     ))}
                     {p.revision && <span className="block text-gray-500">{TIPO_REVISION[p.revision.tipo]}</span>}
                   </td>
-                  <td className="px-2.5 py-1.5">{p.abogado?.nombre ?? 'Sin abogado: bandeja compartida'}</td>
                 </tr>
               ))}
             </tbody>

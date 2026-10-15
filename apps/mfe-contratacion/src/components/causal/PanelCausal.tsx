@@ -249,11 +249,13 @@ export function PanelCausal({ procesoId, onCambio }: Props) {
             ? 'Primero hay que aprobar el estudio previo (3.1), que es donde se ratifica la modalidad: la lista de causales sale de ella.'
             : estado.motivoNoElige === 'ETAPA_PASADA'
               ? 'El proceso ya pasó de la etapa 3, así que la causal queda como está.'
-              : estado.motivoNoDecide === 'SIN_ABOGADO'
-                ? 'Nadie ha repartido este proceso todavía: se asigna abogado en la actividad 3.3.'
+              : estado.motivoNoDecide === 'SIN_ASIGNAR'
+                ? `La elige quien ocupe el puesto ${estado.puesto ?? ''} y todavía no hay nadie: se asigna en la actividad 3.3.`
                 : estado.motivoNoDecide === 'NO_ES_TUYO'
-                  ? `La elige ${estado.abogado?.nombre ?? 'el abogado del proceso'}.`
-                  : 'La elige el abogado al que se le asignó el proceso.'}
+                  ? `La elige ${estado.responsable?.nombre ?? 'otra persona'}${estado.puesto ? ` (${estado.puesto})` : ''}.`
+                  : estado.motivoNoDecide === 'SIN_PERMISO'
+                    ? 'Tu rol no tiene el permiso para elegir la causal.'
+                    : 'La elige quien tenga el permiso en la 3.6.'}
         </p>
       )}
 

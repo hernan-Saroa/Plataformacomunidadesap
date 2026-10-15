@@ -112,8 +112,8 @@ export function ModalidadDelEstudioPrevio({ procesoId, proceso, puedeCambiar, on
             </p>
           )}
           <p className="text-[11px] text-slate-500 m-0 mt-1 leading-relaxed">
-            De ella depende la lista de documentos. El abogado la ratifica al aprobar el estudio
-            previo, o lo devuelve diciendo cuál corresponde.
+            De ella depende la lista de documentos. Se ratifica al aprobar el estudio
+            previo; si no corresponde, se devuelve diciendo cuál.
           </p>
         </div>
         {puedeCambiar && !cambiando && (

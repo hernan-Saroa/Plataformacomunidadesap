@@ -197,13 +197,9 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
 
   /** Por qué no le toca a quien mira, dicho como lo diría una persona. */
   const porQueNoDecido =
-    quienResuelve?.motivo === 'SIN_ABOGADO'
-      ? 'Nadie ha repartido este proceso todavía: se asigna abogado en la actividad 3.3.'
-      : quienResuelve?.motivo === 'NO_ES_TUYO'
-        ? `Lo revisa ${quienResuelve.abogado?.nombre ?? 'otro abogado'}.`
-        : quienResuelve?.motivo === 'EN_CADENA'
-          ? quienResuelve.espera ?? null
-          : null;
+    // La revisión es la ronda de la aprobación de la 3.1 (109): el escalón que
+    // espera dice a quién, incluso si falta asignar su puesto en la 3.3.
+    quienResuelve?.motivo === 'EN_CADENA' ? (quienResuelve.espera ?? null) : null;
 
   /**
    * Tras cargar o sustituir un documento de la lista.

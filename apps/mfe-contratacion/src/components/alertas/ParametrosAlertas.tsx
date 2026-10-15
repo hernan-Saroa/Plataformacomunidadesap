@@ -13,7 +13,7 @@ const PLAZO: Record<string, { nombre: string; valor: (n: number) => string }> = 
   anticipacion_cdp: { nombre: 'CDP', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} antes` },
   anticipacion_rp: { nombre: 'Registro presupuestal', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} antes` },
   anticipacion_liquidacion: { nombre: 'Liquidación', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} antes` },
-  tolerancia_sin_abogado: { nombre: 'Proceso sin abogado', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} de espera` },
+  tolerancia_sin_abogado: { nombre: 'Puesto obligatorio vacío', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} de espera` },
   hora_aviso: { nombre: 'Aviso diario', valor: (n) => `${n}:00, hora de Bogotá` },
 };
 

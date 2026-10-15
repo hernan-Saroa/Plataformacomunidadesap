@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { PanelRadicacion } from './PanelRadicacion';
@@ -8,33 +8,14 @@ import { contratacionService } from '../../services/contratacionService';
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-const ABOGADOS = [
-  {
-    usuarioId: 'u-andres',
-    usuarioNombre: 'andres.rojas@esap.edu.co',
-    personaId: null,
-    nombre: 'Andrés Rojas',
-    cargo: null,
-    email: null,
-  },
-  {
-    usuarioId: 'u-otro',
-    usuarioNombre: 'otro.abogado@esap.edu.co',
-    personaId: null,
-    nombre: 'Otro Abogado',
-    cargo: null,
-    email: null,
-  },
-];
-
 const participante = (nombre: string, cambios: Record<string, unknown> = {}) => ({
   id: 'x-1',
-  usuarioId: 'u-andres',
-  usuarioNombre: 'andres.rojas@esap.edu.co',
+  usuarioId: 'u-laura',
+  usuarioNombre: 'laura.pineda@esap.edu.co',
   nombre,
   cargo: null,
   email: null,
-  asignadoPor: 'laura.pineda@esap.edu.co',
+  asignadoPor: null,
   asignadoAt: '2026-09-09T14:00:00.000Z',
   esMio: false,
   ...cambios,
@@ -44,119 +25,142 @@ const estado = (cambios: Record<string, unknown> = {}) => ({
   puedeTomar: false,
   puedeRepartir: false,
   contratacion: null,
-  abogado: null,
-  sinAbogado: false,
+  financiera: null,
+  historial: [],
+  ...cambios,
+});
+
+const ABOGADO = {
+  id: 'p-abogado',
+  nombre: 'Abogado',
+  descripcion: null,
+  obligatorio: true,
+  usos: [
+    { numeral: '3.6', nombreActividad: 'Causal', como: 'HACE' as const },
+    { numeral: '3.1', nombreActividad: 'Estudio previo', como: 'APRUEBA' as const },
+  ],
+  ocupante: null,
+  problema: null,
+};
+
+const puestos = (cambios: Record<string, unknown> = {}, lista = [ABOGADO]) => ({
+  puedeAsignar: false,
+  puestos: lista,
   historial: [],
   ...cambios,
 });
 
 /**
- * Actividad 3.3 · Radicación en la Dirección (EFDS-1183).
+ * Actividad 3.3 · Radicación en la Dirección (EFDS-1183, 109).
  *
- * Hasta ahora esta actividad era el panel genérico de constancia y no hacía
- * nada de lo que su nombre dice. Radicar es recibir el proceso y ponerle
- * responsable, y son dos actos con reglas distintas: tomar no lo autoriza
- * nadie —la bandeja es compartida—, repartir el abogado lo hace quien tomó.
+ * Radicar es recibir el proceso y poner a una persona en cada puesto. Los
+ * puestos no están escritos en la pantalla: los configura la Dirección, y la
+ * 3.3 solo los ocupa. Ya no hay un paso fijo para el abogado.
  */
-describe('PanelRadicacion · recibir y repartir', () => {
+describe('PanelRadicacion · recibir y asignar los puestos', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.spyOn(contratacionService, 'abogados').mockResolvedValue(ABOGADOS as never);
   });
 
-  const pintar = (datos: Record<string, unknown>) => {
+  const pintar = (datos: Record<string, unknown>, datosPuestos: unknown = puestos()) => {
     vi.spyOn(contratacionService, 'participacion').mockResolvedValue(datos as never);
+    vi.spyOn(contratacionService, 'puestosDelProceso').mockResolvedValue(datosPuestos as never);
     render(<PanelRadicacion procesoId="p-1" />);
   };
 
-  it('en la bandeja, quien puede recibirlo ve el botón de tomar', async () => {
+  it('en la bandeja, quien puede recibirlo ve el botón de tomar y los puestos esperan', async () => {
     pintar(estado({ puedeTomar: true }));
 
-    expect(await screen.findByText(/todavía no lo lleva nadie/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Hacerme cargo/ })).toBeInTheDocument();
-    // El primer paso es suyo; los otros dos esperan a que alguien lo tome.
+    expect(await screen.findByRole('button', { name: /Hacerme cargo/ })).toBeInTheDocument();
     expect(screen.getByText('Te toca')).toBeInTheDocument();
-    expect(screen.getAllByText('En espera')).toHaveLength(2);
+    expect(await screen.findByText('Asignar los puestos del proceso')).toBeInTheDocument();
+    expect(screen.getByText('En espera')).toBeInTheDocument();
   });
 
-  it('quien no es de la Dirección lo ve, pero no puede recibirlo', async () => {
-    // El área que radicó tiene derecho a saber que su proceso sigue esperando;
-    // lo que no tiene es forma de sacarlo de la bandeja.
-    pintar(estado());
+  it('no hay un paso fijo de abogado: los pasos salen de los puestos configurados', async () => {
+    pintar(estado({ contratacion: participante('Laura Pineda') }), puestos({}, []));
 
-    expect(
-      await screen.findByText(/alguien de la Dirección de Contratación se haga cargo/),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Hacerme cargo/ })).toBeNull();
+    expect(await screen.findByText('Hacerse cargo del proceso')).toBeInTheDocument();
+    expect(screen.queryByText(/abogado/i)).toBeNull();
+    expect(screen.queryByText('Asignar los puestos del proceso')).toBeNull();
   });
 
-  it('tomado y sin repartir, avisa de que la 3.4 no la puede resolver nadie', async () => {
-    pintar(
-      estado({
-        contratacion: participante('Laura Pineda', { esMio: true }),
-        puedeRepartir: true,
-      }),
-    );
+  it('dice cuántos puestos faltan y qué hace cada uno', async () => {
+    pintar(estado({ contratacion: participante('Laura Pineda') }), puestos({ puedeAsignar: true }));
 
-    expect(await screen.findByText(/Laura Pineda \(tú\) · desde el/)).toBeInTheDocument();
-    expect(screen.getByText('Hecho')).toBeInTheDocument();
-    expect(screen.getByText(/Mientras no haya abogado/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Elegir abogado/ })).toBeInTheDocument();
+    expect(await screen.findByText(/Falta 1 puesto por asignar/)).toBeInTheDocument();
+    expect(screen.getByText('Hace la 3.6; aprueba la 3.1.')).toBeInTheDocument();
+    expect(screen.getByText(/Sin asignar/)).toBeInTheDocument();
   });
 
-  it('quien no lo tomó no reparte: eso lo decide quien lo recibió', async () => {
-    pintar(estado({ contratacion: participante('Laura Pineda') }));
+  it('asigna eligiendo entre los candidatos, los menos cargados primero', async () => {
+    const usuario = userEvent.setup();
+    pintar(estado({ contratacion: participante('Laura Pineda', { esMio: true }) }), puestos({ puedeAsignar: true }));
+    vi.spyOn(contratacionService, 'candidatosAPuesto').mockResolvedValue([
+      { usuarioId: 'u-1', usuarioNombre: 'a', personaId: null, nombre: 'Andrés Rojas', email: null, procesosEnElPuesto: 4 },
+      { usuarioId: 'u-2', usuarioNombre: 'b', personaId: null, nombre: 'Beatriz Gil', email: null, procesosEnElPuesto: 1 },
+    ] as never);
+    const asignar = vi
+      .spyOn(contratacionService, 'asignarPuesto')
+      .mockResolvedValue(puestos({ puedeAsignar: true }, [{ ...ABOGADO, ocupante: null }]) as never);
 
-    expect(await screen.findByText(/Lo elige Laura Pineda/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Elegir abogado/ })).toBeNull();
+    await usuario.click(await screen.findByRole('button', { name: 'Asignar' }));
+    const selector = await screen.findByRole('combobox', { name: /Quién ocupa el puesto Abogado/ });
+    await waitFor(() => expect(selector).not.toBeDisabled());
+    const opciones = screen.getAllByRole('option').map((o) => o.textContent);
+    expect(opciones[1]).toMatch(/^Beatriz Gil/);
+
+    await usuario.selectOptions(selector, 'u-2');
+    await usuario.click(screen.getAllByRole('button', { name: 'Asignar' })[0]);
+
+    expect(asignar).toHaveBeenCalledWith('p-1', 'p-abogado', 'u-2', undefined);
   });
 
-  it('cambiar de abogado exige motivo; repartir por primera vez no', async () => {
-    pintar(
-      estado({
-        contratacion: participante('Laura Pineda', { esMio: true }),
-        abogado: participante('Andrés Rojas'),
-        puedeRepartir: true,
-      }),
-    );
+  it('cambiar a quien ocupa el puesto exige motivo', async () => {
+    const usuario = userEvent.setup();
+    const ocupado = {
+      ...ABOGADO,
+      ocupante: {
+        usuarioId: 'u-1',
+        usuarioNombre: 'a',
+        nombre: 'Andrés Rojas',
+        asignadoAt: '2026-10-01T00:00:00Z',
+        asignadoPor: null,
+        esMio: false,
+      },
+    };
+    pintar(estado({ contratacion: participante('Laura Pineda') }), puestos({ puedeAsignar: true }, [ocupado]));
+    vi.spyOn(contratacionService, 'candidatosAPuesto').mockResolvedValue([
+      { usuarioId: 'u-2', usuarioNombre: 'b', personaId: null, nombre: 'Beatriz Gil', email: null, procesosEnElPuesto: 0 },
+    ] as never);
 
-    await userEvent.click(await screen.findByRole('button', { name: /Cambiar de abogado/ }));
-    await userEvent.selectOptions(await screen.findByLabelText(/Nuevo abogado/), 'u-otro');
+    await usuario.click(await screen.findByRole('button', { name: 'Cambiar' }));
+    const selector = await screen.findByRole('combobox');
+    await waitFor(() => expect(selector).not.toBeDisabled());
+    await usuario.selectOptions(selector, 'u-2');
 
-    // Un proceso que cambia de manos sin decir por qué deja al expediente con
-    // dos abogados y ninguna explicación de cuál respondía en cada tramo.
-    expect(screen.getByRole('button', { name: /Reasignar/ })).toBeDisabled();
-    await userEvent.type(screen.getByLabelText(/Por qué cambia de manos/), 'sale a vacaciones');
-    expect(screen.getByRole('button', { name: /Reasignar/ })).toBeEnabled();
+    const confirmar = screen.getAllByRole('button', { name: 'Cambiar' })[0];
+    expect(confirmar).toBeDisabled();
+    await usuario.type(screen.getByLabelText('Motivo del cambio'), 'Se fue de vacaciones dos meses');
+    expect(confirmar).toBeEnabled();
   });
 
-  it('no ofrece como nuevo abogado al que ya lo lleva', async () => {
-    pintar(
-      estado({
-        contratacion: participante('Laura Pineda', { esMio: true }),
-        abogado: participante('Andrés Rojas'),
-        puedeRepartir: true,
-      }),
-    );
+  it('dice qué le impide actuar a quien ocupa el puesto', async () => {
+    const conProblema = {
+      ...ABOGADO,
+      ocupante: {
+        usuarioId: 'u-1',
+        usuarioNombre: 'a',
+        nombre: 'Andrés Rojas',
+        asignadoAt: '2026-10-01T00:00:00Z',
+        asignadoPor: null,
+        esMio: false,
+      },
+      problema: 'Andrés Rojas ya no puede aprobar la 3.6: reasígnalo o devuélvele el permiso en Permisos por etapa',
+    };
+    pintar(estado({ contratacion: participante('Laura Pineda') }), puestos({}, [conProblema]));
 
-    await userEvent.click(await screen.findByRole('button', { name: /Cambiar de abogado/ }));
-
-    expect(await screen.findByRole('option', { name: /Otro Abogado/ })).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: /Andrés Rojas/ })).toBeNull();
-  });
-
-  it('quitado el abogado, dice que el proceso quedó parado', async () => {
-    // «No debería, pero puede pasar»: lo que no puede es pasar en silencio.
-    pintar(
-      estado({
-        contratacion: participante('Laura Pineda', { esMio: true }),
-        sinAbogado: true,
-        puedeRepartir: true,
-      }),
-    );
-
-    expect(
-      await screen.findByText(/no se puede aprobar ni devolver mientras tanto/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/ya no puede aprobar la 3\.6/)).toBeInTheDocument();
+    expect(screen.getByText(/1 puesto necesita atención/)).toBeInTheDocument();
   });
 });

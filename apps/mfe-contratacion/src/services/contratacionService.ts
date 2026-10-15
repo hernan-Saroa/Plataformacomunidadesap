@@ -152,7 +152,11 @@ import {
   DocumentoPaa,
   AccionEscalon,
   CadenaDeAprobacion,
-  EscalonesPorDesignar,
+  CandidatoAPuesto,
+  LaHaceConfig,
+  ProblemaDePuestos,
+  Puesto,
+  PuestosDelProceso,
   EscalonConfigurado,
   PapelEscalon,
   RondaDeAprobacion,
@@ -795,7 +799,7 @@ export const contratacionService = {
 
   // ------------------- quién está en el proceso · 3.3 (EFDS-1183) -----------
 
-  /** Quién lo tomó, qué abogado lo revisa y quiénes estuvieron antes. */
+  /** Quién lo tomó y quiénes estuvieron antes. */
   participacion: (procesoId: string) =>
     pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion`),
 
@@ -811,43 +815,28 @@ export const contratacionService = {
       body: JSON.stringify({}),
     }),
 
-  /** A quién se le puede dar el papel de abogado. */
-  abogados: (q = '') =>
-    pedir<CuentaCandidata[]>(`/participacion/abogados?q=${encodeURIComponent(q)}`),
+  // -------------------------------------- puestos del proceso (109) ------
 
-  /** Reparte el abogado que revisará en la 3.4. Lo hace quien tomó el proceso. */
-  /** Quién revisa el estudio previo en cada escalón por rol (migración 102). */
-  escalonesPorDesignar: (procesoId: string) =>
-    pedir<EscalonesPorDesignar>(`/procesos/${procesoId}/participacion/escalones`),
+  /** Los puestos del proceso, quién ocupa cada uno y qué le impide actuar. */
+  puestosDelProceso: (procesoId: string) =>
+    pedir<PuestosDelProceso>(`/procesos/${procesoId}/participacion/puestos`),
 
-  candidatosDeEscalon: (procesoId: string, orden: number, q = '') =>
-    pedir<CuentaCandidata[]>(
-      `/procesos/${procesoId}/participacion/escalones/${orden}/candidatos?q=${encodeURIComponent(q)}`,
+  /** Quiénes pueden ocupar el puesto: tienen todos los permisos de lo que hace. */
+  candidatosAPuesto: (procesoId: string, puestoId: string, q = '') =>
+    pedir<CandidatoAPuesto[]>(
+      `/procesos/${procesoId}/participacion/puestos/${puestoId}/candidatos?q=${encodeURIComponent(q)}`,
     ),
 
-  /** Designa quién decide el escalón; cambiar a quien estaba exige motivo. */
-  designarEscalon: (procesoId: string, orden: number, usuarioId: string, motivo?: string) =>
-    pedir<EscalonesPorDesignar>(`/procesos/${procesoId}/participacion/escalones/${orden}`, {
+  /** Pone a alguien en el puesto; cambiar a quien estaba exige motivo. */
+  asignarPuesto: (procesoId: string, puestoId: string, usuarioId: string, motivo?: string) =>
+    pedir<PuestosDelProceso>(`/procesos/${procesoId}/participacion/puestos/${puestoId}`, {
       method: 'POST',
       body: JSON.stringify({ usuarioId, motivo }),
     }),
 
-  asignarAbogado: (procesoId: string, usuarioId: string) =>
-    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado`, {
-      method: 'POST',
-      body: JSON.stringify({ usuarioId }),
-    }),
-
-  /** Releva al vigente y asigna al nuevo de una vez, para no dejarlo sin revisor. */
-  reasignarAbogado: (procesoId: string, usuarioId: string, motivo: string) =>
-    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado/reasignar`, {
-      method: 'POST',
-      body: JSON.stringify({ usuarioId, motivo }),
-    }),
-
-  /** Lo quita sin poner otro. El proceso queda pendiente de reasignar. */
-  quitarAbogado: (procesoId: string, motivo: string) =>
-    pedir<EstadoParticipacion>(`/procesos/${procesoId}/participacion/abogado/quitar`, {
+  /** Deja el puesto vacío, con motivo. */
+  quitarPuesto: (procesoId: string, puestoId: string, motivo: string) =>
+    pedir<PuestosDelProceso>(`/procesos/${procesoId}/participacion/puestos/${puestoId}/quitar`, {
       method: 'POST',
       body: JSON.stringify({ motivo }),
     }),
@@ -2827,15 +2816,15 @@ export const contratacionService = {
   aprobacionDeActividad: (numeral: string) =>
     pedir<{
       requiereAprobacion: boolean;
-      aprobadores: { clase: 'rol' | 'persona'; id: string; nombre: string }[];
+      aprobadores: { clase: 'rol' | 'persona' | 'puesto'; id: string; nombre: string }[];
       /** La cadena de escalones que la aprueba, si se eligió una (migración 101). */
       cadena: { id: string; nombre: string; escalones: number; activa: boolean } | null;
     }>(`/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion`),
 
-  /** Con `cadenaId`, la aprueba esa cadena; si no, los roles y personas, en un escalón. */
+  /** Con `cadenaId`, la aprueba esa cadena; si no, los roles, personas y puestos, en un escalón. */
   guardarAprobacionDeActividad: (
     numeral: string,
-    datos: { requiereAprobacion: boolean; roles: string[]; personas: string[]; cadenaId?: string },
+    datos: { requiereAprobacion: boolean; roles: string[]; personas: string[]; puestos?: string[]; cadenaId?: string },
   ) =>
     pedir(`/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion`, {
       method: 'PUT',
@@ -2853,6 +2842,34 @@ export const contratacionService = {
       method: 'PUT',
       body: JSON.stringify(datos),
     }),
+
+  /** Quién hace la actividad: un puesto, unas personas o quien tenga el permiso (109). */
+  laHaceDeActividad: (numeral: string) =>
+    pedir<LaHaceConfig>(`/configuracion/actividades/${encodeURIComponent(numeral)}/quien-la-hace`),
+
+  /** Sin puesto ni personas, la vuelve a hacer cualquiera con el permiso. */
+  guardarLaHaceDeActividad: (numeral: string, datos: { puestoId?: string; personas?: string[] }) =>
+    pedir<LaHaceConfig>(`/configuracion/actividades/${encodeURIComponent(numeral)}/quien-la-hace`, {
+      method: 'PUT',
+      body: JSON.stringify(datos),
+    }),
+
+  /** Los puestos del proceso, con lo que hace o aprueba cada uno (109). */
+  puestos: () => pedir<Puesto[]>('/configuracion/puestos'),
+
+  /** Lo que la configuración deja sin salida: puestos que nadie puede ocupar, actividades huérfanas. */
+  diagnosticoDePuestos: () => pedir<ProblemaDePuestos[]>('/configuracion/puestos/diagnostico'),
+
+  crearPuesto: (datos: { nombre: string; descripcion?: string | null; obligatorio?: boolean; orden?: number }) =>
+    pedir<Puesto>('/configuracion/puestos', { method: 'POST', body: JSON.stringify(datos) }),
+
+  actualizarPuesto: (
+    id: string,
+    datos: { nombre?: string; descripcion?: string | null; obligatorio?: boolean; orden?: number },
+  ) => pedir<Puesto>(`/configuracion/puestos/${id}`, { method: 'PUT', body: JSON.stringify(datos) }),
+
+  /** No se deja mientras alguna actividad lo use. */
+  archivarPuesto: (id: string) => pedir<{ archivado: boolean }>(`/configuracion/puestos/${id}`, { method: 'DELETE' }),
 
   /** Las cadenas de aprobación por escalones (migración 101). */
   cadenasDeAprobacion: () => pedir<CadenaDeAprobacion[]>('/configuracion/cadenas-aprobacion'),

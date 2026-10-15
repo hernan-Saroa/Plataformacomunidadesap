@@ -12,7 +12,8 @@ import {
 } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
-import { ActividadProceso, EstadoParticipacion, EstudioPrevio } from '../../types';
+import { ActividadProceso, EstadoParticipacion,
+  PuestosDelProceso, EstudioPrevio } from '../../types';
 import { AvanceEtapa, LineaDeTiempoEtapas } from './Etapas';
 import { ActividadEtapa } from './ListaActividades';
 import { estadoDeActividad } from './estadoActividad';
@@ -278,6 +279,8 @@ export function DetalleProceso({
    * roles, que es menos preciso pero no dice nada falso.
    */
   const [participacion, setParticipacion] = useState<EstadoParticipacion | null>(null);
+  /** Quién ocupa cada puesto del proceso (109), para el equipo de la ficha. */
+  const [puestos, setPuestos] = useState<PuestosDelProceso | null>(null);
   /**
    * Y puede pedir el proceso entero.
    *
@@ -432,13 +435,17 @@ export function DetalleProceso({
     }
   }, [tokenExpediente, expandida, catalogo, datos]);
 
-  // Con el mismo token que el expediente: tomar el proceso o asignar el abogado
+  // Con el mismo token que el expediente: tomar el proceso o asignar un puesto
   // cambia a quién le toca, y la franja tiene que enterarse sin recargar.
   useEffect(() => {
     let vigente = true;
     Promise.resolve()
       .then(() => contratacionService.participacion(procesoId))
       .then((p) => vigente && setParticipacion(p))
+      .catch(() => undefined);
+    contratacionService
+      .puestosDelProceso(procesoId)
+      .then((p) => vigente && setPuestos(p))
       .catch(() => undefined);
     return () => {
       vigente = false;
@@ -575,7 +582,15 @@ export function DetalleProceso({
       responsableCargo: act.responsableCargo ?? null,
       responde: act.responde ?? null,
     })),
-    participacion: participacion ?? undefined,
+    participacion: participacion
+      ? {
+          ...participacion,
+          puestos: (puestos?.puestos ?? [])
+            .filter((x) => x.ocupante)
+            .map((x) => ({ puesto: x.nombre, nombre: x.ocupante!.nombre, esMio: x.ocupante!.esMio })),
+          puestosVacios: (puestos?.puestos ?? []).filter((x) => x.obligatorio && !x.ocupante).map((x) => x.nombre),
+        }
+      : undefined,
     radicadoPorMi: datos.proceso.radicadoPorMi,
     responsables,
     puedo: alcanceCargado ? puede : undefined,
@@ -981,6 +996,7 @@ export function DetalleProceso({
             situacion={situacion}
             etapaActual={etapaActual}
             participacion={participacion}
+            puestos={puestos}
             plazos={plazos.get(procesoId) ?? []}
             onAbrir={trabajarEn}
             onCambio={() => setTokenExpediente((t) => t + 1)}

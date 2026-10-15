@@ -102,7 +102,7 @@ export function VigenciasYVersiones() {
       const afectados = await contratacionService.paa.afectadosPorCambioDeVigencia(v.id);
       descripcion +=
         afectados.procesos.length > 0
-          ? ` ${afectados.procesos.length} proceso(s) en curso de su año anterior no cambian sus datos: cada uno queda detenido con una evaluación por cambio anual para su abogado (continuar, devolver, migrar o cancelar).`
+          ? ` ${afectados.procesos.length} proceso(s) en curso de su año anterior no cambian sus datos: cada uno queda detenido con una evaluación por cambio anual (continuar, devolver, migrar o cancelar).`
           : ' No hay procesos en curso de años anteriores que evaluar.';
     } catch {
       /* la confirmación sigue teniendo sentido sin el conteo */

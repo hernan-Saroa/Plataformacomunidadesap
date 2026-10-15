@@ -509,11 +509,13 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
             ? 'El comité rechazó el proceso: la contratación terminó ahí.'
             : cerrado
             ? 'El comité ya se pronunció y la actividad quedó cerrada.'
-            : estado.motivoNoDecide === 'SIN_ABOGADO'
-              ? 'Nadie ha repartido este proceso todavía: se asigna abogado en la actividad 3.3.'
+            : estado.motivoNoDecide === 'SIN_ASIGNAR'
+              ? `Lo registra quien ocupe el puesto ${estado.puesto ?? ''} y todavía no hay nadie: se asigna en la actividad 3.3.`
               : estado.motivoNoDecide === 'NO_ES_TUYO'
-                ? `Lo transcribe ${estado.abogado?.nombre ?? 'el abogado del proceso'}.`
-                : 'Lo transcribe el abogado al que se le asignó el proceso.'}
+                ? `Lo registra ${estado.responsable?.nombre ?? 'otra persona'}${estado.puesto ? ` (${estado.puesto})` : ''}.`
+                : estado.motivoNoDecide === 'SIN_PERMISO'
+                  ? 'Tu rol no tiene el permiso para registrar el comité.'
+                  : 'Lo registra quien tenga el permiso en la 3.7.'}
         </p>
       )}
 

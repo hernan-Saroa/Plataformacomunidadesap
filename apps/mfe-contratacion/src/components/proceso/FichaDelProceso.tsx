@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 import { contratacionService } from '../../services/contratacionService';
-import { EstadoParticipacion, EstadoSupervision, PlazoDeActividad } from '../../types';
+import { EstadoParticipacion, EstadoSupervision, PlazoDeActividad, PuestosDelProceso } from '../../types';
 import { ETAPAS } from './Etapas';
 import { ActividadEtapa } from './ListaActividades';
 import { EntradaSituacion, responsableDelPaso, Situacion } from './situacionDelProceso';
@@ -33,6 +33,8 @@ interface Props {
   situacion: Situacion;
   etapaActual: number;
   participacion: EstadoParticipacion | null;
+  /** Quién ocupa cada puesto del proceso (109). */
+  puestos?: PuestosDelProceso | null;
   plazos: PlazoDeActividad[];
   /** Lleva a trabajar esa actividad. */
   onAbrir: (numeral: string) => void;
@@ -61,6 +63,7 @@ export function FichaDelProceso({
   situacion,
   etapaActual,
   participacion,
+  puestos = null,
   plazos,
   onAbrir,
   onCambio,
@@ -254,21 +257,23 @@ export function FichaDelProceso({
                   : undefined
               }
             />
-            <Miembro
-              Icono={Scale}
-              papel="Abogado"
-              nombre={participacion?.abogado?.nombre ?? null}
-              vacio="Sin asignar"
-              esMio={participacion?.abogado?.esMio}
-              accion={
-                participacion?.puedeRepartir
-                  ? {
-                      texto: participacion.abogado ? 'Reasignar' : 'Asignar',
-                      hacer: () => setEquipo('radicacion'),
-                    }
-                  : undefined
-              }
-            />
+            {/* Los puestos que configuró la Dirección (109): ya no hay un
+                abogado fijo, hay los lugares que el área decidió. */}
+            {(puestos?.puestos ?? []).map((p) => (
+              <Miembro
+                key={p.id}
+                Icono={Scale}
+                papel={p.nombre}
+                nombre={p.ocupante?.nombre ?? null}
+                vacio="Sin asignar"
+                esMio={p.ocupante?.esMio}
+                accion={
+                  puestos?.puedeAsignar
+                    ? { texto: p.ocupante ? 'Cambiar' : 'Asignar', hacer: () => setEquipo('radicacion') }
+                    : undefined
+                }
+              />
+            ))}
             {/* Solo si alguien tomó la solicitud antes de la 103: desde entonces
                 el CDP se tramita por fuera y la Financiera no entra al equipo. */}
             {participacion?.financiera ? (

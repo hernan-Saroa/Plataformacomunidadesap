@@ -186,7 +186,18 @@ export class AvisosService {
       this.requiereAprobacion(numeral),
       this.porCorreo(numeral),
     ]);
-    const nombrePapel = (codigo: PapelAviso) => PAPELES.find((p) => p.codigo === codigo)?.nombre ?? codigo;
+    // Los papeles fijos y uno por puesto del proceso (109): los puestos los
+    // crea la Dirección, así que no caben en una lista escrita.
+    const puestos: { id: string; nombre: string }[] = await this.dataSource
+      .query(`SELECT id::text AS id, nombre FROM hiring.puestos_proceso WHERE activo ORDER BY orden, nombre`)
+      .catch(() => []);
+    const papeles = [
+      ...PAPELES,
+      ...puestos.map((p) => ({ codigo: `PUESTO:${p.id}` as PapelAviso, nombre: `Quien ocupa el puesto ${p.nombre}` })),
+    ];
+    const nombrePapel = (codigo: PapelAviso) =>
+      papeles.find((p) => p.codigo === codigo)?.nombre ??
+      (codigo.startsWith('PUESTO:') ? 'Un puesto archivado' : codigo);
 
     const definiciones = eventosDeActividad(numeral);
 
@@ -232,7 +243,7 @@ export class AvisosService {
       .catch(() => []);
 
     return {
-      papeles: PAPELES,
+      papeles,
       requiereAprobacion: requiere,
       porCorreo,
       siempre,

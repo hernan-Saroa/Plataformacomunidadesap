@@ -415,17 +415,20 @@ export interface ActividadProceso {
 }
 
 /**
- * Una actividad de la que responde quien ocupa un papel en el proceso
- * (`RESPONDE_EL_ASIGNADO` en el backend): el abogado de la 3.7, por ejemplo,
- * aunque el Gestor tenga el alcance de editarla.
+ * Una actividad que no hace cualquiera con el permiso sino quien dice su regla
+ * «quién la hace» (109): el ocupante de un puesto del proceso o unas personas.
+ * Sale de Configuración y la resuelve el backend para cada proceso.
  */
 export interface RespondeElAsignado {
-  papel: 'CONTRATACION' | 'ABOGADO' | 'FINANCIERA';
-  /** Lo que esa persona hace ahí; sin nadie en el papel, la hacen los roles con ella. */
+  /** El puesto que la hace, o `null` si la hacen personas nombradas. */
+  puesto: string | null;
+  /** Quién la hace en este proceso, o `null` si el puesto está vacío. */
+  persona: { nombre: string; esMio: boolean } | null;
+  /** El permiso que tiene que tener para hacerla. */
   accion: Exclude<AccionAlcance, 'ver'>;
   /** Solo mientras la actividad espera decisión. */
   soloEnRevision: boolean;
-  /** El papel se toma de una bandeja: sin nadie en él, quien tenga el alcance puede tomarlo. */
+  /** Un puesto se asigna en la 3.3: no se toma de una bandeja. */
   seToma: boolean;
 }
 
@@ -515,17 +518,18 @@ export interface ProcesoResumen {
 export type EstadoDelProceso = 'EN_CURSO' | 'ADJUDICADO' | 'DESIERTO' | 'NEGADO' | 'CANCELADO';
 
 /**
- * Por qué quien mira no puede resolver la 3.4 (EFDS-1183).
+ * Por qué quien mira no hace una actividad del proceso (109).
  *
- * - `SIN_PERMISO`: su rol no aprueba actividades.
- * - `SIN_ABOGADO`: nadie ha repartido el proceso todavía; se hace en la 3.3.
- * - `NO_ES_TUYO`: lo revisa otro abogado, el que lo recibió.
+ * - `SIN_PERMISO`: su rol no tiene el permiso en ese punto.
+ * - `SIN_ASIGNAR`: la hace un puesto del proceso que nadie ocupa todavía; se
+ *   asigna en la 3.3.
+ * - `NO_ES_TUYO`: la hace otra persona, la que ocupa el puesto.
+ * - `EN_CADENA`: la decide el escalón que espera, y no es de quien mira.
  */
-export type MotivoNoDecide = 'SIN_ABOGADO' | 'NO_ES_TUYO' | 'SIN_PERMISO' | 'EN_CADENA';
+export type MotivoNoDecide = 'SIN_ASIGNAR' | 'NO_ES_TUYO' | 'SIN_PERMISO' | 'EN_CADENA';
 
 /** Quién resuelve la 3.4 de este proceso y si le toca a quien mira. */
 export interface RevisionDelProceso {
-  abogado: { nombre: string; usuarioNombre: string; cargo: string | null } | null;
   puedeDecidir: boolean;
   /** `EN_CADENA`: la 3.1 va por una cadena y el escalón que espera no es de quien mira. */
   motivo: MotivoNoDecide | null;
@@ -533,7 +537,7 @@ export interface RevisionDelProceso {
   espera?: string | null;
   /** La ronda de la cadena, cuando la 3.1 se aprueba por una (101). */
   ronda?: RondaDeAprobacion | null;
-  /** Lo que quien mira puede hacer ahora: sin cadena, las tres si es el abogado. */
+  /** Lo que quien mira puede hacer ahora en el escalón que espera. */
   acciones?: AccionEscalon[];
 }
 
@@ -573,7 +577,10 @@ export interface EstadoCausalProceso {
   puedeElegir: boolean;
   motivoNoElige: MotivoNoElige | null;
   motivoNoDecide: MotivoNoDecide | null;
-  abogado: { nombre: string; usuarioNombre: string } | null;
+  /** Quién la elige en este proceso, si la regla «quién la hace» lo dice (109). */
+  responsable: { nombre: string; usuarioNombre: string | null } | null;
+  /** El puesto que la hace, si es de un puesto. */
+  puesto: string | null;
 }
 
 // ----------------- comité de contratación · 3.7 (3.6 de la matriz) ---------
@@ -635,7 +642,10 @@ export interface EstadoComiteContratacion {
   puedeRegistrar: boolean;
   puedeDejarConstancia: boolean;
   motivoNoDecide: MotivoNoDecide | null;
-  abogado: { nombre: string; usuarioNombre: string } | null;
+  /** Quién lo registra en este proceso, si la regla «quién la hace» lo dice (109). */
+  responsable: { nombre: string; usuarioNombre: string | null } | null;
+  /** El puesto que lo hace, si es de un puesto. */
+  puesto: string | null;
 }
 
 // ------------------------- quién está en el proceso (EFDS-1183) ------------
@@ -648,10 +658,6 @@ export interface CuentaCandidata {
   nombre: string;
   cargo: string | null;
   email: string | null;
-  /** Solo en los abogados: procesos que lleva, para repartir con criterio. */
-  procesosACargo?: number;
-  /** De esos, cuántos estudios previos esperan su decisión ahora. */
-  revisionesPendientes?: number;
 }
 
 /** Quien ocupa un papel ahora mismo. */
@@ -683,26 +689,22 @@ export interface ParticipacionRelevada {
 export interface EstadoParticipacion {
   /** El proceso está en la bandeja y quien mira puede recibirlo. */
   puedeTomar: boolean;
-  /** Quien lo tomó reparte el abogado; el Director también. */
+  /** Quien lo tomó asigna los puestos; el Director también. */
   puedeRepartir: boolean;
   contratacion: Participante | null;
-  abogado: Participante | null;
   /**
    * Quién tomó la solicitud de CDP antes de la 103. Desde entonces el CDP se
    * tramita por fuera y nadie lo toma: queda como historia.
    */
   financiera: Participante | null;
-  /** Se quedó sin abogado: no debería, pero pasa, y hay que verlo. */
-  sinAbogado: boolean;
-  /** Si el abogado se elige en su escalón de la cadena de la 3.1, sin paso aparte (102). */
-  abogadoEnCadena?: boolean;
   historial: ParticipacionRelevada[];
 }
 
 /** Lo que la fila del listado dice sobre quién lleva el proceso. */
 export interface ParticipacionEnLista {
   contratacion: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
-  abogado: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
+  /** Quién ocupa cada puesto del proceso (109). */
+  puestos?: { puesto: string; nombre: string; esMio: boolean }[];
   /** Quién tomó la solicitud de CDP en la Financiera antes de la 103, si alguien la tomó. */
   financiera?: { nombre: string; usuarioNombre: string; esMio: boolean } | null;
   /** Llegó a la Dirección y nadie lo ha recibido. */
@@ -3203,8 +3205,8 @@ export interface AlertaVencimiento {
     | 'LIQUIDACION'
     | 'APROBACION_PENDIENTE'
     | 'DEVUELTA_PARA_CORREGIR'
-    /** Recibido en la Dirección y sin quien lo revise: el proceso está parado. */
-    | 'SIN_ABOGADO'
+    /** Recibido en la Dirección con un puesto obligatorio vacío: lo que hace, nadie lo hace. */
+    | 'SIN_RESPONSABLE'
     /** Una actividad con plazo por vencer o vencido; sus días son hábiles. */
     | 'PLAZO_ACTIVIDAD';
   procesoId: string;
@@ -3560,7 +3562,10 @@ export type EventoAviso =
 export type PapelAviso =
   | 'QUIEN_ENVIO'
   | 'QUIEN_APRUEBA'
-  | 'ABOGADO'
+  | 'QUIEN_LA_HACE'
+  /** Quien ocupa ese puesto del proceso (109). */
+  | `PUESTO:${string}`
+  | 'DECIDE_REVISION_PAA'
   | 'CONTRATACION'
   | 'RADICADOR'
   | 'BANDEJA_CONTRATACION'
@@ -3772,7 +3777,6 @@ export interface ProcesoAfectadoPaa {
   codigo: string;
   tratamiento: 'SIN_CAMBIOS' | 'ACTUALIZADO' | 'MODIFICADA_SIN_EFECTO' | 'ELIMINADA';
   revision: { tipo: TipoRevisionPaa; bloquea: boolean } | null;
-  abogado: { id: string | null; nombre: string } | null;
   cambios: { linea: CambioDeLineaPaa[]; proceso: CampoAplicadoPaa[] };
   lineaNuevaId: string | null;
 }
@@ -3806,7 +3810,6 @@ export interface AfectadosPorCambioDeVigencia {
     etapa: number;
     codigo: string | null;
     anio: number | null;
-    abogado: { id: string | null; nombre: string } | null;
   }[];
 }
 
@@ -3940,7 +3943,8 @@ export interface OrigenPaaDelProceso {
 
 export type AccionEscalon = 'APROBAR' | 'DEVOLVER' | 'NEGAR';
 export type ReglaDecision = 'UNO' | 'TODOS';
-export type PapelEscalon = 'ABOGADO' | 'CONTRATACION' | 'SUPERVISOR';
+/** Papeles del proceso en un escalón. El abogado ya no es un papel: es un puesto (109). */
+export type PapelEscalon = 'CONTRATACION' | 'SUPERVISOR';
 export type EstadoEscalon = 'BLOQUEADO' | 'PENDIENTE' | 'APROBADO' | 'DEVUELTO' | 'NEGADO' | 'ANULADO';
 
 /** Un escalón tal como se configura en la plantilla. */
@@ -3950,6 +3954,8 @@ export interface EscalonConfigurado {
   /** Ids de persona del directorio. */
   personas: string[];
   papeles: PapelEscalon[];
+  /** Puestos del proceso (109): lo decide quien ocupe alguno. */
+  puestos?: string[];
   reglaDecision: ReglaDecision;
   acciones: AccionEscalon[];
 }
@@ -3964,6 +3970,7 @@ export interface CadenaDeAprobacion {
     nombresRoles: string[];
     nombresPersonas: string[];
     nombresPapeles: string[];
+    nombresPuestos?: string[];
   })[];
   /** Las actividades que la exigen hoy. */
   usadaEn: { numeral: string; nombre: string }[];
@@ -4004,42 +4011,83 @@ export interface RondaDeAprobacion {
   escalones: EscalonDeRonda[];
 }
 
-/** Un escalón por rol de la cadena de la 3.1, con quién lo decide en el proceso (102). */
-export interface EscalonPorDesignar {
-  orden: number;
+/**
+ * Un puesto del proceso (109): un lugar que ocupa una persona en cada proceso
+ * —Abogado, Segundo abogado, Jefe—. Lo crea la Dirección en Configuración y se
+ * ocupa en la 3.3.
+ */
+export interface Puesto {
+  id: string;
   nombre: string;
-  /** `ABOGADO`: se designa eligiendo al abogado del proceso; `ROL`: a alguien con el rol. */
-  tipo: 'ROL' | 'ABOGADO';
-  /** Nombres legibles de los roles del escalón. */
-  roles: string[];
-  designado: {
-    usuarioId: string;
-    nombre: string;
-    usuarioNombre: string;
-    asignadoAt: string;
-    asignadoPor: string | null;
-  } | null;
-  /** Lo que ya decidió en la revisión en curso no se cambia. */
-  cambiable: boolean;
-  /** Si es el escalón que está esperando decisión. */
-  leToca: boolean;
-  /** Qué impide decidirlo: el designado perdió el rol, el abogado el permiso… */
-  problema?: string | null;
-  /** El rol ya no existe: se corrige la cadena, no designando. */
-  rolInexistente?: boolean;
+  descripcion: string | null;
+  obligatorio: boolean;
+  orden: number;
+  activo: boolean;
+  /** Lo que hace o aprueba, de la configuración de cada actividad. */
+  usos: UsoDePuesto[];
 }
 
-/** Lo que la 3.3 enseña de los escalones por rol de la 3.1 (102). */
-export interface EscalonesPorDesignar {
-  puedeDesignar: boolean;
-  escalones: EscalonPorDesignar[];
+export interface UsoDePuesto {
+  numeral: string;
+  nombreActividad: string;
+  modalidad?: string | null;
+  como: 'HACE' | 'APRUEBA';
+  accion?: Exclude<AccionAlcance, 'ver'>;
+}
+
+/** Un puesto en un proceso, con quién lo ocupa. */
+export interface PuestoEnProceso {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  obligatorio: boolean;
+  usos: UsoDePuesto[];
+  ocupante: {
+    usuarioId: string;
+    usuarioNombre: string;
+    nombre: string;
+    asignadoAt: string;
+    asignadoPor: string | null;
+    esMio: boolean;
+  } | null;
+  /** Lo que le impide actuar a quien lo ocupa: perdió un permiso. */
+  problema: string | null;
+}
+
+export interface PuestosDelProceso {
+  puedeAsignar: boolean;
+  puestos: PuestoEnProceso[];
   historial: {
-    escalon: number;
-    escalonNombre: string | null;
+    puesto: string;
     nombre: string;
     asignadoAt: string;
     relevadoAt: string | null;
     relevadoPor: string | null;
     motivoRelevo: string | null;
   }[];
+}
+
+/** Una cuenta que puede ocupar un puesto. */
+export interface CandidatoAPuesto {
+  usuarioId: string;
+  usuarioNombre: string;
+  personaId: string | null;
+  nombre: string;
+  email: string | null;
+  /** Cuántos procesos en curso lleva ya en ese puesto. */
+  procesosEnElPuesto: number;
+}
+
+/** Quién hace una actividad, en Configuración (109). */
+export interface LaHaceConfig {
+  tipo: 'PERMISO' | 'PUESTO' | 'PERSONAS';
+  puesto: { id: string; nombre: string; activo: boolean } | null;
+  personas: { id: string; nombre: string }[];
+}
+
+/** Lo que la configuración deja sin salida. */
+export interface ProblemaDePuestos {
+  puestoId: string | null;
+  numeral: string | null;
+  mensaje: string;
 }

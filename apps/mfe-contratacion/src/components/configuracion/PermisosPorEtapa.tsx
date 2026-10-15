@@ -82,7 +82,7 @@ const PERFILES = [
   {
     nombre: 'Contratación',
     rol: 'GESTOR_CONTRATACION',
-    queHace: 'Recibe el proceso en la 3.3, asigna el abogado y lleva el expediente de ahí en adelante.',
+    queHace: 'Recibe el proceso en la 3.3, asigna los puestos y lleva el expediente de ahí en adelante.',
   },
   {
     nombre: 'Abogado',

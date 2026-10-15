@@ -10,13 +10,19 @@ import {
   situacionTrasAprobar,
 } from './situacionDelProceso';
 
-/** Lo que manda el backend en `responde` (`RESPONDE_EL_ASIGNADO`). */
-const ABOGADO = { papel: 'ABOGADO', accion: 'aprobar', seToma: false } as const;
+/**
+ * Lo que manda el backend en `responde` (109): la regla «quién la hace» de la
+ * actividad, resuelta para el proceso. Aquí, el puesto Abogado sin ocupante;
+ * las pruebas que necesitan a alguien lo ponen.
+ */
+const DEL_ABOGADO = (
+  persona: RespondeElAsignado['persona'] = null,
+  soloEnRevision = false,
+): RespondeElAsignado => ({ puesto: 'Abogado', persona, accion: 'aprobar', seToma: false, soloEnRevision });
 const RESPONDE: Record<string, RespondeElAsignado> = {
-  '3.5': { ...ABOGADO, soloEnRevision: true },
-  '3.6': { ...ABOGADO, soloEnRevision: false },
-  '3.7': { ...ABOGADO, soloEnRevision: false },
-  '4.2': { papel: 'FINANCIERA', accion: 'editar', seToma: true, soloEnRevision: false },
+  '3.5': DEL_ABOGADO(null, true),
+  '3.6': DEL_ABOGADO(),
+  '3.7': DEL_ABOGADO(),
 };
 
 const paso = (numeral: string, cambios: Partial<PasoConDatos> = {}): PasoConDatos => ({
@@ -70,21 +76,26 @@ describe('situación del proceso · el estudio previo', () => {
     expect(s.espera).toMatch(/nadie lo ha recibido/);
   });
 
-  it('recibido y sin abogado, le toca asignarlo a quien lo recibió', () => {
+  it('recibido con un puesto obligatorio vacío, le toca asignarlo a quien lo recibió', () => {
     const s = situacionDelProceso({
       pasos: flujo({ '3.1': 'EN_REVISION', '3.3': 'APROBADO' }),
-      participacion: { contratacion: { nombre: 'Ana Gestora', esMio: false } },
+      participacion: { contratacion: { nombre: 'Ana Gestora', esMio: false }, puestosVacios: ['Abogado'] },
     });
 
-    expect(s).toMatchObject({ momento: 'asignacion', titulo: 'Asignar abogado', quien: 'Ana Gestora' });
+    expect(s).toMatchObject({
+      momento: 'asignacion',
+      titulo: 'Asignar los puestos del proceso',
+      quien: 'Ana Gestora',
+      espera: 'Falta asignar: Abogado',
+    });
   });
 
-  it('con abogado, la revisión es suya y no del formulario', () => {
+  it('sin puestos vacíos, la revisión es de quienes ocupan los puestos y no del formulario', () => {
     const s = situacionDelProceso({
       pasos: flujo({ '3.1': 'EN_REVISION', '3.3': 'APROBADO' }),
       participacion: {
         contratacion: { nombre: 'Ana Gestora' },
-        abogado: { nombre: 'Luis Abogado', esMio: true },
+        puestos: [{ puesto: 'Abogado', nombre: 'Luis Abogado', esMio: true }],
       },
     });
 
@@ -115,16 +126,6 @@ describe('situación del proceso · lo que sigue', () => {
     expect(s).toMatchObject({ momento: 'tramite', numeral: '3.5', quien: 'Gestor de contratación' });
   });
 
-  it('la Financiera que tomó el CDP es quien responde, no el rol', () => {
-    const s = situacionDelProceso({
-      pasos: flujo({ '3.1': 'APROBADO', '3.3': 'APROBADO', '3.5': 'APROBADO', '4.1': 'APROBADO' }),
-      responsables,
-      participacion: { financiera: { nombre: 'Marta Presupuesto', esMio: false } },
-    });
-
-    expect(s).toMatchObject({ numeral: '4.2', quien: 'Marta Presupuesto', teToca: false });
-  });
-
   it('sin persona a cargo, nombra a los roles que pueden actuar', () => {
     const s = situacionDelProceso({
       pasos: flujo({ '3.1': 'APROBADO', '3.3': 'APROBADO', '3.5': 'APROBADO', '4.1': 'APROBADO' }),
@@ -150,53 +151,56 @@ describe('situación del proceso · lo que sigue', () => {
     expect(s).toMatchObject({ momento: 'revision', numeral: '4.1', quien: 'Revisor' });
   });
 
-  it('el comité lo transcribe el abogado del proceso, aunque el Gestor pueda editarlo', () => {
-    const pasos = [
-      paso('3.1', { estado: 'APROBADO' }),
-      paso('3.3', { estado: 'APROBADO' }),
-      paso('3.5', { estado: 'APROBADO' }),
-      paso('3.7', { estado: 'BORRADOR' }),
-    ];
-    const conGestor: ResponsableDeLugar[] = [
-      ...responsables,
-      { rol: 'Gestor de contratación', accion: 'editar', lugar: '3.7' },
-    ];
+  it('si la regla dice que lo hace un puesto, lo hace quien lo ocupa aunque el Gestor pueda editarlo', () => {
     const entrada = (esMio: boolean) => ({
-      pasos,
-      responsables: conGestor,
-      participacion: {
-        contratacion: { nombre: 'Laura Gestora', esMio: !esMio },
-        abogado: { nombre: 'Diana Abogada', esMio },
-      },
-      // Al Gestor el alcance le dice que sí: no por eso le toca.
-      puedo: () => !esMio,
+      pasos: [
+        paso('3.1', { estado: 'APROBADO' }),
+        paso('3.3', { estado: 'APROBADO' }),
+        paso('3.5', { estado: 'APROBADO' }),
+        paso('3.7', { estado: 'BORRADOR', responde: DEL_ABOGADO({ nombre: 'Diana Abogada', esMio }) }),
+      ],
+      responsables: [...responsables, { rol: 'Gestor de contratación', accion: 'editar' as const, lugar: '3.7' }],
+      // El permiso lo tienen los dos: no por eso le toca al Gestor.
+      puedo: () => true,
     });
 
     expect(situacionDelProceso(entrada(true))).toMatchObject({
       numeral: '3.7',
-      quien: 'Diana Abogada',
+      quien: 'Diana Abogada (Abogado)',
       teToca: true,
     });
     expect(situacionDelProceso(entrada(false))).toMatchObject({
-      quien: 'Diana Abogada',
+      quien: 'Diana Abogada (Abogado)',
       teToca: false,
     });
   });
 
-  it('la modalidad la diligencia el Gestor y la decide el abogado', () => {
-    const participacion = { abogado: { nombre: 'Diana Abogada', esMio: false } };
-    const conEstado = (estado: string) =>
-      situacionDelProceso({
-        pasos: flujo({ '3.1': 'APROBADO', '3.3': 'APROBADO', '3.5': estado }),
-        responsables,
-        participacion,
-      });
+  it('ocupar el puesto sin el permiso no basta: manda el permiso', () => {
+    const s = situacionDelProceso({
+      pasos: [
+        paso('3.1', { estado: 'APROBADO' }),
+        paso('3.3', { estado: 'APROBADO' }),
+        paso('3.7', { estado: 'BORRADOR', responde: DEL_ABOGADO({ nombre: 'Diana Abogada', esMio: true }) }),
+      ],
+      responsables,
+      puedo: () => false,
+    });
 
-    expect(conEstado('BORRADOR').quien).toBe('Gestor de contratación');
-    expect(conEstado('EN_REVISION').quien).toBe('Diana Abogada');
+    expect(s).toMatchObject({ teToca: false });
   });
 
-  it('sin abogado asignado nombra a los roles que pueden aprobar, y no le toca a nadie', () => {
+  it('la modalidad la diligencia el Gestor y, en revisión, la decide quien ocupa el puesto', () => {
+    const conEstado = (estado: string) => {
+      const pasos = flujo({ '3.1': 'APROBADO', '3.3': 'APROBADO', '3.5': estado });
+      pasos[3] = { ...pasos[3], responde: DEL_ABOGADO({ nombre: 'Diana Abogada', esMio: false }, true) };
+      return situacionDelProceso({ pasos, responsables });
+    };
+
+    expect(conEstado('BORRADOR').quien).toBe('Gestor de contratación');
+    expect(conEstado('EN_REVISION').quien).toBe('Diana Abogada (Abogado)');
+  });
+
+  it('con el puesto vacío no le toca a nadie, y dice que falta asignarlo', () => {
     const s = situacionDelProceso({
       pasos: [
         paso('3.1', { estado: 'APROBADO' }),
@@ -211,8 +215,8 @@ describe('situación del proceso · lo que sigue', () => {
       puedo: () => true,
     });
 
-    // El abogado se asigna: tener el alcance no basta para transcribir.
-    expect(s).toMatchObject({ quien: 'Revisor o Director', teToca: false });
+    // El puesto se asigna en la 3.3: tener el alcance no basta.
+    expect(s).toMatchObject({ quien: 'Abogado, sin asignar', teToca: false });
   });
 
   it('la solicitud de CDP sin tomar le toca a quien puede tomarla', () => {
@@ -289,7 +293,7 @@ describe('a dónde pasa al aprobar', () => {
   it('aprobar el estudio previo lo lleva a lo que sigue, con su responsable', () => {
     const entrada = {
       pasos: flujo({ '3.1': 'EN_REVISION', '3.3': 'APROBADO' }),
-      participacion: { contratacion: { nombre: 'Ana Gestora' }, abogado: { nombre: 'Luis' } },
+      participacion: { contratacion: { nombre: 'Ana Gestora' }, puestos: [{ puesto: 'Abogado', nombre: 'Luis' }] },
       responsables,
     };
 
@@ -328,8 +332,6 @@ describe('a dónde pasa al aprobar', () => {
  * trabajarla: el servidor la rechazaría.
  */
 describe('situacionDelProceso · el PAA', () => {
-  const abogado = { nombre: 'Andrés Rojas', usuarioNombre: 'andres', esMio: true };
-
   it('un proceso cancelado no le toca a nadie', () => {
     const s = situacionDelProceso({
       pasos: flujo({ '3.1': 'BORRADOR' }),
@@ -341,18 +343,18 @@ describe('situacionDelProceso · el PAA', () => {
     expect(destinoDeLaSituacion(s)).toBe('El proceso termina');
   });
 
-  it('detenido, solo le toca al abogado, que decide la revisión', () => {
+  it('detenido, le toca a quien puede decidir las revisiones del PAA', () => {
     const entrada = {
       pasos: flujo({ '3.1': 'BORRADOR' }),
       radicadoPorMi: true,
       detenidoPorPaa: true,
-      puedo: () => true,
     };
-    expect(situacionDelProceso({ ...entrada, participacion: { abogado } })).toMatchObject({
+    expect(
+      situacionDelProceso({ ...entrada, puedo: (accion, lugar) => accion === 'decidir' && lugar === 'PAA.R' }),
+    ).toMatchObject({ momento: 'detenido', teToca: true });
+    expect(situacionDelProceso({ ...entrada, puedo: () => false })).toMatchObject({
       momento: 'detenido',
-      quien: 'Andrés Rojas',
-      teToca: true,
+      teToca: false,
     });
-    expect(situacionDelProceso(entrada)).toMatchObject({ momento: 'detenido', teToca: false });
   });
 });
