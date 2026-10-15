@@ -335,14 +335,19 @@ export const ReportesGestionView: React.FC = () => {
           </select>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-semibold text-slate-600">Técnico (prefijo)</span>
-          <input
-            type="text"
-            placeholder="TEC-..."
+          <span className="text-[11px] font-semibold text-slate-600">Técnico</span>
+          <select
             value={filtros.codigoTecnico}
             onChange={(e) => setFiltros({ ...filtros, codigoTecnico: e.target.value })}
             className="px-3 py-2 text-xs rounded-lg border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 outline-none"
-          />
+          >
+            <option value="">Todos los técnicos</option>
+            {tecnicos.map((t) => (
+              <option key={t.codigo} value={t.codigo}>
+                {t.codigo} — {t.nombre}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-[11px] font-semibold text-slate-600">Estado</span>
@@ -675,7 +680,7 @@ export const ReportesGestionView: React.FC = () => {
           {/* Tabla 5: Rollup Geográfico full width */}
           <div className="p-5 rounded-2xl border border-slate-100 bg-white shadow-sm">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-slate-900">Rollup Geográfico por Sede / Piso</h3>
+              <h3 className="text-sm font-bold text-slate-900">Solicitudes por Sede y Piso</h3>
               <span className="text-[11px] font-semibold text-slate-500">{reporte.rollupGeografico.length} sedes</span>
             </div>
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
@@ -802,6 +807,7 @@ export const ReportesGestionView: React.FC = () => {
 
       {abrirDetalleSolicitud && idSolicitudSeleccionada && (
         <DetalleSolicitudModal
+          open={abrirDetalleSolicitud}
           idSolicitud={idSolicitudSeleccionada}
           onClose={() => { setAbrirDetalleSolicitud(false); setIdSolicitudSeleccionada(null); }}
         />

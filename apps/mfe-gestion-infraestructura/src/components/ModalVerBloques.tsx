@@ -12,6 +12,7 @@ import {
   Trash2,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   Sede,
@@ -60,6 +61,7 @@ export const ModalVerBloques: React.FC<ModalVerBloquesProps> = ({
   const [pisos, setPisos] = useState<number>(1);
   const [descripcion, setDescripcion] = useState('');
   const [isActivo, setIsActivo] = useState(true);
+  const [bloqueAEliminar, setBloqueAEliminar] = useState<BloqueEdificio | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -189,12 +191,14 @@ export const ModalVerBloques: React.FC<ModalVerBloquesProps> = ({
     }
   };
 
-  const handleEliminar = async (b: BloqueEdificio) => {
+  const handleEliminar = (b: BloqueEdificio) => {
     if (!sede) return;
-    const ok = window.confirm(
-      `¿Eliminar el bloque ${b.codigo} · ${b.nombre}?\nSolo se permite si NO tiene espacios físicos ligados.`,
-    );
-    if (!ok) return;
+    setBloqueAEliminar(b);
+  };
+
+  const confirmarEliminacion = async () => {
+    const b = bloqueAEliminar;
+    if (!b || !sede) return;
     setCargando(true);
     try {
       await infraestructuraService.eliminarBloque(b.idBloque);
@@ -208,6 +212,7 @@ export const ModalVerBloques: React.FC<ModalVerBloquesProps> = ({
       onError?.(err instanceof Error ? err : new Error(mensaje));
     } finally {
       setCargando(false);
+      setBloqueAEliminar(null);
     }
   };
 
@@ -443,33 +448,20 @@ export const ModalVerBloques: React.FC<ModalVerBloquesProps> = ({
                 <div>
                   <div className={ESTILOS.label}>Estado del bloque</div>
                   <label className="inline-flex items-center gap-3 cursor-pointer select-none group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        className="peer sr-only"
-                        checked={isActivo}
-                        onChange={(e) => setIsActivo(e.target.checked)}
-                        disabled={cargando}
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isActivo}
+                      onClick={() => !cargando && setIsActivo(!isActivo)}
+                      disabled={cargando}
+                      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-50 ${isActivo ? 'bg-emerald-600' : 'bg-gray-300'}`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        style={{ transform: isActivo ? 'translateX(14px)' : 'translateX(0px)' }}
+                        className="pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out"
                       />
-                      <div
-                        className={`h-7 w-12 rounded-full border transition-all duration-200 ${
-                          isActivo
-                            ? 'bg-emerald-600 border-emerald-700'
-                            : 'bg-slate-200 border-slate-300'
-                        }`}
-                      />
-                      <div
-                        className={`absolute top-0.5 left-0.5 h-6 w-6 rounded-full bg-white shadow-sm border border-slate-200 transition-all duration-200 grid place-items-center ${
-                          isActivo ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      >
-                        <span
-                          className={`w-2 h-2 rounded-full ${
-                            isActivo ? 'bg-emerald-500' : 'bg-slate-400'
-                          }`}
-                        />
-                      </div>
-                    </div>
+                    </button>
                     <span className="text-sm font-semibold text-slate-700">
                       {isActivo ? 'Bloque activo' : 'Bloque inactivo'}
                     </span>
@@ -668,6 +660,67 @@ export const ModalVerBloques: React.FC<ModalVerBloquesProps> = ({
           </button>
         </div>
       </div>
+
+      {bloqueAEliminar && (
+        <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95">
+            <div className="p-5 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 shrink-0 rounded-2xl bg-pink-100 text-pink-700 flex items-center justify-center">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-black text-slate-900 text-base tracking-tight">
+                    Eliminar bloque
+                  </h3>
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-slate-600">
+                    ¿Estás seguro que deseas eliminar el bloque{' '}
+                    <span className="font-bold text-slate-900">
+                      &ldquo;{bloqueAEliminar.nombre}&rdquo;
+                    </span>{' '}
+                    <span className="font-mono text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded-md text-[11px] align-baseline">
+                      ({bloqueAEliminar.codigo})
+                    </span>
+                    ? Solo se permite si NO tiene espacios físicos ligados.
+                  </p>
+                  <p className="mt-2 text-[12px] font-bold text-pink-700 bg-pink-50 border border-pink-300 rounded-lg px-2.5 py-1.5 shadow-sm">
+                    Esta acción no se puede deshacer.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 px-5 py-4 bg-slate-100 border-t">
+              <button
+                type="button"
+                onClick={() => setBloqueAEliminar(null)}
+                disabled={cargando}
+                className="px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-sm font-bold transition-colors disabled:opacity-50 shadow-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarEliminacion}
+                disabled={cargando}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border-2 border-red-600 bg-red-600 text-white text-sm font-bold shadow-md disabled:opacity-60"
+              >
+                {cargando ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Eliminando…
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Sí, eliminar bloque
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
