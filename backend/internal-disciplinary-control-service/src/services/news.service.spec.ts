@@ -462,5 +462,91 @@ describe('NewsService', () => {
       expect(entry.observaciones).toContain('Datos de denunciado modificados');
       expect(entry.observaciones).not.toContain('denunciante');
     });
+
+    it('should only record territorial when only territorial (seccional) is changed', async () => {
+      const mockNoticia: any = {
+        id: 'news-4',
+        radicado: 'ND-2026-0004',
+        origen: 'QUEJOSO',
+        territorial: 'Sede Central',
+        dependenciaDenunciado: 'Secretaría General',
+        hechos: 'Descripción de hechos',
+        fechaHechos: new Date('2026-01-10T00:00:00.000Z'),
+        denunciante: [
+          {
+            nombre: 'Juan Pérez',
+            cedula: '12345678',
+            cargo: 'Docente',
+            dependencia: 'Facultad',
+            telefono: '3001234567',
+            correo: 'juan@test.com',
+            direccion: 'Calle 10',
+            tipo: 'Denunciante',
+          },
+        ],
+        disciplinable: [
+          {
+            nombre: 'Carlos López',
+            cedula: '87654321',
+            cargo: 'Coordinador',
+            dependencia: 'Sede Central',
+          },
+        ],
+        conducta: 'Trato descortés al ciudadano',
+        conductas: [],
+        historialAuditoria: [],
+      };
+
+      jest.spyOn(service, 'findById').mockResolvedValue(mockNoticia);
+      jest.spyOn(newsRepository, 'save').mockImplementation(async (n: any) => n);
+
+      // Frontend wizard payload where ONLY territorial is changed to "Antioquia"
+      // while conductas is populated as array from the existing single conducta
+      const modifiedPayload = {
+        origen: 'Quejoso',
+        territorial: 'Antioquia',
+        dependenciaDenunciado: 'Secretaría General',
+        hechos: 'Descripción de hechos',
+        fechaHechos: '2026-01-10',
+        conducta: 'Trato descortés al ciudadano',
+        conductas: ['Trato descortés al ciudadano'],
+        denunciante: [
+          {
+            nombre: 'Juan Pérez',
+            cedula: '12345678',
+            identificacion: '12345678',
+            cargo: 'Docente',
+            entidad: 'Facultad',
+            dependencia: 'Facultad',
+            telefono: '3001234567',
+            correo: 'juan@test.com',
+            direccion: 'Calle 10',
+            tipo: 'Denunciante',
+          },
+        ],
+        disciplinable: [
+          {
+            nombre: 'Carlos López',
+            cedula: '87654321',
+            identificacion: '87654321',
+            cargo: 'Coordinador',
+            dependencia: 'Sede Central',
+            lugarHechos: 'Sede Central',
+          },
+        ],
+        usuario: 'Profesional Evaluador',
+      };
+
+      const result = await service.update('news-4', modifiedPayload);
+
+      expect(result.historialAuditoria).toHaveLength(1);
+      const entry = result.historialAuditoria[0];
+      expect(entry.observaciones).toBe('Campos modificados: Territorial: Sede Central → Antioquia');
+      expect(entry.observaciones).not.toContain('denunciante');
+      expect(entry.observaciones).not.toContain('denunciado');
+      expect(entry.observaciones).not.toContain('Fecha');
+      expect(entry.observaciones).not.toContain('Conducta');
+      expect(entry.observaciones).not.toContain('conducta');
+    });
   });
 });

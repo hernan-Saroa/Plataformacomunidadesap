@@ -294,6 +294,7 @@ interface Noticia {
   id: string;
   numero: string;
   fechaRecepcion: string; 
+  fechaQueja?: string;
   fechaHechos?: string;
   origen: string;
   hechos: string;
@@ -317,6 +318,7 @@ interface Noticia {
   justificacionRemision?: string;
   // ═══ Campos extendidos de creación ═══
   territorial?: string;
+  dependenciaDenunciado?: string;
   cargo?: string;
   dependencia?: string;
   conductaSeleccionada?: string;
@@ -3411,6 +3413,13 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
     }
   };
 
+  const normalizeDateStr = (val: any): string | undefined => {
+    if (!val) return undefined;
+    if (typeof val === 'string') return val.split('T')[0].split(' ')[0];
+    if (val instanceof Date && !isNaN(val.getTime())) return val.toISOString().split('T')[0];
+    return undefined;
+  };
+
   // Transformar noticia desde API al formato interno
   export const toNoticiaFromApi = (noticia: ApiNoticia, currentStages: any[] = []): Noticia => {
     const fechaRecepcion = (noticia as any)?.fechaRecepcion;
@@ -3427,9 +3436,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
     const denuncianteRaw: any = denuncianteList[0] || {};
     const denunciadoRaw: any = disciplinableList[0] || {};
     const fechaQuejaRaw = (noticia as any).fechaQueja;
-    const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
     const fechaHechosRaw = (noticia as any).fechaHechos;
-    const fechaHechos = fechaHechosRaw ? new Date(fechaHechosRaw) : undefined;
 
     // ✅ OBTENER ETAPA: usar kanbanStage del backend, o buscar en stages, o usar primera etapa config
     let etapaRaw = (noticia as any).kanbanStage || (noticia as any).etapaActual;
@@ -3462,9 +3469,9 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
     return {
       id: (noticia as any).id || `n${Date.now()}`,
       numero: (noticia as any).radicado || (noticia as any).numero || `ND-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
-      fechaRecepcion: fecha.toISOString().split('T')[0],
-      fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
-      fechaHechos: fechaHechos ? fechaHechos.toISOString().split('T')[0] : undefined,
+      fechaRecepcion: normalizeDateStr(fechaRecepcion) || fecha.toISOString().split('T')[0],
+      fechaQueja: normalizeDateStr(fechaQuejaRaw),
+      fechaHechos: normalizeDateStr(fechaHechosRaw),
       origen: formatOrigenLabel((noticia as any).origen),
       territorial: (noticia as any).territorial,
       dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
@@ -3486,7 +3493,7 @@ function EtapaSelector({ etapaActual, etapasConfig, onCambiarEtapa }: {
         nombre: d.nombre || '',
         identificacion: d.cedula || d.identificacion || d.numeroIdentificacion || '',
         cargo: d.cargo || '',
-        lugarHechos: d.lugarHechos || d.dependencia || '',
+        lugarHechos: d.lugarHechos || d.dependencia || (noticia as any).dependenciaDenunciado || '',
         apoderado: d.apoderado
       })),
       hechos: (noticia as any).hechos || '',
@@ -4228,9 +4235,7 @@ export function DashboardKanbanOperativo({
     const denuncianteRaw: any = denuncianteList[0] || {};
     const denunciadoRaw: any = disciplinableList[0] || {};
     const fechaQuejaRaw = (noticia as any).fechaQueja;
-    const fechaQueja = fechaQuejaRaw ? new Date(fechaQuejaRaw) : undefined;
     const fechaHechosRaw = (noticia as any).fechaHechos;
-    const fechaHechos = fechaHechosRaw ? new Date(fechaHechosRaw) : undefined;
 
     // ✅ OBTENER ETAPA: usar kanbanStage del backend, o buscar en stages, o usar primera etapa config
     let etapaRaw = (noticia as any).kanbanStage || (noticia as any).etapaActual;
@@ -4263,9 +4268,9 @@ export function DashboardKanbanOperativo({
     return {
       id: (noticia as any).id || `n${Date.now()}`,
       numero: (noticia as any).radicado || (noticia as any).numero || `ND-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`,
-      fechaRecepcion: fecha.toISOString().split('T')[0],
-      fechaQueja: fechaQueja ? fechaQueja.toISOString().split('T')[0] : undefined,
-      fechaHechos: fechaHechos ? fechaHechos.toISOString().split('T')[0] : undefined,
+      fechaRecepcion: normalizeDateStr((noticia as any)?.fechaRecepcion) || fecha.toISOString().split('T')[0],
+      fechaQueja: normalizeDateStr(fechaQuejaRaw),
+      fechaHechos: normalizeDateStr(fechaHechosRaw),
       origen: formatOrigenLabel((noticia as any).origen),
       territorial: (noticia as any).territorial,
       dependenciaDenunciado: (noticia as any).dependenciaDenunciado,
@@ -4287,7 +4292,7 @@ export function DashboardKanbanOperativo({
         nombre: d.nombre || '',
         identificacion: d.cedula || d.identificacion || d.numeroIdentificacion || '',
         cargo: d.cargo || '',
-        lugarHechos: d.lugarHechos || d.dependencia || '',
+        lugarHechos: d.lugarHechos || d.dependencia || (noticia as any).dependenciaDenunciado || '',
         apoderado: d.apoderado
       })),
       hechos: (noticia as any).hechos || '',
@@ -4884,7 +4889,7 @@ export function DashboardKanbanOperativo({
       const newsData: CreateNewsDto = {
         origen: origenNormalizado || 'POR_DETERMINAR',
         territorial: data.territorial,
-        dependenciaDenunciado: data.dependencia || data.dependenciaDenunciado || '',
+        dependenciaDenunciado: data.dependencia || data.dependenciaDenunciado || denunciadosTransformed?.[0]?.dependencia || data.denunciados?.[0]?.lugarHechos || '',
         // ✅ UNIFICAR TODO EN CAMPOS SINGULARES - Arrays cuando múltiples, objeto cuando uno solo
         denunciante: denunciantesTransformed,
         disciplinable: denunciadosTransformed,
@@ -4894,7 +4899,9 @@ export function DashboardKanbanOperativo({
         fechaHechos: data.fechaHechos ? (data.fechaHechos.length > 10 ? data.fechaHechos.split('T')[0] : data.fechaHechos) : undefined,
         fechaQueja: data.fechaQueja ? (data.fechaQueja.length > 10 ? data.fechaQueja.split('T')[0] : data.fechaQueja) : undefined,
         conducta: data.conducta || data.conductaSeleccionada || '',
-        conductas: data.conductas || (data.conductaSeleccionada ? [data.conductaSeleccionada] : []),
+        conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
+          ? data.conductas
+          : (data.conducta || data.conductaSeleccionada ? [data.conducta || data.conductaSeleccionada] : []),
         radicadorId: currentUser.id
       };
 
@@ -4982,14 +4989,14 @@ export function DashboardKanbanOperativo({
       cargo: d.cargo,
       entidad: d.entidad,
       tipo: d.tipo,
-      apoderado: d.apoderado // RESTORED: Backend seems to allow it in some cases, following "hazlo asi"
+      apoderado: d.apoderado
     }));
     const denunciadosPayload = denunciadosEdit.map((d: any) => ({
       nombre: d.nombre,
       cedula: d.identificacion || d.cedula,
       cargo: d.cargo,
       dependencia: d.lugarHechos || d.dependencia,
-      apoderado: d.apoderado // RESTORED: Backend seems to allow it in some cases, following "hazlo asi"
+      apoderado: d.apoderado
     }));
 
     // ✅ Lógica 1 o N: objeto si es uno, array si son varios (para campos singulares)
@@ -4999,6 +5006,7 @@ export function DashboardKanbanOperativo({
     const toastId = toast.loading(esProceso ? 'Actualizando proceso...' : 'Actualizando noticia...');
 
     let finalAdjuntos: any[] | null = null;
+    let updatedNoticia: any = null;
 
     try {
       if (esProceso) {
@@ -5011,18 +5019,18 @@ export function DashboardKanbanOperativo({
           const updatedAssociatedNews = await disciplinaryService.updateNoticia(newsId, {
             origen: normalizeOrigenToEnum(data.origen),
             territorial: data.territorial,
-            dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
+            dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || (noticiaAEditar as any).dependenciaDenunciado || data.dependencia || '',
             hechos: hechosEdit,
             conducta: conductaEdit,
             conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
               ? data.conductas
               : (conductaEdit ? [conductaEdit] : []),
             denunciante: denuncianteSingular,
-            denunciantes: denunciantesPayload, // ✅ Enviar plural tambiÃ©n
+            denunciantes: denunciantesPayload, // ✅ Enviar plural también
             disciplinable: disciplinableSingular,
-            disciplinables: denunciadosPayload, // ✅ Enviar plural tambiÃ©n
-            fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : null,
-            fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined,
+            disciplinables: denunciadosPayload, // ✅ Enviar plural también
+            fechaHechos: data.fechaHechos ? String(data.fechaHechos).split('T')[0] : null,
+            fechaQueja: data.fechaQueja ? String(data.fechaQueja).split('T')[0] : undefined,
             // ✅ Documentos adjuntos (si hay cambios)
             adjuntosParaEliminar: data.adjuntosParaEliminar || [],
             archivosAdjuntos: data.archivosAdjuntos || []
@@ -5042,10 +5050,10 @@ export function DashboardKanbanOperativo({
         } as any);
       } else {
         console.log('[KANBAN] Llamando updateNoticia DIRECTA (noticia) con archivosAdjuntos.length =', data?.archivosAdjuntos?.length || 0);
-        const updatedNoticia = await disciplinaryService.updateNoticia(noticiaAEditar.id, {
+        updatedNoticia = await disciplinaryService.updateNoticia(noticiaAEditar.id, {
           origen: normalizeOrigenToEnum(data.origen),
           territorial: data.territorial,
-          dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependencia || '',
+          dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || (noticiaAEditar as any).dependenciaDenunciado || data.dependencia || '',
           hechos: hechosEdit,
           conducta: conductaEdit,
           conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
@@ -5055,8 +5063,8 @@ export function DashboardKanbanOperativo({
           denunciantes: denunciantesPayload,
           disciplinable: disciplinableSingular,
           disciplinables: denunciadosPayload,
-          fechaHechos: data.fechaHechos ? new Date(data.fechaHechos).toISOString() : null,
-          fechaQueja: data.fechaQueja ? new Date(data.fechaQueja).toISOString() : undefined,
+          fechaHechos: data.fechaHechos ? String(data.fechaHechos).split('T')[0] : null,
+          fechaQueja: data.fechaQueja ? String(data.fechaQueja).split('T')[0] : undefined,
           // ✅ Documentos adjuntos (si hay cambios)
           adjuntosParaEliminar: data.adjuntosParaEliminar || [],
           archivosAdjuntos: data.archivosAdjuntos || []
@@ -5067,7 +5075,7 @@ export function DashboardKanbanOperativo({
         (noticiaAEditar as any).adjuntos = finalAdjuntos;
       }
     } catch (error: any) {
-      console.error('Error al guardar ediciÃ³n:', error);
+      console.error('Error al guardar edición:', error);
       toast.error(esProceso ? 'Error al actualizar proceso' : 'Error al actualizar noticia', {
         id: toastId,
         description: error?.message || 'No se pudo guardar en la base de datos'
@@ -5107,12 +5115,23 @@ export function DashboardKanbanOperativo({
           url: path,
           fullUrl: disciplinaryService.getFileUrl(path),
         }));
+
+        const fechaQuejaUpdated = data.fechaQueja
+          ? String(data.fechaQueja).split('T')[0]
+          : ((updatedNoticia as any)?.fechaQueja ? String((updatedNoticia as any).fechaQueja).split('T')[0] : (item as any).fechaQueja);
+        const fechaRecepcionUpdated = data.fechaQueja
+          ? String(data.fechaQueja).split('T')[0]
+          : (data.fechaRecepcion ? String(data.fechaRecepcion).split('T')[0] : item.fechaRecepcion);
+
         return {
           ...item,
+          ...((updatedNoticia as any) || {}),
           origen: formatOrigenLabel(data.origen),
-          fechaRecepcion: data.fechaQueja || data.fechaRecepcion,
-          fechaHechos: data.fechaHechos,
-          territorial: data.territorial,
+          fechaRecepcion: fechaRecepcionUpdated,
+          fechaQueja: fechaQuejaUpdated,
+          fechaHechos: data.fechaHechos ? String(data.fechaHechos).split('T')[0] : item.fechaHechos,
+          territorial: data.territorial || item.territorial,
+          dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || data.dependenciaDenunciado || (item as any).dependenciaDenunciado,
           denunciado: denunciadosEdit,
           denunciados: denunciadosEdit,
           denunciante: denunciantesEdit,
@@ -5124,14 +5143,36 @@ export function DashboardKanbanOperativo({
           conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
             ? data.conductas
             : (conductaEdit ? [conductaEdit] : []),
-          cargo: primerDenunciadoEdit?.cargo,
-          dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos,
+          cargo: primerDenunciadoEdit?.cargo || item.cargo,
+          dependencia: primerDenunciadoEdit?.dependencia || primerDenunciadoEdit?.lugarHechos || item.dependencia,
           adjuntos: adjToUse,
           archivosAdjuntos: mappedArchivos
         };
       }
       return item;
     }));
+
+    // Mantener itemSeleccionado sincronizado si estaba abierto
+    setItemSeleccionado((prev: any) => {
+      if (prev && prev.id === noticiaAEditar.id) {
+        return {
+          ...prev,
+          ...((updatedNoticia as any) || {}),
+          origen: formatOrigenLabel(data.origen),
+          fechaRecepcion: data.fechaQueja ? String(data.fechaQueja).split('T')[0] : (prev.fechaRecepcion),
+          fechaQueja: data.fechaQueja ? String(data.fechaQueja).split('T')[0] : (prev.fechaQueja),
+          fechaHechos: data.fechaHechos ? String(data.fechaHechos).split('T')[0] : (prev.fechaHechos),
+          territorial: data.territorial || prev.territorial,
+          dependenciaDenunciado: primerDenunciadoEdit?.lugarHechos || primerDenunciadoEdit?.dependencia || prev.dependenciaDenunciado,
+          denunciado: denunciadosEdit,
+          denunciante: denunciantesEdit,
+          hechos: hechosEdit,
+          conducta: conductaEdit,
+          conductas: (Array.isArray(data.conductas) && data.conductas.length > 0) ? data.conductas : (conductaEdit ? [conductaEdit] : []),
+        };
+      }
+      return prev;
+    });
 
     setMostrarModalEditar(false);
     setNoticiaAEditar(null);
@@ -8186,18 +8227,6 @@ export function DashboardKanbanOperativo({
           />
         )}
 
-        {/* ══ DETALLES DE NOTICIA — World Class Completo ══ */}
-        {modalActivo === 'ver-detalles' && itemSeleccionado && itemSeleccionado.tipo === 'noticia' && (
-          <ModalDetallesNoticia
-            noticia={itemSeleccionado as Noticia}
-            onClose={() => setModalActivo(null)}
-            onEditar={(noticia) => handleEditarNoticia(noticia as Noticia)}
-            onConvertir={(noticia) => handleConvertirNoticia(noticia as Noticia)}
-            onDownload={async (url, filename) => {
-              await disciplinaryService.downloadFileFromUrl(disciplinaryService.getFileUrl(url), filename);
-            }}
-          />
-        )}
 
         {/* NUEVO: MODAL DETALLES ASOCIACION - Ver detalles de asociacion entre procesos */}
         {modalActivo === 'ver-detalles-asociacion' && itemSeleccionado && itemSeleccionado.tipo === 'proceso' && (() => {
