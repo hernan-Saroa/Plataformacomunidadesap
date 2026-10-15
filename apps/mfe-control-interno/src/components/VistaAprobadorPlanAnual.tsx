@@ -476,25 +476,15 @@ export function VistaAprobadorPlanAnual({
                 <h3 className="font-bold text-gray-900 truncate">{vistaPrevia.titulo}</h3>
                 <p className="text-xs text-gray-500">Vista previa · {vistaPrevia.nombreArchivo}</p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => descargarBlob(vistaPrevia.archivo, vistaPrevia.nombreArchivo)}
-                  className="px-4 py-2 rounded-lg text-white text-sm font-bold flex items-center gap-2"
-                  style={{ backgroundColor: AZUL }}
-                >
-                  <Download className="w-4 h-4" />
-                  Descargar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVistaPrevia(null)}
-                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100"
-                  aria-label="Cerrar vista previa"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+              {/* Sin botón de descarga propio: el visor de OnlyOffice ya trae el suyo */}
+              <button
+                type="button"
+                onClick={() => setVistaPrevia(null)}
+                className="p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+                aria-label="Cerrar vista previa"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
             <div className="flex-1 min-h-0">
               {!vistaPrevia.falloVisor && vistaPrevia.id ? (
