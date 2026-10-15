@@ -56,6 +56,12 @@ export class PlantillasCadenaService {
     const personas = await this.cadenas.nombresDePersonas(
       plantillas.flatMap((p) => p.escalones.flatMap((e) => e.personas)),
     );
+    // Los puestos del proceso (109), con si siguen activos.
+    const puestos = new Map<string, { nombre: string; activo: boolean }>(
+      (await this.dataSource.query(`SELECT id::text AS id, nombre, activo FROM hiring.puestos_proceso`)).map(
+        (f: any) => [f.id, { nombre: f.nombre, activo: f.activo }],
+      ),
+    );
 
     return plantillas.map((p) => ({
       id: p.id,
@@ -68,14 +74,22 @@ export class PlantillasCadenaService {
         nombresRoles: e.roles.map((r) => roles.get(r) ?? r),
         nombresPersonas: e.personas.map((id) => personas.get(id) ?? id),
         nombresPapeles: e.papeles.map((pa) => NOMBRE_PAPEL[pa] ?? pa),
+        puestos: e.puestos ?? [],
+        nombresPuestos: (e.puestos ?? []).map((id) => puestos.get(id)?.nombre ?? 'Puesto que ya no existe'),
       })),
       usadaEn: usos.filter((u) => u.cadena_id === p.id).map((u) => ({ numeral: u.numeral, nombre: u.nombre })),
       /** Lo que hay que corregir para que cada escalón tenga quién lo decida. */
       problemas: p.escalones.flatMap((e, i) => {
+        const sinPuesto = (e.puestos ?? []).filter((id) => !puestos.get(id)?.activo);
+        const delPuesto = sinPuesto.length
+          ? [`Escalón ${i + 1} (${e.nombre}): nombra un puesto archivado o que ya no existe; elige otro`]
+          : [];
         const muertos = e.roles.filter((r) => !vigentes.has(r));
-        if (!muertos.length) return [];
-        const todos = muertos.length === e.roles.length && !e.personas.length && !e.papeles.length;
+        if (!muertos.length) return delPuesto;
+        const todos =
+          muertos.length === e.roles.length && !e.personas.length && !e.papeles.length && !(e.puestos ?? []).length;
         return [
+          ...delPuesto,
           `Escalón ${i + 1} (${e.nombre}): ${muertos.length === 1 ? 'el rol' : 'los roles'} ${muertos.join(', ')} ya no ${
             muertos.length === 1 ? 'existe o está inactivo' : 'existen o están inactivos'
           }${todos ? '. Nadie puede decidirlo hasta que lo cambies' : ''}`,

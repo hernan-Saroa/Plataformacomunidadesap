@@ -1,30 +1,35 @@
-import { Body, Controller, Get, Param, ParseIntPipe, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { ParticipacionService } from './participacion.service';
-import { AsignarAbogadoDto, DesignarEscalonDto, MotivoDto, ReasignarAbogadoDto } from './dto/participacion.dto';
+import { PuestosService } from './puestos.service';
+import { ActualizarPuestoDto, AsignarPuestoDto, GuardarPuestoDto, MotivoDto } from './dto/participacion.dto';
 import { getHiringAccess } from '../../auth/hiring-access';
+import { Permisos } from '../../auth/permisos.decorator';
+import { PermisosGuard } from '../../auth/permisos.guard';
 import { Puede } from '../../auth/puede.guard';
 
 /**
- * Quién está en un proceso (EFDS-1183).
+ * Quién está en el proceso: quien lo tomó en la Dirección (EFDS-1183) y
+ * quién ocupa cada puesto (109).
  *
- * El guard solo comprueba el permiso general; que el abogado lo reparta **quien
- * tomó el proceso** no es un permiso, es una relación con ese expediente, y eso
- * lo verifica el servicio. Ponerlo en el decorador obligaría a un permiso por
- * proceso, que no es lo que `auth.role_permissions` sabe expresar.
+ * Asignar no lleva `@Permisos`: lo hace quien tomó *este* proceso, y eso el
+ * guard no lo sabe. Lo comprueba el servicio.
  */
 @ApiTags('Etapa 3 · Quién está en el proceso')
 @Controller('procesos/:id/participacion')
 export class ParticipacionController {
-  constructor(private readonly service: ParticipacionService) {}
+  constructor(
+    private readonly service: ParticipacionService,
+    private readonly puestos: PuestosService,
+  ) {}
 
   @Get()
   @Puede('ver', '3.3')
   @ApiOperation({
     summary: 'Quién lleva el proceso',
     description:
-      'Quién lo tomó en la Dirección, qué abogado lo revisa, quiénes estuvieron antes y por qué salieron. Consultarlo lo puede cualquiera que vea el proceso: saber a quién preguntarle no es un dato reservado.',
+      'Quién lo tomó en la Dirección, quiénes estuvieron antes y por qué salieron. Consultarlo lo puede cualquiera que vea el proceso: saber a quién preguntarle no es un dato reservado.',
   })
   estado(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
     return this.service.estado(procesoId, getHiringAccess(req));
@@ -41,114 +46,106 @@ export class ParticipacionController {
     return this.service.tomar(procesoId, getHiringAccess(req));
   }
 
-  /**
-   * Sin `@Permisos`: quién puede repartir el abogado depende de quién tomó
-   * *este* proceso, y eso el guard no puede saberlo. Lo comprueba el servicio,
-   * que sí tiene el proceso a mano.
-   */
-  @Post('abogado')
+  // ------------------------------------------------ los puestos (109) --
+
+  @Get('puestos')
+  @Puede('ver', '3.3')
   @ApiOperation({
-    summary: 'Asignar el abogado que revisará el proceso',
+    summary: 'Los puestos del proceso y quién los ocupa',
     description:
-      'Lo hace quien tomó el proceso, o el Director. Sobre un proceso que todavía no tiene abogado.',
+      'Cada puesto configurado que haga algo en la modalidad del proceso, quién lo ocupa, qué actividades hace o aprueba y qué le impide actuar, si algo se lo impide.',
+  })
+  delProceso(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
+    return this.puestos.delProceso(procesoId, getHiringAccess(req));
+  }
+
+  @Get('puestos/:puestoId/candidatos')
+  @Puede('ver', '3.3')
+  @ApiOperation({
+    summary: 'Quiénes pueden ocupar el puesto',
+    description: 'Las cuentas con todos los permisos de lo que el puesto hace en la modalidad del proceso.',
+  })
+  candidatos(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Param('puestoId', ParseUUIDPipe) puestoId: string,
+    @Query('q') q?: string,
+  ) {
+    return this.puestos.candidatos(procesoId, puestoId, q ?? '');
+  }
+
+  @Post('puestos/:puestoId')
+  @ApiOperation({
+    summary: 'Poner a alguien en un puesto, o cambiarlo',
+    description: 'Lo hace quien tomó el proceso, o el Director. Cambiar a quien estaba exige motivo.',
   })
   asignar(
     @Param('id', ParseUUIDPipe) procesoId: string,
-    @Body() dto: AsignarAbogadoDto,
+    @Param('puestoId', ParseUUIDPipe) puestoId: string,
+    @Body() dto: AsignarPuestoDto,
     @Req() req: any,
   ) {
-    return this.service.asignarAbogado(procesoId, dto, getHiringAccess(req));
+    return this.puestos.asignar(procesoId, puestoId, dto.usuarioId, dto.motivo, getHiringAccess(req));
   }
 
-  @Post('abogado/reasignar')
-  @ApiOperation({
-    summary: 'Cambiar de abogado',
-    description:
-      'Releva al vigente y asigna al nuevo en un solo acto, para que el proceso no se quede sin revisor entre uno y otro. Exige motivo.',
-  })
-  reasignar(
-    @Param('id', ParseUUIDPipe) procesoId: string,
-    @Body() dto: ReasignarAbogadoDto,
-    @Req() req: any,
-  ) {
-    return this.service.reasignarAbogado(procesoId, dto, getHiringAccess(req));
-  }
-
-  @Post('abogado/quitar')
-  @ApiOperation({
-    summary: 'Quitar al abogado sin poner otro',
-    description:
-      'No debería hacer falta, pero pasa —el abogado sale de la entidad, el reparto estaba mal—. El proceso queda marcado como pendiente de reasignar en vez de obligar a inventar un sustituto. Exige motivo.',
-  })
+  @Post('puestos/:puestoId/quitar')
+  @ApiOperation({ summary: 'Dejar el puesto vacío', description: 'Exige motivo; el proceso queda marcado como pendiente.' })
   quitar(
     @Param('id', ParseUUIDPipe) procesoId: string,
+    @Param('puestoId', ParseUUIDPipe) puestoId: string,
     @Body() dto: MotivoDto,
     @Req() req: any,
   ) {
-    return this.service.quitarAbogado(procesoId, dto, getHiringAccess(req));
-  }
-
-  // ------------------------- quién decide cada escalón de la 3.1 (102) ----
-
-  @Get('escalones')
-  @Puede('ver', '3.3')
-  @ApiOperation({
-    summary: 'Quién revisa el estudio previo en cada escalón por rol',
-    description:
-      'Los escalones de la cadena de la 3.1 que nombran un rol, con la persona designada en este proceso y si se puede cambiar.',
-  })
-  escalones(@Param('id', ParseUUIDPipe) procesoId: string, @Req() req: any) {
-    return this.service.escalones(procesoId, getHiringAccess(req));
-  }
-
-  @Get('escalones/:orden/candidatos')
-  @Puede('ver', '3.3')
-  @ApiOperation({ summary: 'Cuentas con el rol del escalón, para designar' })
-  candidatosDeEscalon(
-    @Param('id', ParseUUIDPipe) procesoId: string,
-    @Param('orden', ParseIntPipe) orden: number,
-    @Query('q') q?: string,
-  ) {
-    return this.service.candidatosDeEscalon(procesoId, orden, q ?? '');
-  }
-
-  @Post('escalones/:orden')
-  @ApiOperation({
-    summary: 'Designar quién decide un escalón por rol, o cambiarlo',
-    description:
-      'Lo hace quien tomó el proceso, o el Director. Cambiar a quien estaba exige motivo; lo que el escalón ya decidió en la revisión en curso no se cambia.',
-  })
-  designarEscalon(
-    @Param('id', ParseUUIDPipe) procesoId: string,
-    @Param('orden', ParseIntPipe) orden: number,
-    @Body() dto: DesignarEscalonDto,
-    @Req() req: any,
-  ) {
-    return this.service.designarEscalon(procesoId, orden, dto, getHiringAccess(req));
+    return this.puestos.quitar(procesoId, puestoId, dto.motivo, getHiringAccess(req));
   }
 }
 
 /**
- * A quién se le puede dar un papel en un proceso.
- *
- * Ruta propia y no colgada de `procesos/:id` porque la lista no depende del
- * proceso: es la misma para todos, y colgarla de uno obligaría a la pantalla a
- * tener un proceso a mano para poder ofrecer el desplegable.
+ * Los puestos del proceso en Configuración (109): los crea, nombra y archiva
+ * la Dirección, y el diagnóstico dice qué quedaría sin salida.
  */
-@ApiTags('Etapa 3 · Quién está en el proceso')
-@Controller('participacion')
-export class CandidatosController {
-  constructor(private readonly service: ParticipacionService) {}
+@ApiTags('Configuración de etapas')
+@Controller('configuracion/puestos')
+export class PuestosConfigController {
+  constructor(private readonly service: PuestosService) {}
 
-  @Get('abogados')
-  @Puede('ver', '3.4')
-  @ApiOperation({
-    summary: 'Cuentas que pueden revisar un proceso',
-    description:
-      'Las que tienen permiso para aprobar actividades, que es lo que hace el abogado en la 3.4. Se resuelve por permiso y no por código de rol.',
-  })
-  abogados(@Query('q') q?: string) {
-    return this.service.abogados(q ?? '');
+  @Get()
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
+  @ApiOperation({ summary: 'Los puestos del proceso, con las actividades que hace o aprueba cada uno' })
+  listar() {
+    return this.service.listar();
   }
 
+  @Get('diagnostico')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
+  @ApiOperation({
+    summary: 'Lo que la configuración deja sin salida',
+    description: 'Puestos que nadie puede ocupar con los permisos de hoy y actividades que apuntan a un puesto archivado.',
+  })
+  diagnostico() {
+    return this.service.diagnostico();
+  }
+
+  @Post()
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
+  @ApiOperation({ summary: 'Crear un puesto' })
+  crear(@Body() dto: GuardarPuestoDto, @Req() req: any) {
+    return this.service.crear(dto, getHiringAccess(req));
+  }
+
+  @Put(':puestoId')
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
+  @ApiOperation({ summary: 'Renombrar o ajustar un puesto' })
+  actualizar(@Param('puestoId', ParseUUIDPipe) id: string, @Body() dto: ActualizarPuestoDto, @Req() req: any) {
+    return this.service.actualizar(id, dto, getHiringAccess(req));
+  }
+
+  @Delete(':puestoId')
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
+  @ApiOperation({ summary: 'Archivar un puesto', description: 'No se deja mientras alguna actividad lo use.' })
+  archivar(@Param('puestoId', ParseUUIDPipe) id: string, @Req() req: any) {
+    return this.service.archivar(id, getHiringAccess(req));
+  }
 }

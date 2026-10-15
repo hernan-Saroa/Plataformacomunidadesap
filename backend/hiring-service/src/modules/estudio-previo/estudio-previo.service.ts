@@ -54,7 +54,7 @@ import {
   ParticipacionService,
   esSuya,
 } from '../participacion/participacion.service';
-import { respondeElAsignado } from '../participacion/quien-responde';
+import { cargarResponde, respondeEn } from '../participacion/quien-responde';
 import { CdpService } from '../cdp/cdp.service';
 import { RegistrarCdpExistenteDto } from '../cdp/dto/cdp.dto';
 import { PaaAplicacion } from '../../entities/paa.entity';
@@ -248,14 +248,6 @@ export class EstudioPrevioService implements OnModuleInit {
   private readonly cadenas: CadenaAprobacionService;
 
   /**
-   * Quién es el abogado del proceso y si quien pregunta puede decidir por él.
-   *
-   * Lo usan la pantalla —para no ofrecer botones que la API va a rechazar— y
-   * las tres decisiones, que lo exigen. Tenerlo en un solo sitio es lo que
-   * impide que el aviso de la pantalla y el rechazo del servidor digan cosas
-   * distintas sobre el mismo proceso.
-   */
-  /**
    * Exige que el estudio previo sea de quien lo está tocando.
    *
    * Se comprueba en guardar y en enviar, que son los dos puntos por donde entra
@@ -293,9 +285,6 @@ export class EstudioPrevioService implements OnModuleInit {
     );
   }
 
-  private quienDecide(procesoId: string, acceso: HiringAccess) {
-    return this.participacion.quienDecide(procesoId, acceso, NUMERAL_REVISION);
-  }
 
   // ------------------------------------------------------------- proceso ---
 
@@ -677,6 +666,8 @@ export class EstudioPrevioService implements OnModuleInit {
     // Sin este dato la lista no puede distinguir un proceso que alguien lleva de
     // uno que sigue en la bandeja esperando que lo reciban.
     const participantes = await this.participacion.vigentesDe(ids);
+    // Quién ocupa cada puesto y quién hace cada actividad (109).
+    const responde = await cargarResponde(this.dataSource.manager, ids, acceso);
     // Los que una revisión del PAA tiene detenidos: la lista tiene que decirlo,
     // o el proceso parece esperando a alguien que no puede hacer nada.
     const detenidos = new Set<string>(
@@ -704,7 +695,7 @@ export class EstudioPrevioService implements OnModuleInit {
         : obligatorios.length;
 
       const enElProceso = participantes.get(proceso.id) ?? [];
-      const quien = (papel: 'CONTRATACION' | 'ABOGADO' | 'FINANCIERA') => {
+      const quien = (papel: 'CONTRATACION' | 'FINANCIERA') => {
         const p = enElProceso.find((x) => x.papel === papel);
         return p
           ? { nombre: p.nombre, usuarioNombre: p.usuarioNombre, esMio: acceso ? esSuya(p, acceso) : false }
@@ -727,8 +718,16 @@ export class EstudioPrevioService implements OnModuleInit {
         paaDetenido: detenidos.has(proceso.id),
         participacion: {
           contratacion,
-          abogado: quien('ABOGADO'),
           financiera: quien('FINANCIERA'),
+          /** Quién ocupa cada puesto del proceso (109). */
+          puestos: [...(responde.ocupantes.get(proceso.id)?.entries() ?? [])].map(([puestoId, o]) => ({
+            puesto: responde.puestos.get(puestoId) ?? 'Puesto archivado',
+            nombre: o.nombre,
+            esMio:
+              !!acceso &&
+              (o.usuarioId === acceso.userId ||
+                o.usuarioNombre.trim().toLowerCase() === (acceso.userName ?? '').trim().toLowerCase()),
+          })),
           enBandeja: !contratacion && estudioPrevio?.estado === 'EN_REVISION',
         },
         // Estado del numeral 3.1 y cuánto le falta para poder enviarse
@@ -756,7 +755,7 @@ export class EstudioPrevioService implements OnModuleInit {
               etapa: deLaMatriz.etapa,
               actualizadoEn: a.updatedAt,
               responsableCargo: deLaMatriz.responsableCargo,
-              responde: respondeElAsignado(a.numeral),
+              responde: respondeEn(responde, proceso.id, proceso.modalidad ?? null, a.numeral, acceso),
             };
           }),
       };
@@ -831,67 +830,36 @@ export class EstudioPrevioService implements OnModuleInit {
     return !!fila;
   }
 
-  /** El abogado del proceso y por qué quien pregunta puede o no decidir. */
+  /**
+   * Quién revisa el estudio previo y si le toca a quien pregunta.
+   *
+   * La revisión es siempre la ronda de la aprobación de la 3.1 (109): un
+   * escalón suelto o una cadena, con roles, personas o puestos. Ya no hay un
+   * camino aparte para el abogado: si la Dirección quiere que lo revise el
+   * abogado del proceso, la 3.1 la aprueba el puesto Abogado.
+   */
   private async quienRevisa(procesoId: string, acceso: HiringAccess) {
-    const { abogado, motivo } = await this.quienDecide(procesoId, acceso);
-    const datosAbogado = abogado
-      ? { nombre: abogado.nombre, usuarioNombre: abogado.usuarioNombre, cargo: abogado.cargo }
-      : null;
-
-    /*
-     * Con una cadena (migración 101) decide el escalón que espera, no el
-     * abogado por sí solo: puede ser el primer escalón, o ninguno. La ronda va
-     * entera para pintar quién aprobó y a quién le toca.
-     */
     const actividad = await this.obtenerActividad(this.dataSource.manager, procesoId);
     const ronda = await this.cadenas.rondaParaMostrar(actividad, acceso);
-    if (ronda) {
-      const pendiente = ronda.estado === 'EN_CURSO' ? ronda.escalones.find((e) => e.estado === 'PENDIENTE') : undefined;
-      const sinAbogado = !!pendiente && !abogado && (await this.pendienteEsDelAbogado(actividad.id));
-      const puede = ronda.acciones.length > 0;
-      return {
-        abogado: datosAbogado,
-        puedeDecidir: puede,
-        motivo: puede ? null : sinAbogado ? ('SIN_ABOGADO' as const) : ('EN_CADENA' as const),
-        /** A quién espera, o por qué no le toca a quien mira, en una frase. */
-        espera:
-          ronda.motivo ??
-          // Que falta designar en la 3.3 a quien decide el escalón (102).
-          ronda.espera ??
-          (pendiente
-            ? `Espera al escalón ${pendiente.orden}, ${pendiente.nombre}: ${pendiente.responsables
-                // El papel con nombre propio: «Andrés Rojas», no «el abogado del proceso».
-                .map((r) => (r === NOMBRE_PAPEL.ABOGADO && abogado ? abogado.nombre : r))
-                .join(' o ')}.`
-            : null),
-        ronda,
-        acciones: ronda.acciones,
-      };
+    if (!ronda) {
+      return { puedeDecidir: false, motivo: null, espera: null, ronda: null, acciones: [] as AccionEscalon[] };
     }
-
+    const pendiente = ronda.estado === 'EN_CURSO' ? ronda.escalones.find((e) => e.estado === 'PENDIENTE') : undefined;
+    const puede = ronda.acciones.length > 0;
     return {
-      abogado: datosAbogado,
-      puedeDecidir: motivo === null,
-      /** Para que la pantalla explique en vez de esconder sin más. */
-      motivo,
-      espera: null,
-      ronda: null,
-      // Sin cadena, el abogado decide las tres cosas, como siempre.
-      acciones: motivo === null ? (['APROBAR', 'DEVOLVER', 'NEGAR'] as AccionEscalon[]) : [],
+      puedeDecidir: puede,
+      motivo: puede ? null : ('EN_CADENA' as const),
+      /** A quién espera, o por qué no le toca a quien mira, en una frase. */
+      espera:
+        ronda.motivo ??
+        // Que falta asignar el puesto del escalón, o que su ocupante perdió el permiso.
+        ronda.espera ??
+        (pendiente
+          ? `Espera al escalón ${pendiente.orden}, ${pendiente.nombre}: ${pendiente.responsables.join(' o ')}.`
+          : null),
+      ronda,
+      acciones: ronda.acciones,
     };
-  }
-
-  /** Si el escalón que espera nombra al abogado del proceso. */
-  private async pendienteEsDelAbogado(procesoActividadId: string): Promise<boolean> {
-    const [fila] = await this.dataSource.query(
-      `SELECT 1
-         FROM hiring.aprobaciones r
-         JOIN hiring.aprobacion_escalones e ON e.aprobacion_id = r.id AND e.estado = 'PENDIENTE'
-        WHERE r.proceso_actividad_id = $1 AND r.estado = 'EN_CURSO' AND 'ABOGADO' = ANY (e.papeles)
-        LIMIT 1`,
-      [procesoActividadId],
-    );
-    return !!fila;
   }
 
   /**
@@ -1108,11 +1076,11 @@ export class EstudioPrevioService implements OnModuleInit {
       await em.save(ProcesoActividad, actividad);
 
       /*
-       * Con una cadena de escalones (migración 101), el envío abre la ronda en
-       * el primer escalón. Con la regla de siempre no: la revisión la decide el
-       * abogado asignado en la 3.3, como hasta ahora.
+       * El envío abre la ronda en el primer escalón, sea una cadena o un
+       * escalón suelto (109): ya no hay revisión del abogado por fuera de la
+       * aprobación configurada.
        */
-      if (revisan?.cadenaId) {
+      if (revisan) {
         await this.cadenas.iniciar(em, actividad, revisan, acceso);
       }
 
@@ -1376,97 +1344,9 @@ export class EstudioPrevioService implements OnModuleInit {
     acceso: HiringAccess,
     firma?: FirmaOtpDto,
   ) {
-    // Con una cadena en curso (migración 101), decide el escalón que espera.
-    const actual = await this.obtenerActividad(this.dataSource.manager, procesoId);
-    if (await this.cadenas.rondaEnCurso(this.dataSource.manager, actual.id)) {
-      return this.decidirEnCadena(procesoId, decision, observaciones, acceso, firma);
-    }
-
-    // Quién puede decidir se resuelve antes de abrir la transacción: no toca
-    // nada y así el error de autorización no arrastra un lock.
-    const { abogado, motivo } = await this.quienDecide(procesoId, acceso);
-    if (motivo === 'SIN_ABOGADO') {
-      throw new ConflictException(
-        'Este proceso todavía no tiene abogado asignado: se reparte en la actividad 3.3 y después se revisa',
-      );
-    }
-    if (motivo === 'NO_ES_TUYO') {
-      throw new ForbiddenException(
-        `Este proceso lo revisa ${abogado!.nombre}: la 3.4 la resuelve el abogado al que se le asignó`,
-      );
-    }
-
-    return this.dataSource.transaction(async (em) => {
-      // Lock pesimista: dos revisores simultáneos no deben registrar dos
-      // decisiones sobre el mismo envío.
-      const actividad = await this.obtenerActividad(em, procesoId, true);
-
-      if (actividad.estado !== 'EN_REVISION') {
-        throw new ConflictException(
-          actividad.estado === 'APROBADO'
-            ? 'El estudio previo ya fue aprobado'
-            : 'El estudio previo no está en revisión',
-        );
-      }
-
-      // La firma es de quien aprueba la 3.4, distinta de la de quien envió la
-      // 3.1: cada quien firma su propia acción (EFDS-2070).
-      if (decision === 'APROBADO' && (await this.cierre.exigeFirma(em, NUMERAL_REVISION))) {
-        this.cierre.exigirFirmaValida(firma);
-      }
-
-      await em.save(Revision, {
-        procesoActividadId: actividad.id,
-        decision,
-        observaciones: observaciones?.trim() || null,
-        versionRevisada: actividad.version,
-        revisadoPor: acceso.userName,
-        revisadoPorId: acceso.userId,
-      } as Partial<Revision>);
-
-      actividad.estado = estadoTrasDecision(decision);
-      actividad.revisadoPor = acceso.userName;
-      actividad.revisadoAt = new Date();
-      await em.save(ProcesoActividad, actividad);
-
-      await this.cerrarLaRevision(em, procesoId, decision, acceso, firma);
-
-      /*
-       * Y si con esto se acabó la etapa 3, el proceso pasa aquí a la etapa 4.
-       *
-       * Solo al aprobar: devolver reabre la revisión y negar termina el
-       * proceso, y ni en un caso ni en otro hay etapa cerrada que celebrar. El
-       * propio método lo vuelve a comprobar —no se fía de quien lo llama—, pero
-       * preguntarlo aquí ahorra la consulta en los dos caminos que nunca van a
-       * disparar nada.
-       */
-      if (decision === 'APROBADO') {
-        await this.cdp.abrirEtapa4SiCerroLaEtapa3(em, procesoId, acceso);
-      }
-
-      // El proceso termina con la actividad cuando la decisión lo cierra.
-      const desenlace = desenlaceTrasDecision(decision);
-      if (desenlace) {
-        await em.update(Proceso, { id: procesoId }, { estado: desenlace });
-      }
-
-      await this.traza(
-        em,
-        procesoId,
-        'estudio_previo',
-        actividad.id,
-        decision === 'APROBADO' ? 'APROBAR' : decision === 'NEGADO' ? 'RECHAZAR' : 'DEVOLVER',
-        acceso,
-        { version: actividad.version, observaciones },
-      );
-
-      return {
-        estado: actividad.estado,
-        decision,
-        revisadoPor: actividad.revisadoPor,
-        revisadoAt: actividad.revisadoAt,
-      };
-    });
+    // Decide el escalón que espera (109). Un envío de antes sin ronda recibe
+    // la suya al preparar la decisión, con la aprobación que rige hoy.
+    return this.decidirEnCadena(procesoId, decision, observaciones, acceso, firma);
   }
 
   /**
@@ -1491,14 +1371,6 @@ export class EstudioPrevioService implements OnModuleInit {
     return this.dataSource.transaction(async (em) => {
       const actividad = await this.obtenerActividad(em, procesoId, true);
       const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
-
-      // Nadie repartió el proceso y el escalón que espera es el del abogado:
-      // decirlo así, y no «no estás entre quienes deciden».
-      if (!(await this.participacion.vigente(procesoId, 'ABOGADO', em)) && (await this.pendienteEsDelAbogado(actividad.id))) {
-        throw new ConflictException(
-          'Este proceso todavía no tiene abogado asignado: se reparte en la actividad 3.3 y después se revisa',
-        );
-      }
 
       const preparada = await this.cadenas.prepararDecision(
         em,

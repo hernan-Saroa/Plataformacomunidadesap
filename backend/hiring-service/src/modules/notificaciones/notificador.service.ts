@@ -5,6 +5,7 @@ import {
   PERMISO_PROCESO_ASIGNAR,
 } from '../../auth/permisos';
 import { AlcanceService } from '../../auth/alcance.service';
+import { accionQueHace, reglaLaHace } from '../../auth/la-hace';
 import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
 import { AvisosService } from './avisos.service';
 import { PasoDelFlujo, porEmpezar, SIN_PANEL } from './secuencia';
@@ -327,8 +328,40 @@ export class NotificadorService implements OnApplicationBootstrap {
     ocurrido: EventoOcurrido,
     modalidad: string | null,
   ): Promise<string[]> {
+    // Quien ocupa el puesto en el proceso (109).
+    if (papel.startsWith('PUESTO:')) {
+      const filas = await this.dataSource.query(
+        `SELECT usuario_id::text AS id FROM hiring.asignaciones_puesto
+          WHERE proceso_id = $1 AND puesto_id::text = $2 AND estado = 'VIGENTE'`,
+        [ocurrido.procesoId, papel.slice('PUESTO:'.length)],
+      );
+      return filas.map((f: any) => f.id);
+    }
+
     switch (papel) {
-      case 'ABOGADO':
+      case 'QUIEN_LA_HACE': {
+        // Lo que dice su regla «quién la hace»; sin regla, quien puede editarla.
+        const regla = await reglaLaHace(this.dataSource.manager, ocurrido.numeral, modalidad);
+        if (regla && 'puestoId' in regla) {
+          return this.quienCumple(`PUESTO:${regla.puestoId}`, ocurrido, modalidad);
+        }
+        // Ids de persona: `cuentasDe` las traduce a sus cuentas.
+        if (regla && 'personas' in regla) return regla.personas;
+        return this.alcance.cuentasQuePueden(accionQueHace(ocurrido.numeral), ocurrido.numeral);
+      }
+      case 'DECIDE_REVISION_PAA': {
+        const filas = await this.dataSource.query(
+          `SELECT DISTINCT ur.id_user::text AS id
+             FROM auth.user_roles ur
+             JOIN auth.role r ON r.id = ur.id_rol AND r.is_active
+             JOIN hiring.alcances_permiso a ON a.rol_id = r.id AND a.activo AND a.accion = 'decidir'
+             JOIN auth.permission p ON p.code = 'contratacion.decidir' AND p.is_active
+             JOIN auth.role_permissions rp ON rp.id_rol = r.id AND rp.id_permission = p.id_permission AND rp.is_active
+            WHERE ur.is_active
+              AND (a.tramite = 'PAA.R' OR (a.etapa IS NULL AND a.numeral IS NULL AND a.tramite IS NULL))`,
+        );
+        return filas.map((f: any) => f.id);
+      }
       case 'CONTRATACION': {
         const filas = await this.dataSource.query(
           `SELECT usuario_id::text AS id

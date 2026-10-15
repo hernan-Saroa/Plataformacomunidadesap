@@ -28,6 +28,7 @@ import {
   CrearCampoDto,
   EstadoPlantillaDto,
   GuardarAprobacionDto,
+  GuardarLaHaceDto,
   GuardarFirmaDto,
   GuardarPlantillaDto,
   GuardarTipologiaDto,
@@ -210,6 +211,27 @@ export class ConfiguracionController {
     @Body() dto: GuardarAprobacionDto,
   ) {
     return this.service.guardarAprobacion(numeral, dto);
+  }
+
+  // ------------------------------------------- quién hace la actividad ----
+
+  @Get('actividades/:numeral/quien-la-hace')
+  @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
+  @ApiOperation({ summary: 'Quién hace la actividad: un puesto, unas personas o quien tenga el permiso' })
+  laHace(@Param('numeral') numeral: string) {
+    return this.service.laHaceDe(numeral);
+  }
+
+  @Put('actividades/:numeral/quien-la-hace')
+  @UseGuards(PermisosGuard)
+  @Permisos('contratacion.config.manage')
+  @ApiOperation({
+    summary: 'Configurar quién hace la actividad',
+    description:
+      'Nunca da un permiso: solo dice, de los que lo tienen, quién la hace. Sin puesto ni personas vuelve a hacerla cualquiera con el permiso.',
+  })
+  guardarLaHace(@Param('numeral') numeral: string, @Body() dto: GuardarLaHaceDto) {
+    return this.service.guardarLaHace(numeral, dto);
   }
 
   // ------------------------------------------------ firma de la actividad ----

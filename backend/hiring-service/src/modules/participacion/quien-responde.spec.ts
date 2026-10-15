@@ -1,30 +1,44 @@
-import { RESPONDE_EL_ASIGNADO, respondeElAsignado } from './quien-responde';
+import { ContextoResponde, respondeEn } from './quien-responde';
 
 /**
- * Quién responde por las actividades que no son de un rol sino de una persona
- * del proceso. La pantalla lo lee de aquí para decir a quién le toca, así que
- * lo que cambie en esta tabla cambia lo que dice la ficha y «Mi trabajo».
+ * Quién responde por cada actividad en un proceso (109). La pantalla lo lee
+ * para decir a quién le toca, con la misma regla que exige el servidor.
  */
 describe('quién responde por cada actividad', () => {
-  it('la revisión, la causal y el comité son del abogado, que las aprueba', () => {
-    for (const numeral of ['3.4', '3.6', '3.7']) {
-      expect(respondeElAsignado(numeral)).toMatchObject({
-        papel: 'ABOGADO',
-        accion: 'aprobar',
-        soloEnRevision: false,
-      });
-    }
+  const ctx: ContextoResponde = {
+    reglas: [
+      { numeral: '3.6', modalidad: null, regla: { puestoId: 'p-abogado' } },
+      { numeral: '5.1', modalidad: null, regla: { personas: ['persona-1'] } },
+    ],
+    puestos: new Map([['p-abogado', 'Abogado']]),
+    ocupantes: new Map([
+      ['proc-1', new Map([['p-abogado', { nombre: 'Andrés Rojas', usuarioId: 'u-1', usuarioNombre: 'arojas' }]])],
+    ]),
+    personas: new Map([['persona-1', 'Laura Pineda']]),
+    miPersona: null,
+  };
+
+  it('con puesto, nombra a quien lo ocupa y dice si es quien mira', () => {
+    expect(respondeEn(ctx, 'proc-1', null, '3.6', { userId: 'u-1', userName: 'arojas' })).toMatchObject({
+      puesto: 'Abogado',
+      persona: { nombre: 'Andrés Rojas', esMio: true },
+      accion: 'aprobar',
+    });
   });
 
-  it('el abogado se asigna, no se toma de una bandeja', () => {
-    expect(respondeElAsignado('3.7')?.seToma).toBe(false);
+  it('con el puesto vacío, lo dice: nadie la hace todavía', () => {
+    expect(respondeEn(ctx, 'proc-2', null, '3.6')).toMatchObject({ puesto: 'Abogado', persona: null });
   });
 
-  it('lo demás lo responden los roles de su alcance', () => {
-    expect(respondeElAsignado('3.1')).toBeNull();
-    expect(respondeElAsignado('6.1')).toBeNull();
-    // El cargue del CDP es del área desde la 103: ya no lo toma la Financiera.
-    expect(respondeElAsignado('4.2')).toBeNull();
-    expect(Object.keys(RESPONDE_EL_ASIGNADO)).toEqual(['3.4', '3.6', '3.7']);
+  it('con personas, las nombra', () => {
+    expect(respondeEn(ctx, 'proc-1', null, '5.1')).toMatchObject({
+      puesto: null,
+      persona: { nombre: 'Laura Pineda', esMio: false },
+      accion: 'editar',
+    });
+  });
+
+  it('sin regla responden los roles de su alcance', () => {
+    expect(respondeEn(ctx, 'proc-1', null, '3.7')).toBeNull();
   });
 });

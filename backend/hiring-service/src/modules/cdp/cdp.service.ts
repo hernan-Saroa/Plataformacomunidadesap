@@ -26,7 +26,7 @@ import {
   RegistrarCdpExistenteDto,
 } from './dto/cdp.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
-import { respondeElAsignado } from '../participacion/quien-responde';
+import { cargarResponde, respondeEn } from '../participacion/quien-responde';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 /**
  * La actividad en que se carga el CDP.
@@ -260,7 +260,7 @@ export class CdpService {
    * la matriz tiene 63 actividades y corregir el nombre de una no debería
    * exigir un despliegue del microfrontend.
    */
-  async actividadesDelProceso(procesoId: string, etapa?: number) {
+  async actividadesDelProceso(procesoId: string, etapa?: number, acceso?: HiringAccess) {
     const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
 
     // Sin etapa se devuelve todo el camino entregado hasta hoy, no solo la
@@ -285,6 +285,8 @@ export class CdpService {
 
     const noAplica = new Set(excluidas.map((e) => e.numeral));
     const porNumeral = new Map(instanciadas.map((a) => [a.numeral, a]));
+    // Quién hace cada actividad en este proceso, de la configuración (109).
+    const responde = await cargarResponde(this.dataSource.manager, [procesoId], acceso);
 
     return actividades.map((a) => {
       const propia = porNumeral.get(a.numeral);
@@ -302,7 +304,7 @@ export class CdpService {
         // roles del alcance para decir a quién le toca.
         responsableCargo: a.responsableCargo,
         // Si de ella responde una persona del proceso y no los roles.
-        responde: respondeElAsignado(a.numeral),
+        responde: respondeEn(responde, procesoId, proceso.modalidad ?? null, a.numeral, acceso),
       };
     });
   }

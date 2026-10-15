@@ -22,8 +22,11 @@ export type AccionEscalon = 'APROBAR' | 'DEVOLVER' | 'NEGAR';
  */
 export type ReglaDecision = 'UNO' | 'TODOS';
 
-/** Papeles del proceso que pueden responder por un escalón. */
-export type PapelEscalon = 'ABOGADO' | 'CONTRATACION' | 'SUPERVISOR';
+/**
+ * Papeles del proceso que pueden responder por un escalón. El abogado dejó de
+ * ser un papel (109): es un puesto que configura la Dirección.
+ */
+export type PapelEscalon = 'CONTRATACION' | 'SUPERVISOR';
 
 /** Un escalón tal como se configura en la plantilla. */
 export interface EscalonConfigurado {
@@ -32,6 +35,8 @@ export interface EscalonConfigurado {
   /** `id_person` del directorio, como guarda el buscador de Configuración. */
   personas: string[];
   papeles: PapelEscalon[];
+  /** Puestos del proceso (109): lo decide quien ocupe alguno en el proceso. */
+  puestos: string[];
   reglaDecision: ReglaDecision;
   acciones: AccionEscalon[];
 }
@@ -140,6 +145,9 @@ export class EscalonRonda {
   @Column({ type: 'text', array: true, default: () => "'{}'" })
   papeles: PapelEscalon[];
 
+  @Column({ type: 'text', array: true, default: () => "'{}'" })
+  puestos: string[];
+
   @Column({ name: 'regla_decision', length: 6, default: 'UNO' })
   reglaDecision: ReglaDecision;
 
@@ -158,59 +166,4 @@ export class EscalonRonda {
 
 
 
-/** Numeral cuya cadena reparte la 3.3: sus escalones por rol se designan a personas (102). */
-export const NUMERAL_CON_DESIGNACION = '3.1';
-
-/**
- * Quién decide un escalón por rol de la cadena de la 3.1 en un proceso
- * (migración 102). Se designa en la 3.3, como el abogado.
- */
-@Entity('designaciones_escalon', { schema: 'hiring' })
-export class DesignacionEscalon {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
-  @Column({ name: 'proceso_id', type: 'uuid' })
-  procesoId: string;
-
-  @Column({ length: 20, default: NUMERAL_CON_DESIGNACION })
-  numeral: string;
-
-  @Column({ type: 'int' })
-  escalon: number;
-
-  @Column({ name: 'escalon_nombre', length: 120, nullable: true })
-  escalonNombre: string | null;
-
-  @Column({ name: 'usuario_id', type: 'uuid' })
-  usuarioId: string;
-
-  @Column({ name: 'usuario_nombre', length: 120 })
-  usuarioNombre: string;
-
-  @Column({ name: 'persona_id', type: 'uuid', nullable: true })
-  personaId: string | null;
-
-  @Column({ length: 200 })
-  nombre: string;
-
-  @Column({ length: 10, default: 'VIGENTE' })
-  estado: 'VIGENTE' | 'RELEVADO';
-
-  @Column({ name: 'asignado_por', length: 200, nullable: true })
-  asignadoPor: string | null;
-
-  @CreateDateColumn({ name: 'asignado_at', type: 'timestamptz' })
-  asignadoAt: Date;
-
-  @Column({ name: 'relevado_at', type: 'timestamptz', nullable: true })
-  relevadoAt: Date | null;
-
-  @Column({ name: 'relevado_por', length: 200, nullable: true })
-  relevadoPor: string | null;
-
-  @Column({ name: 'motivo_relevo', type: 'text', nullable: true })
-  motivoRelevo: string | null;
-}
-
-export const ENTIDADES_APROBACION = [CadenaAprobacion, RondaAprobacion, EscalonRonda, DesignacionEscalon];
+export const ENTIDADES_APROBACION = [CadenaAprobacion, RondaAprobacion, EscalonRonda];

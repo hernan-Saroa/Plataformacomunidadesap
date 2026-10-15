@@ -9,7 +9,6 @@ import { ComiteContratacionController } from '../modules/comite-contratacion/com
 import { DocumentosActividadController } from '../modules/documentos-actividad/documentos-actividad.controller';
 import { EstudioPrevioController } from '../modules/estudio-previo/estudio-previo.controller';
 import {
-  CandidatosController,
   ParticipacionController,
 } from '../modules/participacion/participacion.controller';
 import { RegistroActividadController } from '../modules/registro-actividad/registro-actividad.controller';
@@ -41,7 +40,8 @@ const ESPERADO: [string, any, string, string, unknown][] = [
 
   ['participación', ParticipacionController, 'estado', 'ver', '3.3'],
   ['participación', ParticipacionController, 'tomar', 'editar', '3.3'],
-  ['candidatos', CandidatosController, 'abogados', 'ver', '3.4'],
+  ['puestos', ParticipacionController, 'delProceso', 'ver', '3.3'],
+  ['candidatos de un puesto', ParticipacionController, 'candidatos', 'ver', '3.3'],
 
   ['causal', CausalContratacionController, 'estado', 'ver', '3.6'],
   ['comité de contratación', ComiteContratacionController, 'estado', 'ver', '3.7'],

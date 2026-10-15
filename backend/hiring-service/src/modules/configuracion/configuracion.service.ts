@@ -24,6 +24,7 @@ import {
   AplicabilidadDto,
   GuardarReglaDto,
   GuardarAprobacionDto,
+  GuardarLaHaceDto,
   GuardarFirmaDto,
   ActualizarCampoDto,
   CrearCampoDto,
@@ -826,6 +827,13 @@ export class ConfiguracionService {
 
     const codigos = Array.isArray(config.roles) ? (config.roles as string[]) : [];
     const personas = Array.isArray(config.personas) ? (config.personas as string[]) : [];
+    const puestos = Array.isArray(config.puestos) ? (config.puestos as string[]) : [];
+    const nombresDePuestos: { id: string; nombre: string; activo: boolean }[] = puestos.length
+      ? await this.dataSource.query(
+          `SELECT id::text AS id, nombre, activo FROM hiring.puestos_proceso WHERE id::text = ANY($1::text[])`,
+          [puestos],
+        )
+      : [];
 
     const nombres: { code: string; name: string }[] = codigos.length
       ? await this.dataSource.query(
@@ -861,6 +869,15 @@ export class ConfiguracionService {
           id,
           nombre: quienes.find((q) => q.id === id)?.nombre ?? id,
         })),
+        // Un puesto archivado se dice: la aprobación quedó sin quien la dé.
+        ...puestos.map((id) => {
+          const puesto = nombresDePuestos.find((x) => x.id === id);
+          return {
+            clase: 'puesto' as const,
+            id,
+            nombre: puesto ? `${puesto.nombre}${puesto.activo ? '' : ' (archivado)'}` : 'Puesto que ya no existe',
+          };
+        }),
       ],
     };
   }
@@ -905,11 +922,19 @@ export class ConfiguracionService {
       }
 
       /*
-       * Una cadena de escalones (migración 101), o roles y personas como hasta
-       * ahora, que la cadena lee como un solo escalón. En la 3.1 la cadena
-       * reemplaza la revisión del abogado a solas: si se quiere que él decida
-       * primero, se pone su papel en el escalón 1.
+       * Una cadena de escalones (migración 101), o roles, personas y puestos
+       * (109), que la cadena lee como un solo escalón. Para que la revise el
+       * abogado del proceso, la aprueba el puesto Abogado.
        */
+      if (!dto.cadenaId && dto.puestos?.length) {
+        const activos: { id: string }[] = await em.query(
+          `SELECT id::text AS id FROM hiring.puestos_proceso WHERE activo AND id::text = ANY($1::text[])`,
+          [dto.puestos],
+        );
+        if (activos.length !== new Set(dto.puestos).size) {
+          throw new BadRequestException('Alguno de los puestos elegidos no existe o está archivado');
+        }
+      }
       if (dto.cadenaId) {
         const [plantilla] = await em.query(
           `SELECT id FROM hiring.cadenas_aprobacion WHERE id = $1 AND activa`,
@@ -925,13 +950,95 @@ export class ConfiguracionService {
           tipo: 'EXIGE_APROBACION',
           config: dto.cadenaId
             ? { cadenaId: dto.cadenaId }
-            : { roles: dto.roles ?? [], personas: dto.personas ?? [] },
+            : { roles: dto.roles ?? [], personas: dto.personas ?? [], puestos: dto.puestos ?? [] },
           mensaje: 'Esta actividad requiere aprobación antes de darse por terminada',
           orden: 100,
         } as Partial<ReglaActividad>),
       );
 
       return this.aprobacionDe(numeral);
+    });
+  }
+
+  // --------------------------------------------- quién hace la actividad ---
+
+  /**
+   * Quién hace la actividad (109): un puesto del proceso, unas personas o,
+   * sin regla, quien tenga el permiso de editarla. Con el nombre legible.
+   */
+  async laHaceDe(numeral: string) {
+    const regla = await this.dataSource.getRepository(ReglaActividad).findOne({
+      where: { numeral, tipo: 'LA_HACE', modalidad: IsNull(), vigenteHasta: IsNull() },
+    });
+    const config = (regla?.config ?? {}) as Record<string, unknown>;
+    if (typeof config.puestoId === 'string') {
+      const [puesto] = await this.dataSource.query(
+        `SELECT id::text AS id, nombre, activo FROM hiring.puestos_proceso WHERE id::text = $1`,
+        [config.puestoId],
+      );
+      return {
+        tipo: 'PUESTO' as const,
+        puesto: puesto
+          ? { id: puesto.id, nombre: puesto.nombre, activo: puesto.activo }
+          : { id: config.puestoId, nombre: 'Puesto que ya no existe', activo: false },
+        personas: [],
+      };
+    }
+    const personas = Array.isArray(config.personas) ? (config.personas as string[]) : [];
+    if (personas.length) {
+      const quienes: { id: string; nombre: string }[] = await this.dataSource.query(
+        `SELECT p.id_person::text AS id, COALESCE(p.nom_largo, p.nom_tercero) AS nombre
+           FROM auth.personas p WHERE p.id_person::text = ANY($1::text[])`,
+        [personas],
+      );
+      return {
+        tipo: 'PERSONAS' as const,
+        puesto: null,
+        personas: personas.map((id) => ({ id, nombre: quienes.find((q) => q.id === id)?.nombre ?? id })),
+      };
+    }
+    return { tipo: 'PERMISO' as const, puesto: null, personas: [] };
+  }
+
+  /**
+   * Cambia quién hace la actividad. La regla anterior se deroga y no se borra,
+   * como la aprobación: un proceso de antes se audita con la regla de antes.
+   */
+  async guardarLaHace(numeral: string, dto: GuardarLaHaceDto) {
+    return this.dataSource.transaction(async (em) => {
+      const repo = em.getRepository(ReglaActividad);
+      const vigente = await repo.findOne({
+        where: { numeral, tipo: 'LA_HACE', modalidad: IsNull(), vigenteHasta: IsNull() },
+      });
+      if (vigente) {
+        vigente.vigenteHasta = new Date();
+        await repo.save(vigente);
+      }
+
+      const personas = [...new Set((dto.personas ?? []).map((x) => x.trim()).filter(Boolean))];
+      if (dto.puestoId) {
+        const [puesto] = await em.query(
+          `SELECT 1 FROM hiring.puestos_proceso WHERE id::text = $1 AND activo`,
+          [dto.puestoId],
+        );
+        if (!puesto) throw new BadRequestException('El puesto elegido no existe o está archivado');
+      }
+
+      if (dto.puestoId || personas.length) {
+        await repo.save(
+          repo.create({
+            numeral,
+            modalidad: null,
+            tipo: 'LA_HACE',
+            config: dto.puestoId ? { puestoId: dto.puestoId } : { personas },
+            mensaje: dto.puestoId
+              ? 'La hace quien ocupe el puesto en el proceso'
+              : 'La hacen solo las personas nombradas',
+            orden: 100,
+          } as Partial<ReglaActividad>),
+        );
+      }
+      return this.laHaceDe(numeral);
     });
   }
 

@@ -39,14 +39,14 @@ describe('AvisosService', () => {
       expect((await srv.deActividad('3.2')).siempre).toEqual([]);
     });
 
-    it('en la 3.4 el «le toca» es del abogado, y dice dónde se asigna', async () => {
+    it('en la 3.4 el «le toca» es de quien aprueba la 3.1, y viene apagado', async () => {
+      // La 3.4 no tiene pantalla: su «le toca» es el de la ronda (109).
       const { srv } = conFilas([], { requiere: false });
       const { siempre, avisos } = await srv.deActividad('3.4');
       const leToca = avisos.find((a) => a.evento === 'HABILITADA');
 
       expect(siempre).toEqual([]);
-      expect(leToca).toMatchObject({ activo: true, papeles: ['ABOGADO'] });
-      expect(leToca?.ayuda).toContain('en la 3.3');
+      expect(leToca).toMatchObject({ activo: false, papeles: ['QUIEN_APRUEBA'] });
     });
 
     it('lo que se haya guardado para ellos no los cambia', async () => {
@@ -122,7 +122,7 @@ describe('AvisosService', () => {
         '3.2',
         'DOCUMENTO_ADJUNTO',
         true,
-        '["ABOGADO"]',
+        '["CONTRATACION"]',
         '[]',
         '[]',
         '["7"]',

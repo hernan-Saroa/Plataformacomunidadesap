@@ -254,7 +254,7 @@ export class PaaController {
   @Puede('decidir', 'PAA.R')
   @ApiOperation({
     summary: 'Continuar, devolver, migrar o cancelar el proceso afectado',
-    description: 'La decide el abogado del proceso; sin abogado, quien tenga decidir en las revisiones del PAA.',
+    description: 'La decide quien tenga decidir en las revisiones del PAA.',
   })
   decidir(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DecidirRevisionPaaDto, @Req() req: any) {
     return this.revisiones.decidir(id, dto, getHiringAccess(req));

@@ -149,11 +149,10 @@ function sinPantallaAlcanzadas(flujo: PasoDelFlujo[]): Set<string> {
 }
 
 /**
- * La 3.4 no se habilita por la secuencia: le toca al abogado cuando se lo
- * asignan en la 3.3, y ese «le toca» sale de la designación. Contarla aquí
- * avisaría antes de que hubiera abogado a quien avisar.
+ * La 3.4 no se habilita por la secuencia: es la aprobación de la 3.1, y su
+ * «le toca» es el de la ronda (109). Contarla aquí avisaría dos veces.
  */
-export const SE_HABILITA_AL_ASIGNAR_ABOGADO = '3.4';
+export const SE_RESUELVE_EN_LA_RONDA = '3.4';
 
 /**
  * Las que están esperando a que alguien las empiece.
@@ -170,7 +169,7 @@ export function porEmpezar(flujo: PasoDelFlujo[]): string[] {
   const sinPantalla = sinPantallaAlcanzadas(flujo);
   return flujo
     .filter((p) => disponibles.has(p.numeral) || sinPantalla.has(p.numeral))
-    .filter((p) => p.numeral !== SE_HABILITA_AL_ASIGNAR_ABOGADO)
+    .filter((p) => p.numeral !== SE_RESUELVE_EN_LA_RONDA)
     .filter((p) => p.estado === null || p.estado === 'BORRADOR')
     .map((p) => p.numeral);
 }

@@ -223,7 +223,7 @@ export class AprobacionService {
     personaId?: string | null,
   ): boolean {
     return esResponsable(
-      { roles: aprobadores.roles, personas: aprobadores.personas, papeles: [] },
+      { roles: aprobadores.roles, personas: aprobadores.personas, papeles: [], puestos: [] },
       { roles: acceso.roles ?? [], personaId: personaId ?? null, papeles: [] },
     );
   }

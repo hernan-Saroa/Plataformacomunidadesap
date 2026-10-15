@@ -201,7 +201,7 @@ export class ComiteContratacionService {
       where: { procesoId },
       order: { fecha: 'DESC', createdAt: 'DESC' },
     });
-    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso, NUMERAL_COMITE_CONTRATACION);
+    const { responsable, puesto, motivo } = await this.participacion.quienHace(procesoId, acceso, NUMERAL_COMITE_CONTRATACION);
 
     // Cerrada por una sesión que aprobó o que rechazó: no se registra otra.
     // Reabrir una aprobación reescribiría una etapa que pudo cerrar y radicar
@@ -264,13 +264,13 @@ export class ComiteContratacionService {
         estadoActual !== 'NO_APLICA' &&
         !yaSePronuncio,
       motivoNoDecide: motivo,
-      abogado: abogado
-        ? { nombre: abogado.nombre, usuarioNombre: abogado.usuarioNombre }
-        : null,
+      /** Quién lo registra, si la regla «quién la hace» lo dice (109). */
+      responsable: responsable ? { nombre: responsable.nombre, usuarioNombre: responsable.usuarioNombre } : null,
+      puesto,
     };
   }
 
-  // ----------------------------------------------------------- el abogado --
+  // ----------------------------------------------------- quien lo registra --
 
   /**
    * Transcribe una sesión del comité.
@@ -566,18 +566,22 @@ export class ComiteContratacionService {
     };
   }
 
-  /** Lo transcribe el abogado del proceso, como el resto de la etapa 3. */
+  /** Lo registra quien dice la regla «quién la hace» de la 3.7 (109). */
   private async exigirQueLeToque(procesoId: string, acceso: HiringAccess) {
-    const { abogado, motivo } = await this.participacion.quienDecide(procesoId, acceso, NUMERAL_COMITE_CONTRATACION);
+    const { responsable, puesto, motivo } = await this.participacion.quienHace(
+      procesoId,
+      acceso,
+      NUMERAL_COMITE_CONTRATACION,
+    );
 
-    if (motivo === 'SIN_ABOGADO') {
+    if (motivo === 'SIN_ASIGNAR') {
       throw new ConflictException(
-        'Este proceso todavía no tiene abogado asignado: se reparte en la actividad 3.3',
+        `Lo registra quien ocupe el puesto ${puesto} y en este proceso todavía no hay nadie: se asigna en la 3.3`,
       );
     }
     if (motivo === 'NO_ES_TUYO') {
       throw new ForbiddenException(
-        `Este proceso lo lleva ${abogado!.nombre}: lo que decidió el comité lo transcribe el abogado al que se le asignó`,
+        `Lo que decidió el comité lo registra ${responsable?.nombre ?? 'otra persona'}${puesto ? ` (${puesto})` : ''}`,
       );
     }
     if (motivo === 'SIN_PERMISO') {

@@ -41,8 +41,8 @@ const POR_ACTIVIDAD: Record<string, Destino> = {
   '3.1': papel('RADICADOR'),
   // Aún no es de nadie: le toca a quien puede tomarlo de la bandeja.
   '3.3': papel('BANDEJA_CONTRATACION'),
-  // Le toca al abogado que le asignan en la 3.3.
-  '3.4': papel('ABOGADO'),
+  // La 3.4 es la aprobación de la 3.1: le toca a quien la aprueba.
+  '3.4': papel('QUIEN_APRUEBA'),
 
   // Aún no hay comité: le toca a quien puede designarlo.
   '6.2': papel('DESIGNA_COMITE_Y_SUPERVISOR'),
@@ -65,14 +65,16 @@ const POR_ACTIVIDAD: Record<string, Destino> = {
 
 /** Lo de cada etapa, para las que no tienen excepción. */
 const POR_ETAPA: Record<string, Destino> = {
-  '3': papel('ABOGADO'),
+  // A quien hace la actividad: el puesto o las personas que dice su regla, o
+  // quien tenga el permiso de editarla (109). Antes era el abogado de todo.
+  '3': papel('QUIEN_LA_HACE'),
   '4': papel('EQUIPO_FINANCIERO'),
-  '5': papel('ABOGADO'),
-  '6': papel('ABOGADO'),
-  '7': papel('ABOGADO'),
-  '8': papel('ABOGADO'),
+  '5': papel('QUIEN_LA_HACE'),
+  '6': papel('QUIEN_LA_HACE'),
+  '7': papel('QUIEN_LA_HACE'),
+  '8': papel('QUIEN_LA_HACE'),
   '9': papel('SUPERVISOR'),
-  '10': papel('ABOGADO'),
+  '10': papel('QUIEN_LA_HACE'),
 };
 
 /** Quién hace la actividad, o `null` si no hay a quién sugerir (etapas 1 y 2). */

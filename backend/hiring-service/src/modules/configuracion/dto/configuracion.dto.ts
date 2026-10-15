@@ -389,9 +389,16 @@ export class GuardarAprobacionDto {
   @IsString({ each: true })
   personas?: string[];
 
+  /** Puestos del proceso (109): la aprueba quien ocupe alguno en el proceso. */
+  @ApiPropertyOptional({ type: [String], description: 'Ids de puesto del proceso.' })
+  @IsOptional()
+  @IsArray()
+  @IsUUID('all', { each: true })
+  puestos?: string[];
+
   /**
-   * Una cadena de escalones en vez de roles y personas (migración 101). Si
-   * llega, `roles` y `personas` se ignoran.
+   * Una cadena de escalones en vez de roles, personas y puestos (migración
+   * 101). Si llega, lo demás se ignora.
    */
   @ApiPropertyOptional({ description: 'Id de la cadena de aprobación por escalones.' })
   @IsOptional()
@@ -412,4 +419,21 @@ export class GuardarFirmaDto {
   @ApiProperty({ description: 'False retira la exigencia de firma.' })
   @IsBoolean()
   requiereFirma: boolean;
+}
+
+/**
+ * Quién hace la actividad (109): un puesto del proceso o unas personas. Sin
+ * ninguno de los dos, la hace quien tenga el permiso, que es lo de siempre.
+ */
+export class GuardarLaHaceDto {
+  @ApiPropertyOptional({ description: 'Id del puesto del proceso que la hace.' })
+  @IsOptional()
+  @IsUUID()
+  puestoId?: string;
+
+  @ApiPropertyOptional({ type: [String], description: 'Ids de persona del directorio.' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  personas?: string[];
 }

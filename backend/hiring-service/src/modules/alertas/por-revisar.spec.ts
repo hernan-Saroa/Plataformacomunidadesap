@@ -54,32 +54,15 @@ const fila = (numeral: string, desde: string) => ({
 });
 
 describe('bandeja Por revisar', () => {
-  it('trae los estudios previos del abogado junto con las aprobaciones', async () => {
-    const { service } = montar({
-      aprobaciones: [fila('4.1', '2026-09-20')],
-      estudios: [fila('3.1', '2026-09-25')],
-    });
-
-    const lista = await service.porRevisar(acceso);
-
-    expect(lista.map((e) => [e.tipo, e.numeral])).toEqual(
-      expect.arrayContaining([
-        ['ESTUDIO_PREVIO', '3.1'],
-        ['ACTIVIDAD', '4.1'],
-      ]),
-    );
-  });
-
-  it('la 3.1 por cadena sale una vez, como estudio previo, desde el escalón que espera', async () => {
-    // Con cadena (101) decide el escalón; la consulta del abogado excluye los
-    // estudios con ronda en curso, así que no sale por los dos caminos.
+  it('la 3.1 sale de su ronda, como estudio previo, desde el escalón que espera', async () => {
+    // Desde la 109 la revisión del estudio previo es siempre una ronda: ya no
+    // hay una consulta aparte del abogado repartido.
     const { service, consultas } = montar({ aprobaciones: [fila('3.1', '2026-09-20')], estudios: [] });
 
     const lista = await service.porRevisar(acceso);
 
     expect(lista.map((e) => [e.tipo, e.numeral])).toEqual([['ESTUDIO_PREVIO', '3.1']]);
-    const delAbogado = consultas.find((s) => s.includes("pp.papel = 'ABOGADO'")) ?? '';
-    expect(delAbogado).toContain("r.estado = 'EN_CURSO'");
+    expect(consultas.some((c) => c.includes("pp.papel = 'ABOGADO'"))).toBe(false);
   });
 
   it('lo que más lleva esperando va primero', async () => {
@@ -92,14 +75,6 @@ describe('bandeja Por revisar', () => {
 
     expect(lista.map((e) => e.numeral)).toEqual(['4.1', '5.1']);
     expect(lista[0].diasEsperando).toBeGreaterThan(lista[1].diasEsperando);
-  });
-
-  it('sin usuario no busca estudios por abogado', async () => {
-    const { service, consultas } = montar({ aprobaciones: [], estudios: [fila('3.1', '2026-09-20')] });
-
-    await service.porRevisar({ ...acceso, userId: '', userName: '' });
-
-    expect(consultas.some((c) => c.includes("pa.numeral = '3.1'"))).toBe(false);
   });
 
   it('trae las revisiones del PAA, diciendo cuáles detienen el proceso', async () => {
