@@ -74,3 +74,65 @@ describe('secuencia · qué se puede trabajar', () => {
     expect(porEmpezar([paso('4.1', 'APROBADO'), paso('4.2', 'BORRADOR')])).toEqual(['4.2']);
   });
 });
+
+describe('secuencia · dependencias declaradas, como en el riel', () => {
+  const etapa5 = (estadoDeLa54: string | null) => [
+    paso('5.1', 'APROBADO'),
+    paso('5.2', 'APROBADO'),
+    paso('5.4', estadoDeLa54),
+    paso('5.3', null),
+    paso('5.5', null),
+    paso('5.6', null),
+  ];
+
+  it('con la publicación hecha, la 5.4, la 5.3 y la 5.5 se abren a la vez', () => {
+    expect(porEmpezar(etapa5(null))).toEqual(['5.4', '5.3', '5.5']);
+  });
+
+  it('pero la 5.6 sigue esperando a que todas terminen', () => {
+    const flujo = etapa5('APROBADO').map((p) =>
+      p.numeral === '5.3' ? { ...p, estado: 'APROBADO' } : p,
+    );
+    expect(actividadesDisponibles(flujo).has('5.6')).toBe(false);
+  });
+
+  it('sin la publicación, ninguna de las tres se abre', () => {
+    const flujo = etapa5(null).map((p) => (p.numeral === '5.2' ? { ...p, estado: 'BORRADOR' } : p));
+    expect(porEmpezar(flujo)).toEqual(['5.2']);
+  });
+
+  it('las modificaciones (9.5) se abren con el acta de inicio, sin esperar los pagos', () => {
+    const flujo = [
+      paso('9.1', 'APROBADO'),
+      paso('9.2', 'BORRADOR'),
+      paso('9.3', 'BORRADOR'),
+      paso('9.4', null),
+      paso('9.5', null),
+    ];
+    expect(porEmpezar(flujo)).toEqual(['9.2', '9.3', '9.4', '9.5']);
+  });
+
+  it('el seguimiento y la reasignación, siempre abiertos, no detienen la etapa 10', () => {
+    const flujo = [
+      paso('9.1', 'APROBADO'),
+      paso('9.2', 'BORRADOR'),
+      paso('9.3', 'BORRADOR'),
+      paso('9.4', 'APROBADO'),
+      paso('9.5', null),
+      paso('10.1', null),
+    ];
+    expect(actividadesDisponibles(flujo).has('10.1')).toBe(true);
+  });
+
+  it('tampoco detienen el aviso a una sin pantalla que viene después', () => {
+    const flujo = [
+      paso('9.1', 'APROBADO'),
+      paso('9.2', 'BORRADOR'),
+      paso('9.3', 'BORRADOR'),
+      paso('9.4', 'APROBADO'),
+      paso('9.5', null),
+      paso('10.1', null, { construida: false }),
+    ];
+    expect(porEmpezar(flujo)).toContain('10.1');
+  });
+});

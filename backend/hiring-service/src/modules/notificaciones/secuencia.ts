@@ -41,6 +41,38 @@ const estaTerminada = (paso: PasoDelFlujo) => paso.estado === 'APROBADO';
 const ATIENDEN_LA_REVISION = new Set(['3.3', '3.4']);
 const ABRE_EL_TRAMO_DE_LA_DIRECCION = '3.1';
 
+/**
+ * Las que no esperan a la actividad que las antecede, sino a lo que de verdad
+ * necesitan. Mismo mapa que `DEPENDE_DE` en el riel, donde está el porqué de
+ * cada una: la 5.3, la 5.4 y la 5.5 cuelgan solo de la publicación (5.2), y
+ * las modificaciones (9.5) del acta de inicio (9.1).
+ */
+export const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
+  '5.3': ['5.2'],
+  '5.4': ['5.2'],
+  '5.5': ['5.2'],
+  '9.5': ['9.1'],
+};
+
+/**
+ * Las que no cierran nunca mientras dura la ejecución, y por eso no pueden
+ * detener nada: el seguimiento (9.2), la reasignación de supervisor (9.3) y
+ * las modificaciones (9.5). Mismo conjunto que `NUNCA_BLOQUEA` en el riel.
+ */
+export const NUNCA_BLOQUEA = new Set(['9.2', '9.3', '9.5']);
+
+/**
+ * Si una dependencia declarada ya no le hace falta a quien la exige.
+ *
+ * La que no está, no aplica o no tiene pantalla nunca podrá terminarse:
+ * exigirla trancaría para siempre a quien depende de ella.
+ */
+function dependenciaSatisfecha(numeral: string, flujo: PasoDelFlujo[]): boolean {
+  const paso = flujo.find((p) => p.numeral === numeral);
+  if (!paso || !paso.aplica || !paso.construida) return true;
+  return estaTerminada(paso);
+}
+
 /** Los numerales que se pueden trabajar, con la misma regla que el riel. */
 export function actividadesDisponibles(flujo: PasoDelFlujo[]): Set<string> {
   const disponibles = new Set<string>();
@@ -57,8 +89,15 @@ export function actividadesDisponibles(flujo: PasoDelFlujo[]): Set<string> {
       continue;
     }
 
-    if (alcanzado) disponibles.add(paso.numeral);
-    if (estaTerminada(paso)) continue;
+    // Habilitarse antes no exime de bloquear: una de DEPENDE_DE sin terminar
+    // sigue cerrando el paso a lo que viene después, como cualquier otra.
+    const dependencias = DEPENDE_DE[paso.numeral];
+    const disponible = dependencias
+      ? dependencias.every((dep) => dependenciaSatisfecha(dep, flujo))
+      : alcanzado;
+
+    if (disponible) disponibles.add(paso.numeral);
+    if (estaTerminada(paso) || NUNCA_BLOQUEA.has(paso.numeral)) continue;
 
     if (paso.estado === 'EN_REVISION' && paso.numeral === ABRE_EL_TRAMO_DE_LA_DIRECCION) {
       esperandoDecision = true;
@@ -97,7 +136,7 @@ function sinPantallaAlcanzadas(flujo: PasoDelFlujo[]): Set<string> {
       continue;
     }
 
-    if (estaTerminada(paso)) continue;
+    if (estaTerminada(paso) || NUNCA_BLOQUEA.has(paso.numeral)) continue;
 
     if (paso.estado === 'EN_REVISION' && paso.numeral === ABRE_EL_TRAMO_DE_LA_DIRECCION) {
       esperandoDecision = true;

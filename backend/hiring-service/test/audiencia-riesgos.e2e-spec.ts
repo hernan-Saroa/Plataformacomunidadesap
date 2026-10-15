@@ -182,20 +182,19 @@ describe('HU EFDS-1153 · audiencia de riesgos (actividad 5.5)', () => {
       await expect(celebrar(proceso.id)).rejects.toThrow(/no adelanta audiencia/i);
     });
 
-    it('donde aplica sin ser obligatoria, se puede celebrar pero no bloquea', async () => {
-      // Mínima cuantía no está excluida y no figura como obligatoria: la
-      // audiencia puede registrarse, pero el proceso no depende de ella.
+    it('fuera de la licitación pública no aplica ni bloquea la apertura', async () => {
+      // La matriz solo la adelanta en licitación pública (104): en mínima
+      // cuantía no se registra y la apertura no la espera.
       const proceso = await crear('MINIMA_CUANTIA');
       const estado = await riesgos.estado(proceso.id);
 
-      expect(estado.aplica).toBe(true);
+      expect(estado.aplica).toBe(false);
       expect(estado.obligatoria).toBe(false);
 
       const requisito = await riesgos.requisitoParaApertura(proceso.id);
       expect(requisito.cumplido).toBe(true);
 
-      const tras = await celebrar(proceso.id);
-      expect(tras.celebrada).toBe(true);
+      await expect(celebrar(proceso.id)).rejects.toThrow(/no adelanta audiencia/i);
     });
   });
 
