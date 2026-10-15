@@ -1952,6 +1952,16 @@ export const contratacionService = {
    * Cambia con ella la lista de documentos de la 3.1 y qué actividades recorre
    * el proceso. Aprobar la 3.1 la ratifica: no hay otra actividad para eso.
    */
+  /**
+   * Borra el proceso con todo lo suyo (108). Solo el superadministrador; pide
+   * el radicado escrito y el motivo, que es lo único que queda.
+   */
+  borrarProceso: (procesoId: string, radicado: string, motivo: string) =>
+    pedir<{ radicado: string; archivosBorrados: number }>(`/procesos/${procesoId}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ radicado, motivo }),
+    }),
+
   cambiarModalidadDelEstudioPrevio: (procesoId: string, modalidad: string) =>
     pedir<EstudioPrevio>(`/procesos/${procesoId}/estudio-previo/modalidad`, {
       method: 'PUT',

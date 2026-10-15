@@ -48,6 +48,7 @@ import { EntradaSituacion, situacionDelProceso } from './situacionDelProceso';
 import { FranjaSituacion } from './FranjaSituacion';
 import { FichaDelProceso } from './FichaDelProceso';
 import { VerEstudioPrevio } from '../revision/VerEstudioPrevio';
+import { BorrarProceso } from './BorrarProceso';
 import { usePlazos } from '../../hooks/usePlazos';
 
 /**
@@ -826,6 +827,13 @@ export function DetalleProceso({
             {/* En la cabecera y no en la 3.1: se consulta desde cualquier
                 actividad sin perder el sitio. */}
             <VerEstudioPrevio estudio={datos} procesoId={procesoId} />
+            {datos.proceso.puedeBorrar && (
+              <BorrarProceso
+                procesoId={procesoId}
+                radicado={datos.proceso.radicado}
+                onBorrado={onVolver}
+              />
+            )}
           </div>
 
           <FranjaSituacion

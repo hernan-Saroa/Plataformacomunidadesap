@@ -726,6 +726,8 @@ export interface EstudioPrevio {
     estado?: EstadoDelProceso;
     /** Una revisión por cambio del PAA lo tiene detenido. */
     paaDetenido?: boolean;
+    /** Quien mira puede borrar el proceso: solo el superadministrador (108). */
+    puedeBorrar?: boolean;
   };
   estado: EstadoActividad;
   version: number;

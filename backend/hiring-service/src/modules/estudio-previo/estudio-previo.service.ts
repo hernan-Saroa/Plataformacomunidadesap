@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   OnModuleInit,
   Optional,
@@ -11,6 +12,8 @@ import {
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, EntityManager, FindOptionsWhere, In } from 'typeorm';
 import { createHash } from 'crypto';
+import { unlink } from 'fs/promises';
+import { basename, join } from 'path';
 
 import { EstadoProceso, Proceso } from '../../entities/proceso.entity';
 import { Expediente } from '../../entities/expediente.entity';
@@ -28,7 +31,7 @@ import { DecisionRevision, Revision } from '../../entities/revision.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { Actividad } from '../../entities/actividad.entity';
 import { HiringAccess } from '../../auth/hiring-access';
-import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
+import { PERMISO_PROCESO_BORRAR, PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { PermisosService } from '../../auth/permisos.service';
 import { AlcanceService } from '../../auth/alcance.service';
 import { AprobacionService } from '../aprobacion/aprobacion.service';
@@ -37,12 +40,14 @@ import { AccionEscalon } from '../../entities/cadena-aprobacion.entity';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import {
+  BorrarProcesoDto,
   CambiarModalidadDto,
   CrearProcesoDesdePaaDto,
   CrearProcesoDto,
   GuardarBorradorDto,
 } from './dto/estudio-previo.dto';
 import { UmbralesService } from '../umbrales/umbrales.service';
+import { STORAGE_PATH } from '../archivos';
 import { ConfiguracionService } from '../configuracion/configuracion.service';
 import {
   NUMERAL_RADICACION as NUMERAL_RADICACION_DIRECCION,
@@ -199,6 +204,8 @@ function sha256(texto: string): string {
 
 @Injectable()
 export class EstudioPrevioService implements OnModuleInit {
+  private readonly logger = new Logger(EstudioPrevioService.name);
+
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly umbrales: UmbralesService,
@@ -438,6 +445,71 @@ export class EstudioPrevioService implements OnModuleInit {
     });
 
     return { ...proceso, expediente, actividad };
+  }
+
+  /**
+   * Si puede borrar procesos (108): solo el superadministrador.
+   *
+   * Contra la base y no solo contra el código, con el criterio de
+   * `puedeVerTodos`: el JWT trae los roles, no los permisos.
+   */
+  async puedeBorrar(acceso?: HiringAccess): Promise<boolean> {
+    if (!acceso) return false;
+    if (tienePermiso(acceso, PERMISO_PROCESO_BORRAR)) return true;
+    const suyos = await this.permisos.permisosDeRoles(acceso.roles ?? []);
+    return suyos.includes(PERMISO_PROCESO_BORRAR);
+  }
+
+  /**
+   * Borra el proceso con todo lo suyo (108).
+   *
+   * Las FK en cascada se llevan actividades, expediente, documentos,
+   * participantes y trazabilidad, y la línea del PAA queda libre para otro
+   * proceso. Se pide el radicado escrito, no solo un clic: no hay cómo
+   * deshacerlo, y equivocarse de fila en el listado es fácil.
+   *
+   * Como la trazabilidad se va con el proceso, quién lo borró y por qué queda
+   * en el log del servicio. Los archivos se borran del disco después de
+   * confirmar, y solo los que ningún otro documento usa: si la transacción
+   * fallara, el proceso seguiría ahí con sus archivos.
+   */
+  async borrarProceso(procesoId: string, dto: BorrarProcesoDto, acceso: HiringAccess) {
+    const { radicado, archivos } = await this.dataSource.transaction(async (em) => {
+      const proceso = await em.findOne(Proceso, { where: { id: procesoId } });
+      if (!proceso) throw new NotFoundException('Proceso no encontrado');
+      if (dto.radicado.trim() !== proceso.radicado) {
+        throw new BadRequestException(
+          `Para borrarlo escribe el radicado tal cual: ${proceso.radicado}`,
+        );
+      }
+
+      const filas: { archivo_url: string }[] = await em.query(
+        `SELECT DISTINCT d.archivo_url
+           FROM hiring.documentos d
+           JOIN hiring.expedientes e ON e.id = d.expediente_id
+          WHERE e.proceso_id = $1 AND d.archivo_url IS NOT NULL`,
+        [procesoId],
+      );
+      await em.delete(Proceso, { id: procesoId });
+
+      const urls = filas.map((f) => f.archivo_url);
+      const enUso: { archivo_url: string }[] = urls.length
+        ? await em.query(
+            `SELECT DISTINCT archivo_url FROM hiring.documentos WHERE archivo_url = ANY($1::text[])`,
+            [urls],
+          )
+        : [];
+      const usados = new Set(enUso.map((f) => f.archivo_url));
+      return { radicado: proceso.radicado, archivos: urls.filter((u) => !usados.has(u)) };
+    });
+
+    await Promise.all(
+      archivos.map((url) => unlink(join(STORAGE_PATH, basename(url))).catch(() => undefined)),
+    );
+    this.logger.warn(
+      `Proceso ${radicado} (${procesoId}) borrado por ${acceso.userName}: ${dto.motivo.trim()}`,
+    );
+    return { radicado, archivosBorrados: archivos.length };
   }
 
   /**
@@ -723,6 +795,9 @@ export class EstudioPrevioService implements OnModuleInit {
         // decir «te toca» de un proceso cancelado o detenido.
         estado: proceso.estado,
         paaDetenido: await this.detenidoPorElPaa(procesoId),
+        // Lo decide el servicio, no la pantalla (108): el botón de borrar no
+        // se le enseña a nadie más que al superadministrador.
+        puedeBorrar: await this.puedeBorrar(acceso),
       },
       estado: actividad.estado,
       version: actividad.version,

@@ -92,6 +92,26 @@ export class CambiarModalidadDto {
   modalidad: string;
 }
 
+/**
+ * Borrar un proceso (108): el radicado escrito a mano y el motivo.
+ *
+ * El radicado confirma que se borra el que se quiere borrar; el motivo es lo
+ * único que queda, en el log, porque la trazabilidad se va con el proceso.
+ */
+export class BorrarProcesoDto {
+  @ApiProperty({ description: 'El radicado del proceso, escrito tal cual', example: 'CTO-2026-11691' })
+  @IsString()
+  @IsNotEmpty({ message: 'Escribe el radicado del proceso para confirmar' })
+  @MaxLength(60)
+  radicado: string;
+
+  @ApiProperty({ description: 'Por qué se borra', example: 'Proceso de prueba' })
+  @IsString()
+  @IsNotEmpty({ message: 'El motivo es obligatorio: es lo único que queda del proceso' })
+  @MaxLength(1000)
+  motivo: string;
+}
+
 export class RevisarDto {
   @ApiPropertyOptional({
     description:

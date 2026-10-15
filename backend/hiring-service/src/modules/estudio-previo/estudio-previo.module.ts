@@ -3,6 +3,7 @@ import { CadenaAprobacionModule } from '../cadena-aprobacion/cadena-aprobacion.m
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { EstudioPrevioController } from './estudio-previo.controller';
+import { BorrarProcesoController } from './borrar-proceso.controller';
 import { EstudioPrevioService } from './estudio-previo.service';
 import { FilesController } from './files.controller';
 import { ModalidadesController } from './modalidades.controller';
@@ -52,7 +53,13 @@ import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.modu
     DocumentosActividadModule,
     CierreActividadModule,
   ],
-  controllers: [EstudioPrevioController, ModalidadesController, PersonasController, FilesController],
+  controllers: [
+    EstudioPrevioController,
+    BorrarProcesoController,
+    ModalidadesController,
+    PersonasController,
+    FilesController,
+  ],
   providers: [EstudioPrevioService],
   // Una revisión por cambio del PAA puede devolver el estudio previo, con la
   // misma mecánica con que lo devuelve el abogado en la 3.4.

@@ -19,6 +19,7 @@ const TRANSVERSALES = [
   'contratacion.config.manage',
   'contratacion.reporte.view',
   'contratacion.plazo.terminar',
+  'contratacion.proceso.delete',
 ];
 
 /**
