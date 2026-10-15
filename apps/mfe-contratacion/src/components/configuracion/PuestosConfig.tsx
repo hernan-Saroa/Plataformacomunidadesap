@@ -131,11 +131,19 @@ export function PuestosConfig() {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-slate-600 m-0 leading-relaxed">
-        Los lugares que ocupa una persona en cada proceso. Se asignan al recibir el proceso, y cada actividad dice
-        cuál la hace o la aprueba (pestañas «Quién la hace» y «Aprobación»). Quién puede ocupar cada uno lo dicen los
-        permisos de lo que hace.
-      </p>
+      <div className="text-xs text-slate-600 leading-relaxed space-y-1">
+        <p className="m-0">
+          Un puesto es un cargo dentro de cada proceso, por ejemplo «Abogado» o «Jefe». Se usa en tres pasos:
+        </p>
+        <ol className="m-0 pl-5 space-y-0.5">
+          <li>Aquí creas el puesto.</li>
+          <li>En cada actividad eliges si ese puesto la hace o la aprueba.</li>
+          <li>Al recibir un proceso (3.3) se escoge la persona que ocupa el puesto en ese proceso.</li>
+        </ol>
+        <p className="m-0 text-slate-500">
+          Solo se puede escoger a alguien que tenga permiso para hacer lo que hace el puesto.
+        </p>
+      </div>
 
       {problemas.length > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 space-y-1">
