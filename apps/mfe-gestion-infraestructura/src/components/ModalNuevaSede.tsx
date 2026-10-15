@@ -344,7 +344,7 @@ export const ModalNuevaSede: React.FC<ModalNuevaSedeProps> = ({ open, onClose, o
                 onClick={() => setField('alcanceUmi', !form.alcanceUmi as any)}
                 disabled={cargando}
                 className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60 disabled:cursor-not-allowed ${
-                  form.alcanceUmi ? 'bg-blue-600' : 'bg-slate-300'
+                  form.alcanceUmi ? 'bg-blue-600' : 'bg-gray-300'
                 }`}
                 role="switch"
                 aria-checked={form.alcanceUmi}
@@ -357,7 +357,7 @@ export const ModalNuevaSede: React.FC<ModalNuevaSedeProps> = ({ open, onClose, o
               </button>
             </label>
 
-            <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer">
+            <label className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-slate-50/70 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer">
               <div className="space-y-0.5">
                 <p className="text-sm font-bold text-slate-800">Sede activa</p>
                 <p className="text-[11px] text-slate-500 font-medium">Desactivar para ocultar de listados predeterminados</p>
@@ -367,7 +367,7 @@ export const ModalNuevaSede: React.FC<ModalNuevaSedeProps> = ({ open, onClose, o
                 onClick={() => setField('isActivo', !form.isActivo as any)}
                 disabled={cargando}
                 className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60 disabled:cursor-not-allowed ${
-                  form.isActivo ? 'bg-emerald-600' : 'bg-slate-300'
+                  form.isActivo ? 'bg-emerald-600' : 'bg-gray-300'
                 }`}
                 role="switch"
                 aria-checked={form.isActivo}

@@ -29,6 +29,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
         schema: config.get<string>('DB_SCHEMA', 'infrastructure-management'),
         autoLoadEntities: true,
         synchronize: false,
+        logging: ['error'],
       }),
     }),
     SedesModule,

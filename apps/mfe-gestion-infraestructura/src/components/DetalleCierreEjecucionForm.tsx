@@ -252,10 +252,6 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
             {/* Resumen solicitud */}
             <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-                <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">Categoría</p>
-                <p className="text-xs font-medium text-slate-800 truncate">{categoriaTxt}</p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                 <p className="text-[10px] uppercase tracking-wide text-slate-500 mb-1">
                   Técnico responsable
                 </p>
