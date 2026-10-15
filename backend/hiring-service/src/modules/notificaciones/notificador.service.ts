@@ -409,6 +409,11 @@ export class NotificadorService implements OnApplicationBootstrap {
         // con el que el guard y el listado deciden quién lo ve.
         return this.alcance.cuentasQuePueden('editar', '3.3');
       case 'EQUIPO_FINANCIERO':
+        // La Financiera trabaja por fuera (103, 106): el aviso va a quien
+        // registra en el aplicativo lo que ella hizo. El RP y el cierre los
+        // registra Contratación (107); el CDP, el área en la 4.2.
+        if (ocurrido.numeral === '8.3') return this.alcance.cuentasQuePueden('decidir', '8.3');
+        if (ocurrido.numeral === '10.3') return this.alcance.cuentasQuePueden('editar', '10.3');
         return this.alcance.cuentasQuePueden('editar', '4.2');
       // Los mismos permisos que protegen la pantalla de cada cosa: quien puede
       // hacerla es a quien le toca.

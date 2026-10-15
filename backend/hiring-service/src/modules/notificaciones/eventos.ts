@@ -210,7 +210,7 @@ export const PAPELES: { codigo: PapelAviso; nombre: string }[] = [
   { codigo: 'CONTRATACION', nombre: 'Quien lo recibió en Contratación' },
   { codigo: 'RADICADOR', nombre: 'Quien radicó el proceso' },
   { codigo: 'BANDEJA_CONTRATACION', nombre: 'Quien puede recibirlo en Contratación' },
-  { codigo: 'EQUIPO_FINANCIERO', nombre: 'El equipo financiero' },
+  { codigo: 'EQUIPO_FINANCIERO', nombre: 'Quien registra el CDP, el RP o el cierre financiero' },
   { codigo: 'COMITE_EVALUADOR', nombre: 'El comité evaluador' },
   { codigo: 'SUPERVISOR', nombre: 'El supervisor del contrato' },
   { codigo: 'REPARTE_PROCESOS', nombre: 'Quien reparte los procesos en Contratación' },
