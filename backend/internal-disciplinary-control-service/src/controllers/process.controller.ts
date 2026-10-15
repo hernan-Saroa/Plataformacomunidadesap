@@ -35,6 +35,11 @@ import {
   limpiarNombreArchivo,
 } from '../services/indice-electronico-export.service';
 import {
+  FuidExportService,
+  FuidItemDto,
+  FuidHeaderDto,
+} from '../services/fuid-export.service';
+import {
   CreateDisciplinaryProcessDto,
   DisciplinaryProcessResponseDto,
 } from '../dtos/create-disciplinary-process.dto';
@@ -120,6 +125,7 @@ export class ProcessController {
     private permissionsService: PermissionsService,
     private processExportService: ProcessExportService,
     private indiceElectronicoExportService: IndiceElectronicoExportService,
+    private fuidExportService: FuidExportService,
   ) { }
 
   private normalizeRoleCode(role: unknown): string | null {
@@ -1161,6 +1167,99 @@ export class ProcessController {
     res.setHeader(
       'Content-Disposition',
       `attachment; filename="IndiceElectronico_${radicadoFinal}.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  }
+
+  /**
+   * Descargar FUID en lote (múltiples expedientes o filtro activo) en plantilla oficial EI-FO-003
+   */
+  @Post('fuid/batch')
+  @ApiOperation({
+    summary: 'Descargar FUID en lote (EI-FO-003)',
+    description: 'Genera el FUID en formato oficial EI-FO-003 con una fila por expediente para los expedientes seleccionados o filtrados',
+  })
+  async descargarFuidLote(
+    @Body() body: { items: FuidItemDto[]; header?: FuidHeaderDto },
+    @Res() res: Response,
+  ): Promise<void> {
+    const workbook = await this.fuidExportService.generar(
+      body.items || [],
+      body.header,
+    );
+
+    const hoy = new Date();
+    const yyyy = hoy.getFullYear();
+    const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+    const dd = String(hoy.getDate()).padStart(2, '0');
+    const fechaPrefix = `${yyyy}${mm}${dd}`;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${fechaPrefix}_FUID.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  }
+
+  /**
+   * Descargar FUID individual de un expediente en plantilla oficial EI-FO-003
+   */
+  @Post(':id/fuid')
+  @ApiOperation({
+    summary: 'Descargar FUID individual (EI-FO-003)',
+    description: 'Genera el FUID del expediente en formato oficial EI-FO-003 con una sola fila para el expediente',
+  })
+  async descargarFuidIndividual(
+    @Param('id') id: string,
+    @Body() body: { item: FuidItemDto; header?: FuidHeaderDto },
+    @Res() res: Response,
+  ): Promise<void> {
+    let item = body?.item;
+    if (!item?.radicado) {
+      try {
+        const proceso = await this.processService.findById(id);
+        if (proceso) {
+          item = {
+            ...item,
+            radicado: proceso.radicadoProceso || id,
+            nombreDisciplinado: (proceso.news as any)?.disciplinable?.nombre || 'Sin nombre',
+            asunto: (proceso.news as any)?.conductas?.[0] || 'Proceso Disciplinario',
+            notas: proceso.etapaActual || proceso.estado || 'En Proceso',
+          };
+        }
+      } catch (err) {
+        // Fallback
+      }
+    }
+
+    const items = item ? [item] : [];
+    const workbook = await this.fuidExportService.generar(
+      items,
+      body.header,
+    );
+
+    const hoy = new Date();
+    const yyyy = hoy.getFullYear();
+    const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+    const dd = String(hoy.getDate()).padStart(2, '0');
+    const fechaPrefix = `${yyyy}${mm}${dd}`;
+    const radicadoClean = item?.radicado || id;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${fechaPrefix}_FUID_${radicadoClean}.xlsx"`,
     );
 
     await workbook.xlsx.write(res);

@@ -953,6 +953,109 @@ class DisciplinaryService {
     }
 
     /**
+     * Descargar el FUID individual del expediente en el formato oficial EI-FO-003 (Excel).
+     */
+    async descargarFuidIndividual(
+        processId: string,
+        item: any,
+        header?: any,
+        filename?: string,
+    ): Promise<void> {
+        const restPath = `/disciplinary-processes/${processId}/fuid`;
+        const endpoint = API_MODE === 'direct'
+            ? restPath
+            : `/api/v1${restPath}`;
+        const url = buildApiUrl('control-disciplinario', endpoint);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/octet-stream',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ item, header }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorMessage = `Error ${response.status}: ${response.statusText}`;
+            try {
+                const errorJson = JSON.parse(errorText);
+                errorMessage = errorJson.message || errorMessage;
+            } catch {}
+            throw new Error(errorMessage);
+        }
+
+        const blob = await response.blob();
+        const hoy = new Date();
+        const yyyy = hoy.getFullYear();
+        const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+        const dd = String(hoy.getDate()).padStart(2, '0');
+        const fallbackName = `${yyyy}${mm}${dd}_FUID_${item?.radicado || processId}.xlsx`;
+
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename || fallbackName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+    }
+
+    /**
+     * Descargar el FUID en lote (múltiples expedientes o filtro activo) en el formato oficial EI-FO-003.
+     */
+    async descargarFuidLote(
+        items: any[],
+        header?: any,
+        filename?: string,
+    ): Promise<void> {
+        const restPath = `/disciplinary-processes/fuid/batch`;
+        const endpoint = API_MODE === 'direct'
+            ? restPath
+            : `/api/v1${restPath}`;
+        const url = buildApiUrl('control-disciplinario', endpoint);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/octet-stream',
+            },
+            credentials: 'include',
+            body: JSON.stringify({ items, header }),
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            let errorMessage = `Error ${response.status}: ${response.statusText}`;
+            try {
+                const errorJson = JSON.parse(errorText);
+                errorMessage = errorJson.message || errorMessage;
+            } catch {}
+            throw new Error(errorMessage);
+        }
+
+        const blob = await response.blob();
+        const hoy = new Date();
+        const yyyy = hoy.getFullYear();
+        const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+        const dd = String(hoy.getDate()).padStart(2, '0');
+        const fallbackName = `${yyyy}${mm}${dd}_FUID.xlsx`;
+
+        const downloadUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        link.download = filename || fallbackName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(downloadUrl);
+    }
+
+    /**
      * Descargar archivo desde una URL directa (para Autos y otros)
      */
     async downloadFileFromUrl(url: string, filename: string): Promise<void> {
