@@ -11,12 +11,21 @@ const acceso = { userId: 'u-1', userName: 'admin@esap.edu.co', roles: ['ADMINIST
  * Reemplazar es apagar lo que sobra e insertar lo que falta, sin tocar lo que
  * se queda: así la fila conserva quién la dio y cuándo.
  */
-function montar(actuales: any[], opciones: { rolExiste?: boolean; numerales?: string[] } = {}) {
+function montar(
+  actuales: any[],
+  opciones: { rolExiste?: boolean; numerales?: string[]; generales?: string[] } = {},
+) {
   const consultas: { sql: string; params: any[] }[] = [];
   const em = {
     query: jest.fn(async (sql: string, params: any[] = []) => {
       consultas.push({ sql, params });
       if (sql.includes('FROM auth.role WHERE')) return opciones.rolExiste === false ? [] : [{ id: ROL }];
+      // Los permisos generales del rol: por omisión, las cuatro acciones.
+      if (sql.includes('FROM auth.role_permissions')) {
+        return (opciones.generales ?? ['ver', 'editar', 'aprobar', 'decidir']).map((a) => ({
+          code: `contratacion.${a}`,
+        }));
+      }
       if (sql.includes('FROM hiring.actividades')) {
         return (opciones.numerales ?? params[0]).map((numeral: string) => ({ numeral }));
       }
@@ -45,6 +54,25 @@ const fila = (id: string, accion: string, etapa: number | null, numeral: string 
 });
 
 describe('AlcanceAdminService · guardar', () => {
+  it('no deja marcar una acción que el rol no tiene en los permisos generales', async () => {
+    const { service, consultas } = montar([], { generales: ['ver'] });
+
+    await expect(
+      service.guardar(ROL, [{ accion: 'editar', lugar: '3.6' }, { accion: 'ver', lugar: 'E3' }], acceso),
+    ).rejects.toThrow(/«Editar»/);
+    expect(consultas.some((c) => c.sql.includes('INSERT INTO hiring.alcances_permiso'))).toBe(false);
+  });
+
+  it('deja quieta la casilla que ya estaba aunque el rol haya perdido el permiso general', async () => {
+    // Si el permiso vuelve, vuelve a valer sin rehacerla; quitarla sigue siendo posible.
+    const { service, consultas } = montar([fila('a-vieja', 'editar', null, '3.6')], { generales: ['ver'] });
+
+    await service.guardar(ROL, [{ accion: 'editar', lugar: '3.6' }, { accion: 'ver', lugar: 'E3' }], acceso);
+
+    const insertados = consultas.filter((c) => c.sql.includes('INSERT INTO hiring.alcances_permiso'));
+    expect(insertados.map((c) => c.params[1])).toEqual(['ver']);
+  });
+
   it('apaga lo que sobra, inserta lo que falta y no toca lo que se queda', async () => {
     const { service, consultas, alcance } = montar([
       fila('a-queda', 'ver', 3, null),
