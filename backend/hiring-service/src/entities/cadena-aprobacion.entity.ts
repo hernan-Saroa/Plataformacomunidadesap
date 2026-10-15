@@ -23,7 +23,7 @@ export type AccionEscalon = 'APROBAR' | 'DEVOLVER' | 'NEGAR';
 export type ReglaDecision = 'UNO' | 'TODOS';
 
 /** Papeles del proceso que pueden responder por un escalón. */
-export type PapelEscalon = 'ABOGADO' | 'CONTRATACION' | 'FINANCIERA' | 'SUPERVISOR';
+export type PapelEscalon = 'ABOGADO' | 'CONTRATACION' | 'SUPERVISOR';
 
 /** Un escalón tal como se configura en la plantilla. */
 export interface EscalonConfigurado {

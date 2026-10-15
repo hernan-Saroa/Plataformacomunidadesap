@@ -19,7 +19,7 @@ import type {
 import type { EstadoActividad } from '../../entities/proceso-actividad.entity';
 
 export const ACCIONES: AccionEscalon[] = ['APROBAR', 'DEVOLVER', 'NEGAR'];
-export const PAPELES_ESCALON: PapelEscalon[] = ['ABOGADO', 'CONTRATACION', 'FINANCIERA', 'SUPERVISOR'];
+export const PAPELES_ESCALON: PapelEscalon[] = ['ABOGADO', 'CONTRATACION', 'SUPERVISOR'];
 const REGLAS: ReglaDecision[] = ['UNO', 'TODOS'];
 
 /** Lo que un escalón puede hacer si nadie dice otra cosa: lo que hacía el aprobador único. */

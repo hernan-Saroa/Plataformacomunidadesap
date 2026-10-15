@@ -3938,7 +3938,7 @@ export interface OrigenPaaDelProceso {
 
 export type AccionEscalon = 'APROBAR' | 'DEVOLVER' | 'NEGAR';
 export type ReglaDecision = 'UNO' | 'TODOS';
-export type PapelEscalon = 'ABOGADO' | 'CONTRATACION' | 'FINANCIERA' | 'SUPERVISOR';
+export type PapelEscalon = 'ABOGADO' | 'CONTRATACION' | 'SUPERVISOR';
 export type EstadoEscalon = 'BLOQUEADO' | 'PENDIENTE' | 'APROBADO' | 'DEVUELTO' | 'NEGADO' | 'ANULADO';
 
 /** Un escalón tal como se configura en la plantilla. */

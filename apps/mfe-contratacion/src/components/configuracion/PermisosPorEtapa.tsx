@@ -68,7 +68,8 @@ const GRUPOS_DE_TRAMITES = [
  * Los perfiles por defecto (EFDS-1183), como punto de partida.
  *
  * Catorce roles confunden a quien configura, y la Dirección los resumió en
- * cinco perfiles. Cada uno lo encarna un rol del catálogo; partir de un perfil
+ * cuatro perfiles —la Financiera salió con su rol en la 106—. Cada uno lo
+ * encarna un rol del catálogo; partir de un perfil
  * copia el alcance vigente de ese rol, así que si la Dirección cambia lo que
  * hace el abogado, el perfil cambia con él sin tocar el código.
  */
@@ -87,11 +88,6 @@ const PERFILES = [
     nombre: 'Abogado',
     rol: 'REVISOR_CONTRATACION',
     queHace: 'Revisa en la 3.4 (aprueba, devuelve o niega) y aprueba lo que carga Contratación.',
-  },
-  {
-    nombre: 'Financiera',
-    rol: 'ESTRUCTURADOR_FINANCIERO',
-    queHace: 'Gestiona el CDP, el RP, los pagos avalados y el cierre financiero; el resto del proceso solo lo consulta.',
   },
   { nombre: 'Consulta', rol: 'ENTE_DE_CONTROL', queHace: 'Consulta todo el proceso sin modificar nada.' },
 ];

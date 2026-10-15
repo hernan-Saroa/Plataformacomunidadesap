@@ -37,7 +37,6 @@ import {
 export const NOMBRE_PAPEL: Record<PapelEscalon, string> = {
   ABOGADO: 'El abogado del proceso',
   CONTRATACION: 'Quien lleva el proceso en Contratación',
-  FINANCIERA: 'La Financiera del proceso',
   SUPERVISOR: 'El supervisor del contrato',
 };
 
