@@ -33,7 +33,8 @@ const sinVeto = {
 
 /**
  * La modalidad dentro de la 3.1 (migración 094): el área la cambia mientras
- * arma el estudio previo, porque de ella depende la lista de documentos.
+ * arma el estudio previo, porque de ella depende la lista de documentos. El
+ * valor no: sale del PAA (migración 105).
  */
 describe('ModalidadDelEstudioPrevio', () => {
   beforeEach(() => {
@@ -71,7 +72,7 @@ describe('ModalidadDelEstudioPrevio', () => {
   it('cambiarla pide confirmación y avisa con el proceso nuevo', async () => {
     const nuevo = { ...proceso, modalidad: 'LICITACION_PUBLICA', modalidadNombre: 'Licitación Pública' };
     const cambiar = vi
-      .spyOn(contratacionService, 'cambiarCuantiaDelEstudioPrevio')
+      .spyOn(contratacionService, 'cambiarModalidadDelEstudioPrevio')
       .mockResolvedValue({ proceso: nuevo } as never);
     const onCambiada = vi.fn();
     render(
@@ -88,36 +89,23 @@ describe('ModalidadDelEstudioPrevio', () => {
     expect(cambiar).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'Cambiar la modalidad' }));
 
-    // El valor viaja sin cambios: la modalidad se cambia por la misma ruta.
-    expect(cambiar).toHaveBeenCalledWith('p-1', 20000000, 'LICITACION_PUBLICA');
+    expect(cambiar).toHaveBeenCalledWith('p-1', 'LICITACION_PUBLICA');
     expect(onCambiada).toHaveBeenCalledWith(nuevo);
   });
 
-  it('corrige el valor que se digitó mal, conservando la modalidad', async () => {
-    const nuevo = { ...proceso, valorEstimado: 2000000 };
-    const cambiar = vi
-      .spyOn(contratacionService, 'cambiarCuantiaDelEstudioPrevio')
-      .mockResolvedValue({ proceso: nuevo } as never);
-    const onCambiada = vi.fn();
+  it('el valor viene del PAA y no se edita (migración 105)', async () => {
     render(
-      <ModalidadDelEstudioPrevio procesoId="p-1" proceso={proceso} puedeCambiar onCambiada={onCambiada} />,
+      <ModalidadDelEstudioPrevio procesoId="p-1" proceso={proceso} puedeCambiar onCambiada={vi.fn()} />,
     );
 
+    expect(screen.getByText(/según el PAA/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Cambiar' }));
-    const valor = screen.getByLabelText(/Valor estimado del contrato/);
-    expect(valor).toHaveValue('20.000.000');
-    await userEvent.clear(valor);
-    await userEvent.type(valor, '2.000.000');
-    await userEvent.click(screen.getByRole('button', { name: 'Guardar el cambio' }));
-
-    expect(await screen.findByText(/Pasa de .*20\.000\.000 a .*2\.000\.000/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Corregir el valor' }));
-
-    expect(cambiar).toHaveBeenCalledWith('p-1', 2000000, 'MINIMA_CUANTIA');
-    expect(onCambiada).toHaveBeenCalledWith(nuevo);
+    expect(screen.queryByLabelText(/Valor estimado del contrato/)).toBeNull();
+    // Sin elegir otra modalidad no hay nada que guardar.
+    expect(screen.getByRole('button', { name: 'Guardar el cambio' })).toBeDisabled();
   });
 
-  it('si el valor nuevo obliga a licitación, la fija y deshabilita las de menor cuantía', async () => {
+  it('si el valor del PAA obliga a licitación, la fija y deshabilita las de menor cuantía', async () => {
     vi.spyOn(contratacionService, 'sugerenciaModalidad').mockResolvedValue({
       ...sinVeto,
       valorEstimado: 9000000000,

@@ -37,7 +37,6 @@ import { AccionEscalon } from '../../entities/cadena-aprobacion.entity';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import {
-  CambiarCuantiaDto,
   CambiarModalidadDto,
   CrearProcesoDesdePaaDto,
   CrearProcesoDto,
@@ -727,10 +726,14 @@ export class EstudioPrevioService implements OnModuleInit {
       },
       estado: actividad.estado,
       version: actividad.version,
-      // El valor estimado vive en el proceso desde EFDS-1147. Se inyecta aquí
-      // para que el estudio previo lo siga mostrando en su sitio sin duplicar
-      // el dato en el JSON de la actividad.
-      datos: { ...actividad.datos, valor_estimado: proceso.valorEstimado } as Record<string, any>,
+      // El valor y el objeto viven en el proceso y los dicta la línea del PAA
+      // (105). Se inyectan aquí para que el estudio previo los muestre en su
+      // sitio, y que lo mostrado sea siempre lo del proceso y no una copia.
+      datos: {
+        ...actividad.datos,
+        valor_estimado: proceso.valorEstimado,
+        objeto_contratar: proceso.objeto,
+      } as Record<string, any>,
       definicionCampos: campos,
       editable: actividad.estado === 'BORRADOR',
       /**
@@ -866,73 +869,6 @@ export class EstudioPrevioService implements OnModuleInit {
         modalidadAnterior: anterior,
         actividadesCambiadas,
       });
-    });
-
-    return this.obtener(procesoId, acceso);
-  }
-
-  /**
-   * Corrige el valor estimado, y la modalidad si la nueva cuantía la cambia.
-   *
-   * El valor se digita al crear el proceso y un cero de más se colaba hasta
-   * el final: no había dónde corregirlo. Se corrige en el mismo margen que la
-   * modalidad —la 3.1 en borrador o devuelta—, que es también cuando el abogado
-   * puede devolver el estudio previo porque el valor no es el que es.
-   *
-   * Pasa por los mismos umbrales que al crear: si el valor nuevo obliga a
-   * licitación pública, una modalidad de menor cuantía se rechaza, la actual
-   * incluida. Por eso la modalidad viaja en la misma llamada.
-   */
-  async cambiarCuantia(procesoId: string, dto: CambiarCuantiaDto, acceso: HiringAccess) {
-    await this.dataSource.transaction(async (em) => {
-      await this.exigirPaqueteEditable(em, procesoId, acceso);
-      const proceso = await this.validarEtapa(em, procesoId);
-
-      const codigo = dto.modalidad ?? proceso.modalidad;
-      // La nueva tiene que estar vigente; la que ya tenía el proceso se
-      // conserva aunque el catálogo la haya retirado después.
-      const modalidad = codigo
-        ? await em.findOne(Modalidad, {
-            where: dto.modalidad ? { codigo, activa: true } : { codigo },
-          })
-        : null;
-      if (dto.modalidad && !modalidad) {
-        throw new BadRequestException(
-          `La modalidad "${dto.modalidad}" no existe o ya no está vigente`,
-        );
-      }
-
-      const cambiaValor = dto.valorEstimado !== proceso.valorEstimado;
-      const cambiaModalidad = !!modalidad && modalidad.codigo !== proceso.modalidad;
-      if (!cambiaValor && !cambiaModalidad) return;
-
-      if (modalidad) await this.umbrales.exigirModalidadPermitida(dto.valorEstimado, modalidad);
-
-      const valorAnterior = proceso.valorEstimado;
-      const modalidadAnterior = proceso.modalidad;
-      proceso.valorEstimado = dto.valorEstimado;
-      if (cambiaModalidad) proceso.modalidad = modalidad.codigo;
-      await em.save(Proceso, proceso);
-
-      const actividadesCambiadas = cambiaModalidad
-        ? await this.configuracionService.reaplicarModalidad(em, procesoId, modalidad.codigo)
-        : [];
-
-      const actividad = await this.obtenerActividad(em, procesoId);
-      if (cambiaValor) {
-        await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'CAMBIAR_VALOR', acceso, {
-          valorEstimado: dto.valorEstimado,
-          valorAnterior,
-        });
-      }
-      if (cambiaModalidad) {
-        await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'CAMBIAR_MODALIDAD', acceso, {
-          modalidad: modalidad.codigo,
-          modalidadNombre: modalidad.nombre,
-          modalidadAnterior,
-          actividadesCambiadas,
-        });
-      }
     });
 
     return this.obtener(procesoId, acceso);
