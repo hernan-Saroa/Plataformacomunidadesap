@@ -342,33 +342,10 @@ export const GestionInfraestructuraModule: React.FC = () => {
                 ESAP Institucional
               </span>
             </div>
-            <p className="text-sm text-slate-600 font-medium mt-0.5">
-              Administración centralizada de sedes, bloques, aulas, laboratorios y órdenes de mantenimiento
-            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={fetchData}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-800 text-sm font-bold transition-all duration-200 active:scale-95 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            Sincronizar
-          </button>
-          {puedeRadicarSolicitud && (
-            <button
-              type="button"
-              onClick={() => setMostrarFormulario(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-md shadow-amber-500/25 ring-1 ring-amber-500/30 transition-all active:scale-95"
-            >
-              <Wrench className="w-4 h-4" />
-              Radicar Solicitud
-            </button>
-          )}
-        </div>
+        
       </div>
 
       {/* Métricas Globales (solo UMI / Admin / Técnico / Calidad) */}
@@ -387,7 +364,7 @@ export const GestionInfraestructuraModule: React.FC = () => {
             }`}
           >
             <Layers className="w-4 h-4" />
-            Espacios y Aulas ({espacios.length})
+            Inventario de Espacios ({espacios.length})
           </button>
         )}
 

@@ -22,6 +22,7 @@ describe('AssignmentsService — RF-REC-002', () => {
     email: 'ana@esap.edu.co',
     telefono: '3000000000',
     cargo: 'Analista Viáticos',
+    dependenciaId: 1,
     activo: true,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -211,6 +212,118 @@ describe('AssignmentsService — RF-REC-002', () => {
       expect(resultado[0].puntajeTotal).toBe(15);
       expect(resultado[0].colorSemaforo).toBe('ROJO');
     });
+
+    it('debe filtrar analistas estrictamente por idDependencia de la solicitud cuando se pasa solicitudId', async () => {
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'sol-10',
+          idDependencia: 5,
+        }),
+      };
+
+      const analistas = [
+        { ...mockAnalista, id: 'a1', usuarioId: 'u1', dependenciaId: 5, activo: true },
+        { ...mockAnalista, id: 'a2', usuarioId: 'u2', dependenciaId: 1, activo: true },
+      ];
+
+      const analistaRepo = {
+        find: jest.fn().mockResolvedValue(analistas),
+      };
+
+      const dataSource = {
+        transaction: jest.fn(),
+        createQueryBuilder: jest.fn(),
+        query: jest.fn().mockResolvedValue([]),
+      };
+
+      const module = await createMockModule({
+        solicitudRepo,
+        analistaRepo,
+        dataSource: dataSource as any,
+      });
+      const svc = module.get<AssignmentsService>(AssignmentsService);
+
+      const resultado = await svc.obtenerCargaAnalistas('sol-10');
+
+      expect(solicitudRepo.findOne).toHaveBeenCalledWith({
+        where: { id: 'sol-10' },
+        relations: ['comisionado'],
+      });
+      expect(resultado).toHaveLength(1);
+      expect(resultado[0].usuarioId).toBe('u1');
+    });
+
+    it('debe filtrar por comisionado.idDependencia si solicitud.idDependencia es null', async () => {
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'sol-20',
+          idDependencia: null,
+          comisionado: { idDependencia: 6 },
+        }),
+      };
+
+      const analistas = [
+        { ...mockAnalista, id: 'a1', usuarioId: 'u1', dependenciaId: 5, activo: true },
+        { ...mockAnalista, id: 'a3', usuarioId: 'u3', dependenciaId: 6, activo: true },
+      ];
+
+      const analistaRepo = {
+        find: jest.fn().mockResolvedValue(analistas),
+      };
+
+      const dataSource = {
+        transaction: jest.fn(),
+        createQueryBuilder: jest.fn(),
+        query: jest.fn().mockResolvedValue([]),
+      };
+
+      const module = await createMockModule({
+        solicitudRepo,
+        analistaRepo,
+        dataSource: dataSource as any,
+      });
+      const svc = module.get<AssignmentsService>(AssignmentsService);
+
+      const resultado = await svc.obtenerCargaAnalistas('sol-20');
+
+      expect(resultado).toHaveLength(1);
+      expect(resultado[0].usuarioId).toBe('u3');
+    });
+
+    it('debe retornar lista vacía si ningún analista activo pertenece a la dependencia de la solicitud (sin fallback a otras dependencias)', async () => {
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue({
+          id: 'sol-30',
+          idDependencia: 99,
+        }),
+      };
+
+      const analistas = [
+        { ...mockAnalista, id: 'a1', usuarioId: 'u1', dependenciaId: 1, activo: true },
+        { ...mockAnalista, id: 'a2', usuarioId: 'u2', dependenciaId: 5, activo: true },
+      ];
+
+      const analistaRepo = {
+        find: jest.fn().mockResolvedValue(analistas),
+      };
+
+      const dataSource = {
+        transaction: jest.fn(),
+        createQueryBuilder: jest.fn(),
+        query: jest.fn().mockResolvedValue([]),
+      };
+
+      const module = await createMockModule({
+        solicitudRepo,
+        analistaRepo,
+        dataSource: dataSource as any,
+      });
+      const svc = module.get<AssignmentsService>(AssignmentsService);
+
+      const resultado = await svc.obtenerCargaAnalistas('sol-30');
+
+      expect(resultado).toHaveLength(0);
+    });
   });
 
   describe('asignarAnalista', () => {
@@ -219,6 +332,7 @@ describe('AssignmentsService — RF-REC-002', () => {
         id: 'sol-001',
         consecutivoUnico: 'COM-2026-0001',
         estadoSolicitud: EstadoSolicitud.SOLICITADO,
+        idDependencia: 1,
         analistaAsignadoId: null,
         save: jest.fn().mockImplementation(async (ent: any) => ent),
       };
@@ -226,6 +340,7 @@ describe('AssignmentsService — RF-REC-002', () => {
       const solicitudRepo = {
         createQueryBuilder: jest.fn().mockReturnValue({
           setLock: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           getOne: jest.fn().mockResolvedValue(solicitud),
         }),
@@ -280,6 +395,7 @@ describe('AssignmentsService — RF-REC-002', () => {
         id: 'sol-ext-001',
         consecutivoUnico: 'COM-2026-0002',
         estadoSolicitud: EstadoSolicitud.EXTEMPORANEA,
+        idDependencia: 1,
         analistaAsignadoId: null,
       };
 
@@ -290,6 +406,9 @@ describe('AssignmentsService — RF-REC-002', () => {
             id: 'analista-1',
             usuarioId: 'user-analista-1',
             username: 'analista1',
+            nombreCompleto: 'Ana Gómez',
+            dependenciaId: 1,
+            activo: true,
           }),
         }),
       };
@@ -297,6 +416,7 @@ describe('AssignmentsService — RF-REC-002', () => {
       const solicitudRepo = {
         createQueryBuilder: jest.fn().mockReturnValue({
           setLock: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
           where: jest.fn().mockReturnThis(),
           getOne: jest.fn().mockResolvedValue(solicitud),
         }),
@@ -317,6 +437,141 @@ describe('AssignmentsService — RF-REC-002', () => {
 
       const resultado = await svc.asignarAnalista(
         'sol-ext-001',
+        'user-analista-1',
+        'secretario-1',
+      );
+
+      expect(resultado.solicitud.estadoSolicitud).toBe(
+        EstadoSolicitud.EN_VERIFICACION,
+      );
+      expect(resultado.solicitud.analistaAsignadoId).toBe('user-analista-1');
+    });
+
+    it('debe lanzar BadRequestException si el analista pertenece a una dependencia distinta a la de la solicitud', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADO,
+        idDependencia: 1,
+        analistaAsignadoId: null,
+      };
+
+      const analistaDistinto = {
+        ...mockAnalista,
+        usuarioId: 'user-analista-5',
+        dependenciaId: 5,
+        nombreCompleto: 'Carlos Jurídica',
+        activo: true,
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn(),
+      };
+
+      const analistaRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(analistaDistinto),
+        }),
+      };
+
+      const module = await createMockModule({ solicitudRepo, analistaRepo });
+      const svc = module.get<AssignmentsService>(AssignmentsService);
+
+      await expect(
+        svc.asignarAnalista('sol-001', 'user-analista-5', 'secretario-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('debe lanzar BadRequestException si el analista no tiene dependencia asignada (null)', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADO,
+        idDependencia: 1,
+        analistaAsignadoId: null,
+      };
+
+      const analistaSinDep = {
+        ...mockAnalista,
+        usuarioId: 'user-analista-null',
+        dependenciaId: null,
+        nombreCompleto: 'Analista Sin Dep',
+        activo: true,
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn(),
+      };
+
+      const analistaRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(analistaSinDep),
+        }),
+      };
+
+      const module = await createMockModule({ solicitudRepo, analistaRepo });
+      const svc = module.get<AssignmentsService>(AssignmentsService);
+
+      await expect(
+        svc.asignarAnalista('sol-001', 'user-analista-null', 'secretario-1'),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('debe permitir la asignación si la dependencia coincide a través del comisionado cuando idDependencia es null', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        estadoSolicitud: EstadoSolicitud.SOLICITADO,
+        idDependencia: null,
+        comisionado: { idDependencia: 1 },
+        analistaAsignadoId: null,
+      };
+
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          setLock: jest.fn().mockReturnThis(),
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(solicitud),
+        }),
+        save: jest.fn().mockImplementation(async (ent) => ent),
+      };
+
+      const analistaRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(mockAnalista),
+        }),
+      };
+
+      const historialRepo = {
+        create: jest.fn().mockImplementation((ent) => ent),
+        save: jest.fn().mockResolvedValue({ id: 'hist-001' }),
+      };
+
+      const module = await createMockModule({
+        solicitudRepo,
+        analistaRepo,
+        historialRepo,
+      });
+      const svc = module.get<AssignmentsService>(AssignmentsService);
+
+      const resultado = await svc.asignarAnalista(
+        'sol-001',
         'user-analista-1',
         'secretario-1',
       );

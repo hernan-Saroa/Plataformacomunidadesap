@@ -109,6 +109,8 @@ export interface NoticiaCompleta {
   conductaPersonalizada?: string;
   conducta?: string;
   conductas?: string[];
+  disciplinable?: any;
+  disciplinables?: any;
   denunciados?: DenunciadoCompleto[];
   denunciantes?: DenuncianteCompleto[];
   hechosSeparados?: HechoSeparado[];
@@ -150,6 +152,89 @@ interface HistorialEntry {
 const getApoderadoCorreo = (apoderado?: Apoderado) => apoderado?.correo || apoderado?.email || '';
 const getApoderadoCelular = (apoderado?: Apoderado) => apoderado?.celular || apoderado?.telefono || '';
 
+const normalizePersona = (d: any): any => {
+  if (!d) return null;
+  if (typeof d === 'string') return { nombre: d, identificacion: '', cargo: '', lugarHechos: '' };
+  return {
+    ...d,
+    id: d.id || d.cedula || d.identificacion || d.numeroIdentificacion || '',
+    nombre: d.nombre || d.name || 'Sin información',
+    identificacion: d.identificacion || d.cedula || d.numeroIdentificacion || '',
+    cargo: d.cargo || '',
+    lugarHechos: d.lugarHechos || d.dependencia || '',
+    dependencia: d.dependencia || d.lugarHechos || '',
+    correo: d.correo || d.email || '',
+    email: d.email || d.correo || '',
+    telefono: d.telefono || d.celular || '',
+    direccion: d.direccion || '',
+    entidad: d.entidad || '',
+    tipo: d.tipo || 'Denunciante',
+    apoderado: d.apoderado ? {
+      ...d.apoderado,
+      nombre: d.apoderado.nombre || '',
+      cedula: d.apoderado.cedula || d.apoderado.identificacion || '',
+      correo: d.apoderado.correo || d.apoderado.email || '',
+      email: d.apoderado.email || d.apoderado.correo || '',
+      celular: d.apoderado.celular || d.apoderado.telefono || '',
+      telefono: d.apoderado.telefono || d.apoderado.celular || '',
+      direccion: d.apoderado.direccion || ''
+    } : undefined
+  };
+};
+
+const normalizePersonaList = (rawSingle: any, rawPlural: any): any[] => {
+  const source = rawPlural && (Array.isArray(rawPlural) ? rawPlural.length > 0 : true)
+    ? rawPlural
+    : rawSingle;
+  if (!source) return [];
+  if (Array.isArray(source)) {
+    return source.map(normalizePersona).filter(Boolean);
+  }
+  if (typeof source === 'object') {
+    const norm = normalizePersona(source);
+    return norm ? [norm] : [];
+  }
+  if (typeof source === 'string') {
+    try {
+      const parsed = JSON.parse(source);
+      return normalizePersonaList(parsed, null);
+    } catch {
+      return [{ nombre: source, identificacion: '', cargo: '', lugarHechos: '' }];
+    }
+  }
+  return [];
+};
+
+const ORIGEN_LABELS: Record<string, string> = {
+  ANONIMO: 'Anónimo',
+  QUEJOSO: 'Quejoso',
+  OFICIO: 'De oficio',
+  REMISION: 'Remisión por competencia',
+  POR_DETERMINAR: 'Por determinar',
+  'Anónimo': 'Anónimo',
+  'Quejoso': 'Quejoso',
+  'Informante': 'Informante',
+  'De oficio': 'De oficio',
+  'Remisión por competencia': 'Remisión por competencia',
+  'Por determinar': 'Por determinar',
+};
+
+const formatOrigenLabel = (origen?: string | null): string => {
+  if (!origen) return '—';
+  const clean = String(origen).trim();
+  if (ORIGEN_LABELS[clean]) return ORIGEN_LABELS[clean];
+  const s = clean.toUpperCase();
+  if (ORIGEN_LABELS[s]) return ORIGEN_LABELS[s];
+  const norm = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (norm.includes('REMISI') || norm.includes('COMPETENC')) return 'Remisión por competencia';
+  if (norm.includes('ANONIM')) return 'Anónimo';
+  if (norm.includes('QUEJ')) return 'Quejoso';
+  if (norm.includes('INFORMANT')) return 'Informante';
+  if (norm.includes('OFICIO')) return 'De oficio';
+  if (norm.includes('DETERMINAR')) return 'Por determinar';
+  return clean;
+};
+
 // ═══════════════════════════════════════════════════════════════
 // UTILIDADES DE FECHA - Parseo local para fechas sin timezone
 // ═══════════════════════════════════════════════════════════════
@@ -190,9 +275,10 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
   const [tabActiva, setTabActiva] = useState<TabNoticia>('general');
   const [viewingFile, setViewingFile] = useState<ArchivoAdjunto | null>(null);
   const [fileBlobUrl, setFileBlobUrl] = useState<string | null>(null);
-  
-  // ✅ Validación defensiva: asegurar que noticia existe y tiene la estructura esperada
-  const n = noticia || {
+  const [fullNoticia, setFullNoticia] = useState<any>(null);
+
+  // ✅ Combinar props con datos frescos del backend si están disponibles
+  const baseNoticia = noticia || {
     id: '',
     numero: '',
     fechaRecepcion: '',
@@ -202,9 +288,31 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
     hechos: '',
     estado: 'pendiente',
     prioridad: 'media',
-    conduta: '',
+    conducta: '',
     diasPendientes: 0,
     tipo: 'noticia'
+  };
+
+  const n = {
+    ...baseNoticia,
+    ...(fullNoticia || {}),
+    // Asegurar que campos clave respeten nombres de frontend y backend
+    numero: fullNoticia?.radicado || fullNoticia?.numero || baseNoticia.numero,
+    fechaQueja: fullNoticia?.fechaQueja || baseNoticia.fechaQueja,
+    fechaRecepcion: fullNoticia?.fechaRecepcion || baseNoticia.fechaRecepcion,
+    fechaHechos: fullNoticia?.fechaHechos || baseNoticia.fechaHechos,
+    territorial: fullNoticia?.territorial || baseNoticia.territorial,
+    dependenciaDenunciado: fullNoticia?.dependenciaDenunciado || (baseNoticia as any).dependenciaDenunciado,
+    hechos: fullNoticia?.hechos || baseNoticia.hechos,
+    origen: fullNoticia?.origen || baseNoticia.origen,
+    denunciante: fullNoticia?.denunciante ?? baseNoticia.denunciante,
+    denunciantes: fullNoticia?.denunciantes ?? fullNoticia?.denunciante ?? baseNoticia.denunciantes,
+    denunciado: fullNoticia?.disciplinable ?? fullNoticia?.denunciado ?? baseNoticia.denunciado,
+    denunciados: fullNoticia?.disciplinables ?? fullNoticia?.disciplinable ?? baseNoticia.denunciados,
+    disciplinable: fullNoticia?.disciplinable ?? (baseNoticia as any).disciplinable,
+    disciplinables: fullNoticia?.disciplinables ?? (baseNoticia as any).disciplinables,
+    conductas: fullNoticia?.conductas || baseNoticia.conductas,
+    conducta: fullNoticia?.conducta || baseNoticia.conducta,
   };
 
   // ✅ Historial de auditoría — se trae aparte porque no viene en el objeto
@@ -214,14 +322,17 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
   const [historialError, setHistorialError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!n.id) return;
+    if (!baseNoticia.id) return;
     let cancelled = false;
     setHistorialLoading(true);
     setHistorialError(null);
-    disciplinaryService.getNoticiaById(n.id)
+    disciplinaryService.getNoticiaById(baseNoticia.id)
       .then((data) => {
         if (cancelled) return;
-        setHistorial(data?.historialAuditoria || []);
+        if (data) {
+          setFullNoticia(data);
+          setHistorial(data.historialAuditoria || []);
+        }
       })
       .catch((error: any) => {
         if (cancelled) return;
@@ -232,7 +343,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
         if (!cancelled) setHistorialLoading(false);
       });
     return () => { cancelled = true; };
-  }, [n.id]);
+  }, [baseNoticia.id]);
 
   // ✅ EFDS-1562 — Actuaciones registradas contra la noticia (desde radicación).
   const [actuaciones, setActuaciones] = useState<ActuacionNoticia[]>([]);
@@ -268,24 +379,27 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
     Permissions.CONTROL_DISCIPLINARIO_PROCESOS_ACTUACIONES_CREATE,
   );
 
-  // Extraer datos de persona (compatibilidad con formato string o Persona)
+  const denunciadosList = normalizePersonaList(n.disciplinable || n.denunciado, n.disciplinables || n.denunciados);
+  const denunciantesList = normalizePersonaList(n.denunciante, n.denunciantes);
+
+  // Extraer datos de persona (compatibilidad con formato string, objeto único o array)
   const getDenuncianteNombre = () => {
-    if (typeof n.denunciante === 'string') return n.denunciante || 'Sin información';
-    return n.denunciante?.nombre || 'Sin información';
+    return denunciantesList[0]?.nombre || 'Sin información';
   };
   const getDenunciadoNombre = () => {
-    if (typeof n.denunciado === 'string') return n.denunciado || 'Sin información';
-    return n.denunciado?.nombre || 'Sin información';
+    return denunciadosList[0]?.nombre || 'Sin información';
   };
   const getDenunciadoId = () => {
-    if (typeof n.denunciado !== 'string' && n.denunciado?.numeroIdentificacion) {
-      return `${n.denunciado.tipoIdentificacion || 'CC'}: ${n.denunciado.numeroIdentificacion}`;
+    const d = denunciadosList[0];
+    if (d?.identificacion) {
+      return `${d.tipoIdentificacion || 'CC'}: ${d.identificacion}`;
     }
     return '';
   };
   const getDenuncianteId = () => {
-    if (typeof n.denunciante !== 'string' && n.denunciante?.numeroIdentificacion) {
-      return `${n.denunciante.tipoIdentificacion || 'CC'}: ${n.denunciante.numeroIdentificacion}`;
+    const d = denunciantesList[0];
+    if (d?.identificacion) {
+      return `${d.tipoIdentificacion || 'CC'}: ${d.identificacion}`;
     }
     return '';
   };
@@ -309,8 +423,8 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
   const em = estadoMeta[estadoValue] || estadoMeta.pendiente;
 
   // Conteos para badges en tabs
-  const cantDenunciados = n.denunciado?.length || (n.denunciado ? 1 : 0);
-  const cantDenunciantes = n.denunciante?.length || (n.denunciante ? 1 : 0);
+  const cantDenunciados = denunciadosList.length;
+  const cantDenunciantes = denunciantesList.length;
   const cantHechos = n.hechosSeparados?.length || (n.hechos ? 1 : 0);
   const cantAdjuntos = n.archivosAdjuntos?.length || 0;
 
@@ -613,7 +727,7 @@ export function ModalDetallesNoticia({ noticia, onClose, onEditar, onConvertir, 
                 </span>
               </div>
               <p className="text-[11px] text-blue-200 mt-0.5 truncate">
-                {n.origen} · {getDenunciadoNombre()}
+                {formatOrigenLabel(n.origen)} · {getDenunciadoNombre()}
               </p>
             </div>
           </div>
@@ -759,8 +873,8 @@ function TabGeneral({
 
 
   // Preparar datos de personas para mostrar al inicio
-  let denunciados = n.denunciado && n.denunciado.length > 0 ? n.denunciado : [];
-  let denunciantes = n.denunciante && n.denunciante.length > 0 ? n.denunciante : [];
+  const denunciados = normalizePersonaList(n.disciplinable || n.denunciado, n.disciplinables || n.denunciados);
+  const denunciantes = normalizePersonaList(n.denunciante, n.denunciantes);
 
   
 
@@ -891,9 +1005,9 @@ function TabGeneral({
 <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-gray-100">
             {[
               { label: 'NÚMERO', value: n.numero },
-              { label: 'ORIGEN', value: n.origen || '—' },
+              { label: 'ORIGEN', value: formatOrigenLabel(n.origen) },
               { label: 'FECHA RECEPCIÓN', value: formatFechaLocal(n.fechaRecepcion) },
-              { label: 'FECHA QUEJA / NOTIFICACIÓN', value: formatFechaLocal(n.createdAt || n.fechaQueja || n.fechaRegistro) },
+              { label: 'FECHA QUEJA / NOTIFICACIÓN', value: formatFechaLocal(n.fechaQueja || n.fechaRecepcion || n.fechaRegistro || n.createdAt) },
             ].map(({ label, value }) => (
             <div key={label} className="px-4 py-3">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">{label}</p>
@@ -1024,8 +1138,8 @@ function TabPersonas({
   getDenunciadoId: () => string;
 }) {
   // Preparar datos de personas para mostrar al inicio
-  let denunciados = n.denunciado && n.denunciado.length > 0 ? n.denunciado : [];
-  let denunciantes = n.denunciante && n.denunciante.length > 0 ? n.denunciante : [];
+  const denunciados = normalizePersonaList(n.disciplinable || n.denunciado, n.disciplinables || n.denunciados);
+  const denunciantes = normalizePersonaList(n.denunciante, n.denunciantes);
 
   return (
     <div className="space-y-5">
@@ -1038,55 +1152,79 @@ function TabPersonas({
           </h3>
         </div>
         <div className="space-y-3">
-          {denunciados.map((d, idx) => (
-            <div key={d.id || idx} className="rounded-xl border-2 border-orange-200 bg-orange-50/30 p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-white"
-                  style={{ backgroundColor: '#EA580C' }}>
-                  {idx + 1}
+          {denunciados.length > 0 ? (
+            denunciados.map((d, idx) => (
+              <div key={d.id || idx} className="rounded-xl border-2 border-orange-200 bg-orange-50/30 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-white"
+                    style={{ backgroundColor: '#EA580C' }}>
+                    {idx + 1}
+                  </div>
+                  <div>
+                    <p className="text-sm font-black text-gray-900">{d.nombre || 'Sin información'}</p>
+                    {d.identificacion && <p className="text-xs text-gray-500">{d.identificacion}</p>}
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-black text-gray-900">{d.nombre || 'Sin información'}</p>
-                  {d.identificacion && <p className="text-xs text-gray-500">{d.identificacion}</p>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {d.cargo && (
+                    <div className="flex items-start gap-2">
+                      <Briefcase className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Cargo</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.cargo}</p>
+                      </div>
+                    </div>
+                  )}
+                  {d.lugarHechos && (
+                    <div className="flex items-start gap-2">
+                      <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Lugar de Hechos / Dependencia</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.lugarHechos}</p>
+                      </div>
+                    </div>
+                  )}
+                  {d.correo && (
+                    <div className="flex items-start gap-2">
+                      <Mail className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Correo</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.correo}</p>
+                      </div>
+                    </div>
+                  )}
+                  {d.telefono && (
+                    <div className="flex items-start gap-2">
+                      <Phone className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Teléfono</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.telefono}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {d.cargo && (
-                  <div className="flex items-start gap-2">
-                    <Briefcase className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Cargo</p>
-                      <p className="text-xs font-semibold text-gray-700">{d.cargo}</p>
+                {d.apoderado && (
+                  <div className="mt-3 pt-3 border-t border-orange-200">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Scale className="w-3.5 h-3.5 text-orange-600" />
+                      <span className="text-[10px] font-bold text-orange-600 uppercase">Apoderado</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                      <div><span className="text-gray-400 text-[10px] font-bold">NOMBRE</span><p className="font-semibold text-gray-700">{d.apoderado.nombre}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">CÉDULA</span><p className="font-semibold text-gray-700">{d.apoderado.cedula}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">CORREO</span><p className="font-semibold text-gray-700">{getApoderadoCorreo(d.apoderado) || 'Sin información'}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">CELULAR</span><p className="font-semibold text-gray-700">{getApoderadoCelular(d.apoderado) || 'Sin información'}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">DIRECCIÓN</span><p className="font-semibold text-gray-700">{d.apoderado.direccion || 'Sin información'}</p></div>
                     </div>
                   </div>
                 )}
-                {d.lugarHechos && (
-                  <div className="flex items-start gap-2">
-                    <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Lugar de Hechos</p>
-                      <p className="text-xs font-semibold text-gray-700">{d.lugarHechos}</p>
-                    </div>
-                  </div>
-                )}
               </div>
-               {d.apoderado && (
-                 <div className="mt-3 pt-3 border-t border-orange-200">
-                   <div className="flex items-center gap-1.5 mb-2">
-                     <Scale className="w-3.5 h-3.5 text-orange-600" />
-                     <span className="text-[10px] font-bold text-orange-600 uppercase">Apoderado</span>
-                   </div>
-                   <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-                     <div><span className="text-gray-400 text-[10px] font-bold">NOMBRE</span><p className="font-semibold text-gray-700">{d.apoderado.nombre}</p></div>
-                     <div><span className="text-gray-400 text-[10px] font-bold">CÉDULA</span><p className="font-semibold text-gray-700">{d.apoderado.cedula}</p></div>
-                     <div><span className="text-gray-400 text-[10px] font-bold">CORREO</span><p className="font-semibold text-gray-700">{getApoderadoCorreo(d.apoderado) || 'Sin información'}</p></div>
-                     <div><span className="text-gray-400 text-[10px] font-bold">CELULAR</span><p className="font-semibold text-gray-700">{getApoderadoCelular(d.apoderado) || 'Sin información'}</p></div>
-                     <div><span className="text-gray-400 text-[10px] font-bold">DIRECCIÓN</span><p className="font-semibold text-gray-700">{d.apoderado.direccion || 'Sin información'}</p></div>
-                   </div>
-                 </div>
-               )}
+            ))
+          ) : (
+            <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 text-center">
+              <p className="text-sm text-gray-500 italic">No hay información de disciplinados registrada</p>
             </div>
-          ))}
+          )}
         </div>
       </div>
 
@@ -1099,91 +1237,97 @@ function TabPersonas({
           </h3>
         </div>
         <div className="space-y-3">
-          {denunciantes.map((d, idx) => (
-            <div key={d.id || idx} className="rounded-xl border-2 border-blue-200 bg-blue-50/30 p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-white"
-                  style={{ backgroundColor: '#003DA5' }}>
-                  {idx + 1}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-black text-gray-900">{d.nombre || 'Sin información'}</p>
-                    {'tipo' in d && d.tipo && (
-                      <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
-                        d.tipo === 'Víctima' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
-                      }`}>
-                        {d.tipo}
-                      </span>
-                    )}
+          {denunciantes.length > 0 ? (
+            denunciantes.map((d, idx) => (
+              <div key={d.id || idx} className="rounded-xl border-2 border-blue-200 bg-blue-50/30 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-black text-white"
+                    style={{ backgroundColor: '#003DA5' }}>
+                    {idx + 1}
                   </div>
-                  {d.identificacion && <p className="text-xs text-gray-500">{d.identificacion}</p>}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-black text-gray-900">{d.nombre || 'Sin información'}</p>
+                      {'tipo' in d && d.tipo && (
+                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
+                          d.tipo === 'Víctima' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {d.tipo}
+                        </span>
+                      )}
+                    </div>
+                    {d.identificacion && <p className="text-xs text-gray-500">{d.identificacion}</p>}
+                  </div>
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {d.correo && (
+                    <div className="flex items-start gap-2">
+                      <Mail className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Correo</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.correo}</p>
+                      </div>
+                    </div>
+                  )}
+                  {d.telefono && (
+                    <div className="flex items-start gap-2">
+                      <Phone className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Teléfono</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.telefono}</p>
+                      </div>
+                    </div>
+                  )}
+                  {d.direccion && (
+                    <div className="flex items-start gap-2">
+                      <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Dirección</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.direccion}</p>
+                      </div>
+                    </div>
+                  )}
+                  {d.cargo && (
+                    <div className="flex items-start gap-2">
+                      <Briefcase className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Cargo</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.cargo}</p>
+                      </div>
+                    </div>
+                  )}
+                  {d.entidad && (
+                    <div className="flex items-start gap-2">
+                      <Building2 className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase">Entidad</p>
+                        <p className="text-xs font-semibold text-gray-700">{d.entidad}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {d.apoderado && (
+                  <div className="mt-3 pt-3 border-t border-blue-200">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Scale className="w-3.5 h-3.5 text-blue-600" />
+                      <span className="text-[10px] font-bold text-blue-600 uppercase">Apoderado</span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                      <div><span className="text-gray-400 text-[10px] font-bold">NOMBRE</span><p className="font-semibold text-gray-700">{d.apoderado.nombre}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">CÉDULA</span><p className="font-semibold text-gray-700">{d.apoderado.cedula}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">CORREO</span><p className="font-semibold text-gray-700">{getApoderadoCorreo(d.apoderado) || 'Sin información'}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">CELULAR</span><p className="font-semibold text-gray-700">{getApoderadoCelular(d.apoderado) || 'Sin información'}</p></div>
+                      <div><span className="text-gray-400 text-[10px] font-bold">DIRECCIÓN</span><p className="font-semibold text-gray-700">{d.apoderado.direccion || 'Sin información'}</p></div>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {d.correo && (
-                  <div className="flex items-start gap-2">
-                    <Mail className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Correo</p>
-                      <p className="text-xs font-semibold text-gray-700">{d.correo}</p>
-                    </div>
-                  </div>
-                )}
-                {d.telefono && (
-                  <div className="flex items-start gap-2">
-                    <Phone className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Teléfono</p>
-                      <p className="text-xs font-semibold text-gray-700">{d.telefono}</p>
-                    </div>
-                  </div>
-                )}
-                {d.direccion && (
-                  <div className="flex items-start gap-2">
-                    <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Dirección</p>
-                      <p className="text-xs font-semibold text-gray-700">{d.direccion}</p>
-                    </div>
-                  </div>
-                )}
-                {d.cargo && (
-                  <div className="flex items-start gap-2">
-                    <Briefcase className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Cargo</p>
-                      <p className="text-xs font-semibold text-gray-700">{d.cargo}</p>
-                    </div>
-                  </div>
-                )}
-                {d.entidad && (
-                  <div className="flex items-start gap-2">
-                    <Building2 className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase">Entidad</p>
-                      <p className="text-xs font-semibold text-gray-700">{d.entidad}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-              {d.apoderado && (
-                <div className="mt-3 pt-3 border-t border-blue-200">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Scale className="w-3.5 h-3.5 text-blue-600" />
-                    <span className="text-[10px] font-bold text-blue-600 uppercase">Apoderado</span>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-                    <div><span className="text-gray-400 text-[10px] font-bold">NOMBRE</span><p className="font-semibold text-gray-700">{d.apoderado.nombre}</p></div>
-                    <div><span className="text-gray-400 text-[10px] font-bold">CÉDULA</span><p className="font-semibold text-gray-700">{d.apoderado.cedula}</p></div>
-                    <div><span className="text-gray-400 text-[10px] font-bold">CORREO</span><p className="font-semibold text-gray-700">{getApoderadoCorreo(d.apoderado) || 'Sin información'}</p></div>
-                    <div><span className="text-gray-400 text-[10px] font-bold">CELULAR</span><p className="font-semibold text-gray-700">{getApoderadoCelular(d.apoderado) || 'Sin información'}</p></div>
-                    <div><span className="text-gray-400 text-[10px] font-bold">DIRECCIÓN</span><p className="font-semibold text-gray-700">{d.apoderado.direccion || 'Sin información'}</p></div>
-                  </div>
-                </div>
-              )}
+            ))
+          ) : (
+            <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 text-center">
+              <p className="text-sm text-gray-500 italic">No hay información de denunciantes registrada</p>
             </div>
-          ))}
+          )}
         </div>
       </div>
     </div>

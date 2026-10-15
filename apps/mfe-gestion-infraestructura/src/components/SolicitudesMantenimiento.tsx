@@ -484,7 +484,7 @@ export const SolicitudesMantenimientoView: React.FC<SolicitudesMantenimientoProp
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 w-full">
                 <div className="space-y-1.5 flex-1 w-full">
                   <div className="flex items-center gap-3 flex-wrap">
-                    <span className="font-mono font-bold text-xs bg-slate-200/80 text-slate-800 px-2 py-0.5 rounded inline-flex items-center gap-1.5">
+                    <span className="font-mono font-bold text-xl bg-slate-200/80 text-slate-800 px-2 py-0.5 rounded inline-flex items-center gap-1.5">
                       {m.consecutivo}
                       {/* EFDS-1738 RF-INF-009 Badge mini calificación ⭐X/5 (OQ3 default SÍ) */}
                       {m.resultadoConformidad === 'CONFIRMADA' &&

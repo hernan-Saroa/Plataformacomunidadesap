@@ -68,6 +68,42 @@ export async function subirVistaPrevia(archivo: Blob, nombreArchivo: string): Pr
   return id;
 }
 
+/**
+ * Pasa a PDF, con OnlyOffice en el servidor, un documento ya subido como vista
+ * previa (el Programa Anual en Excel). Devuelve el id de vista previa del PDF.
+ */
+export async function convertirVistaPreviaAPdf(id: string): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}/vista-previa/${id}/pdf`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: getDefaultHeaders(),
+  });
+  if (!res.ok) {
+    if (res.status === 401 || res.status === 403) throw new Error('No tiene permisos para ver este documento');
+    let detalle = '';
+    try {
+      detalle = (await res.json())?.message || '';
+    } catch {
+      // sin cuerpo
+    }
+    throw new Error(detalle || `No se pudo convertir a PDF (error ${res.status})`);
+  }
+  const datos = await res.json();
+  const idPdf = (datos?.data || datos)?.id;
+  if (!idPdf) throw new Error('No se pudo convertir a PDF');
+  return idPdf;
+}
+
+/** El archivo de una vista previa, para descargarlo tal cual. */
+export async function descargarVistaPrevia(id: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE_URL}/vista-previa/${id}/archivo`, {
+    credentials: 'include',
+    headers: getDefaultHeaders(),
+  });
+  if (!res.ok) throw new Error(`No se pudo descargar el documento (error ${res.status})`);
+  return res.blob();
+}
+
 let promesaScript: Promise<void> | null = null;
 
 /** Carga una sola vez el api.js de OnlyOffice. */

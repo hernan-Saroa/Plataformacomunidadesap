@@ -295,6 +295,8 @@ export interface SolicitudComisionResponse {
   };
   camposAdicionales?: Record<string, any>;
   itinerario?: RutaItinerario[];
+  tarifaEstimada?: TarifaEstimadaResult | null;
+  validacionTiquete?: TicketValidationResult | null;
 }
 
 /**

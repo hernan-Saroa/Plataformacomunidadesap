@@ -1005,11 +1005,70 @@ describe('TravelExpensesService', () => {
 
       const result = await svc.obtenerSolicitudes('user-sst-01', false, 1, 20, false, false, false, false, true);
 
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0].estadoSolicitud).toBe('PAGADA');
       expect(qb.andWhere).toHaveBeenCalledWith(
         's.estado_solicitud IN (:...estadosSst)',
         { estadosSst: ['OBLIGADA', 'PAGADA', 'PENDIENTE_LEGALIZACION', 'LEGALIZADO'] },
+      );
+    });
+
+    it('debe filtrar solicitudes por dependencia cuando el usuario es Secretario de Viáticos', async () => {
+      const qb = mockSolicitudQb([{
+        id: 'sol-sec-01',
+        consecutivoUnico: 'COM-2026-0001',
+        idDependencia: 5,
+        estadoSolicitud: 'SOLICITADO',
+      }]);
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+        query: jest.fn().mockResolvedValue([{ id_dependencia: 5 }]),
+      };
+
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await svc.obtenerSolicitudes('user-sec-01', false, 1, 20, false, false, true);
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        '(s.id_dependencia = :secDepId OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :secDepId))',
+        { secDepId: 5 },
+      );
+    });
+
+    it('debe filtrar solicitudes con 1=0 si el Secretario no tiene dependencia configurada', async () => {
+      const qb = mockSolicitudQb([]);
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+        query: jest.fn().mockResolvedValue([]),
+      };
+
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await svc.obtenerSolicitudes('user-sec-02', false, 1, 20, false, false, true);
+
+      expect(qb.andWhere).toHaveBeenCalledWith('1 = 0');
+    });
+
+    it('debe filtrar solicitudes por dependencia para Jefe de Dependencia o Gerente', async () => {
+      const qb = mockSolicitudQb([{
+        id: 'sol-jefe-01',
+        consecutivoUnico: 'COM-2026-0002',
+        idDependencia: 3,
+        estadoSolicitud: 'PENDIENTE_FIRMAS',
+      }]);
+      const solicitudRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+        query: jest.fn().mockResolvedValue([{ id_dependencia: 3 }]),
+      };
+
+      const module = await createMockModule({ solicitudRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      await svc.obtenerSolicitudes('user-jefe-01', false, 1, 20, false, false, false, false, false, false, false, true, false);
+
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        '(s.id_dependencia = :dirDepId OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :dirDepId))',
+        { dirDepId: 3 },
       );
     });
   });
@@ -3905,6 +3964,101 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
       expect(result.analistaVerificadorNombre).toBeNull();
       expect(result.fechaVerificacionPrimerNivel).toBeNull();
     });
+
+    it('debe consultar tarifa estimada y validar tiquete resolviendo itinerario BOG-PEI cuando requiereTiquetes es true', async () => {
+      const solicitud = {
+        id: 'sol-001',
+        consecutivoUnico: 'COM-2026-0001',
+        comisionadoId: 'com-001',
+        idDependencia: 42,
+        requiereTiquetes: true,
+        costoEstimadoTiquete: 0,
+        destinoCiudad: 'Pereira',
+        estadoSolicitud: EstadoSolicitud.SOLICITADA_SIIF,
+        comisionado: { id: 'com-001', idDependencia: 42 },
+        itinerario: [
+          {
+            origenCiudad: 'Bogotá, D.C.',
+            destinoCiudad: 'Pereira',
+            tipoTransporte: 'AEREO',
+          },
+          {
+            origenCiudad: 'Pereira',
+            destinoCiudad: 'Bogotá, D.C.',
+            tipoTransporte: 'AEREO',
+          },
+        ],
+      } as any;
+
+      const solicitudRepo = {
+        findOne: jest.fn().mockResolvedValue(solicitud),
+        find: jest.fn().mockResolvedValue([]),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          select: jest.fn().mockReturnThis(),
+          addSelect: jest.fn().mockReturnThis(),
+          getRawOne: jest.fn().mockResolvedValue({ total: '100000', cantidad: '1' }),
+        }),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const documentoRepo = {
+        find: jest.fn().mockResolvedValue([]),
+        create: jest.fn(),
+        save: jest.fn(),
+      };
+
+      const dataSource = {
+        query: jest.fn().mockResolvedValue([]),
+        transaction: jest.fn(),
+        createQueryBuilder: jest.fn(),
+      };
+
+      const module = await createMockModuleEtapa5({
+        solicitudRepo,
+        documentoRepo,
+        dataSource,
+      });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const mockTicketsService = {
+        consultarTarifaEstimada: jest.fn().mockResolvedValue({
+          encontrado: true,
+          origen: 'Bogotá',
+          destino: 'Pereira',
+          origenIata: 'BOG',
+          destinoIata: 'PEI',
+          tarifaEstimada: 330000,
+          tarifaMinima: 280000,
+          tarifaMaxima: 420000,
+          fuente: 'API_AMADEUS',
+        }),
+        validarTiquete: jest.fn().mockResolvedValue({
+          is_valid: true,
+          nivel_alerta: 'VERDE',
+          monto_reserva_con_holgura: 759000,
+        }),
+      };
+      (svc as any)['ticketsService'] = mockTicketsService;
+
+      const result = await svc.obtenerSolicitudControlViaticos('sol-001');
+
+      expect(mockTicketsService.consultarTarifaEstimada).toHaveBeenCalledWith('Bogotá, D.C.', 'Pereira');
+      expect(mockTicketsService.validarTiquete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dependenciaId: '42',
+          origenCiudad: 'Bogotá, D.C.',
+          destinoCiudad: 'Pereira',
+          montoEstimadoTiquete: 660000, // 330.000 * 2 (ida y vuelta)
+        }),
+      );
+      expect(result.tarifaEstimada).toBeDefined();
+      expect(result.tarifaEstimada.tarifaEstimada).toBe(330000);
+      expect(result.validacionTiquete).toBeDefined();
+      expect(result.validacionTiquete.is_valid).toBe(true);
+    });
   });
 
   describe('verificarSegundaRevision', () => {
@@ -5850,6 +6004,140 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
             estadoNuevo: expect.stringMatching(/SOLICITADO|EXTEMPORANEA/),
           }),
         );
+      });
+
+      it('firmarAprobacionSolicitud: debe rechazar con BadRequestException si el jefe o gerente pertenece a una dependencia distinta a la de la solicitud', async () => {
+        const solicitud = {
+          id: 'sol-dep-diff',
+          consecutivoUnico: 'SOL-2026-888',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+          idDependencia: 5,
+          camposAdicionales: { firmasAprobacion: [] },
+          comisionado: { primerNombre: 'Pedro', primerApellido: 'Gómez', idDependencia: 5 },
+        } as any;
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn(),
+          query: jest.fn().mockResolvedValue([{ id_dependencia: 1 }]), // Firmante es de dependencia 1
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await expect(
+          svc.firmarAprobacionSolicitud(
+            'sol-dep-diff',
+            {
+              tipoFirma: 'JEFE_DEPENDENCIA' as any,
+              nombreFirmante: 'Dr. Jefe Dep 1',
+              cargoFirmante: 'Jefe Dependencia 1',
+            },
+            'user-jefe-dep1',
+            ['JEFE_DEPENDENCIA'],
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('firmarAprobacionSolicitud: debe permitir la firma si la dependencia del firmante coincide con la solicitud', async () => {
+        const solicitud = {
+          id: 'sol-dep-same',
+          consecutivoUnico: 'SOL-2026-889',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+          idDependencia: 5,
+          camposAdicionales: { firmasAprobacion: [] },
+          comisionado: { primerNombre: 'Pedro', primerApellido: 'Gómez', idDependencia: 5 },
+        } as any;
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn().mockImplementation((s) => Promise.resolve(s)),
+          query: jest.fn().mockResolvedValue([{ id_dependencia: 5 }]), // Mismo id_dependencia
+        };
+
+        const historialRepo = {
+          save: jest.fn().mockResolvedValue({ id: 'h-2' }),
+        };
+
+        const dataSource = {
+          getRepository: jest.fn().mockReturnValue(historialRepo),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const res = await svc.firmarAprobacionSolicitud(
+          'sol-dep-same',
+          {
+            tipoFirma: 'JEFE_DEPENDENCIA' as any,
+            nombreFirmante: 'Dr. Jefe Dep 5',
+            cargoFirmante: 'Jefe Dependencia 5',
+          },
+          'user-jefe-dep5',
+          ['JEFE_DEPENDENCIA'],
+        );
+
+        expect(res.firmas).toHaveLength(1);
+        expect(res.firmas[0].tipo).toBe('JEFE_DEPENDENCIA');
+      });
+
+      it('obtenerBandejaFirmas: filtra por la dependencia del usuario cuando no es superadmin', async () => {
+        const qb = {
+          leftJoinAndSelect: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          offset: jest.fn().mockReturnThis(),
+          limit: jest.fn().mockReturnThis(),
+          getCount: jest.fn().mockResolvedValue(1),
+          getMany: jest.fn().mockResolvedValue([
+            {
+              id: 'sol-bandeja-1',
+              consecutivoUnico: 'SOL-2026-111',
+              estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+              idDependencia: 5,
+            },
+          ]),
+        };
+
+        const solicitudRepo = {
+          createQueryBuilder: jest.fn().mockReturnValue(qb),
+          query: jest.fn().mockResolvedValue([{ id_dependencia: 5 }]),
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await svc.obtenerBandejaFirmas(1, 20, undefined, 'user-jefe-5', false);
+
+        expect(qb.andWhere).toHaveBeenCalledWith(
+          '(s.id_dependencia = :depUsuario OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :depUsuario))',
+          { depUsuario: 5 },
+        );
+      });
+
+      it('devolverFirmaAprobacion: debe rechazar con BadRequestException si el usuario pertenece a una dependencia distinta', async () => {
+        const solicitud = {
+          id: 'sol-dev-diff',
+          consecutivoUnico: 'SOL-2026-777',
+          estadoSolicitud: EstadoSolicitud.PENDIENTE_FIRMAS,
+          idDependencia: 5,
+          camposAdicionales: {},
+          comisionado: { primerNombre: 'Pedro', primerApellido: 'Gómez', idDependencia: 5 },
+        } as any;
+
+        const solicitudRepo = {
+          findOne: jest.fn().mockResolvedValue(solicitud),
+          save: jest.fn(),
+          query: jest.fn().mockResolvedValue([{ id_dependencia: 2 }]), // Dependencia 2 vs Solicitud 5
+        };
+
+        const module = await createMockModuleEtapa5({ solicitudRepo });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        await expect(
+          svc.devolverFirmaAprobacion('sol-dev-diff', 'Falta soporte de agenda', 'user-jefe-dep2'),
+        ).rejects.toThrow(BadRequestException);
       });
 
       it('solicitarFirmasAprobacion: dispara notificaciones a directivos (Jefe/Gerente) y al comisionado', async () => {

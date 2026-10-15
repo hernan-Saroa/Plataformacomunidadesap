@@ -963,6 +963,7 @@ export function GestionNoticias() {
           fechaRegistro: news.createdAt || news.fechaRecepcion,
           fechaRecepcion: news.fechaRecepcion,
           fechaQueja: news.fechaQueja,  // Mostrar fecha de queja/notificación si existe
+          fechaHechos: news.fechaHechos, // ✅ Preservar fecha de hechos para edición
           conductas: news.conductas || [],
           descripcion: news.hechos || 'Sin descripción',
           hechos: news.hechos || '',
@@ -1307,11 +1308,15 @@ export function GestionNoticias() {
       const currentUser = authService.getCurrentUser();
       const usuarioNombre = currentUser?.nombre || currentUser?.nom_largo || currentUser?.username || currentUser?.email || 'Profesional';
 
+      const hechosFinal = (data.hechosSeparados && data.hechosSeparados.length > 0)
+        ? data.hechosSeparados.map((h: any, idx: number) => `Hecho ${idx + 1}: ${h.descripcion}`).join('\n\n')
+        : (data.hechos || data.descripcionHechos || noticiaParaEditar.hechos || '');
+
       await disciplinaryService.updateNoticia(noticiaParaEditar.id, {
         origen: mapOrigenToEnum(data.origen),
         territorial: data.territorial,
-        dependenciaDenunciado: disciplinablesArray[0]?.dependencia || noticiaParaEditar.dependenciaDenunciado,
-        hechos: data.descripcionHechos,
+        dependenciaDenunciado: disciplinablesArray[0]?.dependencia || disciplinablesArray[0]?.lugarHechos || data.dependenciaDenunciado || noticiaParaEditar.dependenciaDenunciado,
+        hechos: hechosFinal,
         denunciante: denunciantesArray,
         denunciantes: denunciantesArray,
         disciplinable: disciplinablesArray,
@@ -1319,9 +1324,11 @@ export function GestionNoticias() {
         conducta: data.conducta || data.conductaSeleccionada,
         conductas: (Array.isArray(data.conductas) && data.conductas.length > 0)
           ? data.conductas
-          : (data.conductasSeleccionadas || (data.conductaSeleccionada ? [data.conductaSeleccionada] : [])),
-        fechaHechos: data.fechaHechos || null,
-        fechaQueja: data.fechaQueja,
+          : (Array.isArray(data.conductasSeleccionadas) && data.conductasSeleccionadas.length > 0
+              ? data.conductasSeleccionadas
+              : (data.conducta || data.conductaSeleccionada ? [data.conducta || data.conductaSeleccionada] : [])),
+        fechaHechos: data.fechaHechos ? String(data.fechaHechos).split('T')[0] : null,
+        fechaQueja: data.fechaQueja ? String(data.fechaQueja).split('T')[0] : undefined,
         usuario: usuarioNombre,
         // ✅ Documentos adjuntos
         adjuntosParaEliminar: data.adjuntosParaEliminar || [],
@@ -1469,12 +1476,14 @@ export function GestionNoticias() {
       'INFORMANTE': 'Informante',
       'OFICIO': 'De oficio',
       'REMISION': 'Remisión por competencia',
+      'POR_DETERMINAR': 'Por determinar',
       // Fallbacks
       'Anónimo': 'Anónimo',
       'Quejoso': 'Quejoso',
       'Informante': 'Informante',
       'De oficio': 'De oficio',
-      'Remisión por competencia': 'Remisión por competencia'
+      'Remisión por competencia': 'Remisión por competencia',
+      'Por determinar': 'Por determinar'
     }[origen] || 'Anónimo';
 
     const configs: Record<string, { bg: string; text: string }> = {
@@ -1482,7 +1491,8 @@ export function GestionNoticias() {
       'Quejoso': { bg: '#DBEAFE', text: '#1E40AF' },
       'Informante': { bg: '#E0E7FF', text: '#4338CA' },
       'De oficio': { bg: '#F3E8FF', text: '#6B21A8' },
-      'Remisión por competencia': { bg: '#FEE2E2', text: '#991B1B' }
+      'Remisión por competencia': { bg: '#FEE2E2', text: '#991B1B' },
+      'Por determinar': { bg: '#FEF3C7', text: '#92400E' }
     };
     const config = configs[normalized] || configs['Anónimo'];
 

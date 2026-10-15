@@ -277,6 +277,9 @@ export class TravelExpensesService implements OnModuleInit {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toLowerCase()
+        .replace(/[\.,\-_/]/g, ' ')
+        .replace(/\b(d\s*c|distrito\s*capital|ciudad|municipio)\b/g, ' ')
+        .replace(/[^a-z0-9]/g, '')
         .trim();
 
     const esViajeIdaVuelta =
@@ -411,6 +414,35 @@ export class TravelExpensesService implements OnModuleInit {
     return null;
   }
 
+  async obtenerDependenciaUsuario(usuarioId?: string): Promise<number | null> {
+    if (!usuarioId) return null;
+    try {
+      const rows = await this.solicitudRepo.query(
+        `SELECT p.id_dependencia
+         FROM auth."user" u
+         LEFT JOIN auth.personas p ON p.id_person = u.id_person
+         WHERE u.id_user::text = $1
+         LIMIT 1`,
+        [usuarioId],
+      );
+      if (rows?.[0]?.id_dependencia != null) {
+        return Number(rows[0].id_dependencia);
+      }
+      const aRows = await this.solicitudRepo.query(
+        `SELECT dependencia_id FROM travel_expenses.analistas_viaticos WHERE usuario_id = $1 LIMIT 1`,
+        [usuarioId],
+      );
+      if (aRows?.[0]?.dependencia_id != null) {
+        return Number(aRows[0].dependencia_id);
+      }
+    } catch (e: any) {
+      this.logger.warn(
+        `[obtenerDependenciaUsuario] Error consultando dependencia para ${usuarioId}: ${e?.message}`,
+      );
+    }
+    return null;
+  }
+
   async obtenerSolicitudes(
     usuarioId?: string,
     isSuperAdmin = false,
@@ -423,6 +455,8 @@ export class TravelExpensesService implements OnModuleInit {
     isSst = false,
     isComisionado = false,
     soloComisionado = false,
+    isJefe = false,
+    isGerente = false,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     console.log(
       '[travel-expenses] service obtenerSolicitudes usuarioId=',
@@ -443,6 +477,10 @@ export class TravelExpensesService implements OnModuleInit {
       isComisionado,
       'soloComisionado=',
       soloComisionado,
+      'isJefe=',
+      isJefe,
+      'isGerente=',
+      isGerente,
       'page=',
       page,
       'limit=',
@@ -452,8 +490,8 @@ export class TravelExpensesService implements OnModuleInit {
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.comisionado', 'comisionado');
 
-    if ((!isSuperAdmin && !isSecretario) || soloComisionado) {
-      if (soloComisionado || (isComisionado && !isTesoreria && !isSst && !isControlViaticos && !isAnalista)) {
+    if (!isSuperAdmin || soloComisionado) {
+      if (soloComisionado || (isComisionado && !isTesoreria && !isSst && !isControlViaticos && !isAnalista && !isSecretario && !isJefe && !isGerente)) {
         if (usuarioId) {
           const datosPersona = await this.obtenerDatosPersonaPorUsuarioId(usuarioId);
           const docs = [datosPersona?.numIdentificacion].filter(Boolean) as string[];
@@ -475,6 +513,30 @@ export class TravelExpensesService implements OnModuleInit {
               }
             }),
           );
+        }
+      } else if (isSecretario) {
+        if (usuarioId) {
+          const depId = await this.obtenerDependenciaUsuario(usuarioId);
+          if (depId != null) {
+            query.andWhere(
+              '(s.id_dependencia = :secDepId OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :secDepId))',
+              { secDepId: depId },
+            );
+          } else {
+            query.andWhere('1 = 0');
+          }
+        }
+      } else if (isJefe || isGerente) {
+        if (usuarioId) {
+          const depId = await this.obtenerDependenciaUsuario(usuarioId);
+          if (depId != null) {
+            query.andWhere(
+              '(s.id_dependencia = :dirDepId OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :dirDepId))',
+              { dirDepId: depId },
+            );
+          } else {
+            query.andWhere('1 = 0');
+          }
         }
       } else if (isTesoreria) {
         query.andWhere('s.estado_solicitud IN (:...estadosTesoreria)', {
@@ -1919,6 +1981,53 @@ export class TravelExpensesService implements OnModuleInit {
   }
 
 
+  private resolverItinerarioCiudades(
+    itinerario?: any[],
+    destinoFallback?: string,
+    origenFallback?: string,
+  ): {
+    origenCiudad: string;
+    destinoCiudad: string;
+    esViajeIdaVuelta: boolean;
+  } {
+    if (!Array.isArray(itinerario) || itinerario.length === 0) {
+      return {
+        origenCiudad: origenFallback || 'Bogotá',
+        destinoCiudad: destinoFallback || 'Bogotá',
+        esViajeIdaVuelta: false,
+      };
+    }
+    const primerTramo = itinerario[0] || {};
+    const ultimoTramo = itinerario[itinerario.length - 1] || {};
+
+    const normalizarCiudad = (txt?: string) =>
+      (txt || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[\.,\-_/]/g, ' ')
+        .replace(/\b(d\s*c|distrito\s*capital|ciudad|municipio)\b/g, ' ')
+        .replace(/[^a-z0-9]/g, '')
+        .trim();
+
+    const esViajeIdaVuelta =
+      itinerario.length > 1 &&
+      normalizarCiudad(ultimoTramo.destinoCiudad) ===
+        normalizarCiudad(primerTramo.origenCiudad) &&
+      (ultimoTramo.destinoCiudad || '') !== '';
+
+    const origenCiudad = primerTramo.origenCiudad || origenFallback || 'Bogotá';
+    const destinoCiudad = esViajeIdaVuelta
+      ? ultimoTramo.origenCiudad || destinoFallback || ''
+      : ultimoTramo.destinoCiudad || destinoFallback || '';
+
+    return {
+      origenCiudad,
+      destinoCiudad: destinoCiudad || origenCiudad,
+      esViajeIdaVuelta,
+    };
+  }
+
   async obtenerSolicitudCompleta(
     solicitudId: string,
   ): Promise<
@@ -1938,6 +2047,7 @@ export class TravelExpensesService implements OnModuleInit {
       fechaVerificacionPrimerNivel?: string | null;
       liquidacion?: any;
       validacionTiquete?: any;
+      tarifaEstimada?: any;
     }
   > {
     const solicitud = await this.solicitudRepo.findOne({
@@ -2072,15 +2182,34 @@ export class TravelExpensesService implements OnModuleInit {
     }
 
     let validacionTiquete: any = undefined;
+    let tarifaEstimada: any = undefined;
+
     if (solicitud.requiereTiquetes && this.ticketsService) {
       try {
         const idDep = solicitud.idDependencia ?? solicitud.comisionado?.idDependencia ?? 1;
+        const { origenCiudad, destinoCiudad, esViajeIdaVuelta } =
+          this.resolverItinerarioCiudades(solicitud.itinerario, solicitud.destinoCiudad);
+
+        let montoEstimadoTiquete = Number(solicitud.costoEstimadoTiquete || 0);
+
+        try {
+          const respTarifa = await this.ticketsService.consultarTarifaEstimada(origenCiudad, destinoCiudad);
+          if (respTarifa && respTarifa.encontrado && respTarifa.tarifaEstimada > 0) {
+            tarifaEstimada = respTarifa;
+            if (!montoEstimadoTiquete || montoEstimadoTiquete === 0) {
+              montoEstimadoTiquete = respTarifa.tarifaEstimada * (esViajeIdaVuelta ? 2 : 1);
+            }
+          }
+        } catch (err: any) {
+          this.logger.warn(`[travel-expenses] No se pudo consultar tarifa estimada: ${err?.message}`);
+        }
+
         const resTiquete = await this.ticketsService.validarTiquete({
           dependenciaId: String(idDep),
-          origenCiudad: 'Bogotá',
-          destinoCiudad: solicitud.destinoCiudad || 'Bogotá',
+          origenCiudad,
+          destinoCiudad,
           tipoTransporte: 'AEREO',
-          montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete || 0),
+          montoEstimadoTiquete,
         });
         if (resTiquete) {
           validacionTiquete = resTiquete;
@@ -2102,6 +2231,7 @@ export class TravelExpensesService implements OnModuleInit {
         solicitud.fechaExportacionSiif?.toISOString() ?? null,
       liquidacion,
       validacionTiquete,
+      tarifaEstimada,
     };
   }
 
@@ -4579,6 +4709,38 @@ if (dto.costoEstimadoTiquete !== undefined) {
       );
     }
 
+    // Validación de pertenencia a la misma dependencia para Jefe y Gerente
+    const tipoFirmaStr = String(dto.tipoFirma || '').toUpperCase();
+    const esFirmaJefeOGerente =
+      tipoFirmaStr === 'JEFE_DEPENDENCIA' ||
+      tipoFirmaStr === 'GERENTE_PROYECTO';
+
+    const esSuperAdmin = this.esSuperAdmin(userRoles);
+
+    if (esFirmaJefeOGerente && !esSuperAdmin && usuarioId) {
+      const depSolicitud =
+        solicitud.idDependencia != null
+          ? Number(solicitud.idDependencia)
+          : solicitud.comisionado?.idDependencia != null
+          ? Number(solicitud.comisionado.idDependencia)
+          : null;
+
+      if (depSolicitud != null) {
+        const depFirmante = await this.obtenerDependenciaUsuario(usuarioId);
+        const firmantesAprobacion = this.determinarFirmantesAprobacion(solicitud);
+        const esReglaEspecial =
+          firmantesAprobacion.reglaDesplazamiento !== 'REGULAR';
+
+        if (!esReglaEspecial) {
+          if (depFirmante == null || depFirmante !== depSolicitud) {
+            throw new BadRequestException(
+              `No es posible firmar la aprobación: el usuario firmante pertenece a una dependencia distinta (${depFirmante ?? 'Sin asignar'}) a la de la solicitud (${depSolicitud}). Solo directivos de la misma dependencia pueden firmar la aprobación.`,
+            );
+          }
+        }
+      }
+    }
+
     // Validación de código OTP si fue suministrado o requerido
     if (dto.otp && dto.verificationId) {
       this.verificarOtpFirma({
@@ -4845,10 +5007,27 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     const solicitud = await this.solicitudRepo.findOne({
       where: { id: solicitudId },
+      relations: ['comisionado'],
     });
 
     if (!solicitud) {
       throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    const depSolicitud =
+      solicitud.idDependencia != null
+        ? Number(solicitud.idDependencia)
+        : solicitud.comisionado?.idDependencia != null
+        ? Number(solicitud.comisionado.idDependencia)
+        : null;
+
+    if (depSolicitud != null && usuarioId) {
+      const depUsuario = await this.obtenerDependenciaUsuario(usuarioId);
+      if (depUsuario != null && depUsuario !== depSolicitud) {
+        throw new BadRequestException(
+          `No es posible devolver la solicitud: su dependencia (${depUsuario}) no coincide con la dependencia de la solicitud (${depSolicitud}).`,
+        );
+      }
     }
 
     const estadoAnterior = solicitud.estadoSolicitud;
@@ -5070,6 +5249,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
     page = 1,
     limit = 20,
     busqueda?: string,
+    usuarioId?: string,
+    isSuperAdmin = false,
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     const query = this.solicitudRepo
       .createQueryBuilder('s')
@@ -5077,6 +5258,18 @@ if (dto.costoEstimadoTiquete !== undefined) {
       .where('s.estado_solicitud = :estado', {
         estado: EstadoSolicitud.PENDIENTE_FIRMAS,
       });
+
+    if (!isSuperAdmin && usuarioId) {
+      const depUsuario = await this.obtenerDependenciaUsuario(usuarioId);
+      if (depUsuario != null) {
+        query.andWhere(
+          '(s.id_dependencia = :depUsuario OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :depUsuario))',
+          { depUsuario },
+        );
+      } else {
+        query.andWhere('1 = 0');
+      }
+    }
 
     if (busqueda && busqueda.trim()) {
       const term = `%${busqueda.trim().toLowerCase()}%`;
@@ -8518,6 +8711,7 @@ if (itinerarioGeneral) {
        fechaVerificacionPrimerNivel?: string | null;
        liquidacion?: any;
        validacionTiquete?: any;
+       tarifaEstimada?: any;
      }
    > {
      const solicitud = await this.solicitudRepo.findOne({
@@ -8626,21 +8820,44 @@ if (itinerarioGeneral) {
        };
      }
 
-     // Validación proactiva de tiquete aéreo si la solicitud lo requiere
+     // Validación proactiva y consulta de tarifa estimada de tiquete aéreo si la solicitud lo requiere
      let validacionTiquete: any = null;
-     if (solicitud.requiereTiquetes && this.ticketsService && idDependencia != null) {
+     let tarifaEstimada: any = null;
+
+     if (solicitud.requiereTiquetes && this.ticketsService) {
+       const { origenCiudad, destinoCiudad, esViajeIdaVuelta } =
+         this.resolverItinerarioCiudades(solicitud.itinerario, solicitud.destinoCiudad);
+
+       let montoEstimadoTiquete = Number(solicitud.costoEstimadoTiquete || 0);
+
        try {
-         validacionTiquete = await this.ticketsService.validarTiquete({
-           dependenciaId: String(idDependencia),
-           montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete || 0),
-           origenCiudad: 'Bogotá',
-           destinoCiudad: solicitud.destinoCiudad || 'Bogotá',
-           tipoTransporte: 'AEREO',
-         });
+         const respTarifa = await this.ticketsService.consultarTarifaEstimada(origenCiudad, destinoCiudad);
+         if (respTarifa && respTarifa.encontrado && respTarifa.tarifaEstimada > 0) {
+           tarifaEstimada = respTarifa;
+           if (!montoEstimadoTiquete || montoEstimadoTiquete === 0) {
+             montoEstimadoTiquete = respTarifa.tarifaEstimada * (esViajeIdaVuelta ? 2 : 1);
+           }
+         }
        } catch (err: any) {
          this.logger.warn(
-           `[obtenerSolicitudControlViaticos] No se pudo validar tiquete con TicketsService: ${err?.message}`,
+           `[obtenerSolicitudControlViaticos] No se pudo consultar tarifa estimada: ${err?.message}`,
          );
+       }
+
+       if (idDependencia != null) {
+         try {
+           validacionTiquete = await this.ticketsService.validarTiquete({
+             dependenciaId: String(idDependencia),
+             montoEstimadoTiquete,
+             origenCiudad,
+             destinoCiudad,
+             tipoTransporte: 'AEREO',
+           });
+         } catch (err: any) {
+           this.logger.warn(
+             `[obtenerSolicitudControlViaticos] No se pudo validar tiquete con TicketsService: ${err?.message}`,
+           );
+         }
        }
      }
 
@@ -8653,6 +8870,7 @@ if (itinerarioGeneral) {
          solicitud.fechaExportacionSiif?.toISOString() ?? null,
        liquidacion,
        validacionTiquete,
+       tarifaEstimada,
      };
    }
 
@@ -8925,6 +9143,10 @@ if (itinerarioGeneral) {
         firmaControlViaticos: firmaControlData,
         firmasAprobacion: prevFirmas,
       };
+
+      if (dto.costoEstimadoTiquete != null && Number(dto.costoEstimadoTiquete) >= 0) {
+        solicitud.costoEstimadoTiquete = Number(dto.costoEstimadoTiquete);
+      }
 
       const saved = await manager
         .getRepository(SolicitudComisionEntity)

@@ -67,6 +67,17 @@ export class NewsService {
     return await this.terminosService.diasHabilesRestantes(fechaVencimiento);
   }
 
+  private normalizeOrig(orig?: string | null): NewsOrigin {
+    if (!orig) return NewsOrigin.POR_DETERMINAR;
+    const s = String(orig).trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (s.includes('ANONIM')) return NewsOrigin.ANONIMO;
+    if (s.includes('QUEJ') || s.includes('INFORMANT')) return NewsOrigin.QUEJOSO;
+    if (s.includes('OFICIO')) return NewsOrigin.OFICIO;
+    if (s.includes('REMISI') || s.includes('COMPETENC')) return NewsOrigin.REMISION;
+    if (s.includes('DETERMINAR')) return NewsOrigin.POR_DETERMINAR;
+    return (orig as NewsOrigin) || NewsOrigin.POR_DETERMINAR;
+  }
+
   /**
    * Radica una nueva noticia disciplinaria
    */
@@ -134,10 +145,19 @@ export class NewsService {
         fechaRecepcionValue = new Date();
       }
 
+      // Normalizar conductas
+      const initialConductas = (Array.isArray(createNewsDto.conductas) && createNewsDto.conductas.length > 0)
+        ? createNewsDto.conductas
+        : (createNewsDto.conducta ? [createNewsDto.conducta] : []);
+      const initialConducta = createNewsDto.conducta || (initialConductas.length > 0 ? initialConductas[0] : undefined);
+
       // Crear y guardar noticia
       const noticia = this.newsRepository.create({
         radicado,
         ...createNewsDto,
+        conducta: initialConducta,
+        conductas: initialConductas,
+        origen: this.normalizeOrig(createNewsDto.origen),
         radicadorId: createNewsDto.radicadorId || userId,
         adjuntos,
         fechaCaducidad,
@@ -443,21 +463,51 @@ export class NewsService {
       if (!orig) return '';
       const s = String(orig).trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       if (s.includes('ANONIM')) return NewsOrigin.ANONIMO;
-      if (s.includes('QUEJ')) return NewsOrigin.QUEJOSO;
+      if (s.includes('QUEJ') || s.includes('INFORMANT')) return NewsOrigin.QUEJOSO;
       if (s.includes('OFICIO')) return NewsOrigin.OFICIO;
-      if (s.includes('REMISI')) return NewsOrigin.REMISION;
+      if (s.includes('REMISI') || s.includes('COMPETENC')) return NewsOrigin.REMISION;
       if (s.includes('DETERMINAR')) return NewsOrigin.POR_DETERMINAR;
       return s;
     };
 
+    // Helper: verificar si un valor es equivalente a vacío / placeholder
+    const isPlaceholder = (val: any): boolean => {
+      if (val === null || val === undefined) return true;
+      const s = String(val).trim().toLowerCase();
+      return (
+        s === '' ||
+        s === 'n/a' ||
+        s === 'na' ||
+        s === 'sin dependencia' ||
+        s === 'sin entidad' ||
+        s === 'sin direccion' ||
+        s === 'sin dirección' ||
+        s === 'sin telefono' ||
+        s === 'sin teléfono' ||
+        s === 'sin-correo@esap.edu.co' ||
+        s === 'sin correo' ||
+        s === 'por determinar' ||
+        s === 'ninguno' ||
+        s === 'ninguna'
+      );
+    };
+
     // Helper: comparar listas o entidades de personas (denunciante / disciplinable)
     const arePersonsEqual = (a: any, b: any): boolean => {
-      const cleanVal = (val: any) =>
+      const cleanVal = (val: any): string =>
         typeof val === 'string'
           ? val.trim().toLowerCase()
           : val !== null && val !== undefined
           ? String(val).trim().toLowerCase()
           : '';
+
+      const areFieldValuesEqual = (valA: any, valB: any): boolean => {
+        const sA = cleanVal(valA);
+        const sB = cleanVal(valB);
+        if (sA === sB) return true;
+        if (isPlaceholder(sA) && isPlaceholder(sB)) return true;
+        return false;
+      };
 
       const normalizePerson = (p: any) => {
         if (!p || typeof p !== 'object') {
@@ -471,14 +521,14 @@ export class NewsService {
           direccion: cleanVal(p.apoderado.direccion),
         } : undefined;
 
-        const hasApodData = apod && Object.values(apod).some(v => v !== '');
+        const hasApodData = apod && Object.values(apod).some((v) => !isPlaceholder(v));
 
         return {
           nombre: cleanVal(p.nombre),
           cedula: cleanVal(p.cedula || p.identificacion || p.numeroIdentificacion || p.documento),
           cargo: cleanVal(p.cargo),
-          dependencia: cleanVal(p.dependencia || p.lugarHechos),
-          entidad: cleanVal(p.entidad),
+          dependencia: cleanVal(p.dependencia || p.lugarHechos || p.entidad),
+          entidad: cleanVal(p.entidad || p.dependencia || p.lugarHechos),
           telefono: cleanVal(p.telefono || p.celular),
           email: cleanVal(p.email || p.correo),
           direccion: cleanVal(p.direccion),
@@ -488,8 +538,19 @@ export class NewsService {
       };
 
       const toList = (val: any) => {
-        const raw = Array.isArray(val) ? val : val ? [val] : [];
-        return raw.map(normalizePerson).filter((p) => p.nombre || p.cedula || p.cargo || p.dependencia);
+        let parsed = val;
+        if (typeof val === 'string') {
+          const s = val.trim();
+          if ((s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'))) {
+            try {
+              parsed = JSON.parse(s);
+            } catch {
+              parsed = val;
+            }
+          }
+        }
+        const raw = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === 'object') ? [parsed] : [];
+        return raw.map(normalizePerson).filter((p) => !isPlaceholder(p.nombre) || !isPlaceholder(p.cedula) || !isPlaceholder(p.cargo) || !isPlaceholder(p.dependencia));
       };
 
       const listA = toList(a);
@@ -500,31 +561,31 @@ export class NewsService {
       for (let i = 0; i < listA.length; i++) {
         const pA = listA[i];
         const pB = listB[i];
-        if (
-          pA.nombre !== pB.nombre ||
-          pA.cedula !== pB.cedula ||
-          pA.cargo !== pB.cargo ||
-          pA.dependencia !== pB.dependencia ||
-          (pA.entidad && pB.entidad && pA.entidad !== pB.entidad) ||
-          (pA.telefono && pB.telefono && pA.telefono !== pB.telefono) ||
-          (pA.email && pB.email && pA.email !== pB.email) ||
-          (pA.direccion && pB.direccion && pA.direccion !== pB.direccion) ||
-          (pA.tipo && pB.tipo && pA.tipo !== pB.tipo)
-        ) {
-          return false;
-        }
 
-        if (Boolean(pA.apoderado) !== Boolean(pB.apoderado)) return false;
-        if (pA.apoderado && pB.apoderado) {
-          if (
-            pA.apoderado.nombre !== pB.apoderado.nombre ||
-            pA.apoderado.cedula !== pB.apoderado.cedula ||
-            pA.apoderado.email !== pB.apoderado.email ||
-            pA.apoderado.telefono !== pB.apoderado.telefono ||
-            pA.apoderado.direccion !== pB.apoderado.direccion
-          ) {
-            return false;
-          }
+        if (!areFieldValuesEqual(pA.nombre, pB.nombre)) return false;
+        if (!areFieldValuesEqual(pA.cedula, pB.cedula)) return false;
+        if (!areFieldValuesEqual(pA.cargo, pB.cargo)) return false;
+        if (!areFieldValuesEqual(pA.dependencia, pB.dependencia)) return false;
+        if (!areFieldValuesEqual(pA.entidad, pB.entidad)) return false;
+        if (!areFieldValuesEqual(pA.telefono, pB.telefono)) return false;
+        if (!areFieldValuesEqual(pA.email, pB.email)) return false;
+        if (!areFieldValuesEqual(pA.direccion, pB.direccion)) return false;
+
+        // Tipo: 'denunciante' por defecto no diverge de ausencia de tipo
+        const tipoA = isPlaceholder(pA.tipo) || pA.tipo === 'denunciante' ? 'denunciante' : pA.tipo;
+        const tipoB = isPlaceholder(pB.tipo) || pB.tipo === 'denunciante' ? 'denunciante' : pB.tipo;
+        if (tipoA !== tipoB) return false;
+
+        // Apoderado
+        const apodA = pA.apoderado;
+        const apodB = pB.apoderado;
+        if (Boolean(apodA) !== Boolean(apodB)) return false;
+        if (apodA && apodB) {
+          if (!areFieldValuesEqual(apodA.nombre, apodB.nombre)) return false;
+          if (!areFieldValuesEqual(apodA.cedula, apodB.cedula)) return false;
+          if (!areFieldValuesEqual(apodA.email, apodB.email)) return false;
+          if (!areFieldValuesEqual(apodA.telefono, apodB.telefono)) return false;
+          if (!areFieldValuesEqual(apodA.direccion, apodB.direccion)) return false;
         }
       }
 
@@ -555,8 +616,17 @@ export class NewsService {
     if (data.dependenciaDenunciado !== undefined && data.dependenciaDenunciado !== null) {
       const depActual = normalizeStr(noticia.dependenciaDenunciado);
       const depNueva = normalizeStr(data.dependenciaDenunciado);
-      if (depNueva && depNueva !== depActual) {
-        cambios.push('Dependencia del denunciado modificada');
+      const depActualSignificativa = !isPlaceholder(depActual);
+      const depNuevaSignificativa = !isPlaceholder(depNueva);
+
+      if (depActualSignificativa && depNuevaSignificativa && depNueva.toLowerCase() !== depActual.toLowerCase()) {
+        cambios.push(`Dependencia del denunciado modificada: ${noticia.dependenciaDenunciado} → ${data.dependenciaDenunciado}`);
+        noticia.dependenciaDenunciado = data.dependenciaDenunciado;
+      } else if (!depActualSignificativa && depNuevaSignificativa) {
+        // Estaba vacía o sin definir en DB y se completa desde la del denunciado sin registrar cambio falso
+        noticia.dependenciaDenunciado = data.dependenciaDenunciado;
+      } else if (depActualSignificativa && !depNuevaSignificativa) {
+        cambios.push('Dependencia del denunciado eliminada');
         noticia.dependenciaDenunciado = data.dependenciaDenunciado;
       }
     }
@@ -573,14 +643,38 @@ export class NewsService {
 
     // 5. Fecha de la queja / recepción
     if (data.fechaQueja !== undefined && data.fechaQueja !== null && data.fechaQueja !== '') {
-      const fechaActual = normalizeDate(noticia.fechaQueja) || normalizeDate(noticia.fechaRecepcion);
+      const fechaActualQueja = normalizeDate(noticia.fechaQueja);
+      const fechaActualRecepcion = normalizeDate(noticia.fechaRecepcion);
       const fechaNueva = normalizeDate(data.fechaQueja);
-      if (fechaNueva && fechaNueva !== fechaActual) {
-        cambios.push(`Fecha de la queja modificada: ${fechaNueva}`);
+      if (fechaNueva) {
         const [y, m, d] = (data.fechaQueja as string).split('T')[0].split('-').map(Number);
         const fechaSegura = new Date(y, m - 1, d, 12, 0, 0);
-        noticia.fechaQueja = fechaSegura;
+
+        const fechaComparar = fechaActualQueja || fechaActualRecepcion;
+        if (fechaNueva !== fechaComparar) {
+          cambios.push(`Fecha de la queja modificada: ${fechaNueva}`);
+          noticia.fechaQueja = fechaSegura;
+          noticia.fechaRecepcion = fechaSegura;
+        } else if (!noticia.fechaQueja) {
+          // Si era igual a fechaRecepcion pero fechaQueja en BD estaba null, persistirla
+          noticia.fechaQueja = fechaSegura;
+        }
+      }
+    }
+
+    if (data.fechaRecepcion !== undefined && data.fechaRecepcion !== null && data.fechaRecepcion !== '') {
+      const fechaActualRec = normalizeDate(noticia.fechaRecepcion);
+      const fechaNuevaRec = normalizeDate(data.fechaRecepcion);
+      if (fechaNuevaRec && fechaNuevaRec !== fechaActualRec) {
+        if (!data.fechaQueja) {
+          cambios.push(`Fecha de recepción modificada: ${fechaNuevaRec}`);
+        }
+        const [y, m, d] = (data.fechaRecepcion as string).split('T')[0].split('-').map(Number);
+        const fechaSegura = new Date(y, m - 1, d, 12, 0, 0);
         noticia.fechaRecepcion = fechaSegura;
+        if (!noticia.fechaQueja) {
+          noticia.fechaQueja = fechaSegura;
+        }
       }
     }
 
@@ -590,14 +684,19 @@ export class NewsService {
       const fechaHechosNueva = normalizeDate(data.fechaHechos);
       if (fechaHechosNueva !== fechaHechosActual) {
         if (fechaHechosNueva === null) {
-          cambios.push('Fecha de hechos: eliminada (por determinar)');
-          (noticia as any).fechaHechos = null;
-          (noticia as any).fechaCaducidad = null;
+          if (fechaHechosActual !== null) {
+            cambios.push('Fecha de hechos: eliminada (por determinar)');
+            (noticia as any).fechaHechos = null;
+            (noticia as any).fechaCaducidad = null;
+          }
         } else {
           cambios.push(`Fecha de hechos: ${fechaHechosNueva}`);
-          noticia.fechaHechos = new Date(data.fechaHechos);
-          noticia.fechaCaducidad = new Date(data.fechaHechos);
-          noticia.fechaCaducidad.setFullYear(noticia.fechaCaducidad.getFullYear() + 5);
+          const [y, m, d] = fechaHechosNueva.split('-').map(Number);
+          const fechaSegura = new Date(y, m - 1, d, 12, 0, 0);
+          noticia.fechaHechos = fechaSegura;
+          const caducidad = new Date(fechaSegura);
+          caducidad.setFullYear(caducidad.getFullYear() + 5);
+          noticia.fechaCaducidad = caducidad;
         }
       }
     }
@@ -619,13 +718,36 @@ export class NewsService {
     }
 
     // 9. Conductas
+    const extractConductaStr = (c: any): string => {
+      if (!c) return '';
+      if (typeof c === 'string') return normalizeStr(c).toLowerCase();
+      if (typeof c === 'object') {
+        const val = c.nombre || c.name || c.descripcion || '';
+        return normalizeStr(val).toLowerCase();
+      }
+      return normalizeStr(String(c)).toLowerCase();
+    };
+
+    let curConductasRaw: any = noticia.conductas;
+    if (typeof curConductasRaw === 'string') {
+      try {
+        curConductasRaw = JSON.parse(curConductasRaw);
+      } catch {
+        curConductasRaw = [curConductasRaw];
+      }
+    }
+    const curList = (Array.isArray(curConductasRaw) && curConductasRaw.filter(Boolean).length > 0)
+      ? curConductasRaw
+      : (noticia.conducta ? [noticia.conducta] : []);
+
+    const normCur = curList
+      .map(extractConductaStr)
+      .filter(Boolean)
+      .sort();
+
     if (data.conductas !== undefined && Array.isArray(data.conductas)) {
-      const normCur = (Array.isArray(noticia.conductas) ? noticia.conductas : [])
-        .map((c) => normalizeStr(c).toLowerCase())
-        .filter(Boolean)
-        .sort();
       const normNew = data.conductas
-        .map((c: any) => normalizeStr(c).toLowerCase())
+        .map(extractConductaStr)
         .filter(Boolean)
         .sort();
       const changed =
@@ -633,13 +755,29 @@ export class NewsService {
       if (changed) {
         cambios.push('Conductas disciplinarias modificadas');
         noticia.conductas = data.conductas;
+        if (data.conducta) {
+          noticia.conducta = data.conducta;
+        } else if (data.conductas.length > 0) {
+          noticia.conducta = typeof data.conductas[0] === 'string' ? data.conductas[0] : (data.conductas[0]?.nombre || '');
+        }
+      } else {
+        // Asegurar consistencia en la entidad sin registrar cambio falso
+        if (!noticia.conductas || noticia.conductas.length === 0) {
+          noticia.conductas = data.conductas;
+        }
+        if (data.conducta && !noticia.conducta) {
+          noticia.conducta = data.conducta;
+        }
       }
     } else if (data.conducta !== undefined && typeof data.conducta === 'string') {
-      const curConducta = normalizeStr(noticia.conducta).toLowerCase();
-      const newConducta = normalizeStr(data.conducta).toLowerCase();
+      const curConducta = extractConductaStr(noticia.conducta || (Array.isArray(curList) ? curList[0] : ''));
+      const newConducta = extractConductaStr(data.conducta);
       if (newConducta && newConducta !== curConducta) {
         cambios.push('Conducta disciplinaria modificada');
         noticia.conducta = data.conducta;
+        if (!noticia.conductas || noticia.conductas.length === 0) {
+          noticia.conductas = [data.conducta];
+        }
       }
     }
 

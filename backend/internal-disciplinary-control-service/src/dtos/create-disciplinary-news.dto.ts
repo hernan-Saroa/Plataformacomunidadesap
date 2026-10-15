@@ -91,6 +91,18 @@ export class PersonInfoDto {
 
 export class CreateDisciplinaryNewsDto {
   @IsEnum(NewsOrigin)
+  @Transform(({ value }) => {
+    if (!value) return NewsOrigin.POR_DETERMINAR;
+    if (typeof value === 'string') {
+      const s = value.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      if (s.includes('ANONIM')) return NewsOrigin.ANONIMO;
+      if (s.includes('QUEJ') || s.includes('INFORMANT')) return NewsOrigin.QUEJOSO;
+      if (s.includes('OFICIO')) return NewsOrigin.OFICIO;
+      if (s.includes('REMISI') || s.includes('COMPETENC')) return NewsOrigin.REMISION;
+      if (s.includes('DETERMINAR')) return NewsOrigin.POR_DETERMINAR;
+    }
+    return value;
+  })
   origen: NewsOrigin;
 
   @IsOptional()

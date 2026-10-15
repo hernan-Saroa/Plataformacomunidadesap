@@ -371,6 +371,9 @@ export function sincronizarItinerarioFormulario(
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
+      .replace(/[\.,\-_/]/g, ' ')
+      .replace(/\b(d\s*c|distrito\s*capital|ciudad|municipio)\b/g, ' ')
+      .replace(/[^a-z0-9]/g, '')
       .trim();
 
   const esViajeIdaVuelta =

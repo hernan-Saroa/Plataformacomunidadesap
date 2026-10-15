@@ -212,6 +212,27 @@ export class TravelExpensesController {
       normalizedPermissions.includes('es_comisionado') ||
       normalizedPermissions.includes('travel_expenses:read_own_requests');
 
+    const isJefeDependencia =
+      normalizedRoles.some(
+        (r) =>
+          r === 'JEFE' ||
+          r === 'JEFE_DEPENDENCIA' ||
+          r === 'SUPERVISOR',
+      ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_jefe_dependencia') ||
+      normalizedPermissions.includes('travel_expenses.general.es_jefe') ||
+      normalizedPermissions.includes('general.es_jefe');
+
+    const isGerenteProyecto =
+      normalizedRoles.some(
+        (r) =>
+          r === 'GERENTE' ||
+          r === 'GERENTE_PROYECTO',
+      ) ||
+      normalizedPermissions.includes('travel_expenses.general.es_gerente_proyecto') ||
+      normalizedPermissions.includes('travel_expenses.general.es_gerente') ||
+      normalizedPermissions.includes('general.es_gerente');
+
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
     const forzarSoloComisionado = soloComisionado === 'true' || soloComisionado === '1';
@@ -227,6 +248,8 @@ export class TravelExpensesController {
       isSst,
       isComisionado,
       forzarSoloComisionado,
+      isJefeDependencia,
+      isGerenteProyecto,
     );
     return {
       data: result.data,
@@ -611,16 +634,29 @@ export class TravelExpensesController {
     'travel_expenses:read_extemporaneous_authorizations',
   )
   async obtenerBandejaFirmas(
+    @Req() req: AuthenticatedRequest,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('busqueda') busqueda?: string,
   ) {
+    const usuarioId = req.user?.userId;
+    const rawRoles = Array.isArray(req.user?.roles) ? req.user.roles : [];
+    const normalizedRoles = rawRoles.map((r: any) =>
+      typeof r === 'string'
+        ? r.toUpperCase().replace(/\s+/g, '_')
+        : (r?.code || '').toUpperCase().replace(/\s+/g, '_'),
+    );
+    const superAdmin = normalizedRoles.some((r) =>
+      SUPER_ADMIN_ROLES.includes(r),
+    );
     const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
     const limitNum = Math.max(1, parseInt(limit || '20', 10) || 20);
     const result = await this.service.obtenerBandejaFirmas(
       pageNum,
       limitNum,
       busqueda,
+      usuarioId,
+      superAdmin,
     );
     return {
       success: true,
