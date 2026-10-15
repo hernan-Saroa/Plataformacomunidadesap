@@ -39,12 +39,34 @@ export function PuestosDelProceso({ procesoId, datos, onCambio }: Props) {
       </p>
     );
   }
+  /*
+   * Quien lleva el caso no es quien lo revisa (110): el abogado del caso hace
+   * las actividades, el revisor aprueba o devuelve. Separarlos en pantalla es
+   * lo que evita creer que uno solo hace las dos cosas. Un puesto que todavía
+   * no hace ni aprueba nada va con los que llevan el caso.
+   */
+  const revisa = (p: PuestoEnProceso) => p.usos.length > 0 && p.usos.every((u) => u.como === 'APRUEBA');
+  const grupos = [
+    { titulo: 'Quién lleva el caso', ayuda: 'Hace las actividades que se le asignan.', puestos: datos.puestos.filter((p) => !revisa(p)) },
+    { titulo: 'Quién revisa', ayuda: 'Aprueba o devuelve lo que se le pone a revisión.', puestos: datos.puestos.filter(revisa) },
+  ].filter((g) => g.puestos.length);
+
   return (
-    <ul className="m-0 p-0 list-none space-y-2">
-      {datos.puestos.map((p) => (
-        <FilaDePuesto key={p.id} procesoId={procesoId} puesto={p} puedeAsignar={datos.puedeAsignar} onCambio={onCambio} />
+    <div className="space-y-3">
+      {grupos.map((g) => (
+        <section key={g.titulo} className="space-y-1.5">
+          <div>
+            <p className="m-0 text-[11.5px] font-bold uppercase tracking-wide text-slate-500">{g.titulo}</p>
+            <p className="m-0 text-[11px] text-slate-400">{g.ayuda}</p>
+          </div>
+          <ul className="m-0 p-0 list-none space-y-2">
+            {g.puestos.map((p) => (
+              <FilaDePuesto key={p.id} procesoId={procesoId} puesto={p} puedeAsignar={datos.puedeAsignar} onCambio={onCambio} />
+            ))}
+          </ul>
+        </section>
       ))}
-    </ul>
+    </div>
   );
 }
 

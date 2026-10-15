@@ -43,6 +43,16 @@ const ABOGADO = {
   problema: null,
 };
 
+const REVISOR = {
+  id: 'p-revisor',
+  nombre: 'Abogado revisor',
+  descripcion: null,
+  obligatorio: true,
+  usos: [{ numeral: '3.1', nombreActividad: 'Estudio previo', como: 'APRUEBA' as const }],
+  ocupante: null,
+  problema: null,
+};
+
 const puestos = (cambios: Record<string, unknown> = {}, lista = [ABOGADO]) => ({
   puedeAsignar: false,
   puestos: lista,
@@ -73,7 +83,7 @@ describe('PanelRadicacion · recibir y asignar los puestos', () => {
 
     expect(await screen.findByRole('button', { name: /Hacerme cargo/ })).toBeInTheDocument();
     expect(screen.getByText('Te toca')).toBeInTheDocument();
-    expect(await screen.findByText('Asignar los puestos del proceso')).toBeInTheDocument();
+    expect(await screen.findByText('Asignar quién lleva el caso y quién lo revisa')).toBeInTheDocument();
     expect(screen.getByText('En espera')).toBeInTheDocument();
   });
 
@@ -82,7 +92,7 @@ describe('PanelRadicacion · recibir y asignar los puestos', () => {
 
     expect(await screen.findByText('Hacerse cargo del proceso')).toBeInTheDocument();
     expect(screen.queryByText(/abogado/i)).toBeNull();
-    expect(screen.queryByText('Asignar los puestos del proceso')).toBeNull();
+    expect(screen.queryByText('Asignar quién lleva el caso y quién lo revisa')).toBeNull();
   });
 
   it('dice cuántos puestos faltan y qué hace cada uno', async () => {
@@ -162,5 +172,18 @@ describe('PanelRadicacion · recibir y asignar los puestos', () => {
 
     expect(await screen.findByText(/ya no puede aprobar la 3\.6/)).toBeInTheDocument();
     expect(screen.getByText(/1 puesto necesita atención/)).toBeInTheDocument();
+  });
+
+  it('separa a quien lleva el caso de quien lo revisa', async () => {
+    const caso = { ...ABOGADO, nombre: 'Abogado del caso', usos: [{ numeral: '3.6', nombreActividad: 'Causal', como: 'HACE' as const }] };
+    pintar(estado({ contratacion: participante('Laura Pineda') }), puestos({}, [caso, REVISOR]));
+
+    expect(await screen.findByText('Quién lleva el caso')).toBeInTheDocument();
+    expect(screen.getByText('Quién revisa')).toBeInTheDocument();
+    const lleva = screen.getByText('Quién lleva el caso').closest('section')!;
+    const revisa = screen.getByText('Quién revisa').closest('section')!;
+    expect(lleva).toHaveTextContent('Abogado del caso');
+    expect(revisa).toHaveTextContent('Abogado revisor');
+    expect(revisa).not.toHaveTextContent('Abogado del caso');
   });
 });

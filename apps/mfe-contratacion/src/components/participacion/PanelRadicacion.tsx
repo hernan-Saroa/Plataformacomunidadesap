@@ -62,7 +62,7 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
       setEstado(await contratacionService.tomarProceso(procesoId));
       // Hacerse cargo es lo que habilita asignar los puestos.
       leerPuestos();
-      toast.success('Ya estás a cargo. Ahora asigna los puestos del proceso.');
+      toast.success('Ya estás a cargo. Ahora escoge quién lleva el caso y quién lo revisa.');
       onCambio?.();
     } catch (err: any) {
       toast.error(err.message);
@@ -116,7 +116,7 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
           titulo: 'Hacerse cargo del proceso',
           estado: 'te-toca',
           detalle:
-            'El área entregó el proceso y todavía no lo lleva nadie. Quien se haga cargo queda como responsable en la Dirección y asigna los puestos.',
+            'El área entregó el proceso y todavía no lo lleva nadie. Quien se haga cargo queda como responsable en la Dirección y escoge quién lleva el caso y quién lo revisa.',
           children: (
             <Boton icono={<Inbox className="w-3.5 h-3.5" />} disabled={guardando} onClick={tomar}>
               Hacerme cargo
@@ -138,12 +138,12 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
     ? null
     : !contratacion
       ? {
-          titulo: 'Asignar los puestos del proceso',
+          titulo: 'Asignar quién lleva el caso y quién lo revisa',
           estado: 'espera',
           detalle: 'Los asigna quien se haga cargo del proceso.',
         }
       : {
-          titulo: 'Asignar los puestos del proceso',
+          titulo: 'Asignar quién lleva el caso y quién lo revisa',
           estado:
             vacios === 0 && conProblema === 0 ? 'hecho' : puestos?.puedeAsignar ? 'te-toca' : 'le-toca',
           detalle:
@@ -160,7 +160,7 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
   return (
     <Marco>
       <Titulo>Radicación en la Dirección</Titulo>
-      <Ayuda>Recibir el proceso en la Dirección de Contratación y poner a una persona en cada puesto.</Ayuda>
+      <Ayuda>Recibir el proceso en la Dirección de Contratación y escoger quién lleva el caso y quién lo revisa.</Ayuda>
 
       <PasosDeLaActividad pasos={[pasoCargo, ...(pasoPuestos ? [pasoPuestos] : [])]} />
 
