@@ -1130,18 +1130,37 @@ export class ProcessController {
     @Body() body: { expediente: IndiceElectronicoExpedienteDto; documentos: IndiceElectronicoDocumentoDto[] },
     @Res() res: Response,
   ): Promise<void> {
+    let expediente = body?.expediente;
+    if (!expediente?.radicado || !expediente?.numeroExpediente) {
+      try {
+        const proceso = await this.processService.findById(id);
+        if (proceso) {
+          expediente = {
+            ...expediente,
+            radicado: expediente?.radicado || proceso.radicadoProceso || id,
+            numeroExpediente: expediente?.numeroExpediente || proceso.radicadoProceso || id,
+            asunto: expediente?.asunto || (proceso.news as any)?.conductas?.[0] || 'Proceso Disciplinario',
+            responsable: expediente?.responsable || (proceso.abogadoAsignado as any)?.nombre || 'Sin asignar',
+          };
+        }
+      } catch (err) {
+        // Fallback seguro si falla la consulta
+      }
+    }
+
     const workbook = await this.indiceElectronicoExportService.generar(
-      body.expediente,
+      expediente,
       body.documentos || [],
     );
 
+    const radicadoFinal = expediente?.numeroExpediente || expediente?.radicado || id;
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="IndiceElectronico_${body.expediente?.radicado || id}.xlsx"`,
+      `attachment; filename="IndiceElectronico_${radicadoFinal}.xlsx"`,
     );
 
     await workbook.xlsx.write(res);

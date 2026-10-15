@@ -891,7 +891,7 @@ class DisciplinaryService {
      */
     async descargarIndiceElectronico(
         processId: string,
-        expediente: { radicado: string; asunto?: string; responsable?: string },
+        expediente: { radicado: string; asunto?: string; responsable?: string; numeroExpediente?: string; codigoIdentificacionExpediente?: string; codigoSerie?: string; nombreSerie?: string; serie?: string; codigoSubserie?: string; nombreSubserie?: string; subserie?: string; tieneSubserie?: boolean },
         documentos: Array<{
             descripcionPrincipal?: string;
             tipologiaDocumental?: string;
