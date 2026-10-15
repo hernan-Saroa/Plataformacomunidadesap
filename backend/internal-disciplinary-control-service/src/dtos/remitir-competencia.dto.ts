@@ -9,12 +9,17 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 
 export class RemitirPorCompetenciaDto {
-  @ApiProperty({ description: 'ID de la noticia a remitir' })
+  @ApiProperty({ description: 'ID de la noticia a remitir', required: false })
+  @IsOptional()
   @IsUUID()
-  @IsNotEmpty()
-  newsId: string;
+  newsId?: string;
 
-  @ApiProperty({ description: 'Radicado de la noticia', required: false })
+  @ApiProperty({ description: 'ID del proceso a remitir', required: false })
+  @IsOptional()
+  @IsUUID()
+  processId?: string;
+
+  @ApiProperty({ description: 'Radicado de la noticia o proceso', required: false })
   @IsOptional()
   @IsString()
   radicado?: string;
@@ -78,8 +83,13 @@ export class RemisionPorCompetenciaResponseDto {
   @ApiProperty({ description: 'Mensaje de respuesta' })
   message: string;
 
-  @ApiProperty({ description: 'ID de la noticia remitida' })
-  newsId: string;
+  @ApiProperty({ description: 'ID de la noticia remitida', required: false })
+  @IsOptional()
+  newsId?: string;
+
+  @ApiProperty({ description: 'ID del proceso remitido', required: false })
+  @IsOptional()
+  processId?: string;
 
   @ApiProperty({ description: 'Correo electrónico al que se envió la información' })
   emailEnviado: string;

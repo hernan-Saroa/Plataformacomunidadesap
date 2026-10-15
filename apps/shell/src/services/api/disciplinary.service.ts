@@ -456,6 +456,8 @@ export interface CreateAutoDto {
     documentType?: string;
     documentSize?: number;
     etapaDestino?: string;
+    entidadDestino?: string;
+    entidadDestinoEmail?: string;
 }
 
 export interface DocumentoExpediente {
@@ -659,7 +661,8 @@ class DisciplinaryService {
      * Envía un correo con la información de la noticia a la entidad destinataria
      */
     async remitirPorCompetencia(data: {
-        newsId: string;
+        newsId?: string;
+        processId?: string;
         radicado?: string;
         emailDestinatario: string;
         entidadDestino: string;

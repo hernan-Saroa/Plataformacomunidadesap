@@ -378,6 +378,39 @@ export class NewsService {
     if (!noticia) {
       throw new HttpException('Noticia no encontrada', HttpStatus.NOT_FOUND);
     }
+
+    try {
+      // Buscar proceso asociado directamente o por newsId
+      let proceso = await this.processRepository.findOne({
+        where: { newsId: id },
+        relations: ['autos', 'evidence'],
+      });
+
+      if (!proceso) {
+        const association = await this.newsProcessRepository.findOne({
+          where: { newsId: id },
+          relations: ['process', 'process.autos', 'process.evidence'],
+        });
+        if (association?.process) {
+          proceso = association.process;
+        }
+      }
+
+      if (proceso) {
+        (noticia as any).proceso = proceso;
+        (noticia as any).procesoAsociado = {
+          id: proceso.id,
+          numeroProceso: proceso.radicadoProceso || (proceso as any).numeroProceso || '',
+          etapaActual: proceso.etapaActual,
+          autos: proceso.autos || [],
+          evidence: proceso.evidence || [],
+          pruebas: proceso.pruebas || [],
+        };
+      }
+    } catch (err) {
+      console.warn('[NewsService] No se pudo cargar proceso relacionado en findById:', err);
+    }
+
     return noticia;
   }
 

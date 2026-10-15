@@ -56,6 +56,14 @@ export class CreateLegalAutoDto {
   @IsNumber()
   @IsIn([3, 6])
   prorrogaMeses?: number; // Solo para AUTO_PRORROGA: 3 o 6 meses
+
+  @IsOptional()
+  @IsString()
+  entidadDestino?: string; // Para AUTO_REMISION_COMPETENCIA
+
+  @IsOptional()
+  @IsString()
+  entidadDestinoEmail?: string; // Para AUTO_REMISION_COMPETENCIA
 }
 
 export class UpdateAutoStatusDto {

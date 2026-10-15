@@ -303,13 +303,20 @@ export class FilesController {
     // 4. Si el archivo solicitado es un PDF y no se encontró físicamente,
     // generar un documento PDF institucional al vuelo en lugar de responder con 404
     // para garantizar que la descarga o apertura desde el Índice Electrónico siempre funcione.
-    if (safeFilename.toLowerCase().endsWith('.pdf')) {
+    if (
+      safeFilename.toLowerCase().endsWith('.pdf') ||
+      safeFilename.toLowerCase() === 'preview' ||
+      safeFilename.toUpperCase().startsWith('AUTO-')
+    ) {
       try {
         const PDFDocument = require('pdfkit');
         const doc = new PDFDocument({ size: 'LETTER', margin: 50 });
+        const downloadName = safeFilename.toLowerCase().endsWith('.pdf')
+          ? safeFilename
+          : (safeFilename.toLowerCase() === 'preview' ? 'Auto_Juridico.pdf' : `${safeFilename}.pdf`);
 
         res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(safeFilename)}"`);
+        res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(downloadName)}"`);
 
         doc.pipe(res);
 

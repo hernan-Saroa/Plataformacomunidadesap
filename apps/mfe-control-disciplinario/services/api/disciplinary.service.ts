@@ -439,6 +439,8 @@ export interface CreateAutoDto {
     documentName?: string;
     documentType?: string;
     documentSize?: number;
+    entidadDestino?: string;
+    entidadDestinoEmail?: string;
 }
 
 export interface DocumentoExpediente {
@@ -631,23 +633,27 @@ class DisciplinaryService {
      * Envía un correo con la información de la noticia a la entidad destinataria
      */
     async remitirPorCompetencia(data: {
-        newsId: string;
+        newsId?: string;
+        processId?: string;
         radicado?: string;
         emailDestinatario: string;
         entidadDestino: string;
         justificacion: string;
+        tipoRemision?: string;
         usuarioRemision?: string;
     }): Promise<{
         success: boolean;
         message: string;
-        newsId: string;
+        newsId?: string;
+        processId?: string;
         emailEnviado: string;
         fechaRemision: Date;
     }> {
         return apiClient.post<{
             success: boolean;
             message: string;
-            newsId: string;
+            newsId?: string;
+            processId?: string;
             emailEnviado: string;
             fechaRemision: Date;
         }>(`${SERVICE_PREFIX}/disciplinary-processes/remitir-competencia`, data);
@@ -1118,8 +1124,17 @@ class DisciplinaryService {
         return apiClient.patch<LegalAuto>(`${SERVICE_PREFIX}/disciplinary-autos/${id}/send-review`, {});
     }
 
-    async aprobarAuto(id: string, aprobadoPorId: string, radicadorAsignadoId?: string): Promise<LegalAuto> {
-        const body: any = { action: 'APPROVE' };
+    async aprobarAuto(
+        id: string,
+        aprobadoPorId: string,
+        radicadorAsignadoId?: string,
+        extraData?: {
+            entidadDestino?: string;
+            entidadDestinoEmail?: string;
+            observaciones?: string;
+        }
+    ): Promise<LegalAuto> {
+        const body: any = { action: 'APPROVE', ...extraData };
         if (radicadorAsignadoId) {
             body.radicadorAsignadoId = radicadorAsignadoId;
         }
