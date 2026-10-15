@@ -1,5 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 
 @Injectable()
 export class BackofficeDashboardService {
@@ -242,5 +244,30 @@ export class BackofficeDashboardService {
         rolesDetalle: rolesList.map((r: any) => ({ nombre: r.name, isSystem: r.type === 'sistema', estado: 'ACTIVO', usuarios: +r.users_count, permisos: 0 })),
       },
     };
+  }
+
+  async getDashboardTemplate(templateName: string): Promise<string> {
+    const safeName = templateName.replace(/[^a-zA-Z0-9_-]/g, '');
+    const validTemplates = ['plan_seguimiento', 'desarrollo_otic'];
+    if (!validTemplates.includes(safeName)) {
+      throw new NotFoundException(`Plantilla '${templateName}' no encontrada.`);
+    }
+
+    const fileName = `${safeName}.html`;
+    const candidates = [
+      join(__dirname, '..', '..', 'templates', fileName),
+      join(__dirname, '..', 'templates', fileName),
+      join(process.cwd(), 'backend', 'auth-service', 'templates', fileName),
+      join(process.cwd(), 'templates', fileName),
+      join(process.cwd(), 'auth-service', 'templates', fileName),
+    ];
+
+    for (const candidate of candidates) {
+      if (existsSync(candidate)) {
+        return readFileSync(candidate, 'utf-8');
+      }
+    }
+
+    throw new NotFoundException(`El archivo para la plantilla '${templateName}' no existe.`);
   }
 }

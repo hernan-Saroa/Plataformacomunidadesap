@@ -14,6 +14,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     /^\/auth\/api\/v\d+\/reset-password/i,
     /^\/auth\/api\/v\d+\/verify-reset-code/i,
     /^\/auth\/api\/v\d+\/login-settings/i,
+    // Templates del dashboard ejecutivo para iframes
+    /^\/auth\/api\/v\d+\/backoffice\/dashboard\/templates\/.+/i,
     // Geopolítica: catálogo público de departamentos/municipios de Colombia
     // (auth.geopolitica). No requiere JWT; cualquier frontend lo consulta y solo
     // se usa el catálogo estático del frontend si la API está caída.

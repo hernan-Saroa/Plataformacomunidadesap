@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   Users, Building2, GraduationCap, FolderOpen, Shield, Activity,
   AlertCircle, Loader2, RefreshCw, TrendingUp, TrendingDown,
   Globe, BarChart3, ArrowUpRight, ArrowDownRight,
   FileText, Target, Eye, Gauge, ExternalLink, BookOpen,
   Zap, ArrowRight, FileCheck, ClipboardList, Award,
-  AlertOctagon, Clock,
+  AlertOctagon, Clock, Maximize2, Minimize2,
 } from 'lucide-react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -17,7 +17,7 @@ import { motion } from 'motion/react';
 
 // ═══════ TYPES ═══════
 interface DashboardExecutivoProps { onNavigateToModule?: (moduleId: string) => void; }
-type ViewTab = 'estrategico' | 'operacional';
+type ViewTab = 'estrategico' | 'operacional' | 'panel_seguimiento' | 'desarrollo_otic';
 
 // ═══════ CONSTANTS ═══════
 const C = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#EC4899','#14B8A6','#F97316','#6366F1','#84CC16','#D946EF'];
@@ -144,6 +144,129 @@ function ModuleCard({ mod, onClick }: { mod: any; onClick: () => void }) {
         </div>
       </div>
     </motion.div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HTML TEMPLATE VIEWER COMPONENT
+// ═══════════════════════════════════════════════════════════════
+interface DashboardHtmlViewerProps {
+  templateName: 'panel_seguimiento' | 'desarrollo_otic';
+  title: string;
+  description: string;
+}
+
+function DashboardHtmlViewer({ templateName, title, description }: DashboardHtmlViewerProps) {
+  const [reloadKey, setReloadKey] = useState(0);
+  const [iframeLoading, setIframeLoading] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const url = `${dashboardService.getTemplateUrl(templateName)}${reloadKey ? `?t=${reloadKey}` : ''}`;
+
+  const handleReload = () => {
+    setIframeLoading(true);
+    setReloadKey(Date.now());
+  };
+
+  const handleOpenNewTab = () => {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [iframeHeight, setIframeHeight] = useState(750);
+
+  const ajustarAltura = () => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    try {
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+      const altura = Math.max(
+        doc.documentElement.scrollHeight,
+        doc.body?.scrollHeight ?? 0
+      );
+      setIframeHeight(altura);
+    } catch (error) {
+      console.warn('No se pudo obtener la altura del iframe:', error);
+    }
+  };
+
+  return (
+    <div className={`flex flex-col gap-3 transition-all ${isFullscreen ? 'fixed inset-0 z-50 bg-slate-100 p-4' : 'w-full'}`}>
+      {/* Barra de control superior */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white px-4 py-3 rounded-lg border border-gray-200/80 shadow-sm">
+        <div>
+          <h2 className="text-sm font-black text-gray-900 tracking-tight flex items-center gap-2">
+            <span>{title}</span>
+            <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-full bg-blue-50 text-[#003DA5] border border-blue-200/60">
+              Vista Integrada
+            </span>
+          </h2>
+          <p className="text-[11px] text-gray-500 mt-0.5">{description}</p>
+        </div>
+
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <button
+            onClick={handleReload}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-all shadow-2xs hover:text-[#003DA5]"
+            title="Recargar panel con los datos más recientes del archivo HTML"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${iframeLoading ? 'animate-spin text-[#003DA5]' : ''}`} />
+            <span>Actualizar</span>
+          </button>
+
+          <button
+            onClick={handleOpenNewTab}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-xl transition-all shadow-2xs hover:text-[#003DA5]"
+            title="Abrir este dashboard en una ventana o pestaña completa"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Pestaña nueva</span>
+          </button>
+
+        </div>
+      </div>
+
+      {/* Contenedor del Iframe con Loader */}
+      <div
+        className="relative w-full rounded-2xl border border-gray-200/80 bg-white shadow-sm"
+        style={{
+          minHeight: '750px',
+          height: iframeHeight,
+        }}
+      >
+        {iframeLoading && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-50/90 backdrop-blur-xs">
+            <div className="relative">
+              <div className="w-12 h-12 rounded-full border-3 border-blue-100 border-t-[#003DA5] animate-spin mx-auto" />
+              <Loader2 className="w-5 h-5 text-[#003DA5] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+            </div>
+
+            <p className="text-xs font-bold text-gray-800 mt-3">
+              Cargando visualización de {title}...
+            </p>
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              Sincronizando plantilla y datos interactivos
+            </p>
+          </div>
+        )}
+
+        <iframe
+          ref={iframeRef}
+          key={url}
+          src={url}
+          title={title}
+          className="block w-full border-0 rounded-lg"
+          style={{
+            height: `${iframeHeight}px`,
+          }}
+          onLoad={() => {
+            ajustarAltura();
+            setIframeLoading(false);
+          }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -309,13 +432,23 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
           </div>
         </div>
 
-        <div className="flex items-center gap-1 p-1 bg-gray-100/80 rounded-xl w-fit">
+        <div className="flex items-center bg-gray-100/80 rounded-xl" style={{justifyContent: "space-between"}}>
+          <div className="flex items-center gap-1 p-1 rounded-xl w-fit">
           {([{ v: 'estrategico' as ViewTab, l: '📊 Estratégico', d: 'KPIs, tendencias, predicciones' }, { v: 'operacional' as ViewTab, l: '⚙️ Operacional', d: 'Detalle por módulo' }]).map(t => (
             <button key={t.v} onClick={() => setViewTab(t.v)} className={`flex flex-col items-start px-4 py-2 rounded-lg text-left transition-all ${viewTab === t.v ? 'bg-white text-[#003DA5] shadow-md' : 'text-gray-500 hover:text-gray-700'}`}>
               <span className="text-sm font-bold">{t.l}</span>
               <span className="text-[9px] text-gray-400">{t.d}</span>
             </button>
           ))}
+          </div>
+          <div className="flex items-center gap-1 p-1 rounded-xl w-fit">
+           {([{ v: 'panel_seguimiento' as ViewTab, l: '📈 Panel Seguimiento', d: 'Estado consolidado de la implementación' }, { v: 'desarrollo_otic' as ViewTab, l: '🛠️ Desarrollo OTIC', d: 'Trazabilidad de Procesos' }]).map(t => (
+            <button key={t.v} onClick={() => setViewTab(t.v)} className={`flex flex-col items-start px-4 py-2 rounded-lg text-left transition-all ${viewTab === t.v ? 'bg-white text-[#003DA5] shadow-md' : 'text-gray-500 hover:text-gray-700'}`}>
+              <span className="text-sm font-bold">{t.l}</span>
+              <span className="text-[9px] text-gray-400">{t.d}</span>
+            </button>
+          ))}
+          </div>
         </div>
       </div>
 
@@ -522,6 +655,24 @@ export function DashboardExecutivo({ onNavigateToModule }: DashboardExecutivoPro
             {modules.map(mod => <ModuleCard key={mod.key} mod={mod} onClick={() => nav(mod.sid)} />)}
           </div>
         </div>
+      )}
+
+      {/* PLAN DE SEGUIMIENTO */}
+      {viewTab === 'panel_seguimiento' && (  
+        <DashboardHtmlViewer
+          templateName="panel_seguimiento"
+          title="Panel de Seguimiento"
+          description="Estado consolidado de la implementación, metas y compromisos estratégicos"
+        />
+      )}
+
+      {/* DESARROLLO OTIC */}
+      {viewTab === 'desarrollo_otic' && (
+        <DashboardHtmlViewer
+          templateName="desarrollo_otic"
+          title="Portafolio BI de Desarrollo OTIC"
+          description="Trazabilidad de procesos, desarrollos e iniciativas institucionales"
+        />
       )}
     </div>
   );

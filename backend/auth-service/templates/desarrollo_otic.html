@@ -1,0 +1,1955 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portafolio BI de Desarrollo OTIC · ESAP</title>
+  <!-- Google Fonts & Chart.js & SheetJS & Lucide Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <style>
+    :root {
+      /* COLORES INSTITUCIONALES OFICIALES ESAP */
+      --bg-body: #F4F7FA;
+      --bg-card: #FFFFFF;
+      --bg-card-hover: #EBF3FA;
+      --bg-sidebar: #001A35;
+      --border-color: #E2E8F0;
+      --border-strong: #CBD5E1;
+      
+      --text-main: #001A35;
+      --text-muted: #4A5568;
+      --text-light: #718096;
+      
+      --primary: #002554;          /* Azul Oscuro Institucional ESAP */
+      --primary-light: #0056B3;    /* Azul Cobalto ESAP */
+      --primary-bg: #EBF3FA;       /* Fondo Suave Azul */
+      --accent: #F4B400;           /* Amarillo / Dorado ESAP */
+      --accent-light: #FFF8E6;
+      
+      --status-success-bg: #E6F4EA;
+      --status-success-text: #137333;
+      --status-info-bg: #E8F0FE;
+      --status-info-text: #1A73E8;
+      --status-warn-bg: #FEF7E0;
+      --status-warn-text: #B06000;
+      --status-danger-bg: #FCE8E6;
+      --status-danger-text: #C5221F;
+      --status-muted-bg: #EDF2F7;
+      --status-muted-text: #4A5568;
+      
+      --shadow-sm: 0 2px 4px 0 rgba(0, 37, 84, 0.04);
+      --shadow-md: 0 4px 12px 0 rgba(0, 37, 84, 0.08);
+      --shadow-lg: 0 10px 25px -5px rgba(0, 37, 84, 0.12);
+      
+      --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    [data-theme="dark"] {
+      --bg-body: #061221;
+      --bg-card: #0A1C33;
+      --bg-card-hover: #0F2644;
+      --bg-sidebar: #020914;
+      --border-color: #142F52;
+      --border-strong: #1F4270;
+      
+      --text-main: #F4F7FA;
+      --text-muted: #A0AEC0;
+      --text-light: #718096;
+      
+      --primary: #1A73E8;
+      --primary-light: #3B82F6;
+      --primary-bg: #0D2647;
+      --accent: #F4B400;
+      --accent-light: #3D2E00;
+      
+      --status-success-bg: #073B1B;
+      --status-success-text: #81C784;
+      --status-info-bg: #0D325E;
+      --status-info-text: #90CAF9;
+      --status-warn-bg: #472D00;
+      --status-warn-text: #FFE082;
+      --status-danger-bg: #4A0E0E;
+      --status-danger-text: #EF9A9A;
+      --status-muted-bg: #1A202C;
+      --status-muted-text: #CBD5E0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-body);
+      color: var(--text-main);
+      line-height: 1.5;
+      font-size: 14px;
+      transition: background-color 0.25s, color 0.25s;
+    }
+
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* HEADER INSTITUCIONAL ESAP */
+    header {
+      background: linear-gradient(135deg, #001533 0%, #002554 40%, #004080 75%, #0056B3 100%);
+      color: #FFFFFF;
+      padding: 24px 36px;
+      border-bottom: 4px solid var(--accent);
+      box-shadow: 0 4px 20px rgba(0, 37, 84, 0.2);
+    }
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .brand-logo-badge {
+      background: #FFFFFF;
+      color: #002554;
+      font-weight: 800;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      letter-spacing: 1px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .brand-text h1 {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #FFFFFF;
+    }
+    .brand-text p {
+      font-size: 12.5px;
+      color: #C3DAF8;
+      font-family: var(--font-mono);
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 18px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.2s ease;
+      font-family: var(--font-sans);
+      box-shadow: var(--shadow-sm);
+    }
+    .btn-primary {
+      background: #0056B3;
+      color: #FFFFFF;
+    }
+    .btn-primary:hover { background: #004080; }
+    .btn-accent {
+      background: var(--accent);
+      color: #001533;
+    }
+    .btn-accent:hover { background: #E0A800; }
+    .btn-pdf {
+      background: #C5221F;
+      color: #FFFFFF;
+    }
+    .btn-pdf:hover { background: #A51D1A; }
+    .btn-outline {
+      background: rgba(255,255,255,0.12);
+      color: #FFFFFF;
+      border: 1px solid rgba(255,255,255,0.25);
+    }
+    .btn-outline:hover { background: rgba(255,255,255,0.22); }
+    .btn-icon {
+      padding: 9px;
+      border-radius: 8px;
+    }
+
+    /* MAIN CONTENT */
+    .main-wrap {
+      max-width: 1560px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 28px 36px 56px;
+      flex: 1;
+    }
+
+    /* KPI STRIP */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 18px;
+      margin-bottom: 26px;
+    }
+    .kpi-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 18px 22px;
+      box-shadow: var(--shadow-md);
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi-card:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow-lg);
+      border-color: var(--primary-light);
+    }
+    .kpi-card.active {
+      border-color: var(--primary-light);
+      background: var(--primary-bg);
+    }
+    .kpi-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 10px;
+    }
+    .kpi-value {
+      font-family: var(--font-mono);
+      font-size: 30px;
+      font-weight: 800;
+      color: var(--primary);
+      line-height: 1;
+    }
+    .kpi-subtext {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; width: 5px; height: 100%;
+      background: var(--border-strong);
+    }
+    .kpi-card.kpi-primary::before { background: #0056B3; }
+    .kpi-card.kpi-success::before { background: #137333; }
+    .kpi-card.kpi-warn::before { background: #B06000; }
+    .kpi-card.kpi-danger::before { background: #C5221F; }
+
+    /* PIPELINE BAR */
+    .section-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 22px;
+      margin-bottom: 26px;
+      box-shadow: var(--shadow-md);
+    }
+    .section-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .pipeline-bar {
+      display: flex;
+      border-radius: 10px;
+      overflow: hidden;
+      height: 50px;
+      background: var(--border-color);
+      border: 1px solid var(--border-strong);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.04);
+    }
+    .pipeline-seg {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #FFFFFF;
+      cursor: pointer;
+      transition: opacity 0.2s, filter 0.2s;
+      border-right: 1px solid rgba(255,255,255,0.25);
+      padding: 0 6px;
+      font-family: var(--font-mono);
+      position: relative;
+    }
+    .pipeline-seg:last-child { border-right: none; }
+    .pipeline-seg:hover { filter: brightness(1.15); }
+    .pipeline-seg.dim { opacity: 0.35; }
+    .pipeline-seg .seg-val { font-weight: 800; font-size: 17px; }
+    .pipeline-seg .seg-lbl { font-size: 10.5px; font-family: var(--font-sans); text-transform: uppercase; opacity: 0.95; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; }
+
+    /* TABS */
+    .tabs-header {
+      display: flex;
+      gap: 6px;
+      border-bottom: 2px solid var(--border-color);
+      margin-bottom: 22px;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      padding: 12px 20px;
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--text-muted);
+      background: transparent;
+      border: none;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .tab-btn:hover { color: var(--primary); }
+    .tab-btn.active {
+      color: var(--primary-light);
+      border-bottom-color: var(--primary-light);
+      background: var(--primary-bg);
+      border-radius: 8px 8px 0 0;
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* CHARTS GRID */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 22px;
+    }
+    @media (max-width: 1024px) {
+      .charts-grid { grid-template-columns: 1fr; }
+    }
+    .chart-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 22px;
+      box-shadow: var(--shadow-md);
+    }
+    .chart-container {
+      position: relative;
+      height: 290px;
+      width: 100%;
+    }
+
+    /* FILTERS BAR */
+    .filters-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      padding: 16px 20px;
+      border-radius: 12px;
+      margin-bottom: 18px;
+      box-shadow: var(--shadow-md);
+    }
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .filter-group label {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .filter-select, .filter-input {
+      padding: 8px 14px;
+      font-size: 13px;
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      background: var(--bg-body);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .filter-select:focus, .filter-input:focus {
+      border-color: var(--primary-light);
+    }
+    .search-input-wrap {
+      flex: 1;
+      min-width: 240px;
+    }
+    .clear-filters-btn {
+      margin-left: auto;
+      font-size: 12.5px;
+      color: var(--primary-light);
+      cursor: pointer;
+      font-weight: 700;
+      text-decoration: underline;
+      background: none;
+      border: none;
+    }
+
+    /* DATA TABLE */
+    .table-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead th {
+      background: #002554;
+      color: #FFFFFF;
+      text-align: left;
+      padding: 14px 16px;
+      font-weight: 700;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    tbody tr.proj-group-row {
+      background: var(--primary-bg);
+      font-weight: 700;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--primary);
+    }
+    tbody tr.proj-group-row td {
+      padding: 12px 16px;
+      font-size: 13.5px;
+    }
+    tbody tr.proj-group-row .chev {
+      display: inline-block;
+      transition: transform 0.2s;
+      margin-right: 8px;
+      color: var(--primary-light);
+    }
+    tbody tr.proj-group-row.collapsed .chev {
+      transform: rotate(-90deg);
+    }
+    tbody tr.item-row {
+      border-bottom: 1px solid var(--border-color);
+      transition: background-color 0.15s;
+      cursor: pointer;
+    }
+    tbody tr.item-row:hover {
+      background-color: var(--bg-card-hover);
+    }
+    tbody tr.item-row td {
+      padding: 12px 16px;
+      vertical-align: middle;
+    }
+    tbody tr.item-row.child-row td:first-child {
+      padding-left: 36px;
+    }
+
+    /* BADGES & PROGRESS */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+    .badge-completado { background: var(--status-success-bg); color: var(--status-success-text); }
+    .badge-encurso { background: var(--status-info-bg); color: var(--status-info-text); }
+    .badge-suspendido { background: var(--status-danger-bg); color: var(--status-danger-text); }
+    .badge-reportar { background: var(--status-warn-bg); color: var(--status-warn-text); }
+    .badge-noiniciado { background: var(--status-muted-bg); color: var(--status-muted-text); }
+
+    .progress-bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+    }
+    .progress-track {
+      flex: 1;
+      height: 9px;
+      background: var(--border-color);
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--primary-light);
+      border-radius: 5px;
+      transition: width 0.3s;
+    }
+    .progress-fill.full { background: #137333; }
+    .progress-text {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--text-muted);
+      width: 40px;
+      text-align: right;
+    }
+
+    .resp-chip {
+      display: inline-block;
+      background: var(--primary-bg);
+      color: var(--primary);
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      margin: 2px;
+    }
+
+    /* RISK CARDS GRID */
+    .risk-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 18px;
+    }
+    .risk-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-left: 5px solid #C5221F;
+      border-radius: 10px;
+      padding: 18px;
+      box-shadow: var(--shadow-md);
+    }
+    .risk-card.warn-card { border-left-color: #B06000; }
+    .risk-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+    }
+    .risk-card-title {
+      font-weight: 800;
+      font-size: 14px;
+      color: var(--text-main);
+    }
+    .risk-card-sub {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .risk-card-obs {
+      font-size: 12.5px;
+      color: var(--text-main);
+      background: var(--bg-body);
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      line-height: 1.45;
+    }
+
+    /* MODAL / DRAWER */
+    .modal-backdrop {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0,21,51,0.65);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      max-width: 880px;
+      width: 100%;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--shadow-lg);
+      overflow: hidden;
+      animation: modalSlide 0.25s ease-out;
+    }
+    @keyframes modalSlide {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .modal-header {
+      background: #002554;
+      color: #FFFFFF;
+      padding: 20px 26px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-title { font-size: 17px; font-weight: 800; }
+    .modal-close {
+      background: transparent;
+      border: none;
+      color: #FFFFFF;
+      font-size: 22px;
+      cursor: pointer;
+    }
+    .modal-body {
+      padding: 26px;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .detail-section {
+      background: var(--bg-body);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .detail-section h4 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+    .detail-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    /* DIFF PREVIEW MODAL */
+    .diff-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      margin-top: 14px;
+    }
+    .diff-table th, .diff-table td {
+      border: 1px solid var(--border-color);
+      padding: 10px;
+      text-align: left;
+    }
+    .diff-table th { background: var(--primary-bg); color: var(--primary); }
+    .diff-add { background: rgba(19, 115, 51, 0.12); }
+    .diff-mod { background: rgba(0, 86, 179, 0.12); }
+
+    /* PRINT / PDF EXECUTIVE STYLES */
+    @media print {
+      body { background: #FFFFFF !important; color: #000000 !important; }
+      header, .header-actions, .filters-bar, .tabs-header, footer, #btnUploadExcel, #btnExportExcel, #btnExportPdf, #btnResetData, #btnThemeToggle { display: none !important; }
+      .app-container { min-height: auto; }
+      .main-wrap { padding: 0; margin: 0; max-width: 100%; }
+      .section-card, .chart-card, .table-container, .modal-box { border: none !important; box-shadow: none !important; }
+      
+      /* Print Executive Summary layout */
+      .print-pdf-header {
+        display: block !important;
+        border-bottom: 3px solid #002554;
+        padding-bottom: 14px;
+        margin-bottom: 18px;
+      }
+      .print-pdf-header h1 { font-size: 22px; color: #002554; }
+      .print-pdf-header p { font-size: 12px; color: #4A5568; }
+    }
+    .print-pdf-header { display: none; }
+
+    /* FOOTER INSTITUCIONAL */
+    footer {
+      background: var(--bg-card);
+      border-top: 1px solid var(--border-color);
+      padding: 18px;
+      text-align: center;
+      font-size: 12.5px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-container">
+  <!-- PRINT PDF HEADER -->
+  <div class="print-pdf-header">
+    <h1>Escuela Superior de Administración Pública · ESAP</h1>
+    <h2>Oficina de Tecnologías de la Información y las Comunicaciones (OTIC)</h2>
+    <p>Informe Ejecutivo de Trazabilidad y Portafolio de Desarrollo - Corte Agosto 2026</p>
+  </div>
+
+  <!-- HEADER INSTITUCIONAL ESAP -->
+  <header>
+    <div class="header-top">
+      <div class="brand-title">
+        <div class="esap-vector-logo" style="display:none; align-items:center; gap:12px; background:rgba(255,255,255,0.08); padding:6px 16px; border-radius:10px; border:1px solid rgba(255,255,255,0.18);">
+  <svg viewBox="0 0 340 85" height="42" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+    <!-- PYRAMID OF 10 CIRCLES -->
+    <g fill="#FFFFFF">
+      <!-- Row 1 -->
+      <circle cx="45" cy="12" r="8.5"/>
+      <!-- Row 2 -->
+      <circle cx="34" cy="31" r="8.5"/>
+      <circle cx="56" cy="31" r="8.5"/>
+      <!-- Row 3 -->
+      <circle cx="23" cy="50" r="8.5"/>
+      <circle cx="45" cy="50" r="8.5"/>
+      <circle cx="67" cy="50" r="8.5"/>
+      <!-- Row 4 -->
+      <circle cx="12" cy="69" r="8.5"/>
+      <circle cx="34" cy="69" r="8.5"/>
+      <circle cx="56" cy="69" r="8.5"/>
+      <circle cx="78" cy="69" r="8.5"/>
+    </g>
+    <!-- E S A P LETTERS INSIDE BOTTOM ROW -->
+    <g fill="#002554" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="900" font-size="10" text-anchor="middle" dominant-baseline="central">
+      <text x="12" y="69.5">E</text>
+      <text x="34" y="69.5">S</text>
+      <text x="56" y="69.5">A</text>
+      <text x="78" y="69.5">P</text>
+    </g>
+    <!-- OFFICIAL TEXT RIGHT -->
+    <g fill="#FFFFFF" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-weight="800">
+      <text x="100" y="24" font-size="14.5" letter-spacing="0.5">ESCUELA SUPERIOR</text>
+      <text x="100" y="45" font-size="14.5" letter-spacing="0.5">DE ADMINISTRACIÓN</text>
+      <text x="100" y="66" font-size="14.5" letter-spacing="0.5">PÚBLICA</text>
+    </g>
+  </svg>
+</div>
+        <div class="brand-text" style="margin-left:8px;">
+          <h1 style="font-size:22px; font-weight:800; color:#FFFFFF;">Portafolio de Desarrollo · OTIC</h1>
+          <p style="font-size:12px; color:#C3DAF8; font-family:var(--font-mono);">Trazabilidad de Procesos & Tablero de Inteligencia de Negocios</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-accent" id="btnUploadExcel">
+          📁 Cargar Excel
+        </button>
+        <button class="btn btn-outline" id="btnExportExcel">
+          📥 Exportar Excel
+        </button>
+        <button class="btn btn-pdf" id="btnExportPdf">
+          📄 Exportar PDF
+        </button>
+        <button class="btn btn-outline" id="btnResetData" title="Restablecer datos originales del portafolio" style="display: none;">
+          🔄 Restablecer Datos
+        </button>
+        <button class="btn btn-outline btn-icon" id="btnThemeToggle" title="Cambiar Tema Oscuro/Claro" style="display: none;">
+          🌙
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WRAPPER -->
+  <div class="main-wrap">
+    
+    <!-- EXECUTIVE KPI STRIP -->
+    <div class="kpi-grid" id="kpiGrid">
+      <div class="kpi-card kpi-primary" data-kpi="total">
+        <div class="kpi-card-header">
+          <span>Iniciativas Totales</span>
+          <span>📊</span>
+        </div>
+        <div class="kpi-value" id="kpiTotal">0</div>
+        <div class="kpi-subtext" id="kpiProyectosSub">0 Proyectos de desarrollo</div>
+      </div>
+
+      <div class="kpi-card kpi-success" data-kpi="avance">
+        <div class="kpi-card-header">
+          <span>% Avance Promedio</span>
+          <span>📈</span>
+        </div>
+        <div class="kpi-value" id="kpiAvance">0%</div>
+        <div class="kpi-subtext">Progreso global del portafolio</div>
+      </div>
+
+      <div class="kpi-card kpi-primary" data-kpi="encurso">
+        <div class="kpi-card-header">
+          <span>En Ejecución</span>
+          <span>▶️</span>
+        </div>
+        <div class="kpi-value" id="kpiEnCurso">0</div>
+        <div class="kpi-subtext">Desarrollo y Pruebas activas</div>
+      </div>
+
+      <div class="kpi-card kpi-danger" data-kpi="riesgo">
+        <div class="kpi-card-header">
+          <span>En Riesgo / Alertas</span>
+          <span>⚠️</span>
+        </div>
+        <div class="kpi-value" id="kpiRiesgo" style="color:var(--status-danger-text)">0</div>
+        <div class="kpi-subtext" id="kpiRiesgoSub">Suspendidos o por reportar</div>
+      </div>
+
+      <div class="kpi-card kpi-success" data-kpi="completado">
+        <div class="kpi-card-header">
+          <span>Entregados / Producción</span>
+          <span>✅</span>
+        </div>
+        <div class="kpi-value" id="kpiCompletados" style="color:var(--status-success-text)">0</div>
+        <div class="kpi-subtext">Finalizados exitosamente</div>
+      </div>
+    </div>
+
+    <!-- PIPELINE CARD -->
+    <div class="section-card">
+      <div class="section-title">
+        <span style="color:var(--accent)">📌</span>
+        Pipeline de Fases de Desarrollo
+      </div>
+      <div class="pipeline-bar" id="pipelineBar"></div>
+    </div>
+
+    <!-- NAVIGATION TABS -->
+    <div class="tabs-header">
+      <button class="tab-btn active" data-tab="tab-overview">
+        📊 Tablero BI & Métricas
+      </button>
+      <button class="tab-btn" data-tab="tab-risks">
+        🛡️ Control de Riesgos & Alertas (<span id="tabRiskCount">0</span>)
+      </button>
+      <button class="tab-btn" data-tab="tab-table">
+        📋 Matriz de Iniciativas
+      </button>
+      <button class="tab-btn" data-tab="tab-workload">
+        👥 Carga por Responsables
+      </button>
+    </div>
+
+    <!-- TAB 1: OVERVIEW BI -->
+    <div class="tab-content active" id="tab-overview">
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="section-title">📊 Estado de Iniciativas</div>
+          <div class="chart-container">
+            <canvas id="chartEstado"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="section-title">📈 Carga por Desarrollador / Responsable</div>
+          <div class="chart-container">
+            <canvas id="chartResponsables"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="section-title">🏢 Iniciativas por Área Solicitante (Top 6)</div>
+          <div class="chart-container">
+            <canvas id="chartAreas"></canvas>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="section-title">🌿 Distribución por Tipo de Desarrollo</div>
+          <div class="chart-container">
+            <canvas id="chartTipos"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: RISKS -->
+    <div class="tab-content" id="tab-risks">
+      <div class="section-title" style="color:var(--status-danger-text)">
+        ⚠️ Proyectos Suspendidos y que Requieren Atención Directa
+      </div>
+      <div class="risk-grid" id="riskGrid"></div>
+    </div>
+
+    <!-- TAB 3: DATA TABLE -->
+    <div class="tab-content" id="tab-table">
+      <!-- FILTERS -->
+      <div class="filters-bar">
+        <div class="filter-group search-input-wrap">
+          <label>Búsqueda Global</label>
+          <input type="text" id="fSearch" class="filter-input" placeholder="Buscar proyecto, módulo, responsable, observaciones...">
+        </div>
+        <div class="filter-group">
+          <label>Área Solicitante</label>
+          <select id="fArea" class="filter-select"><option value="">Todas las Áreas</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Estado</label>
+          <select id="fEstado" class="filter-select"><option value="">Todos los Estados</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Fase</label>
+          <select id="fFase" class="filter-select"><option value="">Todas las Fases</option></select>
+        </div>
+        <div class="filter-group">
+          <label>Responsable</label>
+          <select id="fResp" class="filter-select"><option value="">Todos los Responsables</option></select>
+        </div>
+        <button class="clear-filters-btn" id="btnClearFilters">Limpiar Filtros ✕</button>
+      </div>
+
+      <!-- TABLE -->
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:28%">Proyecto / Módulo</th>
+              <th style="width:16%">Responsables</th>
+              <th style="width:16%">Área Solicitante</th>
+              <th style="width:12%">Fase</th>
+              <th style="width:12%">Estado</th>
+              <th style="width:16%">Avance %</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 4: WORKLOAD -->
+    <div class="tab-content" id="tab-workload">
+      <div class="section-title">👥 Distribución Detallada de Trabajo por Responsable</div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Responsable / Desarrollador</th>
+              <th>Total Asignados</th>
+              <th>Completados</th>
+              <th>En Curso / Pruebas</th>
+              <th>Suspendidos / Por Reportar</th>
+              <th>Avance Promedio</th>
+            </tr>
+          </thead>
+          <tbody id="workloadTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div> <!-- /main-wrap -->
+
+  <footer>
+    <p>OTIC · Escuela Superior de Administración Pública — Sistema de Inteligencia de Negocios de Desarrollo.</p>
+  </footer>
+</div>
+
+<!-- EXECUTIVE PDF SUMMARY MODAL -->
+<div class="modal-backdrop" id="modalPdfSummary">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">📄 Informe Ejecutivo Resumido (Vista Previa de Exportación PDF)</div>
+      <button class="modal-close" onclick="closeModal('modalPdfSummary')">&times;</button>
+    </div>
+    <div class="modal-body" id="pdfModalBody"></div>
+    <div style="padding:16px 24px; background:var(--bg-body); border-top:1px solid var(--border-color); display:flex; justify-content:flex-end; gap:12px;">
+      <button class="btn btn-outline" style="color:var(--text-main)" onclick="closeModal('modalPdfSummary')">Cerrar</button>
+      <button class="btn btn-pdf" onclick="triggerPdfPrint()">🖨️ Imprimir / Guardar como PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- HIDDEN FILE INPUT -->
+<input type="file" id="fileInputExcel" accept=".xlsx, .xls" style="display:none">
+
+<!-- DETAIL MODAL -->
+<div class="modal-backdrop" id="modalDetail">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="mTitle">Detalle de la Iniciativa</div>
+      <button class="modal-close" onclick="closeModal('modalDetail')">&times;</button>
+    </div>
+    <div class="modal-body" id="mBody"></div>
+  </div>
+</div>
+
+<!-- DIFF PREVIEW MODAL -->
+<div class="modal-backdrop" id="modalDiff">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">Vista Previa de Actualización desde Excel</div>
+      <button class="modal-close" onclick="closeModal('modalDiff')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="diffSummaryBanner" class="detail-section"></div>
+      <div id="diffDetailsArea"></div>
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+        <button class="btn btn-outline" style="color:var(--text-main)" onclick="closeModal('modalDiff')">Rechazar Cambios</button>
+        <button class="btn btn-accent" id="btnConfirmImport">Aceptar y Aplicar Cambios</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- EMBEDDED DATA -->
+<script id="data-block" type="application/json">
+[{"no": 1, "proyecto": "Klic", "modulo": "Contratacion necesidades", "tipo": "Desarrollo nuevo", "resp": ["Julio Bolaño", "Julio Hernandez"], "area": "OTIC - Sistemas de Informacion", "doc": "", "fase": "Pruebas", "estado": "Completado", "avance": 0.95, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 2, "proyecto": "Klic", "modulo": "GA-FO-012\nModulo gestion de bienes muebles", "tipo": "Desarrollo nuevo", "resp": ["Julio Hernandez"], "area": "Grupo de Almacén e inventarios", "doc": "Automatizar formato GA-FO-012", "fase": "Pruebas", "estado": "En pruebas funcionales", "avance": 0.95, "avance_ant": null, "f_inicio": "2026-03-12T00:00:00", "f_act": null, "obs": "Desarrollo en Klic para verificar qué elementos están asignados a los funcionarios. l proyecto se encuentra actualmente en la segunda fase de desarrollo", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 2, "proyecto": "Klic", "modulo": "Valoración contratista", "tipo": "Desarrollo nuevo", "resp": ["Julio Hernandez", "Joshua", "Julio Bolaño"], "area": "Contratación", "doc": "", "fase": "Pruebas", "estado": "En pruebas funcionales", "avance": 0.95, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "Sistema implementado al 100% no se ha pasado a producción, en espera de la aprobación del área Funional.", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 3, "proyecto": "Klic", "modulo": "CDPs (Matriz de Necesidades) HU1, HU2, HU3", "tipo": "Desarrollo nuevo", "resp": ["Julio Hernandez", "Julio Bolaño"], "area": "OTIC - Sistemas de Informacion", "doc": "Ajustes Módulo de CDP sistema Klic", "fase": "Desarrollo", "estado": "En curso", "avance": 0.25, "avance_ant": null, "f_inicio": "2026-07-06T00:00:00", "f_act": null, "obs": "HU1 Finalizada, Falta probar cargue real", "proximos": "Desarrollo de la HU2", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 4, "proyecto": "Klic", "modulo": "Migracion Academusoft Fase 1: Contratos, cuentas de Cobro, Usuarios, Históricos", "tipo": "Migracion", "resp": ["Julio Bolaño"], "area": "OTIC - Sistemas de Informacion", "doc": "", "fase": "Produccion", "estado": "Completado", "avance": 1, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 5, "proyecto": "Klic", "modulo": "Migracion Academusoft Fase 2: Soportes y Adjuntos", "tipo": "Migracion", "resp": ["Julio Bolaño", "Fabián González"], "area": "OTIC - Sistemas de Informacion", "doc": "", "fase": "Produccion", "estado": "Completado", "avance": 0.75, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 6, "proyecto": "Klic", "modulo": "Modulo de RPs", "tipo": "Desarrollo nuevo", "resp": [], "area": "OTIC - Sistemas de Informacion", "doc": "", "fase": "No iniciado", "estado": "No iniciado", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 7, "proyecto": "Klic", "modulo": "Modulo de aprobacion de facturas", "tipo": "Desarrollo nuevo", "resp": [], "area": "OTIC - Sistemas de Informacion", "doc": "", "fase": "No iniciado", "estado": "No iniciado", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 8, "proyecto": "Klic", "modulo": "Modulo de modificacion de matriz de necesidades", "tipo": "Desarrollo nuevo", "resp": [], "area": "OTIC - Sistemas de Informacion", "doc": "", "fase": "No iniciado", "estado": "No iniciado", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 9, "proyecto": "Klic", "modulo": "Proceso Central de Cuentas", "tipo": "Desarrollo nuevo", "resp": ["Brayan Rosas"], "area": "OTIC - Sistemas de Informacion", "doc": "", "fase": "No iniciado", "estado": "Por reportar", "avance": null, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 10, "proyecto": "Klic", "modulo": "Certificados Contractuales", "tipo": "Desarrollo nuevo", "resp": ["Jhefferson Mora", "Julio Bolaño", "Brayan Rosas"], "area": "OTIC - Sistemas de Informacion", "doc": "", "fase": "Produccion", "estado": "Completado", "avance": 1, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 11, "proyecto": "Klic", "modulo": "Declaración Juramentada", "tipo": "Desarrollo nuevo", "resp": ["Julio Bolaño"], "area": "OTIC - Sistemas de Informacion", "doc": "", "fase": "Produccion", "estado": "Completado", "avance": 1, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 12, "proyecto": "GADGI - Grupo de administracion documental y gestión de la información", "modulo": "Inventarios documentales FUID", "tipo": "Desarrollo nuevo", "resp": ["Brayan Rosas", "Fabián González", "John Pardo"], "area": "GADGI - Grupo de administracion documental y gestión de la información.", "doc": "", "fase": "Desarrollo", "estado": "En curso", "avance": 0.15, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "REGISTRO DE INVENTARIO FUID. Implementar el registro de inventario FUID por cada expediente electrónico que se cree. Están desarrollando.", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 13, "proyecto": "Control de Prestamos y Rutas Nocturnas Bienestar Universitario", "modulo": "Control de Prestamos y Rutas Nocturnas Bienestar Universitario", "tipo": "Desarrollo nuevo", "resp": ["Cristiam Baez"], "area": "Bienestar Universitario", "doc": "", "fase": "Analisis y requerimientos", "estado": "En curso", "avance": 0.1, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "Nuevos módulos sobre el aplicativo Carnetización. Se realizó el levantamiento de requerimientos, se está procesando la solicitud para la adquisición de 3 dispositivos laser y trabajando en la recepción y estabilización del aplicativo carnetización.", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 14, "proyecto": "Biblioteca Viva", "modulo": "Biblioteca Viva", "tipo": "Desarrollo nuevo", "resp": ["Julio Bolaño", "Fabián González"], "area": "Dirección de Fortalecimiento y Apoyo a la Gestión Estatal", "doc": "", "fase": "Analisis y requerimientos", "estado": "En curso", "avance": 0.05, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "Implementación de una plataforma digital de gestión del conocimiento orientada a la interacción entre sabedores y lectores. Revisar el estado actual del proyecto y contactos en el área", "proximos": "Entendimiento del Requerimeinto, Propuesta de Implementación, Mesas de Trabajo", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 15, "proyecto": "Desactivación de enlaces QR en carnés digitales", "modulo": "Desactivación de enlaces QR en carnés digitales", "tipo": "Desarrollo nuevo", "resp": ["Joshua", "Fabián González"], "area": "Dirección de Atención al Ciudadano", "doc": "", "fase": "No iniciado", "estado": "Por reportar", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "Se envió rpta al área, pdte agendar mesa de trabajo", "proximos": "", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 16, "proyecto": "ChatBot Isolución", "modulo": "ChatBot Isolución", "tipo": "Desarrollo nuevo", "resp": ["Gino Piñeros"], "area": "Oficina de Planeación", "doc": "Historias de Usuario 2025", "fase": "No iniciado", "estado": "Por reportar", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "La Of. de Planeación está evaluando la opción de Chatbot directo con el fabricante Isolucion. Validar fecha de ruenión con el Ing. Gino Piñeros", "proximos": "Fue remitido correo con las historias de Ususario construidas desde 2025, las cuales incialmente fueron remitidas al proyecto FS 2026", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 17, "proyecto": "Viabilidad IA - MS Auxilios educativos", "modulo": "Viabilidad IA - MS Auxilios educativos", "tipo": "Desarrollo nuevo", "resp": ["Cristiam Baez", "Juan Gutiérrez"], "area": "Bienestar social de Talento Humano", "doc": "", "fase": "Analisis y requerimientos", "estado": "Suspendido", "avance": 0, "avance_ant": null, "f_inicio": "2026-04-27T00:00:00", "f_act": "2026-07-06T00:00:00", "obs": "Las validaciones efectuadas por la OTIC, determinaron que actualmente no es posible avanzar con la adquisición de servicios adicionales de Microsoft requeridos para la implementación de Azure AI Document Intelligence, debido a que no se cuenta con disponibilidad presupuestal para este tipo de adquisiciones durante la presente vigencia. Esta situación fue confirmada por el área financiera y por la dirección de la OTIC.", "proximos": "", "ev": "", "riesgo": true, "dias": 31, "incons": false}, {"no": 18, "proyecto": "Control de entrega y desactivación accesos Contratistas", "modulo": "Control de entrega y desactivación accesos Contratistas", "tipo": "Desarrollo nuevo", "resp": ["Juan Gutiérrez"], "area": "Dirección de Contratación", "doc": "", "fase": "Analisis y requerimientos", "estado": "No iniciado", "avance": 0, "avance_ant": null, "f_inicio": "2026-07-14T00:00:00", "f_act": "2026-07-28T00:00:00", "obs": "En espera de aprobacion del entendimiento de la necesidad y el cronograma por parte del area funcional TD-FO-019.", "proximos": "se espera mesa tecnica para la viabilidad de la implementacion en KLIC, definir equipo de desarrollo", "ev": "", "riesgo": false, "dias": 9, "incons": true}, {"no": 19, "proyecto": "Diploma Digital", "modulo": "Diploma Digital - Requerimientos técnicos despliegue", "tipo": "Desarrollo nuevo", "resp": ["John Alexander Pardo de Entornos Virtuales"], "area": "Dirección de Registro y control", "doc": "", "fase": "Produccion", "estado": "Completado", "avance": 1, "avance_ant": null, "f_inicio": null, "f_act": "2026-07-31T00:00:00", "obs": "Validar la publicación del servicio en Producción", "proximos": "", "ev": "", "riesgo": false, "dias": 6, "incons": false}, {"no": 20, "proyecto": "Aplicativo de gestión de préstamos y control de acceso a las rutas nocturnas - lectores láser", "modulo": "Aplicativo de gestión de préstamos y control de acceso a las rutas nocturnas - lectores láser", "tipo": "Desarrollo nuevo", "resp": ["Cristiam Baez"], "area": "Dirección de Bienestar Universitario", "doc": "", "fase": "No iniciado", "estado": "Por reportar", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "Revisar con Cristiam Baez el estado actual del requerimiento. Cristiam está adelantando el dsllo, integrarlo con Carnetización (José Jhefferson), se está estructurando el proceso de compra de los lectores láser", "proximos": "", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 21, "proyecto": "SIGIP - Ley 21 de 1982", "modulo": "SIGIP - Ley 21 de 1982", "tipo": "Mejora", "resp": ["José Jhefferson Mora", "Juan Gutiérrez"], "area": "Dirección Financiera - Grupo de Recaudo y cartera", "doc": "", "fase": "Pruebas", "estado": "En curso", "avance": 0.8, "avance_ant": null, "f_inicio": "2026-03-26T00:00:00", "f_act": "2026-07-06T00:00:00", "obs": "sistema SIGIP (Sistema de Información y Gestión Integral de Aportes) para el procesamiento de declaraciones PILA según la Ley 21-1982. Migracion de tableros de Power Bi a tableros a traves de python, se encuentra en ambiente de pruebas", "proximos": "Pruebas por parte del area funcional", "ev": "", "riesgo": false, "dias": 31, "incons": false}, {"no": 22, "proyecto": "DataEsap - Actualización", "modulo": "DataEsap - Actualización", "tipo": "Mejora", "resp": ["Christian Baez", "Juan Gutiérrez"], "area": "Oficina de Planeación", "doc": "", "fase": "Despliegue", "estado": "En curso", "avance": 0.95, "avance_ant": null, "f_inicio": "2026-02-26T00:00:00", "f_act": "2026-07-30T00:00:00", "obs": "Fase I del desarrollo completada, se presentó al area funcional, en espera de aprobacion por el comite de cambios para su publicacion.", "proximos": "Iniciar Fase II del desarrollo, que implica cambios en las funcinalidades de administacion del sistema", "ev": "", "riesgo": false, "dias": 7, "incons": false}, {"no": 23, "proyecto": "API Federado", "modulo": "API Federado", "tipo": "Desarrollo nuevo", "resp": ["Brayan Rosas"], "area": "OTIC - Sistemas de Informacion", "doc": "", "fase": "Desarrollo", "estado": "En curso", "avance": 0.85, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "API que va a estar conectado a repositorio de Datos, varios sistemas de la Esap se van a conectar al repositorio, el primero que se está integrando es DataEsap. No hay recurso de servidor.", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 24, "proyecto": "Gamificación", "modulo": "Gamificación", "tipo": "Desarrollo nuevo", "resp": ["Juan Gutiérrez"], "area": "OTIC - Sistemas de Informacion", "doc": "", "fase": "Analisis y requerimientos", "estado": "Suspendido", "avance": 0, "avance_ant": null, "f_inicio": "2026-05-12T00:00:00", "f_act": "2026-06-26T00:00:00", "obs": "Se atendio el requerimiento, entendimiento de la necesidad, se suspendio por prioridad baja", "proximos": "", "ev": "", "riesgo": true, "dias": 41, "incons": false}, {"no": 25, "proyecto": "Arca", "modulo": "Automatización Expedición de certificados de contenidos", "tipo": "Desarrollo nuevo", "resp": ["Diana Vidal"], "area": "Subdirección Nacional Académica", "doc": "", "fase": "Analisis y requerimientos", "estado": "En curso", "avance": 0.1, "avance_ant": null, "f_inicio": "2026-07-30T00:00:00", "f_act": "2026-08-18T00:00:00", "obs": "Se envió requerimiento al proveedor Acies, se aprobó 128 horas de desarrollo", "proximos": "", "ev": "", "riesgo": false, "dias": -12, "incons": false}, {"no": 26, "proyecto": "Arca", "modulo": "Auditoría integral", "tipo": "Desarrollo nuevo", "resp": ["Diana Vidal"], "area": "Dirección de Registro y Control", "doc": "", "fase": "No iniciado", "estado": "Por reportar", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "El 30 de julio se envio a registro y control la especificación funcional,pero al parecer van a solicitar mas campos a auditar, OTIC esta pendiente de respuesta", "proximos": "", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 27, "proyecto": "Arca", "modulo": "Recibo de pago", "tipo": "Desarrollo nuevo", "resp": ["Diana Vidal"], "area": "Dirección de Registro y Control", "doc": "", "fase": "No iniciado", "estado": "Por reportar", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "El 23 de julio se envia especificación funcional al area de registro y control para revisión", "proximos": "", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 28, "proyecto": "Arca", "modulo": "Botón segunda lengua", "tipo": "Desarrollo nuevo", "resp": ["Diana Vidal"], "area": "Subdirección Nacional Académica", "doc": "", "fase": "No iniciado", "estado": "Por reportar", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "Se radica al proveedor el 22 de julio, estamos en espera del documento de especificación funcional", "proximos": "", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 29, "proyecto": "Arca", "modulo": "Repositorio y visor de novedades académicas - INSF22", "tipo": "Desarrollo nuevo", "resp": ["Diana Vidal"], "area": "Dirección de Registro y Control", "doc": "", "fase": "Analisis y requerimientos", "estado": "Suspendido", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "se adelantaron mesas de trabajo entre registro, OTIC y ACIES  el 09 de julio ACIES responde que se evaluará con el comité interno la viabilidad funcional, estamos en espera de respuesta", "proximos": "", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 30, "proyecto": "Arca", "modulo": "Validaciones automáticas de modificaciones de matrícula", "tipo": "Desarrollo nuevo", "resp": ["Diana Vidal"], "area": "Dirección de Registro y Control", "doc": "", "fase": "Analisis y requerimientos", "estado": "Suspendido", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "el 29 de julio ACIES informa que entregará documento con especificación funcional el 10 de agosto de 2026", "proximos": "", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 31, "proyecto": "Arca", "modulo": "Repositorio y visor de novedades académicas", "tipo": "Desarrollo nuevo", "resp": ["Diana Vidal"], "area": "Dirección de Registro y Control", "doc": "", "fase": "Analisis y requerimientos", "estado": "Suspendido", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "El 30 de julio se envia a registro y control una serie de reguntas sobre el proceso de traslado para que ACIES pueda tener claridad de lo solicitado, y se envia información sobre las actividades NMAF21,NMAF23, NMAF24, MATF91 para que registro revise si esas actividades son utiles para implementar, la OTIC está en espera de respuesta por parte de registro", "proximos": "", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 32, "proyecto": "Arca", "modulo": "Condiciones para solicitud de reintegro – Funcionalidad NMAF05 – NMAF06 – PARF11 – MATF88", "tipo": "Desarrollo nuevo", "resp": ["Diana Vidal"], "area": "Dirección de Registro y Control", "doc": "", "fase": "Analisis y requerimientos", "estado": "Suspendido", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "ACIES informa el 31 de julio que la primera semana se agistro entregaran la especificación funcional porque está enproceso de validación por parte del comité de desarrollo", "proximos": "", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 33, "proyecto": "Arca", "modulo": "Visor de documentos para todos los documentos cargados al sistema- HVAF10", "tipo": "Desarrollo nuevo", "resp": ["Diana Vidal"], "area": "Dirección de Registro y Control", "doc": "", "fase": "Analisis y requerimientos", "estado": "Suspendido", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "El 27 de julio se envia la version 101 de la especificación funcional dado que pidieron incluir la actividad finf04, esta tasado en 52 horas y etsamos en epsera de respuesta de Registro y control", "proximos": "", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 34, "proyecto": "Arca", "modulo": "Aplicación en el sistema académico ARCA de lo dispuesto en los artículos 50 al 52A del Reglamento Estudiantil.", "tipo": "Desarrollo nuevo", "resp": ["Diana Vidal"], "area": "Dirección de Registro y Control", "doc": "", "fase": "Analisis y requerimientos", "estado": "Suspendido", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "Desde la radicación  el 02 de julio ante ACIES no han solicitado información, se esta realizando seguimiento para obtener prontamente la especificación funcional", "proximos": "", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 35, "proyecto": "Integración Moodle - Sirecec", "modulo": "Integración Moodle - Sirecec", "tipo": "Desarrollo nuevo", "resp": ["Luis Fernando Bernal"], "area": "Dirección de Capacitación", "doc": "", "fase": "Pruebas", "estado": "En curso", "avance": 0.5, "avance_ant": null, "f_inicio": "2026-07-07T00:00:00", "f_act": "2026-07-31T00:00:00", "obs": "para eliminar procesos manuales de registro de participantes en eventos y su posterior certificación. para Moodle instancia \"Extension\" SIRECEC es el sistema que proporciona la información de los participantes (estudiantes). la autenticación mediante el AD ya quedo funcionando para el ambiente de pruebas de SIRECEC", "proximos": "Despliegue de ambiente de pruebas Moodle. informar los tiempos definidos para tener el ambiente de pruebas desplegado y poder liberarlo para iniciar el desarrollo y pruebas de la API de integración\nIniciar fase de desarrollo", "ev": "", "riesgo": false, "dias": 6, "incons": false}, {"no": 36, "proyecto": "Piloto SNA - SERA-ESAP", "modulo": "Piloto SNA - SERA-ESAP", "tipo": "Piloto", "resp": ["Juan Camilo Gutiérrez", "Julio César Hernández"], "area": "Sin área asignada", "doc": "", "fase": "No iniciado", "estado": "Por reportar", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "Sistema de Evaluación de Resultados de Aprendizaje (SERA) de la SNA. La SNA solicita diseñar, configurar e implementar un piloto que digitalice dos instrumentos curriculares — Microcurrículo (información curricular oficial, estable) y Guía de Aprendizaje (planeación pedagógica del profesor por periodo) — con trazabilidad hacia la medición de Resultados de Aprendizaje del Espacio Académico (RAE).", "proximos": "Entendimiento del requerimiento", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 37, "proyecto": "Sistema de información tableros DFAGE", "modulo": "Sistema de información tableros DFAGE", "tipo": "Desarrollo nuevo", "resp": ["Fabián González", "Julio Hernández"], "area": "Dirección de Fortalecimiento y Apoyo a la Gestión Estatal", "doc": "", "fase": "Analisis y requerimientos", "estado": "No iniciado", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "Se dio respuesta a radicado - I-2026-004784 sugiriendo mesas de trabajo", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": true}, {"no": 38, "proyecto": "Plataforma Convocatoria Docente Hora Catedra", "modulo": "Plataforma Convocatoria Docente Hora Catedra", "tipo": "Desarrollo nuevo", "resp": [], "area": "Decanatura de Pregrados / Dirección Procesos de Selección", "doc": "", "fase": "No iniciado", "estado": "Por reportar", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "Convocatoria Docente Hora Catedra a nivel nacional, Nidya Janethe Pinilla Gomez. Usar la misma plantilla del año pasado, Adrián Esteban Villalba. El candidato no se pueda presentar en dos sitios al mismo tiempo.", "proximos": "", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 39, "proyecto": "Módulo Procesos de Selección", "modulo": "Módulo Procesos de Selección", "tipo": "Desarrollo nuevo", "resp": ["Fábrica de software"], "area": "Dirección de Procesos de Selección", "doc": "", "fase": "No iniciado", "estado": "Por reportar", "avance": 0, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "Módulo para proceso de selección para Docentes. No fue aprobada la adición para adelantar este desarrollo. Lo va a construir FSW, validar lo que ya existe", "proximos": "", "ev": "", "riesgo": true, "dias": null, "incons": false}, {"no": 40, "proyecto": "Módulo RUND", "modulo": "Registro Único Nacional Docente", "tipo": "Desarrollo nuevo", "resp": ["Fábrica de software"], "area": "Subdirección Nacional de Servicios Académicos", "doc": "", "fase": "Desarrollo", "estado": "En curso", "avance": 0.46, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 41, "proyecto": "Módulo Programación Académica", "modulo": "Módulo Programación Académica", "tipo": "Desarrollo nuevo", "resp": ["Fábrica de software"], "area": "Subdirección Nacional de Servicios Académicos", "doc": "", "fase": "Desarrollo", "estado": "En curso", "avance": 0.47, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 42, "proyecto": "Módulo Gestión de viáticos", "modulo": "Módulo Gestión de viáticos", "tipo": "Desarrollo nuevo", "resp": ["Fábrica de software"], "area": "Dirección Financiera", "doc": "", "fase": "Desarrollo", "estado": "En curso", "avance": 0.47, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 43, "proyecto": "Módulo Gestión de contratación", "modulo": "Módulo Gestión de contratación", "tipo": "Desarrollo nuevo", "resp": ["Fábrica de software"], "area": "Dirección de Contratación", "doc": "", "fase": "Desarrollo", "estado": "En curso", "avance": 0.5, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 44, "proyecto": "Módulo Gestión de Infraestructura UMI", "modulo": "Módulo Gestión de Infraestructura UMI", "tipo": "Desarrollo nuevo", "resp": ["Fábrica de software"], "area": "Grupo de Infraestructura y mantenimiento", "doc": "", "fase": "Desarrollo", "estado": "En curso", "avance": 0.39, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 45, "proyecto": "Módulo de firma digital", "modulo": "Módulo de firma digital", "tipo": "Desarrollo nuevo", "resp": ["Fábrica de software"], "area": "Sin área asignada", "doc": "", "fase": "Desarrollo", "estado": "En curso", "avance": 0.84, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}, {"no": 46, "proyecto": "Tablero en la intranet de las cifras del sistema de costos", "modulo": "Tablero", "tipo": "Desarrollo nuevo", "resp": [], "area": "Dirección Nacional", "doc": "", "fase": "Desarrollo", "estado": "En curso", "avance": 0.01, "avance_ant": null, "f_inicio": null, "f_act": null, "obs": "hubo reunión con Christian Pinzón el 30jul2026 para atender este requerimiento", "proximos": "", "ev": "", "riesgo": false, "dias": null, "incons": false}]
+</script>
+
+<script>
+// SAFE ICON CREATOR
+function safeCreateIcons() {
+  try {
+    if (typeof lucide !== 'undefined' && lucide && lucide.createIcons) {
+      lucide.createIcons();
+    }
+  } catch(e) {}
+}
+
+// HELPER: CLEAN PERCENTAGE PARSER
+function parsePercent(val) {
+  if (val === null || val === undefined || val === '') return null;
+  if (typeof val === 'number') {
+    return val > 1 ? val / 100 : val;
+  }
+  let str = String(val).replace('%', '').trim();
+  let num = parseFloat(str);
+  if (isNaN(num)) return null;
+  return num > 1 ? num / 100 : num;
+}
+
+// INITIAL DATA & CONSTANTS
+const INITIAL_DATA = JSON.parse(document.getElementById('data-block').textContent);
+
+const FASE_ORDER = ['No iniciado','Analisis y requerimientos','Desarrollo','Pruebas','Despliegue','Produccion'];
+const FASE_LABELS = {
+  'No iniciado': 'No Iniciado',
+  'Analisis y requerimientos': 'Análisis',
+  'Desarrollo': 'Desarrollo',
+  'Pruebas': 'Pruebas',
+  'Despliegue': 'Despliegue',
+  'Produccion': 'Producción'
+};
+const FASE_COLORS = {
+  'No iniciado': '#4A5568',
+  'Analisis y requerimientos': '#F4B400',
+  'Desarrollo': '#0056B3',
+  'Pruebas': '#1A73E8',
+  'Despliegue': '#8E24AA',
+  'Produccion': '#137333'
+};
+
+// Robust currentData initialization: NEVER allow empty array
+let storedData = null;
+try {
+  storedData = JSON.parse(localStorage.getItem('otic_dashboard_data'));
+} catch (e) {}
+
+let currentData = (Array.isArray(storedData) && storedData.length > 0) ? storedData : INITIAL_DATA;
+let pendingImportData = null;
+
+let state = {
+  area: '',
+  estado: '',
+  fase: '',
+  resp: '',
+  search: '',
+  kpiFilter: null
+};
+
+let collapsedGroups = {};
+
+// INITIALIZE
+document.addEventListener('DOMContentLoaded', () => {
+  safeCreateIcons();
+  try { setupEventListeners(); } catch(err) { console.error("Error setting up listeners:", err); }
+  try { renderApp(); } catch(err) { console.error("Error rendering app:", err); }
+});
+
+function setupEventListeners() {
+  // Theme toggle
+  const btnTheme = document.getElementById('btnThemeToggle');
+  if (btnTheme) {
+    btnTheme.addEventListener('click', () => {
+      const isDark = document.body.getAttribute('data-theme') === 'dark';
+      document.body.setAttribute('data-theme', isDark ? 'light' : 'dark');
+      btnTheme.innerText = isDark ? '🌙' : '☀️';
+      initCharts();
+    });
+  }
+
+  // Reset Data button
+  const btnReset = document.getElementById('btnResetData');
+  if (btnReset) {
+    btnReset.addEventListener('click', () => {
+      if (confirm('¿Deseas restablecer el tablero a los datos originales de Trazabilidad (47 iniciativas)?')) {
+        localStorage.removeItem('otic_dashboard_data');
+        currentData = JSON.parse(JSON.stringify(INITIAL_DATA));
+        state = { area:'', estado:'', fase:'', resp:'', search:'', kpiFilter:null };
+        document.querySelectorAll('.filter-select').forEach(s => s.value = '');
+        const fS = document.getElementById('fSearch');
+        if (fS) fS.value = '';
+        renderApp();
+        alert('✅ ¡Datos restablecidos exitosamente a la versión inicial!');
+      }
+    });
+  }
+
+  // Tabs
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      const tabId = btn.getAttribute('data-tab');
+      const contentEl = document.getElementById(tabId);
+      if (contentEl) contentEl.classList.add('active');
+      if (tabId === 'tab-overview') initCharts();
+    });
+  });
+
+  // Filters
+  ['fArea', 'fEstado', 'fFase', 'fResp'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', (e) => {
+        const key = id.replace('f', '').toLowerCase();
+        state[key] = e.target.value;
+        renderApp(false);
+      });
+    }
+  });
+
+  const fSearchEl = document.getElementById('fSearch');
+  if (fSearchEl) {
+    fSearchEl.addEventListener('input', (e) => {
+      state.search = e.target.value.toLowerCase();
+      renderApp(false);
+    });
+  }
+
+  const btnClearFiltersEl = document.getElementById('btnClearFilters');
+  if (btnClearFiltersEl) {
+    btnClearFiltersEl.addEventListener('click', () => {
+      state = { area:'', estado:'', fase:'', resp:'', search:'', kpiFilter:null };
+      document.querySelectorAll('.filter-select').forEach(s => s.value = '');
+      if (fSearchEl) fSearchEl.value = '';
+      renderApp();
+    });
+  }
+
+  // Excel Upload & Export
+  const btnUpload = document.getElementById('btnUploadExcel');
+  if (btnUpload) {
+    btnUpload.addEventListener('click', () => {
+      document.getElementById('fileInputExcel').click();
+    });
+  }
+  const fileInput = document.getElementById('fileInputExcel');
+  if (fileInput) fileInput.addEventListener('change', handleExcelUpload);
+
+  const btnExport = document.getElementById('btnExportExcel');
+  if (btnExport) btnExport.addEventListener('click', exportToExcel);
+
+  const btnPdf = document.getElementById('btnExportPdf');
+  if (btnPdf) btnPdf.addEventListener('click', openExecutivePdfModal);
+
+  const btnConfirm = document.getElementById('btnConfirmImport');
+  if (btnConfirm) btnConfirm.addEventListener('click', confirmExcelImport);
+}
+
+function renderApp(rebuildFilters = true) {
+  if (rebuildFilters) populateFilterSelects();
+  renderKPIs();
+  renderPipeline();
+  renderTable();
+  renderRisks();
+  renderWorkload();
+  initCharts();
+}
+
+function getFilteredData() {
+  return currentData.filter(r => {
+    if (state.area && r.area !== state.area) return false;
+    if (state.estado && r.estado !== state.estado) return false;
+    if (state.fase && r.fase !== state.fase) return false;
+    if (state.resp && (!r.resp || !r.resp.includes(state.resp))) return false;
+    if (state.search) {
+      const term = state.search;
+      const matchP = (r.proyecto || '').toLowerCase().includes(term);
+      const matchM = (r.modulo || '').toLowerCase().includes(term);
+      const matchO = (r.obs || '').toLowerCase().includes(term);
+      const matchR = (r.resp || []).join(' ').toLowerCase().includes(term);
+      if (!matchP && !matchM && !matchO && !matchR) return false;
+    }
+    if (state.kpiFilter === 'encurso' && !['En curso', 'En pruebas funcionales'].includes(r.estado)) return false;
+    if (state.kpiFilter === 'riesgo' && !['Suspendido', 'Por reportar'].includes(r.estado)) return false;
+    if (state.kpiFilter === 'completado' && r.estado !== 'Completado') return false;
+    return true;
+  });
+}
+
+function populateFilterSelects() {
+  const areas = new Set(), estados = new Set(), fases = new Set(), resps = new Set();
+  currentData.forEach(r => {
+    if (r.area) areas.add(r.area);
+    if (r.estado) estados.add(r.estado);
+    if (r.fase) fases.add(r.fase);
+    (r.resp || []).forEach(x => resps.add(x));
+  });
+
+  fillSelect('fArea', Array.from(areas).sort());
+  fillSelect('fEstado', Array.from(estados).sort());
+  fillSelect('fFase', Array.from(fases).sort());
+  fillSelect('fResp', Array.from(resps).sort());
+}
+
+function fillSelect(id, list) {
+  const select = document.getElementById(id);
+  if (!select) return;
+  const curVal = select.value;
+  select.innerHTML = `<option value="">Todas</option>` + list.map(x => `<option value="${x}">${x}</option>`).join('');
+  select.value = curVal;
+}
+
+// KPI STRIP
+function renderKPIs() {
+  const data = getFilteredData();
+  const totalIniciativas = data.length;
+  const proyectosUnicos = new Set(data.map(d => d.proyecto)).size;
+  
+  let totalAvance = 0, validCount = 0;
+  let enCurso = 0, riesgo = 0, completados = 0;
+
+  data.forEach(d => {
+    if (d.avance !== null && d.avance !== undefined) {
+      totalAvance += d.avance;
+      validCount++;
+    }
+    if (['En curso', 'En pruebas funcionales'].includes(d.estado)) enCurso++;
+    if (['Suspendido', 'Por reportar'].includes(d.estado)) riesgo++;
+    if (d.estado === 'Completado') completados++;
+  });
+
+  const avgAvance = validCount > 0 ? Math.round((totalAvance / validCount) * 100) : 0;
+
+  const elT = document.getElementById('kpiTotal'); if (elT) elT.innerText = totalIniciativas;
+  const elP = document.getElementById('kpiProyectosSub'); if (elP) elP.innerText = `${proyectosUnicos} Proyectos en total`;
+  const elA = document.getElementById('kpiAvance'); if (elA) elA.innerText = `${avgAvance}%`;
+  const elE = document.getElementById('kpiEnCurso'); if (elE) elE.innerText = enCurso;
+  const elR = document.getElementById('kpiRiesgo'); if (elR) elR.innerText = riesgo;
+  const elTR = document.getElementById('tabRiskCount'); if (elTR) elTR.innerText = riesgo;
+  const elC = document.getElementById('kpiCompletados'); if (elC) elC.innerText = completados;
+}
+
+// PIPELINE
+function renderPipeline() {
+  const data = getFilteredData();
+  const counts = {};
+  FASE_ORDER.forEach(f => counts[f] = 0);
+  data.forEach(d => { if (counts[d.fase] !== undefined) counts[d.fase]++; });
+
+  const container = document.getElementById('pipelineBar');
+  if (!container) return;
+  container.innerHTML = FASE_ORDER.map(fase => {
+    const qty = counts[fase];
+    const isDim = state.fase && state.fase !== fase;
+    return `
+      <div class="pipeline-seg ${isDim ? 'dim' : ''}" 
+           style="background:${FASE_COLORS[fase]}" 
+           onclick="togglePhaseFilter('${fase}')"
+           title="Filtrar por fase: ${FASE_LABELS[fase]}">
+        <span class="seg-val">${qty}</span>
+        <span class="seg-lbl">${FASE_LABELS[fase]}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function togglePhaseFilter(fase) {
+  state.fase = (state.fase === fase) ? '' : fase;
+  const select = document.getElementById('fFase');
+  if (select) select.value = state.fase;
+  renderApp(false);
+}
+
+// DATA TABLE WITH COLLAPSIBLE GROUPS
+function renderTable() {
+  const data = getFilteredData();
+  const tbody = document.getElementById('tableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  // Group by project
+  const groups = {};
+  data.forEach(item => {
+    if (!groups[item.proyecto]) groups[item.proyecto] = [];
+    groups[item.proyecto].push(item);
+  });
+
+  Object.keys(groups).sort().forEach(projName => {
+    const items = groups[projName];
+    const isMulti = items.length > 1;
+    const isCollapsed = collapsedGroups[projName];
+
+    if (isMulti) {
+      const trGroup = document.createElement('tr');
+      trGroup.className = `proj-group-row ${isCollapsed ? 'collapsed' : ''}`;
+      trGroup.innerHTML = `
+        <td colspan="6">
+          <span class="chev">▼</span> 
+          <strong>${projName}</strong> 
+          <span style="font-weight:normal; font-size:11px; color:var(--text-muted); margin-left:8px;">(${items.length} módulos)</span>
+        </td>
+      `;
+      trGroup.addEventListener('click', () => {
+        collapsedGroups[projName] = !collapsedGroups[projName];
+        renderTable();
+      });
+      tbody.appendChild(trGroup);
+    }
+
+    if (!isMulti || !isCollapsed) {
+      items.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.className = `item-row ${isMulti ? 'child-row' : ''}`;
+        
+        const pct = item.avance !== null && item.avance !== undefined ? Math.round(item.avance * 100) : 0;
+        const badgeCls = getBadgeClass(item.estado);
+
+        tr.innerHTML = `
+          <td>
+            <div style="font-weight:700; color:var(--text-main);">${item.modulo || item.proyecto}</div>
+            <div style="font-size:11px; color:var(--text-muted);">${item.tipo}</div>
+          </td>
+          <td>${(item.resp || []).map(r => `<span class="resp-chip">${r}</span>`).join('') || '<span style="color:var(--text-light)">—</span>'}</td>
+          <td style="color:var(--text-muted)">${item.area || '—'}</td>
+          <td><span class="badge" style="background:${FASE_COLORS[item.fase] || '#002554'}; color:#fff">${FASE_LABELS[item.fase] || item.fase}</span></td>
+          <td><span class="badge ${badgeCls}">${item.estado}</span></td>
+          <td>
+            <div class="progress-bar-wrap">
+              <div class="progress-track">
+                <div class="progress-fill ${pct === 100 ? 'full' : ''}" style="width:${pct}%"></div>
+              </div>
+              <span class="progress-text">${pct}%</span>
+            </div>
+          </td>
+        `;
+        tr.addEventListener('click', () => showDetailModal(item));
+        tbody.appendChild(tr);
+      });
+    }
+  });
+}
+
+function getBadgeClass(estado) {
+  switch (estado) {
+    case 'Completado': return 'badge-completado';
+    case 'En curso':
+    case 'En pruebas funcionales': return 'badge-encurso';
+    case 'Suspendido': return 'badge-suspendido';
+    case 'Por reportar': return 'badge-reportar';
+    default: return 'badge-noiniciado';
+  }
+}
+
+// RISKS PANEL
+function renderRisks() {
+  const data = currentData.filter(d => ['Suspendido', 'Por reportar'].includes(d.estado));
+  const container = document.getElementById('riskGrid');
+  if (!container) return;
+  container.innerHTML = data.map(d => `
+    <div class="risk-card ${d.estado === 'Por reportar' ? 'warn-card' : ''}">
+      <div class="risk-card-header">
+        <div class="risk-card-title">${d.proyecto} — ${d.modulo}</div>
+        <span class="badge ${getBadgeClass(d.estado)}">${d.estado}</span>
+      </div>
+      <div class="risk-card-sub">Responsable: ${(d.resp || []).join(', ') || 'Sin asignar'} | Área: ${d.area || 'N/A'}</div>
+      <div class="risk-card-obs">${d.obs || 'Sin observaciones registradas.'}</div>
+    </div>
+  `).join('') || '<div style="color:var(--text-muted); grid-column: 1/-1;">No hay proyectos en riesgo en esta selección.</div>';
+}
+
+// WORKLOAD TAB
+function renderWorkload() {
+  const respMap = {};
+  currentData.forEach(d => {
+    (d.resp || ['Sin Asignar']).forEach(r => {
+      if (!respMap[r]) respMap[r] = { total: 0, comp: 0, encurso: 0, riesgo: 0, pctSum: 0, pctCount: 0 };
+      respMap[r].total++;
+      if (d.estado === 'Completado') respMap[r].comp++;
+      else if (['En curso', 'En pruebas funcionales'].includes(d.estado)) respMap[r].encurso++;
+      else if (['Suspendido', 'Por reportar'].includes(d.estado)) respMap[r].riesgo++;
+      if (d.avance !== null) { respMap[r].pctSum += d.avance; respMap[r].pctCount++; }
+    });
+  });
+
+  const tbody = document.getElementById('workloadTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = Object.keys(respMap).sort().map(r => {
+    const info = respMap[r];
+    const avg = info.pctCount > 0 ? Math.round((info.pctSum / info.pctCount) * 100) : 0;
+    return `
+      <tr>
+        <td><strong>${r}</strong></td>
+        <td>${info.total}</td>
+        <td style="color:var(--status-success-text)">${info.comp}</td>
+        <td style="color:var(--status-info-text)">${info.encurso}</td>
+        <td style="color:var(--status-danger-text)">${info.riesgo}</td>
+        <td>
+          <div class="progress-bar-wrap">
+            <div class="progress-track"><div class="progress-fill" style="width:${avg}%"></div></div>
+            <span class="progress-text">${avg}%</span>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// CHARTS INITIALIZATION ESAP INSTITUTIONAL COLORS
+let charts = {};
+function initCharts() {
+  if (typeof Chart === 'undefined') return;
+  const data = getFilteredData();
+
+  // ESAP Palettes
+  const esapColors = ['#137333', '#0056B3', '#1A73E8', '#F4B400', '#C5221F', '#4A5568'];
+
+  // 1. Estado Doughnut Chart
+  const estadoCounts = {};
+  data.forEach(d => estadoCounts[d.estado] = (estadoCounts[d.estado] || 0) + 1);
+  createChart('chartEstado', 'doughnut', {
+    labels: Object.keys(estadoCounts),
+    datasets: [{
+      data: Object.values(estadoCounts),
+      backgroundColor: esapColors
+    }]
+  });
+
+  // 2. Responsables Bar Chart
+  const respCounts = {};
+  data.forEach(d => (d.resp || ['Sin Asignar']).forEach(r => respCounts[r] = (respCounts[r] || 0) + 1));
+  const sortedResps = Object.entries(respCounts).sort((a,b) => b[1] - a[1]).slice(0, 8);
+  createChart('chartResponsables', 'bar', {
+    labels: sortedResps.map(x => x[0]),
+    datasets: [{
+      label: 'Iniciativas Asignadas',
+      data: sortedResps.map(x => x[1]),
+      backgroundColor: '#0056B3'
+    }]
+  }, { indexAxis: 'y' });
+
+  // 3. Areas Solicitantes Chart
+  const areaCounts = {};
+  data.forEach(d => { if(d.area) areaCounts[d.area] = (areaCounts[d.area] || 0) + 1; });
+  const sortedAreas = Object.entries(areaCounts).sort((a,b) => b[1] - a[1]).slice(0, 6);
+  createChart('chartAreas', 'bar', {
+    labels: sortedAreas.map(x => x[0]),
+    datasets: [{
+      label: 'Iniciativas',
+      data: sortedAreas.map(x => x[1]),
+      backgroundColor: '#002554'
+    }]
+  });
+
+  // 4. Tipos Doughnut
+  const tipoCounts = {};
+  data.forEach(d => tipoCounts[d.tipo] = (tipoCounts[d.tipo] || 0) + 1);
+  createChart('chartTipos', 'doughnut', {
+    labels: Object.keys(tipoCounts),
+    datasets: [{
+      data: Object.values(tipoCounts),
+      backgroundColor: ['#0056B3', '#8E24AA', '#F4B400', '#137333']
+    }]
+  });
+}
+
+function createChart(id, type, dataConfig, extraOptions = {}) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (charts[id]) charts[id].destroy();
+  const ctx = el.getContext('2d');
+  charts[id] = new Chart(ctx, {
+    type: type,
+    data: dataConfig,
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { color: getComputedStyle(document.body).getPropertyValue('--text-main') } } },
+      ...extraOptions
+    }
+  });
+}
+
+// MODAL DETAIL
+function showDetailModal(item) {
+  const titleEl = document.getElementById('mTitle');
+  if (titleEl) titleEl.innerText = `${item.proyecto} — ${item.modulo}`;
+  const pct = item.avance !== null ? Math.round(item.avance * 100) : 0;
+  
+  const bodyEl = document.getElementById('mBody');
+  if (bodyEl) {
+    bodyEl.innerHTML = `
+      <div class="detail-grid-2">
+        <div class="detail-section">
+          <h4>Área Solicitante</h4>
+          <div>${item.area || 'No especificada'}</div>
+        </div>
+        <div class="detail-section">
+          <h4>Tipo de Desarrollo</h4>
+          <div>${item.tipo}</div>
+        </div>
+        <div class="detail-section">
+          <h4>Fase / Estado</h4>
+          <div><span class="badge ${getBadgeClass(item.estado)}">${item.estado}</span> (${item.fase})</div>
+        </div>
+        <div class="detail-section">
+          <h4>Avance Actual</h4>
+          <div style="font-weight:700; font-size:16px; color:var(--primary);">${pct}%</div>
+        </div>
+      </div>
+
+      <div class="detail-section">
+        <h4>Responsables</h4>
+        <div>${(item.resp || []).join(', ') || 'Sin responsable asignado'}</div>
+      </div>
+
+      <div class="detail-section">
+        <h4>Observaciones y Estado del Proyecto</h4>
+        <p style="margin-top:4px; line-height:1.5;">${item.obs || 'Sin observaciones registradas.'}</p>
+      </div>
+
+      <div class="detail-section">
+        <h4>Próximos Pasos</h4>
+        <p style="margin-top:4px; line-height:1.5;">${item.proximos || 'Sin próximos pasos registrados.'}</p>
+      </div>
+    `;
+  }
+  const modalEl = document.getElementById('modalDetail');
+  if (modalEl) modalEl.classList.add('open');
+}
+
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('open');
+}
+
+// EXECUTIVE PDF SUMMARY GENERATOR
+function openExecutivePdfModal() {
+  const data = getFilteredData();
+  const total = data.length;
+  const proyectosUnicos = new Set(data.map(d => d.proyecto)).size;
+  
+  let totalAvance = 0, validCount = 0;
+  let enCurso = 0, riesgo = 0, completados = 0;
+  const estadoMap = {};
+  const riesgoItems = [];
+
+  data.forEach(d => {
+    if (d.avance !== null && d.avance !== undefined) {
+      totalAvance += d.avance;
+      validCount++;
+    }
+    estadoMap[d.estado] = (estadoMap[d.estado] || 0) + 1;
+    if (['En curso', 'En pruebas funcionales'].includes(d.estado)) enCurso++;
+    if (['Suspendido', 'Por reportar'].includes(d.estado)) {
+      riesgo++;
+      riesgoItems.push(d);
+    }
+    if (d.estado === 'Completado') completados++;
+  });
+
+  const avgAvance = validCount > 0 ? Math.round((totalAvance / validCount) * 100) : 0;
+  const fechaHoy = new Date().toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  const bodyEl = document.getElementById('pdfModalBody');
+  if (bodyEl) {
+    bodyEl.innerHTML = `
+      <div style="font-family:var(--font-sans); color:var(--text-main);">
+        <!-- HEADER INFORME -->
+        <div style="border-bottom:3px solid var(--primary); padding-bottom:12px; margin-bottom:16px;">
+          <div style="display:flex; justify-space-between; align-items:center;">
+            <div>
+              <h2 style="font-size:18px; color:var(--primary); font-weight:800;">INFORME EJECUTIVO DE PORTAFOLIO DE DESARROLLO</h2>
+              <p style="font-size:12px; color:var(--text-muted);">Oficina de Tecnologías de la Información y las Comunicaciones · ESAP</p>
+            </div>
+            <div style="text-align:right; font-size:11px; color:var(--text-muted);">
+              <div>Fecha de Emisión: <strong>${fechaHoy}</strong></div>
+              <div>Corte: <strong>Agosto 2026</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RESUMEN KPI -->
+        <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:10px; margin-bottom:20px; background:var(--bg-body); padding:12px; border-radius:8px; border:1px solid var(--border-color);">
+          <div style="text-align:center;">
+            <div style="font-size:10px; color:var(--text-muted); font-weight:700;">INICIATIVAS</div>
+            <div style="font-size:20px; font-weight:800; color:var(--primary);">${total}</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:10px; color:var(--text-muted); font-weight:700;">PROYECTOS</div>
+            <div style="font-size:20px; font-weight:800;">${proyectosUnicos}</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:10px; color:var(--text-muted); font-weight:700;">% AVANCE GLOBAL</div>
+            <div style="font-size:20px; font-weight:800; color:#137333;">${avgAvance}%</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:10px; color:var(--text-muted); font-weight:700;">EN EJECUCIÓN</div>
+            <div style="font-size:20px; font-weight:800; color:#0056B3;">${enCurso}</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:10px; color:var(--text-muted); font-weight:700;">EN RIESGO</div>
+            <div style="font-size:20px; font-weight:800; color:#C5221F;">${riesgo}</div>
+          </div>
+        </div>
+
+        <!-- DISTRIBUCIÓN POR ESTADO -->
+        <div class="detail-section" style="margin-bottom:16px;">
+          <h4 style="font-size:12px; font-weight:700; color:var(--primary); margin-bottom:8px;">1. Resumen Consolidado por Estado</h4>
+          <div style="display:flex; flex-wrap:wrap; gap:12px;">
+            ${Object.entries(estadoMap).map(([est, count]) => `
+              <div style="background:var(--bg-card); padding:8px 12px; border-radius:6px; border:1px solid var(--border-color); flex:1; min-width:120px;">
+                <span class="badge ${getBadgeClass(est)}">${est}</span>
+                <div style="font-size:16px; font-weight:700; margin-top:4px;">${count} <span style="font-size:11px; font-weight:normal; color:var(--text-muted);">(${Math.round((count/total)*100)}%)</span></div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- PROYECTOS EN RIESGO / SUSPENDIDOS -->
+        ${riesgoItems.length > 0 ? `
+          <div class="detail-section" style="margin-bottom:16px; border-left:4px solid #C5221F;">
+            <h4 style="font-size:12px; font-weight:700; color:#C5221F; margin-bottom:8px;">2. Alertas Críticas y Proyectos Suspendidos (${riesgoItems.length})</h4>
+            <table style="width:100%; border-collapse:collapse; font-size:11.5px;">
+              <thead>
+                <tr style="background:var(--bg-card); text-align:left;">
+                  <th style="padding:6px;">Proyecto / Módulo</th>
+                  <th style="padding:6px;">Estado</th>
+                  <th style="padding:6px;">Responsable</th>
+                  <th style="padding:6px;">Observación / Motivo de Suspensión</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${riesgoItems.map(r => `
+                  <tr style="border-top:1px solid var(--border-color);">
+                    <td style="padding:6px; font-weight:700;">${r.proyecto} - ${r.modulo}</td>
+                    <td style="padding:6px;"><span class="badge ${getBadgeClass(r.estado)}">${r.estado}</span></td>
+                    <td style="padding:6px;">${(r.resp||[]).join(', ') || 'N/A'}</td>
+                    <td style="padding:6px; color:var(--text-muted);">${r.obs || 'Sin reporte reciente.'}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : ''}
+
+        <!-- TABLA SINTÉTICA DE INICIATIVAS -->
+        <div class="detail-section">
+          <h4 style="font-size:12px; font-weight:700; color:var(--primary); margin-bottom:8px;">3. Listado Sintético de Iniciativas (${data.length})</h4>
+          <table style="width:100%; border-collapse:collapse; font-size:11px;">
+            <thead>
+              <tr style="background:var(--primary); color:#fff; text-align:left;">
+                <th style="padding:6px;">Proyecto / Módulo</th>
+                <th style="padding:6px;">Área Solicitante</th>
+                <th style="padding:6px;">Responsable</th>
+                <th style="padding:6px;">Fase</th>
+                <th style="padding:6px;">Estado</th>
+                <th style="padding:6px; text-align:right;">% Avance</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.map(d => `
+                <tr style="border-bottom:1px solid var(--border-color);">
+                  <td style="padding:5px; font-weight:600;">${d.proyecto} - ${d.modulo}</td>
+                  <td style="padding:5px; color:var(--text-muted);">${d.area || '—'}</td>
+                  <td style="padding:5px;">${(d.resp||[]).join(', ') || '—'}</td>
+                  <td style="padding:5px;">${FASE_LABELS[d.fase] || d.fase}</td>
+                  <td style="padding:5px;"><span class="badge ${getBadgeClass(d.estado)}">${d.estado}</span></td>
+                  <td style="padding:5px; text-align:right; font-weight:700;">${Math.round((d.avance||0)*100)}%</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  const modalEl = document.getElementById('modalPdfSummary');
+  if (modalEl) modalEl.classList.add('open');
+}
+
+function triggerPdfPrint() {
+  window.print();
+}
+
+// EXCEL UPLOAD & STRICT COLUMN MAPPING ENGINE
+function handleExcelUpload(e) {
+  if (typeof XLSX === 'undefined') {
+    alert('❌ Error: La librería SheetJS no está cargada. Verifica tu conexión a internet.');
+    return;
+  }
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    try {
+      const data = new Uint8Array(evt.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      
+      const sheetName = workbook.SheetNames.includes('Trazabilidad') ? 'Trazabilidad' : workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+      if (!rawRows || rawRows.length < 2) {
+        alert('❌ Error: El archivo Excel está vacío o no contiene suficientes filas.');
+        return;
+      }
+
+      // Format Validation
+      const headerRow = rawRows[0].map(c => String(c || '').trim());
+      const requiredCols = ['Proyecto', 'Modulo / Componente', 'Estado'];
+      const missingCols = requiredCols.filter(col => !headerRow.some(h => h.toLowerCase().includes(col.toLowerCase())));
+
+      if (missingCols.length > 0) {
+        alert("❌ Error de Validación de Formato:\n\nEl archivo cargado no contiene las columnas requeridas:\n- " + missingCols.join("\n- ") + "\n\nPor favor sube una plantilla válida de Trazabilidad OTIC.");
+        return;
+      }
+
+      // Map rows STRICTLY avoiding collision with '% Avance semana anterior'
+      const parsedData = [];
+      const colMap = {};
+      headerRow.forEach((h, idx) => {
+        const key = String(h || '').toLowerCase().trim();
+        if (key.includes('proyecto')) colMap.proyecto = idx;
+        else if (key.includes('modulo') || key.includes('componente')) colMap.modulo = idx;
+        else if (key.includes('tipo')) colMap.tipo = idx;
+        else if (key.includes('responsable')) colMap.resp = idx;
+        else if (key.includes('area') || key.includes('área')) colMap.area = idx;
+        else if (key.includes('fase')) colMap.fase = idx;
+        else if (key.includes('estado')) colMap.estado = idx;
+        else if (key.includes('avance actual') || (key.includes('avance') && !key.includes('anterior'))) colMap.avance = idx;
+        else if (key.includes('observaciones') || key.includes('riesgo')) colMap.obs = idx;
+        else if (key.includes('proximo') || key.includes('próximo')) colMap.proximos = idx;
+      });
+
+      for (let i = 1; i < rawRows.length; i++) {
+        const row = rawRows[i];
+        if (!row || row.length === 0 || !row[colMap.proyecto]) continue;
+        
+        let respArr = [];
+        if (colMap.resp !== undefined && row[colMap.resp]) {
+          respArr = String(row[colMap.resp]).split(/[\n,]/).map(s => s.trim()).filter(Boolean);
+        }
+
+        let rawAvance = colMap.avance !== undefined ? row[colMap.avance] : null;
+        let avanceVal = parsePercent(rawAvance);
+
+        parsedData.push({
+          no: i,
+          proyecto: String(row[colMap.proyecto] || '').trim(),
+          modulo: String(row[colMap.modulo] || row[colMap.proyecto] || '').trim(),
+          tipo: String(colMap.tipo !== undefined ? row[colMap.tipo] || 'Desarrollo nuevo' : 'Desarrollo nuevo').trim(),
+          resp: respArr,
+          area: String(colMap.area !== undefined ? row[colMap.area] || 'Sin área asignada' : 'Sin área asignada').trim(),
+          fase: String(colMap.fase !== undefined ? row[colMap.fase] || 'Desarrollo' : 'Desarrollo').trim(),
+          estado: String(colMap.estado !== undefined ? row[colMap.estado] || 'En curso' : 'En curso').trim(),
+          avance: avanceVal,
+          obs: String(colMap.obs !== undefined ? row[colMap.obs] || '' : '').trim(),
+          proximos: String(colMap.proximos !== undefined ? row[colMap.proximos] || '' : '').trim()
+        });
+      }
+
+      // Generate REAL Deep Diff Preview
+      generateDiffPreview(parsedData);
+
+    } catch (err) {
+      alert('❌ Error al procesar el archivo Excel: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// AUTHENTIC DEEP DIFF PREVIEW ENGINE
+function generateDiffPreview(newData) {
+  pendingImportData = newData;
+  
+  // Build lookup map from current dataset
+  const currentMap = new Map();
+  currentData.forEach(d => {
+    const key = `${d.proyecto.toLowerCase().trim()}_${d.modulo.toLowerCase().trim()}`;
+    currentMap.set(key, d);
+  });
+
+  let added = 0, updated = 0, unchanged = 0;
+  const diffRows = [];
+
+  newData.forEach(newItem => {
+    const key = `${newItem.proyecto.toLowerCase().trim()}_${newItem.modulo.toLowerCase().trim()}`;
+    const oldItem = currentMap.get(key);
+
+    if (!oldItem) {
+      added++;
+      diffRows.push({
+        type: 'NUEVA',
+        item: newItem,
+        changesText: `Nueva iniciativa · Estado: ${newItem.estado} (${Math.round((newItem.avance || 0) * 100)}%)`
+      });
+    } else {
+      // Deep field comparisons
+      const fieldChanges = [];
+      
+      const oldEst = (oldItem.estado || '').trim();
+      const newEst = (newItem.estado || '').trim();
+      if (oldEst !== newEst) {
+        fieldChanges.push(`Estado: ${oldEst} ➔ <strong>${newEst}</strong>`);
+      }
+
+      const oldPct = oldItem.avance !== null && oldItem.avance !== undefined ? Math.round(oldItem.avance * 100) : null;
+      const newPct = newItem.avance !== null && newItem.avance !== undefined ? Math.round(newItem.avance * 100) : null;
+      if (oldPct !== newPct) {
+        fieldChanges.push(`Avance: ${oldPct !== null ? oldPct + '%' : '—'} ➔ <strong>${newPct !== null ? newPct + '%' : '—'}</strong>`);
+      }
+
+      const oldFase = (oldItem.fase || '').trim();
+      const newFase = (newItem.fase || '').trim();
+      if (oldFase !== newFase) {
+        fieldChanges.push(`Fase: ${oldFase} ➔ <strong>${newFase}</strong>`);
+      }
+
+      const oldObs = (oldItem.obs || '').trim();
+      const newObs = (newItem.obs || '').trim();
+      if (oldObs !== newObs) {
+        fieldChanges.push(`Observación actualizada`);
+      }
+
+      if (fieldChanges.length > 0) {
+        updated++;
+        diffRows.push({
+          type: 'ACTUALIZADA',
+          item: newItem,
+          old: oldItem,
+          changesText: fieldChanges.join('<br>')
+        });
+      } else {
+        unchanged++;
+      }
+    }
+  });
+
+  const bannerEl = document.getElementById('diffSummaryBanner');
+  if (bannerEl) {
+    bannerEl.innerHTML = `
+      <h3 style="color:var(--primary); font-size:16px; font-weight:800; margin-bottom:6px;">Resultados del Análisis Real de Trazabilidad</h3>
+      <p>Se analizaron <strong>${newData.length} iniciativas</strong> del archivo cargado:</p>
+      <div style="display:flex; gap:16px; margin-top:10px;">
+        <span style="background:var(--status-success-bg); color:var(--status-success-text); padding:4px 10px; border-radius:6px; font-weight:700;">🟢 ${added} Nuevas</span>
+        <span style="background:var(--status-info-bg); color:var(--status-info-text); padding:4px 10px; border-radius:6px; font-weight:700;">🔵 ${updated} Actualizadas</span>
+        <span style="background:var(--status-muted-bg); color:var(--status-muted-text); padding:4px 10px; border-radius:6px; font-weight:700;">⚪ ${unchanged} Sin Cambios</span>
+      </div>
+    `;
+  }
+
+  const detailsEl = document.getElementById('diffDetailsArea');
+  if (detailsEl) {
+    if (diffRows.length === 0) {
+      detailsEl.innerHTML = `
+        <div style="padding:20px; text-align:center; color:var(--text-muted); background:var(--bg-body); border-radius:8px; margin-top:12px;">
+          ✅ El archivo cargado es idéntico a la versión actual. No se encontraron cambios ni modificaciones.
+        </div>
+      `;
+    } else {
+      detailsEl.innerHTML = `
+        <table class="diff-table">
+          <thead>
+            <tr>
+              <th style="width:15%">Tipo</th>
+              <th style="width:40%">Proyecto / Módulo</th>
+              <th style="width:45%">Detalle Real de Cambios Detectados</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${diffRows.map(r => `
+              <tr class="${r.type === 'NUEVA' ? 'diff-add' : 'diff-mod'}">
+                <td><strong style="color:${r.type === 'NUEVA' ? '#137333' : '#0056B3'}">${r.type}</strong></td>
+                <td><strong>${r.item.proyecto}</strong><br><span style="font-size:11px; color:var(--text-muted);">${r.item.modulo}</span></td>
+                <td>${r.changesText}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+  }
+
+  const modalEl = document.getElementById('modalDiff');
+  if (modalEl) modalEl.classList.add('open');
+}
+
+function confirmExcelImport() {
+  if (pendingImportData) {
+    currentData = pendingImportData;
+    localStorage.setItem('otic_dashboard_data', JSON.stringify(currentData));
+    closeModal('modalDiff');
+    renderApp();
+    alert('✅ ¡Tablero actualizado exitosamente con los nuevos datos de Trazabilidad!');
+  }
+}
+
+// EXPORT TO EXCEL
+function exportToExcel() {
+  if (typeof XLSX === 'undefined') {
+    alert('❌ Error: La librería SheetJS no está cargada. Verifica tu conexión a internet.');
+    return;
+  }
+  const data = getFilteredData();
+  const exportRows = data.map(d => ({
+    'No.': d.no,
+    'Proyecto': d.proyecto,
+    'Módulo / Componente': d.modulo,
+    'Tipo': d.tipo,
+    'Responsables': (d.resp || []).join(', '),
+    'Área Solicitante': d.area,
+    'Fase Actual': d.fase,
+    'Estado': d.estado,
+    '% Avance actual': Math.round((d.avance || 0) * 100) + '%',
+    'Observaciones': d.obs,
+    'Próximos Pasos': d.proximos
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(exportRows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Trazabilidad');
+  
+  const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Portafolio_OTIC_ESAP_Reporte.xlsx';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 100);
+}
+</script>
+</body>
+</html>
