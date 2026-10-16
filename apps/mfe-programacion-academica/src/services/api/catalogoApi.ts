@@ -84,6 +84,7 @@ export interface Grupo {
   idGrupo: string;
   idAsignatura: string;
   idPeriodo: string | null;
+  idOfertaCetap: string | null;
   numeroGrupo: number;
   idDocente: string | null;
   cupoMaximo: number;
@@ -95,6 +96,14 @@ export interface Grupo {
 }
 
 const BASE_GRUPOS = '/programacion-academica/api/v1/grupos';
+
+export interface OfertaCetapGrupo {
+  idOfertaCetap: string;
+  idPrograma: string;
+  idPeriodoAcademico: string;
+  cetap: { id: string; codigo: string; nombre: string };
+  territorial: { codigo: string | null; nombre: string | null; idSeccional: string | null };
+}
 
 async function pedirJson<T>(ruta: string, init: RequestInit): Promise<T> {
   const res = await fetch(`${getApiGatewayBaseUrl()}${ruta}`, {
@@ -131,13 +140,27 @@ export function getGrupos(idAsignatura: string, idPeriodo?: string): Promise<Gru
   return pedirJson<Grupo[]>(`${BASE_GRUPOS}?asignatura=${encodeURIComponent(idAsignatura)}${q}`, { method: 'GET' });
 }
 
+/** Ofertas activas del programa de la asignatura en el periodo seleccionado. */
+export function getOfertasCetapGrupo(idAsignatura: string, idPeriodo: string): Promise<OfertaCetapGrupo[]> {
+  return pedirJson<OfertaCetapGrupo[]>(
+    `${BASE_GRUPOS}/ofertas-cetap?asignatura=${encodeURIComponent(idAsignatura)}&periodo=${encodeURIComponent(idPeriodo)}`,
+    { method: 'GET' },
+  );
+}
+
 /** Crea 1..N grupos. La numeración la asigna el backend (estrategia reemplazable). */
-export function crearGrupos(idAsignatura: string, cantidad: number, idPeriodo?: string | null): Promise<Grupo[]> {
+export function crearGrupos(idAsignatura: string, cantidad: number, idPeriodo?: string | null, idOfertaCetap?: string | null): Promise<Grupo[]> {
   return pedirJson<Grupo[]>(BASE_GRUPOS, {
     method: 'POST',
     // El periodo del grupo es el seleccionado en la cabecera: sin él, el grupo
     // nace huérfano (id_periodo NULL) y publicar/validar no lo alcanzan.
-    body: JSON.stringify({ idAsignatura, cantidad, idPeriodo: idPeriodo ?? null }),
+    body: JSON.stringify({ idAsignatura, cantidad, idPeriodo: idPeriodo ?? null, ...(idOfertaCetap ? { idOfertaCetap } : {}) }),
+  });
+}
+
+export function actualizarOfertaCetapGrupo(idGrupo: string, idOfertaCetap: string | null): Promise<Grupo> {
+  return pedirJson<Grupo>(`${BASE_GRUPOS}/${encodeURIComponent(idGrupo)}`, {
+    method: 'PATCH', body: JSON.stringify({ idOfertaCetap }),
   });
 }
 
