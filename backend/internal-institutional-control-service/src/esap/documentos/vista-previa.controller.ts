@@ -7,6 +7,7 @@ import {
   Post,
   Req,
   Res,
+  ServiceUnavailableException,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -68,6 +69,32 @@ export class VistaPreviaController {
     return { id };
   }
 
+  /**
+   * POST /vista-previa/:id/pdf: pasa a PDF el documento subido (el Programa Anual en
+   * Excel) con OnlyOffice y lo guarda como otra vista previa; devuelve su id.
+   */
+  @Post(':id/pdf')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.PLAN_ANUAL_VIEW, CIP.PLAN_ANUAL_APPROVE, CIP.PLAN_ANUAL_EXPORT, CIP.AUDITORIA_VIEW)
+  async convertirAPdf(@Param('id') id: string) {
+    const archivo = this.buscar(id);
+    if (extname(archivo.nombre).toLowerCase() === '.pdf') return { id };
+
+    let pdf: Buffer;
+    try {
+      pdf = await this.onlyOfficeService.convertirAPdf(`/vista-previa/${id}/archivo`, `vp${id}pdf`, archivo.nombre);
+    } catch (error) {
+      console.error('[VistaPrevia] No se pudo convertir a PDF:', error);
+      throw new ServiceUnavailableException(
+        error instanceof Error ? error.message : 'No se pudo convertir el documento a PDF',
+      );
+    }
+    const idPdf = randomUUID();
+    const nombrePdf = archivo.nombre.replace(/\.[^.]+$/, '') + '.pdf';
+    writeFileSync(join(CARPETA, this.nombreEnDisco(idPdf, nombrePdf)), pdf);
+    return { id: idPdf };
+  }
+
   /** GET /vista-previa/:id/onlyoffice-config */
   @Get(':id/onlyoffice-config')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -82,6 +109,7 @@ export class VistaPreviaController {
         id: req.user?.userId || 'anonimo',
         nombre: req.user?.username || 'Usuario',
       },
+      { ajustarAlAncho: true },
     );
   }
 

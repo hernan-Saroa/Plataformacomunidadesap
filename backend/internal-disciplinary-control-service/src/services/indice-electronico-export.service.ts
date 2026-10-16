@@ -4,14 +4,18 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { resolveFrontendBaseUrl } from '../common/url-resolver.util';
 
-// Campos de clasificación archivística (TRD) del proceso "Control Disciplinario" —
-// según Gestión Documental son fijos para todo expediente de este módulo, no dependen del caso.
-const TRD_UNIDAD_ADMINISTRATIVA = 'DESPACHO DE LA DIRECCIÓN NACIONAL';
-const TRD_UNIDAD_PRODUCTORA = 'OFICINA DE CONTROL INTERNO DISCIPLINARIO';
-const TRD_SERIE = 'PROCESOS JURÍDICOS';
-const TRD_SUBSERIE = 'PROCESOS DISCIPLINARIOS';
-const TRD_CODIGO_IDENTIFICACION_EXPEDIENTE = '12_160_780_60';
-const TRD_UBICACION_SOPORTE_FISICO = 'N/A';
+// Campos de clasificación archivística (TRD/TVD) del proceso "Control Disciplinario" —
+// según Gestión Documental (la misma fuente que alimenta las columnas J y K del FUID EI-FO-003):
+export const TRD_UNIDAD_ADMINISTRATIVA = 'DESPACHO DE LA DIRECCIÓN NACIONAL';
+export const TRD_UNIDAD_PRODUCTORA = 'OFICINA DE CONTROL INTERNO DISCIPLINARIO';
+export const TRD_CODIGO_SERIE = '780';
+export const TRD_NOMBRE_SERIE = 'PROCESOS JURÍDICOS';
+export const TRD_SERIE = `${TRD_CODIGO_SERIE} – ${TRD_NOMBRE_SERIE}`;
+export const TRD_CODIGO_SUBSERIE = '60';
+export const TRD_NOMBRE_SUBSERIE = 'PROCESOS DISCIPLINARIOS';
+export const TRD_SUBSERIE = `${TRD_CODIGO_SUBSERIE} – ${TRD_NOMBRE_SUBSERIE}`;
+export const TRD_CODIGO_IDENTIFICACION_EXPEDIENTE = '12_160_780_60';
+export const TRD_UBICACION_SOPORTE_FISICO = 'N/A';
 
 const FIRST_DATA_ROW = 10;
 const TEMPLATE_DATA_ROWS = 20; // filas 10-29 ya vienen numeradas y con bordes en la plantilla
@@ -92,6 +96,15 @@ export interface IndiceElectronicoExpedienteDto {
   radicado: string;
   asunto?: string;
   responsable?: string;
+  numeroExpediente?: string;
+  codigoIdentificacionExpediente?: string;
+  codigoSerie?: string;
+  nombreSerie?: string;
+  serie?: string;
+  codigoSubserie?: string;
+  nombreSubserie?: string;
+  subserie?: string;
+  tieneSubserie?: boolean;
 }
 
 @Injectable()
@@ -125,15 +138,59 @@ export class IndiceElectronicoExportService {
       worksheet.addImage(logoImageId, 'A1:B3');
     }
 
-    worksheet.getCell('A6').value = `CÓDIGO IDENTIFICACIÓN EXPEDIENTE: ${TRD_CODIGO_IDENTIFICACION_EXPEDIENTE}`;
+    const numeroExpediente = (expediente?.numeroExpediente || expediente?.radicado || '').trim();
+    const codigoIdentificacion = (expediente?.codigoIdentificacionExpediente || TRD_CODIGO_IDENTIFICACION_EXPEDIENTE).trim();
+
+    // Bloque de identificación:
+    // NÚMERO DE EXPEDIENTE (P-XXXX-AAAA) y CÓDIGO IDENTIFICACIÓN EXPEDIENTE (12_160_780_60 se conserva)
+    const cellA6 = worksheet.getCell('A6');
+    cellA6.value = `NÚMERO DE EXPEDIENTE: ${numeroExpediente}\nCÓDIGO IDENTIFICACIÓN EXPEDIENTE: ${codigoIdentificacion}`;
+    cellA6.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
+    worksheet.getRow(6).height = 36;
+
     worksheet.getCell('C6').value = `UNIDAD ADMINISTRATIVA: ${TRD_UNIDAD_ADMINISTRATIVA}`;
     worksheet.getCell('F6').value = `UNIDAD PRODUCTORA: ${TRD_UNIDAD_PRODUCTORA}`;
-    worksheet.getCell('A7').value = `SERIE: ${TRD_SERIE}`;
-    worksheet.getCell('C7').value = `SUBSERIE: ${TRD_SUBSERIE}`;
+
+    // SERIE: [Código serie] – PROCESOS JURÍDICOS (ej: 780 – PROCESOS JURÍDICOS)
+    let serieTexto = TRD_SERIE;
+    if (expediente?.serie && expediente.serie.trim()) {
+      serieTexto = expediente.serie.trim();
+    } else if (expediente?.codigoSerie || expediente?.nombreSerie) {
+      const cod = (expediente.codigoSerie || TRD_CODIGO_SERIE).trim();
+      const nom = (expediente.nombreSerie || TRD_NOMBRE_SERIE).trim();
+      serieTexto = cod ? `${cod} – ${nom}` : nom;
+    }
+    const cleanSerie = serieTexto.replace(/^SERIE:\s*/i, '').trim();
+    worksheet.getCell('A7').value = `SERIE: ${cleanSerie}`;
+
+    // SUBSERIE: [Código subserie] – PROCESOS DISCIPLINARIOS (ej: 60 – PROCESOS DISCIPLINARIOS)
+    // Si un expediente no tiene subserie, el campo muestra "N/A" (como indica el instructivo del FUID)
+    let subserieTexto = TRD_SUBSERIE;
+    if (
+      expediente?.tieneSubserie === false ||
+      (expediente?.subserie &&
+        (expediente.subserie.trim().toUpperCase() === 'N/A' ||
+          expediente.subserie.trim().toUpperCase() === 'NO APLICA')) ||
+      (expediente?.codigoSubserie &&
+        (expediente.codigoSubserie.trim().toUpperCase() === 'N/A' ||
+          expediente.codigoSubserie.trim().toUpperCase() === 'NO APLICA'))
+    ) {
+      subserieTexto = 'N/A';
+    } else if (expediente?.subserie && expediente.subserie.trim()) {
+      subserieTexto = expediente.subserie.trim();
+    } else if (expediente?.codigoSubserie || expediente?.nombreSubserie) {
+      const cod = (expediente.codigoSubserie || TRD_CODIGO_SUBSERIE).trim();
+      const nom = (expediente.nombreSubserie || TRD_NOMBRE_SUBSERIE).trim();
+      subserieTexto = cod ? `${cod} – ${nom}` : nom;
+    }
+    const cleanSubserie = subserieTexto.replace(/^SUBSERIE:\s*/i, '').trim();
+    worksheet.getCell('C7').value = cleanSubserie.toUpperCase() === 'N/A' ? 'SUBSERIE: N/A' : `SUBSERIE: ${cleanSubserie}`;
+
     // El expediente de este módulo es 100% electrónico (sin soporte físico) → siempre se marca NO.
     worksheet.getCell('E7').value = 'EXPEDIENTE HÍBRIDO:\n[  ] SI      [X] NO';
     worksheet.getCell('F7').value = `UBICACIÓN EXPEDIENTE EN SOPORTE FÍSICO: ${TRD_UBICACION_SOPORTE_FISICO}`;
-    worksheet.getCell('A8').value = `ASUNTO: ${expediente.asunto || ''}`;
+    worksheet.getCell('A8').value = `ASUNTO: ${expediente?.asunto || ''}`;
+    worksheet.getCell('C8').value = expediente?.asunto || '';
 
     const extraRows = documentos.length - TEMPLATE_DATA_ROWS;
     if (extraRows > 0) {

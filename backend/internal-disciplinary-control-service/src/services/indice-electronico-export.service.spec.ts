@@ -1,4 +1,10 @@
-import { IndiceElectronicoExportService, limpiarNombreArchivo } from './indice-electronico-export.service';
+import {
+  IndiceElectronicoExportService,
+  limpiarNombreArchivo,
+  TRD_CODIGO_IDENTIFICACION_EXPEDIENTE,
+  TRD_SERIE,
+  TRD_SUBSERIE,
+} from './indice-electronico-export.service';
 
 describe('IndiceElectronicoExportService', () => {
   let service: IndiceElectronicoExportService;
@@ -83,6 +89,111 @@ describe('IndiceElectronicoExportService', () => {
       expect(valK11.hyperlink).toBe(
         'http://localhost:4000/control-disciplinario/files/Queja.docx?token=mocktoken',
       );
+    });
+
+    it('debe incluir en el bloque de identificación NÚMERO DE EXPEDIENTE (P-XXXX-AAAA), CÓDIGO IDENTIFICACIÓN EXPEDIENTE, SERIE y SUBSERIE vigentes', async () => {
+      const expediente = {
+        radicado: 'P-137-2026',
+        asunto: 'Proceso Disciplinario Ordinario',
+        responsable: 'Dra. María González Pérez',
+      };
+
+      const workbook = await service.generar(expediente, []);
+      const worksheet = workbook.getWorksheet('Formato EI-FO-020');
+      expect(worksheet).toBeDefined();
+
+      // Celda A6: Debe contener NÚMERO DE EXPEDIENTE y CÓDIGO IDENTIFICACIÓN EXPEDIENTE (12_160_780_60 conservado)
+      const valA6 = String(worksheet!.getCell('A6').value);
+      expect(valA6).toContain('NÚMERO DE EXPEDIENTE: P-137-2026');
+      expect(valA6).toContain('CÓDIGO IDENTIFICACIÓN EXPEDIENTE: 12_160_780_60');
+
+      // Celda A7: SERIE [Código serie] – PROCESOS JURÍDICOS (780 – PROCESOS JURÍDICOS)
+      const valA7 = String(worksheet!.getCell('A7').value);
+      expect(valA7).toBe('SERIE: 780 – PROCESOS JURÍDICOS');
+
+      // Celda C7: SUBSERIE [Código subserie] – PROCESOS DISCIPLINARIOS (60 – PROCESOS DISCIPLINARIOS)
+      const valC7 = String(worksheet!.getCell('C7').value);
+      expect(valC7).toBe('SUBSERIE: 60 – PROCESOS DISCIPLINARIOS');
+    });
+
+    it('debe mostrar "N/A" en SUBSERIE si un expediente no tiene subserie', async () => {
+      const expedienteSinSubserie = {
+        radicado: 'P-045-2026',
+        asunto: 'Investigación sin subserie documental',
+        responsable: 'Dr. Juan Pérez López',
+        tieneSubserie: false,
+      };
+
+      const workbook = await service.generar(expedienteSinSubserie, []);
+      const worksheet = workbook.getWorksheet('Formato EI-FO-020');
+      expect(worksheet).toBeDefined();
+
+      const valC7 = String(worksheet!.getCell('C7').value);
+      expect(valC7).toBe('SUBSERIE: N/A');
+    });
+
+    it('debe mostrar "N/A" si subserie se especifica explícitamente como "N/A"', async () => {
+      const expedienteSubserieNA = {
+        radicado: 'P-099-2026',
+        asunto: 'Caso especial',
+        responsable: 'Abogado Instructor',
+        subserie: 'N/A',
+      };
+
+      const workbook = await service.generar(expedienteSubserieNA, []);
+      const worksheet = workbook.getWorksheet('Formato EI-FO-020');
+
+      const valC7 = String(worksheet!.getCell('C7').value);
+      expect(valC7).toBe('SUBSERIE: N/A');
+    });
+
+    it('al exportar varios expedientes, cada índice debe llevar su propio número de expediente y sus códigos', async () => {
+      const exp1 = {
+        radicado: 'P-137-2026',
+        asunto: 'Proceso 1',
+      };
+      const exp2 = {
+        radicado: 'P-205-2026',
+        asunto: 'Proceso 2',
+        tieneSubserie: false,
+      };
+
+      const wb1 = await service.generar(exp1, []);
+      const ws1 = wb1.getWorksheet('Formato EI-FO-020');
+
+      const wb2 = await service.generar(exp2, []);
+      const ws2 = wb2.getWorksheet('Formato EI-FO-020');
+
+      expect(String(ws1!.getCell('A6').value)).toContain('NÚMERO DE EXPEDIENTE: P-137-2026');
+      expect(String(ws1!.getCell('C7').value)).toBe('SUBSERIE: 60 – PROCESOS DISCIPLINARIOS');
+
+      expect(String(ws2!.getCell('A6').value)).toContain('NÚMERO DE EXPEDIENTE: P-205-2026');
+      expect(String(ws2!.getCell('C7').value)).toBe('SUBSERIE: N/A');
+    });
+
+    it('debe conservar la estructura del formato EI-FO-020 (logos, código, versión, fecha y celdas combinadas)', async () => {
+      const expediente = {
+        radicado: 'P-137-2026',
+        asunto: 'Proceso con validación de estructura',
+      };
+
+      const workbook = await service.generar(expediente, []);
+      const worksheet = workbook.getWorksheet('Formato EI-FO-020');
+      expect(worksheet).toBeDefined();
+
+      // Estructura oficial del encabezado institucional
+      expect(String(worksheet!.getCell('C1').value)).toContain('FORMATO ÍNDICE ELECTRÓNICO');
+      expect(String(worksheet!.getCell('I1').value)).toBe('CÓDIGO: EI-FO-020');
+      expect(String(worksheet!.getCell('I2').value)).toBe('VERSIÓN: 01');
+      expect(String(worksheet!.getCell('I3').value)).toBe('FECHA: 10/04/2024');
+
+      // Celdas combinadas preservadas
+      const merges = worksheet!.model.merges;
+      expect(merges).toContain('A6:B6');
+      expect(merges).toContain('C6:E6');
+      expect(merges).toContain('F6:K6');
+      expect(merges).toContain('A7:B7');
+      expect(merges).toContain('C7:D7');
     });
   });
 });

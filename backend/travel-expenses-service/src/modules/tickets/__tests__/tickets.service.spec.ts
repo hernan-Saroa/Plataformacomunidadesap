@@ -596,6 +596,54 @@ describe('TicketsService', () => {
       expect(resultadoSync.actualizadas).toBe(1);
       expect(resultadoSync.fuente).toBeDefined();
     });
+
+    it('resuelve tarifa estimada a partir de abreviación compuesta como "BOG-PEI" o "Bogotá - Pereira"', async () => {
+      const tarifaRepo = {
+        findOne: jest.fn().mockImplementation((opts: any) => {
+          const match = opts.where.some(
+            (w: any) =>
+              (w.origenIata === 'BOG' && w.destinoIata === 'PEI') ||
+              (w.origenIata === 'PEI' && w.destinoIata === 'BOG'),
+          );
+          if (match) {
+            return Promise.resolve({
+              id: 25,
+              origenIata: 'BOG',
+              origenCiudad: 'BOGOTÁ, D.C.',
+              destinoIata: 'PEI',
+              destinoCiudad: 'PEREIRA',
+              tarifaEstimada: 330_000,
+              tarifaMinima: 250_000,
+              tarifaMaxima: 430_000,
+              fuente: 'PARAMETRICO_ESAP',
+              activo: true,
+            });
+          }
+          return Promise.resolve(null);
+        }),
+      };
+      const module = await createMockModule({ tarifaRepo });
+      const service = module.get<TicketsService>(TicketsService);
+
+      // 1. Caso abreviación directa BOG-PEI en un solo parámetro
+      const resCompuesto = await service.consultarTarifaEstimada('BOG-PEI', '');
+      expect(resCompuesto.origenIata).toBe('BOG');
+      expect(resCompuesto.destinoIata).toBe('PEI');
+      expect(resCompuesto.tarifaEstimada).toBe(330_000);
+      expect(resCompuesto.encontrado).toBe(true);
+
+      // 2. Caso con espacios "BOG - PEI"
+      const resEspaciado = await service.consultarTarifaEstimada('BOG - PEI', '');
+      expect(resEspaciado.origenIata).toBe('BOG');
+      expect(resEspaciado.destinoIata).toBe('PEI');
+      expect(resEspaciado.tarifaEstimada).toBe(330_000);
+
+      // 3. Caso origen "Bogotá, D.C." y destino "Pereira"
+      const resCiudades = await service.consultarTarifaEstimada('Bogotá, D.C.', 'Pereira');
+      expect(resCiudades.origenIata).toBe('BOG');
+      expect(resCiudades.destinoIata).toBe('PEI');
+      expect(resCiudades.tarifaEstimada).toBe(330_000);
+    });
   });
 });
 

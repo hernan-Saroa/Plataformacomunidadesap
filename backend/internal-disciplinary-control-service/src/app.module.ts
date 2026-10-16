@@ -51,6 +51,7 @@ import { NewsService } from './services/news.service';
 import { ProcessService } from './services/process.service';
 import { ProcessExportService } from './services/process-export.service';
 import { IndiceElectronicoExportService } from './services/indice-electronico-export.service';
+import { FuidExportService } from './services/fuid-export.service';
 import { AutoService } from './services/auto.service';
 import { SequenceService } from './services/sequence.service';
 import { StorageService, getUploadRootDir } from './services/storage.service';
@@ -184,6 +185,7 @@ import { frontendContextMiddleware } from './common/url-resolver.util';
     ProcessService,
     ProcessExportService,
     IndiceElectronicoExportService,
+    FuidExportService,
     AutoService,
     SequenceService,
     StorageService,

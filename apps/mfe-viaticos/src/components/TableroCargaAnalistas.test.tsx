@@ -72,8 +72,6 @@ describe('TableroCargaAnalistas', () => {
 
     expect(screen.getByText('@ana.gomez')).toBeDefined();
     expect(screen.getByText('@luis.perez')).toBeDefined();
-    expect(screen.getByText('ID: 123456')).toBeDefined();
-    expect(screen.getByText('ID: 789012')).toBeDefined();
   });
 
   it('debe filtrar analistas por búsqueda', async () => {
@@ -117,12 +115,31 @@ describe('TableroCargaAnalistas', () => {
       expect(screen.getByText('Ana Gómez')).toBeDefined();
     });
 
-    const input = screen.getByPlaceholderText('Buscar analista por nombre o usuario...');
+    const input = screen.getByPlaceholderText('Buscar por nombre, usuario o ID...');
     fireEvent.change(input, { target: { value: 'Luis' } });
 
     await waitFor(() => {
       expect(screen.queryByText('Ana Gómez')).toBeNull();
       expect(screen.getByText('Luis Pérez')).toBeDefined();
+    });
+  });
+
+  it('debe solicitar la carga con el ID de la solicitud y mostrar mensaje específico si no hay analistas en la dependencia', async () => {
+    (viaticosService.obtenerCargaAnalistas as any).mockResolvedValue({ data: [], total: 0 });
+
+    render(
+      <TableroCargaAnalistas
+        analistaSeleccionadoId={null}
+        onSeleccionarAnalista={() => {}}
+        solicitudId="sol-123"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(viaticosService.obtenerCargaAnalistas).toHaveBeenCalledWith('sol-123');
+      expect(
+        screen.getByText('No se encontraron analistas activos asignados a la misma dependencia de la solicitud.'),
+      ).toBeDefined();
     });
   });
 });

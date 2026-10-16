@@ -102,7 +102,11 @@ export default function TableroCargaAnalistas({
       {cargando ? (
         <div className="px-4 py-6 text-center text-xs text-slate-400">Cargando analistas...</div>
       ) : analistasFiltrados.length === 0 ? (
-        <div className="px-4 py-6 text-center text-xs text-slate-400">No se encontraron analistas.</div>
+        <div className="px-4 py-6 text-center text-xs text-slate-400">
+          {solicitudId
+            ? 'No se encontraron analistas activos asignados a la misma dependencia de la solicitud.'
+            : 'No se encontraron analistas.'}
+        </div>
       ) : (
         <div className="px-4 pb-4 space-y-2 max-h-64 overflow-y-auto">
           {analistasFiltrados.map((analista) => {
