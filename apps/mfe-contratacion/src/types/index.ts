@@ -4078,11 +4078,85 @@ export interface CandidatoAPuesto {
   procesosEnElPuesto: number;
 }
 
-/** Quién hace una actividad, en Configuración (109). */
+/** Quién hace una actividad, en Configuración (109, 111). */
 export interface LaHaceConfig {
   tipo: 'PERMISO' | 'PUESTO' | 'PERSONAS';
   puesto: { id: string; nombre: string; activo: boolean } | null;
   personas: { id: string; nombre: string }[];
+  /** Qué versión del flujo se está mostrando: el borrador si lo hay. */
+  editando?: 'BORRADOR' | 'ACTIVA';
+  /** En una modalidad, si lo hereda de la general. */
+  heredada?: boolean;
+}
+
+// ------------------------------------------ versiones del flujo (111) ------
+
+/** Una versión del flujo: quién hace y quién aprueba cada actividad. */
+export interface VersionFlujo {
+  id: string;
+  numero: number;
+  estado: 'BORRADOR' | 'ACTIVA' | 'RETIRADA';
+  nota: string | null;
+  creadaPor: string | null;
+  createdAt: string;
+  activadaPor: string | null;
+  activadaAt: string | null;
+  procesosEnCurso: number;
+}
+
+/** Algo que corregir antes de activar el flujo. */
+export interface ProblemaFlujo {
+  numeral: string;
+  nombre: string;
+  etapa: number;
+  modalidad: string | null;
+  parte: 'HACE' | 'APRUEBA';
+  gravedad: 'ERROR' | 'AVISO';
+  mensaje: string;
+  /** Las modalidades donde pasa, cuando se validan todas. */
+  modalidades?: string[];
+}
+
+/** Cómo se asigna quien hace la actividad. */
+export type ModoAsignacion = 'ROL' | 'PERSONA' | 'AL_EJECUTAR';
+
+/** Una actividad en el diagrama del flujo. */
+export interface NodoFlujo {
+  numeral: string;
+  nombre: string;
+  etapa: number;
+  /** Si la modalidad la hace; si no, se la salta. */
+  aplica: boolean;
+  /** Si se hace en la plataforma; si no, pasa fuera y el flujo la salta. */
+  enLaPlataforma: boolean;
+  /** Si en ella se asigna gente al proceso, qué se asigna. */
+  asigna: string | null;
+  dependeDe: string[] | null;
+  hace: { modo: ModoAsignacion; accion: string; propia: boolean; quien: string | null };
+  aprueba: {
+    tipo: 'NINGUNA' | 'CADENA' | 'ESCALON';
+    propia: boolean;
+    cadena: string | null;
+    escalones: { nombre: string; quienes: { tipo: 'PUESTO' | 'ROL' | 'PERSONA' | 'PAPEL'; nombre: string }[] }[];
+  };
+  estado: 'OK' | 'ERROR' | 'AVISO';
+  problemas: { parte: 'HACE' | 'APRUEBA'; gravedad: 'ERROR' | 'AVISO'; mensaje: string }[];
+}
+
+export interface DiagramaFlujo {
+  version: { id: string; numero: number; estado: 'BORRADOR' | 'ACTIVA' | 'RETIRADA' };
+  modalidad: string | null;
+  modalidades: { codigo: string; nombre: string }[];
+  etapas: { etapa: number; actividades: NodoFlujo[] }[];
+  problemas: ProblemaFlujo[];
+}
+
+/** Con qué versión del flujo corre un proceso. */
+export interface FlujoDelProceso {
+  version: number | null;
+  activa: number | null;
+  desactualizado: boolean;
+  puedeActualizar: boolean;
 }
 
 /** Lo que la configuración deja sin salida. */

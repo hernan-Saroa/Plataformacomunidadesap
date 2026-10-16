@@ -22,6 +22,7 @@ import { Modal } from '../shared/Modal';
 import { SoloLectura, AvisoSoloLectura } from '../shared/SoloLectura';
 import { momento as fechaDelMomento } from '../shared/fechas';
 import { PanelRadicacion } from '../participacion/PanelRadicacion';
+import { VersionDelFlujo } from './VersionDelFlujo';
 import { PanelSupervision } from '../supervision/PanelSupervision';
 import { OrigenEnElPaa } from '../paa/OrigenEnElPaa';
 
@@ -302,6 +303,7 @@ export function FichaDelProceso({
               />
             ) : null}
           </ul>
+          <VersionDelFlujo procesoId={procesoId} onCambio={onCambio} />
           {!puedeGestionarReparto && !supervision?.puedeDesignar ? (
             <p className="m-0 px-4 py-2.5 border-t border-gray-100 text-[12px] text-slate-500 flex items-start gap-1.5">
               <Lock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />

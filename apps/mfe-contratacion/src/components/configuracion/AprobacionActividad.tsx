@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { campo } from '../shared/PiezasPanel';
+import { AvisoDeVersion } from './LaHaceActividad';
 
 /** Un aprobador ya elegido: un rol, una persona o un puesto del proceso (109). */
 interface Aprobador {
@@ -14,6 +15,11 @@ interface Aprobador {
 
 interface Props {
   numeral: string;
+  /** Una modalidad (111); sin ella, la configuración general. */
+  modalidad?: string | null;
+  nombreModalidad?: string;
+  /** Algo cambió en el borrador: el diagrama relee. */
+  onCambio?: () => void;
 }
 
 /**
@@ -33,7 +39,7 @@ interface Props {
  * Administrador» y «Super User» aparecían seguidos sin nada que dijera cuál era
  * cuál.
  */
-export function AprobacionActividad({ numeral }: Props) {
+export function AprobacionActividad({ numeral, modalidad = null, nombreModalidad, onCambio }: Props) {
   const [requiere, setRequiere] = useState(false);
   const [aprobadores, setAprobadores] = useState<Aprobador[]>([]);
   /**
@@ -46,6 +52,7 @@ export function AprobacionActividad({ numeral }: Props) {
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [heredada, setHeredada] = useState(false);
 
   const [buscando, setBuscando] = useState(false);
   const [texto, setTexto] = useState('');
@@ -66,8 +73,9 @@ export function AprobacionActividad({ numeral }: Props) {
   const leer = () => {
     setCargando(true);
     contratacionService
-      .aprobacionDeActividad(numeral)
+      .aprobacionDeActividad(numeral, modalidad)
       .then((r) => {
+        setHeredada(!!r.heredada);
         setRequiere(r.requiereAprobacion);
         setAprobadores(r.aprobadores ?? []);
         setCadena(r.cadena ?? null);
@@ -78,7 +86,7 @@ export function AprobacionActividad({ numeral }: Props) {
       .finally(() => setCargando(false));
   };
 
-  useEffect(leer, [numeral]);
+  useEffect(leer, [numeral, modalidad]);
 
   // Los roles se piden una vez al abrir el buscador y no al montar: la mayoría
   // de las veces se entra a esta pestaña solo a mirar.
@@ -147,11 +155,14 @@ export function AprobacionActividad({ numeral }: Props) {
         roles: nuevos.filter((a) => a.clase === 'rol').map((a) => a.id),
         personas: nuevos.filter((a) => a.clase === 'persona').map((a) => a.id),
         puestos: nuevos.filter((a) => a.clase === 'puesto').map((a) => a.id),
+        modalidad,
       });
       setRequiere(nuevoRequiere);
       setAprobadores(nuevos);
       setCadena(null);
       setEligiendoCadena(false);
+      setHeredada(false);
+      onCambio?.();
       toast.success(
         nuevoRequiere ? 'La actividad requiere aprobación' : 'La actividad ya no requiere aprobación',
       );
@@ -181,11 +192,14 @@ export function AprobacionActividad({ numeral }: Props) {
         roles: [],
         personas: [],
         cadenaId: elegida.id,
+        modalidad,
       });
       setRequiere(true);
       setAprobadores([]);
       setCadena(elegida);
       setEligiendoCadena(false);
+      setHeredada(false);
+      onCambio?.();
       toast.success(`La aprueba la cadena «${elegida.nombre}»`);
     } catch (e: any) {
       toast.error(e.message ?? 'No se pudo guardar');
@@ -205,12 +219,35 @@ export function AprobacionActividad({ numeral }: Props) {
 
   return (
     <div className="space-y-3">
-      <div>
+      <div className="space-y-1">
         <p className="text-xs text-slate-600 m-0 leading-relaxed">
           Si esta actividad necesita el visto bueno de alguien antes de darse por terminada.
-          Los procesos ya aprobados no cambian: lo que se configure aquí rige de ahora en
-          adelante.
         </p>
+        <AvisoDeVersion
+          heredada={heredada}
+          modalidad={modalidad}
+          nombreModalidad={nombreModalidad}
+          ocupado={guardando}
+          onUsarGeneral={async () => {
+            setGuardando(true);
+            try {
+              await contratacionService.guardarAprobacionDeActividad(numeral, {
+                requiereAprobacion: requiere,
+                roles: [],
+                personas: [],
+                modalidad,
+                usarGeneral: true,
+              });
+              toast.success('Vuelve a usar lo general');
+              onCambio?.();
+              leer();
+            } catch (e: any) {
+              toast.error(e.message ?? 'No se pudo guardar');
+            } finally {
+              setGuardando(false);
+            }
+          }}
+        />
       </div>
 
       <div className="space-y-2">

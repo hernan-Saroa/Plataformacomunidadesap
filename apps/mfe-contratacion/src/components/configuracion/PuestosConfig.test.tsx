@@ -76,7 +76,7 @@ describe('LaHaceActividad', () => {
     } as never);
     render(<LaHaceActividad numeral="5.1" />);
 
-    expect(await screen.findByRole('button', { name: /Quien tenga el permiso/ })).toHaveAttribute(
+    expect(await screen.findByRole('button', { name: /Por rol: quien tenga el permiso/ })).toHaveAttribute(
       'aria-pressed',
       'true',
     );
@@ -96,10 +96,10 @@ describe('LaHaceActividad', () => {
     } as never);
     render(<LaHaceActividad numeral="5.1" />);
 
-    await usuario.click(await screen.findByRole('button', { name: /Quien ocupe un puesto del proceso/ }));
+    await usuario.click(await screen.findByRole('button', { name: /Se elige al ejecutar: un puesto del proceso/ }));
     await usuario.click(screen.getByRole('button', { name: 'Abogado' }));
 
-    expect(guardar).toHaveBeenCalledWith('5.1', { puestoId: 'p-abogado' });
-    expect(await screen.findByText(/Quien ocupe el puesto «Abogado»/)).toBeInTheDocument();
+    expect(guardar).toHaveBeenCalledWith('5.1', { puestoId: 'p-abogado', modalidad: null });
+    expect(await screen.findByText(/Se elige al ejecutar: el puesto «Abogado»/)).toBeInTheDocument();
   });
 });

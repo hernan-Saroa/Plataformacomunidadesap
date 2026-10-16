@@ -8,6 +8,11 @@ import { campo } from '../shared/PiezasPanel';
 
 interface Props {
   numeral: string;
+  /** Una modalidad (111); sin ella, la configuración general. */
+  modalidad?: string | null;
+  nombreModalidad?: string;
+  /** Algo cambió en el borrador: el diagrama relee. */
+  onCambio?: () => void;
 }
 
 /**
@@ -21,7 +26,7 @@ interface Props {
  *   la 3.3. Es lo que hacía el abogado con la causal y el comité.
  * - Unas personas: siempre ellas, en todos los procesos.
  */
-export function LaHaceActividad({ numeral }: Props) {
+export function LaHaceActividad({ numeral, modalidad = null, nombreModalidad, onCambio }: Props) {
   const [config, setConfig] = useState<LaHaceConfig | null>(null);
   const [puestos, setPuestos] = useState<Puesto[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +36,7 @@ export function LaHaceActividad({ numeral }: Props) {
   const [encontradas, setEncontradas] = useState<{ id: string; nombre: string }[]>([]);
 
   useEffect(() => {
-    Promise.all([contratacionService.laHaceDeActividad(numeral), contratacionService.puestos()])
+    Promise.all([contratacionService.laHaceDeActividad(numeral, modalidad), contratacionService.puestos()])
       .then(([c, p]) => {
         setConfig(c);
         setModo(c.tipo);
@@ -39,7 +44,7 @@ export function LaHaceActividad({ numeral }: Props) {
         setError(null);
       })
       .catch((e: any) => setError(e.message));
-  }, [numeral]);
+  }, [numeral, modalidad]);
 
   // Las personas son miles: se buscan en el servidor desde dos letras.
   useEffect(() => {
@@ -64,14 +69,15 @@ export function LaHaceActividad({ numeral }: Props) {
     return () => clearTimeout(t);
   }, [texto, config]);
 
-  const guardar = async (datos: { puestoId?: string; personas?: string[] }, exito: string) => {
+  const guardar = async (datos: { puestoId?: string; personas?: string[]; usarGeneral?: boolean }, exito: string) => {
     setGuardando(true);
     try {
-      const nueva = await contratacionService.guardarLaHaceDeActividad(numeral, datos);
+      const nueva = await contratacionService.guardarLaHaceDeActividad(numeral, { ...datos, modalidad });
       setConfig(nueva);
       setModo(nueva.tipo);
       setTexto('');
       toast.success(exito);
+      onCambio?.();
     } catch (e: any) {
       toast.error(e.message ?? 'No se pudo guardar');
     } finally {
@@ -88,16 +94,23 @@ export function LaHaceActividad({ numeral }: Props) {
     <div className="space-y-3">
       <p className="text-xs text-slate-600 m-0 leading-relaxed">
         Quién hace esta actividad en cada proceso. No da permisos: de los que la pueden hacer según Permisos por
-        etapa, dice quién la hace. Rige de ahora en adelante.
+        etapa, dice quién la hace.
       </p>
+      <AvisoDeVersion
+        heredada={config.heredada}
+        modalidad={modalidad}
+        nombreModalidad={nombreModalidad}
+        ocupado={guardando}
+        onUsarGeneral={() => guardar({ usarGeneral: true }, 'Vuelve a usar lo general')}
+      />
 
       <div className="space-y-2">
         <Opcion
           marcada={modo === 'PERMISO'}
           disabled={guardando}
           onClick={() => (config.tipo === 'PERMISO' ? setModo('PERMISO') : guardar({}, 'La hace quien tenga el permiso'))}
-          titulo="Quien tenga el permiso"
-          ayuda="Cualquiera cuyo rol pueda editarla en Permisos por etapa."
+          titulo="Por rol: quien tenga el permiso"
+          ayuda="Cualquiera cuyo rol pueda hacerla en Permisos por etapa."
         />
         <Opcion
           marcada={modo === 'PUESTO'}
@@ -105,17 +118,17 @@ export function LaHaceActividad({ numeral }: Props) {
           onClick={() => setModo('PUESTO')}
           titulo={
             config.tipo === 'PUESTO' && config.puesto
-              ? `Quien ocupe el puesto «${config.puesto.nombre}»`
-              : 'Quien ocupe un puesto del proceso'
+              ? `Se elige al ejecutar: el puesto «${config.puesto.nombre}»`
+              : 'Se elige al ejecutar: un puesto del proceso'
           }
-          ayuda="Se asigna en la 3.3 de cada proceso, entre quienes tienen el permiso."
+          ayuda="Quien recibe el proceso (3.3) escoge a la persona, entre quienes tienen el permiso."
         />
         <Opcion
           marcada={modo === 'PERSONAS'}
           disabled={guardando}
           onClick={() => setModo('PERSONAS')}
-          titulo="Unas personas concretas"
-          ayuda="Siempre ellas, en todos los procesos."
+          titulo="Una persona fija"
+          ayuda="Siempre ella, en todos los procesos. No se escoge al ejecutar."
         />
       </div>
 
@@ -233,3 +246,49 @@ const Opcion = ({
     </span>
   </button>
 );
+
+/**
+ * Lo que se dice arriba de la ficha (111): que se edita el borrador del flujo
+ * y, en una modalidad, si se hereda la general o se la reemplaza.
+ */
+export function AvisoDeVersion({
+  heredada,
+  modalidad,
+  nombreModalidad,
+  onUsarGeneral,
+  ocupado,
+}: {
+  heredada?: boolean;
+  modalidad?: string | null;
+  nombreModalidad?: string;
+  onUsarGeneral: () => void;
+  ocupado: boolean;
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-slate-500 m-0">
+        Los cambios se guardan en el borrador del flujo y rigen cuando se activa en la pestaña Flujo. Los procesos en
+        curso siguen con su versión.
+      </p>
+      {modalidad ? (
+        heredada ? (
+          <p className="text-xs text-slate-600 m-0">
+            {nombreModalidad ?? modalidad} usa lo general. Si lo cambias aquí, cambia solo para esta modalidad.
+          </p>
+        ) : (
+          <p className="text-xs text-indigo-700 m-0">
+            {nombreModalidad ?? modalidad} tiene su propia configuración.{' '}
+            <button
+              type="button"
+              disabled={ocupado}
+              onClick={onUsarGeneral}
+              className="font-bold underline hover:no-underline disabled:opacity-50"
+            >
+              Volver a lo general
+            </button>
+          </p>
+        )
+      ) : null}
+    </div>
+  );
+}

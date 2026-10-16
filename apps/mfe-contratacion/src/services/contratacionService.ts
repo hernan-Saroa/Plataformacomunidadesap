@@ -153,6 +153,10 @@ import {
   AccionEscalon,
   CadenaDeAprobacion,
   CandidatoAPuesto,
+  DiagramaFlujo,
+  FlujoDelProceso,
+  ProblemaFlujo,
+  VersionFlujo,
   LaHaceConfig,
   ProblemaDePuestos,
   Puesto,
@@ -2813,18 +2817,36 @@ export const contratacionService = {
   // actividad nueva no exige tocar el servicio.
 
   /** Cómo está configurada la aprobación de una actividad, para el panel de configuración. */
-  aprobacionDeActividad: (numeral: string) =>
+  aprobacionDeActividad: (numeral: string, modalidad?: string | null) =>
     pedir<{
       requiereAprobacion: boolean;
       aprobadores: { clase: 'rol' | 'persona' | 'puesto'; id: string; nombre: string }[];
       /** La cadena de escalones que la aprueba, si se eligió una (migración 101). */
       cadena: { id: string; nombre: string; escalones: number; activa: boolean } | null;
-    }>(`/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion`),
+      /** La versión del flujo que se muestra: el borrador si lo hay (111). */
+      editando?: 'BORRADOR' | 'ACTIVA';
+      /** En una modalidad, si lo hereda de la general. */
+      heredada?: boolean;
+    }>(
+      `/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion${
+        modalidad ? `?modalidad=${encodeURIComponent(modalidad)}` : ''
+      }`,
+    ),
 
   /** Con `cadenaId`, la aprueba esa cadena; si no, los roles, personas y puestos, en un escalón. */
   guardarAprobacionDeActividad: (
     numeral: string,
-    datos: { requiereAprobacion: boolean; roles: string[]; personas: string[]; puestos?: string[]; cadenaId?: string },
+    datos: {
+      requiereAprobacion: boolean;
+      roles: string[];
+      personas: string[];
+      puestos?: string[];
+      cadenaId?: string;
+      /** Para una modalidad (111); sin ella, la general. */
+      modalidad?: string | null;
+      /** En una modalidad, vuelve a heredar la general. */
+      usarGeneral?: boolean;
+    },
   ) =>
     pedir(`/configuracion/actividades/${encodeURIComponent(numeral)}/aprobacion`, {
       method: 'PUT',
@@ -2844,14 +2866,61 @@ export const contratacionService = {
     }),
 
   /** Quién hace la actividad: un puesto, unas personas o quien tenga el permiso (109). */
-  laHaceDeActividad: (numeral: string) =>
-    pedir<LaHaceConfig>(`/configuracion/actividades/${encodeURIComponent(numeral)}/quien-la-hace`),
+  laHaceDeActividad: (numeral: string, modalidad?: string | null) =>
+    pedir<LaHaceConfig>(
+      `/configuracion/actividades/${encodeURIComponent(numeral)}/quien-la-hace${
+        modalidad ? `?modalidad=${encodeURIComponent(modalidad)}` : ''
+      }`,
+    ),
 
   /** Sin puesto ni personas, la vuelve a hacer cualquiera con el permiso. */
-  guardarLaHaceDeActividad: (numeral: string, datos: { puestoId?: string; personas?: string[] }) =>
+  guardarLaHaceDeActividad: (
+    numeral: string,
+    datos: { puestoId?: string; personas?: string[]; modalidad?: string | null; usarGeneral?: boolean },
+  ) =>
     pedir<LaHaceConfig>(`/configuracion/actividades/${encodeURIComponent(numeral)}/quien-la-hace`, {
       method: 'PUT',
       body: JSON.stringify(datos),
+    }),
+
+  // ----------------------------------------- versiones del flujo (111) ---
+
+  /** Las versiones del flujo: la activa, el borrador y las que aún usan procesos. */
+  versionesFlujo: () => pedir<VersionFlujo[]>('/configuracion/flujo-versiones'),
+
+  /** Crea el borrador como copia de la activa (o devuelve el que hay). */
+  crearBorradorFlujo: () => pedir<VersionFlujo[]>('/configuracion/flujo-versiones/borrador', { method: 'POST' }),
+
+  descartarBorradorFlujo: () =>
+    pedir<{ descartado: boolean }>('/configuracion/flujo-versiones/borrador', { method: 'DELETE' }),
+
+  /** Lo que impide activar: del borrador si lo hay, si no de la activa. */
+  validacionFlujo: () => pedir<ProblemaFlujo[]>('/configuracion/flujo-versiones/validacion'),
+
+  /** Activa el borrador; 409 si algo queda sin quién lo haga o lo apruebe. */
+  activarFlujo: (nota?: string) =>
+    pedir<{ activada: boolean }>('/configuracion/flujo-versiones/activar', {
+      method: 'POST',
+      body: JSON.stringify({ nota }),
+    }),
+
+  /** El flujo de una modalidad (o el general), del borrador o de la activa. */
+  diagramaFlujo: (modalidad: string | null, cual?: 'BORRADOR' | 'ACTIVA') => {
+    const q = new URLSearchParams();
+    if (modalidad) q.set('modalidad', modalidad);
+    if (cual) q.set('cual', cual);
+    const texto = q.toString();
+    return pedir<DiagramaFlujo>(`/configuracion/flujo-diagrama${texto ? `?${texto}` : ''}`);
+  },
+
+  /** Con qué versión corre el proceso, y la activa. */
+  flujoDelProceso: (procesoId: string) => pedir<FlujoDelProceso>(`/procesos/${procesoId}/flujo`),
+
+  /** Pasa el proceso a la versión activa, con motivo. */
+  actualizarFlujoDelProceso: (procesoId: string, motivo: string) =>
+    pedir<FlujoDelProceso>(`/procesos/${procesoId}/flujo/actualizar`, {
+      method: 'POST',
+      body: JSON.stringify({ motivo }),
     }),
 
   /** Los puestos del proceso, con lo que hace o aprueba cada uno (109). */
