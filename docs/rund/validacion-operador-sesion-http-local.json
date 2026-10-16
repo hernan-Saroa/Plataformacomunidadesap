@@ -1,0 +1,23 @@
+{
+  "verifiedAt": "2026-10-16T05:11:32.607Z",
+  "checkpoint": 78,
+  "passed": true,
+  "syntheticDataOnly": true,
+  "loopbackOnly": true,
+  "realAuthControllerGuardAndStrategy": true,
+  "realShellReader": true,
+  "databaseModulesLoaded": false,
+  "dotenvLoaded": false,
+  "applicationStopped": true,
+  "checks": [
+    "Auth /me rechaza peticiones sin JWT aunque aporten actor y persona por query o cabeceras",
+    "Token interno no sustituye la sesión del operador en /me",
+    "Bearer firmado conserva userId=sub de cuenta, omite persona y envía private,no-store",
+    "Cookie de sesión existente resuelve la misma cuenta sin leer credenciales en el shell",
+    "JWT vencido o firmado por otra clave no confirma principal",
+    "Lector shell real usa HTTP Auth y entrega únicamente principal v1 de cuenta",
+    "Otro login cambia cuenta del lector y una cookie vencida falla sin refresh ni fallback",
+    "JWT firmado sin sub de cuenta UUID no se sustituye por persona o id",
+    "Conexión shell desactivada no consulta y la activa conserva el principal firmado"
+  ]
+}

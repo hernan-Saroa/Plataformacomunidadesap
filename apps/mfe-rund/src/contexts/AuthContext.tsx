@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import type { RundManualOperatorConnection } from './rundManualOperator';
 
 export interface AuthSessionLite {
   rol?: string;
@@ -6,6 +7,7 @@ export interface AuthSessionLite {
 }
 
 export interface AuthContextValue {
+  manualOperatorSession?: RundManualOperatorConnection;
   isAuthenticated: boolean;
   userPersonId?: string;
   userEmail?: string;
@@ -26,6 +28,7 @@ export interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export type AuthProviderProps = {
+  manualOperatorSession?: RundManualOperatorConnection;
   children: ReactNode;
   userPersonId?: string;
   userEmail?: string;
@@ -38,6 +41,7 @@ export type AuthProviderProps = {
 };
 
 export function AuthProvider({
+  manualOperatorSession,
   children,
   userPersonId,
   userEmail,
@@ -56,6 +60,7 @@ export function AuthProvider({
       Boolean(isSuperUser || permissionIds.some((id) => normalizedPermisos.includes(id)));
 
     return {
+      manualOperatorSession,
       isAuthenticated: Boolean(userEmail || userPersonId),
       userPersonId,
       userEmail,
@@ -70,7 +75,7 @@ export function AuthProvider({
       hasPermission,
       hasAnyPermission,
     };
-  }, [isSuperUser, permisos, sessionRol, userEmail, userPersonId, userName, userRole, userPersona]);
+  }, [manualOperatorSession, isSuperUser, permisos, sessionRol, userEmail, userPersonId, userName, userRole, userPersona]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

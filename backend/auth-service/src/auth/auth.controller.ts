@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpException,
   HttpCode,
   HttpStatus,
@@ -227,6 +228,7 @@ export class AuthController {
   // opcional: para probar el token
   @UseGuards(JwtAuthGuard)
   @Get('me')
+  @Header('Cache-Control', 'private, no-store')
   me(@Req() req) {
     return req.user;
   }

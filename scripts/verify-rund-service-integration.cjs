@@ -23,7 +23,7 @@ const pgBin = process.env.PG_BIN_DIR || 'C:/Program Files/PostgreSQL/15/bin';
 const binary = (name) => path.join(pgBin, name + (process.platform === 'win32' ? '.exe' : ''));
 const migrationNames = ['001_create_rund_schema.sql', '002_seed_rund_auth_module.sql', '003_legacy_rund_tables.sql',
   '004_rund_docente_identificadores_text.sql', '005_rund_tarjeta_numero_secuencia.sql',
-  '006_rund_catalogo_permisos_compatibles.sql', '007_rund_carpeta_auth_proyeccion.sql'];
+  '006_rund_catalogo_permisos_compatibles.sql', '007_rund_carpeta_auth_proyeccion.sql', '008_rund_identidad_operacion.sql', '009_rund_identidad_contexto_nativo.sql', '010_rund_identidad_ejecucion.sql', '011_rund_identidad_resolucion_auth.sql', '012_rund_identidad_revision.sql', '013_rund_identidad_solicitud.sql', '014_rund_identidad_entrada_manual.sql', '015_rund_identidad_abandono_manual.sql', '016_rund_identidad_correo.sql'];
 const checks = [];
 let runtime;
 let database;
@@ -325,6 +325,20 @@ async function run() {
         VALUES ($1,$2,$2,'sistema',true)`, [randomUUID(), role]);
     }
     for (const name of migrationNames) await check(`Migración ${name} en PostgreSQL real`, () => migrate(name));
+    await check('Operaciones Auth: migración 669 crea registro sin modificar personas, cuentas o roles', async () => {
+      const before = (await database.query('SELECT to_jsonb(p) AS row FROM auth.personas p ORDER BY id_person')).rows;
+      await database.query(fs.readFileSync(path.join(root, 'db/migrations/669_auth_rund_identidad_operacion.sql'), 'utf8'));
+      assert.deepEqual((await database.query('SELECT to_jsonb(p) AS row FROM auth.personas p ORDER BY id_person')).rows, before);
+    });
+    await check('Aplicación Auth: migración 670 extiende recibos sin aplicar identidades', async () => {
+      await database.query(fs.readFileSync(path.join(root,'db/migrations/670_auth_rund_identidad_aplicacion.sql'),'utf8'));
+      assert.equal((await database.query('SELECT count(*) FROM auth.rund_identidad_operacion')).rows[0].count,'0');
+    });
+    await check('Compensacion Auth: migracion 671 crea efectos y resoluciones privados sin modificar identidad',async()=>{
+      await database.query(fs.readFileSync(path.join(root,'db/migrations/671_auth_rund_identidad_compensacion.sql'),'utf8'));
+      assert.equal((await database.query('SELECT count(*) FROM auth.rund_identidad_efecto')).rows[0].count,'0');
+      assert.equal((await database.query('SELECT count(*) FROM auth.rund_identidad_compensacion')).rows[0].count,'0');
+    });
     await check('Catálogo de permisos cubre los decoradores y no equipara operaciones distintas', async () => {
       const { RUND_PERMISSION_CODES } = require(path.join(serviceRoot, 'dist/auth/rund-permission-catalog'));
       const codes = (await database.query('SELECT code FROM auth.permission')).rows.map((row) => row.code);
@@ -360,9 +374,15 @@ async function run() {
       assert(references.every((column) => column.data_type === 'text'));
     });
     await verifyExistingDataUpgrade(pgConfig);
-    await check('Esquema nuevo vacío: 27 tablas y 7 categorías, sin copiar docentes', async () => {
+    await check('Esquema nuevo vacío: 35 tablas y 7 categorías, sin copiar docentes', async () => {
       const tables = (await database.query(`SELECT tablename FROM pg_tables WHERE schemaname='rund' ORDER BY tablename`)).rows;
-      assert.equal(tables.length, 27);
+      assert.equal(tables.length, 35);
+      assert(tables.some(row=>row.tablename==='identidad_solicitud'));
+      assert(tables.some(row=>row.tablename==='identidad_revision'));
+      assert(tables.some(row=>row.tablename==='identidad_resolucion_auth'));
+      assert(tables.some(row=>row.tablename==='identidad_operacion'));
+      assert(tables.some(row=>row.tablename==='identidad_contexto_nativo'));
+      assert(tables.some(row=>row.tablename==='identidad_ejecucion'));
       for (const { tablename } of tables) {
         const count = Number((await database.query(`SELECT count(*) FROM rund."${tablename}"`)).rows[0].count);
         assert.equal(count, tablename === 'RundDocumentoCategoria' ? 7 : 0, tablename);
@@ -1210,6 +1230,14 @@ async function run() {
       docenteId, authUrl: stubUrl, authToken: authSyncToken });
     await require('./verify-rund-auth-identity-validation.cjs')(pgConfig, runtime, check, { database,
       authUrl: stubUrl, authToken: authSyncToken, authFixture: authIdentityFixture });
+    await require('./verify-rund-auth-identity-operations.cjs')(pgConfig, runtime, check, { database,
+      authUrl: stubUrl, authToken: authSyncToken, authFixture: authIdentityFixture });
+    await require('./verify-rund-auth-identity-apply.cjs')(pgConfig, runtime, check, { database,
+      authUrl: stubUrl, authToken: authSyncToken, authFixture: authIdentityFixture });
+    await require('./verify-rund-auth-identity-coordination.cjs')(pgConfig, runtime, check, { database,
+      authUrl: stubUrl, authToken: authSyncToken, authFixture: authIdentityFixture });
+    await require('./verify-rund-native-commit.cjs')(pgConfig, runtime, check, { database, row,
+      authUrl: stubUrl, authToken: authSyncToken, authFixture: authIdentityFixture });
   } finally {
     await cleanup();
   }
@@ -1218,7 +1246,7 @@ async function run() {
     externalSchemas: 'auth: DDL + migración 158; academic_work_plan: fixtures ORM, período y catálogo territorial ficticios',
     publicRouting: 'proxy local de prueba: /services/rund/api/v1; no inicia Nginx ni api-gateway',
     authUserRouting: 'fixture HTTP local /users con UUID de rol, token interno, DTO y paginación; no inicia auth-service',
-    authIdentityRouting: 'controlador, guard, servicio e interceptor compilados de Auth sobre HTTP local y SQL temporal de solo lectura; no inicia Auth AppModule',
+    authIdentityRouting: 'controladores, guard, servicios e interceptor compilados de Auth sobre HTTP local; lecturas readonly y operaciones/escritor con TypeORM y roles limitados en SQL temporal; no inicia Auth AppModule',
     catalogRouting: 'controladores, guards y servicios compilados de Auth/PTA con HTTP real y SQL temporal de solo lectura; no inicia sus AppModules',
     ptaCopyRouting: 'cliente/sincronizador compilados con HTTP/SQL real; base temporal separada con Docente mínimo y FK de plan ficticio; no inicia PTA AppModule',
     migrations: migrationNames, passed: true, checks };

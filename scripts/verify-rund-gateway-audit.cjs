@@ -241,6 +241,76 @@ function protectedLog(log) {
         assert.equal(res.status, 404); await res.arrayBuffer(); assert.equal(forwarded.length, before); await waitForAudit(auditBefore);
       }
     });
+    await check('Registro, consulta y cancelación de operaciones Auth no salen por gateway normal o codificado', async () => {
+      const before = forwarded.length, id = '11111111-1111-4111-8111-111111111111';
+      for (const prefix of ['internal', '%69nternal']) for (const [suffix, method] of [['', 'POST'], ['/' + id, 'GET'], ['/' + id + '/cancelar', 'POST'], ['/' + id + '/aplicar','POST'], ['/' + id + '/compensar','POST'], ['/' + id + '/compensacion','GET']]) {
+        const auditBefore = audits.length;
+        const res = await send(`/auth/api/v1/${prefix}/rund/v1/personas/escritura/operaciones${suffix}`, { method,
+          body: method === 'POST' ? JSON.stringify({ version: 1, operacionId: id, huellaComando: 'a'.repeat(64) }) : undefined,
+          headers: { authorization: `Bearer ${token}`, 'x-internal-service-token': 'ficticio', 'content-type': 'application/json' } });
+        assert.equal(res.status, 404); await res.arrayBuffer(); assert.equal(forwarded.length, before);
+        if (method === 'POST') await waitForAudit(auditBefore);
+      }
+    });
+    await check('La prueba de aborto RUND no sale por gateway normal o codificado aunque incluya JWT y token', async () => {
+      const before=forwarded.length;
+      for(const prefix of ['internal','%69nternal']) {
+        const res=await send(`/rund/api/v1/${prefix}/rund/v1/identidad/intenciones/11111111-1111-4111-8111-111111111111/aborto`,
+          {method:'GET',body:undefined,headers:{authorization:`Bearer ${token}`,'x-internal-service-token':'ficticio'}});
+        assert.equal(res.status,404);await res.arrayBuffer();assert.equal(forwarded.length,before);
+      }
+    });
+    await check('La bandeja de revision RUND exige sesion y conserva transporte sin cuerpos en auditoria', async () => {
+      const route='/rund/api/v1/banco-docentes/identidad/revisiones/11111111-1111-4111-8111-111111111111/asumir',before=forwarded.length;
+      const denied=await send(route,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(privateData)});
+      assert.equal(denied.status,401);await denied.arrayBuffer();assert.equal(forwarded.length,before);
+      const auditBefore=audits.length,res=await send(route,{body:JSON.stringify(privateData)});
+      assert.equal(res.status,200);assert.deepEqual(await res.json(),ownerResponse);protectedLog(await waitForAudit(auditBefore));
+      assert.deepEqual(JSON.parse(forwarded[forwarded.length-1].bytes.toString()),privateData);
+    });
+    await check('La preparacion manual RUND exige JWT y oculta formulario y respuesta en auditoria', async () => {
+      const route='/rund/api/v1/banco-docentes/identidad/solicitudes-manuales/11111111-1111-4111-8111-111111111111/preparar',before=forwarded.length;
+      const denied=await send(route,{headers:{'content-type':'application/json'},body:JSON.stringify({formulario:privateData})});
+      assert.equal(denied.status,401);await denied.arrayBuffer();assert.equal(forwarded.length,before);
+      const auditBefore=audits.length,res=await send(route,{body:JSON.stringify({formulario:privateData})});
+      assert.equal(res.status,200);assert.deepEqual(await res.json(),ownerResponse);protectedLog(await waitForAudit(auditBefore));
+      assert.deepEqual(JSON.parse(forwarded[forwarded.length-1].bytes.toString()),{formulario:privateData});
+    });
+    await check('La ejecucion manual RUND exige JWT y conserva recibos sin cuerpos privados en auditoria', async () => {
+      const route='/rund/api/v1/banco-docentes/identidad/solicitudes-manuales/11111111-1111-4111-8111-111111111111/ejecutar',before=forwarded.length;
+      const denied=await send(route,{headers:{'content-type':'application/json'},body:'{}'});
+      assert.equal(denied.status,401);await denied.arrayBuffer();assert.equal(forwarded.length,before);
+      const auditBefore=audits.length,res=await send(route,{body:'{}'});
+      assert.equal(res.status,200);assert.deepEqual(await res.json(),ownerResponse);protectedLog(await waitForAudit(auditBefore));
+      assert.deepEqual(JSON.parse(forwarded[forwarded.length-1].bytes.toString()),{});
+    });
+    await check('La revision de captura RUND exige JWT y conserva no-store sin registrar el cuerpo privado del GET', async () => {
+      const route='/rund/api/v1/banco-docentes/identidad/solicitudes-manuales/11111111-1111-4111-8111-111111111111/captura',before=forwarded.length;
+      const denied=await send(route,{method:'GET',body:undefined,headers:{}});
+      assert.equal(denied.status,401);await denied.arrayBuffer();assert.equal(forwarded.length,before);
+      const auditBefore=audits.length,res=await send(route,{method:'GET',body:undefined});
+      assert.equal(res.status,200);assert.deepEqual(await res.json(),ownerResponse);
+      assert.equal(res.headers.get('cache-control'),'private, no-store');assert.equal(audits.length,auditBefore);
+    });
+    await check('El abandono manual RUND exige JWT y no registra cuerpos privados en auditoria',async()=>{
+      const route='/rund/api/v1/banco-docentes/identidad/solicitudes-manuales/11111111-1111-4111-8111-111111111111/abandonar',before=forwarded.length;
+      const denied=await send(route,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+      assert.equal(denied.status,401);await denied.arrayBuffer();assert.equal(forwarded.length,before);
+      const auditBefore=audits.length,res=await send(route,{method:'POST',body:'{}'});
+      assert.equal(res.status,200);assert.deepEqual(await res.json(),ownerResponse);protectedLog(await waitForAudit(auditBefore));
+    });
+    await check('El cierre manual RUND exige JWT y mantiene recibos y cuerpos fuera de auditoria',async()=>{
+      const route='/rund/api/v1/banco-docentes/identidad/solicitudes-manuales/11111111-1111-4111-8111-111111111111/cerrar',before=forwarded.length;
+      const denied=await send(route,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});assert.equal(denied.status,401);await denied.arrayBuffer();assert.equal(forwarded.length,before);
+      const auditBefore=audits.length,res=await send(route,{method:'POST',body:'{}'});assert.equal(res.status,200);assert.deepEqual(await res.json(),ownerResponse);protectedLog(await waitForAudit(auditBefore));
+    });
+    await check('La consulta de correo manual RUND exige JWT, conserva no-store y no audita cuerpos de GET', async () => {
+      const route='/rund/api/v1/banco-docentes/identidad/solicitudes-manuales/11111111-1111-4111-8111-111111111111/correo',before=forwarded.length;
+      const denied=await send(route,{method:'GET',body:undefined,headers:{}});assert.equal(denied.status,401);await denied.arrayBuffer();assert.equal(forwarded.length,before);
+      const auditBefore=audits.length,res=await send(route,{method:'GET',body:undefined});
+      assert.equal(res.status,200);assert.deepEqual(await res.json(),ownerResponse);assert.equal(res.headers.get('cache-control'),'private, no-store');
+      assert.equal(audits.length,auditBefore);
+    });
     await check('Un módulo ajeno conserva transporte, consultas y cuerpos de auditoría', async () => {
       const before = audits.length, body = { titulo: 'Expediente ficticio' };
       const res = await send('/legal/api/v1/expedientes/123?estado=abierto', { body: JSON.stringify(body) });

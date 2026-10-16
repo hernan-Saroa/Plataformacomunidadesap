@@ -1,0 +1,184 @@
+{
+  "verifiedAt": "2026-10-16T08:45:48.698Z",
+  "branch": "feat/agregar_modulo_rund",
+  "head": "a5332853b93cfdee4f747510947376f9d08b0c6c",
+  "checkpoint": 80,
+  "sourceCheckpointReady": true,
+  "releaseReady": false,
+  "deploymentOrEnvironmentAcceptanceCertified": false,
+  "sourceEvidence": "docs/rund/validacion-consulta-correo-manual-rund.json",
+  "sourceEvidenceSha256": "3d70ef58d85646043bc0bb9a960acbb475e9d5fc93c78ab356ddc11c576bfcbc",
+  "technicalEvidenceModified": false,
+  "currentEvidenceSourcesVerified": 267,
+  "evidenceSourcesUnchanged": 266,
+  "evidenceSourcesChangedOnlyForCheckpointDocumentation": [
+    {
+      "file": "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md",
+      "previousSha256": "348ad7fd03670fee2928a194977ae09d152a6280d597269a707810fa85623326",
+      "currentSha256": "36c2ec50fbe017831b58379702ec46cec8dd1c78a1dfdb6906e5ba33fdfc1a8f",
+      "reason": "Enlace al documento de guardado; implementación, pruebas y SQL intactos"
+    }
+  ],
+  "sourcePackageReport": "docs/rund/revision-push-corte-80.json",
+  "sourcePackageReportSha256": "c3955c37307091dab72f303760d39d3765abc8c02d5f0048678b23a40ec61c98",
+  "manifestFile": "docs/rund/corte-80-rund.paths",
+  "manifestSha256": "9347451c59e60360158db2ecd0db17d430fc15cce2e191feb619a2033e32f5a2",
+  "selectedFileCount": 208,
+  "newFiles": 183,
+  "deletedFiles": 0,
+  "findings": [],
+  "outsideCut": [],
+  "localImportTargetsChecked": 304,
+  "mergeConflicts": 0,
+  "diffCheckPassed": true,
+  "indexInitiallyEmpty": true,
+  "gitIndexSha256Before": "498944e6826df909e84c5fb4561b80e8a942096e1bd4fa813c34467d02561520",
+  "gitIndexSha256After": "498944e6826df909e84c5fb4561b80e8a942096e1bd4fa813c34467d02561520",
+  "protectedGeneratedFilesExcluded": true,
+  "signatureBasedSecretReviewOnly": true,
+  "buildsAndTestsReferencedWithoutRerun": {
+    "rund": {
+      "suites": 82,
+      "tests": 1519,
+      "added": 27,
+      "buildPassed": true
+    },
+    "mfeRund": {
+      "files": 28,
+      "tests": 322,
+      "added": 37,
+      "typecheckPassed": true,
+      "buildPassed": true,
+      "buildOutputOnlyInTmp": true
+    },
+    "inherited": {
+      "auth": {
+        "suites": 7,
+        "tests": 196
+      },
+      "shellRund": {
+        "files": 7,
+        "tests": 80,
+        "existingGlobalTypecheckDiagnostics": 586
+      },
+      "operatorSessionHttpChecks": 9,
+      "rerunThisCut": false,
+      "evidence": "docs/rund/validacion-correo-durable-identidad-rund.json",
+      "sourcesUnchanged": true
+    },
+    "temporaryPostgresIntegration": 579,
+    "gatewayHttp": 26,
+    "unchangedEvidenceHashesConfirmed": [
+      {
+        "file": "docs/rund/validacion-servicio-postgres-local.json",
+        "sha256": "8895cc285288b5cfc67e2bad2a58369e85a8c39de81982ab8319f93c529fb2bb"
+      },
+      {
+        "file": "docs/rund/validacion-auditoria-gateway-http-local.json",
+        "sha256": "2d8061fe28e8e2722902a5eabfcde9c32c3719bd7d68dd39ce4b1e21c5b849fb"
+      },
+      {
+        "file": "docs/rund/validacion-correo-durable-identidad-rund.json",
+        "sha256": "a8e927dce934285377bd25f69ab28d0f38516e60d1a66661555308c56cd01489"
+      }
+    ]
+  },
+  "globalShellLimits": {
+    "existingTypecheckDiagnostics": 586,
+    "existingFullSuiteFailure": "disciplinary.service.spec.ts: jest is not defined",
+    "resolvedInThisCheckpoint": false,
+    "globalChecksRerunForThisCheckpoint": false
+  },
+  "migration": {
+    "completedMainStepsLocally": 11,
+    "mainStepInProgress": 12,
+    "technicalCutsSincePostMergeReview": 43,
+    "remainingWorkstreamsIncludingCurrent": 5,
+    "operationalAcceptanceSubstepStillOpen": "12.5d.2",
+    "currentWorkstream": 4,
+    "nextWork": "Validación propietaria de destinatario y estado de credenciales en Auth antes de autorizar envío"
+  },
+  "activationEvidenceSourcesUnchanged": true,
+  "manualModuleAndMailConsumerActivated": false,
+  "authApplyAndCompensationDefaultsRemainFalse": true,
+  "versionedWorkflows": [
+    {
+      "file": ".github/workflows/build-backend-dev.yml",
+      "pushBranches": [
+        "dev"
+      ],
+      "sha256": "cebe5a14c95612db59f7b54fc1db5f5b78075ef109d7efd9298a0d1a38464b67"
+    },
+    {
+      "file": ".github/workflows/build-backend-pre.yml",
+      "pushBranches": [
+        "pre"
+      ],
+      "sha256": "38678d5ee12341a6161f1077eb7f39d33b7696d9b99235eabacc873fd1ee7a0d"
+    },
+    {
+      "file": ".github/workflows/build-backend-prod.yml",
+      "pushBranches": [
+        "prod"
+      ],
+      "sha256": "cf8d7f2a0e086b4ae53040aeb95702fe6ad3b4cae43fe9b90e19a9c0cb06d8f6"
+    },
+    {
+      "file": ".github/workflows/build-backend-qa.yml",
+      "pushBranches": [
+        "qa"
+      ],
+      "sha256": "0adb52ce2d58f7e8aad1d028270c22b6fcc7d31e1c863b05fa2fe73a451e6879"
+    },
+    {
+      "file": ".github/workflows/build-dev.yml",
+      "pushBranches": [
+        "dev"
+      ],
+      "sha256": "b2094dd801431f73621faed085812477199e705d64039ed78580cfb8c10f6723"
+    },
+    {
+      "file": ".github/workflows/build-pre.yml",
+      "pushBranches": [
+        "pre"
+      ],
+      "sha256": "8413e09d408715718f440ac3987a9a11668516179b147021904415134190ff7a"
+    },
+    {
+      "file": ".github/workflows/build-prod.yml",
+      "pushBranches": [
+        "prod"
+      ],
+      "sha256": "bb59336726a260fa5791b6ff17ec8567b54d2303679c6191511ae6829af9bad1"
+    },
+    {
+      "file": ".github/workflows/build-qa.yml",
+      "pushBranches": [
+        "qa"
+      ],
+      "sha256": "425462f60550c32d4a598d5bc1a6f9ffc6ea93489b448f3ad56be42f1d32f9c0"
+    }
+  ],
+  "currentFeatureBranchTriggersTheseWorkflows": false,
+  "externalAutomationsInspected": false,
+  "remoteStateRefreshed": false,
+  "stagedFilesChangedByAgent": false,
+  "commitCreated": false,
+  "pushExecuted": false,
+  "runtimeChanged": false,
+  "existingDatabaseMigrated": false,
+  "realSmtpUsed": false,
+  "documentationHashes": {
+    "docs/rund/PUSH-CORTE-80.md": "063596c0ad4d7cedd7940365c1baf26a3799c84b4fc872331234f442fe1974ab",
+    "docs/rund/PRIMER-PUSH.md": "4f853f7491202aac78bf74e73a18cc3fb06e6c55e440ad99e3defda107da3d56",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "36c2ec50fbe017831b58379702ec46cec8dd1c78a1dfdb6906e5ba33fdfc1a8f"
+  },
+  "limits": [
+    "Guardado de fuentes en la rama de funcionalidad, sin certificar independencia completa o despliegue.",
+    "Pruebas/builds conservados del corte 80 y su cadena, con hashes contrastados; no se repiten por cambios documentales.",
+    "El manifiesto corresponde al worktree de esta fecha; regenerar y revisar antes de stage/commit si cambia.",
+    "La revisión de firmas de secretos e imports estáticos no sustituye todas las comprobaciones de seguridad o ejecución.",
+    "Los problemas globales previos del shell siguen pendientes y pueden impedir integrar según la política del proyecto.",
+    "Configuración, migraciones y aceptación en local/DEV/QA/PRE/PROD siguen pendientes."
+  ]
+}

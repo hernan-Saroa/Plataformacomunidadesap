@@ -13,6 +13,9 @@ if (args.length > 1 || (args.length && !/^--checkpoint=\d+$/.test(args[0])))
 const checkpoint = args.length ? args[0].split('=')[1] : null;
 const manifestFile = checkpoint ? `docs/rund/corte-${checkpoint}-rund.paths` : 'docs/rund/primer-push-rund.paths';
 const reportFile = checkpoint ? `docs/rund/revision-push-corte-${checkpoint}.json` : 'docs/rund/revision-primer-push.json';
+const checkpointDoc = checkpoint
+  ? (fs.existsSync(path.join(root, `docs/rund/PUSH-CORTE-${checkpoint}.md`)) ? `PUSH-CORTE-${checkpoint}.md` : 'ESTADO-MIGRACION-MICROSERVICIO.md')
+  : 'PRIMER-PUSH.md';
 const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' }, stdio: ['ignore', 'pipe', 'ignore'] });
 const normalize = file => file.replace(/\\/g, '/');
 const prefixes = ['apps/mfe-rund/', 'apps/shell/', 'apps/mfe-gestion-personas/',
@@ -20,6 +23,7 @@ const prefixes = ['apps/mfe-rund/', 'apps/shell/', 'apps/mfe-gestion-personas/',
   ...(checkpoint ? ['backend/academic-work-plan-service/', 'backend/academic-schedule-service/'] : []),
   'packages/shared-hooks/', 'packages/shared-ui/', 'docs/rund/'];
 const rootFiles = new Set(['.env.example', 'migrate.local.sh', 'migrate.service.local.sh',
+  ...(checkpoint ? ['db/migrations/669_auth_rund_identidad_operacion.sql','db/migrations/670_auth_rund_identidad_aplicacion.sql','db/migrations/671_auth_rund_identidad_compensacion.sql'] : []),
   'db/migrations/667_auth_carpeta_documento_versiones.sql', 'db/migrations/668_auth_carpeta_revision_rund.sql',
   ...['dev', 'qa', 'pre', 'prod'].map(env => `deploy.${env}.sh`),
   ...['', '.backend', '.local', '.dev', '.qa', '.pre', '.prod'].map(suffix => `docker-compose${suffix}.yml`)]);
@@ -111,7 +115,7 @@ const report = { generatedAt: new Date().toISOString(), scope: checkpoint ? `sou
     'La búsqueda de secretos cubre firmas concretas, no sustituye revisión de valores/configuración.',
     'Los imports revisados son los estáticos resolubles por TypeScript; no prueba todos los recursos dinámicos.',
     'Las evidencias JSON generadas y el propio manifiesto no se huellan como fuentes para evitar referencias circulares.',
-    `Las pruebas y límites del corte se documentan en ${checkpoint ? `PUSH-CORTE-${checkpoint}.md` : 'PRIMER-PUSH.md'}; este script no ejecuta pruebas ni certifica despliegue.`] };
+    `Las pruebas y límites del corte se documentan en ${checkpointDoc}; este script no ejecuta pruebas ni certifica despliegue.`] };
 fs.writeFileSync(path.join(root, reportFile), JSON.stringify(report, null, 2) + '\n');
 console.log(`Corte RUND: ${paths.size} archivos; ${findings.length} hallazgos; ${outsideCut.length} cambios fuera del corte. Sin stage/commit/push.`);
 process.exitCode = findings.length ? 1 : 0;

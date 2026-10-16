@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-15T10:17:06.812Z",
+  "verifiedAt": "2026-10-16T07:53:44.128Z",
   "step": "12.5b",
   "passed": true,
   "checks": [
@@ -19,6 +19,15 @@
     "El catálogo de programas PTA no sale por POST interno normal o codificado con JWT y token",
     "Los planes históricos PTA no salen por POST interno normal o codificado con JWT y token",
     "La prevalidación de escritura Auth no sale por POST interno normal o codificado con JWT y token",
+    "Registro, consulta y cancelación de operaciones Auth no salen por gateway normal o codificado",
+    "La prueba de aborto RUND no sale por gateway normal o codificado aunque incluya JWT y token",
+    "La bandeja de revision RUND exige sesion y conserva transporte sin cuerpos en auditoria",
+    "La preparacion manual RUND exige JWT y oculta formulario y respuesta en auditoria",
+    "La ejecucion manual RUND exige JWT y conserva recibos sin cuerpos privados en auditoria",
+    "La revision de captura RUND exige JWT y conserva no-store sin registrar el cuerpo privado del GET",
+    "El abandono manual RUND exige JWT y no registra cuerpos privados en auditoria",
+    "El cierre manual RUND exige JWT y mantiene recibos y cuerpos fuera de auditoria",
+    "La consulta de correo manual RUND exige JWT, conserva no-store y no audita cuerpos de GET",
     "Un módulo ajeno conserva transporte, consultas y cuerpos de auditoría"
   ],
   "gatewayAppModuleReal": true,

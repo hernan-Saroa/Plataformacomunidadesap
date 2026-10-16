@@ -3,6 +3,9 @@
 Estado: contrato v1 implementado y probado localmente; uso en los flujos de escritura
 pendiente. Complementa los puntos 60 y 61 del estado de migración.
 
+El punto 62 añade un [registro separado de intenciones](CONTRATO-OPERACIONES-IDENTIDAD-AUTH.md).
+La ruta de prevalidación descrita aquí continúa sin reservar ni persistir operaciones.
+
 La API confirma únicamente la resolución de persona/cuenta, conflictos de correo y
 selección del rol docente. La validación completa del payload, el OTP, los soportes y
 las reglas de negocio de RUND permanecen en sus flujos actuales.

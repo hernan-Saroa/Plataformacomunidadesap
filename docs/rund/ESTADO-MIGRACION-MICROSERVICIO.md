@@ -1,11 +1,16 @@
 # Estado de la migración del RUND a microservicio
 
-> Rama: `feat/agregar_modulo_rund` · Actualizado: 2026-10-15
+> Rama: `feat/agregar_modulo_rund` · Actualizado: 2026-10-16
 > Documento de contexto para retomar la migración. Describe qué se decidió, qué está hecho,
 > qué falta y qué trampas hay. Complementa `PENDIENTES_RUND_PTA.md` (historias de usuario) y
 > los `REQ-RUND-*` de esta carpeta.
 
-## Resumen de avance para seguimiento (2026-10-15)
+> **Guardado para retomar:** el último punto técnico terminado es el **80**.
+> Instrucciones de commit/push, validaciones y siguiente trabajo en
+> [PUSH-CORTE-80.md](PUSH-CORTE-80.md). Preparar este corte no activa el flujo nuevo
+> ni incrementa el conteo de pasos.
+
+## Resumen de avance para seguimiento (2026-10-16)
 
 - **11 pasos principales completados en código/revisión y validación local:** pasos
   1–11, documentados en las secciones 11–21. No equivale a despliegue completado.
@@ -14,8 +19,8 @@
   12.2, 12.3a, 12.3b.1–4, 12.4, revisión offline 12.5, 12.5a–c y 12.5d.1).
   **12.5d.2 sigue abierto por aceptación/configuración de las instalaciones**, con las
   lecturas de la sección 35; no equivale al estado de cada ajuste de código.
-- **24 cortes técnicos terminados localmente desde la revisión posterior al merge:**
-  secciones 38–61. Incluyen contratos e independencia de consultas; tienen tamaños
+- **43 cortes técnicos terminados localmente desde la revisión posterior al merge:**
+  secciones 38–80. Incluyen contratos e independencia de consultas; tienen tamaños
   distintos y no se suman al conteo de pasos principales.
 - **Trabajo técnico actual: frente 4, aislamiento SQL.** Quedan completados el perfil
   público de interoperabilidad PTA (45) y la identidad del listado/ficha/estadísticas del
@@ -27,7 +32,34 @@
   de las rutas RUND (55), correo propio de acceso externo Macro Docente (56)
   identidad histórica del historial por API PTA (57), programas de respaldo (58),
   planes firmes por API PTA (59), preparación transaccional de escrituras Auth (60)
-  y prevalidación propietaria de identidad (61).
+  prevalidación propietaria de identidad (61), registro de intenciones Auth (62)
+  aplicación transaccional de identidad en Auth, deshabilitada por defecto (63)
+  registro durable/reconciliación de sus recibos en RUND (64) y contexto de negocio
+  con confirmación transaccional del commit nativo (65), ejecución reanudable y
+  decisión irreversible de aborto (66), cancelación de abortos no aplicados y
+  prueba interna preparatoria de aborto (67), captura de efectos y compensación
+  propietaria Auth de ediciones existentes (68) y conciliación durable de su
+  resolución en RUND (69), casos durables y asignación de revisiones (70), sin
+  activar escritura remota. El punto 71 agrega el vínculo durable por solicitud
+  manual de creación y sus reglas actuales, todavía sin conectar la entrada activa.
+  El 72 prepara la frontera HTTP con sesión/roles/permisos, captura recuperable,
+  catálogo y prevalidación Auth, en un módulo que continúa fuera de AppModule.
+  El 73 añade ejecución manual con controles vigentes y cliente de ID estable,
+  sin montar el helper en el formulario o activar el módulo.
+  El 74 agrega la conexión opcional al formulario con preparación, confirmación y
+  recuperación; el llamador activo sigue sin proporcionarla y el módulo sigue inactivo.
+  El 75 añade revisión autorizada de la captura con protección sensible actual y
+  confirmación visual explícita, sin activar la conexión o modificar el escritor.
+  El 76 agrega abandono durable previo a reservar el journal y bloquea capturas o
+  reservas tardías; las solicitudes que ya avanzaron conservan su ID y operación.
+  El 77 prepara su cierre autenticado con aborto, cancelación/compensación propietaria
+  y revisión durable cuando corresponda; solo un cierre confirmado libera el ID.
+  El 78 prepara el principal de cuenta verificado por Auth y la conexión opcional del
+  shell/MFE, con invalidación por sesión; el formulario manual continúa sin activar.
+  El 79 prepara el aviso durable de bienvenida en el commit nativo y un consumidor
+  opcional sin reenvío automático ante incertidumbre; todavía no se activa correo.
+  El 80 agrega consulta de correo por actor y su estado en el formulario opcional,
+  sin envíos por GET o polling y sin confundir confirmación del perfil con correo.
   Siguen otras consultas y escrituras entre propietarios.
   La aceptación por ambiente es otro pendiente.
 - **Primer corte para push de la rama:** alcance, manifiesto y validaciones consolidados
@@ -62,8 +94,27 @@ Para que el avance de código no quede oculto bajo el rótulo del paso 12:
 | 57: identidad histórica de Macro Docente por API PTA | Terminado |
 | 58: programas de respaldo de Macro Docente por API PTA | Terminado |
 | 59: planes firmes de Macro Docente por API PTA | Terminado |
-| 60: frontera local de escritura Auth y rollback | Preparación terminada; API de escritura pendiente |
+| 60: frontera local de escritura Auth y rollback | Preparación terminada; sustitución del escritor pendiente |
 | 61: contrato de prevalidación de identidad en Auth | Terminado; conexión al escritor pendiente |
+| 62: registro/consulta/cancelación de intenciones en Auth | Terminado; extendido por el punto 63 |
+| 63: aplicación idempotente de identidad y resultado en Auth | Terminado; base de coordinación en 64, activación pendiente |
+| 64: intención durable y reconciliación de recibos Auth desde RUND | Terminado; contexto/commit nativo en 65, activación pendiente |
+| 65: contexto durable y confirmación del commit nativo RUND | Terminado; ejecución reanudable en 66, compensación/activación pendientes |
+| 66: ejecución reanudable y exclusión aborto/commit nativo | Terminado; cancelación no aplicada en 67, compensación/activación pendientes |
+| 67: resolución de abortos no aplicados y prueba interna | Terminado; compensación Auth de ediciones en 68, conciliación RUND/altas pendientes |
+| 68: efectos privados y compensación Auth de ediciones existentes | Terminado; conciliación RUND en 69, altas/revisiones explícitas pendientes; sin activación |
+| 69: conciliación durable de compensación propietaria en RUND | Terminado; bandeja/asignación en 70, cierre humano y entradas reales pendientes; sin activación |
+| 70: casos durables, bandeja y asignación de revisiones | Terminado; política/cierre de altas y conexión a entradas reales pendientes; sin activación |
+| 71: intención estable por actor/solicitud de creación manual | Preparación terminada; conexión autenticada/prevalidación y otros canales pendientes; sin activación |
+| 72: entrada manual protegida con captura durable y prevalidación Auth | Preparación terminada; cliente/ejecución y otros canales pendientes; sin activación |
+| 73: ejecución manual autorizada y cliente con solicitud estable | Preparación terminada; montaje del cliente, correo/cierre de revisiones y otros canales pendientes; sin activación |
+| 74: conexión opcional del formulario y ciclo visual recuperable | Preparación terminada; principal de sesión, revisión de captura, abandono seguro y requisitos de activación pendientes; flujo activo conservado |
+| 75: revisión autorizada de captura y confirmación visual | Preparación terminada; corrección/abandono seguros, principal del shell y demás requisitos de activación pendientes; sin activación |
+| 76: abandono previo al journal y corrección con nuevo UUID | Preparación terminada; cierre de operaciones ya reservadas y demás requisitos de activación pendientes; sin activación |
+| 77: cierre autenticado de solicitudes reservadas | Preparación terminada; principal del shell, correo/política de altas y demás requisitos de activación pendientes; sin activación |
+| 78: principal autenticado del operador shell/MFE | Preparación terminada y probada sin caché offline ni suplencia de persona; cliente manual y módulo backend sin activar |
+| 79: aviso de correo durable e intento controlado | Preparación local del outbox y consumidor opcional; consulta por actor, conciliación, política de credenciales y activación pendientes |
+| 80: consulta de correo por actor y estado visual | Preparación local de lectura autorizada y formulario opcional; destinatario/credenciales, conciliación y activación pendientes |
 | Otras lecturas/escrituras de identidad y permisos | Pendiente de aislamiento |
 | Aceptación de configuración/datos/despliegues por ambiente | Pendiente operativo |
 
@@ -88,6 +139,9 @@ Estos frentes agrupan el alcance conocido; tienen tamaños distintos y pueden re
 subpasos al revisar cada consumidor. Al cerrar el punto actual, actualizar este resumen
 con el conteo y los pendientes efectivos, sin presentar las instalaciones como verificadas
 si solo pasaron fixtures o revisiones del repositorio.
+
+Mapa concreto de lo que falta y criterios de cierre:
+[PENDIENTES-CIERRE-INDEPENDENCIA.md](PENDIENTES-CIERRE-INDEPENDENCIA.md).
 
 ## 1. Objetivo y alcance
 
@@ -4587,3 +4641,1674 @@ y **5 frentes abiertos**. Sigue el frente 4 y la aceptación `12.5d.2`. Este cor
 el contrato propietario; la escritura SQL actual sigue local. El siguiente punto debe
 implementar el registro/consulta idempotente de operaciones y su recuperación antes de
 conectar una escritura remota a los flujos de RUND.
+
+## 62. Frente 4: registro persistente de intenciones en Auth (2026-10-15)
+
+Se retoma la rama limpia desde `a5332853b` y se implementa el registro, consulta y
+cancelación de intenciones, previo al traslado de la escritura de identidad.
+Contrato: [CONTRATO-OPERACIONES-IDENTIDAD-AUTH.md](CONTRATO-OPERACIONES-IDENTIDAD-AUTH.md).
+
+**Persistencia y API interna**
+
+- Nueva migración `669_auth_rund_identidad_operacion.sql`, para la base de Auth. Crea
+  solamente auth.rund_identidad_operacion, con UUID, versión 1, huella, estado y fechas.
+  No persiste comando, documento, correo, nombre, contraseña o JWT; no copia identidades.
+- Constraints y trigger conservan clave/versión/huella/fecha inicial, impiden borrar o
+  reactivar recibos y admiten solo REGISTRADA → CANCELADA. No hay purga/TTL automático.
+- `POST /internal/rund/v1/personas/escritura/operaciones` registra ID/huella. Repeticiones
+  iguales devuelven el recibo sin cambiar fechas; otro hash devuelve 409 sin sobrescribir.
+  INSERT ON CONFLICT DO NOTHING y la clave primaria resuelven concurrencia sin duplicados.
+- `GET .../operaciones/:id` confirma encontrada=true/false con echo y operación/null.
+  HTTP 404 de esa ruta no acredita ausencia. Permite recuperar el registro si se perdió
+  la respuesta después del commit, consultando y reutilizando el mismo ID del servidor.
+- `POST .../operaciones/:id/cancelar` exige la huella, actualiza solo el estado registrado
+  y conserva la fecha en repeticiones. Inexistente devuelve 404, huella distinta 409.
+  Una cancelación no confirmada no acredita que una solicitud en vuelo haya terminado.
+- Respuestas con no-store y guard/token interno existente. DTO mínimo incluye
+  identidadAplicada=false en ambos estados; ningún recibo afirma un alta aplicada.
+
+La huella se registra como valor opaco proporcionado por el servidor consumidor. No
+equivale a la huella de prevalidación del punto 61. El futuro ejecutor debe definir y
+validar el comando completo, recalcular su huella y compararla con el registro. Aún no
+existe aplicación de persona/cuenta/rol, resultado de alta persistido ni coordinador RUND.
+
+**Consumidor y compatibilidad**
+
+- Nuevo cliente preparatorio para registrar/consultar/cancelar con URL/token Auth
+  existentes, timeout de diez segundos y sin forwarding de JWT/cookies, redirects,
+  caché, SQL alternativo o reintentos automáticos. Conserva 409 como conflicto; otros
+  fallos de HTTP/red/JSON/contrato producen 503, nunca ausencia o cancelación exitosa.
+- Comprueba UUID, huella esperada, versión, fechas, estado y DTO mínimo. Rechaza datos
+  ajenos o que afirmen identidad aplicada. Registrar un recibo cancelado no lo reactiva.
+- El cliente no se importa en módulos activos ni sustituye la escritura local. El
+  bloque de escritura, transacción, rollback, preview, soporte, auditoría, OCR y correos
+  permanecen idénticos. Auth solo agrega controlador/proveedor al UsersModule.
+- La tabla no es una reserva de documento/correo ni una transacción distribuida. Recuperar
+  una intención no confirma una escritura de identidad. La compensación y coordinación
+  con el commit nativo siguen pendientes antes de conectar los flujos actuales.
+
+**Validación local**
+
+- Builds Auth/RUND correctos. RUND: **63 suites / 1.141 pruebas**, 33 nuevas. Auth:
+  **3 suites de identidad / 118 pruebas**, veinte nuevas; no toda la suite de Auth.
+- **338 comprobaciones** de integración con main real y PostgreSQL temporal: migración
+  669 y once controles nuevos; las 326 anteriores siguen pasando.
+- API Auth compilada con conexión de un rol efímero que solo puede SELECT/INSERT/UPDATE
+  en el registro. Se verifica que no tiene permisos para leer personas ni insertar
+  cuentas/roles. Las API previas de consulta conservan sus conexiones de solo lectura.
+- Solicitudes simultáneas iguales y con hashes distintos; consulta desde otro cliente;
+  pérdida real de respuesta después del commit; reintento sin duplicados; cancelación
+  concurrente/repetida; rechazo de reactivación, borrado o cambio de huella/versión.
+- Migración repetida conserva recibos; fallo SQL no fabrica registro; tabla/ruta ausente,
+  caída o contrato parcial no se convierten en ausencia. Filas de personas, cuentas,
+  roles, perfiles, evidencias y secuencias permanecen iguales durante estas operaciones.
+- Gateway: **18 comprobaciones HTTP**, incluida la nueva para registrar, consultar y
+  cancelar por rutas normales/codificadas aun con JWT/token; código de producción intacto.
+- Se corrige únicamente el restablecimiento de TZ del verificador OCR: Windows podía
+  conservar Tokio al borrar TZ, causando discrepancia en la comparación posterior del
+  correo. Se restaura primero la zona efectiva original; servicios de producción y
+  las comparaciones del correo no se alteran ni se debilitan.
+- Hashes encadenados comprueban los demás clientes, contratos y flujos anteriores.
+  Evidencia: [validacion-operaciones-identidad-auth-rund.json](validacion-operaciones-identidad-auth-rund.json).
+
+Antes de utilizar las rutas: aplicar **669 en Auth**, publicar Auth compatible y verificar
+su token/URL; luego habilitar un futuro consumidor validado. No se aplica la migración a
+bases existentes ni al arrancar Auth. Sin 669, los flujos previos no consultan el registro
+y conservan su comportamiento; las rutas nuevas fallan sin declarar un resultado vacío.
+No hay variables nuevas. El revisor de push incluye 669 en futuros manifiestos; el corte
+61 ya publicado conserva su documentación/evidencia histórica y no se regenera.
+
+Avance: **25 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4 y aceptación `12.5d.2`. El siguiente punto
+es la aplicación del comando en Auth con verificación de huella/resultado persistido y
+su coordinación con RUND, incluidos fallos tardíos, compensación y preview sin escritura
+remota. Este corte no elimina el SQL actual de identidad ni certifica independencia
+completa. Solo se usan datos ficticios/clúster temporal eliminado; sin `.env` reales,
+push, despliegue o retiro del RUND embebido en PTA.
+
+## 63. Frente 4: aplicación transaccional de identidad en Auth (2026-10-15)
+
+Se extiende el registro del punto 62 con un ejecutor propietario deshabilitado por
+defecto. Contrato: [CONTRATO-APLICACION-IDENTIDAD-AUTH.md](CONTRATO-APLICACION-IDENTIDAD-AUTH.md).
+El escritor activo de RUND conserva su SQL, transacción, rollback, preview, correos,
+soporte, auditoría y validación documental. No se conecta todavía al ejecutor remoto.
+
+**Aplicación y recuperación**
+
+- Nueva ruta interna POST `.../operaciones/:operacionId/aplicar`, con el mismo guard
+  y token interno, bloqueo en gateway y no-store. La nueva bandera Auth
+  `RUND_IDENTITY_APPLY_ENABLED` vale false por defecto. El ejemplo queda apagado;
+  no se modifican `.env` reales ni se activa en Compose o ambientes.
+- Contrato versión 1 con actor, payload, opciones de validación/territorial y datos
+  finales normalizados. Fechas civiles válidas, bigint territorial textual, claves
+  y tipos estrictos. Canonicalización explícita idéntica en Auth/RUND; Auth recalcula
+  la huella y la exige igual al comando y al registro antes de escribir identidad.
+- Migración 670, posterior a 669 en Auth: agrega resultado/aplicada_en y APLICADA.
+  El recibo se bloquea FOR UPDATE; identidad y resultado se confirman en una sola
+  transacción. Fallos al persistir el recibo revierten persona, cuenta y rol.
+- El adaptador propietario conserva el SQL y normalización del escritor local,
+  usando bcrypt ya instalado en Auth en lugar de bcryptjs. Cuenta nueva inactiva,
+  contraseña temporal costo 10 compatible; cuenta existente conserva contraseña,
+  activación y condición temporal. No escribe RUND ni envía correos.
+- Repetir el mismo ID/comando aplicado devuelve el resultado original sin volver a
+  ejecutar el adaptador. GET y registro repetido recuperan ese recibo aun tras perder
+  la respuesta después del commit. APLICADA y CANCELADA permanecen inmutables;
+  cancelación y aplicación concurrentes admiten un solo estado final.
+- El resultado conserva IDs y diferencias originales para auditoría. Esas diferencias
+  pueden contener datos personales: solo API interna, sin caché, contraseña, hash o
+  JWT. No se guarda el comando completo ni se publica el resultado en rutas de usuario.
+- El cliente exige resultado completo y consistente; no confirma datos ajenos o
+  parciales. Sin reintentos automáticos, forwarding de credenciales de usuario,
+  caché o alternativa SQL. No se importa en módulos activos de RUND.
+
+**Corrección de compatibilidad detectada al validar**
+
+TypeORM/PostgreSQL devuelve UPDATE directo como `[rows,count]`. El verificador previo
+del registro usaba pg.rows, ocultando esa diferencia en cancelación. Se usa ahora CTE
+con SELECT externo tanto al cancelar como al aplicar. La fixture de ambas API usa
+DataSource TypeORM real con roles efímeros separados: registro solo accede a su tabla;
+ejecutor accede a identidad Auth sin permisos sobre el esquema RUND. Las lecturas
+anteriores siguen con conexiones de solo lectura.
+
+**Validación local**
+
+- Builds Auth/RUND correctos; RUND **63 suites / 1.148 pruebas**, siete nuevas;
+  Auth **4 suites de identidad / 136 pruebas**, dieciocho nuevas. No toda la suite Auth.
+- **352 comprobaciones** HTTP/PostgreSQL temporal: se conservan las 338 anteriores y
+  se agregan migración 670 y trece controles del ejecutor. Se comprueban alta concurrente
+  del mismo ID, operaciones diferentes para igual documento, reintentos, recuperación
+  desde otro cliente y pérdida real de respuesta posterior al commit.
+- Actualización existente comparada con la ejecución del adaptador local dentro de una
+  transacción revertida: persona, IDs y diferencias de auditoría coinciden. Verificados
+  bigint exacto, preservación territorial, fallback confiable por correo, reactivación
+  del rol, fechas civiles y preservación de contraseña/activación.
+- Guard, bandera apagada, comando/hash incompatible, ausencia, cancelación, conflicto
+  de correo y fallo del recibo no dejan cambios parciales. Migración 670 repetida
+  conserva recibos; SQL impide editar/borrar el resultado final o aplicar uno vacío.
+- Las tablas nativas RUND permanecen idénticas durante todas las llamadas del ejecutor.
+  Gateway: **18 controles HTTP**, ampliados para bloquear también aplicación normal y
+  codificada; su código de producción permanece intacto.
+- Evidencia y hashes encadenados:
+  [validacion-aplicacion-identidad-auth-rund.json](validacion-aplicacion-identidad-auth-rund.json).
+
+**Límite y siguiente punto**
+
+El bloqueo asesor serializa únicamente estos ejecutores remotos, con lock_timeout de
+cinco segundos. No coordina otros escritores locales/externos de Auth; las secuencias
+PostgreSQL pueden avanzar aun con rollback. El commit Auth no confirma el perfil,
+soporte, auditoría o validación documental nativos. No hay aún transacción distribuida
+ni compensación segura, y el SQL de identidad activo de RUND sigue pendiente de retiro.
+
+Sigue diseñar e implementar la coordinación durable RUND/Auth: intención local estable,
+reconciliación ante respuestas perdidas, tratamiento de fallos tardíos, compensación
+segura y preview sin escritura remota. Conservar envío de correo posterior al commit.
+No habilitar el ejecutor ni sustituir el escritor hasta validar esas condiciones.
+
+Avance: **26 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4 y aceptación `12.5d.2`. Migraciones solo
+en clúster temporal ficticio eliminado; sin bases existentes, `.env` reales, push,
+despliegue o retiro del RUND embebido en PTA.
+
+## 64. Frente 4: intención durable y reconciliación de recibos Auth en RUND (2026-10-15)
+
+Se agrega el registro local de coordinación y la recuperación de recibos del propietario,
+antes de conectar la escritura remota a los flujos activos. Contrato:
+[CONTRATO-COORDINACION-IDENTIDAD-RUND.md](CONTRATO-COORDINACION-IDENTIDAD-RUND.md).
+
+**Intención estable y recuperación**
+
+- Nueva migración propia RUND `008_rund_identidad_operacion.sql`: tabla, índice de
+  pendientes, constraints y trigger; sin FK, acceso SQL o permisos sobre Auth.
+  Conserva UUID de intención servidor, UUID Auth generado por servidor, versión,
+  huella, fecha, estado y recibo conocido. No guarda el comando, contraseña o JWT.
+- `preparar` confirma la intención local antes de HTTP, sin aceptar outerManager.
+  Reintentos y preparaciones simultáneas conservan ID Auth/fecha; mismo ID con otro
+  comando devuelve 409. El proceso servidor futuro debe vincular ese ID estable a
+  su operación de negocio; no deduplicar por documento o número de fila XLSX.
+- `registrarEnAuth` usa exclusivamente el ID/huella ya guardados y conserva el recibo
+  propietario. Solo registra metadatos; no llama a aplicar o cancelar identidad.
+- `reconciliar` consulta al propietario por HTTP, sin registrar/aplicar/cancelar
+  automáticamente. Recupera REGISTRADA, APLICADA y CANCELADA aun después de cerrar
+  las conexiones o perder la respuesta del commit remoto. No necesita el comando
+  para recuperar una aplicación que Auth ya confirmó.
+- Una ausencia explícita conserva PREPARADA y devuelve observación NO_ENCONTRADA,
+  nunca cancelación ni autorización para generar otro UUID. Si ya había un recibo
+  conocido, ausencia posterior devuelve 503 sin cambiarlo. Caída, 404 y DTO parcial
+  tampoco confirman ausencia o éxito ni usan sustitución por SQL/caché.
+- HTTP termina antes de adquirir el bloqueo local. La persistencia usa TypeORM,
+  FOR UPDATE y CTE/SELECT externo. No sobrescribe un estado final con respuestas
+  REGISTRADA atrasadas; recibos iguales no actualizan filas. Huella/ID ajenos,
+  metadatos originales alterados o resultados finales contradictorios se rechazan.
+- Estados locales PREPARADA, AUTH_REGISTRADA, AUTH_APLICADA y CANCELADA. El recibo
+  aplicado puede contener diferencias personales para auditoría, de acceso servidor.
+  AUTH_APLICADA confirma solamente Auth; no confirma el perfil o commit nativo RUND.
+
+**Validación local**
+
+- Builds Auth/RUND correctos. RUND: **64 suites / 1.167 pruebas**, diecinueve nuevas;
+  Auth: **4 suites de identidad / 136 pruebas**, sin cambios y sin afirmar toda su suite.
+- **367 comprobaciones** de integración: conserva los controles anteriores y agrega
+  migración 008 y catorce casos de coordinación. El control de esquema inicial pasa
+  de 27 a **28 tablas**, incluyendo explícitamente el journal; siguen siete categorías
+  y ninguna copia de docentes. No se debilita la comprobación de esquema vacío.
+- Código compilado y cliente HTTP Auth real. Segunda base ficticia con schema RUND y
+  sin schema Auth; rol efímero limitado al journal, sin permisos sobre negocio ficticio.
+  Pruebas de concurrencia, fallo después del commit remoto y recuperación tras cerrar/
+  reabrir todas las conexiones locales, conservando UUID, recibo y contraseña.
+- Pérdida real de respuesta de registro y aplicación; fallo de guardado local deja
+  intención recuperable, sin confirmar éxito local. Respuestas REGISTRADA demoradas
+  compiten con APLICADA/CANCELADA reales y no hacen retroceder el estado persistido.
+- Recibos contradictorios o metadatos originales alterados no reemplazan lo conocido.
+  Migración 008 repetida conserva registros; SQL impide borrado, cambio de metadatos,
+  retroceso y recibo vacío. El negocio ficticio permanece intacto.
+- La tabla del journal en la base usada por el main real permanece vacía durante todos
+  los flujos activos. Gateway mantiene sus **18 comprobaciones HTTP**. No se agregan
+  rutas públicas, workers, tareas programadas ni configuración.
+- Evidencia y hashes encadenados:
+  [validacion-coordinacion-identidad-auth-rund.json](validacion-coordinacion-identidad-auth-rund.json).
+
+**Alcance y siguiente punto**
+
+El nuevo módulo sigue sin importarse desde AppModule o módulos activos. El escritor
+local y su rollback, preview, soporte, OCR, auditoría y correos permanecen intactos.
+La bandera de aplicación Auth sigue apagada. La migración nueva solo se aplicó a
+clúster temporal ficticio, retirado al terminar; no a instalaciones existentes.
+
+Esta base durable recupera el recibo Auth, pero aún no conserva ni confirma el contexto
+nativo completo de negocio. Sigue vincular la intención a ese contexto y al commit
+nativo, conservar permisos/OTP/período/soporte, resolver fallos tardíos y compensación
+segura, preview sin escritura remota y correo posterior al commit. Solo después se
+podrá sustituir el SQL de identidad activo y aceptar la activación por ambiente.
+
+Avance: **27 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4 y aceptación `12.5d.2`. Sin `.env` reales,
+bases existentes, push, despliegue o retiro del RUND embebido de PTA.
+
+## 65. Frente 4: contexto de negocio durable y confirmación del commit nativo (2026-10-15)
+
+Se vincula la intención al contexto de escritura y se implementa la confirmación
+transaccional del resultado nativo, todavía sin activar el ejecutor remoto.
+Contrato: [CONTRATO-COMMIT-NATIVO-IDENTIDAD-RUND.md](CONTRATO-COMMIT-NATIVO-IDENTIDAD-RUND.md).
+
+**Separación del escritor nativo y compatibilidad**
+
+- Se extraen las 190 líneas nativas de upsertDocente a `rund-native-profile-write.ts`.
+  Conservan SQL, valores, condiciones, orden y resultado; solo las dos llamadas a
+  métodos del servicio se pasan como callbacks con el mismo manager.
+- upsertDocente mantiene sus validaciones, normalización, catálogo territorial,
+  escritura Auth local, outerManager, transacción, rollback, savepoints y correo
+  posterior al commit. Delega el mismo bloque nativo en un método servidor interno.
+- El bloque extraído no hace SQL de identidad, HTTP, commit o correo. Conserva
+  selección por persona/período, rejectExisting, correlativo, datos originales,
+  bloques, validación documental, evidencias, auditoría y segunda revisión del soporte.
+- Una comprobación adicional, usada solamente por el coordinador nuevo, impide
+  confirmar un alta sin sus bloques si un fallo JavaScript fue tolerado por el
+  inicializador heredado. El flujo activo y las ediciones históricas no cambian de regla.
+
+**Contexto y confirmación durable**
+
+- Migración propia RUND 009, posterior a 008: contexto, huella, estado, fechas,
+  docente y resultado nativo, con FK únicamente al journal local. No agrega FK
+  permanente al perfil ni dependencias SQL/FK de Auth.
+- El contexto congela comando Auth, payload normalizado, columnas originales
+  reconocidas y metadatos de fila/canal/cargador, territorial, opciones y auditoría/
+  soporte. Documento, valores finales, actor, canal y opciones deben corresponder
+  al comando Auth. Exige período y auditoría; no acredita permisos u OTP por sí mismo.
+- Canonicalización ordenada y SHA-256 incluyen período, soporte y auditoría. Fechas
+  ISO se restauran como Date para conservar el contrato de TypeORM. Se rechazan
+  credenciales, binarios, funciones, ciclos, valores no finitos y exceso de tamaño/
+  profundidad. Esta tabla sí persiste el comando y datos personales de negocio;
+  solo acceso servidor, sin endpoint nuevo o logging del contexto.
+- La preparación ocurre antes de HTTP. Primero queda el journal; luego se vincula
+  el contexto bajo bloqueo y solo si la intención sigue PREPARADA. Si falla esa
+  segunda transacción, el mismo ID permite completarla sin haber publicado desde
+  este servicio. Reintento igual conserva el contexto; otro contexto devuelve 409.
+- `confirmarNativo` exige AUTH_APLICADA y contexto íntegro con el mismo comando.
+  Usa el recibo Auth original, copia sus diferencias de auditoría y ejecuta el
+  escritor nativo con el mismo manager que guarda el marcador CONFIRMADA.
+- Perfil, evidencias, auditoría, revisión del soporte y marcador comparten commit.
+  El trigger comprueba el recibo aplicado y el perfil/persona/período esperados,
+  y protege contexto y resultado finales. Un reintento recupera el resultado sin
+  ejecutar el escritor, incluso después de perder la respuesta del commit.
+- El commit nuevo no hace HTTP ni envía correo. Un fallo nativo revierte solamente
+  RUND: Auth aplicado permanece pendiente de coordinación/compensación, sin afirmar
+  éxito global. Las secuencias pueden avanzar aun con rollback, como antes.
+
+**Validación local**
+
+- Builds Auth/RUND correctos. RUND: **66 suites / 1.188 pruebas**, veintiuna nuevas;
+  Auth: **4 suites de identidad / 136 pruebas**, sin cambios y sin afirmar toda su suite.
+- **381 comprobaciones** HTTP/PostgreSQL temporal: controles anteriores conservados,
+  migración 009 y trece casos del commit nativo. El esquema vacío pasa de 28 a
+  **29 tablas**, con contexto explícito, siete categorías y ninguna copia de docentes.
+- Escritor y servicio compilados con TypeORM, en otra base ficticia que
+  contiene tablas reales RUND y carece de schema Auth. La identidad se confirma
+  previamente por HTTP al propietario; el commit nativo no hace nuevas llamadas.
+- Preparación/confirmación simultáneas conservan un perfil, bloques, auditoría y
+  recibo; contexto distinto o publicación previa impiden vincular otra intención.
+- Fallos reales de auditoría, persistencia del marcador, bloques y soporte rechazado
+  revierten perfil, evidencias y resultado. rejectExisting posterior a Auth no fabrica
+  confirmación. La identidad Auth y su contraseña no cambian durante el commit nativo.
+- Pérdida real de respuesta HTTP después del commit y recuperación al cerrar/reabrir
+  conexiones; reintento sin duplicar efectos. Migración 009 repetida conserva datos,
+  contexto y resultado finales son inmutables. Los flujos activos, incluido preview,
+  dejan vacía la tabla nueva. Gateway conserva **18 controles HTTP**.
+- Hashes verifican las líneas extraídas y el servicio fuera del cambio, además de
+  contratos y módulos previos. Evidencia:
+  [validacion-commit-nativo-identidad-rund.json](validacion-commit-nativo-identidad-rund.json).
+
+**Activación y siguiente punto**
+
+El coordinador nuevo sigue fuera de AppModule/módulos activos, sin ruta, worker,
+bandera nueva o cambios de ambiente. La bandera de aplicación Auth continúa apagada.
+No se sustituye todavía el SQL de identidad activo; las migraciones solo se ejecutan
+en bases ficticias temporales retiradas al terminar.
+
+Sigue el ejecutor completo: vincular solicitud real e ID estable, conservar controles
+de permisos/OTP/prevalidación y soporte, reconciliar fallos tardíos, compensar de forma
+segura si no se confirma RUND, resolver preview sin escritura remota y correo durable
+posterior al commit. CONFIRMADA acredita el commit nativo, no el correo o éxito de una
+compensación. La activación por ambiente permanece pendiente de esas condiciones.
+
+Avance: **28 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4 y aceptación `12.5d.2`. Sin `.env` reales,
+bases existentes, push, despliegue o retiro del RUND embebido de PTA.
+
+## 66. Frente 4: ejecución reanudable y exclusión entre aborto y commit nativo (2026-10-15)
+
+Se incorpora el ejecutor servidor que retoma la intención/contexto de los puntos
+64–65, y una decisión irreversible que establece la exclusión entre abortar y
+confirmar el perfil antes de añadir la compensación. Contrato:
+[CONTRATO-EJECUCION-IDENTIDAD-RUND.md](CONTRATO-EJECUCION-IDENTIDAD-RUND.md).
+
+**Ejecución y recuperación**
+
+- `AuthIdentityExecutionService` prepara y consulta la intención/contexto, concilia
+  Auth, registra/aplica con el UUID ya guardado y confirma el commit nativo. ejecutar
+  recibe solo el ID; no acepta otro payload para reemplazar el contexto congelado.
+- Usa HTTP fuera de las transacciones locales. Revisa huellas y decisión antes
+  de mutaciones; el commit nativo vuelve a comprobar la decisión bajo bloqueo.
+  Si Auth ya está aplicado, no repite la aplicación de identidad.
+- Un resultado nativo CONFIRMADA se recupera sin HTTP o una segunda escritura. La
+  recuperación explícita solo consulta Auth y actualiza el journal; no aplica identidad
+  ni escribe perfiles. Fallos nativos se propagan manteniendo Auth aplicado pendiente,
+  sin inventar éxito, cancelar o compensar automáticamente.
+- Solicitudes concurrentes conservan IDs y recibos. Una ausencia que quedó obsoleta
+  puede producir 503, conservando el estado; reanudar después del commit devuelve el
+  mismo resultado. No hay bucle de reintentos, caché o SQL alternativo contra Auth.
+
+**Decisión durable y carrera de aborto**
+
+- Nueva migración propia RUND 010, posterior a 009. Tabla `rund.identidad_ejecucion`,
+  con FK local al contexto, huella, fecha y decisión EN_CURSO/ABORTADA. La preparación
+  del contexto crea también su decisión en la misma transacción. No almacena datos
+  personales nuevos, comando, contraseñas o tokens.
+- La migración incorpora los contextos anteriores, incluidos los confirmados, sin
+  modificar su contenido. Repetirla no reactiva abortos ni cambia fechas o resultados.
+- abortar bloquea journal, contexto y decisión en el mismo orden que confirmarNativo.
+  Solo admite EN_CURSO → ABORTADA si el commit no ocurrió. Un commit confirmado
+  devuelve 409; un aborto confirmado prohíbe futuras confirmaciones para esa intención.
+- Motivos cerrados FALLO_NEGOCIO/CANCELACION_SOLICITUD. Repetir el mismo aborto conserva
+  fecha/motivo; otro motivo devuelve 409. Repetir preparación no lo reactiva.
+- Triggers protegen ambos lados: no se puede abortar un contexto confirmado ni
+  confirmar un contexto cuya decisión está abortada. La barrera adicional permanece
+  al repetir 009 e impide el bypass por SQL, aun con perfil y recibo Auth coincidentes.
+- Un HTTP en vuelo puede completar Auth después del aborto local. Se conserva ese
+  hecho aplicado, pero se impide el perfil. resolucionAuthPendiente queda explícito;
+  el aborto no acredita cancelación o compensación de la identidad Auth.
+
+**Validación local**
+
+- Builds Auth/RUND correctos. RUND: **67 suites / 1.198 pruebas**, diez nuevas;
+  Auth: **4 suites de identidad / 136 pruebas**, sin cambios y sin afirmar toda su suite.
+- **394 comprobaciones** de integración: conserva las 381 anteriores y agrega 010
+  más doce casos del ejecutor. El esquema vacío pasa de 29 a **30 tablas**, con la
+  decisión explícita, siete categorías y ninguna copia de docentes.
+- Contexto y ejecutor compilados con TypeORM en base RUND separada sin schema Auth,
+  con llamadas HTTP reales al propietario. Camino completo Auth → commit RUND,
+  preparación/ejecución concurrentes, recibos estables y resultado recuperable por
+  otra instancia; un perfil y auditoría por intención.
+- Fallo nativo conserva Auth aplicado y permite recuperación GET sin nueva aplicación.
+  Pérdida real de respuesta Auth se recupera antes de confirmar RUND. Pérdida de
+  respuesta posterior al commit nativo no genera HTTP o segunda escritura al reanudar.
+- Aborto previo impide aplicación/commit, carreras aborto/commit con un solo ganador,
+  y respuesta Auth retenida después del commit remoto para abortar mientras está
+  en vuelo. El perfil no se guarda y Auth queda aplicado pendiente de resolución.
+- SQL rechaza un marcador nativo después del aborto, incluso cuando sus datos de
+  perfil y recibo coinciden; rechaza reactivación, borrado y cambio de metadatos.
+  Migración 010 repetida conserva abortos/confirmaciones. Fallos 404, caída y DTO parcial
+  no aplican identidad ni alteran decisiones o fabrican resultados vacíos.
+- Flujos activos y preview dejan vacía la tabla de decisión en la base del main real.
+  Gateway conserva sus **18 comprobaciones HTTP**. El único cambio del fixture Auth
+  permite retener una respuesta ya confirmada; no modifica el servicio Auth productivo.
+- Evidencia y hashes encadenados:
+  [validacion-ejecucion-identidad-rund.json](validacion-ejecucion-identidad-rund.json).
+
+**Alcance y siguiente punto**
+
+El ejecutor nuevo sigue fuera de AppModule/módulos activos, sin ruta pública, worker,
+bandera o configuración nueva. El escritor activo, sus permisos, validaciones,
+OTP, preview, soporte, auditoría y correo mantienen el comportamiento del punto 65.
+La bandera Auth permanece apagada; solo se usan bases temporales ficticias retiradas
+al terminar, sin migraciones en instalaciones existentes.
+
+Este corte cierra el camino reanudable y la exclusión local antes de una compensación;
+no implementa todavía la cancelación/compensación propietaria Auth. Sigue esa resolución
+con prueba durable de aborto y protección frente a cambios posteriores, sin inferir
+un rollback distribuido. Después faltan la conexión a las entradas reales con sus
+controles de permisos/OTP/prevalidación/soporte, preview sin escritura remota, correo
+durable posterior al commit y aceptación de activación por ambiente.
+
+Avance: **29 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4 y aceptación `12.5d.2`. Sin `.env` reales,
+bases existentes, push, despliegue o retiro del RUND embebido de PTA.
+
+## 67. Frente 4: resolución de abortos no aplicados y prueba interna durable (2026-10-15)
+
+Se cierra la cancelación propietaria de las intenciones abortadas cuya identidad
+Auth todavía no se aplicó. Se prepara además la consulta interna del aborto como
+hecho irreversible RUND. Contrato:
+[CONTRATO-RESOLUCION-ABORTO-IDENTIDAD-RUND.md](CONTRATO-RESOLUCION-ABORTO-IDENTIDAD-RUND.md).
+
+**Resolución explícita y reanudable**
+
+- `resolverAborto(id)` exige aborto confirmado, fecha/motivo válidos y contexto
+  nativo sin commit. No aborta una ejecución abierta. Una cancelación ya guardada
+  se devuelve sin HTTP o nuevas escrituras.
+- Consulta Auth usando el mismo UUID/huella. Si existe ausencia explícita válida,
+  registra esos metadatos y cancela la intención; no envía el comando ni aplica
+  identidad. Así queda un recibo durable que un registro tardío no reactiva.
+- Para una registrada, solicita cancelación a la API propietaria y confirma su
+  recibo por GET antes de guardarlo en el journal local. No hay HTTP dentro de
+  transacciones RUND, bucles de reintento, otro UUID o SQL sobre Auth.
+- Aplicar y cancelar compiten por la misma fila Auth. Un 409 al cancelar exige
+  reconciliar un recibo terminal; el error por sí solo no acredita cancelación.
+  404 de ruta, caída, DTO parcial o huella ajena no fabrican ausencia o éxito.
+- Respuestas perdidas de registro/cancelación y fallos locales al persistir el
+  recibo se recuperan desde Auth. Reanudar tras confirmar CANCELADA no repite el
+  POST. Las respuestas REGISTRADA anteriores no reemplazan un recibo terminal.
+- Si Auth ya aplicó, conserva AUTH_APLICADA y resolucionAuthPendiente=true. No
+  borra o modifica persona, cuenta, contraseña o roles; no lo presenta como una
+  identidad compensada. CANCELADA con pendiente=false acredita solo una intención
+  que no aplicó identidad.
+
+**Prueba preparatoria de aborto**
+
+- `pruebaAborto(id)` consulta exclusivamente RUND y devuelve nueve campos:
+  versión, intención/operación, huellas de comando/contexto, decisión ABORTADA,
+  estado nativo PREPARADA, fecha y motivo. No incluye comando, identidad,
+  resultado de perfil o recibo Auth.
+- Controlador GET `internal/rund/v1/identidad/intenciones/:intencionId/aborto`,
+  protegido por InternalServiceGuard y Cache-Control private/no-store. Un JWT
+  no sustituye la credencial interna. ID inválido/ausente devuelve 400/404;
+  ejecución abierta o confirmada, 409. Auth caído no impide consultar el hecho local.
+- El controlador se declara en AuthIdentityExecutionModule, que permanece fuera
+  de AppModule. No se publica en el servicio activo ni por el gateway; no hay
+  ruta de mutación, worker o bandera nueva. Los triggers existentes mantienen
+  la exclusión irreversible aborto/commit después de devolver la prueba.
+- La prueba todavía no es consumida por Auth para revertir identidad aplicada.
+  No acredita cancelación remota ni constituye permiso de borrado transportable.
+
+**Validación local**
+
+- Builds Auth/RUND correctos. RUND: **68 suites / 1.218 pruebas**, veinte nuevas;
+  Auth: **4 suites de identidad / 136 pruebas**, sin afirmar ejecución de toda Auth.
+- **410 comprobaciones** de integración, con las 394 anteriores y dieciséis nuevas.
+  TypeORM y HTTP reales sobre bases temporales ficticias separadas; la base RUND
+  carece de schema Auth. El rol Auth que cancela solo tiene permisos sobre el
+  registro de operaciones, sin acceso a persona/usuario/roles.
+- Cancelación desde ausencia y registro existente; concurrencia con un UUID;
+  respuesta perdida tras commits remotos y fallo al guardar el recibo local;
+  recuperación por otra instancia sin repetir escrituras confirmadas.
+- Registro remoto retenido después del commit y liberado tras cancelar: no
+  reactiva la intención. Aplicación retenida después del commit remoto: la
+  resolución identifica el aplicado pendiente y no confirma perfil RUND.
+- Carrera aplicar/cancelar con un único estado terminal y caso determinista de
+  aplicación entre GET y POST cancelar, con 409 real conciliado correctamente.
+- GET interno con token obligatorio, DTO mínimo/no-store, 400/404/409 y sin
+  escrituras. Huella ajena, 404, caída y DTO parcial conservan estado y datos.
+- Los flujos activos dejan vacías las tres tablas preparatorias. Gateway:
+  **19 controles HTTP**, uno nuevo para la prueba normal/codificada, sin cambios
+  productivos en gateway, escritor Auth activo o entradas de negocio RUND.
+- Evidencia y hashes encadenados:
+  [validacion-resolucion-aborto-identidad-rund.json](validacion-resolucion-aborto-identidad-rund.json).
+
+**Alcance y siguiente punto**
+
+Este corte cierra la cancelación de intenciones no aplicadas; continúa pendiente
+la compensación de identidad **ya aplicada**. Antes de revertirla, Auth debe
+capturar atómicamente la preimagen y todos los efectos propios, verificar el
+aborto durable y proteger cambios/reutilizaciones posteriores. El recibo actual
+no cubre todos esos datos; invertir sus campos o borrar cuentas sería insuficiente.
+
+Después continúan la conexión a entradas reales con permisos/OTP/prevalidación y
+soporte, preview sin escritura remota, correo durable posterior al commit y
+aceptación por instalación. No se activó escritura remota ni se agregaron o
+ejecutaron migraciones en instalaciones existentes. Las bases ficticias se
+eliminan al terminar las comprobaciones; no se leen `.env` reales.
+
+Avance: **30 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4 y aceptación `12.5d.2`. Sin push,
+despliegue o retiro del RUND embebido de PTA.
+
+## 68. Frente 4: efectos privados y compensación propietaria Auth de ediciones existentes (2026-10-15)
+
+Auth captura los efectos de su aplicación y puede restaurar una edición existente
+si verifica el aborto irreversible en RUND y demuestra que no hubo cambios o
+reutilización conocida posteriores. Las altas nuevas quedan para revisión sin
+eliminar personas/cuentas. Contrato:
+[CONTRATO-COMPENSACION-IDENTIDAD-AUTH.md](CONTRATO-COMPENSACION-IDENTIDAD-AUTH.md).
+
+**Captura y resolución propietarias**
+
+- Nueva migración Auth 671, posterior a 669/670. Crea dos tablas privadas:
+  rund_identidad_efecto y rund_identidad_compensacion. No cambia las tablas RUND
+  ni el recibo histórico APLICADA. No se ejecuta automáticamente al arrancar.
+- El aplicador remoto ahora requiere 671 antes de habilitarse. Conserva la
+  bandera apagada por defecto, sin SQL/HTTP de ese aplicador mientras esté apagada.
+  El escritor activo RUND permanece igual y no usa las tablas nuevas.
+- Preimagen/postimagen, persona/cuenta/rol y recibo aplicado se confirman en una
+  transacción. Si falla la captura se revierten todos los efectos, incluido APLICADA.
+  El adaptador de identidad conserva sus reglas anteriores; una selección ambigua
+  por duplicados se rechaza antes de aplicar.
+- Captura solo columnas restaurables y revisiones xmin; no guarda contraseñas,
+  hashes de contraseña, tokens o comando completo. Incluye todas las cuentas y
+  asignaciones de la persona, fechas UTC con microsegundos y seccional bigint textual.
+- Bloqueo asesor compartido y bloqueo EXCLUSIVE de personas/user/user_roles durante
+  captura/restauración, con lock_timeout de cinco segundos. Excluye también
+  escritores que no usan advisory; su contención se debe aceptar antes de activar.
+
+**Compensación y límites seguros**
+
+- API interna POST operaciones/:id/compensar y GET operaciones/:id/compensacion,
+  token de servicio obligatorio, no-store y bloqueo por gateway normal/codificado.
+  Nueva bandera RUND_IDENTITY_COMPENSATION_ENABLED=false en el ejemplo; no se
+  cambia ningún .env real o Compose, ni se activa el mecanismo.
+- Body exacto intención/huella. Auth consulta por HTTP al RUND para obtener el
+  aborto; no admite una prueba, preimagen o valores antiguos del solicitante.
+  Valida los nueve campos, IDs/huellas, decisión y ausencia de commit. Sin JWT,
+  cookies, redirects o reintento automático. HTTP termina antes de los bloqueos Auth.
+- Solo restaura con preimagen compatible, persona/cuenta anteriores, todas las
+  revisiones/valores coincidentes, sin otra aplicación posterior de la misma persona
+  y sin correo anterior reclamado por otra identidad. La revisión detecta ABA y
+  cambios sensibles sin almacenar las credenciales. El orden detecta reutilización
+  remota conocida incluso cuando una aplicación posterior no modificó filas.
+- Restaura perfil/username y estado/fechas de asignaciones; retira solo las
+  asignaciones creadas por la edición. No escribe contraseña, activación o condición
+  temporal. No elimina personas o usuarios. Verifica los valores restaurados antes
+  de guardar COMPENSADA, todo en la misma transacción.
+- Cuando no se demuestra seguridad, conserva identidad intacta y registra
+  REVISION_REQUERIDA con código cerrado: SIN_PREIMAGEN, PREIMAGEN_INCOMPATIBLE,
+  ALTA_IDENTIDAD, CAMBIOS_POSTERIORES, OTRA_OPERACION_POSTERIOR o CORREO_REUTILIZADO.
+  HTTP 200 no acredita reversión: exige COMPENSADA e identidadRevertida=true.
+- Recibos finales inmutables/idempotentes. Respuesta perdida se recupera por GET;
+  reintento devuelve el mismo recibo sin consultar RUND/restaurar otra vez. Una
+  operación COMPENSADA no se vuelve a aplicar: POST aplicar devuelve 409. El GET
+  original mantiene APLICADA como hecho histórico; su resolución se consulta aparte.
+
+**Validación local**
+
+- Compilaciones Auth/RUND correctas. Auth: **6 suites de identidad / 194 pruebas**,
+  58 adicionales; no se afirma ejecución de toda Auth. RUND conserva **68 suites /
+  1.218 pruebas**. Gateway mantiene **19 controles HTTP**, ampliados a compensar y
+  consultar compensación por rutas normales/codificadas, sin cambios productivos.
+- **434 comprobaciones de integración**: las 410 anteriores, migración 671 y
+  23 casos nuevos, con Auth/TypeORM y prueba RUND HTTP reales sobre bases ficticias
+  separadas. RUND carece de schema Auth y el escritor/compensador Auth no tiene
+  privilegios sobre RUND.
+- Captura/restauración exactas de perfil/username/roles, conservando todas las
+  columnas de contraseña/activación. Rol reactivado vuelve a su estado/fechas;
+  rol añadido se retira sin borrar otra asignación. Bigint superior al entero seguro,
+  timestamp con microsegundos y lectura desde otra zona horaria sin diferencias.
+- Seis solicitudes simultáneas con un recibo; respuesta perdida después del commit;
+  fallos reales de captura, retiro de rol o persistencia de resolución revierten todo
+  y permiten reanudar sin recibos falsos o dobles restauraciones.
+- Altas de persona/cuenta e históricos sin preimagen requieren revisión. ABA,
+  contraseña/rol posteriores, reutilización sin cambios y correo reclamado bloquean
+  reversión conservando datos. Aborto abierto/confirmado, intención ajena, caída,
+  404, redirect y DTO parcial/inválido no crean resolución o restauración falsas.
+- 671 repetida no cambia datos; triggers rechazan modificación/borrado de imágenes
+  y resoluciones; prueba con campos nulos no supera constraints. Migración ausente
+  falla sin efectos si se intenta aplicar; banderas apagadas no la consultan.
+- Los flujos activos dejan vacías las tablas preparatorias RUND. Evidencia y hashes:
+  [validacion-compensacion-identidad-auth-rund.json](validacion-compensacion-identidad-auth-rund.json).
+
+**Alcance y siguiente punto**
+
+Se completa la compensación propietaria Auth para ediciones existentes demostrables.
+Falta consumir y guardar duraderamente su recibo en RUND, con recuperación y trato
+explícito de REVISION_REQUERIDA/altas. RUND mantiene AUTH_APLICADA y pendiente=true
+hasta conciliar ese contrato, aunque Auth ya haya compensado: no se inventa cierre
+distribuido. Un consumo externo sin escritura Auth ni registro de operación no se
+detecta por xmin; la aceptación debe validar los consumidores y la política de altas.
+
+Continúan entradas reales con permisos/OTP/prevalidación/soporte, preview sin
+escritura remota, correo durable y aceptación por instalación. La prueba RUND sigue
+en módulo desconectado, publicada solo en el fixture. Ambas banderas permanecen
+apagadas. Sin bases existentes, .env reales, push o despliegue; el clúster temporal
+ficticio se elimina al terminar.
+
+Avance: **31 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4 y aceptación `12.5d.2`; no se retira el
+RUND embebido de PTA.
+
+## 69. Frente 4: conciliación durable de compensación propietaria en RUND (2026-10-15)
+
+RUND guarda y recupera el recibo mínimo de la resolución Auth del punto 68. Solo
+COMPENSADA confirmada localmente cierra su pendiente; REVISION_REQUERIDA conserva
+el pendiente con un indicador explícito. Contrato:
+[CONTRATO-CONCILIACION-COMPENSACION-RUND.md](CONTRATO-CONCILIACION-COMPENSACION-RUND.md).
+
+**Registro propio separado del historial aplicado**
+
+- Nueva migración RUND 011, posterior a 008–010. Tabla identidad_resolucion_auth,
+  con FK local a la ejecución, IDs/huellas de comando/contexto, estado/motivo,
+  recibo mínimo de ocho campos y fecha de persistencia. No copia identidad,
+  preimagen/postimagen, contraseñas o tokens ni hace SQL sobre Auth.
+- Conserva AUTH_APLICADA y su recibo original como hechos históricos. No modifica
+  perfiles, bloques, evidencias, auditoría de negocio o resultado nativo. No confirma
+  un perfil por haber compensado su identidad ni envía correo.
+- Inserción exige aborto irreversible, contexto sin commit e identidad aplicada,
+  con IDs/huellas coincidentes. Bloquea journal/contexto/decisión en el orden existente.
+  Constraints vinculan las ocho claves y sus estados/booleanos/motivos; no admiten
+  claves adicionales. Triggers impiden UPDATE/DELETE. Repetir 011 conserva registros
+  y no fabrica resoluciones para las ejecuciones anteriores.
+
+**Cliente y coordinación explícita**
+
+- AuthIdentityCompensationClient usa HTTP al propietario con UUID original,
+  intención y huella. Valida DTO exacto, metadatos, fecha ISO canónica, motivo cerrado
+  y booleano coherente. Solo encontrada=false/resolucion=null con consulta exacta
+  acredita ausencia. 404, caída y DTO parcial/ajeno producen 503; 409 POST conserva
+  conflicto, sin fabricar cancelación, compensación o revisión.
+- Token de servicio exclusivamente, sin JWT/cookies, redirects, caché o reintento
+  automático; timeout de diez segundos. No envía el comando, datos anteriores o
+  una prueba de aborto aportada por el llamante.
+- AuthIdentityCompensationService ofrece consultar local, reconciliar por GET sin
+  compensación remota, y resolver que concilia antes de solicitar compensación si
+  todavía falta su recibo. Exige AUTH_APLICADA y ABORTADA sin commit antes de HTTP
+  y lo verifica de nuevo al guardar bajo bloqueo; HTTP fuera de transacciones RUND.
+- Un recibo terminal local se recupera sin HTTP o escritura. Ausencia GET retenida
+  no borra la resolución que otra solicitud ya guardó. Recibo idéntico se reutiliza;
+  contradictorio no reemplaza el ya confirmado. No genera otro UUID para reintentar.
+- resolverAborto del ejecutor conserva la cancelación no aplicada del punto 67;
+  recuperar conserva su consulta del recibo aplicado. La compensación aplicada y
+  su recuperación se solicitan explícitamente al servicio nuevo, sin activación
+  automática de ese comportamiento en los métodos previos.
+
+**Estado, revisión y fallos**
+
+- consultar del ejecutor agrega resolucionAuth y revisionAuthRequerida. Una
+  COMPENSADA guardada localmente deja pendiente=false; una REVISION_REQUERIDA deja
+  pendiente=true/revision=true. Conserva AUTH_APLICADA como historial y PREPARADA
+  nativa como ausencia de commit. La decisión ABORTADA sigue impidiendo reanudar.
+- Una revisión es terminal para este recibo: reintentar la devuelve sin pedir otra
+  restauración. Pendiente=true requiere tratar explícitamente el caso; no autoriza
+  repetir escrituras automáticamente. Las altas siguen sin borrarse.
+- Si Auth confirma pero se pierde su respuesta o falla la persistencia local,
+  RUND conserva el pendiente hasta recuperar y guardar el recibo por GET. No vuelve
+  a pedir compensación cuando GET ya confirma el resultado. Si se pierde respuesta
+  tras guardar localmente, otra instancia recupera el hecho sin HTTP o nuevos efectos.
+
+**Validación local**
+
+- Compilaciones Auth/RUND correctas. RUND: **70 suites / 1.278 pruebas**, sesenta
+  nuevas; Auth conserva **6 suites de identidad / 194 pruebas**, sin afirmar toda
+  su batería. Gateway conserva **19 controles HTTP**, sin cambios productivos.
+- **452 comprobaciones de integración**: conserva las 434 anteriores, actualizando
+  la expectativa del esquema vacío, y agrega migración 011 más diecisiete casos.
+  Esquema RUND vacío: **31 tablas**, siete categorías, ninguna copia de docentes.
+- Auth/RUND y TypeORM por HTTP reales, en bases ficticias separadas. RUND carece
+  de schema Auth; el propietario Auth conserva la ausencia de privilegios RUND.
+  Camino completo aborto → compensación propietaria → recibo local, sin alterar
+  el journal aplicado original, contexto, perfil o demás tablas nativas.
+- Concurrencia con un recibo/fecha, recuperación por otra instancia, respuesta Auth
+  perdida después del commit y fallo local de inserción; GET recupera el resultado
+  sin otro POST/restauración. Un servidor HTTP ficticio pierde la respuesta tras
+  persistir localmente; reanudar tampoco consulta Auth o duplica efectos.
+- GET de ausencia retenido mientras otra solicitud confirma resolución; no borra
+  el hecho. Altas/cambios posteriores producen revisión explícita y conservan los
+  datos. Una cancelación no aplicada conserva su camino sin solicitar compensación.
+- Caída/404/DTO parcial/bandera apagada no inventan ausencia o recibo; resolución
+  ajena/contradictoria no sustituye la final. SQL rechaza estados/contextos no
+  admitidos y DTO nulo/adicional/incoherente; 011 repetida y registros inmutables
+  conservan fechas/contenido. Los flujos activos dejan vacías las cuatro tablas
+  preparatorias RUND.
+- Evidencia y hashes encadenados:
+  [validacion-conciliacion-compensacion-rund.json](validacion-conciliacion-compensacion-rund.json).
+
+**Alcance y siguiente punto**
+
+La conciliación de resolución Auth queda preparada y validada, incluida la
+distinción entre compensación y revisión. Siguen la política/tratamiento de altas
+y revisiones, y la conexión a entradas reales con intención estable y controles de
+permisos/OTP/prevalidación/soporte. Continúan preview sin escritura remota, correo
+durable y aceptación por instalación; no se certifica activación o cierre operativo.
+
+El ejecutor ahora importa/exporta el módulo preparatorio de compensación, pero
+ambos siguen fuera de AppModule. Su consulta ampliada requiere 011 antes de usar
+el ejecutor preparatorio; los flujos activos no la consultan. Sin nuevas rutas,
+workers, banderas o cambios de .env/Compose. Las banderas Auth siguen apagadas por
+defecto. Solo se usó un clúster ficticio temporal eliminado al terminar, sin bases
+existentes, push o despliegue.
+
+Avance: **32 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4 y aceptación `12.5d.2`; no se retira el
+RUND embebido de PTA.
+
+## 70. Frente 4: casos durables, bandeja y asignación de revisiones (2026-10-15)
+
+Cada REVISION_REQUERIDA conciliada en RUND recibe un caso propio para seguimiento.
+Un operador autorizado puede asumirlo sin alterar identidad o cerrar el pendiente.
+Contrato: [CONTRATO-REVISION-IDENTIDAD-RUND.md](CONTRATO-REVISION-IDENTIDAD-RUND.md).
+
+**Caso atómico y seguimiento**
+
+- Migración RUND 012, posterior a 008–011. Tabla identidad_revision con FK propia
+  a la resolución RUND, UUID estable de caso, intención, estado y fechas. No añade
+  FK entre propietarios ni copia identidad, documentos, comandos o credenciales.
+- Un trigger crea el caso en la misma transacción que el recibo REVISION_REQUERIDA.
+  Si falla el caso, revierte también el recibo local; reconciliar por GET propietario
+  recupera ambos sin compensar otra vez. COMPENSADA no genera un caso.
+- Incorpora revisiones anteriores usando la fecha del recibo local. Repetir 012
+  conserva UUID, fecha y asignaciones. SQL protege metadatos, impide DELETE y solo
+  admite PENDIENTE → EN_REVISION con responsable y fecha de la transacción.
+- consultar del ejecutor agrega casoRevision (UUID/estado o null). Una revisión
+  asumida conserva resolucionAuthPendiente=true y revisionAuthRequerida=true.
+  Se mantienen AUTH_APLICADA histórica, ABORTADA irreversible y PREPARADA nativa.
+
+**Bandeja y asignación protegidas**
+
+- AuthIdentityReviewModule ofrece GET de listado y caso, y POST /:casoId/asumir,
+  bajo banco-docentes/identidad/revisiones. Solo se importa/exporta en el ejecutor
+  desconectado; no se publica por AppModule ni modifica las rutas activas.
+- JwtAuthGuard y PermissionsGuard exigen sesión y gestión RUND con el permiso
+  existente banco-docentes.rund.manage y sus reglas de superadministración.
+  Roles normales se resuelven por HTTP Auth; los permisos declarados por el
+  solicitante no los conceden. Auth caído/parcial deniega con el 403 del guard
+  existente. Un token interno no sustituye el JWT del operador.
+- Responsable desde el subject firmado de la sesión, con sus alias existentes;
+  body vacío, sin elegir otro actor, fecha o estado. Bloqueo de fila antes de
+  asignar; mismo actor devuelve la asignación original, otro recibe 409. Fallo
+  revierte actor/fecha juntos; respuesta perdida se recupera sin otro UPDATE.
+- Bandeja con límite 25 por defecto/100 máximo, filtro PENDIENTE o EN_REVISION,
+  cursor por fecha/UUID sin OFFSET. Conserva los seis decimales de PostgreSQL y
+  valida versión, fecha y filtro. Es una bandeja viva; una asignación concurrente
+  puede sacar casos del filtro pendiente. Todas las respuestas usan no-store.
+- No existe cierre o reasignación en este corte. Asumir no compensa, borra cuentas,
+  reactiva intenciones, confirma perfiles o envía correo. La política y resolución
+  de negocio de altas/revisiones continúa pendiente.
+
+**Validación local**
+
+- Compilaciones Auth/RUND correctas. RUND: **72 suites / 1.309 pruebas**, 31 nuevas;
+  Auth: **6 suites de identidad / 194 pruebas**. No se afirma toda la batería Auth.
+  Gateway: **20 controles HTTP**, uno nuevo, sin cambios productivos del gateway.
+- **469 comprobaciones de integración**: conserva las 452 anteriores actualizando
+  la expectativa del esquema vacío, y agrega 012 más dieciséis casos de revisión.
+  RUND vacío: **32 tablas**, siete categorías y ninguna copia de docentes.
+- PostgreSQL/TypeORM, JWT/guards y permisos Auth HTTP reales en bases ficticias
+  separadas. Creación atómica/rollback, recuperación por GET, backfill y repetición
+  de 012 sin desasignar. El SQL rechaza cambio de IDs, borrado, reasignación,
+  cierre, fecha falsa o caso para una COMPENSADA.
+- Revocación del grant con el mismo JWT, permiso inventado en claims, token interno,
+  sesión sin actor y Auth caído/ausente/parcial deniegan acceso sin asignar.
+  Seis solicitudes del mismo actor convergen; dos actores obtienen 200/409.
+- Precisión de microsegundos y empates de fecha: páginas sin duplicados/omisiones;
+  cursor con otro filtro y parámetros inválidos fallan. Respuesta perdida después
+  de asignar y fallo de UPDATE conservan idempotencia o rollback completo.
+- Casos asumidos siguen pendientes, sin cambiar identidad, recibo propietario o
+  perfil. RUND continúa sin schema Auth; el propietario Auth no recibe privilegios
+  RUND. Los flujos activos dejan vacías las cinco tablas preparatorias propias.
+- Evidencia y hashes de fuentes conservadas:
+  [validacion-revision-identidad-rund.json](validacion-revision-identidad-rund.json).
+
+**Alcance y siguiente punto**
+
+Quedan preparados el registro, consulta y responsable de las revisiones; no se
+declara resuelta la política de altas ni un cierre humano. Sigue vincular la
+intención estable con las entradas reales y sus permisos/OTP/prevalidación/soportes,
+y definir la resolución de revisiones antes de activar. Continúan preview sin
+escritura remota, correo durable y aceptación por instalación.
+
+La consulta del ejecutor preparatorio requiere ahora 012; el ejecutor y la bandeja
+siguen fuera de AppModule. Las banderas Auth permanecen apagadas por defecto. Sin
+cambios de .env/Compose, workers o migración automática. Solo clúster ficticio
+temporal eliminado al terminar, sin bases existentes, push o despliegue.
+
+Avance: **33 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4 y aceptación `12.5d.2`; no se retira el
+RUND embebido de PTA. Este conteo no equivale a un porcentaje de independencia.
+
+## 71. Frente 4: intención estable por solicitud de creación manual (2026-10-15)
+
+Se reserva el vínculo actor/solicitud → intención antes de preparar la ejecución.
+Completa la base de idempotencia que faltaba entre el origen de una solicitud y
+el ejecutor del punto 66, todavía sin conectar las rutas activas. Contrato:
+[CONTRATO-SOLICITUD-IDENTIDAD-RUND.md](CONTRATO-SOLICITUD-IDENTIDAD-RUND.md).
+
+**Reserva anterior a cualquier ejecución**
+
+- RUND 013 crea identidad_solicitud: actor/solicitud UUID como clave, intención
+  única generada por servidor, origen CREAR_MODAL, dos huellas y fecha. No usa
+  documento, correo, hash del formulario o número de fila como identidad de operación.
+  No copia formulario, credenciales, identidad o resultados Auth en esta tabla.
+- La reserva persiste en autocommit antes de preparar journal/contexto/decisión.
+  Si falla el contexto, el mismo actor/solicitud recupera el ID para completar la
+  preparación. Seis solicitudes simultáneas convergen; otra solicitud explícita
+  o actor recibe otra intención, aunque coincida el formulario/UUID del solicitante.
+- Ambas huellas deben coincidir al reintentar; otro contenido devuelve 409 sin
+  reemplazar el original. Reserva inmutable, sin UPDATE/DELETE, TTL o adopción de
+  journals anteriores. Triggers verifican comando/contexto y actor/canal de los
+  registros vinculados. Sin FK a 008 porque la reserva debe poder antecederlo.
+- Repetir 013 conserva registros y no inventa solicitudes para el historial. Las
+  intenciones anteriores sin vínculo siguen con su contrato original.
+
+**Preparación manual con reglas existentes**
+
+- AuthIdentityRequestService solo admite MODAL/CREAR, actor UUID coincidente,
+  rejectExisting=true, territorial resuelta y validación estricta; rechaza edición,
+  masivo, API, autogestión y opciones relajadas. Reutiliza las reglas obligatorias
+  y manuales del banco. validatePayload solo se exporta, sin cambiar cuerpo/llamadas.
+- Verifica formulario normalizado, contexto nativo y comando Auth, incluyendo
+  nombres, género, fecha civil y datos de contacto. Captura datos independientes
+  antes de esperar SQL: mutar el objeto original no cambia lo que se prepara.
+- preparar reserva y llama al preparador existente con la intención guardada;
+  no registra/aplica identidad, confirma perfil o envía correo. consultar acota
+  la lectura al actor/solicitud y devuelve IDs/huellas/fecha y preparación.
+- PENDIENTE indica contexto incompleto; LISTA acredita contexto/decisión persistidos,
+  no permiso, prevalidación Auth, perfil creado o ejecución permitida. Un aborto
+  irreversible no se reactiva por volver a preparar.
+- El llamador debe autenticar y comprobar permisos en cada intento y aportar
+  actor/catálogo confiables. El módulo nuevo no declara rutas y permanece fuera
+  de AppModule. No se modifica el controlador activo, sus validaciones o JWT.
+- El contexto incluye auditoría congelada; la futura entrada debe recuperar sus
+  datos originales al reintentar, sin regenerar IP/fechas que cambiarían la huella.
+  El servicio no sustituye el control de permisos, prevalidación, soportes u OTP.
+
+**Validación local**
+
+- Compilaciones Auth/RUND correctas. RUND: **73 suites / 1.339 pruebas**, treinta
+  nuevas; Auth conserva **6 suites de identidad / 194 pruebas**. Gateway conserva
+  **20 controles HTTP**; no se afirma toda la batería Auth.
+- **482 comprobaciones de integración**: conserva las 469 anteriores con la nueva
+  expectativa de tablas y agrega 013 más doce escenarios. RUND vacío: **33 tablas**,
+  siete categorías y ninguna copia de docentes.
+- TypeORM y PostgreSQL reales con bases ficticias separadas. Casos manuales
+  inválidos o comando distinto no reservan. Clave por actor, conflicto de contenido,
+  seis peticiones concurrentes y persistencia de UUID/fecha después de reintentar.
+- Fallos de reserva y contexto, recuperación por otra instancia y pérdida real de
+  respuesta HTTP tras preparar. Sin identidad/perfil/correo durante preparación;
+  las reservas incompletas permanecen consultables y recuperables.
+- Ejecución explícita del fixture con el ID reservado hasta commit Auth/nativo;
+  preparar después recupera los mismos IDs sin reescribir identidad o perfil.
+  Un aborto sigue impidiendo ejecutar. SQL rechaza comando/contexto ajenos,
+  adopción de journal y cambios/borrados de reserva; 013 repetida conserva todo.
+- Los flujos activos dejan vacías las seis tablas preparatorias RUND. Esa base
+  carece de schema Auth y el propietario Auth conserva sus privilegios separados.
+  Evidencia: [validacion-solicitud-identidad-rund.json](validacion-solicitud-identidad-rund.json).
+
+**Alcance y siguiente punto**
+
+Se completa el vínculo durable para una creación manual ya autorizada y normalizada.
+Sigue conectar su entrada con la sesión/permisos, catálogo, prevalidación Auth y
+recuperación del contexto original, conservando el ID desde el cliente. Edición,
+lotes y autogestión requieren su propio origen y controles antes de activar.
+También siguen el cierre de altas/revisiones, preview sin escritura remota, correo
+durable y aceptación por instalación.
+
+Ambas banderas Auth permanecen apagadas y el escritor actual conserva su transacción
+y correo. Sin rutas activas nuevas, migración automática o cambios .env/Compose.
+Solo clúster temporal ficticio eliminado al finalizar; sin bases existentes, push,
+despliegue o retiro del RUND embebido de PTA.
+
+Avance: **34 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4 y aceptación `12.5d.2`; el conteo no es
+un porcentaje de independencia ni certificación de ambientes.
+
+## 72. Frente 4: entrada manual protegida, captura y prevalidación Auth (2026-10-15)
+
+La preparación manual recibe formulario e ID estable desde una frontera HTTP con
+sesión y reglas de rol/permiso del banco. Captura el origen de forma recuperable,
+consulta el catálogo y prevalida Auth. Continúa desconectada de AppModule y del POST
+activo; ninguna ruta ejecuta identidad o confirma perfiles. Contrato:
+[CONTRATO-ENTRADA-MANUAL-IDENTIDAD-RUND.md](CONTRATO-ENTRADA-MANUAL-IDENTIDAD-RUND.md).
+
+**Frontera protegida con reglas existentes**
+
+- AuthIdentityManualEntryController declara POST preparar, POST reanudar-preparacion
+  y GET por solicitud UUID bajo banco-docentes/identidad/solicitudes-manuales.
+  JwtAuthGuard y BancoDocentesRolesGuard conservan la alternativa por roles de
+  gestión o permiso banco-docentes.rund.manage del modal, consultado por HTTP Auth
+  para roles normales. No se confían permisos declarados en JWT/body.
+- Actor desde la sesión firmada y con UUID; fullAccess derivado de roles. El body
+  solo aporta formulario plano de campos escalares; no actor, comando, contexto,
+  opciones, IP de auditoría o credenciales. Recuperación con body vacío. GET/POST
+  se autorizan cada vez y usan no-store; otro actor recibe 404.
+- El gateway mantiene transporte y redacción de cuerpos RUND. La frontera nueva
+  transforma errores de infraestructura a 503 genérico, sin propagar parámetros
+  SQL privados al logger HTTP; conflictos/validaciones conservan sus códigos.
+
+**Captura y recuperación originales**
+
+- RUND 014 amplía identidad_solicitud con huella_formulario y entrada_manual
+  nullable, sin agregar tablas. Las solicitudes de 71 conservan ambos null;
+  no se reconstruyen formularios, auditorías o aprobaciones históricas.
+- Para nuevas entradas se reutilizan validaciones manuales y catálogo Auth de
+  territoriales, con el mismo findTerritorialMatch del modal. Solo se exporta la
+  función; su cuerpo y llamadas permanecen iguales. Catálogo fallido/parcial o
+  territorial desconocida no reserva una intención.
+- ID, huellas, formulario original y contexto canónico se insertan juntos en la
+  reserva. La auditoría y el catálogo quedan congelados antes de preparar 008–010.
+  No hay HTTP dentro de esa transacción. La tabla ahora sí puede contener datos
+  personales privados: no se devuelven en los DTO ni se registran en logs.
+- Las dos columnas son coherentes/limitadas, con sobre versionado exacto y actor,
+  canal/acción coincidentes. 013 también protege su inmutabilidad; 014 compara el
+  contexto nuevo contra la captura original. Repetir la migración conserva todo.
+- Otro formulario para la misma clave devuelve 409. El mismo formulario recupera
+  la primera captura aunque cambie IP o roles de una sesión aún autorizada. Un
+  fallo antes de guardar contexto deja captura/journal recuperables por otro
+  proceso, sin reconstruir auditoría o requerir otro catálogo.
+- Se conserva el formulario original para normalizar sus alias al reanudar.
+  Los históricos null devuelven 409 y requieren recuperación explícita de servidor.
+
+**Prevalidación fresca, sin ejecución**
+
+- Usa el UUID de operación Auth persistido, documento/correo capturados y
+  resolverPorCorreo=false mediante el cliente propietario del punto 61. Ruta
+  ausente, caída o respuesta parcial dan 503, conservando captura/IDs para reintentar.
+- Conflicto de correo confirmado: 409; rol docente sin configurar: 503; persona
+  con perfil RUND existente en ese período: 409. No copia identidad ajena.
+- Un POST compatible devuelve prevalidacion={estado:COMPATIBLE,reserva:false}.
+  Cada preparación/recuperación vuelve a consultar Auth; no se guarda aprobación
+  permanente. GET solo consulta metadatos. LISTA continúa significando contexto
+  preparado, sin permiso de ejecución, perfil creado o reactivación de abortos.
+- Preparar no registra/aplica/cancela/compensa identidad, confirma perfiles ni
+  envía correo. Se conservan los recibos y barreras de ejecución de los puntos previos.
+
+**Validación local**
+
+- Compilaciones Auth/RUND correctas. RUND: **75 suites / 1.377 pruebas**, 38 nuevas;
+  Auth: **6 suites de identidad / 194 pruebas**, sin afirmar toda su batería.
+  Gateway: **21 controles HTTP**, uno nuevo; sin cambios productivos del gateway.
+- **499 comprobaciones de integración**: conserva las 482 anteriores y agrega
+  014 más dieciséis escenarios. Continúan **33 tablas**, siete categorías y cero
+  docentes copiados. El fixture 71 contempla las dos columnas nullable nuevas sin
+  inventar capturas para sus solicitudes.
+- PostgreSQL/TypeORM, JWT, guards, permisos, catálogo y prevalidación Auth reales
+  en bases ficticias separadas. Actor ajeno, claims falsos, token interno sin JWT,
+  body/contexto falsificado y formularios inválidos no preparan entradas.
+- Revocación del grant con el mismo JWT y permisos Auth caídos/parciales; catálogo
+  fallido/vacío; prevalidación fallida, respuesta perdida, fallo de captura/contexto
+  y recuperación por otra instancia, conservando formulario con alias/auditoría.
+- Seis solicitudes iguales convergen; dos formularios simultáneos tienen un solo
+  ganador. IP/roles nuevos no reemplazan la captura. Conflicto real de correo y
+  perfil ya confirmado se detectan sin repetir identidad o alterar negocio.
+- Constraints rechazan captura parcial/extra/actor ajeno; UPDATE y contexto distinto
+  fallan. Repetir 014 conserva datos y null históricos. DTO sin formulario/identidad,
+  servicios con token interno sin reenviar JWT/cookies y flujos activos sin capturas.
+- Evidencia y hashes: [validacion-entrada-manual-identidad-rund.json](validacion-entrada-manual-identidad-rund.json).
+
+**Alcance y siguiente punto**
+
+La frontera de preparación queda validada y desconectada del arranque activo.
+Sigue conectar el cliente manual para conservar ID/formulario y habilitar ejecución
+con autorización/revalidación vigente; la prevalidación no es una reserva ni aprobación
+permanente. Edición, lotes y autogestión requieren origen/soportes/sugerencias/OTP
+propios. Continúan la política de altas/cierre de revisiones, preview sin escritura
+remota, correo durable y aceptación por ambiente.
+
+Ambas banderas Auth continúan false por defecto; escritor activo, transacción y correo
+se conservan. Sin flags nuevos, .env/Compose, migración automática, bases existentes,
+push o despliegue. El clúster ficticio temporal se elimina al finalizar.
+
+Avance: **35 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4 y aceptación `12.5d.2`; no se retira el
+RUND embebido de PTA ni se calcula un porcentaje a partir de estas pruebas/cortes.
+
+## 73. Frente 4: ejecución manual autorizada y cliente de solicitud estable (2026-10-15)
+
+La entrada preparatoria del punto 72 incorpora ejecución explícita por solicitud y
+actor, con comprobaciones vigentes entre fases y recibo mínimo recuperable. Se añade
+un cliente aislado para conservar el ID frente a respuestas perdidas. Ambos siguen
+sin activar el flujo nuevo en el formulario/arranque actuales. Contrato:
+[CONTRATO-EJECUCION-MANUAL-IDENTIDAD-RUND.md](CONTRATO-EJECUCION-MANUAL-IDENTIDAD-RUND.md).
+
+**Ejecución y controles actuales**
+
+- POST :solicitudId/ejecutar con body vacío y GET :solicitudId/ejecucion bajo el
+  prefijo manual existente. Conservan JWT, reglas de rol o manage del banco,
+  no-store, actor de sesión, 404 para otro actor y errores de infraestructura
+  genéricos. El body no puede elegir intención, contexto, actor o permisos.
+- AuthIdentityManualExecutionService exige expiración JWT vigente para escribir,
+  también si el token carece de exp. Resuelve la captura propia y la prevalidación
+  del punto 72; ABORTADA no se reactiva. Un commit conocido devuelve su recibo
+  sin prevalidar, aplicar identidad o escribir perfil de nuevo.
+- ejecutarConControles del ejecutor invoca callbacks de servidor antes de registrar
+  en Auth, aplicar identidad y confirmar RUND. Cada callback revalida sesión y
+  permisos frescos para roles normales, sin caché del guard de esa petición.
+  Se conservan las autorizaciones por rol de gestión. ejecutar mantiene su camino
+  anterior al delegar sin callbacks; el método nuevo no acepta funciones del body.
+- Después de una autorización asíncrona se comprueba de nuevo el aborto antes de
+  la mutación Auth. El commit conserva los bloqueos/exclusión SQL de los puntos
+  anteriores. No se mantiene una transacción SQL durante HTTP.
+- Revocación/consulta de permiso fallida: 403; vencimiento de sesión: 401. Si Auth
+  ya se aplicó, no se confirma perfil desde el checkpoint denegado. La nueva sesión
+  autorizada recupera el mismo aplicado, sin repetir identidad. Fallos nativos
+  revierten perfil/auditoría/marcador y conservan el pendiente sin aborto automático.
+- Una revocación posterior al último control puede coincidir con una petición ya
+  en vuelo: estos controles no son atomicidad distribuida de permisos. Se conserva
+  el límite operativo que debe aceptarse antes de habilitar la integración.
+
+**Recibo y cliente recuperables**
+
+- El recibo tiene nueve campos, sin formulario, cuenta, persona o resultado nativo
+  completo. PENDIENTE/ABORTADA no devuelven docente o fecha confirmados. CONFIRMADA
+  conserva IDs/docente/fecha del commit. correo=PENDIENTE no acredita envío ni cola;
+  el correo durable sigue pendiente de implementación antes de activar.
+- Después de reautorizar se recupera un commit concurrente o una respuesta perdida.
+  GET/repetir ejecución no genera otra intención o escritura. Una ausencia remota
+  desactualizada puede devolver 503 mientras otro proceso avanza; recuperar/reintentar
+  explícitamente con el mismo ID, sin bucles automáticos de POST.
+- RundManualIdentityClient usa el transporte existente, aislado de rundApi y del
+  modal activo. Guarda solo UUID por actor en sessionStorage antes de HTTP, sin
+  formulario/JWT. Recarga permite reanudar desde la captura del servidor.
+- Timeout/401/403/409/503/DTO parcial mantienen el ID. No genera otro para recuperar;
+  storage inválido/bloqueado detiene HTTP. Desactiva retries, refresh automático,
+  logs privados y toasts automáticos de ese transporte.
+- Doble clic de ejecución comparte una petición. Valida recibo estricto, IDs,
+  estados y fecha UTC con microsegundos. Solo cerrar con CONFIRMADA coherente y
+  petición terminada retira la reserva del navegador; no presenta pendientes como éxito.
+
+**Validación local**
+
+- Auth/RUND compilados. RUND: **76 suites / 1.395 pruebas**, dieciocho nuevas;
+  Auth conserva **6 suites de identidad / 194 pruebas**. Gateway: **22 controles
+  HTTP**, uno nuevo, sin cambios productivos del gateway.
+- MFE RUND: **20 archivos / 198 pruebas**, dieciocho nuevas; TypeScript completo
+  y build Vite correctos. Build generado solo en tmp. El helper nuevo no aparece
+  en los bundles del formulario activo y no cambia su POST.
+- **512 comprobaciones de integración**: conserva las 499 anteriores y agrega
+  trece escenarios. Sin migración nueva: continúan 33 tablas y siete categorías.
+  Datos ficticios separados con PostgreSQL, TypeORM, JWT/guards y HTTP Auth reales.
+- Creación con recibo mínimo, concurrencia y recuperación; revocación durante
+  prevalidación, después del registro y después de aplicar Auth. JWT vencido
+  durante HTTP impide commit nativo y permite recuperar con otra sesión válida.
+- Fallo de auditoría nativa, respuesta perdida tras commit y contrato/bandera Auth
+  no disponible no fabrican éxito. Reintentar conserva UUID y aplicado; no envía
+  correo o compensa/aborta automáticamente. Aborto durante registro impide aplicar.
+- Recibo conocido se recupera sin API de identidad disponible y continúa exigiendo
+  permiso. Otro actor no lo consulta. Transporte de identidad sin JWT/cookies,
+  base RUND sin schema Auth y propietario Auth sin privilegios RUND. Los flujos
+  activos siguen sin usar los journals preparatorios.
+- Evidencia: [validacion-ejecucion-manual-identidad-rund.json](validacion-ejecucion-manual-identidad-rund.json).
+
+**Alcance y siguiente punto**
+
+Quedan preparados y probados ejecución manual protegida, recuperación y cliente
+de ID estable. Falta montar el cliente en el modal con su ciclo de confirmación/
+recuperación y cerrar correo durable, política de altas/revisiones y preview sin
+escritura remota antes de activar. Edición/lotes/autogestión necesitan origen y
+controles propios de soporte, sugerencias y OTP; sigue aceptación por ambiente.
+
+El módulo continúa fuera de AppModule y ambas banderas Auth false por defecto.
+Sin cambios .env/Compose, migraciones nuevas, bases existentes, push o despliegue.
+El clúster temporal ficticio se elimina al finalizar. El flujo activo conserva
+su escritor, transacción y correo.
+
+Avance: **36 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4 y aceptación `12.5d.2`; no se retira el
+RUND embebido de PTA ni se infiere porcentaje de independencia desde estas cifras.
+
+## 74. Frente 4: conexión opcional del formulario y recuperación visual (2026-10-15)
+
+El modal de creación incorpora una conexión explícita al cliente del punto 73,
+con preparación, confirmación, consulta y finalización separadas. El llamador
+activo no proporciona esa conexión; la creación actual continúa como predeterminada.
+Contrato: [CONTRATO-FORMULARIO-MANUAL-IDENTIDAD-RUND.md](CONTRATO-FORMULARIO-MANUAL-IDENTIDAD-RUND.md).
+
+**Comportamiento preparado**
+
+- Se conservan validación y construcción del payload del formulario. La entrada
+  opcional elimina auditoría/soportes/sugerencias del navegador; el servidor obtiene
+  su contexto de sesión. No se transforma userPersonId en principal JWT.
+- Preparar reserva el UUID antes de HTTP y sustituye el formulario por el diálogo
+  de solicitud. Confirmar requiere preparación válida y una acción adicional.
+  No se ejecuta por montar, consultar o recuperar la preparación.
+- Consultar permite recuperar un commit cuya respuesta se perdió. Solo un recibo
+  CONFIRMADA válido muestra éxito; Finalizar retira la reserva y avisa al listado.
+  El correo continúa explícitamente pendiente, sin afirmar envío ni encolado.
+- Recuperar reenvía la misma copia en memoria o usa la captura del servidor tras
+  reabrir. Errores de sesión, permisos, conflicto, infraestructura o DTO parcial
+  conservan el ID. No hay reintentos automáticos o fallback al escritor anterior.
+- Petición en vuelo bloquea acciones/cierre y clics repetidos. Cambio de cliente
+  invalida el diálogo y descarta respuestas tardías; desmontaje evita callbacks.
+  Storage inválido impide HTTP y no abre el formulario anterior como alternativa.
+- Ediciones por id/docente_id conservan su ruta, soporte obligatorio, justificación,
+  sugerencias y protección de datos, incluso si existe una solicitud pendiente.
+
+**Validación local**
+
+- MFE RUND: **21 archivos / 217 pruebas**, diecinueve nuevas. TypeScript completo
+  y compilación Vite correctos; salida únicamente en tmp. Aviso de deprecación de
+  act de la infraestructura React existente, sin errores de pruebas o compilación.
+- Se prueban formulario/cliente reales con transporte simulado: creación actual,
+  preparación sin auditoría del navegador y edición con soporte/sugerencia. También
+  confirmación explícita, recuperación al reabrir, copia de captura, 401/403/409/503,
+  pendiente, aborto, recibo parcial, doble clic, storage y cambio de cliente.
+- Fuentes de backend, gateway, SQL, cliente HTTP y configuración conservadas por
+  huella. El formulario anterior se compara con HEAD excluyendo únicamente la
+  conexión opcional, sus imports/tipos y el texto preparatorio del botón.
+- Las **512 comprobaciones de integración**, **22 controles HTTP del gateway**,
+  **1.395 pruebas RUND** y **194 pruebas Auth de identidad** son evidencia heredada
+  del punto 73 sobre fuentes intactas. No se vuelven a ejecutar en este corte de UI;
+  tampoco se presentan como una validación integral nueva de navegador y servidor.
+- Evidencia: [validacion-formulario-manual-identidad-rund.json](validacion-formulario-manual-identidad-rund.json).
+  Manifiesto y revisión: corte-74-rund.paths y revision-push-corte-74.json.
+
+**Límites y siguiente punto**
+
+La conexión sigue siendo preparatoria. Falta exponer de forma confiable el principal
+de sesión al cliente del shell y revisar la captura recuperada antes de confirmarla
+en operación. Un ID sin captura remota, o con captura incompatible, no se descarta
+automáticamente: requiere definir corrección/abandono seguros del lado servidor.
+Estos pendientes preceden a la activación junto con correo durable, política/cierre
+de altas/revisiones, preview sin escritura remota, otros canales y aceptación por
+instalación. El siguiente corte debe abordar la revisión autorizada de la captura
+recuperada, conservando el mismo ID y sin exponer auditoría o secretos.
+
+El módulo de servidor continúa fuera de AppModule y las dos banderas Auth false
+por defecto. Sin cambios .env/Compose, SQL, bases existentes, push o despliegues.
+No se retira RUND embebido de PTA. La independencia total sigue pendiente.
+
+Avance: **37 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4 y aceptación `12.5d.2`; el número de
+cortes no representa un porcentaje de independencia o despliegue.
+
+## 75. Frente 4: revisión autorizada de captura y confirmación visual (2026-10-15)
+
+La conexión opcional del punto 74 permite revisar los datos efectivamente guardados
+antes de confirmar, incluso tras reabrir. Contrato:
+[CONTRATO-REVISION-CAPTURA-MANUAL-RUND.md](CONTRATO-REVISION-CAPTURA-MANUAL-RUND.md).
+El llamador activo sigue sin proporcionar el cliente y el módulo continúa inactivo.
+
+**Lectura privada sin efectos de escritura**
+
+- GET :solicitudId/captura conserva JWT, reglas de rol o manage del banco y
+  no-store. Actor, roles y expiración proceden de los claims firmados; query/body
+  no pueden elegir otro actor, permiso o acceso sensible.
+- AuthIdentityManualCaptureService exige UUID y exp vigente. Comprueba permisos
+  frescos antes y después de leer para los roles normales; conserva autorización
+  por rol GESTION_PROFESORAL/SUPER_ADMIN/ADMIN. Sesión vencida: 401; permiso ausente
+  o consulta fallida: 403. No utiliza el permiso cacheado del guard del request.
+- Busca por actor/solicitud y reutiliza la validación de captura, actor y huellas
+  de formulario/comando/contexto de la preparación existente. Otro actor/ausencia:
+  404; histórico sin captura: 409; incoherencia/infraestructura: 503 genérico.
+- Devuelve cinco campos de DTO, con una lista blanca de **47 campos de perfil**
+  escalares normalizados. No entrega envelope, formulario original, comando Auth,
+  rawPayload, auditoría, IP, roles o IDs internos de cuenta/persona/territorial.
+- Aplica la protección sensible vigente según los roles actuales, ignorando
+  fullAccess afirmado o capturado anteriormente. Documento enmascarado y puntaje
+  salarial null para acceso restringido, también ADMIN; acceso completo únicamente
+  con GESTION_PROFESORAL/SUPER_ADMIN. No detecta datos sensibles en texto libre.
+- Consultar no prepara, aplica, confirma perfil, cancela, compensa o envía correo.
+  No consulta catálogo ni prevalidación de escritura. Tras un commit puede seguir
+  revisándose la misma captura sin repetir efectos.
+
+**Revisión visual antes de confirmar**
+
+- El cliente usa el UUID existente, GET no-store, sin retries/refresh/logs privados
+  ni almacenamiento de la captura en sessionStorage. Valida claves exactas, versión,
+  IDs, campos escalares y coherencia de los datos protegidos antes de mostrarlos.
+- Preparar/recuperar lee después la captura del servidor y exige la misma intención.
+  Confirmar creación requiere marcar explícitamente que se revisaron esos datos.
+  Repetir preparación o consultar reinicia la marca; un error retira los datos
+  visibles y la posibilidad de confirmar. No sustituye la lectura con la copia local.
+- Revisar datos guardados es una lectura independiente y no habilita ejecución por
+  sí sola. Consultar resultado conserva la recuperación del recibo mínimo sin
+  necesitar datos personales para finalizar un commit conocido.
+- Cambio de cliente oculta datos e invalida el diálogo; desmontaje descarta respuestas
+  tardías. El formulario predeterminado y la edición con soporte/sugerencias conservan
+  las fuentes del punto 74 sin cambios adicionales.
+- La marca es un control visual; no es una aprobación durable o firma del servidor.
+  Ejecutar conserva su body vacío, permisos y controles transaccionales anteriores.
+  La captura/contexto inmutables vinculan la revisión con la misma solicitud.
+
+**Validación local**
+
+- RUND: **77 suites / 1.417 pruebas**, veintidós nuevas; compilación correcta.
+  MFE: **22 archivos / 235 pruebas**, dieciocho nuevas; TypeScript y Vite correctos,
+  con salida de compilación exclusivamente en tmp.
+- **520 comprobaciones de integración** con PostgreSQL, TypeORM, JWT/guards y HTTP
+  reales sobre datos ficticios: conserva las 512 anteriores y añade ocho escenarios.
+  Gateway: **23 controles HTTP**, uno nuevo para JWT/no-store y GET sin cuerpo
+  privado en auditoría. Sin cambios productivos en gateway.
+- Se prueban alcance por actor, sesión sin exp, rol de consulta con claims falsos,
+  protección sensible actual, revocación durante lectura, Auth no disponible,
+  respuesta SQL genérica, histórico sin captura y revisión después del commit.
+  GET repetido conserva captura/journals/identidad y no genera escritura adicional.
+- Se comprueba igualdad de los 47 campos entre DTO backend y cliente, huellas de
+  fuentes previas y conservación del código anterior de preparar/reanudar, rutas,
+  cliente y fixtures fuera de las extensiones de este punto.
+- Auth conserva la evidencia de **6 suites de identidad / 194 pruebas** del punto
+  73 sobre fuentes intactas; no se repite esa suite unitaria en este corte. La nueva
+  integración sí vuelve a comprobar el comportamiento HTTP de su propietario.
+- Evidencia: [validacion-revision-captura-manual-rund.json](validacion-revision-captura-manual-rund.json).
+  Manifiesto/revisión: corte-75-rund.paths y revision-push-corte-75.json.
+
+**Límites y siguiente punto**
+
+Queda preparada la revisión autorizada de la captura recuperada. Sigue pendiente
+definir corrección o abandono seguro de una solicitud sin captura remota, o que deba
+corregirse, evitando perder operaciones en vuelo. Ese es el siguiente corte técnico.
+También continúan principal confiable del shell, correo durable, política/cierre
+de altas/revisiones, preview sin escritura remota, otros canales y aceptación por
+instalación. Los controles de permiso no aportan atomicidad distribuida.
+
+El módulo continúa fuera de AppModule, el llamador activo sin cliente y ambas
+banderas Auth false por defecto. Sin nuevas migraciones, cambios .env/Compose,
+bases existentes, push o despliegues. El clúster ficticio temporal se elimina al
+finalizar. No se retira RUND embebido de PTA ni se certifican ambientes.
+
+Avance: **38 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4 y aceptación `12.5d.2`; el número de
+cortes no representa un porcentaje de independencia o despliegue.
+
+## 76. Frente 4: abandono previo al journal y corrección con otro UUID (2026-10-15)
+
+Una solicitud sin captura remota, o capturada sin haber reservado aún su journal,
+puede cerrarse de manera durable antes de comenzar otra corrección. Contrato:
+[CONTRATO-ABANDONO-MANUAL-RUND.md](CONTRATO-ABANDONO-MANUAL-RUND.md).
+La integración continúa desactivada; el escritor activo conserva su funcionamiento.
+
+**Frontera y garantías**
+
+- Una operación reservada puede tener HTTP Auth en vuelo aunque su estado local sea
+  PREPARADA. Por eso el abandono rechaza con 409 cualquier solicitud con journal,
+  sin inferir una cancelación desde ausencia remota, aborto local o estado conocido.
+  Su ID y sus datos permanecen disponibles para recuperación.
+- Migración preparatoria **015_rund_identidad_abandono_manual.sql**: tabla inmutable
+  con actor, solicitud y fecha, sin formulario/credenciales. Un bloqueo transaccional
+  por actor/solicitud excluye abandono, captura inicial y reserva inicial del journal.
+- Si gana el abandono, una captura/reserva tardía falla sin reactivar el ID. Si gana
+  la captura sin journal, puede cerrarse conservando esa captura. Si gana la reserva
+  del journal, el abandono falla y no modifica la operación. No se incorporan nuevos
+  bloqueos a actualizaciones/commit nativo ni se mantiene una transacción durante HTTP.
+- El servicio de entrada rechaza preparar/reanudar un abandono conocido. La captura
+  privada se conserva para revisión autorizada; sus huellas y la preparación anterior
+  permanecen intactas fuera de esta comprobación. No se borran datos ni perfiles.
+
+**API y ciclo visual**
+
+- POST :solicitudId/abandonar con body vacío y GET :solicitudId/abandono conservan
+  JWT, rol o manage del banco, exp vigente, actor de sesión y no-store. Los permisos
+  de roles normales se consultan antes y después del trabajo, sin caché del guard.
+- El recibo tiene tres campos: solicitudId, estado=ABANDONADA y puedeIniciarOtra=true.
+  Un 404 no acredita cierre. Repetir conserva marca/fecha; otro actor no la consulta.
+  El servicio no aplica, cancela, compensa, aborta o confirma identidad/perfil ni correo.
+- Abandonar requiere confirmación visual. Su POST no retira el UUID del navegador.
+  Iniciar otro registro exige un GET válido del servidor y comprobar que el pendiente
+  no cambió; entonces abre el formulario vacío y el siguiente preparar genera otro ID.
+- Error, recibo parcial, respuesta perdida o consulta fallida conservan el ID; GET
+  permite recuperar un abandono confirmado. Ejecución en vuelo impide liberar desde
+  el cliente. No hay retries, refresh, logs privados o fallback al escritor anterior.
+  Abandonar no llama onSaved ni anuncia que se creó un docente.
+
+**Validación local**
+
+- RUND: **78 suites / 1.437 pruebas**, veinte nuevas. MFE: **23 archivos / 253 pruebas**,
+  dieciocho nuevas. Compilaciones y TypeScript correctos, salida del MFE solo en tmp.
+- **532 comprobaciones de integración**: conserva las 520 anteriores, adapta su rótulo
+  de 33 a 34 tablas y añade la instalación de 015 más once escenarios de abandono.
+  Continúan siete categorías y cero docentes copiados. Gateway: **24 controles HTTP**,
+  uno nuevo para sesión y redacción de auditoría, sin cambios productivos del gateway.
+- PostgreSQL/TypeORM/HTTP reales, datos ficticios: ausencia, captura parcial, otra
+  corrección con ID nuevo, journal PREPARADA/REGISTRADA/APLICADA y commit ya conocido.
+  Se mantienen la operación y la recuperación cuando el abandono no corresponde.
+- Tres carreras coordinadas mediante bloqueos PostgreSQL: captura antes de abandono,
+  journal antes de abandono y abandono antes de journal tardío. Se verifican el
+  resultado ganador y la ausencia de journal cuando gana el abandono.
+- Respuesta perdida recuperable, permisos revocados/no disponibles, recibo inmutable
+  y repetición de 015 sin reescribir fechas/capturas. Las pruebas anteriores de
+  ejecución, aborto, compensación y revisión vuelven a pasar.
+- Auth conserva **6 suites de identidad / 194 pruebas** de evidencia unitaria previa
+  sobre fuentes intactas; no se repite esa suite en este corte. El propietario sí
+  participa de nuevo en la integración HTTP ficticia.
+- Evidencia: [validacion-abandono-manual-rund.json](validacion-abandono-manual-rund.json).
+  Manifiesto/revisión: corte-76-rund.paths y revision-push-corte-76.json.
+
+**Estado y lo que falta**
+
+El siguiente punto es el cierre autenticado de solicitudes **con journal reservado**,
+preservando las garantías de aborto/cancelación/compensación. Este corte no completa
+ese circuito ni permite corregir una identidad aplicada mediante un ID nuevo.
+También siguen principal confiable del shell, correo durable, política/cierre de
+altas/revisiones, preview sin escritura remota, otros canales y SQL entre propietarios.
+
+Siguen abiertos cinco bloques de trabajo: aislamiento SQL actual, consumidores
+históricos, integración PTA/Programación, preparación/aceptación de instalaciones y
+aceptación integral/retiro final. Su alcance y criterios concretos se registran en
+[PENDIENTES-CIERRE-INDEPENDENCIA.md](PENDIENTES-CIERRE-INDEPENDENCIA.md). Queda trabajo
+importante de implementación y aceptación; no es válido estimar el porcentaje o
+las horas restantes a partir de los cortes o del número de pruebas.
+
+015 se ejecutó solo en clústeres ficticios temporales, eliminados al terminar. Debe
+instalarse antes de habilitar el módulo manual. Sin bases existentes, cambios .env/
+Compose, push o despliegue. El llamador activo sigue sin cliente, el módulo fuera de
+AppModule y las dos banderas Auth false por defecto. RUND embebido en PTA permanece.
+
+Avance: **39 cortes técnicos locales desde el merge**, **11 pasos principales locales**
+y **5 frentes abiertos**. Continúan frente 4, paso principal 12 y aceptación `12.5d.2`;
+la independencia total y la validación de las instalaciones siguen pendientes.
+
+## 77. Frente 4: cierre autenticado de solicitudes reservadas (2026-10-15)
+
+El circuito manual prepara el cierre de las solicitudes que el abandono previo
+del punto 76 no puede liberar por tener journal reservado. Contrato:
+[CONTRATO-CIERRE-MANUAL-RUND.md](CONTRATO-CIERRE-MANUAL-RUND.md). El módulo y la
+conexión opcional siguen sin activar; no se cambia el escritor productivo.
+
+**Cierre y controles vigentes**
+
+- POST :solicitudId/cerrar con body vacío y GET :solicitudId/cierre conservan JWT,
+  rol o manage del banco, exp vigente, actor de sesión y no-store. Otro actor:
+  404; falta de captura/journal: 409; errores de infraestructura: 503 genérico.
+- AuthIdentityManualCloseService verifica la captura servidor y, ante journal
+  PREPARADA parcial, completa solamente contexto/decisión desde esa captura.
+  No vuelve a pedir catálogo o prevalidación Auth de escritura. Contexto ausente
+  después de publicación remota conserva el error y requiere recuperación específica.
+- Reutiliza aborto nativo irreversible y sus bloqueos; un aborto previo conserva
+  el motivo. Si gana un commit nativo, el cierre no revierte o compensa el perfil.
+- resolverAbortoConControles concilia y registra/cancela el mismo UUID propietario.
+  Comprueba sesión y permiso antes de REGISTRAR_AUTH y CANCELAR_AUTH. Si Auth ganó
+  aplicando, no se fabrica una cancelación a partir de un 409.
+- resolverConControles concilia la resolución aplicada y controla otra vez antes
+  del POST de compensación. El propietario conserva sus reglas: compensación segura
+  de identidad existente o REVISION_REQUERIDA con caso durable para altas/cambios
+  incompatibles. No se define eliminación de personas/cuentas o cierre humano.
+- Los métodos anteriores resolverAborto y resolver delegan sin controles opcionales
+  y mantienen su comportamiento. Callbacks de servidor, sin funciones del body,
+  SQL Auth desde RUND o transacciones locales abiertas durante HTTP.
+- Fallos, respuesta perdida, revocación o vencimiento conservan solicitud/intención/
+  operación. Otra sesión autorizada retoma; GET propietario recupera recibos sin
+  repetir efectos. La ejecución habitual no compensa automáticamente al fallar.
+
+**Recibo y cliente**
+
+- Nueve campos mínimos distinguen PENDIENTE, ABORTADA, CERRADA, REVISION_REQUERIDA y
+  CONFIRMADA. Solo aborto sin commit con CANCELADA o COMPENSADA permite otra solicitud.
+  Un caso de revisión o perfil confirmado nunca libera el ID por este circuito.
+- GET solo consulta hechos locales. Cierre/revisión ya conocidos no vuelven a
+  solicitar cambios a Auth y siguen exigiendo autorización vigente. No devuelve
+  identidad, formulario, comando, hashes internos o auditoría.
+- Cerrar operación exige confirmación visual específica. Consultar cierre recupera
+  una respuesta perdida sin POST automático. Iniciar otro registro exige un GET
+  CERRADA coherente y comprobar que el ID no cambió; revisiones conservan su caso/ID.
+- Un CONFIRMADA consultado por cierre necesita el recibo de ejecución para finalizar
+  por el circuito existente. Cerrar no llama onSaved ni anuncia un perfil creado.
+  No hay retries, refresh, logs privados o fallback al escritor anterior.
+
+**Validación local**
+
+- RUND: **79 suites / 1.461 pruebas**, veinticuatro nuevas. MFE: **24 archivos / 271
+  pruebas**, dieciocho nuevas. TypeScript y compilaciones correctos, salida MFE en tmp.
+- **548 comprobaciones de integración** con PostgreSQL/TypeORM/JWT/HTTP reales sobre
+  datos ficticios: conserva las 532 anteriores y agrega dieciséis escenarios.
+  Gateway: **25 controles HTTP**, uno nuevo, sin cambios productivos del gateway.
+- Cierre no publicado y concurrente, journal parcial sin prevalidación, compensación
+  de identidad existente, revisión de altas, bandera de compensación apagada y
+  carrera aplicar/cancelar. Un aborto pendiente no se presenta como cierre.
+- Revocación después del registro y antes de compensar impide la siguiente mutación.
+  Sesión vencida durante HTTP deja pendiente recuperable con otra sesión. Respuestas
+  perdidas de cancelación, resolución y recibo final conservan el mismo UUID.
+- Commit/cierre compiten conservando exclusión nativa; un perfil confirmado no se
+  revierte. GET no escribe; otro actor no consulta. La prueba interna de aborto usa
+  token de servicio sin reenviar JWT/cookies. RUND sigue sin schema Auth.
+- Auth conserva **6 suites de identidad / 194 pruebas** de evidencia unitaria previa
+  sobre fuentes intactas; no se repite esa suite en este corte. Su propietario sí
+  participa de nuevo en la integración HTTP ficticia.
+- Evidencia: [validacion-cierre-manual-rund.json](validacion-cierre-manual-rund.json).
+  Manifiesto/revisión: corte-77-rund.paths y revision-push-corte-77.json.
+
+**Estado y siguiente punto**
+
+Quedan preparados abandono previo y cierre autenticado posterior al journal. Siguen
+la política/cierre humano de revisiones y altas, contextos inconsistentes tras
+publicación y la política entre dispositivos; este circuito no autoriza activar todo.
+El siguiente corte es resolver el principal confiable del operador en el shell para
+la conexión opcional del formulario, sin confundir userPersonId con el principal JWT.
+
+También siguen correo durable, preview sin escritura remota, otros canales y SQL
+restante entre propietarios, consumidores históricos, PTA/Programación y aceptación
+por instalación. Los cinco frentes permanecen abiertos según
+[PENDIENTES-CIERRE-INDEPENDENCIA.md](PENDIENTES-CIERRE-INDEPENDENCIA.md).
+
+Sin migraciones nuevas, bases existentes, cambios .env/Compose, push o despliegue.
+El clúster ficticio temporal se elimina al terminar. El módulo sigue fuera de
+AppModule, el llamador activo sin cliente y las dos banderas Auth false por defecto.
+Se conserva RUND embebido en PTA y no se certifican instalaciones.
+
+Avance: **40 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**. La independencia total sigue
+pendiente; estos conteos no representan un porcentaje de despliegue o aislamiento.
+
+## 78. Frente 4: principal autenticado del operador shell/MFE (2026-10-16)
+
+Se prepara la identidad de cuenta requerida por el cliente manual. Contrato:
+[CONTRATO-SESION-OPERADOR-MANUAL-RUND.md](CONTRATO-SESION-OPERADOR-MANUAL-RUND.md).
+El formulario vigente conserva su escritor; el banco activo todavía no monta el
+hook ni proporciona el cliente manual al modal.
+
+**Origen y aislamiento de la sesión**
+
+- El shell consulta bajo demanda el endpoint existente Auth `/auth/api/v1/me`, o
+  `/me` en modo directo, con cookie de sesión y configuración vigente del gateway.
+  La cuenta procede de `userId`, derivado de `sub` por la estrategia JWT existente;
+  nunca se reconstruye con `userPersonId`, email, id, evento o usuario cacheado.
+- Proyección mínima `{version:1, actorId:UUID}`. HTTP/JSON/DTO inválido, error de red,
+  vencimiento o cancelación no permiten continuar con un principal anterior.
+  No lee JWT/credenciales en el navegador, guarda principal o hace refresh/retries.
+- Petición específica sin interceptores offline: el cliente HTTP general puede
+  servir caché incluso con no-store, por lo que no se utiliza para esta comprobación.
+  Cookie HttpOnly, límite de espera, señal de cancelación y rechazo de redirecciones.
+  `/me` mantiene guard/DTO y agrega únicamente `Cache-Control: private, no-store`.
+- La proyección selecciona el espacio local por cuenta, sin conceder permisos.
+  `/me` conserva su validación JWT y no agrega consulta de revocación a la base.
+  Las acciones manuales siguen exigiendo controles efectivos del servidor.
+
+**Conexión opcional y compatibilidad**
+
+- `RundShellModule` ofrece resolve/subscribe, sin consultar al montar o recibir una
+  notificación. Los cambios de persona/email/roles/permisos conservan el remount
+  previo; solo cambiar el nombre mantiene el formulario habitual.
+- El evento de autenticación existente solo invalida: ignora su contenido. Se
+  abortan lecturas y se descartan generaciones anteriores tras cambio, invalidación,
+  desmontaje o ciclos StrictMode, incluso ante respuestas tardías.
+- La entrada federada y AuthProvider propagan una propiedad opcional, conservando
+  autenticación, RBAC visual y consumidores anteriores. El hook sin montar en el
+  banco crea cliente solo bajo demanda, conserva instancia para misma cuenta/conexión
+  y retira el cliente visible durante revalidación o ante error/invalidación.
+- Otra cuenta utiliza otro espacio de solicitud; invalidar no borra el UUID
+  recuperable de la anterior. No prepara/ejecuta/cierra automáticamente. Autogestión
+  pública, App/login, menú PTA, JWT del gateway y escritores previos sin cambios.
+
+**Validación local**
+
+- MFE completo: **26 archivos / 285 pruebas**, catorce nuevas; TypeScript y build
+  correctos. Shell RUND/PTA/documentos: **7 archivos / 80 pruebas** correctos.
+- Auth: **7 suites / 196 pruebas** correctas, incluidas las seis suites de identidad
+  previas y dos nuevas comprobaciones de `/me`. Build Auth correcto.
+- **9 comprobaciones HTTP nuevas** con controlador, guard y estrategia JWT reales
+  de Auth y lector productivo del shell, solo loopback y cuentas ficticias: cookie,
+  cuenta/persona distintas, parámetros sin autoridad, token interno, JWT vencido o
+  falsificado, cuenta ausente/no UUID y sesión desactivada. Sin módulos de base de
+  datos, main, dotenv o credenciales reales; aplicación detenida al terminar.
+- Builds MFE y shell en `tmp`, sin reemplazar salidas frontend existentes. El cliente
+  manual HTTP sigue fuera del bundle activo del MFE. El TypeScript global del shell
+  conserva **586 diagnósticos anteriores**, mismas firmas, sin nuevas ni eliminadas;
+  no se presenta ese chequeo como aprobado.
+- La primera invocación de pruebas shell utilizó Vitest de la raíz y no recogió
+  suites por incompatibilidad con la versión local. Se corrigió la invocación y las
+  siete suites pasaron con el Vitest instalado en shell, sin modificar dependencias.
+- RUND **79 suites / 1.461 pruebas**, integración PostgreSQL **548 comprobaciones**
+  y gateway **25 controles HTTP** conservan evidencia del punto 77 sobre fuentes
+  intactas; no se repiten ni se cuentan como ejecuciones nuevas en este corte.
+- Evidencias: [validacion-sesion-operador-manual-rund.json](validacion-sesion-operador-manual-rund.json),
+  [validacion-operador-sesion-http-local.json](validacion-operador-sesion-http-local.json).
+  Manifiesto/revisión: corte-78-rund.paths y revision-push-corte-78.json.
+
+**Estado y siguiente punto**
+
+Queda preparada la conexión confiable de cuenta. El siguiente trabajo acotado es
+el correo durable ligado al commit nativo confirmado, para recuperar fallos sin
+repetir la creación. Todavía se debe conectar el hook al formulario al cerrar los
+prerrequisitos; no se activa aquí. También siguen política/cierre humano de revisiones,
+contextos inconsistentes tras publicación, preview y otros canales, SQL entre
+propietarios, consumidores históricos, PTA/Programación y aceptación por instalación.
+
+Sin nuevas migraciones, bases existentes, cambios .env/Compose, push o despliegue.
+El módulo manual continúa fuera de AppModule y las banderas Auth false por defecto;
+se conserva RUND embebido en PTA. Los límites por dispositivos, revocación durante
+trabajo en vuelo y aceptación operacional siguen documentados.
+
+Avance: **41 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, detallados en
+[PENDIENTES-CIERRE-INDEPENDENCIA.md](PENDIENTES-CIERRE-INDEPENDENCIA.md).
+Estos conteos no representan porcentaje de independencia o despliegue.
+
+## 79. Frente 4: correo durable e intento controlado (2026-10-16)
+
+Se prepara un aviso transaccional de bienvenida y su consumidor servidor opcional.
+Contrato: [CONTRATO-CORREO-DURABLE-IDENTIDAD-RUND.md](CONTRATO-CORREO-DURABLE-IDENTIDAD-RUND.md).
+No se activa el consumidor, el módulo manual o el cliente del formulario.
+
+**Aviso unido al commit nativo**
+
+- La migración 016 crea `rund.identidad_correo`. Un trigger encola al confirmar
+  contexto nativo dentro de la misma transacción del perfil, bloques, auditoría y
+  recibo. Fallar el outbox revierte esa confirmación; Auth aplicado conserva IDs
+  para recuperar el commit. No se envía correo o hace HTTP dentro de la transacción.
+- Exige captura manual original coincidente, actor/huella/contexto, decisión EN_CURSO
+  y cuenta nueva confirmada en los dos recibos. Las cuentas existentes, lotes,
+  autogestión, abortos y el escritor anterior no crean este aviso.
+- Clave única por intención, tipo versionado, estado, fechas e intento. No duplica
+  destinatario, documento, contraseña o mensaje. El backfill solo recupera hechos
+  elegibles confirmados; repetir 016 conserva fechas/estados y no envía mensajes.
+  Se debe instalar antes de activar este circuito; aquí solo se usa en bases ficticias.
+
+**Consumidor y resultado incierto**
+
+- Reserva un intento UUID bajo bloqueo de fila y confirma ENVIANDO antes del HTTP.
+  Instancias concurrentes recuperan ese estado sin repetir la entrega. El mensaje se
+  deriva del contexto servidor inmutable y el HTML escapa sus valores.
+- Conserva el endpoint y contenido de bienvenida existentes, incluyendo la política
+  actual de contraseña temporal de Auth; no cambia cuentas o guarda una copia nueva
+  de la contraseña. Usa la configuración actual de notificaciones, sin JWT/cookies
+  del operador, retries, redirecciones o logs privados del adaptador.
+- HTTP 201 con el recibo exacto de notificaciones permite ENVIADO. No acredita
+  recepción o lectura del buzón. Error HTTP, JSON parcial, timeout o conexión perdida
+  quedan INCIERTO, porque SMTP pudo haber aceptado el mensaje.
+- Si falla la persistencia del recibo después del HTTP, queda ENVIANDO. Reiniciar,
+  consultar o repetir la ejecución nativa nunca lo devuelve a PENDIENTE ni repite
+  el correo. No hay lease o vencimiento que reclame el intento automáticamente.
+- Los triggers impiden borrado, cambio de identidad, reintentos de estados iniciados
+  o terminales y alteración de recibos. El consumidor devuelve únicamente intención,
+  estado y marca de revisión del INCIERTO conocido; errores SQL/remotos son genéricos.
+
+**Validación local**
+
+- RUND completo: **81 suites / 1.492 pruebas**, 31 nuevas, y build correcto.
+- **565 comprobaciones PostgreSQL/TypeORM/HTTP**: 548 escenarios previos conservados,
+  dieciséis nuevos del circuito de correo y uno de instalación de la migración 016.
+  Solo cambia el inventario inicial de 34 a **35 tablas**;
+  conserva 7 categorías y cero docentes copiados en el esquema inicial.
+- Atomicidad del aviso y perfil, cuenta existente/lotes/abortos excluidos,
+  confirmaciones y consumidores concurrentes, consulta desde otra conexión,
+  respuestas perdidas, HTTP/JSON inválido, rollback de reserva, fallo de recibo SQL,
+  reinicio con ENVIANDO, inmutabilidad y backfill/repetición de 016.
+- SMTP exclusivamente ficticio en loopback. El stub comprueba que el intento ya es
+  visible desde otra conexión antes de responder al HTTP. No se repite creación,
+  identidad, auditoría o bloques por consultar/reintentar el consumidor.
+- La integración detectó la estructura especial de `UPDATE ... RETURNING` de
+  TypeORM. El consumidor nuevo usa CTE con SELECT para recuperar filas; se repiten
+  las suites y la integración completas. La simulación unitaria de filas JSON
+  también se ajustó para representar la salida del driver, sin relajar validaciones.
+- MFE **26 archivos / 285 pruebas**, shell RUND **7 / 80**, Auth **7 suites / 196**,
+  gateway **25 controles** y sesión de operador **9 controles HTTP** conservan la
+  evidencia del punto 78 sobre fuentes intactas; no se repiten en este corte.
+  El shell conserva su límite previo de 586 diagnósticos de tipos, sin firmas nuevas.
+- Evidencia: [validacion-correo-durable-identidad-rund.json](validacion-correo-durable-identidad-rund.json).
+  Manifiesto/revisión: corte-79-rund.paths y revision-push-corte-79.json.
+
+**Estado y siguiente punto**
+
+Quedan preparados el aviso durable y el intento servidor controlado. El siguiente
+trabajo acotado es consultar el estado del correo por actor y presentarlo en el
+formulario opcional. Los DTO manuales conservan `correo:PENDIENTE` como marcador de
+compatibilidad; el consumidor nuevo sigue sin conectarse a ese flujo.
+
+La activación todavía exige conciliación de ENVIANDO/INCIERTO y política de
+destinatario/credenciales cuando Auth cambió desde el alta. El endpoint actual de
+emails no ofrece idempotencia remota: no se afirma entrega exactamente una vez ni
+se habilita reenvío reseteando la fila. También siguen revisión humana de altas,
+contextos inconsistentes, preview, otros canales y SQL entre propietarios,
+consumidores históricos, PTA/Programación y aceptación por instalación.
+
+Sin bases existentes, SMTP real, cambios .env/Compose, push o despliegue. Los
+procesos y el clúster temporal se eliminan al terminar. AppModule, escritor activo,
+Auth, frontend y correos previos sin cambios; banderas Auth false por defecto y RUND
+embebido en PTA conservado.
+
+Avance: **42 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el
+[mapa de pendientes](PENDIENTES-CIERRE-INDEPENDENCIA.md). No equivale a un porcentaje
+de independencia o despliegue completado.
+
+## 80. Frente 4: consulta de correo por actor y estado visual (2026-10-16)
+
+Se agrega la lectura autenticada del aviso y su presentación explícita en el modal
+opcional. Contrato: [CONTRATO-CONSULTA-CORREO-MANUAL-RUND.md](CONTRATO-CONSULTA-CORREO-MANUAL-RUND.md).
+El consumidor de correo, el módulo manual y su llamador activo siguen sin activar.
+
+**Lectura autenticada y sin efectos**
+
+- GET `:solicitudId/correo` exige JWT, rol de gestión o manage, cuenta UUID y exp
+  numérica vigente. La cuenta procede de sesión, nunca de persona, query, body o
+  token interno. Mantiene `private, no-store`; no hay POST de envío en esa ruta.
+- AuthIdentityManualMailStatusService revalida autorización antes y después de SQL.
+  Grant revocado, propietario de permisos caído o sesión vencida durante I/O impiden
+  devolver el recibo. Se conserva la alternativa por roles de gestión existente.
+- SELECT por actor/solicitud de hechos locales, sin traer formulario, contexto,
+  identidad, mensaje o credenciales. No importa el consumidor SMTP, reclama cola,
+  prepara, aplica, confirma, repara, cierra o compensa. La lectura Auth de permisos
+  no se sustituye por SQL de otro propietario desde RUND.
+- Otra cuenta o solicitud desconocida: 404; histórico sin captura: 409; SQL/tabla
+  ausente, aviso elegible perdido o datos incoherentes: 503 genérico, sin detalles
+  de infraestructura o valores privados. GET no reconstruye el aviso faltante.
+
+**Recibo y semántica**
+
+- Seis campos: versión, solicitud, intención, estado, registroConfirmado y
+  requiereRevision. SIN_CONFIRMAR no acredita creación ni encolado, incluso para
+  operaciones abortadas. NO_APLICA exige commit y cuenta existente confirmados,
+  sin aviso. Una cuenta nueva sin outbox no se presenta como NO_APLICA.
+- PENDIENTE, ENVIANDO, ENVIADO e INCIERTO proceden del aviso durable, con contexto,
+  recibos y flags de cuenta coherentes. Revisión true solo en el INCIERTO conocido.
+  ENVIANDO puede estar en vuelo o requerir conciliación; no permite reenvío automático.
+- ENVIADO indica confirmación del contrato del propietario tras SMTP; no acredita
+  recepción o lectura del buzón. No se exponen destinatario, documento, contraseña,
+  hashes o intento SMTP. El DTO de ejecución previo de nueve campos no cambia.
+
+**Formulario y compatibilidad**
+
+- Consultar estado del correo aparece al conocer un registro confirmado por ejecución
+  o cierre. No hace HTTP al montar, recuperar el resultado o ejecutar; sin polling.
+  La pantalla deja de afirmar que todo registro confirmado tiene correo pendiente.
+- El cliente valida campos exactos, versión, IDs, estados y flags; exige UUID pendiente
+  ya existente y que no cambie durante HTTP. El modal contrasta también la intención
+  con el recibo confirmado. Una lectura no elimina el ID, prepara o envía correos.
+- Otra consulta descarta el estado previo. Error de correo conserva la confirmación
+  del registro y permite consultar de nuevo o finalizar explícitamente por el circuito
+  anterior. Un recibo de correo nunca llama onSaved o finaliza por sí mismo.
+- Doble clic comparte el bloqueo visual. Cambio de cliente oculta el estado previo y
+  descarta respuestas tardías; desmontar no publica resultados. Se conservan edición,
+  soportes, abandono, cierre y creación vigente sin el cliente opcional.
+
+**Validación local**
+
+- RUND: **82 suites / 1.519 pruebas**, 27 nuevas; build correcto.
+- MFE completo: **28 archivos / 322 pruebas**, 37 nuevas; TypeScript y build correctos,
+  salida frontend solo en tmp. El cliente HTTP manual sigue fuera del bundle activo.
+- **579 comprobaciones PostgreSQL/TypeORM/HTTP**, catorce nuevas y las 565 anteriores
+  conservadas. JWT, permisos, exp, captura propia, cuenta existente, todos los estados,
+  lectura concurrente, query sin autoridad, revocación/vencimiento durante SQL,
+  propietario de permisos caído, falta de aviso/tabla y aborto sin correo.
+- Snapshots antes/después comprueban que GET no cambia perfil, auditoría, captura,
+  cola o identidad, ni solicita prevalidación/aplicación Auth o SMTP. La parte de
+  correo del punto 79 también se repite contra un servidor ficticio loopback.
+- Gateway: **26 controles HTTP**, uno nuevo; JWT, no-store y GET sin cuerpos en
+  auditoría. Código productivo del gateway sin cambios.
+- Auth **7 suites / 196 pruebas**, shell RUND **7 / 80** y sesión de operador **9
+  controles HTTP** conservan evidencia previa sobre fuentes intactas; no se repiten
+  en este corte. El límite global del shell sigue siendo 586 diagnósticos previos.
+- Evidencia: [validacion-consulta-correo-manual-rund.json](validacion-consulta-correo-manual-rund.json).
+  Manifiesto/revisión: corte-80-rund.paths y revision-push-corte-80.json.
+
+**Estado y siguiente punto**
+
+Quedan preparadas la consulta por actor y su presentación opcional. El siguiente
+trabajo acotado es validar destinatario y estado de credenciales con Auth antes de
+autorizar un envío, para no suponer que el snapshot del alta sigue vigente.
+Continúan conciliación de ENVIANDO/INCIERTO y aceptación antes de activar el consumidor.
+SMTP no ofrece idempotencia remota; no se habilita un reenvío mediante esta lectura.
+
+También siguen política de revisiones, contextos inconsistentes, preview, otros
+canales y SQL entre propietarios, consumidores históricos, PTA/Programación y
+aceptación por instalación. No hay nuevas migraciones, bases existentes, SMTP real,
+cambios .env/Compose, push o despliegue. El clúster temporal se elimina al terminar;
+se mantienen AppModule, banderas Auth false por defecto y RUND embebido en PTA.
+
+Avance: **43 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el
+[mapa de pendientes](PENDIENTES-CIERRE-INDEPENDENCIA.md). Los cortes no miden porcentaje
+de independencia o despliegue completado.

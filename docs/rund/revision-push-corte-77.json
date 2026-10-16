@@ -1,0 +1,825 @@
+{
+  "generatedAt": "2026-10-16T03:58:38.630Z",
+  "scope": "source-review-push-checkpoint-77",
+  "branch": "feat/agregar_modulo_rund",
+  "head": "a5332853b93cfdee4f747510947376f9d08b0c6c",
+  "activationReadiness": "not_verified",
+  "deploymentApproved": false,
+  "gitIndexModified": false,
+  "commitCreated": false,
+  "pushExecuted": false,
+  "runtimeModified": false,
+  "manifestFile": "docs/rund/corte-77-rund.paths",
+  "selectedFileCount": 167,
+  "newFiles": 148,
+  "deletedFiles": 0,
+  "outsideCut": [],
+  "findings": [],
+  "localImportTargetsChecked": 251,
+  "manifestSha256": "fc829e5bd05496852a733a9afd48fcfd629cee6168af4e6e633ce3a81565d838",
+  "files": [
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteEditModal.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteManualRequestModal.test.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteManualRequestModal.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/rundManualIdentityAbandon.test.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/rundManualIdentityApi.test.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/rundManualIdentityApi.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/rundManualIdentityCapture.test.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/rundManualIdentityCapture.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/rundManualIdentityClose.test.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/rundManualIdentityClose.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/auth-service/.env.example"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-abort.client.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-abort.client.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-apply.controller.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-apply.controller.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-command.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-compensation.controller.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-compensation.controller.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-effects.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-operation.controller.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-operation.controller.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-text.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-write.adapter.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-write.normalization.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/auth-service/src/users/users.module.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/008_rund_identidad_operacion.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/009_rund_identidad_contexto_nativo.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/010_rund_identidad_ejecucion.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/011_rund_identidad_resolucion_auth.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/012_rund_identidad_revision.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/013_rund_identidad_solicitud.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/014_rund_identidad_entrada_manual.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/015_rund_identidad_abandono_manual.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-abort-resolution.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-command.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-compensation.client.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-compensation.client.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-compensation.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-compensation.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-coordination.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-coordination.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-execution.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-execution.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-abandon.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-abandon.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-capture.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-capture.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-close.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-close.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-entry.controller.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-entry.controller.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-entry.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-entry.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-execution.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-execution.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-native-commit.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-native-commit.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-operation.client.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-operation.client.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-request.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-request.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-review.controller.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-review.controller.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-review.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-review.service.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-native-business-context.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-native-business-context.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/modules/banco-docentes/rund-native-profile-write.ts"
+    },
+    {
+      "status": "??",
+      "file": "db/migrations/669_auth_rund_identidad_operacion.sql"
+    },
+    {
+      "status": "??",
+      "file": "db/migrations/670_auth_rund_identidad_aplicacion.sql"
+    },
+    {
+      "status": "??",
+      "file": "db/migrations/671_auth_rund_identidad_compensacion.sql"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-ABANDONO-MANUAL-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-APLICACION-IDENTIDAD-AUTH.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-CIERRE-MANUAL-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-COMMIT-NATIVO-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-COMPENSACION-IDENTIDAD-AUTH.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-CONCILIACION-COMPENSACION-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-COORDINACION-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-EJECUCION-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-EJECUCION-MANUAL-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-ENTRADA-MANUAL-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-FORMULARIO-MANUAL-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-OPERACIONES-IDENTIDAD-AUTH.md"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/CONTRATO-PREVALIDACION-IDENTIDAD-AUTH.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-RESOLUCION-ABORTO-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-REVISION-CAPTURA-MANUAL-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-REVISION-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-SOLICITUD-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-62-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-63-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-64-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-65-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-66-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-67-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-68-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-69-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-70-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-71-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-72-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-73-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-74-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-75-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-76-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-77-rund.paths"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/PENDIENTES-CIERRE-INDEPENDENCIA.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-62.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-63.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-64.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-65.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-66.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-67.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-68.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-69.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-70.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-71.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-72.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-73.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-74.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-75.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-76.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-77.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-abandono-manual-rund.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-aplicacion-identidad-auth-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-auditoria-gateway-http-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-cierre-manual-rund.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-commit-nativo-identidad-rund.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-compensacion-identidad-auth-rund.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-conciliacion-compensacion-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-contadores-carpeta-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-coordinacion-identidad-auth-rund.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-ejecucion-identidad-rund.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-ejecucion-manual-identidad-rund.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-entrada-manual-identidad-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-estados-auth-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-formulario-manual-identidad-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-historial-auth-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-operaciones-identidad-auth-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-panel-rund-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-resolucion-aborto-identidad-rund.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-revision-captura-manual-rund.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-revision-identidad-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-servicio-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-sincronizacion-auth-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-solicitud-identidad-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-vistas-carpeta-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "scripts/review-rund-push-checkpoint.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-auth-identity-apply.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-auth-identity-compensation.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-auth-identity-coordination.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-auth-identity-operations.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-auth-identity.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-compensation-reconciliation.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-extraction-identity.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-gateway-audit.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-identity-abort-resolution.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-identity-execution.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-identity-requests.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-identity-review.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-manual-abandon.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-manual-capture.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-manual-close.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-manual-entry.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-manual-execution.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-native-commit.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-service-integration.cjs"
+    }
+  ],
+  "sourceHashes": {
+    "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteEditModal.tsx": "c7ae426f2f78b470e24167ea145b15ec8fa20cb2061a5c7c44ce1e088a8d6376",
+    "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteManualRequestModal.test.tsx": "64418ab13795fee83bfb715f804fd3d5773f0384d5782ceb52ab04cfaf3a51e2",
+    "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteManualRequestModal.tsx": "3bd162977bb9976f283bf58440be28e4d2f4032bb950ccbaf3d29e66891f2fe5",
+    "apps/mfe-rund/src/services/api/rundManualIdentityAbandon.test.ts": "7b7c221f808c6222774d45d84c61e47a394b57255dd25a1d469b6fdb26a0fbb1",
+    "apps/mfe-rund/src/services/api/rundManualIdentityApi.test.ts": "194cbe37c54adecf540cbc660a5eca4d8da3410633934a1c4e7e4f8208cb25ae",
+    "apps/mfe-rund/src/services/api/rundManualIdentityApi.ts": "50e5a42bdc2e8a33e38540a5ab9b637c8b7e90be42ca17cc4a58d46b32219cb4",
+    "apps/mfe-rund/src/services/api/rundManualIdentityCapture.test.ts": "b0aa9b41746228a9ca210a1eaf1bceb76ba7d9a90b0c2e0d7079b4524889de0d",
+    "apps/mfe-rund/src/services/api/rundManualIdentityCapture.ts": "09ca63b41c1b56abbafd4d2c005021dff91a1adf21ae8edb69b7e21ce0cedf7c",
+    "apps/mfe-rund/src/services/api/rundManualIdentityClose.test.ts": "4ac41711e79ddaa2ba96694b44e916b4346764958a8ea14d6035afc68c3fad25",
+    "apps/mfe-rund/src/services/api/rundManualIdentityClose.ts": "479319b7a437cb6e92bea8199839eff1257c047082d45c252f7414f66c7cf830",
+    "backend/auth-service/.env.example": "a9b2bc3c4b9c71185b66569f3d707dc53f180cc2a7e96bbd0509861815445cdf",
+    "backend/auth-service/src/users/rund-identity-abort.client.spec.ts": "7c7f9189d9f0ce713fa954c7ffee246cd781330789cb8b70dda10018d4a34b80",
+    "backend/auth-service/src/users/rund-identity-abort.client.ts": "32ed16a69979ef52ba0224d07d8d7a9a803d2a181ec856fd94fba5197131d61b",
+    "backend/auth-service/src/users/rund-identity-apply.controller.spec.ts": "c42cc81735196b64754c98a41111535c13fb8f2dd77b3a0aa91ddec8a086e936",
+    "backend/auth-service/src/users/rund-identity-apply.controller.ts": "420a42a9bf14da94487a6d2a497cfc8a9613b7748b47cefc4532f5c60d851263",
+    "backend/auth-service/src/users/rund-identity-command.ts": "b59085d14267df953fccab1282693881b62d14ebc6bda61d5bd16a648e83d252",
+    "backend/auth-service/src/users/rund-identity-compensation.controller.spec.ts": "700de0799f2cc4c386711fc70b859e435c4080461760587ff064850e431ba8c6",
+    "backend/auth-service/src/users/rund-identity-compensation.controller.ts": "8caa86cd3fe71ebebdc7ec2d5bc52e5a4537378e64a0a9044085f76a7f9881bc",
+    "backend/auth-service/src/users/rund-identity-effects.ts": "21a753dcebb8a0504cbb993ea8a235f13d1c1930c370629b7e590b19ba5da86e",
+    "backend/auth-service/src/users/rund-identity-operation.controller.spec.ts": "8f472bef769ec1e9e5e4b4780171d0061d29c26c1af9df0728f3036261c3e14f",
+    "backend/auth-service/src/users/rund-identity-operation.controller.ts": "f9bfbb6819dcacd4667c53088f7fff344695b6118b20862e4b86fb6d85d23806",
+    "backend/auth-service/src/users/rund-identity-text.ts": "bd5b18d1cae3e14145e4982a38caaae4599201ac2a13a2205a7c458732409837",
+    "backend/auth-service/src/users/rund-identity-write.adapter.ts": "df238d08cc56f24da571cfa8f742fd13ea15fcbc263e7cf7f64267898034496a",
+    "backend/auth-service/src/users/rund-identity-write.normalization.ts": "5541110124197d9e783f292ccb320110210e3b0cb59af20561a12cc4c487f2dc",
+    "backend/auth-service/src/users/users.module.ts": "69b30b2cafa0a60f0f3bd25d0b95c0fcb219d09a87ce11035737db833da23317",
+    "backend/rund-service/db/migrations/008_rund_identidad_operacion.sql": "50edea4cbe7bb623dee0764d8031e97dc6abe4a8bfff5633bfd2cfea362b91f4",
+    "backend/rund-service/db/migrations/009_rund_identidad_contexto_nativo.sql": "8081bcba05c214f229b79232b2a94ae2d7d6347587443b9b32556a6dec94b027",
+    "backend/rund-service/db/migrations/010_rund_identidad_ejecucion.sql": "23f1ad99af50bc06fa4fe84e57fdda7230edebe4c2d437d8cf48fe438da0d2ff",
+    "backend/rund-service/db/migrations/011_rund_identidad_resolucion_auth.sql": "321970e785ffb3ed6dcc48644846c50251a6e2b70569d7262cdcc76e100ce41e",
+    "backend/rund-service/db/migrations/012_rund_identidad_revision.sql": "3add457d335568830a8a3e7c34a95ae698bcc3545861a3e13395868ff7433fea",
+    "backend/rund-service/db/migrations/013_rund_identidad_solicitud.sql": "c15b140430f7be1e99cfd80656825bb40d2bee74fffa0651a2560795f45148d3",
+    "backend/rund-service/db/migrations/014_rund_identidad_entrada_manual.sql": "a640c73758cd8aee97b402d56c968df96ee19047a28bb6b5b34e8310eaa361c8",
+    "backend/rund-service/db/migrations/015_rund_identidad_abandono_manual.sql": "d5733083930f617666d6ad567f91ad3ff8c18aad94c73152413cba6ec7d08145",
+    "backend/rund-service/src/common/auth-identity-abort-resolution.service.spec.ts": "a8c58c74056f081e72897aa1172c041aaf6795f86dd123af5af9c86df7f985b1",
+    "backend/rund-service/src/common/auth-identity-command.ts": "b59085d14267df953fccab1282693881b62d14ebc6bda61d5bd16a648e83d252",
+    "backend/rund-service/src/common/auth-identity-compensation.client.spec.ts": "0507330ed78b16b27e9fe8c710b7e7cd2258583734bcdd19dea1648f881aacec",
+    "backend/rund-service/src/common/auth-identity-compensation.client.ts": "1051f590f016ec7d9617de77d39f14515e0fe7c9ce59c64811e89e99dd4d0106",
+    "backend/rund-service/src/common/auth-identity-compensation.service.spec.ts": "6900090eb601c0b6c6b961ec7bafd6066eb37e51292b6139b75daec8429ec441",
+    "backend/rund-service/src/common/auth-identity-compensation.service.ts": "07e5fb693bc0b1ea392d7e9ff28c9089cfd38d39af92fd7ed2741b1d92f048e3",
+    "backend/rund-service/src/common/auth-identity-coordination.service.spec.ts": "2cd7aab4e994478501d9653030b4395b30d9e2010672d5dc11b0c5d305e0d138",
+    "backend/rund-service/src/common/auth-identity-coordination.service.ts": "5d901506872d7a73d007ca0dcefba3a1a2606b46e2d259fc8dc904b87cd7657c",
+    "backend/rund-service/src/common/auth-identity-execution.service.spec.ts": "e3a2efd979231e192ce2d9d4c9ed3ef0d1ae213e6315413a14d95d9aabaa7b4d",
+    "backend/rund-service/src/common/auth-identity-execution.service.ts": "af9c93996e52fd070287d047a9dc165beed46992ab3ce91a3d07d0ad768dfbdf",
+    "backend/rund-service/src/common/auth-identity-manual-abandon.service.spec.ts": "000997331b418a8595030899752edb588ef836fb538445d24c9100575500740f",
+    "backend/rund-service/src/common/auth-identity-manual-abandon.service.ts": "eae087cbf0da5422df3ff4c11527bc15bacb513f1d93821b6d536caa0f07c62d",
+    "backend/rund-service/src/common/auth-identity-manual-capture.service.spec.ts": "40d14d5c514f3189f589a2bea2bdd20ae2d5c4a915fe1f59e7997807c3e5fff1",
+    "backend/rund-service/src/common/auth-identity-manual-capture.service.ts": "61f0d5acc9232c6743997f1997b0a09115f994c677b9f1b38418255c93618562",
+    "backend/rund-service/src/common/auth-identity-manual-close.service.spec.ts": "74af1eaca3784535d7ac4558666caf6ac9af12c51a967889cfe985aed01b9513",
+    "backend/rund-service/src/common/auth-identity-manual-close.service.ts": "ca08d5492e7444c54c3304050938710e068d7b3f7500a559f661b5310f297708",
+    "backend/rund-service/src/common/auth-identity-manual-entry.controller.spec.ts": "db6dda64936a71e51c0c416cec8dee6b7052faf190bfa415c3d507f64137211b",
+    "backend/rund-service/src/common/auth-identity-manual-entry.controller.ts": "1b504abdb943a17f4d8697776352cc879d4838eaec60e6134f95b95d1b47ab58",
+    "backend/rund-service/src/common/auth-identity-manual-entry.service.spec.ts": "7930504c03f52e57d43a564d827d8ecf790619ea8d3231fe459883ab18f787c1",
+    "backend/rund-service/src/common/auth-identity-manual-entry.service.ts": "6b68c422c21b25b0371af0d4ebf7f40453c71c56cec84fecbede0be48a614fff",
+    "backend/rund-service/src/common/auth-identity-manual-execution.service.spec.ts": "3567c0240e87aae9aa70c8f05012f20b91f5b0a2598931d305c9a8fdb920ec44",
+    "backend/rund-service/src/common/auth-identity-manual-execution.service.ts": "54a67d5343259166bf3a794af43abff7b77ed85dceb957e301a1c8d0a01282cf",
+    "backend/rund-service/src/common/auth-identity-native-commit.service.spec.ts": "cd246b0abc9e856f0fbb0e21543cd0683950e79d55f39ecc19c9e011c588d70c",
+    "backend/rund-service/src/common/auth-identity-native-commit.service.ts": "9f492bd4d10ebbb349a206cc53fce57c2c0f28353edd36ee716717e34cbf1c3a",
+    "backend/rund-service/src/common/auth-identity-operation.client.spec.ts": "e77a77da4701db862d69ba6063fc3808150c7b18bd933aa7c051493d05cc346b",
+    "backend/rund-service/src/common/auth-identity-operation.client.ts": "e0f623807c3562230d05f1993a70300eee71566dafc83489f57be5fad93bd50e",
+    "backend/rund-service/src/common/auth-identity-request.service.spec.ts": "8b4314ce94995cbe55141d23bc33ad06f8a327b09dfc07ea676072407cf96259",
+    "backend/rund-service/src/common/auth-identity-request.service.ts": "d8ddc3961f4dfb0b21d57d8233f694ca4d4d6d5fbc011b54f6311fa3871f172f",
+    "backend/rund-service/src/common/auth-identity-review.controller.spec.ts": "eb2e25dc236b3cbc107b272c04ed51abb5bd28f2d773c5f73ccb08b8a5398853",
+    "backend/rund-service/src/common/auth-identity-review.controller.ts": "af965fb49f88a076391bcc3c8facf4ea3f6c514a4780681326b8ac552c35d3df",
+    "backend/rund-service/src/common/auth-identity-review.service.spec.ts": "8d1517a29b43890a4eb6e3b78e729bc2f875cdea0b6df8555600c4438bd7fb7a",
+    "backend/rund-service/src/common/auth-identity-review.service.ts": "fe9232d6d0e6a6f9166616b766cd35545f4da27f20dad6b51d3cd36a0279496c",
+    "backend/rund-service/src/modules/banco-docentes/banco-docentes.service.ts": "94741168277959637e1043d2a7605f3df5cfb6889e40ac0df9ada8494af6658b",
+    "backend/rund-service/src/modules/banco-docentes/rund-native-business-context.spec.ts": "2fa8cf99fde69540d9f4f6442841bc05c3fa0e556bbb289dd49f9e104c1108e1",
+    "backend/rund-service/src/modules/banco-docentes/rund-native-business-context.ts": "6a8e6d12b5b86c6f3b3651179ab6060192fa589e76acd9b61ea197eee0b74cfe",
+    "backend/rund-service/src/modules/banco-docentes/rund-native-profile-write.ts": "3094de33209f77b993c0ab835a4a85cceaa7fa51af6f6d365c6bb805c5502f10",
+    "db/migrations/669_auth_rund_identidad_operacion.sql": "5f9c43e3b1c89d028a103fa607523d384b7ebcf2960c117e46af952fa67cacfd",
+    "db/migrations/670_auth_rund_identidad_aplicacion.sql": "5e0070fd5323ad9d776a1fe5d2549c79c82d8e18d42b7fff59e0f4d6c407bb24",
+    "db/migrations/671_auth_rund_identidad_compensacion.sql": "7ea1edc5c549dee04c6b9630e9f245974c73e03eb798f2815618320d37eb115a",
+    "docs/rund/CONTRATO-ABANDONO-MANUAL-RUND.md": "7922fc90a73492cb91cf98f91c1834c59f8b19573aee9fe36e65e637527fe096",
+    "docs/rund/CONTRATO-APLICACION-IDENTIDAD-AUTH.md": "7ffbb0bbdedc86793e27d2b2f96001b1a7d4d4b4a768cc10ff755cb2b2c440ef",
+    "docs/rund/CONTRATO-CIERRE-MANUAL-RUND.md": "7423fe5e634de7f3110b4ea20d381a53cb300779e37bfc5d2b2f285281f9a1dd",
+    "docs/rund/CONTRATO-COMMIT-NATIVO-IDENTIDAD-RUND.md": "2ba4faaedf2bf324ac331a61015d94d8b1bf4fe03dfef9cc5f0fea7039bd70f6",
+    "docs/rund/CONTRATO-COMPENSACION-IDENTIDAD-AUTH.md": "def053b0fb95bb2a29f2571dd6a83aa5f7f360937b1f9e23653b30729865b81d",
+    "docs/rund/CONTRATO-CONCILIACION-COMPENSACION-RUND.md": "016be74845b9d020cd5de412acd4a768f51c80531eb468feaa6e0132ae75b9ad",
+    "docs/rund/CONTRATO-COORDINACION-IDENTIDAD-RUND.md": "cc39c1b8d8992b77a889d6d851fda46ba2adccc358d2e1091320e8c2022d4ca9",
+    "docs/rund/CONTRATO-EJECUCION-IDENTIDAD-RUND.md": "94ccfc592eea5e3ad6a6bab783080e4fbde728ee3ab14238914f6702af490403",
+    "docs/rund/CONTRATO-EJECUCION-MANUAL-IDENTIDAD-RUND.md": "60d53aa3cf91e7f0a0bd985c2b1f14d874ffbe69910234bb051d67c28c00094a",
+    "docs/rund/CONTRATO-ENTRADA-MANUAL-IDENTIDAD-RUND.md": "89f3d9b955e4caaeb2d3dd62be3c1a3fd22c1de0d588294fa577e3b0d942f062",
+    "docs/rund/CONTRATO-FORMULARIO-MANUAL-IDENTIDAD-RUND.md": "76aed021b68be55fded2a4c3caf6613919ca693a22afe0f502febf92cbc8fd4d",
+    "docs/rund/CONTRATO-OPERACIONES-IDENTIDAD-AUTH.md": "bda572dc0b7054e910fb080c206f508dce3eb9c989fbb44b157bfd67990a6aa9",
+    "docs/rund/CONTRATO-PREVALIDACION-IDENTIDAD-AUTH.md": "c69a20d40e164f5356e421fc8ac6aaa9745eeefbf54cc288101ff5fd1e613d5a",
+    "docs/rund/CONTRATO-RESOLUCION-ABORTO-IDENTIDAD-RUND.md": "b9895e4ecff2dba91915010adb507516f38402369d052a389d6af8c1fcd2c852",
+    "docs/rund/CONTRATO-REVISION-CAPTURA-MANUAL-RUND.md": "1bf7fe4ddb25b994fc231e2f814f87e85348117362991997cd16cb71a80ca9c1",
+    "docs/rund/CONTRATO-REVISION-IDENTIDAD-RUND.md": "35af5d403b775b412fd333906acbcdd0be2bb63c7d3f62a3f7ceae29e96674ee",
+    "docs/rund/CONTRATO-SOLICITUD-IDENTIDAD-RUND.md": "bdc5da4ebc431a0079ff4fccd5811e4aeb220958c0c1e6ebec45ee4783c201a6",
+    "docs/rund/corte-62-rund.paths": "1580b51646d12824b7984c550cde0fe2ab5e0f6d83b6b561a7b639369f4beea1",
+    "docs/rund/corte-63-rund.paths": "ebdb942b4c2f5c4534cec6e797872fd351247159a0a28f055881bb207f826d3e",
+    "docs/rund/corte-64-rund.paths": "160279bfff3461a61a858eabbeccb74f3341ccd2939d6c35f5a182c8cdf5558b",
+    "docs/rund/corte-65-rund.paths": "613b0b95a480bd6510658290db3474fdc291cb19e3ef2dc5f8fb08e06a5bb209",
+    "docs/rund/corte-66-rund.paths": "a463c95b93923406b03b6b0276ee0d955ef9bdfb5bf8369d00e19a720b5f4694",
+    "docs/rund/corte-67-rund.paths": "c083871f0dc480f598abf56b779ba4aaf97c4747affd4bf30989c7b85f742353",
+    "docs/rund/corte-68-rund.paths": "0ce1e28bd598c64f2b0ba8d2c72cea0e23590b525c83eb69768494a6dcfee3c0",
+    "docs/rund/corte-69-rund.paths": "c70c08ebec5d242920e9a78aeb5108f0a547ae60e6f4f8b3c238ad6b51847834",
+    "docs/rund/corte-70-rund.paths": "b7588403e0c2f7ce65acef620f4da5739beb8bfccc85a7b5c5e3cd3791e3809a",
+    "docs/rund/corte-71-rund.paths": "42c08bfe571e9449171bc8f05bbd524bed1725d5348ba2893db39174687ee1d9",
+    "docs/rund/corte-72-rund.paths": "58d2c1fd6d45cfd57c897afd67437e196fa4d81ae36b75bc1fe8604d39aede40",
+    "docs/rund/corte-73-rund.paths": "e29501ce744bf1aef0af4a2a8a3cf2a2c461d49cd253dec28610f95890a64c2f",
+    "docs/rund/corte-74-rund.paths": "2d35383d8d08d2e2cba13f43a2012c03e3a596bb722d25492ad28b0f1264d809",
+    "docs/rund/corte-75-rund.paths": "f341995546daa16912bc9c6cec798598c6f699d2d5cab7bb9c6709b8aa0c862f",
+    "docs/rund/corte-76-rund.paths": "482f9a73ba9db6845027733d21b84e9098d9a1af4287a1330626a43902b51783",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "af3bfe93382043a20878c4eb56d6153597386a956f2827b6c63ae06d4cf3b714",
+    "docs/rund/PENDIENTES-CIERRE-INDEPENDENCIA.md": "aac9fe71b6653e76890be432858c9ef3e83b946f489eb6017bb2a76c20709d7f",
+    "scripts/review-rund-push-checkpoint.cjs": "0b155cd06a55e211b63d6dd5319cbf59e8bdeadcf4267496f909e54c072c0642",
+    "scripts/verify-rund-auth-identity-apply.cjs": "8de60488d1ab31822a112c0cd496ef9e9b7fd7f91b2fad53fbaf61ae5b390c47",
+    "scripts/verify-rund-auth-identity-compensation.cjs": "e2cfc0b0e337f9d74515264eea2689eefb0157b6d64c939bba94c0f13d5e4082",
+    "scripts/verify-rund-auth-identity-coordination.cjs": "7a8b653f0ea6e255f84f5c1ec5da13ca38e7c7a4d3b01c28094acc33e711ad69",
+    "scripts/verify-rund-auth-identity-operations.cjs": "a766c6004ab36960a4553ad9f9482c151ea79d15993ac8192b4d45fecd8efab8",
+    "scripts/verify-rund-auth-identity.cjs": "0ca22ef31ea9e94a44ead746dd3e6c914b4d5dfa751929b2e4b892482ee01789",
+    "scripts/verify-rund-compensation-reconciliation.cjs": "815aba0c5bd928072413081e223db3b56c0814b93fc5d54b2a213d6943c815ba",
+    "scripts/verify-rund-extraction-identity.cjs": "c7385281ff4ff3f36db0717e268f44c037b6bd104a57688d6cc70ab7c47dd89f",
+    "scripts/verify-rund-gateway-audit.cjs": "661b72c06418f4c3d31f2dd5111a3abe5fda31f1f5d7588396499d5b90bb75b7",
+    "scripts/verify-rund-identity-abort-resolution.cjs": "4998ab94df304e8b093cc68514b34f39f8fac592372a665e2d486a3134d18c2e",
+    "scripts/verify-rund-identity-execution.cjs": "6e874145a357c7040e7a0438757227e14eb62f0ebfa3fb4fb0fef38c8303933a",
+    "scripts/verify-rund-identity-requests.cjs": "9bb756fddd10cfc794c1204ecc709519f8da1a81fb0f952e020868790a5aaa32",
+    "scripts/verify-rund-identity-review.cjs": "b895d36de567a886797b0474fe6fdd1b1775c54851e878299567d1f26e644e67",
+    "scripts/verify-rund-manual-abandon.cjs": "153d3efd7ce9b0708442a3a987a7e8b28d1d63b606690063d1b0bdebcde490c8",
+    "scripts/verify-rund-manual-capture.cjs": "df6bc3be02388249e12015cd140f172e118717989551a83acf1664ef41353975",
+    "scripts/verify-rund-manual-close.cjs": "fe56c220f3bbfd701a59e0b5290f101c705b32241d58345dab0d354795b0e27d",
+    "scripts/verify-rund-manual-entry.cjs": "996064514aafe2820252f532018120671fca3fd3e1df7022b10a7e65f74b8a38",
+    "scripts/verify-rund-manual-execution.cjs": "accf307aab093bf3c9cc252af46fef118fc66638230b3f2299423a72e72e5308",
+    "scripts/verify-rund-native-commit.cjs": "bf262fc23ee5efc20a2ab570566ba92f1cf14d0e4948ab1c798f770b3741e05d",
+    "scripts/verify-rund-service-integration.cjs": "2236652f435b31917735cd0a930552a417b71b1dbad355814791c65c1ab61620"
+  },
+  "limits": [
+    "El manifiesto se basa en este worktree; revisar antes de stage/commit y regenerar si cambian las fuentes.",
+    "La búsqueda de secretos cubre firmas concretas, no sustituye revisión de valores/configuración.",
+    "Los imports revisados son los estáticos resolubles por TypeScript; no prueba todos los recursos dinámicos.",
+    "Las evidencias JSON generadas y el propio manifiesto no se huellan como fuentes para evitar referencias circulares.",
+    "Las pruebas y límites del corte se documentan en ESTADO-MIGRACION-MICROSERVICIO.md; este script no ejecuta pruebas ni certifica despliegue."
+  ]
+}

@@ -1,5 +1,6 @@
-import { lazy, Suspense, type ComponentType } from 'react';
+import { lazy, Suspense, useLayoutEffect, useMemo, type ComponentType } from 'react';
 import { useLocation } from 'react-router-dom';
+import { RundOperatorSession } from './rundOperatorSession';
 
 export const RUND_PUBLIC_AUTOGESTION_PATH = '/rund/autogestion/docentes';
 
@@ -37,8 +38,16 @@ function RundLoading() {
 export function RundShellModule(session: RundSessionProps) {
   // Limpiar datos y formularios del remote cuando cambia la identidad o su autorización.
   const sessionKey = JSON.stringify([session.userPersonId, session.userEmail, session.userRoles || [], session.userPermissions || []]);
+  const operator=useMemo(()=>new RundOperatorSession(),[sessionKey]);
+  useLayoutEffect(()=>{
+    operator.activate();
+    // Es solo invalidación: no confiar en los datos del evento ni hacer HTTP automáticamente.
+    const changed=()=>operator.invalidate();
+    window.addEventListener('esap:auth-user-changed',changed);
+    return ()=>{window.removeEventListener('esap:auth-user-changed',changed);operator.deactivate();};
+  },[operator]);
   return <Suspense fallback={<RundLoading />}>
-    <RemoteRundModule key={sessionKey} {...session} embedded />
+    <RemoteRundModule key={sessionKey} {...session} manualOperatorSession={operator.connection} embedded />
   </Suspense>;
 }
 

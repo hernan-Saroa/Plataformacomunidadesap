@@ -10,6 +10,7 @@ import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundEx
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Like, Repository } from 'typeorm';
 import { upsertRundAuthIdentityWithManager } from './rund-auth-identity-write';
+import { RundNativeWriteInput, upsertRundNativeProfileWithManager } from './rund-native-profile-write';
 import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import { BancoDocenteEntity } from '../../entities/banco-docente.entity';
 import { PersonaEntity } from '../../entities/persona.entity';
@@ -326,7 +327,7 @@ const TERRITORIAL_ALIASES: Record<string, string[]> = Object.fromEntries(
   OFFICIAL_TERRITORIALES_ESAP.map((t) => [normalizeLookupText(t.nombre), t.aliases.map((a) => normalizeLookupText(a))]),
 );
 
-function findTerritorialMatch(territoriales: AuthSeccionalTerritorial[], rawValue: any): AuthSeccionalTerritorial | null {
+export function findTerritorialMatch(territoriales: AuthSeccionalTerritorial[], rawValue: any): AuthSeccionalTerritorial | null {
   const lookup = normalizeLookupText(rawValue);
   if (!lookup) return null;
   if (lookup === 'nortesantander') {
@@ -566,7 +567,7 @@ export function normalizeBancoDocentePayload(raw: any) {
   };
 }
 
-function validatePayload(payload: ReturnType<typeof normalizeBancoDocentePayload>) {
+export function validatePayload(payload: ReturnType<typeof normalizeBancoDocentePayload>) {
   // [BR-001] Mandatory non-empty fields validation
   const mandatoryFields = [
     { key: 'documentNumber', name: 'DOCUMENTO_IDENTIDAD' },
@@ -1437,196 +1438,10 @@ export class BancoDocentesService implements OnModuleInit {
           territorial, emailFinal, phoneFinal, finalFullName,
         }, { formatDateOnly, splitFullName, normalizeLookupText });
 
-      const targetPeriodoCarga = payload.periodoCarga || null;
-      const existingDocente = targetPeriodoCarga
-        ? await manager.findOne(BancoDocenteEntity, { where: { personaId: authPersonId, periodoCarga: targetPeriodoCarga } as any })
-        : await manager.findOne(BancoDocenteEntity, { where: { personaId: authPersonId } });
-      if (existingDocente && options.rejectExisting) {
-        throw new BadRequestException({
-          message: `El documento ${payload.documentNumber} ya existe en el Banco de Docentes para el periodo ${targetPeriodoCarga || 'sin periodo'}.`,
-          columna: 'DOCUMENTO_IDENTIDAD',
-          datoErrado: payload.documentNumber,
-          valorEsperado: `Documento no registrado en el periodo ${targetPeriodoCarga || 'seleccionado'}`,
-        });
-      }
-
-      let nextIdRund = payload.idRund || existingDocente?.idRund;
-      if (!nextIdRund) {
-        const seqRes = await manager.query(`SELECT nextval('rund.docente_id_rund_seq') AS next_val`);
-        nextIdRund = `RUND-${String(seqRes[0].next_val).padStart(4, '0')}`;
-      }
-
-      const docenteData: Partial<BancoDocenteEntity> = {
-        personaId: authPersonId,
-        territorialId: options.preserveTerritorial ? existingDocente?.territorialId || '' : territorial?.id || existingDocente?.territorialId || '',
-        territorialReportada: payload.territorialNombre || existingDocente?.territorialReportada || null,
-        datosCargaMasiva: options.bulkImport ? capturarDatosCarga(rawPayload) : existingDocente?.datosCargaMasiva || null,
-        sedeId: existingDocente?.sedeId || null,
-        tipoVinculacion: payload.tipoVinculacion,
-        dedicacion: payload.dedicacion,
-        escalafon: payload.escalafon ?? existingDocente?.escalafon ?? null,
-        horasAsignables: payload.horasAsignables,
-        estado: payload.estado,
-        ordenListado: payload.orderIndex ?? existingDocente?.ordenListado ?? null,
-        vinculacionDisplay: payload.vinculacionLabel ?? existingDocente?.vinculacionDisplay ?? null,
-        dedicacionDisplay: payload.dedicacionLabel ?? existingDocente?.dedicacionDisplay ?? null,
-        dedicacionHorasSemana: payload.dedicacionHorasSemana ?? existingDocente?.dedicacionHorasSemana ?? null,
-        nucleoTematico: payload.nucleoTematico ?? existingDocente?.nucleoTematico ?? null,
-        nivelFormacion: payload.nivelFormacion ?? existingDocente?.nivelFormacion ?? null,
-        perfilAcademicoPro: payload.perfilAcademicoPro ?? existingDocente?.perfilAcademicoPro ?? null,
-        perfilAcademico: payload.perfilAcademico ?? existingDocente?.perfilAcademico ?? null,
-        pregrado: payload.pregrado ?? existingDocente?.pregrado ?? null,
-        especializacion: payload.especializacion ?? existingDocente?.especializacion ?? null,
-        maestria: payload.maestria ?? existingDocente?.maestria ?? null,
-        doctorado: payload.doctorado ?? existingDocente?.doctorado ?? null,
-        posDoctorado: payload.posDoctorado ?? existingDocente?.posDoctorado ?? null,
-        investigacion: payload.investigacion ?? existingDocente?.investigacion ?? null,
-        origenVinculacion: payload.origenVinculacion ?? existingDocente?.origenVinculacion ?? null,
-        actoAdministrativoVinculacion: payload.actoAdministrativoVinculacion ?? existingDocente?.actoAdministrativoVinculacion ?? null,
-        correoInstitucional: emailFinal,
-        correoAlternativo: payload.correoAlternativo ?? existingDocente?.correoAlternativo ?? null,
-        sexoBiologico: payload.sexoBiologico ?? existingDocente?.sexoBiologico ?? null,
-        ultimaEvaluacion: payload.ultimaEvaluacion ?? existingDocente?.ultimaEvaluacion ?? null,
-        situacionAdministrativa: payload.situacionAdministrativa ?? existingDocente?.situacionAdministrativa ?? null,
-        situacionCategoria: payload.situacionCategoria ?? existingDocente?.situacionCategoria ?? null,
-        fechaInicioVinculacion: fechaCivilPersistencia(payload.fechaInicioVinculacion) ?? existingDocente?.fechaInicioVinculacion ?? null,
-        fechaFinVinculacion: fechaCivilPersistencia(payload.fechaFinVinculacion) ?? existingDocente?.fechaFinVinculacion ?? null,
-        puntajeSalarial: payload.puntajeSalarial ?? existingDocente?.puntajeSalarial ?? null,
-        edadReferencia: payload.edadReferencia ?? existingDocente?.edadReferencia ?? null,
-        rangoEdad: payload.rangoEdad ?? existingDocente?.rangoEdad ?? null,
-        regimenNormativo: payload.regimenNormativo ?? existingDocente?.regimenNormativo ?? null,
-        periodoCarga: payload.periodoCarga ?? existingDocente?.periodoCarga ?? null,
-        observaciones: payload.observaciones ?? existingDocente?.observaciones ?? null,
-        idRund: nextIdRund,
-        // Â§6 â€” Canal de origen para auditorÃ­a
-        canalOrigen: existingDocente?.canalOrigen || rawPayload?.canal_origen || 'MASIVO',
-        // Â§4/Â§5.4 â€” Estado segÃºn canal: MODALâ†’Activo, AUTOGESTIONâ†’Pendiente, MASIVOâ†’Activo
-        estadoAprobacion: rawPayload?.canal_origen === 'AUTOGESTION' ? 'PENDIENTE_APROBACION' : (existingDocente?.estadoAprobacion || 'PENDIENTE_APROBACION'),
-      };
-
-      let docente: BancoDocenteEntity;
-      let action = existingDocente ? 'update' : 'insert';
-      const changedFields: string[] = [];
-      
-      if (!existingDocente) {
-        docente = await manager.save(BancoDocenteEntity, manager.create(BancoDocenteEntity, docenteData));
-      } else {
-        let hasChanges = false;
-        const fieldsToCheck: (keyof BancoDocenteEntity)[] = ['tipoVinculacion', 'dedicacion', 'escalafon', 'horasAsignables', 'estado', 'ordenListado', 'vinculacionDisplay', 'dedicacionDisplay', 'dedicacionHorasSemana', 'nucleoTematico', 'nivelFormacion', 'perfilAcademicoPro', 'perfilAcademico', 'pregrado', 'especializacion', 'maestria', 'doctorado', 'posDoctorado', 'investigacion', 'origenVinculacion', 'actoAdministrativoVinculacion', 'correoInstitucional', 'correoAlternativo', 'sexoBiologico', 'ultimaEvaluacion', 'situacionAdministrativa', 'situacionCategoria', 'fechaInicioVinculacion', 'fechaFinVinculacion', 'puntajeSalarial', 'edadReferencia', 'rangoEdad', 'regimenNormativo', 'periodoCarga', 'observaciones', 'idRund'];
-        
-        fieldsToCheck.push('territorialReportada', 'datosCargaMasiva');
-        for (const field of fieldsToCheck) {
-          const newVal = docenteData[field];
-          const oldVal = existingDocente[field];
-          const changed = field === 'datosCargaMasiva' ? JSON.stringify(newVal) !== JSON.stringify(oldVal) : String(newVal) !== String(oldVal);
-          if (newVal !== undefined && newVal !== null && changed) {
-            hasChanges = true;
-            changedFields.push(String(field));
-            profileChanges[String(field)] = field === 'puntajeSalarial' || field === 'datosCargaMasiva'
-              ? { anterior: '[PROTEGIDO]', nuevo: '[PROTEGIDO]' }
-              : { anterior: oldVal ?? null, nuevo: newVal ?? null };
-          }
-        }
-        
-        if (!hasChanges && personaChangedFields.length === 0) {
-          action = 'unchanged';
-          docente = existingDocente; // No guardamos si no hay cambios
-        } else if (!hasChanges) {
-          docente = existingDocente;
-        } else {
-          docente = await manager.save(BancoDocenteEntity, { ...existingDocente, ...docenteData });
-        }
-      }
-
-      // Â§6.2 â€” Initialize RUND approval blocks (BR-044) for new records
-      if (action === 'insert') {
-        try {
-          await this.inicializarBloques(docente.id, rawPayload?.cargadoPor || null, rawPayload?.canal_origen || 'MASIVO', manager);
-        } catch (e) {
-          console.warn(`[RUND] Could not initialize blocks for docente ${docente.id}:`, e);
-        }
-      }
-
-      if (existingDocente && action !== 'unchanged') {
-        await invalidateEditedEvidence(manager, docente.id, [...personaChangedFields, ...changedFields], options.audit?.actorId || 'SISTEMA', options.audit?.ip);
-      }
-
-      // Inicializar ValidacionDocumental en el banco de docentes si no existe
-      for (const item of CAMPOS_SOPORTE_RUND) {
-        await manager.query(
-          `INSERT INTO rund.validacion_documental (docente_id, campo_rund, tipo_documento_soporte, estado_documento)
-           VALUES ($1, $2, $3, 'Sin cargar')
-           ON CONFLICT (docente_id, campo_rund) DO NOTHING`,
-          [docente.id, item.campo, item.tipo]
-        );
-      }
-
-      if (action !== 'unchanged' && options.audit) {
-        const auditAction = options.audit.accion || (action === 'insert' ? 'CREAR' : 'EDITAR');
-        await this.writeAuditWithManager(manager, {
-          docenteId: docente.id,
-          bloque: 'GENERAL',
-          accion: auditAction,
-          actorId: options.audit.actorId,
-          canalOrigen: options.audit.canalOrigen,
-          campoAfectado: action === 'insert' ? undefined : [...personaChangedFields, ...changedFields].join(','),
-          observacion: options.audit.observacion,
-          soporteId: options.audit.soporteId,
-          ip: options.audit.ip,
-          metadata: {
-            ...(options.audit.metadata || {}),
-            periodoCarga: docente.periodoCarga || null,
-            camposModificados: action === 'insert'
-              ? ['num_identificacion', ...Object.keys(docenteData)]
-              : [...personaChangedFields, ...changedFields],
-            cambios: action === 'insert' ? undefined : profileChanges,
-          },
-        });
-      }
-
-      // La segunda comprobacion ocurre dentro de la misma transaccion que guarda
-      // el perfil y su auditoria. Evita que un soporte rechazado concurrentemente
-      // pueda autorizar una edicion entre la validacion inicial y el commit.
-      if (options.audit?.requiredSupport) {
-        const required = options.audit.requiredSupport;
-        if (!existingDocente || existingDocente.id !== required.docenteId) {
-          throw new BadRequestException('El soporte documental no corresponde al perfil que se intenta editar.');
-        }
-        const supportRows = await manager.query(
-          `SELECT id FROM rund."RundSoporteCampo"
-           WHERE id::text = $1 AND docente_id = $2
-             AND tipo_soporte = $3
-             AND documento_carpeta_id IS NOT NULL
-             AND COALESCE(estado, '') <> 'Rechazado'
-           LIMIT 1`,
-          [required.id, required.docenteId, required.type],
-        );
-        if (!supportRows[0]) {
-          throw new BadRequestException('El soporte documental de la edicion dejo de estar disponible o fue rechazado.');
-        }
-      }
-
-      if (options.audit?.sensitiveAccess) {
-        await recordRundAccess(manager, {
-          ...options.audit.sensitiveAccess, actorId: options.audit.actorId, ip: options.audit.ip,
-          docenteIds: [docente.id], fields: ['DOCUMENTO_IDENTIDAD'],
-        });
-      }
-      return {
-        action,
-        previewId: rawPayload?.__previewId || null,
-        sourceRowNumber: rawPayload?.__sourceRowNumber || null,
-        personaId: authPersonId,
-        docenteId: docente.id,
-        usuarioId: authUser.id_user,
-        documentNumber: payload.documentNumber!,
-        fullName: finalFullName,
-        email: emailFinal,
-        territorialNombre: payload.territorialNombre || territorial?.nombre || null,
-        authUserCreated,
-        welcomeEmail: { sent: false, skipped: !authUserCreated },
-        message: action === 'insert' ? 'Docente creado correctamente.' : action === 'unchanged' ? 'Docente ya existe sin cambios.' : 'Docente actualizado correctamente.',
-      };
+      return this.persistirPerfilNativoConManager(manager, {
+        payload, rawPayload, options, territorial, emailFinal, phoneFinal, finalFullName,
+        identity: { authPersonId, authUser, authUserCreated, personaChangedFields, profileChanges },
+      });
     };
 
     const result = options.outerManager 
@@ -1639,6 +1454,20 @@ export class BancoDocentesService implements OnModuleInit {
     }
 
     return result;
+  }
+
+  /** Entrada servidor para el mismo escritor nativo; no hace HTTP ni commit o correo. */
+  async persistirPerfilNativoConManager(manager: any, input: RundNativeWriteInput) {
+    return upsertRundNativeProfileWithManager(manager, input, {
+      inicializarBloques: (id, actor, canal, tx) => this.inicializarBloques(id, actor, canal, tx),
+      writeAuditWithManager: (tx, entry) => this.writeAuditWithManager(tx, entry),
+    });
+  }
+
+  async bloquesInicialesCompletosConManager(manager: any, docenteId: string): Promise<boolean> {
+    const [blocks] = await manager.query(`SELECT count(DISTINCT bloque)::integer AS total FROM rund."RundCampoEstado"
+      WHERE docente_id::text=$1 AND bloque=ANY($2::text[])`, [docenteId, BancoDocentesService.BLOQUES]);
+    return blocks?.total === BancoDocentesService.BLOQUES.length;
   }
 
   private async validateBulkDocumentDuplicates(rows: any[], queryRunner: { query: (sql: string, params?: any[]) => Promise<any[]> }) {

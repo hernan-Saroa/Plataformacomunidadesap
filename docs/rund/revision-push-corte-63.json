@@ -1,0 +1,218 @@
+{
+  "generatedAt": "2026-10-15T16:47:46.146Z",
+  "scope": "source-review-push-checkpoint-63",
+  "branch": "feat/agregar_modulo_rund",
+  "head": "a5332853b93cfdee4f747510947376f9d08b0c6c",
+  "activationReadiness": "not_verified",
+  "deploymentApproved": false,
+  "gitIndexModified": false,
+  "commitCreated": false,
+  "pushExecuted": false,
+  "runtimeModified": false,
+  "manifestFile": "docs/rund/corte-63-rund.paths",
+  "selectedFileCount": 40,
+  "newFiles": 23,
+  "deletedFiles": 0,
+  "outsideCut": [],
+  "findings": [],
+  "localImportTargetsChecked": 70,
+  "manifestSha256": "ebdb942b4c2f5c4534cec6e797872fd351247159a0a28f055881bb207f826d3e",
+  "files": [
+    {
+      "status": " M",
+      "file": "backend/auth-service/.env.example"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-apply.controller.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-apply.controller.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-command.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-operation.controller.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-operation.controller.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-text.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-write.adapter.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-write.normalization.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/auth-service/src/users/users.module.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-command.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-operation.client.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-operation.client.ts"
+    },
+    {
+      "status": "??",
+      "file": "db/migrations/669_auth_rund_identidad_operacion.sql"
+    },
+    {
+      "status": "??",
+      "file": "db/migrations/670_auth_rund_identidad_aplicacion.sql"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-APLICACION-IDENTIDAD-AUTH.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-OPERACIONES-IDENTIDAD-AUTH.md"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/CONTRATO-PREVALIDACION-IDENTIDAD-AUTH.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-62-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-63-rund.paths"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-62.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-63.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-aplicacion-identidad-auth-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-auditoria-gateway-http-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-contadores-carpeta-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-estados-auth-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-historial-auth-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-operaciones-identidad-auth-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-panel-rund-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-servicio-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-sincronizacion-auth-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-vistas-carpeta-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "scripts/review-rund-push-checkpoint.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-auth-identity-apply.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-auth-identity-operations.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-auth-identity.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-extraction-identity.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-gateway-audit.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-service-integration.cjs"
+    }
+  ],
+  "sourceHashes": {
+    "backend/auth-service/.env.example": "20cd47839e03459a7db633e8134710a5da9b329861247694f4752b04904912ae",
+    "backend/auth-service/src/users/rund-identity-apply.controller.spec.ts": "17540aecbee31b59b762185b91594fa5bc2c875e1c19f7d1a4059a737ec3d31b",
+    "backend/auth-service/src/users/rund-identity-apply.controller.ts": "e122c87b0b98454a94b37538754b0391a7fc36608fd6ad33b97d3a6589a09fb0",
+    "backend/auth-service/src/users/rund-identity-command.ts": "b59085d14267df953fccab1282693881b62d14ebc6bda61d5bd16a648e83d252",
+    "backend/auth-service/src/users/rund-identity-operation.controller.spec.ts": "8f472bef769ec1e9e5e4b4780171d0061d29c26c1af9df0728f3036261c3e14f",
+    "backend/auth-service/src/users/rund-identity-operation.controller.ts": "f9bfbb6819dcacd4667c53088f7fff344695b6118b20862e4b86fb6d85d23806",
+    "backend/auth-service/src/users/rund-identity-text.ts": "bd5b18d1cae3e14145e4982a38caaae4599201ac2a13a2205a7c458732409837",
+    "backend/auth-service/src/users/rund-identity-write.adapter.ts": "df238d08cc56f24da571cfa8f742fd13ea15fcbc263e7cf7f64267898034496a",
+    "backend/auth-service/src/users/rund-identity-write.normalization.ts": "5541110124197d9e783f292ccb320110210e3b0cb59af20561a12cc4c487f2dc",
+    "backend/auth-service/src/users/users.module.ts": "b1756524a93dccab43a316fcb0e3046dd829b859323aeb71b56328a308214c6a",
+    "backend/rund-service/src/common/auth-identity-command.ts": "b59085d14267df953fccab1282693881b62d14ebc6bda61d5bd16a648e83d252",
+    "backend/rund-service/src/common/auth-identity-operation.client.spec.ts": "e77a77da4701db862d69ba6063fc3808150c7b18bd933aa7c051493d05cc346b",
+    "backend/rund-service/src/common/auth-identity-operation.client.ts": "e0f623807c3562230d05f1993a70300eee71566dafc83489f57be5fad93bd50e",
+    "db/migrations/669_auth_rund_identidad_operacion.sql": "5f9c43e3b1c89d028a103fa607523d384b7ebcf2960c117e46af952fa67cacfd",
+    "db/migrations/670_auth_rund_identidad_aplicacion.sql": "5e0070fd5323ad9d776a1fe5d2549c79c82d8e18d42b7fff59e0f4d6c407bb24",
+    "docs/rund/CONTRATO-APLICACION-IDENTIDAD-AUTH.md": "1a7d4b045bdd5ae40f21b3e296b74cfa7d34e421f773b333ad46b865c0dac231",
+    "docs/rund/CONTRATO-OPERACIONES-IDENTIDAD-AUTH.md": "bda572dc0b7054e910fb080c206f508dce3eb9c989fbb44b157bfd67990a6aa9",
+    "docs/rund/CONTRATO-PREVALIDACION-IDENTIDAD-AUTH.md": "c69a20d40e164f5356e421fc8ac6aaa9745eeefbf54cc288101ff5fd1e613d5a",
+    "docs/rund/corte-62-rund.paths": "1580b51646d12824b7984c550cde0fe2ab5e0f6d83b6b561a7b639369f4beea1",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "ba929a4d255c10468e9903362dad79dee78c1e53c7a0d4fe23b4c88593cd579b",
+    "scripts/review-rund-push-checkpoint.cjs": "ae7ea2c39a39c6b0ccb02dc987f06336bb76058233402379cf29d8d595e7b8b2",
+    "scripts/verify-rund-auth-identity-apply.cjs": "8de60488d1ab31822a112c0cd496ef9e9b7fd7f91b2fad53fbaf61ae5b390c47",
+    "scripts/verify-rund-auth-identity-operations.cjs": "a766c6004ab36960a4553ad9f9482c151ea79d15993ac8192b4d45fecd8efab8",
+    "scripts/verify-rund-auth-identity.cjs": "3fb7c4760385e5d10f8f2be2a9e5b5cc6a51ec799b98a0fe793526a6f5656d8e",
+    "scripts/verify-rund-extraction-identity.cjs": "c7385281ff4ff3f36db0717e268f44c037b6bd104a57688d6cc70ab7c47dd89f",
+    "scripts/verify-rund-gateway-audit.cjs": "7eeadb24498f4e6c041c07ec7d33c2de6e9338262121a1f70781a0ca89c56781",
+    "scripts/verify-rund-service-integration.cjs": "fb0145e25f92c021e4a6118954507507b3e2af416923fdcff9abaa1a451d812a"
+  },
+  "limits": [
+    "El manifiesto se basa en este worktree; revisar antes de stage/commit y regenerar si cambian las fuentes.",
+    "La búsqueda de secretos cubre firmas concretas, no sustituye revisión de valores/configuración.",
+    "Los imports revisados son los estáticos resolubles por TypeScript; no prueba todos los recursos dinámicos.",
+    "Las evidencias JSON generadas y el propio manifiesto no se huellan como fuentes para evitar referencias circulares.",
+    "Las pruebas y límites del corte se documentan en ESTADO-MIGRACION-MICROSERVICIO.md; este script no ejecuta pruebas ni certifica despliegue."
+  ]
+}

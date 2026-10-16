@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { X, Save, User, Briefcase, GraduationCap, Mail, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Sparkles, Upload } from 'lucide-react';
 import { createBancoDocente, updateBancoDocente, vincularRundSoporte } from '../../../services/api/rundApi';
 import { useAuth } from '../../../contexts/AuthContext';
+import type { RundManualIdentityClient } from '../../../services/api/rundManualIdentityApi';
+import { BancoDocenteManualRequestModal } from './BancoDocenteManualRequestModal';
 import type { RundSuggestion } from './RundExtractionPanel';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../../../../shared/territoriales-cetaps-esap';
 import {
@@ -25,6 +27,8 @@ import {
 } from '../../../utils/bancoDocenteManual';
 
 interface Props {
+  /** Conexión preparatoria explícita. El llamador activo todavía no la proporciona. */
+  manualIdentityClient?: RundManualIdentityClient;
   suggestion?: RundSuggestion;
   docente: any | null;
   periodoSeleccionado?: string;
@@ -180,7 +184,17 @@ const fieldFocusStyle = `
    Main Component
    ═══════════════════════════════════════════════════════════════════ */
 
-export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, onSaved, suggestion }: Props) {
+export function BancoDocenteEditModal(props: Props) {
+  if (props.manualIdentityClient && !props.docente?.docente_id && !props.docente?.id) {
+    return <BancoDocenteManualRequestModal client={props.manualIdentityClient} onClose={props.onClose} onSaved={props.onSaved}
+      renderForm={(preparar) => <BancoDocenteFormModal {...props} onManualPrepare={preparar} />} />;
+  }
+  return <BancoDocenteFormModal {...props} />;
+}
+
+function BancoDocenteFormModal({ docente, periodoSeleccionado, onClose, onSaved, suggestion, onManualPrepare }: Props & {
+  onManualPrepare?: (formulario: Record<string, unknown>) => Promise<void>;
+}) {
   const [activeStep, setActiveStep] = useState<Step>(0);
   const [direction, setDirection] = useState<'forward' | 'back'>('forward');
   const [saving, setSaving] = useState(false);
@@ -480,6 +494,13 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
       if (isEditing && sensitiveDataRestricted) {
         delete payload.documentNumber;
         delete payload.puntajeSalarial;
+      }
+
+      if (!isEditing && onManualPrepare) {
+        // La sesión del servidor aporta la auditoría; se conserva la normalización del modal.
+        const { actorId, soporteEdicionId: soporte, justificacionEdicion, rundSuggestionIds, ...formulario } = payload;
+        await onManualPrepare(formulario);
+        return;
       }
 
       const res = isEditing
@@ -946,7 +967,7 @@ export function BancoDocenteEditModal({ docente, periodoSeleccionado, onClose, o
                   }}
                 >
                   <Save size={15} />
-                  {saving ? 'Guardando...' : 'Guardar Docente'}
+                  {saving ? 'Guardando...' : onManualPrepare ? 'Preparar solicitud' : 'Guardar Docente'}
                 </button>
               ) : (
                 <button

@@ -1,10 +1,12 @@
 import React from 'react';
 import { AuthProvider } from '../contexts/AuthContext';
+import type { RundManualOperatorConnection } from '../contexts/rundManualOperator';
 import { BancoDocentesPTA } from './pta/banco-docentes/BancoDocentesPTA';
 import '../styles/pta-world-class.css';
 import '../styles/pta-notifications.css';
 
 export interface RundModulePremiumProps {
+  manualOperatorSession?: RundManualOperatorConnection;
   userPersonId?: string;
   userName?: string;
   userEmail?: string;
@@ -30,6 +32,7 @@ function deriveIsSuperUser(userRoles?: string[], userEmail?: string) {
 }
 
 export const RundModulePremium: React.FC<RundModulePremiumProps> = ({
+  manualOperatorSession,
   userPersonId,
   userName,
   userEmail,
@@ -46,6 +49,7 @@ export const RundModulePremium: React.FC<RundModulePremiumProps> = ({
 
   return (
     <AuthProvider
+      manualOperatorSession={manualOperatorSession}
       userPersonId={userPersonId}
       userEmail={effectiveEmail}
       userName={effectiveName}

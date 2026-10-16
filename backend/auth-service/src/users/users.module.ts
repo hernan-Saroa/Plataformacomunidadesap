@@ -28,6 +28,10 @@ import { RundIdentityController, RundIdentityGuard, RundIdentityService } from '
 import { RundCatalogosController, RundCatalogosService } from './rund-catalogos.controller';
 import { RundBancoController, RundBancoService } from './rund-banco.controller';
 import { RundIdentityValidationController, RundIdentityValidationService } from './rund-identity-validation.controller';
+import { RundIdentityOperationController, RundIdentityOperationService } from './rund-identity-operation.controller';
+import { RundIdentityApplyController, RundIdentityApplyService } from './rund-identity-apply.controller';
+import { RundIdentityCompensationController, RundIdentityCompensationService } from './rund-identity-compensation.controller';
+import { RundIdentityAbortClient } from './rund-identity-abort.client';
 
 @NestModule({
   imports: [
@@ -48,7 +52,8 @@ import { RundIdentityValidationController, RundIdentityValidationService } from 
     DatosMaestrosModule,
   ],
   providers: [UsersService, RolesService, ModulesService, EstructuraOrganizacionalService, RolesGuard, BackofficeDashboardService,
-    RundIdentityGuard, RundIdentityService, RundCatalogosService, RundBancoService, RundIdentityValidationService],
+    RundIdentityGuard, RundIdentityService, RundCatalogosService, RundBancoService, RundIdentityValidationService, RundIdentityOperationService, RundIdentityApplyService,
+    RundIdentityCompensationService, RundIdentityAbortClient],
   controllers: [
     RolesController,
     UsersController,
@@ -59,6 +64,9 @@ import { RundIdentityValidationController, RundIdentityValidationService } from 
     RundCatalogosController,
     RundBancoController,
     RundIdentityValidationController,
+    RundIdentityOperationController,
+    RundIdentityApplyController,
+    RundIdentityCompensationController,
   ],
   exports: [UsersService, RolesService, ModulesService, EstructuraOrganizacionalService],
 })

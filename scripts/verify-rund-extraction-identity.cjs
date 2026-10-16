@@ -88,10 +88,15 @@ module.exports = async function verifyExtractionIdentity(pgConfig, runtime, chec
     };
     await check('Identidad OCR: contexto completo coincide con SQL anterior en UTC, Bogotá y Tokio, incluidos IDs textuales y fechas', async () => {
       const oldZone = process.env.TZ;
+      const resolvedZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       try { for (const zone of ['UTC', 'America/Bogota', 'Asia/Tokyo']) {
         process.env.TZ = zone;
         for (const id of ids.slice(0, 2)) assert.deepEqual(await extractionProfile(ds, id, identities), fullContext(await previous(database, id)));
-      } } finally { if (oldZone === undefined) delete process.env.TZ; else process.env.TZ = oldZone; }
+      } } finally {
+        // Windows puede conservar en caché la última zona al borrar TZ; restaurar primero la zona efectiva.
+        process.env.TZ = oldZone === undefined ? resolvedZone : oldZone;
+        if (oldZone === undefined) delete process.env.TZ;
+      }
       await assert.rejects(extractionProfile(ds, ids[2], identities), error => error.getStatus() === 400);
       await assert.rejects(extractionProfile(ds, 'AUSENTE-' + tag, identities), error => error.getStatus() === 400);
       await database.query(`UPDATE auth.personas SET nom_largo='',num_identificacion='',gen_tercero='',fec_nacimiento=null WHERE id_person=$1`, [person]);

@@ -4,7 +4,7 @@
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const http = require('node:http');
-const { randomUUID } = require('node:crypto');
+const { randomUUID, randomBytes } = require('node:crypto');
 const root = path.resolve(__dirname, '..');
 const authRoot = path.join(root, 'backend/auth-service');
 const dep = name => require(require.resolve(name, { paths: [authRoot] }));
@@ -18,8 +18,43 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
   const db = new Client(pgConfig);
   await db.connect();
   const validationDb = new Pool({ ...pgConfig, max: 5, options: '-c default_transaction_read_only=on' });
-  let app;
+  const operationRole = 'rund_op_' + randomUUID().replace(/-/g, '');
+  const operationPassword = randomBytes(24).toString('hex');
+  const { DataSource } = dep('typeorm');
+  const operationDb = new DataSource({type:'postgres',host:pgConfig.host,port:pgConfig.port,database:pgConfig.database,
+    username:operationRole,password:operationPassword,entities:[],synchronize:false,extra:{max:5}});
+  let operationRoleCreated = false;
+  const applyRole = 'rund_apply_' + randomUUID().replace(/-/g, '');
+  const applyPassword = randomBytes(24).toString('hex');
+  let applyRoleCreated = false, applyDb, applyEnabled = true, applyDropAfterCommit = false;
+  let compensationEnabled=false,abortProofUrl,compensationDropAfterCommit=false,lastCompensationError;
+  const cleanupOperationRole = async () => {
+    if (operationDb.isInitialized) await operationDb.destroy();
+    if (applyDb?.isInitialized) await applyDb.destroy();
+    if (applyRoleCreated) {
+      await db.query('SET default_transaction_read_only=off');
+      await db.query(`DROP OWNED BY ${applyRole}; DROP ROLE ${applyRole}`);
+    }
+    if (operationRoleCreated) {
+      await db.query('SET default_transaction_read_only=off');
+      await db.query(`DROP OWNED BY ${operationRole}; DROP ROLE ${operationRole}`);
+    }
+  };
+  let app, operationDropAfterCommit = false, cancelDropAfterCommit = false;
   try {
+    await db.query(`CREATE ROLE ${operationRole} LOGIN PASSWORD '${operationPassword}'; GRANT USAGE ON SCHEMA auth TO ${operationRole};
+      GRANT SELECT,INSERT,UPDATE ON auth.rund_identidad_operacion TO ${operationRole}`);
+    operationRoleCreated = true;
+    await operationDb.initialize();
+    await db.query(`CREATE ROLE ${applyRole} LOGIN PASSWORD '${applyPassword}'; GRANT USAGE ON SCHEMA auth TO ${applyRole};
+      GRANT SELECT,INSERT,UPDATE ON auth.personas,auth."user",auth.user_roles,auth.rund_identidad_operacion TO ${applyRole};
+      GRANT SELECT,INSERT ON auth.rund_identidad_efecto,auth.rund_identidad_compensacion TO ${applyRole};
+      GRANT DELETE ON auth.user_roles TO ${applyRole};
+      GRANT SELECT ON auth.role TO ${applyRole}; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA auth TO ${applyRole}`);
+    applyRoleCreated = true;
+    applyDb = new DataSource({ type:'postgres',host:pgConfig.host,port:pgConfig.port,database:pgConfig.database,
+      username:applyRole,password:applyPassword,entities:[],synchronize:false,extra:{max:5} });
+    await applyDb.initialize();
     await db.query('SET default_transaction_read_only=on');
     const { Module } = dep('@nestjs/common');
     const { NestFactory, Reflector } = dep('@nestjs/core');
@@ -28,6 +63,23 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
     const { RundCatalogosController, RundCatalogosService } = compiled('users/rund-catalogos.controller');
     const { RundBancoController, RundBancoService } = compiled('users/rund-banco.controller');
     const { RundIdentityValidationController, RundIdentityValidationService } = compiled('users/rund-identity-validation.controller');
+    const { RundIdentityOperationController, RundIdentityOperationService } = compiled('users/rund-identity-operation.controller');
+    const { RundIdentityApplyController, RundIdentityApplyService } = compiled('users/rund-identity-apply.controller');
+    const { RundIdentityCompensationController, RundIdentityCompensationService } = compiled('users/rund-identity-compensation.controller');
+    const { RundIdentityAbortClient } = compiled('users/rund-identity-abort.client');
+    const config = { get:key => key==='INTERNAL_SERVICE_TOKEN'?token:key==='RUND_IDENTITY_APPLY_ENABLED'?applyEnabled:
+      key==='RUND_IDENTITY_COMPENSATION_ENABLED'?compensationEnabled:key==='RUND_SERVICE_URL'?abortProofUrl:undefined };
+    const applyService = new RundIdentityApplyService(applyDb,config);
+    const compensationService=new RundIdentityCompensationService(applyDb,config,new RundIdentityAbortClient(config));
+    const compensate=compensationService.compensar.bind(compensationService);
+    compensationService.compensar=async(...args)=>{try{return await compensate(...args);}catch(error){lastCompensationError={code:error.code||error.driverError?.code,message:error.message};throw error;}};
+    let lastApplyError, applyResultHook;
+    const apply = applyService.aplicar.bind(applyService);
+    applyService.aplicar = async (...args) => { try {
+      const result=await apply(...args);if(applyResultHook)await applyResultHook(result);return result;
+    } catch(error) {
+      lastApplyError={code:error.code||error.driverError?.code,message:error.message}; throw error;
+    } };
     const { JwtAuthGuard } = compiled('auth/guards/jwt-auth.guard');
     const { ResponseInterceptor } = compiled('common/response.interceptor');
     const service = new RundIdentityService({ query: async (sql, values) => (await db.query(sql, values)).rows });
@@ -35,14 +87,36 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
     const revalidateSync = service.revalidarSync.bind(service);
     service.revalidarSync = async raw => { if (syncHook) await syncHook(raw); return revalidateSync(raw); };
     class FixtureModule {}
-    Module({ controllers: [RundIdentityController, RundCatalogosController, RundBancoController, RundIdentityValidationController], providers: [RundIdentityGuard,
+    Module({ controllers: [RundIdentityController, RundCatalogosController, RundBancoController, RundIdentityValidationController, RundIdentityOperationController, RundIdentityApplyController,RundIdentityCompensationController], providers: [RundIdentityGuard,
       { provide: RundIdentityService, useValue: service },
       { provide: RundCatalogosService, useValue: new RundCatalogosService({ query: async (sql, values) => (await db.query(sql, values)).rows }) },
       { provide: RundBancoService, useValue: new RundBancoService({ query: async (sql, values) => (await db.query(sql, values)).rows }) },
       { provide: RundIdentityValidationService, useValue: new RundIdentityValidationService({ query: async (sql, values) => (await validationDb.query(sql, values)).rows }) },
-      { provide: ConfigService, useValue: { get: key => key === 'INTERNAL_SERVICE_TOKEN' ? token : undefined } },
+      { provide: RundIdentityOperationService, useValue: new RundIdentityOperationService(operationDb) },
+      { provide: RundIdentityApplyService, useValue: applyService },
+      { provide: RundIdentityCompensationService, useValue: compensationService },
+      { provide: ConfigService, useValue: config },
     ] })(FixtureModule);
     app = await NestFactory.create(FixtureModule, { logger: false, abortOnError: false });
+    app.use((req, res, next) => {
+      if(compensationDropAfterCommit&&/^\/internal\/rund\/v1\/personas\/escritura\/operaciones\/[^/]+\/compensar$/.test(req.path)&&req.method==='POST') {
+        compensationDropAfterCommit=false;res.json=()=>{res.destroy();return res;};
+      }
+      if (cancelDropAfterCommit && /^\/internal\/rund\/v1\/personas\/escritura\/operaciones\/[^/]+\/cancelar$/.test(req.path) && req.method==='POST') {
+        cancelDropAfterCommit = false;
+        res.json = () => { res.destroy(); return res; };
+      }
+      if (applyDropAfterCommit && /^\/internal\/rund\/v1\/personas\/escritura\/operaciones\/[^/]+\/aplicar$/.test(req.path) && req.method==='POST') {
+        applyDropAfterCommit = false;
+        res.json = () => { res.destroy(); return res; };
+      }
+      if (operationDropAfterCommit && req.path === '/internal/rund/v1/personas/escritura/operaciones' && req.method === 'POST') {
+        operationDropAfterCommit = false;
+        // Ejecutar el controlador y confirmar el INSERT; perder únicamente el transporte de respuesta.
+        res.json = () => { res.destroy(); return res; };
+      }
+      next();
+    });
     app.useGlobalGuards(new JwtAuthGuard(new Reflector()));
     app.useGlobalInterceptors(new ResponseInterceptor());
     await app.listen(0, '127.0.0.1');
@@ -61,13 +135,15 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
     const permissionsHeaders = [];
     let prevalidationMode = 'normal', prevalidationRequests = 0;
     const prevalidationHeaders = [];
+    let operationMode = 'normal';
+    const operationHeaders = [];
     const get = async (route, headers = { 'x-internal-service-token': token }, status = 200) => {
       const res = await fetch(url + '/internal/rund/v1/personas/' + route, { headers });
       assert.equal(res.status, status, await res.clone().text());
       return { res, body: await res.json() };
     };
     return {
-      close: async () => { await app.close(); await db.end(); await validationDb.end(); },
+      close: async () => { await app.close(); await cleanupOperationRole(); await db.end(); await validationDb.end(); },
       setCatalogMode: mode => { catalogMode = mode; },
       bankCatalogRequestCount: () => bankCatalogRequests,
       setPtaIdentityMode: mode => { ptaIdentityMode = mode; },
@@ -88,7 +164,34 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
       prevalidationRequestCount: () => prevalidationRequests,
       prevalidationRequestHeaders: () => [...prevalidationHeaders],
       prevalidationConnectionReadOnly: async () => (await validationDb.query('SHOW default_transaction_read_only')).rows[0].default_transaction_read_only === 'on',
+      setOperationMode: mode => { operationMode = mode; },
+      setApplyEnabled: value => { applyEnabled = value; },
+      setCompensationEnabled: value=>{compensationEnabled=value;},
+      setAbortProofUrl: value=>{abortProofUrl=value;},
+      dropNextCompensationResponse: ()=>{compensationDropAfterCommit=true;},
+      lastCompensationError: ()=>lastCompensationError,
+      setApplyResultHook: hook => { applyResultHook=hook; },
+      lastApplyError: () => lastApplyError,
+      dropNextApplyResponse: () => { applyDropAfterCommit = true; },
+      applyHasNoRundPrivileges: async () => (await applyDb.query("SELECT has_schema_privilege(current_user,'rund','USAGE') AS allowed"))[0].allowed===false,
+      dropNextOperationResponse: () => { operationDropAfterCommit = true; },
+      dropNextCancelResponse: () => { cancelDropAfterCommit = true; },
+      operationRequestHeaders: () => [...operationHeaders],
+      operationHasNoIdentityPrivileges: async () => {
+        const result = (await operationDb.query(`SELECT has_table_privilege(current_user,'auth.personas','SELECT') AS personas,
+          has_table_privilege(current_user,'auth.user','INSERT') AS usuarios,
+          has_table_privilege(current_user,'auth.user_roles','INSERT') AS roles`))[0];
+        return !result.personas && !result.usuarios && !result.roles;
+      },
       forward: (req, res) => {
+        if (req.url.startsWith('/internal/rund/v1/personas/escritura/operaciones')) {
+          operationHeaders.push({ authorizationForwarded: Boolean(req.headers.authorization), cookieForwarded: Boolean(req.headers.cookie),
+            tokenMatches: req.headers['x-internal-service-token'] === token });
+          if (operationMode !== 'normal') {
+            res.writeHead(operationMode === 'missing' ? 404 : operationMode === 'partial' ? 200 : 503, { 'Content-Type': 'application/json' });
+            req.resume(); res.end(JSON.stringify({ success: true, data: {} })); return;
+          }
+        }
         if (req.url === '/internal/rund/v1/personas/escritura/validar') {
           prevalidationRequests++;
           prevalidationHeaders.push({ authorizationForwarded: Boolean(req.headers.authorization), cookieForwarded: Boolean(req.headers.cookie),
@@ -221,5 +324,5 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
         });
       },
     };
-  } catch (error) { if (app) await app.close(); await db.end(); await validationDb.end(); throw error; }
+  } catch (error) { if (app) await app.close(); await cleanupOperationRole(); await db.end(); await validationDb.end(); throw error; }
 };
