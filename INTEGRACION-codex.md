@@ -348,3 +348,12 @@ index b34ce6139..c317fa74b 100644
 - `catalogoApi.ts` tipa la respuesta de ofertas y el nuevo campo del grupo. No se modificaron backend, shell ni archivos compartidos. La modificación local de `.gitignore` sigue fuera de los commits de Codex.
 - Pruebas simuladas en `GestionGrupos.test.tsx`: creación, asignación, eliminación, búsqueda, territorial sin cruce y error de escritura; también se verificó que un periodo sin ofertas conserva el alta opcional. Compilación del MFE correcta. No se escribieron datos reales.
 - `npx tsc --noEmit` sigue fallando por los diagnósticos ya existentes de tipos React/Lucide e `import.meta.env` del shell; en los archivos cambiados solo aparecen los TS2786 de iconos Lucide, el mismo problema transversal. No hay diagnósticos nuevos de `catalogoApi.ts`.
+
+## PTA Docencia: continuidad del formulario y estado en la lista (16 de octubre de 2026)
+
+- Fuente: sección 10 de `INTEGRACION-claude.md` en `origin/feature/pa/ronda-pruebas`. Corrige la decisión anterior de bloquear el guardado cuando falla `GET /pta/api/v1/contrato-programacion/v1/docencia/regimen`: si la consulta falla o no hay periodo activo, el formulario manual continúa con un aviso discreto y permite guardar. El backend del PTA sigue rechazando asignaturas manuales cuando el régimen efectivo es `programacion`.
+- Durante la consulta no se muestra el aviso ámbar transitorio. Una respuesta `programacion` conserva la Docencia aprobada y de solo lectura; `actual` conserva el formulario habitual sin cambios visuales.
+- La tarjeta de Docencia en «Mi Plan de Trabajo Académico» muestra «Aprobado» en un PTA Borrador cuando sus aprobaciones de `scope: programacion` están aprobadas y no hay otra Docencia con horas pendiente. El cambio queda localizado en `PortalDocentePTA.tsx`; no modifica la utilidad compartida de estados.
+- Pruebas simuladas actualizadas: error y ausencia de periodo permiten guardar; durante la carga no aparece aviso; concertación muestra el estado real en la tarjeta. No se modificaron backend ni shell. No se escribieron datos reales.
+- Verificación final: `npm run build` del MFE del PTA y `npx vitest run --reporter=dot --no-threads` (49 archivos, 594 pruebas) pasaron.
+- Si otra Docencia aplicable tiene horas y sigue pendiente o devuelta, la tarjeta conserva ese estado en lugar de presentar toda la Docencia como aprobada.

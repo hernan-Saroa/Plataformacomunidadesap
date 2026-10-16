@@ -4475,7 +4475,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
       }
     };
 
-    if (regimenDocencia === 'actual' && !hasFullPTAActivity && canEditFormSection('docencia')) {
+    if (regimenDocencia !== 'programacion' && !hasFullPTAActivity && canEditFormSection('docencia')) {
       asignaturas.forEach((asig, index) => {
         const itemLabel = `la asignatura ${index + 1}`;
         const keyFor = (field: string) => ptaFieldKey.docencia(asig.id, field);
@@ -4768,10 +4768,6 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     setSaving(true);
     savingRef.current = true;
     if (!silent) { autoSaveCountdownRef.current = 120; setAutoSaveCountdown(120); }
-    if (regimenDocencia === 'loading' || regimenDocencia === 'error') {
-      if (!silent) toast.error('No se pudo verificar el régimen de Docencia. Intenta de nuevo antes de guardar o enviar.');
-      return finishSaving(false);
-    }
 
     if (enviar && !validateRequiredFieldsForSubmission()) {
       return finishSaving(false);
@@ -4784,7 +4780,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
       toast.error('La Docencia llegará al PTA cuando se apruebe la concertación en Programación Académica.');
       return finishSaving(false);
     }
-    if (enviar && regimenDocencia === 'actual' && !_tieneTotalidad && _asignaturasValidas.length === 0) {
+    if (enviar && regimenDocencia !== 'programacion' && !_tieneTotalidad && _asignaturasValidas.length === 0) {
       toast.error(asignaturas.length > 0
         ? 'Las filas de docencia no tienen asignatura seleccionada del catálogo. Completa la selección antes de enviar.'
         : 'Debe incluir al menos una asignatura de docencia.');
@@ -4792,14 +4788,14 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     }
 
     // Validación: al menos una asignatura con mínimo 3 créditos
-    if (enviar && regimenDocencia === 'actual' && !_tieneTotalidad && !_asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
+    if (enviar && regimenDocencia !== 'programacion' && !_tieneTotalidad && !_asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
       toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
       return finishSaving(false);
     }
 
     // Solo el cruce entre dos asignaturas presenciales bloquea el envío.
     // Los cruces Virtual/Distancia se muestran como aviso y se pueden guardar/enviar.
-    if (enviar && regimenDocencia === 'actual' && (!isComponentRestricted || canEditFormSection('docencia')) && docenciaBlockingOverlapWarnings.length > 0) {
+    if (enviar && regimenDocencia !== 'programacion' && (!isComponentRestricted || canEditFormSection('docencia')) && docenciaBlockingOverlapWarnings.length > 0) {
       toast.error(docenciaBlockingOverlapWarnings[0]);
       setActiveSection('docencia');
       return finishSaving(false);
@@ -5110,10 +5106,6 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
   const validateEnvioDocente = useCallback(() => {
     const tieneTotalidad = hasFullPTAActivity;
     const shouldValidateDocencia = !isComponentRestricted || canEditFormSection('docencia');
-    if (regimenDocencia === 'loading' || regimenDocencia === 'error') {
-      toast.error('No se pudo verificar el régimen de Docencia. Intenta de nuevo antes de enviar.');
-      return false;
-    }
 
     // Esta validación ocurre antes de solicitar el OTP: ningún campo incompleto
     // debe descubrirse después de que el docente ya pasó por la firma digital.
@@ -5126,31 +5118,31 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
       toast.error('La Docencia llegará al PTA cuando se apruebe la concertación en Programación Académica.');
       return false;
     }
-    if (regimenDocencia === 'actual' && !tieneTotalidad && asignaturasValidas.length === 0) {
+    if (regimenDocencia !== 'programacion' && !tieneTotalidad && asignaturasValidas.length === 0) {
       toast.error(asignaturas.length > 0
         ? 'Las filas de docencia no tienen asignatura seleccionada del catálogo. Completa la selección antes de enviar.'
         : 'Debe incluir al menos una asignatura de docencia.');
       return false;
     }
-    if (regimenDocencia === 'actual' && !tieneTotalidad && !asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
+    if (regimenDocencia !== 'programacion' && !tieneTotalidad && !asignaturasValidas.some(a => (a.creditos || 0) >= 3)) {
       toast.error('Debe incluir al menos una asignatura de mínimo 3 créditos para poder enviar el PTA.');
       return false;
     }
-    if (regimenDocencia === 'actual' && !tieneTotalidad && shouldValidateDocencia && !validarAsignaturasParaEnvio(asignaturasValidas)) {
+    if (regimenDocencia !== 'programacion' && !tieneTotalidad && shouldValidateDocencia && !validarAsignaturasParaEnvio(asignaturasValidas)) {
       return false;
     }
-    if (regimenDocencia === 'actual' && !tieneTotalidad && shouldValidateDocencia && docenciaBlockingOverlapWarnings.length > 0) {
+    if (regimenDocencia !== 'programacion' && !tieneTotalidad && shouldValidateDocencia && docenciaBlockingOverlapWarnings.length > 0) {
       toast.error(docenciaBlockingOverlapWarnings[0]);
       setActiveSection('docencia');
       return false;
     }
-    if (regimenDocencia === 'actual' && !tieneTotalidad && shouldValidateDocencia && docenciaAdvisoryOverlapWarnings.length > 0) {
+    if (regimenDocencia !== 'programacion' && !tieneTotalidad && shouldValidateDocencia && docenciaAdvisoryOverlapWarnings.length > 0) {
       toast.warning(
         `Se detectaron ${docenciaAdvisoryOverlapWarnings.length} cruce(s) con asignaturas Virtual/Distancia. ` +
         'Es una advertencia informativa y puede continuar con el envío.',
       );
     }
-    if (regimenDocencia === 'actual' && !tieneTotalidad && shouldValidateDocencia && ['OCASIONAL', 'VISITANTE', 'ESPECIAL'].includes(tipoVinculacion)) {
+    if (regimenDocencia !== 'programacion' && !tieneTotalidad && shouldValidateDocencia && ['OCASIONAL', 'VISITANTE', 'ESPECIAL'].includes(tipoVinculacion)) {
       const hDocenciaTotal = asignaturasValidas.reduce((t, a) => t + (a.total_horas || 0), 0);
       if (hDocenciaTotal < horasAProgramar * 0.5) {
         toast.error('Los profesores Ocasionales, Visitantes y Especiales deben dedicar al menos el 50% de su PTA a docencia.');
@@ -6194,14 +6186,13 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
             {activeVisibleSection === 'docencia' && (
               regimenDocencia === 'programacion' ? (
                 <DocenciaConcertada asignaturas={asignaturas} aprobaciones={componentesAprobacion} aprobacionesCargadas={aprobacionesCargadas} />
-              ) : regimenDocencia !== 'actual' ? (
-                <section role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
-                  {regimenDocencia === 'loading'
-                    ? 'Consultando el régimen de Docencia del PTA…'
-                    : 'No se pudo consultar el régimen de Docencia. Recarga la pantalla antes de guardar o enviar el PTA.'}
-                </section>
               ) : (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                {regimenDocencia === 'error' && (
+                  <p role="status" className="mx-4 mb-3 text-xs text-slate-500">
+                    No se pudo confirmar el régimen de Docencia. Puedes continuar con el formulario habitual.
+                  </p>
+                )}
                 <SectionHeader title="Docencia Directa" subtitle={`${hDocencia}h programadas (máx 10 asignaturas)`}
                   color={PTA_COLORS.DOCENCIA} icon={BookOpen}
                   action={isEditable && asignaturas.length < 10 ? { label: 'Agregar Asignatura', onClick: handleAddAsignatura } : undefined} />
