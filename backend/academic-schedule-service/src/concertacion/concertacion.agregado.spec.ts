@@ -24,6 +24,9 @@ const S = 'academic-schedule';
 const REVISOR: PermisoPta[] = [{ codigo: 'pta.review.academica.pregrado' }];
 const APROBADOR: PermisoPta[] = [{ codigo: 'pta.approve.academica.pregrado' }];
 const APROBADOR_POSGRADO: PermisoPta[] = [{ codigo: 'pta.approve.academica.posgrado' }];
+// Docencia de una Dirección Territorial: permisos del componente academica_territorial del PTA.
+const REVISOR_TERRITORIAL: PermisoPta[] = [{ codigo: 'pta.review.academica.territorial.pregrado' }];
+const APROBADOR_TERRITORIAL: PermisoPta[] = [{ codigo: 'pta.approve.academica.territorial.pregrado' }];
 
 describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccion)', () => {
   let client: Client | null = null;
@@ -179,7 +182,22 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     const [c] = await svc.enviar(f.docente, f.periodo, '123456', null);
     const huila = await cuentaDeSeccional(10, [f.docente.idUser]); // "Seccional Huila"
     // Igual que en el PTA: ni el id ni el nombre normalizado coinciden → no decide.
-    await expect(svc.revisar(c.idConcertacion, 'academica', huila, REVISOR, '123456')).rejects.toBeInstanceOf(ForbiddenException);
+    // Con el permiso territorial correcto, igual que en el PTA: ni el id ni el nombre normalizado coinciden → no decide.
+    await expect(svc.revisar(c.idConcertacion, 'academica', huila, REVISOR_TERRITORIAL, '123456')).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  caso('Docencia de una Dirección Territorial: la deciden los permisos territoriales del PTA, no los del nivel', async (f) => {
+    const svc = servicio();
+    await ofertaDelGrupo(f.grupo, f.ofertas.neiva); // Neiva: Dirección Territorial (no Sede Central)
+    const [c] = await svc.enviar(f.docente, f.periodo, '123456', null);
+    // Los permisos del componente de nivel no alcanzan (en el PTA esto va a academica_territorial).
+    await expect(svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR, '123456')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(await svc.bandeja(REVISOR, f.revisor, f.periodo)).toEqual([]);
+    expect((await svc.revisar(c.idConcertacion, 'academica', f.revisor, REVISOR_TERRITORIAL, '123456')).estado).toBe('REVISADA');
+    await expect(svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR, '123456', null)).rejects.toBeInstanceOf(ForbiddenException);
+    expect((await svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR_TERRITORIAL, '123456', null)).estado).toBe('APROBADA');
+    // La territorial viaja al PTA (900022, HUILA): allí se aplica por par.
+    expect(entregas[0].asignaturas[0].territorialId).toBe('900022');
   });
 
   caso('grupo sin oferta CETAP: no se concerta, y se dice por qué (falla cerrado)', async (f) => {

@@ -47,6 +47,7 @@ import {
   protegerAsignaturas,
   regimenDocencia,
   regimenDocenciaSeguro,
+  tieneDocenciaDeProgramacion,
 } from './docencia-programacion';
 
 type SavePtaInput = Record<string, any>;
@@ -5430,7 +5431,12 @@ export class PtaService {
         .andWhere('scope IS DISTINCT FROM :scope', { scope: SCOPE_PROGRAMACION })
         .execute();
       await this.ptaComponentReviewRepo.delete({ ptaId, componente: In(componentKeys) } as any);
-      await this.ptaTerritorialApprovalRepo.delete({ ptaId } as any);
+      // Tampoco la Docencia territorial concertada (scope en SQL directo: la
+      // columna es de la migración 668 y la entidad no la mapea, para que el PTA
+      // apagado no consulte nada nuevo).
+      await this.ptaTerritorialApprovalRepo.query(
+        `DELETE FROM academic_work_plan."PtaTerritorialApproval" WHERE pta_id = $1 AND scope IS DISTINCT FROM $2`,
+        [ptaId, SCOPE_PROGRAMACION]);
       await this.ptaTerritorialReviewRepo.delete({ ptaId } as any);
     } else {
       await this.ptaComponentApprovalRepo.delete({
@@ -10151,10 +10157,15 @@ export class PtaService {
 
     const byComponent = new Map(componentList.map(item => [item.componente, item]));
     const toSave: PtaComponentApprovalEntity[] = [];
-    // EFDS-2315: en el régimen nuevo la Docencia sin horas NO se auto-aprueba:
-    // sería aprobarla sin concertación. Ante la duda (no responde PA), tampoco.
+    // EFDS-2315: en el régimen nuevo, mientras el PTA espera su Docencia concertada,
+    // la Docencia sin horas NO se auto-aprueba: sería aprobarla sin concertación
+    // (ante la duda, si no responde PA, tampoco). Cuando ya llegó Docencia
+    // concertada, un componente de Docencia vacío (p. ej. pregrado, si todo lo
+    // concertado es territorial) se auto-aprueba como hoy: si no, quedaría sin
+    // ninguna aprobación.
     const docenciaDeProgramacion = habilitadaLocal() && ptaEntity
       ? (await regimenDocenciaSeguro(ptaEntity)) === 'programacion'
+        && !tieneDocenciaDeProgramacion(ptaEntity.datosEstructurados)
       : false;
 
     for (const c of todosComponentes) {

@@ -12,6 +12,7 @@ import { nivelDeProgramaTipo, type NivelAcademico } from '../catalogo/nivel-acad
 import { DocenciaService } from '../docencia/docencia.service.js';
 import {
   PERMISO_APROBAR,
+  PERMISO_APROBAR_TERRITORIAL,
   PTA_APPROVE_ALL,
   PTA_REVIEW_ALL,
   REVISIONES_REQUERIDAS,
@@ -22,7 +23,7 @@ import {
 } from './configuracion.js';
 import { ContratoPtaClient } from './contrato-pta.client.js';
 import { contextoFirma, huellaDe, verificarCodigo, type RolFirma } from './firma.js';
-import { decide, PermisosPtaService, type ContextoTerritorial, type PermisoPta } from './permisos-pta.service.js';
+import { decide, normalizarSeccional, PermisosPtaService, type ContextoTerritorial, type PermisoPta } from './permisos-pta.service.js';
 import { TerritorialService } from '../acceso/territorial.service.js';
 
 export type EstadoConcertacion = 'ENVIADA' | 'REVISADA' | 'APROBADA' | 'DEVUELTA';
@@ -307,10 +308,22 @@ export class ConcertacionService {
    * y su alcance personal, con la misma regla del PTA (permisos-pta.service.ts).
    */
   private puede(permisos: readonly PermisoPta[], nivel: NivelAcademico, ctx: ContextoTerritorial) {
+    // Como el PTA (clasificarAsignaturasDocencia): una asignatura de una Dirección
+    // Territorial (seccional que no es Sede Central) va a academica_territorial,
+    // con sus propios permisos; el resto, al componente de su nivel. Quien decide
+    // debe poder decidir CADA parte que trae la concertación.
+    const esTerritorial = (t: string | null) => !!t && normalizarSeccional(ctx.nombres.get(t)) !== 'sedecentral';
+    const parte = (territorial: boolean): ContextoTerritorial => ({
+      ...ctx, territorialesAsignaturas: ctx.territorialesAsignaturas.filter((t) => esTerritorial(t) === territorial),
+    });
+    const partes = [false, true].filter((territorial) => parte(territorial).territorialesAsignaturas.length > 0);
+    if (!partes.length) partes.push(false);
+    const decidePartes = (codigo: (territorial: boolean) => string, todos: string) =>
+      partes.every((territorial) => decide(permisos, [codigo(territorial), todos], parte(territorial)));
     const revisar = REVISIONES_REQUERIDAS
-      .filter((r) => decide(permisos, [r.permiso[nivel], PTA_REVIEW_ALL], ctx))
+      .filter((r) => decidePartes((t) => (t ? r.permisoTerritorial : r.permiso)[nivel], PTA_REVIEW_ALL))
       .map((r) => r.tipo);
-    const aprobar = decide(permisos, [PERMISO_APROBAR[nivel], PTA_APPROVE_ALL], ctx);
+    const aprobar = decidePartes((t) => (t ? PERMISO_APROBAR_TERRITORIAL : PERMISO_APROBAR)[nivel], PTA_APPROVE_ALL);
     return { revisar, aprobar, devolver: revisar.length > 0 || aprobar };
   }
 

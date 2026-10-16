@@ -54,12 +54,15 @@ export interface RevisionRequerida {
   tipo: 'academica' | 'investigacion' | 'extension';
   /** Permiso del PTA que habilita la revisión, por nivel. */
   permiso: Record<'pregrado' | 'posgrado', string>;
+  /** Igual, para la Docencia de una Dirección Territorial (componente academica_territorial). */
+  permisoTerritorial: Record<'pregrado' | 'posgrado', string>;
 }
 
 export const REVISIONES_REQUERIDAS: readonly RevisionRequerida[] = [
   {
     tipo: 'academica',
     permiso: { pregrado: 'pta.review.academica.pregrado', posgrado: 'pta.review.academica.posgrado' },
+    permisoTerritorial: { pregrado: 'pta.review.academica.territorial.pregrado', posgrado: 'pta.review.academica.territorial.posgrado' },
   },
 ];
 
@@ -67,6 +70,15 @@ export const REVISIONES_REQUERIDAS: readonly RevisionRequerida[] = [
 export const PERMISO_APROBAR: Record<'pregrado' | 'posgrado', string> = {
   pregrado: 'pta.approve.academica.pregrado',
   posgrado: 'pta.approve.academica.posgrado',
+};
+
+/**
+ * Docencia de una Dirección Territorial: en el PTA va al componente
+ * academica_territorial, con su permiso por nivel (TERRITORIAL_NIVEL_APPROVE_PERMISSION).
+ */
+export const PERMISO_APROBAR_TERRITORIAL: Record<'pregrado' | 'posgrado', string> = {
+  pregrado: 'pta.approve.academica.territorial.pregrado',
+  posgrado: 'pta.approve.academica.territorial.posgrado',
 };
 
 export const PTA_REVIEW_ALL = 'pta.review.all';
