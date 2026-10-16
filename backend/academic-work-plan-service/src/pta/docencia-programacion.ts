@@ -115,7 +115,26 @@ export function protegerAsignaturas(regimen: Regimen, dsExistente: any, entrante
     throw new ConflictException(
       'En este periodo la docencia viene de Programación Académica: no se agregan asignaturas en el PTA.');
   }
-  return asignaturasDe(dsExistente).filter((a) => a?.origen === ORIGEN_PROGRAMACION);
+  const guardadas = asignaturasDe(dsExistente).filter((a) => a?.origen === ORIGEN_PROGRAMACION);
+  const clave = (a: any) => `${a?.id_concertacion ?? ''}|${a?.asignatura_id ?? ''}`;
+  const porClave = new Map(guardadas.map((a) => [clave(a), a]));
+  for (const a of entrantes.filter((x) => x?.origen === ORIGEN_PROGRAMACION)) {
+    const g = porClave.get(clave(a));
+    // Marcada "de programación" pero no concertada: es una asignatura a mano.
+    if (!g) {
+      throw new ConflictException(
+        'En este periodo la docencia viene de Programación Académica: no se agregan asignaturas en el PTA.');
+    }
+    // Las horas concertadas no se cambian en el PTA: se rechaza, no se ignora en silencio.
+    const cambia = (campo: string) => a[campo] !== undefined && Number(a[campo]) !== Number(g[campo]);
+    if (cambia('total_horas') || cambia('horas_base')) {
+      throw new ConflictException(
+        `Las horas de ${g.asignatura_codigo ?? g.asignatura_nombre ?? 'la asignatura concertada'} vienen de la concertación: no se cambian en el PTA.`);
+    }
+  }
+  // Lo que se guarda es SIEMPRE lo concertado (lo demás que envíe la pantalla, como
+  // campos de presentación, no altera la docencia de programación).
+  return guardadas;
 }
 
 // ── Aplicar una decisión concertada ──────────────────────────────────────────

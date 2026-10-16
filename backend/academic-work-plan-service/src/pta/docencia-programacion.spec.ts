@@ -90,13 +90,21 @@ describe('EFDS-2315 :: Docencia concertada en el PTA', () => {
       expect(await regimenDocencia({ ...conDocencia, estado: 'Pendiente Jefatura' })).toBe('programacion');
     });
 
-    it('la docencia de programación no se edita en el PTA ni se agregan asignaturas a mano', () => {
-      const existente = { asignaturas: [{ origen: 'programacion', asignatura_id: '1', total_horas: 96 }] };
-      // El navegador manda la de programación modificada: se ignora y se conserva la guardada.
-      expect(protegerAsignaturas('programacion', existente, [{ origen: 'programacion', asignatura_id: '1', total_horas: 500 }]))
-        .toEqual([{ origen: 'programacion', asignatura_id: '1', total_horas: 96 }]);
-      expect(() => protegerAsignaturas('programacion', existente, [{ asignatura_id: '7', asignatura_nombre: 'Manual' }]))
-        .toThrow(ConflictException);
+    it('el servidor rechaza agregar a mano y cambiar las horas concertadas (no depende de la pantalla)', () => {
+      const concertada = { origen: 'programacion', id_concertacion: 'c1', asignatura_id: '1', asignatura_codigo: 'ASIG-00001', total_horas: 96, horas_base: 96 };
+      const existente = { asignaturas: [concertada] };
+      // Devolverla igual (con campos de presentación que agrega la lectura) se acepta y guarda lo concertado.
+      expect(protegerAsignaturas('programacion', existente, [{ ...concertada, programa_nombre: 'AP', componente_docencia: 'academica_pregrado' }]))
+        .toEqual([concertada]);
+      // Cambiar sus horas: 409 explícito, no se ignora en silencio.
+      expect(() => protegerAsignaturas('programacion', existente, [{ ...concertada, total_horas: 500 }])).toThrow(/no se cambian en el PTA/);
+      expect(() => protegerAsignaturas('programacion', existente, [{ ...concertada, horas_base: 1 }])).toThrow(ConflictException);
+      // Agregar a mano, o disfrazada de "programación" sin estar concertada: 409.
+      expect(() => protegerAsignaturas('programacion', existente, [{ asignatura_id: '7', asignatura_nombre: 'Manual' }])).toThrow(ConflictException);
+      expect(() => protegerAsignaturas('programacion', existente, [concertada, { origen: 'programacion', id_concertacion: 'falsa', asignatura_id: '7' }]))
+        .toThrow(/no se agregan asignaturas/);
+      // Omitirla no la borra: lo concertado se conserva.
+      expect(protegerAsignaturas('programacion', existente, [])).toEqual([concertada]);
     });
 
     it('Programación Académica no responde: falla cerrado con error explícito, y no se auto-aprueba la Docencia', async () => {
