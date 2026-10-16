@@ -37,9 +37,42 @@ async function seed() {
         grupo VARCHAR(50),
         orden INTEGER NOT NULL DEFAULT 0,
         activo BOOLEAN NOT NULL DEFAULT TRUE,
+        limite_caracteres INTEGER DEFAULT 250,
         creado_en TIMESTAMP NOT NULL DEFAULT NOW(),
         actualizado_en TIMESTAMP NOT NULL DEFAULT NOW()
       )
+    `);
+
+    await dataSource.query(`
+      ALTER TABLE travel_expenses.config_campos_formulario
+        ADD COLUMN IF NOT EXISTS limite_caracteres INTEGER DEFAULT 250;
+    `);
+
+    await dataSource.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'travel_expenses' AND table_name = 'solicitudes_comision' AND column_name = 'objeto_comision') THEN
+          ALTER TABLE travel_expenses.solicitudes_comision ALTER COLUMN objeto_comision TYPE TEXT;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'travel_expenses' AND table_name = 'solicitudes_comision' AND column_name = 'destino_ciudad') THEN
+          ALTER TABLE travel_expenses.solicitudes_comision ALTER COLUMN destino_ciudad TYPE TEXT;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'travel_expenses' AND table_name = 'solicitudes_comision' AND column_name = 'destino_departamento') THEN
+          ALTER TABLE travel_expenses.solicitudes_comision ALTER COLUMN destino_departamento TYPE TEXT;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'travel_expenses' AND table_name = 'solicitudes_comision' AND column_name = 'rubro_presupuestal') THEN
+          ALTER TABLE travel_expenses.solicitudes_comision ALTER COLUMN rubro_presupuestal TYPE TEXT;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'travel_expenses' AND table_name = 'solicitudes_comision' AND column_name = 'numero_cdp') THEN
+          ALTER TABLE travel_expenses.solicitudes_comision ALTER COLUMN numero_cdp TYPE TEXT;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'travel_expenses' AND table_name = 'solicitudes_comision' AND column_name = 'cargo') THEN
+          ALTER TABLE travel_expenses.solicitudes_comision ALTER COLUMN cargo TYPE TEXT;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'travel_expenses' AND table_name = 'solicitudes_comision' AND column_name = 'fecha_cdp') THEN
+          ALTER TABLE travel_expenses.solicitudes_comision ALTER COLUMN fecha_cdp TYPE TEXT;
+        END IF;
+      END $$;
     `);
 
     await dataSource.query(`

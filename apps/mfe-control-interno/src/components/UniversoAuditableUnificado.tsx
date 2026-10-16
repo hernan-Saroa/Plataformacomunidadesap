@@ -28,6 +28,7 @@ import {
   Loader2, WifiOff, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { controlInternoService } from '../services/api/controlInternoService';
 import { FormularioAuditoriaUnificado, type AuditoriaUnificadaFormData } from './FormularioAuditoriaUnificado';
 // ✅ NUEVO: Cuestionario DAFP Visual SIMPLIFICADO - Implementación exacta según CUESTIONARIO_FLUJO_DAFP_VISUAL.md
 import { FormularioProcesoDafpVisual as FormularioProcesoAuditable, type FormularioDafpData as ProcesoAuditableData } from './FormularioProcesoDafpVisualSimplificado';
@@ -637,6 +638,35 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
                   setMostrarFormularioProceso(true);
                 }}
                 onEliminarProceso={async (evaluacionId) => {
+                  // EFDS-2281: antes de sacar el proceso del Universo se revisan sus auditorías
+                  // programadas. Si alguna ya empezó no se elimina; las que siguen en
+                  // Programa Anual se archivan con él, previa confirmación.
+                  let impacto: Awaited<ReturnType<typeof controlInternoService.getImpactoEliminacionEvaluacion>> | null = null;
+                  try {
+                    impacto = await controlInternoService.getImpactoEliminacionEvaluacion(evaluacionId);
+                  } catch (err) {
+                    console.warn('[Universo] No se pudo revisar el impacto de eliminar el proceso:', err);
+                  }
+                  const codigos = (lista: Array<{ codigo: string | null; nombre: string | null }>) =>
+                    lista.map((a) => a.codigo || a.nombre).join(', ');
+                  if (impacto && impacto.iniciadas.length > 0) {
+                    toast.error('No se puede eliminar el proceso del Universo Auditable', {
+                      description: `"${impacto.proceso}" tiene auditorías que ya empezaron (${codigos(impacto.iniciadas)}). Gestiónelas primero en Auditorías OCI.`,
+                      duration: 8000,
+                    });
+                    return;
+                  }
+                  if (impacto && impacto.porArchivar.length > 0) {
+                    const lista = impacto.porArchivar.map((a) => `• ${a.codigo || ''} ${a.nombre || ''}`.trim()).join('\n');
+                    const confirmado = window.confirm(
+                      `"${impacto.proceso}" tiene ${impacto.porArchivar.length} auditoría(s) programada(s) en el Programa Anual ${impacto.vigencia}:\n\n${lista}\n\n` +
+                        'Si lo elimina del Universo Auditable, esas auditorías se archivarán y dejarán de aparecer en la Programación, su exportación y Auditorías OCI. Se pueden recuperar desde las auditorías archivadas.\n\n¿Eliminar el proceso y archivar sus auditorías?',
+                    );
+                    if (!confirmado) return;
+                    const ok = await eliminarEvaluacion(evaluacionId, { archivarAuditorias: true });
+                    if (ok) await refetchAuditorias();
+                    return;
+                  }
                   await eliminarEvaluacion(evaluacionId);
                 }}
                 onGuardarEvaluacion={async (evaluacionId, datos) => {
@@ -700,6 +730,7 @@ export function UniversoAuditableUnificado({ vigencia: vigenciaProp, onVolver, m
               territorial: data.territorial,
               areaObjetivo: data.areaObjetivo,
               procesoAuditado: data.procesoAuditado,
+              unidadesAuditables: data.unidadesAuditables ?? [],
               alcance: data.alcance,
               auditorLider: data.auditorLider,
               equipoAuditores: data.equipoAuditores,

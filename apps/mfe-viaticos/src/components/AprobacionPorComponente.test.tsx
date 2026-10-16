@@ -204,4 +204,51 @@ describe('AprobacionPorComponente — Gestor de Firmas', () => {
     // Debe renderizar la justificación / observación de Dirección Nacional
     expect(screen.getByText('"Se autoriza por agenda institucional prioritaria"')).toBeDefined();
   });
+
+  it('reconoce firmas de Dirección Nacional y Subdirección de Gestión Corporativa en camposAdicionales marcándolas como APROBADO', () => {
+    const solicitudConFirmas: SolicitudViatico = {
+      ...baseSolicitud,
+      estado: 'EN_AUTORIZACION',
+      extemporanea: true,
+    };
+
+    render(
+      <AprobacionPorComponente
+        solicitud={solicitudConFirmas}
+        solicitudCompleta={{
+          ...solicitudConFirmas,
+          consecutivoUnico: 'VIAT-2026-FIRM-001',
+          decisionDireccion: 'AUTORIZADA',
+          camposAdicionales: {
+            firmaDireccionNacional: {
+              tipo: 'DIRECCION_NACIONAL',
+              nombreFirmante: 'Director Nacional General',
+              cargoFirmante: 'Director General',
+              fechaFirma: '2026-10-03T11:00:00Z',
+              certificadoId: 'CERT-DIR-999',
+              firmadoDigitalmente: true,
+            },
+            firmaSubdireccion: {
+              tipo: 'SUBDIRECCION',
+              nombreFirmante: 'Subdirector Gestión Corporativa',
+              cargoFirmante: 'Subdirector de Gestión Corporativa',
+              fechaFirma: '2026-10-03T15:30:00Z',
+              certificadoId: 'CERT-SUB-888',
+              firmadoDigitalmente: true,
+            },
+          },
+        }}
+      />,
+    );
+
+    // Dirección Nacional debe aparecer con su nombre y en estado Aprobado
+    expect(screen.getByText('Director Nacional General')).toBeDefined();
+    // Subdirección de Gestión Corporativa debe aparecer con su nombre y estado Aprobado
+    expect(screen.getByText('Subdirector Gestión Corporativa')).toBeDefined();
+    expect(screen.getByText('Subdirección de Gestión Corporativa (Ordenador del Gasto)')).toBeDefined();
+
+    // No debe haber estado Pendiente para estos dos roles
+    const badgesAprobados = screen.getAllByText('Aprobado');
+    expect(badgesAprobados.length).toBeGreaterThanOrEqual(5); // Elaboró, Jefe, Gerente, Analista/Control, Dir, Subdir
+  });
 });

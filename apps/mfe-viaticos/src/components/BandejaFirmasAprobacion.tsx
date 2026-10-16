@@ -193,8 +193,10 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
   const montoAcumulado = solicitudes.reduce(
     (acc, curr) =>
       acc +
-      (Number(curr.montoViaticos || 0) || 0) +
-      (Number(curr.montoGastosViaje || 0) || 0),
+      (Number(curr.montoTotal || curr.montoTotalEstimado) ||
+        (Number(curr.montoViaticos || 0) || 0) +
+          (Number(curr.montoGastosViaje || 0) || 0) +
+          (Number(curr.costoEstimadoTiquete || 0) || 0)),
     0,
   );
 
@@ -708,9 +710,11 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
                           Monto Estimado:{' '}
                           <strong className="text-emerald-700">
                             {formatearMoneda(
-                              (Number(sol.montoViaticos) || 0) +
-                              (Number(sol.montoGastosViaje) || 0) ||
-                              sol.montoTotalEstimado || sol.montoTotal || 0
+                              sol.montoTotal ||
+                                sol.montoTotalEstimado ||
+                                (Number(sol.montoViaticos) || 0) +
+                                  (Number(sol.montoGastosViaje) || 0) +
+                                  (Number(sol.costoEstimadoTiquete) || 0),
                             )}
                           </strong>
                         </span>

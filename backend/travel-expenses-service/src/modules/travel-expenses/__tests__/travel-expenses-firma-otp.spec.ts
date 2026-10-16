@@ -36,11 +36,22 @@ describe('TravelExpensesService — Firma Digital y Validación OTP', () => {
       ]),
     };
 
+    const managerMock = {
+      getRepository: jest.fn().mockImplementation((entity) => {
+        if (entity === SolicitudComisionEntity) return solicitudRepo;
+        return {
+          save: jest.fn().mockResolvedValue({ id: 'h-1' }),
+          findOne: jest.fn().mockResolvedValue(null),
+        };
+      }),
+    };
+
     dataSource = {
       query: jest.fn(),
       getRepository: jest.fn().mockReturnValue({
         save: jest.fn().mockResolvedValue({ id: 'h-1' }),
       }),
+      transaction: jest.fn().mockImplementation((cb) => cb(managerMock)),
     };
 
     notificationClient = {
@@ -311,4 +322,85 @@ describe('TravelExpensesService — Firma Digital y Validación OTP', () => {
       expect(saved.camposAdicionales?.elaboro).toContain('Certificado:');
     });
   });
+
+  describe('expedirRp y registrarRP con Firma OTP de Presupuesto', () => {
+    it('valida OTP, genera certificado digital y guarda firmaPresupuesto al expedir RP', async () => {
+      dataSource.query.mockResolvedValue([
+        {
+          id: 'user-presupuesto-1',
+          email: 'presupuesto@esap.edu.co',
+          dir_email: 'presupuesto@esap.edu.co',
+          full_name: 'Dra. Claudia Presupuesto',
+          nom_largo: 'Dra. Claudia Presupuesto',
+          cargo: 'Profesional Especializado de Presupuesto',
+        },
+      ]);
+
+      const otpRes = await service.solicitarOtpFirma(
+        'sol-rp-01',
+        { tipoFirma: 'PRESUPUESTO' },
+        'user-presupuesto-1',
+      );
+
+      const solicitudMock = {
+        id: 'sol-rp-01',
+        estadoSolicitud: EstadoSolicitud.EN_PRESUPUESTO,
+        comisionado: { primerNombre: 'Carlos', primerApellido: 'Gómez' },
+        camposAdicionales: { firmasAprobacion: [] },
+      } as any;
+
+      solicitudRepo.findOne.mockResolvedValue(solicitudMock);
+
+      const res = await service.expedirRp(
+        'sol-rp-01',
+        'user-presupuesto-1',
+        ['PRESUPUESTO'],
+        {
+          numeroRp: '99887',
+          fechaRp: '2026-10-06',
+          valorComprometido: 2500000,
+          rubroPresupuestal: 'C-2101-02-001',
+          otp: otpRes.devCode,
+          verificationId: otpRes.verificationId,
+          certificadoId: 'ESAP-CERT-VIAT-20261006-PRESUP',
+        },
+      );
+
+      expect(res.estadoSolicitud).toBe(EstadoSolicitud.COMPROMETIDA);
+      expect(res.numeroRp).toBe('99887');
+      expect(res.valorComprometido).toBe(2500000);
+      expect(res.rubroRp).toBe('C-2101-02-001');
+      expect(res.camposAdicionales?.firmaPresupuesto).toBeDefined();
+      expect(res.camposAdicionales?.firmaPresupuesto.firmadoDigitalmente).toBe(true);
+      expect(res.camposAdicionales?.firmaPresupuesto.certificadoId).toBe('ESAP-CERT-VIAT-20261006-PRESUP');
+      expect(res.camposAdicionales?.firmaPresupuesto.nombreFirmante).toBe('Dra. Claudia Presupuesto');
+    });
+
+    it('falla si el OTP de presupuesto es inválido', async () => {
+      const solicitudMock = {
+        id: 'sol-rp-02',
+        estadoSolicitud: EstadoSolicitud.EN_PRESUPUESTO,
+        camposAdicionales: {},
+      } as any;
+
+      solicitudRepo.findOne.mockResolvedValue(solicitudMock);
+
+      await expect(
+        service.expedirRp(
+          'sol-rp-02',
+          'user-presupuesto-2',
+          ['PRESUPUESTO'],
+          {
+            numeroRp: '11223',
+            fechaRp: '2026-10-06',
+            valorComprometido: 1000000,
+            rubroPresupuestal: 'C-2101-02-001',
+            otp: '000000',
+            verificationId: 'viat:sol-rp-02:PRESUPUESTO:user-presupuesto-2',
+          },
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
 });
+

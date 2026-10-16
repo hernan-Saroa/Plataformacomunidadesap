@@ -25,6 +25,7 @@ export default function SolicitudesAsignadasAnalista() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState('');
+  const [filtroEstado, setFiltroEstado] = useState<string>('TODOS');
 
   const cargarSolicitudes = async () => {
     setCargando(true);
@@ -49,17 +50,26 @@ export default function SolicitudesAsignadasAnalista() {
   const solicitudesFiltradas = solicitudes.filter((s) => {
     const termino = busqueda.toLowerCase().trim();
     const cOrigen = s.ciudadOrigen || (s as any).origenCiudad || s.sedeOrigen || 'Bogotá D.C.';
-    return (
+    const estadoNorm = (s.estadoSolicitud || '').toString().trim().toUpperCase();
+    const filtroNorm = (filtroEstado || '').trim().toUpperCase();
+    const cumpleEstado =
+      !filtroNorm ||
+      filtroNorm === 'TODOS' ||
+      (filtroNorm === 'EXTEMPORANEA' ? Boolean(s.extemporanea || estadoNorm === 'EXTEMPORANEA') : estadoNorm === filtroNorm);
+
+    const cumpleBusqueda =
       !termino ||
-      s.consecutivoUnico.toLowerCase().includes(termino) ||
+      (s.consecutivoUnico?.toLowerCase().includes(termino) ?? false) ||
       (s.comisionado?.primerNombre?.toLowerCase().includes(termino) ?? false) ||
       (s.comisionado?.primerApellido?.toLowerCase().includes(termino) ?? false) ||
+      (s.comisionado?.numeroDocumento?.toLowerCase().includes(termino) ?? false) ||
       cOrigen.toLowerCase().includes(termino) ||
       (s.destinoCiudad && s.destinoCiudad.toLowerCase().includes(termino)) ||
       (s.destinoDepartamento && s.destinoDepartamento.toLowerCase().includes(termino)) ||
       s.estadoSolicitud.toLowerCase().includes(termino) ||
-      viaticosService.resolverNombreDependencia?.(s)?.toLowerCase().includes(termino)
-    );
+      (viaticosService.resolverNombreDependencia?.(s)?.toLowerCase().includes(termino) ?? false);
+
+    return cumpleEstado && cumpleBusqueda;
   });
 
   return (
@@ -74,7 +84,20 @@ export default function SolicitudesAsignadasAnalista() {
             Comisiones asignadas directamente para su validación documental y verificación.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={filtroEstado}
+            onChange={(e) => setFiltroEstado(e.target.value)}
+            className="text-xs py-2 px-3 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700 font-semibold cursor-pointer"
+          >
+            <option value="TODOS">Todos los Estados</option>
+            <option value="SOLICITADO">Solicitado</option>
+            <option value="EN_VERIFICACION">En Verificación</option>
+            <option value="VERIFICADA">Verificada</option>
+            <option value="DEVUELTA">Devuelta</option>
+            <option value="RADICADA">Radicada</option>
+            <option value="EXTEMPORANEA">Extemporánea</option>
+          </select>
           <div className="relative w-full sm:w-72">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
             <input
@@ -88,7 +111,7 @@ export default function SolicitudesAsignadasAnalista() {
           <button
             type="button"
             onClick={cargarSolicitudes}
-            className="text-xs text-blue-600 hover:text-blue-800 font-semibold whitespace-nowrap px-2 py-2"
+            className="text-xs text-blue-600 hover:text-blue-800 font-semibold whitespace-nowrap px-2 py-2 cursor-pointer"
           >
             Actualizar
           </button>

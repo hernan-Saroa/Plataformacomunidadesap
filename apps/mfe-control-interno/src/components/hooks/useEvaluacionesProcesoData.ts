@@ -187,7 +187,7 @@ interface UseEvaluacionesProcesoReturn {
   refetch: () => Promise<void>;
   agregarEvaluacion: (data: Partial<EvaluacionProcesoUI>) => Promise<EvaluacionProcesoUI | null>;
   editarEvaluacion: (id: string, data: Partial<EvaluacionProcesoUI>) => Promise<EvaluacionProcesoUI | null>;
-  eliminarEvaluacion: (id: string) => Promise<boolean>;
+  eliminarEvaluacion: (id: string, opciones?: { archivarAuditorias?: boolean }) => Promise<boolean>;
   patchAuditableManual: (id: string, auditableManual: boolean | null) => Promise<EvaluacionProcesoUI | null>;
   getEstadisticas: (vigencia: number) => Promise<any>;
 }
@@ -348,14 +348,23 @@ export function useEvaluacionesProcesoData(
   // ELIMINAR EVALUACIÓN
   // ══════════════════════════════════════════════════════════════════════════
   
-  const eliminarEvaluacion = useCallback(async (id: string): Promise<boolean> => {
+  const eliminarEvaluacion = useCallback(async (id: string, opciones: { archivarAuditorias?: boolean } = {}): Promise<boolean> => {
     try {
-      await controlInternoService.deleteEvaluacion(id);
-      
+      const resultado = await controlInternoService.deleteEvaluacion(id, opciones);
+
       setEvaluaciones(prev => prev.filter(e => e.id !== id));
-      
+
       if (showToasts) {
-        toast.success('Evaluación eliminada');
+        // EFDS-2281: si el proceso tenía auditorías en Programa Anual, se archivaron con él
+        const archivadas = (resultado && 'archivadas' in resultado ? resultado.archivadas : []) || [];
+        if (archivadas.length > 0) {
+          toast.success('Proceso eliminado del Universo Auditable', {
+            description: `Se archivaron sus auditorías programadas: ${archivadas.map((a) => a.codigo || a.nombre).join(', ')}.`,
+            duration: 6000,
+          });
+        } else {
+          toast.success('Evaluación eliminada');
+        }
       }
       
       return true;

@@ -72,6 +72,7 @@ describe('TravelExpensesService', () => {
         obtenerConfiguracionPorCodigoFormulario: jest
           .fn()
           .mockResolvedValue(null),
+        obtenerCamposFormulario: jest.fn().mockResolvedValue([]),
       },
       humanResourcesClient = {
         consultarFuncionarioPorDocumento: jest.fn().mockResolvedValue(null),
@@ -562,6 +563,97 @@ describe('TravelExpensesService', () => {
       await expect(svc.consultarComisionado('11223344')).rejects.toThrow(
         /vinculación laboral\/contractual está vencida/i,
       );
+    });
+
+    it('debe rechazar con BadRequestException si el comisionado pertenece a otra dependencia que la solicitada', async () => {
+      const comisionadoOtraDep = {
+        ...mockComisionado,
+        id: 'com-dep-2',
+        numeroDocumento: '10203040',
+        idDependencia: 2,
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoOtraDep),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+
+      const module = await createMockModule({ comisionadoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      // Enlace de dependencia 1 consulta comisionado de dependencia 2
+      await expect(
+        svc.consultarComisionado('10203040', 1),
+      ).rejects.toThrow(/está asignado a otra dependencia/);
+    });
+
+    it('debe permitir consultar comisionado cuando coincide con la dependencia solicitada', async () => {
+      const comisionadoMismaDep = {
+        ...mockComisionado,
+        id: 'com-dep-1',
+        numeroDocumento: '10203040',
+        idDependencia: 1,
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoMismaDep),
+        save: jest.fn(),
+        create: jest.fn((x) => x),
+      };
+
+      const module = await createMockModule({ comisionadoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const res = await svc.consultarComisionado('10203040', 1);
+      expect(res.idDependencia).toBe(1);
+    });
+
+    it('debe asociar la dependencia del enlace si el comisionado local no tenía idDependencia asignada', async () => {
+      const comisionadoSinDep = {
+        ...mockComisionado,
+        id: 'com-sin-dep',
+        numeroDocumento: '10203040',
+        idDependencia: null,
+      };
+      const comisionadoRepo = {
+        findOne: jest.fn().mockResolvedValue(comisionadoSinDep),
+        save: jest.fn().mockImplementation(async (x) => x),
+        create: jest.fn((x) => x),
+      };
+
+      const module = await createMockModule({ comisionadoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const res = await svc.consultarComisionado('10203040', 3);
+      expect(comisionadoRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ idDependencia: 3 }),
+      );
+      expect(res.idDependencia).toBe(3);
+    });
+  });
+
+  describe('listarComisionados', () => {
+    it('debe filtrar comisionados por idDependencia y término de búsqueda', async () => {
+      const qb = {
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        addOrderBy: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([
+          { id: 'com-1', numeroDocumento: '123', idDependencia: 5 },
+        ]),
+      };
+      const comisionadoRepo = {
+        createQueryBuilder: jest.fn().mockReturnValue(qb),
+      };
+
+      const module = await createMockModule({ comisionadoRepo });
+      const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+      const result = await svc.listarComisionados(5, 'carlos');
+      expect(comisionadoRepo.createQueryBuilder).toHaveBeenCalledWith('c');
+      expect(qb.andWhere).toHaveBeenCalledWith('c.idDependencia = :depNum', { depNum: 5 });
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('com-1');
     });
   });
 
@@ -5270,6 +5362,112 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
       });
 
+      it('debe incluir la firma digital verificada de Tesorería y el desglose de tiquetes aéreos en 1 página', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.PAGADA),
+          id: 'sol-023-tesoreria',
+          consecutivoUnico: 'SOL-2026-0005',
+          creadoPorUsuarioId: 'user-radicador-1',
+          revisorControlId: 'user-revisor-1',
+          autorizadorId: 'user-autorizador-1',
+          numeroRp: '2026-09-17_RP_9988',
+          fechaRp: new Date(),
+          fechaPago: new Date(),
+          numeroOrdenPago: 'OP-SIIF-99123',
+          valorPagado: 1450000,
+          montoViaticos: 800000,
+          montoGastosViaje: 200000,
+          costoEstimadoTiquete: 450000,
+          comisionado: {
+            primerNombre: 'Sandra',
+            primerApellido: 'Martínez',
+            numeroDocumento: '1023456789',
+          },
+          camposAdicionales: {
+            firmaTesoreria: {
+              tipo: 'TESORERIA',
+              nombreFirmante: 'Felipe Tesorería',
+              documentoIdentidad: '79123456',
+              cargoFirmante: 'Profesional Universitario - Tesorería',
+              fechaFirma: new Date().toISOString(),
+              usuarioId: 'user-tesorero-1',
+              estado: 'FIRMADO',
+              certificadoId: 'CERT-TES-8899',
+            },
+          },
+          diasPernoctados: 2,
+          tarifaDiaPernoctado: 300000,
+          totalPernoctados: 600000,
+          diasNoPernoctados: 1,
+          tarifaDiaNoPernoctado: 150000,
+          totalNoPernoctados: 150000,
+          documentosSoporte: [],
+        };
+
+        const solicitudRepo = { findOne: jest.fn().mockResolvedValue(solicitud) };
+        const dataSource = { query: jest.fn().mockResolvedValue([{ nom_largo: 'Funcionario' }]) };
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-tesoreria');
+
+        expect(pdfBuffer).toBeInstanceOf(Buffer);
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
+      });
+
+      it('debe incluir la firma de compromiso del Grupo de Presupuesto y mantener 1 página (extemporánea)', async () => {
+        const solicitud = {
+          ...mockSolicitudAutorizacion(EstadoSolicitud.COMPROMETIDA),
+          id: 'sol-023-pres',
+          consecutivoUnico: 'SOL-2026-0099',
+          creadoPorUsuarioId: 'user-radicador-1',
+          autorizadorId: 'user-autorizador-1',
+          autorizadorDireccionId: 'user-dir-1',
+          fechaAutorizacionDireccion: new Date(),
+          extemporanea: true,
+          codigoRp: '20260916_RP_12345',
+          numeroRp: '12345',
+          valorComprometido: 1000000,
+          expedidoRpPorId: 'user-pres-1',
+          fechaExpedicionRp: new Date(),
+          comisionado: {
+            primerNombre: 'Ana',
+            primerApellido: 'García',
+            numeroDocumento: '52987654',
+          },
+          camposAdicionales: {
+            firmaPresupuesto: {
+              tipo: 'PRESUPUESTO',
+              nombreFirmante: 'Laura Presupuesto',
+              documentoIdentidad: '1012345678',
+              cargoFirmante: 'Profesional de Presupuesto',
+              fechaFirma: new Date().toISOString(),
+              usuarioId: 'user-pres-1',
+              estado: 'FIRMADO',
+              certificadoId: 'CERT-PRES-001',
+            },
+          },
+          diasPernoctados: 1,
+          tarifaDiaPernoctado: 250000,
+          totalPernoctados: 250000,
+          diasNoPernoctados: 1,
+          tarifaDiaNoPernoctado: 125000,
+          totalNoPernoctados: 125000,
+          documentosSoporte: [],
+        };
+
+        const solicitudRepo = { findOne: jest.fn().mockResolvedValue(solicitud) };
+        const dataSource = { query: jest.fn().mockResolvedValue([{ nom_largo: 'Funcionario' }]) };
+        const module = await createMockModuleEtapa5({ solicitudRepo, dataSource });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const pdfBuffer = await svc.exportarFormato023('sol-023-pres');
+
+        expect(pdfBuffer.toString('utf-8', 0, 5)).toBe('%PDF-');
+        expect((pdfBuffer.toString('binary').match(/\/Type\s*\/Page\b/g) || []).length).toBe(1);
+      });
+
       it('debe generar el Formato 023 correctamente cuando la comisión está en estado RADICADA', async () => {
         const solicitud = {
           ...mockSolicitudAutorizacion(EstadoSolicitud.RADICADA),
@@ -5797,5 +5995,51 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
         expect(qbMock.andWhere).toHaveBeenCalled();
       });
     });
+
+    describe('validarLimitesCaracteres — Validación dinámica de límite de caracteres por campo', () => {
+      it('debe rechazar cuando un campo supera su límite configurado', async () => {
+        const configService = {
+          obtenerCamposFormulario: jest.fn().mockResolvedValue([
+            {
+              clave: 'objetoComision',
+              etiqueta: 'Objeto de la Comisión',
+              activo: true,
+              limiteCaracteres: 50,
+            },
+          ]),
+        };
+        const module = await createMockModuleEtapa5({ configService });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const res = await svc.validarLimitesCaracteres({
+          objetoComision: 'A'.repeat(60),
+        });
+
+        expect(res.errores).toHaveLength(1);
+        expect(res.errores[0]).toContain('supera el límite permitido de 50 caracteres');
+      });
+
+      it('debe aceptar cuando los campos respetan el límite configurado o el valor por defecto', async () => {
+        const configService = {
+          obtenerCamposFormulario: jest.fn().mockResolvedValue([
+            {
+              clave: 'objetoComision',
+              etiqueta: 'Objeto de la Comisión',
+              activo: true,
+              limiteCaracteres: 500,
+            },
+          ]),
+        };
+        const module = await createMockModuleEtapa5({ configService });
+        const svc = module.get<TravelExpensesService>(TravelExpensesService);
+
+        const res = await svc.validarLimitesCaracteres({
+          objetoComision: 'A'.repeat(300),
+        });
+
+        expect(res.errores).toHaveLength(0);
+      });
+    });
   });
 });
+

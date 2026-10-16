@@ -56,6 +56,9 @@ export class CampoFormularioEntity {
   @Column({ name: 'activo', type: 'boolean', default: true })
   activo: boolean;
 
+  @Column({ name: 'limite_caracteres', type: 'int', nullable: true, default: 250 })
+  limiteCaracteres: number | null;
+
   @CreateDateColumn({ name: 'creado_en' })
   creadoEn: Date;
 

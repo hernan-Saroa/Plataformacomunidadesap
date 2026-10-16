@@ -150,6 +150,29 @@ describe('RF-PAG-003 — Etapa 8: Procesar Desembolso y Pago de Comisión por Te
       );
     });
 
+    it('debe actualizar y persistir el costoEstimadoTiquete si se suministra en el desembolso', async () => {
+      mockSolicitudRepo.findOne.mockResolvedValue({ ...mockSolicitudObligadaAvance, costoEstimadoTiquete: 0 });
+
+      const dto: ProcesarPagoDto = {
+        fechaPago: '2026-10-26',
+        valorPagado: 1250000,
+        costoEstimadoTiquete: 400000,
+        numeroOrdenPago: 'OP-SIIF-2026-98124',
+        modalidadPago: 'AVANCE',
+      };
+
+      const resultado = await service.procesarPago(
+        'sol-obli-001',
+        'tesorero-001',
+        ['TESORERIA'],
+        dto,
+      );
+
+      expect(resultado.estadoSolicitud).toBe(EstadoSolicitud.PAGADA);
+      expect(resultado.costoEstimadoTiquete).toBe(400000);
+      expect(resultado.valorPagado).toBe(1250000);
+    });
+
     it('debe procesar el desembolso y transicionar a PAGADA respetando modalidad RECONOCIMIENTO_POSTERIOR', async () => {
       mockSolicitudRepo.findOne.mockResolvedValue({ ...mockSolicitudObligadaPosterior });
 

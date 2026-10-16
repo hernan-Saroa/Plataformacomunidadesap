@@ -1083,13 +1083,23 @@ export function GestionNoticias() {
 
 
   const mapOrigenToEnum = (origen: string): any => {
+    if (!origen) return 'OFICIO';
     const mapping: Record<string, string> = {
       'Queja ciudadana': 'QUEJOSO',
-      'Informe servidor público': 'INFORME',
+      'Quejoso': 'QUEJOSO',
+      'QUEJOSO': 'QUEJOSO',
+      'Informe servidor público': 'OFICIO',
+      'Informante': 'QUEJOSO',
       'De oficio': 'OFICIO',
-      'Anónimo': 'ANONIMO'
+      'OFICIO': 'OFICIO',
+      'Anónimo': 'ANONIMO',
+      'ANONIMO': 'ANONIMO',
+      'Remisión por competencia': 'REMISION',
+      'REMISION': 'REMISION',
+      'Por determinar': 'POR_DETERMINAR',
+      'POR_DETERMINAR': 'POR_DETERMINAR',
     };
-    return mapping[origen] || 'OFICIO';
+    return mapping[origen] || mapping[origen.trim()] || origen;
   };
 
   const handleExportMain = () => {
@@ -1274,25 +1284,33 @@ export function GestionNoticias() {
       setLoading(true);
       const denunciantesArray = (data.denunciantes || []).map((d: any) => ({
         nombre: d.nombre || '',
-        cedula: d.identificacion || '',
+        cedula: d.identificacion || d.cedula || '',
+        identificacion: d.identificacion || d.cedula || '',
         direccion: d.direccion || '',
-        telefono: d.telefono || '',
-        correo: d.correo || '',
+        telefono: d.telefono || d.celular || '',
+        correo: d.correo || d.email || '',
         cargo: d.cargo || '',
-        entidad: d.entidad || '',
+        entidad: d.entidad || d.dependencia || '',
+        dependencia: d.dependencia || d.entidad || '',
         tipo: d.tipo || 'Denunciante',
         apoderado: d.apoderado,
       }));
       const disciplinablesArray = (data.denunciados || []).map((d: any) => ({
         nombre: d.nombre || '',
-        cedula: d.identificacion || '',
+        cedula: d.identificacion || d.cedula || '',
+        identificacion: d.identificacion || d.cedula || '',
         cargo: d.cargo || '',
-        dependencia: d.lugarHechos || '',
+        dependencia: d.lugarHechos || d.dependencia || '',
+        lugarHechos: d.lugarHechos || d.dependencia || '',
         apoderado: d.apoderado,
       }));
+      const currentUser = authService.getCurrentUser();
+      const usuarioNombre = currentUser?.nombre || currentUser?.nom_largo || currentUser?.username || currentUser?.email || 'Profesional';
+
       await disciplinaryService.updateNoticia(noticiaParaEditar.id, {
-        origen: data.origen,
+        origen: mapOrigenToEnum(data.origen),
         territorial: data.territorial,
+        dependenciaDenunciado: disciplinablesArray[0]?.dependencia || noticiaParaEditar.dependenciaDenunciado,
         hechos: data.descripcionHechos,
         denunciante: denunciantesArray,
         denunciantes: denunciantesArray,
@@ -1304,6 +1322,7 @@ export function GestionNoticias() {
           : (data.conductasSeleccionadas || (data.conductaSeleccionada ? [data.conductaSeleccionada] : [])),
         fechaHechos: data.fechaHechos || null,
         fechaQueja: data.fechaQueja,
+        usuario: usuarioNombre,
         // ✅ Documentos adjuntos
         adjuntosParaEliminar: data.adjuntosParaEliminar || [],
         archivosAdjuntos: data.archivosAdjuntos || [],

@@ -950,6 +950,21 @@ class DisciplinaryService {
      * Descargar archivo desde una URL directa (para Autos y otros)
      */
     async downloadFileFromUrl(url: string, filename: string): Promise<void> {
+        if (!url) {
+            throw new Error('URL no proporcionada');
+        }
+
+        // Si es una URL blob o data, descargar directamente sin fetch de red
+        if (url.startsWith('blob:') || url.startsWith('data:')) {
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            return;
+        }
+
         // Verificar si la URL ya es absoluta (contiene protocolo)
         let fullUrl: string;
 

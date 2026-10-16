@@ -39,6 +39,7 @@ export const VIATICOS_PERMISOS_GENERALES = {
   TIQUETES: 'travel_expenses.general.es_responsable_tiquetes',
   JEFE_DEPENDENCIA: 'travel_expenses.general.es_jefe_dependencia',
   GERENTE_PROYECTO: 'travel_expenses.general.es_gerente_proyecto',
+  COMISIONADO: 'travel_expenses.general.es_comisionado',
 } as const;
 
 export const ROLES_SUBDIRECCION_GESTION_CORPORATIVA = [
@@ -431,19 +432,21 @@ export class AuthService {
   /**
    * Determina si el usuario autenticado tiene permiso para cancelar una
    * comisión (RF-AUT-003, Etapa 6).
+   * Restringido exclusivamente al Jefe de Dependencia o Super Administrador.
    */
   canCancelarComision(): boolean {
     const user = this.getCurrentUserSync();
     if (!user) return false;
-    if (user.esAdmin) return true;
-    return user.permissions.some((p) =>
-      ['travel_expenses:cancel_request',
-        'travel_expenses:create_request',
-        'travel_expenses:read_inbox',
-        'travel_expenses:authorize_expense',
-        'travel_expenses:*',
-        '*'].includes(p),
-    );
+    if (user.esAdmin || this.isSuperAdmin()) return true;
+    if (this.isJefeDependencia()) return true;
+    if (
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.JEFE_DEPENDENCIA) ||
+      this.hasPermission('travel_expenses.general.es_jefe_dependencia') ||
+      this.hasPermission('travel_expenses:cancel_request')
+    ) {
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -540,6 +543,21 @@ export class AuthService {
       this.isTesoreria() ||
       this.hasPermission('travel_expenses:process_payment') ||
       this.hasPermission('travel_expenses:register_payment')
+    );
+  }
+
+  /**
+   * Determina si el usuario de Tesorería puede generar la firma digital de desembolso (Etapa 8 — RF-PAG-003).
+   * Requiere el permiso `travel_expenses:sign_approval` asignado por la Migración 504.
+   */
+  canFirmarTesoreria(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin) return true;
+    return (
+      this.isTesoreria() ||
+      this.hasPermission('travel_expenses:sign_approval') ||
+      this.hasPermission('travel_expenses:process_payment')
     );
   }
 
@@ -692,6 +710,32 @@ export class AuthService {
       this.isGerenteProyecto() ||
       this.isSubdireccionGestionCorporativa() ||
       this.isDireccionNacional()
+    );
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene el rol / función de Comisionado.
+   * Prioriza el permiso inmutable específico `travel_expenses.general.es_comisionado` (Migración 452).
+   */
+  isComisionado(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) {
+      return (
+        this.hasPermission(VIATICOS_PERMISOS_GENERALES.COMISIONADO) ||
+        this.hasPermission('es_comisionado') ||
+        this.hasPermission('travel_expenses:read_own_requests')
+      );
+    }
+    if (
+      this.hasPermission(VIATICOS_PERMISOS_GENERALES.COMISIONADO) ||
+      this.hasPermission('es_comisionado') ||
+      this.hasPermission('travel_expenses:read_own_requests')
+    ) {
+      return true;
+    }
+    return user.roles.some((r) =>
+      ['COMISIONADO', 'ROL_COMISIONADO'].includes(r) ||
+      r.includes('COMISIONADO'),
     );
   }
 

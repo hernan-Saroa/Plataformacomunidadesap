@@ -60,6 +60,7 @@ export interface AuditoriaKanbanDto {
   actividadesCompletas: boolean;
   actividadesPendientes: number;
   alcance?: string; // Alcance de la auditoría
+  unidadesAuditables?: string[]; // Unidades auditables que cubre (EFDS-2316)
   observacionesAdicionales?: string; // ✅ Observaciones adicionales de la auditoría
   programaAnualMetadata?: any; // Metadata del programa anual (mesInicio, semanaInicio, duraciones)
   // ✅ CAMPOS DE APROBACIÓN

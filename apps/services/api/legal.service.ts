@@ -239,6 +239,12 @@ export class LegalService {
         return authService.getAbogadosRolResuelve();
     }
 
+    // Responsables de Términos e Informes: usuarios activos con alguno de los roles
+    // parametrizados en Configuración → Términos e Informes.
+    async getResponsablesTermino(clavesRoles: string[]): Promise<any[]> {
+        return authService.getUsuariosPorRoles(clavesRoles);
+    }
+
     // ==================== ARCHIVADO/ELIMINADO DE EXPEDIENTES ====================
     async getExpedientesArchivados(): Promise<any[]> {
         return apiClient.get<any[]>(`${SERVICE_PREFIX}/expedientes/estado/archivados`);

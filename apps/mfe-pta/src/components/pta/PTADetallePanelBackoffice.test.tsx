@@ -844,6 +844,51 @@ describe('revisión confirmada visible antes de las lecturas auxiliares', () => 
 });
 
 describe('PTADetallePanelBackoffice — ámbitos de Complementarias', () => {
+  it.each(['gestion_profesoral', 'decanatura', 'territorial'].flatMap(tipo =>
+    [false, true].map(fallaLectura => ({ tipo, fallaLectura }))))('habilita $tipo al confirmarse Programa sin recargar, incluso con lecturas fallidas=$fallaLectura', async ({ tipo, fallaLectura }) => {
+    const final = `complementarias_${tipo}`;
+    const permissions = { success: true, data: {
+      allowedComponents: [final], allowedReviewSubsecciones: [],
+      territorial: { aprobar: { pairs: [], reason: null }, revisar: { pairs: [], reason: null } },
+    } };
+    permisosGranulares.clear(); permisosGranulares.add(`pta.approve.complementarias.${tipo}`);
+    vi.mocked(getPTADecisionPermissions).mockResolvedValue(permissions);
+    const approvals = [
+      { componente: 'complementarias_pregrado', estado: 'pendiente', aplica: true, horas: 40, dependencias_pendientes: [] },
+      { componente: final, estado: 'pendiente', aplica: true, horas: 40, dependencias_pendientes: ['complementarias_pregrado'] },
+    ];
+    vi.mocked(getComponentesAprobacion).mockResolvedValue({ success: true, data: approvals } as any);
+    vi.mocked(getComponentesRevision).mockResolvedValue({ success: true, data: [
+      { componente: final, subseccion: 'docencia', estado: 'revisado' },
+    ] });
+    const pta = basePta({ asignaturas: [], investigacion_actividades: [], horas_complementarias: 40,
+      complementarias: [{ nombre: 'Actividad con dos autorizaciones', horas: 40, seccion: 'complementarias_docencia',
+        componente_complementaria: final, componentes_complementaria: ['complementarias_pregrado', final] }],
+      complementarias_por_componente: { complementarias_pregrado: 40, [final]: 40 },
+    });
+    try {
+      const props = baseProps({ pta });
+      const { rerender } = render(<PTADetallePanelBackoffice {...props} syncVersion="antes" />);
+      fireEvent.click(screen.getByText('Aprobación').closest('button')!);
+      expect(await screen.findByText(/Pendiente de aprobación previa:/)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: /^Aprobar$/ })).toBeNull();
+      expect(screen.getAllByText('Contenido: 1 actividad(es) (40h)')).toHaveLength(2);
+      const actualizadas = approvals.map(row => ({ ...row,
+        estado: row.componente === 'complementarias_pregrado' ? 'aprobado' : 'pendiente', dependencias_pendientes: [],
+      }));
+      vi.mocked(getComponentesAprobacion).mockResolvedValue({ success: !fallaLectura, data: fallaLectura ? [] : actualizadas } as any);
+      rerender(<PTADetallePanelBackoffice {...props} pta={{ ...pta, componentes_aprobacion_estado: actualizadas }} syncVersion="programa-confirmado" />);
+      expect(await screen.findByRole('button', { name: /^Aprobar$/ })).toBeTruthy();
+      expect(screen.queryByText(/Pendiente de aprobación previa:/)).toBeNull();
+      expect(aprobarComponente).not.toHaveBeenCalled();
+    } finally {
+      vi.mocked(getComponentesAprobacion).mockResolvedValue({ success: true, data: [] });
+      vi.mocked(getComponentesRevision).mockResolvedValue({ success: true, data: [] });
+      vi.mocked(getPTADecisionPermissions).mockResolvedValue({ success: true, data: {
+        allowedComponents: ['academica_pregrado'], allowedReviewSubsecciones: [], territorial: permissions.data.territorial,
+      } });
+    }
+  });
   const ptaConGestionProfesoral = () => basePta({
     complementarias: [
       { nombre: 'Tutoría de trabajos de grado', horas: 43, seccion: 'complementarias_docencia',

@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import disciplinaryService from '../../../../services/api/disciplinary.service';
+import { ModalVisorPlantilla } from './ModalVisorPlantilla';
 
 // ============ CATEGORÍAS DE OFICIOS ============
 
@@ -104,6 +105,8 @@ export interface TipoOficio {
   nombre: string;
   descripcion: string;
   categoria: CategoriaOficioId;
+  tipoBackend?: string;
+  codigo?: string;
   plantilla: PlantillaArchivo | null; // Una sola plantilla
   plantillas?: PlantillaArchivo[]; // Array de plantillas (para modales)
   activo: boolean;
@@ -149,17 +152,22 @@ export function SeccionPlantillasOficiosUnificada({
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const handleDescargarPlantilla = (plantilla: PlantillaArchivo | null) => {
-    if (!plantilla) return;
+  const handleDescargarPlantilla = async (plantilla: PlantillaArchivo | null) => {
+    if (!plantilla || !plantilla.url) {
+      toast.error('No hay archivo para descargar');
+      return;
+    }
 
-    const link = document.createElement('a');
-    link.href = disciplinaryService.getAbsoluteFileUrl(plantilla.url);
-    link.download = plantilla.nombreArchivo;
-    link.click();
-
-    toast.success('Plantilla descargada', {
-      description: plantilla.nombreArchivo
-    });
+    try {
+      const nombreDescarga = plantilla.nombreArchivo || `${plantilla.nombre || 'plantilla'}.docx`;
+      await disciplinaryService.downloadFileFromUrl(plantilla.url, nombreDescarga);
+      toast.success('Plantilla descargada', {
+        description: nombreDescarga
+      });
+    } catch (error) {
+      console.error('Error descargando plantilla de oficio:', error);
+      toast.error('Error al descargar la plantilla');
+    }
   };
 
   const toggleExpandirTipo = (tipoId: string) => {
@@ -462,14 +470,24 @@ export function SeccionPlantillasOficiosUnificada({
                                           <span>{formatBytes(tipo.plantilla.tamano)}</span>
                                         </div>
                                       </div>
-                                      <button
-                                        onClick={() => handleDescargarPlantilla(tipo.plantilla)}
-                                        className="flex items-center gap-1 lg:gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg font-semibold text-xs text-white transition-all hover:shadow-lg flex-shrink-0"
-                                        style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}
-                                      >
-                                        <Download className="w-3.5 h-3.5" />
-                                        <span className="hidden lg:inline">Descargar</span>
-                                      </button>
+                                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                                        <button
+                                          onClick={() => setVistaDetalles(tipo)}
+                                          className="flex items-center gap-1 lg:gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg font-semibold text-xs text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100 transition-all flex-shrink-0"
+                                          title="Previsualizar plantilla"
+                                        >
+                                          <Eye className="w-3.5 h-3.5" />
+                                          <span className="hidden lg:inline">Ver</span>
+                                        </button>
+                                        <button
+                                          onClick={() => handleDescargarPlantilla(tipo.plantilla)}
+                                          className="flex items-center gap-1 lg:gap-1.5 px-2.5 lg:px-3 py-1.5 rounded-lg font-semibold text-xs text-white transition-all hover:shadow-lg flex-shrink-0"
+                                          style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)' }}
+                                        >
+                                          <Download className="w-3.5 h-3.5" />
+                                          <span className="hidden lg:inline">Descargar</span>
+                                        </button>
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
@@ -499,53 +517,26 @@ export function SeccionPlantillasOficiosUnificada({
         </div>
       </div>
 
-      {/* Modal Vista Detalles - Implementación similar a Autos */}
+      {/* Modal Visor de Plantillas */}
       {vistaDetalles && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" style={{ zIndex: 1000 }}>
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
-          >
-            <div className="border-b border-gray-200 px-4 lg:px-5 py-3 lg:py-4 flex items-center justify-between">
-              <div className="flex-1 min-w-0 mr-3">
-                <h3 className="text-base lg:text-lg font-bold text-gray-900 truncate">{vistaDetalles.nombre}</h3>
-                <p className="text-xs lg:text-sm text-gray-600 mt-0.5 truncate">
-                  {CATEGORIAS_OFICIOS[vistaDetalles.categoria].nombre}
-                </p>
-              </div>
-              <button
-                onClick={() => setVistaDetalles(null)}
-                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors flex-shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-4 lg:p-5 overflow-y-auto max-h-[calc(90vh-120px)]">
-              <div className="bg-purple-50 border-l-4 border-purple-500 p-3 rounded mb-4">
-                <p className="text-xs lg:text-sm text-purple-900">{vistaDetalles.descripcion}</p>
-              </div>
-              <h4 className="text-xs font-bold text-gray-700 mb-2">
-                PLANTILLAS ({vistaDetalles.plantilla ? 1 : 0})
-              </h4>
-              {vistaDetalles.plantilla && (
-                <div key={vistaDetalles.plantilla.id} className="bg-gray-50 border p-3 rounded-lg mb-2 flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900">{vistaDetalles.plantilla.nombre}</p>
-                    <p className="text-xs text-gray-600">{vistaDetalles.plantilla.nombreArchivo} • {formatBytes(vistaDetalles.plantilla.tamano)}</p>
-                  </div>
-                  <button
-                    onClick={() => handleDescargarPlantilla(vistaDetalles.plantilla)}
-                    className="ml-3 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-semibold hover:bg-green-700"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        </div>
+        <ModalVisorPlantilla
+          isOpen={!!vistaDetalles}
+          onClose={() => setVistaDetalles(null)}
+          titulo={vistaDetalles.nombre}
+          subtitulo={CATEGORIAS_OFICIOS[vistaDetalles.categoria]?.nombre}
+          descripcion={vistaDetalles.descripcion}
+          tipoPlantilla="oficio"
+          plantillas={
+            vistaDetalles.plantillas && vistaDetalles.plantillas.length > 0
+              ? vistaDetalles.plantillas
+              : (vistaDetalles.plantilla ? [vistaDetalles.plantilla] : [])
+          }
+          categoriaBadge={{
+            label: CATEGORIAS_OFICIOS[vistaDetalles.categoria]?.nombre.replace('Oficios de ', '') || vistaDetalles.categoria,
+            color: CATEGORIAS_OFICIOS[vistaDetalles.categoria]?.color || '#8B5CF6'
+          }}
+          colorTema={CATEGORIAS_OFICIOS[vistaDetalles.categoria]?.color || '#8B5CF6'}
+        />
       )}
 
       {/* Modal Guía - Similar a Autos */}

@@ -75,17 +75,19 @@ vi.mock('../services/api/viaticosService', () => ({
 vi.mock('../services/api/authService', () => ({
   authService: {
     getCurrentUserSync: vi.fn(() => ({
-      userId: 'usr-analista-01',
-      username: 'analista.viaticos',
+      userId: 'usr-jefe-01',
+      username: 'jefe.dependencia',
       firstName: 'Diana',
       lastName: 'Pérez',
-      role: 'ANALISTA_VIATICOS',
+      role: 'JEFE_DEPENDENCIA',
     })),
     isSuperAdmin: vi.fn(() => false),
+    canCancelarComision: vi.fn(() => true),
   },
 }));
 
 import viaticosService from '../services/api/viaticosService';
+import { authService } from '../services/api/authService';
 
 describe('CancelarComisionModal — RF-AUT-003 (Etapa 6)', () => {
   const onClose = vi.fn();
@@ -221,5 +223,30 @@ describe('CancelarComisionModal — RF-AUT-003 (Etapa 6)', () => {
     expect(
       screen.queryByRole('button', { name: /Confirmar Cancelación/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it('bloquea la cancelación si el usuario no tiene permisos de Jefe de Dependencia', async () => {
+    vi.mocked(authService.canCancelarComision).mockReturnValueOnce(false);
+    render(
+      <CancelarComisionModal
+        solicitud={mockSolicitudCurso}
+        isOpen={true}
+        onClose={onClose}
+        onSuccess={onSuccess}
+      />,
+    );
+
+    const textarea = screen.getByLabelText(/Motivo detallado de la cancelación/i);
+    fireEvent.change(textarea, { target: { value: 'Cancelación solicitada por motivo de fuerza mayor' } });
+
+    const submitBtn = screen.getByRole('button', { name: /Confirmar Cancelación/i });
+    fireEvent.click(submitBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Solo el Jefe de Dependencia o un administrador está autorizado para cancelar la comisión/i),
+      ).toBeInTheDocument();
+    });
+    expect(viaticosService.cancelarComision).not.toHaveBeenCalled();
   });
 });

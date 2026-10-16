@@ -212,6 +212,11 @@ export interface Comisionado {
   cuentasBancarias?: CuentaBancariaComisionado[];
   cargos?: CargoComisionado[];
   solicitudesPendientes?: SolicitudPendiente023[];
+  esUsuario?: boolean;
+  usuarioId?: string | null;
+  rolesUsuario?: string[];
+  idPersona?: string | null;
+  tieneRolComisionado?: boolean;
 }
 
 export interface DocumentoSoporte {
@@ -387,6 +392,7 @@ export interface SolicitudListaResponse {
   requiereTiquetes: boolean;
   montoViaticos: number;
   montoGastosViaje: number;
+  montoTotal?: number;
   diasComision: number;
   estadoSolicitud: string;
   radicadoFueraJornada: boolean;
@@ -456,12 +462,20 @@ export interface CrearObligacionDto {
 export interface ProcesarPagoDto {
   fechaPago: string;
   valorPagado: number;
+  costoEstimadoTiquete?: number;
   soportePagoPath?: string;
   soporteDesembolsoPath?: string;
   numeroOrdenPago?: string;
   comprobantePago?: string;
   observacionesPago?: string;
   modalidadPago?: 'AVANCE' | 'RECONOCIMIENTO_POSTERIOR' | string;
+  otp?: string;
+  verificationId?: string;
+  certificadoId?: string;
+  hashSha256?: string;
+  firmaImagen?: string;
+  nombreFirmante?: string;
+  cargoFirmante?: string;
 }
 
 export type OrigenReintegro = 'COMISION_NO_REALIZADA' | 'VIAJE_MENOR';
@@ -535,6 +549,9 @@ export interface SolicitudViatico {
   montoSolicitadoViaticos: number;
   montoSolicitadoGastosViaje: number;
   montoTotalEstimado: number;
+  montoViaticos?: number;
+  montoGastosViaje?: number;
+  costoEstimadoTiquete?: number;
   estado: EstadoSolicitudViatico;
   extemporanea: boolean;
   radicadoFueraJornada: boolean;
@@ -577,6 +594,11 @@ export interface SolicitudViatico {
   numeroOrdenPago?: string | null;
   observacionesPago?: string | null;
   pagadoPorId?: string | null;
+  consecutivoUnico?: string | null;
+  montoTotal?: number | null;
+  observacionesRp?: string | null;
+  soporteRpPath?: string | null;
+  camposAdicionales?: Record<string, any> | null;
 }
 
 /** Registro de notificación formal enviada al área de SST (RF-PAG-002) */
@@ -1250,8 +1272,15 @@ export interface ExpedirRpPayload {
   fechaRp: string;
   valorComprometido: number;
   rubro: string;
+  rubroPresupuestal?: string;
   codigoRp?: string;
+  soporteRpPath?: string;
   observaciones?: string;
+  otp?: string;
+  verificationId?: string;
+  certificadoId?: string;
+  hashSha256?: string;
+  firmaImagen?: string;
 }
 
 export interface ItemCargaMasivaRp {
@@ -1306,7 +1335,9 @@ export type TipoFirmaAprobacion =
   | 'GERENTE_PROYECTO'
   | 'ENLACE_ELABORO'
   | 'ANALISTA'
-  | 'CONTROL_VIATICOS';
+  | 'CONTROL_VIATICOS'
+  | 'PRESUPUESTO'
+  | 'TESORERIA';
 
 export interface FirmaAprobacionRegistrada {
   tipo: TipoFirmaAprobacion;

@@ -12,11 +12,12 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Upload, File, Download, Trash2, Edit2, Plus, AlertCircle, 
-  Save, Loader2, Files, Clock, Info
+  Save, Loader2, Files, Clock, Info, Eye
 } from 'lucide-react';
 import { toast } from 'sonner';
 import disciplinaryService from '../../../../services/api/disciplinary.service';
 import type { TipoOficio, PlantillaArchivo } from './SeccionPlantillasOficiosUnificada';
+import { ModalVisorPlantilla } from './ModalVisorPlantilla';
 
 interface ModalGestionarPlantillasOficioProps {
   tipoOficio: TipoOficio;
@@ -39,6 +40,7 @@ export function ModalGestionarPlantillasOficio({
   
   const [modalAgregarPlantilla, setModalAgregarPlantilla] = useState(false);
   const [plantillaEditando, setPlantillaEditando] = useState<PlantillaArchivo | null>(null);
+  const [plantillaParaVer, setPlantillaParaVer] = useState<PlantillaArchivo | null>(null);
   const [guardando, setGuardando] = useState(false);
 
   // Actualizar plantillas cuando cambie tipoOficio
@@ -155,6 +157,8 @@ export function ModalGestionarPlantillasOficio({
               
               plantilla.url = uploadedData.plantilla || (uploadedData as any)?.data?.plantilla || plantilla.url;
               plantilla.nombre = uploadedData.nombre_plantilla || (uploadedData as any)?.data?.nombre_plantilla || plantilla.nombre;
+              plantilla.nombreArchivo = fileToUpload.name;
+              (plantilla as any).yaSincronizado = true;
               plantilla.file = undefined;
             }
           } catch (uploadError) {
@@ -341,6 +345,17 @@ export function ModalGestionarPlantillasOficio({
                                 />
                               </button>
 
+                              {(plantilla.url || plantilla.file) && (
+                                <button
+                                  onClick={() => setPlantillaParaVer(plantilla)}
+                                  disabled={guardando}
+                                  className="p-1.5 rounded-lg hover:bg-purple-50 text-purple-600 transition-colors disabled:opacity-50"
+                                  title="Previsualizar"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                              )}
+
                               <button
                                 onClick={() => handleDescargarPlantilla(plantilla)}
                                 disabled={guardando || !plantilla.url}
@@ -437,6 +452,20 @@ export function ModalGestionarPlantillasOficio({
             setPlantillaEditando(null);
           }}
           plantillaEdicion={plantillaEditando}
+        />
+      )}
+
+      {/* Modal Visor de Plantilla */}
+      {plantillaParaVer && (
+        <ModalVisorPlantilla
+          isOpen={!!plantillaParaVer}
+          onClose={() => setPlantillaParaVer(null)}
+          titulo={tipoOficio.nombre}
+          subtitulo={`Plantilla: ${plantillaParaVer.nombre}`}
+          descripcion={plantillaParaVer.descripcion || tipoOficio.descripcion}
+          tipoPlantilla="oficio"
+          plantillas={[plantillaParaVer]}
+          colorTema="#8B5CF6"
         />
       )}
     </>

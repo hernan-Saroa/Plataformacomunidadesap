@@ -98,6 +98,22 @@ export interface TipoProceso {
   updatedAt?: string;
 }
 
+/** Auditoría programada con un proceso del Universo Auditable (EFDS-2281) */
+export interface AuditoriaDelProcesoUniverso {
+  id: string;
+  codigo: string | null;
+  nombre: string | null;
+  fase: string | null;
+}
+
+/** Qué pasa con las auditorías del proceso si se elimina su evaluación (EFDS-2281) */
+export interface ImpactoEliminacionEvaluacion {
+  proceso: string | null;
+  vigencia: number;
+  porArchivar: AuditoriaDelProcesoUniverso[];
+  iniciadas: AuditoriaDelProcesoUniverso[];
+}
+
 /**
  * Evaluación de Proceso DAFP
  * Permite múltiples evaluaciones por proceso con diferentes vigencias/fechas
@@ -360,6 +376,8 @@ export interface FilaProgramaAnual {
   fechaFin: string | null;
   /** Lunes de las semanas sacadas del cronograma; el Excel no las pinta (EFDS-2132) */
   semanasExcluidas?: string[];
+  /** Columna "Unidad Auditable" (EFDS-2316). Las versiones viejas no la traen. */
+  unidadesAuditables?: string[];
 }
 
 export interface CambioProgramaAnual {
@@ -767,10 +785,20 @@ class ControlInternoService {
   }
 
   /**
-   * Elimina una evaluación de proceso
+   * Elimina una evaluación de proceso. Si el proceso tiene auditorías programadas en
+   * Programa Anual, el servidor solo la elimina con archivarAuditorias y las archiva (EFDS-2281).
    */
-  async deleteEvaluacion(id: string): Promise<void> {
-    return client.delete(`/universo-auditorias/evaluaciones/${id}`);
+  async deleteEvaluacion(id: string, opciones: { archivarAuditorias?: boolean } = {}): Promise<{ archivadas?: AuditoriaDelProcesoUniverso[] } | void> {
+    const query = opciones.archivarAuditorias ? '?archivarAuditorias=true' : '';
+    return client.delete(`/universo-auditorias/evaluaciones/${id}${query}`);
+  }
+
+  /**
+   * Auditorías programadas con el proceso de la evaluación: las que se archivarían al
+   * eliminarla y las que ya empezaron e impiden eliminarla (EFDS-2281).
+   */
+  async getImpactoEliminacionEvaluacion(id: string): Promise<ImpactoEliminacionEvaluacion> {
+    return client.get<ImpactoEliminacionEvaluacion>(`/universo-auditorias/evaluaciones/${id}/impacto-eliminacion`);
   }
 
   /**

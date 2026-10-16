@@ -22,6 +22,7 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
@@ -126,14 +127,30 @@ export class EvaluacionProcesoController {
   }
 
   /**
-   * DELETE /universo-auditorias/evaluaciones/:id
-   * Inactiva una evaluación (soft delete)
+   * GET /universo-auditorias/evaluaciones/:id/impacto-eliminacion
+   * Auditorías programadas con el proceso que se archivarían o que impiden eliminarlo (EFDS-2281)
+   */
+  @Get(':id/impacto-eliminacion')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions(CIP.AUDITORIA_DELETE)
+  impactoEliminacion(@Param('id') id: string) {
+    return this.evaluacionService.impactoEliminacion(id);
+  }
+
+  /**
+   * DELETE /universo-auditorias/evaluaciones/:id?archivarAuditorias=true
+   * Inactiva una evaluación (soft delete). Si el proceso tiene auditorías programadas
+   * en Programa Anual, solo se elimina con archivarAuditorias=true y esas auditorías se
+   * archivan; si alguna ya empezó, responde 409 (EFDS-2281).
    */
   @Delete(':id')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @Permissions(CIP.AUDITORIA_DELETE)
-  @HttpCode(HttpStatus.NO_CONTENT)
-  delete(@Param('id') id: string) {
-    return this.evaluacionService.delete(id);
+  @HttpCode(HttpStatus.OK)
+  delete(@Param('id') id: string, @Query('archivarAuditorias') archivarAuditorias: string, @Req() req: any) {
+    return this.evaluacionService.delete(id, {
+      archivarAuditorias: archivarAuditorias === 'true',
+      usuarioId: req?.user?.userId,
+    });
   }
 }
