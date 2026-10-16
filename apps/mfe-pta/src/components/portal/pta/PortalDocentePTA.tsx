@@ -365,7 +365,23 @@ export function ComponentApprovalBar({ estado, componentesAprobacion = [], pta }
    * `componentes_estado`.
    */
   const getStatusForComponent = (collapsedKey: string) => {
-    return getPtaComponentDisplayStatus({ ...pta, estado }, collapsedKey, componentesAprobacion);
+    const status = getPtaComponentDisplayStatus({ ...pta, estado }, collapsedKey, componentesAprobacion);
+    if (collapsedKey !== 'academica' || status !== 'no_iniciado') return status;
+
+    // La Docencia concertada puede estar aprobada aun cuando el PTA es Borrador.
+    // El estado global no debe ocultar la decisión que ya registró Programación.
+    const docencia = componentesAprobacion.filter((fila) =>
+      String(fila?.componente || '').startsWith('academica'),
+    );
+    const concertadas = docencia.filter((fila) => fila?.scope === 'programacion');
+    if (concertadas.length === 0) return status;
+    const aplicables = docencia.filter((fila) =>
+      fila?.scope === 'programacion' || Number(fila?.horas || 0) > 0,
+    );
+    if (aplicables.some((fila) => String(fila?.estado || '').toLowerCase() === 'devuelto')) return 'devuelto';
+    return aplicables.every((fila) => String(fila?.estado || '').toLowerCase() === 'aprobado')
+      ? 'aprobado'
+      : 'pendiente';
   };
 
   return (

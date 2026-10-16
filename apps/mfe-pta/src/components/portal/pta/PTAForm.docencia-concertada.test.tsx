@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PTAForm } from './PTAForm';
 import { getRegimenDocencia } from '../../../services/api/docenciaConcertadaApi';
-import { getComponentesAprobacion, getPTAById, savePTA } from '../../../services/api/ptaApi';
+import { getActivePeriodoAcademico, getComponentesAprobacion, getPTAById, savePTA } from '../../../services/api/ptaApi';
 
 vi.mock('../../../../../shell/src/services/api', () => ({ getBaseURL: () => 'http://localhost' }));
 vi.mock('../../../services/api/docenciaConcertadaApi', () => ({ getRegimenDocencia: vi.fn() }));
@@ -17,7 +17,7 @@ vi.mock('../../../services/api/ptaApi', () => {
     getCatalogoRolesInvestigacion: empty, getCatalogoSeccionesExtension: empty,
     getPeriodosAcademicos: empty, getRUNDDocente: empty, getComponentesAprobacion: vi.fn(),
     getCatalogoProgramasCascada: empty, getOfertaCetap: empty,
-    getActivePeriodoAcademico: () => Promise.resolve({ codigo: '2050-2' }),
+    getActivePeriodoAcademico: vi.fn().mockResolvedValue({ codigo: '2050-2' }),
     getBancoDocenteById: () => Promise.resolve({ success: true, data: { horas_programables: 800 } }),
     getConfiguracionPTAGlobal: () => Promise.resolve({ success: true, data: {} }),
     requestPTAFirmaDocenteCode: vi.fn(), verifyPTAFirmaDocenteCode: vi.fn(),
@@ -40,6 +40,7 @@ const pta = { id: 'pta-1', estado: 'Borrador', periodo: '2050-2', horas_a_progra
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getRegimenDocencia).mockResolvedValue('programacion');
+  vi.mocked(getActivePeriodoAcademico).mockResolvedValue({ codigo: '2050-2' } as any);
   vi.mocked(getPTAById).mockResolvedValue({ success: true, data: pta } as any);
   vi.mocked(getComponentesAprobacion).mockResolvedValue({ success: true, data: [
     { componente: 'academica_pregrado', estado: 'aprobado', scope: 'programacion' },
@@ -74,11 +75,32 @@ describe('Docencia del PTA según el régimen del backend', () => {
     expect(screen.getByText(/Asignatura 1/)).toBeTruthy();
   });
 
-  it('oculta el formulario manual si falla la consulta del régimen', async () => {
+  it('si falla el régimen conserva la docencia manual y permite guardar', async () => {
     vi.mocked(getRegimenDocencia).mockRejectedValue(new Error('503'));
+    vi.mocked(getPTAById).mockResolvedValue({ success: true, data: { ...pta, asignaturas: [] } } as any);
     render(<PTAForm onBack={() => {}} userPersonId="docente-1" ptaId="pta-1" />);
-    expect((await screen.findByRole('alert')).textContent).toMatch(/No se pudo consultar el régimen de Docencia/);
-    expect(screen.queryByRole('button', { name: 'Agregar Asignatura' })).toBeNull();
+    expect(await screen.findByText(/No se pudo confirmar el régimen de Docencia/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Agregar Asignatura' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar Borrador' }));
+    await waitFor(() => expect(savePTA).toHaveBeenCalled());
+  });
+
+  it('si no hay periodo activo permite guardar con el formulario habitual', async () => {
+    vi.mocked(getActivePeriodoAcademico).mockResolvedValue(null as any);
+    render(<PTAForm onBack={() => {}} userPersonId="docente-1" />);
+    expect(await screen.findByText(/No se pudo confirmar el régimen de Docencia/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Agregar Asignatura' })).toBeTruthy();
+    expect(getRegimenDocencia).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar Borrador' }));
+    await waitFor(() => expect(savePTA).toHaveBeenCalled());
+  });
+
+  it('durante la carga muestra el formulario habitual sin aviso transitorio', async () => {
+    vi.mocked(getRegimenDocencia).mockImplementation(() => new Promise(() => {}));
+    render(<PTAForm onBack={() => {}} userPersonId="docente-1" ptaId="pta-1" />);
+    expect(await screen.findByRole('button', { name: 'Agregar Asignatura' })).toBeTruthy();
+    expect(screen.queryByText(/Consultando el régimen de Docencia/)).toBeNull();
+    expect(screen.queryByText(/No se pudo confirmar el régimen de Docencia/)).toBeNull();
   });
 
   it('tras crear el borrador consulta el PTA y muestra la docencia que llenó el backend', async () => {
