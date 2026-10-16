@@ -193,7 +193,6 @@ Con `scope === "programacion"` puedes mostrar "Aprobada en la concertación". En
 | `pendiente_pta_firmado` | El PTA está firmado o cerrado. No se modifica: queda pendiente y se reporta |
 | `pendiente_pta_flujo_anterior` | El PTA se envió antes del corte, así que sigue con el flujo de hoy |
 | `pendiente_pta_en_aprobacion` | Se aplica cuando el PTA vuelva al docente |
-| `pendiente_docencia_territorial` | La docencia incluye asignaturas de una Dirección Territorial. La concertación por nivel no aprueba `academica_territorial` |
 | `null`, con `errorNotificacion` | El PTA no respondió. Se puede reintentar |
 
 ### 8.4 Qué modo mostrar en la pantalla del PTA — `GET /pta/api/v1/contrato-programacion/v1/docencia/regimen`
@@ -273,7 +272,7 @@ Respuestas **400** que conviene mostrar tal cual:
 
 Si el docente envía con un grupo sin oferta, sin territorial que cruce, o con un aula de otro CETAP, recibe **409**, y el mensaje lista cada grupo con su motivo. Ejemplo: *"No se puede concertar sin saber dónde se dicta cada grupo (de ahí sale quién aprueba): Fundamentos de economía pública grupo 1 (sin oferta CETAP)."*
 
-**Límite actual:** si la oferta es de una Dirección Territorial (no de Sede Central), la concertación se aprueba, pero el PTA la deja `pendiente_docencia_territorial` (sección 8.3). Aplicarla exige cambiar el PTA, y está reportado.
+**Dirección Territorial (desde el 16 de octubre):** si la oferta no es de Sede Central, la concertación exige los permisos territoriales del PTA (`pta.{review,approve}.academica.territorial.<nivel>`). En el PTA se aplica por par (territorial, nivel) en `PtaTerritorialApproval`, con `scope: programacion`. Con todos los pares aprobados, `academica_territorial` aparece aprobado en `componentes-aprobacion`, igual que `academica_<nivel>` (sección 8.2).
 
 ## 10. Verificación de tu pantalla de Docencia del PTA (`5c0b25636`, 14 de octubre)
 
@@ -291,3 +290,28 @@ Tres observaciones, para que decidas:
 3. En la lista «Mi Plan de Trabajo Académico», la tarjeta del PTA dice «Docencia — No iniciado» aunque la Docencia ya está aprobada en la concertación (`componentes-aprobacion`: `academica_<nivel>` aprobado con `scope: programacion`).
 
 Dato local que no viene de tu pantalla: el docente de prueba tiene `horasAsignables = 0` en el banco de docentes, así que el formulario muestra «Límite excedido 172h / 0h».
+
+## 11. Verificación del selector de oferta (`2110bbf95`) y del formulario del PTA (`2a9718618`), 16 de octubre
+
+Los dos están integrados en `ronda-claude` y `ronda-pruebas`.
+
+**Selector, verificado con el servidor real como `qa.programacion` en 2050-1 (APT, ASIG-00146):**
+- la búsqueda «Neiva» encuentra 1 de 271 ofertas;
+- crea el grupo con la oferta de Neiva (165), la cambia a Acevedo (153), la quita (`null`) y la vuelve a poner;
+- una oferta de otro programa y un aula de otro CETAP responden 400;
+- cambiar a Sede Central un grupo con sesión presencial en un aula de Neiva responde 400, y la pantalla muestra el aviso: *«Las aulas PRUEBA-CODEX-HUI del grupo no son del CETAP CET-0288 (Sede Central)»*;
+- sin errores de JavaScript.
+
+**Formulario del PTA, verificado con el servidor real:**
+- **apagada**, la sección Docencia es idéntica a la de hoy;
+- con la concertación **encendida** y Programación Académica caída, cae al formulario de hoy con tu aviso discreto, y el servidor no guarda (503): el PTA queda intacto;
+- con la concertación encendida, el servidor rechaza agregar a mano (409), cambiar horas concertadas (409) y enviar sin Docencia concertada.
+
+Observaciones para que decidas:
+1. **Crear grupos depende de la consulta de ofertas.** Si `GET /grupos/ofertas-cetap` falla o está cargando, «Crear grupos» queda deshabilitado, aunque la oferta es opcional al crear.
+2. **Etiqueta repetida.** El campo de búsqueda y la lista comparten el nombre accesible («Oferta CETAP para grupos nuevos»): un lector de pantalla los anuncia igual.
+3. **Valor sin guardar tras un rechazo.** Después de un 400 al guardar la ubicación, la lista sigue mostrando la oferta rechazada, mientras el servidor conserva la anterior.
+4. **Entorno de la prueba.** `GestionGrupos.test.tsx` falla con «document is not defined» si se corre sin `--environment jsdom`, porque este MFE no tiene configuración de Vitest. Con `// @vitest-environment jsdom` al inicio del archivo pasa en cualquier corrida.
+5. **tsc del MFE de Programación Académica pasa de 102 a 104** por el ícono Lucide `MapPin` (TS2786, el problema transversal que ya conoces).
+6. **El aviso promete algo que el servidor no permite.** Con Programación Académica caída, el aviso dice «Puedes continuar con el formulario habitual», pero en un periodo dentro del corte el servidor no guarda (503) hasta que Programación Académica responda.
+

@@ -112,7 +112,7 @@ Se **descartó** la tabla de equivalencias (migración 038). Nunca se subió ni 
 
 **La concertación hace exactamente eso.** La territorial de cada grupo sale de su **oferta CETAP** (migración 040), que crea la carga masiva: CETAP → `direccion_territorial.codigo` (`DT-009`) = `auth.seccionales.cod_seccional`, que escribe la carga masiva de estructura. Un grupo sin oferta no se concerta (falla cerrado). Si el grupo es presencial, sus aulas deben ser del mismo CETAP. Para los grupos existentes: los del modelo legado no tienen oferta y quedan fuera del corte; en los de plataforma se sugiere la oferta solo si es unívoca (en local, 1 de 2) y el resto se elige con el selector de Codex.
 
-Viaja al PTA como `territorial_id`. Si una asignatura es de una Dirección Territorial, el PTA no la aplica desde la concertación por nivel: queda `pendiente_docencia_territorial`.
+Viaja al PTA como `territorial_id`. Si una asignatura es de una Dirección Territorial, el PTA la aplica por par (territorial, nivel) en `academica_territorial` (sección 6.2).
 
 **Huecos del PTA (reportados, no resueltos con datos a mano):**
 
@@ -158,15 +158,21 @@ Los comparten los dos módulos, porque la concertación decide igual que el PTA.
 
 | # | Hallazgo | Dato real (base local) |
 |---|---|---|
-| 1 | **Un aprobador sin seccional en Personas aprueba cualquier territorial.** El PTA solo restringe si la cuenta tiene seccional (`!auth.territorialIds?.length` → sin restricción) | Los **3 aprobadores reales de Docencia** (1 APROBADOR_DOCENCIA y 2 JEFATURA_TERRITORIAL) **no tienen seccional** |
+| 1 | **Un aprobador sin seccional en Personas aprueba cualquier territorial.** El PTA solo restringe si la cuenta tiene seccional (`!auth.territorialIds?.length` → sin restricción). **Decisión de Tomás (16 de octubre): se deja así por ahora, registrado en EFDS-2315; no es un defecto pendiente** | Los **3 aprobadores reales de Docencia** (1 APROBADOR_DOCENCIA y 2 JEFATURA_TERRITORIAL) **no tienen seccional** |
 | 2 | **Dos catálogos de seccionales en auth que no se cruzan.** Personas usa los heredados (10 "Seccional Huila"). La carga masiva de estructura crea los suyos (900022 `DT-009` "HUILA"), y de ellos salen las sedes y las ofertas CETAP. Ni el id ni el nombre normalizado coinciden: un aprobador de Huila no cruza con una asignatura dictada en Huila | 176 de 352 docentes tienen seccional, todos del catálogo heredado. Las 325 ofertas de 2050-1 apuntan al catálogo de la carga masiva |
 
-### 6.2 Cambio del PTA necesario para la Docencia territorial (detenido, para decisión)
+### 6.2 Docencia de las Direcciones Territoriales — CONSTRUIDO (16 de octubre), apagado
 
-Programación Académica ya sabe dónde se dicta cada grupo (su oferta CETAP) y envía la territorial al PTA. Pero una asignatura de una Dirección Territorial va en el PTA al componente `academica_territorial`, y la concertación no la puede aprobar sin cambiar el PTA: hoy queda `pendiente_docencia_territorial` (verificado con el servidor real). Hace falta:
-1. aplicar en `PtaTerritorialApproval` (por territorial y nivel), no en `PtaComponentApproval`;
-2. que un reenvío no borre esas filas, lo que requiere una marca (`scope`) que esa tabla no tiene;
-3. concertar las asignaturas territoriales con `pta.approve.academica.territorial.<nivel>` (los asigna la migración 397) y la regla `assertAlcanceTerritorial`. La unidad de concertación pasa a ser docente, periodo, territorial y nivel.
+Tomás aprobó construirlo sobre el PTA en esta rama, que todavía no va a micro-frontend. Va bajo el mismo interruptor:
+1. **Migración 668:** `scope`/`scope_id` en `PtaTerritorialApproval`. La entidad no mapea esas columnas, así que con la concertación apagada el PTA no hace ninguna consulta nueva.
+2. **Aplicación por par.** Cada asignatura de una seccional que no es Sede Central (la misma regla que `clasificarAsignaturasDocencia`) aprueba su par (territorial, nivel) con `scope: programacion`. Con todos los pares aprobados se aprueba el consolidado `academica_territorial`, como cuando el PTA aprueba el último par.
+3. **Reenvío y reemplazo.** Un reenvío no borra los pares concertados. Si otra concertación del mismo nivel reemplaza la Docencia, sus pares viejos se retiran. Si ya no hay Docencia territorial, se retira el consolidado de la concertación.
+4. **Permisos en Programación Académica.** Las asignaturas territoriales exigen `pta.{review,approve}.academica.territorial.<nivel>`, por parte, con la regla geográfica de siempre.
+5. **Ajuste de la auto-aprobación "Sistema".** La de un componente de Docencia vacío solo se bloquea mientras el PTA espera su primera Docencia concertada. Antes, un docente con solo Docencia territorial dejaba `academica_<nivel>` sin ninguna aprobación.
+
+Está verificado contra la base real (por par, mixta, idempotente y con reemplazo; los canarios se confirmaron) y con el servidor real: se aplica por par y en el consolidado, y el PTA rechaza aprobar `academica_territorial` (409).
+
+**En local**, los permisos territoriales por nivel los asigna la migración 397, que no está aplicada porque toca permisos de roles. Hoy solo SUPER_ADMIN, con `pta.approve.all`, decide la Docencia territorial.
 
 ### 6.3 Resto
 

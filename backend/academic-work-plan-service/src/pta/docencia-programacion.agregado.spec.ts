@@ -122,11 +122,60 @@ describe('EFDS-2315 :: aplicar la decisión al PTA (agregado real, en transacci�
           SET asignaturas = jsonb_set(asignaturas, '{0,territorialId}', to_jsonb($2::text))
         WHERE id_concertacion = $1`, [ID_CONCERTACION, idSeccional]);
 
-    caso('asignatura de una Dirección Territorial: no se aplica (academica_territorial no la aprueba la concertación)', tipo, async () => {
+    const paresTerritoriales = async () => (await client!.query(
+      `SELECT territorial_id, nivel, estado, actor_rol, scope, scope_id FROM academic_work_plan."PtaTerritorialApproval"
+        WHERE pta_id::text = $1 ORDER BY territorial_id`, [ID_PTA])).rows;
+
+    caso('Docencia de una Dirección Territorial: se aplica por par (territorial, nivel) y aprueba el consolidado', tipo, async () => {
       await crearPta('BORRADOR');
-      await ubicar('10'); // Seccional Huila
-      expect(await aplicarDecision(q, ID_CONCERTACION)).toBe('pendiente_docencia_territorial');
-      expect(await aprobaciones()).toEqual([]);
+      await ubicar('10'); // Seccional Huila: no es Sede Central
+      expect(await aplicarDecision(q, ID_CONCERTACION)).toBe('aplicada');
+      expect(await paresTerritoriales()).toEqual([
+        { territorial_id: '10', nivel: 'pregrado', estado: 'aprobado', actor_rol: 'concertacion', scope: 'programacion', scope_id: ID_CONCERTACION },
+      ]);
+      // Como en el PTA al aprobar el último par: el consolidado academica_territorial queda aprobado.
+      // academica_pregrado no se toca: no tiene asignaturas (el PTA lo resuelve como componente vacío).
+      expect(await aprobaciones()).toEqual([
+        { componente: 'academica_territorial', estado: 'aprobado', scope: 'programacion', scope_id: ID_CONCERTACION },
+      ]);
+      // Idempotente: aplicar de nuevo no duplica filas.
+      expect(await aplicarDecision(q, ID_CONCERTACION)).toBe('aplicada');
+      expect(await paresTerritoriales()).toHaveLength(1);
+      expect(await aprobaciones()).toHaveLength(1);
+    });
+
+    caso('Docencia mixta (Sede Central y territorial): cada parte en su componente, sin doble aprobación', tipo, async () => {
+      await crearPta('BORRADOR');
+      // Segunda asignatura de la misma concertación, dictada en Huila.
+      await client!.query(
+        `UPDATE academic_work_plan.docencia_concertada
+            SET asignaturas = asignaturas || jsonb_build_array(jsonb_set(asignaturas->0, '{territorialId}', '"10"') || '{"asignaturaId":"2","codigo":"ASIG-00002"}'::jsonb)
+          WHERE id_concertacion = $1`, [ID_CONCERTACION]);
+      await ubicar('1'); // la primera, en Sede Central
+      expect(await aplicarDecision(q, ID_CONCERTACION)).toBe('aplicada');
+      const comp = (await aprobaciones()).map((r) => r.componente).sort();
+      expect(comp).toEqual(['academica_pregrado', 'academica_territorial']);
+      expect((await paresTerritoriales()).map((r) => [r.territorial_id, r.nivel, r.estado])).toEqual([['10', 'pregrado', 'aprobado']]);
+      // Otra concertación del MISMO nivel reemplaza la docencia: el par de la anterior no queda colgado.
+      const OTRA = '00000000-0000-4000-8000-00000000b3f5';
+      await client!.query(
+        `INSERT INTO academic_work_plan.docencia_concertada
+           (id_concertacion, documento_docente, periodo, nivel, horas, huella, asignaturas, firmas, registrada_por)
+         SELECT $2, documento_docente, periodo, nivel, horas, huella, jsonb_build_array(asignaturas->0), firmas, registrada_por
+           FROM academic_work_plan.docencia_concertada WHERE id_concertacion = $1`, [ID_CONCERTACION, OTRA]);
+      expect(await aplicarDecision(q, OTRA)).toBe('aplicada');
+      expect(await paresTerritoriales()).toEqual([]);
+      // Y si la original vuelve con la territorial, el par vuelve.
+      expect(await aplicarDecision(q, ID_CONCERTACION)).toBe('aplicada');
+      expect((await paresTerritoriales()).map((r) => r.territorial_id)).toEqual(['10']);
+      // Si la concertación vuelve solo con la de Sede Central, el par territorial se retira.
+      await client!.query(
+        `UPDATE academic_work_plan.docencia_concertada SET asignaturas = jsonb_build_array(asignaturas->0) WHERE id_concertacion = $1`,
+        [ID_CONCERTACION]);
+      expect(await aplicarDecision(q, ID_CONCERTACION)).toBe('aplicada');
+      expect(await paresTerritoriales()).toEqual([]);
+      // Sin Docencia territorial, el consolidado de la concertación se retira (no queda aprobado "por" ella).
+      expect((await aprobaciones()).map((r) => r.componente)).toEqual(['academica_pregrado']);
     });
 
     caso('asignatura de Sede Central: se aplica, con su territorial_id', tipo, async () => {

@@ -115,7 +115,26 @@ export function protegerAsignaturas(regimen: Regimen, dsExistente: any, entrante
     throw new ConflictException(
       'En este periodo la docencia viene de Programación Académica: no se agregan asignaturas en el PTA.');
   }
-  return asignaturasDe(dsExistente).filter((a) => a?.origen === ORIGEN_PROGRAMACION);
+  const guardadas = asignaturasDe(dsExistente).filter((a) => a?.origen === ORIGEN_PROGRAMACION);
+  const clave = (a: any) => `${a?.id_concertacion ?? ''}|${a?.asignatura_id ?? ''}`;
+  const porClave = new Map(guardadas.map((a) => [clave(a), a]));
+  for (const a of entrantes.filter((x) => x?.origen === ORIGEN_PROGRAMACION)) {
+    const g = porClave.get(clave(a));
+    // Marcada "de programación" pero no concertada: es una asignatura a mano.
+    if (!g) {
+      throw new ConflictException(
+        'En este periodo la docencia viene de Programación Académica: no se agregan asignaturas en el PTA.');
+    }
+    // Las horas concertadas no se cambian en el PTA: se rechaza, no se ignora en silencio.
+    const cambia = (campo: string) => a[campo] !== undefined && Number(a[campo]) !== Number(g[campo]);
+    if (cambia('total_horas') || cambia('horas_base')) {
+      throw new ConflictException(
+        `Las horas de ${g.asignatura_codigo ?? g.asignatura_nombre ?? 'la asignatura concertada'} vienen de la concertación: no se cambian en el PTA.`);
+    }
+  }
+  // Lo que se guarda es SIEMPRE lo concertado (lo demás que envíe la pantalla, como
+  // campos de presentación, no altera la docencia de programación).
+  return guardadas;
 }
 
 // ── Aplicar una decisión concertada ──────────────────────────────────────────
@@ -199,22 +218,6 @@ export async function aplicarDecision(q: Queryable, idConcertacion: string): Pro
   if (await regimenDocencia({ periodo: vigente.periodo, estado: vigente.estado, datosEstructurados: vigente.ds }) !== 'programacion') {
     return marcar('pendiente_pta_flujo_anterior', 'El PTA ya se había enviado antes del corte: aprueba su Docencia en el flujo actual.', vigente.id);
   }
-  // Una asignatura dictada en una Dirección Territorial va en el PTA al componente
-  // academica_territorial, que se aprueba por (territorial, nivel) en otra tabla.
-  // La concertación decide por nivel: aplicarla aprobaría el componente
-  // equivocado. No se aplica; queda pendiente y se reporta.
-  const territoriales = (d.asignaturas as any[]).map((a) => a?.territorialId).filter(Boolean).map(String);
-  if (territoriales.length) {
-    const noCentrales: Array<{ id: string }> = await q.query(
-      `SELECT id_seccional::text AS id FROM auth.seccionales
-        WHERE id_seccional::text = ANY($1::text[])
-          AND lower(regexp_replace(nom_seccional, '[^a-zA-Z0-9]', '', 'g')) <> 'sedecentral'`, [territoriales]);
-    if (noCentrales.length) {
-      return marcar('pendiente_docencia_territorial',
-        'La docencia incluye asignaturas de una Dirección Territorial: su aprobación (academica_territorial) no la da la concertación por nivel.',
-        vigente.id);
-    }
-  }
   if (!ESTADOS_EDITABLES.test(estado)) {
     return marcar('pendiente_pta_en_aprobacion', `El PTA está ${vigente.estado}: la docencia nueva se aplica cuando vuelva al docente.`, vigente.id);
   }
@@ -231,6 +234,21 @@ export async function aplicarDecision(q: Queryable, idConcertacion: string): Pro
   await q.query(
     `UPDATE academic_work_plan."PlanTrabajoAcademico" SET "datosEstructurados" = $2::jsonb, "updatedAt" = NOW()
       WHERE id::text = $1`, [vigente.id, JSON.stringify(nuevoDs)]);
+
+  // Como el PTA (clasificarAsignaturasDocencia): una asignatura dictada en una
+  // Dirección Territorial (seccional que no es Sede Central) va al componente
+  // academica_territorial, que se aprueba por par (territorial, nivel).
+  const noCentrales = await seccionalesNoCentrales(q, nuevoDs.asignaturas.map((a: any) => a?.territorial_id));
+  const esTerritorial = (a: any) => noCentrales.has(String(a?.territorial_id ?? ''));
+  const centralesDelNivel = nuevas.filter((a) => !esTerritorial(a));
+  // Siempre: también retira los pares que esta concertación ya no trae.
+  await aplicarTerritorial(q, vigente.id, idConcertacion, d.nivel, nuevoDs, noCentrales);
+  if (!centralesDelNivel.length) {
+    // Todo lo concertado es territorial: academica_<nivel> queda sin contenido y
+    // el PTA lo resuelve como hoy (auto-aprobación de un componente vacío).
+    return marcar('aplicada',
+      manualesQuitadas ? `Se quitaron ${manualesQuitadas} asignatura(s) cargadas a mano antes del corte.` : null, vigente.id);
+  }
   await q.query(
     `INSERT INTO academic_work_plan."PtaComponentApproval"
        (pta_id, componente, estado, aprobador_nombre, aprobador_rol, comentarios, fecha_aprobacion, scope, scope_id)
@@ -244,6 +262,81 @@ export async function aplicarDecision(q: Queryable, idConcertacion: string): Pro
 
   return marcar('aplicada',
     manualesQuitadas ? `Se quitaron ${manualesQuitadas} asignatura(s) cargadas a mano antes del corte.` : null, vigente.id);
+}
+
+/** Seccionales (ids) que NO son Sede Central, comparando como el PTA (nombre normalizado). */
+async function seccionalesNoCentrales(q: Queryable, ids: unknown[]): Promise<Set<string>> {
+  const unicos = [...new Set(ids.filter(Boolean).map(String))];
+  if (!unicos.length) return new Set();
+  const filas: Array<{ id: string; nombre: string | null }> = await q.query(
+    `SELECT id_seccional::text AS id, nom_seccional AS nombre FROM auth.seccionales WHERE id_seccional::text = ANY($1::text[])`,
+    [unicos]);
+  const normalizar = (v: unknown) => String(v || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+  return new Set(filas.filter((f) => normalizar(f.nombre) !== 'sedecentral').map((f) => f.id));
+}
+
+/**
+ * Docencia territorial concertada: una fila aprobada por par (territorial, nivel)
+ * en PtaTerritorialApproval, marcada scope = 'programacion' (migración 668), como
+ * las que deja el PTA al aprobar. Si con eso TODOS los pares territoriales del
+ * PTA quedan aprobados, se aprueba el consolidado academica_territorial, igual
+ * que hace el PTA cuando se aprueba el último par.
+ */
+async function aplicarTerritorial(
+  q: Queryable, idPta: string, idConcertacion: string, nivel: string, ds: any, noCentrales: Set<string>,
+): Promise<void> {
+  const territorialesDelNivel = [...new Set((ds.asignaturas as any[])
+    .filter((a) => a?.origen === ORIGEN_PROGRAMACION && a?.id_concertacion === idConcertacion && noCentrales.has(String(a?.territorial_id)))
+    .map((a) => String(a.territorial_id)))];
+  // La docencia del nivel se reemplazó: los pares concertados de ESE nivel que ya
+  // no están (de esta concertación o de una anterior del mismo nivel) se retiran.
+  await q.query(
+    `DELETE FROM academic_work_plan."PtaTerritorialApproval"
+      WHERE pta_id = $1 AND scope = $2 AND nivel = $3 AND NOT (territorial_id = ANY($4::text[]))`,
+    [idPta, SCOPE_PROGRAMACION, nivel, territorialesDelNivel]);
+  for (const territorialId of territorialesDelNivel) {
+    await q.query(
+      `INSERT INTO academic_work_plan."PtaTerritorialApproval"
+         (pta_id, componente, territorial_id, territorial_nombre, nivel, estado, actor_nombre, actor_rol, comentarios,
+          fecha_decision, scope, scope_id, created_at, updated_at)
+       VALUES ($1, 'academica_territorial', $2,
+               (SELECT nom_seccional FROM auth.seccionales WHERE id_seccional::text = $2), $3, 'aprobado',
+               'Programación Académica', 'concertacion', 'Docencia concertada en Programación Académica',
+               NOW(), $4, $5, NOW(), NOW())
+       ON CONFLICT (pta_id, componente, territorial_id, nivel) DO UPDATE SET
+         estado = 'aprobado', actor_nombre = EXCLUDED.actor_nombre, actor_rol = EXCLUDED.actor_rol,
+         comentarios = EXCLUDED.comentarios, fecha_decision = NOW(), scope = EXCLUDED.scope,
+         scope_id = EXCLUDED.scope_id, updated_at = NOW()`,
+      [idPta, territorialId, nivel, SCOPE_PROGRAMACION, idConcertacion]);
+  }
+  // ¿Quedan aprobados todos los pares territoriales del PTA (de cualquier nivel)?
+  const pares = [...new Set((ds.asignaturas as any[])
+    .filter((a) => noCentrales.has(String(a?.territorial_id)))
+    .map((a) => `${a.territorial_id}|${a.nivel_concertacion ?? 'pregrado'}`))];
+  const aprobados: Array<{ par: string }> = await q.query(
+    `SELECT territorial_id || '|' || nivel AS par FROM academic_work_plan."PtaTerritorialApproval"
+      WHERE pta_id = $1 AND componente = 'academica_territorial' AND estado = 'aprobado'`, [idPta]);
+  const hechos = new Set(aprobados.map((r) => r.par));
+  if (!pares.length) {
+    // Ya no hay Docencia territorial: el consolidado que puso la concertación se
+    // retira; el PTA resuelve el componente vacío como hoy (getComponentesAprobacion).
+    await q.query(
+      `DELETE FROM academic_work_plan."PtaComponentApproval"
+        WHERE pta_id = $1 AND componente = 'academica_territorial' AND scope = $2`, [idPta, SCOPE_PROGRAMACION]);
+    return;
+  }
+  if (pares.every((p) => hechos.has(p))) {
+    await q.query(
+      `INSERT INTO academic_work_plan."PtaComponentApproval"
+         (pta_id, componente, estado, aprobador_nombre, aprobador_rol, comentarios, fecha_aprobacion, scope, scope_id)
+       VALUES ($1, 'academica_territorial', 'aprobado', 'Programación Académica', 'concertacion', $2, NOW(), $3, $4)
+       ON CONFLICT (pta_id, componente) DO UPDATE SET
+         estado = 'aprobado', aprobador_nombre = EXCLUDED.aprobador_nombre, aprobador_rol = EXCLUDED.aprobador_rol,
+         comentarios = EXCLUDED.comentarios, fecha_aprobacion = NOW(), scope = EXCLUDED.scope,
+         scope_id = EXCLUDED.scope_id, updated_at = NOW()`,
+      [idPta, 'Docencia territorial concertada en Programación Académica', SCOPE_PROGRAMACION, idConcertacion]);
+  }
 }
 
 /** Al crear un PTA del régimen nuevo, aplica las decisiones que lo esperaban. */

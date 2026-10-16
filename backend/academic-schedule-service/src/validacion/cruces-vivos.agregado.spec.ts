@@ -43,9 +43,21 @@ describe('EFDS-2307 :: cruces de la programacion viva (agregado real)', () => {
 
   it('la programacion viva no tiene cruces (canario de la regla)', async () => {
     if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
-    const conteo = await servicio().crucesVivos();
-    expect(conteo.cruces).toEqual([]);
-    expect(conteo.total).toBe(0);
+    // Solo la programación REAL. Otras pruebas de agregado (jefatura, periodo
+    // cerrado, publicación) hacen COMMIT de fixtures en periodos 'QA-…' que
+    // contienen cruces controlados a propósito; corriendo en paralelo, este
+    // canario los veía. Se mide cada periodo real por separado.
+    const periodos: Array<{ id: string; codigo: string }> = (await client.query(
+      `SELECT id::text AS id, codigo FROM academic_work_plan.periodo_academico
+       UNION ALL
+       SELECT id_periodo::text, codigo FROM "${S}".periodo_programacion WHERE codigo NOT LIKE 'QA-%'`)).rows;
+    expect(periodos.length).toBeGreaterThan(0);
+    const conCruces: string[] = [];
+    for (const p of periodos) {
+      const conteo = await servicio().crucesVivos(p.id);
+      if (conteo.total !== 0) conCruces.push(`${p.codigo}: ${JSON.stringify(conteo.cruces)}`);
+    }
+    expect(conCruces).toEqual([]);
   });
 
   it('el conteo detecta cruces de aula, docente y grupo, y acota por periodo', async () => {
