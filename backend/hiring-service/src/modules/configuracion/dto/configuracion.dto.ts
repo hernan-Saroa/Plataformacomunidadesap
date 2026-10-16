@@ -404,6 +404,18 @@ export class GuardarAprobacionDto {
   @IsOptional()
   @IsUUID()
   cadenaId?: string;
+
+  /** La modalidad (111); sin ella, la asignación general. */
+  @ApiPropertyOptional({ description: 'Código de la modalidad; sin ella, la general.' })
+  @IsOptional()
+  @IsString()
+  modalidad?: string;
+
+  /** Con modalidad: deja de reemplazar a la general y vuelve a heredarla. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  usarGeneral?: boolean;
 }
 
 /**
@@ -436,4 +448,16 @@ export class GuardarLaHaceDto {
   @IsArray()
   @IsString({ each: true })
   personas?: string[];
+
+  /** La modalidad (111); sin ella, la asignación general. */
+  @ApiPropertyOptional({ description: 'Código de la modalidad; sin ella, la general.' })
+  @IsOptional()
+  @IsString()
+  modalidad?: string;
+
+  /** Con modalidad: deja de reemplazar a la general y vuelve a heredarla. */
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  usarGeneral?: boolean;
 }

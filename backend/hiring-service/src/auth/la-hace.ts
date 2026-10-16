@@ -1,6 +1,7 @@
 import { EntityManager } from 'typeorm';
 
 import { Accion } from './alcance';
+import { aLaHace, asignacionPara } from '../flujo/lectura';
 
 /**
  * Quién hace una actividad (migración 109, regla `LA_HACE`).
@@ -44,33 +45,17 @@ export function accionQueHace(numeral: string): Exclude<Accion, 'ver'> {
   return ACCION_QUE_HACE[numeral] ?? 'editar';
 }
 
-/** La regla que rige: la de la modalidad manda sobre la general. */
+/**
+ * La regla que rige (111): la de la versión del flujo del proceso —o la
+ * activa, sin proceso—; la de la modalidad manda sobre la general.
+ */
 export async function reglaLaHace(
   em: EntityManager,
   numeral: string,
   modalidad: string | null,
+  procesoId?: string | null,
 ): Promise<LaHace | null> {
-  const filas: { modalidad: string | null; config: Record<string, unknown> }[] = await em.query(
-    `SELECT modalidad, config FROM hiring.reglas_actividad
-      WHERE numeral = $1 AND tipo = 'LA_HACE' AND vigente_hasta IS NULL
-        AND (modalidad IS NULL OR modalidad = $2)`,
-    [numeral, modalidad],
-  );
-  const fila = filas.find((f) => f.modalidad) ?? filas[0];
-  return fila ? leerLaHace(fila.config) : null;
-}
-
-/** Todas las reglas vigentes, para resolver muchas actividades de una vez. */
-export async function reglasLaHace(
-  em: EntityManager,
-): Promise<{ numeral: string; modalidad: string | null; regla: LaHace }[]> {
-  const filas: { numeral: string; modalidad: string | null; config: Record<string, unknown> }[] = await em.query(
-    `SELECT numeral, modalidad, config FROM hiring.reglas_actividad
-      WHERE tipo = 'LA_HACE' AND vigente_hasta IS NULL`,
-  );
-  return filas
-    .map((f) => ({ numeral: f.numeral, modalidad: f.modalidad, regla: leerLaHace(f.config) }))
-    .filter((f): f is { numeral: string; modalidad: string | null; regla: LaHace } => !!f.regla);
+  return aLaHace((await asignacionPara(em, numeral, modalidad, procesoId)).laHace);
 }
 
 /** De una lista de reglas, la que rige para el numeral y la modalidad. */

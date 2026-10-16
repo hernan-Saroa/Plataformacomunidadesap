@@ -17,9 +17,12 @@ import { Documento } from '../../entities/documento.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
 import { Expediente } from '../../entities/expediente.entity';
 import { TipologiaContrato } from '../../entities/tipologia-contrato.entity';
+import { FlujoModule } from '../flujo/flujo.module';
 
 @Module({
   imports: [
+    // Quién hace y quién aprueba se editan en el borrador del flujo (111).
+    FlujoModule,
     TypeOrmModule.forFeature([
       Actividad,
       ActividadExcluida,

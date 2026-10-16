@@ -120,7 +120,7 @@ export class AlcanceService {
   }> {
     const tienePermiso = await this.puedeEn(acceso, accion, numeral);
     const [proceso] = await this.dataSource.query(`SELECT modalidad FROM hiring.procesos WHERE id = $1`, [procesoId]);
-    const regla = await reglaLaHace(this.dataSource.manager, numeral, proceso?.modalidad ?? null);
+    const regla = await reglaLaHace(this.dataSource.manager, numeral, proceso?.modalidad ?? null, procesoId);
     const superAdmin = (acceso?.roles ?? []).includes('SUPER_ADMIN');
 
     if (regla && 'puestoId' in regla) {

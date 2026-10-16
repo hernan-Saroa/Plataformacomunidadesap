@@ -10,13 +10,21 @@ import { DataSource, EntityManager } from 'typeorm';
 import { Accion } from '../../auth/alcance';
 import { AlcanceService } from '../../auth/alcance.service';
 import { HiringAccess } from '../../auth/hiring-access';
-import { accionQueHace, leerLaHace } from '../../auth/la-hace';
+import { accionQueHace } from '../../auth/la-hace';
 import { PERMISO_PROCESO_ASIGNAR, tienePermiso } from '../../auth/permisos';
 import { AsignacionPuesto, PuestoProceso } from '../../entities/puesto-proceso.entity';
 import { ParticipacionProceso } from '../../entities/participacion-proceso.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { Trazabilidad } from '../../entities/trazabilidad.entity';
-import { leerConfigDeRegla } from '../cadena-aprobacion/cadena';
+import {
+  AprobacionGuardada,
+  LaHaceGuardada,
+  asignacionQueRige,
+  filasDeVersion,
+  versionActiva,
+  versionBorrador,
+  versionDelProceso,
+} from '../../flujo/lectura';
 
 /** Lo que hace un puesto en una actividad: hacerla o aprobarla. */
 export interface UsoDePuesto {
@@ -124,6 +132,15 @@ export class PuestosService {
     const puesto = await repo.findOne({ where: { id, activo: true } });
     if (!puesto) throw new NotFoundException('Ese puesto no existe o ya está archivado');
     const usos = (await this.usos()).filter((u) => u.puestoId === id);
+    // Ni si lo usa la versión con la que corre algún proceso en curso: ahí
+    // todavía hay quien lo ocupa y actúa por él.
+    const enUso: { version: string }[] = await this.dataSource.query(
+      `SELECT DISTINCT flujo_version_id::text AS version FROM hiring.procesos
+        WHERE estado = 'EN_CURSO' AND flujo_version_id IS NOT NULL`,
+    );
+    for (const { version } of enUso) {
+      usos.push(...(await this.usos(undefined, undefined, version)).filter((u) => u.puestoId === id));
+    }
     if (usos.length) {
       throw new ConflictException(
         `El puesto ${puesto.nombre} todavía lo usan ${[...new Set(usos.map((u) => u.numeral))].join(', ')}: cámbialas antes de archivarlo`,
@@ -136,60 +153,57 @@ export class PuestosService {
   }
 
   /**
-   * Dónde se usa cada puesto: las actividades que hace (regla `LA_HACE`) y
-   * las que aprueba (un escalón de `EXIGE_APROBACION`, suelto o de una
-   * cadena). Con `modalidad`, solo las reglas que rigen en ella.
+   * Dónde se usa cada puesto: las actividades que hace y las que aprueba (un
+   * escalón suelto o de una cadena), según una versión del flujo (111).
+   *
+   * - Sin `modalidad`: todo lo que dice la versión, general y por modalidad.
+   * - Con `modalidad`: lo que rige en ella.
+   * - Sin `versionId`: el borrador si lo hay, si no la activa —lo que se está
+   *   configurando—. Para un proceso, la versión con la que corre.
    */
-  async usos(modalidad?: string | null, em?: EntityManager): Promise<UsoDePuesto[]> {
+  async usos(modalidad?: string | null, em?: EntityManager, versionId?: string | null): Promise<UsoDePuesto[]> {
     const manager = em ?? this.dataSource.manager;
-    const reglas: { numeral: string; tipo: string; modalidad: string | null; config: Record<string, unknown>; nombre: string }[] =
-      await manager.query(
-        `SELECT r.numeral, r.tipo, r.modalidad, r.config, a.nombre
-           FROM hiring.reglas_actividad r
-           JOIN hiring.actividades a ON a.numeral = r.numeral AND a.activa
-          WHERE r.vigente_hasta IS NULL AND r.tipo IN ('LA_HACE', 'EXIGE_APROBACION')`,
-      );
+    const version = versionId ?? (await versionBorrador(manager)) ?? (await versionActiva(manager));
+    const filas = await filasDeVersion(manager, version);
+    const nombres = new Map<string, string>(
+      (await manager.query(`SELECT numeral, nombre FROM hiring.actividades WHERE activa`)).map((f: any) => [f.numeral, f.nombre]),
+    );
+    const cadenas = new Map<string, { puestos?: string[] }[]>(
+      (await manager.query(`SELECT id::text AS id, escalones FROM hiring.cadenas_aprobacion WHERE activa`)).map((f: any) => [
+        f.id,
+        f.escalones ?? [],
+      ]),
+    );
+    const puestosDe = (a: AprobacionGuardada | null): string[] =>
+      !a || a.tipo === 'NINGUNA'
+        ? []
+        : a.tipo === 'ESCALON'
+          ? (a.puestos ?? [])
+          : (cadenas.get(a.cadenaId) ?? []).flatMap((e) => e.puestos ?? []);
 
-    // Con modalidad, la regla de la modalidad tapa la general del mismo tipo.
-    const rigen =
-      modalidad === undefined
-        ? reglas
-        : reglas.filter((r) => {
-            if (r.modalidad) return r.modalidad === modalidad;
-            return !reglas.some((o) => o.numeral === r.numeral && o.tipo === r.tipo && o.modalidad === modalidad);
-          });
-
-    const cadenas = new Map<string, string[]>();
     const usos: UsoDePuesto[] = [];
-    for (const r of rigen) {
-      const base = { numeral: r.numeral, nombreActividad: r.nombre, modalidad: r.modalidad };
-      if (r.tipo === 'LA_HACE') {
-        const regla = leerLaHace(r.config);
-        if (regla && 'puestoId' in regla) {
-          usos.push({ ...base, puestoId: regla.puestoId, como: 'HACE', accion: accionQueHace(r.numeral) });
-        }
-        continue;
+    const sumar = (u: UsoDePuesto) => {
+      if (!usos.some((x) => x.puestoId === u.puestoId && x.numeral === u.numeral && x.como === u.como && x.modalidad === u.modalidad)) {
+        usos.push(u);
       }
-      const leida = leerConfigDeRegla(r.config);
-      if (!leida) continue;
-      let puestos: string[] = [];
-      if ('escalon' in leida) {
-        puestos = leida.escalon.puestos;
-      } else {
-        if (!cadenas.has(leida.cadenaId)) {
-          const [c] = await manager.query(
-            `SELECT escalones FROM hiring.cadenas_aprobacion WHERE id::text = $1 AND activa`,
-            [leida.cadenaId],
-          );
-          cadenas.set(
-            leida.cadenaId,
-            ((c?.escalones ?? []) as { puestos?: string[] }[]).flatMap((e) => e.puestos ?? []),
-          );
-        }
-        puestos = cadenas.get(leida.cadenaId)!;
+    };
+    const desde = (numeral: string, mod: string | null, laHace: LaHaceGuardada | null, aprobacion: AprobacionGuardada | null) => {
+      const nombreActividad = nombres.get(numeral);
+      if (!nombreActividad) return;
+      if (laHace?.tipo === 'PUESTO') {
+        sumar({ puestoId: laHace.puestoId, numeral, nombreActividad, modalidad: mod, como: 'HACE', accion: accionQueHace(numeral) });
       }
-      for (const puestoId of new Set(puestos)) {
-        usos.push({ ...base, puestoId, como: 'APRUEBA', accion: 'aprobar' });
+      for (const puestoId of new Set(puestosDe(aprobacion))) {
+        sumar({ puestoId, numeral, nombreActividad, modalidad: mod, como: 'APRUEBA', accion: 'aprobar' });
+      }
+    };
+
+    if (modalidad === undefined) {
+      for (const f of filas) desde(f.numeral, f.modalidad, f.laHace, f.aprobacion);
+    } else {
+      for (const numeral of new Set(filas.map((f) => f.numeral))) {
+        const rige = asignacionQueRige(filas, numeral, modalidad);
+        desde(numeral, null, rige.laHace, rige.aprobacion);
       }
     }
     return usos;
@@ -242,7 +256,7 @@ export class PuestosService {
     const asignaciones = await this.dataSource
       .getRepository(AsignacionPuesto)
       .find({ where: { procesoId }, order: { asignadoAt: 'DESC' } });
-    const usos = await this.usos(proceso.modalidad ?? null);
+    const usos = await this.usos(proceso.modalidad ?? null, undefined, await versionDelProceso(this.dataSource.manager, procesoId));
 
     const lista = [];
     for (const p of puestos) {
@@ -299,7 +313,9 @@ export class PuestosService {
   async candidatos(procesoId: string, puestoId: string, termino = ''): Promise<Candidato[]> {
     const proceso = await this.exigirProceso(this.dataSource.manager, procesoId);
     await this.exigirPuesto(puestoId);
-    const usos = (await this.usos(proceso.modalidad ?? null)).filter((u) => u.puestoId === puestoId);
+    const usos = (
+      await this.usos(proceso.modalidad ?? null, undefined, await versionDelProceso(this.dataSource.manager, procesoId))
+    ).filter((u) => u.puestoId === puestoId);
     const ids = await this.idsCandidatos(usos);
     if (!ids.length) return [];
 
@@ -336,7 +352,9 @@ export class PuestosService {
       await this.exigirQuePuedaAsignar(em, procesoId, acceso);
       const puesto = await this.exigirPuesto(puestoId, em);
 
-      const usos = (await this.usos(proceso.modalidad ?? null, em)).filter((u) => u.puestoId === puestoId);
+      const usos = (await this.usos(proceso.modalidad ?? null, em, await versionDelProceso(em, procesoId))).filter(
+        (u) => u.puestoId === puestoId,
+      );
       const candidatos = await this.idsCandidatos(usos);
       if (!candidatos.includes(usuarioId)) {
         throw new BadRequestException(

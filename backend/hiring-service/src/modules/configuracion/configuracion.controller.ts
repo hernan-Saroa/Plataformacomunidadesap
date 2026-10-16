@@ -8,6 +8,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -36,6 +37,7 @@ import {
 import { Permisos } from '../../auth/permisos.decorator';
 import { PermisosGuard } from '../../auth/permisos.guard';
 import { Puede } from '../../auth/puede.guard';
+import { getHiringAccess } from '../../auth/hiring-access';
 
 const STORAGE_PATH = process.env.HIRING_STORAGE_PATH || './uploads';
 
@@ -194,8 +196,8 @@ export class ConfiguracionController {
   @Get('actividades/:numeral/aprobacion')
   @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({ summary: 'Si la actividad requiere aprobación y quién la da' })
-  aprobacion(@Param('numeral') numeral: string) {
-    return this.service.aprobacionDe(numeral);
+  aprobacion(@Param('numeral') numeral: string, @Query('modalidad') modalidad?: string) {
+    return this.service.aprobacionDe(numeral, modalidad || null);
   }
 
   @Put('actividades/:numeral/aprobacion')
@@ -204,13 +206,14 @@ export class ConfiguracionController {
   @ApiOperation({
     summary: 'Configurar la aprobación de la actividad',
     description:
-      'Los procesos ya aprobados no cambian: la regla anterior se deroga y la nueva rige de ahora en adelante.',
+      'Se guarda en el borrador del flujo: rige al activarlo, y los procesos en curso siguen con su versión.',
   })
   guardarAprobacion(
     @Param('numeral') numeral: string,
     @Body() dto: GuardarAprobacionDto,
+    @Req() req: any,
   ) {
-    return this.service.guardarAprobacion(numeral, dto);
+    return this.service.guardarAprobacion(numeral, dto, getHiringAccess(req));
   }
 
   // ------------------------------------------- quién hace la actividad ----
@@ -218,8 +221,8 @@ export class ConfiguracionController {
   @Get('actividades/:numeral/quien-la-hace')
   @Puede('ver', undefined, { oPermiso: 'contratacion.config.manage' })
   @ApiOperation({ summary: 'Quién hace la actividad: un puesto, unas personas o quien tenga el permiso' })
-  laHace(@Param('numeral') numeral: string) {
-    return this.service.laHaceDe(numeral);
+  laHace(@Param('numeral') numeral: string, @Query('modalidad') modalidad?: string) {
+    return this.service.laHaceDe(numeral, modalidad || null);
   }
 
   @Put('actividades/:numeral/quien-la-hace')
@@ -230,8 +233,8 @@ export class ConfiguracionController {
     description:
       'Nunca da un permiso: solo dice, de los que lo tienen, quién la hace. Sin puesto ni personas vuelve a hacerla cualquiera con el permiso.',
   })
-  guardarLaHace(@Param('numeral') numeral: string, @Body() dto: GuardarLaHaceDto) {
-    return this.service.guardarLaHace(numeral, dto);
+  guardarLaHace(@Param('numeral') numeral: string, @Body() dto: GuardarLaHaceDto, @Req() req: any) {
+    return this.service.guardarLaHace(numeral, dto, getHiringAccess(req));
   }
 
   // ------------------------------------------------ firma de la actividad ----

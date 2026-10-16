@@ -130,15 +130,11 @@ export class AvisosService {
   private async requiereAprobacion(numeral: string): Promise<boolean> {
     try {
       const [fila] = await this.dataSource.query(
+        // En el flujo que rige o en el borrador, en alguna modalidad (111).
         `SELECT EXISTS (
-           SELECT 1 FROM hiring.reglas_actividad
-            WHERE tipo = 'EXIGE_APROBACION'
-              AND vigente_hasta IS NULL
-              AND numeral = $1
-              AND (jsonb_array_length(COALESCE(config -> 'roles', '[]'::jsonb)) > 0
-                OR jsonb_array_length(COALESCE(config -> 'personas', '[]'::jsonb)) > 0
-                -- O una cadena de escalones (migración 101).
-                OR config ? 'cadenaId')
+           SELECT 1 FROM hiring.flujo_asignaciones f
+           JOIN hiring.flujo_versiones v ON v.id = f.version_id AND v.estado IN ('ACTIVA', 'BORRADOR')
+            WHERE f.numeral = $1 AND f.aprobacion ->> 'tipo' IN ('CADENA', 'ESCALON')
          ) AS requiere`,
         [numeral],
       );

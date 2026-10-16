@@ -70,8 +70,10 @@ export class AprobacionService {
     numeral: string,
     modalidad: string | null,
     em?: EntityManager,
+    /** El proceso, para leer la versión del flujo con la que corre (111). */
+    procesoId?: string | null,
   ): Promise<CadenaResuelta | null> {
-    return this.cadenas.cadenaPara(numeral, modalidad, em);
+    return this.cadenas.cadenaPara(numeral, modalidad, em, procesoId);
   }
 
   /**
@@ -103,7 +105,7 @@ export class AprobacionService {
       .getRepository(ProcesoActividad)
       .findOne({ where: { procesoId, numeral } });
 
-    const cadena = await this.aprobadoresDe(numeral, proceso?.modalidad ?? null, em);
+    const cadena = await this.aprobadoresDe(numeral, proceso?.modalidad ?? null, em, procesoId);
     const ronda = actividad ? await this.cadenas.rondaParaMostrar(actividad, acceso) : null;
 
     /*
@@ -240,7 +242,7 @@ export class AprobacionService {
     return this.dataSource.transaction(async (em) => {
       const { actividad, proceso } = await this.exigirActividad(em, procesoId, numeral);
 
-      const cadena = await this.aprobadoresDe(numeral, proceso.modalidad, em);
+      const cadena = await this.aprobadoresDe(numeral, proceso.modalidad, em, procesoId);
       if (!cadena) {
         throw new BadRequestException(
           'Esta actividad no requiere aprobación: se cierra directamente',

@@ -12,7 +12,7 @@ import {
 } from '../../entities/cadena-aprobacion.entity';
 import { AsignacionPuesto, PuestoProceso } from '../../entities/puesto-proceso.entity';
 import { EstadoActividad, ProcesoActividad } from '../../entities/proceso-actividad.entity';
-import { ReglaActividad } from '../../entities/regla-actividad.entity';
+import { aConfigDeAprobacion, asignacionPara } from '../../flujo/lectura';
 import { Revision } from '../../entities/revision.entity';
 import {
   ACCIONES,
@@ -83,29 +83,22 @@ export class CadenaAprobacionService {
    * La cadena que exige esta actividad en esta modalidad, o `null` si no
    * requiere aprobación.
    *
-   * La regla de la modalidad manda sobre la general, como siempre. Una regla
-   * que apunta a una plantilla archivada o borrada no exige nada: quedarse
-   * esperando a una cadena que ya no existe dejaría la actividad sin salida.
+   * Sale de la versión del flujo con la que corre el proceso (111), o de la
+   * activa si no se dice el proceso; lo de la modalidad manda sobre lo general.
+   * Una aprobación que apunta a una plantilla archivada o borrada no exige
+   * nada: quedarse esperando a una cadena que ya no existe dejaría la
+   * actividad sin salida. Activar una versión así no se deja.
    */
   async cadenaPara(
     numeral: string,
     modalidad: string | null,
     em?: EntityManager,
+    procesoId?: string | null,
   ): Promise<CadenaResuelta | null> {
     const manager = em ?? this.dataSource.manager;
 
-    const reglas = await manager.getRepository(ReglaActividad).find({
-      where: [
-        { numeral, tipo: 'EXIGE_APROBACION', modalidad: IsNull(), vigenteHasta: IsNull() },
-        ...(modalidad
-          ? [{ numeral, tipo: 'EXIGE_APROBACION' as const, modalidad, vigenteHasta: IsNull() }]
-          : []),
-      ],
-    });
-    if (!reglas.length) return null;
-
-    const regla = reglas.find((r) => r.modalidad) ?? reglas[0];
-    const leida = leerConfigDeRegla(regla.config);
+    const { aprobacion } = await asignacionPara(manager, numeral, modalidad, procesoId);
+    const leida = leerConfigDeRegla(aConfigDeAprobacion(aprobacion));
     if (!leida) return null;
 
     if ('escalon' in leida) {
@@ -354,7 +347,7 @@ export class CadenaAprobacionService {
 
     let ronda = await this.rondaEnCurso(em, actividad.id, true);
     if (!ronda) {
-      const cadena = await this.cadenaPara(actividad.numeral, modalidad, em);
+      const cadena = await this.cadenaPara(actividad.numeral, modalidad, em, actividad.procesoId);
       if (!cadena) {
         throw new ConflictException(
           'Esta actividad ya no requiere aprobación: retírala de revisión para cerrarla',

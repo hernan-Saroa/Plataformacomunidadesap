@@ -6,10 +6,20 @@ import { ContextoResponde, respondeEn } from './quien-responde';
  */
 describe('quién responde por cada actividad', () => {
   const ctx: ContextoResponde = {
-    reglas: [
-      { numeral: '3.6', modalidad: null, regla: { puestoId: 'p-abogado' } },
-      { numeral: '5.1', modalidad: null, regla: { personas: ['persona-1'] } },
-    ],
+    // La versión del flujo de cada proceso y sus asignaciones (111).
+    versionDe: new Map([
+      ['proc-1', 'v-1'],
+      ['proc-2', 'v-1'],
+    ]),
+    filasPorVersion: new Map([
+      [
+        'v-1',
+        [
+          { numeral: '3.6', modalidad: null, laHace: { tipo: 'PUESTO', puestoId: 'p-abogado' }, aprobacion: null },
+          { numeral: '5.1', modalidad: null, laHace: { tipo: 'PERSONAS', personas: ['persona-1'] }, aprobacion: null },
+        ],
+      ],
+    ]),
     puestos: new Map([['p-abogado', 'Abogado']]),
     ocupantes: new Map([
       ['proc-1', new Map([['p-abogado', { nombre: 'Andrés Rojas', usuarioId: 'u-1', usuarioNombre: 'arojas' }]])],

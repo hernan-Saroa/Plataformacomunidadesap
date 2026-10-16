@@ -32,6 +32,8 @@ const SIN_DECORADOR: Record<string, string> = {
   'CausalContratacionController.elegir': 'quienDecide · aprobar 3.6',
   'ComiteContratacionController.registrar': 'quienDecide · aprobar 3.7',
   'ComiteContratacionController.noVa': 'quienDecide · aprobar 3.7',
+  // Pasar el proceso a la versión activa del flujo (111): quien lo lleva.
+  'FlujoDelProcesoController.actualizar': 'quien lleva el proceso o proceso.assign',
   // Poner o quitar a alguien en un puesto del proceso (109).
   'ParticipacionController.asignar': 'quien tomó el proceso o proceso.assign',
   'ParticipacionController.quitar': 'quien tomó el proceso o proceso.assign',

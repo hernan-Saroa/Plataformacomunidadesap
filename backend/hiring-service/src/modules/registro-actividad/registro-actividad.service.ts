@@ -499,7 +499,7 @@ export class RegistroActividadService {
       .findOne({ where: { procesoId, numeral } });
 
     const revisan = cumplida
-      ? await this.aprobacion.aprobadoresDe(numeral, modalidad, em)
+      ? await this.aprobacion.aprobadoresDe(numeral, modalidad, em, procesoId)
       : null;
     const estado = !cumplida ? 'BORRADOR' : revisan ? 'EN_REVISION' : 'APROBADO';
 

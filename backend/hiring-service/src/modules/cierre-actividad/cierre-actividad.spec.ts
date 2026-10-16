@@ -53,11 +53,18 @@ describe('CierreActividadService', () => {
         ProcesoActividad: {
           findOne: async () => actividadExistente,
         },
-        ReglaActividad: {
-          find: async () => (aprobadores ? [{ modalidad: null, config: aprobadores }] : []),
-        },
       };
       const em: any = {
+        // La versión del flujo del proceso y su aprobación (111).
+        query: async (sql: string) => {
+          if (sql.includes('flujo_version_id')) return [{ id: 'v-1' }];
+          if (sql.includes('FROM hiring.flujo_asignaciones')) {
+            return aprobadores
+              ? [{ numeral: '4.3', modalidad: null, la_hace: null, aprobacion: { tipo: 'ESCALON', personas: [], puestos: [], ...(aprobadores as object) } }]
+              : [];
+          }
+          return [];
+        },
         getRepository: (entidad: any) => repos[entidad.name] ?? repos.ProcesoActividad,
         create: (_e: unknown, x: unknown) => x,
         save: async (_e: unknown, x: unknown) => {

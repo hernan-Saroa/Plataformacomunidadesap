@@ -2,12 +2,19 @@ import { EntityManager } from 'typeorm';
 
 import { Accion } from '../../auth/alcance';
 import { HiringAccess } from '../../auth/hiring-access';
-import { LaHace, accionQueHace, laQueRige, reglasLaHace } from '../../auth/la-hace';
+import { accionQueHace } from '../../auth/la-hace';
+import {
+  FilaAsignacion,
+  aLaHace,
+  asignacionQueRige,
+  filasDeVersiones,
+  versionesDeProcesos,
+} from '../../flujo/lectura';
 
 /**
  * Una actividad de la que no responden los roles con el permiso sino quien
- * dice la regla «quién la hace» (109): el ocupante de un puesto en el proceso
- * o unas personas nombradas.
+ * dice la regla «quién la hace» (109) de la versión del flujo del proceso
+ * (111): el ocupante de un puesto en el proceso o unas personas nombradas.
  *
  * Antes era una lista escrita aquí —la 3.4, la 3.6 y la 3.7 eran del
  * abogado—; ahora sale de Configuración, y viaja con cada actividad para que
@@ -27,7 +34,10 @@ export interface RespondeElAsignado {
 
 /** Lo que hace falta para resolver `responde` en muchas actividades a la vez. */
 export interface ContextoResponde {
-  reglas: { numeral: string; modalidad: string | null; regla: LaHace }[];
+  /** Por versión del flujo, sus asignaciones (111). */
+  filasPorVersion: Map<string, FilaAsignacion[]>;
+  /** La versión con la que corre cada proceso. */
+  versionDe: Map<string, string>;
   puestos: Map<string, string>;
   /** Por proceso, quién ocupa cada puesto. */
   ocupantes: Map<string, Map<string, { nombre: string; usuarioId: string; usuarioNombre: string }>>;
@@ -41,7 +51,8 @@ export async function cargarResponde(
   procesoIds: string[],
   acceso?: Pick<HiringAccess, 'userId'>,
 ): Promise<ContextoResponde> {
-  const reglas = await reglasLaHace(em);
+  const versionDe = await versionesDeProcesos(em, procesoIds);
+  const filasPorVersion = await filasDeVersiones(em, [...versionDe.values()]);
   const puestos = new Map<string, string>(
     (await em.query(`SELECT id::text AS id, nombre FROM hiring.puestos_proceso`)).map((f: any) => [f.id, f.nombre]),
   );
@@ -60,7 +71,11 @@ export async function cargarResponde(
       ocupantes.set(f.proceso, delProceso);
     }
   }
-  const ids = [...new Set(reglas.flatMap((r) => ('personas' in r.regla ? r.regla.personas : [])))];
+  const ids = [
+    ...new Set(
+      [...filasPorVersion.values()].flat().flatMap((f) => (f.laHace?.tipo === 'PERSONAS' ? f.laHace.personas : [])),
+    ),
+  ];
   const personas = new Map<string, string>(
     ids.length
       ? (
@@ -75,7 +90,7 @@ export async function cargarResponde(
   const [cuenta] = acceso?.userId
     ? await em.query(`SELECT id_person::text AS id FROM auth."user" WHERE id_user::text = $1`, [acceso.userId])
     : [];
-  return { reglas, puestos, ocupantes, personas, miPersona: cuenta?.id ?? null };
+  return { filasPorVersion, versionDe, puestos, ocupantes, personas, miPersona: cuenta?.id ?? null };
 }
 
 /** Quién responde por la actividad en el proceso, o `null` si los roles del alcance. */
@@ -86,7 +101,8 @@ export function respondeEn(
   numeral: string,
   acceso?: Pick<HiringAccess, 'userId' | 'userName'>,
 ): RespondeElAsignado | null {
-  const regla = laQueRige(ctx.reglas, numeral, modalidad);
+  const filas = ctx.filasPorVersion.get(ctx.versionDe.get(procesoId) ?? '') ?? [];
+  const regla = aLaHace(asignacionQueRige(filas, numeral, modalidad).laHace);
   if (!regla) return null;
   const base = { accion: accionQueHace(numeral), soloEnRevision: false as const, seToma: false as const };
 

@@ -39,8 +39,10 @@ export class CierreActividadService {
     em: EntityManager,
     numeral: string,
     modalidad: string | null,
+    /** El proceso, para leer la versión del flujo con la que corre (111). */
+    procesoId?: string | null,
   ): Promise<CadenaResuelta | null> {
-    return this.cadenas.cadenaPara(numeral, modalidad, em);
+    return this.cadenas.cadenaPara(numeral, modalidad, em, procesoId);
   }
 
   /** Si la actividad quedó configurada para exigir firma con el token institucional. */
@@ -91,7 +93,7 @@ export class CierreActividadService {
     acceso: HiringAccess,
     firma?: FirmaOtpDto,
   ): Promise<{ estado: 'EN_REVISION' | 'APROBADO'; cierra: boolean }> {
-    const revisan = await this.aprobadoresDe(em, numeral, modalidad);
+    const revisan = await this.aprobadoresDe(em, numeral, modalidad, procesoId);
     const estado: 'EN_REVISION' | 'APROBADO' = revisan ? 'EN_REVISION' : 'APROBADO';
     const cierra = !revisan;
 

@@ -28,12 +28,14 @@ export class PlantillasCadenaService {
       .getRepository(CadenaAprobacion)
       .find({ where: { activa: true }, order: { nombre: 'ASC' } });
 
+    // Dónde la usa el flujo que rige o el borrador que se está armando (111).
     const usos: { cadena_id: string; numeral: string; nombre: string }[] = await this.dataSource.query(
-      `SELECT r.config ->> 'cadenaId' AS cadena_id, r.numeral, a.nombre
-         FROM hiring.reglas_actividad r
-         JOIN hiring.actividades a ON a.numeral = r.numeral
-        WHERE r.tipo = 'EXIGE_APROBACION' AND r.vigente_hasta IS NULL AND r.config ? 'cadenaId'
-        ORDER BY a.orden`,
+      `SELECT DISTINCT f.aprobacion ->> 'cadenaId' AS cadena_id, f.numeral, a.nombre, a.etapa, a.orden
+         FROM hiring.flujo_asignaciones f
+         JOIN hiring.flujo_versiones v ON v.id = f.version_id AND v.estado IN ('ACTIVA', 'BORRADOR')
+         JOIN hiring.actividades a ON a.numeral = f.numeral
+        WHERE f.aprobacion ->> 'tipo' = 'CADENA'
+        ORDER BY a.etapa, a.orden`,
     );
 
     const roles = await this.cadenas.nombresDeRoles(plantillas.flatMap((p) => p.escalones.flatMap((e) => e.roles)));
@@ -137,10 +139,15 @@ export class PlantillasCadenaService {
     const plantilla = await repo.findOne({ where: { id, activa: true } });
     if (!plantilla) throw new NotFoundException('La cadena no existe o ya se archivó');
 
+    // Ni la activa, ni el borrador, ni la versión de un proceso en curso (111).
     const usos: { numeral: string }[] = await this.dataSource.query(
-      `SELECT numeral FROM hiring.reglas_actividad
-        WHERE tipo = 'EXIGE_APROBACION' AND vigente_hasta IS NULL AND config ->> 'cadenaId' = $1
-        ORDER BY numeral`,
+      `SELECT DISTINCT f.numeral
+         FROM hiring.flujo_asignaciones f
+         JOIN hiring.flujo_versiones v ON v.id = f.version_id
+        WHERE f.aprobacion ->> 'cadenaId' = $1
+          AND (v.estado IN ('ACTIVA', 'BORRADOR')
+               OR EXISTS (SELECT 1 FROM hiring.procesos p WHERE p.flujo_version_id = v.id AND p.estado = 'EN_CURSO'))
+        ORDER BY f.numeral`,
       [id],
     );
     if (usos.length) {

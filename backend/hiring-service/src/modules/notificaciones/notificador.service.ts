@@ -341,7 +341,7 @@ export class NotificadorService implements OnApplicationBootstrap {
     switch (papel) {
       case 'QUIEN_LA_HACE': {
         // Lo que dice su regla «quién la hace»; sin regla, quien puede editarla.
-        const regla = await reglaLaHace(this.dataSource.manager, ocurrido.numeral, modalidad);
+        const regla = await reglaLaHace(this.dataSource.manager, ocurrido.numeral, modalidad, ocurrido.procesoId);
         if (regla && 'puestoId' in regla) {
           return this.quienCumple(`PUESTO:${regla.puestoId}`, ocurrido, modalidad);
         }
@@ -410,7 +410,7 @@ export class NotificadorService implements OnApplicationBootstrap {
         // Sin ronda —la 3.1 con la regla de siempre, que decide el abogado—,
         // los que nombra la regla, como antes de la 101.
         if (!pendientes.length) {
-          const cadena = await this.cadenas.cadenaPara(ocurrido.numeral, modalidad);
+          const cadena = await this.cadenas.cadenaPara(ocurrido.numeral, modalidad, undefined, ocurrido.procesoId);
           pendientes = cadena && !cadena.cadenaId ? cadena.escalones.slice(0, 1).map((e) => ({ ...e, cuentas: [] })) : [];
         }
         const ids: string[] = [];
