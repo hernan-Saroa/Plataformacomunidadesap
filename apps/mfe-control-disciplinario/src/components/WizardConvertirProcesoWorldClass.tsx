@@ -6,7 +6,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
-import { X, Check, PlusCircle, FileText, Search, AlertTriangle, CheckCircle, AlertCircle, Briefcase, MapPin, Users } from 'lucide-react';
+import { X, Check, PlusCircle, FileText, Search, AlertTriangle, CheckCircle, AlertCircle, Briefcase, MapPin, Users, Send } from 'lucide-react';
 import { disciplinaryService } from '../services/api/disciplinary.service';
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -208,19 +208,44 @@ export function WizardConvertirProcesoWorldClass({ noticia, onConfirmar, onCerra
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
 
           {/* ── Resumen de la noticia ── */}
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 flex items-start gap-3">
-            <div className="p-2 rounded-lg bg-orange-100 flex-shrink-0">
-              <FileText className="w-4 h-4 text-orange-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-0.5">Noticia a convertir</p>
-              <p className="font-bold text-gray-900 text-sm">{noticia.denunciado.nombre}</p>
-              <p className="text-xs text-gray-500">
-                {noticia.denunciado.tipoIdentificacion} {noticia.denunciado.numeroIdentificacion}
-              </p>
-              <p className="text-xs text-gray-500 mt-1 line-clamp-2">{noticia.hechos}</p>
-            </div>
-          </div>
+          {(() => {
+            const origenNorm = String(noticia.origen || '').toUpperCase();
+            const esRemision = origenNorm.includes('REMISI') || !!(noticia as any).entidadRemision;
+
+            return (
+              <div className={`rounded-xl border p-4 flex items-start gap-3 ${esRemision ? 'border-purple-300 bg-purple-50/40' : 'border-gray-200 bg-gray-50'}`}>
+                <div className={`p-2 rounded-lg flex-shrink-0 ${esRemision ? 'bg-purple-100' : 'bg-orange-100'}`}>
+                  {esRemision ? (
+                    <Send className="w-4 h-4 text-purple-600" />
+                  ) : (
+                    <FileText className="w-4 h-4 text-orange-600" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Noticia a convertir ({noticia.numero})</p>
+                    {esRemision && (
+                      <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-purple-100 text-purple-700 border border-purple-300 flex items-center gap-1">
+                        <Send className="w-2.5 h-2.5 text-purple-600" />
+                        Noticia para remisión por competencia
+                      </span>
+                    )}
+                  </div>
+                  <p className="font-bold text-gray-900 text-sm">{noticia.denunciado.nombre}</p>
+                  <p className="text-xs text-gray-500">
+                    {noticia.denunciado.tipoIdentificacion} {noticia.denunciado.numeroIdentificacion}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1 line-clamp-2">{noticia.hechos}</p>
+                  {esRemision && (
+                    <p className="text-xs text-purple-800 font-medium mt-2 flex items-center gap-1.5 bg-purple-100/70 p-2 rounded-lg border border-purple-200">
+                      <Send className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />
+                      Al convertir, el proceso quedará identificado con la etiqueta <strong>En proceso de remisión</strong>.
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ── Selección de profesional ── */}
           <div>
@@ -320,7 +345,7 @@ export function WizardConvertirProcesoWorldClass({ noticia, onConfirmar, onCerra
                         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                           <span
                             className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                            style={cont}
+                            style={{ backgroundColor: cont.bg, color: cont.text }}
                           >
                             {prof.tipoContrato}
                           </span>

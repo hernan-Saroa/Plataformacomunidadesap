@@ -126,6 +126,14 @@ interface Proceso {
   // Campos del mock enriquecido
   origen?: string;
   prioridad?: string;
+  enProcesoRemision?: boolean;
+  remisionAprobada?: boolean;
+  numeroRC?: string;
+  entidadRemision?: string;
+  correoEntidadRemision?: string;
+  fechaRemision?: string;
+  tipoRemision?: string;
+  justificacionRemision?: string;
 }
 
 type Tab = 'general' | 'archivos' | 'actuaciones' | 'tareas' | 'notas';
@@ -229,6 +237,7 @@ interface ModalDetallesProcesoProps {
   onNavigateToRevision?: () => void;
   /** Abre directamente el modal de confirmación de Envío a Jurídica */
   abrirEnvioJuridicaDirecto?: boolean;
+  onRemitirCompetencia?: (proceso: Proceso) => void;
 }
 
 
@@ -248,6 +257,25 @@ function getApoderadoCorreo(apoderado?: Apoderado): string {
 function getApoderadoCelular(apoderado?: Apoderado): string {
   return apoderado?.celular || apoderado?.telefono || '';
 }
+
+export const checkEsEnProcesoRemision = (proc: any): boolean => {
+  if (!proc) return false;
+  const origen = String(proc.origenNoticia || proc.news?.origen || proc.origen || '').toUpperCase().trim();
+  const esOrigenRemision = origen === 'REMISION' || origen === 'REMISIÓN' || origen.includes('REMISI');
+  return (
+    Boolean(proc.enProcesoRemision) ||
+    Boolean(proc.en_proceso_remision) ||
+    esOrigenRemision ||
+    Boolean(proc.remisionAprobada) ||
+    Boolean(proc.remision_aprobada) ||
+    Boolean(proc.numeroRC) ||
+    Boolean(proc.numero_rc) ||
+    Boolean(proc.entidadRemision) ||
+    Boolean(proc.entidad_remision) ||
+    Boolean(proc.tipoRemision) ||
+    Boolean(proc.tipo_remision)
+  );
+};
 
 interface ParsedPerson {
   id?: string;
@@ -2273,6 +2301,7 @@ export function ModalDetallesProceso({
   onHistorial, onExpediente, onActualizarProceso,
   onEnviarARevision, onNavigateToRevision,
   abrirEnvioJuridicaDirecto,
+  onRemitirCompetencia,
 }: ModalDetallesProcesoProps) {
   const [tabActiva, setTabActiva] = useState<Tab>('general');
   const [busqueda,  setBusqueda]  = useState('');
@@ -3773,6 +3802,9 @@ export function ModalDetallesProceso({
           detalles: { version: autoEnviarRevision.version || 1 },
         }],
         tiempoEspera: '0m',
+        tipo: (autoEnviarRevision as any).tipoAuto || (autoEnviarRevision as any).tipo,
+        entidadDestino: (autoEnviarRevision as any).entidadDestino || (autoEnviarRevision as any).entidad_destino || proceso.entidadRemision || undefined,
+        entidadDestinoEmail: (autoEnviarRevision as any).entidadDestinoEmail || (autoEnviarRevision as any).entidad_destino_email || proceso.correoEntidadRemision || undefined,
       };
       onEnviarARevision(borrador);
     }
@@ -3843,14 +3875,17 @@ export function ModalDetallesProceso({
     setAutoEnRevisionModal(borrador);
   }, [proceso]);
 
-  const handleAutoAprobado = useCallback(async (archivoId: string, _comentarios: string, radicadorAsignadoId?: string) => {
+  const handleAutoAprobado = useCallback(async (archivoId: string, _comentarios: string, radicadorAsignadoId?: string, extraData?: { entidadDestino?: string; entidadDestinoEmail?: string }) => {
     const userId = authService.getCurrentUser()?.id;
     if (!userId) {
       toast.error('No se pudo obtener el usuario actual');
       return;
     }
     try {
-      const autoActualizado = await disciplinaryService.aprobarAuto(archivoId, userId, radicadorAsignadoId);
+      const autoActualizado = await disciplinaryService.aprobarAuto(archivoId, userId, radicadorAsignadoId, {
+        ...extraData,
+        observaciones: _comentarios,
+      });
       const numeroAsignado = autoActualizado?.numero;
       const radicadorNombre = radicadorAsignadoId
         ? radicadoresNombres[radicadorAsignadoId] || 'Radicador asignado'
@@ -4122,7 +4157,7 @@ export function ModalDetallesProceso({
                 <Shield className="w-3 h-3" /><span className="hidden sm:inline">Revisión</span>
               </button>
             )} */}
-            {!isArchivado && puedeEnviarRevision && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) && (
+            {!isArchivado && puedeEnviarRevision && !isJefe && !isRadicador && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) && (
               <button type="button" onClick={(e) => { e.stopPropagation(); handleEnviarARevision(archivo); }}
                 className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all text-white"
                 style={{ background: '#003DA5' }}
@@ -4231,6 +4266,19 @@ export function ModalDetallesProceso({
                   {proceso.pendienteAprobacion && (
                     <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800 border border-amber-300">
                       ⚠ Pendiente
+                    </span>
+                  )}
+                  {checkEsEnProcesoRemision(proceso) && (
+                    <span
+                      className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-purple-100 text-purple-700 border border-purple-300 flex items-center gap-1"
+                      title="Proceso en trámite de remisión por competencia"
+                    >
+                      <Send className="w-2.5 h-2.5 text-purple-600" />
+                      {proceso.numeroRC
+                        ? `RC: ${proceso.numeroRC}`
+                        : proceso.remisionAprobada
+                          ? 'Auto Remisión OK'
+                          : 'En proceso de remisión'}
                     </span>
                   )}
                 </div>
@@ -4398,7 +4446,12 @@ export function ModalDetallesProceso({
                         </div>
                         <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-blue-100">
                           {[
-                            { label: 'ORIGEN', value: origenVal || '—' },
+                            {
+                              label: 'ORIGEN',
+                              value: checkEsEnProcesoRemision(proceso)
+                                ? `${origenVal || 'Remisión por competencia'} (En proceso de remisión)`
+                                : (origenVal || '—')
+                            },
                             { label: 'FECHA RECEPCIÓN', value: fechaRecNoticia ? new Date(fechaRecNoticia).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' }) : '—' },
                             { label: 'PRIORIDAD', value: (proceso.prioridadNoticia || (proceso as any).prioridad || '—').toString().toUpperCase() },
                             { label: 'NOTICIA', value: proceso.noticiaOrigen || '—' },
@@ -4737,7 +4790,7 @@ export function ModalDetallesProceso({
                       }
 
                       if (autoPliego.estado === 'borrador') {
-                        return authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) ? (
+                        return !isJefe && !isRadicador && authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_FILES_SEND_TO_REVIEW) ? (
                             <div className="rounded-xl border-2 border-dashed p-3" style={{ borderColor: '#7C3AED', background: '#F5F3FF' }}>
                               <button
                                 onClick={() => handleEnviarARevision(autoPliego)}
@@ -4850,6 +4903,67 @@ export function ModalDetallesProceso({
                       }
 
                       return null;
+                    })()}
+
+                    {/* Auto de Remisión por Competencia / Estado de Remisión */}
+                    {(() => {
+                      const autoRemision = archivosBackend.find(a =>
+                        a.tipo === 'auto' &&
+                        (a.nombre?.toUpperCase().includes('REMISION') || a.tipoAuto === 'AUTO_REMISION_COMPETENCIA' || a.tipoAuto === 'AUTO_REMISION') &&
+                        a.estado === 'aprobado'
+                      );
+                      const tieneRemisionAprobada = proceso.remisionAprobada || (autoRemision as any)?.estado === 'aprobado';
+                      const entidadDestino = proceso.entidadRemision || (autoRemision as any)?.entidadDestino || (proceso as any)?.legalAutos?.find((la: any) => la.entidadDestino)?.entidadDestino;
+                      const yaRemitido = !!proceso.numeroRC || proceso.estadoActual === 'ARCHIVADO' || proceso.estadoActual === 'REMITIDO';
+                      const esRemision = checkEsEnProcesoRemision(proceso) || tieneRemisionAprobada || yaRemitido;
+
+                      if (!esRemision) return null;
+
+                      return (
+                        <div className="rounded-xl border-2 border-purple-400 bg-purple-50 p-3.5 space-y-2 shadow-sm">
+                          <div className="flex items-start gap-2.5">
+                            <Send className="w-4 h-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-black text-purple-950 uppercase tracking-wide">
+                                {yaRemitido
+                                  ? 'Proceso Remitido por Competencia'
+                                  : tieneRemisionAprobada
+                                    ? 'Auto de Remisión Aprobado'
+                                    : 'En proceso de remisión'}
+                              </p>
+                              {proceso.numeroRC && (
+                                <p className="text-xs font-black text-purple-900 mt-0.5">
+                                  Radicado: {proceso.numeroRC}
+                                </p>
+                              )}
+                              {entidadDestino && (
+                                <p className="text-xs text-purple-800 mt-0.5">
+                                  <strong>Entidad destinataria definida por el Jefe:</strong> {entidadDestino}
+                                </p>
+                              )}
+                              {!yaRemitido && !tieneRemisionAprobada && (
+                                <p className="text-xs text-purple-700 mt-0.5 leading-relaxed">
+                                  Este proceso se encuentra en <strong>trámite de remisión por competencia</strong>. El profesional debe elaborar el <strong>Auto de Remisión por Competencia</strong> para que el Jefe lo apruebe y el Radicador efectúe la remisión formal.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {tieneRemisionAprobada && !yaRemitido && onRemitirCompetencia && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                onRemitirCompetencia(proceso);
+                              }}
+                              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg font-bold text-xs text-white bg-purple-600 hover:bg-purple-700 transition-colors shadow-sm"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              Remitir por competencia
+                            </button>
+                          )}
+                        </div>
+                      );
                     })()}
 
                     {/* Badge CERRADO */}
@@ -6598,7 +6712,7 @@ export function ModalDetallesProceso({
           <ModalRevisionAuto
             borrador={autoEnRevisionModal}
             onClose={() => setAutoEnRevisionModal(null)}
-            onAprobar={(comentarios, radicadorAsignadoId) => handleAutoAprobado(autoEnRevisionModal.id, comentarios, radicadorAsignadoId)}
+            onAprobar={(comentarios, radicadorAsignadoId, extraData) => handleAutoAprobado(autoEnRevisionModal.id, comentarios, radicadorAsignadoId, extraData)}
             onDevolver={(motivo, comentarios, _archivos) => handleAutoDevuelto(autoEnRevisionModal.id, motivo, comentarios)}
             mostrarBotonDevolver={true}
             tituloModal="Revisión y Aprobación de Auto"
