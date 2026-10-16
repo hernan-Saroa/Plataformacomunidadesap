@@ -1573,23 +1573,16 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       return;
     }
     const { origenCiudad: origenItinerario, destinoCiudad: destinoItinerario } = obtenerOrigenDestinoItinerario();
-    if (!destinoItinerario || !origenItinerario || !dependenciaId) {
+    if (!destinoItinerario || !origenItinerario) {
       return;
     }
     const token = ++refTokenValidacionTiquete.current;
-    setValidandoTiquete(true);
 
-    // Consulta de tarifa de referencia automática para rutas aéreas (Modelo Híbrido)
-    if (tipoTransporte === 'AEREO') {
-      void viaticosService.consultarTarifaEstimada(origenItinerario, destinoItinerario).then((tarifa) => {
-        if (token === refTokenValidacionTiquete.current && tarifa && tarifa.tarifaEstimada > 0) {
-          setTarifaEstimadaReferencia(tarifa);
-          if (!montoEstimadoTiquete || montoEstimadoTiquete === 0) {
-            setMontoEstimadoTiquete(tarifa.tarifaEstimada);
-          }
-        }
-      });
+    if (!dependenciaId) {
+      return;
     }
+
+    setValidandoTiquete(true);
 
     void viaticosService
       .validarTiquete({
@@ -4182,17 +4175,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         })()}
                     </div>
 
-                    {(form.montoViaticos > 0 || form.montoGastosViaje > 0) && (
+                    {(form.montoViaticos > 0 || (form.montoGastosViaje || 0) > 0) && (
                       <div className="bg-[#003DA5] text-white rounded-xl px-6 py-5 shadow-sm border border-blue-900 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="space-y-1">
                           <p className="text-[10px] font-bold uppercase tracking-wider text-blue-200">
                             Total Estimado de la Comisión
                           </p>
                           <p className="text-2xl font-black text-white tracking-tight">
-                            {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
+                            {formatearMoneda(form.montoViaticos + (form.montoGastosViaje || 0))}
                           </p>
                           <p className="text-xs text-blue-100 font-medium">
-                            Viáticos ({formatearMoneda(form.montoViaticos)}) + Desplazamiento ({formatearMoneda(form.montoGastosViaje)})
+                            Viáticos ({formatearMoneda(form.montoViaticos)}) + Desplazamiento ({formatearMoneda(form.montoGastosViaje || 0)})
                           </p>
                         </div>
                         <div className="sm:text-right shrink-0">
@@ -4760,15 +4753,10 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   <div className="flex justify-between px-4 py-2.5 bg-blue-50/30">
                     <span className="text-slate-500 font-bold flex items-center gap-1.5">
                       <Plane className="w-3.5 h-3.5 text-blue-600" />
-                      Tiquete Aéreo Estimado
+                      Tiquetes Aéreos
                     </span>
-                    <span className="font-semibold text-slate-800 flex items-center gap-2">
-                      {formatearMoneda(montoEstimadoTiquete)}
-                      {tarifaEstimadaReferencia && (
-                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-full">
-                          Tarifa Referencia ({tarifaEstimadaReferencia.fuente || 'OFICIAL'})
-                        </span>
-                      )}
+                    <span className="text-xs font-semibold text-sky-800 bg-sky-50 border border-sky-200 px-2.5 py-0.5 rounded-full">
+                      Requiere Tiquetes (Cotización institucional en Control de Viáticos)
                     </span>
                   </div>
                 )}
@@ -4784,11 +4772,11 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                     <span className="font-semibold text-slate-800">{formatearMoneda(form.montoGastosViaje)}</span>
                   </div>
                 )}
-                {!esCampoOculto('montoViaticos') && !esCampoOculto('montoGastosViaje') && (
+                {(!esCampoOculto('montoViaticos') || !esCampoOculto('montoGastosViaje')) && (
                   <div className="flex justify-between px-4 py-2.5 bg-slate-50 font-bold">
                     <span className="text-slate-700">TOTAL VIÁTICOS, TRANSPORTES Y DESPLAZAMIENTOS*</span>
                     <span className="font-black text-slate-900 text-sm">
-                      {formatearMoneda(form.montoViaticos + form.montoGastosViaje)}
+                      {formatearMoneda(form.montoViaticos + (form.montoGastosViaje || 0))}
                     </span>
                   </div>
                 )}

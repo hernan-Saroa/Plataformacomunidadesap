@@ -12752,7 +12752,7 @@ function SeccionAprobacion({ plan, onActualizar, onRefetchPlan, puedeAprobarPlan
             onClick={() => handleAprobarAuditor(aprobadorMiTurno.id, aprobadorMiTurno.nombre, aprobadorMiTurno.email)}
             disabled={guardando}
             className="px-8 py-3 rounded-lg text-white text-sm font-bold flex items-center justify-center gap-2 shadow-md transition-opacity hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: '#5b21b6' }}
+            style={{ backgroundColor: '#2962FF' }}
           >
             {guardando ? <Loader2 className="w-5 h-5 animate-spin" /> : <PenLine className="w-5 h-5" />}
             Firmar y aprobar

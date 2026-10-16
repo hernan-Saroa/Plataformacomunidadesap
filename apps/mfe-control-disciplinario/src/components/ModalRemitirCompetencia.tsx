@@ -7,31 +7,35 @@
 
 import { useState, useEffect } from 'react';
 import { useResponsive } from './hooks/useResponsive';
-import { Send, AlertTriangle, FileText, Building2, Info, ExternalLink, Mail } from 'lucide-react';
+import { Send, AlertTriangle, FileText, Building2, Info, ExternalLink, Mail, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   WorldClassModal, WCLabel, WCSelect, WCTextarea, WCResumenBloque,
   WCInfoBox, WCWarningBox, WCBotonPrimario, WCBotonSecundario, WCInput,
 } from './WorldClassModalBase';
 import { tiposRemisionService, TipoRemision } from '../../../services/api/tiposRemisionService';
+import { entidadesRemisionService, EntidadRemision as EntidadRemisionApi } from '../../../services/api/entidadesRemisionService';
 import { authService } from '../../../services/api/authService';
 import { Permissions } from '@esap-mfe/shared-types/permissions';
 
 interface NoticiaRemitirProps {
   id: string;
+  processId?: string;
   numero: string;
-  origen: string;
-  fechaRecepcion: string;
+  origen?: string;
+  fechaRecepcion?: string;
   denunciante: { nombre: string; identificacion?: string };
   denunciado: { nombre: string; identificacion?: string; cargo?: string };
   hechos?: string;
+  entidadDestinoPredefinida?: string;
+  entidadDestinoEmailPredefinida?: string;
 }
 
 interface EntidadRemision {
   id: string;
   nombre: string;
   correo: string;
-  activo: boolean;
+  activo?: boolean;
 }
 
 interface Props {
@@ -49,23 +53,23 @@ interface Props {
 }
 
 const ENTIDADES_POR_DEFECTO = [
-  { id: 'procuraduria',  nombre: 'Procuraduria General de la Nacion',    correo: 'quejas@procuraduria.gov.co' },
-  { id: 'personeria',    nombre: 'Personeria Municipal / Distrital',      correo: '' },
-  { id: 'contraloria',   nombre: 'Contraloria General de la Republica',   correo: '' },
-  { id: 'fiscalia',      nombre: 'Fiscalia General de la Nacion',         correo: '' },
-  { id: 'min-publico',   nombre: 'Ministerio Publico',                    correo: '' },
+  { id: 'procuraduria',  nombre: 'Procuraduría General de la Nación',    correo: 'quejas@procuraduria.gov.co' },
+  { id: 'personeria',    nombre: 'Personería Municipal / Distrital',      correo: '' },
+  { id: 'contraloria',   nombre: 'Contraloría General de la República',   correo: '' },
+  { id: 'fiscalia',      nombre: 'Fiscalía General de la Nación',         correo: '' },
+  { id: 'min-publico',   nombre: 'Ministerio Público',                    correo: '' },
   { id: 'oficina-control', nombre: 'Oficina de Control Interno Disciplinario (otra entidad)', correo: '' },
 ];
 
 // Los tipos de remisión se cargan dinámicamente desde el backend
 
 const FUNDAMENTOS_LEGALES = [
-  { value: 'art-2-ley-1952',    label: 'Art. 2 - Ley 1952 de 2019 (Titularidad de la accion)' },
+  { value: 'art-2-ley-1952',    label: 'Art. 2 - Ley 1952 de 2019 (Titularidad de la acción)' },
   { value: 'art-3-ley-1952',    label: 'Art. 3 - Ley 1952 de 2019 (Poder disciplinario preferente)' },
   { value: 'art-12-ley-1952',   label: 'Art. 12 - Ley 1952 de 2019 (Competencia por factor territorial)' },
   { value: 'art-13-ley-1952',   label: 'Art. 13 - Ley 1952 de 2019 (Competencia por factor funcional)' },
   { value: 'art-75-ley-1952',   label: 'Art. 75 - Ley 1952 de 2019 (Conflicto de competencias)' },
-  { value: 'otro',              label: 'Otro fundamento (especificar en justificacion)' },
+  { value: 'otro',              label: 'Otro fundamento (especificar en justificación)' },
 ];
 
 export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClose, onConfirm }: Props) {
@@ -75,13 +79,22 @@ export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClos
   const [enviando, setEnviando] = useState(false);
   const [tiposRemision, setTiposRemision] = useState<TipoRemision[]>([]);
   const [loadingTipos, setLoadingTipos] = useState(true);
+  const [entidadesBD, setEntidadesBD] = useState<EntidadRemision[]>([]);
+  const [mostrarEdicionManual, setMostrarEdicionManual] = useState(false);
 
   // Hook responsive
   const { isMobile } = useResponsive();
 
-  // Cargar tipos de remisión desde el backend
+  // Cargar tipos de remisión y entidades paramétricas desde el backend
   useEffect(() => {
     cargarTiposRemision();
+    entidadesRemisionService.getActivas().then(data => {
+      if (data && data.length > 0) {
+        setEntidadesBD(data);
+      }
+    }).catch(err => {
+      console.warn('Error al cargar entidades parametricas en modal remision:', err);
+    });
   }, []);
 
   const cargarTiposRemision = async () => {
@@ -97,17 +110,58 @@ export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClos
         { id: 'factor-territorial', codigo: 'factor-territorial', nombre: 'Por factor territorial', activo: true },
         { id: 'factor-funcional', codigo: 'factor-funcional', nombre: 'Por factor funcional (servidor de otra entidad)', activo: true },
         { id: 'naturaleza-falta', codigo: 'naturaleza-falta', nombre: 'Por naturaleza de la falta (penal, fiscal)', activo: true },
-        { id: 'prelacion-competencia', codigo: 'prelacion-competencia', nombre: 'Por prelacion de competencia (Procuraduria)', activo: true },
+        { id: 'prelacion-competencia', codigo: 'prelacion-competencia', nombre: 'Por prelación de competencia (Procuraduría)', activo: true },
       ]);
     } finally {
       setLoadingTipos(false);
     }
   };
 
-  // Combinar entidades configuradas con las por defecto
-  const entidades = (entidadesConfiguradas && entidadesConfiguradas.length > 0)
-    ? entidadesConfiguradas.map(e => ({ id: e.id, nombre: e.nombre, correo: e.correo }))
-    : ENTIDADES_POR_DEFECTO;
+  // Combinar entidades configuradas con las de BD o por defecto
+  const fuenteEntidades = (entidadesConfiguradas && entidadesConfiguradas.length > 0)
+    ? entidadesConfiguradas
+    : (entidadesBD.length > 0 ? entidadesBD : ENTIDADES_POR_DEFECTO);
+
+  const entidadesBase = fuenteEntidades.map(e => ({ id: e.id, nombre: e.nombre, correo: e.correo }));
+
+  // Si el auto o proceso ya definió una entidad destino, buscar si coincide con la paramétrica para su correo
+  const entidadCoincidente = entidadesBase.find(e =>
+    e.nombre.toLowerCase().trim() === noticia.entidadDestinoPredefinida?.toLowerCase().trim() ||
+    e.nombre.toLowerCase().includes(noticia.entidadDestinoPredefinida?.toLowerCase().trim() || '') ||
+    (noticia.entidadDestinoPredefinida || '').toLowerCase().includes(e.nombre.toLowerCase())
+  );
+
+  const correoFinal = noticia.entidadDestinoEmailPredefinida || entidadCoincidente?.correo || '';
+
+  // Si el auto aprobó una entidad destino que no está en la lista, incluirla
+  const entidades = [...entidadesBase];
+  if (noticia.entidadDestinoPredefinida && !entidades.some(e => e.nombre.toLowerCase() === noticia.entidadDestinoPredefinida?.toLowerCase() || e.id === noticia.entidadDestinoPredefinida)) {
+    entidades.unshift({
+      id: 'predefinida-jefe',
+      nombre: noticia.entidadDestinoPredefinida,
+      correo: correoFinal,
+    });
+  }
+
+  // Pre-seleccionar la entidad, tipo y justificación si ya vienen del Auto / Jefe
+  useEffect(() => {
+    if (noticia.entidadDestinoPredefinida) {
+      const match = entidades.find(e =>
+        e.nombre.toLowerCase().includes(noticia.entidadDestinoPredefinida!.toLowerCase().trim()) ||
+        noticia.entidadDestinoPredefinida!.toLowerCase().trim().includes(e.nombre.toLowerCase()) ||
+        e.id === 'predefinida-jefe'
+      );
+      if (match) {
+        setEntidadId(match.id);
+      }
+      if (!tipoRemision) {
+        setTipoRemision('sin-competencia');
+      }
+      if (!justificacion) {
+        setJustificacion('Remisión por competencia aprobada mediante Auto por el Jefe OCID para trámite ante la entidad competente.');
+      }
+    }
+  }, [noticia.entidadDestinoPredefinida, entidades.length]);
 
   const entidadSeleccionada = entidades.find(e => e.id === entidadId);
 
@@ -116,8 +170,13 @@ export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClos
     && justificacion.trim().length >= 20;
 
   const handleRemitir = async () => {
-    if (!authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR)) {
-      toast.error('No tiene permisos para remitir noticias por competencia');
+    const canRedimir = authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_NOTICIAS_DISCIPLINARIAS_REDIMIR) ||
+      authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_PROCESOS_REDIMIR) ||
+      authService.hasPermission(Permissions.CONTROL_DISCIPLINARIO_ROL_ES_RADICADOR) ||
+      authService.isSuperAdmin();
+
+    if (!canRedimir) {
+      toast.error('No tiene permisos para remitir por competencia');
       return;
     }
     if (!entidadId) { toast.error('Validacion', { description: 'Selecciona la entidad de destino' }); return; }
@@ -204,65 +263,136 @@ export function ModalRemitirCompetencia({ noticia, entidadesConfiguradas, onClos
         <div className="flex items-start gap-2">
           <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-600" />
           <div>
-            <p className="font-bold text-blue-800 mb-0.5">Remision por competencia</p>
-            <p>Esta noticia sera remitida a la entidad competente. Se generara un numero RC (Remision por Competencia), se registrara en la bitacora y la noticia cambiara a estado &quot;Remitida&quot;.</p>
+            <p className="font-bold text-blue-800 mb-0.5">Remisión por competencia</p>
+            <p>Se generará el radicado RC (Remisión por Competencia), se enviará el correo con los documentos del expediente y anexos comprimidos a la entidad correspondiente.</p>
           </div>
         </div>
       </WCInfoBox>
 
-      {/* Entidad destino */}
-      <div>
-        <WCLabel required>Entidad / Area de destino</WCLabel>
-        <WCSelect value={entidadId} onChange={e => setEntidadId(e.target.value)}>
-          <option value="">Selecciona la entidad competente...</option>
-          {entidades.map(e => (
-            <option key={e.id} value={e.id}>{e.nombre}</option>
-          ))}
-        </WCSelect>
-        {entidadSeleccionada?.correo && (
-          <div className="flex items-center gap-1.5 mt-1.5 px-2.5 py-1.5 rounded-lg bg-purple-50 border border-purple-200">
-            <Mail className="w-3 h-3 text-purple-600" />
-            <span className="text-[11px] text-purple-700 font-medium">{entidadSeleccionada.correo}</span>
+      {/* Si viene con entidad predefinida y no ha pedido modificar manualmente, mostramos la tarjeta ejecutiva de confirmación */}
+      {noticia.entidadDestinoPredefinida && !mostrarEdicionManual ? (
+        <div className="p-4 rounded-xl bg-purple-50/90 border-2 border-purple-300 text-purple-950 space-y-3 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center font-bold shadow-sm">
+                <Building2 className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-purple-700 block">
+                  Entidad Destino Aprobada
+                </span>
+                <p className="text-base font-black text-purple-950">
+                  {entidadSeleccionada?.nombre || noticia.entidadDestinoPredefinida}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMostrarEdicionManual(true)}
+              className="text-xs font-semibold text-purple-700 hover:text-purple-900 underline px-2 py-1 rounded hover:bg-purple-100 transition-colors"
+            >
+              Modificar datos
+            </button>
           </div>
-        )}
-        {(!entidadesConfiguradas || entidadesConfiguradas.length === 0) && (
-          <p className="text-[10px] text-gray-400 mt-1">
-            Puedes configurar entidades personalizadas en Configuracion &gt; Entidades de Remision
-          </p>
-        )}
-      </div>
 
-      {/* Tipo de remision */}
-      <div>
-        <WCLabel required>Tipo de remision</WCLabel>
-        <WCSelect value={tipoRemision} onChange={e => setTipoRemision(e.target.value)} disabled={loadingTipos}>
-          <option value="">Selecciona el tipo...</option>
-          {loadingTipos ? (
-            <option value="" disabled>Cargando tipos...</option>
-          ) : (
-            tiposRemision.map(t => (
-              <option key={t.id} value={t.codigo}>{t.nombre}</option>
-            ))
-          )}
-        </WCSelect>
-      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2 border-t border-purple-200 text-xs">
+            <div>
+              <span className="text-purple-600 font-medium block">Correo oficial de remisión:</span>
+              <span className="font-bold flex items-center gap-1.5 text-purple-900 mt-0.5">
+                <Mail className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />
+                {entidadSeleccionada?.correo || correoFinal || 'Sin correo configurado'}
+              </span>
+            </div>
+            <div>
+              <span className="text-purple-600 font-medium block">Tipo de remisión:</span>
+              <span className="font-bold text-purple-900 mt-0.5 block">
+                {tiposRemision.find(t => t.codigo === tipoRemision)?.nombre || 'Sin competencia disciplinaria'}
+              </span>
+            </div>
+          </div>
 
-      {/* Justificacion */}
-      <div>
-        <WCLabel required>Justificacion de la remision</WCLabel>
-        <WCTextarea
-          value={justificacion}
-          onChange={e => setJustificacion(e.target.value)}
-          rows={3}
-          placeholder="Explica detalladamente por que esta noticia no corresponde a Control Interno Disciplinario y debe ser remitida a la entidad seleccionada..."
-        />
-        <div className="flex items-center justify-between mt-1">
-          <p className="text-[10px] text-gray-400">Minimo 20 caracteres</p>
-          <p className={`text-[10px] font-bold ${justificacion.trim().length >= 20 ? 'text-green-600' : 'text-gray-400'}`}>
-            {justificacion.trim().length}/20
-          </p>
+          <div className="pt-2 border-t border-purple-200 text-xs">
+            <span className="text-purple-600 font-medium block">Justificación:</span>
+            <p className="text-purple-900 mt-1 text-xs bg-white/80 p-2.5 rounded-lg border border-purple-200">
+              {justificacion}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 pt-1 text-[11px] text-emerald-800 font-semibold bg-emerald-50 p-2.5 rounded-lg border border-emerald-200">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span>Auto de remisión revisado y confirmado. Listo para remitir por competencia.</span>
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          {noticia.entidadDestinoPredefinida && mostrarEdicionManual && (
+            <div className="flex justify-between items-center p-2 bg-purple-50 rounded-lg border border-purple-200">
+              <span className="text-xs text-purple-700 font-medium">Modo de edición manual activado</span>
+              <button
+                type="button"
+                onClick={() => setMostrarEdicionManual(false)}
+                className="text-xs text-purple-800 font-bold underline"
+              >
+                Volver a datos predeterminados
+              </button>
+            </div>
+          )}
+
+          {/* Entidad destino */}
+          <div>
+            <WCLabel required>Entidad / Área de destino</WCLabel>
+            <WCSelect value={entidadId} onChange={e => setEntidadId(e.target.value)}>
+              <option value="">Selecciona la entidad competente...</option>
+              {entidades.map(e => (
+                <option key={e.id} value={e.id}>{e.nombre}</option>
+              ))}
+            </WCSelect>
+            {entidadSeleccionada?.correo && (
+              <div className="flex items-center gap-1.5 mt-1.5 px-2.5 py-1.5 rounded-lg bg-purple-50 border border-purple-200">
+                <Mail className="w-3 h-3 text-purple-600" />
+                <span className="text-[11px] text-purple-700 font-medium">{entidadSeleccionada.correo}</span>
+              </div>
+            )}
+            {(!entidadesConfiguradas || entidadesConfiguradas.length === 0) && entidadesBD.length === 0 && (
+              <p className="text-[10px] text-gray-400 mt-1">
+                Puedes configurar entidades personalizadas en Configuración &gt; Entidades de Remisión
+              </p>
+            )}
+          </div>
+
+          {/* Tipo de remisión */}
+          <div>
+            <WCLabel required>Tipo de remisión</WCLabel>
+            <WCSelect value={tipoRemision} onChange={e => setTipoRemision(e.target.value)} disabled={loadingTipos}>
+              <option value="">Selecciona el tipo...</option>
+              {loadingTipos ? (
+                <option value="" disabled>Cargando tipos...</option>
+              ) : (
+                tiposRemision.map(t => (
+                  <option key={t.id} value={t.codigo}>{t.nombre}</option>
+                ))
+              )}
+            </WCSelect>
+          </div>
+
+          {/* Justificación */}
+          <div>
+            <WCLabel required>Justificación de la remisión</WCLabel>
+            <WCTextarea
+              value={justificacion}
+              onChange={e => setJustificacion(e.target.value)}
+              rows={3}
+              placeholder="Explica detalladamente por qué esta noticia no corresponde a Control Interno Disciplinario y debe ser remitida a la entidad seleccionada..."
+            />
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-[10px] text-gray-400">Mínimo 20 caracteres</p>
+              <p className={`text-[10px] font-bold ${justificacion.trim().length >= 20 ? 'text-green-600' : 'text-gray-400'}`}>
+                {justificacion.trim().length}/20
+              </p>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Warning si es Procuraduria */}
       {entidadId === 'procuraduria' && (

@@ -257,6 +257,8 @@ export function ControlDisciplinarioFull() {
         tiempoEspera: '',
         radicadorAsignadoId: auto.radicadorAsignadoId || undefined,
         radicadorAsignadoNombre: auto.radicadorAsignadoId ? (radicadoresNombres[auto.radicadorAsignadoId] || 'Radicador asignado') : undefined,
+        entidadDestino: auto.entidadDestino || auto.entidad_destino || auto.process?.entidadRemision || undefined,
+        entidadDestinoEmail: auto.entidadDestinoEmail || auto.entidad_destino_email || auto.process?.correoEntidadRemision || undefined,
       }));
       setBorradores(borradoresReales);
     } catch {
@@ -420,13 +422,16 @@ export function ControlDisciplinarioFull() {
     setCurrentSection('aprobacion');
   }, []);
 
-  const handleAprobarBorrador = useCallback(async (borradorId: string, comentarios: string, radicadorAsignadoId?: string) => {
+  const handleAprobarBorrador = useCallback(async (borradorId: string, comentarios: string, radicadorAsignadoId?: string, extraData?: { entidadDestino?: string; entidadDestinoEmail?: string }) => {
     const borrador = borradores.find(b => b.id === borradorId);
 
     if (borrador?.autoId) {
       try {
         const userId = authService.getCurrentUser()?.id || '';
-        const autoActualizado = await disciplinaryService.aprobarAuto(borrador.autoId, userId, radicadorAsignadoId);
+        const autoActualizado = await disciplinaryService.aprobarAuto(borrador.autoId, userId, radicadorAsignadoId, {
+          ...extraData,
+          observaciones: comentarios,
+        });
         const radicadorNombre = radicadorAsignadoId
           ? radicadoresMap[radicadorAsignadoId] || 'Radicador asignado'
           : undefined;

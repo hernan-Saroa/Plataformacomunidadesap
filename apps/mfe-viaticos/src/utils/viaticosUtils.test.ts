@@ -107,6 +107,43 @@ describe('sincronizarItinerarioFormulario', () => {
     expect(sync.horaEstimadaGeneral).toBe('06:45 h');
     expect(sync.rutaGeneral).toBe('Bogotá D.C. → Cartagena');
   });
+
+  it('detecta viaje de ida y vuelta cuando el origen es Bogotá, D.C. y el retorno es Bogotá', () => {
+    const itinerario: RutaItinerario[] = [
+      {
+        id: 'r-1',
+        origenCiudad: 'Bogotá, D.C.',
+        origenDepartamento: 'Cundinamarca',
+        destinoCiudad: 'Pereira',
+        destinoDepartamento: 'Risaralda',
+        tipoTransporte: 'AEREO',
+        tipoTrayecto: 'SOLO_IDA',
+        diasRuta: 1,
+        horarioEstimadoMilitar: '08:00',
+        fechaSalida: '2026-10-01',
+        fechaLlegada: '2026-10-02',
+        guardada: true,
+      },
+      {
+        id: 'r-2',
+        origenCiudad: 'Pereira',
+        origenDepartamento: 'Risaralda',
+        destinoCiudad: 'Bogotá',
+        destinoDepartamento: 'Cundinamarca',
+        tipoTransporte: 'AEREO',
+        tipoTrayecto: 'SOLO_IDA',
+        diasRuta: 1,
+        horarioEstimadoMilitar: '14:00',
+        fechaSalida: '2026-10-03',
+        fechaLlegada: '2026-10-03',
+        guardada: true,
+      },
+    ];
+    const sync = sincronizarItinerarioFormulario(itinerario);
+    expect(sync.origenCiudad).toBe('Bogotá, D.C.');
+    expect(sync.destinoCiudad).toBe('Pereira');
+    expect(sync.destinoDepartamento).toBe('Risaralda');
+  });
 });
 
 describe('validarSecuenciaItinerario', () => {

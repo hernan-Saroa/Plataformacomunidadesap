@@ -433,7 +433,7 @@ export function CreateNoticiaModal({ onClose, onSave, noticiaToEdit, isEditMode 
   const [porDeterminar, setPorDeterminar] = useState({
     // Paso 1
     // En edición: si el origen guardado es POR_DETERMINAR, mostrar el checkbox marcado
-    origen: isEditMode ? (noticiaToEdit?.origen === 'POR_DETERMINAR') : false,
+    origen: isEditMode ? (noticiaToEdit?.origen === 'POR_DETERMINAR' || noticiaToEdit?.origen === 'Por determinar') : false,
     // En edición: si el valor guardado es 'Por determinar', mostrar el checkbox marcado
     territorial: isEditMode ? (noticiaToEdit?.territorial === 'Por determinar') : false,
     // En modo edición, si no hay fechaHechos guardada se marca "Por determinar" para no bloquear el wizard

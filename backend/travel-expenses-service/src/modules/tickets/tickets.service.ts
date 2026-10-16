@@ -25,7 +25,7 @@ import {
   CreateTarifaReferenciaDto,
   UpdateTarifaReferenciaDto,
 } from '../../dto/tickets/tickets.dto';
-import { resolverIata } from './aeropuertos-colombia';
+import { resolverIata, desglosarRuta, normalizarClaveCiudad } from './aeropuertos-colombia';
 
 /**
  * Respuesta del endpoint `POST /api/v1/tickets/validate`.
@@ -188,10 +188,9 @@ export class TicketsService implements OnModuleInit {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toUpperCase()
+        .replace(/\b(D\s*C|DISTRITO\s*CAPITAL|CIUDAD|MUNICIPIO)\b/g, ' ')
+        .replace(/[^A-Z0-9\s]/g, ' ')
         .replace(/\s+/g, ' ')
-        // Normaliza el sufijo geopolítico "D.C." / ", D.C." (p. ej. "Bogotá D.C.")
-        // para que coincida con las rutas restringidas registradas como BOGOTA.
-        .replace(/\s*,?\s*D\.?C\.?$/i, '')
         .trim()
     );
   }
@@ -840,11 +839,23 @@ export class TicketsService implements OnModuleInit {
     ultimaActualizacion: Date | null;
     mensaje: string;
   }> {
-    if (!origen || !destino) {
+    let orig = (origen || '').trim();
+    let dest = (destino || '').trim();
+
+    // Soportar cadenas de ruta compuestas (ej: "BOG-PEI", "BOG - PEI", "Bogotá - Pereira", "BOG/PEI")
+    if (orig && (!dest || dest.toLowerCase() === orig.toLowerCase())) {
+      const rutaPartes = desglosarRuta(orig);
+      if (rutaPartes) {
+        orig = rutaPartes.origen;
+        dest = rutaPartes.destino;
+      }
+    }
+
+    if (!orig || !dest) {
       return {
         encontrado: false,
-        origen: origen || '',
-        destino: destino || '',
+        origen: orig,
+        destino: dest,
         origenIata: null,
         destinoIata: null,
         tarifaEstimada: 0,
@@ -856,8 +867,8 @@ export class TicketsService implements OnModuleInit {
       };
     }
 
-    const origenIata = resolverIata(origen);
-    const destinoIata = resolverIata(destino);
+    const origenIata = resolverIata(orig);
+    const destinoIata = resolverIata(dest);
 
     let registro: TarifaReferenciaTiqueteEntity | null = null;
 
@@ -871,17 +882,31 @@ export class TicketsService implements OnModuleInit {
     }
 
     if (!registro) {
-      const origNorm = this.normalizarCiudad(origen);
-      const destNorm = this.normalizarCiudad(destino);
+      const origNorm = this.normalizarCiudad(orig);
+      const destNorm = this.normalizarCiudad(dest);
       const candidatos = await this.tarifaRepo.find({ where: { activo: true } });
       registro =
-        candidatos.find(
-          (c) =>
-            (this.normalizarCiudad(c.origenCiudad).includes(origNorm) &&
-              this.normalizarCiudad(c.destinoCiudad).includes(destNorm)) ||
-            (this.normalizarCiudad(c.origenCiudad).includes(destNorm) &&
-              this.normalizarCiudad(c.destinoCiudad).includes(origNorm)),
-        ) || null;
+        candidatos.find((c) => {
+          const cOrigNorm = this.normalizarCiudad(c.origenCiudad);
+          const cDestNorm = this.normalizarCiudad(c.destinoCiudad);
+          const cOrigIata = (c.origenIata || '').toUpperCase();
+          const cDestIata = (c.destinoIata || '').toUpperCase();
+          const cNotas = (c.notas || '').toUpperCase();
+
+          const coincideDirecto =
+            (cOrigNorm.includes(origNorm) || origNorm.includes(cOrigNorm) || (origenIata && cOrigIata === origenIata)) &&
+            (cDestNorm.includes(destNorm) || destNorm.includes(cDestNorm) || (destinoIata && cDestIata === destinoIata));
+
+          const coincideInverso =
+            (cOrigNorm.includes(destNorm) || destNorm.includes(cOrigNorm) || (destinoIata && cOrigIata === destinoIata)) &&
+            (cDestNorm.includes(origNorm) || origNorm.includes(cDestNorm) || (origenIata && cDestIata === origenIata));
+
+          const coincideNotas =
+            (origenIata && destinoIata && (cNotas.includes(`${origenIata}-${destinoIata}`) || cNotas.includes(`${destinoIata}-${origenIata}`))) ||
+            (cNotas.includes(origNorm) && cNotas.includes(destNorm));
+
+          return Boolean(coincideDirecto || coincideInverso || coincideNotas);
+        }) || null;
     }
 
     if (!registro) {
@@ -892,8 +917,8 @@ export class TicketsService implements OnModuleInit {
       const tarifaBenchmark = esInsularOLejana ? 650_000 : 420_000;
       return {
         encontrado: false,
-        origen,
-        destino,
+        origen: orig,
+        destino: dest,
         origenIata,
         destinoIata,
         tarifaEstimada: tarifaBenchmark,

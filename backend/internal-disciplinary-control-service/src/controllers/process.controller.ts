@@ -35,6 +35,11 @@ import {
   limpiarNombreArchivo,
 } from '../services/indice-electronico-export.service';
 import {
+  FuidExportService,
+  FuidItemDto,
+  FuidHeaderDto,
+} from '../services/fuid-export.service';
+import {
   CreateDisciplinaryProcessDto,
   DisciplinaryProcessResponseDto,
 } from '../dtos/create-disciplinary-process.dto';
@@ -120,6 +125,7 @@ export class ProcessController {
     private permissionsService: PermissionsService,
     private processExportService: ProcessExportService,
     private indiceElectronicoExportService: IndiceElectronicoExportService,
+    private fuidExportService: FuidExportService,
   ) { }
 
   private normalizeRoleCode(role: unknown): string | null {
@@ -1130,10 +1136,65 @@ export class ProcessController {
     @Body() body: { expediente: IndiceElectronicoExpedienteDto; documentos: IndiceElectronicoDocumentoDto[] },
     @Res() res: Response,
   ): Promise<void> {
+    let expediente = body?.expediente;
+    if (!expediente?.radicado || !expediente?.numeroExpediente) {
+      try {
+        const proceso = await this.processService.findById(id);
+        if (proceso) {
+          expediente = {
+            ...expediente,
+            radicado: expediente?.radicado || proceso.radicadoProceso || id,
+            numeroExpediente: expediente?.numeroExpediente || proceso.radicadoProceso || id,
+            asunto: expediente?.asunto || (proceso.news as any)?.conductas?.[0] || 'Proceso Disciplinario',
+            responsable: expediente?.responsable || (proceso.abogadoAsignado as any)?.nombre || 'Sin asignar',
+          };
+        }
+      } catch (err) {
+        // Fallback seguro si falla la consulta
+      }
+    }
+
     const workbook = await this.indiceElectronicoExportService.generar(
-      body.expediente,
+      expediente,
       body.documentos || [],
     );
+
+    const radicadoFinal = expediente?.numeroExpediente || expediente?.radicado || id;
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="IndiceElectronico_${radicadoFinal}.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  }
+
+  /**
+   * Descargar FUID en lote (múltiples expedientes o filtro activo) en plantilla oficial EI-FO-003
+   */
+  @Post('fuid/batch')
+  @ApiOperation({
+    summary: 'Descargar FUID en lote (EI-FO-003)',
+    description: 'Genera el FUID en formato oficial EI-FO-003 con una fila por expediente para los expedientes seleccionados o filtrados',
+  })
+  async descargarFuidLote(
+    @Body() body: { items: FuidItemDto[]; header?: FuidHeaderDto },
+    @Res() res: Response,
+  ): Promise<void> {
+    const workbook = await this.fuidExportService.generar(
+      body.items || [],
+      body.header,
+    );
+
+    const hoy = new Date();
+    const yyyy = hoy.getFullYear();
+    const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+    const dd = String(hoy.getDate()).padStart(2, '0');
+    const fechaPrefix = `${yyyy}${mm}${dd}`;
 
     res.setHeader(
       'Content-Type',
@@ -1141,7 +1202,64 @@ export class ProcessController {
     );
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="IndiceElectronico_${body.expediente?.radicado || id}.xlsx"`,
+      `attachment; filename="${fechaPrefix}_FUID.xlsx"`,
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  }
+
+  /**
+   * Descargar FUID individual de un expediente en plantilla oficial EI-FO-003
+   */
+  @Post(':id/fuid')
+  @ApiOperation({
+    summary: 'Descargar FUID individual (EI-FO-003)',
+    description: 'Genera el FUID del expediente en formato oficial EI-FO-003 con una sola fila para el expediente',
+  })
+  async descargarFuidIndividual(
+    @Param('id') id: string,
+    @Body() body: { item: FuidItemDto; header?: FuidHeaderDto },
+    @Res() res: Response,
+  ): Promise<void> {
+    let item = body?.item;
+    if (!item?.radicado) {
+      try {
+        const proceso = await this.processService.findById(id);
+        if (proceso) {
+          item = {
+            ...item,
+            radicado: proceso.radicadoProceso || id,
+            nombreDisciplinado: (proceso.news as any)?.disciplinable?.nombre || 'Sin nombre',
+            asunto: (proceso.news as any)?.conductas?.[0] || 'Proceso Disciplinario',
+            notas: proceso.etapaActual || proceso.estado || 'En Proceso',
+          };
+        }
+      } catch (err) {
+        // Fallback
+      }
+    }
+
+    const items = item ? [item] : [];
+    const workbook = await this.fuidExportService.generar(
+      items,
+      body.header,
+    );
+
+    const hoy = new Date();
+    const yyyy = hoy.getFullYear();
+    const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+    const dd = String(hoy.getDate()).padStart(2, '0');
+    const fechaPrefix = `${yyyy}${mm}${dd}`;
+    const radicadoClean = item?.radicado || id;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${fechaPrefix}_FUID_${radicadoClean}.xlsx"`,
     );
 
     await workbook.xlsx.write(res);
@@ -1479,96 +1597,273 @@ export class ProcessController {
       console.log('📧 [RemitirCompetencia] Iniciando remisión por competencia...');
       console.log('📧 [RemitirCompetencia] Datos recibidos:', JSON.stringify(dto, null, 2));
 
-      // 1. Obtener la noticia
-      const noticia = await this.newsService.findById(dto.newsId);
-      console.log('📧 [RemitirCompetencia] Noticia encontrada:', noticia.radicado);
+      // 1. Obtener proceso y/o noticia
+      let noticia: any = null;
+      let proceso: any = null;
 
-      // 2. Usar la descripción proporcionada o construir desde la noticia
+      if (dto.processId) {
+        try {
+          proceso = await this.processService.findById(dto.processId, true);
+        } catch (e) {
+          console.warn('Proceso no encontrado por ID:', dto.processId);
+        }
+        if (proceso?.newsId) {
+          try {
+            noticia = await this.newsService.findById(proceso.newsId);
+          } catch (e) {
+            console.warn('Noticia no encontrada para proceso:', proceso.newsId);
+          }
+        }
+      }
+
+      if (!noticia && dto.newsId) {
+        try {
+          noticia = await this.newsService.findById(dto.newsId);
+        } catch (e) {
+          console.warn('Noticia no encontrada por ID:', dto.newsId);
+        }
+        if (!proceso && dto.newsId) {
+          try {
+            const procesos = await this.processService.findByNewsId(dto.newsId);
+            if (procesos && procesos.length > 0) {
+              proceso = procesos[0];
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+      }
+
+      if (!noticia && !proceso) {
+        throw new HttpException('No se encontró la noticia ni el proceso para remitir', HttpStatus.NOT_FOUND);
+      }
+
+      const radicadoIdentificador = dto.radicado || proceso?.radicadoProceso || noticia?.radicado || 'SIN_RADICADO';
+
+      // 2. Usar la descripción proporcionada o construir desde la noticia o proceso
       const descripcionRemision = dto.descripcion || {
-        numeroRadicado: noticia.radicado,
-        origen: noticia.origen,
-        fechaRecepcion: new Date(noticia.fechaRecepcion).toISOString(),
-        territorial: noticia.territorial,
-        dependenciaDenunciado: noticia.dependenciaDenunciado,
-        denunciante: typeof noticia.denunciante === 'string' ? JSON.parse(noticia.denunciante) : noticia.denunciante,
-        disciplinable: typeof noticia.disciplinable === 'string' ? JSON.parse(noticia.disciplinable) : noticia.disciplinable,
-        hechos: noticia.hechos,
-        conductas: noticia.conductas,
-        fechaHechos: noticia.fechaHechos || null,
-        fechaCaducidad: noticia.fechaCaducidad || null,
+        numeroRadicado: radicadoIdentificador,
+        origen: noticia?.origen || 'REMISION',
+        fechaRecepcion: noticia?.fechaRecepcion ? new Date(noticia.fechaRecepcion).toISOString() : new Date().toISOString(),
+        territorial: noticia?.territorial || 'Sede Central',
+        dependenciaDenunciado: noticia?.dependenciaDenunciado || 'N/A',
+        denunciante: noticia ? (typeof noticia.denunciante === 'string' ? JSON.parse(noticia.denunciante) : noticia.denunciante) : 'N/A',
+        disciplinable: noticia ? (typeof noticia.disciplinable === 'string' ? JSON.parse(noticia.disciplinable) : noticia.disciplinable) : 'N/A',
+        hechos: noticia?.hechos || proceso?.observaciones || 'Sin hechos registrados',
+        conductas: noticia?.conductas || [],
+        fechaHechos: noticia?.fechaHechos || null,
+        fechaCaducidad: noticia?.fechaCaducidad || null,
       };
 
       // 3. Construir el contenido HTML del correo
-      const emailHtml = this.newsService.buildRemisionEmailContent(
-        noticia,
-        dto.entidadDestino,
-        dto.justificacion,
-        descripcionRemision,
-      );
+      const emailHtml = noticia
+        ? this.newsService.buildRemisionEmailContent(
+            noticia,
+            dto.entidadDestino,
+            dto.justificacion,
+            descripcionRemision,
+          )
+        : `
+          <div style="font-family: Arial, sans-serif; color: #1e293b;">
+            <h2>Remisión por Competencia - Control Interno Disciplinario ESAP</h2>
+            <p>Se remite el expediente correspondiente al proceso disciplinario <strong>${radicadoIdentificador}</strong> por falta de competencia a la entidad <strong>${dto.entidadDestino}</strong>.</p>
+            <p><strong>Justificación:</strong> ${dto.justificacion}</p>
+            <hr />
+            <p style="font-size: 12px; color: #64748b;">Escuela Superior de Administración Pública - ESAP</p>
+          </div>
+        `;
       console.log('📧 [RemitirCompetencia] HTML del correo construido');
 
       // 4. Enviar el correo usando el servicio de notificaciones
-      const notificationsServiceUrl = process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:3009';
-      console.log('📧 [RemitirCompetencia] URL del servicio de notificaciones:', notificationsServiceUrl);
+      const baseNotifUrl = process.env.NOTIFICATION_SERVICE_URL || process.env.NOTIFICATIONS_SERVICE_URL || 'http://localhost:3009';
+      // Candidatos para resolver tanto en Docker como en localhost
+      const candidateBases = [
+        baseNotifUrl,
+        baseNotifUrl.replace('notifications-service', 'localhost'),
+        'http://localhost:3009',
+        'http://127.0.0.1:3009',
+      ];
+      const uniqueBases = Array.from(new Set(candidateBases.map(u => (u || '').replace(/\/+$/, ''))));
+      console.log('📧 [RemitirCompetencia] URLs candidatas del servicio de notificaciones:', uniqueBases);
 
-      const subject = `Remisión por Competencia - Noticia Disciplinaria ${dto.radicado || noticia.radicado}`;
+      const subject = `Remisión por Competencia - Proceso/Noticia Disciplinaria ${radicadoIdentificador}`;
 
       let subjectFinal = subject;
       let attachmentName: string | undefined;
       let attachmentBase64: string | undefined;
       let attachmentContentType = 'application/zip';
 
-      const adjuntos = (noticia as any).adjuntos as string[] | undefined;
-      if (adjuntos && Array.isArray(adjuntos) && adjuntos.length > 0) {
+      // 4. Recopilar todos los archivos del expediente para el ZIP y la remisión:
+      // - Autos generados del proceso (Auto de Remisión por Competencia y demás autos)
+      // - Actas y evidencias documentales
+      // - Soportes iniciales de la queja / noticia
+      // - Pruebas registradas
+      const uploadFolderRadicado = noticia?.radicado || proceso?.radicadoProceso || radicadoIdentificador;
+      const resolverRuta = (referencia?: string | null): string | null => {
+        if (!referencia) return null;
         try {
-          const zip = new JSZip();
-          for (const adjunto of adjuntos) {
+          const limpia = referencia.replace(/^\/files\//, '').replace(/^\/+/, '');
+          const directa = this.storageService.getFullPath(limpia);
+          if (fs.existsSync(directa)) return directa;
+          const uploadsRoot = path.resolve(getUploadRootDir());
+          const cwdUploads = path.resolve(process.cwd(), 'uploads');
+          const base = path.basename(limpia);
+          const candidatos = [
+            path.join(getProcessUploadDir(uploadFolderRadicado), base),
+            path.join(uploadsRoot, base),
+            path.join(cwdUploads, base),
+            path.join(uploadsRoot, limpia),
+            path.join(cwdUploads, limpia),
+          ];
+          for (const c of candidatos) {
+            if (fs.existsSync(c)) return c;
+          }
+        } catch (_) {}
+        return null;
+      };
+
+      const autosProceso = proceso?.id ? await this.autoService.findByProcessId(proceso.id) : [];
+      let evidenciasProceso: any[] = [];
+      try {
+        if (proceso?.evidence && Array.isArray(proceso.evidence) && proceso.evidence.length > 0) {
+          evidenciasProceso = proceso.evidence;
+        } else if (proceso?.id) {
+          evidenciasProceso = await this.processService.getEvidenceByProcessId(proceso.id);
+        }
+      } catch (_) {}
+
+      const adjuntosNoticia = Array.isArray(noticia?.adjuntos) ? noticia.adjuntos : [];
+      const pruebasProceso = Array.isArray(proceso?.pruebas) ? proceso.pruebas : [];
+
+      const archivosParaZip: Array<{ nombre: string; rutaODatos: Buffer }> = [];
+
+      // A. Autos del proceso (incluyendo el Auto de Remisión por Competencia)
+      for (const auto of autosProceso) {
+        let agregado = false;
+        const ref = auto.firmaUrl || auto.documentUrl;
+        if (ref) {
+          const ruta = resolverRuta(ref);
+          if (ruta) {
             try {
-              const filename = adjunto.includes('/') ? adjunto.split('/').pop()! : adjunto;
-              const filePath = path.join(getProcessUploadDir(noticia.radicado), filename);
-              const fileBuffer = await fsPromises.readFile(filePath);
-              zip.file(filename, fileBuffer);
-            } catch (adjuntoError) {
-              console.error(`⚠️ [RemitirCompetencia] Error leyendo adjunto ${adjunto}:`, adjuntoError);
+              const buf = await fsPromises.readFile(ruta);
+              const ext = path.extname(ruta) || '.pdf';
+              const cleanName = auto.documentName || `Auto_${auto.tipo || 'Auto'}_${auto.numero || auto.id}${ext}`;
+              archivosParaZip.push({ nombre: `Autos/${cleanName}`, rutaODatos: buf });
+              agregado = true;
+            } catch (err) {
+              console.warn('[RemitirCompetencia] Error leyendo archivo de auto:', ref, err);
             }
           }
+        }
+        if (!agregado && auto.contenido && auto.contenido.trim().length > 0) {
+          const autoHtml = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>${auto.tipo || 'Auto'}</title></head><body>${auto.contenido}</body></html>`;
+          const cleanName = `Auto_${auto.tipo || 'Auto'}_${auto.numero || auto.id}.html`;
+          archivosParaZip.push({ nombre: `Autos/${cleanName}`, rutaODatos: Buffer.from(autoHtml, 'utf-8') });
+        }
+      }
+
+      // B. Actas y Evidencias del proceso
+      for (const ev of evidenciasProceso) {
+        const ref = ev.archivoUrl || ev.url || ev.filename;
+        if (ref) {
+          const ruta = resolverRuta(ref);
+          if (ruta) {
+            try {
+              const buf = await fsPromises.readFile(ruta);
+              const esActa = (ev.tipoDocumento || ev.tipo || '').toUpperCase().includes('ACTA');
+              const categoria = esActa ? 'Actas' : 'Evidencias';
+              const nombreDoc = ev.nombreArchivo || ev.nombreDocumento || path.basename(ruta);
+              archivosParaZip.push({ nombre: `${categoria}/${nombreDoc}`, rutaODatos: buf });
+            } catch (err) {
+              console.warn('[RemitirCompetencia] Error leyendo evidencia:', ref, err);
+            }
+          }
+        }
+      }
+
+      // C. Soportes iniciales de la queja / noticia
+      for (const adj of adjuntosNoticia) {
+        const ruta = resolverRuta(adj);
+        if (ruta) {
+          try {
+            const buf = await fsPromises.readFile(ruta);
+            const nombreDoc = path.basename(ruta);
+            archivosParaZip.push({ nombre: `Soportes_Queja/${nombreDoc}`, rutaODatos: buf });
+          } catch (err) {
+            console.warn('[RemitirCompetencia] Error leyendo soporte queja:', adj, err);
+          }
+        }
+      }
+
+      // D. Pruebas del proceso
+      for (const p of pruebasProceso) {
+        const ruta = resolverRuta(p);
+        if (ruta) {
+          try {
+            const buf = await fsPromises.readFile(ruta);
+            const nombreDoc = path.basename(ruta);
+            archivosParaZip.push({ nombre: `Pruebas/${nombreDoc}`, rutaODatos: buf });
+          } catch (_) {}
+        }
+      }
+
+      if (archivosParaZip.length > 0) {
+        try {
+          const zip = new JSZip();
+          for (const item of archivosParaZip) {
+            zip.file(item.nombre, item.rutaODatos);
+          }
           const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
-          attachmentName = `adjuntos_${dto.radicado || noticia.radicado}.zip`;
+          attachmentName = `Expediente_Remision_${radicadoIdentificador}.zip`;
           attachmentBase64 = zipBuffer.toString('base64');
-          subjectFinal = `${subject} (${adjuntos.length} archivo(s) adjunto(s))`;
-          console.log(`📎 [RemitirCompetencia] ZIP creado con ${adjuntos.length} archivo(s)`);
+          subjectFinal = `${subject} (${archivosParaZip.length} archivos adjuntos)`;
+          console.log(`📎 [RemitirCompetencia] ZIP creado con ${archivosParaZip.length} archivo(s) del expediente`);
         } catch (zipError) {
           console.error(`⚠️ [RemitirCompetencia] Error creando ZIP:`, zipError);
         }
       }
 
-      const remindersBaseUrl = (notificationsServiceUrl || '').replace(/\/+$/, '');
+      let emailEnviado = false;
+      let emailErrorMsg = '';
 
-      if (attachmentBase64 && attachmentName) {
-        const emailPayload: any = {
-          to: dto.emailDestinatario,
-          subject: subjectFinal,
-          text: `Se remite la noticia disciplinaria ${dto.radicado || noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
-          html: emailHtml,
-          attachmentName,
-          attachmentBase64,
-          attachmentContentType,
-        };
-        const responseWithAttachment = await firstValueFrom(
-          this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send-with-attachment`, emailPayload),
-        );
-        console.log('📧 [RemitirCompetencia] Correo con ZIP enviado:', responseWithAttachment.data);
-      } else {
-        const emailPayload = {
-          to: dto.emailDestinatario,
-          subject: subjectFinal,
-          text: `Se remite la noticia disciplinaria ${dto.radicado || noticia.radicado} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
-          html: emailHtml,
-        };
-        const response = await firstValueFrom(
-          this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send`, emailPayload),
-        );
-        console.log('📧 [RemitirCompetencia] Correo enviado:', response.data);
+      for (const remindersBaseUrl of uniqueBases) {
+        try {
+          if (attachmentBase64 && attachmentName) {
+            const emailPayload: any = {
+              to: dto.emailDestinatario,
+              subject: subjectFinal,
+              text: `Se remite el expediente ${radicadoIdentificador} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
+              html: emailHtml,
+              attachmentName,
+              attachmentBase64,
+              attachmentContentType,
+            };
+            const responseWithAttachment = await firstValueFrom(
+              this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send-with-attachment`, emailPayload, { timeout: 8000 }),
+            );
+            console.log('📧 [RemitirCompetencia] Correo con ZIP enviado vía', remindersBaseUrl, responseWithAttachment?.data);
+          } else {
+            const emailPayload = {
+              to: dto.emailDestinatario,
+              subject: subjectFinal,
+              text: `Se remite el expediente ${radicadoIdentificador} por competencia a ${dto.entidadDestino}. Justificación: ${dto.justificacion}`,
+              html: emailHtml,
+            };
+            const response = await firstValueFrom(
+              this.httpService.post(`${remindersBaseUrl}/api/v1/emails/send`, emailPayload, { timeout: 8000 }),
+            );
+            console.log('📧 [RemitirCompetencia] Correo enviado vía', remindersBaseUrl, response?.data);
+          }
+          emailEnviado = true;
+          break;
+        } catch (postErr: any) {
+          emailErrorMsg = postErr?.message || String(postErr);
+          console.warn(`⚠️ [RemitirCompetencia] Intento vía ${remindersBaseUrl} no completado: ${emailErrorMsg}`);
+        }
+      }
+
+      if (!emailEnviado) {
+        console.warn(`⚠️ [RemitirCompetencia] Advertencia al contactar el servicio de notificaciones: ${emailErrorMsg}. El proceso de remisión continúa.`);
       }
 
       // 5. Generar número RC
@@ -1576,43 +1871,90 @@ export class ProcessController {
       const consecutivo = String(Math.floor(Math.random() * 9000) + 1000);
       const numeroRC = `RC-${anio}-${consecutivo}`;
 
-      // 6. Actualizar la noticia con el estado de REMITIDA y los datos de remisión
-      // Incluir la descripción detallada en la misma llamada
-      console.log('📧 [RemitirCompetencia] Actualizando noticia a estado REMITIDA...');
-      await this.newsService.remitirNoticia(
-        dto.newsId,
-        {
+      // 6. Actualizar la noticia si existe
+      if (noticia?.id) {
+        console.log('📧 [RemitirCompetencia] Actualizando noticia a estado REMITIDA...');
+        const descConArchivos = {
+          ...descripcionRemision,
+          totalArchivos: archivosParaZip.length,
+          archivosRemitidos: archivosParaZip.map(a => a.nombre),
+          autos: autosProceso.map(a => ({
+            id: a.id,
+            tipo: a.tipo,
+            numero: a.numero,
+            nombre: a.documentName || (a.numero ? `${a.numero}.pdf` : `Auto_${a.tipo}_${a.id}.pdf`),
+            url: a.firmaUrl || a.documentUrl || (a.numero ? `/files/${a.numero}.pdf` : undefined),
+            documentUrl: a.documentUrl,
+            firmaUrl: a.firmaUrl,
+            documentName: a.documentName,
+            contenido: a.contenido,
+            estado: a.estado,
+            fecha: a.createdAt,
+          })),
+          actasYEvidencias: evidenciasProceso.map(e => ({
+            id: e.id,
+            nombre: e.nombreArchivo || e.nombreDocumento || 'Documento',
+            url: e.archivoUrl || e.url,
+            tipo: e.tipoDocumento || e.tipo,
+            fecha: e.createdAt,
+          })),
+        };
+
+        const todosLosAdjuntos = Array.from(new Set([
+          ...(noticia.adjuntos || []),
+          ...autosProceso.map(a => a.firmaUrl || a.documentUrl).filter(Boolean),
+          ...evidenciasProceso.map(e => e.archivoUrl || e.url).filter(Boolean),
+          ...pruebasProceso,
+        ]));
+
+        await this.newsService.remitirNoticia(
+          noticia.id,
+          {
+            numeroRC,
+            entidadRemision: dto.entidadDestino,
+            correoEntidadRemision: dto.emailDestinatario,
+            fechaRemision: new Date(),
+            tipoRemision: dto.tipoRemision || 'sin-competencia',
+            justificacionRemision: dto.justificacion,
+          },
+          descConArchivos,
+        );
+
+        try {
+          await this.newsService.update(noticia.id, { adjuntos: todosLosAdjuntos } as any);
+        } catch (_) {}
+
+        const historyEntry = {
+          id: Date.now().toString(),
+          tipo: 'remision_competencia',
+          usuario: dto.usuarioRemision || 'Sistema',
+          fecha: new Date().toISOString(),
+          observaciones: `Remisión a ${dto.entidadDestino} (${dto.emailDestinatario}). Número RC: ${numeroRC}. Archivos adjuntos en expediente: ${archivosParaZip.length}. Justificación: ${dto.justificacion}`,
+          resultado: 'enviado',
+          descripcion: descConArchivos,
+        };
+        await this.newsService.updateHistory(noticia.id, historyEntry);
+      }
+
+      // 7. Actualizar el proceso si existe
+      if (proceso?.id) {
+        console.log('📧 [RemitirCompetencia] Actualizando proceso con remisión...');
+        await this.processService.remitirProceso(proceso.id, {
           numeroRC,
           entidadRemision: dto.entidadDestino,
           correoEntidadRemision: dto.emailDestinatario,
           fechaRemision: new Date(),
           tipoRemision: dto.tipoRemision || 'sin-competencia',
           justificacionRemision: dto.justificacion,
-        },
-        descripcionRemision,
-      );
-
-      // 8. Registrar la remisión en el historial de la noticia
-      const historyEntry = {
-        id: Date.now().toString(),
-        tipo: 'remision_competencia',
-        usuario: dto.usuarioRemision || 'Sistema',
-        fecha: new Date().toISOString(),
-        observaciones: `Remisión a ${dto.entidadDestino} (${dto.emailDestinatario}). Número RC: ${numeroRC}. Justificación: ${dto.justificacion}`,
-        resultado: 'enviado',
-        descripcion: descripcionRemision,
-      };
-
-      // Actualizar el historial de la noticia
-      await this.newsService.updateHistory(dto.newsId, historyEntry);
-
-      // Actualizar el historial de la noticia
-      await this.newsService.updateHistory(dto.newsId, historyEntry);
+          descripcionRemision,
+        });
+      }
 
       return {
         success: true,
         message: 'Correo enviado exitosamente',
-        newsId: dto.newsId,
+        newsId: noticia?.id || dto.newsId,
+        processId: proceso?.id || dto.processId,
         emailEnviado: dto.emailDestinatario,
         fechaRemision: new Date(),
       };
@@ -1630,7 +1972,9 @@ export class ProcessController {
           observaciones: `Intento de remisión a ${dto.entidadDestino} fallido. Error: ${error.message}`,
           resultado: 'error',
         };
-        await this.newsService.updateHistory(dto.newsId, historyEntry);
+        if (dto.newsId) {
+          await this.newsService.updateHistory(dto.newsId, historyEntry);
+        }
       } catch (historyError) {
         console.error('❌ [RemitirCompetencia] Error al registrar historial:', historyError);
       }
