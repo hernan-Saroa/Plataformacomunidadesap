@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PTAForm } from './PTAForm';
 import { getRegimenDocencia } from '../../../services/api/docenciaConcertadaApi';
 import { getActivePeriodoAcademico, getComponentesAprobacion, getPTAById, savePTA } from '../../../services/api/ptaApi';
+import { docentePtaAlert } from './DocentePtaAlert';
 
 vi.mock('../../../../../shell/src/services/api', () => ({ getBaseURL: () => 'http://localhost' }));
 vi.mock('../../../services/api/docenciaConcertadaApi', () => ({ getRegimenDocencia: vi.fn() }));
@@ -48,7 +49,7 @@ beforeEach(() => {
   ] } as any);
   vi.mocked(savePTA).mockResolvedValue({ success: true, data: { id: 'pta-1' } } as any);
 });
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('Docencia del PTA según el régimen del backend', () => {
   it('muestra la concertación aprobada, sus horas y total sin controles manuales', async () => {
@@ -73,16 +74,31 @@ describe('Docencia del PTA según el régimen del backend', () => {
     fireEvent.click(agregar);
     expect(screen.queryByText('Aprobada en la concertación')).toBeNull();
     expect(screen.getByText(/Asignatura 1/)).toBeTruthy();
+    expect(screen.queryByText(/No se pudo confirmar el régimen de Docencia/)).toBeNull();
   });
 
   it('si falla el régimen conserva la docencia manual y permite guardar', async () => {
     vi.mocked(getRegimenDocencia).mockRejectedValue(new Error('503'));
     vi.mocked(getPTAById).mockResolvedValue({ success: true, data: { ...pta, asignaturas: [] } } as any);
     render(<PTAForm onBack={() => {}} userPersonId="docente-1" ptaId="pta-1" />);
-    expect(await screen.findByText(/No se pudo confirmar el régimen de Docencia/)).toBeTruthy();
+    expect(await screen.findByText(/No se pudo confirmar el régimen de Docencia.*Si aparece un error al guardar, inténtalo más tarde/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Agregar Asignatura' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Guardar Borrador' }));
     await waitFor(() => expect(savePTA).toHaveBeenCalled());
+  });
+
+  it('explica el 503 sin borrar lo ingresado en el formulario', async () => {
+    vi.mocked(getRegimenDocencia).mockRejectedValue(new Error('Programación Académica no disponible'));
+    vi.mocked(getPTAById).mockResolvedValue({ success: true, data: { ...pta, asignaturas: [] } } as any);
+    vi.mocked(savePTA).mockResolvedValue({ success: false, data: null, status: 503, message: 'Service Unavailable' } as any);
+    const aviso = vi.spyOn(docentePtaAlert, 'error');
+    render(<PTAForm onBack={() => {}} userPersonId="docente-1" ptaId="pta-1" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Agregar Asignatura' }));
+    expect(screen.getByText(/Asignatura 1/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar Borrador' }));
+    await waitFor(() => expect(aviso).toHaveBeenCalledWith(expect.stringMatching(/El PTA no se puede guardar ahora porque Programación Académica no está disponible.*Lo que ingresaste permanece en el formulario/)));
+    expect(screen.getByText(/Asignatura 1/)).toBeTruthy();
+    aviso.mockRestore();
   });
 
   it('si no hay periodo activo permite guardar con el formulario habitual', async () => {
