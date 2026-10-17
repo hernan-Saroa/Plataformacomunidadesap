@@ -471,7 +471,8 @@ export function VistaAprobadorPlanAnual({
             className="bg-white rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-200">
+            {/* shrink-0: el visor del navegador no puede comerse la cabecera (título y X) */}
+            <div className="flex-shrink-0 flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-200">
               <div className="min-w-0">
                 <h3 className="font-bold text-gray-900 truncate">{vistaPrevia.titulo}</h3>
                 <p className="text-xs text-gray-500">Vista previa · {vistaPrevia.nombreArchivo}</p>
