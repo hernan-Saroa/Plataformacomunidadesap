@@ -117,6 +117,9 @@ describe('EFDS-2301 :: con el periodo cerrado, toda escritura se rechaza (agrega
     try {
       client = new Client(conexion);
       await client.connect();
+      // Todo el fixture vive en UNA transacción que se revierte al final: ninguna otra
+      // conexión (otras pruebas en paralelo, como el canario de cruces) lo ve.
+      await client.query('BEGIN');
       const a = await client.query(`SELECT id FROM academic_work_plan.asignatura ORDER BY id LIMIT 1`);
       ids.asignatura = String(a.rows[0].id);
       const cod = `QA-2301-${Date.now().toString().slice(-7)}`;
@@ -144,13 +147,16 @@ describe('EFDS-2301 :: con el periodo cerrado, toda escritura se rechaza (agrega
     }
   });
 
+  // Cada caso en su savepoint: un error SQL esperado no deja la transacción inservible.
+  beforeEach(async () => { if (client) await client.query('SAVEPOINT caso').catch(() => {}); });
+  afterEach(async () => {
+    if (!client) return;
+    await client.query('RELEASE SAVEPOINT caso').catch(() => client!.query('ROLLBACK TO SAVEPOINT caso').catch(() => {}));
+  });
+
   afterAll(async () => {
-    if (client && ids.periodo) {
-      await client.query(`DELETE FROM "${S}".concertacion_docencia WHERE periodo_ref=$1`, [ids.periodo]).catch(() => {});
-      await client.query(`DELETE FROM "${S}".franja_horaria WHERE id_grupo=$1`, [ids.grupo]).catch(() => {});
-      await client.query(`DELETE FROM "${S}".grupo WHERE id_periodo=$1`, [ids.periodo]).catch(() => {});
-      await client.query(`DELETE FROM "${S}".periodo_programacion WHERE id_periodo=$1`, [ids.periodo]).catch(() => {});
-    }
+    // Se revierte todo lo que creó la prueba (antes: COMMIT y DELETE al final).
+    if (client) await client.query('ROLLBACK').catch(() => {});
     if (client) await client.end().catch(() => {});
   });
 

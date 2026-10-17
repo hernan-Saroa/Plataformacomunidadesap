@@ -63,6 +63,8 @@ describe('§1.0 :: filtrado por periodo (agregado real)', () => {
   siHayBase('listarTodas(idPeriodo) solo trae franjas de ESE periodo', async () => {
     // Fixture: periodo QA + grupo + 1 franja; y se verifica que el filtro por
     // otro periodo no la incluye, y por el suyo sí.
+    // En una transacción que se revierte: ninguna otra conexión ve el fixture.
+    await client!.query('BEGIN');
     const cod = `QA-P10-${Date.now().toString().slice(-6)}`;
     const p = await client!.query(
       `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
@@ -89,8 +91,7 @@ describe('§1.0 :: filtrado por periodo (agregado real)', () => {
       const otras = await svc.listarTodas('00000000-0000-0000-0000-000000000000', ['pregrado', 'posgrado']);
       expect(otras.some((f) => f.idPeriodo === idPeriodo)).toBe(false);
     } finally {
-      await client!.query(`DELETE FROM "${S}".grupo WHERE id_periodo=$1`, [idPeriodo]);
-      await client!.query(`DELETE FROM "${S}".periodo_programacion WHERE id_periodo=$1`, [idPeriodo]);
+      await client!.query('ROLLBACK');
     }
   });
 });
