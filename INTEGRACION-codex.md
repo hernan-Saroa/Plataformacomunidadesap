@@ -357,3 +357,11 @@ index b34ce6139..c317fa74b 100644
 - Pruebas simuladas actualizadas: error y ausencia de periodo permiten guardar; durante la carga no aparece aviso; concertación muestra el estado real en la tarjeta. No se modificaron backend ni shell. No se escribieron datos reales.
 - Verificación final: `npm run build` del MFE del PTA y `npx vitest run --reporter=dot --no-threads` (49 archivos, 594 pruebas) pasaron.
 - Si otra Docencia aplicable tiene horas y sigue pendiente o devuelta, la tarjeta conserva ese estado en lugar de presentar toda la Docencia como aprobada.
+
+## Ajustes tras la verificación real de Claude (17 de octubre de 2026)
+
+- Fuente: sección 11 de `INTEGRACION-claude.md` publicada en `origin/feature/pa/ronda-pruebas`. Esta rama solo cambia los MFE de Programación Académica y PTA, sus pruebas y este registro; no toca backend, shell ni archivos compartidos. La modificación local de `.gitignore` continúa fuera del commit.
+- `GestionGrupos`: crear grupos ya no depende de `GET /grupos/ofertas-cetap`; durante la carga o ante un error envía `idOfertaCetap: null` y avisa que la oferta se puede asignar después. Búsqueda y selector tienen nombres accesibles distintos. Un PATCH rechazado vuelve a mostrar la oferta persistida, sin ocultar el error del servidor. Se retiró el uso nuevo de `MapPin` que añadía diagnósticos TS2786.
+- `GestionGrupos.test.tsx` declara jsdom en el archivo y cubre la creación durante la carga y el fallo de ofertas, además de la reversión visual tras un PATCH rechazado.
+- `PTAForm`: el aviso de régimen no confirmado ya no promete que el guardado funcione. `savePTA` conserva el código HTTP de los errores; ante 503 en un régimen no confirmado o de programación, la pantalla explica que Programación Académica no está disponible y que los datos siguen en el formulario. Con régimen `actual` se conserva el flujo habitual. Pruebas simuladas cubren el texto, el 503 y la permanencia de los datos.
+- No se escribieron datos reales ni se dejaron servidores de desarrollo corriendo.

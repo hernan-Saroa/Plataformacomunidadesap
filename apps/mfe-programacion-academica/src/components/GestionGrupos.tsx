@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Layers3, Loader2, MapPin, Plus, Trash2, User, Users } from 'lucide-react';
+import { Layers3, Loader2, Plus, Trash2, User, Users } from 'lucide-react';
 
 import {
   actualizarOfertaCetapGrupo, crearGrupos, eliminarGrupo, getGrupos, getOfertasCetapGrupo,
@@ -30,7 +30,7 @@ function SelectorOfertaCetap({ id, label, ofertas, valor, onChange, disabled }: 
 
   return (
     <div className="flex flex-col gap-1.5 min-w-0">
-      <label htmlFor={`${id}-buscar`} className="text-xs font-bold text-slate-500 uppercase tracking-wider">{label}</label>
+      <label htmlFor={`${id}-buscar`} className="text-xs font-bold text-slate-500 uppercase tracking-wider">Buscar {label.toLocaleLowerCase('es')}</label>
       <input
         id={`${id}-buscar`}
         type="search"
@@ -127,7 +127,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
     setCreando(true);
     setError('');
     try {
-      await crearGrupos(idAsignatura, cantidad, idPeriodo, ofertaNueva || null);
+      await crearGrupos(idAsignatura, cantidad, idPeriodo, cargandoOfertas || errorOfertas ? null : ofertaNueva || null);
       recargar();
     } catch (e: any) {
       setError(e?.message || 'No se pudieron crear los grupos.');
@@ -158,6 +158,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
       recargar();
     } catch (e: any) {
       setError(e?.message || 'No se pudo guardar la oferta CETAP del grupo.');
+      setOfertaEditada((actual) => { const siguiente = { ...actual }; delete siguiente[g.idGrupo]; return siguiente; });
     } finally {
       setGuardandoOferta(null);
     }
@@ -201,7 +202,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
         </div>
         <button
           onClick={onCrear}
-          disabled={creando || cargandoOfertas || !!errorOfertas}
+          disabled={creando}
           className="flex items-center gap-1.5 px-4 py-2 rounded-lg border-none text-white text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
           style={{ background: creando ? '#9CA3AF' : '#003DA5' }}
         >
@@ -214,7 +215,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
       </div>
 
       {cargandoOfertas && <p className="px-4 py-2 text-xs text-slate-500">Consultando ofertas CETAP…</p>}
-      {errorOfertas && <p role="alert" className="px-4 py-2 text-xs text-amber-800">{errorOfertas}</p>}
+      {errorOfertas && <p role="alert" className="px-4 py-2 text-xs text-amber-800">No se pudieron cargar las ofertas CETAP. Puedes crear grupos sin oferta y asignarla después. {errorOfertas}</p>}
       {!cargandoOfertas && !errorOfertas && ofertas.length === 0 && (
         <p className="px-4 py-2 text-xs text-slate-500">No hay ofertas CETAP activas para esta asignatura y periodo. Los grupos sin oferta no se pueden concertar.</p>
       )}
@@ -288,7 +289,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
                     disabled={cargandoOfertas || !!errorOfertas || !!guardandoOferta || (ofertaEditada[g.idGrupo] ?? g.idOfertaCetap ?? '') === (g.idOfertaCetap ?? '')}
                     className="flex items-center gap-1 rounded-lg bg-[#003DA5] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
                   >
-                    {guardandoOferta === g.idGrupo ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5" />}
+                    {guardandoOferta === g.idGrupo && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                     Guardar ubicación
                   </button>
                 </div>
