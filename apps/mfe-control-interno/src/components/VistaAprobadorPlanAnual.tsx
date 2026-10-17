@@ -11,6 +11,7 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { CalendarDays, ChevronDown, Download, Eye, FileSpreadsheet, FileText, Loader2, X } from 'lucide-react';
@@ -464,8 +465,9 @@ export function VistaAprobadorPlanAnual({
         )}
       </div>
 
-      {/* Vista previa */}
-      {vistaPrevia && (
+      {/* Vista previa. Va en un portal al body: dentro del contenido del shell (que se anima con
+          transform y tiene su propio scroll) el modal quedaba recortado y a veces sin cabecera */}
+      {vistaPrevia && createPortal(
         <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4" onClick={() => setVistaPrevia(null)}>
           <div
             className="bg-white rounded-xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden"
@@ -513,7 +515,8 @@ export function VistaAprobadorPlanAnual({
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </motion.div>
   );
