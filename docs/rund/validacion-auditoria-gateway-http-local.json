@@ -1,5 +1,5 @@
 {
-  "verifiedAt": "2026-10-16T07:53:44.128Z",
+  "verifiedAt": "2026-10-16T19:57:18.545Z",
   "step": "12.5b",
   "passed": true,
   "checks": [
@@ -28,6 +28,11 @@
     "El abandono manual RUND exige JWT y no registra cuerpos privados en auditoria",
     "El cierre manual RUND exige JWT y mantiene recibos y cuerpos fuera de auditoria",
     "La consulta de correo manual RUND exige JWT, conserva no-store y no audita cuerpos de GET",
+    "La revision de correo exige JWT y no copia cuerpos privados al auditar registro o asignacion",
+    "El cierre de revision de correo exige JWT, no-store y auditoria sin cuerpos privados",
+    "El diagnostico de correo exige JWT y conserva no-store y cuerpos privados fuera de auditoria",
+    "La omision por vigencia de correo exige JWT y conserva no-store y auditoria sin cuerpos privados",
+    "La revision del resultado incierto exige JWT y preserva transporte no-store y auditoria privada",
     "Un módulo ajeno conserva transporte, consultas y cuerpos de auditoría"
   ],
   "gatewayAppModuleReal": true,

@@ -2,6 +2,7 @@ import { apiClient } from './apiClient';
 import { validateManualCapture } from './rundManualIdentityCapture';
 import { validateManualClose } from './rundManualIdentityClose';
 import { validateManualMail } from './rundManualIdentityMail';
+import { RundMailOperationsClient } from './rundMailOperationsApi';
 
 export interface ManualExecutionReceipt {
   solicitudId:string; intencionId:string; estado:'PENDIENTE'|'ABORTADA'|'CONFIRMADA';
@@ -39,12 +40,17 @@ function receipt(raw:any,id:string):ManualExecutionReceipt {
 export class RundManualIdentityClient {
   private readonly key:string;
   private running:Promise<ManualExecutionReceipt>|null=null;
-  constructor(actorId:string,private readonly storage:RequestStorage=window.sessionStorage,
+  private mailOperations:RundMailOperationsClient|null=null;
+  constructor(private readonly actorId:string,private readonly storage:RequestStorage=window.sessionStorage,
     private readonly transport:Transport=apiClient,private readonly newUuid:()=>string=()=>crypto.randomUUID()) {
     if(!uuid(actorId))throw failure();this.key='rund:creacion-manual:'+actorId.toLowerCase();
   }
   pendiente():string|null {
     const id=this.storage.getItem(this.key);if(id!==null&&!uuid(id))throw failure();return id;
+  }
+  operacionesCorreo():RundMailOperationsClient {
+    if(!this.mailOperations)this.mailOperations=new RundMailOperationsClient(this.actorId,this.transport);
+    return this.mailOperations;
   }
   iniciar():string {
     const current=this.pendiente();if(current)return current;

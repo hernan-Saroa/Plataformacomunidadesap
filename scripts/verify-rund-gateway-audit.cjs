@@ -243,7 +243,7 @@ function protectedLog(log) {
     });
     await check('Registro, consulta y cancelación de operaciones Auth no salen por gateway normal o codificado', async () => {
       const before = forwarded.length, id = '11111111-1111-4111-8111-111111111111';
-      for (const prefix of ['internal', '%69nternal']) for (const [suffix, method] of [['', 'POST'], ['/' + id, 'GET'], ['/' + id + '/cancelar', 'POST'], ['/' + id + '/aplicar','POST'], ['/' + id + '/compensar','POST'], ['/' + id + '/compensacion','GET']]) {
+      for (const prefix of ['internal', '%69nternal']) for (const [suffix, method] of [['', 'POST'], ['/' + id, 'GET'], ['/' + id + '/cancelar', 'POST'], ['/' + id + '/aplicar','POST'], ['/' + id + '/compensar','POST'], ['/' + id + '/compensacion','GET'], ['/' + id + '/correo/validar','POST']]) {
         const auditBefore = audits.length;
         const res = await send(`/auth/api/v1/${prefix}/rund/v1/personas/escritura/operaciones${suffix}`, { method,
           body: method === 'POST' ? JSON.stringify({ version: 1, operacionId: id, huellaComando: 'a'.repeat(64) }) : undefined,
@@ -310,6 +310,52 @@ function protectedLog(log) {
       const auditBefore=audits.length,res=await send(route,{method:'GET',body:undefined});
       assert.equal(res.status,200);assert.deepEqual(await res.json(),ownerResponse);assert.equal(res.headers.get('cache-control'),'private, no-store');
       assert.equal(audits.length,auditBefore);
+    });
+    await check('La revision de correo exige JWT y no copia cuerpos privados al auditar registro o asignacion', async () => {
+      const base='/rund/api/v1/banco-docentes/identidad/correos/revisiones',id='11111111-1111-4111-8111-111111111111';
+      for(const [suffix,method] of [['','GET'],['/'+id,'GET'],['/por-intencion/'+id,'POST'],['/'+id+'/asumir','POST']]) {
+        const before=forwarded.length,body=method==='POST'?JSON.stringify(privateData):undefined;
+        const denied=await send(base+suffix,{method,body,headers:{'content-type':'application/json'}});
+        assert.equal(denied.status,401);await denied.arrayBuffer();assert.equal(forwarded.length,before);
+        const auditBefore=audits.length,res=await send(base+suffix,{method,body});
+        assert.equal(res.status,200);assert.deepEqual(await res.json(),ownerResponse);
+        assert.equal(res.headers.get('cache-control'),'private, no-store');
+        if(method==='POST')protectedLog(await waitForAudit(auditBefore));
+      }
+    });
+    await check('El cierre de revision de correo exige JWT, no-store y auditoria sin cuerpos privados',async()=>{
+      const base='/rund/api/v1/banco-docentes/identidad/correos/revisiones/11111111-1111-4111-8111-111111111111';
+      for(const [suffix,method] of [['/cierre','GET'],['/cerrar','POST']]){
+        const before=forwarded.length,body=method==='POST'?JSON.stringify(privateData):undefined;
+        const denied=await send(base+suffix,{method,body,headers:{'content-type':'application/json'}});
+        assert.equal(denied.status,401);await denied.arrayBuffer();assert.equal(forwarded.length,before);
+        const auditBefore=audits.length,res=await send(base+suffix,{method,body});
+        assert.equal(res.status,200);assert.deepEqual(await res.json(),ownerResponse);assert.equal(res.headers.get('cache-control'),'private, no-store');
+        if(method==='POST')protectedLog(await waitForAudit(auditBefore));else assert.equal(audits.length,auditBefore);
+      }
+    });
+    await check('El diagnostico de correo exige JWT y conserva no-store y cuerpos privados fuera de auditoria',async()=>{
+      const route='/rund/api/v1/banco-docentes/identidad/correos/revisiones/por-intencion/11111111-1111-4111-8111-111111111111/diagnosticar',before=forwarded.length;
+      const denied=await send(route,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});
+      assert.equal(denied.status,401);await denied.arrayBuffer();assert.equal(forwarded.length,before);
+      const auditBefore=audits.length,res=await send(route,{method:'POST',body:JSON.stringify(privateData)});
+      assert.equal(res.status,200);assert.deepEqual(await res.json(),ownerResponse);assert.equal(res.headers.get('cache-control'),'private, no-store');
+      protectedLog(await waitForAudit(auditBefore));
+    });
+    await check('La omision por vigencia de correo exige JWT y conserva no-store y auditoria sin cuerpos privados',async()=>{
+      const base='/rund/api/v1/banco-docentes/identidad/correos/revisiones/por-intencion/11111111-1111-4111-8111-111111111111';
+      for(const [suffix,method] of [['/omision','GET'],['/omitir-por-vigencia','POST']]){
+        const before=forwarded.length,body=method==='POST'?JSON.stringify(privateData):undefined;
+        const denied=await send(base+suffix,{method,body,headers:{'content-type':'application/json'}});assert.equal(denied.status,401);await denied.arrayBuffer();assert.equal(forwarded.length,before);
+        const auditBefore=audits.length,res=await send(base+suffix,{method,body});assert.equal(res.status,200);assert.deepEqual(await res.json(),ownerResponse);
+        assert.equal(res.headers.get('cache-control'),'private, no-store');if(method==='POST')protectedLog(await waitForAudit(auditBefore));else assert.equal(audits.length,auditBefore);
+      }
+    });
+    await check('La revision del resultado incierto exige JWT y preserva transporte no-store y auditoria privada',async()=>{
+      const route='/rund/api/v1/banco-docentes/identidad/correos/revisiones/por-intencion/11111111-1111-4111-8111-111111111111/revisar-resultado-incierto',before=forwarded.length;
+      const denied=await send(route,{method:'POST',headers:{'content-type':'application/json'},body:'{}'});assert.equal(denied.status,401);await denied.arrayBuffer();assert.equal(forwarded.length,before);
+      const auditBefore=audits.length,res=await send(route,{method:'POST',body:JSON.stringify(privateData)});assert.equal(res.status,200);assert.deepEqual(await res.json(),ownerResponse);
+      assert.equal(res.headers.get('cache-control'),'private, no-store');protectedLog(await waitForAudit(auditBefore));
     });
     await check('Un módulo ajeno conserva transporte, consultas y cuerpos de auditoría', async () => {
       const before = audits.length, body = { titulo: 'Expediente ficticio' };

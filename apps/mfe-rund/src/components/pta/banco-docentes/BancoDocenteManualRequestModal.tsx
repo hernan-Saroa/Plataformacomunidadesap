@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ManualExecutionReceipt, RundManualIdentityClient } from '../../../services/api/rundManualIdentityApi';
 import { MANUAL_CAPTURE_LABELS, type ManualCaptureField, type ManualCaptureReview } from '../../../services/api/rundManualIdentityCapture';
 import type { ManualCloseReceipt } from '../../../services/api/rundManualIdentityClose';
 import type { ManualMailReceipt } from '../../../services/api/rundManualIdentityMail';
+import { RundMailOperationsPanel } from './RundMailOperationsPanel';
 
 interface Props {
+  enableMailOperations?: boolean;
   client: RundManualIdentityClient;
   onClose: () => void;
   onSaved: () => void;
@@ -14,7 +16,7 @@ interface Props {
 const failure = 'No se pudo confirmar la solicitud. Conserve este registro y consulte su estado antes de continuar.';
 
 /** Ciclo visual preparatorio; sin HTTP al montar, reintentos automáticos o escritura alternativa. */
-export function BancoDocenteManualRequestModal({ client, onClose, onSaved, renderForm }: Props) {
+export function BancoDocenteManualRequestModal({ client, onClose, onSaved, renderForm, enableMailOperations=false }: Props) {
   const [initial] = useState(() => {
     try { return { id: client.pendiente(), error: null as string | null }; }
     catch { return { id: null, error: 'No se puede recuperar la solicitud en este navegador. No se enviaron datos.' }; }
@@ -32,17 +34,20 @@ export function BancoDocenteManualRequestModal({ client, onClose, onSaved, rende
   const [closeRequested, setCloseRequested] = useState(false);
   const [mail, setMail] = useState<ManualMailReceipt | null>(null);
   const [mailError, setMailError] = useState<string | null>(null);
+  const [mailOperationsBusy,setMailOperationsBusy]=useState(false);
+  const mailOperationsRunning=useRef(false);
   const snapshot = useRef<Record<string, unknown> | null>(null);
   const running = useRef(false);
   const owner = useRef(client);
   const mounted = useRef(true);
+  const onMailOperationsBusy=useCallback((value:boolean)=>{mailOperationsRunning.current=value;if(mounted.current)setMailOperationsBusy(value);},[]);
   const stale = useRef(false);
   if (client !== owner.current) stale.current = true;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const valid = () => mounted.current && !stale.current;
 
   async function run(action: () => Promise<void>) {
-    if (running.current || !valid() || initial.error) return;
+    if (running.current || mailOperationsRunning.current || !valid() || initial.error) return;
     running.current = true;
     setBusy(true); setError(null); setMail(null); setMailError(null);
     try { await action(); }
@@ -117,7 +122,7 @@ export function BancoDocenteManualRequestModal({ client, onClose, onSaved, rende
   }
   if (!started && !stale.current) return <>{renderForm(prepare)}</>;
   const changed = stale.current;
-  const blocked = busy || Boolean(initial.error) || changed;
+  const blocked = busy || mailOperationsBusy || Boolean(initial.error) || changed;
   const confirmed = result?.estado === 'CONFIRMADA' || closure?.estado === 'CONFIRMADA';
   const aborted = result?.estado === 'ABORTADA' || closure?.decisionNativa === 'ABORTADA';
   const closed = closure?.estado === 'CERRADA';
@@ -177,6 +182,8 @@ export function BancoDocenteManualRequestModal({ client, onClose, onSaved, rende
         <button disabled={blocked} onClick={() => closeOperation()}>Confirmar cierre de operación</button>
         <button disabled={blocked} onClick={() => setCloseRequested(false)}>Continuar con la operación</button>
       </div>}
+      {enableMailOperations&&confirmed&&!changed&&result&&<RundMailOperationsPanel client={client.operacionesCorreo()} intencionId={result.intencionId}
+        disabled={busy||Boolean(initial.error)} onBusyChange={onMailOperationsBusy}/>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
         {confirmed && <button disabled={blocked} onClick={consultMail}>Consultar estado del correo</button>}
         {!abandoned && !closed && <button disabled={blocked} onClick={consult}>Consultar resultado</button>}
@@ -192,7 +199,7 @@ export function BancoDocenteManualRequestModal({ client, onClose, onSaved, rende
           client.cerrar(result);
           if (valid()) onSaved();
         })}>Finalizar registro</button>}
-        <button disabled={busy && !changed} onClick={onClose}>Cerrar</button>
+        <button disabled={(busy||mailOperationsBusy) && !changed} onClick={onClose}>Cerrar</button>
       </div>
     </section>
   </div>;

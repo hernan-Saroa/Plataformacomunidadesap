@@ -1,0 +1,155 @@
+{
+  "generatedAt": "2026-10-16T14:45:01.191Z",
+  "scope": "source-review-push-checkpoint-81",
+  "branch": "feat/agregar_modulo_rund",
+  "head": "f1d91d35f9ef5af7126474b8b68357d5599c7ac6",
+  "activationReadiness": "not_verified",
+  "deploymentApproved": false,
+  "gitIndexModified": false,
+  "commitCreated": false,
+  "pushExecuted": false,
+  "runtimeModified": false,
+  "manifestFile": "docs/rund/corte-81-rund.paths",
+  "selectedFileCount": 27,
+  "newFiles": 9,
+  "deletedFiles": 0,
+  "outsideCut": [],
+  "findings": [],
+  "localImportTargetsChecked": 50,
+  "manifestSha256": "57f4430289a86ce1de4eb780a220cddf26a9f9a775763da58df59bcd87bd21f0",
+  "files": [
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-mail-validation.controller.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-mail-validation.controller.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/auth-service/src/users/users.module.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-validation.client.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-validation.client.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/common/auth-identity-mail.service.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/common/auth-identity-mail.service.ts"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/CONTRATO-CORREO-DURABLE-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-VIGENCIA-CORREO-IDENTIDAD-AUTH.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-81-rund.paths"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/PENDIENTES-CIERRE-INDEPENDENCIA.md"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/PRIMER-PUSH.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-81.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-auditoria-gateway-http-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-contadores-carpeta-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-estados-auth-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-historial-auth-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-panel-rund-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-servicio-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-sincronizacion-auth-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-vigencia-correo-identidad-auth-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-vistas-carpeta-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-auth-identity.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-gateway-audit.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-identity-mail.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-mail-validation.cjs"
+    }
+  ],
+  "sourceHashes": {
+    "backend/auth-service/src/users/rund-identity-mail-validation.controller.spec.ts": "9355be06b870e9e686d7160210e6bb9c9a1f80e990ea3d0547a2b988e8eb6f62",
+    "backend/auth-service/src/users/rund-identity-mail-validation.controller.ts": "2e0258c2281220b2f7d2d8398618952d51c3376207aee70ca82343d2c71c2965",
+    "backend/auth-service/src/users/users.module.ts": "8cfff81140a425fe38c06bdd9154f7aa67873e111cf2364b89051d2936c4f6a5",
+    "backend/rund-service/src/common/auth-identity-mail-validation.client.spec.ts": "9dc5ec499995d38b5416f5feebe807908d10090ae72959bca17f1396b32dcbfd",
+    "backend/rund-service/src/common/auth-identity-mail-validation.client.ts": "26f5d3e852e55acf502051619e722f7490eef1b18878d52a23d27b41060d6cdc",
+    "backend/rund-service/src/common/auth-identity-mail.service.spec.ts": "324cd60029e042dac3c0437a38aef6e878e177c95b2da1bd00df5f1db70f6bb0",
+    "backend/rund-service/src/common/auth-identity-mail.service.ts": "28aea27608bb5acdd9686d995ab688594807913c12aa07c24c0a77e047e841f5",
+    "docs/rund/CONTRATO-CORREO-DURABLE-IDENTIDAD-RUND.md": "6d063a9d75e7efa1901a9b3d68de380710038930001b6adbe07eff4a1c430770",
+    "docs/rund/CONTRATO-VIGENCIA-CORREO-IDENTIDAD-AUTH.md": "a9e02672ec91230feaf1148f0f16ba43b20307cfd73e087d9b2c759afb888c93",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "f694f5fd0401c549f229b3ca11010fb6a930d407b468ad802706ca27b9658371",
+    "docs/rund/PENDIENTES-CIERRE-INDEPENDENCIA.md": "a319c801fa3e470fcc2d7dcef7e9d92fea12069f4e9708ebac3725a77133525d",
+    "docs/rund/PRIMER-PUSH.md": "d03ecea5630949aec43e8c16342b4ce680d785a14e984aa6196022e72300261d",
+    "scripts/verify-rund-auth-identity.cjs": "1af25e231fa5a45d3f61a03d0a4386b409d424b3c7df597cf2c1d9499bf67d92",
+    "scripts/verify-rund-gateway-audit.cjs": "2a3b69ae81062561c34c3affbceca00d42c1b1575e70f7d1fba26a3ca38610b6",
+    "scripts/verify-rund-identity-mail.cjs": "0baba74bdb77e277150afa1039b95506f7a948cf9b490c1bdd1d56edf1ff8dc7",
+    "scripts/verify-rund-mail-validation.cjs": "8498f50450babcaf259c291118d3f4a7b356563a30cabad4f8966d54fbcd06c6"
+  },
+  "limits": [
+    "El manifiesto se basa en este worktree; revisar antes de stage/commit y regenerar si cambian las fuentes.",
+    "La búsqueda de secretos cubre firmas concretas, no sustituye revisión de valores/configuración.",
+    "Los imports revisados son los estáticos resolubles por TypeScript; no prueba todos los recursos dinámicos.",
+    "Las evidencias JSON generadas y el propio manifiesto no se huellan como fuentes para evitar referencias circulares.",
+    "Las pruebas y límites del corte se documentan en ESTADO-MIGRACION-MICROSERVICIO.md; este script no ejecuta pruebas ni certifica despliegue."
+  ]
+}

@@ -1,0 +1,360 @@
+{
+  "generatedAt": "2026-10-16T19:45:52.622Z",
+  "scope": "source-review-push-checkpoint-86",
+  "branch": "feat/agregar_modulo_rund",
+  "head": "f1d91d35f9ef5af7126474b8b68357d5599c7ac6",
+  "activationReadiness": "not_verified",
+  "deploymentApproved": false,
+  "gitIndexModified": false,
+  "commitCreated": false,
+  "pushExecuted": false,
+  "runtimeModified": false,
+  "manifestFile": "docs/rund/corte-86-rund.paths",
+  "selectedFileCount": 70,
+  "newFiles": 50,
+  "deletedFiles": 0,
+  "outsideCut": [],
+  "findings": [],
+  "localImportTargetsChecked": 126,
+  "manifestSha256": "358cc7413841d24e424b8289211a3b77c418b3db127b87cc9b30c5db92a220a8",
+  "files": [
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-mail-validation.controller.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/auth-service/src/users/rund-identity-mail-validation.controller.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/auth-service/src/users/users.module.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/017_rund_identidad_correo_resultado.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/018_rund_identidad_correo_revision.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/019_rund_identidad_correo_revision_cierre.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/db/migrations/020_rund_identidad_correo_omision.sql"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-diagnostic.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-diagnostic.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-omission.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-omission.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-reconciliation.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-reconciliation.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-review-close.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-review-close.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-review.controller.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-review.controller.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-review.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-review.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-validation.client.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-mail-validation.client.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/common/auth-identity-mail.service.spec.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/common/auth-identity-mail.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-CIERRE-REVISION-CORREO-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-CONCILIACION-CORREO-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/CONTRATO-CORREO-DURABLE-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-DIAGNOSTICO-CORREO-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-OMISION-CORREO-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-REVISION-CORREO-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-VIGENCIA-CORREO-IDENTIDAD-AUTH.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-81-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-82-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-83-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-84-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-85-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-86-rund.paths"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/PENDIENTES-CIERRE-INDEPENDENCIA.md"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/PRIMER-PUSH.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-81.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-82.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-83.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-84.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-85.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-86.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-auditoria-gateway-http-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-cierre-revision-correo-identidad-rund.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-conciliacion-correo-identidad-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-contadores-carpeta-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-diagnostico-correo-identidad-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-estados-auth-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-historial-auth-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-omision-correo-identidad-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-panel-rund-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-revision-correo-identidad-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-servicio-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-sincronizacion-auth-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-vigencia-correo-identidad-auth-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-vistas-carpeta-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-auth-identity.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-gateway-audit.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-identity-mail.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-mail-diagnostic.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-mail-omission.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-mail-reconciliation.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-mail-review-close.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-mail-review.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-mail-validation.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-native-commit.cjs"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-service-integration.cjs"
+    }
+  ],
+  "sourceHashes": {
+    "backend/auth-service/src/users/rund-identity-mail-validation.controller.spec.ts": "9355be06b870e9e686d7160210e6bb9c9a1f80e990ea3d0547a2b988e8eb6f62",
+    "backend/auth-service/src/users/rund-identity-mail-validation.controller.ts": "2e0258c2281220b2f7d2d8398618952d51c3376207aee70ca82343d2c71c2965",
+    "backend/auth-service/src/users/users.module.ts": "8cfff81140a425fe38c06bdd9154f7aa67873e111cf2364b89051d2936c4f6a5",
+    "backend/rund-service/db/migrations/017_rund_identidad_correo_resultado.sql": "2cd8f812d704bca0cf9de7b4190192990295f9539253aa876c5b38d92fe66579",
+    "backend/rund-service/db/migrations/018_rund_identidad_correo_revision.sql": "a2c79ce6c8f7ed5e09f3de6fbe8d48456398e94ee510c52917369c4cea68954d",
+    "backend/rund-service/db/migrations/019_rund_identidad_correo_revision_cierre.sql": "d766dfca834621192b190f9a0dad12d13bca46552ba7df85328daaaf8063ddd2",
+    "backend/rund-service/db/migrations/020_rund_identidad_correo_omision.sql": "41919a38cd6bdb06323d4a703a6f3433ca2970a07a7346f592904b25b25bcd1c",
+    "backend/rund-service/src/common/auth-identity-mail-diagnostic.service.spec.ts": "2a971a61f798b4dd09fd5de4557ebf6eaa0e45161d3e5e4070c92cb8394e6665",
+    "backend/rund-service/src/common/auth-identity-mail-diagnostic.service.ts": "da48882eb1c35a1201ceda1669cb9707660b55ccbacc488343ccee3d1558649e",
+    "backend/rund-service/src/common/auth-identity-mail-omission.service.spec.ts": "e00a4c52f4eb34b55095aaec6155dbddc1bb7e88f75535661eff2b1d8446cf7e",
+    "backend/rund-service/src/common/auth-identity-mail-omission.service.ts": "5c318ad731dcb96fdf5abc46ec763cfa4f2cf0dfd2a05d398cd1a1758b4b093b",
+    "backend/rund-service/src/common/auth-identity-mail-reconciliation.service.spec.ts": "059831513dd0e21172b31a05b439f701ee175bc1acc331d556950aef5dd5fd7c",
+    "backend/rund-service/src/common/auth-identity-mail-reconciliation.service.ts": "02224e6dd3fc338c943d0eea0964aed2c22d0376a9bca9c02eb5f3a708ee9c11",
+    "backend/rund-service/src/common/auth-identity-mail-review-close.service.spec.ts": "2e849314e174783dc4752dddf4f1a4a6f985575873db4a03425258e99cc9ecf0",
+    "backend/rund-service/src/common/auth-identity-mail-review-close.service.ts": "8dc1019b102793966221e53768d71f7364f2e4be7a10a6fef32d4cd19e3ea589",
+    "backend/rund-service/src/common/auth-identity-mail-review.controller.spec.ts": "f33ef085b6b47d6bb6fb4da0d8eabc867496dba5a49aacdd0e267956ebce01fb",
+    "backend/rund-service/src/common/auth-identity-mail-review.controller.ts": "1e11a01eae2d32056f5236f7f62c3891dde1059dd1c670723be5f3770b33e9e1",
+    "backend/rund-service/src/common/auth-identity-mail-review.service.spec.ts": "f9f7f4c06260ba13489ce9ac4f52bdb0e4a181db52437cff02d409684eef5e1b",
+    "backend/rund-service/src/common/auth-identity-mail-review.service.ts": "736e68fa99d47cf037147e4f660aa4e7bf891bdc99ffd47e8d478b71909216d8",
+    "backend/rund-service/src/common/auth-identity-mail-validation.client.spec.ts": "9dc5ec499995d38b5416f5feebe807908d10090ae72959bca17f1396b32dcbfd",
+    "backend/rund-service/src/common/auth-identity-mail-validation.client.ts": "26f5d3e852e55acf502051619e722f7490eef1b18878d52a23d27b41060d6cdc",
+    "backend/rund-service/src/common/auth-identity-mail.service.spec.ts": "5e7d593fa86187a56597019d58927e876cb3b609a00d2c52cffdc1a78c96a637",
+    "backend/rund-service/src/common/auth-identity-mail.service.ts": "58e921b63878b0a13083af080d176b6a25a713b94644edaeca084e54a2bdf883",
+    "docs/rund/CONTRATO-CIERRE-REVISION-CORREO-IDENTIDAD-RUND.md": "dda2f1519d6dfd69d032c67753169f53a195ac7e8038e4d90f19d53a058cba69",
+    "docs/rund/CONTRATO-CONCILIACION-CORREO-IDENTIDAD-RUND.md": "3e4d21f956607b11a627509acc8bb00ead2ba6d5bde3481d61220f67fe96dae2",
+    "docs/rund/CONTRATO-CORREO-DURABLE-IDENTIDAD-RUND.md": "fc4da8d02af0786777777de015de0a4ec6f525e5a878e95cd8a82170e0fd9757",
+    "docs/rund/CONTRATO-DIAGNOSTICO-CORREO-IDENTIDAD-RUND.md": "c4a71e9ad55bfecfb804325516194cc1a4f3f3fee3f0cc5340f7350fc96c1074",
+    "docs/rund/CONTRATO-OMISION-CORREO-IDENTIDAD-RUND.md": "ce0621d265caf074f73d66b5b4418b3b419971cf1d132af0fb9e0da7cfbb69e1",
+    "docs/rund/CONTRATO-REVISION-CORREO-IDENTIDAD-RUND.md": "7e97854dc808389d106d3cc9e84a6dfb4bf406759073a5b74a5a3b74a98bcb1c",
+    "docs/rund/CONTRATO-VIGENCIA-CORREO-IDENTIDAD-AUTH.md": "441391c76802c58f2d8c4ef63dcfe8af3c15e31cfb798a9103f95d940c28d712",
+    "docs/rund/corte-81-rund.paths": "57f4430289a86ce1de4eb780a220cddf26a9f9a775763da58df59bcd87bd21f0",
+    "docs/rund/corte-82-rund.paths": "3d5d3ac90a616b86acf79b35f7bb41aea2a053a359df4f64f854b1036f556a94",
+    "docs/rund/corte-83-rund.paths": "030778b66491ea1fef9d3ffccd7e950b7fbf12303e4bdf0e184c6c50943cd13a",
+    "docs/rund/corte-84-rund.paths": "d0f0f6cc3459f5370d442a1194ec813436485187405fa1bb951b5ac8207b9c9a",
+    "docs/rund/corte-85-rund.paths": "b9de7a1bb43e6af56f8bdc08a01a54a0202891842baa0406c9722ec81f7c8d86",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "e3f5f26889d843b26d026c182184446db4bfdd6302292b6ab713a9a4bf4fd1a8",
+    "docs/rund/PENDIENTES-CIERRE-INDEPENDENCIA.md": "44798657285a34c8079ffc4c14875ae2ec3c7b159e991371e73eb021147ae9c9",
+    "docs/rund/PRIMER-PUSH.md": "d03ecea5630949aec43e8c16342b4ce680d785a14e984aa6196022e72300261d",
+    "scripts/verify-rund-auth-identity.cjs": "1af25e231fa5a45d3f61a03d0a4386b409d424b3c7df597cf2c1d9499bf67d92",
+    "scripts/verify-rund-gateway-audit.cjs": "0dc62815d63dea6ee76397417d7830a200be38bf65a0c3517f236499c9c42c0a",
+    "scripts/verify-rund-identity-mail.cjs": "4635ff0ab1536494ba8615ba3496179509874e2dd9806334cc21ae9754504261",
+    "scripts/verify-rund-mail-diagnostic.cjs": "be1a69a66dfe9bf0ab43fd9f79b71c66696305c0c0c7fe77900b1b505e9365a2",
+    "scripts/verify-rund-mail-omission.cjs": "f3662e129cbd7c7a655d7ee3a8659b17c1c1b4dd0bdc442d7fa7dad4c6cf915c",
+    "scripts/verify-rund-mail-reconciliation.cjs": "5867f459e7ef64fae7b1f412648ce80a848a0c1c9303d20542d780684ae854a1",
+    "scripts/verify-rund-mail-review-close.cjs": "53a18e2c879ebfb89928e3e5aad4a196ff02ad34a6439c4b86bfcb7ab2c993e5",
+    "scripts/verify-rund-mail-review.cjs": "d1a3a0014da55a64ae2b20c9213c9231172eaf9ca018c9f91d4a7e34a2c1448b",
+    "scripts/verify-rund-mail-validation.cjs": "8498f50450babcaf259c291118d3f4a7b356563a30cabad4f8966d54fbcd06c6",
+    "scripts/verify-rund-native-commit.cjs": "cdc5bfcc97eb6b0a64104d41f8586282063322417f07b86a78dd99e3d8d3c6da",
+    "scripts/verify-rund-service-integration.cjs": "5cd9803c5c4b5622943f5138fb05a3adcecbf52b1fe55bfe7ae86142ef8a5c9e"
+  },
+  "limits": [
+    "El manifiesto se basa en este worktree; revisar antes de stage/commit y regenerar si cambian las fuentes.",
+    "La búsqueda de secretos cubre firmas concretas, no sustituye revisión de valores/configuración.",
+    "Los imports revisados son los estáticos resolubles por TypeScript; no prueba todos los recursos dinámicos.",
+    "Las evidencias JSON generadas y el propio manifiesto no se huellan como fuentes para evitar referencias circulares.",
+    "Las pruebas y límites del corte se documentan en ESTADO-MIGRACION-MICROSERVICIO.md; este script no ejecuta pruebas ni certifica despliegue."
+  ]
+}

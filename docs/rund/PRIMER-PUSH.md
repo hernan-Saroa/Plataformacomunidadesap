@@ -1,7 +1,8 @@
 # Primer corte publicable de RUND
 
-> Documento histórico del primer corte. Para guardar el avance actual hasta el punto 80,
-> usar [PUSH-CORTE-80.md](PUSH-CORTE-80.md) y su manifiesto actualizado.
+> Documento histórico del primer corte. El último guardado preparado fue el
+> [corte 91](PUSH-CORTE-91.md). El avance y el punto para retomar están en
+> [ESTADO-MIGRACION-MICROSERVICIO.md](ESTADO-MIGRACION-MICROSERVICIO.md).
 
 Fecha: 2026-10-14. Rama: `feat/agregar_modulo_rund`.
 

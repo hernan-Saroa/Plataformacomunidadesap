@@ -5,10 +5,9 @@
 > qué falta y qué trampas hay. Complementa `PENDIENTES_RUND_PTA.md` (historias de usuario) y
 > los `REQ-RUND-*` de esta carpeta.
 
-> **Guardado para retomar:** el último punto técnico terminado es el **80**.
-> Instrucciones de commit/push, validaciones y siguiente trabajo en
-> [PUSH-CORTE-80.md](PUSH-CORTE-80.md). Preparar este corte no activa el flujo nuevo
-> ni incrementa el conteo de pasos.
+> **Último punto técnico terminado: 91**, documentado al final de este archivo.
+> Guardado preparado para push hasta el [corte 91](PUSH-CORTE-91.md).
+> Para retomar, leer la sección 91, ese guardado y el mapa de pendientes.
 
 ## Resumen de avance para seguimiento (2026-10-16)
 
@@ -19,8 +18,8 @@
   12.2, 12.3a, 12.3b.1–4, 12.4, revisión offline 12.5, 12.5a–c y 12.5d.1).
   **12.5d.2 sigue abierto por aceptación/configuración de las instalaciones**, con las
   lecturas de la sección 35; no equivale al estado de cada ajuste de código.
-- **43 cortes técnicos terminados localmente desde la revisión posterior al merge:**
-  secciones 38–80. Incluyen contratos e independencia de consultas; tienen tamaños
+- **54 cortes técnicos terminados localmente desde la revisión posterior al merge:**
+  secciones 38–91. Incluyen contratos e independencia de consultas; tienen tamaños
   distintos y no se suman al conteo de pasos principales.
 - **Trabajo técnico actual: frente 4, aislamiento SQL.** Quedan completados el perfil
   público de interoperabilidad PTA (45) y la identidad del listado/ficha/estadísticas del
@@ -60,6 +59,28 @@
   opcional sin reenvío automático ante incertidumbre; todavía no se activa correo.
   El 80 agrega consulta de correo por actor y su estado en el formulario opcional,
   sin envíos por GET o polling y sin confundir confirmación del perfil con correo.
+  El 81 exige validación propietaria de destinatario/credenciales iniciales en Auth
+  antes de reservar un intento, sin activación y con conciliación aún pendiente.
+  El 82 registra el resultado observado y concilia su proyección local sin reenviar;
+  los intentos sin evidencia siguen inciertos y pendientes de revisión durable.
+  El 83 permite registrar, consultar y asignar casos de revisión sin resultado,
+  con sesión/manage vigente, sin cambiar el correo o habilitar cierre/reenvío.
+  El 84 añade recibo inmutable de cierre solo con aceptación registrada del mismo
+  intento y aviso ENVIADO, conservando el caso, sin enviar o conciliar al cerrar.
+  El 85 distingue vigencia rechazada/no confirmada y evidencia de correo mediante
+  diagnóstico autorizado de solo lectura, con recomendaciones que no autorizan reenviar.
+  El 86 permite omitir explícitamente la bienvenida ante rechazo propietario de
+  vigencia, con decisión inmutable y bloqueo de reserva; no modifica la cuenta o cancela envíos.
+  El 87 agrega entrada explícita para revisar INCIERTO registrado y conciliado del
+  mismo intento, reutilizando caso/bandeja/responsable, sin resolver o reenviar el correo.
+  El 88 conecta cliente y vista operativa opcionales por intención al formulario de
+  creación, con opción false por defecto, omisión prioritaria y confirmación de decisiones.
+  El 89 prepara la bandeja opcional fuera del formulario con filtro/paginación y consulta
+  actual del detalle, sin llamador activo y con opción false por defecto.
+  El 90 conecta su entrada opcional al principal verificado y conserva apertura explícita,
+  invalidación y reapertura limpia, sin activar la entrada o modificar el flujo existente.
+  El 91 comprueba el recorrido de la entrada con HTTP/JWT/SQL reales y React/jsdom,
+  tanto directo como con prefijo /services en el fixture, sin activar el acceso.
   Siguen otras consultas y escrituras entre propietarios.
   La aceptación por ambiente es otro pendiente.
 - **Primer corte para push de la rama:** alcance, manifiesto y validaciones consolidados
@@ -115,6 +136,17 @@ Para que el avance de código no quede oculto bajo el rótulo del paso 12:
 | 78: principal autenticado del operador shell/MFE | Preparación terminada y probada sin caché offline ni suplencia de persona; cliente manual y módulo backend sin activar |
 | 79: aviso de correo durable e intento controlado | Preparación local del outbox y consumidor opcional; consulta por actor, conciliación, política de credenciales y activación pendientes |
 | 80: consulta de correo por actor y estado visual | Preparación local de lectura autorizada y formulario opcional; destinatario/credenciales, conciliación y activación pendientes |
+| 81: vigencia propietaria del correo y credenciales en Auth | Preparación local de consulta readonly y bloqueo previo a reservar; conciliación, política de rechazos/intervalo previo a SMTP y activación pendientes |
+| 82: resultado observado y conciliación local de correo | Recuperación de proyecciones con evidencia del mismo intento, sin SMTP; revisión de intentos sin evidencia y requisitos de activación pendientes |
+| 83: casos durables de revisión de correo sin resultado | Registro explícito, bandeja y responsable con permisos vigentes; cierre con evidencia, política de incertidumbre/rechazos y activación pendientes |
+| 84: cierre auditable de revisión con aceptación registrada | Recibo separado e inmutable, mismo intento y aviso ENVIADO; historia y contratos previos conservados; incertidumbre/rechazos y activación pendientes |
+| 85: diagnóstico operativo de vigencia y evidencia de correo | Solo lectura con sesión/manage; distingue rechazo, indisponibilidad, incertidumbre y aceptación; resolución durable e intervalo Auth–SMTP pendientes |
+| 86: omisión durable por rechazo de vigencia | Decisión explícita autorizada antes de reservar; consumidor y SQL impiden enviar avisos omitidos; incertidumbres con journal e integración operativa pendientes |
+| 87: revisión durable de INCIERTO registrado | Entrada explícita con evidencia conciliada del mismo intento; mismo caso/bandeja/asignación; interfaz operativa y resolución humana pendientes |
+| 88: cliente y vista operativa opcionales del correo | Diagnóstico/omisión/revisión por intención confirmada; opción apagada y flujo anterior conservado; bandeja global y aceptación integrada pendientes |
+| 89: bandeja opcional de revisiones de correo | Filtro de asignación, cursor del propietario y detalle actual reutilizado; opción apagada; conexión al principal y aceptación integrada pendientes |
+| 90: entrada opcional de revisiones con sesión verificada | Apertura explícita por cuenta, invalidación y recuperación de sesión; opción apagada; recorrido HTTP y aceptación integrada pendientes |
+| 91: recorrido integrado HTTP de revisiones | React/jsdom y clientes productivos contra Auth/RUND y PostgreSQL temporales; directo/prefijo probados; navegador e instalaciones pendientes |
 | Otras lecturas/escrituras de identidad y permisos | Pendiente de aislamiento |
 | Aceptación de configuración/datos/despliegues por ambiente | Pendiente operativo |
 
@@ -6312,3 +6344,834 @@ Avance: **43 cortes técnicos locales desde el merge**, **11 pasos principales l
 paso principal **12 en curso** y **5 frentes abiertos**, según el
 [mapa de pendientes](PENDIENTES-CIERRE-INDEPENDENCIA.md). Los cortes no miden porcentaje
 de independencia o despliegue completado.
+
+## 81. Frente 4: vigencia propietaria del correo de bienvenida en Auth (2026-10-16)
+
+El consumidor opcional deja de autorizar el intento solo con el snapshot del alta.
+Auth acredita la vigencia de destinatario y credenciales iniciales antes de reservar
+el correo. Contrato:
+[CONTRATO-VIGENCIA-CORREO-IDENTIDAD-AUTH.md](CONTRATO-VIGENCIA-CORREO-IDENTIDAD-AUTH.md).
+
+**Consulta propietaria**
+
+- POST interno `:operacionId/correo/validar` conserva el guard de token interno y
+  private, no-store. No admite JWT del navegador como sustituto del token.
+  Comando exacto/canónico y huella se contrastan con la operación aplicada.
+- El servicio Auth solo lee sus tablas. Exige cuenta nueva, efectos privados
+  coherentes y ausencia de resolución de compensación/revisión. Personas, usuarios,
+  documento, correo, username, rol activo y propietarios deben seguir compatibles.
+- La revisión xmin de persona/cuenta debe coincidir con la postimagen. La cuenta
+  inicial es inactiva y temporal: activarla, cambiar su contraseña o actualizar esa
+  fila, incluso al mismo valor, bloquea las credenciales históricas.
+- bcrypt compara la contraseña inicial dentro de Auth; ni hash ni clave se devuelven.
+  Una segunda lectura impide acreditar apta si hubo cambios durante la comparación.
+- Recibo de cinco campos: versión, operación, huella, apta y motivo tipado. Rechazo
+  explícito no equivale a fallo de transporte ni a NO_APLICA. Errores SQL/bcrypt
+  devuelven 503 genérico. No modifica cuentas, recibos, efectos o avisos.
+
+**Reserva RUND y compatibilidad**
+
+- Cliente interno sin caché, retry, redirección, Authorization/cookie de sesión o
+  logs privados. Exige HTTP 200 y recibo exacto para la misma operación/huella.
+- Antes de consultar Auth, RUND comprueba aviso pendiente, elegibilidad y contexto.
+  El HTTP propietario ocurre fuera de la transacción RUND. Rechazo o caída conserva
+  PENDIENTE sin intento y sin SMTP; no usa el snapshot como alternativa.
+- Después de Auth, el bloqueo de fila revalida contexto, operación y huellas antes
+  de reservar. Otro consumidor que ya avanzó conserva su estado. Se mantiene el
+  commit de ENVIANDO antes de HTTP y el mismo formato del mensaje de bienvenida.
+- ENVIANDO/ENVIADO/INCIERTO se recuperan sin consultar Auth ni reenviar. Permanecen
+  los recibos manuales, GET por actor, formulario, escritor activo y otros canales.
+  El módulo manual y consumidor de correo continúan fuera de AppModule.
+
+**Validación local**
+
+- RUND: **83 suites / 1.553 pruebas**, 34 nuevas; build correcto.
+- Auth: **8 suites / 228 pruebas** de identidad/sesión, 32 nuevas; build correcto.
+  No representa toda la suite Auth.
+- **596 comprobaciones PostgreSQL/TypeORM/HTTP**: las 579 anteriores conservadas y
+  17 nuevas. Token, huella, cuenta existente, intención registrada/cancelada,
+  contraseña inicial distinta pese a postimagen intacta, cambios de correo/documento,
+  username, rol, contraseña/activación y actualización al mismo valor.
+- Cambio durante comparación, Auth caído/404/parcial, recuperación explícita y
+  estados iniciados/terminales sin Auth. Snapshots comprueban lecturas sin mutaciones
+  y bloqueo antes de reservar/enviar. Cuenta de consulta Auth readonly con SELECT,
+  sin escritura o permisos RUND; base del consumidor sin schema Auth.
+- Gateway: **26 controles HTTP**, ampliando la matriz para bloquear esta ruta interna
+  normal y codificada, incluso con JWT y token. Código productivo del gateway intacto.
+- MFE **28 archivos / 322 pruebas**, TypeScript/build; shell RUND **7 / 80** y sesión
+  HTTP **9** conservan evidencia sobre fuentes intactas, sin repetirse aquí. Persisten
+  los límites globales previos del shell: 586 diagnósticos y el fallo disciplinario
+  por `jest is not defined`; no se presentan como resueltos.
+- Evidencia: [validacion-vigencia-correo-identidad-auth-rund.json](validacion-vigencia-correo-identidad-auth-rund.json).
+  Manifiesto/revisión: corte-81-rund.paths y revision-push-corte-81.json.
+
+**Límite y siguiente punto**
+
+La validación acredita una lectura puntual: Auth puede cambiar después de la última
+consulta y antes de SMTP. La regla de revisiones es conservadora y puede bloquear
+una edición legítima. Su resolución y la política de ese intervalo siguen pendientes
+antes de activar; no se promete atomicidad distribuida ni idempotencia SMTP.
+
+El siguiente trabajo es la conciliación explícita de ENVIANDO/INCIERTO sin restablecer
+o reenviar ante resultado desconocido. Siguen política de rechazos, revisión humana,
+contextos inconsistentes, preview, otros canales y SQL entre propietarios,
+consumidores históricos, PTA/Programación y aceptación por instalación.
+
+Sin migraciones nuevas, bases existentes, SMTP real, cambios .env/Compose, commit,
+push o despliegue. El clúster temporal se elimina al terminar. Se conservan banderas
+Auth false por defecto y RUND embebido en PTA.
+
+Avance: **44 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 82. Frente 4: resultado observado y conciliación local de correo (2026-10-16)
+
+Se separa el registro del resultado observado y su proyección al estado del correo.
+Una proyección fallida puede recuperarse sin otro HTTP a notificaciones. Contrato:
+[CONTRATO-CONCILIACION-CORREO-IDENTIDAD-RUND.md](CONTRATO-CONCILIACION-CORREO-IDENTIDAD-RUND.md).
+
+**Hechos y guardados**
+
+- Nueva migración 017 después de 016: `rund.identidad_correo_resultado` conserva
+  intención, intento, resultado y fecha, sin identidad, mensaje, contraseña o hash.
+  Trigger inmutable exige el mismo intento ENVIANDO y evita fabricar resultados
+  de avisos pendientes o terminales. No reconstruye evidencia histórica.
+- El consumidor comprueba presencia de la tabla y permisos SELECT/INSERT antes de
+  Auth, reserva o SMTP. Conserva vigencia Auth y reserva confirmada antes de enviar.
+- Después del HTTP registra ACEPTADO o INCIERTO en una transacción local. Solo
+  ACEPTADO acredita el contrato observado del adaptador; no acredita entrega al buzón.
+  En otra transacción proyecta ENVIADO/INCIERTO. Si falla esta última, el resultado
+  anterior permanece para recuperación explícita.
+
+**Conciliación y compatibilidad**
+
+- Servicio servidor opcional sin rutas, timers, cliente Auth/SMTP o import desde
+  AppModule. Bloquea aviso y contrasta intención/intento antes de proyectar.
+- Sin resultado no modifica ENVIANDO ni infiere aceptación o fallo. El diagnóstico
+  de conciliación marca revisión para ENVIANDO/INCIERTO; ENVIANDO puede seguir en
+  vuelo y completar después. Nunca cancela, resetea a PENDIENTE o reenvía.
+- Registro repetido idéntico conserva evento/fecha; resultado o intento distintos
+  se rechazan. Concurrencia con el consumidor recupera el terminal compatible.
+  Estados históricos sin evento se conservan, sin inventar recibos retrospectivos.
+- Recibo propio de cinco campos: versión, intención, estado, resultadoRegistrado y
+  requiereRevision. Recibo del consumidor de tres campos, GET por actor de seis,
+  formulario, mensajes, escritor vigente y otros canales mantienen sus contratos.
+- No se modifica identidad Auth, perfil, bloques o auditoría de negocio. Conciliar
+  funciona con Auth caído y no mantiene transacciones durante el envío.
+
+**Validación local**
+
+- RUND: **84 suites / 1.577 pruebas**, 24 nuevas; build correcto.
+- **611 comprobaciones PostgreSQL/TypeORM/HTTP**: los 596 escenarios anteriores
+  conservados, actualizando la comprobación del esquema de 35 a 36 tablas;
+  se añade la migración 017 y 14 escenarios de conciliación.
+- Pérdida de proyección tras aceptación o incertidumbre, fallo del registro tras
+  HTTP, petición en vuelo, carrera consumidor/conciliador, seis conciliadores,
+  IDs/resultados ajenos, históricos, ausencia de tabla, permisos, triggers y 017
+  repetible. Snapshots acreditan lecturas sin cambios o cambios limitados al correo.
+- Auth **8 suites / 228 pruebas** y build; MFE **28 archivos / 322 pruebas**,
+  TypeScript/build; gateway **26 controles HTTP**; shell RUND **7 / 80** y sesión HTTP
+  **9** conservan evidencia anterior con fuentes intactas; no se repiten aquí.
+  Persisten los límites globales conocidos del shell, sin declararlos resueltos.
+- Evidencia: [validacion-conciliacion-correo-identidad-rund.json](validacion-conciliacion-correo-identidad-rund.json).
+  Manifiesto/revisión: corte-82-rund.paths y revision-push-corte-82.json.
+
+**Límite y siguiente punto**
+
+La pérdida del proceso/respuesta antes del registro local sigue sin evidencia para
+decidir. El proveedor actual no ofrece recibo consultable por intento ni idempotencia
+SMTP. El siguiente punto es la revisión durable de esos intentos sin resultado,
+manteniendo la prohibición de reenviar ante incertidumbre. Tampoco se cierra la
+política de rechazos de vigencia ni el intervalo entre validación Auth y SMTP.
+
+Siguen revisión humana, contextos inconsistentes, preview, otros canales, SQL entre
+propietarios, consumidores históricos, PTA/Programación y aceptación por instalación.
+017 solo se instala en bases temporales de prueba; el clúster se elimina al terminar.
+No hay bases existentes, SMTP real, cambios .env/Compose, commit, push o despliegue.
+Módulos opcionales, banderas Auth false por defecto y RUND embebido en PTA se conservan.
+
+Avance: **45 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 83. Frente 4: revisión durable de correo sin resultado observado (2026-10-16)
+
+Se preparan casos explícitos de revisión, bandeja, consulta y asignación de
+responsable para intentos sin resultado registrado. Contrato:
+[CONTRATO-REVISION-CORREO-IDENTIDAD-RUND.md](CONTRATO-REVISION-CORREO-IDENTIDAD-RUND.md).
+El módulo nuevo sigue fuera de AppModule; no altera el consumidor o conciliador.
+
+**Caso durable y alcance**
+
+- Migración 018, posterior a 017: caso único por intención/intento, UUID estable,
+  estado original de correo, creador y responsable/fechas. Sin texto libre, datos
+  del destinatario, documento, mensaje, contraseña, hash o credenciales de sesión.
+- Apertura explícita para ENVIANDO/INCIERTO sin resultado registrado. No hay backfill
+  ni timer que interprete todos los envíos en vuelo como fallidos. PENDIENTE,
+  ENVIADO o un resultado ya registrado no fabrican casos nuevos sin evidencia.
+- Registro repetido conserva caso, creador e historia. La asignación solo permite
+  PENDIENTE → EN_REVISION, con responsable de sesión. Repetir con la misma cuenta
+  conserva fecha; otra cuenta recibe conflicto. Triggers impiden borrado,
+  reasignación, cierre o alteración de identidad/fechas originales.
+- Aviso se bloquea antes del caso, igual que las otras operaciones de correo. Una
+  aceptación tardía sigue pudiendo registrarse y conciliarse. El diagnóstico cambia
+  a ENVIADO sin borrar el caso; no se inicia otra asignación si ya fue aceptado.
+
+**API opcional y permisos**
+
+- Base `banco-docentes/identidad/correos/revisiones`: GET bandeja/caso,
+  POST `por-intencion/:intencionId` y POST `:casoId/asumir`, ambos con cuerpo vacío.
+  No expone aceptar, cerrar, cancelar, conciliar o reenviar.
+- JWT, cuenta UUID, exp vigente y rol de gestión o manage efectivo. Un token interno,
+  permiso declarado por el solicitante, ID de persona o permiso view no bastan.
+  Actor/roles/exp solo de sesión verificada; private, no-store en todas las rutas.
+- El servicio revalida autorización después de leer y antes de confirmar escrituras.
+  Revocación, caída de Auth o sesión vencida durante SQL revierten registro/asignación.
+  La alternativa vigente por roles de gestión conserva comprobación de exp.
+- Doce campos de caso/diagnóstico, sin UUID de intento o datos de identidad.
+  Bandeja de 25 por defecto/100 máximo; cursor ligado al filtro y orden estable por
+  fecha UTC con seis decimales/UUID. SQL fallido produce 503 genérico sin parámetros.
+- Solo escribe casos; no cambia aviso, resultado observado, perfil, bloques,
+  auditoría de negocio o identidad Auth. Mantiene DTO/GET manual y flujos existentes.
+
+**Validación local**
+
+- RUND: **86 suites / 1.613 pruebas**, 36 nuevas; build correcto.
+- **628 comprobaciones PostgreSQL/TypeORM/HTTP**: conserva los 611 escenarios previos
+  actualizando esquema de 36 a 37 tablas; añade 018 y 16 escenarios de revisión.
+- JWT/exp/manage, cuerpo sin autoridad, registro concurrente, un ganador entre
+  responsables, respuesta perdida, revocación después de SQL con rollback real,
+  ADMIN vencido durante INSERT, aceptación tardía y SMTP en vuelo sin interrupción.
+- Cursor con microsegundos/empates, triggers, 018 repetible, fallos SQL y snapshots
+  de correo/resultados/negocio/identidad intactos fuera del caso autorizado.
+- Gateway: **27 controles HTTP**, uno nuevo con las cuatro rutas; JWT, no-store y
+  auditoría sin cuerpos privados. Código productivo del gateway intacto.
+- Auth **8 suites / 228 pruebas** y build, MFE **28 archivos / 322 pruebas** con
+  TypeScript/build, shell RUND **7 / 80** y sesión HTTP **9** conservan evidencia previa
+  sobre fuentes intactas, sin repetirse. Los límites globales previos del shell
+  siguen abiertos; no se declaran resueltos.
+- Evidencia: [validacion-revision-correo-identidad-rund.json](validacion-revision-correo-identidad-rund.json).
+  Manifiesto/revisión: corte-83-rund.paths y revision-push-corte-83.json.
+
+**Siguiente punto y límites**
+
+Sigue el cierre auditable de revisiones cuando exista aceptación registrada
+compatible. Sin resultado observado no se presume aceptación/rechazo ni se permite
+reenviar. Siguen política de incertidumbre/rechazos de vigencia e intervalo Auth–SMTP,
+revisión humana, contextos inconsistentes, preview, otros canales, SQL entre
+propietarios, consumidores históricos, PTA/Programación y aceptación por instalación.
+
+018 se instala solo en PostgreSQL temporal y el clúster se elimina al terminar.
+No se tocan bases existentes, SMTP real, .env/Compose, commit, push o despliegue.
+Módulos opcionales, banderas Auth false por defecto y RUND embebido en PTA se conservan.
+
+Avance: **46 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 84. Frente 4: cierre auditable de revisión con aceptación registrada (2026-10-16)
+
+Se prepara el cierre administrativo de casos que tengan aceptación registrada del
+mismo intento y aviso ENVIADO. Contrato:
+[CONTRATO-CIERRE-REVISION-CORREO-IDENTIDAD-RUND.md](CONTRATO-CIERRE-REVISION-CORREO-IDENTIDAD-RUND.md).
+El módulo opcional continúa fuera de AppModule; el cierre no envía ni concilia correo.
+
+**Recibo y compatibilidad**
+
+- Migración 019, posterior a 018: recibo propio con caso, intención, intento, cuenta,
+  fecha y motivo fijo ACEPTACION_REGISTRADA. Único e inmutable, sin datos del destinatario,
+  mensaje, documento, contraseña, hash o credenciales. No hay backfill o cierre automático.
+- Exige journal ACEPTADO y aviso ENVIADO para el intento del caso. Un resultado aún
+  sin proyectar requiere conciliación explícita previa. ENVIANDO sin resultado, INCIERTO
+  o históricos ENVIADO sin journal no permiten fabricar un cierre.
+- Si existe responsable, solo esa cuenta cierra, incluso frente a otro ADMIN. Un
+  caso sin asignar puede cerrarlo un operador autorizado tras la aceptación. Repetir
+  con el mismo cerrador recupera su recibo y fecha; otro cerrador recibe conflicto.
+- Caso original, estado PENDIENTE/EN_REVISION, creador, responsable y fechas conservados.
+  Sus cuatro rutas, DTO de doce campos y paginación no cambian. La bandeja conserva
+  historia/asignación e incluye casos cerrados: el cierre se consulta por separado.
+- Consumidor, conciliador, servicio previo de revisión, migraciones 001–018, DTO de
+  correo/manual, código productivo del gateway, Auth, PTA y frontends conservan fuentes.
+
+**API opcional y permisos**
+
+- GET `banco-docentes/identidad/correos/revisiones/:casoId/cierre` y POST
+  `:casoId/cerrar`, con cuerpo vacío. Siete campos públicos del recibo y private, no-store.
+  No se aceptan actor, fecha, motivo, resultado o envío elegidos por el solicitante.
+- Sesión JWT verificada, cuenta UUID, exp numérica finita vigente y manage efectivo
+  o alternativa vigente de roles de gestión. Revalidación después de leer y antes
+  del commit. Revocación, fallo de Auth o vencimiento durante SQL impiden respuesta
+  y revierten el recibo pendiente. No hay atomicidad con revocaciones posteriores
+  a la última comprobación. La comprobación final puede hacer HTTP Auth con bloqueo SQL.
+- Aviso se bloquea antes que caso. Dos cerradores tienen un ganador; respuesta perdida
+  se recupera sin otro envío. SQL fallido o ausencia de 019 producen 503 genérico;
+  el contrato anterior del caso sigue funcionando sin la tabla nueva.
+
+**Validación local**
+
+- RUND: **87 suites / 1.645 pruebas**, 32 nuevas; build correcto.
+- **643 comprobaciones PostgreSQL/TypeORM/HTTP**: conserva los 628 escenarios previos,
+  actualizando esquema de 37 a 38 tablas; añade 019 y 14 escenarios de cierre.
+- JWT/exp/manage, cuerpo sin autoridad, recibo mínimo, concurrencia entre seis
+  reintentos/dos actores, responsable exclusivo, respuesta perdida, evidencia ausente
+  o incompatible, proyección explícita, revocación y ADMIN vencido con rollback real.
+- Fallo posterior a INSERT, triggers, 019 repetible, falta de tabla y snapshots de
+  caso/correo/journal/negocio/identidad sin cambios fuera del recibo autorizado.
+- Gateway: **28 controles HTTP**, uno nuevo con dos rutas; JWT, no-store y auditoría
+  sin cuerpos privados. Código productivo del gateway intacto.
+- Auth **8 suites / 228 pruebas** y build, MFE **28 archivos / 322 pruebas** con
+  TypeScript/build, shell RUND **7 / 80** y sesión HTTP **9** conservan evidencia previa
+  con fuentes intactas, sin repetirse. Siguen los límites globales conocidos del shell.
+- **278 fuentes previas intactas** y seis comparaciones del contenido anterior de
+  controlador/pruebas/verificadores acreditan que la extensión conserva lo previo.
+- Evidencia: [validacion-cierre-revision-correo-identidad-rund.json](validacion-cierre-revision-correo-identidad-rund.json).
+  Manifiesto/revisión: corte-84-rund.paths y revision-push-corte-84.json.
+
+**Siguiente punto y límites**
+
+Sigue la política y diagnóstico de intentos sin evidencia y rechazos de vigencia
+antes de activar. No se presume aceptación/rechazo ni se autoriza reenviar por ausencia
+de resultado. La aceptación observada tampoco acredita lectura o entrega final al
+destinatario. Siguen intervalo Auth–SMTP, revisión humana, contextos inconsistentes,
+preview, otros canales/propietarios, consumidores históricos, PTA/Programación y
+aceptación por instalación, según el mapa de pendientes.
+
+019 se instala solo en PostgreSQL temporal; procesos detenidos y clúster eliminado.
+No se usan bases existentes, SMTP real, .env/Compose, commit, push o despliegue.
+Módulos opcionales, banderas Auth false por defecto y RUND embebido en PTA se conservan.
+
+Avance: **47 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 85. Frente 4: diagnóstico autorizado y política conservadora de correo (2026-10-16)
+
+Se añade diagnóstico explícito de vigencia/evidencia con recomendaciones operativas,
+sin cambiar datos o ejecutar las acciones recomendadas. Contrato:
+[CONTRATO-DIAGNOSTICO-CORREO-IDENTIDAD-RUND.md](CONTRATO-DIAGNOSTICO-CORREO-IDENTIDAD-RUND.md).
+El módulo opcional sigue fuera de AppModule; consumidor y formulario siguen inactivos.
+
+**Diagnóstico y reglas operativas**
+
+- Para PENDIENTE se verifica contexto/elegibilidad local y se consulta vigencia por
+  API Auth. Rechazo explícito conserva motivo propietario: OPERACION_NO_ELEGIBLE,
+  IDENTIDAD_NO_VIGENTE o CREDENCIALES_NO_VIGENTES. Transporte fallido/contrato incompleto
+  producen VIGENCIA_NO_CONFIRMADA, sin inventar aceptación o rechazo.
+- Una lectura positiva indica VIGENCIA_CONFIRMADA_AL_CONSULTAR; no autoriza enviar
+  desde ese recibo. El consumidor existente conserva su nueva validación antes de
+  reservar el primer intento. La respuesta nunca habilita reenvíos.
+- ENVIANDO sin resultado puede seguir en vuelo. Se recomienda registrar/continuar
+  revisión, sin declararlo fallido o devolverlo a PENDIENTE. INCIERTO conserva la
+  incertidumbre; con journal y sin caso se señala REVISION_OPERATIVA, pues 018 no
+  permite registrar casos nuevos con resultado ya observado.
+- Un resultado pendiente de proyección recomienda conciliación explícita, sin hacerla.
+  Aceptación compatible con caso abierto recomienda cierre según 84. Históricos
+  ENVIADO sin journal requieren revisión, sin fabricar resultados o recibos.
+- Se conservan estados, intento, destinatario, credenciales, historia y contratos
+  anteriores. No se regenera contraseña, activa cuenta o corrige identidad por esta vía.
+
+**API y consistencia**
+
+- POST `banco-docentes/identidad/correos/revisiones/por-intencion/:intencionId/diagnosticar`,
+  cuerpo vacío, diez campos, private, no-store. No incluye intento, destinatario,
+  documento, mensaje, contexto/comando, contraseña, hash o credenciales.
+- JWT, cuenta UUID, exp finita vigente y manage efectivo o alternativa vigente por
+  roles de gestión. Revalidación tras las lecturas: revocación, caída del servicio de
+  permisos o expiración durante Auth/SQL impiden entregar el diagnóstico. Un fallo de
+  permisos no se presenta como mera indisponibilidad del diagnóstico de vigencia.
+- Para PENDIENTE, Auth se consulta fuera de transacciones/bloqueos SQL, sin caché o
+  retry. La proyección local se relee al finalizar: un cambio durante Auth devuelve
+  409 para consultar nuevamente. Sigue siendo una observación puntual, sin atomicidad
+  con cambios posteriores o el envío futuro.
+- Otros estados usan evidencia local, sin consultar vigencia Auth o SMTP. El permiso
+  efectivo puede seguir requiriendo Auth según el rol. SQL/contexto/evidencia incoherente
+  o proveedor opcional ausente producen errores genéricos seguros.
+- No se escriben tablas ni se invocan consumidor, conciliador, registro/asignación o
+  cierre. Las seis rutas previas conservan sus métodos, DTO, paginación y helpers.
+
+**Validación local**
+
+- RUND: **88 suites / 1.679 pruebas**, 34 nuevas; build correcto.
+- **656 comprobaciones PostgreSQL/TypeORM/HTTP**: conserva exactamente los 643 escenarios
+  previos y añade 13 de diagnóstico. Sin migración o cambio en las 38 tablas del esquema.
+- Sesión/manage/body, rechazo propietario frente a indisponibilidad, ausencia de
+  evidencia, journal pendiente, incertidumbre con/sin caso, cierre y estados históricos.
+- Reserva concurrente durante Auth produce 409; revocación tras lectura/Auth y ADMIN
+  vencido impiden respuesta. Snapshots verifican datos intactos; el diagnóstico también
+  funciona bajo una transacción SQL readonly impuesta por el fixture de prueba.
+- Gateway: **29 controles HTTP**, uno nuevo; JWT, no-store y auditoría sin cuerpos
+  privados. Código productivo del gateway intacto.
+- **286 fuentes previas intactas** y cuatro comparaciones del contenido anterior de
+  controlador/pruebas/verificadores. Consumidor, cliente de vigencia, conciliador,
+  revisión/cierre, migraciones 001–019, Auth, frontends y gateway productivo conservados.
+- Auth **8 suites / 228 pruebas** y build, MFE **28 archivos / 322 pruebas** con
+  TypeScript/build, shell RUND **7 / 80** y sesión HTTP **9** conservan evidencia previa
+  sobre fuentes intactas, sin repetirse. Persisten los límites globales previos del shell.
+- Evidencia: [validacion-diagnostico-correo-identidad-rund.json](validacion-diagnostico-correo-identidad-rund.json).
+  Manifiesto/revisión: corte-85-rund.paths y revision-push-corte-85.json.
+
+**Siguiente punto y límites**
+
+Sigue la resolución durable de rechazos de vigencia antes de reservar, preservando
+destinatario y ausencia de intento. También siguen la resolución operativa de
+incertidumbres con resultado registrado, su interfaz y el intervalo Auth–SMTP antes
+de activar. Este diagnóstico no sustituye decisiones/evidencia del proveedor ni
+habilita reenvíos. Otros canales/propietarios y aceptación por instalación permanecen
+en el mapa de pendientes.
+
+Solo se usan PostgreSQL temporal y servicios ficticios; procesos detenidos y clúster
+eliminado. Sin bases existentes, SMTP real, .env/Compose, commit, push o despliegue.
+Módulos opcionales, banderas Auth false por defecto y RUND embebido en PTA conservados.
+
+Avance: **48 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 86. Frente 4: omisión durable de bienvenida por rechazo de vigencia (2026-10-16)
+
+Se prepara una decisión explícita de no enviar esa bienvenida cuando Auth confirma
+rechazo de vigencia, antes de reservar un intento. Contrato:
+[CONTRATO-OMISION-CORREO-IDENTIDAD-RUND.md](CONTRATO-OMISION-CORREO-IDENTIDAD-RUND.md).
+Módulo, consumidor y formulario opcionales continúan sin activar.
+
+**Decisión y compatibilidad**
+
+- 020 crea registro único e inmutable por intención: versión, motivo propietario,
+  cuenta y fecha del servidor. Solo aviso elegible PENDIENTE sin intento o resultado.
+  No hay backfill, texto libre, destinatario, documento, contraseña, hash o credenciales.
+- POST explícito consulta Auth con el contexto acreditado. Solo apta false y motivo
+  propietario coherente permiten omitir. Vigencia positiva, caída o contrato parcial
+  no fabrican rechazo/decisión. El solicitante no elige motivo, responsable o fecha.
+- La decisión conserva PENDIENTE y ausencia de intento; no significa envío o rechazo
+  SMTP. No modifica cuenta, destinatario, contraseña, perfil o negocio. No hay borrado
+  o rehabilitación; la recuperación de acceso sigue correspondiendo a Auth.
+- Misma cuenta recupera motivo/fecha originales sin consultar vigencia; otra puede
+  leer, pero no atribuirse el POST. Una posterior vigencia positiva no borra la decisión.
+- Los cuatro estados y DTO previos se conservan. GET de correo y diagnóstico del 85
+  no contienen la decisión administrativa: se consulta `/omision`. Su recomendación
+  o una vigencia positiva no autorizan enviar ni rehabilitan un aviso omitido.
+
+**Serialización, permisos y API**
+
+- Auth se consulta fuera de transacciones SQL. Después se bloquea aviso y se relee
+  en otra sentencia: contexto/operación deben corresponder a lo consultado. Si la
+  reserva ganó antes, la omisión recibe 409 sin cancelar el envío.
+- El consumidor comprueba omisión antes de Auth y después de adquirir el bloqueo,
+  en otra sentencia. Detecta una decisión confirmada mientras esperaba ese bloqueo.
+  Una omisión confirmada impide reserva/SMTP con 409; trigger adicional impide también
+  la reserva SQL directa. No hay SMTP bajo transacciones SQL.
+- Base `banco-docentes/identidad/correos/revisiones/por-intencion/:intencionId`:
+  GET `omision` y POST `omitir-por-vigencia`, cuerpo vacío. Siete campos del recibo,
+  private, no-store. Sin permiso para corregir identidad, aceptar SMTP o reenviar.
+- JWT, cuenta UUID, exp finita vigente y manage efectivo o alternativa vigente de
+  gestión. Se revalida tras lecturas/Auth y antes del commit. Revocación, caída de
+  permisos y vencimiento impiden respuesta o revierten inserción. El último control
+  puede consultar Auth manteniendo bloqueo SQL, sin atomicidad con cambios posteriores.
+- **020 y permisos son prerrequisitos de nuevos envíos**. Ausencia de tabla/lectura
+  falla antes de Auth, reserva o SMTP; GET previo y recuperación de ENVIANDO/ENVIADO/
+  INCIERTO siguen funcionando. Sin omisión se conserva el flujo de primer envío.
+
+**Validación local**
+
+- RUND: **89 suites / 1.707 pruebas**, 28 nuevas; build correcto.
+- La primera ejecución tuvo tres falsos positivos en la aserción de privacidad de
+  una prueba nueva: el documento ficticio coincidía con parte de los microsegundos.
+  Corregida la aserción, se repitió la suite completa y pasó sin fallos.
+- **673 comprobaciones PostgreSQL/TypeORM/HTTP**: conserva los 656 escenarios previos,
+  actualizando esquema de 38 a 39 tablas; añade 020 y 16 escenarios de omisión.
+- Rechazo frente a indisponibilidad, body sin autoridad, siete campos, snapshots sin
+  cambios fuera de la decisión, respuesta perdida, replay y un ganador entre actores.
+- Omisión durante validación positiva anterior impide SMTP; consumidor esperando
+  bloqueo relee decisión confirmada; reserva previa gana y termina su envío ficticio
+  sin cancelación. Se verifican rollback real por revocación/ADMIN vencido/SQL,
+  triggers, 020 repetible y fallo seguro si falta la tabla.
+- Gateway: **30 controles HTTP**, uno nuevo con dos rutas; JWT, no-store y auditoría
+  sin cuerpos privados. Código productivo del gateway intacto.
+- **284 fuentes previas intactas** y ocho comparaciones del contenido anterior de
+  consumidor/controlador/pruebas/verificadores. Cliente de vigencia, diagnóstico,
+  conciliación, revisión/cierre, migraciones 001–019, Auth y frontends conservados.
+- Auth **8 suites / 228 pruebas** y build, MFE **28 archivos / 322 pruebas** con
+  TypeScript/build, shell RUND **7 / 80** y sesión HTTP **9** mantienen evidencia previa
+  con fuentes intactas, sin repetirse. Persisten los límites globales previos del shell.
+- Evidencia: [validacion-omision-correo-identidad-rund.json](validacion-omision-correo-identidad-rund.json).
+  Manifiesto/revisión: corte-86-rund.paths y revision-push-corte-86.json.
+
+**Siguiente punto y límites**
+
+Sigue la revisión durable de resultados INCIERTO registrados, sin reinterpretarlos
+como rechazo SMTP o autorizar reenvíos. También otras resoluciones de rechazos,
+interfaz operativa que integra los recibos e intervalo Auth–SMTP, antes de activar.
+El motivo de omisión refleja una lectura puntual; no promete vigencia futura o
+atomicidad distribuida. Otros canales/propietarios y aceptación por instalación
+permanecen en el mapa de pendientes.
+
+020 solo se instala en PostgreSQL temporal; procesos detenidos y clúster eliminado.
+Sin bases existentes, SMTP real, .env/Compose, commit, push o despliegue. Bandera Auth
+false por defecto, módulos opcionales y RUND embebido en PTA se conservan.
+
+Avance: **49 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 87. Frente 4: revisión durable de resultados INCIERTO registrados (2026-10-16)
+
+Se prepara una entrada explícita para revisar un resultado INCIERTO del mismo intento
+ya conciliado en el aviso. Contrato:
+[CONTRATO-REVISION-RESULTADO-INCIERTO-RUND.md](CONTRATO-REVISION-RESULTADO-INCIERTO-RUND.md).
+Reutiliza caso, bandeja, consulta y responsable. Módulo y consumidor siguen sin activar.
+
+**Caso compartido y compatibilidad**
+
+- POST `banco-docentes/identidad/correos/revisiones/por-intencion/:intencionId/revisar-resultado-incierto`,
+  cuerpo vacío. Requiere aviso INCIERTO y journal INCIERTO del mismo intento.
+  ENVIANDO sin proyección, ausencia de journal, histórico o ACEPTADO no abren por esta vía.
+- La conciliación debe hacerse explícitamente antes; la ruta no invoca conciliador,
+  SMTP o cambios de resultado. No presenta incertidumbre como rechazo del proveedor.
+- Se conserva un caso por intención/intento, con DTO de doce campos. Si existía un
+  caso previo al resultado, conserva UUID, creador, estado inicial, responsable y fechas.
+  Si no existía, nace PENDIENTE con estado inicial de correo INCIERTO.
+- El POST anterior sigue requiriendo ausencia de journal para crear casos nuevos.
+  Sus métodos, DTO, bandeja, cursor y asignación se conservan. El diagnóstico mantiene
+  REVISION_OPERATIVA sin caso y CONTINUAR_REVISION cuando existe; ahora hay entrada
+  explícita para registrar esa revisión, sin cambiar su DTO/códigos.
+- El cierre 019 sigue requiriendo ACEPTADO y la omisión 020 exige PENDIENTE sin intento.
+  Ninguno permite resolver artificialmente este caso INCIERTO o autoriza reenviar.
+
+**SQL, permisos y recuperación**
+
+- 021 amplía únicamente la función de protección creada por 018. No añade tablas,
+  columnas, estados o backfill. Con journal exige incertidumbre proyectada, mismo intento
+  y creación posterior al resultado/proyección. Conserva apertura sin journal.
+- Las reglas previas de UPDATE/DELETE se conservan literalmente: identidad, creador,
+  fecha y estado inicial inmutables; solo PENDIENTE → EN_REVISION, sin borrar o reasignar.
+  Las migraciones se aplican en orden: si se repite 018 histórica, 021 debe seguirla.
+  El verificador conserva la prueba de repetición de 018 y restituye después 021.
+- Se bloquea aviso antes de consultar journal/caso. Concurrencia o respuesta perdida
+  recuperan el mismo caso. Otra cuenta autorizada puede recuperar sin cambiar autoría;
+  la asignación posterior conserva un único responsable y sus conflictos.
+- JWT, cuenta UUID, exp finita vigente y manage efectivo o alternativa vigente de
+  roles de gestión. Actor/roles/exp proceden de sesión; body vacío y private, no-store.
+  Revalidación antes de SQL/commit; revocación, fallo de permisos o vencimiento durante
+  INSERT revierten. Control final puede hacer HTTP de permisos Auth bajo bloqueo SQL;
+  no hay atomicidad con una revocación posterior o SMTP bajo la transacción.
+
+**Validación local**
+
+- RUND: **89 suites / 1.725 pruebas**, 18 nuevas; build correcto.
+- **687 comprobaciones PostgreSQL/TypeORM/HTTP**: conserva exactamente los 673 escenarios
+  anteriores, añade 021 y 13 escenarios de revisión. Esquema conserva 39 tablas.
+- La primera integración detectó que el mensaje SQL de una precondición había
+  cambiado frente al verificador anterior. Se restituyó literalmente y se repitió
+  la integración completa; no se relajó la comprobación anterior.
+- Journal ausente/ajeno/no proyectado/aceptado, caso compartido y creador original,
+  seis altas simultáneas, respuesta perdida, asignación concurrente, bandeja/diagnóstico,
+  revocación/ADMIN vencido, rollback SQL, triggers, falta de tabla y 021 repetible.
+- Snapshots acreditan que solo se registra/asigna el caso autorizado; aviso, resultado,
+  negocio e identidad permanecen intactos. No se entrega una autoridad nueva para cerrar,
+  omitir o reenviar un intento incierto.
+- Gateway: **31 controles HTTP**, uno nuevo; JWT, no-store y auditoría sin cuerpos
+  privados. Código productivo del gateway intacto.
+- **289 fuentes previas intactas**, ocho comparaciones del contenido anterior de
+  servicios/controlador/pruebas/verificadores y comparación de reglas SQL UPDATE/DELETE.
+  Consumidor, conciliador, diagnóstico, omisión, cierre y migraciones 001–020 conservados.
+- Auth **8 suites / 228 pruebas** y build, MFE **28 archivos / 322 pruebas** con
+  TypeScript/build, shell RUND **7 / 80** y sesión HTTP **9** mantienen evidencia previa
+  con fuentes intactas, sin repetirse. Persisten los límites globales previos del shell.
+- Evidencia: [validacion-revision-resultado-incierto-rund.json](validacion-revision-resultado-incierto-rund.json).
+  Manifiesto/revisión: corte-87-rund.paths y revision-push-corte-87.json.
+
+**Siguiente punto y límites**
+
+Sigue integrar diagnóstico, omisión y revisión en el cliente/vista operativa opcionales,
+con activación apagada y respetando autorización, recibos separados y recuperación.
+La revisión de incertidumbre permanece abierta: sin evidencia adicional del proveedor
+no se presume éxito, rechazo o autorización de reenvío. Siguen resolución humana,
+otras resoluciones de rechazos, intervalo Auth–SMTP, otros canales/propietarios y
+aceptación por instalación.
+
+021 solo se instala en PostgreSQL temporal; procesos detenidos y clúster eliminado.
+Sin bases existentes, SMTP real, .env/Compose, commit, push o despliegue. Banderas Auth
+false por defecto, módulos opcionales y RUND embebido en PTA conservados.
+
+Avance: **50 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 88. Frente 4: cliente y vista operativa opcionales del correo (2026-10-16)
+
+Se integra diagnóstico, omisión, registro/asignación y cierre de revisiones en una
+vista por intención del registro confirmado. Contrato:
+[CONTRATO-VISTA-OPERATIVA-CORREO-RUND.md](CONTRATO-VISTA-OPERATIVA-CORREO-RUND.md).
+No se activa el formulario, módulo o consumidor nuevos.
+
+**Conexión opcional y precedencia**
+
+- `BancoDocenteEditModal` propaga `enableMailOperations?: boolean` al modal manual
+  solo en su entrada opcional de creación. La opción es false por defecto y solo
+  monta gestión con registro CONFIRMADO y mismo cliente/sesión. Edición y llamador
+  activo conservados: no proporcionan cliente manual o bandera de activación.
+- Fábrica diferida y estable en el cliente manual, ligada a su principal de cuenta
+  verificado y mismo transporte. No infiere actor desde persona/email, almacena
+  recibos, cambia solicitud pendiente o hace HTTP al construir/montar.
+- Consultar gestión lee primero omisión: si existe, informa el bloqueo y no consulta
+  vigencia/ofrece decisiones. Si falla, no usa otro diagnóstico como alternativa.
+  Sin omisión consulta diagnóstico y, cuando hay caso, caso y recibo separado de cierre.
+- DTO exactos y coherencia de intención/caso/estado/responsable/fechas: omisión 7,
+  diagnóstico 10, caso 12 y cierre 7 campos. Se rechazan datos privados adicionales,
+  recibos parciales, IDs ajenos o permiso de reenvío inesperado.
+
+**Acciones y sesión**
+
+- Registro de revisión por entrada sin resultado o INCIERTO registrado, según
+  diagnóstico. Asignación a la propia cuenta; cierre solo con aceptación, sin
+  sustituir otro responsable aunque el rol sea ADMIN. No hay envío/reenvío,
+  aceptación SMTP, conciliación o corrección de identidad desde esta vista.
+- Omitir/cerrar exigen explicación y confirmación marcada. Consulta/cancelación
+  descartan la confirmación anterior. Omisión prevalece sobre PENDIENTE y no
+  recupera acceso; aceptación no significa recepción/lectura del destinatario.
+- JWT/permisos del servidor siguen siendo autoridad. Gate visual por sesión/manage
+  o alternativa vigente de gestión. Los POST solo envían `{}`, sin actor, resultado,
+  motivo, fechas o credenciales elegidos por el navegador.
+- Cero retries/refresh automáticos, sin almacenamiento/polling y errores genéricos
+  sin logs/toasts privados. Doble clic/mutaciones simultáneas por intención se bloquean.
+  Una respuesta perdida se recupera mediante consulta, sin repetir automáticamente la decisión.
+- Cambio de cliente/intención/conexión, notificación de sesión, revocación visual o
+  desmontaje ocultan datos, descartan respuestas tardías y retiran controles, aunque
+  el transporte ignore la señal de cancelación. No se presume cancelar una escritura
+  que ya llegó al servidor; sus recibos durables conservan recuperación.
+- Mientras opera la gestión, el formulario principal no finaliza/cierra o inicia otra
+  operación. Al terminar conserva su finalización habitual y el perfil confirmado
+  sigue siendo independiente del estado del correo.
+
+**Validación local**
+
+- MFE RUND: **30 archivos / 389 pruebas**, 67 nuevas, con los 322 nombres de escenarios
+  anteriores conservados. TypeScript y build aislado bajo tmp correctos.
+- Contratos estrictos, rutas/bodies/opciones, omisión prioritaria, responsable/fechas
+  de cierre, mutaciones concurrentes y recuperación tras fallo/respuesta perdida.
+- React/jsdom con transporte simulado: permisos, roles, confirmaciones, asignación,
+  respuestas viejas, notificación de sesión, cambio de cliente/intención, desmontaje,
+  callback visual estable y opción propagada por el formulario real. Prueba explícita
+  de opción ausente y bloqueo temporal de finalizar/cerrar durante gestión.
+- Vite/Vitest inicialmente no arrancaron por lectura de jerarquía bloqueada en el
+  sandbox de esbuild. Se verificaron con acceso autorizado y envDir temporal vacío;
+  configuraciones del proyecto intactas, sin cargar .env reales.
+- Bundle aislado sin rutas de gestión/creación manual o almacenamiento de esa solicitud.
+  El marcador de opción puede existir en el código compilado; eso no activa el flujo.
+- **299 fuentes previas intactas** y tres comparaciones del contenido anterior del
+  cliente/modal/formulario. Backend, SQL, gateway productivo, Auth y shell sin cambios.
+- Se heredan RUND **89 suites / 1.725 pruebas** y build, integración **687** y gateway
+  **31** sobre fuentes/evidencias intactas, sin repetirlos. Auth **8 / 228** y build,
+  shell RUND **7 / 80** y sesión HTTP **9** conservan evidencia previa; siguen los
+  límites globales conocidos del shell. No se presenta aceptación de navegador por ambiente.
+- Evidencia: [validacion-vista-operativa-correo-rund.json](validacion-vista-operativa-correo-rund.json).
+  Manifiesto/revisión: corte-88-rund.paths y revision-push-corte-88.json.
+
+**Siguiente punto y límites**
+
+Sigue la bandeja operativa opcional de revisiones para gestionar casos fuera del
+modal de creación, conservando permisos, paginación y activación apagada. Esta vista
+es por intención conocida; no resuelve incertidumbre sin evidencia adicional.
+Siguen aceptación integrada, resolución humana, otras resoluciones de rechazos,
+intervalo Auth–SMTP, otros canales/propietarios e instalación/aceptación por ambiente.
+
+Sin migraciones, bases existentes, SMTP real, .env/Compose, commit, push o despliegue.
+Builds publicados, banderas Auth false por defecto, módulos opcionales y RUND
+embebido en PTA se conservan.
+
+Avance: **51 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 89. Frente 4: bandeja opcional de revisiones de correo (2026-10-16)
+
+Se prepara la consulta de revisiones fuera del formulario de creación, reutilizando
+la API del punto 83 y el panel por intención del 88. Contrato:
+[CONTRATO-BANDEJA-REVISIONES-CORREO-RUND.md](CONTRATO-BANDEJA-REVISIONES-CORREO-RUND.md).
+
+**Consulta y detalle**
+
+- Entrada independiente `RundMailReviewInbox` con cliente ligado al principal
+  verificado y `enabled` false por defecto. No tiene llamador activo en el banco,
+  menú o shell. Montar/habilitar/cambiar filtro no consulta o resuelve la cuenta.
+- Consulta explícita desde el inicio, filtro por asignación y página siguiente con
+  límite 25 y cursor del propietario. Cambiar filtro descarta página/cursor/detalle;
+  no conserva páginas en almacenamiento, presenta total general o hace polling.
+- La lista incluye historial. PENDIENTE/EN_REVISION describen asignación; ENVIADO
+  no confirma el cierre administrativo o la recepción/lectura del destinatario.
+- DTO exactos: página de dos campos y casos de doce. Se validan límite 1–100,
+  estado, UUID únicos de caso/intención, orden ascendente y avance respecto al cursor.
+  Cursor canónico base64url, máximo 512, ligado al filtro/último caso y fecha UTC
+  de seis decimales sin redondear a milisegundos. No admite ciclos o campos privados.
+- Seleccionar un caso retira la página y monta el panel anterior sin HTTP automático.
+  Consultar gestión vuelve a leer omisión/diagnóstico/caso/cierre antes de ofrecer
+  decisiones. No se decide desde la fila ni se añaden envío/reenvío/conciliación.
+- Mientras el detalle consulta o decide, filtro e inicio quedan bloqueados. Se
+  conservan las confirmaciones, omisión prioritaria y protección de responsable del 88.
+- Gate visual de sesión/manage o alternativa vigente de gestión; servidor autoritativo.
+  Doble clic bloqueado, no-store/cero retries/refresh y errores genéricos. Fallar o
+  cambiar sesión/cliente/conexión/permisos retira datos y descarta respuestas tardías,
+  incluso si el transporte ignora cancelación. Deshabilitar/desmontar aborta su espera.
+
+**Validación local**
+
+- MFE RUND: **32 archivos / 458 pruebas**, 69 nuevas, conservando los 389 escenarios
+  anteriores. TypeScript correcto y build aislado bajo tmp con envDir vacío.
+- Contratos/cliente y React/jsdom con transporte simulado: fronteras de página,
+  desempate por UUID/microsegundos, filtro/cursor incompatibles, campos privados,
+  duplicados, respuestas perdidas, sesión/cliente/conexión/permisos, desmontaje,
+  recuperación explícita y bloqueo durante el detalle. No hay consulta al montar.
+- Una primera revisión automática de permisos agotó tiempo antes de iniciar los
+  comandos; el reintento autorizado completó la verificación. TypeScript detectó
+  un nombre incorrecto en una prueba nueva; se corrigió y repitieron suite/TypeScript.
+  El build ya correcto se conserva, sin repetirlo por esa corrección de prueba.
+- **308 fuentes previas intactas** y comparación del contenido anterior del cliente
+  operativo al retirar solo su nuevo método/import. Panel, formulario, sesión,
+  backend, migraciones, gateway, Auth y shell conservados. Bundle activo sin las
+  rutas opcionales de creación/gestión; no se sustituyen artefactos publicados.
+- Se heredan RUND **89 suites / 1.725 pruebas** y build, integración **687** y gateway
+  **31** sobre fuentes/evidencias intactas, sin repetirlos. Auth **8 / 228** y build,
+  shell RUND **7 / 80** y sesión HTTP **9** conservan evidencia previa. Persisten
+  los límites globales conocidos del shell y la aceptación por instalación.
+- Evidencia: [validacion-bandeja-revisiones-correo-rund.json](validacion-bandeja-revisiones-correo-rund.json).
+  Manifiesto/revisión: corte-89-rund.paths y revision-push-corte-89.json.
+
+**Siguiente punto y límites**
+
+Sigue preparar la entrada opcional de bandeja con la conexión de principal verificado
+y su invalidación, sin activarla, y comprobar su integración antes de habilitarla.
+La paginación es una lectura puntual: asignaciones concurrentes pueden cambiar la
+pertenencia al filtro. No ofrece una instantánea completa de todos los casos.
+Siguen resolución humana de incertidumbres sin evidencia adicional, otras resoluciones
+de rechazos, intervalo Auth–SMTP, otros canales/propietarios y aceptación por ambiente.
+
+Sin bases existentes, migraciones ejecutadas, SMTP real, .env/Compose, commit, push
+o despliegue. Módulos opcionales, banderas Auth false y RUND embebido en PTA conservados.
+
+Avance: **52 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 90. Frente 4: entrada opcional de revisiones con principal verificado (2026-10-16)
+
+Se conecta la bandeja del punto 89 a la sesión de cuenta del 78 mediante una entrada
+opcional. Contrato:
+[CONTRATO-ENTRADA-REVISIONES-CORREO-RUND.md](CONTRATO-ENTRADA-REVISIONES-CORREO-RUND.md).
+No se incorpora acceso al banco, menú o shell activos.
+
+**Apertura y recuperación de sesión**
+
+- `RundMailReviewWorkspace` recibe solo `enabled?: boolean`, false por defecto.
+  Sin opción, autenticación, manage/alternativa de gestión o conexión disponible no
+  monta el ámbito conectado. El actor no es un campo o prop del llamador.
+- Montar/habilitar no resuelve ni consulta. Abrir revisiones invoca el hook de sesión
+  existente; solo tras validar el principal de cuenta obtiene la fábrica operativa y
+  monta la bandeja. No infiere actor desde persona/email o toca la solicitud manual
+  almacenada. Lista y detalle conservan sus consultas explícitas.
+- Apertura única mientras resuelve, sin retry o errores privados. Al abrir se retira
+  ese botón: no se puede sustituir el cliente durante una gestión por esa entrada.
+- Notificación de sesión invalida el cliente operativo propio, retira filas/cursor/
+  detalle y permite otra apertura sin esperar respuestas antiguas. El hook descarta
+  la cuenta anterior; incluso el mismo UUID obtiene cliente nuevo tras notificación.
+- Generación anterior no puede publicar cuenta/error ni retirar el estado ocupado de
+  una apertura nueva. Cambio del objeto de conexión desmonta el ámbito anterior;
+  revocar permiso/autenticación, deshabilitar o desmontar limpia suscripciones e
+  invalida su cliente. Restituir acceso exige abrir de nuevo, sin restaurar resultados.
+- Hook, fábrica, bandeja y panel anteriores conservados. Se reutilizan diagnóstico,
+  asignación, omisión, cierre, confirmaciones y restricciones de responsable. La
+  bandeja sigue bloqueada mientras opera el detalle. Una escritura ya recibida por
+  el servidor conserva recuperación durable; no se presume cancelarla al desmontar.
+
+**Validación local**
+
+- MFE RUND: **33 archivos / 488 pruebas**, 30 nuevas, conservando los 458 escenarios
+  anteriores. TypeScript y build correctos con envDir temporal vacío y salida bajo tmp.
+- Entrada, hook, fábrica, bandeja y panel reales en React/jsdom/StrictMode con conexión
+  y transporte simulados. Opción ausente, roles/manage, autenticación, principal
+  inválido, cuenta distinta de persona, almacenamiento intacto y cero consultas al montar.
+- Doble clic, resolución nueva sin esperar la antigua, errores tardíos sin retirar
+  busy nuevo, misma cuenta con otro cliente, cambio de conexión, GET tardío, revocación
+  y restitución de acceso, desmontaje y decisión pendiente al cambiar sesión sin repetir POST.
+- **314 fuentes previas intactas**. Sin cambios a código existente del MFE, hook,
+  formulario, backend, SQL, gateway, Auth o shell. Bundle activo sin rutas opcionales
+  o entrada nueva; no se sustituyen artefactos publicados.
+- Se heredan RUND **89 suites / 1.725 pruebas** y build, integración **687**, gateway
+  **31**, Auth **8 / 228** y build, shell RUND **7 / 80** y sesión HTTP **9** sobre
+  fuentes/evidencias intactas, sin repetirlos. Persisten límites globales previos del
+  shell y aceptación por instalación. La conexión/transporte simulados no acreditan
+  aceptación de navegador contra instalaciones reales.
+- Evidencia: [validacion-entrada-revisiones-correo-rund.json](validacion-entrada-revisiones-correo-rund.json).
+  Manifiesto/revisión: corte-90-rund.paths y revision-push-corte-90.json.
+
+**Siguiente punto y límites**
+
+Sigue comprobar el recorrido integrado de apertura/listado/detalle con las rutas HTTP,
+permisos y recuperación antes de habilitar la entrada, manteniendo el acceso activo
+apagado. La aceptación de navegador y de cada instalación sigue pendiente.
+Continúan resolución humana de incertidumbres sin evidencia adicional, otras
+resoluciones de rechazos, intervalo Auth–SMTP, otros canales/propietarios y los cinco
+frentes del mapa de pendientes.
+
+Sin bases existentes, migraciones ejecutadas, SMTP real, .env/Compose, commit, push
+o despliegue. Módulos opcionales, banderas Auth false y RUND embebido en PTA conservados.
+
+Avance: **53 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 91. Frente 4: recorrido integrado de revisiones por HTTP local (2026-10-16)
+
+Se verifica la entrada del punto 90 desde React/jsdom hasta Auth/RUND y PostgreSQL
+temporales. Descripción y configuración reproducible:
+[VALIDACION-RECORRIDO-HTTP-REVISIONES-RUND.md](VALIDACION-RECORRIDO-HTTP-REVISIONES-RUND.md).
+
+**Integración y configuración**
+
+- El verificador de revisiones incorpora el nuevo recorrido después de sus escenarios
+  anteriores. Reutiliza exclusivamente el clúster temporal y servicios/controlador,
+  guards, permisos y JWT reales. Agrega Auth `/me` con controlador/estrategia/guard
+  productivos y proveedores mínimos, sin iniciar Auth AppModule.
+- Entrada, hook, fábrica, bandeja, panel, lector/conexión del shell y ApiClient reales.
+  Dos ejecuciones: modo directo y prefijo `/services/auth/api/v1` / `/services/rund/api/v1`.
+  El proxy de prefijo es un fixture; no sustituye la evidencia del gateway productivo.
+- Vitest aislado con envDir vacío y URLs/clave ficticias solo en el proceso de prueba;
+  todos los destinos en 127.0.0.1. No modifica Vite/Vitest, .env o despliegue existentes.
+  El archivo `.http.integration.tsx` se ejecuta desde el verificador, fuera del patrón
+  unitario habitual, y queda incluido en la comprobación TypeScript del MFE.
+- Fetch hace HTTP real. El adaptador incorpora únicamente la cookie que enviaría el
+  navegador, con JWT ficticio en memoria. Exige include/no-store sin Authorization o
+  token interno añadidos por el cliente. No acredita CORS/SameSite/TLS de un navegador.
+- Casos preparados respetando triggers, historial y orden del propietario. No se
+  desactivan protecciones o mueven fechas para facilitar la paginación.
+
+**Escenarios y validación local**
+
+- **22 pruebas integradas HTTP: 11 por modo.** Montaje sin consultas, cuenta distinta
+  de persona, almacenamiento pendiente intacto, rutas, paginación/filtro y precedencia
+  de omisión antes de diagnóstico. Asignación y cierre verificados con persistencia real.
+- Auth vencido, permiso view insuficiente aunque ADMIN visual y revocación/restauración
+  de manage. Sin refresh/retry. Pérdida de respuesta después del commit recuperada por
+  consulta sin repetir POST. Cierre confirmado solo con aceptación; otro responsable
+  no se sustituye. Invalidación durante Auth/SQL no publica principal o filas anteriores.
+- Invariantes después de cada preparación: negocio, avisos/resultados, identidades Auth
+  y entregas ficticias conservados; solo cambian los casos/cierres esperados. Sin SMTP real.
+- Regresión completa PostgreSQL/TypeORM/HTTP: **689 comprobaciones**, conservando los
+  687 escenarios previos y agregando ambos recorridos. Aplicaciones detenidas y clúster
+  temporal eliminado con las comprobaciones de ruta anteriores.
+- Builds RUND/Auth y TypeScript del MFE correctos. **316 fuentes previas intactas**;
+  comparación del verificador anterior retirando solo la llamada nueva. Código
+  productivo del MFE, backend, SQL, gateway y shell sin cambios.
+- MFE unitario **33 archivos / 488 pruebas** y build, RUND **89 suites / 1.725 pruebas**,
+  Auth **8 / 228**, shell RUND **7 / 80**, sesión HTTP **9** y gateway **31** conservan
+  evidencia anterior sobre fuentes intactas, sin repetirse. Los builds backend y la
+  integración SQL/HTTP sí se ejecutaron en este corte. Persisten límites globales del shell.
+- Evidencia: [validacion-recorrido-http-revisiones-rund.json](validacion-recorrido-http-revisiones-rund.json).
+  Manifiesto/revisión: corte-91-rund.paths y revision-push-corte-91.json.
+
+**Siguiente punto y límites**
+
+La integración local de esta entrada queda comprobada. Siguen navegador real y
+aceptación/configuración por instalación antes de habilitarla; el proxy y la cookie
+son fixtures. Auth `/me` conserva su contrato JWT sin agregar consulta de cuenta en DB.
+El siguiente trabajo local es revisar los pendientes de preview/preparación manual
+sin escritura remota, manteniendo la activación apagada. También continúan resolución
+humana sin evidencia adicional, otros rechazos, intervalo Auth–SMTP y otros canales/
+propietarios, según el mapa de cinco frentes.
+
+Sin bases existentes, SMTP real, .env/Compose, commit, push o despliegue. Migraciones
+solo en clúster nuevo temporal. Módulos opcionales, banderas Auth false y RUND embebido
+en PTA conservados; no se sustituyen artefactos publicados.
+
+Avance: **54 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.

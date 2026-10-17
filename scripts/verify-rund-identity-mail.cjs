@@ -158,6 +158,10 @@ module.exports = async function verifyMail(pgConfig, runtime, check, ctx) {
       assert.equal(confirmed.resultado.welcomeEmail.sent,false); assert.equal(deliveries,count);
       assert.equal((await ds.query("SELECT count(*) FROM rund.identidad_correo WHERE estado NOT IN ('PENDIENTE','ENVIANDO','ENVIADO','INCIERTO')"))[0].count,'0');
     });
+    await require('./verify-rund-mail-validation.cjs')(pgConfig,runtime,check,{...ctx,queued,first,second,
+      mailRow,deliveries:()=>deliveries});
+    await require('./verify-rund-mail-reconciliation.cjs')(pgConfig,runtime,check,{...ctx,queued,first,second,
+      mailRow,deliveries:()=>deliveries});
   } finally {
     if(savedUrl===undefined)delete process.env.NOTIFICATIONS_SERVICE_URL;else process.env.NOTIFICATIONS_SERVICE_URL=savedUrl;
     if(peer?.isInitialized)await peer.destroy();

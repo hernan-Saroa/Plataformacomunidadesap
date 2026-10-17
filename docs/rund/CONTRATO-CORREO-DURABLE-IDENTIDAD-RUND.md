@@ -3,6 +3,20 @@
 Punto 79. Outbox transaccional y consumidor servidor opcional. Sin activar el
 formulario manual, el módulo de ejecución o un worker de correo.
 
+Extensión del punto 81: el consumidor exige ahora la
+[validación propietaria de vigencia en Auth](CONTRATO-VIGENCIA-CORREO-IDENTIDAD-AUTH.md)
+antes de reservar PENDIENTE. No envía las credenciales del contexto si Auth no las
+confirma compatibles. Continúa sin activar y con conciliación/política operativa pendientes.
+
+Extensión del punto 82: el
+[resultado observado y su conciliación local](CONTRATO-CONCILIACION-CORREO-IDENTIDAD-RUND.md)
+permiten recuperar una proyección fallida sin SMTP adicional. La ausencia de resultado
+conserva incertidumbre; no se reconstruye evidencia del proveedor o permite reenviar.
+
+Extensión del punto 86: la [omisión explícita por rechazo de vigencia](CONTRATO-OMISION-CORREO-IDENTIDAD-RUND.md)
+impide nuevos envíos de avisos omitidos. 020 y sus permisos son prerrequisitos antes
+de activar el consumidor. No cambia el DTO o los cuatro estados anteriores.
+
 ## Registro del aviso
 
 La migración `016_rund_identidad_correo.sql` crea `rund.identidad_correo`. El trigger

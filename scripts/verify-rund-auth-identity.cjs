@@ -26,11 +26,19 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
   let operationRoleCreated = false;
   const applyRole = 'rund_apply_' + randomUUID().replace(/-/g, '');
   const applyPassword = randomBytes(24).toString('hex');
+  const mailRole = 'rund_mail_' + randomUUID().replace(/-/g, '');
+  const mailPassword = randomBytes(24).toString('hex');
+  let mailRoleCreated = false, mailDb, mailReadHook;
   let applyRoleCreated = false, applyDb, applyEnabled = true, applyDropAfterCommit = false;
   let compensationEnabled=false,abortProofUrl,compensationDropAfterCommit=false,lastCompensationError;
   const cleanupOperationRole = async () => {
     if (operationDb.isInitialized) await operationDb.destroy();
     if (applyDb?.isInitialized) await applyDb.destroy();
+    if (mailDb) await mailDb.end();
+    if (mailRoleCreated) {
+      await db.query('SET default_transaction_read_only=off');
+      await db.query(`DROP OWNED BY ${mailRole}; DROP ROLE ${mailRole}`);
+    }
     if (applyRoleCreated) {
       await db.query('SET default_transaction_read_only=off');
       await db.query(`DROP OWNED BY ${applyRole}; DROP ROLE ${applyRole}`);
@@ -55,6 +63,11 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
     applyDb = new DataSource({ type:'postgres',host:pgConfig.host,port:pgConfig.port,database:pgConfig.database,
       username:applyRole,password:applyPassword,entities:[],synchronize:false,extra:{max:5} });
     await applyDb.initialize();
+    await db.query(`CREATE ROLE ${mailRole} LOGIN PASSWORD '${mailPassword}'; GRANT USAGE ON SCHEMA auth TO ${mailRole};
+      GRANT SELECT ON auth.personas,auth."user",auth.user_roles,auth.role,auth.rund_identidad_operacion,
+        auth.rund_identidad_efecto,auth.rund_identidad_compensacion TO ${mailRole}`);
+    mailRoleCreated = true;
+    mailDb = new Pool({ ...pgConfig, user: mailRole, password: mailPassword, max: 5, options: '-c default_transaction_read_only=on' });
     await db.query('SET default_transaction_read_only=on');
     const { Module } = dep('@nestjs/common');
     const { NestFactory, Reflector } = dep('@nestjs/core');
@@ -67,6 +80,7 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
     const { RundIdentityApplyController, RundIdentityApplyService } = compiled('users/rund-identity-apply.controller');
     const { RundIdentityCompensationController, RundIdentityCompensationService } = compiled('users/rund-identity-compensation.controller');
     const { RundIdentityAbortClient } = compiled('users/rund-identity-abort.client');
+    const { RundIdentityMailValidationController, RundIdentityMailValidationService } = compiled('users/rund-identity-mail-validation.controller');
     const config = { get:key => key==='INTERNAL_SERVICE_TOKEN'?token:key==='RUND_IDENTITY_APPLY_ENABLED'?applyEnabled:
       key==='RUND_IDENTITY_COMPENSATION_ENABLED'?compensationEnabled:key==='RUND_SERVICE_URL'?abortProofUrl:undefined };
     const applyService = new RundIdentityApplyService(applyDb,config);
@@ -87,7 +101,7 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
     const revalidateSync = service.revalidarSync.bind(service);
     service.revalidarSync = async raw => { if (syncHook) await syncHook(raw); return revalidateSync(raw); };
     class FixtureModule {}
-    Module({ controllers: [RundIdentityController, RundCatalogosController, RundBancoController, RundIdentityValidationController, RundIdentityOperationController, RundIdentityApplyController,RundIdentityCompensationController], providers: [RundIdentityGuard,
+    Module({ controllers: [RundIdentityController, RundCatalogosController, RundBancoController, RundIdentityValidationController, RundIdentityOperationController, RundIdentityApplyController,RundIdentityCompensationController,RundIdentityMailValidationController], providers: [RundIdentityGuard,
       { provide: RundIdentityService, useValue: service },
       { provide: RundCatalogosService, useValue: new RundCatalogosService({ query: async (sql, values) => (await db.query(sql, values)).rows }) },
       { provide: RundBancoService, useValue: new RundBancoService({ query: async (sql, values) => (await db.query(sql, values)).rows }) },
@@ -95,6 +109,9 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
       { provide: RundIdentityOperationService, useValue: new RundIdentityOperationService(operationDb) },
       { provide: RundIdentityApplyService, useValue: applyService },
       { provide: RundIdentityCompensationService, useValue: compensationService },
+      { provide: RundIdentityMailValidationService, useValue: new RundIdentityMailValidationService({ query: async (sql, values) => {
+        const result = await mailDb.query(sql, values); if (mailReadHook) await mailReadHook(); return result.rows;
+      } }) },
       { provide: ConfigService, useValue: config },
     ] })(FixtureModule);
     app = await NestFactory.create(FixtureModule, { logger: false, abortOnError: false });
@@ -137,6 +154,8 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
     const prevalidationHeaders = [];
     let operationMode = 'normal';
     const operationHeaders = [];
+    let mailValidationMode = 'normal';
+    const mailValidationHeaders = [];
     const get = async (route, headers = { 'x-internal-service-token': token }, status = 200) => {
       const res = await fetch(url + '/internal/rund/v1/personas/' + route, { headers });
       assert.equal(res.status, status, await res.clone().text());
@@ -177,6 +196,15 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
       dropNextOperationResponse: () => { operationDropAfterCommit = true; },
       dropNextCancelResponse: () => { cancelDropAfterCommit = true; },
       operationRequestHeaders: () => [...operationHeaders],
+      setMailValidationMode: mode => { mailValidationMode = mode; },
+      setMailValidationReadHook: hook => { mailReadHook = hook; },
+      mailValidationRequestHeaders: () => [...mailValidationHeaders],
+      mailValidationReadOnlyOwner: async () => {
+        const r = (await mailDb.query(`SELECT current_setting('default_transaction_read_only') AS readonly,
+          has_table_privilege(current_user,'auth.user','UPDATE') AS writes,
+          has_schema_privilege(current_user,'rund','USAGE') AS rund`)).rows[0];
+        return r.readonly === 'on' && !r.writes && !r.rund;
+      },
       operationHasNoIdentityPrivileges: async () => {
         const result = (await operationDb.query(`SELECT has_table_privilege(current_user,'auth.personas','SELECT') AS personas,
           has_table_privilege(current_user,'auth.user','INSERT') AS usuarios,
@@ -184,7 +212,14 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
         return !result.personas && !result.usuarios && !result.roles;
       },
       forward: (req, res) => {
-        if (req.url.startsWith('/internal/rund/v1/personas/escritura/operaciones')) {
+        if (/^\/internal\/rund\/v1\/personas\/escritura\/operaciones\/[^/]+\/correo\/validar$/.test(req.url)) {
+          mailValidationHeaders.push({ authorizationForwarded: Boolean(req.headers.authorization), cookieForwarded: Boolean(req.headers.cookie),
+            tokenMatches: req.headers['x-internal-service-token'] === token });
+          if (mailValidationMode !== 'normal') {
+            res.writeHead(mailValidationMode === 'missing' ? 404 : mailValidationMode === 'partial' ? 200 : 503, { 'Content-Type': 'application/json' });
+            req.resume(); res.end(JSON.stringify({ success: true, data: {} })); return;
+          }
+        } else if (req.url.startsWith('/internal/rund/v1/personas/escritura/operaciones')) {
           operationHeaders.push({ authorizationForwarded: Boolean(req.headers.authorization), cookieForwarded: Boolean(req.headers.cookie),
             tokenMatches: req.headers['x-internal-service-token'] === token });
           if (operationMode !== 'normal') {

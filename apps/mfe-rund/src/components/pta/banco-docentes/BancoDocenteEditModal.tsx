@@ -29,6 +29,7 @@ import {
 interface Props {
   /** Conexión preparatoria explícita. El llamador activo todavía no la proporciona. */
   manualIdentityClient?: RundManualIdentityClient;
+  enableMailOperations?: boolean;
   suggestion?: RundSuggestion;
   docente: any | null;
   periodoSeleccionado?: string;
@@ -187,6 +188,7 @@ const fieldFocusStyle = `
 export function BancoDocenteEditModal(props: Props) {
   if (props.manualIdentityClient && !props.docente?.docente_id && !props.docente?.id) {
     return <BancoDocenteManualRequestModal client={props.manualIdentityClient} onClose={props.onClose} onSaved={props.onSaved}
+      enableMailOperations={props.enableMailOperations}
       renderForm={(preparar) => <BancoDocenteFormModal {...props} onManualPrepare={preparar} />} />;
   }
   return <BancoDocenteFormModal {...props} />;
