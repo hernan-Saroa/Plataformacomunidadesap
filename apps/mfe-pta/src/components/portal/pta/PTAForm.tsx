@@ -4972,8 +4972,12 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     let res: any;
     try {
       res = await savePTA(payload);
-    } catch (err) {
-      toast.error('Error de conexión al guardar. Intenta de nuevo.');
+    } catch (err: any) {
+      if (regimenDocencia !== 'actual' && (err?.status ?? err?.response?.status ?? err?.statusCode) === 503) {
+        toast.error('El PTA no se puede guardar ahora porque Programación Académica no está disponible. Lo que ingresaste permanece en el formulario; inténtalo más tarde.');
+      } else {
+        toast.error('Error de conexión al guardar. Intenta de nuevo.');
+      }
       return finishSaving(false);
     }
     if (res.success) {
@@ -5048,7 +5052,9 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
         return finishSaving(true);
       }
     } else {
-      toast.error(res.message || 'Error al guardar el PTA');
+      toast.error(regimenDocencia !== 'actual' && res.status === 503
+        ? 'El PTA no se puede guardar ahora porque Programación Académica no está disponible. Lo que ingresaste permanece en el formulario; inténtalo más tarde.'
+        : res.message || 'Error al guardar el PTA');
       return finishSaving(false);
     }
   };
@@ -6190,7 +6196,7 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 {regimenDocencia === 'error' && (
                   <p role="status" className="mx-4 mb-3 text-xs text-slate-500">
-                    No se pudo confirmar el régimen de Docencia. Puedes continuar con el formulario habitual.
+                    No se pudo confirmar el régimen de Docencia. Si aparece un error al guardar, inténtalo más tarde.
                   </p>
                 )}
                 <SectionHeader title="Docencia Directa" subtitle={`${hDocencia}h programadas (máx 10 asignaturas)`}

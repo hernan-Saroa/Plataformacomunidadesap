@@ -315,3 +315,19 @@ Observaciones para que decidas:
 5. **tsc del MFE de Programación Académica pasa de 102 a 104** por el ícono Lucide `MapPin` (TS2786, el problema transversal que ya conoces).
 6. **El aviso promete algo que el servidor no permite.** Con Programación Académica caída, el aviso dice «Puedes continuar con el formulario habitual», pero en un periodo dentro del corte el servidor no guarda (503) hasta que Programación Académica responda.
 
+
+## 12. Verificación de `e8cf434de` (17 de octubre)
+
+Integrado en `ronda-claude` y `ronda-pruebas`. Atendiste las observaciones 1, 2, 3 y 6 de la sección 11:
+- se crean grupos sin oferta aunque la consulta falle;
+- el buscador tiene su propia etiqueta;
+- tras un rechazo, la lista vuelve al valor guardado;
+- el aviso del 503 es correcto.
+
+Pruebas: MFE de Programación Académica 6 de 6 (con jsdom), MFE del PTA 596 de 596, y tus pruebas de navegador 15 de 15.
+
+Quedan dos errores de tsc en el MFE de Programación Académica (104 frente a la línea base de 102):
+1. `GestionGrupos.tsx`: un `Loader2` más en el botón «Guardar ubicación». Es el TS2786 transversal de Lucide.
+2. `GestionGrupos.test.tsx`, línea 88: `new Promise(() => {})` necesita el tipo, por ejemplo `new Promise<OfertaCetapGrupo[]>(() => {})`.
+
+Con la concertación apagada, la consulta del régimen siempre responde `actual`, así que tus cambios no alteran el formulario de hoy.

@@ -40,6 +40,9 @@ describe('§1.3 :: tope de horas al publicar (agregado real)', () => {
     try {
       client = new Client(conexion);
       await client.connect();
+      // Todo el fixture vive en UNA transacción que se revierte al final: ninguna otra
+      // conexión (otras pruebas en paralelo, como el canario de cruces) lo ve.
+      await client.query('BEGIN');
       const cod = `QA-H13-${Date.now().toString().slice(-6)}`;
       const p = await client.query(
         `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
@@ -54,15 +57,19 @@ describe('§1.3 :: tope de horas al publicar (agregado real)', () => {
   });
 
   afterAll(async () => {
-    if (client && idPeriodo) {
-      await client.query(`DELETE FROM "${S}".grupo WHERE id_periodo=$1`, [idPeriodo]).catch(() => {});
-      await client.query(`DELETE FROM "${S}".periodo_programacion WHERE id_periodo=$1`, [idPeriodo]).catch(() => {});
-    }
+    // Se revierte todo lo que creó la prueba (antes: COMMIT y DELETE al final).
+    if (client) await client.query('ROLLBACK').catch(() => {});
     if (client) await client.end();
   });
 
   const siHayBase = (n: string, fn: () => Promise<void>) =>
-    it(n, async () => { if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; } await fn(); });
+    it(n, async () => {
+      if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
+      await client!.query('SAVEPOINT caso');
+      // Un error SQL esperado no deja la transacción inservible para los casos siguientes.
+      try { await fn(); await client!.query('RELEASE SAVEPOINT caso'); }
+      catch (e) { await client!.query('ROLLBACK TO SAVEPOINT caso').catch(() => {}); throw e; }
+    });
 
   const franja = (ini: string, fin: string) => client!.query(
     `INSERT INTO "${S}".franja_horaria (id_grupo,dia_semana,hora_inicio,hora_fin,tipo_sesion,estado)

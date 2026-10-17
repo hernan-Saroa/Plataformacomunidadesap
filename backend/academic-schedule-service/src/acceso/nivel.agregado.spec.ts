@@ -51,6 +51,9 @@ describe('EFDS-2302 / EFDS-2303 :: cada programador ve y publica solo su nivel (
     try {
       client = new Client(conexion);
       await client.connect();
+      // Todo el fixture vive en UNA transacción que se revierte al final: ninguna otra
+      // conexión (otras pruebas en paralelo, como el canario de cruces) lo ve.
+      await client.query('BEGIN');
       const pre = await client.query(
         `SELECT a.id FROM academic_work_plan.asignatura a JOIN academic_work_plan.programa pr ON pr.id=a.id_programa
           WHERE pr.tipo='pregrado' ORDER BY a.id LIMIT 1`);
@@ -80,18 +83,18 @@ describe('EFDS-2302 / EFDS-2303 :: cada programador ve y publica solo su nivel (
   });
 
   afterAll(async () => {
-    if (client && ids.periodo) {
-      await client.query(`DELETE FROM "${S}".franja_horaria WHERE id_grupo IN ($1,$2)`, [ids.grupoPre, ids.grupoPos]).catch(() => {});
-      await client.query(`DELETE FROM "${S}".grupo WHERE id_periodo=$1`, [ids.periodo]).catch(() => {});
-      await client.query(`DELETE FROM "${S}".periodo_programacion WHERE id_periodo=$1`, [ids.periodo]).catch(() => {});
-    }
+    // Se revierte todo lo que creó la prueba (antes: COMMIT y DELETE al final).
+    if (client) await client.query('ROLLBACK').catch(() => {});
     if (client) await client.end().catch(() => {});
   });
 
   const siHayBase = (nombre: string, fn: () => Promise<void>) =>
     it(nombre, async () => {
       if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
-      await fn();
+      await client!.query('SAVEPOINT caso');
+      // Un error SQL esperado no deja la transacción inservible para los casos siguientes.
+      try { await fn(); await client!.query('RELEASE SAVEPOINT caso'); }
+      catch (e) { await client!.query('ROLLBACK TO SAVEPOINT caso').catch(() => {}); throw e; }
     });
 
   const horarios = (permisos: Set<string>) => new HorariosController(

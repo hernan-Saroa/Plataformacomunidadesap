@@ -58,6 +58,9 @@ describe('EFDS-2307 :: cruces de la programacion viva (agregado real)', () => {
       if (conteo.total !== 0) conCruces.push(`${p.codigo}: ${JSON.stringify(conteo.cruces)}`);
     }
     expect(conCruces).toEqual([]);
+    // Y en total: ninguna prueba deja ver sus fixtures (corren en transacciones que se
+    // revierten); si una vuelve a hacer COMMIT de cruces, esto falla.
+    expect((await servicio().crucesVivos()).total).toBe(0);
   });
 
   it('el conteo detecta cruces de aula, docente y grupo, y acota por periodo', async () => {
