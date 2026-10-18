@@ -93,10 +93,13 @@ try {
         carga: { asignaturas: { creados: 3, actualizados: 1, omitidos: 2, sin_cambios: 2, rechazadas: 0 },
           programas: { creados: 0, actualizados: 1, omitidos: 0 },
           ofertas_cetap_programa: { creados: 325, actualizados: 0, omitidos: 0 } },
-        ofertas: { por_crear: 325, ya_existentes: 0, rechazadas: 0, detalle: [
-          { codigo_cetap: 'CET-0288', nombre_cetap: 'Sede Central', codigo_programa: 'PRO-001', nombre_programa: 'Administración Pública', estado: 'por_crear' },
-          { codigo_cetap: 'CET-0135', nombre_cetap: 'Neiva', codigo_programa: 'PRO-001', nombre_programa: 'Administración Pública', estado: 'por_crear' },
-        ] },
+        ofertas: { por_crear: 325, ya_existentes: 0, rechazadas: 0, detalle: Array.from({ length: 325 }, (_, i) => ({
+          codigo_cetap: i === 0 ? 'CET-0288' : i === 1 ? 'CET-0135' : `CET-${String(i + 1).padStart(4, '0')}`,
+          nombre_cetap: i === 0 ? 'Sede Central' : i === 1 ? 'Neiva' : `CETAP ${i + 1}`,
+          codigo_programa: i < 160 ? 'PRO-001' : 'PRO-002',
+          nombre_programa: i < 160 ? 'Administración Pública' : 'Administración Pública - Nocturno',
+          estado: 'por_crear',
+        })) },
         ...(seco ? {} : { resumen_periodo: { programas: 14, asignaturas: 427, cetaps: 271, ofertas: 325 } }),
         errores: [], advertencias: [], relaciones_cruzadas: [] };
       if (seco && validarConErrores) { status = 400; data = { success: false, message: 'Validación del Excel fallida (Reglas bloqueantes R1-R6).', errors: ['ASIGNATURAS fila 7: código de programa inexistente.'] }; }
