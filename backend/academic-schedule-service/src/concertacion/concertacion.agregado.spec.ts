@@ -6,6 +6,9 @@ import { TerritorialService } from '../acceso/territorial.service.js';
 import { ConcertacionService } from './concertacion.service.js';
 import { PermisosPtaService, type PermisoPta } from './permisos-pta.service.js';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
+
 /**
  * EFDS-2315 :: concertación de la docencia.
  *
@@ -79,9 +82,8 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
              JOIN auth.personas pe ON pe.id_person = u.id_person AND pe.id_seccional IS NULL AND pe.id_sede IS NULL
             WHERE u.id_user::text <> $1 AND COALESCE(u.is_active, true) ORDER BY u.id_user LIMIT 2`, [docenteHuila.rows[0].id_user]);
         const usuarios = { rows: [docenteHuila.rows[0], ...otros.rows] };
-        const asig = await client.query(
-          `SELECT a.id FROM academic_work_plan.asignatura a JOIN academic_work_plan.programa pr ON pr.id = a.id_programa
-            WHERE pr.tipo = 'pregrado' ORDER BY a.id LIMIT 1`);
+        // Asignatura propia de la transacción (no depende del catálogo cargado en la base local).
+        const asig = { rows: [{ id: (await crearAsignatura(client, { tipo: 'pregrado' })).idAsignatura }] };
         // Periodo de PLATAFORMA dentro del corte (2049-1 >= 2049-1), solo en esta transacción.
         const p = await client.query(
           `INSERT INTO academic_work_plan.periodo_academico (codigo, anio, semestre, fecha_inicio, fecha_fin, estado)

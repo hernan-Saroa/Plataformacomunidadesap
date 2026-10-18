@@ -51,16 +51,20 @@ export function SelectorCatalogo({ idPeriodo, irACarga }: { idPeriodo: string; i
 
   // Un solo llamado sin `nivel`: el backend ya devuelve únicamente los programas
   // de los niveles autorizados, y de ahí se derivan las opciones del selector.
+  // El catálogo es del PERIODO seleccionado: solo salen los programas con oferta CETAP en él.
+  // Al cambiar de periodo se vuelve a pedir y se limpia la selección anterior.
   useEffect(() => {
     let cancelado = false;
     setCargandoProgramas(true);
     setErrorProgramas('');
-    getProgramas()
+    setNivel('');
+    setProgramaId('');
+    getProgramas(undefined, idPeriodo || undefined)
       .then((data) => { if (!cancelado) setProgramas(data); })
       .catch((err) => { if (!cancelado) setErrorProgramas(err?.message || 'No se pudo cargar el catálogo.'); })
       .finally(() => { if (!cancelado) setCargandoProgramas(false); });
     return () => { cancelado = true; };
-  }, []);
+  }, [idPeriodo]);
 
   /** Solo los niveles con programas visibles: si no hay, el nivel no se ofrece. */
   const nivelesDisponibles = useMemo(
@@ -79,12 +83,12 @@ export function SelectorCatalogo({ idPeriodo, irACarga }: { idPeriodo: string; i
     setCargandoCatalogo(true);
     setErrorCatalogo('');
     setSemestres(null);
-    getCatalogoPorSemestre(programaId)
+    getCatalogoPorSemestre(programaId, idPeriodo || undefined)
       .then((data) => { if (!cancelado) setSemestres(data.semestres); })
       .catch((err) => { if (!cancelado) setErrorCatalogo(err?.message || 'No se pudo cargar el catálogo.'); })
       .finally(() => { if (!cancelado) setCargandoCatalogo(false); });
     return () => { cancelado = true; };
-  }, [programaId]);
+  }, [programaId, idPeriodo]);
 
   const semestresFiltrados = useMemo(() => {
     if (!semestres) return null;
@@ -119,6 +123,22 @@ export function SelectorCatalogo({ idPeriodo, irACarga }: { idPeriodo: string; i
     );
   }
 
+  // Sin programas para el periodo: no es un tema de permisos (eso es un 403, que se muestra arriba),
+  // es que el periodo no tiene oferta cargada. Se dice, y se dice dónde cargarla.
+  if (nivelesDisponibles.length === 0 && idPeriodo) {
+    return (
+      <div className="p-6 rounded-xl border border-blue-200 bg-blue-50 text-blue-900" role="status">
+        <div>
+          <p className="font-bold text-sm">Este periodo no tiene oferta cargada</p>
+          <p className="text-sm mt-1">
+            El catálogo de un periodo muestra los programas que se dictan en él. Aún no hay oferta CETAP para
+            este periodo: cárguela con el Excel en la sección «Periodos».
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (nivelesDisponibles.length === 0) {
     return (
       <div className="p-6 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 flex items-start gap-3">
@@ -136,7 +156,7 @@ export function SelectorCatalogo({ idPeriodo, irACarga }: { idPeriodo: string; i
   return (
     <div className="flex flex-col gap-5">
       {/* EFDS-1369: la vía directa cuando ya se conoce el código. */}
-      <BuscarPorCodigo />
+      <BuscarPorCodigo idPeriodo={idPeriodo} />
 
       {/* Cascada: nivel → programa */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">

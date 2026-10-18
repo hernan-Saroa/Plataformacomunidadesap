@@ -47,15 +47,25 @@ export interface ResultadoImportacion {
   success: boolean;
   dry_run: boolean;
   periodo: string;
+  blocked_reason?: string;
   carga?: {
-    asignaturas?: { creados: number; actualizados: number; omitidos: number };
-    programas?: { creados: number; actualizados: number; omitidos: number };
-    ofertas_cetap_programa?: { creados: number; actualizados: number; omitidos: number };
+    asignaturas?: ConteoImportacion;
+    programas?: ConteoImportacion;
+    ofertas_cetap_programa?: ConteoImportacion;
   };
+  ofertas?: {
+    por_crear: number;
+    ya_existentes: number;
+    rechazadas: number;
+    detalle: { codigo_cetap: string; nombre_cetap: string; codigo_programa: string; nombre_programa: string; estado: 'por_crear' | 'ya_existente' | 'rechazada'; motivo?: string }[];
+  };
+  resumen_periodo?: { programas: number; asignaturas: number; cetaps: number; ofertas: number };
   advertencias?: string[];
   errores?: string[];
   relaciones_cruzadas?: { codigo_programa: string; errores: string[] }[];
 }
+
+interface ConteoImportacion { creados: number; actualizados: number; omitidos: number; sin_cambios?: number; rechazadas?: number }
 
 export class ErrorImportacion extends Error {
   constructor(message: string, readonly errores: string[]) { super(message); }

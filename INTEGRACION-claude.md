@@ -353,3 +353,138 @@ Content-Length: 379
 Con el Excel válido responde 200 con `{"success":true,"dry_run":true,"periodo":"2050-2","carga":{...omitidos...},"indicadores_pta":{...}}`; la lista de errores del éxito se llama `errores` (en español).
 
 **Para el MFE:** el 400 usa la clave `errors` (inglés), el éxito usa `errores`. Si `peticion()` solo lanza `message` cuando `!res.ok`, el usuario ve «Validación del Excel fallida» sin las filas. Hay que leer `errors` en el camino de error.
+
+## 14. Reinicio de la base, carga masiva, catálogo por periodo, choque de aulas y aulas por oferta (18 de octubre)
+
+### 14.1 La base local quedó en cero (con respaldo)
+- Respaldo completo antes de tocar nada: `respaldos/reinicio-antes.dump` (en el scratchpad de Claude), restauración comprobada en una base desechable. Foto de conteos antes y después: `pruebas-carga/conteos-antes.txt` y `conteos-despues.txt` (solo cambiaron 16 tablas).
+- Se borró: periodos 2050-1, 2050-2, 2026-1 y 2027-2 (los dos últimos los creó Tomás a mano hoy), periodos legado y equivalencias, grupos/franjas/asignaciones/concertaciones, programas, núcleos, asignaturas, ofertas CETAP, el PTA de prueba huérfano, el usuario `prueba.codex.final.20502@esap.edu.co`, el aula `PRUEBA-CODEX-HUI` y el histórico (575 filas).
+- Se conservó: usuarios, personas, docentes (352), roles, territoriales y CETAP (290), 29 aulas, semestres, periodo 2025-2 y viáticos.
+- No hubo clase C: ninguna fila de docente real dependía de lo borrado (0 asignaciones, 0 concertaciones, 0 PTA con docencia).
+- **Reimportar el histórico (575 filas):** `psql -U postgres -d esap_db -f programacion_historica-575.sql` (archivo en `pruebas-carga/`, solo INSERT sobre la tabla vacía). Ojo: la columna `id_asignatura_sugerido` apunta a ids de asignaturas de la carga anterior; al recargar el catálogo esos ids cambian, así que hay que anularla (`UPDATE "academic-schedule".programacion_historica SET id_asignatura_sugerido = NULL, n_candidatos = NULL`) y recalcular las sugerencias si se necesitan.
+- Para volver a este estado: `respaldos/volver-a-cero.sql` (conserva lo anterior y borra periodos distintos de 2025-2, catálogo, ofertas y programación).
+
+### 14.2 Carga masiva: qué significa lo que se ve (reproducido de punta a punta)
+Reproducido por la interfaz como `qa.admin`: crear 2050-1, cargar el Excel válido, validar, confirmar; luego crear 2050-2 y repetir.
+- **«No ingresadas» no son rechazadas: son «sin cambios».** Es `carga.asignaturas.omitidos` = ya existían idénticas. En el segundo periodo el catálogo (14 programas, 427 asignaturas, 33 núcleos) ya existe y no cambia; **lo único que la carga le agrega al periodo son las ofertas CETAP (325)**, que esa pantalla no mostraba.
+- Primera carga: 427 asignaturas nuevas, 14 programas, 33 núcleos, 325 ofertas. Segunda: 0 / 0 / 0 y **325 ofertas por crear**. El mismo Excel otra vez en el mismo periodo: `blocked_reason: "ALL_IDENTICAL"` y 325 ofertas «ya existentes».
+- **Programas Académicos sí muestra los 14 programas** de cada periodo cargado (lista por oferta CETAP del periodo). Lo que veía Tomás vacío era un periodo SIN oferta (p. ej. el que traía la pantalla por defecto), y el mensaje «Aún no hay programas registrados. Crea uno para comenzar» engañaba. Ahora dice que el periodo no tiene oferta cargada y dónde cargarla.
+
+### 14.3 Respuesta del importador (aditivo; nada de lo anterior cambia)
+`POST /pta/api/v1/asignaturas-import/upload?periodo_codigo=<cod>&dry_run=true|false` (y `/validate`). Campos nuevos, **iguales en la validación previa y en la confirmación**:
+- `carga.<categoría>.sin_cambios` (= `omitidos`, dicho claro) y `carga.<categoría>.rechazadas` (filas que no se pueden ingresar). **Sin cambios no es rechazadas.**
+- `ofertas`: `{ por_crear, ya_existentes, rechazadas, detalle: [{ codigo_cetap, nombre_cetap, codigo_programa, nombre_programa, estado: 'por_crear' | 'ya_existente' | 'rechazada', motivo? }] }`. «Rechazada» = el programa de la oferta no existe en el catálogo ni en la hoja PROGRAMAS (hoy lo bloquean antes las reglas R1-R6; queda reservado).
+- La confirmación además trae `resumen_periodo: { programas, asignaturas, cetaps, ofertas }` = lo que quedó en el periodo.
+
+Respuesta real, **confirmación en un periodo nuevo con el catálogo ya cargado** (2050-2; el `detalle` real trae 325 filas, aquí 2):
+```json
+{
+  "success": true,
+  "dry_run": false,
+  "periodo": "2050-2",
+  "carga": {
+    "programas": {
+      "creados": 0,
+      "actualizados": 0,
+      "omitidos": 14,
+      "sin_cambios": 14,
+      "rechazadas": 0
+    },
+    "nucleos_tematicos": {
+      "creados": 0,
+      "actualizados": 0,
+      "omitidos": 33,
+      "sin_cambios": 33,
+      "rechazadas": 0
+    },
+    "cetaps": {
+      "creados": 0,
+      "actualizados": 0,
+      "omitidos": 290,
+      "sin_cambios": 290,
+      "rechazadas": 0
+    },
+    "ofertas_cetap_programa": {
+      "creados": 325,
+      "actualizados": 0,
+      "omitidos": 0,
+      "sin_cambios": 0,
+      "rechazadas": 0
+    },
+    "asignaturas": {
+      "creados": 0,
+      "actualizados": 0,
+      "omitidos": 427,
+      "sin_cambios": 427,
+      "rechazadas": 0
+    }
+  },
+  "ofertas": {
+    "por_crear": 325,
+    "ya_existentes": 0,
+    "rechazadas": 0,
+    "detalle": [
+      {
+        "codigo_cetap": "CET-0288",
+        "nombre_cetap": "Sede Central",
+        "codigo_programa": "PRO-001",
+        "nombre_programa": "Administración Pública - Diurno",
+        "estado": "por_crear"
+      },
+      {
+        "codigo_cetap": "CET-0288",
+        "nombre_cetap": "Sede Central",
+        "codigo_programa": "PRO-002",
+        "nombre_programa": "Administración Pública - Nocturno",
+        "estado": "por_crear"
+      }
+    ]
+  },
+  "resumen_periodo": {
+    "programas": 14,
+    "asignaturas": 427,
+    "cetaps": 271,
+    "ofertas": 325
+  }
+}
+```
+La validación previa del mismo caso es idéntica, sin `resumen_periodo`. Primera carga (catálogo vacío): `carga.asignaturas = {creados: 427, omitidos: 0, sin_cambios: 0, rechazadas: 0}` y `ofertas.por_crear = 325`. El mismo Excel otra vez en el mismo periodo: `blocked_reason: "ALL_IDENTICAL"` y `ofertas = {por_crear: 0, ya_existentes: 325, rechazadas: 0}`.
+El MFE de PA ya muestra «sin cambios», las ofertas y las filas del 400 (`errors`); la pantalla completa (tabla de ofertas) es tuya.
+
+### 14.4 El Catálogo Académico depende del periodo
+- **De dónde sale cada dato:** no hay nada quemado. Programas y asignaturas salen de las tablas compartidas `academic_work_plan.programa` y `asignatura` (las llena la carga masiva) y no pertenecen a un periodo. Lo que sí pertenece al periodo es la **oferta** (`oferta_cetap_programa`).
+- **Regla:** una asignatura aparece en un periodo si su programa tiene al menos una oferta CETAP activa en él. Un periodo sin carga no muestra nada. La segregación por nivel sigue igual; lo que ve el docente no cambia (el portal lee grupos, no el catálogo).
+- **Contrato (aditivo; sin `periodo` todo sale como antes):**
+  - `GET /catalogo/programas?nivel=&periodo=<idPeriodo>` devuelve solo los programas con oferta activa en ese periodo.
+  - `GET /catalogo/programas/:id/asignaturas?periodo=` con un programa sin oferta en el periodo devuelve `semestres: []` y `ofertadoEnPeriodo: false` (el campo solo viaja con `periodo`).
+  - `GET /catalogo/asignaturas/:codigo?periodo=` responde 404 «existe en el catálogo, pero su programa no tiene oferta en este periodo».
+  - `periodo` inválido da 400; un id de periodo legado (uuid) no filtra porque no tiene ofertas.
+- MFE de PA: `SelectorCatalogo`, `BuscarPorCodigo` y `DisponibilidadAulas` ya pasan el periodo seleccionado.
+
+### 14.5 Choque de aula y de docente: una sola regla
+Causa: `crearSesion` buscaba el aula por código y día **sin mirar periodo ni fechas** (y el validador vivo lo documentaba: «el aula se compara contra todas»), así que lo programado en un periodo dejaba el aula ocupada en todos.
+- **Regla (`horarios/choque.ts`, única):** chocan si coinciden el día, las horas se solapan (tocarse en el extremo no cuenta) **y los ciclos de clases se solapan en fechas**. El ciclo es el del grupo; sin ciclo, el del periodo. Sin fechas conocidas se asume solape (lado seguro). Es la misma regla del histórico de cruces.
+- La usan: crear franja (aula), `GET /aulas/:codigo/disponibilidad`, cruces vivos de Validación, validación al publicar, asignación de docentes (RN-07) y el portal del docente (listar disponibles y tomar). Ya no hay tres versiones.
+- `GET /aulas/:codigo/disponibilidad?periodo=<id>` o `?grupo=<uuid>` mide la ocupación en ese ciclo; sin parámetros devuelve todo lo que tenga el aula (como antes). Solo día y hora, nunca el grupo.
+- Pruebas contra la base real con dos periodos (sin solape no choca, con solape sí, y el ciclo propio del grupo manda sobre el del periodo). Mutación verificada: si la regla ignora las fechas, fallan 6 pruebas.
+
+### 14.6 Aula y oferta, relacionadas: contrato de `GET /aulas`
+Cada aula trae ahora `tipo`, `piso`, `territorial: {codigo, nombre}`, `cetap: {codigo, nombre}` e `idOfertaCetap` (null sin filtro de oferta). Filtros, combinables:
+- `?cetap=CET-xxxx` devuelve las aulas de ese CETAP.
+- `?grupo=<uuid>`: con **grupo con oferta**, las aulas del CETAP de esa oferta (`idOfertaCetap` es la del grupo). Con **grupo sin oferta**, las aulas de los CETAP con oferta activa del programa de su asignatura en su periodo; **cada aula trae la oferta que se deduce al elegirla** (hay una por programa, CETAP y periodo).
+- `?asignatura=<id>&periodo=<id>` hace lo mismo cuando el grupo todavía no existe.
+- Lista vacía con filtro de oferta significa que ninguna aula es válida (periodo sin carga, o programa sin ofertas). Los filtros inválidos dan 400 (no se ignoran). Un grupo de periodo legado no filtra.
+- **Sin aula** (virtual o mediada por tecnología): se elige la oferta directamente con `GET /grupos/ofertas-cetap`. Las validaciones del servidor se quedan (aula de otro CETAP que la oferta da 400).
+- La UI del selector de aula con estas opciones es tuya.
+
+### 14.7 Propuesta (sin implementar): copiar la oferta del periodo anterior
+Hoy un periodo sin ofertas obliga a cargar el Excel otra vez. Propongo `POST /pta/api/v1/periodos-academicos/:destino/copiar-oferta` con `{ desde, dryRun }` (permiso: el mismo de la carga masiva).
+- **Qué se copia:** las ofertas activas (programa × CETAP) del periodo origen, con sus cupos estimados. **No se copia** nada que sea del periodo: grupos, franjas, asignaciones, concertaciones ni docentes. El catálogo es compartido y no se toca.
+- **CETAP que cambiaron:** se copia solo si el CETAP y el programa siguen activos en la estructura vigente. Los que ya no están se listan como «rechazada» con su motivo (nunca se descartan en silencio). Un CETAP nuevo no aparece por copia: entra con el Excel, que se carga encima.
+- **Sin duplicar:** la clave única (CETAP, programa, periodo) con `ON CONFLICT DO NOTHING`. Correrlo dos veces crea 0; si luego se carga el Excel, lo que ya está sale «ya_existente». Nunca borra ofertas del destino.
+- **Vista previa:** `dryRun` devuelve el mismo bloque `ofertas` del importador (por_crear, ya_existentes, rechazadas y detalle), para que la pantalla de la carga lo reutilice.
+- **Reglas:** el destino debe ser programable (planeación o en curso), origen distinto de destino, y el origen debe tener ofertas (si no, 400). Queda en la auditoría.
+- Decisiones pendientes de Tomás: si se copian también los cupos, y qué hacer con las ofertas del origen cuyo CETAP se cerró (hoy: informar).
+
+### 14.8 Pruebas
+Las pruebas de agregado de PA ya no dependen del catálogo cargado: usan `test/catalogo-qa.cjs` (programa, núcleo, asignatura, periodo y oferta propios, con códigos `QA-*`, dentro de la transacción de cada prueba, o confirmados y retirados cuando leen por otra conexión). Un fixture que falla ahora **se grita**: antes la prueba se saltaba en silencio y dejaba una conexión abierta dentro de una transacción abortada. Ojo al medir omitidas: con la suite completa Jest no muestra los `console.warn`; hay que correr cada archivo solo.

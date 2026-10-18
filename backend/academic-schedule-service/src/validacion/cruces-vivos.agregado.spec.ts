@@ -2,6 +2,9 @@ import { Client } from 'pg';
 
 import { ValidacionService } from './validacion.service.js';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
+
 /**
  * EFDS-2307 :: cruces de la programación VIVA.
  *
@@ -67,7 +70,7 @@ describe('EFDS-2307 :: cruces de la programacion viva (agregado real)', () => {
     if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
     await client.query('BEGIN');
     try {
-      const a = await client.query(`SELECT id FROM academic_work_plan.asignatura ORDER BY id LIMIT 1`);
+      const a = { rows: [{ id: (await crearAsignatura(client)).idAsignatura }] };
       const doc = await client.query(`SELECT id_person FROM auth.personas ORDER BY id_person LIMIT 1`);
       const p = await client.query(
         `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
@@ -102,6 +105,49 @@ describe('EFDS-2307 :: cruces de la programacion viva (agregado real)', () => {
       // Acotado a otro periodo, estos cruces no aparecen.
       const otro = await servicio().crucesVivos('00000000-0000-0000-0000-000000000000');
       expect(otro.total).toBe(0);
+    } finally {
+      await client.query('ROLLBACK');
+    }
+  });
+
+  it('el mismo aula y docente a la misma hora: NO cruzan entre periodos sin solape de fechas; SÍ si se tocan', async () => {
+    if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
+    await client.query('BEGIN');
+    try {
+      const asig = await crearAsignatura(client);
+      const doc = await client.query(`SELECT id_person FROM auth.personas ORDER BY id_person LIMIT 1`);
+      const periodo = async (cod: string, ini: string, fin: string) => (await client!.query(
+        `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
+         VALUES ($1,$1,'periodo_regular',$2::date,$3::date,'activo') RETURNING id_periodo`, [cod, ini, fin])).rows[0].id_periodo;
+      const grupo = async (idPeriodo: string, n: number, fi: string | null = null, ff: string | null = null) => (await client!.query(
+        `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado,fecha_inicio,fecha_fin)
+         VALUES ($1::bigint,$2,$3,'PROGRAMADO',$4::date,$5::date) RETURNING id_grupo`,
+        [asig.idAsignatura, idPeriodo, n, fi, ff])).rows[0].id_grupo;
+      // Mismo salón y mismo docente, DOMINGO 05:00-06:00, en cada grupo.
+      const franja = (g: string) => client!.query(
+        `INSERT INTO "${S}".franja_horaria (id_grupo,dia_semana,hora_inicio,hora_fin,tipo_sesion,aula_codigo,id_docente,estado)
+         VALUES ($1,'DOMINGO','05:00'::time,'06:00'::time,'presencial','QA2307-CICLO',$2,'PROGRAMADO')`, [g, doc.rows[0].id_person]);
+
+      const pA = await periodo('QA-2307-A', '2030-02-01', '2030-06-15');
+      const pB = await periodo('QA-2307-B', '2030-07-01', '2030-11-30');   // no se toca con A
+      await franja(await grupo(pA, 961));
+      await franja(await grupo(pB, 962));
+      // Dos periodos distintos, fechas disjuntas: el aula y el docente NO están ocupados entre sí.
+      let c = await servicio().crucesVivos();
+      expect({ aula: c.aula, docente: c.docente }).toEqual({ aula: 0, docente: 0 });
+
+      // El ciclo del GRUPO manda sobre el del periodo: un grupo de A con las fechas de B sí choca con el de B.
+      const gTrasladado = await grupo(pA, 963, '2030-07-10', '2030-08-30');
+      await franja(gTrasladado);
+      c = await servicio().crucesVivos();
+      expect({ aula: c.aula, docente: c.docente }).toEqual({ aula: 1, docente: 1 });
+
+      // Un tercer periodo que SÍ se toca con A y con B: cruza con ambos (más el trasladado, que cae dentro de C).
+      const pC = await periodo('QA-2307-C', '2030-06-01', '2030-07-15');
+      await franja(await grupo(pC, 964));
+      c = await servicio().crucesVivos();
+      expect(c.aula).toBeGreaterThanOrEqual(3);
+      expect(c.docente).toBe(c.aula);
     } finally {
       await client.query('ROLLBACK');
     }

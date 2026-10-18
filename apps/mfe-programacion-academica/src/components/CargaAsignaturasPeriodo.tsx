@@ -14,9 +14,10 @@ export function CargaAsignaturasPeriodo({ periodo, alTerminar }: { periodo: Peri
   const [errores, setErrores] = useState<string[]>([]);
   const [ocupado, setOcupado] = useState<'validando' | 'confirmando' | null>(null);
   const [error, setError] = useState('');
+  const [filtroOfertas, setFiltroOfertas] = useState('');
 
   const elegir = (file: File | null) => {
-    setArchivo(file); setValidacion(null); setResultado(null); setErrores([]); setError('');
+    setArchivo(file); setValidacion(null); setResultado(null); setErrores([]); setError(''); setFiltroOfertas('');
     if (input.current) input.current.value = '';
   };
   const alElegir = (e: ChangeEvent<HTMLInputElement>) => elegir(e.target.files?.[0] ?? null);
@@ -44,17 +45,39 @@ export function CargaAsignaturasPeriodo({ periodo, alTerminar }: { periodo: Peri
       <dl className="grid grid-cols-3 gap-2 text-center">
         <div><dt className="text-xs text-slate-500">Nuevas</dt><dd className="text-xl font-black text-[#003DA5]">{r.carga?.asignaturas?.creados ?? '—'}</dd></div>
         <div><dt className="text-xs text-slate-500">Actualizadas</dt><dd className="text-xl font-black text-[#003DA5]">{r.carga?.asignaturas?.actualizados ?? '—'}</dd></div>
-        <div><dt className="text-xs text-slate-500">Sin cambios</dt><dd className="text-xl font-black text-slate-700">{r.carga?.asignaturas?.omitidos ?? '—'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Sin cambios</dt><dd className="text-xl font-black text-slate-700">{r.carga?.asignaturas?.sin_cambios ?? r.carga?.asignaturas?.omitidos ?? '—'}</dd></div>
       </dl>
+      {(r.carga?.asignaturas?.rechazadas ?? 0) > 0 && <p className="mt-2 text-xs font-bold text-red-700">{r.carga!.asignaturas!.rechazadas} asignaturas rechazadas</p>}
     </div>
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <h5 className="mb-3 text-sm font-extrabold text-slate-800">Oferta para {r.periodo}</h5>
       <dl className="grid grid-cols-2 gap-2 text-center">
-        <div><dt className="text-xs text-slate-500">Ofertas por crear</dt><dd className="text-xl font-black text-emerald-700">{r.carga?.ofertas_cetap_programa?.creados ?? '—'}</dd></div>
-        <div><dt className="text-xs text-slate-500">Ya existentes</dt><dd className="text-xl font-black text-slate-700">{r.carga?.ofertas_cetap_programa?.omitidos ?? '—'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Ofertas por crear</dt><dd className="text-xl font-black text-emerald-700">{r.ofertas?.por_crear ?? '—'}</dd></div>
+        <div><dt className="text-xs text-slate-500">Ya existentes</dt><dd className="text-xl font-black text-slate-700">{r.ofertas?.ya_existentes ?? '—'}</dd></div>
       </dl>
+      {(r.ofertas?.rechazadas ?? 0) > 0 && <p className="mt-2 text-xs font-bold text-red-700">{r.ofertas!.rechazadas} ofertas rechazadas</p>}
     </div>
   </div>;
+  const detalleOfertas = (r: ResultadoImportacion) => {
+    if (!r.ofertas?.detalle?.length) return null;
+    const filtro = filtroOfertas.trim().toLocaleLowerCase('es');
+    const visibles = r.ofertas.detalle.filter((o) => !filtro || `${o.codigo_cetap} ${o.nombre_cetap} ${o.codigo_programa} ${o.nombre_programa} ${o.estado}`.toLocaleLowerCase('es').includes(filtro));
+    return <details className="rounded-xl border border-slate-200 bg-white" open={r.ofertas.rechazadas > 0}>
+      <summary className="cursor-pointer p-4 text-sm font-bold text-[#003DA5]">Ver detalle de ofertas ({r.ofertas.detalle.length})</summary>
+      <div className="space-y-3 px-4 pb-4">
+        <label className="block text-xs font-bold text-slate-600">Buscar por programa o CETAP
+          <input type="search" value={filtroOfertas} onChange={(e) => setFiltroOfertas(e.target.value)} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" /></label>
+        <div className="max-h-80 overflow-auto rounded-lg border border-slate-200"><table className="w-full min-w-[620px] text-left text-xs">
+          <thead className="sticky top-0 bg-slate-50 text-slate-700"><tr><th className="px-3 py-2">CETAP</th><th className="px-3 py-2">Programa</th><th className="px-3 py-2">Estado</th><th className="px-3 py-2">Motivo</th></tr></thead>
+          <tbody className="divide-y divide-slate-100">{visibles.map((o, i) => <tr key={`${o.codigo_cetap}-${o.codigo_programa}-${i}`}>
+            <td className="px-3 py-2">{o.nombre_cetap} ({o.codigo_cetap})</td><td className="px-3 py-2">{o.nombre_programa} ({o.codigo_programa})</td>
+            <td className="px-3 py-2 font-bold">{o.estado === 'por_crear' ? 'Por crear' : o.estado === 'ya_existente' ? 'Ya existente' : 'Rechazada'}</td><td className="px-3 py-2">{o.motivo ?? '—'}</td>
+          </tr>)}</tbody>
+        </table></div>
+        <p className="text-xs text-slate-500">{visibles.length} de {r.ofertas.detalle.length} ofertas</p>
+      </div>
+    </details>;
+  };
   const paso = resultado?.success ? 4 : validacion?.success && errores.length === 0 ? 3 : archivo ? 2 : 1;
   return <section className="space-y-5 rounded-xl border border-blue-200 bg-blue-50/40 p-4 sm:p-5" aria-label={`Carga masiva ${periodo.codigo}`}>
     <div><h4 className="text-base font-extrabold text-slate-800">Cargar asignaturas y oferta para {periodo.codigo}</h4>
@@ -87,10 +110,11 @@ export function CargaAsignaturasPeriodo({ periodo, alTerminar }: { periodo: Peri
     {validacion && !resultado?.success && <div className="space-y-3">
       <div className="rounded-xl border border-amber-300 bg-amber-50 p-4" role="status">
         <h5 className="text-sm font-extrabold text-slate-900">Vista previa: el Excel todavía no se ha importado</h5>
-        <p className="mt-1 text-sm text-slate-700">{validacion.success && errores.length === 0 ? 'Estos son los cambios previstos. Para guardarlos en el periodo, pulsa «Importar ahora».' : 'Corrige los errores del archivo y vuelve a validarlo. No se ha guardado nada.'}</p>
+        <p className="mt-1 text-sm text-slate-700">{validacion.blocked_reason === 'ALL_IDENTICAL' ? 'Todo el contenido ya existe en este periodo. No hay cambios por importar.' : validacion.success && errores.length === 0 ? 'Estos son los cambios previstos. Para guardarlos en el periodo, pulsa «Importar ahora».' : 'Corrige los errores del archivo y vuelve a validarlo. No se ha guardado nada.'}</p>
       </div>
       {resumen(validacion)}
-      {validacion.success && errores.length === 0 && <div className="flex flex-col gap-3 rounded-xl border-2 border-emerald-400 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+      {detalleOfertas(validacion)}
+      {validacion.success && errores.length === 0 && (validacion.ofertas?.rechazadas ?? 0) === 0 && validacion.blocked_reason !== 'ALL_IDENTICAL' && <div className="flex flex-col gap-3 rounded-xl border-2 border-emerald-400 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
         <div><h5 className="text-base font-extrabold text-emerald-950">3. Confirmar la carga</h5><p className="text-sm text-emerald-900">La validación solo revisó el archivo. Al importar se guardarán las asignaturas y ofertas para {periodo.codigo}.</p></div>
         <button type="button" onClick={() => ejecutar(false)} disabled={!!ocupado || !periodo.programable}
           className="shrink-0 rounded-lg bg-emerald-700 px-6 py-3 text-base font-extrabold text-white shadow-md hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40">
@@ -100,6 +124,8 @@ export function CargaAsignaturasPeriodo({ periodo, alTerminar }: { periodo: Peri
     </div>}
     {resultado && <div className={`space-y-3 rounded-xl border p-4 ${resultado.success ? 'border-emerald-300 bg-emerald-50' : 'border-red-200 bg-red-50'}`} role="status">
       <h5 className="flex items-center gap-2 text-sm font-extrabold text-slate-800">{resultado.success && <CheckCircle2 className="h-5 w-5 text-emerald-700" />} {resultado.success ? `Importación terminada: los datos ya se guardaron para ${resultado.periodo}` : 'Importación rechazada: no se guardaron cambios'}</h5>{resumen(resultado)}
+      {resultado.success && resultado.resumen_periodo && <p className="text-sm font-bold text-emerald-950">Quedaron en el periodo: {resultado.resumen_periodo.programas} programas, {resultado.resumen_periodo.asignaturas} asignaturas, {resultado.resumen_periodo.cetaps} CETAP y {resultado.resumen_periodo.ofertas} ofertas.</p>}
+      {detalleOfertas(resultado)}
     </div>}
     {(validacion?.advertencias?.length ?? 0) > 0 && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Advertencias</strong><ul className="mt-1 list-disc pl-5">{validacion!.advertencias!.map((x, i) => <li key={i}>{x}</li>)}</ul></div>}
     <p className="text-xs text-slate-600">También puedes agregar una asignatura manualmente en Programas Académicos → plan de estudios del programa.</p>

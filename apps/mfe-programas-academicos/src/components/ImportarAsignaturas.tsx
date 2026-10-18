@@ -616,9 +616,14 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
                       <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                     </div>
                     <div>
-                      <h3 className="font-bold text-gray-900 text-sm">Validación exitosa</h3>
+                      <h3 className="font-bold text-gray-900 text-sm">Validación exitosa — todavía no se ha guardado nada</h3>
                       <p className="text-xs text-gray-500 mt-0.5">
-                        Listos para procesar: <strong>{totalProgramas}</strong> programas nuevos ({carga?.programas?.actualizados || 0} a actualizar) y <strong>{totalAsignaturas}</strong> asignaturas nuevas ({carga?.asignaturas?.actualizados || 0} a actualizar).
+                        Listos para procesar: <strong>{totalProgramas}</strong> programas nuevos ({carga?.programas?.actualizados || 0} a actualizar), <strong>{totalAsignaturas}</strong> asignaturas nuevas ({carga?.asignaturas?.actualizados || 0} a actualizar) y <strong>{totalOfertas}</strong> ofertas CETAP para el periodo.
+                      </p>
+                      {/* Las cifras de abajo son una VISTA PREVIA. Sin este aviso la pantalla parecía una carga terminada
+                          y se salía de ella sin pulsar «Importar ahora»: el periodo quedaba sin programas. */}
+                      <p className="text-xs font-bold text-amber-700 mt-1">
+                        Pulse «Importar ahora» para cargarlo al periodo {periodoActivo?.codigo || periodo}. Si sale de esta pantalla, no se carga.
                       </p>
                     </div>
                   </div>
@@ -710,16 +715,18 @@ export function ImportarAsignaturas({ onBack, onImportSuccess, initialPeriodo }:
               {/* Detail summary table */}
               <div className="flex-1 flex flex-col">
                 <div className="px-6 py-4 border-b border-gray-100">
-                  <h3 className="text-sm font-bold text-gray-800">Resumen del Catálogo</h3>
+                  <h3 className="text-sm font-bold text-gray-800">
+                    {result?.dry_run === false ? 'Resumen del Catálogo' : 'Vista previa del Catálogo (aún sin guardar)'}
+                  </h3>
                   <p className="text-xs text-gray-400 mt-0.5">Detalle de la carga por categoría para el período {periodoActivo?.codigo || periodo}</p>
                 </div>
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-50/80 sticky top-0 border-b border-gray-100 z-10">
                     <tr>
                       <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider">Categoría</th>
-                      <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">Creados</th>
-                      <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">Actualizados</th>
-                      <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">Omitidos</th>
+                      <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">{result?.dry_run === false ? 'Creados' : 'Por crear'}</th>
+                      <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">{result?.dry_run === false ? 'Actualizados' : 'Por actualizar'}</th>
+                      <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">Sin cambios</th>
                       <th className="px-5 py-3 font-semibold text-gray-400 uppercase text-[10px] tracking-wider text-center">Estado</th>
                     </tr>
                   </thead>

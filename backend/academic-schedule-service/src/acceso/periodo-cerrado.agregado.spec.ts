@@ -9,6 +9,9 @@ import { EscrituraGuard } from './escritura.guard.js';
 import { readdirSync } from 'fs';
 import { join } from 'path';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
+
 /**
  * EFDS-2301 :: un periodo cerrado no admite escrituras.
  *
@@ -120,8 +123,7 @@ describe('EFDS-2301 :: con el periodo cerrado, toda escritura se rechaza (agrega
       // Todo el fixture vive en UNA transacción que se revierte al final: ninguna otra
       // conexión (otras pruebas en paralelo, como el canario de cruces) lo ve.
       await client.query('BEGIN');
-      const a = await client.query(`SELECT id FROM academic_work_plan.asignatura ORDER BY id LIMIT 1`);
-      ids.asignatura = String(a.rows[0].id);
+      ids.asignatura = (await crearAsignatura(client)).idAsignatura; // propia de la transacción
       const cod = `QA-2301-${Date.now().toString().slice(-7)}`;
       const p = await client.query(
         `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
@@ -142,8 +144,12 @@ describe('EFDS-2301 :: con el periodo cerrado, toda escritura se rechaza (agrega
          RETURNING id_concertacion`, [ids.periodo]);
       ids.concertacion = c.rows[0].id_concertacion;
       hayBase = true;
-    } catch {
-      hayBase = false;
+    } catch (e) {
+      // Solo la FALTA DE BASE se omite; un fixture que falla se grita (antes la prueba se saltaba en silencio).
+      const conectado = !!(client as any)?._connected;
+      if (client) { await client.query('ROLLBACK').catch(() => {}); await client.end().catch(() => {}); }
+      client = null; hayBase = false;
+      if (conectado) throw e;
     }
   });
 

@@ -7,8 +7,9 @@ import {
   type DiaSemana, type Jornada, type TipoSesion,
 } from './franja-horaria.entity.js';
 import {
-  buscarSolapeIntraGrupo, esMultiploDeGranularidad, jornadaSugerida, aMinutos, seSolapan,
+  buscarSolapeIntraGrupo, esMultiploDeGranularidad, jornadaSugerida, aMinutos,
 } from './solapamiento.js';
+import { buscarChoque, cargarFranjasCruceables, cicloDelGrupo } from './choque.js';
 import { GrupoEntity } from '../grupos/grupo.entity.js';
 import { exigirAulaDeLaOferta } from '../grupos/oferta-cetap.js';
 import { condicionNivelSql, type NivelAcademico } from '../catalogo/nivel-academico.js';
@@ -203,7 +204,7 @@ export class HorariosService {
     await exigirAulaDeLaOferta(this.franjaRepo.manager, dto.idGrupo, dto.aulaCodigo, dto.tipoSesion);
     if (dto.aulaCodigo) {
       const choqueAula = await this.buscarChoqueAula(
-        dto.aulaCodigo, dto.diaSemana, dto.horaInicio, dto.horaFin,
+        dto.idGrupo, dto.aulaCodigo, dto.diaSemana, dto.horaInicio, dto.horaFin,
       );
       if (choqueAula) {
         throw new BadRequestException(
@@ -229,23 +230,28 @@ export class HorariosService {
   }
 
   /**
-   * Busca una franja de OTRO grupo que ocupe la misma aula y se cruce en día y
-   * hora. Transversal a todos los programas (RN-07). Devuelve la franja ocupada
-   * para nombrar el día y la hora, nunca su grupo ni su asignatura.
+   * Busca una franja que ocupe la misma aula y CHOQUE con la propuesta según la regla
+   * única (`choque.ts`): mismo día, horas solapadas y ciclos de clases solapados. El
+   * ciclo de la propuesta es el de su grupo, o el de su periodo si el grupo no tiene. Una
+   * franja del mismo aula en otro periodo (otras fechas) NO ocupa el salón.
+   * Transversal a todos los programas (RN-07). Devuelve la franja ocupada para nombrar
+   * el día y la hora, nunca su grupo ni su asignatura.
    */
   private async buscarChoqueAula(
-    aulaCodigo: string, diaSemana: string, horaInicio: string, horaFin: string, idFranjaExcluir?: string,
+    idGrupo: string, aulaCodigo: string, diaSemana: string, horaInicio: string, horaFin: string,
+    idFranjaExcluir?: string,
   ): Promise<{ horaInicio: string; horaFin: string } | null> {
-    const mismas = await this.franjaRepo.find({
-      where: { aulaCodigo, diaSemana: diaSemana as DiaSemana },
-    });
-    for (const f of mismas) {
-      if (idFranjaExcluir && f.idFranja === idFranjaExcluir) continue;
-      if (seSolapan(horaInicio, horaFin, f.horaInicio, f.horaFin)) {
-        return { horaInicio: f.horaInicio, horaFin: f.horaFin };
-      }
-    }
-    return null;
+    const manager = this.franjaRepo.manager;
+    const ciclo = await cicloDelGrupo(manager, idGrupo);
+    const mismas = await cargarFranjasCruceables(
+      manager, 'f.aula_codigo = $1 AND f.dia_semana = $2', [aulaCodigo, diaSemana],
+    );
+    const choque = buscarChoque(
+      { diaSemana, horaInicio, horaFin, ...ciclo },
+      mismas,
+      (f) => !!idFranjaExcluir && f.idFranja === idFranjaExcluir,
+    );
+    return choque ? { horaInicio: choque.horaInicio, horaFin: choque.horaFin } : null;
   }
 
   async eliminarSesion(idFranja: string): Promise<{ eliminado: true }> {

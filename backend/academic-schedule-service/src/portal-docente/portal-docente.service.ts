@@ -5,6 +5,7 @@ import { DataSource } from 'typeorm';
 import { AcumuladoService, type AcumuladoDocente } from '../asignaciones/acumulado.service.js';
 import { superaElTope, topeDeDocencia } from '../asignaciones/tope.js';
 import { DocenciaService } from '../docencia/docencia.service.js';
+import { buscarChoque, cargarFranjasCruceables } from '../horarios/choque.js';
 
 /**
  * Portal del docente — EFDS-1938.
@@ -110,20 +111,25 @@ export class PortalDocenteService {
     // Dos clases: las PUBLICADA libres (por diseño sin id_docente) y las DEVUELTA
     // a ESTE docente (suyas para corregir, con el comentario de la jefatura). Una
     // devuelta a otro docente no aparece aquí.
-    return this.dataSource.query(
+    const candidatas: FranjaPortal[] = await this.dataSource.query(
       `${this.SELECT_CONTEXTO}
         WHERE (f.estado = 'PUBLICADA' OR (f.estado = 'DEVUELTA' AND f.id_docente = $1))
-          AND NOT EXISTS (
-            SELECT 1 FROM "academic-schedule".franja_horaria m
-             WHERE m.id_docente = $1
-               AND m.estado IN ('TOMADA', 'APROBADA')
-               AND m.dia_semana = f.dia_semana
-               AND m.hora_inicio < f.hora_fin
-               AND f.hora_inicio < m.hora_fin
-          )
         ORDER BY f.dia_semana ASC, f.hora_inicio ASC`,
       [idPerson],
     );
+    // Lo que ya tiene el docente en un ciclo que no se toca con el de la franja no la bloquea:
+    // la regla de choque es la única (`horarios/choque.ts`): día, horas Y ciclo.
+    const suyas = await cargarFranjasCruceables(
+      this.dataSource, `f.id_docente = $1 AND f.estado IN ('TOMADA', 'APROBADA')`, [idPerson]);
+    if (!suyas.length) return candidatas;
+    const ciclos = new Map((await cargarFranjasCruceables(
+      this.dataSource,
+      `f.estado = 'PUBLICADA' OR (f.estado = 'DEVUELTA' AND f.id_docente = $1)`, [idPerson],
+    )).map((f) => [f.idFranja, f]));
+    return candidatas.filter((c) => {
+      const f = ciclos.get(String(c.idFranja));
+      return !f || !buscarChoque(f, suyas);
+    });
   }
 
   /** Franjas que el docente ya tomó (o le aprobaron). */
@@ -171,16 +177,12 @@ export class PortalDocenteService {
         throw new ConflictException('La franja ya no está disponible: alguien la tomó o se retiró de publicación.');
       }
 
-      const cruce = await qr.query(
-        `SELECT 1 FROM "academic-schedule".franja_horaria m
-          WHERE m.id_docente = $1
-            AND m.estado IN ('TOMADA', 'APROBADA')
-            AND m.dia_semana = $2
-            AND m.hora_inicio < $4 AND $3 < m.hora_fin
-          LIMIT 1`,
-        [idPerson, f.dia_semana, f.hora_inicio, f.hora_fin],
-      );
-      if (cruce.length) {
+      // Regla única de choque (`horarios/choque.ts`): día, horas Y ciclo de clases. Lo que el
+      // docente tiene en otro periodo, con fechas que no se tocan, no se cruza con esta franja.
+      const suyas = await cargarFranjasCruceables(
+        qr, `f.id_docente = $1 AND f.estado IN ('TOMADA', 'APROBADA')`, [idPerson]);
+      const [objetivo] = await cargarFranjasCruceables(qr, 'f.id_franja = $1', [idFranja]);
+      if (objetivo && buscarChoque(objetivo, suyas, (m) => m.idFranja === objetivo.idFranja)) {
         throw new ConflictException('No puede tomar esta franja: se cruza con otra que usted ya tiene.');
       }
 

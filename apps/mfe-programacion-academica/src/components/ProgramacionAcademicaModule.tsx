@@ -612,7 +612,7 @@ export function ProgramacionAcademicaModule({
       )}
 
       {/* EFDS-1374: disponibilidad de aulas, sin revelar qué las ocupa (RN-07). */}
-      {seccion === 'aulas' && <DisponibilidadAulas />}
+      {seccion === 'aulas' && <DisponibilidadAulas idPeriodo={periodoSel} />}
 
       {/* EFDS-1372: asignación de docente con panel de solo lectura (RN-09). */}
       {seccion === 'docentes' && <AsignacionDocente />}
