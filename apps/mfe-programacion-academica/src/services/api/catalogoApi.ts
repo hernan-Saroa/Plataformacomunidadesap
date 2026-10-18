@@ -609,6 +609,9 @@ export interface FranjaPortal {
   programa: string | null;
   /** Motivo de la devolución de la jefatura, si la franja está DEVUELTA. */
   comentarioJefatura: string | null;
+  /** Periodo de la franja: el id de las rutas (plataforma o legado) y su código. */
+  idPeriodo?: string | null;
+  periodoCodigo?: string | null;
 }
 
 const BASE_PORTAL = '/programacion-academica/api/v1/portal-docente';

@@ -71,7 +71,7 @@ export class PortalDocenteController {
   async tomar(@Req() req: Request, @Param('idFranja', ParseUUIDPipe) idFranja: string) {
     await this.exigir(req, PERMISO_PORTAL_TOMAR);
     const docente = await this.portal.resolverDocente(this.idUser(req));
-    return { success: true, data: await this.portal.tomar(docente.idPerson, idFranja) };
+    return { success: true, data: await this.portal.tomar(docente.idPerson, idFranja, tokenDe(req)) };
   }
 
   /** POST /portal-docente/soltar/:idFranja — suelta una franja tomada no aprobada. */

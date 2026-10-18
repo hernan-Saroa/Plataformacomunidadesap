@@ -10,6 +10,7 @@ import {
   type MotivoRechazo,
 } from './reglas-asignacion.js';
 import { resolverSituacion } from './situacion-docente.js';
+import { topeDeDocencia } from './tope.js';
 import { ContratoClient } from './contrato-client.js';
 import { DocenciaService } from '../docencia/docencia.service.js';
 
@@ -110,6 +111,8 @@ export class AsignacionesService {
       nombre: f.nombre,
       escalafon: f.escalafon ?? null,
       horasPta: Number(f.horas_pta ?? 0),
+      // El tope que se hace cumplir es el MISMO que ve el docente en su portal.
+      tope: topeDeDocencia(f.vinculacion, f.horas_pta),
       vinculacion: f.vinculacion ?? null,
       vinculacionDesde: iso(f.desde),
       vinculacionHasta: iso(f.hasta),

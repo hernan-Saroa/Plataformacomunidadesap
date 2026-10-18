@@ -1,4 +1,5 @@
 import { seSolapan, type FranjaComparable } from '../horarios/solapamiento.js';
+import { superaElTope } from './tope.js';
 
 /**
  * Reglas de BLOQUEO DURO para asignar un docente a un grupo — EFDS-1372.
@@ -29,6 +30,11 @@ export interface DocenteParaAsignar {
   nombre: string;
   escalafon: string | null;
   horasPta: number;
+  /**
+   * Tope de docencia que se hace cumplir (RN-04), de la regla compartida
+   * `topeDeDocencia` (tope.ts): 304 h para cátedra. Si no viene, se usa `horasPta`.
+   */
+  tope?: number;
   vinculacionDesde: string | null;
   /** Nulo = vinculación indefinida, no fecha faltante (RN-10). */
   vinculacionHasta: string | null;
@@ -186,11 +192,12 @@ export function evaluarAsignacion(
   }
 
   const total = horasYaConsumidas + grupo.horasRequeridas;
-  if (docente.horasPta > 0 && total > docente.horasPta) {
+  const tope = docente.tope ?? docente.horasPta;
+  if (superaElTope(total, tope)) {
     motivos.push({
       regla: 'RN-04/RN-05',
       mensaje: `La asignación supera el tope del docente: ${total} h sobre un máximo de `
-        + `${docente.horasPta} h (ya tiene ${horasYaConsumidas} h asignadas)`,
+        + `${tope} h (ya tiene ${horasYaConsumidas} h asignadas)`,
     });
   }
 

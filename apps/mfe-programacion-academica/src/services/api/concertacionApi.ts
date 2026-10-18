@@ -16,6 +16,8 @@ export type EstadoConcertacion = 'ENVIADA' | 'REVISADA' | 'APROBADA' | 'DEVUELTA
 
 export interface ConfiguracionConcertacion {
   habilitada: boolean;
+  /** Primer periodo (AAAA-S) en que la Docencia se concerta; antes de él la aprueba el PTA. */
+  desdePeriodo?: string | null;
   firmaSimulada: boolean;
   revisionesRequeridas: string[];
 }
