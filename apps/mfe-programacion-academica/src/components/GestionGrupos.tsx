@@ -81,9 +81,10 @@ interface Props {
   codigoAsignatura: string | null;
   /** Periodo activo: los grupos se listan y se crean dentro de él (§1.0). */
   idPeriodo: string;
+  irACarga?: () => void;
 }
 
-export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura, idPeriodo }: Props) {
+export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura, idPeriodo, irACarga }: Props) {
   const [grupos, setGrupos] = useState<Grupo[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
@@ -217,7 +218,10 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
       {cargandoOfertas && <p className="px-4 py-2 text-xs text-slate-500">Consultando ofertas CETAP…</p>}
       {errorOfertas && <p role="alert" className="px-4 py-2 text-xs text-amber-800">No se pudieron cargar las ofertas CETAP. Puedes crear grupos sin oferta y asignarla después. {errorOfertas}</p>}
       {!cargandoOfertas && !errorOfertas && ofertas.length === 0 && (
-        <p className="px-4 py-2 text-xs text-slate-500">No hay ofertas CETAP activas para esta asignatura y periodo. Los grupos sin oferta no se pueden concertar.</p>
+        <div className="px-4 py-3 text-xs text-slate-600">
+          <p>No hay ofertas CETAP activas para esta asignatura y periodo. La oferta se crea al cargar el Excel del periodo; sin ella, los grupos pueden crearse, pero no concertarse.</p>
+          {irACarga && <button type="button" onClick={irACarga} className="mt-2 font-bold text-[#003DA5] underline">Ir a cargar Excel del periodo</button>}
+        </div>
       )}
 
       {error && (

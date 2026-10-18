@@ -50,10 +50,15 @@ export interface ResultadoImportacion {
   carga?: {
     asignaturas?: { creados: number; actualizados: number; omitidos: number };
     programas?: { creados: number; actualizados: number; omitidos: number };
+    ofertas_cetap_programa?: { creados: number; actualizados: number; omitidos: number };
   };
   advertencias?: string[];
   errores?: string[];
   relaciones_cruzadas?: { codigo_programa: string; errores: string[] }[];
+}
+
+export class ErrorImportacion extends Error {
+  constructor(message: string, readonly errores: string[]) { super(message); }
 }
 
 async function peticion<T>(ruta: string, init: RequestInit = {}, permitirResultadoInvalido = false): Promise<T> {
@@ -66,6 +71,7 @@ async function peticion<T>(ruta: string, init: RequestInit = {}, permitirResulta
   try { cuerpo = await res.json(); } catch { /* 204 o respuesta sin JSON */ }
   if (!res.ok || (!permitirResultadoInvalido && cuerpo?.success === false)) {
     const mensaje = cuerpo?.message ?? cuerpo?.error ?? cuerpo?.errores?.join('; ');
+    if (Array.isArray(cuerpo?.errors)) throw new ErrorImportacion(String(mensaje || `La solicitud falló (${res.status}).`), cuerpo.errors.map(String));
     throw new Error(Array.isArray(mensaje) ? mensaje.join('; ') : mensaje || `La solicitud falló (${res.status}).`);
   }
   return (cuerpo?.data ?? cuerpo) as T;
