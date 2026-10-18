@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
-import { seSolapan } from '../horarios/solapamiento.js';
+import { cargarFranjasCruceables, encontrarCruces, type FranjaCruceable } from '../horarios/choque.js';
 import { FACTOR_TOPE_HORAS } from '../horarios/horarios.service.js';
 import { condicionNivelSql, NIVELES_ACADEMICOS, type NivelAcademico } from '../catalogo/nivel-academico.js';
 import { condicionPeriodoGrupo, parsearPeriodo, type RefPeriodo } from '../periodos/periodo-ref.js';
@@ -18,22 +18,14 @@ import { condicionPeriodoGrupo, parsearPeriodo, type RefPeriodo } from '../perio
  * franja no guarda el periodo por su cuenta. Una sola fuente de verdad del
  * estado: `franja.estado` (migración 029), no una tabla aparte.
  *
- * ⚠️ Validar «sin cruces» REUSA la regla existente: la primitiva `seSolapan` de
- * horarios, la misma que usa `crearSesion`. No se reimplementa el solapamiento.
+ * ⚠️ Validar «sin cruces» REUSA la regla única de `horarios/choque.ts`: mismo día, horas
+ * solapadas y ciclos de clases solapados, la misma que usa `crearSesion`. No se
+ * reimplementa el solapamiento.
  *
  * ⚠️ Lo virtual no cruza por aula porque no tiene aula: una sesión mediada por
  * tecnología va sin `aula_codigo`. El docente SÍ cruza consigo mismo aunque sea
  * virtual —nadie dicta dos clases a la vez—, y eso se valida por `id_docente`.
  */
-
-interface FranjaCruce {
-  idFranja: string;
-  aulaCodigo: string | null;
-  idDocente: string | null;
-  diaSemana: string;
-  horaInicio: string;
-  horaFin: string;
-}
 
 export interface CrucePublicacion {
   tipo: 'aula' | 'docente';
@@ -93,34 +85,20 @@ export class PublicacionService {
     };
   }
 
-  /** Franjas del periodo en esos niveles (vía grupo.id_periodo), opcionalmente acotadas por estado. */
+  /** Franjas del periodo en esos niveles (vía su grupo), con su ciclo, opcionalmente acotadas por estado. */
   private async franjasDelPeriodo(
     idPeriodo: string,
     estado?: string,
     niveles: readonly NivelAcademico[] = NIVELES_ACADEMICOS,
-  ): Promise<FranjaCruce[]> {
+  ): Promise<FranjaCruceable[]> {
     const grupos = this.gruposEnAlcance(idPeriodo, niveles);
     const params = [...grupos.params];
     if (estado) params.push(estado);
-    const filas = await this.dataSource.query(
-      `SELECT f.id_franja      AS "idFranja",
-              f.aula_codigo     AS "aulaCodigo",
-              f.id_docente      AS "idDocente",
-              f.dia_semana      AS "diaSemana",
-              f.hora_inicio     AS "horaInicio",
-              f.hora_fin        AS "horaFin"
-         FROM "academic-schedule".franja_horaria f
-        WHERE f.id_grupo IN (${grupos.sql}) ${estado ? `AND f.estado = $${params.length}` : ''}`,
+    return cargarFranjasCruceables(
+      this.dataSource,
+      `f.id_grupo IN (${grupos.sql}) ${estado ? `AND f.estado = $${params.length}` : ''}`,
       params,
     );
-    return filas.map((f: any) => ({
-      idFranja: f.idFranja,
-      aulaCodigo: f.aulaCodigo ?? null,
-      idDocente: f.idDocente ?? null,
-      diaSemana: f.diaSemana,
-      horaInicio: String(f.horaInicio).slice(0, 5),
-      horaFin: String(f.horaFin).slice(0, 5),
-    }));
   }
 
   /**
@@ -140,24 +118,14 @@ export class PublicacionService {
     const porPublicar = new Set(
       (await this.franjasDelPeriodo(idPeriodo, 'PROGRAMADO', niveles)).map((f) => f.idFranja));
     const franjas = await this.franjasDelPeriodo(idPeriodo);
+    // Aula: solo el MISMO salón físico (lo virtual va sin aula). Docente: cruza aunque sea
+    // virtual (nadie dicta dos a la vez). Solo se exige que una de las dos sea de las que se publican.
+    const pares = encontrarCruces(franjas, (a, b) => porPublicar.has(a.idFranja) || porPublicar.has(b.idFranja));
     const cruces: CrucePublicacion[] = [];
-
-    for (let i = 0; i < franjas.length; i++) {
-      for (let j = i + 1; j < franjas.length; j++) {
-        const a = franjas[i], b = franjas[j];
-        if (!porPublicar.has(a.idFranja) && !porPublicar.has(b.idFranja)) continue;
-        if (a.diaSemana !== b.diaSemana) continue;
-        if (!seSolapan(a.horaInicio, a.horaFin, b.horaInicio, b.horaFin)) continue;
-
-        // Aula: solo si ambas tienen el MISMO salón físico. Lo virtual va sin aula.
-        if (a.aulaCodigo && b.aulaCodigo && a.aulaCodigo === b.aulaCodigo) {
-          cruces.push({ tipo: 'aula', recurso: a.aulaCodigo, dia: a.diaSemana, horaInicio: a.horaInicio, horaFin: a.horaFin });
-        }
-        // Docente: cruza aunque sea virtual (nadie dicta dos a la vez).
-        if (a.idDocente && b.idDocente && a.idDocente === b.idDocente) {
-          cruces.push({ tipo: 'docente', recurso: a.idDocente, dia: a.diaSemana, horaInicio: a.horaInicio, horaFin: a.horaFin });
-        }
-      }
+    for (const p of pares) {
+      // El cruce del propio grupo lo impide `crearSesion` al guardar; no es de publicación.
+      if (p.tipo === 'grupo') continue;
+      cruces.push({ tipo: p.tipo, recurso: p.recurso!, dia: p.a.diaSemana, horaInicio: p.a.horaInicio, horaFin: p.a.horaFin });
     }
     return cruces;
   }

@@ -6,6 +6,9 @@ import { PublicacionService } from '../publicacion/publicacion.service.js';
 import { PeriodosService } from './periodos.service.js';
 import { parsearPeriodo } from './periodo-ref.js';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
+
 /**
  * EFDS-2328 :: periodo único de plataforma.
  *
@@ -32,6 +35,8 @@ const S = 'academic-schedule';
 describe('EFDS-2328 :: periodo unico de plataforma (agregado real, en transaccion)', () => {
   let client: Client | null = null;
   let hayBase = false;
+  // Asignatura propia del fixture (la base local puede no tener catálogo cargado).
+  let idAsig = '';
 
   beforeAll(async () => {
     try { client = new Client(conexion); await client.connect(); hayBase = true; } catch { hayBase = false; }
@@ -45,6 +50,7 @@ describe('EFDS-2328 :: periodo unico de plataforma (agregado real, en transaccio
     it(nombre, async () => {
       if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
       await client.query('BEGIN');
+      idAsig = (await crearAsignatura(client)).idAsignatura;
       try { await fn(); } finally { await client.query('ROLLBACK'); }
     });
 
@@ -93,10 +99,10 @@ describe('EFDS-2328 :: periodo unico de plataforma (agregado real, en transaccio
     const id20261 = existe.rows[0]?.id ?? await periodoPlataforma('2026-1', 2026, 1, 'planeacion', '2026-02-01', '2026-06-15');
 
     const g = await client!.query(
-      `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado) VALUES (2,$1,961,'PROGRAMADO') RETURNING id_grupo`,
+      `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado) VALUES (${idAsig},$1,961,'PROGRAMADO') RETURNING id_grupo`,
       [v1.rows[0].id_periodo]);
     const gi = await client!.query(
-      `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado) VALUES (2,$1,962,'PROGRAMADO') RETURNING id_grupo`,
+      `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado) VALUES (${idAsig},$1,962,'PROGRAMADO') RETURNING id_grupo`,
       [int.rows[0].id_periodo]);
 
     await client!.query(`SELECT "${S}".reapuntar_grupos_por_equivalencia()`);

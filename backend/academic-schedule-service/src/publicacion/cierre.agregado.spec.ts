@@ -2,6 +2,9 @@ import { Client } from 'pg';
 
 import { PublicacionService } from './publicacion.service.js';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
+
 /**
  * NUEVA-5b / EFDS-1941 :: cerrar el periodo.
  *
@@ -24,6 +27,8 @@ const S = 'academic-schedule';
 describe('EFDS-1941 :: cerrar el periodo (agregado real)', () => {
   let client: Client | null = null;
   let hayBase = false;
+  // Asignatura propia del fixture (la base local puede no tener catálogo cargado).
+  let idAsig = '';
   let idPeriodo = '';
   let idGrupo = '';
   const F: Record<string, string> = {};
@@ -49,6 +54,7 @@ describe('EFDS-1941 :: cerrar el periodo (agregado real)', () => {
       // Todo el fixture vive en UNA transacción que se revierte al final: ninguna otra
       // conexión (otras pruebas en paralelo, como el canario de cruces) lo ve.
       await client.query('BEGIN');
+      idAsig = (await crearAsignatura(client)).idAsignatura;
       const cod = `QA-CIE-${Date.now().toString().slice(-7)}`;
       const p = await client.query(
         `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
@@ -56,13 +62,18 @@ describe('EFDS-1941 :: cerrar el periodo (agregado real)', () => {
       idPeriodo = p.rows[0].id_periodo;
       const g = await client.query(
         `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado)
-         VALUES (2,$1,906,'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
+         VALUES (${idAsig},$1,906,'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
       idGrupo = g.rows[0].id_grupo;
       await insertar('APROB', 'APROBADA');
       await insertar('TOM', 'TOMADA', '07:00'); // pendiente: ni aprobada ni excepción
       hayBase = true;
-    } catch {
-      client = null; hayBase = false;
+    } catch (e) {
+        // Solo la FALTA DE BASE se omite. Un fixture que falla (clave foránea, columna) se grita: antes se
+        // saltaba en silencio y dejaba la conexión abierta dentro de una transacción abortada.
+        const conectado = !!(client as any)?._connected;
+        if (client) { await client.query('ROLLBACK').catch(() => {}); await client.end().catch(() => {}); }
+        client = null; hayBase = false;
+        if (conectado) throw e;
     }
   });
 
