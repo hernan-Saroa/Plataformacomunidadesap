@@ -92,9 +92,17 @@ describe('EFDS-2328 :: periodo unico de plataforma (agregado real, en transaccio
   });
 
   enTransaccion('las equivalencias reapuntan V1 a 2026-1 como creditos virtuales y dejan fuera el interperiodo', async () => {
-    const v1 = await client!.query(`SELECT id_periodo FROM "${S}".periodo_programacion WHERE codigo='2026-V1'`);
-    const int = await client!.query(`SELECT id_periodo FROM "${S}".periodo_programacion WHERE codigo='2026-INT'`);
-    if (!v1.rows.length || !int.rows.length) { console.warn('  (sin 2026-V1/2026-INT: omitido)'); return; }
+    // Los periodos legado y sus equivalencias eran semilla de la migración 036; al reiniciar la base local se purgan,
+    // así que el caso las siembra (dentro de la transacción) en vez de depender de ellas.
+    const legado = async (cod: string, tipo: string) => client!.query(
+      `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
+       VALUES ($1,$1,$2,'2026-02-01','2026-06-15','activo') ON CONFLICT (codigo) DO UPDATE SET tipo = EXCLUDED.tipo RETURNING id_periodo`, [cod, tipo]);
+    const v1 = await legado('2026-V1', 'creditos_virtual');
+    const int = await legado('2026-INT', 'interperiodo');
+    await client!.query(
+      `INSERT INTO "${S}".equivalencia_periodo (codigo_programacion, codigo_periodo_academico, tipo_oferta, motivo) VALUES
+         ('2026-V1','2026-1','creditos_virtual','QA'), ('2026-INT', NULL, 'interperiodo', 'QA')
+       ON CONFLICT (codigo_programacion) DO UPDATE SET codigo_periodo_academico = EXCLUDED.codigo_periodo_academico, tipo_oferta = EXCLUDED.tipo_oferta`);
     const existe = await client!.query(`SELECT id::text AS id FROM academic_work_plan.periodo_academico WHERE codigo='2026-1'`);
     const id20261 = existe.rows[0]?.id ?? await periodoPlataforma('2026-1', 2026, 1, 'planeacion', '2026-02-01', '2026-06-15');
 

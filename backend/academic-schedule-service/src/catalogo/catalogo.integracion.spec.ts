@@ -8,7 +8,7 @@ import { CatalogoService } from './catalogo.service.js';
 import { PERMISO_CATALOGO_POR_NIVEL } from '../auth/programacion-permissions.js';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { crearAsignatura, retirarPrograma } = require('../../test/catalogo-qa.cjs');
+const { crearAsignatura, crearPeriodo, crearOferta, retirarPrograma } = require('../../test/catalogo-qa.cjs');
 
 /**
  * Prueba de INTEGRACIÓN contra base real — sin mocks.
@@ -44,7 +44,9 @@ describe('EFDS-1368 :: integración contra base real', () => {
   let disponible = false;
   let pg: Client | null = null;
   const sembrados: Array<{ idPrograma: string; idNucleo: string }> = [];
-  let pre: { idPrograma: string }; let pos: { idPrograma: string };
+  let pre: { idPrograma: string; codigoAsignatura: string }; let pos: { idPrograma: string };
+  // Tres periodos de plataforma: uno con oferta de pregrado, uno SIN carga, uno con oferta solo de posgrado.
+  let conPregrado: string; let sinCarga: string; let conPosgrado: string; let ofertaPre: string;
 
   beforeAll(async () => {
     try {
@@ -60,21 +62,34 @@ describe('EFDS-1368 :: integración contra base real', () => {
       const b = await crearAsignatura(pg, { tipo: 'maestria', semestre: 1, horasClase: 48 });
       sembrados.push(a, b);
       pre = a; pos = b;
+      conPregrado = (await crearPeriodo(pg, { codigo: '2094-1', anio: 2094, semestre: 1 })).idPeriodo;
+      sinCarga = (await crearPeriodo(pg, { codigo: '2094-2', anio: 2094, semestre: 2 })).idPeriodo;
+      conPosgrado = (await crearPeriodo(pg, { codigo: '2093-1', anio: 2093, semestre: 1 })).idPeriodo;
+      ofertaPre = (await crearOferta(pg, { idPrograma: a.idPrograma, idPeriodo: conPregrado, codigoCetap: 'CET-0135' })).idOferta;
+      await crearOferta(pg, { idPrograma: b.idPrograma, idPeriodo: conPosgrado, codigoCetap: 'CET-0288' });
       disponible = true;
       service = new CatalogoService(
         ds.getRepository(ProgramaCatalogoEntity),
         ds.getRepository(AsignaturaCatalogoEntity),
         ds.getRepository(UbicacionSemestralCatalogoEntity),
       );
-    } catch {
-      // Sin base: los casos se marcan como omitidos, no como fallidos.
+    } catch (e) {
+      // Sin base: los casos se marcan como omitidos, no como fallidos. Pero si SÍ hay conexión y lo que
+      // falla es el sembrado, se grita: antes se saltaba en silencio y la prueba «pasaba» sin probar nada.
       disponible = false;
+      if (pg) {
+        for (const f of sembrados) await retirarPrograma(pg, f).catch(() => {});
+        await pg.end().catch(() => {});
+        pg = null;
+        throw e;
+      }
     }
   }, 30000);
 
   afterAll(async () => {
     if (pg) {
       for (const f of sembrados) await retirarPrograma(pg, f).catch(() => {});
+      await pg.query(`DELETE FROM academic_work_plan.periodo_academico WHERE codigo IN ('2094-1','2094-2','2093-1')`).catch(() => {});
       await pg.end().catch(() => {});
     }
     if (ds?.isInitialized) await ds.destroy();
@@ -143,5 +158,68 @@ describe('EFDS-1368 :: integración contra base real', () => {
     // clase, justamente porque NO se calcula como créditos x 16.
     const desviadas = conHoras.filter((a) => a.horasClase !== a.creditos * 16);
     expect(desviadas.length).toBeGreaterThan(0);
+  });
+
+  // ─── El catálogo es compartido; lo que depende del PERIODO es su oferta ───────────────────────────
+  // Una asignatura aparece en un periodo si su programa tiene al menos una oferta CETAP activa en él.
+
+  const AMBOS = () => new Set([PERMISO_CATALOGO_POR_NIVEL.pregrado, PERMISO_CATALOGO_POR_NIVEL.posgrado]);
+  const SOLO_PREGRADO = () => new Set([PERMISO_CATALOGO_POR_NIVEL.pregrado]);
+  const SOLO_POSGRADO = () => new Set([PERMISO_CATALOGO_POR_NIVEL.posgrado]);
+
+  siHayBase('periodo :: solo salen los programas con oferta CETAP activa en ese periodo', async () => {
+    const en = (await service.listarProgramas(AMBOS(), undefined, conPregrado)).map((p) => p.id);
+    expect(en).toContain(pre.idPrograma);
+    expect(en).not.toContain(pos.idPrograma); // el posgrado no tiene oferta en ESE periodo
+    const otro = (await service.listarProgramas(AMBOS(), undefined, conPosgrado)).map((p) => p.id);
+    expect(otro).toContain(pos.idPrograma);
+    expect(otro).not.toContain(pre.idPrograma);
+  });
+
+  siHayBase('periodo :: un periodo SIN carga no muestra nada', async () => {
+    expect(await service.listarProgramas(AMBOS(), undefined, sinCarga)).toEqual([]);
+    const { semestres, ofertadoEnPeriodo } = await service.catalogoPorSemestre(SOLO_PREGRADO(), pre.idPrograma, sinCarga);
+    expect(semestres).toEqual([]);
+    expect(ofertadoEnPeriodo).toBe(false);
+  });
+
+  siHayBase('periodo :: con oferta el catálogo del programa sale completo y lo dice', async () => {
+    const { semestres, ofertadoEnPeriodo } = await service.catalogoPorSemestre(SOLO_PREGRADO(), pre.idPrograma, conPregrado);
+    expect(ofertadoEnPeriodo).toBe(true);
+    expect(semestres).toHaveLength(2);
+    // Sin periodo: como siempre, y sin el campo nuevo.
+    const sin = await service.catalogoPorSemestre(SOLO_PREGRADO(), pre.idPrograma);
+    expect(sin.semestres).toHaveLength(2);
+    expect('ofertadoEnPeriodo' in sin).toBe(false);
+  });
+
+  siHayBase('periodo :: la segregación por nivel se mantiene con el filtro', async () => {
+    // Un perfil de pregrado no ve el posgrado aunque ese periodo SOLO tenga oferta de posgrado.
+    expect(await service.listarProgramas(SOLO_PREGRADO(), undefined, conPosgrado)).toEqual([]);
+    expect((await service.listarProgramas(SOLO_POSGRADO(), undefined, conPosgrado)).map((p) => p.id)).toContain(pos.idPrograma);
+    await expect(service.catalogoPorSemestre(SOLO_PREGRADO(), pos.idPrograma, conPosgrado)).rejects.toThrow(/no tiene permiso/i);
+  });
+
+  siHayBase('periodo :: buscar por código — ofertado sí; sin oferta en el periodo, se dice por qué; sin periodo, como siempre', async () => {
+    const ok: any = await service.buscarPorCodigo(SOLO_PREGRADO(), pre.codigoAsignatura, conPregrado);
+    expect(ok.codigo).toBe(pre.codigoAsignatura);
+    await expect(service.buscarPorCodigo(SOLO_PREGRADO(), pre.codigoAsignatura, sinCarga))
+      .rejects.toThrow(/existe en el catálogo, pero su programa no tiene oferta en este periodo/);
+    expect(((await service.buscarPorCodigo(SOLO_PREGRADO(), pre.codigoAsignatura)) as any).codigo).toBe(pre.codigoAsignatura);
+  });
+
+  siHayBase('periodo :: una oferta inactiva ya no cuenta', async () => {
+    await pg!.query('UPDATE academic_work_plan.oferta_cetap_programa SET activa = FALSE WHERE id = $1::bigint', [ofertaPre]);
+    try {
+      expect(await service.listarProgramas(AMBOS(), undefined, conPregrado)).toEqual([]);
+    } finally {
+      await pg!.query('UPDATE academic_work_plan.oferta_cetap_programa SET activa = TRUE WHERE id = $1::bigint', [ofertaPre]);
+    }
+  });
+
+  siHayBase('periodo :: un periodo inválido se rechaza; uno legado (sin ofertas) no filtra', async () => {
+    await expect(service.listarProgramas(AMBOS(), undefined, 'no-es-un-periodo')).rejects.toThrow(/periodo no es válido/);
+    const legado = '00000000-0000-4000-8000-000000000000';
+    expect((await service.listarProgramas(AMBOS(), undefined, legado)).map((p) => p.id)).toContain(pre.idPrograma);
   });
 });

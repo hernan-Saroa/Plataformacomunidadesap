@@ -30,11 +30,20 @@ export function CargaAsignaturasPeriodo({ periodo, alTerminar }: {
 
   const resumen = (r: ResultadoImportacion) => {
     const c = r.carga?.asignaturas;
-    const noIngresadas = c?.omitidos ?? 0;
+    // «omitidos» es «ya existía idéntico»: sin cambios, NO rechazado. Lo rechazado va aparte.
+    const sinCambios = c?.sin_cambios ?? c?.omitidos ?? 0;
+    const rechazadas = c?.rechazadas ?? 0;
+    const o = r.ofertas;
     return (
       <div className="space-y-2 text-xs text-slate-700" role="status">
-        <p><strong>Asignaturas: {c?.creados ?? 0} nuevas, {c?.actualizados ?? 0} actualizadas; {noIngresadas} no ingresadas.</strong></p>
+        <p><strong>Asignaturas: {c?.creados ?? 0} nuevas, {c?.actualizados ?? 0} actualizadas; {sinCambios} sin cambios (ya estaban){rechazadas > 0 ? `; ${rechazadas} rechazadas` : ''}.</strong></p>
         <p>Programas: {r.carga?.programas?.creados ?? 0} nuevos, {r.carga?.programas?.actualizados ?? 0} actualizados.</p>
+        {o && (
+          <p>
+            <strong>Oferta de este periodo (CETAP × programa): {o.por_crear} por crear, {o.ya_existentes} ya existentes{o.rechazadas > 0 ? `, ${o.rechazadas} rechazadas` : ''}.</strong>
+            {' '}El catálogo ya existente no cambia: lo que esta carga le agrega al periodo es su oferta.
+          </p>
+        )}
         {(r.errores ?? []).length > 0 && (
           <ul className="list-disc pl-5">{r.errores!.map((x, i) => <li key={i}>{x}</li>)}</ul>
         )}

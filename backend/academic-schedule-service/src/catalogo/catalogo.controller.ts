@@ -40,9 +40,14 @@ export class CatalogoController {
     return this.permisos.resolveForRoles(codes);
   }
 
-  /** GET /catalogo/programas?nivel=pregrado|posgrado */
+  /**
+   * GET /catalogo/programas?nivel=pregrado|posgrado&periodo=<idPeriodo>
+   *
+   * `periodo` (opcional): solo los programas con oferta CETAP activa en ese periodo. Un periodo sin
+   * carga de ofertas devuelve lista vacía. Sin `periodo`, el catálogo completo.
+   */
   @Get('programas')
-  async listarProgramas(@Req() req: Request, @Query('nivel') nivel?: string) {
+  async listarProgramas(@Req() req: Request, @Query('nivel') nivel?: string, @Query('periodo') periodo?: string) {
     if (nivel !== undefined && !esNivelAcademico(nivel)) {
       throw new BadRequestException("El nivel debe ser 'pregrado' o 'posgrado'.");
     }
@@ -50,15 +55,19 @@ export class CatalogoController {
     const data = await this.catalogoService.listarProgramas(
       permisos,
       nivel ? (String(nivel).toLowerCase() as NivelAcademico) : undefined,
+      periodo,
     );
     return { success: true, data };
   }
 
-  /** GET /catalogo/programas/:id/asignaturas — agrupadas por semestre (AC-01). */
+  /**
+   * GET /catalogo/programas/:id/asignaturas?periodo=<idPeriodo> — agrupadas por semestre (AC-01).
+   * Con `periodo` y un programa sin oferta en él: `semestres: []` y `ofertadoEnPeriodo: false`.
+   */
   @Get('programas/:id/asignaturas')
-  async catalogoPorSemestre(@Req() req: Request, @Param('id') id: string) {
+  async catalogoPorSemestre(@Req() req: Request, @Param('id') id: string, @Query('periodo') periodo?: string) {
     const permisos = await this.permisosDe(req);
-    const data = await this.catalogoService.catalogoPorSemestre(permisos, String(id));
+    const data = await this.catalogoService.catalogoPorSemestre(permisos, String(id), periodo);
     return { success: true, data };
   }
 
@@ -69,9 +78,9 @@ export class CatalogoController {
    * de la clase rechaza cualquier intento de escribirlos.
    */
   @Get('asignaturas/:codigo')
-  async porCodigo(@Req() req: Request, @Param('codigo') codigo: string) {
+  async porCodigo(@Req() req: Request, @Param('codigo') codigo: string, @Query('periodo') periodo?: string) {
     const permisos = await this.permisosDe(req);
-    const data = await this.catalogoService.buscarPorCodigo(permisos, codigo);
+    const data = await this.catalogoService.buscarPorCodigo(permisos, codigo, periodo);
     return { success: true, data };
   }
 }

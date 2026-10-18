@@ -65,17 +65,31 @@ async function pedir<T>(ruta: string): Promise<T> {
   return (cuerpo?.data ?? cuerpo) as T;
 }
 
-/** Programas visibles para el usuario; sin `nivel` devuelve los de todos sus niveles. */
-export function getProgramas(nivel?: NivelAcademico): Promise<ProgramaCatalogo[]> {
-  const query = nivel ? `?nivel=${encodeURIComponent(nivel)}` : '';
-  return pedir<ProgramaCatalogo[]>(`${BASE}/programas${query}`);
+/** Arma `?a=1&b=2` solo con lo que trae valor. */
+function consulta(params: Record<string, string | undefined>): string {
+  const partes = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== '')
+    .map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`);
+  return partes.length ? `?${partes.join('&')}` : '';
 }
 
-/** Catálogo del programa agrupado por semestre del plan de estudios (AC-01). */
+/**
+ * Programas visibles para el usuario; sin `nivel` devuelve los de todos sus niveles.
+ * Con `idPeriodo`, solo los que tienen oferta CETAP activa en ese periodo (un periodo sin carga: vacío).
+ */
+export function getProgramas(nivel?: NivelAcademico, idPeriodo?: string): Promise<ProgramaCatalogo[]> {
+  return pedir<ProgramaCatalogo[]>(`${BASE}/programas${consulta({ nivel, periodo: idPeriodo })}`);
+}
+
+/**
+ * Catálogo del programa agrupado por semestre del plan de estudios (AC-01).
+ * Con `idPeriodo` y un programa sin oferta en él: `semestres: []` y `ofertadoEnPeriodo: false`.
+ */
 export function getCatalogoPorSemestre(
   idPrograma: string,
-): Promise<{ programa: any; semestres: SemestreCatalogo[] }> {
-  return pedir(`${BASE}/programas/${encodeURIComponent(idPrograma)}/asignaturas`);
+  idPeriodo?: string,
+): Promise<{ programa: any; semestres: SemestreCatalogo[]; ofertadoEnPeriodo?: boolean }> {
+  return pedir(`${BASE}/programas/${encodeURIComponent(idPrograma)}/asignaturas${consulta({ periodo: idPeriodo })}`);
 }
 
 // ─── Grupos (EFDS-1370) ─────────────────────────────────────────────────────
@@ -364,8 +378,8 @@ export interface AsignaturaSnies {
 }
 
 /** Autocompletado por llave maestra. El código no existente devuelve error controlado. */
-export function getAsignaturaPorCodigo(codigo: string): Promise<AsignaturaSnies> {
-  return pedir<AsignaturaSnies>(`${BASE}/asignaturas/${encodeURIComponent(codigo.trim())}`);
+export function getAsignaturaPorCodigo(codigo: string, idPeriodo?: string): Promise<AsignaturaSnies> {
+  return pedir<AsignaturaSnies>(`${BASE}/asignaturas/${encodeURIComponent(codigo.trim())}${consulta({ periodo: idPeriodo })}`);
 }
 
 // ─── Aulas y disponibilidad (EFDS-1374) ─────────────────────────────────────
@@ -376,6 +390,21 @@ export interface Aula {
   sedeCodigo: string | null;
   capacidad: number | null;
   provisional: boolean;
+  tipo?: string | null;
+  piso?: number | null;
+  /** Territorial y CETAP del aula. */
+  territorial?: { codigo: string; nombre: string | null } | null;
+  cetap?: { codigo: string; nombre: string | null } | null;
+  /** Con filtro de oferta: la oferta (programa + CETAP + periodo) que se deduce al elegir esta aula. */
+  idOfertaCetap?: string | null;
+}
+
+/** Filtros de `GET /aulas`: por CETAP, por grupo, o por asignatura + periodo (solo las aulas válidas para la oferta). */
+export interface FiltroAulas {
+  cetap?: string;
+  grupo?: string;
+  asignatura?: string;
+  periodo?: string;
 }
 
 /** Franja ocupada de un aula: SOLO día y hora (RN-07, no revela qué la ocupa). */
@@ -387,13 +416,20 @@ export interface FranjaOcupadaAula {
 
 const BASE_AULAS = '/programacion-academica/api/v1/aulas';
 
-export function getAulas(): Promise<Aula[]> {
-  return pedirJson<Aula[]>(BASE_AULAS, { method: 'GET' });
+export function getAulas(filtros: FiltroAulas = {}): Promise<Aula[]> {
+  return pedirJson<Aula[]>(`${BASE_AULAS}${consulta({ ...filtros })}`, { method: 'GET' });
 }
 
-/** Ocupación de un aula. El backend solo devuelve día y hora, nunca el grupo. */
-export function getDisponibilidadAula(codigo: string): Promise<{ aula: string; ocupada: FranjaOcupadaAula[] }> {
-  return pedirJson(`${BASE_AULAS}/${encodeURIComponent(codigo)}/disponibilidad`, { method: 'GET' });
+/**
+ * Ocupación de un aula. El backend solo devuelve día y hora, nunca el grupo.
+ * Con `periodo` (o `grupo`) solo cuenta lo que ocupa el aula EN ESE CICLO de clases: el aula de
+ * otro periodo, con fechas que no se tocan, no aparece ocupada.
+ */
+export function getDisponibilidadAula(
+  codigo: string,
+  opciones: { periodo?: string; grupo?: string } = {},
+): Promise<{ aula: string; ocupada: FranjaOcupadaAula[] }> {
+  return pedirJson(`${BASE_AULAS}/${encodeURIComponent(codigo)}/disponibilidad${consulta({ ...opciones })}`, { method: 'GET' });
 }
 
 /** Publica la oferta del grupo. Exige aula en todas las franjas (cierra deuda de 1371). */
