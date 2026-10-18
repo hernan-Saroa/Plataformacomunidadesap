@@ -5,6 +5,7 @@ import { ImportValidator } from './validators/import.validator';
 import { mapModalidad, mapTipoExcepcion } from './mappers/import.mapper';
 import { HorasPtaCalculator } from '../horas-pta.calculator';
 import { ImportResultDto, ImportCountDto } from './dto/import-result.dto';
+import { clasificarOfertas } from './ofertas-clasificacion';
 
 @Injectable()
 export class AsignaturasImportService {
@@ -190,6 +191,9 @@ export class AsignaturasImportService {
     const newAsigs: any[] = [];
     const modifiedAsigs: any[] = [];
     const identicalAsigs: any[] = [];
+    // Su programa no existe ni en la base ni en el Excel: el cargador las saltaría. Las validaciones
+    // previas ya las bloquean, así que aquí solo se cuentan para no mezclarlas con «sin cambios».
+    let asignaturasRechazadas = 0;
 
     const progIdLookupMap = new Map<string, string>();
     for (const p of existingProgramas) {
@@ -202,7 +206,11 @@ export class AsignaturasImportService {
     for (const a of rawAsignaturas) {
       const existing = existingAsigMap.get(a.codigo_asignatura.toLowerCase().trim());
       const resolvedProgId = progIdLookupMap.get(a.codigo_programa.toLowerCase().trim()) || 'NOT_FOUND';
-      
+      if (resolvedProgId === 'NOT_FOUND') {
+        asignaturasRechazadas++;
+        continue;
+      }
+
       let resolvedNtId = existingNtMap.get(a.nucleo_tematico.toLowerCase().trim()) || 'NEW_NT';
       
       let resolvedSemId = semestresMap.get(a.semestre.toLowerCase().trim());
@@ -246,6 +254,7 @@ export class AsignaturasImportService {
     result.carga.asignaturas.creados = newAsigs.length;
     result.carga.asignaturas.actualizados = modifiedAsigs.length;
     result.carga.asignaturas.omitidos = identicalAsigs.length;
+    result.carga.asignaturas.rechazadas = asignaturasRechazadas;
 
     const uniqueNucleos = new Set(rawAsignaturas.map(a => a.nucleo_tematico.trim().toUpperCase()).filter(Boolean));
     let newNucleosCount = 0;
@@ -275,51 +284,35 @@ export class AsignaturasImportService {
       validCetapsMap.set(code.toLowerCase().trim(), true);
     }
 
-    let newOfertasCount = 0;
-    let existingOfertasCount = 0;
     const dbPeriodo = await this.dataSource.query('SELECT id FROM academic_work_plan.periodo_academico WHERE codigo = $1 LIMIT 1', [periodCodigo]);
-    let periodIdTemp = dbPeriodo[0]?.id;
+    const periodIdTemp = dbPeriodo[0]?.id;
 
+    let ofertasExistentes: Set<string> | null = null;
     if (periodIdTemp) {
       const dbOfertas = await this.dataSource.query('SELECT id_cetap, id_programa FROM academic_work_plan.oferta_cetap_programa WHERE id_periodo_academico = $1', [periodIdTemp]);
-      const dbOfertaMap = new Set<string>();
+      ofertasExistentes = new Set<string>();
       for (const o of dbOfertas) {
-        dbOfertaMap.add(`${o.id_cetap}::${o.id_programa}`);
+        ofertasExistentes.add(`${o.id_cetap}::${o.id_programa}`);
       }
-
-      for (const m of matrizOferta) {
-        const cetapId = cetapsMap.get(m.codigo_cetap.toLowerCase().trim());
-        if (!cetapId) {
-          // CETAP nuevo (se creará durante la importación): todas sus ofertas son nuevas.
-          newOfertasCount += m.programas_ofertados.length;
-          continue;
-        }
-        for (const progCode of m.programas_ofertados) {
-          const progId = progIdLookupMap.get(progCode.toLowerCase().trim());
-          if (!progId || progId === 'NEW_PROG') {
-            newOfertasCount++;
-          } else {
-            const key = `${cetapId}::${progId}`;
-            if (dbOfertaMap.has(key)) {
-              existingOfertasCount++;
-            } else {
-              newOfertasCount++;
-            }
-          }
-        }
-      }
-    } else {
-      newOfertasCount = matrizOferta.reduce(
-        (count, row) =>
-          validCetapsMap.has(row.codigo_cetap.toLowerCase().trim())
-            ? count + row.programas_ofertados.length
-            : count,
-        0,
-      );
     }
+
+    const nombreProgramaPorCodigo = new Map<string, string>();
+    for (const p of existingProgramas) nombreProgramaPorCodigo.set(String(p.codigo).toLowerCase().trim(), p.nombre);
+    for (const p of rawProgramas) nombreProgramaPorCodigo.set(p.codigo_programa.toLowerCase().trim(), p.nombre_programa);
+
+    const ofertas = clasificarOfertas(matrizOferta, {
+      cetapIdPorCodigo: cetapsMap,
+      programaIdPorCodigo: progIdLookupMap,
+      nombreProgramaPorCodigo,
+      ofertasExistentes,
+    });
+    const newOfertasCount = ofertas.por_crear;
+    const existingOfertasCount = ofertas.ya_existentes;
+    result.ofertas = ofertas;
     result.carga.ofertas_cetap_programa.creados = newOfertasCount;
     result.carga.ofertas_cetap_programa.actualizados = 0;
     result.carga.ofertas_cetap_programa.omitidos = existingOfertasCount;
+    result.carga.ofertas_cetap_programa.rechazadas = ofertas.rechazadas;
 
     // Todos los CETAPs del archivo cuentan como válidos (los faltantes se crearán),
     // por lo que todas las ofertas con "X" son válidas.
@@ -334,6 +327,9 @@ export class AsignaturasImportService {
     result.carga.cetaps.creados = cetapsNuevosCodigos.length;
     result.carga.cetaps.actualizados = 0;
     result.carga.cetaps.omitidos = cetapsSet.size - cetapsNuevosCodigos.length;
+
+    // «omitidos» siempre fue «ya existe idéntico»; `sin_cambios` lo dice con todas las letras.
+    for (const cuenta of Object.values(result.carga)) cuenta.sin_cambios = cuenta.omitidos;
 
     if (cetapsNuevosCodigos.length > 0) {
       const examples = cetapsNuevosCodigos.slice(0, 10).join(', ');

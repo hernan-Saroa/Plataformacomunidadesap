@@ -1152,8 +1152,14 @@ export function ProgramasAcademicosModule() {
                 <GraduationCap className="w-8 h-8 text-[#003DA5]/40" />
               </div>
               <h3 className="font-bold text-gray-900 text-sm mb-1">No se encontraron programas</h3>
-              <p className="text-xs text-gray-400 mb-5 max-w-xs mx-auto">
-                {hasActiveFilters ? 'Intenta ajustar los filtros de búsqueda' : 'Aún no hay programas registrados. Crea uno para comenzar.'}
+              <p className="text-xs text-gray-400 mb-5 max-w-sm mx-auto">
+                {hasActiveFilters
+                  ? 'Intenta ajustar los filtros de búsqueda'
+                  : periodoSeleccionadoPA
+                    // Los programas de un periodo son los que tienen oferta CETAP en él. Sin carga masiva
+                    // en ese periodo la lista sale vacía aunque los programas existan en el catálogo.
+                    ? `El periodo ${periodoSeleccionadoPA} no tiene oferta cargada: aquí se listan los programas que se dictan en el periodo. Cárguela desde «Periodos» con el Excel, o elija otro periodo en el selector.`
+                    : 'Aún no hay programas registrados. Crea uno para comenzar.'}
               </p>
               <div className="flex items-center justify-center gap-3">
                 {hasActiveFilters && (

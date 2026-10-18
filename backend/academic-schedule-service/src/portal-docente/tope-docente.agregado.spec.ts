@@ -5,6 +5,9 @@ import { AcumuladoService, TOPE_CATEDRA } from '../asignaciones/acumulado.servic
 import { DocenciaService } from '../docencia/docencia.service.js';
 import { PortalDocenteService } from './portal-docente.service.js';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
+
 /**
  * RN-04 :: NINGÚN docente queda por encima de su tope, por NINGUNO de los dos caminos.
  *
@@ -32,6 +35,8 @@ const DOCUMENTO = '1020304053'; // qa.docente (Docente del RUND de pruebas)
 describe('RN-04 :: el tope del docente se respeta en el portal y en el backoffice (agregado real)', () => {
   let client: Client | null = null;
   let hayBase = false;
+  // Asignatura propia del fixture (la base local puede no tener catálogo cargado).
+  let idAsig = '';
   let horasPorGrupo = 200;
   const ids = { persona: '', grupo1: '', grupo2: '', grupo3: '', franja1: '', franja2: '', franja3: '' };
 
@@ -59,6 +64,7 @@ describe('RN-04 :: el tope del docente se respeta en el portal y en el backoffic
       client = new Client(conexion);
       await client.connect();
       await client.query('BEGIN');
+      idAsig = (await crearAsignatura(client)).idAsignatura;
       ids.persona = (await client.query(`SELECT id_person::text AS id FROM auth.personas WHERE num_identificacion = $1`, [DOCUMENTO])).rows[0].id;
       // El docente de prueba, limpio y catedrático: tope = 304 h, sin otras franjas.
       await client.query(`UPDATE "${S}".franja_horaria SET id_docente = NULL WHERE id_docente = $1`, [ids.persona]);
@@ -74,7 +80,7 @@ describe('RN-04 :: el tope del docente se respeta en el portal y en el backoffic
       for (const [clave, numero, dia, estado] of [['1', 951, 'LUNES', 'PUBLICADA'], ['2', 952, 'MARTES', 'PUBLICADA'], ['3', 953, 'MIERCOLES', 'PROGRAMADO']] as const) {
         const g = await client.query(
           `INSERT INTO "${S}".grupo (id_asignatura, id_periodo, numero_grupo, estado, fecha_inicio, fecha_fin)
-           VALUES (2, $1, $2, 'PROGRAMADO', '2028-02-03', '2028-05-30') RETURNING id_grupo`, [p.rows[0].id_periodo, numero]);
+           VALUES (${idAsig}, $1, $2, 'PROGRAMADO', '2028-02-03', '2028-05-30') RETURNING id_grupo`, [p.rows[0].id_periodo, numero]);
         const f = await client.query(
           `INSERT INTO "${S}".franja_horaria (id_grupo, dia_semana, hora_inicio, hora_fin, tipo_sesion, estado)
            VALUES ($1,$2,'06:00'::time,'08:00'::time,'mediada_tecnologia',$3) RETURNING id_franja`, [g.rows[0].id_grupo, dia, estado]);
@@ -83,8 +89,12 @@ describe('RN-04 :: el tope del docente se respeta en el portal y en el backoffic
       }
       hayBase = true;
     } catch (e) {
-      console.warn('  (sin base o sin el docente de prueba: omitido)', (e as Error).message);
+      // Solo la FALTA DE BASE se omite; un fixture que falla se grita y no deja la conexión abierta.
+      const conectado = !!(client as any)?._connected;
+      if (client) { await client.query('ROLLBACK').catch(() => {}); await client.end().catch(() => {}); }
       client = null; hayBase = false;
+      if (conectado) throw e;
+      console.warn('  (sin base: omitido)', (e as Error).message);
     }
   });
   afterAll(async () => {

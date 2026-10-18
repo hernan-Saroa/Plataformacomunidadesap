@@ -3,11 +3,14 @@ import { Client } from 'pg';
 
 import { aulasQueNoCoinciden, exigirAulaDeLaOferta, ofertasCetapDe, validarOfertaDelGrupo } from './oferta-cetap.js';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura, crearOferta, crearEscenarioDeOferta } = require('../../test/catalogo-qa.cjs');
+
 /**
  * EFDS-2315 :: el grupo sabe dónde se dicta (oferta CETAP, migración 040).
  *
- * Agregado sobre la base real, en una transacción que se revierte, con las
- * ofertas que creó la carga masiva en 2050-1. Requiere la carga confirmada.
+ * Agregado sobre la base real, en una transacción que se revierte, con un catálogo
+ * y unas ofertas propios de la prueba (no depende de ninguna carga previa).
  */
 const conexion = {
   host: process.env.DB_HOST || 'localhost',
@@ -33,23 +36,21 @@ describe('EFDS-2315 :: oferta CETAP del grupo (agregado real, en transacción)',
       if (!hayBase || !client) { console.warn('  (sin base: omitido)'); return; }
       await client.query('BEGIN');
       try {
-        const periodo = (await client.query(`SELECT id::text FROM academic_work_plan.periodo_academico WHERE codigo = '2050-1'`)).rows[0]?.id;
-        // ASIG-00001 (Administración Pública, PRO-001): su programa tiene oferta en Sede Central.
-        const asignatura = '1';
-        const propia = (await q.query(
-          `SELECT o.id::text AS id FROM academic_work_plan.oferta_cetap_programa o
-             JOIN academic_work_plan.asignatura a ON a.id_programa = o.id_programa AND a.id = $1
-            WHERE o.id_periodo_academico = $2 AND o.activa LIMIT 1`, [asignatura, periodo]))[0]?.id;
-        const ajena = (await q.query(
-          `SELECT o.id::text AS id FROM academic_work_plan.oferta_cetap_programa o
-            WHERE o.id_periodo_academico = $2
-              AND o.id_programa <> (SELECT id_programa FROM academic_work_plan.asignatura WHERE id = $1) LIMIT 1`,
-          [asignatura, periodo]))[0]?.id;
-        expect([periodo, propia, ajena].every(Boolean)).toBe(true); // sin la carga de 2050-1 la prueba no prueba nada
+        // Escenario propio de la transacción: una asignatura con oferta en Neiva (CET-0135) y otro programa con oferta
+        // en el mismo periodo (la «ajena»). Nada depende de lo que haya cargado en la base local.
+        const esc = await crearEscenarioDeOferta(client, { periodo: { codigo: '2098-1', anio: 2098 } });
+        const otro = await crearAsignatura(client);
+        const ajena = await crearOferta(client, { idPrograma: otro.idPrograma, idPeriodo: esc.idPeriodo, codigoCetap: 'CET-0288' });
+        const periodo = esc.idPeriodo;
+        const asignatura = esc.idAsignatura;
+        const propia = esc.idOferta;
+        const ajenaId = ajena.idOferta;
+        await client.query(`INSERT INTO "${S}".aula (codigo, nombre, sede_codigo, codigo_cetap) VALUES
+          ('QA-AULA-PROPIA', 'Aula propia QA', 'DT-009', 'CET-0135'), ('QA-AULA-AJENA', 'Aula ajena QA', 'SC', 'CET-0288')`);
         const grupo = (await client.query(
           `INSERT INTO "${S}".grupo (id_asignatura, id_periodo_academico, tipo_oferta, numero_grupo, estado)
            VALUES ($1, $2::bigint, 'periodo_regular', 977, 'PROGRAMADO') RETURNING id_grupo::text`, [asignatura, periodo])).rows[0].id_grupo;
-        await fn({ periodo, asignatura, grupo, ofertaPropia: propia, ofertaAjena: ajena });
+        await fn({ periodo, asignatura, grupo, ofertaPropia: propia, ofertaAjena: ajenaId });
       } finally { await client.query('ROLLBACK'); }
     });
 
@@ -74,8 +75,8 @@ describe('EFDS-2315 :: oferta CETAP del grupo (agregado real, en transacción)',
   caso('presencial: el aula debe ser del CETAP de la oferta (al crear la franja y al asignar la oferta)', async (f) => {
     const oferta = await validarOfertaDelGrupo(q, f.ofertaPropia, { idAsignatura: f.asignatura, idPeriodoAcademico: f.periodo });
     await client!.query(`UPDATE "${S}".grupo SET id_oferta_cetap = $2 WHERE id_grupo = $1`, [f.grupo, f.ofertaPropia]);
-    const aulaPropia = (await q.query(`SELECT codigo FROM "${S}".aula WHERE codigo_cetap = $1 LIMIT 1`, [oferta.cetap.codigo]))[0]?.codigo;
-    const aulaAjena = (await q.query(`SELECT codigo FROM "${S}".aula WHERE codigo_cetap IS DISTINCT FROM $1 LIMIT 1`, [oferta.cetap.codigo]))[0]?.codigo;
+    const aulaPropia = (await q.query(`SELECT codigo FROM "${S}".aula WHERE codigo_cetap = $1 AND codigo LIKE 'QA-%' LIMIT 1`, [oferta.cetap.codigo]))[0]?.codigo;
+    const aulaAjena = (await q.query(`SELECT codigo FROM "${S}".aula WHERE codigo_cetap IS DISTINCT FROM $1 AND codigo LIKE 'QA-%' LIMIT 1`, [oferta.cetap.codigo]))[0]?.codigo;
     expect(aulaPropia && aulaAjena).toBeTruthy();
     await expect(exigirAulaDeLaOferta(q, f.grupo, aulaPropia, 'presencial')).resolves.toBeUndefined();
     await expect(exigirAulaDeLaOferta(q, f.grupo, aulaAjena, 'presencial')).rejects.toThrow(/se dicta en/);

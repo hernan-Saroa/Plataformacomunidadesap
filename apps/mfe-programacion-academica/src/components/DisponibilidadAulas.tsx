@@ -26,7 +26,7 @@ const ETIQUETA_TIPO: Record<string, string> = { aula: 'Aula', auditorio: 'Audito
 // ambos de selectores. Se conserva capacidad (se completa aquí).
 const FORM_VACIO = { codigo: '', nombre: '', tipo: 'aula', capacidad: '', territorialId: '', codigoCetap: '' };
 
-export function DisponibilidadAulas() {
+export function DisponibilidadAulas({ idPeriodo }: { idPeriodo?: string } = {}) {
   const [aulas, setAulas] = useState<Aula[]>([]);
   const [sel, setSel] = useState<string>('');
   const [ocupada, setOcupada] = useState<FranjaOcupadaAula[]>([]);
@@ -60,10 +60,15 @@ export function DisponibilidadAulas() {
     getCetaps(Number(nuevo.territorialId)).then(setCetaps).catch(() => setCetaps([]));
   }, [nuevo.territorialId]);
 
+  // La ocupación es del PERIODO seleccionado: el aula de otro periodo no aparece ocupada.
   useEffect(() => {
     if (!sel) return;
-    getDisponibilidadAula(sel).then((r) => setOcupada(r.ocupada)).catch(() => setOcupada([]));
-  }, [sel]);
+    let vigente = true;
+    getDisponibilidadAula(sel, { periodo: idPeriodo || undefined })
+      .then((r) => { if (vigente) setOcupada(r.ocupada); })
+      .catch(() => { if (vigente) setOcupada([]); });
+    return () => { vigente = false; };
+  }, [sel, idPeriodo]);
 
   const aula = aulas.find((a) => a.codigo === sel);
 

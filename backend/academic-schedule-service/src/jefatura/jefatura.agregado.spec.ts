@@ -4,6 +4,9 @@ import { JefaturaService } from './jefatura.service.js';
 import { DocenciaService } from '../docencia/docencia.service.js';
 import { PortalDocenteService } from '../portal-docente/portal-docente.service.js';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
+
 /**
  * EFDS-1939 :: aprobación de la jefatura territorial.
  *
@@ -32,6 +35,8 @@ const P2 = '7192ba96-113f-4def-99e9-d6e940f18ecc';    // docente DT-010
 describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
   let client: Client | null = null;
   let hayBase = false;
+  // Asignatura propia del fixture (la base local puede no tener catálogo cargado).
+  let idAsig = '';
   let idPeriodo = '';
   let idGrupo = '';
   const F: Record<string, string> = {};
@@ -70,6 +75,7 @@ describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
       // Todo el fixture vive en UNA transacción que se revierte al final: ninguna otra
       // conexión (otras pruebas en paralelo, como el canario de cruces) lo ve.
       await client.query('BEGIN');
+      idAsig = (await crearAsignatura(client)).idAsignatura;
       const cod = `QA-JEF-${Date.now().toString().slice(-7)}`;
       const p = await client.query(
         `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
@@ -77,15 +83,20 @@ describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
       idPeriodo = p.rows[0].id_periodo;
       const g = await client.query(
         `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado)
-         VALUES (2,$1,904,'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
+         VALUES (${idAsig},$1,904,'PROGRAMADO') RETURNING id_grupo`, [idPeriodo]);
       idGrupo = g.rows[0].id_grupo;
       await tomada('F1', 'SABADO', '06:00', P1);
       await tomada('F2', 'SABADO', '08:00', P1);
       await tomada('F3', 'DOMINGO', '06:00', P1);
       await tomada('FX', 'SABADO', '06:00', P2); // otra territorial
       hayBase = true;
-    } catch {
-      client = null; hayBase = false;
+    } catch (e) {
+        // Solo la FALTA DE BASE se omite. Un fixture que falla (clave foránea, columna) se grita: antes se
+        // saltaba en silencio y dejaba la conexión abierta dentro de una transacción abortada.
+        const conectado = !!(client as any)?._connected;
+        if (client) { await client.query('ROLLBACK').catch(() => {}); await client.end().catch(() => {}); }
+        client = null; hayBase = false;
+        if (conectado) throw e;
     }
   });
 

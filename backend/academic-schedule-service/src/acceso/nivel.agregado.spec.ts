@@ -11,6 +11,9 @@ import { HorariosService } from '../horarios/horarios.service.js';
 import { PublicacionController } from '../publicacion/publicacion.controller.js';
 import { PublicacionService } from '../publicacion/publicacion.service.js';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
+
 /**
  * EFDS-2302 (RN-08 en lectura y escritura) y EFDS-2303 (publica el programador).
  *
@@ -54,12 +57,9 @@ describe('EFDS-2302 / EFDS-2303 :: cada programador ve y publica solo su nivel (
       // Todo el fixture vive en UNA transacción que se revierte al final: ninguna otra
       // conexión (otras pruebas en paralelo, como el canario de cruces) lo ve.
       await client.query('BEGIN');
-      const pre = await client.query(
-        `SELECT a.id FROM academic_work_plan.asignatura a JOIN academic_work_plan.programa pr ON pr.id=a.id_programa
-          WHERE pr.tipo='pregrado' ORDER BY a.id LIMIT 1`);
-      const pos = await client.query(
-        `SELECT a.id FROM academic_work_plan.asignatura a JOIN academic_work_plan.programa pr ON pr.id=a.id_programa
-          WHERE pr.tipo IN ('especializacion','maestria','doctorado') ORDER BY a.id LIMIT 1`);
+      // Una asignatura de pregrado y una de posgrado propias de la transacción (la base local puede no tener catálogo).
+      const pre = { rows: [{ id: (await crearAsignatura(client, { tipo: 'pregrado' })).idAsignatura }] };
+      const pos = { rows: [{ id: (await crearAsignatura(client, { tipo: 'especializacion' })).idAsignatura }] };
       const p = await client.query(
         `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
          VALUES ($1,'Periodo QA EFDS-2302','periodo_regular','2029-08-01','2029-11-30','activo') RETURNING id_periodo`,
@@ -77,8 +77,12 @@ describe('EFDS-2302 / EFDS-2303 :: cada programador ve y publica solo su nivel (
       ids.franjaPre = await franja(ids.grupoPre, '06:00');
       ids.franjaPos = await franja(ids.grupoPos, '08:00');
       hayBase = true;
-    } catch {
-      hayBase = false;
+    } catch (e) {
+      // Solo la FALTA DE BASE se omite; un fixture que falla se grita (antes la prueba se saltaba en silencio).
+      const conectado = !!(client as any)?._connected;
+      if (client) { await client.query('ROLLBACK').catch(() => {}); await client.end().catch(() => {}); }
+      client = null; hayBase = false;
+      if (conectado) throw e;
     }
   });
 

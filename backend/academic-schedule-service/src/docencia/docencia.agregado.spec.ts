@@ -3,6 +3,9 @@ import { Client } from 'pg';
 import { DocenciaService } from './docencia.service.js';
 import { repartoPorDias, type ReglaReparto } from './reparto.js';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { crearAsignatura } = require('../../test/catalogo-qa.cjs');
+
 /**
  * EFDS-2306 :: el registro único de la docencia es la franja.
  *
@@ -52,9 +55,10 @@ describe('EFDS-2306 :: docencia desde la franja (agregado real, en transaccion)'
         const p = await client.query(
           `INSERT INTO "${S}".periodo_programacion (codigo,nombre,tipo,fecha_inicio,fecha_fin,estado)
            VALUES ('QA-2306-TX','QA docencia','periodo_regular','2031-02-01','2031-06-15','activo') RETURNING id_periodo`);
+        const asig = await crearAsignatura(client);
         const g = await client.query(
-          `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado) VALUES (2,$1,971,'PROGRAMADO') RETURNING id_grupo`,
-          [p.rows[0].id_periodo]);
+          `INSERT INTO "${S}".grupo (id_asignatura,id_periodo,numero_grupo,estado) VALUES ($2::bigint,$1,971,'PROGRAMADO') RETURNING id_grupo`,
+          [p.rows[0].id_periodo, asig.idAsignatura]);
         await fn({ a: docentes.rows[0].id_person, b: docentes.rows[1].id_person, grupo: g.rows[0].id_grupo });
       } finally {
         await client.query('ROLLBACK');

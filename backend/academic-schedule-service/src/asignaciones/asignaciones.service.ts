@@ -13,6 +13,7 @@ import { resolverSituacion } from './situacion-docente.js';
 import { topeDeDocencia } from './tope.js';
 import { ContratoClient } from './contrato-client.js';
 import { DocenciaService } from '../docencia/docencia.service.js';
+import { cargarFranjasCruceables, cicloDelGrupo } from '../horarios/choque.js';
 
 export interface AsignarDocenteDto {
   idGrupo: string;
@@ -142,9 +143,12 @@ export class AsignacionesService {
       [idGrupo],
     );
     const iso = (v: any) => (v ? new Date(v).toISOString().slice(0, 10) : null);
+    const ciclo = await cicloDelGrupo(this.dataSource, idGrupo);
 
     return {
       idGrupo: g.id_grupo,
+      cicloInicio: ciclo.cicloInicio,
+      cicloFin: ciclo.cicloFin,
       tipoPrograma: g.tipo_programa ?? null,
       codigoAsignatura: g.codigo_asignatura ?? null,
       fechaInicio: iso(g.fecha_inicio),
@@ -166,18 +170,16 @@ export class AsignacionesService {
    * por identificador y no por nombre.
    */
   private async franjasOcupadas(idDocente: string): Promise<FranjaOcupada[]> {
-    const filas = await this.dataSource.query(
-      `SELECT f.id_franja, f.id_grupo, f.dia_semana, f.hora_inicio, f.hora_fin
-         FROM "academic-schedule".franja_horaria f
-        WHERE f.id_docente = $1`,
-      [idDocente],
-    );
-    return filas.map((f: any) => ({
-      idFranja: f.id_franja,
-      idGrupo: f.id_grupo,
-      diaSemana: f.dia_semana,
-      horaInicio: f.hora_inicio,
-      horaFin: f.hora_fin,
+    // Con su ciclo efectivo: lo que el docente tiene en otro periodo no lo ocupa en este.
+    const franjas = await cargarFranjasCruceables(this.dataSource, 'f.id_docente = $1', [idDocente]);
+    return franjas.map((f) => ({
+      idFranja: f.idFranja,
+      idGrupo: f.idGrupo as string,
+      diaSemana: f.diaSemana,
+      horaInicio: f.horaInicio,
+      horaFin: f.horaFin,
+      cicloInicio: f.cicloInicio,
+      cicloFin: f.cicloFin,
     }));
   }
 

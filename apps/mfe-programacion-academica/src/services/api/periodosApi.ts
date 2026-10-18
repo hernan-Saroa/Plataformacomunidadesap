@@ -48,8 +48,13 @@ export interface ResultadoImportacion {
   dry_run: boolean;
   periodo: string;
   carga?: {
-    asignaturas?: { creados: number; actualizados: number; omitidos: number };
-    programas?: { creados: number; actualizados: number; omitidos: number };
+    asignaturas?: { creados: number; actualizados: number; omitidos: number; sin_cambios?: number; rechazadas?: number };
+    programas?: { creados: number; actualizados: number; omitidos: number; sin_cambios?: number; rechazadas?: number };
+  };
+  /** Ofertas CETAP de la carga en este periodo (validación previa y confirmación). */
+  ofertas?: {
+    por_crear: number; ya_existentes: number; rechazadas: number;
+    detalle: { codigo_cetap: string; nombre_cetap: string; codigo_programa: string; nombre_programa: string; estado: 'por_crear' | 'ya_existente' | 'rechazada'; motivo?: string }[];
   };
   advertencias?: string[];
   errores?: string[];
@@ -66,7 +71,11 @@ async function peticion<T>(ruta: string, init: RequestInit = {}, permitirResulta
   try { cuerpo = await res.json(); } catch { /* 204 o respuesta sin JSON */ }
   if (!res.ok || (!permitirResultadoInvalido && cuerpo?.success === false)) {
     const mensaje = cuerpo?.message ?? cuerpo?.error ?? cuerpo?.errores?.join('; ');
-    throw new Error(Array.isArray(mensaje) ? mensaje.join('; ') : mensaje || `La solicitud falló (${res.status}).`);
+    const base = Array.isArray(mensaje) ? mensaje.join('; ') : mensaje || `La solicitud falló (${res.status}).`;
+    // El 400 del importador trae las filas con error en `errors` (en inglés, como clave): sin ellas el usuario
+    // solo ve «Validación del Excel fallida» y no sabe qué corregir.
+    const filas: string[] = Array.isArray(cuerpo?.errors) ? cuerpo.errors : [];
+    throw new Error(filas.length ? `${base} ${filas.join(' · ')}` : base);
   }
   return (cuerpo?.data ?? cuerpo) as T;
 }

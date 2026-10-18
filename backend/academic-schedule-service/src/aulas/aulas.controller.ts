@@ -60,10 +60,19 @@ export class AulasController {
     }
   }
 
-  /** GET /aulas — catálogo de aulas (datos provisionales, C-4). */
+  /**
+   * GET /aulas — catálogo de aulas con su territorial y CETAP.
+   * Filtros opcionales: `cetap=CET-xxxx`; `grupo=<uuid>`; o `asignatura=<id>&periodo=<id>`
+   * (solo las aulas válidas para esa oferta, cada una con su `idOfertaCetap`).
+   */
   @Get()
-  async listar() {
-    return { success: true, data: await this.aulas.listar() };
+  async listar(
+    @Query('cetap') cetap?: string,
+    @Query('grupo') grupo?: string,
+    @Query('asignatura') asignatura?: string,
+    @Query('periodo') periodo?: string,
+  ) {
+    return { success: true, data: await this.aulas.listar({ cetap, grupo, asignatura, periodo }) };
   }
 
   /** GET /aulas/territoriales — para el selector del formulario (§3.3). */
@@ -78,10 +87,18 @@ export class AulasController {
     return { success: true, data: await this.aulas.cetaps(Number(territorial) || 0) };
   }
 
-  /** GET /aulas/:codigo/disponibilidad — franjas ocupadas: solo día y hora. */
+  /**
+   * GET /aulas/:codigo/disponibilidad — franjas ocupadas: solo día y hora.
+   * `?periodo=<id>` o `?grupo=<uuid>` limita a lo que ocupa el aula EN ESE CICLO de clases;
+   * sin ellos devuelve todo lo que tenga el aula, de cualquier periodo.
+   */
   @Get(':codigo/disponibilidad')
-  async disponibilidad(@Param('codigo') codigo: string) {
-    return { success: true, data: await this.aulas.disponibilidad(codigo) };
+  async disponibilidad(
+    @Param('codigo') codigo: string,
+    @Query('periodo') periodo?: string,
+    @Query('grupo') grupo?: string,
+  ) {
+    return { success: true, data: await this.aulas.disponibilidad(codigo, { periodo, grupo }) };
   }
 
   /** POST /aulas/publicar/:idGrupo — publica la oferta; exige aula en toda franja. */
