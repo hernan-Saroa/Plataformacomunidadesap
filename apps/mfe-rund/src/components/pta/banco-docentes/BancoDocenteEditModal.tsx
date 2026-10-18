@@ -4,6 +4,7 @@ import { createBancoDocente, updateBancoDocente, vincularRundSoporte } from '../
 import { useAuth } from '../../../contexts/AuthContext';
 import type { RundManualIdentityClient } from '../../../services/api/rundManualIdentityApi';
 import { BancoDocenteManualRequestModal } from './BancoDocenteManualRequestModal';
+import { useBancoDocenteManualPreview } from './useBancoDocenteManualPreview';
 import type { RundSuggestion } from './RundExtractionPanel';
 import { OFFICIAL_TERRITORIALES_ESAP } from '../../../../shared/territoriales-cetaps-esap';
 import {
@@ -30,6 +31,7 @@ interface Props {
   /** Conexión preparatoria explícita. El llamador activo todavía no la proporciona. */
   manualIdentityClient?: RundManualIdentityClient;
   enableMailOperations?: boolean;
+  enableManualPreview?: boolean;
   suggestion?: RundSuggestion;
   docente: any | null;
   periodoSeleccionado?: string;
@@ -194,7 +196,8 @@ export function BancoDocenteEditModal(props: Props) {
   return <BancoDocenteFormModal {...props} />;
 }
 
-function BancoDocenteFormModal({ docente, periodoSeleccionado, onClose, onSaved, suggestion, onManualPrepare }: Props & {
+function BancoDocenteFormModal({ docente, periodoSeleccionado, onClose, onSaved, suggestion, onManualPrepare,
+  manualIdentityClient, enableManualPreview = false }: Props & {
   onManualPrepare?: (formulario: Record<string, unknown>) => Promise<void>;
 }) {
   const [activeStep, setActiveStep] = useState<Step>(0);
@@ -247,6 +250,8 @@ function BancoDocenteFormModal({ docente, periodoSeleccionado, onClose, onSaved,
     idRund: '',
     justificacionEdicion: '',
   });
+  const previewEnabled = Boolean(enableManualPreview && onManualPrepare && manualIdentityClient && !docente?.docente_id && !docente?.id);
+  const preview = useBancoDocenteManualPreview(previewEnabled ? manualIdentityClient : undefined, form);
 
   useEffect(() => {
     if (docente) {
@@ -413,7 +418,8 @@ function BancoDocenteFormModal({ docente, periodoSeleccionado, onClose, onSaved,
     });
   };
 
-  const handleSave = async () => {
+  const handleSave = async (previewOnly = false) => {
+    if (preview.pending() || (previewOnly && (!previewEnabled || !preview.allowed))) return;
     setError(null);
     const validationErrors = validateManualBancoDocenteForm(form, { isEditing, supportFile, sensitiveDataRestricted });
     setFieldErrors(validationErrors);
@@ -501,6 +507,10 @@ function BancoDocenteFormModal({ docente, periodoSeleccionado, onClose, onSaved,
       if (!isEditing && onManualPrepare) {
         // La sesión del servidor aporta la auditoría; se conserva la normalización del modal.
         const { actorId, soporteEdicionId: soporte, justificacionEdicion, rundSuggestionIds, ...formulario } = payload;
+        if (previewOnly) {
+          await preview.consultar(formulario);
+          return;
+        }
         await onManualPrepare(formulario);
         return;
       }
@@ -932,6 +942,15 @@ function BancoDocenteFormModal({ docente, periodoSeleccionado, onClose, onSaved,
           </div>
 
           {/* ─── Footer ──────────────────────────────────────────── */}
+          {previewEnabled && <section aria-label="Compatibilidad de los datos" aria-busy={preview.busy} style={{ padding: '12px 28px' }}>
+            <button type="button" disabled={saving || !preview.allowed} onClick={() => void handleSave(true)}>Consultar compatibilidad</button>
+            <p>La consulta no crea una solicitud ni reserva la identidad. Preparar y confirmar el registro son acciones posteriores.</p>
+            {preview.busy && <p role="status">Consultando compatibilidad…</p>}
+            {preview.compatible && <p role="status">Los datos eran compatibles al consultar. Al preparar la solicitud se volverán a validar.</p>}
+            {preview.failed && <p role="alert">No se pudo comprobar la compatibilidad. Revise los datos o consulte nuevamente.</p>}
+            {preview.invalidated && <p>La sesión cambió. Vuelva a abrir el formulario con su sesión vigente.</p>}
+            {!preview.invalidated && !preview.allowed && <p>Se requiere una sesión con permiso de gestión del banco docente.</p>}
+          </section>}
           <div style={{ padding: '14px 28px 18px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fafbfc' }}>
             <div>
               {activeStep > 0 && (
@@ -958,7 +977,7 @@ function BancoDocenteFormModal({ docente, periodoSeleccionado, onClose, onSaved,
               {isLastStep ? (
                 <button
                   className="wizard-nav-btn"
-                  onClick={handleSave}
+                  onClick={() => void handleSave()}
                   disabled={saving}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 7, padding: '9px 22px', borderRadius: 10, border: 'none',

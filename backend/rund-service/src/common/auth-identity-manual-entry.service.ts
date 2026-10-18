@@ -58,22 +58,7 @@ export class AuthIdentityManualEntryService {
       if(existing.huella_formulario!==form.hash)throw new ConflictException('La solicitud ya tiene otro formulario o carece de captura original.');
       return this.complete(existing);
     }
-    const payload=normalizeBancoDocentePayload(form.value);validatePayload(payload);validateManualBancoDocentePayload(payload,form.value);
-    // HTTP antes de la transacción de captura. Misma selección estricta que el modal activo.
-    const territorial=findTerritorialMatch(await this.catalogos.territorialesBanco(),payload.territorialNombre);
-    if(!territorial?.id)throw new BadRequestException('La territorial no existe en el catalogo institucional.');
-    const emailFinal=payload.correoInstitucional.toLowerCase().trim(),phoneFinal=normalizePhoneForAuth(payload.telefono),finalFullName=payload.fullName;
-    const command={version:1,actorId:ids.actor,payload:{documentNumber:payload.documentNumber,documentType:payload.documentType,
-      primer_nombre:payload.primer_nombre||null,primer_apellido:payload.primer_apellido||null,segundo_apellido:payload.segundo_apellido||null,
-      genero:payload.genero,fechaNacimiento:payload.fechaNacimiento.toISOString().slice(0,10)},options:{relaxValidation:false,preserveTerritorial:false},
-      territorial:{id:territorial.id},emailFinal,phoneFinal,finalFullName};
-    const input={payload,rawPayload:{...form.value,canal_origen:'MODAL',cargadoPor:ids.actor},
-      options:{rejectExisting:true,audit:{actorId:ids.actor,canalOrigen:'MODAL',accion:'CREAR',ip:actor.ip,
-        metadata:{periodoCarga:payload.periodoCarga},sensitiveAccess:{roles:[...actor.roles],fullAccess:actor.fullAccess,endpoint:'CREAR_PERFIL_RUND'}}},
-      territorial,emailFinal,phoneFinal,finalFullName};
-    const context=nativeBusinessContext(command,input),commandHash=identityWriteFingerprint(context.comandoAuth),contextHash=nativeBusinessFingerprint(context);
-    const envelope={version:1,formulario:form.value,contexto:context};
-    if(Buffer.byteLength(JSON.stringify(envelope),'utf8')>768*1024)throw new BadRequestException('Entrada manual demasiado grande.');
+    const {commandHash,contextHash,envelope}=await this.proposal(ids.actor,actor,form);
     await this.db.transaction(async manager=>{
       await manager.query("SET LOCAL lock_timeout='5s'");
       await manager.query(`INSERT INTO rund.identidad_solicitud(actor_id,solicitud_id,huella_comando,huella_contexto,huella_formulario,entrada_manual)
@@ -84,6 +69,30 @@ export class AuthIdentityManualEntryService {
     if(!stored)throw new ServiceUnavailableException('RUND no confirmo la captura manual.');
     if(stored.huella_formulario!==form.hash)throw new ConflictException('La solicitud ya tiene otro formulario confirmado.');
     return this.complete(stored);
+  }
+  /** Solo servidor: misma propuesta que preparar, sin leer/reservar solicitud o escribir. */
+  async proponer(actor:ManualEntryActor,raw:unknown) {
+    if(!uuid(actor?.actorId))throw new BadRequestException('Operador manual invalido.');
+    return this.proposal(actor.actorId.toLowerCase(),actor,this.form(raw));
+  }
+  private async proposal(actorId:string,actor:ManualEntryActor,form:ReturnType<AuthIdentityManualEntryService['form']>) {
+    const payload=normalizeBancoDocentePayload(form.value);validatePayload(payload);validateManualBancoDocentePayload(payload,form.value);
+    // HTTP antes de la transacción de captura. Misma selección estricta que el modal activo.
+    const territorial=findTerritorialMatch(await this.catalogos.territorialesBanco(),payload.territorialNombre);
+    if(!territorial?.id)throw new BadRequestException('La territorial no existe en el catalogo institucional.');
+    const emailFinal=payload.correoInstitucional.toLowerCase().trim(),phoneFinal=normalizePhoneForAuth(payload.telefono),finalFullName=payload.fullName;
+    const command={version:1,actorId,payload:{documentNumber:payload.documentNumber,documentType:payload.documentType,
+      primer_nombre:payload.primer_nombre||null,primer_apellido:payload.primer_apellido||null,segundo_apellido:payload.segundo_apellido||null,
+      genero:payload.genero,fechaNacimiento:payload.fechaNacimiento.toISOString().slice(0,10)},options:{relaxValidation:false,preserveTerritorial:false},
+      territorial:{id:territorial.id},emailFinal,phoneFinal,finalFullName};
+    const input={payload,rawPayload:{...form.value,canal_origen:'MODAL',cargadoPor:actorId},
+      options:{rejectExisting:true,audit:{actorId,canalOrigen:'MODAL',accion:'CREAR',ip:actor.ip,
+        metadata:{periodoCarga:payload.periodoCarga},sensitiveAccess:{roles:[...actor.roles],fullAccess:actor.fullAccess,endpoint:'CREAR_PERFIL_RUND'}}},
+      territorial,emailFinal,phoneFinal,finalFullName};
+    const context=nativeBusinessContext(command,input),commandHash=identityWriteFingerprint(context.comandoAuth),contextHash=nativeBusinessFingerprint(context);
+    const envelope={version:1,formulario:form.value,contexto:context};
+    if(Buffer.byteLength(JSON.stringify(envelope),'utf8')>768*1024)throw new BadRequestException('Entrada manual demasiado grande.');
+    return {context,commandHash,contextHash,envelope};
   }
   async reanudar(requestId:string,actorId:string) {
     const ids=this.ids(requestId,actorId);await this.abierta(ids.request,ids.actor);

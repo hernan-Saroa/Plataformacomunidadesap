@@ -86,7 +86,12 @@ describe('Catálogo del banco RUND por API Auth', () => {
     expect(upsert).toHaveBeenCalledTimes(2);
     expect(upsert.mock.calls.every(([, options]) => options?.territoriales === items)).toBe(true);
     const firstWriteOrTransaction = calls.findIndex(value => value === 'transaccion' || value.includes('INSERT INTO'));
-    expect(calls.indexOf('catalogo')).toBeLessThan(firstWriteOrTransaction);
+    if (dryRun) {
+      expect(firstWriteOrTransaction).toBe(-1);
+      expect(upsert.mock.calls.every(([, options]) => options?.previewOnly === true)).toBe(true);
+    } else {
+      expect(calls.indexOf('catalogo')).toBeLessThan(firstWriteOrTransaction);
+    }
   });
 
   it('fallo de catálogo detiene el lote antes de guardar soporte o abrir transacciones', async () => {

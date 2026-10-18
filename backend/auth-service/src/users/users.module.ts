@@ -28,6 +28,7 @@ import { RundIdentityController, RundIdentityGuard, RundIdentityService } from '
 import { RundCatalogosController, RundCatalogosService } from './rund-catalogos.controller';
 import { RundBancoController, RundBancoService } from './rund-banco.controller';
 import { RundIdentityValidationController, RundIdentityValidationService } from './rund-identity-validation.controller';
+import { RundBulkPreviewController, RundBulkPreviewService } from './rund-bulk-preview.controller';
 import { RundIdentityOperationController, RundIdentityOperationService } from './rund-identity-operation.controller';
 import { RundIdentityApplyController, RundIdentityApplyService } from './rund-identity-apply.controller';
 import { RundIdentityCompensationController, RundIdentityCompensationService } from './rund-identity-compensation.controller';
@@ -54,7 +55,7 @@ import { RundIdentityMailValidationController, RundIdentityMailValidationService
   ],
   providers: [UsersService, RolesService, ModulesService, EstructuraOrganizacionalService, RolesGuard, BackofficeDashboardService,
     RundIdentityGuard, RundIdentityService, RundCatalogosService, RundBancoService, RundIdentityValidationService, RundIdentityOperationService, RundIdentityApplyService,
-    RundIdentityCompensationService, RundIdentityAbortClient, RundIdentityMailValidationService],
+    RundIdentityCompensationService, RundIdentityAbortClient, RundIdentityMailValidationService, RundBulkPreviewService],
   controllers: [
     RolesController,
     UsersController,
@@ -65,6 +66,7 @@ import { RundIdentityMailValidationController, RundIdentityMailValidationService
     RundCatalogosController,
     RundBancoController,
     RundIdentityValidationController,
+    RundBulkPreviewController,
     RundIdentityOperationController,
     RundIdentityApplyController,
     RundIdentityCompensationController,

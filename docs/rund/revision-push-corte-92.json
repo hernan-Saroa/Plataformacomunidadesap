@@ -1,0 +1,116 @@
+{
+  "generatedAt": "2026-10-17T23:27:09.226Z",
+  "scope": "source-review-push-checkpoint-92",
+  "branch": "feat/agregar_modulo_rund",
+  "head": "ca960962917d3f31d4bb5e2d1112a282c3449fbb",
+  "activationReadiness": "not_verified",
+  "deploymentApproved": false,
+  "gitIndexModified": false,
+  "commitCreated": false,
+  "pushExecuted": false,
+  "runtimeModified": false,
+  "manifestFile": "docs/rund/corte-92-rund.paths",
+  "selectedFileCount": 19,
+  "newFiles": 7,
+  "deletedFiles": 0,
+  "outsideCut": [],
+  "findings": [],
+  "localImportTargetsChecked": 39,
+  "manifestSha256": "0a52c59605446087f50464c35cc5ceecfa28bb6e57f0f9da7c6ba4163d87910f",
+  "files": [
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/common/auth-identity-manual-entry.controller.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/common/auth-identity-manual-entry.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-preview.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-preview.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-PREVISUALIZACION-MANUAL-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-92-rund.paths"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/PENDIENTES-CIERRE-INDEPENDENCIA.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-92.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-contadores-carpeta-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-estados-auth-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-historial-auth-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-panel-rund-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-previsualizacion-manual-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-servicio-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-sincronizacion-auth-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-vistas-carpeta-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-manual-entry.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-manual-preview.cjs"
+    }
+  ],
+  "sourceHashes": {
+    "backend/rund-service/src/common/auth-identity-manual-entry.controller.ts": "98f61c25b9b457b1dd2266cb36ba97f569547262ab3484eec91e5a3b67ea6e7b",
+    "backend/rund-service/src/common/auth-identity-manual-entry.service.ts": "885483387a63f7afe0043a7e49efc294e3444badb5177cbc70a5e50161e0e1af",
+    "backend/rund-service/src/common/auth-identity-manual-preview.service.spec.ts": "10595f58c282d4df7659c081699e9e5b72918706d5bdf38451b9305f219cfb46",
+    "backend/rund-service/src/common/auth-identity-manual-preview.service.ts": "f07bf19c6da752ece0ec14c646b7b3de12bb26dc45ba2a3dc795b1bbba9a5c28",
+    "docs/rund/CONTRATO-PREVISUALIZACION-MANUAL-IDENTIDAD-RUND.md": "2664005e8edecf4ea01645343de932c108f6f645decf8de49e89ae21ca16f184",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "f3a71a4df1abf5cb2fb8b85eafb41a3f353d30e59972c8cfbe770a328c7deafb",
+    "docs/rund/PENDIENTES-CIERRE-INDEPENDENCIA.md": "65121d80edb61e30927388aee097552a0bdc193669d517d88be28704841e3df5",
+    "scripts/verify-rund-manual-entry.cjs": "db27a23331a81a3d56d2abd2d7d860ac21cf332062e1c3229d155323c5c8386e",
+    "scripts/verify-rund-manual-preview.cjs": "f5b85819f88910e63f8731c6a69d31b4c0874d4caba8f74cbaba01bfbd7a60fa"
+  },
+  "limits": [
+    "El manifiesto se basa en este worktree; revisar antes de stage/commit y regenerar si cambian las fuentes.",
+    "La búsqueda de secretos cubre firmas concretas, no sustituye revisión de valores/configuración.",
+    "Los imports revisados son los estáticos resolubles por TypeScript; no prueba todos los recursos dinámicos.",
+    "Las evidencias JSON generadas y el propio manifiesto no se huellan como fuentes para evitar referencias circulares.",
+    "Las pruebas y límites del corte se documentan en ESTADO-MIGRACION-MICROSERVICIO.md; este script no ejecuta pruebas ni certifica despliegue."
+  ]
+}

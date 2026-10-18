@@ -16,6 +16,7 @@ import { AuthIdentityManualCaptureService } from './auth-identity-manual-capture
 import { AuthIdentityManualAbandonService } from './auth-identity-manual-abandon.service';
 import { AuthIdentityManualCloseService } from './auth-identity-manual-close.service';
 import { AuthIdentityManualMailStatusService } from './auth-identity-manual-mail-status.service';
+import { AuthIdentityManualPreviewService } from './auth-identity-manual-preview.service';
 
 @Controller('banco-docentes/identidad/solicitudes-manuales')
 @UseGuards(JwtAuthGuard,BancoDocentesRolesGuard)
@@ -25,7 +26,8 @@ export class AuthIdentityManualEntryController {
   constructor(private readonly entries:AuthIdentityManualEntryService,@Optional() private readonly executions?:AuthIdentityManualExecutionService,
     @Optional() private readonly captures?:AuthIdentityManualCaptureService,@Optional() private readonly abandonments?:AuthIdentityManualAbandonService,
     @Optional() private readonly closures?:AuthIdentityManualCloseService,
-    @Optional() private readonly mailStatuses?:AuthIdentityManualMailStatusService) {}
+    @Optional() private readonly mailStatuses?:AuthIdentityManualMailStatusService,
+    @Optional() private readonly previews?:AuthIdentityManualPreviewService) {}
   private async response(work:()=>Promise<unknown>) {
     try{return await work();}catch(error){
       if(error instanceof HttpException)throw error;
@@ -37,6 +39,17 @@ export class AuthIdentityManualEntryController {
     const id=req?.user?.sub||req?.user?.userId||req?.user?.id;
     if(typeof id!=='string'||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(id))throw new UnauthorizedException('La sesion no identifica al operador.');
     return {actorId:id.toLowerCase(),roles:getRequestRoleCodes(req.user),fullAccess:canViewRundSensitiveData(req.user),ip:req.ip};
+  }
+  @Post('previsualizar')
+  @HttpCode(200)
+  @Header('Cache-Control','private, no-store')
+  previsualizar(@Body() body:unknown,@Req() req:any){
+    if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).length!==1||!Object.prototype.hasOwnProperty.call(body,'formulario'))
+      throw new BadRequestException('Se requiere exclusivamente el formulario manual.');
+    const actor=this.actor(req);return this.response(()=>{
+      if(!this.previews)throw new ServiceUnavailableException('La previsualizacion manual no esta disponible.');
+      return this.previews.previsualizar({...actor,expiresAt:req?.user?.exp},(body as {formulario:unknown}).formulario);
+    });
   }
   @Post(':solicitudId/preparar')
   @HttpCode(200)
@@ -131,5 +144,5 @@ export class AuthIdentityManualEntryController {
 
 // Fuera de AppModule: activar exige cerrar correo, revisiones y aceptacion.
 @Module({imports:[AuthModule,AuthIdentityRequestModule,AuthIdentityCoordinationModule,AuthIdentityValidationModule,RundCatalogosModule,AuthIdentityExecutionModule],
-  controllers:[AuthIdentityManualEntryController],providers:[AuthIdentityManualEntryService,AuthIdentityManualExecutionService,AuthIdentityManualCaptureService,AuthIdentityManualAbandonService,AuthIdentityManualCloseService,AuthIdentityManualMailStatusService,BancoDocentesRolesGuard]})
+  controllers:[AuthIdentityManualEntryController],providers:[AuthIdentityManualEntryService,AuthIdentityManualExecutionService,AuthIdentityManualCaptureService,AuthIdentityManualAbandonService,AuthIdentityManualCloseService,AuthIdentityManualMailStatusService,AuthIdentityManualPreviewService,BancoDocentesRolesGuard]})
 export class AuthIdentityManualEntryModule {}

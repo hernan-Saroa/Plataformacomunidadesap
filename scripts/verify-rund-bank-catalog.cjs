@@ -55,14 +55,33 @@ module.exports = async function verifyBankCatalog(pgConfig, runtime, check, cont
   });
   await check('Banco catálogo: fallo al inicializar bloques revierte la fila completa sin dejar estados huérfanos', async () => {
     const before = await snapshot();
+    const serviceRoot = path.resolve(__dirname, '../backend/rund-service');
+    const { DataSource } = require(path.join(serviceRoot, 'node_modules/typeorm'));
+    const { BancoDocenteEntity } = require(path.join(serviceRoot, 'dist/entities/banco-docente.entity'));
+    const { BancoDocentesService } = require(path.join(serviceRoot, 'dist/modules/banco-docentes/banco-docentes.service'));
+    const ds = new DataSource({ type: 'postgres', host: pgConfig.host, port: pgConfig.port,
+      username: pgConfig.user, password: pgConfig.password, database: pgConfig.database,
+      entities: [BancoDocenteEntity], synchronize: false, extra: { max: 1 } });
+    await ds.initialize();
     await database.query(`CREATE FUNCTION rund.reject_bank_preview() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN IF NEW.bloque='FORMACION' THEN RAISE EXCEPTION 'FALLO FICTICIO DE BLOQUES'; END IF; RETURN NEW; END $$;
       CREATE TRIGGER reject_bank_preview BEFORE INSERT ON rund."RundCampoEstado"
       FOR EACH ROW EXECUTE FUNCTION rund.reject_bank_preview()`);
     try {
       const response = await request('/banco-docentes/bulk?dry_run=true', { method: 'POST', body: workbookBody(previewRows), status: 201 });
-      assert.equal(response.data.errors, 2); assert.equal(response.data.created, 0);
-    } finally { await database.query('DROP TRIGGER reject_bank_preview ON rund."RundCampoEstado"; DROP FUNCTION rund.reject_bank_preview()'); }
+      // El preview ya no inserta bloques: un trigger de escritura no participa en la observación.
+      assert.equal(response.data.errors, 0); assert.equal(response.data.created, 2);
+      // Se conserva la comprobación de rollback del escritor real, ahora fuera del preview.
+      const source = await fetch(catalogUrl, { headers: { 'x-internal-service-token': authToken } });
+      assert.equal(source.status, 200); const territoriales = (await source.json()).data.items;
+      const writer = Object.create(BancoDocentesService.prototype); writer.dataSource = ds;
+      for (const sample of previewRows) await assert.rejects(ds.transaction(manager => writer.upsertDocente(sample,
+        { bulkImport: true, territoriales, outerManager: manager })),
+      error => ['25P02', 'P0001'].includes(error.driverError?.code || error.code));
+    } finally {
+      await ds.destroy();
+      await database.query('DROP TRIGGER reject_bank_preview ON rund."RundCampoEstado"; DROP FUNCTION rund.reject_bank_preview()');
+    }
     const after = await snapshot(); delete before['rund.RundAccesoDatosLog']; delete after['rund.RundAccesoDatosLog'];
     assert.deepEqual(after, before);
   });

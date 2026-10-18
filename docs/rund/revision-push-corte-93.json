@@ -1,0 +1,159 @@
+{
+  "generatedAt": "2026-10-18T00:11:27.030Z",
+  "scope": "source-review-push-checkpoint-93",
+  "branch": "feat/agregar_modulo_rund",
+  "head": "ca960962917d3f31d4bb5e2d1112a282c3449fbb",
+  "activationReadiness": "not_verified",
+  "deploymentApproved": false,
+  "gitIndexModified": false,
+  "commitCreated": false,
+  "pushExecuted": false,
+  "runtimeModified": false,
+  "manifestFile": "docs/rund/corte-93-rund.paths",
+  "selectedFileCount": 28,
+  "newFiles": 14,
+  "deletedFiles": 0,
+  "outsideCut": [],
+  "findings": [],
+  "localImportTargetsChecked": 63,
+  "manifestSha256": "5c45dde85f80227b32b297a72d34f3a9bd34ae14c00358574fd0868f315b38d5",
+  "files": [
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteEditModal.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteManualPreview.test.tsx"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/components/pta/banco-docentes/useBancoDocenteManualPreview.ts"
+    },
+    {
+      "status": " M",
+      "file": "apps/mfe-rund/src/services/api/rundManualIdentityApi.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/rundManualIdentityPreview.test.ts"
+    },
+    {
+      "status": "??",
+      "file": "apps/mfe-rund/src/services/api/rundManualIdentityPreview.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/common/auth-identity-manual-entry.controller.ts"
+    },
+    {
+      "status": " M",
+      "file": "backend/rund-service/src/common/auth-identity-manual-entry.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-preview.service.spec.ts"
+    },
+    {
+      "status": "??",
+      "file": "backend/rund-service/src/common/auth-identity-manual-preview.service.ts"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/CONTRATO-PREVISUALIZACION-MANUAL-IDENTIDAD-RUND.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-92-rund.paths"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/corte-93-rund.paths"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/PENDIENTES-CIERRE-INDEPENDENCIA.md"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-92.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/revision-push-corte-93.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-contadores-carpeta-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-estados-auth-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-historial-auth-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-panel-rund-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-previsualizacion-manual-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-servicio-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-sincronizacion-auth-postgres-local.json"
+    },
+    {
+      "status": "??",
+      "file": "docs/rund/validacion-vista-previsualizacion-manual-rund.json"
+    },
+    {
+      "status": " M",
+      "file": "docs/rund/validacion-vistas-carpeta-postgres-local.json"
+    },
+    {
+      "status": " M",
+      "file": "scripts/verify-rund-manual-entry.cjs"
+    },
+    {
+      "status": "??",
+      "file": "scripts/verify-rund-manual-preview.cjs"
+    }
+  ],
+  "sourceHashes": {
+    "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteEditModal.tsx": "7f9f23664436f3be7e3ee559143da89905de1b87103652287009f8bc91859f71",
+    "apps/mfe-rund/src/components/pta/banco-docentes/BancoDocenteManualPreview.test.tsx": "c242ffd9779762c14137f6a52dd394425b74866b71cea4b197751571dee20367",
+    "apps/mfe-rund/src/components/pta/banco-docentes/useBancoDocenteManualPreview.ts": "8fcce82a8551f7d4e9d71051be2c8bd70679041f05edf09ab5cdb8ca78056b1c",
+    "apps/mfe-rund/src/services/api/rundManualIdentityApi.ts": "3995886ba68770e5f7ac3e18a02d1efa33a22cc04f33f52c27546ef51525d683",
+    "apps/mfe-rund/src/services/api/rundManualIdentityPreview.test.ts": "3ff100349f2b5b8839a3ad7839cff409c0737833d89839a1f2014bb871093299",
+    "apps/mfe-rund/src/services/api/rundManualIdentityPreview.ts": "bfe9f9626b9b7eba6664e15dda4f1010ec2e0578b65c2ed50562bb5c48182499",
+    "backend/rund-service/src/common/auth-identity-manual-entry.controller.ts": "98f61c25b9b457b1dd2266cb36ba97f569547262ab3484eec91e5a3b67ea6e7b",
+    "backend/rund-service/src/common/auth-identity-manual-entry.service.ts": "885483387a63f7afe0043a7e49efc294e3444badb5177cbc70a5e50161e0e1af",
+    "backend/rund-service/src/common/auth-identity-manual-preview.service.spec.ts": "10595f58c282d4df7659c081699e9e5b72918706d5bdf38451b9305f219cfb46",
+    "backend/rund-service/src/common/auth-identity-manual-preview.service.ts": "f07bf19c6da752ece0ec14c646b7b3de12bb26dc45ba2a3dc795b1bbba9a5c28",
+    "docs/rund/CONTRATO-PREVISUALIZACION-MANUAL-IDENTIDAD-RUND.md": "852b4977b193e54b36e26ffe2a4a095c434d23ae8871b878bde12bc868f934fb",
+    "docs/rund/corte-92-rund.paths": "0a52c59605446087f50464c35cc5ceecfa28bb6e57f0f9da7c6ba4163d87910f",
+    "docs/rund/ESTADO-MIGRACION-MICROSERVICIO.md": "55096520d534c4c2f4410d5ab7b4e93f6fd31c4a93edaaf4615f785cbf66453c",
+    "docs/rund/PENDIENTES-CIERRE-INDEPENDENCIA.md": "dc8903f7f3b23c46c29e155fa083d94c2dc15d9172f942e65731f898ff7a7fcd",
+    "scripts/verify-rund-manual-entry.cjs": "db27a23331a81a3d56d2abd2d7d860ac21cf332062e1c3229d155323c5c8386e",
+    "scripts/verify-rund-manual-preview.cjs": "f5b85819f88910e63f8731c6a69d31b4c0874d4caba8f74cbaba01bfbd7a60fa"
+  },
+  "limits": [
+    "El manifiesto se basa en este worktree; revisar antes de stage/commit y regenerar si cambian las fuentes.",
+    "La búsqueda de secretos cubre firmas concretas, no sustituye revisión de valores/configuración.",
+    "Los imports revisados son los estáticos resolubles por TypeScript; no prueba todos los recursos dinámicos.",
+    "Las evidencias JSON generadas y el propio manifiesto no se huellan como fuentes para evitar referencias circulares.",
+    "Las pruebas y límites del corte se documentan en ESTADO-MIGRACION-MICROSERVICIO.md; este script no ejecuta pruebas ni certifica despliegue."
+  ]
+}

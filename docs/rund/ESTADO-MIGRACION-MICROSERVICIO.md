@@ -1,15 +1,15 @@
 # Estado de la migración del RUND a microservicio
 
-> Rama: `feat/agregar_modulo_rund` · Actualizado: 2026-10-16
+> Rama: `feat/agregar_modulo_rund` · Actualizado: 2026-10-17
 > Documento de contexto para retomar la migración. Describe qué se decidió, qué está hecho,
 > qué falta y qué trampas hay. Complementa `PENDIENTES_RUND_PTA.md` (historias de usuario) y
 > los `REQ-RUND-*` de esta carpeta.
 
-> **Último punto técnico terminado: 91**, documentado al final de este archivo.
-> Guardado preparado para push hasta el [corte 91](PUSH-CORTE-91.md).
-> Para retomar, leer la sección 91, ese guardado y el mapa de pendientes.
+> **Último punto técnico terminado: 95**, documentado al final de este archivo.
+> Guardado preparado para push hasta el [corte 95](PUSH-CORTE-95.md).
+> Para retomar después del guardado, leer la sección 95 y el mapa de pendientes.
 
-## Resumen de avance para seguimiento (2026-10-16)
+## Resumen de avance para seguimiento (2026-10-17)
 
 - **11 pasos principales completados en código/revisión y validación local:** pasos
   1–11, documentados en las secciones 11–21. No equivale a despliegue completado.
@@ -18,8 +18,8 @@
   12.2, 12.3a, 12.3b.1–4, 12.4, revisión offline 12.5, 12.5a–c y 12.5d.1).
   **12.5d.2 sigue abierto por aceptación/configuración de las instalaciones**, con las
   lecturas de la sección 35; no equivale al estado de cada ajuste de código.
-- **54 cortes técnicos terminados localmente desde la revisión posterior al merge:**
-  secciones 38–91. Incluyen contratos e independencia de consultas; tienen tamaños
+- **58 cortes técnicos terminados localmente desde la revisión posterior al merge:**
+  secciones 38–95. Incluyen contratos e independencia de consultas; tienen tamaños
   distintos y no se suman al conteo de pasos principales.
 - **Trabajo técnico actual: frente 4, aislamiento SQL.** Quedan completados el perfil
   público de interoperabilidad PTA (45) y la identidad del listado/ficha/estadísticas del
@@ -81,6 +81,13 @@
   invalidación y reapertura limpia, sin activar la entrada o modificar el flujo existente.
   El 91 comprueba el recorrido de la entrada con HTTP/JWT/SQL reales y React/jsdom,
   tanto directo como con prefijo /services en el fixture, sin activar el acceso.
+  El 92 añade previsualización manual opcional sin reserva/escritura, reutilizando
+  la propuesta de preparación. El 93 la conecta al cliente/formulario opcionales
+  sin solicitud o aprobación persistida, con invalidación de borrador/sesión.
+  El 94 sustituye el preview masivo basado en escritor/rollback por una evaluación
+  sin escrituras de negocio o secuencias. El 95 migra sus lecturas de identidad a Auth
+  por API, sin SQL alternativo; requiere publicar Auth antes del consumidor RUND.
+  Siguen el escritor masivo y la aceptación de las conexiones por instalación.
   Siguen otras consultas y escrituras entre propietarios.
   La aceptación por ambiente es otro pendiente.
 - **Primer corte para push de la rama:** alcance, manifiesto y validaciones consolidados
@@ -147,6 +154,7 @@ Para que el avance de código no quede oculto bajo el rótulo del paso 12:
 | 89: bandeja opcional de revisiones de correo | Filtro de asignación, cursor del propietario y detalle actual reutilizado; opción apagada; conexión al principal y aceptación integrada pendientes |
 | 90: entrada opcional de revisiones con sesión verificada | Apertura explícita por cuenta, invalidación y recuperación de sesión; opción apagada; recorrido HTTP y aceptación integrada pendientes |
 | 91: recorrido integrado HTTP de revisiones | React/jsdom y clientes productivos contra Auth/RUND y PostgreSQL temporales; directo/prefijo probados; navegador e instalaciones pendientes |
+| 92: previsualización manual de compatibilidad sin reserva | Propuesta compartida, Auth de solo lectura y consulta local por período; sin captura/solicitud/journal; cliente y preview masivo pendientes |
 | Otras lecturas/escrituras de identidad y permisos | Pendiente de aislamiento |
 | Aceptación de configuración/datos/despliegues por ambiente | Pendiente operativo |
 
@@ -7174,4 +7182,286 @@ solo en clúster nuevo temporal. Módulos opcionales, banderas Auth false y RUND
 en PTA conservados; no se sustituyen artefactos publicados.
 
 Avance: **54 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 92. Frente 4: previsualización manual sin captura o escritura remota (2026-10-17)
+
+Tras el guardado 91, el árbol estaba limpio en el commit
+`ca960962917d3f31d4bb5e2d1112a282c3449fbb`. Se revisó la diferencia entre preparación
+manual, que conserva captura local, y preview masivo, que todavía llama al escritor
+dentro de rollback. Se agrega una consulta manual previa sin cambiar el flujo activo.
+Contrato: [CONTRATO-PREVISUALIZACION-MANUAL-IDENTIDAD-RUND.md](CONTRATO-PREVISUALIZACION-MANUAL-IDENTIDAD-RUND.md).
+
+**Observación opcional y propuesta compartida**
+
+- POST `/banco-docentes/identidad/solicitudes-manuales/previsualizar`, body exacto
+  `{formulario}` sin solicitudId/actor/permisos elegidos por el navegador. Mismos
+  guards JWT/manage y no-store, con revalidación de permisos/expiración durante I/O.
+  ADMIN conserva la alternativa vigente por rol, sin poder saltar el vencimiento.
+- Se comparte el bloque canónico de normalización, catálogo y propuesta de la
+  preparación. Captura, huellas, recuperación y preparación anteriores conservadas.
+  Proponer es interno al servidor y no devuelve el contexto privado por HTTP.
+- Consulta Auth mediante su prevalidación de solo lectura con correlación UUID efímera.
+  Si hay identidad, consulta únicamente el perfil RUND de esa persona/período para
+  impedir alta duplicada; sin SQL a tablas Auth o sustitución por email.
+- Respuesta exacta de seis campos: versión, COMPATIBLE_AL_CONSULTAR, reserva false,
+  solicitudCreada false, ejecucionAutorizada false y requierePreparacion true.
+  Sin datos personales, IDs, formulario, huellas, contexto o aprobación persistida.
+- No crea captura, solicitud, journal, identidad o perfil, consume secuencia o envía
+  correo. No abre transacciones ni depende de rollback. Catálogo/Auth incompletos,
+  conflictos, duplicados, revocación o expiración impiden compatibilidad.
+  Infraestructura inesperada falla con 503 genérico sin parámetros SQL privados.
+
+**Validación local**
+
+- RUND: **90 suites / 1.767 pruebas**, **42 nuevas**, y build correcto. Se conservaron
+  los archivos de pruebas anteriores; no se relajaron reglas o controles. Jest usa
+  carpeta de trabajo vacía y configuración explícita del paquete, sin .env reales.
+- Regresión completa PostgreSQL/TypeORM/HTTP: **696 comprobaciones**, conservando las
+  689 anteriores. Siete nuevas cubren la consulta real, permisos, fallos, conservación
+  de tablas/identidades/secuencia y coincidencia exacta con la captura anterior.
+- El fixture de preview bloquea transacciones y SQL local distinto de SELECT.
+  Snapshot RUND completo, identidades Auth, llamadas de operaciones remotas y estado
+  de secuencia permanecen iguales. Revocación tras Auth y ADMIN vencido no devuelven
+  compatibilidad. Se conservan los recorridos de preparación/ejecución anteriores.
+- La primera integración detectó expectativas incorrectas del fixture sobre el rol
+  normalizado y un perfil ya confirmado por un escenario previo. Se ajustaron esas
+  expectativas y se repitió la integración completa; código productivo, suite y build
+  ya aprobados se conservaron sin cambios posteriores.
+- Los **22 escenarios HTTP de revisiones** se repiten dentro de la regresión, 11 por
+  modo directo/prefijo. Aplicaciones detenidas y clúster temporal eliminado.
+- **318 fuentes previas intactas** y tres comparaciones del contenido anterior de
+  servicio/controlador/verificador; bloque de propuesta conservado al extraerlo.
+  Frontend, Auth, gateway, shell, migraciones y escritor/preview masivos sin cambios.
+- MFE **33 archivos / 488 pruebas** con TypeScript/build, Auth **8 / 228** con build,
+  shell RUND **7 / 80**, sesión HTTP **9** y gateway **31** conservan evidencia previa
+  sobre fuentes intactas, sin repetirse. Persisten los límites globales del shell.
+- Evidencia: [validacion-previsualizacion-manual-rund.json](validacion-previsualizacion-manual-rund.json).
+  Manifiesto/revisión: corte-92-rund.paths y revision-push-corte-92.json.
+
+**Siguiente punto y límites**
+
+Sigue conectar esta consulta al cliente/formulario opcionales sin reservar una solicitud
+o guardar aprobación, con sesión e invalidación. Preparar/ejecutar vuelven a validar:
+la observación no garantiza éxito posterior o bloquea cambios concurrentes.
+El preview masivo activo sigue basado en rollback y debe sustituirse antes de mover
+su escritor a HTTP; este corte no cierra todo el preview. Continúan navegador y
+aceptación por instalación, resolución humana, otros rechazos, intervalo Auth–SMTP,
+otros canales/propietarios y los cinco frentes del mapa.
+
+Sin nueva migración, bases existentes, SMTP real, .env/Compose, commit, push o despliegue.
+Módulo manual fuera de AppModule, banderas Auth false y RUND embebido en PTA conservados.
+
+Avance: **55 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 93. Frente 4: previsualización en el formulario manual opcional (2026-10-17)
+
+Se conecta la observación del punto 92 al cliente y formulario opcionales. Se conserva
+el bloque previo de normalización: consultar y preparar entregan el mismo formulario,
+con validación integral y sin actor/auditoría elegidos por el navegador.
+Contrato actualizado: [CONTRATO-PREVISUALIZACION-MANUAL-IDENTIDAD-RUND.md](CONTRATO-PREVISUALIZACION-MANUAL-IDENTIDAD-RUND.md).
+
+**Consulta explícita y observación efímera**
+
+- El cliente llama a `/solicitudes-manuales/previsualizar` sin leer/escribir storage,
+  generar UUID, preparar o ejecutar. Copia el formulario antes del transporte y exige
+  exactamente los seis campos/valores del recibo. Sin caché, refresh o reintentos;
+  errores genéricos y supresión de logs/toast privados mediante opciones existentes.
+- El modal exige alta nueva, cliente manual y `enableManualPreview=true`; la opción
+  es false por defecto y no se agrega a los llamadores activos. Edición, alta activa,
+  soporte obligatorio y recuperación de solicitudes pendientes se conservan.
+- Sin HTTP al montar, polling o resolución adicional del principal. La consulta
+  explícita valida todos los pasos y no permite preparar o consultar de nuevo mientras
+  espera. No llama a escritores anteriores, carga de soporte o preparación.
+- Cambiar datos retira el resultado incluso si luego se deshace el cambio. Cambiar
+  solo de paso lo conserva. Cambio de cuenta/cliente/conexión o evento de sesión
+  exige reabrir; revocar permiso descarta la observación en vuelo o ya mostrada.
+  Restaurarlo no restaura una respuesta anterior. Desmontar retira la suscripción.
+- Las respuestas tardías se descartan aunque el transporte ignore AbortSignal;
+  no se promete detener físicamente HTTP ni se modifica ApiClient global. La autoridad
+  efectiva se comprueba en los guards y revalidaciones backend del punto 92.
+- No se persiste recibo, formulario o aprobación. Se puede preparar sin preview;
+  compatibilidad no habilita ejecución. La preparación vuelve a validar, obtiene
+  la captura y conserva la casilla de confirmación anterior antes de crear.
+
+**Validación local**
+
+- MFE completo: **35 archivos / 542 pruebas**, conservando las **488 anteriores**
+  y agregando **54**. Cliente, modal y formulario reales con respuestas simuladas;
+  validación, payload compartido, almacenamiento, errores 401/403/409/503, datos
+  modificados, sesión/permisos, respuestas tardías y confirmación posterior.
+- TypeScript y build correctos, con wrappers temporales y envDir vacío. Sin cambios
+  a Vite/Vitest, .env, shell o gateway. El bundle activo no incorpora las rutas de
+  solicitud manual/revisiones ni la clave de almacenamiento manual.
+- Primera ejecución: fallo de expectativa del botón «Guardando…» y tipos de dos
+  promesas del transporte simulado. Se corrigieron solo pruebas nuevas y se repitieron
+  suite completa y TypeScript, ambos correctos. El build aprobado y código productivo
+  no cambiaron tras esa corrección; pruebas anteriores sin modificaciones.
+- **322 fuentes anteriores intactas** y comparación de contenido previo del cliente
+  y formulario retirando únicamente las adiciones del preview. Normalización,
+  alta/edición y métodos anteriores conservados. Backend del punto 92 sin cambios.
+- RUND **90 suites / 1.767 pruebas**, build y **696 comprobaciones PostgreSQL/HTTP**
+  conservan evidencia del punto 92 sobre fuentes intactas; no se repiten en este corte.
+  Auth **8 / 228**, shell RUND **7 / 80**, sesión HTTP **9** y gateway **31** mantienen
+  evidencia anterior. Persisten los límites globales del shell ya documentados.
+- Evidencia: [validacion-vista-previsualizacion-manual-rund.json](validacion-vista-previsualizacion-manual-rund.json).
+  Manifiesto/revisión: corte-93-rund.paths y revision-push-corte-93.json.
+
+**Siguiente punto y límites**
+
+El siguiente ajuste local es sustituir la previsualización masiva activa basada en
+escritor/rollback por una lectura sin efectos, conservando reglas, soportes, período
+y contrato de resumen antes de mover sus escritores a HTTP propietario. La consulta
+manual no cierra ese pendiente o toda la independencia.
+
+Siguen aceptación de navegador/instalaciones de las conexiones opcionales, resolución
+humana, otros rechazos, intervalo Auth–SMTP, demás canales/propietarios y los cinco
+frentes del mapa. Sin nueva migración, bases existentes, SMTP real, .env/Compose,
+commit, push o despliegue. Módulo manual fuera de AppModule, banderas Auth false y
+RUND embebido en PTA conservados.
+
+Avance: **56 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 94. Frente 4: preview masivo sin escrituras de negocio o secuencias (2026-10-17)
+
+La ruta masiva activa deja de ejecutar escritores dentro de rollback. Se comparte la
+validación/normalización previa y se evalúan propuestas puras de persona/perfil.
+Contrato: [CONTRATO-PREVISUALIZACION-MASIVA-SIN-ESCRITURA.md](CONTRATO-PREVISUALIZACION-MASIVA-SIN-ESCRITURA.md).
+
+**Evaluación separada del guardado**
+
+- Opción `previewOnly` interna al despachador del lote, sin control por campos del
+  archivo. El recorrido deriva a lecturas antes del escritor Auth; evita transacción,
+  savepoints, rollback, guardado nativo, soporte, secuencias, credenciales y correo.
+- Se extraen propuestas puras compartidas de persona/perfil, conservando campos,
+  comparación, fechas y bigint. El definitivo mantiene escrituras, auditoría, soporte,
+  evidencias y transacciones. No se activan escritores remotos o módulos manuales.
+- Período del archivo/lote/activo, catálogo único, normalización, teléfono reportado,
+  duplicados dentro del archivo, tratamiento de filas inválidas y resumen conservados.
+  Continúa `rejectExisting` y conflicto de correo/ausencia de rol DOCENTE.
+- IDs existentes se conservan; persona/usuario/perfil todavía inexistentes son null,
+  sin UUIDs descartables. Mensajes explícitos de preview; no afirma un guardado o
+  reserva. Preparar/importar vuelve a validar y puede encontrar cambios concurrentes.
+- La auditoría de acceso sensible HTTP continúa escribiéndose y exigiéndose, con
+  protección de datos vigente. La evaluación de negocio es de lectura; el endpoint
+  mantiene esa escritura deliberada de seguridad. Frontend y controladores intactos.
+- **El preview todavía lee Auth por SQL.** Falta migrar esas lecturas al propietario;
+  este corte no completa el aislamiento ni permite mover aún todos los escritores a HTTP.
+
+**Validación local**
+
+- RUND: **91 suites / 1.793 pruebas**, conservando las 1.767 anteriores y agregando
+  **26**; build correcto. Un test existente de catálogo ahora exige cero escrituras/
+  transacciones en preview y mantiene la comprobación anterior del definitivo.
+- Regresión completa PostgreSQL/TypeORM/HTTP: **703 comprobaciones**, conservando las
+  696 anteriores y agregando siete. Conexión PostgreSQL de solo lectura y fixtures que
+  impiden guardar/abrir transacciones/llamar escritores o correo durante evaluación.
+- Snapshot de todas las tablas RUND, identidades Auth y secuencias, con auditoría de
+  acceso como única excepción esperada en HTTP. Predicción de actualización/sin cambios
+  contrastada con escritor real dentro de una transacción revertida exclusiva del test.
+- El primer intento de integración no pudo crear el directorio temporal por el sandbox.
+  Al ejecutar con permiso para ese clúster, un fixture nuevo asumió territorial ID 1 y
+  falló por FK; se corrigió para tomar el ID registrado. Se repitió la integración
+  completa. Dos comprobaciones anteriores esperaban insertar durante el preview:
+  fallo de bloques y recuperación por savepoint. Ahora exigen cero escrituras en
+  preview y conservan fallo/rollback/recuperación del escritor real por separado,
+  con los mismos triggers. Se revisaron todas las referencias a dryRun de los fixtures
+  y se repitió la regresión completa.
+  Código productivo, build y suite aprobados no cambiaron por esas correcciones.
+- **324 fuentes anteriores intactas**, siete comparaciones de tokens del contenido
+  previo y cuatro bloques extraídos conservados. No se modifican fuentes del frontend,
+  Auth, gateway, shell, migraciones o las conexiones manuales de los puntos 92–93.
+- MFE **35 / 542** con TypeScript/build, Auth **8 / 228** con build, shell RUND **7 / 80**,
+  sesión HTTP **9** y gateway **31** conservan evidencia previa sobre fuentes intactas,
+  sin repetirse. Persisten los límites globales del shell documentados anteriormente.
+- Evidencia: [validacion-previsualizacion-masiva-sin-escritura.json](validacion-previsualizacion-masiva-sin-escritura.json).
+  Manifiesto/revisión: corte-94-rund.paths y revision-push-corte-94.json.
+
+**Siguiente punto y límites**
+
+Sigue reemplazar las lecturas SQL de identidad Auth del preview masivo por un contrato
+propietario de solo lectura, conservando clasificación, errores y escritor definitivo.
+Continúan aceptación de navegador/instalaciones, resolución humana, otros rechazos,
+intervalo Auth–SMTP, demás canales/propietarios y los cinco frentes del mapa.
+
+Sin nueva migración, bases existentes, SMTP real, .env/Compose, commit, push o despliegue.
+Aplicaciones de prueba detenidas y clúster temporal eliminado al terminar el verificador.
+Módulos manuales/banderas Auth desactivados y RUND embebido en PTA conservados.
+
+Avance: **57 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
+paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 95. Frente 4: identidad del preview masivo por API Auth (2026-10-17)
+
+Se sustituyen las lecturas SQL Auth del evaluador masivo por una consulta interna
+propietaria. La normalización, propuestas puras, comparación y escritor definitivo
+permanecen conservados. Contrato:
+[CONTRATO-PREVIEW-MASIVO-IDENTIDAD-AUTH.md](CONTRATO-PREVIEW-MASIVO-IDENTIDAD-AUTH.md).
+
+**Frontera de lectura propietaria**
+
+- Auth agrega POST `/internal/rund/v1/personas/previsualizacion-masiva` con el guard
+  de credencial interna vigente, body exacto versión/documento/correo, HTTP 200 y
+  no-store. Una sentencia SQL comparte snapshot para persona normalizada por documento,
+  usuario, conflicto de correo y existencia del rol DOCENTE por código o nombre.
+- DTO mínimo: echo, persona/usuario o null explícito, rol disponible, conflicto y
+  reserva false. Sin contraseñas, tokens, roles completos, contexto privado, UUIDs
+  fabricados o resolución por correo. Conserva bigint textual y tolerancia del Excel.
+- RUND reutiliza su cliente/credencial/URL existentes y valida claves/tipos/echo exactos,
+  UUIDs, bigint y coherencia persona/cuenta. Sin caché, reintentos o JWT/cookie del
+  usuario. 404, SQL fallido o contrato incompleto no se convierten en ausencia.
+- El manager del evaluador solo consulta perfiles RUND. No hay SQL Auth de respaldo;
+  un fallo propietario conserva errores por fila. Mantiene resumen, duplicados,
+  períodos, catálogo, clasificación y la auditoría HTTP de acceso sensible.
+- **Despliegue pendiente: primero Auth con el endpoint y después RUND.** Un Auth
+  anterior devuelve 404 y el preview informa errores de fila. No se agregan variables,
+  banderas o migraciones; no se acredita disponibilidad con versiones parciales.
+  El escritor definitivo todavía conserva SQL Auth y no se activa escritura remota.
+
+**Validación local**
+
+- RUND: **92 suites / 1.832 pruebas**, conservando las 1.793 anteriores y agregando
+  **39** de contrato/cliente. Los 26 casos del preview conservan sus expectativas y
+  ahora simulan hechos propietarios; agregan comprobación de cero SQL de identidad.
+- Auth dirigido a identidad/sesión: **9 suites / 254 pruebas**, conservando las
+  228 anteriores y agregando **26** del endpoint. Builds de Auth y RUND correctos.
+  Jest usa cwd vacío/config explícito y no carga .env reales.
+- Regresión completa PostgreSQL/TypeORM/HTTP: **710 comprobaciones**, conservando las
+  703 anteriores. Siete nuevas comprueban token/cuerpo, DTO mínimo, oráculo SQL del test,
+  roles limitados, ausencia/conflicto, fallos/recuperación, cambio de identidad y
+  persona sin cuenta con documento punteado/ceros y bigint superior a Number seguro.
+- Auth usa una conexión de solo lectura sin privilegios RUND. El consumidor probado
+  tiene solo USAGE RUND/SELECT Docente, sin USAGE Auth; un SELECT directo a Auth es
+  denegado mientras el mismo consumidor evalúa altas y perfiles existentes por API.
+  Snapshots de tablas/identidades/secuencias conservados; solo la auditoría de acceso
+  cambia en HTTP. Se conservan los contrastes de clasificación con el escritor real.
+- La primera integración detectó un código territorial ficticio de siete caracteres
+  frente a VARCHAR(5). Se corrigió solo ese dato y se repitió la integración completa.
+  Producto, suites y builds aprobados no cambiaron por esa corrección.
+- **328 fuentes anteriores intactas**; comparación del cliente, registro de módulo,
+  despacho y proyección anterior. Propuestas puras y escritores del punto 94 intactos.
+  Gateway, shell, frontend, migraciones y módulo manual conservados.
+- MFE **35 / 542** con TypeScript/build, shell RUND **7 / 80**, sesión HTTP **9** y
+  gateway **31** mantienen evidencia anterior sobre fuentes intactas, sin repetirse.
+  Los 22 escenarios HTTP de interfaz se repiten dentro de la integración completa.
+  Persisten los límites globales del shell documentados anteriormente.
+- Evidencia: [validacion-preview-masivo-identidad-auth.json](validacion-preview-masivo-identidad-auth.json).
+  Manifiesto/revisión: corte-95-rund.paths y revision-push-corte-95.json.
+
+**Siguiente punto y límites**
+
+Sigue preparar la sustitución del escritor masivo Auth por operaciones propietarias
+reanudables, preservando soporte, reglas, resultados y recuperación por fila, sin
+activar todavía la ejecución remota. Continúan aceptación de navegador/instalaciones,
+resolución humana, otros rechazos, intervalo Auth–SMTP, demás canales/propietarios y
+los cinco frentes del mapa. Este corte cierra la lectura cruzada de este preview,
+sin declarar completada toda la independencia.
+
+Sin bases existentes, SMTP real, .env/Compose, commit, push o despliegue. Aplicaciones
+de prueba detenidas y clúster temporal eliminado al terminar el verificador. Banderas
+de escritura Auth false por defecto y RUND embebido en PTA conservados.
+
+Avance: **58 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
 paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.

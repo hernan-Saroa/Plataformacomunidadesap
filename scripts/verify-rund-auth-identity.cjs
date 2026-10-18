@@ -49,6 +49,8 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
     }
   };
   let app, operationDropAfterCommit = false, cancelDropAfterCommit = false;
+  let bulkPreviewMode = 'normal', bulkPreviewRequests = 0;
+  const bulkPreviewHeaders = [];
   try {
     await db.query(`CREATE ROLE ${operationRole} LOGIN PASSWORD '${operationPassword}'; GRANT USAGE ON SCHEMA auth TO ${operationRole};
       GRANT SELECT,INSERT,UPDATE ON auth.rund_identidad_operacion TO ${operationRole}`);
@@ -76,6 +78,7 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
     const { RundCatalogosController, RundCatalogosService } = compiled('users/rund-catalogos.controller');
     const { RundBancoController, RundBancoService } = compiled('users/rund-banco.controller');
     const { RundIdentityValidationController, RundIdentityValidationService } = compiled('users/rund-identity-validation.controller');
+    const { RundBulkPreviewController, RundBulkPreviewService } = compiled('users/rund-bulk-preview.controller');
     const { RundIdentityOperationController, RundIdentityOperationService } = compiled('users/rund-identity-operation.controller');
     const { RundIdentityApplyController, RundIdentityApplyService } = compiled('users/rund-identity-apply.controller');
     const { RundIdentityCompensationController, RundIdentityCompensationService } = compiled('users/rund-identity-compensation.controller');
@@ -101,11 +104,15 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
     const revalidateSync = service.revalidarSync.bind(service);
     service.revalidarSync = async raw => { if (syncHook) await syncHook(raw); return revalidateSync(raw); };
     class FixtureModule {}
-    Module({ controllers: [RundIdentityController, RundCatalogosController, RundBancoController, RundIdentityValidationController, RundIdentityOperationController, RundIdentityApplyController,RundIdentityCompensationController,RundIdentityMailValidationController], providers: [RundIdentityGuard,
+    Module({ controllers: [RundIdentityController, RundCatalogosController, RundBancoController, RundIdentityValidationController, RundBulkPreviewController, RundIdentityOperationController, RundIdentityApplyController,RundIdentityCompensationController,RundIdentityMailValidationController], providers: [RundIdentityGuard,
       { provide: RundIdentityService, useValue: service },
       { provide: RundCatalogosService, useValue: new RundCatalogosService({ query: async (sql, values) => (await db.query(sql, values)).rows }) },
       { provide: RundBancoService, useValue: new RundBancoService({ query: async (sql, values) => (await db.query(sql, values)).rows }) },
       { provide: RundIdentityValidationService, useValue: new RundIdentityValidationService({ query: async (sql, values) => (await validationDb.query(sql, values)).rows }) },
+      { provide: RundBulkPreviewService, useValue: new RundBulkPreviewService({ query: async (sql, values) => {
+        if (bulkPreviewMode === 'sql-error') throw new Error('SQL PRIVADO DEL FIXTURE');
+        return (await mailDb.query(sql, values)).rows;
+      } }) },
       { provide: RundIdentityOperationService, useValue: new RundIdentityOperationService(operationDb) },
       { provide: RundIdentityApplyService, useValue: applyService },
       { provide: RundIdentityCompensationService, useValue: compensationService },
@@ -180,6 +187,15 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
       permissionsRequestCount: () => permissionsRequests,
       permissionsRequestHeaders: () => [...permissionsHeaders],
       setPrevalidationMode: mode => { prevalidationMode = mode; },
+      setBulkPreviewMode: mode => { bulkPreviewMode = mode; },
+      bulkPreviewRequestCount: () => bulkPreviewRequests,
+      bulkPreviewRequestHeaders: () => [...bulkPreviewHeaders],
+      bulkPreviewOwnerReadOnly: async () => {
+        const r = (await mailDb.query(`SELECT current_setting('default_transaction_read_only') AS readonly,
+          has_table_privilege(current_user,'auth.user','UPDATE') AS writes,
+          has_schema_privilege(current_user,'rund','USAGE') AS rund`)).rows[0];
+        return r.readonly === 'on' && !r.writes && !r.rund;
+      },
       prevalidationRequestCount: () => prevalidationRequests,
       prevalidationRequestHeaders: () => [...prevalidationHeaders],
       prevalidationConnectionReadOnly: async () => (await validationDb.query('SHOW default_transaction_read_only')).rows[0].default_transaction_read_only === 'on',
@@ -212,6 +228,15 @@ module.exports = async function startIdentityFixture(pgConfig, runtime, token) {
         return !result.personas && !result.usuarios && !result.roles;
       },
       forward: (req, res) => {
+        if (req.url === '/internal/rund/v1/personas/previsualizacion-masiva') {
+          bulkPreviewRequests++;
+          bulkPreviewHeaders.push({ authorizationForwarded: Boolean(req.headers.authorization), cookieForwarded: Boolean(req.headers.cookie),
+            tokenMatches: req.headers['x-internal-service-token'] === token });
+          if (['missing', 'partial', 'unavailable'].includes(bulkPreviewMode)) {
+            res.writeHead(bulkPreviewMode === 'missing' ? 404 : bulkPreviewMode === 'partial' ? 200 : 503, { 'Content-Type': 'application/json' });
+            req.resume(); res.end(JSON.stringify({ success: true, data: {} })); return;
+          }
+        }
         if (/^\/internal\/rund\/v1\/personas\/escritura\/operaciones\/[^/]+\/correo\/validar$/.test(req.url)) {
           mailValidationHeaders.push({ authorizationForwarded: Boolean(req.headers.authorization), cookieForwarded: Boolean(req.headers.cookie),
             tokenMatches: req.headers['x-internal-service-token'] === token });

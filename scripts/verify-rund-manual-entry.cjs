@@ -10,6 +10,7 @@ module.exports=async function verifyEntry(pgConfig,runtime,check,ctx){
   const {AuthIdentityManualAbandonService}=compiled('common/auth-identity-manual-abandon.service');
   const {AuthIdentityManualCloseService}=compiled('common/auth-identity-manual-close.service');
   const {AuthIdentityManualMailStatusService}=compiled('common/auth-identity-manual-mail-status.service');
+  const {AuthIdentityManualPreviewService}=compiled('common/auth-identity-manual-preview.service');
   const {AuthIdentityCompensationService}=compiled('common/auth-identity-compensation.service'),{AuthIdentityCompensationClient}=compiled('common/auth-identity-compensation.client');
   const {AuthIdentityRequestService}=compiled('common/auth-identity-request.service'),{AuthIdentityExecutionService}=compiled('common/auth-identity-execution.service');
   const {AuthIdentityValidationClient}=compiled('common/auth-identity-validation.client'),{RundCatalogosClient}=compiled('common/rund-catalogos.client');
@@ -24,6 +25,7 @@ module.exports=async function verifyEntry(pgConfig,runtime,check,ctx){
   const compensation=new AuthIdentityCompensationService(ds,new AuthIdentityCompensationClient());
   const manualClose=new AuthIdentityManualCloseService(ds,service,execution,compensation,new AuthIdentityClient());
   const mailStatuses=new AuthIdentityManualMailStatusService(ds,new AuthIdentityClient());
+  const previewValidation=new AuthIdentityValidationClient(),manualPreview=new AuthIdentityManualPreviewService(ds,service,previewValidation,new AuthIdentityClient());
   const prevalidationHeadersStart=authFixture.prevalidationRequestHeaders().length;
   const actor=randomUUID(),other=randomUUID(),roleId=randomUUID(),viewId=randomUUID(),tag=randomUUID().slice(0,8),role='MANUAL_WRITE_'+tag,viewRole='MANUAL_READ_'+tag;
   const route='/banco-docentes/identidad/solicitudes-manuales';let app,url,jwt,dropNext=false,dropExecution=false,dropAbandon=false,dropClose=false,known,knownForm;
@@ -51,7 +53,8 @@ module.exports=async function verifyEntry(pgConfig,runtime,check,ctx){
       {provide:AuthIdentityManualEntryService,useValue:service},{provide:AuthIdentityManualExecutionService,useValue:manualExecution},
       {provide:AuthIdentityManualCaptureService,useValue:manualCapture},{provide:AuthIdentityManualAbandonService,useValue:manualAbandon},
       {provide:AuthIdentityManualCloseService,useValue:manualClose},
-      {provide:AuthIdentityManualMailStatusService,useValue:mailStatuses}]})(FixtureModule);
+      {provide:AuthIdentityManualMailStatusService,useValue:mailStatuses},
+      {provide:AuthIdentityManualPreviewService,useValue:manualPreview}]})(FixtureModule);
     app=await NestFactory.create(FixtureModule,{logger:false,abortOnError:false});
     app.use((req,res,next)=>{if(dropNext&&req.path.endsWith('/preparar')){dropNext=false;res.json=()=>{res.destroy();return res;};}
       if(dropExecution&&req.path.endsWith('/ejecutar')){dropExecution=false;res.json=()=>{res.destroy();return res;};}
@@ -174,6 +177,8 @@ module.exports=async function verifyEntry(pgConfig,runtime,check,ctx){
       const headers=authFixture.prevalidationRequestHeaders().slice(prevalidationHeadersStart);assert(headers.length>0);
       assert(headers.every(h=>h.tokenMatches&&!h.authorizationForwarded&&!h.cookieForwarded));
     });
+    await require('./verify-rund-manual-preview.cjs')(pgConfig,runtime,check,{...ctx,actor,role,roleId,viewRole,token,send,capture,form,known,knownForm,
+      entries:service,previewValidation,secret});
     await require('./verify-rund-manual-execution.cjs')(pgConfig,runtime,check,{...ctx,actor,role,roleId,viewRole,token,send,capture,form,
       execution,entries:service,manualExecution,known,knownForm,jwt,secret,dropExecutionResponse:()=>{dropExecution=true;}});
     await require('./verify-rund-manual-capture.cjs')(pgConfig,runtime,check,{...ctx,actor,role,roleId,viewRole,token,send,capture,form,

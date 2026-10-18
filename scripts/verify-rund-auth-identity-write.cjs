@@ -107,7 +107,24 @@ module.exports = async function verifyAuthIdentityWrite(pgConfig, runtime, check
         CREATE TRIGGER reject_auth_write_preview BEFORE INSERT ON rund."Docente" FOR EACH ROW EXECUTE FUNCTION rund.reject_auth_write_preview()`);
       try {
         const result = await request('/banco-docentes/bulk?dry_run=true', { method: 'POST', body: workbookBody(rows), status: 201 });
-        assert.equal(result.data.errors, 1); assert.equal(result.data.created, 1);
+        // El preview no ejecuta el trigger de INSERT; conserva ambas propuestas sin efectos.
+        assert.equal(result.data.errors, 0); assert.equal(result.data.created, 2);
+        // Se conserva la recuperación por savepoint del escritor real como referencia de prueba.
+        let failed = 0, created = 0;
+        await withRollback(async manager => {
+          for (const sample of rows) {
+            await manager.query('SAVEPOINT fixture_auth_write_row');
+            try {
+              const written = await service.upsertDocente(sample, { ...options, outerManager: manager });
+              assert.equal(written.action, 'insert'); created++;
+            } catch (error) {
+              assert.equal(error.driverError?.code || error.code, 'P0001'); failed++;
+              await manager.query('ROLLBACK TO SAVEPOINT fixture_auth_write_row');
+            }
+            await manager.query('RELEASE SAVEPOINT fixture_auth_write_row');
+          }
+        });
+        assert.equal(failed, 1); assert.equal(created, 1);
       } finally { await database.query('DROP TRIGGER reject_auth_write_preview ON rund."Docente"; DROP FUNCTION rund.reject_auth_write_preview()'); }
       const after = await snapshot(); delete before['rund.RundAccesoDatosLog']; delete after['rund.RundAccesoDatosLog'];
       assert.deepEqual(after, before);

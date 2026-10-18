@@ -588,6 +588,9 @@ async function run() {
       assert.equal(result.data.created, 0);
       assert.equal(await profileCount(), 1);
     });
+    await require('./verify-rund-bulk-preview.cjs')(pgConfig, runtime, check,
+      { database, request, row, docenteId, workbookBody, getNotificationCount: () => notificationCount,
+        authUrl: stubUrl, authToken: authSyncToken, authFixture: authIdentityFixture });
     await check('Listado, cabezote y contrato de interoperabilidad consultan el esquema rund', async () => {
       const list = await request('/banco-docentes?periodoCarga=2026-2');
       assert.equal(list.total, 1);

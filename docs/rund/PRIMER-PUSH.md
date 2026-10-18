@@ -1,7 +1,7 @@
 # Primer corte publicable de RUND
 
 > Documento histórico del primer corte. El último guardado preparado fue el
-> [corte 91](PUSH-CORTE-91.md). El avance y el punto para retomar están en
+> [corte 95](PUSH-CORTE-95.md). El avance y el punto para retomar están en
 > [ESTADO-MIGRACION-MICROSERVICIO.md](ESTADO-MIGRACION-MICROSERVICIO.md).
 
 Fecha: 2026-10-14. Rama: `feat/agregar_modulo_rund`.

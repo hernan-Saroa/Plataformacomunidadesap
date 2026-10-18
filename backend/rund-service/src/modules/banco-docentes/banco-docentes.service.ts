@@ -11,6 +11,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Like, Repository } from 'typeorm';
 import { upsertRundAuthIdentityWithManager } from './rund-auth-identity-write';
 import { RundNativeWriteInput, upsertRundNativeProfileWithManager } from './rund-native-profile-write';
+import { previewRundBulkRow } from './rund-bulk-preview';
 import { createHash, randomBytes, randomInt, randomUUID } from 'crypto';
 import { BancoDocenteEntity } from '../../entities/banco-docente.entity';
 import { PersonaEntity } from '../../entities/persona.entity';
@@ -58,6 +59,8 @@ type BulkSupport = {
 };
 
 type UpsertDocenteOptions = {
+  // Solo el despachador del lote puede solicitar esta evaluación sin persistencia.
+  previewOnly?: boolean;
   // Snapshot interno del lote, obtenido del propietario; nunca se toma del payload HTTP.
   territoriales?: AuthSeccionalTerritorial[];
   bulkImport?: boolean;
@@ -1432,6 +1435,12 @@ export class BancoDocentesService implements OnModuleInit {
         valorEsperado: 'Nombres y apellidos completos'
       });
 
+      if (options.previewOnly) {
+        return previewRundBulkRow(manager, {
+          payload, rawPayload, options, territorial, emailFinal, phoneFinal, finalFullName,
+        }, { formatDateOnly, splitFullName, normalizeLookupText }, this.identities);
+      }
+
       const { authPersonId, authUser, authUserCreated, personaChangedFields, profileChanges } =
         await upsertRundAuthIdentityWithManager(manager, {
           payload, options: { relaxValidation: options.relaxValidation, preserveTerritorial: options.preserveTerritorial },
@@ -1444,9 +1453,13 @@ export class BancoDocentesService implements OnModuleInit {
       });
     };
 
-    const result = options.outerManager 
+    const result = options.previewOnly
+      ? await runWithManager(this.dataSource.manager)
+      : options.outerManager
       ? await runWithManager(options.outerManager)
       : await this.dataSource.transaction(runWithManager);
+
+    if (options.previewOnly) return result;
 
     if (result.authUserCreated && !options.outerManager) {
       const welcomeEmail = await this.sendWelcomeEmail(result.email, result.email, result.documentNumber, result.fullName);
@@ -1583,15 +1596,11 @@ export class BancoDocentesService implements OnModuleInit {
       for (let i = 0; i < preparedRows.length; i++) {
         if (duplicateValidation.blockedRowIndexes.has(i)) continue;
         const row = { ...preparedRows[i] };
-        const useRowSavepoint = Boolean(options.dryRun && manager?.query);
-        const savepointName = `banco_docentes_row_${i}`;
         try {
-          if (useRowSavepoint) {
-            await manager.query(`SAVEPOINT ${savepointName}`);
-          }
           const result = await this.upsertDocente(row, {
             territoriales,
             bulkImport: true,
+            ...(options.dryRun ? { previewOnly: true } : {}),
             rejectExisting: options.rejectExisting,
             outerManager: manager,
             audit: options.dryRun ? undefined : {
@@ -1608,15 +1617,7 @@ export class BancoDocentesService implements OnModuleInit {
             },
           });
           results.push(result);
-          if (useRowSavepoint) {
-            await manager.query(`ROLLBACK TO SAVEPOINT ${savepointName}`);
-            await manager.query(`RELEASE SAVEPOINT ${savepointName}`).catch(() => undefined);
-          }
         } catch (err: any) {
-          if (useRowSavepoint) {
-            await manager.query(`ROLLBACK TO SAVEPOINT ${savepointName}`).catch(() => undefined);
-            await manager.query(`RELEASE SAVEPOINT ${savepointName}`).catch(() => undefined);
-          }
           if (!options.omitErrors && !options.dryRun) {
              // If not omitting, we still record it. Or wait, original code recorded all errors.
           }
@@ -1646,22 +1647,9 @@ export class BancoDocentesService implements OnModuleInit {
     };
 
     try {
-      if (options.dryRun) {
-        try {
-          await this.dataSource.transaction(async (manager) => {
-            const { results, errors } = await processRows(manager);
-            finalResults = results;
-            finalErrors = errors;
-            throw new Error('DRY_RUN_ROLLBACK');
-          });
-        } catch (err: any) {
-          if (err.message !== 'DRY_RUN_ROLLBACK') throw err;
-        }
-      } else {
-        const { results, errors } = await processRows();
-        finalResults = results;
-        finalErrors = errors;
-      }
+      const { results, errors } = await processRows();
+      finalResults = results;
+      finalErrors = errors;
     } catch (error: any) {
       if (bulkSupportId) {
         await this.finishBulkSupport(

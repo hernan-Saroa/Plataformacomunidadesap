@@ -3,6 +3,7 @@ import { validateManualCapture } from './rundManualIdentityCapture';
 import { validateManualClose } from './rundManualIdentityClose';
 import { validateManualMail } from './rundManualIdentityMail';
 import { RundMailOperationsClient } from './rundMailOperationsApi';
+import { manualPreviewFailure, validateManualPreview } from './rundManualIdentityPreview';
 
 export interface ManualExecutionReceipt {
   solicitudId:string; intencionId:string; estado:'PENDIENTE'|'ABORTADA'|'CONFIRMADA';
@@ -51,6 +52,16 @@ export class RundManualIdentityClient {
   operacionesCorreo():RundMailOperationsClient {
     if(!this.mailOperations)this.mailOperations=new RundMailOperationsClient(this.actorId,this.transport);
     return this.mailOperations;
+  }
+  async previsualizar(formulario:Record<string,unknown>,signal?:AbortSignal) {
+    try {
+      if(signal?.aborted)throw manualPreviewFailure();
+      // No consulta almacenamiento, genera UUID o inicia una solicitud. Copia antes del I/O.
+      const body=JSON.parse(JSON.stringify({formulario}));
+      const data=await this.transport.post(`${base}/previsualizar`,body,{...options,signal});
+      if(signal?.aborted)throw manualPreviewFailure();
+      return validateManualPreview(data);
+    }catch { throw manualPreviewFailure(); }
   }
   iniciar():string {
     const current=this.pendiente();if(current)return current;

@@ -1,5 +1,6 @@
 import { Injectable, Module, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { RUND_PERMISSION_CODES } from '../auth/rund-permission-catalog';
+import { AuthBulkPreview, AuthBulkPreviewQuery, isAuthBulkPreview } from './auth-bulk-preview.contract';
 
 export interface AuthIdentity { personaId: string; documento: string; nombreCompleto: string | null }
 export interface AuthPtaIdentity extends AuthIdentity { territorialId: string | null }
@@ -33,7 +34,7 @@ const fichaPersona = (value: unknown): value is AuthFichaPersona => record(value
 
 @Injectable()
 export class AuthIdentityClient {
-  private async read<T>(route: string, validate: (value: unknown) => value is T, consulta?: CoincidenciasConsulta | DestinatarioConsulta | PermisosConsulta): Promise<T | null> {
+  private async read<T>(route: string, validate: (value: unknown) => value is T, consulta?: CoincidenciasConsulta | DestinatarioConsulta | PermisosConsulta | AuthBulkPreviewQuery): Promise<T | null> {
     const token = String(process.env.AUTH_INTERNAL_SERVICE_TOKEN || process.env.INTERNAL_SERVICE_TOKEN || '').trim();
     if (!token) throw new ServiceUnavailableException('Falta la credencial interna de identidad Auth.');
     let url: URL;
@@ -54,6 +55,17 @@ export class AuthIdentityClient {
       if (!validate(data)) throw new Error();
       return data;
     } catch { throw new ServiceUnavailableException('No fue posible confirmar la identidad en Auth.'); }
+  }
+
+  async previsualizacionMasiva(documento: string, correo: string): Promise<AuthBulkPreview> {
+    if (typeof documento !== 'string' || !documento.trim() || documento.includes('\0') || typeof correo !== 'string'
+      || !correo || correo.includes('\0') || correo !== correo.trim().toLowerCase())
+      throw new ServiceUnavailableException('No fue posible consultar la identidad del preview en Auth.');
+    const consulta: AuthBulkPreviewQuery = { version: 1, documento, correo };
+    const data = await this.read<AuthBulkPreview>('previsualizacion-masiva',
+      (value): value is AuthBulkPreview => isAuthBulkPreview(value, consulta), consulta);
+    if (!data) throw new ServiceUnavailableException('No fue posible consultar la identidad del preview en Auth.');
+    return data;
   }
 
   async porDocumento(documento: string): Promise<AuthIdentity> {
