@@ -134,6 +134,7 @@ export function SelectorCatalogo({ idPeriodo, irACarga }: { idPeriodo: string; i
             El catálogo de un periodo muestra los programas que se dictan en él. Aún no hay oferta CETAP para
             este periodo: cárguela con el Excel en la sección «Periodos».
           </p>
+          {irACarga && <button type="button" onClick={irACarga} className="mt-3 text-sm font-bold text-[#003DA5] underline">Ir a cargar Excel del periodo</button>}
         </div>
       </div>
     );

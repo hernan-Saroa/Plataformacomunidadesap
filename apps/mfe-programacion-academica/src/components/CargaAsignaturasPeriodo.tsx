@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent, type DragEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { CheckCircle2, FileSpreadsheet, Loader2, UploadCloud, X } from 'lucide-react';
 import { ErrorImportacion, importarAsignaturas, type PeriodoPlataforma, type ResultadoImportacion } from '../services/api/periodosApi';
 
@@ -7,6 +7,8 @@ const tamano = (bytes: number) => bytes < 1048576 ? `${Math.max(1, Math.round(by
 
 export function CargaAsignaturasPeriodo({ periodo, alTerminar }: { periodo: PeriodoPlataforma; alTerminar?: () => void }) {
   const input = useRef<HTMLInputElement>(null);
+  const importarBoton = useRef<HTMLButtonElement>(null);
+  const resultadoPanel = useRef<HTMLDivElement>(null);
   const [archivo, setArchivo] = useState<File | null>(null);
   const [arrastrando, setArrastrando] = useState(false);
   const [validacion, setValidacion] = useState<ResultadoImportacion | null>(null);
@@ -15,6 +17,11 @@ export function CargaAsignaturasPeriodo({ periodo, alTerminar }: { periodo: Peri
   const [ocupado, setOcupado] = useState<'validando' | 'confirmando' | null>(null);
   const [error, setError] = useState('');
   const [filtroOfertas, setFiltroOfertas] = useState('');
+
+  useEffect(() => {
+    if (validacion?.success && !(validacion.errores?.length) && validacion.blocked_reason !== 'ALL_IDENTICAL') importarBoton.current?.focus();
+  }, [validacion]);
+  useEffect(() => { if (resultado) resultadoPanel.current?.focus(); }, [resultado]);
 
   const elegir = (file: File | null) => {
     setArchivo(file); setValidacion(null); setResultado(null); setErrores([]); setError(''); setFiltroOfertas('');
@@ -114,15 +121,16 @@ export function CargaAsignaturasPeriodo({ periodo, alTerminar }: { periodo: Peri
       </div>
       {resumen(validacion)}
       {detalleOfertas(validacion)}
-      {validacion.success && errores.length === 0 && (validacion.ofertas?.rechazadas ?? 0) === 0 && validacion.blocked_reason !== 'ALL_IDENTICAL' && <div className="flex flex-col gap-3 rounded-xl border-2 border-emerald-400 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+      {validacion.success && errores.length === 0 && (validacion.ofertas?.rechazadas ?? 0) === 0 && validacion.blocked_reason !== 'ALL_IDENTICAL' && <div className="flex flex-col gap-3 rounded-xl border-2 border-emerald-400 bg-emerald-50 p-4">
         <div><h5 className="text-base font-extrabold text-emerald-950">3. Confirmar la carga</h5><p className="text-sm text-emerald-900">La validación solo revisó el archivo. Al importar se guardarán las asignaturas y ofertas para {periodo.codigo}.</p></div>
-        <button type="button" onClick={() => ejecutar(false)} disabled={!!ocupado || !periodo.programable}
-          className="shrink-0 rounded-lg bg-emerald-700 px-6 py-3 text-base font-extrabold text-white shadow-md hover:bg-emerald-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40">
+        <button ref={importarBoton} type="button" onClick={() => ejecutar(false)} disabled={!!ocupado || !periodo.programable}
+          style={{ backgroundColor: '#047857', color: '#ffffff' }}
+          className="w-full rounded-lg px-6 py-3 text-base font-extrabold shadow-md hover:brightness-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 disabled:opacity-40">
           {ocupado === 'confirmando' ? <><Loader2 className="mr-2 inline h-5 w-5 animate-spin" />Importando…</> : 'Importar ahora'}
         </button>
       </div>}
     </div>}
-    {resultado && <div className={`space-y-3 rounded-xl border p-4 ${resultado.success ? 'border-emerald-300 bg-emerald-50' : 'border-red-200 bg-red-50'}`} role="status">
+    {resultado && <div ref={resultadoPanel} tabIndex={-1} className={`space-y-3 rounded-xl border p-4 ${resultado.success ? 'border-emerald-300 bg-emerald-50' : 'border-red-200 bg-red-50'}`} role="status">
       <h5 className="flex items-center gap-2 text-sm font-extrabold text-slate-800">{resultado.success && <CheckCircle2 className="h-5 w-5 text-emerald-700" />} {resultado.success ? `Importación terminada: los datos ya se guardaron para ${resultado.periodo}` : 'Importación rechazada: no se guardaron cambios'}</h5>{resumen(resultado)}
       {resultado.success && resultado.resumen_periodo && <p className="text-sm font-bold text-emerald-950">Quedaron en el periodo: {resultado.resumen_periodo.programas} programas, {resultado.resumen_periodo.asignaturas} asignaturas, {resultado.resumen_periodo.cetaps} CETAP y {resultado.resumen_periodo.ofertas} ofertas.</p>}
       {detalleOfertas(resultado)}

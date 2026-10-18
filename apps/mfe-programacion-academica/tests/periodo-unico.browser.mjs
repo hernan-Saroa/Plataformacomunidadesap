@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { writeFile, unlink } from 'node:fs/promises';
+import { writeFile, unlink, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import puppeteer from 'puppeteer';
@@ -50,6 +50,13 @@ try {
     if (ruta.endsWith('/programacion-academica/api/v1/periodos')) {
       consultaPeriodos++;
       data = { periodos, legado: [legado], permisos };
+    } else if (ruta.endsWith('/programacion-academica/api/v1/aulas')) {
+      data = [
+        { codigo: 'A-101', nombre: 'Aula 101', sedeCodigo: 'SC', capacidad: 40, provisional: false, tipo: 'aula', piso: 1, territorial: { codigo: 'SC', nombre: 'Sede Central' }, cetap: { codigo: 'CET-0288', nombre: 'Sede Central' }, idOfertaCetap: null },
+        { codigo: 'A-202', nombre: 'Aula 202', sedeCodigo: 'HUI', capacidad: 30, provisional: false, tipo: 'aula', piso: 2, territorial: { codigo: 'HUI', nombre: 'Huila' }, cetap: { codigo: 'CET-0135', nombre: 'Neiva' }, idOfertaCetap: null },
+      ];
+    } else if (ruta.includes('/aulas/') && ruta.endsWith('/disponibilidad')) {
+      data = { aula: ruta.split('/').at(-2), ocupada: [] };
     } else if (/\/publicaciones\/(12|13|14)$/.test(ruta)) {
       const id = ruta.split('/').at(-1);
       data = { idPeriodo: id, total: id === '12' ? 2 : 0, programado: 0,
@@ -83,9 +90,14 @@ try {
       const seco = url.searchParams.get('dry_run') === 'true';
       data = { success: true, dry_run: seco,
         periodo: url.searchParams.get('periodo_codigo'),
-        carga: { asignaturas: { creados: 3, actualizados: 1, omitidos: 2 },
+        carga: { asignaturas: { creados: 3, actualizados: 1, omitidos: 2, sin_cambios: 2, rechazadas: 0 },
           programas: { creados: 0, actualizados: 1, omitidos: 0 },
           ofertas_cetap_programa: { creados: 325, actualizados: 0, omitidos: 0 } },
+        ofertas: { por_crear: 325, ya_existentes: 0, rechazadas: 0, detalle: [
+          { codigo_cetap: 'CET-0288', nombre_cetap: 'Sede Central', codigo_programa: 'PRO-001', nombre_programa: 'Administración Pública', estado: 'por_crear' },
+          { codigo_cetap: 'CET-0135', nombre_cetap: 'Neiva', codigo_programa: 'PRO-001', nombre_programa: 'Administración Pública', estado: 'por_crear' },
+        ] },
+        ...(seco ? {} : { resumen_periodo: { programas: 14, asignaturas: 427, cetaps: 271, ofertas: 325 } }),
         errores: [], advertencias: [], relaciones_cruzadas: [] };
       if (seco && validarConErrores) { status = 400; data = { success: false, message: 'Validación del Excel fallida (Reglas bloqueantes R1-R6).', errors: ['ASIGNATURAS fila 7: código de programa inexistente.'] }; }
     } else if (ruta.includes('/validacion/')) data = { resumen: { total: 0 }, cruces: [], periodos: [] };
@@ -197,19 +209,45 @@ try {
   await page.evaluate(() => [...document.querySelectorAll('section[aria-label="Carga masiva 2031-1"] button')]
     .find((e) => e.textContent.includes('Validar archivo'))?.click());
   await page.waitForFunction(() => document.body.textContent.includes('Importar ahora'));
+  await page.waitForFunction(() => document.activeElement?.textContent === 'Importar ahora');
+  if (process.env.PA_SCREENSHOT) {
+    await page.addStyleTag({ content: await readFile(join(process.cwd(), '../shell/src/index.css'), 'utf8') });
+    await page.screenshot({ path: process.env.PA_SCREENSHOT, fullPage: true });
+  }
   assert.ok((await page.$eval('section[aria-label="Carga masiva 2031-1"]', (e) => e.textContent)).includes('el Excel todavía no se ha importado'));
   assert.equal(llamadas.filter((x) => x.tipo.includes('/asignaturas-import/upload') && new URLSearchParams(x.query).get('dry_run') === 'false').length, 0);
   assert.ok((await page.$eval('section[aria-label="Carga masiva 2031-1"]', (e) => e.textContent)).includes('Sin cambios2'));
   assert.ok((await page.$eval('section[aria-label="Carga masiva 2031-1"]', (e) => e.textContent)).includes('Ofertas por crear325'));
+  await page.evaluate(() => document.querySelector('section[aria-label="Carga masiva 2031-1"] details summary')?.click());
+  assert.ok((await page.$eval('section[aria-label="Carga masiva 2031-1"] details', (e) => e.textContent)).includes('Neiva'));
   await page.evaluate(() => [...document.querySelectorAll('section[aria-label="Carga masiva 2031-1"] button')]
     .find((e) => e.textContent.includes('Importar ahora'))?.click());
   await page.waitForFunction(() => document.body.textContent.includes('Importación terminada: los datos ya se guardaron para 2031-1'));
+  await page.waitForFunction(() => document.activeElement?.textContent?.includes('Importación terminada: los datos ya se guardaron para 2031-1'));
+  assert.ok((await page.$eval('section[aria-label="Carga masiva 2031-1"]', (e) => e.textContent)).includes('Quedaron en el periodo: 14 programas, 427 asignaturas, 271 CETAP y 325 ofertas'));
   assert.equal(await page.evaluate(() => [...document.querySelectorAll('section[aria-label="Carga masiva 2031-1"] button')].some((e) => e.textContent.includes('Importar ahora'))), false);
   const importaciones = llamadas.filter((x) => x.tipo.includes('/asignaturas-import/upload'));
   assert.deepEqual(importaciones.map((x) => new URLSearchParams(x.query).get('dry_run')), ['true', 'true', 'false']);
   assert.ok(importaciones.every((x) => new URLSearchParams(x.query).get('periodo_codigo') === '2031-1'));
   assert.ok((await page.$eval('section[aria-label="Carga masiva 2031-1"]', (e) => e.textContent)).includes('agregar una asignatura manualmente'));
   console.log('PASS EFDS-2314 :: valida y confirma por el importador existente, con código recibido de GET /periodos');
+
+  await page.evaluate(() => [...document.querySelectorAll('*')]
+    .find((e) => !e.children.length && e.textContent === 'Disponibilidad de Aulas')?.click());
+  await page.waitForFunction(() => document.body.textContent.includes('Filtrar por territorial'));
+  assert.ok((await page.$eval('table', (el) => el.textContent)).includes('Territorial'));
+  assert.ok((await page.$eval('table', (el) => el.textContent)).includes('CETAP'));
+  await page.evaluate(() => {
+    const combo = [...document.querySelectorAll('select')].find((el) => el.parentElement?.textContent.includes('Filtrar por territorial'));
+    combo.value = 'HUI'; combo.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForFunction(() => [...document.querySelectorAll('table tbody tr')].some((row) => row.textContent.includes('Neiva')));
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll('table tbody tr')].some((row) => row.textContent.includes('Sede Central'))), false);
+  console.log('PASS EFDS-1374 :: aulas muestran territorial/CETAP y aplican filtro combinado');
+
+  await page.evaluate(() => [...document.querySelectorAll('*')]
+    .find((e) => !e.children.length && e.textContent === 'Periodos')?.click());
+  await page.waitForFunction(() => document.body.textContent.includes('Cargar asignaturas desde Excel'));
 
   permisos.activar = false;
   await page.evaluate(async (base) => {

@@ -308,6 +308,7 @@ export function GestionGrupos({ idAsignatura, nombreAsignatura, codigoAsignatura
         <div className="p-4 border-t border-slate-200 bg-slate-50/40">
           <CalendarioHorario
             idGrupo={grupoSel.idGrupo}
+            onOfertaActualizada={(actualizado) => { setGrupoSel(actualizado); setGrupos((actuales) => actuales.map((g) => g.idGrupo === actualizado.idGrupo ? actualizado : g)); }}
             numeroGrupo={grupoSel.numeroGrupo}
             nombreAsignatura={nombreAsignatura}
             fechaInicioGrupo={grupoSel.fechaInicio}
