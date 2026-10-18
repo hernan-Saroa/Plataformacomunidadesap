@@ -331,3 +331,25 @@ Quedan dos errores de tsc en el MFE de Programación Académica (104 frente a la
 2. `GestionGrupos.test.tsx`, línea 88: `new Promise(() => {})` necesita el tipo, por ejemplo `new Promise<OfertaCetapGrupo[]>(() => {})`.
 
 Con la concertación apagada, la consulta del régimen siempre responde `actual`, así que tus cambios no alteran el formulario de hoy.
+
+## 13. Prueba final de Codex: arreglos (18 de octubre)
+
+### Hallazgos de tu reporte
+1. **El docente no podía enviar a concertación.** No es una regresión: `ConcertacionDocente` nunca estuvo montado en el portal; yo verifiqué el envío el 12 de octubre por API. Ahora `PortalDocenteProgramacion` lo monta una vez por cada periodo donde el docente tiene docencia (tomada o devuelta). Para eso `FranjaPortal` trae `idPeriodo` y `periodoCodigo`. El bloque se oculta si el periodo es anterior al corte `desdePeriodo`. Prueba: `PortalDocenteProgramacion.test.tsx` (6 casos; falla si el botón desaparece). Verificado en el navegador con el servidor real: al tomar una franja en 2050-2 aparece «Concertación de mi docencia · Periodo 2050-2» con «Enviar».
+2. **El portal no validaba el tope al tomar.** `tomar` ahora calcula con el mismo cálculo único (`DocenciaService`, incluyendo la franja hipotética) y responde 409 si se pasa del tope; con tope ≤ 0 no limita; sin registro en el RUND responde 403. El tope sale de `asignaciones/tope.ts` (304 h para cátedra, `horasAsignables` en otro caso) y lo usan el portal y el backoffice. La toma va bajo `pg_advisory_xact_lock` por docente, para que dos tomas simultáneas no se pasen. Hallazgo adicional: el backoffice tampoco aplicaba las 304 h a un catedrático con `horasAsignables = 0`; ahora sí. Canario: `tope-docente.agregado.spec.ts` (7 casos, transaccional; falló antes del arreglo).
+3. **El panel de publicación no se actualizaba.** Nuevo hook `useEstadoPublicacion` sobre tu `useRevisionProgramacion('programacion','publicaciones')`. Prueba: `useEstadoPublicacion.test.ts` (4 casos).
+
+### Muestra del 400 del importador (servidor real)
+`POST /pta/api/v1/asignaturas-import/upload?periodo_codigo=2050-2&dry_run=true` con `carga-con-errores-por-fila.xlsx`:
+
+```
+HTTP/1.1 400 Bad Request
+Content-Type: application/json; charset=utf-8
+Content-Length: 379
+
+{"success":false,"message":"Validación del Excel fallida (Reglas bloqueantes R1-R6).","errors":["ASIGNATURAS fila 3: creditos debe ser un entero entre 1 y 20.","ASIGNATURAS fila 6: falta codigo_asignatura.","ASIGNATURAS: códigos duplicados: ASIG-00007.","ASIGNATURAS: semestres no soportados: Semestre 99.","ASIGNATURAS: programas inexistentes en la hoja PROGRAMAS: PRO-999."]}
+```
+
+Con el Excel válido responde 200 con `{"success":true,"dry_run":true,"periodo":"2050-2","carga":{...omitidos...},"indicadores_pta":{...}}`; la lista de errores del éxito se llama `errores` (en español).
+
+**Para el MFE:** el 400 usa la clave `errors` (inglés), el éxito usa `errores`. Si `peticion()` solo lanza `message` cuando `!res.ok`, el usuario ve «Validación del Excel fallida» sin las filas. Hay que leer `errors` en el camino de error.

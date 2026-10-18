@@ -1,6 +1,7 @@
 import { Client } from 'pg';
 
 import { JefaturaService } from './jefatura.service.js';
+import { DocenciaService } from '../docencia/docencia.service.js';
 import { PortalDocenteService } from '../portal-docente/portal-docente.service.js';
 
 /**
@@ -38,7 +39,7 @@ describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
   const jefatura = () => new JefaturaService({
     query: (sql: string, params?: any[]) => client!.query(sql, params).then((r) => r.rows),
   } as any);
-  const portal = () => new PortalDocenteService({
+  const dsPortal = () => ({
     query: (sql: string, params?: any[]) => client!.query(sql, params).then((r) => r.rows),
     createQueryRunner: () => ({
       connect: async () => {}, release: async () => {},
@@ -47,7 +48,10 @@ describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
       rollbackTransaction: async () => { await client!.query('ROLLBACK TO SAVEPOINT qr'); },
       query: (sql: string, params?: any[]) => client!.query(sql, params).then((r) => r.rows),
     }),
-  } as any, null as any);
+  } as any);
+  // El contrato PROG↔PTA se simula a 10 h por grupo: tomar valida el tope y aquí no es lo que se prueba.
+  const portal = () => new PortalDocenteService(dsPortal(), null as any,
+    new DocenciaService(dsPortal(), { calcularImpacto: async () => ({ horasImpacto: 10 }) } as any));
 
   // Franjas VIRTUALES (sin aula): no aportan cruce de aula, así el canario global
   // de validación no las ve; sábado/domingo para no chocar con datos reales.
@@ -145,7 +149,7 @@ describe('EFDS-1939 :: aprobacion de jefatura (agregado real)', () => {
     await expect(jefatura().aprobar(JEFA, F['F3'])).rejects.toThrow(/devoluci/i);
 
     // Al re-tomar F2, se limpia el comentario y se desbloquea el resto.
-    await portal().tomar(P1, F['F2']);
+    await portal().tomar(P1, F['F2'], null);
     await jefatura().aprobar(JEFA, F['F3']); // ya no lanza
     const { rows } = await client!.query(`SELECT estado FROM "${S}".franja_horaria WHERE id_franja=$1`, [F['F3']]);
     expect(rows[0].estado).toBe('APROBADA');

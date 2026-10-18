@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { categoriaVinculacion } from './situacion-docente.js';
+import { TOPE_CATEDRA, topeDeDocencia } from './tope.js';
 import { DocenciaService } from '../docencia/docencia.service.js';
 
 /**
@@ -23,8 +24,8 @@ import { DocenciaService } from '../docencia/docencia.service.js';
  * y no se prorratean: el tope de docencia es fijo.
  */
 
-/** Tope transversal del catedrático, RN-04 (horas). */
-export const TOPE_CATEDRA = 304;
+/** Tope transversal del catedrático, RN-04 (horas): vive en tope.ts, compartido. */
+export { TOPE_CATEDRA };
 
 export interface ConsumoPorOferta {
   idPeriodo: string | null;
@@ -85,7 +86,7 @@ export class AcumuladoService {
 
     // Tope: el catedrático tiene 304 h transversales (RN-04); los demás, su plan.
     const horasAsignables = Number(drow.horas_asignables ?? 0);
-    const tope = categoria === 'CATEDRA' ? TOPE_CATEDRA : horasAsignables;
+    const tope = topeDeDocencia(drow.vinculacion, horasAsignables);
 
     // EFDS-2306: la docencia sale de la FRANJA (registro único), con las horas
     // del cálculo único del contrato y el reparto por días entre docentes. Antes

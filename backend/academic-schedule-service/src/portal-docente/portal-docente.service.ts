@@ -3,6 +3,8 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { AcumuladoService, type AcumuladoDocente } from '../asignaciones/acumulado.service.js';
+import { superaElTope, topeDeDocencia } from '../asignaciones/tope.js';
+import { DocenciaService } from '../docencia/docencia.service.js';
 
 /**
  * Portal del docente — EFDS-1938.
@@ -44,6 +46,9 @@ export interface FranjaPortal {
   programa: string | null;
   /** Motivo de la devolución de la jefatura, si la franja fue devuelta (EFDS-1939). */
   comentarioJefatura: string | null;
+  /** Periodo del grupo: el id que usan las rutas (plataforma o legado) y su código. */
+  idPeriodo: string | null;
+  periodoCodigo: string | null;
 }
 
 @Injectable()
@@ -51,6 +56,7 @@ export class PortalDocenteService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly acumuladoSvc: AcumuladoService,
+    private readonly docencia: DocenciaService,
   ) {}
 
   /** Resuelve al docente autenticado (id_person + documento) desde su id_user. */
@@ -84,11 +90,15 @@ export class PortalDocenteService {
            f.comentario_jefatura              AS "comentarioJefatura",
            g.numero_grupo                     AS "numeroGrupo",
            a.nombre                           AS "asignatura",
-           pr.nombre                          AS "programa"
+           pr.nombre                          AS "programa",
+           COALESCE(g.id_periodo_academico::text, g.id_periodo::text) AS "idPeriodo",
+           COALESCE(pa.codigo, pp.codigo)     AS "periodoCodigo"
       FROM "academic-schedule".franja_horaria f
       LEFT JOIN "academic-schedule".grupo g     ON g.id_grupo = f.id_grupo
       LEFT JOIN academic_work_plan.asignatura a ON a.id       = g.id_asignatura
-      LEFT JOIN academic_work_plan.programa pr  ON pr.id      = a.id_programa`;
+      LEFT JOIN academic_work_plan.programa pr  ON pr.id      = a.id_programa
+      LEFT JOIN academic_work_plan.periodo_academico pa ON pa.id = g.id_periodo_academico
+      LEFT JOIN "academic-schedule".periodo_programacion pp ON pp.id_periodo = g.id_periodo`;
 
   /**
    * Franjas PUBLICADAS que el docente puede tomar, EXCLUYENDO las que cruzan con
@@ -132,11 +142,14 @@ export class PortalDocenteService {
    * conflicto. También se rechaza si la franja cruza con algo que el docente ya
    * posee (revalidado bajo el lock, no en el cliente).
    */
-  async tomar(idPerson: string, idFranja: string): Promise<{ tomada: true }> {
+  async tomar(idPerson: string, idFranja: string, token: string | null): Promise<{ tomada: true }> {
     const qr = this.dataSource.createQueryRunner();
     await qr.connect();
     await qr.startTransaction();
     try {
+      // Un docente a la vez: dos tomas simultáneas del MISMO docente se serializan,
+      // así la segunda ve lo que la primera ya confirmó y no se pasan del tope entre las dos.
+      await qr.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`tope-docente:${idPerson}`]);
       const filas = await qr.query(
         `SELECT id_franja, estado, id_docente, dia_semana,
                 hora_inicio, hora_fin
@@ -171,6 +184,11 @@ export class PortalDocenteService {
         throw new ConflictException('No puede tomar esta franja: se cruza con otra que usted ya tiene.');
       }
 
+      // RN-04 — el tope se valida AQUÍ, en el servidor, con la misma regla y el mismo
+      // cálculo único (contrato + reparto por días) que el backoffice y el acumulado.
+      // Re-tomar una devuelta PROPIA no suma carga (ya la cuenta): no se bloquea.
+      if (!devueltaMia) await this.exigirDentroDelTope(idPerson, idFranja, token);
+
       // Tomarla (o re-tomar una devuelta) la deja TOMADA y limpia el comentario
       // de la jefatura: el motivo de la devolución ya fue atendido.
       await qr.query(
@@ -186,6 +204,34 @@ export class PortalDocenteService {
       throw e;
     } finally {
       await qr.release();
+    }
+  }
+
+  /**
+   * Rechaza (409) si, con esta franja, el docente quedaría por encima de su tope.
+   * Falla cerrado: sin el registro del docente en el RUND no hay tope que
+   * verificar, y sin el contrato (503) no hay horas que calcular; en ninguno de
+   * los dos casos se deja tomar «a ciegas».
+   */
+  private async exigirDentroDelTope(idPerson: string, idFranja: string, token: string | null): Promise<void> {
+    const filas: Array<{ vinculacion: string | null; horasAsignables: string | number | null }> = await this.dataSource.query(
+      `SELECT d."tipoVinculacion" AS vinculacion, d."horasAsignables" AS "horasAsignables"
+         FROM academic_work_plan."Docente" d
+        WHERE d."personaId" = $1
+        ORDER BY d."updatedAt" DESC NULLS LAST
+        LIMIT 1`,
+      [idPerson],
+    );
+    if (!filas.length) {
+      throw new ForbiddenException('No se pudo verificar su tope de horas: su registro de docente no está en el RUND.');
+    }
+    const tope = topeDeDocencia(filas[0].vinculacion, filas[0].horasAsignables);
+    if (tope <= 0) return; // tope no definido: no hay límite que exceder (igual que en el backoffice)
+
+    const total = await this.docencia.total(idPerson, filas[0].vinculacion, token, undefined, idFranja);
+    if (superaElTope(total, tope)) {
+      throw new ConflictException(
+        `No puede tomar esta franja: con ella tendría ${total} h de docencia y su tope es de ${tope} h.`);
     }
   }
 

@@ -27,12 +27,13 @@ import {
 
 import {
   getTodasLasSesiones, getAulas, getCrucesHistoricos, getPendientesJefatura,
-  getEstadoPublicacion, publicarProgramacion, retirarProgramacion,
-  type FranjaConContexto, type ValidacionHistorico, type EstadoPublicacion,
+  publicarProgramacion, retirarProgramacion,
+  type FranjaConContexto, type ValidacionHistorico,
 } from '../services/api/catalogoApi';
 import { CalendarioHorario } from './CalendarioHorario';
 import { ModuleLayout, MenuGroup } from '../shared/ModuleLayout';
 import { SelectorCatalogo } from './SelectorCatalogo';
+import { useEstadoPublicacion } from './useEstadoPublicacion';
 import { AsignacionDocente } from './AsignacionDocente';
 import { DisponibilidadAulas } from './DisponibilidadAulas';
 import { GestionOfertas } from './GestionOfertas';
@@ -177,11 +178,10 @@ export function ProgramacionAcademicaModule({
   // §1.2 — Publicar/retirar el periodo activo DESDE la vista de programación, sin
   // ir a buscarlo a otra sección. El backend valida sin cruces al publicar y
   // rechaza retirar si alguien tomó franjas; el mensaje se muestra tal cual.
-  const [estadoPub, setEstadoPub] = useState<EstadoPublicacion | null>(null);
+  // Se relee tras cada escritura confirmada (crear una franja cambia los conteos), no solo al cambiar de periodo.
+  const [estadoPub, setEstadoPub] = useEstadoPublicacion(periodoSel);
   const [avisoPub, setAvisoPub] = useState('');
   const [pubOcupado, setPubOcupado] = useState(false);
-  const cargarEstadoPub = (id: string) => getEstadoPublicacion(id).then(setEstadoPub).catch(() => setEstadoPub(null));
-  useEffect(() => { if (periodoSel) cargarEstadoPub(periodoSel); }, [periodoSel]);
 
   const publicar = async () => {
     setAvisoPub(''); setPubOcupado(true);

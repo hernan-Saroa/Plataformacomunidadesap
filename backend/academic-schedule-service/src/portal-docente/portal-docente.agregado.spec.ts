@@ -1,5 +1,6 @@
 import { Client } from 'pg';
 
+import { DocenciaService } from '../docencia/docencia.service.js';
 import { PortalDocenteService } from './portal-docente.service.js';
 
 /**
@@ -27,8 +28,9 @@ const conexion = {
 };
 
 const S = 'academic-schedule';
-const D1 = '00000000-0000-0000-0000-00000000d001';
-const D2 = '00000000-0000-0000-0000-00000000d002';
+// Dos docentes REALES del RUND (con su registro de docente): tomar ahora valida el tope.
+const D1 = '39a6f90f-2daf-496d-9035-b057e4734873';
+const D2 = '7192ba96-113f-4def-99e9-d6e940f18ecc';
 
 describe('EFDS-1938 :: portal del docente (agregado real)', () => {
   let client: Client | null = null;
@@ -51,7 +53,9 @@ describe('EFDS-1938 :: portal del docente (agregado real)', () => {
       query: (sql: string, params?: any[]) => client!.query(sql, params).then((r) => r.rows),
     }),
   };
-  const servicio = () => new PortalDocenteService(dataSource, null as any);
+  // El contrato PROG↔PTA se simula a 10 h por grupo: lejos del tope (el tope tiene su propio canario).
+  const docencia = () => new DocenciaService(dataSource, { calcularImpacto: async () => ({ horasImpacto: 10 }) } as any);
+  const servicio = () => new PortalDocenteService(dataSource, null as any, docencia());
 
   const insertar = async (etiqueta: string, dia: string, ini: string, fin: string, aula: string, grupo = idGrupo) => {
     const r = await client!.query(
@@ -109,11 +113,19 @@ describe('EFDS-1938 :: portal del docente (agregado real)', () => {
 
   siHayBase('tomar mueve PUBLICADA -> TOMADA y fija el id_docente', async () => {
     const svc = servicio();
-    await svc.tomar(D1, franjas['A']);
+    await svc.tomar(D1, franjas['A'], null);
     const { rows } = await client!.query(
       `SELECT estado, id_docente FROM "${S}".franja_horaria WHERE id_franja = $1`, [franjas['A']]);
     expect(rows[0].estado).toBe('TOMADA');
     expect(String(rows[0].id_docente)).toBe(D1);
+  });
+
+  siHayBase('cada franja trae su periodo (id y código): el portal lo necesita para enviar a concertación', async () => {
+    const svc = servicio();
+    const mias = await svc.misFranjas(D1);
+    const a = mias.find((f) => f.idFranja === franjas['A'])!;
+    expect(a.idPeriodo).toBe(idPeriodo);
+    expect(a.periodoCodigo).toMatch(/^QA-POR-/);
   });
 
   siHayBase('al tener A, la franja B (que cruza) sale de disponibles; C sigue', async () => {
@@ -127,7 +139,7 @@ describe('EFDS-1938 :: portal del docente (agregado real)', () => {
 
   siHayBase('tomar la misma franja de nuevo: la segunda ve que ya no está publicada', async () => {
     const svc = servicio();
-    await expect(svc.tomar(D2, franjas['A'])).rejects.toThrow(/disponible/i);
+    await expect(svc.tomar(D2, franjas['A'], null)).rejects.toThrow(/disponible/i);
   });
 
   siHayBase('soltar devuelve A a PUBLICADA y B vuelve a estar disponible', async () => {
@@ -144,7 +156,7 @@ describe('EFDS-1938 :: portal del docente (agregado real)', () => {
 
   siHayBase('no se suelta una franja ajena (solo la suelta quien la tomó)', async () => {
     const svc = servicio();
-    await svc.tomar(D1, franjas['C']);
+    await svc.tomar(D1, franjas['C'], null);
     // Otro docente no puede soltarla.
     await expect(svc.soltar(D2, franjas['C'])).rejects.toThrow(/usted haya tomado/i);
     // (La guarda de «no soltar lo APROBADO» se ejercita en el canario de D,

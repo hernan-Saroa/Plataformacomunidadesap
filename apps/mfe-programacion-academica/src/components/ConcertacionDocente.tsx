@@ -16,11 +16,12 @@ const ESTADO: Record<Item['estado'], string> = {
 /**
  * EFDS-2315 — El docente envía su docencia del periodo a concertación y firma.
  *
- * Pensado para la vista del portal docente (archivo de Codex): se monta allí con
- * el periodo seleccionado. Si la concertación está apagada no muestra nada: el
- * flujo de hoy (aprobación de la jefatura) sigue igual.
+ * Se monta en el portal docente (`PortalDocenteProgramacion`), una vez por cada
+ * periodo en que el docente tiene franjas. Si la concertación está apagada, o el
+ * periodo es anterior al corte, no muestra nada: ahí el flujo de hoy (aprobación
+ * de la jefatura) sigue igual.
  */
-export function ConcertacionDocente({ idPeriodo }: { idPeriodo: string }) {
+export function ConcertacionDocente({ idPeriodo, codigoPeriodo }: { idPeriodo: string; codigoPeriodo?: string | null }) {
   const revision = useRevisionProgramacion('concertacion', 'portal-docente');
   const [config, setConfig] = useState<ConfiguracionConcertacion | null>(null);
   const [items, setItems] = useState<Item[]>([]);
@@ -42,6 +43,10 @@ export function ConcertacionDocente({ idPeriodo }: { idPeriodo: string }) {
   }, [config?.habilitada, idPeriodo, revision]);
 
   if (!config?.habilitada) return null;
+  // Antes del corte (o en un periodo que no es AAAA-S) la Docencia la aprueba el PTA:
+  // el servidor rechazaría el envío (409), así que ni se ofrece.
+  if (codigoPeriodo && config.desdePeriodo
+    && !(/^\d{4}-[12]$/.test(codigoPeriodo) && codigoPeriodo >= config.desdePeriodo)) return null;
 
   const puedeEnviar = items.length === 0 || items.some((i) => i.estado === 'DEVUELTA');
   const enviar = async () => {
@@ -53,7 +58,9 @@ export function ConcertacionDocente({ idPeriodo }: { idPeriodo: string }) {
 
   return (
     <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-      <h4 className="font-bold text-slate-800 text-sm">Concertación de mi docencia</h4>
+      <h4 className="font-bold text-slate-800 text-sm">
+        Concertación de mi docencia{codigoPeriodo ? ` · Periodo ${codigoPeriodo}` : ''}
+      </h4>
       {items.map((i) => (
         <div key={i.idConcertacion} className="text-xs text-slate-600">
           <strong>{i.nivel === 'pregrado' ? 'Pregrado' : 'Posgrado'}</strong> · {i.horas} h · {ESTADO[i.estado]}

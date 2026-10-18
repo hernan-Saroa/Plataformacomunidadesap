@@ -54,6 +54,7 @@ export class DocenciaService {
     vinculacion: string | null,
     token: string | null,
     excluirGrupo?: string,
+    incluirFranja?: string,
   ): Promise<DocenciaGrupo[]> {
     const grupos: any[] = await this.dataSource.query(
       `SELECT DISTINCT g.id_grupo::text                                   AS "idGrupo",
@@ -67,14 +68,14 @@ export class DocenciaService {
          JOIN academic_work_plan.asignatura a      ON a.id = g.id_asignatura
          LEFT JOIN academic_work_plan.periodo_academico pa ON pa.id = g.id_periodo_academico
          LEFT JOIN "academic-schedule".periodo_programacion pp ON pp.id_periodo = g.id_periodo
-        WHERE f.id_docente = $1
+        WHERE (f.id_docente = $1 OR f.id_franja = $3::uuid)
           AND ($2::uuid IS NULL OR g.id_grupo <> $2::uuid)`,
-      [idDocente, excluirGrupo ?? null],
+      [idDocente, excluirGrupo ?? null, incluirFranja ?? null],
     );
     if (!grupos.length) return [];
 
-    const franjas: Array<FranjaReparto & { idGrupo: string }> = await this.dataSource.query(
-      `SELECT id_grupo::text AS "idGrupo", dia_semana AS "diaSemana", id_docente::text AS "idDocente",
+    const franjas: Array<FranjaReparto & { idGrupo: string; idFranja: string }> = await this.dataSource.query(
+      `SELECT id_franja::text AS "idFranja", id_grupo::text AS "idGrupo", dia_semana AS "diaSemana", id_docente::text AS "idDocente",
               to_char(hora_inicio, 'HH24:MI') AS "horaInicio", to_char(hora_fin, 'HH24:MI') AS "horaFin"
          FROM "academic-schedule".franja_horaria
         WHERE id_grupo = ANY($1::uuid[])`,
@@ -91,15 +92,20 @@ export class DocenciaService {
         calculos.set(g.codigoAsignatura, Number(calc.horasImpacto ?? 0));
       }
       const horasGrupo = calculos.get(g.codigoAsignatura)!;
-      const fraccion = this.reparto(franjas.filter((f) => f.idGrupo === g.idGrupo), idDocente);
+      // Con `incluirFranja`, la franja se cuenta como si el docente ya la tuviera.
+      const delGrupo = franjas.filter((f) => f.idGrupo === g.idGrupo)
+        .map((f) => (incluirFranja && f.idFranja === incluirFranja ? { ...f, idDocente } : f));
+      const fraccion = this.reparto(delGrupo, idDocente);
       resultado.push({ ...g, horasGrupo, fraccion, horas: redondear(horasGrupo * fraccion) });
     }
     return resultado;
   }
 
   /** Total de horas de docencia del docente (suma de `porGrupo`). */
-  async total(idDocente: string, vinculacion: string | null, token: string | null, excluirGrupo?: string): Promise<number> {
-    const grupos = await this.porGrupo(idDocente, vinculacion, token, excluirGrupo);
+  async total(
+    idDocente: string, vinculacion: string | null, token: string | null, excluirGrupo?: string, incluirFranja?: string,
+  ): Promise<number> {
+    const grupos = await this.porGrupo(idDocente, vinculacion, token, excluirGrupo, incluirFranja);
     return redondear(grupos.reduce((s, g) => s + g.horas, 0));
   }
 }
