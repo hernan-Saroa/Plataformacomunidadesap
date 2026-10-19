@@ -488,3 +488,9 @@ Hoy un periodo sin ofertas obliga a cargar el Excel otra vez. Propongo `POST /pt
 
 ### 14.8 Pruebas
 Las pruebas de agregado de PA ya no dependen del catálogo cargado: usan `test/catalogo-qa.cjs` (programa, núcleo, asignatura, periodo y oferta propios, con códigos `QA-*`, dentro de la transacción de cada prueba, o confirmados y retirados cuando leen por otra conexión). Un fixture que falla ahora **se grita**: antes la prueba se saltaba en silencio y dejaba una conexión abierta dentro de una transacción abortada. Ojo al medir omitidas: con la suite completa Jest no muestra los `console.warn`; hay que correr cada archivo solo.
+
+## 15. Prueba de Tomás: concertación oculta y vista de la jefatura (18 de octubre)
+
+- **El docente no veía «Enviar a concertación»:** no faltaba el botón. El corte local `PROG_CONCERTACION_DESDE_PERIODO=2050-2` (lo dejé para pruebas anteriores) era posterior a 2026-2, el periodo de sus franjas, y el portal oculta el bloque antes del corte. El `.env` local de PA quedó en `2026-1`. El PTA lee el corte de PA: 2026-1 y 2026-2 → régimen `programacion`; 2025-2 → `actual`.
+- **La jefatura veía «Sin periodos» y «No tiene permisos de programación»:** `GET /periodos` exige un nivel de programación y la jefatura no programa (solo revisa y aprueba). Ahora `periodosApi` adjunta `status` al error, y `ProgramacionAcademicaModule` entra en **perfil de revisión** con un 403 de `/periodos`: sin cabecera de periodo, sin indicadores y sin las secciones de programación; solo Concertación (y Aprobación territorial si es jefatura). El backend no cambió. Codex: el cambio es aditivo y está en tu módulo (`soloRevision`).
+- Verificado en el navegador real sin enviar nada: el docente ve «Concertación de mi docencia · Periodo 2026-2» con «Enviar»; la jefatura ve solo Concertación, sin errores de JS.
