@@ -492,12 +492,15 @@ export const contratacionService = {
    */
   designarComite: (
     procesoId: string,
-    datos: { fechaDesignacion: string; miembros: MiembroPropuesto[]; firma?: EvidenciaFirmaOtp },
-    memorando: File,
+    datos: { fechaDesignacion?: string; miembros: MiembroPropuesto[]; firma?: EvidenciaFirmaOtp },
+    memorando: File | null,
   ) => {
     const cuerpo = new FormData();
-    cuerpo.append('file', memorando);
-    cuerpo.append('fechaDesignacion', datos.fechaDesignacion);
+    // El memorando puede llegar después (EFDS-1156): sin él tampoco va su fecha.
+    if (memorando) {
+      cuerpo.append('file', memorando);
+      if (datos.fechaDesignacion) cuerpo.append('fechaDesignacion', datos.fechaDesignacion);
+    }
     cuerpo.append('miembros', JSON.stringify(datos.miembros));
     if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
 
@@ -508,6 +511,18 @@ export const contratacionService = {
   },
 
   /** Revoca la designación vigente; la anterior se conserva en el expediente. */
+  /** Carga el memorando del comité que se designó sin él. */
+  cargarMemorandoComite: (procesoId: string, fechaDesignacion: string, memorando: File) => {
+    const cuerpo = new FormData();
+    cuerpo.append('file', memorando);
+    cuerpo.append('fechaDesignacion', fechaDesignacion);
+
+    return pedir<EstadoComite>(`/procesos/${procesoId}/comite/memorando`, {
+      method: 'POST',
+      body: cuerpo,
+    });
+  },
+
   revocarComite: (procesoId: string, motivo: string) =>
     pedir<EstadoComite>(`/procesos/${procesoId}/comite/revocar`, {
       method: 'POST',

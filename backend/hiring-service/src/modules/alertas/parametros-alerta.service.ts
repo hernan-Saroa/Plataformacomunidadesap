@@ -9,6 +9,8 @@ export type ClaveParametroAlerta =
   | 'anticipacion_rp'
   | 'anticipacion_liquidacion'
   | 'tolerancia_sin_abogado'
+  | 'plazo_acta_comite'
+  | 'plazo_memorando_comite'
   | 'hora_aviso';
 
 export interface ParametroAlerta {
@@ -31,6 +33,8 @@ export const PARAMETROS_POR_DEFECTO: ParametroAlerta[] = [
   { clave: 'anticipacion_rp', valor: 30, minimo: 1, maximo: 180, descripcion: 'Días antes del cierre de la vigencia de un RP en que se empieza a alertar' },
   { clave: 'anticipacion_liquidacion', valor: 30, minimo: 1, maximo: 180, descripcion: 'Días antes del plazo legal para liquidar en que se empieza a alertar' },
   { clave: 'tolerancia_sin_abogado', valor: 2, minimo: 0, maximo: 30, descripcion: 'Días que un proceso recibido puede estar sin abogado antes de alertar' },
+  { clave: 'plazo_acta_comite', valor: 10, minimo: 1, maximo: 60, descripcion: 'Días calendario que puede tardar el acta de una sesión del Comité de Contratación antes de darse por vencida' },
+  { clave: 'plazo_memorando_comite', valor: 10, minimo: 1, maximo: 60, descripcion: 'Días calendario que puede tardar el memorando de designación del comité evaluador antes de darse por vencido' },
   { clave: 'hora_aviso', valor: 7, minimo: 0, maximo: 23, descripcion: 'Hora de Bogotá a la que sale el aviso diario de vencimientos' },
 ];
 

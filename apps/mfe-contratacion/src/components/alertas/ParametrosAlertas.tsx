@@ -14,6 +14,11 @@ const PLAZO: Record<string, { nombre: string; valor: (n: number) => string }> = 
   anticipacion_rp: { nombre: 'Registro presupuestal', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} antes` },
   anticipacion_liquidacion: { nombre: 'Liquidación', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} antes` },
   tolerancia_sin_abogado: { nombre: 'Puesto obligatorio vacío', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} de espera` },
+  plazo_acta_comite: { nombre: 'Acta del comité', valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} calendario` },
+  plazo_memorando_comite: {
+    nombre: 'Memorando del comité evaluador',
+    valor: (n) => `${n} ${n === 1 ? 'día' : 'días'} calendario`,
+  },
   hora_aviso: { nombre: 'Aviso diario', valor: (n) => `${n}:00, hora de Bogotá` },
 };
 

@@ -1020,10 +1020,13 @@ export interface MiembroComite {
 /** La designación vigente, con el memorando que la soporta. */
 export interface ComiteDesignado {
   id: string;
-  fechaDesignacion: string;
+  /** La del memorando: nula mientras el memorando no llega (117). */
+  fechaDesignacion: string | null;
   designadoPor: string | null;
   designadoAt: string;
   memorando: ArchivoApertura | null;
+  /** Si al comité vigente le falta el memorando y se puede cargar ahora. */
+  puedeCargarMemorando?: boolean;
 }
 
 /** Estado del comité evaluador del proceso. */

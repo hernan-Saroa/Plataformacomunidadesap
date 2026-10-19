@@ -25,16 +25,16 @@ const NUMERAL = '6.2';
 
 const ETIQUETA_ROL: Record<RolEvaluador, string> = {
   JURIDICO: 'Jurídica',
-  FINANCIERO: 'Financiera',
+  FINANCIERO: 'Financiera y económica',
   TECNICO: 'Técnica',
 };
 
 /**
  * Actividad 6.2 · Designación del comité evaluador (EFDS-1156).
  *
- * La lista de miembros se arma en pantalla y se envía junto al memorando en una
- * sola petición, porque una designación a medias no existe: son los nombres y
- * el acto que los nombra, o no hay comité.
+ * Un solo registro, sin flujo secuencial: los integrantes con su rol y, si ya
+ * está firmado, el memorando. El memorando no frena el proceso porque depende
+ * de firmas que tardan; mientras falte, se puede cargar aquí y hay alerta.
  */
 export function PanelComite({ procesoId, onCambio }: Props) {
   const dialogo = useDialogo();
@@ -50,6 +50,10 @@ export function PanelComite({ procesoId, onCambio }: Props) {
   const [rol, setRol] = useState<RolEvaluador>('JURIDICO');
   const [fecha, setFecha] = useState(hoyEnBogota());
   const [memorando, setMemorando] = useState<File | null>(null);
+
+  // Memorando que llega después de designar
+  const [memorandoTardio, setMemorandoTardio] = useState<File | null>(null);
+  const [fechaTardia, setFechaTardia] = useState(hoyEnBogota());
 
   const leer = () =>
     contratacionService
@@ -94,19 +98,46 @@ export function PanelComite({ procesoId, onCambio }: Props) {
     setPropuestos((lista) => lista.filter((_, i) => i !== indice));
 
   const designar = async (firmaOtp?: EvidenciaFirmaOtp) => {
-    if (propuestos.length === 0 || !memorando || !fecha) return;
+    if (propuestos.length === 0 || (memorando && !fecha)) return;
 
     setGuardando(true);
     try {
       setEstado(
         await contratacionService.designarComite(
           procesoId,
-          { fechaDesignacion: fecha, miembros: propuestos, firma: firmaOtp },
+          {
+            fechaDesignacion: memorando ? fecha : undefined,
+            miembros: propuestos,
+            firma: firmaOtp,
+          },
           memorando,
         ),
       );
       limpiar();
-      toast.success('Comité evaluador designado');
+      toast.success(
+        memorando
+          ? 'Comité evaluador designado'
+          : 'Comité evaluador designado; falta cargar el memorando',
+      );
+      onCambio?.();
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const cargarMemorando = async () => {
+    if (!memorandoTardio || !fechaTardia) return;
+
+    setGuardando(true);
+    try {
+      setEstado(
+        await contratacionService.cargarMemorandoComite(procesoId, fechaTardia, memorandoTardio),
+      );
+      setMemorandoTardio(null);
+      setFechaTardia(hoyEnBogota());
+      toast.success('Memorando del comité cargado');
       onCambio?.();
     } catch (err: any) {
       toast.error(err.message);
@@ -170,8 +201,9 @@ export function PanelComite({ procesoId, onCambio }: Props) {
     <Marco>
       <Titulo>Comité evaluador</Titulo>
       <Ayuda>
-        El Ordenador del Gasto designa por memorando a quienes evaluarán las ofertas. Sin comité
-        designado, la evaluación no puede iniciarse.
+        Se registran los integrantes del comité y el rol de cada uno. El memorando de designación
+        se puede cargar después, cuando esté firmado: no frena el proceso, pero queda una alerta
+        mientras falte. Sin comité, la evaluación no puede iniciarse.
       </Ayuda>
 
       {/* Quien consulta sabe de entrada si le toca evaluar y en qué. */}
@@ -202,7 +234,9 @@ export function PanelComite({ procesoId, onCambio }: Props) {
               <Users className="w-4 h-4 mt-0.5 flex-shrink-0 text-emerald-900" />
               <div className="min-w-0 flex-1">
                 <p className="text-[12.5px] font-bold text-emerald-900 m-0">
-                  Comité designado el {fechaLarga(estado.comite.fechaDesignacion)}
+                  {estado.comite.fechaDesignacion
+                    ? `Comité designado el ${fechaLarga(estado.comite.fechaDesignacion)}`
+                    : `Comité registrado el ${fechaLarga(estado.comite.designadoAt.slice(0, 10))}`}
                 </p>
                 <p className="text-[11.5px] text-emerald-900 m-0 mt-0.5 leading-relaxed break-words">
                   {estado.comite.designadoPor ? `Por ${estado.comite.designadoPor}. ` : ''}
@@ -213,6 +247,47 @@ export function PanelComite({ procesoId, onCambio }: Props) {
               </div>
             </div>
           </div>
+
+          {!estado.comite.memorando ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-3 space-y-2.5">
+              <Aviso tono="aviso" titulo="Falta el memorando de designación">
+                El comité ya puede evaluar. Carga el memorando cuando esté firmado: mientras
+                falte, queda una alerta.
+              </Aviso>
+              {estado.comite.puedeCargarMemorando ? (
+                <>
+                  <SelectorArchivo
+                    etiqueta="Memorando de designación"
+                    obligatorio
+                    archivo={memorandoTardio}
+                    onElegir={setMemorandoTardio}
+                  />
+                  <div>
+                    <label
+                      htmlFor="comite-fecha-tardia"
+                      className="block text-xs font-bold text-gray-600 mb-1.5"
+                    >
+                      Fecha del memorando <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      id="comite-fecha-tardia"
+                      type="date"
+                      value={fechaTardia}
+                      onChange={(e) => setFechaTardia(e.target.value)}
+                      className={campo}
+                    />
+                  </div>
+                  <Boton
+                    icono={<FileText className="w-3.5 h-3.5" />}
+                    disabled={guardando || !memorandoTardio || !fechaTardia}
+                    onClick={cargarMemorando}
+                  >
+                    Cargar el memorando
+                  </Boton>
+                </>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             {estado.miembros.map((miembro) => (
@@ -253,20 +328,7 @@ export function PanelComite({ procesoId, onCambio }: Props) {
 
       {estado.puedeDesignar && designando ? (
         <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-3 space-y-3">
-          <p className="text-[12.5px] font-bold text-slate-800 m-0">Nuevo comité evaluador</p>
-
-          <div>
-            <label htmlFor="comite-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
-              Fecha del memorando <span className="text-red-600">*</span>
-            </label>
-            <input
-              id="comite-fecha"
-              type="date"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              className={campo}
-            />
-          </div>
+          <p className="text-[12.5px] font-bold text-slate-800 m-0">Comité evaluador</p>
 
           <div>
             <label htmlFor="comite-persona" className="block text-xs font-bold text-gray-600 mb-1.5">
@@ -290,7 +352,7 @@ export function PanelComite({ procesoId, onCambio }: Props) {
                 className={campo}
               >
                 <option value="JURIDICO">Evaluación jurídica</option>
-                <option value="FINANCIERO">Evaluación financiera</option>
+                <option value="FINANCIERO">Evaluación financiera y económica</option>
                 <option value="TECNICO">Evaluación técnica</option>
               </select>
               <button
@@ -341,15 +403,31 @@ export function PanelComite({ procesoId, onCambio }: Props) {
           )}
 
           <SelectorArchivo
-            etiqueta="Memorando de designación"
+            etiqueta="Memorando de designación (opcional, se puede cargar después)"
             archivo={memorando}
             onElegir={setMemorando}
           />
 
+          {/* La fecha es la del memorando: solo se pide si viene con él. */}
+          {memorando ? (
+            <div>
+              <label htmlFor="comite-fecha" className="block text-xs font-bold text-gray-600 mb-1.5">
+                Fecha del memorando <span className="text-red-600">*</span>
+              </label>
+              <input
+                id="comite-fecha"
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className={campo}
+              />
+            </div>
+          ) : null}
+
           <div className="flex items-center gap-2">
             <Boton
               icono={<UserPlus className="w-3.5 h-3.5" />}
-              disabled={guardando || propuestos.length === 0 || !memorando || !fecha}
+              disabled={guardando || propuestos.length === 0 || (!!memorando && !fecha)}
               onClick={() => firma.conFirma(designar)}
             >
               {guardando ? 'Designando…' : 'Designar comité'}
@@ -375,10 +453,12 @@ function SelectorArchivo({
   etiqueta,
   archivo,
   onElegir,
+  obligatorio = false,
 }: {
   etiqueta: string;
   archivo: File | null;
   onElegir: (archivo: File) => void;
+  obligatorio?: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
 
@@ -394,7 +474,7 @@ function SelectorArchivo({
         }`}
       >
         <FileText className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-        {etiqueta} <span className="text-red-600">*</span>
+        {etiqueta} {obligatorio ? <span className="text-red-600">*</span> : null}
       </p>
       <p
         className={`text-[11.5px] m-0 leading-relaxed break-words ${

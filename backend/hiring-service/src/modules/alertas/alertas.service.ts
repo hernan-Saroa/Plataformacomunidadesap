@@ -290,6 +290,8 @@ export class AlertasService {
       devueltas,
       sinResponsable,
       plazosActividad,
+      actasPendientes,
+      memorandosPendientes,
     ] = await Promise.all([
       this.amparosPorVencer(),
       this.respaldosPorVencer(),
@@ -298,6 +300,8 @@ export class AlertasService {
       this.devueltasParaCorregir(acceso),
       this.procesosSinResponsable(hoy, plazos.tolerancia_sin_abogado, acceso),
       this.plazosDeActividades(acceso),
+      this.actasDelComitePendientes(hoy, plazos.plazo_acta_comite, acceso),
+      this.memorandosDelComitePendientes(hoy, plazos.plazo_memorando_comite, acceso),
     ]);
 
     const conPlazo: Alerta[] = plazosActividad.map((p) => ({
@@ -331,7 +335,7 @@ export class AlertasService {
       })
       .filter((a) => a.estado !== 'VIGENTE');
 
-    return [...aprobaciones, ...devueltas, ...sinResponsable, ...conPlazo, ...vencimientos]
+    return [...aprobaciones, ...devueltas, ...sinResponsable, ...actasPendientes, ...memorandosPendientes, ...conPlazo, ...vencimientos]
       // Lo más urgente primero: lo vencido arriba, y dentro de eso lo que lleva
       // más tiempo vencido. Las aprobaciones usan el mismo número en negativo
       // —los días que llevan esperando—, así que una que lleva una semana sin
@@ -1195,6 +1199,31 @@ export class AlertasService {
             tipo_notificacion: 'contratacion_sin_responsable',
             titulo: 'Un proceso tiene un puesto vacío',
             mensaje: `En el proceso ${a.radicado}, ${a.descripcion.replace(/^3\.3 · /, '')} desde hace ${Math.abs(a.diasRestantes)} días. Asígnalo en la 3.3.`,
+          }
+        : a.tipo === 'ACTA_COMITE_PENDIENTE'
+        ? {
+            id_usuario_destinatario: a.responsableId as string,
+            tipo_notificacion: 'contratacion_acta_comite',
+            titulo: a.estado === 'VENCIDO' ? 'Acta del comité vencida' : 'Falta el acta del comité',
+            mensaje: `Proceso ${a.radicado}: ${a.descripcion.replace(/^[\d.]+ · /, '')} sigue sin cargarse${
+              a.estado === 'VENCIDO'
+                ? `; el plazo venció hace ${Math.abs(a.diasRestantes)} días`
+                : `; el plazo vence el ${a.vence}`
+            }.`,
+          }
+        : a.tipo === 'MEMORANDO_COMITE_PENDIENTE'
+        ? {
+            id_usuario_destinatario: a.responsableId as string,
+            tipo_notificacion: 'contratacion_memorando_comite',
+            titulo:
+              a.estado === 'VENCIDO'
+                ? 'Memorando del comité evaluador vencido'
+                : 'Falta el memorando del comité evaluador',
+            mensaje: `Proceso ${a.radicado}: el memorando de designación del comité evaluador sigue sin cargarse${
+              a.estado === 'VENCIDO'
+                ? `; el plazo venció hace ${Math.abs(a.diasRestantes)} días`
+                : `; el plazo vence el ${a.vence}`
+            }.`,
           }
         : a.tipo === 'APROBACION_PENDIENTE'
         ? {
