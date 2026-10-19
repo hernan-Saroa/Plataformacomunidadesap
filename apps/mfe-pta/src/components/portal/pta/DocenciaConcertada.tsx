@@ -20,14 +20,24 @@ export function DocenciaConcertada({
   asignaturas,
   aprobaciones,
   aprobacionesCargadas,
+  vistaPrevia = false,
+  ptaVigente = null,
+  onIrAMisPtas,
 }: {
   asignaturas: AsignaturaConcertadaVista[];
   aprobaciones: AprobacionDocenciaVista[];
   aprobacionesCargadas: boolean;
+  /** PTA nuevo (aún sin guardar): lo concertado ya está aprobado y se incorpora al guardar. */
+  vistaPrevia?: boolean;
+  /** PTA del docente ya existente en este periodo: se continúa ese, no se crea otro. */
+  ptaVigente?: { id: string; estado: string } | null;
+  onIrAMisPtas?: () => void;
 }) {
   const concertadas = asignaturas.filter((asignatura) => asignatura.origen === 'programacion');
   const totalHoras = concertadas.reduce((total, asignatura) => total + Number(asignatura.total_horas || 0), 0);
-  const aprobada = aprobaciones.some((aprobacion) =>
+  // En la vista previa de un PTA nuevo, que haya docencia concertada significa que YA se aprobó (el
+  // servidor solo entrega lo aprobado); la aprobación del componente se registra al guardar.
+  const aprobada = (vistaPrevia && concertadas.length > 0) || aprobaciones.some((aprobacion) =>
     aprobacion.scope === 'programacion'
     && aprobacion.estado === 'aprobado'
     && (aprobacion.componente === 'academica_pregrado' || aprobacion.componente === 'academica_posgrado'),
@@ -42,6 +52,7 @@ export function DocenciaConcertada({
         {aprobada ? (
           <p className="mt-2 flex items-center gap-2 text-sm font-bold text-emerald-700">
             <CheckCircle2 className="w-4 h-4" /> Aprobada en la concertación
+            {vistaPrevia && <span className="font-normal text-emerald-800">· se incorpora a este PTA al guardarlo</span>}
           </p>
         ) : aprobacionesCargadas && concertadas.length > 0 ? (
           <p className="mt-2 text-sm text-amber-800">La aprobación de la concertación aún no figura en el PTA.</p>
@@ -52,6 +63,14 @@ export function DocenciaConcertada({
           <LockKeyhole className="w-4 h-4 shrink-0 mt-0.5" />
           Las asignaturas y sus horas vienen de Programación Académica. La concertación las aprueba; por eso no se pueden editar ni agregar asignaturas a mano en el PTA.
         </p>
+        {ptaVigente && (
+          <div role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Ya tiene un PTA de este periodo ({ptaVigente.estado}) con su docencia. Continúe ese PTA en lugar de crear otro.
+            {onIrAMisPtas && (
+              <button type="button" onClick={onIrAMisPtas} className="ml-2 font-bold underline">Ir a mis PTAs</button>
+            )}
+          </div>
+        )}
       </div>
 
       {concertadas.length === 0 ? (

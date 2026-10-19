@@ -57,7 +57,7 @@ import {
   normalizeConfiguredHourRow,
 } from '../../pta/shared/configuredHours';
 import { formatPtaPercentage, getPtaCompletionPercentage } from '../../../utils/ptaCompletion';
-import { getRegimenDocencia, type RegimenDocencia } from '../../../services/api/docenciaConcertadaApi';
+import { getDocenciaAprobada, getRegimenDocencia, type RegimenDocencia } from '../../../services/api/docenciaConcertadaApi';
 import { DocenciaConcertada } from './DocenciaConcertada';
 import {
   filterAssignmentsByPensum,
@@ -2134,6 +2134,25 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
 
   // Componentes
   const [asignaturas, setAsignaturas] = useState<AsignaturaItem[]>([]);
+
+  // PTA NUEVO en el régimen de concertación: la docencia ya aprobada se aplica al guardar (servidor,
+  // aplicarPendientesAlCrear), pero el docente debe verla desde el principio. Antes el formulario vacío
+  // decía «llegará cuando se apruebe» aunque ya estuviera aprobada. Si ya hay un PTA del periodo, se avisa
+  // para que lo continúe en vez de crear otro.
+  const [ptaVigenteDelPeriodo, setPtaVigenteDelPeriodo] = useState<{ id: string; estado: string } | null>(null);
+  useEffect(() => {
+    if (currentPtaId || isAdminEdit || regimenDocencia !== 'programacion' || !periodo) { setPtaVigenteDelPeriodo(null); return; }
+    let vigente = true;
+    getDocenciaAprobada(periodo).then((r) => {
+      if (!vigente) return;
+      setPtaVigenteDelPeriodo(r.ptaVigente);
+      if (r.asignaturas.length) {
+        // Reemplaza solo la de programación (en este régimen no hay docencia manual): no se edita aquí.
+        setAsignaturas((prev) => [...prev.filter((a) => a.origen !== 'programacion'), ...r.asignaturas]);
+      }
+    });
+    return () => { vigente = false; };
+  }, [currentPtaId, isAdminEdit, regimenDocencia, periodo]);
   const [invProyecto, setInvProyecto] = useState<InvestigacionProyecto>({
     territorial_id: '',
     nombre: '', codigo: '', grupo: '', linea: '', rol: '',
@@ -4882,7 +4901,9 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
     // vuelve a resolver el catálogo al consultar el PTA, pero esta copia mantiene
     // completos también los snapshots y borradores recién guardados.
     const asignaturasPayload = regimenDocencia === 'programacion'
-      ? asignaturas.filter(a => a.origen === 'programacion')
+      // Al CREAR, lo concertado que se ve es una vista previa: el servidor lo aplica él mismo al guardar
+      // (aplicarPendientesAlCrear) y rechaza asignaturas «de programación» que no tenga guardadas.
+      ? (currentPtaId ? asignaturas.filter(a => a.origen === 'programacion') : [])
       : asignaturas
       .filter(a => a.asignatura_id && a.asignatura_id !== '')
       .map(a => {
@@ -6191,7 +6212,8 @@ export function PTAForm({ syncVersion, onBack, userPersonId, ptaId, isAdminEdit 
             {/* ─── DOCENCIA ─── */}
             {activeVisibleSection === 'docencia' && (
               regimenDocencia === 'programacion' ? (
-                <DocenciaConcertada asignaturas={asignaturas} aprobaciones={componentesAprobacion} aprobacionesCargadas={aprobacionesCargadas} />
+                <DocenciaConcertada asignaturas={asignaturas} aprobaciones={componentesAprobacion} aprobacionesCargadas={aprobacionesCargadas}
+                  vistaPrevia={!currentPtaId} ptaVigente={currentPtaId ? null : ptaVigenteDelPeriodo} onIrAMisPtas={onBack} />
               ) : (
               <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
                 {regimenDocencia === 'error' && (
