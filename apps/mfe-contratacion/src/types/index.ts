@@ -79,12 +79,6 @@ export interface Persona {
   cargo?: string | null;
 }
 
-/** Cargo de auth.cargos, el catálogo que administra estructura organizacional. */
-export interface Cargo {
-  id: string;
-  nombre: string;
-}
-
 /** Dependencia de auth.dependencias, el catálogo transversal de la ESAP. */
 export interface Dependencia {
   id: string;

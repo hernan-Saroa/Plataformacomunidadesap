@@ -41,7 +41,6 @@ import { CierreActividadService } from '../cierre-actividad/cierre-actividad.ser
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 import {
   BorrarProcesoDto,
-  CambiarModalidadDto,
   CrearProcesoDesdePaaDto,
   CrearProcesoDto,
   GuardarBorradorDto,
@@ -860,61 +859,6 @@ export class EstudioPrevioService implements OnModuleInit {
       ronda,
       acciones: ronda.acciones,
     };
-  }
-
-  /**
-   * Cambia la modalidad mientras el área arma el estudio previo.
-   *
-   * La modalidad se elige al crear el proceso, pero es en la 3.1 donde el área
-   * termina de entender qué va a contratar, y de la modalidad depende la lista
-   * de chequeo que tiene que cargar. Antes solo se corregía en la 3.5, cuando
-   * el estudio previo ya estaba enviado con los documentos de la otra.
-   *
-   * No se ratifica aparte: aprobar la 3.1 es ratificarla, y si no corresponde,
-   * el abogado devuelve el estudio previo diciendo cuál sí.
-   *
-   * Recalcula qué actividades recorre el proceso. Lo que ya se cargó para la
-   * modalidad anterior no se borra: la lista lo sigue enseñando aparte.
-   */
-  async cambiarModalidad(procesoId: string, dto: CambiarModalidadDto, acceso: HiringAccess) {
-    await this.dataSource.transaction(async (em) => {
-      await this.exigirPaqueteEditable(em, procesoId, acceso);
-      const proceso = await this.validarEtapa(em, procesoId);
-
-      const modalidad = await em.findOne(Modalidad, {
-        where: { codigo: dto.modalidad, activa: true },
-      });
-      if (!modalidad) {
-        throw new BadRequestException(
-          `La modalidad "${dto.modalidad}" no existe o ya no está vigente`,
-        );
-      }
-      if (modalidad.codigo === proceso.modalidad) return;
-
-      // La misma regla que al crear el proceso: si la cuantía obliga a
-      // licitación pública, no se cuela una de menor cuantía por otra puerta.
-      await this.umbrales.exigirModalidadPermitida(proceso.valorEstimado ?? 0, modalidad);
-
-      const anterior = proceso.modalidad;
-      proceso.modalidad = modalidad.codigo;
-      await em.save(Proceso, proceso);
-
-      const actividadesCambiadas = await this.configuracionService.reaplicarModalidad(
-        em,
-        procesoId,
-        modalidad.codigo,
-      );
-
-      const actividad = await this.obtenerActividad(em, procesoId);
-      await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'CAMBIAR_MODALIDAD', acceso, {
-        modalidad: modalidad.codigo,
-        modalidadNombre: modalidad.nombre,
-        modalidadAnterior: anterior,
-        actividadesCambiadas,
-      });
-    });
-
-    return this.obtener(procesoId, acceso);
   }
 
   /** Guarda sin validar obligatorios: el usuario puede dejarlo a medias. */

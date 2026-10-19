@@ -22,12 +22,6 @@ interface Props {
   valor: any;
   error?: string;
   disabled?: boolean;
-  /**
-   * El área solicitante elegida en el mismo formulario. Los campos de
-   * `CAMPOS_DE_PERSONA` solo ofrecen gente de esa dependencia; `undefined`
-   * cuando el formulario no pide área y no hay con qué filtrar.
-   */
-  dependencia?: string;
   onChange: (valor: any) => void;
 }
 
@@ -44,20 +38,12 @@ function formatearMoneda(valor: number | string | undefined): string {
  * Pinta un campo según su `tipo`. Los tipos vienen de la configuración en base
  * de datos, así que agregar un campo al estudio previo no toca este archivo.
  */
-export function CampoDinamico({ campo, valor, error, disabled, dependencia, onChange }: Props) {
+export function CampoDinamico({ campo, valor, error, disabled, onChange }: Props) {
   // Los campos de solo lectura se muestran siempre inertes, aunque el estudio
   // previo esté en borrador: su valor vive en el proceso y se corrige aparte.
   const soloLectura = campo.soloLectura === true;
   disabled = disabled || soloLectura;
   const id = `campo-${campo.codigo}`;
-
-  /**
-   * Cargo con el que se acota la persona. Vive aquí y no en el formulario
-   * porque no se guarda: solo filtra a quién se ofrece. Otra área tiene otros
-   * cargos, así que cambiarla vuelve a «todos».
-   */
-  const [cargo, setCargo] = useState('');
-  useEffect(() => setCargo(''), [dependencia]);
   const describedBy = [error ? `${id}-error` : null, campo.ayuda ? `${id}-ayuda` : null]
     .filter(Boolean)
     .join(' ');
@@ -74,31 +60,16 @@ export function CampoDinamico({ campo, valor, error, disabled, dependencia, onCh
     // escriben: con texto libre la misma persona queda registrada de varias
     // formas y el expediente deja de servir para filtrar por responsable.
     if (CAMPOS_DE_PERSONA.includes(campo.codigo)) {
-      // Sin área elegida no hay de dónde sacar al jefe: se pide primero el
-      // área en vez de ofrecer a toda la entidad.
-      const sinArea = dependencia !== undefined && !dependencia;
-      // Primero el cargo y después la persona: en un área grande el nombre
-      // solo no basta para dar con el jefe entre todos los que trabajan ahí.
+      // Sin cargo y sin atarla al área solicitante: la persona ya viene del
+      // PAA, y aquí solo se corrige buscándola en toda la entidad.
       return (
-        <div className="space-y-1.5">
-          <SelectorCargo
-            id={`${id}-cargo`}
-            value={cargo}
-            onChange={setCargo}
-            dependencia={dependencia || undefined}
-            disabled={disabled || sinArea}
-          />
-          <SelectorPersona
-            id={id}
-            value={valor ?? ''}
-            disabled={disabled || sinArea}
-            invalido={!!error}
-            onChange={onChange}
-            dependencia={dependencia || undefined}
-            cargo={cargo || undefined}
-            placeholder={sinArea ? 'Primero elige el área solicitante' : undefined}
-          />
-        </div>
+        <SelectorPersona
+          id={id}
+          value={valor ?? ''}
+          disabled={disabled}
+          invalido={!!error}
+          onChange={onChange}
+        />
       );
     }
 

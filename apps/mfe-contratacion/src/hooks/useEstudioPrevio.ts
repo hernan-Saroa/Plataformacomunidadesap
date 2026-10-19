@@ -199,16 +199,5 @@ export function useEstudioPrevio(procesoId: string | null) {
     (contenedor?.querySelector('input, textarea, select') as HTMLElement | null)?.focus();
   }, []);
 
-  /**
-   * Pone los datos del proceso que devolvió el servidor —la modalidad recién
-   * cambiada— sin tocar lo que el área está escribiendo.
-   *
-   * `cargar` reemplazaría los valores por los guardados y se llevaría lo que el
-   * área escribió y no ha guardado.
-   */
-  const actualizarProceso = useCallback((proceso: EstudioPrevio['proceso']) => {
-    setEstado((e) => (e.datos ? { ...e, datos: { ...e.datos, proceso } } : e));
-  }, []);
-
-  return { ...estado, cargar, cambiar, guardar, enviar, irACampo, actualizarProceso };
+  return { ...estado, cargar, cambiar, guardar, enviar, irACampo };
 }

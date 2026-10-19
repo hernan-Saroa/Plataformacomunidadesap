@@ -279,12 +279,6 @@ export const contratacionService = {
         (cargo ? `&cargo=${encodeURIComponent(cargo)}` : ''),
     ),
 
-  /** Cargos de una dependencia (todos los activos si no llega), para acotar un selector de persona. */
-  cargos: (dependencia = '') =>
-    pedir<Cargo[]>(
-      '/personas/cargos' + (dependencia ? `?dependencia=${encodeURIComponent(dependencia)}` : ''),
-    ),
-
   /**
    * Modalidad que corresponde a una cuantía. Se consulta mientras se digita el
    * valor, antes de que el proceso exista.
@@ -1953,12 +1947,6 @@ export const contratacionService = {
     pedir<{ radicado: string; archivosBorrados: number }>(`/procesos/${procesoId}`, {
       method: 'DELETE',
       body: JSON.stringify({ radicado, motivo }),
-    }),
-
-  cambiarModalidadDelEstudioPrevio: (procesoId: string, modalidad: string) =>
-    pedir<EstudioPrevio>(`/procesos/${procesoId}/estudio-previo/modalidad`, {
-      method: 'PUT',
-      body: JSON.stringify({ modalidad }),
     }),
 
   guardarBorrador: (procesoId: string, datos: Record<string, any>, version: number) =>
