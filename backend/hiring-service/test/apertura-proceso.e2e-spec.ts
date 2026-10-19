@@ -197,7 +197,7 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
     });
 
     it('admite una captura de pantalla como evidencia', async () => {
-      // Igual que en la 5.2: la prueba de un hecho ocurrido en otra plataforma
+      // Igual que en la 5.3: la prueba de un hecho ocurrido en otra plataforma
       // suele ser una imagen, y exigir PDF obligaría a convertirla.
       const proceso = await crear();
       await expedirCdp(proceso.id);
@@ -284,12 +284,12 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
     });
   });
 
-  // ------------------------------- audiencia de riesgos obligatoria (1153) --
+  // ----------------------------- la audiencia va después de abrir (112) --
 
-  describe('La audiencia de riesgos obligatoria condiciona la apertura', () => {
-    it('impide abrir una licitación sin la audiencia celebrada', async () => {
-      // Segundo criterio de EFDS-1153: avanzar en la etapa 5 es abrir, y sin la
-      // audiencia obligatoria no se avanza. El CDP no basta.
+  describe('La audiencia de riesgos ya no condiciona la apertura', () => {
+    it('una licitación abre sin la audiencia celebrada', async () => {
+      // Desde la 112 la audiencia va después de la apertura, como en la matriz
+      // (su 5.12): lo que bloquea es el cierre de ofertas, no abrir.
       const proceso = await crear('LICITACION_PUBLICA');
       await expedirCdp(proceso.id);
 
@@ -303,9 +303,10 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
       const estado = await apertura.estado(proceso.id);
 
       expect(estado.requisitos.cdp.cumplido).toBe(true);
-      expect(estado.requisitos.audienciaRiesgos.cumplido).toBe(false);
-      expect(estado.puedeAbrir).toBe(false);
+      expect(estado.requisitos).not.toHaveProperty('audienciaRiesgos');
+      expect(estado.puedeAbrir).toBe(true);
     });
+  });
 
     it('con la audiencia celebrada el proceso abre', async () => {
       const proceso = await crear('LICITACION_PUBLICA');

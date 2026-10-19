@@ -59,7 +59,7 @@ export const ETAPAS_DE_LA_FINANCIERA = [8, 9, 10];
  * su pestaña de documentos, junto al radicado; la 5.1 como el cuerpo de la
  * actividad—, y montarla además aquí la pediría dos veces.
  */
-export const NUMERALES_CON_LISTA_PROPIA = ['3.1', '5.1'];
+export const NUMERALES_CON_LISTA_PROPIA = ['3.1', '5.1', '5.6.1'];
 
 /**
  * Actividades cuyo panel ya tiene su propio ciclo de aprobación.
@@ -91,10 +91,14 @@ export const NUMERALES_CON_DECISION_EN_EL_PANEL = ['8.4', '9.4', '9.5'];
 
 /** Elaboración de los documentos del proceso (EFDS-1149). */
 export const NUMERAL_DOCUMENTOS = '5.1';
-/** Publicación del proyecto de pliego, primera actividad publicada de la etapa 5. */
-export const NUMERAL_PUBLICACION = '5.2';
-/** Observaciones al pliego (EFDS-1151), sobre la publicación ya registrada. */
-export const NUMERAL_OBSERVACIONES = '5.3';
+/*
+ * Desde la migración 112 la etapa 5 lleva los numerales de la matriz v2. Antes
+ * la publicación era la 5.2, las observaciones la 5.3, MiPymes la 5.4, la
+ * audiencia la 5.5 y las adendas la 5.6; el cronograma (5.2) y la web de la
+ * ESAP (5.4) no existían.
+ */
+/** Publicación en SECOP II (EFDS-1150): donde hay pliego, abre su plazo de observaciones. */
+export const NUMERAL_PUBLICACION = '5.3';
 /** Limitación de la convocatoria a MIPYME (EFDS-1151). */
 export const NUMERAL_MIPYME = '5.4';
 /** Audiencia de asignación de riesgos (EFDS-1153). */
@@ -103,7 +107,11 @@ export const NUMERAL_RIESGOS = '5.5';
 export const NUMERAL_ADENDAS = '5.6';
 /** Apertura formal del proceso, que cierra la etapa (EFDS-1152). */
 export const NUMERAL_APERTURA = '5.7';
-/** Recepción de ofertas y cierre, primera actividad de la etapa 6 (EFDS-1155). */
+/** Audiencia de asignación de riesgos (EFDS-1153), después de la apertura. */
+export const NUMERAL_RIESGOS = '5.12';
+/** Adendas al pliego (EFDS-1154): a partir de la apertura, en cualquier momento. */
+export const NUMERAL_ADENDAS = '5.13';
+/** Cierre del proceso y recepción de ofertas, primera actividad de la etapa 6 (EFDS-1155). */
 export const NUMERAL_OFERTAS = '6.1';
 /** Designación del comité que evaluará las ofertas (EFDS-1156). */
 export const NUMERAL_COMITE = '6.2';
@@ -134,7 +142,6 @@ export const NUMERALES_ADJUDICACION = ['7.1', '7.2', '7.3', '7.4'];
 export const NUMERALES_ETAPA_5 = [
   NUMERAL_DOCUMENTOS,
   NUMERAL_PUBLICACION,
-  NUMERAL_OBSERVACIONES,
   NUMERAL_MIPYME,
   NUMERAL_RIESGOS,
   NUMERAL_ADENDAS,
@@ -281,6 +288,11 @@ export const ACTIVIDADES_CON_REGISTRO: Record<string, string> = {
   // La 3.6 y la 3.7 salieron: la causal es un filtro por modalidad y el comité
   // son tres desenlaces —aprueba, condiciona u observa—. Ninguna de las dos
   // cabe en una fecha y una nota.
+  // El cronograma y la web de la ESAP llegaron con la 112. De la web la matriz
+  // dice que «se realiza en la página web de la ESAP pero se adjunta el
+  // soporte»; el cronograma, por ahora, también se adjunta.
+  '5.2': 'Elaboración del cronograma',
+  '5.4': 'Publicación en la página web de la ESAP',
   '5.9': 'Manifestación de interés',
   '5.10': 'Sorteo',
   '5.11': 'Publicación de la manifestación de interés',

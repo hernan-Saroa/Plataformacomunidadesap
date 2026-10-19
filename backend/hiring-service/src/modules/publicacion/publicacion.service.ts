@@ -34,8 +34,8 @@ import {
   RegistrarPublicacionDto,
 } from './dto/publicacion.dto';
 
-/** Actividad 5.2 de la matriz: la publicación del proyecto de pliego. */
-export const NUMERAL_PUBLICACION = '5.2';
+/** Actividad 5.3 de la matriz: la publicación del proyecto de pliego. */
+export const NUMERAL_PUBLICACION = '5.3';
 
 @Injectable()
 export class PublicacionService {
@@ -333,7 +333,7 @@ export class PublicacionService {
   // ------------------------------------------------------------ registro ---
 
   /**
-   * Actividad 5.2: se registra que el proyecto de pliego quedó publicado.
+   * Actividad 5.3: se registra que el proyecto de pliego quedó publicado.
    *
    * La evidencia entra en la misma operación y no como paso posterior: sin
    * integración con SECOP II es lo único que sostiene el registro, y el
@@ -524,9 +524,9 @@ export class PublicacionService {
   }
 
   /**
-   * Deja la actividad 5.2 en el estado dado, creándola si no existía.
+   * Deja la actividad 5.3 en el estado dado, creándola si no existía.
    *
-   * Crea y actualiza en el mismo sitio porque la 5.2 no se instancia en ningún
+   * Crea y actualiza en el mismo sitio porque la 5.3 no se instancia en ningún
    * momento previo: el proceso llega a la etapa 5 sin ella, y el registro de la
    * publicación es lo primero que la hace existir. Un `update` que no
    * encontrara fila la habría dejado invisible en el riel.
@@ -569,7 +569,7 @@ export class PublicacionService {
    * Da por terminado el término de publicidad, para poder probar el flujo.
    *
    * Mueve `fecha_vencimiento` a ayer en vez de fingir que venció: el resto del
-   * módulo —la 5.3 y su «cerrar sin observaciones», el conteo de días hábiles,
+   * módulo —la 5.6 y su «cerrar sin observaciones», el conteo de días hábiles,
    * el `fueraDeTermino` de lo que llegue después— sigue leyendo la misma fecha
    * de siempre y se comporta exactamente como en producción. Un atajo que
    * fingiera el vencimiento dejaría el expediente diciendo una cosa y la

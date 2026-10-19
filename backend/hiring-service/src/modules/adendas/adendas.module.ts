@@ -6,6 +6,8 @@ import { AdendasController } from './adendas.controller';
 
 import { Adenda } from '../../entities/adenda.entity';
 import { PublicacionPliego } from '../../entities/publicacion-pliego.entity';
+import { AperturaProceso } from '../../entities/apertura-proceso.entity';
+import { RecepcionOfertas } from '../../entities/recepcion-ofertas.entity';
 import { ActividadExcluida } from '../../entities/actividad.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { Proceso } from '../../entities/proceso.entity';
@@ -23,6 +25,10 @@ import { CierreActividadModule } from '../cierre-actividad/cierre-actividad.modu
       // La adenda de cronograma mueve el vencimiento de la publicación vigente
       // (EFDS-1150), que es la fecha contra la que corre el término.
       PublicacionPliego,
+      // Desde la 112 las adendas van de la apertura al cierre de ofertas, y la
+      // de cronograma con el proceso abierto prorroga ese cierre.
+      AperturaProceso,
+      RecepcionOfertas,
       ActividadExcluida,
       Modalidad,
       Proceso,

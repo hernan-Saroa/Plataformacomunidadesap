@@ -16,7 +16,6 @@ import { Expediente } from '../../entities/expediente.entity';
 import { HiringAccess } from '../../auth/hiring-access';
 import { CdpService } from '../cdp/cdp.service';
 import { DocumentosService } from '../documentos/documentos.service';
-import { RiesgosService } from '../riesgos/riesgos.service';
 import { OfertasService } from '../ofertas/ofertas.service';
 import { RegistrarAperturaDto } from './dto/apertura.dto';
 
@@ -37,7 +36,6 @@ export class AperturaService {
     private readonly dataSource: DataSource,
     private readonly cdp: CdpService,
     private readonly documentos: DocumentosService,
-    private readonly riesgos: RiesgosService,
     private readonly ofertas: OfertasService,
   ) {}
 
@@ -116,11 +114,14 @@ export class AperturaService {
         // condiciona el CDP—, pero abrir con la elaboración a medias es una
         // señal de que algo se saltó, y callarlo no ayuda a nadie.
         documentos: { cumplido: !documentos.aplica || documentos.completa },
-        // La audiencia de riesgos sí bloquea donde es obligatoria: es el
-        // segundo criterio de EFDS-1153, y avanzar en la etapa 5 es abrir.
-        audienciaRiesgos: audiencia,
+        // La segunda sesión del comité con el pliego definitivo (5.6.1, 113).
+        // Solo en las modalidades que la recorren; en las demás se cumple sola.
+        comite,
+        // La audiencia de riesgos ya no está aquí: desde la 112 va después de
+        // la apertura, como en la matriz, y lo que bloquea es el cierre de la
+        // recepción de ofertas (ver RiesgosService.requisitoParaCerrarOfertas).
       },
-      puedeAbrir: !excluida && !apertura && respaldo.puedeAbrirse && audiencia.cumplido,
+      puedeAbrir: !excluida && !apertura && respaldo.puedeAbrirse && comite.cumplido,
     };
   }
 
@@ -161,14 +162,6 @@ export class AperturaService {
         throw new ConflictException(
           `El proceso ya fue abierto con la resolución ${yaAbierto.resolucionNumero}`,
         );
-      }
-
-      // RF-PUB-04: la audiencia obligatoria condiciona la apertura igual que el
-      // CDP. Se comprueba aquí y no solo en la pantalla porque es una regla de
-      // negocio: un cliente que llame la API directamente tampoco puede saltarla.
-      const audiencia = await this.riesgos.requisitoParaApertura(procesoId, em);
-      if (!audiencia.cumplido) {
-        throw new ConflictException(`No se puede abrir el proceso: ${audiencia.motivo}`);
       }
 
       this.validarFecha(dto.resolucionFecha);

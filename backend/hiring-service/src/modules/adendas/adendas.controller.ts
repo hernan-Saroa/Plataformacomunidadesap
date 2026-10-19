@@ -31,7 +31,7 @@ import {
 } from '../archivos';
 
 /**
- * Adendas del proceso — actividad 5.6 (EFDS-1154).
+ * Adendas del proceso — actividad 5.13 (EFDS-1154).
  *
  * Emitir y publicar van en dos peticiones porque son dos hechos distintos: la
  * adenda se firma un día y se publica otro, y solo al publicarse produce
@@ -43,7 +43,7 @@ export class AdendasController {
   constructor(private readonly service: AdendasService) {}
 
   @Get()
-  @Puede('ver', '5.6')
+  @Puede('ver', '5.13')
   @ApiOperation({
     summary: 'Adendas del proceso, con su estado',
     description:
@@ -54,7 +54,7 @@ export class AdendasController {
   }
 
   @Post()
-  @Puede('editar', '5.6')
+  @Puede('editar', '5.13')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -64,7 +64,7 @@ export class AdendasController {
   )
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Actividad 5.6 · Emitir una adenda',
+    summary: 'Actividad 5.13 · Emitir una adenda',
     description:
       'Registra la adenda con su documento firmado y le asigna el consecutivo del proceso. Emitir no publica: la adenda no produce efectos hasta que se publique.',
   })
@@ -92,11 +92,11 @@ export class AdendasController {
   }
 
   @Post(':adendaId/publicar')
-  @Puede('editar', '5.6')
+  @Puede('editar', '5.13')
   @UseInterceptors(
     FileInterceptor(
       'file',
-      // La evidencia admite imagen, como en la actividad 5.2: suele ser una
+      // La evidencia admite imagen, como en la actividad 5.3: suele ser una
       // captura de SECOP II.
       opcionesDeCarga(
         [...MIME_DOCUMENTOS, ...MIME_IMAGENES],
@@ -140,7 +140,7 @@ export class AdendasController {
   }
 
   @Post(':adendaId/anular')
-  @Puede('editar', '5.6')
+  @Puede('editar', '5.13')
   @ApiOperation({
     summary: 'Anular una adenda emitida por error',
     description:

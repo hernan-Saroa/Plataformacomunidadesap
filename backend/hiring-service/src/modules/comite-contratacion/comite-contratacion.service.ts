@@ -197,8 +197,9 @@ export class ComiteContratacionService {
     const { umbral, enPesos, smmlv } = await this.umbralDe(em, proceso.modalidad);
     const noVa = motivoParaNoIrAlComite(estadoActual, proceso.valorEstimado, enPesos);
 
+    // Solo las de la primera sumisión: la segunda es de la 5.6.1 (113).
     const sesiones = await em.getRepository(SesionComiteContratacion).find({
-      where: { procesoId },
+      where: { procesoId, sumision: 1 },
       order: { fecha: 'DESC', createdAt: 'DESC' },
     });
     const { responsable, puesto, motivo } = await this.participacion.quienHace(procesoId, acceso, NUMERAL_COMITE_CONTRATACION);

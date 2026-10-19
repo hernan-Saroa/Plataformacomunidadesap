@@ -35,6 +35,7 @@ const estado = (cambios: Record<string, unknown> = {}) => ({
   recepcion: recepcion(),
   puedeRegistrar: true,
   puedeCerrar: false,
+  audienciaRiesgos: { cumplido: true, motivo: null },
   listaPublicada: false,
   oferentes: [],
   ...cambios,

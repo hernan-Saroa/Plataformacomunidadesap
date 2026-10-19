@@ -35,7 +35,7 @@ const CARGA = opcionesDeCarga(
 );
 
 /**
- * Limitación de la convocatoria a MIPYME — actividad 5.4 (EFDS-1151).
+ * Limitación de la convocatoria a MIPYME — actividad 5.5 (EFDS-1151).
  *
  * El sistema calcula si se cumplen las condiciones y las pone delante de quien
  * decide. La limitación la decide la entidad, no el software.
@@ -46,7 +46,7 @@ export class MipymeController {
   constructor(private readonly service: MipymeService) {}
 
   @Get()
-  @Puede('ver', '5.4')
+  @Puede('ver', '5.5')
   @ApiOperation({
     summary: 'Manifestaciones, condiciones evaluadas y decisión',
     description:
@@ -57,7 +57,7 @@ export class MipymeController {
   }
 
   @Post('manifestaciones')
-  @Puede('editar', '5.4')
+  @Puede('editar', '5.5')
   @UseInterceptors(FileInterceptor('file', CARGA))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
@@ -77,11 +77,11 @@ export class MipymeController {
   }
 
   @Post('decision')
-  @Puede('editar', '5.4')
+  @Puede('editar', '5.5')
   @UseInterceptors(FileInterceptor('file', CARGA))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({
-    summary: 'Actividad 5.4 · Registrar la decisión sobre la limitación',
+    summary: 'Actividad 5.5 · Registrar la decisión sobre la limitación',
     description:
       'Apartarse del cálculo es legítimo pero exige motivo. Limitar exige además el acto administrativo que lo sustenta.',
   })

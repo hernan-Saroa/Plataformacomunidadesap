@@ -135,6 +135,21 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
       gestor,
     );
 
+    // En licitación pública la audiencia de asignación de riesgos (5.12) va
+    // después de la apertura y se exige para cerrar las ofertas (112); la
+    // menor cuantía no la exige. Aquí solo hay que satisfacerla para seguir.
+    if (modalidad === 'LICITACION_PUBLICA') {
+      await riesgos.registrar(
+        proceso.id,
+        { fechaCelebracion: hoy() },
+        archivo('acta-riesgos.pdf'),
+        'g'.repeat(64),
+        archivo('matriz-riesgos.xlsx'),
+        'h'.repeat(64),
+        gestor,
+      );
+    }
+
     await ofertas.fijarPlazo(proceso.id, { vencimiento: haceHoras(3) }, gestor);
 
     for (let i = 0; i < cuantasOfertas; i += 1) {

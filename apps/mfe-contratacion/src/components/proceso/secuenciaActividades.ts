@@ -56,23 +56,24 @@ const ABRE_EL_TRAMO_DE_LA_DIRECCION = '3.1';
  * antes, porque lo que resuelven no depende de eso (reunión de validación
  * del modelo, 17 sep).
  *
- * La 5.4 (límite a MiPyme) se decide con el valor del proceso y la
- * modalidad, no con lo que traigan las observaciones al proyecto de pliego
- * (5.3): nada de lo que la 5.3 produce alimenta esa decisión. La 5.5
- * (audiencia de riesgos) discute el proyecto de pliego (5.2) y tampoco
- * necesita que el plazo de observaciones haya corrido. El propio backend ya
- * las trata así: ni `mipyme.service.ts` ni `riesgos.service.ts` exigen la
- * 5.3 aprobada para escribir.
+ * La 5.5 (límite a MiPyme) se decide con el valor del proceso y la
+ * modalidad, no con la publicación en la web de la ESAP (5.4): nada de lo que
+ * la 5.4 produce alimenta esa decisión. La 5.6 (observaciones) entra por lo
+ * mismo, y además va después de MiPymes en la matriz sin necesitarla. Las dos
+ * cuelgan solo de la publicación en SECOP II (5.3), sea cual sea el orden en
+ * que el riel las pinte; ni `mipyme.service.ts` ni `observaciones.service.ts`
+ * piden más.
  *
- * La 5.3 entra por lo mismo, al revés: desde la 104 la 5.4 va antes que ella,
- * como en la matriz, y sin esto las observaciones esperarían la decisión sobre
- * MiPymes, que tampoco les hace falta. Las tres cuelgan solo de la
- * publicación, sea cual sea el orden en que el riel las pinte.
+ * Las adendas (5.13) «a partir de la apertura pueden generarse en cualquier
+ * momento», dice la matriz: no esperan a la audiencia de riesgos (5.12), que
+ * la matriz numera antes. Donde la modalidad no tiene apertura —mínima cuantía
+ * y 092— la 5.7 no aplica y basta la publicación, que es lo mismo que exige
+ * `adendas.service.ts`.
  *
  * Que se habiliten antes no las exime de bloquear lo que sigue si quedan sin
- * terminar: la 5.6 y la 5.7 las siguen necesitando, igual que necesitan la
- * 5.3 — cada numeral aquí declara de qué depende de verdad, no de qué lo
- * antecede en la matriz.
+ * terminar: la apertura (5.7) sigue necesitando la 5.5 y la 5.6 — cada
+ * numeral aquí declara de qué depende de verdad, no de qué lo antecede en la
+ * matriz.
  *
  * La 9.5 (modificaciones) no es un paso de la línea: una prórroga, una adición
  * o una suspensión caben en cualquier momento de la ejecución, y la ejecución
@@ -81,9 +82,9 @@ const ABRE_EL_TRAMO_DE_LA_DIRECCION = '3.1';
  * esperar a los pagos (9.4) era un candado que el servidor no pone.
  */
 const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
-  '5.3': ['5.2'],
-  '5.4': ['5.2'],
-  '5.5': ['5.2'],
+  '5.5': ['5.3'],
+  '5.6': ['5.3'],
+  '5.13': ['5.3', '5.7'],
   '9.5': ['9.1'],
 };
 
@@ -111,8 +112,12 @@ const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
  * modificación aprobada, pero un contrato puede ejecutarse entero sin
  * modificarse nunca, y exigirla encerraría la etapa 10 detrás de algo que
  * quizá no ocurra.
+ *
+ * Las adendas (5.13), igual: un proceso puede llegar al cierre de ofertas sin
+ * ninguna, y desde la 112 van después de la apertura, así que exigirlas
+ * encerraría la recepción de ofertas (6.1) detrás de algo que quizá no ocurra.
  */
-export const NUNCA_BLOQUEA = new Set(['9.2', '9.3', '9.5']);
+export const NUNCA_BLOQUEA = new Set(['5.13', '9.2', '9.3', '9.5']);
 
 /** Si una dependencia declarada ya no le hace falta a quien la exige. */
 function dependenciaSatisfecha(numeral: string, flujo: PasoDelFlujo[]): boolean {

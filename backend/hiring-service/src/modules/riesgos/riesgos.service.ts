@@ -11,6 +11,7 @@ import {
   AudienciaRiesgosConfig,
 } from '../../entities/audiencia-riesgos.entity';
 import { ActividadExcluida } from '../../entities/actividad.entity';
+import { AperturaProceso } from '../../entities/apertura-proceso.entity';
 import { Modalidad } from '../../entities/modalidad.entity';
 import { Proceso } from '../../entities/proceso.entity';
 import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
@@ -22,8 +23,8 @@ import { AnularAudienciaDto, RegistrarAudienciaDto } from './dto/riesgos.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
 
-/** Actividad 5.5 de la matriz: la audiencia de asignación de riesgos. */
-export const NUMERAL_AUDIENCIA = '5.5';
+/** Actividad 5.12 de la matriz: la audiencia de asignación de riesgos. */
+export const NUMERAL_AUDIENCIA = '5.12';
 
 interface ArchivoCargado {
   filename: string;
@@ -36,7 +37,7 @@ interface ArchivoCargado {
 export class RiesgosService {
   constructor(
     private readonly dataSource: DataSource,
-    /** Si la 5.5 exige firmar con el token institucional al registrar (EFDS-2070). */
+    /** Si la 5.12 exige firmar con el token institucional al registrar (EFDS-2070). */
     private readonly cierre: CierreActividadService,
   ) {}
 
@@ -85,11 +86,13 @@ export class RiesgosService {
   /**
    * Si la audiencia obligatoria está pendiente, y por qué.
    *
-   * Lo consume la apertura del proceso (EFDS-1402): el segundo criterio de la
-   * historia dice que sin la audiencia obligatoria no se puede avanzar, y
-   * avanzar en la etapa 5 es abrir.
+   * Lo consume el cierre de la recepción de ofertas. El segundo criterio de
+   * EFDS-1153 dice que sin la audiencia obligatoria no se puede avanzar, y
+   * hasta la 112 avanzar era abrir el proceso. La matriz la pone después de la
+   * apertura (su 5.12), así que lo que ya no puede pasar sin ella es cerrar las
+   * ofertas: la audiencia discute el pliego sobre el que se oferta.
    */
-  async requisitoParaApertura(procesoId: string, em?: EntityManager) {
+  async requisitoParaCerrarOfertas(procesoId: string, em?: EntityManager) {
     const manager = em ?? this.dataSource.manager;
     const proceso = await this.exigirProceso(manager, procesoId);
 
@@ -120,6 +123,9 @@ export class RiesgosService {
       : null;
 
     const audiencia = await this.vigente(procesoId);
+    const apertura = await this.dataSource
+      .getRepository(AperturaProceso)
+      .findOne({ where: { procesoId } });
     const archivos = audiencia
       ? await this.dataSource.getRepository(Documento).find({
           where: { id: In([audiencia.actaDocumentoId, audiencia.matrizDocumentoId]) },
@@ -135,6 +141,9 @@ export class RiesgosService {
       ...aplicabilidad,
       modalidad: proceso.modalidad,
       modalidadNombre: modalidad?.nombre ?? proceso.modalidad,
+      // Sin apertura todavía no se puede registrar: la pantalla lo dice en vez
+      // de ofrecer un formulario que el servidor va a rechazar.
+      abierto: !!apertura,
       celebrada: !!audiencia,
       audiencia: audiencia
         ? {
@@ -184,11 +193,25 @@ export class RiesgosService {
         );
       }
 
+      // Desde la 112 la audiencia va después de la apertura, como en la matriz:
+      // se celebra sobre el pliego definitivo, una vez abierto el proceso.
+      const apertura = await em.getRepository(AperturaProceso).findOne({ where: { procesoId } });
+      if (!apertura) {
+        throw new ConflictException(
+          'El proceso todavía no se ha abierto: la audiencia de riesgos se celebra después de la apertura (5.7)',
+        );
+      }
+
       if (await this.cierre.exigeFirma(em, NUMERAL_AUDIENCIA)) {
         this.cierre.exigirFirmaValida(dto.firma);
       }
 
       this.validarFecha(dto.fechaCelebracion);
+      if (dto.fechaCelebracion < apertura.resolucionFecha) {
+        throw new BadRequestException(
+          `La audiencia no puede ser anterior a la resolución de apertura (${apertura.resolucionFecha})`,
+        );
+      }
 
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
@@ -239,7 +262,8 @@ export class RiesgosService {
   /**
    * Anula la audiencia registrada para poder corregirla.
    *
-   * En una modalidad donde es obligatoria, esto vuelve a bloquear la apertura:
+   * En una modalidad donde es obligatoria, esto vuelve a bloquear el cierre de
+   * la recepción de ofertas:
    * es la consecuencia correcta, porque mientras no haya audiencia vigente el
    * requisito no está cumplido.
    */
@@ -271,7 +295,7 @@ export class RiesgosService {
   /**
    * La audiencia no puede ser del futuro: se registra un hecho ya ocurrido.
    *
-   * Sin esto, una fecha adelantada permitiría abrir el proceso apoyándose en
+   * Sin esto, una fecha adelantada permitiría cerrar las ofertas apoyándose en
    * una audiencia que todavía no se celebró.
    */
   private validarFecha(fecha: string) {

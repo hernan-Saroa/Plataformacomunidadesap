@@ -22,6 +22,7 @@ import { HiringAccess } from '../../auth/hiring-access';
 import { festivosEntre } from '../publicacion/festivos-colombia';
 import { diasHabilesRestantes, estadoDelPlazo, sumarDiasHabiles } from '../publicacion/dias-habiles';
 import { FijarPlazoOfertasDto, RegistrarOferenteDto } from './dto/ofertas.dto';
+import { RiesgosService } from '../riesgos/riesgos.service';
 
 /** Actividad 6.1 de la matriz: la recepción de ofertas y su cierre. */
 export const NUMERAL_OFERTAS = '6.1';
@@ -49,7 +50,11 @@ interface ArchivoCargado {
 
 @Injectable()
 export class OfertasService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    /** La audiencia de riesgos obligatoria condiciona el cierre (EFDS-1153, 112). */
+    private readonly riesgos: RiesgosService,
+  ) {}
 
   // ------------------------------------------------------------- consulta --
 
@@ -80,6 +85,7 @@ export class OfertasService {
       : [];
 
     const documentos = await this.archivosDe(oferentes.map((o) => o.soporteDocumentoId));
+    const audiencia = await this.riesgos.requisitoParaCerrarOfertas(procesoId);
 
     return {
       aplica: !excluida,
@@ -104,7 +110,11 @@ export class OfertasService {
         !excluida &&
         !!recepcion &&
         recepcion.estado === 'ABIERTA' &&
-        Date.now() > recepcion.vencimiento.getTime(),
+        Date.now() > recepcion.vencimiento.getTime() &&
+        audiencia.cumplido,
+      // La audiencia de riesgos donde es obligatoria: desde la 112 va después
+      // de la apertura y lo que no puede pasar sin ella es este cierre.
+      audienciaRiesgos: audiencia,
       // Lo que vuelve pública la lista es el cierre: a partir de ahí ya no
       // admite cambios.
       listaPublicada: recepcion?.estado === 'CERRADA',
@@ -388,6 +398,14 @@ export class OfertasService {
       // cierre, que es la que prueba cuándo dejó de recibirse.
       if (recepcion.estado === 'CERRADA') return;
 
+      // RF-PUB-04 y EFDS-1153: la audiencia obligatoria se celebra antes de que
+      // se cierre la recepción. Se comprueba aquí y no solo en la pantalla: un
+      // cliente que llame la API directamente tampoco puede saltarla.
+      const audiencia = await this.riesgos.requisitoParaCerrarOfertas(procesoId, em);
+      if (!audiencia.cumplido) {
+        throw new ConflictException(`No se puede cerrar la recepción de ofertas: ${audiencia.motivo}`);
+      }
+
       if (Date.now() <= recepcion.vencimiento.getTime()) {
         const { diasHabilesRestantes: faltan } = await this.plazoConDias(recepcion);
         throw new ConflictException(
@@ -509,7 +527,7 @@ export class OfertasService {
   }
 
   /**
-   * Días no hábiles del rango, con el mismo criterio de la actividad 5.2: los
+   * Días no hábiles del rango, con el mismo criterio de la actividad 5.3: los
    * festivos nacionales se calculan y la tabla aporta los que declare la
    * entidad por su cuenta.
    */

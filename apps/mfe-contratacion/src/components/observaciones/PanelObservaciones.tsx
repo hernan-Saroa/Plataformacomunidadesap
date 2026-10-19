@@ -33,10 +33,10 @@ interface Props {
   onCambio?: () => void;
 }
 
-const NUMERAL = '5.3';
+const NUMERAL = '5.6';
 
 /**
- * Actividad 5.3 · Observaciones al proyecto de pliego (EFDS-1151).
+ * Actividad 5.6 · Observaciones al proyecto de pliego (EFDS-1151).
  *
  * Las observaciones llegan por SECOP II y la plataforma no habla con SECOP
  * (EFDS-1386), así que el gestor las transcribe con su soporte. La pantalla lo
@@ -113,7 +113,7 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
     return (
       <Marco>
         <Pendiente
-          falta="5.2"
+          falta="5.3"
           texto="Las observaciones se presentan sobre el proyecto de pliego publicado. Registra primero la publicación y su plazo de publicidad."
         />
       </Marco>
@@ -165,7 +165,7 @@ export function PanelObservaciones({ procesoId, onCambio }: Props) {
       )}
 
       {/* La llave de pruebas va aquí y no solo en el panel de la publicación:
-          es en la 5.3 donde el término estorba, porque un proceso sin
+          es en la 5.6 donde el término estorba, porque un proceso sin
           observaciones no se puede dar por cumplido hasta que venza. */}
       <TerminarPlazo
         visible={estado.puedeTerminarPlazo}

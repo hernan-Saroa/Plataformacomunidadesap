@@ -71,7 +71,7 @@ export class ResponderObservacionDto {
   @IsBoolean({ message: 'Indica si la observación modificó el pliego' })
   modificoPliego: boolean;
 
-  /** Solo si la 5.3 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  /** Solo si la 5.6 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
   @ValidateNested()
@@ -79,7 +79,7 @@ export class ResponderObservacionDto {
   firma?: FirmaOtpDto;
 }
 
-/** Solo si la 5.3 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+/** Solo si la 5.6 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
 export class CerrarSinObservacionesDto {
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()

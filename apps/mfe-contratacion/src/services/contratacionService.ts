@@ -371,7 +371,7 @@ export const contratacionService = {
     return pedir<Cdp>(`/procesos/${procesoId}/cdp/documento`, { method: 'POST', body: cuerpo });
   },
 
-  // -------------------------------- etapa 5 · adendas del proceso (5.6) -----
+  // -------------------------------- etapa 5 · adendas del proceso (5.13) -----
 
   /** Adendas del proceso, con su estado y si se pueden emitir nuevas. */
   adendas: (procesoId: string) => pedir<EstadoAdendas>(`/procesos/${procesoId}/adendas`),
@@ -1443,7 +1443,7 @@ export const contratacionService = {
     );
   },
 
-  // -------------------------- etapa 5 · audiencia de riesgos (5.5) ----------
+  // -------------------------- etapa 5 · audiencia de riesgos (5.12) ----------
 
   /** Estado de la audiencia: si aplica, si es obligatoria y si ya se celebró. */
   audienciaRiesgos: (procesoId: string) =>
@@ -1493,7 +1493,7 @@ export const contratacionService = {
    * Los tres documentos viajan con los datos en la misma petición: el proceso
    * se abre con todos o no se abre, y dejarlo en dos pasos permitiría un
    * proceso abierto sin el acto que lo respalda. La evidencia prueba que el
-   * pliego definitivo se publicó, igual que en la actividad 5.2.
+   * pliego definitivo se publicó, igual que en la actividad 5.3.
    */
   registrarApertura: (
     procesoId: string,
@@ -1649,7 +1649,7 @@ export const contratacionService = {
       body: JSON.stringify({ motivo }),
     }),
 
-  // ------------------------------- etapa 5 · observaciones al pliego (5.3) ---
+  // ------------------------------- etapa 5 · observaciones al pliego (5.6) ---
 
   /** Observaciones del proceso con el resumen que decide si la actividad cumple. */
   observaciones: (procesoId: string) =>
@@ -1709,7 +1709,7 @@ export const contratacionService = {
       body: JSON.stringify({ firma }),
     }),
 
-  // ---------------------------------- etapa 5 · limitación a MIPYME (5.4) ---
+  // ---------------------------------- etapa 5 · limitación a MIPYME (5.5) ---
 
   /** Manifestaciones, condiciones evaluadas y decisión, si ya se tomó. */
   mipyme: (procesoId: string) => pedir<EstadoMipyme>(`/procesos/${procesoId}/mipyme`),

@@ -288,7 +288,7 @@ export interface EstadoObservaciones {
   observaciones: ObservacionPliego[];
   resumen: { total: number; pendientes: number; fueraDeTermino: number };
   plazoVencido: boolean;
-  /** La actividad 5.3 ya está dada por cumplida. */
+  /** La actividad 5.6 ya está dada por cumplida. */
   cumplida: boolean;
   /** Solo con el plazo vencido y sin ninguna observación recibida. */
   puedeCerrarse: boolean;
@@ -783,7 +783,7 @@ export interface Expediente {
 }
 
 
-/** Una adenda del proceso (actividad 5.6, EFDS-1154). */
+/** Una adenda del proceso (actividad 5.13, EFDS-1154). */
 export interface Adenda {
   id: string;
   /** Consecutivo dentro del proceso: las adendas se citan por su número. */
@@ -812,15 +812,19 @@ export interface EstadoAdendas {
   modalidadNombre: string | null;
   /** Sin pliego publicado no hay nada que adendar. */
   publicado: boolean;
-  /** Con el proceso abierto rige el pliego definitivo. */
+  /** Desde la 112 las adendas se emiten a partir de la apertura. */
   abierto: boolean;
   puedeEmitir: boolean;
+  /** Por qué no se puede emitir: falta la apertura o ya se cerraron las ofertas. */
+  motivoNoPuedeEmitir: string | null;
   /** Vencimiento del plazo hoy; es lo que mueve una adenda de cronograma. */
   vencimientoVigente: string | null;
+  /** Qué prorroga una de cronograma: el cierre de ofertas o, sin apertura, las observaciones. */
+  mueve: 'CIERRE_OFERTAS' | 'PLAZO_OBSERVACIONES';
   adendas: Adenda[];
 }
 
-/** Audiencia de asignación de riesgos celebrada (actividad 5.5, EFDS-1153). */
+/** Audiencia de asignación de riesgos celebrada (actividad 5.12, EFDS-1153). */
 export interface AudienciaRiesgos {
   id: string;
   fechaCelebracion: string;
@@ -836,13 +840,15 @@ export interface EstadoAudienciaRiesgos {
   /** False donde la modalidad no adelanta audiencia. */
   aplica: boolean;
   motivoNoAplica: string | null;
-  /** Sin ella el proceso no puede abrirse; distinto de que simplemente aplique. */
+  /** Sin ella no se cierran las ofertas; distinto de que simplemente aplique. */
   obligatoria: boolean;
   fundamento: string | null;
   /** False mientras Contratación no ratifique la regla de obligatoriedad. */
   confirmado: boolean;
   modalidad: string | null;
   modalidadNombre: string | null;
+  /** Desde la 112 se celebra después de la apertura. */
+  abierto: boolean;
   celebrada: boolean;
   audiencia: AudienciaRiesgos | null;
 }
@@ -952,6 +958,8 @@ export interface EstadoOfertas {
   recepcion: RecepcionOfertas | null;
   puedeRegistrar: boolean;
   puedeCerrar: boolean;
+  /** Donde es obligatoria, sin la audiencia de riesgos no se cierra (EFDS-1153, 112). */
+  audienciaRiesgos: { cumplido: boolean; motivo: string | null };
   /** Lo que vuelve pública la lista es el cierre. */
   listaPublicada: boolean;
   oferentes: Oferente[];

@@ -212,7 +212,7 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
   if (!estado.aplica) {
     return (
       <Marco>
-        <Titulo>Recepción de ofertas</Titulo>
+        <Titulo>Cierre del proceso y recepción de ofertas</Titulo>
         <Aviso tono="aviso" titulo="Esta modalidad no recibe ofertas">
           {estado.motivoNoAplica ?? 'La modalidad del proceso no adelanta recepción de ofertas.'}
         </Aviso>
@@ -224,7 +224,7 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
 
   return (
     <Marco>
-      <Titulo>Recepción de ofertas</Titulo>
+      <Titulo>Cierre del proceso y recepción de ofertas</Titulo>
       <Ayuda>
         Las ofertas que llegan a la entidad se transcriben aquí con su soporte. Vencido el plazo, el
         cierre publica la lista de oferentes y ya no admite cambios.
@@ -330,6 +330,18 @@ export function PanelOfertas({ procesoId, onCambio }: Props) {
           El cierre se habilita cuando venza el plazo: cerrar antes dejaría fuera ofertas que
           todavía pueden presentarse.
         </p>
+      ) : null}
+
+      {/* Desde la 112 la audiencia de riesgos va después de la apertura, y donde
+          es obligatoria lo que espera por ella es este cierre. */}
+      {estado.abierto && !estado.listaPublicada && !estado.audienciaRiesgos.cumplido ? (
+        <Pendiente
+          falta="5.12"
+          texto={
+            estado.audienciaRiesgos.motivo ??
+            'La audiencia de asignación de riesgos es obligatoria en esta modalidad y no se ha celebrado.'
+          }
+        />
       ) : null}
 
       {registrando && estado.puedeRegistrar ? (

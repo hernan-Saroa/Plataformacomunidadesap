@@ -24,14 +24,16 @@ export interface PasoDelFlujo {
  *
  * La lista inversa de `TIENEN_PANEL` en `DetalleProceso.tsx`: las etapas 1 y 2
  * ocurren antes de que exista el proceso, la 3.4 se resuelve dentro de la 3.3,
- * y la 5.8, la 5.12 y la 5.13 están por construir. Cuando alguna tenga
- * pantalla hay que sacarla de aquí, igual que se agrega allá.
+ * y la 5.8 está apagada (el CDP va en la 3.1 y la 4.2). La 5.12 y la 5.13
+ * salieron con la 112: son la audiencia y las adendas, con su pantalla.
+ * Cuando alguna tenga pantalla hay que sacarla de aquí, igual que se agrega
+ * allá.
  */
 export const SIN_PANEL = new Set([
   '1.1', '1.2', '1.3', '1.4',
   '2.1', '2.2', '2.3', '2.4',
   '3.4',
-  '5.8', '5.12', '5.13',
+  '5.8',
 ]);
 
 /** Terminada es aprobada: lo demás está empezado, esperando o devuelto. */
@@ -44,22 +46,24 @@ const ABRE_EL_TRAMO_DE_LA_DIRECCION = '3.1';
 /**
  * Las que no esperan a la actividad que las antecede, sino a lo que de verdad
  * necesitan. Mismo mapa que `DEPENDE_DE` en el riel, donde está el porqué de
- * cada una: la 5.3, la 5.4 y la 5.5 cuelgan solo de la publicación (5.2), y
- * las modificaciones (9.5) del acta de inicio (9.1).
+ * cada una: MiPymes (5.5) y observaciones (5.6) cuelgan solo de la publicación
+ * en SECOP II (5.3), las adendas (5.13) de la publicación y la apertura (5.7),
+ * y las modificaciones (9.5) del acta de inicio (9.1).
  */
 export const DEPENDE_DE: Readonly<Record<string, readonly string[]>> = {
-  '5.3': ['5.2'],
-  '5.4': ['5.2'],
-  '5.5': ['5.2'],
+  '5.5': ['5.3'],
+  '5.6': ['5.3'],
+  '5.13': ['5.3', '5.7'],
   '9.5': ['9.1'],
 };
 
 /**
  * Las que no cierran nunca mientras dura la ejecución, y por eso no pueden
- * detener nada: el seguimiento (9.2), la reasignación de supervisor (9.3) y
- * las modificaciones (9.5). Mismo conjunto que `NUNCA_BLOQUEA` en el riel.
+ * detener nada: las adendas (5.13), el seguimiento (9.2), la reasignación de
+ * supervisor (9.3) y las modificaciones (9.5). Mismo conjunto que
+ * `NUNCA_BLOQUEA` en el riel.
  */
-export const NUNCA_BLOQUEA = new Set(['9.2', '9.3', '9.5']);
+export const NUNCA_BLOQUEA = new Set(['5.13', '9.2', '9.3', '9.5']);
 
 /**
  * Si una dependencia declarada ya no le hace falta a quien la exige.

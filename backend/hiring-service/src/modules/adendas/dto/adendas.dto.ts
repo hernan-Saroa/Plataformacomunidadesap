@@ -48,7 +48,7 @@ export class PublicarAdendaDto {
   @IsDateString({}, { message: 'La fecha de publicación debe tener el formato YYYY-MM-DD' })
   fechaPublicacion: string;
 
-  /** Solo si la 5.6 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  /** Solo si la 5.13 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
   @FirmaDelMultipart()
@@ -65,7 +65,7 @@ export class AnularAdendaDto {
   @MaxLength(1000)
   motivo: string;
 
-  /** Solo si la 5.6 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  /** Solo si la 5.13 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
   @ValidateNested()

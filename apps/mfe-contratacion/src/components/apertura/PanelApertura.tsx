@@ -158,9 +158,10 @@ export function PanelApertura({ procesoId, onCambio }: Props) {
     );
   }
 
-  // Dos requisitos bloquean: el CDP (RF-EST-05) y la audiencia de riesgos donde
-  // es obligatoria (RF-PUB-04). Se listan los que falten, con la actividad en
-  // que se resuelven, en vez de dejar el formulario muerto sin explicación.
+  // El CDP bloquea (RF-EST-05). Se dice en qué actividad se resuelve, en vez de
+  // dejar el formulario muerto sin explicación. La audiencia de riesgos ya no
+  // está aquí: desde la 112 va después de la apertura, como en la matriz, y lo
+  // que espera por ella es el cierre de ofertas.
   const bloqueos = [
     estado.requisitos.cdp.cumplido
       ? null
