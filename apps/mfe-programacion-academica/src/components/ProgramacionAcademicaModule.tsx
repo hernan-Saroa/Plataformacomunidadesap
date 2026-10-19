@@ -122,6 +122,7 @@ export function ProgramacionAcademicaModule({
   const revisionProgramacion = useRevisionProgramacion('programacion');
   const revisionPeriodos = useRevisionProgramacion('periodos');
   const [seccion, setSeccion] = useState<Seccion>('horarios');
+  const [cargaSolicitada, setCargaSolicitada] = useState<string | undefined>();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedJornada, setSelectedJornada] = useState<string>('TODAS');
   // Arranca VACÍO y se llena desde la base. Antes salía de una constante del
@@ -524,7 +525,7 @@ export function ProgramacionAcademicaModule({
       {/* Las franjas y el conteo de aulas ya salen de la base. Lo que falta es
           que el endpoint de horarios devuelva programa, asignatura y docente:
           hoy solo trae la sesión, así que esas columnas van vacías. */}
-      {seccion === 'catalogo' && <SelectorCatalogo idPeriodo={periodoSel} />}
+      {seccion === 'catalogo' && <SelectorCatalogo idPeriodo={periodoSel} irACarga={() => { setCargaSolicitada(periodoSel); setSeccion('ofertas'); }} />}
 
       {seccion === 'horarios' && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
@@ -618,6 +619,7 @@ export function ProgramacionAcademicaModule({
 
       {/* EFDS-1375: gestión de las cinco ofertas académicas. */}
       {seccion === 'ofertas' && <GestionOfertas
+        periodoParaCarga={cargaSolicitada}
         puedeAbrirProgramasAcademicos={puedeAbrirProgramasAcademicos}
         abrirProgramasAcademicos={abrirProgramasAcademicos}
       />}

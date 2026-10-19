@@ -26,7 +26,7 @@ const NIVELES: Array<{ valor: NivelAcademico; etiqueta: string }> = [
   { valor: 'posgrado', etiqueta: 'Posgrado' },
 ];
 
-export function SelectorCatalogo({ idPeriodo }: { idPeriodo: string }) {
+export function SelectorCatalogo({ idPeriodo, irACarga }: { idPeriodo: string; irACarga?: () => void }) {
   const [programas, setProgramas] = useState<ProgramaCatalogo[]>([]);
   const [cargandoProgramas, setCargandoProgramas] = useState(true);
   const [errorProgramas, setErrorProgramas] = useState('');
@@ -134,6 +134,7 @@ export function SelectorCatalogo({ idPeriodo }: { idPeriodo: string }) {
             El catálogo de un periodo muestra los programas que se dictan en él. Aún no hay oferta CETAP para
             este periodo: cárguela con el Excel en la sección «Periodos».
           </p>
+          {irACarga && <button type="button" onClick={irACarga} className="mt-3 text-sm font-bold text-[#003DA5] underline">Ir a cargar Excel del periodo</button>}
         </div>
       </div>
     );
@@ -238,10 +239,11 @@ export function SelectorCatalogo({ idPeriodo }: { idPeriodo: string }) {
             </div>
           </div>
 
-          {semestresFiltrados.length === 0 ? (
-            <p className="p-6 text-sm text-slate-500">
-              El programa no tiene asignaturas que coincidan.
-            </p>
+          {semestresFiltrados.length === 0 || semestresFiltrados.every((s) => s.asignaturas.length === 0) ? (
+            <div className="p-6 text-sm text-slate-600">
+              <p>{busqueda.trim() ? 'No hay asignaturas que coincidan con la búsqueda.' : 'Este programa no tiene asignaturas cargadas. Para programarlo en este periodo, carga su Excel desde Periodos.'}</p>
+              {!busqueda.trim() && irACarga && <button type="button" onClick={irACarga} className="mt-3 font-bold text-[#003DA5] underline">Ir a cargar Excel del periodo</button>}
+            </div>
           ) : (
             <div className="divide-y divide-slate-100">
               {semestresFiltrados.map((s) => (
@@ -314,6 +316,7 @@ export function SelectorCatalogo({ idPeriodo }: { idPeriodo: string }) {
               nombreAsignatura={asignaturaSel.nombre}
               codigoAsignatura={asignaturaSel.codigo}
               idPeriodo={idPeriodo}
+              irACarga={irACarga}
             />
           </div>
         </div>
