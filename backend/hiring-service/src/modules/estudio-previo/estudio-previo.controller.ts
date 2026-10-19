@@ -29,7 +29,7 @@ import {
 } from './dto/estudio-previo.dto';
 import { getHiringAccess } from '../../auth/hiring-access';
 import { Puede } from '../../auth/puede.guard';
-import { NOMBRE_EN_UTF8, MIME_DOCUMENTOS, opcionesDeCarga } from '../archivos';
+import { MAX_BYTES_ADJUNTO, NOMBRE_EN_UTF8, MIME_DOCUMENTOS, opcionesDeCarga } from '../archivos';
 import { RegistrarCdpExistenteDto } from '../cdp/dto/cdp.dto';
 import { RetirarCdpDto } from './dto/estudio-previo.dto';
 
@@ -222,7 +222,7 @@ export class EstudioPrevioController {
         filename: (_req, file, cb) =>
           cb(null, `${randomBytes(16).toString('hex')}${extname(file.originalname)}`),
       }),
-      limits: { fileSize: 25 * 1024 * 1024 },
+      limits: { fileSize: MAX_BYTES_ADJUNTO },
       fileFilter: (_req, file, cb) =>
         MIME_PERMITIDOS.includes(file.mimetype)
           ? cb(null, true)
@@ -265,7 +265,7 @@ export class EstudioPrevioController {
         filename: (_req, file, cb) =>
           cb(null, `${randomBytes(16).toString('hex')}${extname(file.originalname)}`),
       }),
-      limits: { fileSize: 25 * 1024 * 1024 },
+      limits: { fileSize: MAX_BYTES_ADJUNTO },
       fileFilter: (_req, file, cb) =>
         MIME_PERMITIDOS.includes(file.mimetype)
           ? cb(null, true)

@@ -20,7 +20,7 @@ import { randomBytes } from 'crypto';
 import { extname } from 'path';
 
 import { ConfiguracionService } from './configuracion.service';
-import { NOMBRE_EN_UTF8 } from '../archivos';
+import { MAX_BYTES_ADJUNTO, NOMBRE_EN_UTF8 } from '../archivos';
 import { RolesGuard } from '../../auth/roles.guard';
 import {
   ActualizarActividadDto,
@@ -55,7 +55,7 @@ const RECEPCION_ARCHIVO = {
     filename: (_req: any, file: any, cb: any) =>
       cb(null, `${randomBytes(16).toString('hex')}${extname(file.originalname)}`),
   }),
-  limits: { fileSize: 25 * 1024 * 1024 },
+  limits: { fileSize: MAX_BYTES_ADJUNTO },
   fileFilter: (_req: any, file: any, cb: any) =>
     MIME_PERMITIDOS.includes(file.mimetype)
       ? cb(null, true)
