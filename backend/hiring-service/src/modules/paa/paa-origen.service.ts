@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 import type { HiringAccess } from '../../auth/hiring-access';
+import { PaaLinea, PaaRegion, PaaVersion, PaaVigencia } from '../../entities/paa.entity';
 import { EstudioPrevioService } from '../estudio-previo/estudio-previo.service';
+import { PaaCamposService } from './paa-campos.service';
 import { PaaRevisionesService } from './paa-revisiones.service';
 
 /**
@@ -18,7 +20,33 @@ export class PaaOrigenService {
     private readonly dataSource: DataSource,
     private readonly estudioPrevio: EstudioPrevioService,
     private readonly revisiones: PaaRevisionesService,
+    private readonly campos: PaaCamposService,
   ) {}
+
+  /**
+   * Lo que la 3.1 muestra de su línea en «Datos del PAA»: las columnas que la
+   * región marcó para el estudio previo en esa vigencia, con los valores de la
+   * versión que se le aplicó al proceso. Una versión nueva aplicada (o aceptada
+   * en la revisión) mueve la línea del proceso, y con ella este bloque.
+   */
+  async datosParaEstudioPrevio(procesoId: string, acceso: HiringAccess) {
+    const proceso = await this.estudioPrevio.obtenerProceso(procesoId, acceso);
+    if (!proceso.paaLineaId) return { tieneOrigen: false, linea: null, campos: [] };
+
+    const linea = await this.dataSource.getRepository(PaaLinea).findOneByOrFail({ id: proceso.paaLineaId });
+    const version = await this.dataSource.getRepository(PaaVersion).findOneByOrFail({ id: linea.versionId });
+    const [vigencia, region] = await Promise.all([
+      this.dataSource.getRepository(PaaVigencia).findOneByOrFail({ id: version.vigenciaId }),
+      this.dataSource.getRepository(PaaRegion).findOneByOrFail({ id: linea.regionId }),
+    ]);
+    const campos = await this.campos.delEstudioPrevio(region.id, vigencia);
+
+    return {
+      tieneOrigen: true,
+      linea: { codigo: linea.codigo, region: region.nombre, anio: vigencia.anio, version: version.numero },
+      campos: campos.map((c) => ({ clave: c.clave, etiqueta: c.etiqueta, valor: linea.valores[c.clave] ?? null })),
+    };
+  }
 
   async deProceso(procesoId: string, acceso: HiringAccess) {
     // Responde 404 si a quien pregunta no le corresponde ver el proceso: la

@@ -3862,11 +3862,23 @@ export interface CampoFormularioPaa {
   clave: string;
   etiquetaFormato: string;
   etiqueta: string;
+  /** Si se ve al elegir la línea al crear el proceso. */
   visible: boolean;
+  /** Si sale en el bloque «Datos del PAA» de la 3.1. */
+  enEstudioPrevio: boolean;
+  /** El campo de la 3.1 que ya llena, si llena alguno. */
+  yaEnEstudioPrevio: string | null;
   orden: number;
   uso: 'identificador' | 'proceso' | 'informativo';
   siempreVisible: boolean;
   estado: 'normal' | 'nueva' | 'huerfana';
+}
+
+/** El bloque «Datos del PAA» de la 3.1: las columnas que la región marcó, con los valores de la versión aplicada. */
+export interface DatosDelPaaEnEstudioPrevio {
+  tieneOrigen: boolean;
+  linea: { codigo: string; region: string; anio: number; version: number } | null;
+  campos: { clave: string; etiqueta: string; valor: string | number | null }[];
 }
 
 export interface CamposDelFormularioPaa {

@@ -133,6 +133,23 @@ export const OCULTAS_POR_DEFECTO = [
   'bienes_distintos_alimentos',
 ];
 
+/**
+ * Las que nacen en el bloque «Datos del PAA» de la 3.1 mientras la región no
+ * configure otra cosa: lo que el área necesita para el estudio previo y que no
+ * tiene campo propio. La ubicación está porque el lugar de ejecución de la 3.1
+ * está inactivo; si se activa, pasa a llenarlo y sale sola del bloque.
+ */
+export const EN_ESTUDIO_PREVIO_POR_DEFECTO = [
+  'unspsc',
+  'fuente_recursos',
+  'valor_vigencia',
+  'requiere_vigencias_futuras',
+  'estado_vigencias_futuras',
+  'ubicacion',
+  'mipyme',
+  'lotes',
+];
+
 /** Para qué sirve una clave, incluidas las derivadas y las que sobran en el archivo. */
 export function usoDe(clave: string): UsoColumnaPaa {
   if (clave.startsWith(PREFIJO_EXTRA)) return 'informativo';
@@ -145,6 +162,9 @@ export function usoDe(clave: string): UsoColumnaPaa {
 
 // ----------------------------------------------- lo que el PAA le da al proceso --
 
+/** La modalidad no es un campo del formulario de la 3.1: tiene su recuadro propio arriba. */
+export const RECUADRO_MODALIDAD = 'recuadro:modalidad';
+
 /**
  * Un dato del proceso que controla el PAA.
  *
@@ -152,11 +172,17 @@ export function usoDe(clave: string): UsoColumnaPaa {
  * 3.1 muestra desde ahí) o en los datos de la 3.1. Todo lo que no está en esta
  * lista —tipología, causal, documentos, observaciones, decisiones— es del
  * proceso y ninguna versión del PAA lo toca.
+ *
+ * `columnas` son las del PAA de las que sale, y `seVeEn` el campo de la 3.1
+ * que lo muestra (por omisión, `campo` si el destino es la 3.1). De ahí sale
+ * qué columnas de «Campos del formulario» ya llegan a la 3.1 por su cuenta.
  */
 export interface CampoControlado {
   campo: string;
   etiqueta: string;
   destino: 'proceso' | 'estudio_previo';
+  columnas: readonly string[];
+  seVeEn?: string | null;
   desde: (valores: ValoresLineaPaa) => string | number | null;
 }
 
@@ -168,15 +194,31 @@ export function plazoEnDias(valores: ValoresLineaPaa): number | null {
 }
 
 export const CAMPOS_CONTROLADOS: readonly CampoControlado[] = [
-  { campo: 'objeto', etiqueta: 'Objeto del proceso', destino: 'proceso', desde: (v) => (v.objeto as string) ?? null },
-  { campo: 'modalidad', etiqueta: 'Modalidad de selección', destino: 'proceso', desde: (v) => (v.modalidad_codigo as string) ?? null },
-  { campo: 'valorEstimado', etiqueta: 'Valor estimado', destino: 'proceso', desde: (v) => (v.valor_total as number) ?? null },
-  { campo: 'objeto_contratar', etiqueta: 'Objeto del contrato (3.1)', destino: 'estudio_previo', desde: (v) => (v.objeto as string) ?? null },
-  { campo: 'linea_paa', etiqueta: 'Línea del PAA (3.1)', destino: 'estudio_previo', desde: (v) => (v.codigo as string) ?? null },
-  { campo: 'plazo_ejecucion_dias', etiqueta: 'Plazo de ejecución en días (3.1)', destino: 'estudio_previo', desde: plazoEnDias },
-  { campo: 'lugar_ejecucion', etiqueta: 'Lugar de ejecución (3.1)', destino: 'estudio_previo', desde: (v) => (v.ubicacion as string) ?? null },
-  { campo: 'responsable_area', etiqueta: 'Responsable del área (3.1)', destino: 'estudio_previo', desde: (v) => (v.responsable_nombre as string) ?? null },
+  // El objeto del proceso se ve en la 3.1 como objeto del contrato (la entrada de abajo).
+  { campo: 'objeto', etiqueta: 'Objeto del proceso', destino: 'proceso', columnas: ['objeto'], seVeEn: null, desde: (v) => (v.objeto as string) ?? null },
+  { campo: 'modalidad', etiqueta: 'Modalidad de selección', destino: 'proceso', columnas: ['modalidad', 'modalidad_codigo'], seVeEn: RECUADRO_MODALIDAD, desde: (v) => (v.modalidad_codigo as string) ?? null },
+  { campo: 'valorEstimado', etiqueta: 'Valor estimado', destino: 'proceso', columnas: ['valor_total'], seVeEn: 'valor_estimado', desde: (v) => (v.valor_total as number) ?? null },
+  { campo: 'objeto_contratar', etiqueta: 'Objeto del contrato (3.1)', destino: 'estudio_previo', columnas: ['objeto'], desde: (v) => (v.objeto as string) ?? null },
+  { campo: 'linea_paa', etiqueta: 'Línea del PAA (3.1)', destino: 'estudio_previo', columnas: ['codigo'], desde: (v) => (v.codigo as string) ?? null },
+  { campo: 'plazo_ejecucion_dias', etiqueta: 'Plazo de ejecución en días (3.1)', destino: 'estudio_previo', columnas: ['duracion', 'duracion_intervalo'], desde: plazoEnDias },
+  { campo: 'lugar_ejecucion', etiqueta: 'Lugar de ejecución (3.1)', destino: 'estudio_previo', columnas: ['ubicacion'], desde: (v) => (v.ubicacion as string) ?? null },
+  { campo: 'responsable_area', etiqueta: 'Responsable del área (3.1)', destino: 'estudio_previo', columnas: ['responsable_nombre'], desde: (v) => (v.responsable_nombre as string) ?? null },
 ];
+
+/**
+ * Por columna del PAA, el campo de la 3.1 que ya la muestra (`campo` del
+ * formulario o `RECUADRO_MODALIDAD`). Se cruza con los campos activos de la
+ * 3.1: un campo inactivo no muestra nada.
+ */
+export function camposDeLa31PorColumna(): Map<string, string> {
+  const mapa = new Map<string, string>();
+  for (const c of CAMPOS_CONTROLADOS) {
+    const seVeEn = c.seVeEn === undefined ? (c.destino === 'estudio_previo' ? c.campo : null) : c.seVeEn;
+    if (!seVeEn) continue;
+    for (const columna of c.columnas) if (!mapa.has(columna)) mapa.set(columna, seVeEn);
+  }
+  return mapa;
+}
 
 /** Lo que el PAA pone en el proceso, por campo: es lo que se guarda en `paa_origen`. */
 export function origenDesdeLinea(codigo: string, valores: ValoresLineaPaa): Record<string, string | number | null> {

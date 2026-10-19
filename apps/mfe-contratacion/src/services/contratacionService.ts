@@ -1962,7 +1962,7 @@ export const contratacionService = {
     guardarCampos: (
       regionId: string,
       anio: number,
-      campos: { clave: string; visible: boolean; etiqueta?: string | null }[],
+      campos: { clave: string; visible: boolean; enEstudioPrevio: boolean; etiqueta?: string | null }[],
     ) =>
       pedir<CamposDelFormularioPaa>(`/paa/regiones/${regionId}/vigencias/${anio}/campos`, {
         method: 'PUT',
@@ -1981,6 +1981,9 @@ export const contratacionService = {
       }),
 
     origenDelProceso: (procesoId: string) => pedir<OrigenPaaDelProceso>(`/paa/procesos/${procesoId}`),
+
+    datosParaEstudioPrevio: (procesoId: string) =>
+      pedir<DatosDelPaaEnEstudioPrevio>(`/paa/procesos/${procesoId}/estudio-previo`),
   },
 
   obtenerEstudioPrevio: (procesoId: string) =>

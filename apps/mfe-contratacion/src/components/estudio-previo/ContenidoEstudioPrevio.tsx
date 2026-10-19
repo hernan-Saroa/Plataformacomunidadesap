@@ -16,7 +16,6 @@ import { contratacionService } from '../../services/contratacionService';
 import {
   CampoFormulario,
   CdpDelEstudioPrevio as EstadoCdp,
-  EstudioPrevio,
   RevisionEstudioPrevio,
 } from '../../types';
 import { CampoDinamico } from './CampoDinamico';
@@ -26,6 +25,7 @@ import { ListaDeDocumentos } from '../shared/ListaDeDocumentos';
 import { RadicadoGestionDocumental } from './RadicadoGestionDocumental';
 import { ModalidadDelEstudioPrevio } from './ModalidadDelEstudioPrevio';
 import { CdpDelEstudioPrevio } from './CdpDelEstudioPrevio';
+import { DatosDelPaa } from './DatosDelPaa';
 import { usarAprobacion } from '../shared/usarAprobacion';
 import { useFirma } from '../shared/useFirma';
 
@@ -313,6 +313,10 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
         })}
       </div>
 
+      {/* Lo que la región decidió mostrar de la línea del PAA, antes de lo que
+          el área diligencia. */}
+      {seccion === 'campos' && <DatosDelPaa procesoId={procesoId} version={datos} />}
+
       {/* Campos por sección, dos columnas */}
       {seccion === 'campos' &&
         grupos.map(([grupo, campos]) => (
@@ -332,8 +336,7 @@ export function ContenidoEstudioPrevio({ procesoId, onCambio, onRevisar }: Props
                   valor={valores[campo.codigo]}
                   error={errores[campo.codigo]}
                   disabled={bloqueado}
-                  dependencia={areaElegida}
-                  onChange={(v) => cambiarCampo(campo.codigo, v)}
+                  onChange={(v) => cambiar(campo.codigo, v)}
                 />
               ))}
             </div>

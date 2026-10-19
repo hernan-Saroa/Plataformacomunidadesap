@@ -228,6 +228,10 @@ export class PaaCampoVisible {
   @Column({ length: 300, nullable: true })
   etiqueta: string | null;
 
+  /** Si sale en el bloque «Datos del PAA» de la 3.1, aparte de si se ve al elegir la línea. */
+  @Column({ name: 'en_estudio_previo', default: false })
+  enEstudioPrevio: boolean;
+
   @Column({ default: false })
   huerfana: boolean;
 

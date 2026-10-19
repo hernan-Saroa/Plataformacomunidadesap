@@ -3,10 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 import { ModalidadDelEstudioPrevio } from './ModalidadDelEstudioPrevio';
-import { contratacionService } from '../../services/contratacionService';
 import { EstudioPrevio } from '../../types';
-
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const proceso: EstudioPrevio['proceso'] = {
   id: 'p-1',
