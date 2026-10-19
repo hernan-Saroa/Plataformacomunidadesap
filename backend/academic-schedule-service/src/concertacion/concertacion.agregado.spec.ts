@@ -172,7 +172,11 @@ describe('EFDS-2315 :: concertacion de la docencia (agregado real, en transaccio
     expect(sedeCentral).toBeDefined();
     await expect(svc.revisar(c.idConcertacion, 'academica', tolima, REVISOR, '123456')).rejects.toBeInstanceOf(ForbiddenException);
     expect(await svc.bandeja(REVISOR, tolima, f.periodo)).toEqual([]);
-    expect((await svc.bandeja(REVISOR, sedeCentral, f.periodo)).map((x: any) => x.idConcertacion)).toEqual([c.idConcertacion]);
+    const enBandeja = await svc.bandeja(REVISOR, sedeCentral, f.periodo);
+    expect(enBandeja.map((x: any) => x.idConcertacion)).toEqual([c.idConcertacion]);
+    // La bandeja trae el código del periodo y el registro de firmas (aquí, solo la del docente al enviar).
+    expect(enBandeja[0].periodoCodigo).toBe('2049-1');
+    expect(enBandeja[0].firmas.map((x: any) => [x.rol, x.modoOtp])).toEqual([['docente', 'simulado']]);
     expect((await svc.revisar(c.idConcertacion, 'academica', sedeCentral, REVISOR, '123456')).estado).toBe('REVISADA');
     // Sin seccional en Personas no hay restricción geográfica (así lo hace hoy el PTA).
     expect((await svc.aprobar(c.idConcertacion, f.aprobador, APROBADOR, '123456', null)).estado).toBe('APROBADA');

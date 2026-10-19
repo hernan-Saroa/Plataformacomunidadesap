@@ -340,10 +340,18 @@ export class ConcertacionService {
   async bandeja(permisos: readonly PermisoPta[], idUser: string, periodoRef?: string) {
     const filas = await this.dataSource.query(
       `SELECT c.id_concertacion AS "idConcertacion", c.periodo_ref AS "idPeriodo", c.nivel, c.estado,
+              (SELECT COALESCE(
+                 (SELECT pa.codigo FROM academic_work_plan.periodo_academico pa WHERE pa.id::text = c.periodo_ref),
+                 (SELECT pp.codigo FROM "academic-schedule".periodo_programacion pp WHERE pp.id_periodo::text = c.periodo_ref))
+              ) AS "periodoCodigo",
               c.horas::float AS horas, jsonb_array_length(c.franjas) AS "numFranjas", c.franjas,
               p.nom_largo AS docente, p.num_identificacion AS documento, c.updated_at AS "actualizadaEn",
               (SELECT COALESCE(array_agg(r.tipo), '{}') FROM "academic-schedule".concertacion_revision r
-                WHERE r.id_concertacion = c.id_concertacion) AS revisiones
+                WHERE r.id_concertacion = c.id_concertacion) AS revisiones,
+              -- Registro de firmas (rol, cuándo, modo del código): el revisor y el aprobador ven quién firmó antes.
+              (SELECT COALESCE(json_agg(json_build_object('rol', f.rol, 'firmadoEn', f.firmado_en, 'modoOtp', f.modo_otp)
+                        ORDER BY f.firmado_en), '[]'::json)
+                 FROM "academic-schedule".concertacion_firma f WHERE f.id_concertacion = c.id_concertacion) AS firmas
          FROM "academic-schedule".concertacion_docencia c
          JOIN auth.personas p ON p.id_person = c.id_docente
         WHERE c.estado IN ('ENVIADA', 'REVISADA')
