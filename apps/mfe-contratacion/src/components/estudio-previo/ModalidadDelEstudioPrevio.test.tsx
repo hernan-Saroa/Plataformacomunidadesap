@@ -37,15 +37,6 @@ const sinVeto = {
  * valor no: sale del PAA (migración 105).
  */
 describe('ModalidadDelEstudioPrevio', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    vi.spyOn(contratacionService, 'modalidades').mockResolvedValue([
-      { codigo: 'MINIMA_CUANTIA', nombre: 'Mínima Cuantía' },
-      { codigo: 'LICITACION_PUBLICA', nombre: 'Licitación Pública' },
-    ] as never);
-    vi.spyOn(contratacionService, 'sugerenciaModalidad').mockResolvedValue(sinVeto as never);
-  });
-
   it('muestra la modalidad y la cuantía, y que se ratifica con el estudio previo', () => {
     render(
       <ModalidadDelEstudioPrevio procesoId="p-1" proceso={proceso} puedeCambiar onCambiada={vi.fn()} />,

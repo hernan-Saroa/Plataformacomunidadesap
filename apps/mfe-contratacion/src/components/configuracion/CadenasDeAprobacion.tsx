@@ -658,7 +658,7 @@ function ResponsablesDelEscalon({
                   ))
               : (
                   <p className="text-xs text-slate-400 m-0 px-1 py-2">
-                    No hay más puestos: créalos en la ficha de la actividad 3.3.
+                    No hay más puestos: créalos en Puestos del proceso, en la pestaña Flujo.
                   </p>
                 )
             : donde === 'roles'

@@ -418,7 +418,7 @@ export function AprobacionActividad({ numeral, modalidad = null, nombreModalidad
                     ))
                 ) : (
                   <p className="text-xs text-slate-400 m-0 px-1 py-2">
-                    No hay más puestos: créalos en la actividad 3.3 de Configuración.
+                    No hay más puestos: créalos en Puestos del proceso, en la pestaña Flujo.
                   </p>
                 )
               ) : donde === 'roles' ? (

@@ -68,6 +68,7 @@ describe('FlujoVisual', () => {
       { id: 'v-1', numero: 1, estado: 'ACTIVA', procesosEnCurso: 3 },
     ] as never);
     vi.spyOn(contratacionService, 'diagramaFlujo').mockResolvedValue(DIAGRAMA as never);
+    vi.spyOn(contratacionService, 'diagnosticoDePuestos').mockResolvedValue([] as never);
     vi.spyOn(contratacionService, 'validacionFlujo').mockResolvedValue([
       {
         numeral: '3.6',
@@ -89,7 +90,7 @@ describe('FlujoVisual', () => {
     const estudio = screen.getByRole('button', { name: /3\.1.*Estudio previo/ });
     expect(estudio).toHaveTextContent('Por rol');
     expect(estudio).toHaveTextContent('Revisión del estudio previo (2 pasos)');
-    expect(screen.getByRole('button', { name: /3\.6.*Causal/ })).toHaveTextContent('Se elige al ejecutar: Abogado del caso');
+    expect(screen.getByRole('button', { name: /3\.6.*Causal/ })).toHaveTextContent('Por puesto: Abogado del caso');
   });
 
   it('destaca donde se asigna gente y apaga lo que la modalidad salta', async () => {
@@ -109,6 +110,26 @@ describe('FlujoVisual', () => {
     expect(await screen.findByRole('button', { name: /Activar versión 2/ })).toBeDisabled();
     await userEvent.click(screen.getByRole('button', { name: /1 cosa por corregir/ }));
     expect(screen.getByRole('button', { name: /3\.6 · Causal — Nadie puede ocupar/ })).toHaveTextContent('Mínima Cuantía');
+  });
+
+  it('los puestos del proceso se ven y se crean desde el flujo', async () => {
+    vi.spyOn(contratacionService, 'puestos').mockResolvedValue([] as never);
+    vi.spyOn(contratacionService, 'diagnosticoDePuestos').mockResolvedValue([] as never);
+    render(<FlujoVisual />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Puestos del proceso/ }));
+
+    const seccion = screen.getByRole('region', { name: 'Puestos del proceso' });
+    expect(await within(seccion).findByRole('button', { name: /Crear un puesto/ })).toBeInTheDocument();
+  });
+
+  it('el botón de puestos cuenta lo que hay por revisar', async () => {
+    vi.spyOn(contratacionService, 'diagnosticoDePuestos').mockResolvedValue([
+      { puestoId: 'p-1', numeral: null, mensaje: 'El puesto Jefe es obligatorio pero no hace ni aprueba ninguna actividad' },
+    ] as never);
+    render(<FlujoVisual />);
+
+    expect(await screen.findByRole('button', { name: /Puestos del proceso.*1 puesto por revisar/ })).toBeInTheDocument();
   });
 
   it('al elegir una actividad abre su panel sin perder el diagrama', async () => {

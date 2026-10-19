@@ -85,11 +85,6 @@ describe('DetalleActividad', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(contratacionService, 'plantillas').mockResolvedValue([]);
-    vi.spyOn(contratacionService, 'aprobacionDeActividad').mockResolvedValue({
-      requiereAprobacion: false,
-      aprobadores: [],
-      cadena: null,
-    });
   });
 
   it('no ofrece campos configurables donde el gestor nunca los vería', async () => {

@@ -1,10 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Search, X } from 'lucide-react';
+import { Check, Plus, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { LaHaceConfig, Puesto } from '../../types';
 import { campo } from '../shared/PiezasPanel';
+
+/**
+ * Donde se asignan los puestos. Un puesto no puede hacerla: en un proceso
+ * recién llegado nadie lo ocupa, y nadie podría tomarlo. El servidor también lo
+ * rechaza; aquí no se ofrece.
+ */
+const NUMERAL_QUE_ASIGNA_PUESTOS = '3.3';
 
 interface Props {
   numeral: string;
@@ -22,8 +29,9 @@ interface Props {
  * dice, de los que pueden, quién la hace.
  *
  * - Quien tenga el permiso: lo de siempre, cualquiera con el rol.
- * - Un puesto del proceso: solo quien lo ocupe en cada proceso, asignado en
- *   la 3.3. Es lo que hacía el abogado con la causal y el comité.
+ * - Por puesto del proceso: solo quien lo ocupe en cada proceso, asignado en
+ *   la 3.3. Es lo que hacía el abogado con la causal y el comité. Si el puesto
+ *   todavía no existe, se crea aquí mismo.
  * - Unas personas: siempre ellas, en todos los procesos.
  */
 export function LaHaceActividad({ numeral, modalidad = null, nombreModalidad, onCambio }: Props) {
@@ -34,6 +42,7 @@ export function LaHaceActividad({ numeral, modalidad = null, nombreModalidad, on
   const [modo, setModo] = useState<'PERMISO' | 'PUESTO' | 'PERSONAS'>('PERMISO');
   const [texto, setTexto] = useState('');
   const [encontradas, setEncontradas] = useState<{ id: string; nombre: string }[]>([]);
+  const [nuevoPuesto, setNuevoPuesto] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([contratacionService.laHaceDeActividad(numeral, modalidad), contratacionService.puestos()])
@@ -85,10 +94,29 @@ export function LaHaceActividad({ numeral, modalidad = null, nombreModalidad, on
     }
   };
 
+  /** Crea el puesto y lo deja como el que hace la actividad. */
+  const crearYElegir = async () => {
+    const nombre = (nuevoPuesto ?? '').trim();
+    setGuardando(true);
+    let creado: Puesto;
+    try {
+      creado = await contratacionService.crearPuesto({ nombre });
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo crear el puesto');
+      setGuardando(false);
+      return;
+    }
+    setPuestos((antes) => [...antes, creado]);
+    setNuevoPuesto(null);
+    await guardar({ puestoId: creado.id }, `Se creó el puesto ${creado.nombre} y hace esta actividad`);
+  };
+
   if (error) return <p className="text-xs text-red-600 m-0">{error}</p>;
   if (!config) return <p className="text-xs text-slate-400 m-0">Cargando la configuración…</p>;
 
   const personas = config.tipo === 'PERSONAS' ? config.personas : [];
+  // Si ya la tuviera (guardado antes de esta regla), se enseña para poder cambiarla.
+  const ofrecePuesto = numeral !== NUMERAL_QUE_ASIGNA_PUESTOS || config.tipo === 'PUESTO';
 
   return (
     <div className="space-y-3">
@@ -112,25 +140,34 @@ export function LaHaceActividad({ numeral, modalidad = null, nombreModalidad, on
           titulo="Por rol: quien tenga el permiso"
           ayuda="Cualquiera cuyo rol pueda hacerla en Permisos por etapa."
         />
-        <Opcion
-          marcada={modo === 'PUESTO'}
-          disabled={guardando}
-          onClick={() => setModo('PUESTO')}
-          titulo={
-            config.tipo === 'PUESTO' && config.puesto
-              ? `Se elige al ejecutar: el puesto «${config.puesto.nombre}»`
-              : 'Se elige al ejecutar: un puesto del proceso'
-          }
-          ayuda="Quien recibe el proceso (3.3) escoge a la persona, entre quienes tienen el permiso."
-        />
+        {ofrecePuesto && (
+          <Opcion
+            marcada={modo === 'PUESTO'}
+            disabled={guardando}
+            onClick={() => setModo('PUESTO')}
+            titulo={
+              config.tipo === 'PUESTO' && config.puesto
+                ? `Por puesto del proceso: «${config.puesto.nombre}»`
+                : 'Por puesto del proceso'
+            }
+            ayuda="La hace quien ocupe el puesto en cada proceso. La persona se asigna al recibirlo (3.3), entre quienes tienen el permiso, y se puede cambiar después desde el equipo del proceso."
+          />
+        )}
         <Opcion
           marcada={modo === 'PERSONAS'}
           disabled={guardando}
           onClick={() => setModo('PERSONAS')}
           titulo="Una persona fija"
-          ayuda="Siempre ella, en todos los procesos. No se escoge al ejecutar."
+          ayuda="Siempre ella, en todos los procesos. No cambia de un proceso a otro."
         />
       </div>
+
+      {numeral === NUMERAL_QUE_ASIGNA_PUESTOS ? (
+        <p className={`text-xs m-0 ${config.tipo === 'PUESTO' ? 'font-bold text-red-700' : 'text-slate-500'}`}>
+          La 3.3 es donde se asignan los puestos, así que no puede hacerla un puesto: en un proceso recién llegado nadie
+          lo ocupa todavía.{config.tipo === 'PUESTO' ? ' Elige por rol o una persona fija.' : ''}
+        </p>
+      ) : null}
 
       {config.tipo === 'PUESTO' && config.puesto && !config.puesto.activo ? (
         <p className="text-xs font-bold text-amber-700 m-0">
@@ -140,21 +177,66 @@ export function LaHaceActividad({ numeral, modalidad = null, nombreModalidad, on
 
       {modo === 'PUESTO' && (
         <div className="ml-6 space-y-1.5">
-          {puestos.length === 0 ? (
-            <p className="text-xs text-amber-700 m-0">Todavía no hay puestos: créalos en la ficha de la 3.3.</p>
+          {puestos.length === 0 && nuevoPuesto === null ? (
+            <p className="text-xs text-amber-700 m-0">Todavía no hay puestos: crea el primero.</p>
+          ) : null}
+          {puestos.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              disabled={guardando || (config.tipo === 'PUESTO' && config.puesto?.id === p.id)}
+              onClick={() => guardar({ puestoId: p.id }, `La hace quien ocupe el puesto ${p.nombre}`)}
+              className="w-full text-left rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {p.nombre}
+              {config.tipo === 'PUESTO' && config.puesto?.id === p.id ? ' · elegido' : ''}
+            </button>
+          ))}
+          {nuevoPuesto === null ? (
+            <button
+              type="button"
+              disabled={guardando}
+              onClick={() => setNuevoPuesto('')}
+              className="inline-flex items-center gap-1.5 px-2 py-1.5 text-xs font-bold text-[#003DA5] hover:underline disabled:opacity-50"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Crear puesto
+            </button>
           ) : (
-            puestos.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                disabled={guardando || (config.tipo === 'PUESTO' && config.puesto?.id === p.id)}
-                onClick={() => guardar({ puestoId: p.id }, `La hace quien ocupe el puesto ${p.nombre}`)}
-                className="w-full text-left rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-slate-800 hover:bg-slate-50 disabled:opacity-50"
-              >
-                {p.nombre}
-                {config.tipo === 'PUESTO' && config.puesto?.id === p.id ? ' · elegido' : ''}
-              </button>
-            ))
+            <div className="rounded-lg border border-gray-200 bg-white p-2 space-y-2">
+              <input
+                autoFocus
+                value={nuevoPuesto}
+                onChange={(e) => setNuevoPuesto(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && nuevoPuesto.trim().length >= 3) void crearYElegir();
+                  if (e.key === 'Escape') setNuevoPuesto(null);
+                }}
+                placeholder="Nombre del puesto, por ejemplo «Segundo abogado»"
+                aria-label="Nombre del puesto nuevo"
+                className={campo}
+              />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={guardando || nuevoPuesto.trim().length < 3}
+                  onClick={() => void crearYElegir()}
+                  className="px-3 py-1.5 text-xs font-bold rounded-md bg-[#003DA5] text-white hover:bg-blue-800 disabled:opacity-50"
+                >
+                  Crear y elegir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNuevoPuesto(null)}
+                  className="text-xs font-bold text-slate-500 hover:text-gray-700 px-2"
+                >
+                  Cancelar
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500 m-0">
+                La descripción y si es obligatorio se ajustan en Puestos del proceso.
+              </p>
+            </div>
           )}
         </div>
       )}

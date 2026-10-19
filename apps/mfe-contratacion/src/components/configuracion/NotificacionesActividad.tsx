@@ -175,7 +175,7 @@ export function NotificacionesActividad({ numeral }: Props) {
         <p className="text-[11px] text-slate-500 m-0 leading-relaxed">
           {datos.siempre.length > 0 && 'Salen solos y no se pueden apagar. '}
           {!datos.requiereAprobacion &&
-            'Esta actividad no requiere aprobación: si se la configuras en la pestaña Aprobación, los avisos de enviar, aprobar y devolver salen solos.'}
+            'Esta actividad no requiere aprobación: si le configuras quién la revisa en la pestaña Flujo, los avisos de enviar, aprobar y devolver salen solos.'}
         </p>
       </section>
 

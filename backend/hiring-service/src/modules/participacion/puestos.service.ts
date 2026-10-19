@@ -232,6 +232,15 @@ export class PuestosService {
 
     for (const p of puestos.filter((x) => x.activo)) {
       const suyos = usos.filter((u) => u.puestoId === p.id);
+      // Obligatorio sin nada que hacer: no sale en ningún proceso ni alerta, así
+      // que marcarlo no sirve; casi siempre falta usarlo en alguna actividad.
+      if (!suyos.length && p.obligatorio) {
+        problemas.push({
+          puestoId: p.id,
+          numeral: null,
+          mensaje: `El puesto ${p.nombre} es obligatorio pero no hace ni aprueba ninguna actividad, así que no sale en ningún proceso ni genera la alerta de puesto vacío. Úsalo en alguna actividad o quítale lo obligatorio`,
+        });
+      }
       if (!suyos.length) continue;
       const candidatos = await this.idsCandidatos(suyos);
       if (!candidatos.length) {
@@ -262,8 +271,9 @@ export class PuestosService {
     for (const p of puestos) {
       const suyos = usos.filter((u) => u.puestoId === p.id);
       const ocupa = asignaciones.find((a) => a.puestoId === p.id && a.estado === 'VIGENTE') ?? null;
-      // Un puesto que en esta modalidad no hace nada y nadie ocupa no se enseña.
-      if (!suyos.length && !ocupa && !p.obligatorio) continue;
+      // Un puesto que en esta modalidad no hace nada y nadie ocupa no se enseña,
+      // aunque sea obligatorio: aquí no hay nada que hacer con él.
+      if (!suyos.length && !ocupa) continue;
       const faltan = ocupa ? await this.permisosQueLeFaltan(ocupa.usuarioId, suyos) : [];
       lista.push({
         id: p.id,

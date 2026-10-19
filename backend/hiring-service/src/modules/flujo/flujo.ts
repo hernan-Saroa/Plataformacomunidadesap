@@ -23,6 +23,15 @@ export const ACTIVIDADES_QUE_ASIGNAN: Readonly<Record<string, string>> = {
   '9.3': 'Se reasigna la supervisión',
 };
 
+/**
+ * La actividad donde se asignan los puestos. No puede hacerla un puesto: en un
+ * proceso recién llegado nadie lo ocupa todavía, así que nadie podría tomarlo
+ * y el proceso se quedaría en la bandeja.
+ */
+export const NUMERAL_QUE_ASIGNA_PUESTOS = '3.3';
+export const NO_LA_HACE_UN_PUESTO =
+  'La 3.3 es donde se asignan los puestos: no puede hacerla un puesto. Elige por rol o una persona fija';
+
 export type Gravedad = 'ERROR' | 'AVISO';
 
 /** Algo que corregir en el flujo, dicho con lo que hay que hacer. */
@@ -175,6 +184,8 @@ export function validarModalidad(d: DatosDeValidacion): ProblemaFlujo[] {
           mensaje: `Alguna de las personas elegidas no tiene una cuenta con permiso para ${queHace}`,
         });
       }
+    } else if (a.numeral === NUMERAL_QUE_ASIGNA_PUESTOS) {
+      problemas.push({ ...base, parte: 'HACE', gravedad: 'ERROR', mensaje: NO_LA_HACE_UN_PUESTO });
     } else {
       const nombre = d.puestos.get(hace.puestoId);
       if (!nombre) {

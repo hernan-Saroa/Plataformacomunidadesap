@@ -69,7 +69,15 @@ describe('validar el flujo antes de activarlo', () => {
     expect(validarModalidad(datos({ filas }))[0]).toMatchObject({ numeral: '3.6', parte: 'HACE', gravedad: 'ERROR' });
   });
 
-  it('elegirlo al ejecutar exige un puesto que exista y que alguien pueda ocupar', () => {
+  it('la 3.3 no la puede hacer un puesto: es donde se asignan', () => {
+    const actividades = [{ numeral: '3.3', nombre: 'Radicación', etapa: 3 }];
+    const filas: FilaAsignacion[] = [{ numeral: '3.3', modalidad: null, laHace: { tipo: 'PUESTO', puestoId: 'p-revisor' }, aprobacion: null }];
+    expect(validarModalidad(datos({ actividades, filas }))).toEqual([
+      expect.objectContaining({ numeral: '3.3', parte: 'HACE', gravedad: 'ERROR', mensaje: expect.stringMatching(/no puede hacerla un puesto/) }),
+    ]);
+  });
+
+  it('por puesto del proceso exige un puesto que exista y que alguien pueda ocupar', () => {
     const filas: FilaAsignacion[] = [{ numeral: '3.6', modalidad: null, laHace: { tipo: 'PUESTO', puestoId: 'p-borrado' }, aprobacion: null }];
     expect(validarModalidad(datos({ filas }))[0].mensaje).toMatch(/ya no existe/);
 

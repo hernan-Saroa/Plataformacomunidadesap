@@ -12,6 +12,20 @@
  * Este archivo sí entra en el bundle del microfrontend, que carga su propio CSS.
  */
 
+/* ---------------------------------------------------- contenido del módulo --- */
+
+/*
+ * Recorta lo que se salga por los lados sin volverse contenedor de scroll:
+ * con overflow-x hidden el navegador le pone también overflow-y auto, y
+ * entonces todo lo sticky de adentro (la barra del menú en móvil, el panel
+ * del flujo) se pega a él, que no se mueve, en vez de al scroll del shell.
+ */
+.contenido-modulo {
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow-x: clip;
+}
+
 /* ---------------------------------------------------- lista de procesos --- */
 
 /* Apilada: icono a la izquierda, todo lo demás en una columna. */
@@ -947,11 +961,17 @@
     grid-template-columns: minmax(0, 1fr) 24rem;
   }
 
-  /* El panel acompaña al diagrama mientras se recorre. */
+  /*
+   * El panel acompaña al diagrama mientras se recorre. Sticky se pega al
+   * contenedor con scroll del shell; para eso el <main> del módulo usa
+   * overflow-x: clip (.contenido-modulo) y no hidden, que lo volvía un
+   * contenedor de scroll sin scroll y el panel se quedaba arriba.
+   * El alto descuenta la barra superior del shell (unos 4.5rem) y el margen.
+   */
   .flujo-panel {
     position: sticky;
     top: 1rem;
-    max-height: calc(100vh - 2rem);
+    max-height: calc(100vh - 7rem);
     overflow-y: auto;
   }
 }

@@ -96,10 +96,49 @@ describe('LaHaceActividad', () => {
     } as never);
     render(<LaHaceActividad numeral="5.1" />);
 
-    await usuario.click(await screen.findByRole('button', { name: /Se elige al ejecutar: un puesto del proceso/ }));
+    await usuario.click(await screen.findByRole('button', { name: /Por puesto del proceso/ }));
     await usuario.click(screen.getByRole('button', { name: 'Abogado' }));
 
     expect(guardar).toHaveBeenCalledWith('5.1', { puestoId: 'p-abogado', modalidad: null });
-    expect(await screen.findByText(/Se elige al ejecutar: el puesto «Abogado»/)).toBeInTheDocument();
+    expect(await screen.findByText(/Por puesto del proceso: «Abogado»/)).toBeInTheDocument();
+  });
+
+  it('en la 3.3 no ofrece un puesto: es donde se asignan', async () => {
+    vi.spyOn(contratacionService, 'laHaceDeActividad').mockResolvedValue({
+      tipo: 'PERMISO',
+      puesto: null,
+      personas: [],
+    } as never);
+    render(<LaHaceActividad numeral="3.3" />);
+
+    expect(await screen.findByRole('button', { name: /Por rol/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Por puesto del proceso/ })).toBeNull();
+    expect(screen.getByText(/no puede hacerla un puesto/)).toBeInTheDocument();
+  });
+
+  it('crea el puesto ahí mismo y lo deja como el que la hace', async () => {
+    const usuario = userEvent.setup();
+    vi.spyOn(contratacionService, 'laHaceDeActividad').mockResolvedValue({
+      tipo: 'PERMISO',
+      puesto: null,
+      personas: [],
+    } as never);
+    const crear = vi
+      .spyOn(contratacionService, 'crearPuesto')
+      .mockResolvedValue({ ...ABOGADO, id: 'p-segundo', nombre: 'Segundo abogado', usos: [] } as never);
+    const guardar = vi.spyOn(contratacionService, 'guardarLaHaceDeActividad').mockResolvedValue({
+      tipo: 'PUESTO',
+      puesto: { id: 'p-segundo', nombre: 'Segundo abogado', activo: true },
+      personas: [],
+    } as never);
+    render(<LaHaceActividad numeral="5.1" />);
+
+    await usuario.click(await screen.findByRole('button', { name: /Por puesto del proceso/ }));
+    await usuario.click(screen.getByRole('button', { name: /Crear puesto/ }));
+    await usuario.type(screen.getByLabelText('Nombre del puesto nuevo'), 'Segundo abogado');
+    await usuario.click(screen.getByRole('button', { name: 'Crear y elegir' }));
+
+    await waitFor(() => expect(crear).toHaveBeenCalledWith({ nombre: 'Segundo abogado' }));
+    expect(guardar).toHaveBeenCalledWith('5.1', { puestoId: 'p-segundo', modalidad: null });
   });
 });

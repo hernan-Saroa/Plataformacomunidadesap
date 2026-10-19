@@ -148,7 +148,7 @@ export function PanelRadicacion({ procesoId, onCambio }: Props) {
             vacios === 0 && conProblema === 0 ? 'hecho' : puestos?.puedeAsignar ? 'te-toca' : 'le-toca',
           detalle:
             vacios === 0 && conProblema === 0
-              ? 'Cada puesto tiene quién lo ocupe.'
+              ? 'Cada puesto tiene quién lo ocupe. Si alguien sale del caso, se cambia aquí en cualquier momento.'
               : `${
                   vacios ? (vacios === 1 ? 'Falta 1 puesto por asignar' : `Faltan ${vacios} puestos por asignar`) : ''
                 }${vacios && conProblema ? '; ' : ''}${

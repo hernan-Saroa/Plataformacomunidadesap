@@ -8,7 +8,7 @@ import { campo } from '../shared/PiezasPanel';
 import { useDialogo } from '../shared/useDialogo';
 
 /**
- * Los puestos del proceso, en la ficha de la 3.3 (109).
+ * Los puestos del proceso (109), en la pestaña Flujo.
  *
  * Un puesto es un lugar que ocupa una persona en cada proceso: «Abogado»,
  * «Segundo abogado», «Jefe». Los nombra la Dirección, y lo que hace cada uno lo
@@ -17,7 +17,7 @@ import { useDialogo } from '../shared/useDialogo';
  *
  * Debajo, el diagnóstico: lo que la configuración de hoy deja sin salida.
  */
-export function PuestosConfig() {
+export function PuestosConfig({ onCambio }: { onCambio?: () => void } = {}) {
   const [puestos, setPuestos] = useState<Puesto[] | null>(null);
   const [problemas, setProblemas] = useState<ProblemaDePuestos[]>([]);
   const [error, setError] = useState<string | null>(null);

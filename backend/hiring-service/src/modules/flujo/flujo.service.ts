@@ -23,6 +23,8 @@ import {
 import { DEPENDE_DE, SIN_PANEL } from '../notificaciones/secuencia';
 import {
   ACTIVIDADES_QUE_ASIGNAN,
+  NO_LA_HACE_UN_PUESTO,
+  NUMERAL_QUE_ASIGNA_PUESTOS,
   CadenaParaValidar,
   DatosDeValidacion,
   ProblemaFlujo,
@@ -179,6 +181,9 @@ export class FlujoService {
       if (modalidad) {
         const [m] = await em.query(`SELECT 1 FROM hiring.modalidades WHERE codigo = $1`, [modalidad]);
         if (!m) throw new BadRequestException(`La modalidad ${modalidad} no existe`);
+      }
+      if (cambios.laHace?.tipo === 'PUESTO' && numeral === NUMERAL_QUE_ASIGNA_PUESTOS) {
+        throw new BadRequestException(NO_LA_HACE_UN_PUESTO);
       }
       if (cambios.laHace?.tipo === 'PUESTO') {
         const [p] = await em.query(`SELECT 1 FROM hiring.puestos_proceso WHERE id::text = $1 AND activo`, [cambios.laHace.puestoId]);

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowDown,
+  Briefcase,
   CheckCircle2,
   ChevronRight,
   Eye,
@@ -22,6 +23,7 @@ import { DiagramaFlujo, ModoAsignacion, NodoFlujo, ProblemaFlujo, VersionFlujo }
 import { useDialogo } from '../shared/useDialogo';
 import { AprobacionActividad } from './AprobacionActividad';
 import { LaHaceActividad } from './LaHaceActividad';
+import { PuestosConfig } from './PuestosConfig';
 import { NOMBRE_ETAPA } from './simbolos';
 
 /** Cómo se asigna quien hace la actividad: ícono, nombre y explicación. */
@@ -30,8 +32,8 @@ const MODO: Record<ModoAsignacion, { Icono: typeof User; nombre: string; ayuda: 
   PERSONA: { Icono: User, nombre: 'Persona fija', ayuda: 'La hace siempre la misma persona' },
   AL_EJECUTAR: {
     Icono: UserPlus,
-    nombre: 'Se elige al ejecutar',
-    ayuda: 'Quien recibe el proceso (3.3) escoge a la persona del puesto',
+    nombre: 'Por puesto',
+    ayuda: 'La hace quien ocupe el puesto en cada proceso; la persona se asigna al recibirlo (3.3) y se puede cambiar después',
   },
 };
 
@@ -39,9 +41,12 @@ const MODO: Record<ModoAsignacion, { Icono: typeof User; nombre: string; ayuda: 
  * El flujo de trabajo, de principio a fin (migración 111).
  *
  * Una franja por etapa con sus actividades en orden. Cada una dice quién la
- * hace y cómo se asigna —por rol, una persona fija o se elige al ejecutar—,
+ * hace y cómo se asigna —por rol, una persona fija o por puesto del proceso—,
  * quién la revisa y si le falta algo. Las que asignan gente al proceso van
  * destacadas, porque de ellas sale quién hace las demás.
+ *
+ * Los puestos del proceso se crean aquí mismo, en su sección plegable, o
+ * desde «Quién la hace» de cualquier actividad.
  *
  * No es un dibujo aparte: lee y escribe las mismas versiones del flujo que
  * ejecuta el sistema. Se edita el borrador y se activa de una vez; activar no
@@ -58,6 +63,12 @@ export function FlujoVisual() {
   const [elegido, setElegido] = useState<string | null>(null);
   const [mostrarSaltadas, setMostrarSaltadas] = useState(false);
   const [verProblemas, setVerProblemas] = useState(false);
+  const [verPuestos, setVerPuestos] = useState(false);
+  /** Lo que el diagnóstico de puestos encuentra: se cuenta en el botón de la sección. */
+  const [problemasPuestos, setProblemasPuestos] = useState(0);
+  /** Suben con cada cambio, para que la sección de puestos y el panel relean al otro. */
+  const [cambios, setCambios] = useState(0);
+  const [cambiosPuestos, setCambiosPuestos] = useState(0);
   const [ocupado, setOcupado] = useState(false);
   const dialogo = useDialogo();
 
@@ -75,6 +86,11 @@ export function FlujoVisual() {
       setDiagrama(d);
       setValidacion(p);
       setError(null);
+      // Aparte: si el diagnóstico falla, el flujo se sigue viendo.
+      contratacionService
+        .diagnosticoDePuestos()
+        .then((x) => setProblemasPuestos(x.length))
+        .catch(() => setProblemasPuestos(0));
     } catch (e: any) {
       setError(e.message);
     }
@@ -253,23 +269,20 @@ export function FlujoVisual() {
           </button>
         </div>
 
-        {/* La validación, de las once modalidades: es lo que bloquea activar. */}
-        {errores.length === 0 ? (
-          <p className="m-0 flex items-center gap-1.5 text-xs font-bold text-emerald-700">
-            <CheckCircle2 className="w-4 h-4" /> Cada actividad tiene quién la haga y quién la revise en todas las modalidades
-            {borrador ? ': el borrador se puede activar.' : '.'}
-          </p>
-        ) : (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+      <Leyenda />
+
+      {/* ------------------------------------------------- puestos del proceso */}
+      {verPuestos ? (
+        <section className="rounded-xl border border-gray-200 bg-white px-4 py-3 space-y-2" aria-label="Puestos del proceso">
+          <div className="flex items-start gap-2">
+            <p className="m-0 flex-1 text-sm font-bold text-slate-800">Puestos del proceso</p>
             <button
               type="button"
-              onClick={() => setVerProblemas((v) => !v)}
-              aria-expanded={verProblemas}
-              className="flex w-full items-center gap-1.5 text-left text-xs font-bold text-red-800"
+              onClick={() => setVerPuestos(false)}
+              aria-label="Cerrar los puestos"
+              className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             >
-              <AlertTriangle className="w-4 h-4" />
-              {errores.length === 1 ? '1 cosa por corregir' : `${errores.length} cosas por corregir`} antes de activar
-              <ChevronRight className={`ml-auto w-4 h-4 transition-transform ${verProblemas ? 'rotate-90' : ''}`} />
+              <X className="w-4 h-4" />
             </button>
             {verProblemas ? (
               <ul className="m-0 mt-2 list-none space-y-1 p-0">
@@ -291,10 +304,15 @@ export function FlujoVisual() {
               </ul>
             ) : null}
           </div>
-        )}
-
-        <Leyenda />
-      </div>
+          <PuestosConfig
+            key={cambios}
+            onCambio={() => {
+              setCambiosPuestos((c) => c + 1);
+              void leer();
+            }}
+          />
+        </section>
+      ) : null}
 
       {/* ------------------------------------------------- diagrama y panel */}
       <div className={`flujo-visual ${nodoElegido ? 'flujo-visual--con-panel' : ''}`}>
@@ -345,13 +363,14 @@ export function FlujoVisual() {
 
         {nodoElegido ? (
           <PanelDeActividad
-            key={`${nodoElegido.numeral}|${modalidad}`}
+            key={`${nodoElegido.numeral}|${modalidad}|${cambiosPuestos}`}
             nodo={nodoElegido}
             modalidad={modalidad || null}
             nombreModalidad={nombreModalidad}
             onCerrar={() => setElegido(null)}
             onCambio={() => {
               setCual('BORRADOR');
+              setCambios((c) => c + 1);
               void leer();
             }}
           />
@@ -366,7 +385,7 @@ export function FlujoVisual() {
 /** Qué significa cada marca del diagrama. */
 function Leyenda() {
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-gray-100 pt-2 text-xs text-slate-500">
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-xs text-slate-400">
       {(Object.keys(MODO) as ModoAsignacion[]).map((m) => {
         const { Icono, nombre, ayuda } = MODO[m];
         return (
@@ -460,6 +479,15 @@ function PanelDeActividad({
   /** Con una modalidad elegida, si se edita solo ella o lo general. */
   const [alcance, setAlcance] = useState<'MODALIDAD' | 'GENERAL'>('MODALIDAD');
   const editando = modalidad && alcance === 'MODALIDAD' ? modalidad : null;
+
+  // Escape cierra el panel, salvo que haya un diálogo abierto encima.
+  useEffect(() => {
+    const alPulsar = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !document.querySelector('[role="dialog"]')) onCerrar();
+    };
+    document.addEventListener('keydown', alPulsar);
+    return () => document.removeEventListener('keydown', alPulsar);
+  }, [onCerrar]);
 
   return (
     <aside className="flujo-panel rounded-xl border border-gray-200 bg-white p-4 space-y-4" aria-label={`Configurar la ${nodo.numeral}`}>

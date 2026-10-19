@@ -145,9 +145,6 @@ export function DetalleActividad({
           <DocumentosQuePide numeral={fila.numeral} modalidades={modalidades} />
         )}
 
-        {pestana === 'puestos' && esRadicacion && <PuestosConfig />}
-        {pestana === 'quien' && <LaHaceActividad numeral={fila.numeral} />}
-        {pestana === 'aprobacion' && <AprobacionActividad numeral={fila.numeral} />}
         {pestana === 'firma' && <FirmaActividad numeral={fila.numeral} />}
         {pestana === 'avisos' && <NotificacionesActividad numeral={fila.numeral} />}
 

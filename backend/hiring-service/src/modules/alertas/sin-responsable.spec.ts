@@ -1,4 +1,4 @@
-import { TOLERANCIA_SIN_RESPONSABLE, diasParaVencer, estadoAlerta } from './alertas.service';
+import { TOLERANCIA_SIN_RESPONSABLE, diasParaVencer, estadoAlerta, puestosQueHacenAlgo } from './alertas.service';
 
 /**
  * La alerta de proceso con un puesto obligatorio vacío (EFDS-1183, 109).
@@ -40,5 +40,36 @@ describe('alerta de proceso con un puesto vacío', () => {
     // la escala de las pólizas, la alerta deja de servir para lo que es.
     expect(TOLERANCIA_SIN_RESPONSABLE).toBeLessThanOrEqual(3);
     expect(TOLERANCIA_SIN_RESPONSABLE).toBeGreaterThan(0);
+  });
+});
+
+describe('el puesto vacío solo alerta donde hace algo', () => {
+  const uso = (puestoId: string) => ({
+    puestoId,
+    numeral: '3.6',
+    nombreActividad: 'Causal',
+    modalidad: null,
+    como: 'HACE' as const,
+    accion: 'editar' as const,
+  });
+
+  it('en una modalidad donde el puesto no hace nada, no alerta', async () => {
+    const filas = [
+      { proceso_id: 'a', modalidad: 'MINIMA_CUANTIA', version: 'v-1', puesto_id: 'p-abogado' },
+      { proceso_id: 'b', modalidad: 'LICITACION_PUBLICA', version: 'v-1', puesto_id: 'p-abogado' },
+    ];
+    const usosDe = jest.fn(async (modalidad: string | null) => (modalidad === 'MINIMA_CUANTIA' ? [uso('p-abogado')] : []));
+
+    const quedan = await puestosQueHacenAlgo(filas, usosDe);
+
+    expect(quedan.map((f) => f.proceso_id)).toEqual(['a']);
+  });
+
+  it('pregunta una vez por modalidad y versión, no por proceso', async () => {
+    const filas = ['a', 'b', 'c'].map((id) => ({ proceso_id: id, modalidad: 'MINIMA_CUANTIA', version: 'v-1', puesto_id: 'p-abogado' }));
+    const usosDe = jest.fn(async () => [uso('p-abogado')]);
+
+    expect(await puestosQueHacenAlgo(filas, usosDe)).toHaveLength(3);
+    expect(usosDe).toHaveBeenCalledTimes(1);
   });
 });

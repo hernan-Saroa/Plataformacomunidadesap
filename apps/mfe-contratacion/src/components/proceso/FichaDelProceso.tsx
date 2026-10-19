@@ -318,7 +318,7 @@ export function FichaDelProceso({
       <Modal
         isOpen={equipo !== null}
         onClose={cerrarEquipo}
-        title={equipo === 'supervision' ? 'Supervisor del contrato' : 'Recibir y asignar abogado'}
+        title={equipo === 'supervision' ? 'Supervisor del contrato' : 'Recibir el proceso y asignar los puestos'}
         size="large"
         sinPadding
       >

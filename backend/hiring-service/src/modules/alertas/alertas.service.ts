@@ -5,6 +5,7 @@ import { AlcanceService } from '../../auth/alcance.service';
 import { HiringAccess } from '../../auth/hiring-access';
 import { PERMISO_PROCESO_VER_TODOS, tienePermiso } from '../../auth/permisos';
 import { CadenaAprobacionService } from '../cadena-aprobacion/cadena-aprobacion.service';
+import { PuestosService, UsoDePuesto } from '../participacion/puestos.service';
 import { NOMBRE_TIPO } from '../modificaciones/reglas-por-tipo';
 import { Campana } from '../notificaciones/campana';
 import { plazoDeActividad } from './plazos-actividad';
@@ -221,11 +222,18 @@ export class AlertasService {
      * solo la fuente de datos.
      */
     @Optional() cadenas?: CadenaAprobacionService,
+    /**
+     * Qué hace cada puesto en una modalidad y versión del flujo (109, 111):
+     * un puesto vacío solo alerta donde hace algo.
+     */
+    @Optional() puestos?: PuestosService,
   ) {
     this.cadenas = cadenas ?? new CadenaAprobacionService(dataSource);
+    this.puestos = puestos ?? new PuestosService(dataSource, alcance as AlcanceService);
   }
 
   private readonly cadenas: CadenaAprobacionService;
+  private readonly puestos: PuestosService;
 
   private hoy(): string {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
@@ -762,6 +770,10 @@ export class AlertasService {
     const filas = await this.dataSource.query(
       `SELECT p.id       AS proceso_id,
               p.radicado AS radicado,
+              p.modalidad AS modalidad,
+              COALESCE(p.flujo_version_id, (SELECT id FROM hiring.flujo_versiones WHERE estado = 'ACTIVA'))::text
+                         AS version,
+              pu.id::text AS puesto_id,
               pu.nombre  AS puesto,
               c.usuario_id::text AS responsable_id,
               c.nombre   AS responsable,
@@ -789,7 +801,14 @@ export class AlertasService {
       [todos, acceso?.userId ?? ''],
     );
 
-    return filas
+    // Obligatorio no basta: el puesto tiene que hacer o aprobar algo en la
+    // modalidad del proceso, según la versión con la que corre. Si no, nadie lo
+    // necesita ahí y la alerta reclamaría un reparto que no sirve para nada.
+    const conUso = await puestosQueHacenAlgo(filas, (modalidad, version) =>
+      this.puestos.usos(modalidad, undefined, version),
+    );
+
+    return conUso
       .map((f: any) => {
         const desde = f.desde instanceof Date ? f.desde : new Date(f.desde);
         const limite = new Date(desde);
@@ -1105,4 +1124,23 @@ export class AlertasService {
       sinDestinatario: alertas.length - conDestinatario.length,
     };
   }
+}
+
+/**
+ * De las filas de puesto vacío, las que de verdad paran el proceso: aquellas
+ * cuyo puesto hace o aprueba algo en su modalidad y versión del flujo. Se
+ * consulta una vez por cada pareja modalidad–versión, no por proceso.
+ */
+export async function puestosQueHacenAlgo<F extends { modalidad: string | null; version: string | null; puesto_id: string }>(
+  filas: F[],
+  usosDe: (modalidad: string | null, version: string | null) => Promise<UsoDePuesto[]>,
+): Promise<F[]> {
+  const conUso = new Map<string, Set<string>>();
+  const clave = (f: F) => `${f.modalidad ?? ''}|${f.version ?? ''}`;
+  for (const f of filas) {
+    if (conUso.has(clave(f))) continue;
+    const usos = await usosDe(f.modalidad ?? null, f.version ?? null);
+    conUso.set(clave(f), new Set(usos.map((u) => u.puestoId)));
+  }
+  return filas.filter((f) => conUso.get(clave(f))?.has(f.puesto_id));
 }
