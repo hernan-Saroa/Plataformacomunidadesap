@@ -3,8 +3,8 @@ import { CalendarDays, Clock, Loader2, MapPin, Monitor, Trash2, X } from 'lucide
 import { useRevisionProgramacion } from '../services/actualizacionProgramacion';
 
 import {
-  crearSesion, eliminarSesion, getSesiones, definirPeriodoGrupo, getGrupo, getAulas, getHorasGrupo,
-  type Sesion, type TipoSesion, type Aula, type HorasGrupo,
+  crearSesion, eliminarSesion, getSesiones, definirPeriodoGrupo, getGrupo, getAulas, getHorasGrupo, actualizarOfertaCetapGrupo,
+  type Sesion, type TipoSesion, type Aula, type HorasGrupo, type Grupo,
 } from '../services/api/catalogoApi';
 
 /**
@@ -56,10 +56,11 @@ interface Props {
    * estas props pueden estar obsoletas y no son la fuente de los campos. */
   fechaInicioGrupo?: string | null;
   fechaFinGrupo?: string | null;
+  onOfertaActualizada?: (grupo: Grupo) => void;
 }
 
 export function CalendarioHorario({
-  idGrupo, numeroGrupo, nombreAsignatura,
+  idGrupo, numeroGrupo, nombreAsignatura, onOfertaActualizada,
 }: Props) {
   const [sesiones, setSesiones] = useState<Sesion[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -74,6 +75,8 @@ export function CalendarioHorario({
   const revisionHorario = useRevisionProgramacion('horarios');
   const revisionAulas = useRevisionProgramacion('aulas');
   const [avisoPeriodo, setAvisoPeriodo] = useState('');
+  const [ofertaGrupo, setOfertaGrupo] = useState<string | null>(null);
+  const [errorAulas, setErrorAulas] = useState('');
 
   // EFDS-2310: leer siempre el grupo persistido, también al reabrir con props antiguas.
   useEffect(() => {
@@ -85,6 +88,7 @@ export function CalendarioHorario({
       setFechaInicio(grupo.fechaInicio?.slice(0, 10) ?? '');
       setFechaFin(grupo.fechaFin?.slice(0, 10) ?? '');
       setCicloCargado(idGrupo);
+      setOfertaGrupo(grupo.idOfertaCetap);
     }).catch((e) => {
       if (vigente) setAvisoPeriodo(e?.message || 'No se pudo consultar el ciclo guardado.');
     });
@@ -107,10 +111,11 @@ export function CalendarioHorario({
   const [aulas, setAulas] = useState<Aula[]>([]);
   useEffect(() => {
     let vigente = true;
-    getAulas().then((datos) => { if (vigente) setAulas(datos); })
-      .catch(() => { if (vigente) setAulas([]); });
+    setErrorAulas('');
+    getAulas({ grupo: idGrupo }).then((datos) => { if (vigente) setAulas(datos); })
+      .catch((e) => { if (vigente) { setAulas([]); setErrorAulas(e?.message || 'No se pudieron consultar las aulas válidas para este grupo.'); } });
     return () => { vigente = false; };
-  }, [revisionAulas]);
+  }, [idGrupo, revisionAulas, revisionGrupo]);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -163,7 +168,16 @@ export function CalendarioHorario({
     if (!nueva) return;
     setGuardando(true);
     setError('');
+    let ofertaGuardada = false;
     try {
+      const aulaElegida = nueva.tipoSesion === 'presencial' ? aulas.find((a) => a.codigo === nueva.aulaCodigo) : null;
+      if (aulaElegida && !ofertaGrupo) {
+        if (!aulaElegida.idOfertaCetap) throw new Error('No se pudo identificar la oferta CETAP de esta aula. Elige otra aula o asigna la oferta directamente.');
+        const actualizado = await actualizarOfertaCetapGrupo(idGrupo, aulaElegida.idOfertaCetap);
+        setOfertaGrupo(actualizado.idOfertaCetap);
+        onOfertaActualizada?.(actualizado);
+        ofertaGuardada = true;
+      }
       await crearSesion({
         idGrupo,
         diaSemana: nueva.diaSemana,
@@ -177,7 +191,7 @@ export function CalendarioHorario({
     } catch (e: any) {
       // El cruce intra-grupo llega como mensaje del backend: se muestra tal cual
       // para que el programador sepa contra qué sesión choca.
-      setError(e?.message || 'No se pudo crear la sesión.');
+      setError(`${e?.message || 'No se pudo crear la sesión.'}${ofertaGuardada ? ' La oferta CETAP sí quedó asignada al grupo.' : ''}`);
     } finally {
       setGuardando(false);
     }
@@ -450,16 +464,19 @@ export function CalendarioHorario({
               </span>
               <select
                 value={nueva.tipoSesion === 'presencial' ? nueva.aulaCodigo : ''}
-                disabled={nueva.tipoSesion !== 'presencial'}
+                disabled={nueva.tipoSesion !== 'presencial' || !!errorAulas}
                 onChange={(e) => setNueva({ ...nueva, aulaCodigo: e.target.value })}
                 className="border border-slate-200 rounded-lg px-2 py-2 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-100 disabled:text-slate-400">
                 <option value="">
                   {nueva.tipoSesion === 'presencial' ? 'Sin asignar' : 'No aplica (mediada por tecnología)'}
                 </option>
                 {nueva.tipoSesion === 'presencial' && aulas.map((a) => (
-                  <option key={a.codigo} value={a.codigo}>{a.nombre}</option>
+                  <option key={a.codigo} value={a.codigo}>{a.nombre} · {a.cetap?.nombre || a.cetap?.codigo || 'Sin CETAP'}</option>
                 ))}
               </select>
+              {errorAulas && <span role="alert" className="text-xs text-amber-800">{errorAulas}</span>}
+              {nueva.tipoSesion === 'presencial' && aulas.length === 0 && !errorAulas && <span className="text-xs text-amber-800">No hay aulas válidas para la oferta de este grupo y periodo. Puedes dejar el aula sin asignar o cambiar la oferta.</span>}
+              {nueva.tipoSesion === 'presencial' && !ofertaGrupo && nueva.aulaCodigo && <span className="text-xs text-blue-800">Al guardar, la oferta CETAP de esta aula se asignará automáticamente al grupo.</span>}
             </label>
           </div>
 

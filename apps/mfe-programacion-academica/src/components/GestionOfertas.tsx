@@ -1,11 +1,13 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CalendarDays, Loader2, Gauge, Search } from 'lucide-react';
 import { useRevisionProgramacion, invalidarProgramacion } from '../services/actualizacionProgramacion';
 import {
   getPeriodos, crearPeriodoPlataforma, getImpactoActivacion, activarPeriodoPlataforma,
   type PeriodoPlataforma, type RespuestaPeriodos,
+  type ImpactoActivacion,
 } from '../services/api/periodosApi';
 import { CargaAsignaturasPeriodo } from './CargaAsignaturasPeriodo';
+import { ModalConfirmacion } from './ModalConfirmacion';
 
 import {
   getConsumoPorOferta,
@@ -19,11 +21,12 @@ import {
 interface GestionOfertasProps {
   puedeAbrirProgramasAcademicos?: boolean;
   abrirProgramasAcademicos?: () => void;
+  periodoParaCarga?: string;
 }
 
-export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirProgramasAcademicos }: GestionOfertasProps) {
+export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirProgramasAcademicos, periodoParaCarga }: GestionOfertasProps) {
   const [periodos, setPeriodos] = useState<RespuestaPeriodos | null>(null);
-  const [importarId, setImportarId] = useState<string | null>(null);
+  const [importarId, setImportarId] = useState<string | null>(periodoParaCarga ?? null);
   const revisionPeriodos = useRevisionProgramacion('periodos');
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
@@ -46,6 +49,14 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
   // EFDS-1941 — lista de franjas que impiden cerrar, para marcarlas como excepción.
   const [verPend, setVerPend] = useState<string | null>(null);
   const [pendCierre, setPendCierre] = useState<Record<string, PendienteCierre[]>>({});
+  const [confirmacion, setConfirmacion] = useState<
+    | { tipo: 'excepcion'; id: string; idFranja: string }
+    | { tipo: 'cierre'; periodo: PeriodoPlataforma }
+    | { tipo: 'activacion'; id: string; impacto: ImpactoActivacion }
+    | null
+  >(null);
+  const [confirmando, setConfirmando] = useState(false);
+  const disparadorConfirmacion = useRef<HTMLButtonElement | null>(null);
 
   const cargarPubs = (lista: PeriodoPlataforma[]) =>
     Promise.all(lista.map((o) =>
@@ -102,7 +113,6 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
   };
 
   const excepcion = async (id: string, idFranja: string) => {
-    if (!window.confirm('¿Marcar esta franja como excepción? No pasará por aprobación y no impedirá cerrar el periodo.')) return;
     setAvisoPub('');
     try {
       const e = await marcarExcepcion(id, idFranja);
@@ -118,7 +128,6 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
   // NUEVA-5b (EFDS-1941) — Cerrar solo la programación. Al cerrarse queda
   // inmutable, así que se recarga para que la tarjeta muestre el estado.
   const cerrar = async (periodo: PeriodoPlataforma) => {
-    if (!window.confirm(`Cerrar la programación del periodo ${periodo.codigo} impedirá crear grupos y no se puede deshacer. ¿Desea continuar?`)) return;
     const id = periodo.idPeriodo;
     setAvisoPub('');
     setPubOcupado(id);
@@ -160,23 +169,17 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
 
   const activar = async (id: string) => {
     setAvisoAdmin('');
-    let activado = false;
     try {
       const impacto = await getImpactoActivacion(id);
-      const detalle = impacto.porPeriodo.map((p) => `${p.codigo}: ${p.ptas}`).join(', ');
-      const terminados = impacto.ptasATerminar === null ? 'un número de PTA aún no disponible' : `${impacto.ptasATerminar} PTA`;
-      const cierre = impacto.periodosACerrar.length ? ` Cerrará ${impacto.periodosACerrar.join(', ')}.` : '';
-      const planeacion = impacto.periodosAPlaneacion.length ? ` Pasarán a planeación: ${impacto.periodosAPlaneacion.join(', ')}.` : '';
-      const activoActual = periodos?.periodos.find((p) => p.esActivo && p.idPeriodo !== id)?.codigo;
-      const efectoSobreActivo = activoActual
-        ? impacto.periodosACerrar.includes(activoActual)
-          ? ` El periodo actualmente activo ${activoActual} se cerrará.`
-          : impacto.periodosAPlaneacion.includes(activoActual)
-            ? ` El periodo actualmente activo ${activoActual} dejará de estar en curso y pasará a planeación.`
-            : ` El periodo actualmente activo ${activoActual} dejará de estar en curso.`
-        : '';
-      const aviso = impacto.advertencia ? `\n${impacto.advertencia}` : '';
-      if (!window.confirm(`Activar ${impacto.codigo} terminará ${terminados}${detalle ? ` (${detalle})` : ''}.${cierre}${planeacion}${efectoSobreActivo}${aviso}\n¿Continuar?`)) return;
+      setConfirmacion({ tipo: 'activacion', id, impacto });
+    } catch (err: any) {
+      setAvisoAdmin(err?.message || 'No se pudo consultar el impacto de la activación.');
+    }
+  };
+
+  const confirmarActivacion = async (id: string) => {
+    let activado = false;
+    try {
       await activarPeriodoPlataforma(id);
       activado = true;
       await recargar();
@@ -185,6 +188,17 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
         ? 'El periodo se activó, pero no se pudo actualizar la lista. Vuelva a consultarla.'
         : err?.message || 'No se pudo activar el periodo.');
     }
+  };
+
+  const ejecutarConfirmacion = async () => {
+    if (!confirmacion || confirmando) return;
+    const actual = confirmacion;
+    setConfirmando(true);
+    try {
+      if (actual.tipo === 'excepcion') await excepcion(actual.id, actual.idFranja);
+      if (actual.tipo === 'cierre') await cerrar(actual.periodo);
+      if (actual.tipo === 'activacion') await confirmarActivacion(actual.id);
+    } finally { setConfirmando(false); setConfirmacion(null); }
   };
 
   useEffect(() => {
@@ -216,6 +230,34 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
 
   return (
     <div className="space-y-4">
+      {confirmacion && (
+        <ModalConfirmacion
+          retornarFoco={disparadorConfirmacion.current}
+          titulo={confirmacion.tipo === 'activacion' ? `Activar periodo ${confirmacion.impacto.codigo}` : confirmacion.tipo === 'cierre' ? `Cerrar programación de ${confirmacion.periodo.codigo}` : 'Marcar franja como excepción'}
+          onCancelar={() => setConfirmacion(null)} onConfirmar={ejecutarConfirmacion} ocupado={confirmando}
+          advertencia={confirmacion.tipo === 'activacion'
+            ? (confirmacion.impacto.advertencia || 'La activación cambiará el estado de los periodos indicados.')
+            : confirmacion.tipo === 'cierre'
+              ? 'Esta acción no se puede deshacer. Después no se podrán crear grupos en esta programación.'
+              : 'La franja no pasará por aprobación y no impedirá cerrar la programación.'}
+        >
+          {confirmacion.tipo === 'activacion' && (() => {
+            const impacto = confirmacion.impacto;
+            const activo = periodos?.periodos.find((p) => p.esActivo && p.idPeriodo !== confirmacion.id)?.codigo;
+            return <>
+              <p><strong>{impacto.ptasATerminar === null ? 'No se pudo determinar cuántos PTA' : `${impacto.ptasATerminar} PTA`}</strong> quedarán terminados.</p>
+              {impacto.porPeriodo.length > 0 && <ul className="list-disc space-y-1 pl-5" aria-label="PTA por periodo">
+                {impacto.porPeriodo.map((p) => <li key={p.codigo}>{p.codigo}: <strong>{p.ptas} PTA</strong></li>)}
+              </ul>}
+              {activo && <p>El periodo activo actual <strong>{activo}</strong> {impacto.periodosAPlaneacion.includes(activo) ? 'pasará a planeación' : impacto.periodosACerrar.includes(activo) ? 'se cerrará' : 'dejará de estar activo'}.</p>}
+              {impacto.periodosACerrar.length > 0 && <p>Se cerrarán: {impacto.periodosACerrar.join(', ')}.</p>}
+              {impacto.periodosAPlaneacion.length > 0 && <p>Pasarán a planeación: {impacto.periodosAPlaneacion.join(', ')}.</p>}
+            </>;
+          })()}
+          {confirmacion.tipo === 'cierre' && <p>Se cerrará la programación del periodo <strong>{confirmacion.periodo.codigo}</strong>.</p>}
+          {confirmacion.tipo === 'excepcion' && <p>¿Confirmas que esta franja debe quedar como excepción?</p>}
+        </ModalConfirmacion>
+      )}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
         <h3 className="font-bold text-slate-800 text-sm mb-1 flex items-center gap-2">
           <CalendarDays className="w-4 h-4 text-[#003DA5]" /> Periodos
@@ -261,7 +303,7 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
                 {periodos?.permisos.activar && !o.esActivo && (
                   <button
                     type="button"
-                    onClick={() => activar(o.idPeriodo)}
+                    onClick={(e) => { disparadorConfirmacion.current = e.currentTarget; activar(o.idPeriodo); }}
                     className="px-2.5 py-1 rounded-lg bg-[#003DA5] text-white text-[11px] font-bold hover:bg-blue-800 active:scale-95 transition-all"
                   >
                     Activar
@@ -308,7 +350,7 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
                           rechaza verbatim si algo queda pendiente. */}
                       {periodos?.permisos.cerrarProgramacion && (
                       <button type="button" disabled={ocupado || p.pendientesCierre > 0}
-                        onClick={() => cerrar(o)}
+                        onClick={(e) => { disparadorConfirmacion.current = e.currentTarget; setConfirmacion({ tipo: 'cierre', periodo: o }); }}
                         title={p.pendientesCierre > 0 ? `${p.pendientesCierre} franjas pendientes: apruébalas o márcalas como excepción` : 'Cerrar solo la programación'}
                         className="px-2.5 py-1 rounded-lg bg-slate-700 text-white text-[11px] font-bold hover:bg-slate-800 disabled:opacity-40 active:scale-95 transition-all">
                         {ocupado ? 'Cerrando…' : 'Cerrar programación'}
@@ -337,7 +379,7 @@ export function GestionOfertas({ puedeAbrirProgramasAcademicos = false, abrirPro
                               {f.asignatura || 'Asignatura'} · {f.diaSemana.toLowerCase()} {f.horaInicio}–{f.horaFin}
                               <span className="ml-1 text-slate-400">({f.estado.toLowerCase()})</span>
                             </span>
-                            <button type="button" onClick={() => excepcion(o.idPeriodo, f.idFranja)}
+                            <button type="button" onClick={(e) => { disparadorConfirmacion.current = e.currentTarget; setConfirmacion({ tipo: 'excepcion', id: o.idPeriodo, idFranja: f.idFranja }); }}
                               className="shrink-0 px-2 py-0.5 rounded border border-amber-300 text-amber-800 font-bold hover:bg-amber-100">
                               Excepción
                             </button>

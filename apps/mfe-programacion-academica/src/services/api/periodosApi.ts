@@ -47,18 +47,28 @@ export interface ResultadoImportacion {
   success: boolean;
   dry_run: boolean;
   periodo: string;
+  blocked_reason?: string;
   carga?: {
-    asignaturas?: { creados: number; actualizados: number; omitidos: number; sin_cambios?: number; rechazadas?: number };
-    programas?: { creados: number; actualizados: number; omitidos: number; sin_cambios?: number; rechazadas?: number };
+    asignaturas?: ConteoImportacion;
+    programas?: ConteoImportacion;
+    ofertas_cetap_programa?: ConteoImportacion;
   };
-  /** Ofertas CETAP de la carga en este periodo (validación previa y confirmación). */
   ofertas?: {
-    por_crear: number; ya_existentes: number; rechazadas: number;
+    por_crear: number;
+    ya_existentes: number;
+    rechazadas: number;
     detalle: { codigo_cetap: string; nombre_cetap: string; codigo_programa: string; nombre_programa: string; estado: 'por_crear' | 'ya_existente' | 'rechazada'; motivo?: string }[];
   };
+  resumen_periodo?: { programas: number; asignaturas: number; cetaps: number; ofertas: number };
   advertencias?: string[];
   errores?: string[];
   relaciones_cruzadas?: { codigo_programa: string; errores: string[] }[];
+}
+
+interface ConteoImportacion { creados: number; actualizados: number; omitidos: number; sin_cambios?: number; rechazadas?: number }
+
+export class ErrorImportacion extends Error {
+  constructor(message: string, readonly errores: string[]) { super(message); }
 }
 
 async function peticion<T>(ruta: string, init: RequestInit = {}, permitirResultadoInvalido = false): Promise<T> {
@@ -71,11 +81,8 @@ async function peticion<T>(ruta: string, init: RequestInit = {}, permitirResulta
   try { cuerpo = await res.json(); } catch { /* 204 o respuesta sin JSON */ }
   if (!res.ok || (!permitirResultadoInvalido && cuerpo?.success === false)) {
     const mensaje = cuerpo?.message ?? cuerpo?.error ?? cuerpo?.errores?.join('; ');
-    const base = Array.isArray(mensaje) ? mensaje.join('; ') : mensaje || `La solicitud falló (${res.status}).`;
-    // El 400 del importador trae las filas con error en `errors` (en inglés, como clave): sin ellas el usuario
-    // solo ve «Validación del Excel fallida» y no sabe qué corregir.
-    const filas: string[] = Array.isArray(cuerpo?.errors) ? cuerpo.errors : [];
-    throw new Error(filas.length ? `${base} ${filas.join(' · ')}` : base);
+    if (Array.isArray(cuerpo?.errors)) throw new ErrorImportacion(String(mensaje || `La solicitud falló (${res.status}).`), cuerpo.errors.map(String));
+    throw new Error(Array.isArray(mensaje) ? mensaje.join('; ') : mensaje || `La solicitud falló (${res.status}).`);
   }
   return (cuerpo?.data ?? cuerpo) as T;
 }

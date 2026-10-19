@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GestionGrupos } from './GestionGrupos';
 import { actualizarOfertaCetapGrupo, crearGrupos, getGrupos, getOfertasCetapGrupo } from '../services/api/catalogoApi';
+import type { OfertaCetapGrupo } from '../services/api/catalogoApi';
 
 vi.mock('../services/api/catalogoApi', () => ({
   actualizarOfertaCetapGrupo: vi.fn(), crearGrupos: vi.fn(), eliminarGrupo: vi.fn(),
@@ -85,7 +86,7 @@ describe('oferta CETAP de grupos', () => {
   });
 
   it('permite crear grupos sin oferta mientras se consultan las ofertas', async () => {
-    vi.mocked(getOfertasCetapGrupo).mockImplementation(() => new Promise(() => {}));
+    vi.mocked(getOfertasCetapGrupo).mockImplementation(() => new Promise<OfertaCetapGrupo[]>(() => {}));
     render(<GestionGrupos {...props} />);
     fireEvent.click(screen.getByRole('button', { name: 'Crear grupos' }));
     await waitFor(() => expect(crearGrupos).toHaveBeenCalledWith('asig-1', 1, '11', null));
