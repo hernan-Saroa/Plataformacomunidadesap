@@ -125,22 +125,6 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
     leer();
   }, [procesoId]);
 
-  const generar = async () => {
-    setGuardando(true);
-    try {
-      setTraslado(
-        await contratacionService.generarInformeTraslado(procesoId, observacion, documentoInforme),
-      );
-      setDocumentoInforme(null);
-      toast.success('Informe preliminar generado');
-      onCambio?.();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setGuardando(false);
-    }
-  };
-
   const trasladar = async (firmaOtp?: EvidenciaFirmaOtp) => {
     if (!evidencia || medioPublicacion.trim().length < 10) return;
 

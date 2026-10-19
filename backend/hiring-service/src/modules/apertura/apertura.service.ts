@@ -18,6 +18,12 @@ import { CdpService } from '../cdp/cdp.service';
 import { DocumentosService } from '../documentos/documentos.service';
 import { OfertasService } from '../ofertas/ofertas.service';
 import { RegistrarAperturaDto } from './dto/apertura.dto';
+import { SesionComiteContratacion } from '../../entities/comite-contratacion.entity';
+import { ProcesoActividad } from '../../entities/proceso-actividad.entity';
+import {
+  NUMERAL_SEGUNDA_SESION,
+  requisitoDeLaSegundaSesion,
+} from '../comite-contratacion/segunda-sesion';
 
 /** Actividad 5.7 de la matriz: la apertura formal del proceso. */
 export const NUMERAL_APERTURA = '5.7';
@@ -67,7 +73,7 @@ export class AperturaService {
 
     const respaldo = await this.cdp.estadoRespaldo(procesoId);
     const documentos = await this.documentos.estado(procesoId);
-    const audiencia = await this.riesgos.requisitoParaApertura(procesoId);
+    const comite = await this.requisitoComite(this.dataSource.manager, procesoId);
 
     // Los tres documentos del acto, para que el panel pueda enseñarlos sin
     // pedir el expediente entero.
@@ -166,6 +172,11 @@ export class AperturaService {
 
       this.validarFecha(dto.resolucionFecha);
 
+      // En licitación, el pliego definitivo tiene que haber pasado por la
+      // segunda sesión del comité: la resolución de apertura va después (113).
+      const comite = await this.requisitoComite(em, procesoId);
+      if (!comite.cumplido) throw new ConflictException(comite.motivo);
+
       const expediente = await em.findOne(Expediente, { where: { procesoId } });
       if (!expediente) throw new NotFoundException('El proceso no tiene expediente abierto');
 
@@ -234,6 +245,18 @@ export class AperturaService {
   }
 
   // ----------------------------------------------------------- auxiliares --
+
+  /** Lo que la segunda sesión del comité (5.6.1) le dice a la apertura. */
+  private async requisitoComite(em: EntityManager, procesoId: string) {
+    const actividad = await em.getRepository(ProcesoActividad).findOne({
+      where: { procesoId, numeral: NUMERAL_SEGUNDA_SESION },
+    });
+    const sesiones = await em.getRepository(SesionComiteContratacion).find({
+      where: { procesoId, sumision: 2 },
+      order: { fecha: 'DESC', createdAt: 'DESC' },
+    });
+    return requisitoDeLaSegundaSesion(actividad?.estado ?? null, sesiones);
+  }
 
   /**
    * La resolución no puede ser del futuro.

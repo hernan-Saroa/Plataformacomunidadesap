@@ -35,10 +35,15 @@ export function leerLaHace(config: Record<string, unknown> | null | undefined): 
  * protegen con «aprobar» desde que eran del abogado, y así quedaron sembrados
  * los permisos de cada rol: cambiarlo aquí dejaría sin quien las haga a los
  * procesos en curso.
+ *
+ * La 5.6.1 (113) va igual: la hace el mismo abogado que la 3.7, y con
+ * «editar» el puesto pedía un permiso que los roles de abogado no tienen en la
+ * etapa 5 y se quedaba sin candidatos en la 3.3.
  */
 const ACCION_QUE_HACE: Readonly<Record<string, Exclude<Accion, 'ver'>>> = {
   '3.6': 'aprobar',
   '3.7': 'aprobar',
+  '5.6.1': 'aprobar',
 };
 
 export function accionQueHace(numeral: string): Exclude<Accion, 'ver'> {

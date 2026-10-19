@@ -23,7 +23,7 @@ import { RegistroActividadController } from '../modules/registro-actividad/regis
  */
 const RUTA = { param: 'numeral' };
 
-const ESPERADO: [string, any, string, string, unknown][] = [
+const ESPERADO: [string, any, string, string | string[], unknown][] = [
   // Etapa 3 · estudio previo. La revisión es la 3.4: la decide el abogado,
   // no quien diligenció la 3.1.
   ['estudio previo', EstudioPrevioController, 'crearProceso', 'editar', '3.1'],
@@ -57,7 +57,9 @@ const ESPERADO: [string, any, string, string, unknown][] = [
   // Los genéricos: el punto viaja en la ruta.
   ['aprobación', AprobacionController, 'aprobadores', 'ver', RUTA],
   ['aprobación', AprobacionController, 'enviar', 'editar', RUTA],
-  ['aprobación', AprobacionController, 'retirar', 'editar', RUTA],
+  // Retirar también con «aprobar»: la 5.6.1 la hace el abogado con ese permiso
+  // (113), y el servicio exige que sea quien la envió.
+  ['aprobación', AprobacionController, 'retirar', ['editar', 'aprobar'], RUTA],
   ['documentos de actividad', DocumentosActividadController, 'estado', 'ver', RUTA],
   ['documentos de actividad', DocumentosActividadController, 'cargar', 'editar', RUTA],
   ['documentos de actividad', DocumentosActividadController, 'anular', 'editar', RUTA],

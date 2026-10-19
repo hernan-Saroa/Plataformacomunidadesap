@@ -171,13 +171,15 @@ export function PanelApertura({ procesoId, onCambio }: Props) {
             ? `${estado.requisitos.cdp.motivo}. El proceso no puede abrirse sin el CDP expedido.`
             : 'El proceso no puede abrirse mientras el CDP no esté expedido.',
         },
-    estado.requisitos.audienciaRiesgos.cumplido
+    // En licitación, la resolución de apertura va después de que el comité
+    // apruebe el pliego definitivo en su segunda sesión (5.6.1, 113).
+    !estado.requisitos.comite || estado.requisitos.comite.cumplido
       ? null
       : {
-          falta: '5.5',
+          falta: '5.6.1',
           texto:
-            estado.requisitos.audienciaRiesgos.motivo ??
-            'La audiencia de asignación de riesgos es obligatoria en esta modalidad y no se ha celebrado.',
+            estado.requisitos.comite.motivo ??
+            'El pliego definitivo todavía no pasa por la segunda sesión del comité.',
         },
   ].filter((b): b is { falta: string; texto: string } => b !== null);
 

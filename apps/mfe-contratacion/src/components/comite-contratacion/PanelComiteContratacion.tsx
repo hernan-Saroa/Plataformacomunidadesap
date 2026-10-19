@@ -16,6 +16,7 @@ import {
 } from '../shared/PiezasPanel';
 import { momento } from '../shared/fechas';
 import { useFirma } from '../shared/useFirma';
+import { ActaDeLaSesion } from './ActaDeLaSesion';
 
 interface Props {
   procesoId: string;
@@ -167,9 +168,9 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
   // Una aprobación que reabre algo tiene que decir qué validar: si no, esa
   // actividad le llega a su responsable devuelta y sin motivo.
   const pideValidacion = aprueba && marcados.length > 0;
+  // El acta no se exige: tarda hasta diez días y no frena el proceso (113).
   const completo =
     !!fecha &&
-    !!acta &&
     (!pideTexto || texto.trim().length >= 10) &&
     (!pideValidacion || validacion.trim().length >= 10) &&
     (!exigeNumerales || marcados.length > 0);
@@ -187,7 +188,8 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
       <Ayuda>
         El comité revisa los documentos del proceso y puede aprobarlos, aprobarlos con condiciones,
         devolverlos con observaciones de fondo o rechazarlos. Sesiona en la Dirección de
-        Contratación: aquí se transcribe lo que decidió y se guarda el acta.
+        Contratación: aquí se transcribe lo que decidió y se guarda el acta, que puede cargarse
+        después.
       </Ayuda>
 
       {/* ------------------------------------------------ si va o no va ---- */}
@@ -271,6 +273,18 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {ultima && (
+        <ActaDeLaSesion
+          procesoId={procesoId}
+          sesion={ultima}
+          puedeCargar={!!estado.puedeCargarActa}
+          onCargada={() => {
+            cargar();
+            onCambio?.();
+          }}
+        />
       )}
 
       {observado && (
@@ -447,7 +461,8 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
             etiqueta="Acta de la sesión"
             archivo={acta}
             onElegir={setActa}
-            ayuda="Es lo único que prueba que el comité sesionó: sin ella, lo registrado es la palabra de quien lo escribe."
+            obligatorio={false}
+            ayuda="Si todavía no llegó, registra la sesión sin ella y cárgala después: tiene hasta diez días y mientras falte queda en tus alertas."
           />
 
           <div className="flex items-center gap-2">
@@ -477,7 +492,7 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
                           ...(marcados.length ? { numeralesReabrir: marcados } : {}),
                           firma: firmaOtp,
                         },
-                        acta as File,
+                        acta,
                       ),
                     decision === 'OBSERVADO'
                       ? 'Registrado: el comité devolvió los documentos'
@@ -525,10 +540,18 @@ export function PanelComiteContratacion({ procesoId, onCambio }: Props) {
         <div className="space-y-1.5">
           <p className="text-xs font-bold text-gray-600 m-0">Sesiones anteriores</p>
           {estado.sesiones.slice(1).map((s) => (
-            <p key={s.id} className="text-[11.5px] text-slate-600 m-0">
-              {momento(s.fecha)} · {ROTULO[s.decision]}
-              {s.observaciones ? ` — «${s.observaciones}»` : ''}
-            </p>
+            <div key={s.id} className="space-y-1">
+              <p className="text-[11.5px] text-slate-600 m-0">
+                {momento(s.fecha)} · {ROTULO[s.decision]}
+                {s.observaciones ? ` — «${s.observaciones}»` : ''}
+              </p>
+              <ActaDeLaSesion
+                procesoId={procesoId}
+                sesion={s}
+                puedeCargar={!!estado.puedeCargarActa}
+                onCargada={cargar}
+              />
+            </div>
           ))}
         </div>
       )}

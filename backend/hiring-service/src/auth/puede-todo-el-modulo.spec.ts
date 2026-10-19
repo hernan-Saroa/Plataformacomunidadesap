@@ -32,6 +32,13 @@ const SIN_DECORADOR: Record<string, string> = {
   'CausalContratacionController.elegir': 'quienDecide · aprobar 3.6',
   'ComiteContratacionController.registrar': 'quienDecide · aprobar 3.7',
   'ComiteContratacionController.noVa': 'quienDecide · aprobar 3.7',
+  // El acta llega después y la carga quien hace la actividad de la sesión (113).
+  'ComiteContratacionController.cargarActa': 'quienHace · 3.7 o 5.6.1 según la sesión',
+  // La 5.6.1 la hace el puesto que diga su regla, como la 3.7 (113).
+  'SegundaSesionController.nuevaVersion': 'quienHace · aprobar 5.6.1',
+  'SegundaSesionController.registrar': 'quienHace · aprobar 5.6.1',
+  'SegundaSesionController.enviar': 'quienHace · aprobar 5.6.1',
+  'SegundaSesionController.retirar': 'quienHace · aprobar 5.6.1, y quien la envió',
   // Pasar el proceso a la versión activa del flujo (111): quien lo lleva.
   'FlujoDelProcesoController.actualizar': 'quien lleva el proceso o proceso.assign',
   // Poner o quitar a alguien en un puesto del proceso (109).

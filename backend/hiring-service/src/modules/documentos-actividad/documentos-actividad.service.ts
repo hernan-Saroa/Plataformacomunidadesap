@@ -117,6 +117,8 @@ export interface SoporteDelRevisor {
   mimeType: string | null;
   revisadoPor: string;
   devueltaAt: string;
+  /** De qué decisión es: una devolución o, desde la 113, una aprobación. */
+  decision?: string;
 }
 
 /**
@@ -546,8 +548,14 @@ export class DocumentosActividadService {
     numeral: string,
     documentoProcesoId: string,
     acceso: HiringAccess,
+    /**
+     * El de quien llama, para sustituir en una sola transacción: la 5.6.1
+     * anula y carga la versión definitiva juntas, y entre una y otra la 5.1
+     * quedaría un instante en borrador (113).
+     */
+    manager?: EntityManager,
   ) {
-    await this.dataSource.transaction(async (em) => {
+    const trabajo = async (em: EntityManager) => {
       await this.exigirProceso(em, procesoId);
       await this.guardias.get(numeral)?.antesDeCambiar?.(em, procesoId, 'anular', acceso);
       await exigirExpedienteAbierto(em, procesoId);
@@ -569,8 +577,9 @@ export class DocumentosActividadService {
       });
 
       await this.guardias.get(numeral)?.despuesDeCambiar?.(em, procesoId);
-    });
+    };
 
+    await (manager ? trabajo(manager) : this.dataSource.transaction(trabajo));
     return { anulado: true };
   }
 
@@ -773,7 +782,7 @@ export class DocumentosActividadService {
 
       if (!ultima || ultima.decision !== 'DEVUELTO' || !esSuya) {
         throw new ConflictException(
-          'El soporte lo adjunta quien devolvió la actividad, sobre su última devolución',
+          'El soporte lo adjunta quien decidió la actividad, sobre su última decisión',
         );
       }
       // El estudio previo devuelto vuelve a borrador; lo demás queda DEVUELTO.

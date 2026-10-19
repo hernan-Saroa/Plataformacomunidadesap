@@ -48,7 +48,9 @@ export class AprobacionController {
   }
 
   @Post('retirar-aprobacion')
-  @Puede('editar', { param: 'numeral' })
+  // Con «aprobar» también: la 5.6.1 la hace el abogado con ese permiso (113).
+  // No abre nada a nadie: el servicio exige que sea quien la envió.
+  @Puede(['editar', 'aprobar'], { param: 'numeral' })
   @ApiOperation({
     summary: 'Retirar la actividad de aprobación',
     description: 'Solo quien la envió, para poder corregirla mientras nadie la ha resuelto.',

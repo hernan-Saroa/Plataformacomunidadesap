@@ -37,8 +37,31 @@ import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
  * Vive aparte y no dentro de `configuracion` porque son cosas distintas: allí
  * se declara qué exige cada actividad, aquí se ejecuta el trámite.
  */
+/**
+ * Lo que una actividad exige, además de sus documentos, para enviarse o para
+ * aprobarse. Lanza con el motivo si no se cumple.
+ */
+export type CondicionDeAprobacion = (
+  em: EntityManager,
+  procesoId: string,
+  momento: 'ENVIAR' | 'APROBAR',
+) => Promise<void>;
+
 @Injectable()
 export class AprobacionService {
+  /**
+   * Las condiciones propias de algunas actividades, por numeral.
+   *
+   * Las registra el módulo dueño de la actividad al arrancar, como las guardias
+   * del catálogo de documentos: así este servicio no importa cada módulo que
+   * quiera ponerle una condición a su trámite. La 5.6.1 exige el CDP (113).
+   */
+  private readonly condiciones = new Map<string, CondicionDeAprobacion>();
+
+  registrarCondicion(numeral: string, condicion: CondicionDeAprobacion) {
+    this.condiciones.set(numeral, condicion);
+  }
+
   constructor(
     private readonly dataSource: DataSource,
     /**
@@ -259,6 +282,8 @@ export class AprobacionService {
         throw new ConflictException('La actividad fue negada: no se puede volver a enviar');
       }
 
+      await this.condiciones.get(numeral)?.(em, procesoId, 'ENVIAR');
+
       actividad.estado = 'EN_REVISION';
       actividad.enviadoPor = acceso.userName;
       actividad.enviadoPorId = acceso.userId ?? null;
@@ -409,6 +434,8 @@ export class AprobacionService {
        * exactamente el caso para el que sirve.
        */
       if (accion === 'APROBAR') {
+        await this.condiciones.get(numeral)?.(em, procesoId, 'APROBAR');
+
         const faltan = await this.documentosPendientes(em, procesoId, numeral);
         if (faltan.length) {
           throw new ConflictException(

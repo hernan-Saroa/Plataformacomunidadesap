@@ -45,6 +45,7 @@ import {
   DecisionComite,
   EstadoCausalProceso,
   EstadoComiteContratacion,
+  EstadoSegundaSesion,
   EstadoActaInicio,
   EstadoSuscripcionActa,
   DatosActaInicio,
@@ -124,7 +125,6 @@ import {
   GuardarRegla,
   ReglaActividad,
   Persona,
-  Cargo,
   PlantillaFormato,
   PlazosPublicacion,
   ProcesoResumen,
@@ -139,6 +139,7 @@ import {
   BusquedaLineasPaa,
   CamposDelFormularioPaa,
   ComparacionPaa,
+  DatosDelPaaEnEstudioPrevio,
   DecisionRevisionPaa,
   DetalleLineaPaa,
   DetalleRevisionPaa,
@@ -234,9 +235,10 @@ function archivo(descargaUrl: string): string {
  * texto, y un campo opcional enviado en blanco llega al servidor como `''` y
  * no como ausente, que es lo que la validación espera.
  */
-function conArchivo<T extends object>(datos: T, archivo: File): FormData {
+function conArchivo<T extends object>(datos: T, archivo: File | null): FormData {
   const cuerpo = new FormData();
-  cuerpo.append('file', archivo);
+  // Sin archivo cuando es opcional, como el acta del comité (113).
+  if (archivo) cuerpo.append('file', archivo);
 
   for (const [clave, valor] of Object.entries(datos as Record<string, unknown>)) {
     if (valor !== undefined && valor !== null && valor !== '') {
@@ -755,7 +757,7 @@ export const contratacionService = {
   comiteContratacion: (procesoId: string) =>
     pedir<EstadoComiteContratacion>(`/procesos/${procesoId}/comite-contratacion`),
 
-  /** Transcribe una sesión, con su acta: sin ella no se registra. */
+  /** Transcribe una sesión; el acta puede llegar después (113). */
   registrarSesionComite: (
     procesoId: string,
     datos: {
@@ -770,7 +772,7 @@ export const contratacionService = {
       numeralesReabrir?: string[];
       firma?: EvidenciaFirmaOtp;
     },
-    acta: File,
+    acta: File | null,
   ) =>
     pedir<EstadoComiteContratacion>(`/procesos/${procesoId}/comite-contratacion/sesiones`, {
       method: 'POST',
@@ -787,6 +789,57 @@ export const contratacionService = {
         },
         acta,
       ),
+    }),
+
+  /**
+   * Carga el acta de una sesión ya registrada, de la 3.7 o de la 5.6.1 (113):
+   * el acta tarda hasta diez días y no frena el proceso.
+   */
+  cargarActaComite: (procesoId: string, sesionId: string, acta: File) =>
+    pedir<{ cargada: boolean; numeral: string }>(
+      `/procesos/${procesoId}/comite-contratacion/sesiones/${sesionId}/acta`,
+      { method: 'POST', body: conArchivo({}, acta) },
+    ),
+
+  // ------------- pliego definitivo y segunda sesión del comité · 5.6.1 (113) --
+
+  segundaSesionComite: (procesoId: string) =>
+    pedir<EstadoSegundaSesion>(`/procesos/${procesoId}/segunda-sesion-comite`),
+
+  /** Sube la versión definitiva de un documento de la 5.1; la anterior queda en el historial. */
+  versionDefinitiva: (procesoId: string, codigo: string, archivo: File) =>
+    pedir<EstadoSegundaSesion>(
+      `/procesos/${procesoId}/segunda-sesion-comite/documentos/${encodeURIComponent(codigo)}`,
+      { method: 'POST', body: conArchivo({}, archivo) },
+    ),
+
+  /** Envía el pliego definitivo a su cadena: lo hace quien ocupa el puesto de la 5.6.1. */
+  enviarPliegoDefinitivo: (procesoId: string) =>
+    pedir<EstadoSegundaSesion>(`/procesos/${procesoId}/segunda-sesion-comite/enviar`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  retirarPliegoDefinitivo: (procesoId: string) =>
+    pedir<EstadoSegundaSesion>(`/procesos/${procesoId}/segunda-sesion-comite/retirar`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
+
+  registrarSegundaSesion: (
+    procesoId: string,
+    datos: {
+      fecha: string;
+      decision: DecisionComite;
+      condiciones?: string;
+      observaciones?: string;
+      firma?: EvidenciaFirmaOtp;
+    },
+    acta: File | null,
+  ) =>
+    pedir<EstadoSegundaSesion>(`/procesos/${procesoId}/segunda-sesion-comite/sesiones`, {
+      method: 'POST',
+      body: conArchivo({ ...datos, firma: datos.firma ? JSON.stringify(datos.firma) : undefined }, acta),
     }),
 
   /** Deja constancia de que el proceso no pasó por comité, por cuantía. */

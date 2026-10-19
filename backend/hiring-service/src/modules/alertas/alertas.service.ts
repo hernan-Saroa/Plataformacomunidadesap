@@ -9,6 +9,7 @@ import { PuestosService, UsoDePuesto } from '../participacion/puestos.service';
 import { NOMBRE_TIPO } from '../modificaciones/reglas-por-tipo';
 import { Campana } from '../notificaciones/campana';
 import { plazoDeActividad } from './plazos-actividad';
+import { limiteDelActa, numeralDeLaSumision } from '../comite-contratacion/segunda-sesion';
 import {
   ClaveParametroAlerta,
   PARAMETROS_POR_DEFECTO,
@@ -84,7 +85,24 @@ export type TipoAlerta =
    * Sus días se cuentan hábiles, no calendario como los demás: así se acordó
    * para los plazos de las actividades.
    */
-  | 'PLAZO_ACTIVIDAD';
+  | 'PLAZO_ACTIVIDAD'
+  /**
+   * Una sesión del Comité de Contratación sin acta (migración 113).
+   *
+   * El acta tarda hasta diez días y no frena el proceso, así que la sesión se
+   * registra sin ella; esto es lo que impide que se olvide. Le llega a quien
+   * hace la actividad de esa sesión —la 3.7 o la 5.6.1— hasta que la cargue:
+   * dentro del plazo como por vencer, después como vencida.
+   */
+  | 'ACTA_COMITE_PENDIENTE'
+  /**
+   * Un comité evaluador designado sin memorando (117, EFDS-1156).
+   *
+   * Mismo razonamiento que el acta: el memorando depende de firmas que tardan
+   * y no frena la evaluación, así que esto es lo que impide que se olvide. Le
+   * llega a quien hace la 6.2 en el proceso hasta que lo cargue.
+   */
+  | 'MEMORANDO_COMITE_PENDIENTE';
 
 /** Algo que espera la decisión de quien consulta (bandeja «Por revisar»). */
 export interface ElementoPorRevisar {
@@ -836,6 +854,117 @@ export class AlertasService {
       // Dentro de la tolerancia no se avisa: es el hueco normal entre recibir
       // el proceso y sentarse a repartirlo.
       .filter((a) => a.estado !== 'VIGENTE');
+  }
+
+  /**
+   * Las sesiones del Comité de Contratación que siguen sin acta (113).
+   *
+   * El destinatario es quien hace la actividad de la sesión en el proceso —el
+   * ocupante del puesto, si la regla es de puesto—, no quien la transcribió: si
+   * el caso cambió de abogado, el acta la debe el que lo tiene ahora. Sin regla
+   * de puesto, quien la transcribió, que es el único dato cierto.
+   *
+   * Solo a quien se la deben cargar y a quien ve todos los procesos; sin
+   * usuario —el aviso diario— todas, y cada una va a su destinatario.
+   */
+  private async actasDelComitePendientes(
+    hoy: string,
+    plazo: number,
+    acceso?: HiringAccess,
+  ): Promise<Alerta[]> {
+    const filas = await this.dataSource.query(
+      `SELECT s.id, s.proceso_id, s.sumision, s.fecha::text AS fecha,
+              s.registrado_por, s.registrado_por_id, p.radicado
+         FROM hiring.sesiones_comite_contratacion s
+         JOIN hiring.procesos p ON p.id = s.proceso_id
+        WHERE s.acta_documento_id IS NULL
+        ORDER BY s.fecha ASC`,
+    );
+    if (!filas.length) return [];
+
+    const todos = !acceso?.userId || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+    const alertas: Alerta[] = [];
+
+    for (const f of filas) {
+      const numeral = numeralDeLaSumision(Number(f.sumision) === 2 ? 2 : 1);
+      const quien = this.alcance
+        ? await this.alcance.quienHace(undefined, f.proceso_id, numeral).catch(() => null)
+        : null;
+      const responsableId = quien?.responsable?.usuarioId ?? f.registrado_por_id ?? null;
+      if (!todos && responsableId !== acceso?.userId) continue;
+
+      const vence = limiteDelActa(f.fecha, plazo);
+      const diasRestantes = diasParaVencer(vence, hoy);
+      alertas.push({
+        tipo: 'ACTA_COMITE_PENDIENTE',
+        procesoId: f.proceso_id,
+        radicado: f.radicado,
+        contrato: null,
+        descripcion: `${numeral} · acta de la ${Number(f.sumision) === 2 ? 'segunda' : 'primera'} sesión del comité (${f.fecha})`,
+        vence,
+        diasRestantes,
+        // Siempre se alerta, dentro y fuera del plazo: el acta se debe desde el
+        // día de la sesión. El plazo solo dice cuándo pasa a vencida.
+        estado: estadoAlerta(diasRestantes, plazo),
+        responsable: quien?.responsable?.nombre ?? f.registrado_por ?? null,
+        responsableEmail: null,
+        responsableId,
+      });
+    }
+
+    return alertas;
+  }
+
+  /**
+   * Los comités evaluadores vigentes que siguen sin memorando (117).
+   *
+   * El plazo corre desde que se registró el comité. El destinatario es quien
+   * hace la 6.2 en el proceso, o quien registró el comité si la actividad no
+   * tiene puesto: el mismo criterio que el acta del Comité de Contratación.
+   */
+  private async memorandosDelComitePendientes(
+    hoy: string,
+    plazo: number,
+    acceso?: HiringAccess,
+  ): Promise<Alerta[]> {
+    const filas = await this.dataSource.query(
+      `SELECT c.id, c.proceso_id, (c.created_at AT TIME ZONE 'America/Bogota')::date::text AS desde,
+              c.designado_por, c.designado_por_id, p.radicado
+         FROM hiring.comites_evaluadores c
+         JOIN hiring.procesos p ON p.id = c.proceso_id
+        WHERE c.estado = 'VIGENTE' AND c.memorando_documento_id IS NULL
+        ORDER BY c.created_at ASC`,
+    );
+    if (!filas.length) return [];
+
+    const todos = !acceso?.userId || tienePermiso(acceso, PERMISO_PROCESO_VER_TODOS);
+    const alertas: Alerta[] = [];
+
+    for (const f of filas) {
+      const quien = this.alcance
+        ? await this.alcance.quienHace(undefined, f.proceso_id, '6.2').catch(() => null)
+        : null;
+      const responsableId = quien?.responsable?.usuarioId ?? f.designado_por_id ?? null;
+      if (!todos && responsableId !== acceso?.userId) continue;
+
+      const vence = limiteDelActa(f.desde, plazo);
+      const diasRestantes = diasParaVencer(vence, hoy);
+      alertas.push({
+        tipo: 'MEMORANDO_COMITE_PENDIENTE',
+        procesoId: f.proceso_id,
+        radicado: f.radicado,
+        contrato: null,
+        descripcion: `6.2 · memorando de designación del comité evaluador (desde el ${f.desde})`,
+        vence,
+        diasRestantes,
+        estado: estadoAlerta(diasRestantes, plazo),
+        responsable: quien?.responsable?.nombre ?? f.designado_por ?? null,
+        responsableEmail: null,
+        responsableId,
+      });
+    }
+
+    return alertas;
   }
 
   /**

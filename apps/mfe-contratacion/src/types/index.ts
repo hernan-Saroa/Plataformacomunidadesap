@@ -635,11 +635,49 @@ export interface EstadoComiteContratacion {
   reabribles: string[];
   puedeRegistrar: boolean;
   puedeDejarConstancia: boolean;
+  /** Si quien mira carga el acta que llegó después de la sesión (113). */
+  puedeCargarActa?: boolean;
   motivoNoDecide: MotivoNoDecide | null;
   /** Quién lo registra en este proceso, si la regla «quién la hace» lo dice (109). */
   responsable: { nombre: string; usuarioNombre: string | null } | null;
   /** El puesto que lo hace, si es de un puesto. */
   puesto: string | null;
+}
+
+/** Un documento de la 5.1 visto desde el pliego definitivo (5.6.1, 113). */
+export interface DocumentoDelPliegoDefinitivo {
+  codigo: string;
+  nombre: string;
+  obligatorio: boolean;
+  /** La versión vigente, o null si nunca se cargó. */
+  vigente: DocumentoDeLaActividad['cargado'];
+  /** Las versiones sustituidas, de la más nueva a la más vieja. */
+  anteriores: VersionSustituida[];
+  /** Si la vigente se cargó después de publicar el proyecto de pliego. */
+  nuevaVersion: boolean;
+}
+
+/** Pliego definitivo y segunda sesión del Comité — actividad 5.6.1 (113). */
+export interface EstadoSegundaSesion {
+  aplica: boolean;
+  estado: EstadoActividad;
+  cdp: { cumplido: boolean; motivo: string | null };
+  /** Cuándo se registró la publicación del proyecto de pliego (5.3). */
+  publicadoEl: string | null;
+  documentos: DocumentoDelPliegoDefinitivo[];
+  /** Si quien mira sube versiones: le toca y el pliego no está en revisión ni aprobado. */
+  puedeAjustar: boolean;
+  /** Si quien mira puede retirarlo de revisión: le toca y está en revisión. */
+  puedeRetirar: boolean;
+  sesiones: SesionComite[];
+  puedeRegistrar: boolean;
+  motivoNoRegistra: string | null;
+  puedeCargarActa: boolean;
+  motivoNoDecide: MotivoNoDecide | null;
+  responsable: { nombre: string; usuarioNombre: string | null } | null;
+  puesto: string | null;
+  /** Lo que la apertura (5.7) le pregunta a esta actividad. */
+  apertura: { cumplido: boolean; motivo: string | null };
 }
 
 // ------------------------- quién está en el proceso (EFDS-1183) ------------
@@ -886,8 +924,8 @@ export interface EstadoApertura {
     cdp: { cumplido: boolean; motivo: string | null };
     /** Informativo: la elaboración de documentos no bloquea. */
     documentos: { cumplido: boolean };
-    /** Bloquea donde la audiencia es obligatoria (RF-PUB-04, EFDS-1153). */
-    audienciaRiesgos: { cumplido: boolean; motivo: string | null };
+    /** La segunda sesión del comité con el pliego definitivo (5.6.1, 113). */
+    comite?: { cumplido: boolean; motivo: string | null };
   };
   puedeAbrir: boolean;
 }
@@ -1134,6 +1172,8 @@ export interface SoporteDelRevisor {
   mimeType?: string | null;
   revisadoPor: string;
   devueltaAt: string;
+  /** De qué decisión es: una devolución o, desde la 113, una aprobación. */
+  decision?: string;
 }
 
 /**
@@ -3210,7 +3250,10 @@ export interface AlertaVencimiento {
     /** Recibido en la Dirección con un puesto obligatorio vacío: lo que hace, nadie lo hace. */
     | 'SIN_RESPONSABLE'
     /** Una actividad con plazo por vencer o vencido; sus días son hábiles. */
-    | 'PLAZO_ACTIVIDAD';
+    | 'PLAZO_ACTIVIDAD'
+    /** Una sesión del comité (3.7 o 5.6.1) que sigue sin acta (113). */
+    | 'ACTA_COMITE_PENDIENTE'
+    | 'MEMORANDO_COMITE_PENDIENTE';
   procesoId: string;
   radicado: string | null;
   contrato: string | null;

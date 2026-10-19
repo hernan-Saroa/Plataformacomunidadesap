@@ -28,6 +28,7 @@ import {
 } from './dto/comite-contratacion.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 import { FirmaOtpDto } from '../cierre-actividad/dto/firma-otp.dto';
+import { numeralDeLaSumision } from './segunda-sesion';
 
 /** Actividad 3.7 de la matriz —su 3.6—: el comité de contratación. */
 export const NUMERAL_COMITE_CONTRATACION = '3.7';
@@ -258,6 +259,8 @@ export class ComiteContratacionService {
       reabribles,
       /** A quien mira le toca transcribir lo que el comité decidió. */
       puedeRegistrar: noVa === null && motivo === null && !yaSePronuncio,
+      /** Y cargar el acta que llegó después de registrar la sesión (113). */
+      puedeCargarActa: motivo === null,
       /** Y, cuando no va, dejar constancia de por qué no fue. */
       puedeDejarConstancia:
         noVa === 'NO_SUPERA_EL_UMBRAL' &&
@@ -292,8 +295,9 @@ export class ComiteContratacionService {
   async registrar(
     procesoId: string,
     dto: RegistrarSesionComiteDto,
-    archivo: ArchivoCargado,
-    hash: string,
+    /** El acta, si ya llegó: puede cargarse después (113). */
+    archivo: ArchivoCargado | null,
+    hash: string | null,
     acceso: HiringAccess,
   ) {
     await this.exigirQueLeToque(procesoId, acceso);
@@ -392,11 +396,15 @@ export class ComiteContratacionService {
         this.cierre.exigirFirmaValida(dto.firma);
       }
 
-      const acta = await this.guardarActa(em, procesoId, archivo, hash, acceso);
+      const acta =
+        archivo && hash
+          ? await this.guardarActa(em, procesoId, NUMERAL_COMITE_CONTRATACION, archivo, hash, acceso)
+          : null;
 
       const sesion = await em.save(
         em.create(SesionComiteContratacion, {
           procesoId,
+          sumision: 1,
           fecha: dto.fecha,
           decision: dto.decision,
           // Cada desenlace guarda lo suyo y nada más: unas condiciones colgadas
@@ -410,7 +418,7 @@ export class ComiteContratacionService {
           observaciones: exigeObservaciones(dto.decision, numerales.length > 0)
             ? observaciones
             : null,
-          actaDocumentoId: acta.id,
+          actaDocumentoId: acta?.id ?? null,
           registradoPor: acceso.userName,
           registradoPorId: acceso.userId ?? null,
         } as Partial<SesionComiteContratacion>),
@@ -449,6 +457,7 @@ export class ComiteContratacionService {
           condiciones,
           observaciones,
           reabiertas: numerales,
+          actaPendiente: !acta,
         },
       );
 
@@ -533,6 +542,56 @@ export class ComiteContratacionService {
     return this.estado(procesoId, acceso);
   }
 
+  /**
+   * Carga el acta de una sesión ya registrada, de la 3.7 o de la 5.6.1 (113).
+   *
+   * El acta tarda hasta diez días y no puede frenar el proceso, así que la
+   * sesión se registra sin ella y el acta llega aquí. La carga quien hace la
+   * actividad de esa sesión, que es a quien le llega la alerta mientras falta.
+   *
+   * Una sola vez: el acta es la prueba de lo que el comité decidió, y cambiarla
+   * después dejaría la sesión probada con dos papeles distintos.
+   */
+  async cargarActa(
+    procesoId: string,
+    sesionId: string,
+    archivo: ArchivoCargado,
+    hash: string,
+    acceso: HiringAccess,
+  ) {
+    const sesion = await this.dataSource
+      .getRepository(SesionComiteContratacion)
+      .findOne({ where: { id: sesionId, procesoId } });
+    if (!sesion) throw new NotFoundException('La sesión no existe en este proceso');
+
+    const numeral = numeralDeLaSumision(sesion.sumision);
+    await this.exigirQueLeToque(procesoId, acceso, numeral);
+
+    await this.dataSource.transaction(async (em) => {
+      const bloqueada = await em
+        .getRepository(SesionComiteContratacion)
+        .createQueryBuilder('s')
+        .where('s.id = :sesionId', { sesionId })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (bloqueada?.actaDocumentoId) {
+        throw new ConflictException('Esta sesión ya tiene su acta');
+      }
+
+      const acta = await this.guardarActa(em, procesoId, numeral, archivo, hash, acceso);
+      await em.update(SesionComiteContratacion, { id: sesionId }, { actaDocumentoId: acta.id });
+
+      await this.traza(em, procesoId, sesionId, 'ADJUNTAR', acceso, {
+        actividad: numeral,
+        actaDelComite: true,
+        fechaSesion: sesion.fecha,
+        archivo: archivo.originalname,
+      });
+    });
+
+    return { cargada: true, numeral };
+  }
+
   // ---------------------------------------------------------- auxiliares ---
 
   /**
@@ -567,12 +626,16 @@ export class ComiteContratacionService {
     };
   }
 
-  /** Lo registra quien dice la regla «quién la hace» de la 3.7 (109). */
-  private async exigirQueLeToque(procesoId: string, acceso: HiringAccess) {
+  /** Lo registra quien dice la regla «quién la hace» de la actividad (109). */
+  private async exigirQueLeToque(
+    procesoId: string,
+    acceso: HiringAccess,
+    numeral: string = NUMERAL_COMITE_CONTRATACION,
+  ) {
     const { responsable, puesto, motivo } = await this.participacion.quienHace(
       procesoId,
       acceso,
-      NUMERAL_COMITE_CONTRATACION,
+      numeral,
     );
 
     if (motivo === 'SIN_ASIGNAR') {
@@ -603,9 +666,12 @@ export class ComiteContratacionService {
     return em.save(
       em.create(Documento, {
         expedienteId: expediente.id,
-        numeral: NUMERAL_COMITE_CONTRATACION,
+        numeral,
         tipo: 'ADJUNTO',
-        nombre: 'Acta del comité de contratación',
+        nombre:
+          numeral === NUMERAL_COMITE_CONTRATACION
+            ? 'Acta del comité de contratación'
+            : 'Acta de la segunda sesión del comité de contratación',
         archivoUrl: `hiring/files/${archivo.filename}`,
         archivoNombreOriginal: archivo.originalname,
         archivoMimeType: archivo.mimetype,

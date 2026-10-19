@@ -278,7 +278,7 @@ export function AprobacionDeLaActividad({
 
             {/* Con escalones, aprobar aquí no cierra la actividad: la pasa al
                 siguiente. Decirlo evita que crea que dio el visto bueno final. */}
-            {siguiente && !devolviendo ? (
+            {siguiente && !devolviendo && !negando ? (
               <p className="text-[11.5px] text-slate-600 m-0 flex items-start gap-1.5">
                 <ArrowRight className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-emerald-700" aria-hidden="true" />
                 <span>
@@ -288,7 +288,7 @@ export function AprobacionDeLaActividad({
               </p>
             ) : null}
 
-            {pasaA && !devolviendo && !siguiente ? (
+            {pasaA && !devolviendo && !negando && !siguiente ? (
               <p className="text-[11.5px] text-slate-600 m-0 flex items-start gap-1.5">
                 <ArrowRight className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-emerald-700" aria-hidden="true" />
                 <span>
@@ -297,7 +297,84 @@ export function AprobacionDeLaActividad({
               </p>
             ) : null}
 
-            {devolviendo ? (
+            {aprobando ? (
+              <>
+                <textarea
+                  rows={3}
+                  value={comentario}
+                  onChange={(e) => setComentario(e.target.value)}
+                  placeholder="Observaciones o concepto (opcional)"
+                  aria-label="Observaciones de la aprobación"
+                  className={campo}
+                />
+                <ElegirSoportes archivos={soportes} onCambio={setSoportes} />
+                <p className="text-[11px] text-slate-500 m-0">
+                  Lo que escribas y adjuntes queda en el historial de la revisión, con tu nombre.
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    className={`${primario} justify-center w-full`}
+                    // La firma es de la aprobación definitiva: en un escalón
+                    // intermedio no se pide.
+                    onClick={() =>
+                      siguiente
+                        ? a.aprobar(undefined, comentario, soportes)
+                        : firma.conFirma((f) => a.aprobar(f, comentario, soportes))
+                    }
+                    disabled={a.guardando}
+                  >
+                    <Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" />
+                    {siguiente ? 'Confirmar y pasar al siguiente' : 'Confirmar la aprobación'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAprobando(false)}
+                    className="text-[11.5px] font-bold text-slate-500 hover:text-slate-700 py-1"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            ) : negando ? (
+              <>
+                <p className="text-[11.5px] text-red-700 m-0 leading-relaxed">
+                  Negar no es devolver: no hay nada que corregir y el proceso termina aquí. Quien
+                  la envió no podrá volver a enviarla.
+                </p>
+                <textarea
+                  rows={3}
+                  value={motivo}
+                  onChange={(e) => setMotivo(e.target.value)}
+                  placeholder="Por qué se niega: queda en el expediente y le llega a quien la envió"
+                  aria-label="Motivo de la negativa"
+                  className={campo}
+                />
+                <ElegirSoportes
+                  archivos={soportes}
+                  onCambio={setSoportes}
+                  etiqueta="Documentos que fundan la negativa (opcional)"
+                />
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    className={`${secundario} justify-center w-full !border-red-300 !text-red-700 hover:!bg-red-50`}
+                    onClick={() => a.negar(motivo, soportes)}
+                    disabled={a.guardando || !motivo.trim()}
+                  >
+                    <Ban className="w-3.5 h-3.5" aria-hidden="true" />
+                    Negar la actividad
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNegando(false)}
+                    className="text-[11.5px] font-bold text-slate-500 hover:text-slate-700 py-1"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            ) : devolviendo ? (
               <>
                 <textarea
                   rows={3}
@@ -337,7 +414,7 @@ export function AprobacionDeLaActividad({
                     className={`${primario} justify-center w-full`}
                     // La firma es de la aprobación definitiva: en un escalón
                     // intermedio no se pide.
-                    onClick={() => (siguiente ? a.aprobar() : firma.conFirma(a.aprobar))}
+                    onClick={() => setAprobando(true)}
                     disabled={a.guardando || faltanDocumentos > 0}
                     title={
                       faltanDocumentos > 0
@@ -364,7 +441,7 @@ export function AprobacionDeLaActividad({
                   <button
                     type="button"
                     className={`${secundario} justify-center w-full`}
-                    onClick={negar}
+                    onClick={() => setNegando(true)}
                     disabled={a.guardando}
                   >
                     <Ban className="w-3.5 h-3.5" aria-hidden="true" />
@@ -379,7 +456,6 @@ export function AprobacionDeLaActividad({
             <HistorialRevisiones revisiones={a.revisiones} />
           </div>
           {firma.modal}
-          {dialogo.elemento}
         </div>
       );
     }

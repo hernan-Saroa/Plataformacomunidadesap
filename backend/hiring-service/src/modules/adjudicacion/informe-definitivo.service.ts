@@ -1,10 +1,16 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource, EntityManager, Not } from 'typeorm';
 
 import {
   CambiosDelDefinitivo,
   InformeDefinitivo,
 } from '../../entities/informe-definitivo.entity';
+import { ActoAdjudicacion } from '../../entities/acto-adjudicacion.entity';
 import { InformeEvaluacion } from '../../entities/informe-evaluacion.entity';
 import { Subsanacion } from '../../entities/subsanacion.entity';
 import { ResultadoEvaluacion } from '../../entities/resultado-evaluacion.entity';

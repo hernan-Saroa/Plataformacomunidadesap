@@ -68,24 +68,53 @@ export class ComiteContratacionController {
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
-    if (!file) {
-      throw new BadRequestException(
-        'Adjunta el acta: sin ella lo registrado es la palabra de quien lo escribe, no lo que el comité decidió',
-      );
-    }
-
-    const ruta = join(STORAGE_PATH, file.filename);
+    // El acta puede llegar hasta diez días después y no frena el proceso
+    // (113): sin ella la sesión se registra y queda la alerta hasta cargarla.
+    const ruta = file ? join(STORAGE_PATH, file.filename) : null;
     try {
       return await this.service.registrar(
         procesoId,
         dto,
-        file,
-        await sha256Archivo(ruta),
+        file ?? null,
+        ruta ? await sha256Archivo(ruta) : null,
         getHiringAccess(req),
       );
     } catch (error) {
       // El archivo ya está en disco cuando el servicio rechaza: se borra, o el
       // almacenamiento acumula actas de sesiones que no se registraron.
+      if (ruta) await unlink(ruta).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  @Post('sesiones/:sesionId/acta')
+  @UseInterceptors(
+    FileInterceptor('file', opcionesDeCarga(MIME_DOCUMENTOS, 'El acta se carga en PDF, Word o Excel')),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Cargar el acta de una sesión ya registrada',
+    description:
+      'Sirve para las dos sesiones del comité, la de la 3.7 y la de la 5.6.1. La carga quien hace la actividad de esa sesión, una sola vez.',
+  })
+  async cargarActa(
+    @Param('id', ParseUUIDPipe) procesoId: string,
+    @Param('sesionId', ParseUUIDPipe) sesionId: string,
+    @UploadedFile() file: any,
+    @Req() req: any,
+  ) {
+    if (!file) throw new BadRequestException('Adjunta el acta de la sesión');
+
+    const ruta = join(STORAGE_PATH, file.filename);
+    try {
+      return await this.service.cargarActa(
+        procesoId,
+        sesionId,
+        file,
+        await sha256Archivo(ruta),
+        getHiringAccess(req),
+      );
+    } catch (error) {
       await unlink(ruta).catch(() => undefined);
       throw error;
     }

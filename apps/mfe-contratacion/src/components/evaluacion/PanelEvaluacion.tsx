@@ -137,29 +137,6 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
         ),
       );
       limpiar();
-      toast.success('Resultado de la evaluación registrado');
-      onCambio?.();
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  const rectificar = async () => {
-    const motivo = await dialogo.pedirMotivo({
-      titulo: 'Rectificar el resultado',
-      descripcion: 'El resultado anterior se conserva: rectificar añade uno nuevo, no borra el que había.',
-      etiqueta: 'Motivo de la rectificación',
-      placeholder: 'La subsanación aceptada cambia la habilitación del oferente…',
-      confirmar: 'Rectificar el resultado',
-    });
-    if (!motivo) return;
-
-    setGuardando(true);
-    try {
-      setEstado(await contratacionService.rectificarResultadoEvaluacion(procesoId, motivo));
-      toast.success('Resultado rectificado; el proceso queda sin resultado vigente');
       onCambio?.();
     } catch (err: any) {
       toast.error(err.message);
@@ -411,16 +388,6 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
                 {guardando ? 'Cargando…' : 'Cargar evidencia'}
               </Boton>
             </div>
-          )}
-
-          {estado.esMiembroDelComite && (
-            <BotonSecundario
-              icono={<Undo2 className="w-3.5 h-3.5" />}
-              disabled={guardando}
-              onClick={rectificar}
-            >
-              Rectificar el resultado
-            </BotonSecundario>
           )}
         </>
       )}

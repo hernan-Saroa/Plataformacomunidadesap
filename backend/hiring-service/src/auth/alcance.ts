@@ -87,7 +87,9 @@ export interface Alcance {
  */
 export type Destino = string;
 
-const PATRON_NUMERAL = /^(\d{1,2})\.(\d{1,2})$/;
+// El tercer nivel es el de las actividades que el área intercala entre dos de
+// la matriz sin renumerarla, como la 5.6.1 (migración 113).
+const PATRON_NUMERAL = /^(\d{1,2})\.(\d{1,2})(?:\.\d{1,2})?$/;
 const PATRON_ETAPA = /^E(\d{1,2})$/;
 
 /** La etapa de un numeral: la 7 para '7.2'. Nulo si no es un numeral. */

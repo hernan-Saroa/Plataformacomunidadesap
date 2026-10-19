@@ -457,6 +457,27 @@ describe('AprobacionDeLaActividad · cadena de escalones', () => {
     expect(await screen.findByRole('button', { name: /^Aprobar$/ })).toBeInTheDocument();
   });
 
+  it('al aprobar deja escribir observaciones y adjuntar soportes (113)', async () => {
+    montar(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'DEVOLVER'], ronda: ronda(['APROBAR', 'DEVOLVER']) }),
+      'decision',
+    );
+    const aprobar = vi.spyOn(contratacionService, 'aprobarActividad').mockResolvedValue({} as never);
+    const subir = vi.spyOn(contratacionService, 'subirSoporteDevolucion').mockResolvedValue({} as never);
+
+    await userEvent.click(await screen.findByRole('button', { name: /Aprobar y pasar al siguiente/ }));
+    await userEvent.type(screen.getByLabelText(/Observaciones de la aprobación/), 'Revisado el pliego, sin reparos');
+    const archivo = new File(['x'], 'concepto.pdf', { type: 'application/pdf' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, archivo);
+    await userEvent.click(screen.getByRole('button', { name: /Confirmar y pasar al siguiente/ }));
+
+    await waitFor(() =>
+      expect(aprobar).toHaveBeenCalledWith(PROCESO, '5.9', 'Revisado el pliego, sin reparos', undefined),
+    );
+    expect(subir).toHaveBeenCalledWith(PROCESO, '5.9', archivo);
+  });
+
   it('solo ofrece negar donde el escalón lo tiene permitido', async () => {
     const { unmount } = montar(
       estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'DEVOLVER'], ronda: ronda(['APROBAR', 'DEVOLVER']) }),
