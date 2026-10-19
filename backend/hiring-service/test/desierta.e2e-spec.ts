@@ -17,6 +17,7 @@ import { CdpService } from '../src/modules/cdp/cdp.service';
 import { RiesgosService } from '../src/modules/riesgos/riesgos.service';
 import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-previo.service';
 import { HiringAccess } from '../src/auth/hiring-access';
+import { aprobarSegundaSesion } from './apoyo-etapas';
 
 /**
  * HU EFDS-1160 · Declarar desierto el proceso (RF-ADJ-02).
@@ -110,19 +111,7 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
       financiero,
     );
 
-    // La licitación pública no se abre sin la audiencia de riesgos (5.5).
-    if (modalidad === 'LICITACION_PUBLICA') {
-      await riesgos.registrar(
-        proceso.id,
-        { fechaCelebracion: hoy() },
-        archivo('acta-riesgos.pdf'),
-        'g'.repeat(64),
-        archivo('matriz-riesgos.xlsx'),
-        'h'.repeat(64),
-        gestor,
-      );
-    }
-
+    await aprobarSegundaSesion(dataSource, proceso.id);
     await apertura.registrar(
       proceso.id,
       { resolucionNumero: 'RES-2026-160', resolucionFecha: hoy() },
@@ -457,6 +446,7 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
         null,
         financiero,
       );
+      await aprobarSegundaSesion(dataSource, proceso.id);
       await apertura.registrar(
         proceso.id,
         { resolucionNumero: 'RES-2026-162', resolucionFecha: hoy() },

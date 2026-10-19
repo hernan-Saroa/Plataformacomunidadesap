@@ -8,6 +8,7 @@ import { AperturaService } from '../src/modules/apertura/apertura.service';
 import { CdpService } from '../src/modules/cdp/cdp.service';
 import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-previo.service';
 import { HiringAccess } from '../src/auth/hiring-access';
+import { aprobarSegundaSesion } from './apoyo-etapas';
 
 /**
  * HU EFDS-1155 · Recepción de ofertas (actividad 6.1).
@@ -71,6 +72,7 @@ describe('HU EFDS-1155 · recepción de ofertas (actividad 6.1)', () => {
       financiero,
     );
 
+    await aprobarSegundaSesion(dataSource, procesoId);
     return apertura.registrar(
       procesoId,
       { resolucionNumero: 'RES-2026-155', resolucionFecha: hoy() },

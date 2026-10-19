@@ -16,6 +16,7 @@ import { CdpService } from '../src/modules/cdp/cdp.service';
 import { RiesgosService } from '../src/modules/riesgos/riesgos.service';
 import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-previo.service';
 import { HiringAccess } from '../src/auth/hiring-access';
+import { aprobarSegundaSesion, deObraPublica } from './apoyo-etapas';
 
 /**
  * HU EFDS-1159 · Adjudicar el proceso (actividades 7.1 a 7.4).
@@ -108,21 +109,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.3)', () => {
       null,
       financiero,
     );
-    // La licitación pública no se abre sin la audiencia de asignación de
-    // riesgos (5.5); la menor cuantía no la exige. Es la misma cadena de la
-    // etapa 5, y aquí solo hay que satisfacerla para llegar a la 7.
-    if (modalidad === 'LICITACION_PUBLICA') {
-      await riesgos.registrar(
-        proceso.id,
-        { fechaCelebracion: hoy() },
-        archivo('acta-riesgos.pdf'),
-        'g'.repeat(64),
-        archivo('matriz-riesgos.xlsx'),
-        'h'.repeat(64),
-        gestor,
-      );
-    }
-
+    await aprobarSegundaSesion(dataSource, proceso.id);
     await apertura.registrar(
       proceso.id,
       { resolucionNumero: 'RES-2026-159', resolucionFecha: hoy() },
@@ -224,6 +211,8 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.3)', () => {
   const listoParaAdjudicar = async (modalidad = 'LICITACION_PUBLICA') => {
     const datos = await hastaTrasladoCerrado(modalidad);
     await vencerYCerrar(datos.proceso.id);
+    // La licitación de estas pruebas es de obra: es la que abre sobre (114).
+    if (modalidad === 'LICITACION_PUBLICA') await deObraPublica(dataSource, datos.proceso.id);
     return datos;
   };
 
@@ -773,6 +762,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.3)', () => {
       );
       expect(actividades.map((a: any) => `${a.numeral}:${a.estado}`)).toEqual([
         '7.1:APROBADO',
+        '7.1.1:APROBADO',
         '7.2:APROBADO',
         '7.3:APROBADO',
       ]);
@@ -832,6 +822,8 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.3)', () => {
         { objeto: OBJETO, modalidad: 'ABREVIADA_MENOR_CUANTIA', valorEstimado: 1_000_000 },
         gestor,
       );
+
+      await deObraPublica(dataSource, licitacion.id);
 
       const deEtapa7 = async (procesoId: string) =>
         (await cdp.actividadesDelProceso(procesoId)).filter((a) => a.etapa === 7);

@@ -8,6 +8,7 @@ import { AperturaService } from '../src/modules/apertura/apertura.service';
 import { CdpService } from '../src/modules/cdp/cdp.service';
 import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-previo.service';
 import { HiringAccess } from '../src/auth/hiring-access';
+import { aprobarSegundaSesion } from './apoyo-etapas';
 
 /**
  * HU EFDS-1153 · Audiencia de asignación de riesgos (actividad 5.12).
@@ -53,6 +54,30 @@ describe('HU EFDS-1153 · audiencia de riesgos (actividad 5.12)', () => {
 
   const crear = (modalidad: string) =>
     procesos.crearProceso({ objeto: OBJETO, modalidad, valorEstimado: 1_000_000 }, gestor);
+
+  /** Crea el proceso y lo abre: la audiencia se celebra con el proceso abierto. */
+  const abierto = async (modalidad = 'LICITACION_PUBLICA') => {
+    const proceso = await crear(modalidad);
+    await cdp.cargar(
+      proceso.id,
+      { rubro: 'A-02-02', numero: 'CDP-2026-153', valor: 1_000_000, fechaExpedicion: hoy() },
+      null,
+      financiero,
+    );
+    await aprobarSegundaSesion(dataSource, proceso.id);
+    await apertura.registrar(
+      proceso.id,
+      { resolucionNumero: 'RES-2026-153', resolucionFecha: hoy() },
+      archivo('resolucion.pdf'),
+      'c'.repeat(64),
+      archivo('pliego-definitivo.pdf'),
+      'd'.repeat(64),
+      archivo('captura-secop.png', 'image/png'),
+      'e'.repeat(64),
+      gestor,
+    );
+    return proceso;
+  };
 
   const celebrar = (procesoId: string, fecha = hoy()) =>
     riesgos.registrar(

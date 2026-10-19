@@ -10,6 +10,7 @@ import { CdpService } from '../src/modules/cdp/cdp.service';
 import { OfertasService } from '../src/modules/ofertas/ofertas.service';
 import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-previo.service';
 import { HiringAccess } from '../src/auth/hiring-access';
+import { aprobarSegundaSesion } from './apoyo-etapas';
 
 /**
  * HU EFDS-1154 · Gestionar adendas del proceso (actividad 5.13).
@@ -76,6 +77,31 @@ describe('HU EFDS-1154 · adendas del proceso (actividad 5.13)', () => {
       'p'.repeat(64),
       gestor,
     );
+
+  /** Publica el pliego y abre el proceso: desde ahí se emiten adendas. */
+  const abierto = async (modalidad = 'LICITACION_PUBLICA') => {
+    const proceso = await crear(modalidad);
+    await publicarPliego(proceso.id);
+    await cdp.cargar(
+      proceso.id,
+      { rubro: 'A-02-02', numero: 'CDP-2026-154', valor: 1_000_000, fechaExpedicion: hoy() },
+      null,
+      financiero,
+    );
+    await aprobarSegundaSesion(dataSource, proceso.id);
+    await apertura.registrar(
+      proceso.id,
+      { resolucionNumero: 'RES-2026-154', resolucionFecha: hoy() },
+      archivo('resolucion.pdf'),
+      'r'.repeat(64),
+      archivo('pliego-definitivo.pdf'),
+      'd'.repeat(64),
+      archivo('captura-apertura.png', 'image/png'),
+      'c'.repeat(64),
+      gestor,
+    );
+    return proceso;
+  };
 
   const emitir = (
     procesoId: string,

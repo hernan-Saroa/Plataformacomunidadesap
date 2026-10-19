@@ -5,9 +5,9 @@ import { DataSource } from 'typeorm';
 import { AppModule } from '../src/app.module';
 import { AperturaService } from '../src/modules/apertura/apertura.service';
 import { CdpService } from '../src/modules/cdp/cdp.service';
-import { RiesgosService } from '../src/modules/riesgos/riesgos.service';
 import { EstudioPrevioService } from '../src/modules/estudio-previo/estudio-previo.service';
 import { HiringAccess } from '../src/auth/hiring-access';
+import { aprobarSegundaSesion } from './apoyo-etapas';
 
 /**
  * HU EFDS-1152 · Registrar apertura del proceso y publicar pliego definitivo.
@@ -21,7 +21,6 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
   let app: INestApplication;
   let apertura: AperturaService;
   let cdp: CdpService;
-  let riesgos: RiesgosService;
   let procesos: EstudioPrevioService;
   let dataSource: DataSource;
 
@@ -292,13 +291,16 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
       // (su 5.12): lo que bloquea es el cierre de ofertas, no abrir.
       const proceso = await crear('LICITACION_PUBLICA');
       await expedirCdp(proceso.id);
+      await aprobarSegundaSesion(dataSource, proceso.id);
 
-      await expect(abrir(proceso.id)).rejects.toThrow(/audiencia/i);
+      const estado = await abrir(proceso.id);
+      expect(estado.abierta).toBe(true);
     });
 
-    it('lo dice en el estado, junto al requisito del CDP', async () => {
+    it('el estado no la cuenta entre los requisitos', async () => {
       const proceso = await crear('LICITACION_PUBLICA');
       await expedirCdp(proceso.id);
+      await aprobarSegundaSesion(dataSource, proceso.id);
 
       const estado = await apertura.estado(proceso.id);
 
@@ -308,23 +310,12 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
     });
   });
 
-    it('con la audiencia celebrada el proceso abre', async () => {
+  describe('La licitación abre después de la segunda sesión del comité (113)', () => {
+    it('sin la 5.6.1 aprobada no abre, y dice qué falta', async () => {
       const proceso = await crear('LICITACION_PUBLICA');
       await expedirCdp(proceso.id);
-      await celebrarAudiencia(proceso.id);
 
-      const estado = await abrir(proceso.id);
-      expect(estado.abierta).toBe(true);
-    });
-
-    it('en una modalidad sin audiencia obligatoria no estorba', async () => {
-      // La menor cuantía puede celebrarla, pero no la exige: pedirla aquí
-      // bloquearía procesos que la norma no bloquea.
-      const proceso = await crear('ABREVIADA_MENOR_CUANTIA');
-      await expedirCdp(proceso.id);
-
-      const estado = await abrir(proceso.id);
-      expect(estado.abierta).toBe(true);
+      await expect(abrir(proceso.id)).rejects.toThrow(/5\.6\.1/);
     });
   });
 
