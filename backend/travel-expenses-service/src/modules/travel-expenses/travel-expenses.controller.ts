@@ -68,6 +68,7 @@ import {
   SolicitarOtpFirmaDto,
   VerificarOtpFirmaDto,
   SolicitarFirmasDto,
+  RegistrarVoBoDuracionDto,
 } from '../../dto/firmar-solicitud.dto';
 
 import { getClientIp } from '../../common/ip.util';
@@ -868,6 +869,27 @@ export class TravelExpensesController {
     @Req() req: AuthenticatedRequest,
   ) {
     return this.service.notificarFirmaPendiente(id, tipoFirmaPendiente, req.user?.userId);
+  }
+
+  @Post('requests/:id/vobo-duracion')
+  @ApiOperation({
+    summary:
+      'Registra el visto bueno (VoBo) o rechazo de comisión que supere 3 días calendario / 3.5 días de valor (Dirección Nacional / Director Territorial)',
+    description:
+      'Exige justificación y visto bueno institucional inmutable en trazabilidad para comisiones > 3 días calendario.',
+  })
+  @Permissions(
+    'travel_expenses:sign_approval',
+    'travel_expenses:read_approvals',
+    'travel_expenses:read_authorizations',
+  )
+  registrarVoBoDuracion(
+    @Param('id') id: string,
+    @Body() dto: RegistrarVoBoDuracionDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const roles = req.user?.roles || (req.user?.role ? [req.user.role] : []);
+    return this.service.registrarVoBoDuracion(id, dto, req.user?.userId, roles);
   }
 
   /**

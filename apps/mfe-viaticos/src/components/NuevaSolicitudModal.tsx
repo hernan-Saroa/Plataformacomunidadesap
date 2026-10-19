@@ -37,6 +37,7 @@ import {
   Check,
   Upload,
   ArrowLeftRight,
+  GraduationCap,
   X,
 } from 'lucide-react';
 import {
@@ -94,6 +95,7 @@ import {
   validarFechasSolicitud,
   validarSecuenciaItinerario,
   siguienteDiaISO,
+  evaluarVoBoDuracion,
 } from '../utils/viaticosUtils';
 
 interface Props {
@@ -268,6 +270,8 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     devCode?: string;
   } | null>(null);
   const [categoriaInvestigador, setCategoriaInvestigador] = useState<string>('ASOCIADO');
+  const [actividadDocente, setActividadDocente] = useState<'DICTAR_CLASE' | 'OTRA_ACTIVIDAD'>('DICTAR_CLASE');
+  const [agendaActividadesDocente, setAgendaActividadesDocente] = useState<string>('');
   const [asignacionesBasicasText, setAsignacionesBasicasText] = useState('');
   const [asignacionesBasicas, setAsignacionesBasicas] = useState<number[]>([]);
   const refTokenCiudades = useRef(0);
@@ -1655,6 +1659,52 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     return { origenCiudad: sync.origenCiudad, origenDepartamento: sync.origenDepartamento, destinoCiudad: sync.destinoCiudad, destinoDepartamento: sync.destinoDepartamento };
   };
 
+  // Evaluación institucional de VoBo de duración (> 3 días calendario / 3.5 días valor)
+  const evaluacionVoBoDuracion = useMemo(() => {
+    const { fechaInicio, fechaFin } = obtenerFechasItinerario();
+    const agendaDocenteFinal =
+      agendaActividadesDocente ||
+      form.camposAdicionales?.agendaActividadesDocente ||
+      form.camposAdicionales?.agenda ||
+      '';
+    const justificacionDocenteFinal =
+      actividadDocente === 'DICTAR_CLASE'
+        ? `Dictado directo de clase / cátedra o módulo presencial: ${agendaDocenteFinal || 'Actividad lectiva presencial'}`
+        : agendaDocenteFinal;
+
+    return evaluarVoBoDuracion({
+      fechaInicio: fechaInicio || form.fechaInicio,
+      fechaFin: fechaFin || form.fechaFin,
+      diasComision: form.diasComision,
+      diasPernoctados: form.diasPernoctados,
+      diasNoPernoctados: form.diasNoPernoctados,
+      tipoComisionado: comisionado?.tipoComisionado,
+      cargoComisionado: form.cargo || comisionado?.cargo,
+      dependenciaNombre: form.camposAdicionales?.dependenciaSolicitante || (comisionado as any)?.dependencia || '',
+      esInternacional: form.esInternacional,
+      objetoComision: form.objetoComision,
+      agenda: agendaDocenteFinal,
+      justificacionAgenda: agendaDocenteFinal,
+      justificacionDocente: justificacionDocenteFinal,
+    });
+  }, [
+    form.itinerario,
+    form.fechaInicio,
+    form.fechaFin,
+    form.diasComision,
+    form.diasPernoctados,
+    form.diasNoPernoctados,
+    comisionado?.tipoComisionado,
+    form.cargo,
+    comisionado?.cargo,
+    form.camposAdicionales,
+    (comisionado as any)?.dependencia,
+    form.esInternacional,
+    form.objetoComision,
+    actividadDocente,
+    agendaActividadesDocente,
+  ]);
+
   const validarCamposDinamicosObligatorios = (): string | null => {
     const obligatorios = camposCatalogo.filter(
       (c) => c.activo && !camposEstandar.has(c.clave) && !esCampoOculto(c.clave) && esCampoObligatorio(c.clave),
@@ -1743,6 +1793,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         setErrorValidacion(errLimites);
         return;
       }
+      if (evaluacionVoBoDuracion.aplica) {
+        const just = (form.justificacionDuracion || form.camposAdicionales?.justificacionDuracion || '').trim();
+        if (!just || just.length < 10) {
+          setErrorValidacion(
+            `Por superar tres (3) días calendario (${evaluacionVoBoDuracion.diasCalendario} días cal. / ${evaluacionVoBoDuracion.diasValor} días valor), debe registrar una justificación detallada (mínimo 10 caracteres) para el visto bueno obligatorio de ${evaluacionVoBoDuracion.tituloInstancia}.`,
+          );
+          return;
+        }
+      }
       if (comisionado && parametrizacion) {
         const documentosObligatorios = parametrizacion.documentos
           .filter((d) => d.tipoRequisito === 'OBLIGATORIO')
@@ -1805,6 +1864,15 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
     if (errLimites) {
       setErrorValidacion(errLimites);
       return;
+    }
+    if (evaluacionVoBoDuracion.aplica) {
+      const just = (form.justificacionDuracion || form.camposAdicionales?.justificacionDuracion || '').trim();
+      if (!just || just.length < 10) {
+        setErrorValidacion(
+          `La comisión supera los tres (3) días calendario (${evaluacionVoBoDuracion.diasCalendario} días cal. / ${evaluacionVoBoDuracion.diasValor} días valor) y requiere obligatoriamente una justificación detallada para el visto bueno de ${evaluacionVoBoDuracion.tituloInstancia}.`,
+        );
+        return;
+      }
     }
 
     // ── Validación de duplicidad / solapamiento por cédula y fechas ──────────
@@ -1920,6 +1988,18 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   ...(idCargoFinal ? { idCargo: idCargoFinal } : {}),
                 }
               : {}),
+            ...(esComisionadoDocente
+              ? {
+                  actividadDocente,
+                  agendaActividadesDocente,
+                  agenda: agendaActividadesDocente || form.camposAdicionales?.agenda,
+                  justificacionAgenda: agendaActividadesDocente || form.camposAdicionales?.justificacionAgenda,
+                  justificacionDocente:
+                    actividadDocente === 'DICTAR_CLASE'
+                      ? `Dictar clase o módulo académico presencial: ${agendaActividadesDocente || 'Actividad lectiva presencial'}`
+                      : agendaActividadesDocente,
+                }
+              : {}),
           },
         },
         comisionado,
@@ -2026,9 +2106,21 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                         0,
                       ),
                   ),
-                fechaAutoliquidacion:
+                 fechaAutoliquidacion:
                   prevAdic.fechaAutoliquidacion ||
                   new Date().toISOString().split('T')[0],
+                ...(esComisionadoDocente
+                  ? {
+                      actividadDocente,
+                      agendaActividadesDocente,
+                      agenda: agendaActividadesDocente || prevAdic.agenda,
+                      justificacionAgenda: agendaActividadesDocente || prevAdic.justificacionAgenda,
+                      justificacionDocente:
+                        actividadDocente === 'DICTAR_CLASE'
+                          ? `Dictar clase o módulo académico presencial: ${agendaActividadesDocente || 'Actividad lectiva presencial'}`
+                          : agendaActividadesDocente,
+                    }
+                  : {}),
               };
             })(),
             itinerario: (form.itinerario || []).map((r) => {
@@ -2312,6 +2404,7 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
         nombreFirmante: firma.firmante,
         cargoFirmante: firma.cargo,
         documentoIdentidad: userDoc ? String(userDoc).trim() : undefined,
+        justificacionDuracion: form.justificacionDuracion || form.camposAdicionales?.justificacionDuracion,
       });
       onSolicitudCreada(conFirmas);
       onCerrar();
@@ -2490,6 +2583,17 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
       }) || null
     );
   }, [saldosPresupuesto, infoComisionadoCompleta.depCodigo, infoComisionadoCompleta.depNombre, dependenciaId]);
+
+  const esComisionadoDocente = useMemo(() => {
+    const tipo = (comisionado?.tipoComisionado || form.tipoComisionado || '').toUpperCase();
+    const cargo = (form.cargo || comisionado?.cargo || cargoActualSeleccionado || '').toLowerCase();
+    return (
+      tipo === 'DOCENTE' ||
+      cargo.includes('docente') ||
+      cargo.includes('profesor') ||
+      cargo.includes('capacitador')
+    );
+  }, [comisionado?.tipoComisionado, form.tipoComisionado, form.cargo, comisionado?.cargo, cargoActualSeleccionado]);
 
   const esModoConsolidacion = Boolean(
     solicitudAResumir &&
@@ -3585,6 +3689,60 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                   );
                 })()}
 
+                {/* Banner y Justificación obligatoria de duración extendida (>3 días calendario / 3.5 días valor) */}
+                {evaluacionVoBoDuracion.aplica && (
+                  <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30 border-2 border-amber-300 dark:border-amber-700/70 rounded-xl space-y-3 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-amber-500/10 dark:bg-amber-500/20 rounded-lg shrink-0 mt-0.5">
+                        <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h6 className="text-xs font-extrabold uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                            Comisión con Duración Superior a 3 Días Calendario (3,5 Días de Valor)
+                          </h6>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100">
+                            VoBo Requerido: {evaluacionVoBoDuracion.tituloInstancia}
+                          </span>
+                        </div>
+                        <p className="text-xs text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
+                          Esta solicitud registra una duración de <strong>{evaluacionVoBoDuracion.diasCalendario} días calendario</strong> ({evaluacionVoBoDuracion.diasValor} días de valor) para {comisionado?.tipoComisionado || 'el comisionado'}. Conforme a la normativa institucional de la ESAP, <strong>el sistema exige una justificación detallada y el Visto Bueno (VoBo) obligatorio de {evaluacionVoBoDuracion.tituloInstancia}</strong> antes de continuar.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label htmlFor="justificacionDuracion" className="block text-xs font-bold text-amber-950 dark:text-amber-100 mb-1">
+                        Justificación de la duración extendida <span className="text-red-600 font-bold">*</span>
+                      </label>
+                      <textarea
+                        id="justificacionDuracion"
+                        rows={3}
+                        required
+                        value={form.justificacionDuracion || ''}
+                        onChange={(e) => setForm((prev) => ({ ...prev, justificacionDuracion: e.target.value }))}
+                        placeholder={`Describa detalladamente los motivos y compromisos institucionales que justifican la permanencia por más de 3 días calendario. Esta justificación será revisada y avalada con VoBo formal por ${evaluacionVoBoDuracion.tituloInstancia}...`}
+                        className="w-full px-3 py-2 text-xs border border-amber-300 dark:border-amber-600 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-inner"
+                      />
+                      <div className="flex items-center justify-between text-[11px] text-amber-700 dark:text-amber-400 mt-1">
+                        <span className="font-medium">Mínimo 10 caracteres obligatorios para avanzar.</span>
+                        <span className="font-semibold">{(form.justificacionDuracion || '').length} caracteres</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Exención docente informada */}
+                {evaluacionVoBoDuracion.esEximidoDocente && (
+                  <div className="p-3 bg-emerald-50 dark:bg-emerald-950/25 border border-emerald-300 dark:border-emerald-800/60 rounded-xl flex items-start gap-2.5 text-xs text-emerald-800 dark:text-emerald-300">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">Docente Eximido de VoBo de Duración: </span>
+                      Por desarrollar actividad académica de dictado de clase o registrar agenda justificada ({evaluacionVoBoDuracion.diasCalendario} días calendario / {evaluacionVoBoDuracion.diasValor} días de valor), la normativa exime a los docentes y docentes capacitadores del trámite de VoBo ante {evaluacionVoBoDuracion.tituloInstancia}.
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {!esCampoOculto('rubroPresupuestal') && (() => {
                     const limiteRubro = obtenerLimiteCampo('rubroPresupuestal');
@@ -3680,6 +3838,75 @@ export default function NuevaSolicitudModal({ abierta, onCerrar, onSolicitudCrea
                       onChange={(valor) => setCategoriaInvestigador(valor)}
                       placeholder="Seleccione categoría"
                     />
+                  </div>
+                )}
+
+                {/* Actividad y Agenda Académica Docente (Regla de Exención VoBo >3 Días) */}
+                {esComisionadoDocente && (
+                  <div className="p-4 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-xl space-y-3">
+                    <div className="flex items-center gap-2">
+                      <GraduationCap className="w-4 h-4 text-[#003DA5] dark:text-blue-400 shrink-0" />
+                      <h6 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                        Actividad y Agenda Académica Docente
+                      </h6>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Para docentes y docentes capacitadores en actividades de dictar clase, la normativa de la ESAP exime del trámite de VoBo ante Dirección Nacional o Territorial. Si viaja para otras actividades no lectivas y supera los 3 días calendario (3.5 días valor), se requerirá la justificación y VoBo previo.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className={labelCls} htmlFor="actividadDocenteSelect">
+                          Naturaleza de la Actividad <span className="text-red-500">*</span>
+                        </label>
+                        <SearchableSelect
+                          id="actividadDocenteSelect"
+                          options={[
+                            {
+                              value: 'DICTAR_CLASE',
+                              label: 'Dictar clase / cátedra o módulo presencial',
+                              sublabel: 'Exime del VoBo de Dirección Nacional/Territorial por labor docente directa',
+                            },
+                            {
+                              value: 'OTRA_ACTIVIDAD',
+                              label: 'Otras actividades (comités, asesorías, eventos)',
+                              sublabel: 'Requiere VoBo de duración si la comisión supera los 3 días calendario',
+                            },
+                          ]}
+                          value={actividadDocente}
+                          onChange={(val) => {
+                            const nuevaAct = (val as 'DICTAR_CLASE' | 'OTRA_ACTIVIDAD') || 'DICTAR_CLASE';
+                            setActividadDocente(nuevaAct);
+                            actualizar('camposAdicionales', {
+                              ...(form.camposAdicionales || {}),
+                              actividadDocente: nuevaAct,
+                            });
+                          }}
+                          placeholder="Seleccione la actividad docente"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className={labelCls} htmlFor="agendaActividadesDocente">
+                          Agenda de Actividades Académicas y Clases <span className="text-slate-400 font-normal">(Programación horaria, asignaturas o sedes)</span>
+                        </label>
+                        <textarea
+                          id="agendaActividadesDocente"
+                          rows={2}
+                          value={agendaActividadesDocente}
+                          onChange={(e) => {
+                            setAgendaActividadesDocente(e.target.value);
+                            actualizar('camposAdicionales', {
+                              ...(form.camposAdicionales || {}),
+                              agendaActividadesDocente: e.target.value,
+                              agenda: e.target.value,
+                              justificacionAgenda: e.target.value,
+                              justificacionDocente: e.target.value,
+                            });
+                          }}
+                          placeholder="Ejemplo: Viernes 18:00 a 22:00 y Sábado 08:00 a 17:00 Módulo de Gestión Pública Territorial, Salón 201 Sede..."
+                          className="w-full px-3 py-2 text-xs border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#003DA5]"
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
 

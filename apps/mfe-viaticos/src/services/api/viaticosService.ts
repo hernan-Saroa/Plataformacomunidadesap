@@ -68,6 +68,7 @@ import {
   SolicitarOtpFirmaResponse,
   VerificarOtpFirmaPayload,
   SolicitarFirmasPayload,
+  RegistrarVoBoDuracionPayload,
 } from '../../types/viaticos';
 
 import dependenciasService, { Dependencia, Cargo } from '../../../../shell/src/services/api/dependencias.service';
@@ -1148,6 +1149,31 @@ export class ViaticosService {
       return res?.data || res;
     } catch (error) {
       console.error('Error registrando firma de aprobación:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Registra el Visto Bueno (VoBo) obligatorio por duración superior a 3 días calendario (3.5 días de valor).
+   * Emitido por la Dirección Nacional (Sede Central) o el Director Territorial (Territoriales).
+   */
+  async registrarVoBoDuracion(
+    solicitudId: string,
+    payload: RegistrarVoBoDuracionPayload,
+  ): Promise<{
+    solicitud: SolicitudComisionResponse;
+    mensaje: string;
+    vobo: any;
+    certificadoId?: string;
+  }> {
+    try {
+      const res = await apiClient.post<any>(
+        `/viaticos/api/v1/requests/${solicitudId}/vobo-duracion`,
+        payload,
+      );
+      return res?.data || res;
+    } catch (error) {
+      console.error('Error registrando visto bueno de duración:', error);
       throw error;
     }
   }

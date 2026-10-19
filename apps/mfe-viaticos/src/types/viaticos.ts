@@ -113,6 +113,7 @@ export interface FormNuevaSolicitud {
   cargoSeleccionado?: CargoComisionado | null;
   cargo?: string;
   idCargo?: number;
+  justificacionDuracion?: string;
 }
 
 export interface CuentaBancariaComisionado {
@@ -354,6 +355,7 @@ export interface CreateSolicitudRequest {
   cargoSeleccionado?: CargoComisionado | null;
   cargo?: string;
   idCargo?: number;
+  justificacionDuracion?: string;
 }
 
 /**
@@ -1339,7 +1341,8 @@ export type TipoFirmaAprobacion =
   | 'ANALISTA'
   | 'CONTROL_VIATICOS'
   | 'PRESUPUESTO'
-  | 'TESORERIA';
+  | 'TESORERIA'
+  | 'VOBO_DURACION';
 
 export interface FirmaAprobacionRegistrada {
   tipo: TipoFirmaAprobacion;
@@ -1387,6 +1390,27 @@ export interface EstadoFirmasResponse {
   completado: boolean;
   requiereFirmasParaRadicar: boolean;
   mensaje: string;
+  // Campos VoBo Duración:
+  requiereVoBoDuracion?: boolean;
+  instanciaVoBoDuracion?: 'DIRECCION_NACIONAL' | 'DIRECTOR_TERRITORIAL';
+  tituloVoBoDuracion?: string;
+  motivoVoBoDuracion?: string;
+  justificacionDuracion?: string | null;
+  diasCalendario?: number;
+  diasValor?: number;
+  eximidoVoBoDocente?: boolean;
+  voboDuracion?: {
+    estado: 'PENDIENTE' | 'APROBADO' | 'RECHAZADO';
+    instancia?: 'DIRECCION_NACIONAL' | 'DIRECTOR_TERRITORIAL';
+    tituloInstancia?: string;
+    aprobadoPorId?: string;
+    nombreFirmante?: string;
+    cargoFirmante?: string;
+    documentoIdentidad?: string;
+    certificadoId?: string;
+    fechaVoBo?: string;
+    comentarios?: string;
+  } | null;
 }
 
 export interface FirmarSolicitudPayload {
@@ -1438,6 +1462,19 @@ export interface SolicitarFirmasPayload {
   nombreFirmante?: string;
   cargoFirmante?: string;
   documentoIdentidad?: string;
+  justificacionDuracion?: string;
+}
+
+export interface RegistrarVoBoDuracionPayload {
+  decision: 'APROBADO' | 'RECHAZADO';
+  comentarios?: string;
+  firmaImagen?: string;
+  otp?: string;
+  verificationId?: string;
+  cargoFirmante?: string;
+  nombreFirmante?: string;
+  documentoIdentidad?: string;
+  certificadoId?: string;
 }
 
 

@@ -6320,8 +6320,9 @@ describe('TravelExpensesService — Etapa 5 (RF-REC-002)', () => {
           },
           objetoComision: 'Capacitación territorial en Girardot',
           destinoCiudad: 'Girardot',
-          destinoDepartamento: 'Cundinamarca',
-          camposAdicionales: {},
+          camposAdicionales: {
+            justificacionDuracion: 'Capacitación integral programada para fortalecimiento territorial institucional.',
+          },
         } as any;
 
         const qbMock: any = {
