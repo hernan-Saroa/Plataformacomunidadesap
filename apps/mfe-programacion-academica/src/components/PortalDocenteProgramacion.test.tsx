@@ -57,16 +57,21 @@ describe('portal del docente: enviar a concertación', () => {
     expect(screen.getByText(/de 304 h/)).toBeTruthy();
   });
 
-  it('exige el código de firma de 6 dígitos y envía por el periodo de la franja', async () => {
+  it('«Enviar» abre el modal de firma digital (el del PTA); con los 6 dígitos firma y envía por el periodo de la franja', async () => {
     vi.mocked(getMisFranjasPortal).mockResolvedValue([franja('f1', P2050_2)] as any);
     render(<PortalDocenteProgramacion />);
-    const boton = await screen.findByRole('button', BOTON) as HTMLButtonElement;
-    expect(boton.disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText('Código de firma'), { target: { value: '123456' } });
-    expect(boton.disabled).toBe(false);
-    fireEvent.click(boton);
+    fireEvent.click(await screen.findByRole('button', BOTON));
+
+    // El modal: verificación de identidad con 6 casillas, como la firma del PTA.
+    expect(await screen.findByRole('dialog', { name: /Firma digital: Envío a concertación/ })).toBeTruthy();
+    expect(enviarConcertacion).not.toHaveBeenCalled(); // abrir no envía nada
+    '123456'.split('').forEach((d, i) => fireEvent.change(screen.getByLabelText(`Dígito ${i + 1} del código`), { target: { value: d } }));
+
+    // Generación animada → certificado → «Firmar y enviar».
+    fireEvent.click(await screen.findByRole('button', { name: /Firmar y enviar/ }, { timeout: 8000 }));
     await waitFor(() => expect(enviarConcertacion).toHaveBeenCalledWith('220', '123456'));
-  });
+    expect(await screen.findByText('Firma registrada')).toBeTruthy();
+  }, 15000);
 
   it('con la concertación APAGADA el portal queda como hoy: sin botón', async () => {
     vi.mocked(getConfiguracionConcertacion).mockResolvedValue(config(false, null) as any);

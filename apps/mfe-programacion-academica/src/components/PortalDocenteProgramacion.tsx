@@ -160,7 +160,7 @@ export default function PortalDocenteProgramacion() {
 
       {/* Concertación de la docencia (EFDS-2315): solo si está encendida y el periodo está en el corte */}
       {periodosConDocencia.map((p) => (
-        <ConcertacionDocente key={p.idPeriodo} idPeriodo={p.idPeriodo} codigoPeriodo={p.codigoPeriodo} />
+        <ConcertacionDocente key={p.idPeriodo} idPeriodo={p.idPeriodo} codigoPeriodo={p.codigoPeriodo} docenteNombre={acumulado?.nombre} />
       ))}
 
       {/* Mis franjas */}

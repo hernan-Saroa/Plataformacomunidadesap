@@ -40,6 +40,8 @@ export interface ConcertacionDocente {
 export interface ConcertacionBandeja {
   idConcertacion: string;
   idPeriodo: string;
+  /** Código del periodo (AAAA-S), para mostrarlo (aditivo). */
+  periodoCodigo?: string | null;
   nivel: 'pregrado' | 'posgrado';
   estado: EstadoConcertacion;
   horas: number;
@@ -48,6 +50,8 @@ export interface ConcertacionBandeja {
   docente: string;
   documento: string;
   revisiones: string[];
+  /** Registro de firmas hasta ahora (aditivo). */
+  firmas?: FirmaConcertacion[];
   puede: { revisar: string[]; aprobar: boolean; devolver: boolean };
 }
 

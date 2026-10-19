@@ -5,9 +5,11 @@ import {
   enviarConcertacion, getConfiguracionConcertacion, getMiConcertacion,
   type ConcertacionDocente as Item, type ConfiguracionConcertacion,
 } from '../services/api/concertacionApi';
+import { FirmaOtpModal } from './FirmaOtpModal';
+import { EtapasConcertacion, RegistroFirmas } from './EtapasConcertacion';
 
 const ESTADO: Record<Item['estado'], string> = {
-  ENVIADA: 'Enviada: en revisión',
+  ENVIADA: 'Enviada: en revisión académica',
   REVISADA: 'Revisada: pendiente de aprobación',
   APROBADA: 'Aprobada',
   DEVUELTA: 'Devuelta: corrija y vuelva a enviar',
@@ -20,13 +22,16 @@ const ESTADO: Record<Item['estado'], string> = {
  * periodo en que el docente tiene franjas. Si la concertación está apagada, o el
  * periodo es anterior al corte, no muestra nada: ahí el flujo de hoy (aprobación
  * de la jefatura) sigue igual.
+ *
+ * La firma se hace en el modal de firma digital (el mismo diseño del PTA), que se abre al pulsar «Enviar».
  */
-export function ConcertacionDocente({ idPeriodo, codigoPeriodo }: { idPeriodo: string; codigoPeriodo?: string | null }) {
+export function ConcertacionDocente({ idPeriodo, codigoPeriodo, docenteNombre }: {
+  idPeriodo: string; codigoPeriodo?: string | null; docenteNombre?: string;
+}) {
   const revision = useRevisionProgramacion('concertacion', 'portal-docente');
   const [config, setConfig] = useState<ConfiguracionConcertacion | null>(null);
   const [items, setItems] = useState<Item[]>([]);
-  const [codigo, setCodigo] = useState('');
-  const [ocupado, setOcupado] = useState(false);
+  const [firmando, setFirmando] = useState(false);
   const [aviso, setAviso] = useState('');
 
   useEffect(() => {
@@ -48,42 +53,62 @@ export function ConcertacionDocente({ idPeriodo, codigoPeriodo }: { idPeriodo: s
   if (codigoPeriodo && config.desdePeriodo
     && !(/^\d{4}-[12]$/.test(codigoPeriodo) && codigoPeriodo >= config.desdePeriodo)) return null;
 
-  const puedeEnviar = items.length === 0 || items.some((i) => i.estado === 'DEVUELTA');
-  const enviar = async () => {
-    setAviso(''); setOcupado(true);
-    try { setItems(await enviarConcertacion(idPeriodo, codigo)); setCodigo(''); }
-    catch (e: any) { setAviso(e?.message || 'No se pudo enviar.'); }
-    finally { setOcupado(false); }
-  };
+  const devueltas = items.filter((i) => i.estado === 'DEVUELTA');
+  const puedeEnviar = items.length === 0 || devueltas.length > 0;
+  const horas = items.length ? items.reduce((s, i) => s + Number(i.horas || 0), 0) : null;
 
   return (
     <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-      <h4 className="font-bold text-slate-800 text-sm">
-        Concertación de mi docencia{codigoPeriodo ? ` · Periodo ${codigoPeriodo}` : ''}
-      </h4>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="font-bold text-slate-800 text-sm">
+          Concertación de mi docencia{codigoPeriodo ? ` · Periodo ${codigoPeriodo}` : ''}
+        </h4>
+        {config.firmaSimulada && <span className="text-[11px] px-2 py-0.5 rounded bg-amber-50 text-amber-700">Firma simulada (pruebas)</span>}
+      </div>
+
+      {items.length === 0 && (
+        <p className="text-xs text-slate-500">
+          Cuando tenga sus franjas listas, envíelas a concertación. Primero las revisa el área académica y luego
+          las aprueba la jefatura; cada paso queda firmado.
+        </p>
+      )}
+
       {items.map((i) => (
-        <div key={i.idConcertacion} className="text-xs text-slate-600">
-          <strong>{i.nivel === 'pregrado' ? 'Pregrado' : 'Posgrado'}</strong> · {i.horas} h · {ESTADO[i.estado]}
-          {i.comentario && <p className="text-amber-700">Motivo: {i.comentario}</p>}
-          <p className="text-slate-400">Firmas: {i.firmas.map((f) => f.rol).join(', ') || '—'}</p>
+        <div key={i.idConcertacion} className="rounded-lg border border-slate-100 bg-slate-50/60 p-3 space-y-2">
+          <p className="text-xs text-slate-700">
+            <strong>{i.nivel === 'pregrado' ? 'Pregrado' : 'Posgrado'}</strong> · {i.horas} h · {ESTADO[i.estado]}
+          </p>
+          <EtapasConcertacion estado={i.estado} />
+          {i.comentario && i.estado === 'DEVUELTA' && (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1">Motivo de la devolución: {i.comentario}</p>
+          )}
+          <RegistroFirmas firmas={i.firmas} />
         </div>
       ))}
+
       {puedeEnviar && (
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1 text-xs text-slate-600">
-            Código de firma
-            <input aria-label="Código de firma" inputMode="numeric" maxLength={6} value={codigo}
-              onChange={(e) => setCodigo(e.target.value.replace(/\D/g, ''))}
-              className="w-24 border border-slate-200 rounded px-2 py-1 text-sm" />
-          </label>
-          <button type="button" disabled={!/^\d{6}$/.test(codigo) || ocupado} onClick={enviar}
-            className="px-3 py-1.5 rounded-lg bg-[#003DA5] text-white text-xs font-bold disabled:opacity-50 flex items-center gap-1">
-            {ocupado ? 'Enviando…' : 'Enviar a concertación'}
-          </button>
-          {config.firmaSimulada && <span className="text-[11px] text-amber-700">Firma simulada (pruebas)</span>}
-        </div>
+        <button type="button" onClick={() => { setAviso(''); setFirmando(true); }}
+          className="w-full sm:w-auto px-4 py-2 rounded-lg bg-[#003DA5] hover:bg-[#002d7a] text-white text-sm font-bold">
+          {devueltas.length > 0 ? 'Reenviar a concertación' : 'Enviar a concertación'}
+        </button>
       )}
       {aviso && <p role="alert" className="text-xs text-red-700">{aviso}</p>}
+
+      {firmando && (
+        <FirmaOtpModal
+          etapaLabel={devueltas.length > 0 ? 'Reenvío a concertación' : 'Envío a concertación'}
+          firmanteCargo="Docente"
+          firmanteNombre={docenteNombre}
+          docenteNombre={docenteNombre || 'Docente'}
+          periodo={codigoPeriodo || ''}
+          totalHoras={horas}
+          referencia={idPeriodo}
+          firmaSimulada={config.firmaSimulada}
+          textoConfirmar="Firmar y enviar"
+          onFirmar={async (codigo) => { setItems(await enviarConcertacion(idPeriodo, codigo)); }}
+          onCerrar={() => setFirmando(false)}
+        />
+      )}
     </div>
   );
 }
