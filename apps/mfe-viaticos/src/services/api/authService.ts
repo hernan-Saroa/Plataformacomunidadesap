@@ -461,6 +461,23 @@ export class AuthService {
   }
 
   /**
+   * Determina si el usuario autenticado tiene función de Ordenador del Gasto
+   * (Subdirección de Gestión Corporativa, Dirección Nacional o roles afines de Ordenación).
+   */
+  isOrdenadorGasto(): boolean {
+    const user = this.getCurrentUserSync();
+    if (!user) return false;
+    if (user.esAdmin || this.isSuperAdmin()) return true;
+    if (this.isSubdireccionGestionCorporativa() || this.isDireccionNacional()) return true;
+    return user.roles.some((r) =>
+      r.includes('ORDENADOR') ||
+      r.includes('SUBDIRECCION') ||
+      r.includes('DIRECCION_GENERAL') ||
+      r.includes('DIRECTOR_GENERAL'),
+    );
+  }
+
+  /**
    * Determina si el usuario autenticado tiene el cargo o rol de Dirección Territorial.
    */
   isDirectorTerritorial(): boolean {

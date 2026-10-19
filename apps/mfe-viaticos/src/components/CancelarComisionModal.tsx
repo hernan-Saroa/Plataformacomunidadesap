@@ -102,7 +102,22 @@ export const CancelarComisionModal: React.FC<CancelarComisionModalProps> = ({
       Number(solicitud.costoEstimadoTiquete || 0));
 
   const yaLegalizada = estadoActual === 'LEGALIZADO';
-  const yaCancelada = estadoActual === 'CANCELADA';
+  const yaCancelada = estadoActual === 'CANCELADA' || estadoActual === 'REVOCADA';
+  const enProcesoRevocatoria = estadoActual === 'EN_REVOCATORIA';
+
+  // Si ya fue AUTORIZADA o posterior (con acto de autorización emitido), su cancelación activa el proceso de revocatoria en SIIF Nación
+  const esAutorizadaParaRevocatoria = [
+    'AUTORIZADA',
+    'EN_PRESUPUESTO',
+    'COMPROMETIDA',
+  ].includes(estadoActual);
+
+  const tieneRp = Boolean(
+    solicitud.numeroRp ||
+    solicitud.codigoRp ||
+    estadoActual === 'COMPROMETIDA' ||
+    Number(solicitud.valorComprometido || 0) > 0,
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,7 +152,7 @@ export const CancelarComisionModal: React.FC<CancelarComisionModalProps> = ({
       const msg =
         err?.response?.data?.message ||
         err?.message ||
-        'No fue posible cancelar la comisión.';
+        'No fue posible procesar la cancelación de la comisión.';
       setError(Array.isArray(msg) ? msg.join(', ') : msg);
     } finally {
       setProcesando(false);
@@ -146,18 +161,18 @@ export const CancelarComisionModal: React.FC<CancelarComisionModalProps> = ({
 
   const header = (
     <div className="flex items-center gap-3">
-      <div className="p-2 bg-red-100 rounded-xl">
-        <XCircle className="w-6 h-6 text-red-700" />
+      <div className={`p-2 rounded-xl ${esAutorizadaParaRevocatoria ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+        <RotateCcw className="w-6 h-6" />
       </div>
       <div>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-black uppercase tracking-widest bg-red-100 px-2 py-0.5 rounded-md text-red-700">
-            Novedad
+          <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${esAutorizadaParaRevocatoria ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-700'}`}>
+            {esAutorizadaParaRevocatoria ? 'Revocatoria SIIF' : 'Novedad'}
           </span>
-          <span className="text-xs font-mono text-red-700">{codigo}</span>
+          <span className="text-xs font-mono text-slate-600">{codigo}</span>
         </div>
         <h2 className="text-lg font-black tracking-tight text-slate-900">
-          Cancelar Comisión con Trazabilidad
+          {esAutorizadaParaRevocatoria ? 'Iniciar Proceso de Revocatoria' : 'Cancelar Comisión con Trazabilidad'}
         </h2>
       </div>
     </div>
@@ -171,25 +186,29 @@ export const CancelarComisionModal: React.FC<CancelarComisionModalProps> = ({
         disabled={procesando}
         className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 transition-colors disabled:opacity-50"
       >
-        {yaLegalizada || yaCancelada ? 'Cerrar' : 'Descartar'}
+        {yaLegalizada || yaCancelada || enProcesoRevocatoria ? 'Cerrar' : 'Descartar'}
       </button>
 
-      {!yaLegalizada && !yaCancelada && (
+      {!yaLegalizada && !yaCancelada && !enProcesoRevocatoria && (
         <button
           type="submit"
           form="cancelar-comision-form"
           disabled={procesando || motivoCancelacion.trim().length < 5 || accionExitosa}
-          className="inline-flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:opacity-50 transition-all shadow-sm shadow-red-200"
+          className={`inline-flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold text-white transition-all shadow-sm disabled:opacity-50 ${
+            esAutorizadaParaRevocatoria
+              ? 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800 shadow-amber-200'
+              : 'bg-red-600 hover:bg-red-700 active:bg-red-800 shadow-red-200'
+          }`}
         >
           {procesando ? (
             <>
               <LoaderCircle className="w-4 h-4 animate-spin" />
-              <span>Cancelando comisión...</span>
+              <span>{esAutorizadaParaRevocatoria ? 'Iniciando revocatoria...' : 'Cancelando comisión...'}</span>
             </>
           ) : (
             <>
-              <XCircle className="w-4 h-4" />
-              <span>Confirmar Cancelación</span>
+              {esAutorizadaParaRevocatoria ? <RotateCcw className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+              <span>{esAutorizadaParaRevocatoria ? 'Iniciar Proceso de Revocatoria' : 'Confirmar Cancelación'}</span>
             </>
           )}
         </button>

@@ -55,6 +55,11 @@ import {
   RechazoExtemporaneaDto,
 } from '../../dto/autorizacion-extemporanea.dto';
 import { CancelarComisionDto } from '../../dto/cancelar-comision.dto';
+import {
+  RegistrarRevocatoriaSiifDto,
+  AplicarReduccionRpDto,
+} from '../../dto/revocatoria.dto';
+import { EstadoSolicitud } from '../../entities/estado-solicitud.enum';
 import { EnviarPresupuestoDto } from '../../dto/enviar-presupuesto.dto';
 import { ExpedirRpDto } from '../../dto/expedir-rp.dto';
 import { IssueRpDto } from '../../dto/issue-rp.dto';
@@ -1891,10 +1896,110 @@ export class TravelExpensesController {
       roles,
       dto,
     );
+    const esRevocatoria = result.estadoSolicitud === EstadoSolicitud.EN_REVOCATORIA;
     return {
       success: true,
       data: result,
-      message: 'Comisión cancelada exitosamente con trazabilidad registrada.',
+      message: esRevocatoria
+        ? 'Proceso de revocatoria iniciado exitosamente. Pendiente de registro en SIIF Nación por Ordenador del Gasto.'
+        : 'Comisión cancelada exitosamente con trazabilidad registrada.',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-REV-001 — Registrar Revocatoria en SIIF Nación con reporte PDF (Ordenador del Gasto).
+   *
+   * Endpoint oficial: POST /api/v1/requests/:id/revocatoria/registrar-siif
+   * Alias: POST requests/:id/revocatoria/registrar-siif
+   */
+  @Post(['requests/:id/revocatoria/registrar-siif', 'api/v1/requests/:id/revocatoria/registrar-siif'])
+  @UseGuards(JwtAuthGuard)
+  @ApiTags('revocatoria')
+  @ApiOperation({
+    summary: 'Registrar revocatoria en SIIF Nación (Ordenador del Gasto)',
+    description:
+      'Registra el acto de revocatoria formal en SIIF Nación y almacena el PDF del reporte oficial. Si la comisión tiene RP, transiciona a solicitud de reducción de RP para Presupuesto; si no tiene RP, formaliza la revocatoria a REVOCADA.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Revocatoria registrada exitosamente en SIIF Nación.',
+  })
+  @ApiBearerAuth()
+  async registrarRevocatoriaSiif(
+    @Param('id') id: string,
+    @Body() dto: RegistrarRevocatoriaSiifDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.registrarRevocatoriaSiif(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    const tieneRp = (result.camposAdicionales as any)?.procesoRevocatoria?.tieneRp;
+    return {
+      success: true,
+      data: result,
+      message: tieneRp
+        ? 'Revocatoria registrada en SIIF Nación. Solicitud de reducción de RP remitida al Grupo de Presupuesto con reporte PDF adjunto.'
+        : 'Revocatoria formalizada en SIIF Nación exitosamente (Comisión revocada sin RP).',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * RF-REV-002 — Aplicar Reducción de RP por Revocatoria en SIIF Nación (Grupo de Presupuesto).
+   *
+   * Endpoint oficial: POST /api/v1/requests/:id/revocatoria/aplicar-reduccion-rp
+   * Alias: POST requests/:id/revocatoria/aplicar-reduccion-rp
+   */
+  @Post(['requests/:id/revocatoria/aplicar-reduccion-rp', 'api/v1/requests/:id/revocatoria/aplicar-reduccion-rp'])
+  @UseGuards(JwtAuthGuard)
+  @ApiTags('revocatoria')
+  @ApiOperation({
+    summary: 'Aplicar reducción de RP en SIIF Nación por Revocatoria (Grupo de Presupuesto)',
+    description:
+      'Registra la reducción presupuestal del Registro Presupuestal (RP) en SIIF Nación tras revocatoria aprobada por el Ordenador con reporte PDF.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Reducción de RP aplicada exitosamente y comisión revocada formalmente.',
+  })
+  @ApiBearerAuth()
+  async aplicarReduccionRpRevocatoria(
+    @Param('id') id: string,
+    @Body() dto: AplicarReduccionRpDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const usuarioId = req.user?.userId;
+    if (!usuarioId) {
+      throw new BadRequestException('Usuario no autenticado.');
+    }
+    const roles = Array.isArray(req.user?.roles)
+      ? req.user.roles
+      : req.user?.role
+        ? [req.user.role]
+        : [];
+    const result = await this.service.aplicarReduccionRpRevocatoria(
+      id,
+      usuarioId,
+      roles,
+      dto,
+    );
+    return {
+      success: true,
+      data: result,
+      message: 'Reducción de RP aplicada exitosamente en SIIF Nación. Proceso de revocatoria finalizado.',
       timestamp: new Date().toISOString(),
     };
   }

@@ -901,6 +901,16 @@ export const CONFIG_ESTADOS: Record<EstadoSolicitudViatico, ConfigEstado> = {
     bg: 'bg-rose-100',
     text: 'text-rose-800',
   },
+  EN_REVOCATORIA: {
+    label: 'En Revocatoria',
+    bg: 'bg-amber-100 dark:bg-amber-900/30 border border-amber-300',
+    text: 'text-amber-800 dark:text-amber-300',
+  },
+  REVOCADA: {
+    label: 'Revocada en SIIF',
+    bg: 'bg-rose-100 dark:bg-rose-900/30 border border-rose-300',
+    text: 'text-rose-800 dark:text-rose-300',
+  },
   EN_PRESUPUESTO: {
     label: 'En Presupuesto',
     bg: 'bg-teal-100',

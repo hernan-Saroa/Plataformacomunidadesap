@@ -37,6 +37,10 @@ import {
   RechazoExtemporaneaDto,
 } from '../../dto/autorizacion-extemporanea.dto';
 import { CancelarComisionDto } from '../../dto/cancelar-comision.dto';
+import {
+  RegistrarRevocatoriaSiifDto,
+  AplicarReduccionRpDto,
+} from '../../dto/revocatoria.dto';
 import { EnviarPresupuestoDto } from '../../dto/enviar-presupuesto.dto';
 import { ExpedirRpDto } from '../../dto/expedir-rp.dto';
 import { IssueRpDto } from '../../dto/issue-rp.dto';
@@ -486,6 +490,51 @@ export class TravelExpensesService implements OnModuleInit {
         normalized.includes('DIRECCION_TERRITORIAL') ||
         (normalized.includes('TERRITORIAL') && normalized.includes('DIRECTOR')) ||
         r === 'travel_expenses.general.es_director_territorial'
+      );
+    });
+  }
+
+  /**
+   * Determina si el usuario autenticado tiene el rol o atribución de Ordenador del Gasto
+   * (Subdirección de Gestión Corporativa, Dirección Nacional o Dirección General).
+   */
+  esOrdenadorGasto(rolesUsuario: string[] = []): boolean {
+    if (!rolesUsuario || !rolesUsuario.length) return false;
+    if (this.esSuperAdmin(rolesUsuario)) return true;
+    return rolesUsuario.some((r) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        normalized.includes('ORDENADOR') ||
+        normalized.includes('SUBDIRECCION_GESTION_CORPORATIVA') ||
+        normalized.includes('SUBDIRECTOR_GESTION_CORPORATIVA') ||
+        normalized.includes('SUBDIRECCION_CORPORATIVA') ||
+        normalized.includes('DIRECCION_NACIONAL') ||
+        normalized.includes('DIRECTOR_NACIONAL') ||
+        normalized.includes('DIRECCION_GENERAL') ||
+        normalized.includes('DIRECTOR_GENERAL') ||
+        r === 'travel_expenses.general.es_subdireccion_corporativa' ||
+        r === 'travel_expenses.general.es_subdirector' ||
+        r === 'travel_expenses.general.es_direccion_nacional' ||
+        r === 'travel_expenses:authorize_expense'
+      );
+    });
+  }
+
+  /**
+   * Determina si el usuario autenticado pertenece al Grupo de Presupuesto.
+   */
+  esGrupoPresupuesto(rolesUsuario: string[] = []): boolean {
+    if (!rolesUsuario || !rolesUsuario.length) return false;
+    if (this.esSuperAdmin(rolesUsuario)) return true;
+    return rolesUsuario.some((r) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        normalized.includes('PRESUPUESTO') ||
+        r === 'travel_expenses.general.es_presupuesto' ||
+        r === 'travel_expenses:register_rp' ||
+        r === 'travel_expenses:read_budget'
       );
     });
   }
@@ -11852,6 +11901,14 @@ if (itinerarioGeneral) {
         throw new BadRequestException('La comisión ya se encuentra cancelada.');
       }
 
+      if (solicitud.estadoSolicitud === EstadoSolicitud.REVOCADA) {
+        throw new BadRequestException('La comisión ya se encuentra revocada.');
+      }
+
+      if (solicitud.estadoSolicitud === EstadoSolicitud.EN_REVOCATORIA) {
+        throw new BadRequestException('La comisión ya se encuentra en proceso de revocatoria.');
+      }
+
       if (solicitud.estadoSolicitud === EstadoSolicitud.LEGALIZADO) {
         throw new BadRequestException(
           'No es posible cancelar una comisión que ya ha sido legalizada.',
@@ -11862,6 +11919,8 @@ if (itinerarioGeneral) {
       const estadosRecursosComprometidos: EstadoSolicitud[] = [
         EstadoSolicitud.SOLICITADA_SIIF,
         EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.EN_PRESUPUESTO,
+        EstadoSolicitud.COMPROMETIDA,
         EstadoSolicitud.RESOLUCION_EMITIDA,
         EstadoSolicitud.TIQUETES_COMPRADOS,
         EstadoSolicitud.EN_COMISION,
@@ -11871,10 +11930,71 @@ if (itinerarioGeneral) {
       const tieneRecursosComprometidos =
         dto.recursosComprometidos === true ||
         solicitud.siifExportado === true ||
+        Boolean(solicitud.numeroRp || solicitud.codigoRp || Number(solicitud.valorComprometido || 0) > 0) ||
         estadosRecursosComprometidos.includes(solicitud.estadoSolicitud);
 
       const estadoAnterior = solicitud.estadoSolicitud;
       const fechaCancelacion = new Date();
+
+      // Proceso de Revocatoria: Surge cuando ya fue la comisión AUTORIZADA y es cancelada por el jefe de dependencia
+      const estadosRevocatoria: EstadoSolicitud[] = [
+        EstadoSolicitud.AUTORIZADA,
+        EstadoSolicitud.EN_PRESUPUESTO,
+        EstadoSolicitud.COMPROMETIDA,
+      ];
+
+      const esComisionAutorizada = estadosRevocatoria.includes(solicitud.estadoSolicitud);
+
+      const tieneRp = Boolean(
+        solicitud.numeroRp ||
+        solicitud.codigoRp ||
+        solicitud.estadoSolicitud === EstadoSolicitud.COMPROMETIDA ||
+        Number(solicitud.valorComprometido || 0) > 0,
+      );
+
+      if (esComisionAutorizada) {
+        solicitud.estadoSolicitud = EstadoSolicitud.EN_REVOCATORIA;
+        solicitud.motivoCancelacion = motivo.slice(0, 2000);
+        solicitud.fechaCancelacion = fechaCancelacion;
+        solicitud.canceladoPorUsuarioId = usuarioId;
+        solicitud.responsableCancelacion = responsable.slice(0, 255);
+        solicitud.pendienteReintegro = tieneRecursosComprometidos;
+
+        const camposAdicionalesActuales = (solicitud.camposAdicionales as Record<string, any>) || {};
+        solicitud.camposAdicionales = {
+          ...camposAdicionalesActuales,
+          procesoRevocatoria: {
+            fase: 'PENDIENTE_REGISTRO_ORDENADOR',
+            solicitadoPor: {
+              usuarioId,
+              nombre: responsable,
+              motivo,
+              fecha: fechaCancelacion.toISOString(),
+            },
+            tieneRp,
+            numeroRp: solicitud.numeroRp || solicitud.codigoRp || null,
+            valorComprometido: solicitud.valorComprometido ? Number(solicitud.valorComprometido) : null,
+          },
+        };
+
+        const saved = await manager
+          .getRepository(SolicitudComisionEntity)
+          .save(solicitud);
+
+        await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: EstadoSolicitud.EN_REVOCATORIA,
+          usuarioId,
+          comentarios: `Proceso de Revocatoria iniciado por ${responsable}: ${motivo.slice(0, 100)}. Pendiente de registro en SIIF Nación por Ordenador del Gasto.${tieneRp ? ' [Tiene RP: requiere posterior reducción de RP por Presupuesto]' : ' [Sin RP]'}`.slice(0, 255),
+        });
+
+        this.logger.log(
+          `[REVOCATORIA] Solicitud ${solicitud.consecutivoUnico} entra en EN_REVOCATORIA por ${responsable}. Tiene RP: ${tieneRp}`,
+        );
+
+        return saved;
+      }
 
       solicitud.estadoSolicitud = EstadoSolicitud.CANCELADA;
       solicitud.motivoCancelacion = motivo.slice(0, 2000);
@@ -11932,6 +12052,16 @@ if (itinerarioGeneral) {
       return saved;
     });
 
+    if (result.estadoSolicitud === EstadoSolicitud.EN_REVOCATORIA) {
+      await this.despacharNotificacionesInicioRevocatoria(
+        result,
+        motivo,
+        responsable,
+        Boolean((result.camposAdicionales as any)?.procesoRevocatoria?.tieneRp),
+      );
+      return result;
+    }
+
     await this.despacharNotificacionesCancelacion(
       result,
       motivo,
@@ -11940,6 +12070,491 @@ if (itinerarioGeneral) {
     );
 
     return result;
+  }
+
+  /**
+   * RF-REV-001 — Registrar Revocatoria en SIIF Nación con reporte PDF obligatorio (Ordenador del Gasto).
+   * Si la comisión tiene RP expedido, transiciona a solicitud de reducción de RP para Presupuesto.
+   * Si no tiene RP, formaliza el cierre y transiciona a estado REVOCADA.
+   */
+  async registrarRevocatoriaSiif(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    dto: RegistrarRevocatoriaSiifDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+
+    if (!this.esSuperAdmin(rolesUsuario) && !this.esOrdenadorGasto(rolesUsuario)) {
+      throw new ForbiddenException(
+        'Solo el Ordenador del Gasto o un Administrador está autorizado para registrar la revocatoria en SIIF Nación.',
+      );
+    }
+
+    if (!dto.numeroActoRevocatoria || !dto.numeroActoRevocatoria.trim()) {
+      throw new BadRequestException('El número de acto o consecutivo de revocatoria en SIIF Nación es obligatorio.');
+    }
+
+    if (!dto.fechaActoRevocatoria) {
+      throw new BadRequestException('La fecha del acto de revocatoria en SIIF Nación es obligatoria.');
+    }
+
+    if (!dto.reporteRevocatoriaPdfBase64) {
+      throw new BadRequestException(
+        'Es obligatorio cargar en PDF el reporte de la revocatoria registrada en SIIF Nación.',
+      );
+    }
+
+    const justificacion = (dto.justificacion || '').trim();
+    if (justificacion.length < 5) {
+      throw new BadRequestException('La justificación de la revocatoria debe tener al menos 5 caracteres.');
+    }
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .leftJoinAndSelect('s.comisionado', 'c')
+        .setLock('pessimistic_write', undefined, ['s'])
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      if (solicitud.estadoSolicitud !== EstadoSolicitud.EN_REVOCATORIA) {
+        throw new BadRequestException(
+          `La comisión no se encuentra en proceso de revocatoria. Estado actual: ${solicitud.estadoSolicitud}`,
+        );
+      }
+
+      const camposAdicionales = (solicitud.camposAdicionales as Record<string, any>) || {};
+      const procesoRevocatoria = camposAdicionales.procesoRevocatoria || {};
+
+      if (procesoRevocatoria.fase !== 'PENDIENTE_REGISTRO_ORDENADOR') {
+        throw new BadRequestException(
+          `La comisión ya cuenta con registro en SIIF Nación. Fase actual: ${procesoRevocatoria.fase}`,
+        );
+      }
+
+      // Guardar el documento PDF del reporte de revocatoria de SIIF Nación
+      const nombreArchivoOriginal =
+        dto.nombreArchivoPdf || `Reporte_Revocatoria_SIIF_${solicitud.consecutivoUnico || solicitud.id}.pdf`;
+      const docRepo = manager.getRepository(DocumentoSoporteEntity);
+      const docReporte = docRepo.create({
+        solicitudId: solicitud.id,
+        tipoDocumento: 'REPORTE_REVOCATORIA_SIIF',
+        nombreArchivoOriginal,
+        nombreArchivoSeguro: `revocatoria_siif_${solicitud.id}_${Date.now()}.pdf`,
+        urlRepositorio: dto.reporteRevocatoriaPdfBase64,
+        tipoMime: 'application/pdf',
+      });
+      const docGuardado = await docRepo.save(docReporte);
+
+      const fechaRegistro = new Date().toISOString();
+      const registroSiif = {
+        numeroActo: dto.numeroActoRevocatoria.trim(),
+        fechaActo: dto.fechaActoRevocatoria,
+        justificacion,
+        registradoPorId: usuarioId,
+        fechaRegistro,
+        reportePdfId: docGuardado.id,
+        reportePdfNombre: nombreArchivoOriginal,
+        reportePdfUrl: docGuardado.urlRepositorio,
+      };
+
+      const tieneRp = Boolean(
+        solicitud.numeroRp ||
+        solicitud.codigoRp ||
+        procesoRevocatoria.tieneRp ||
+        Number(solicitud.valorComprometido || 0) > 0,
+      );
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+
+      if (!tieneRp) {
+        // CASO SIN RP: Concluye inmediatamente la revocatoria
+        solicitud.estadoSolicitud = EstadoSolicitud.REVOCADA;
+        solicitud.pendienteReintegro = false;
+        solicitud.camposAdicionales = {
+          ...camposAdicionales,
+          procesoRevocatoria: {
+            ...procesoRevocatoria,
+            fase: 'REVOCADA',
+            tieneRp: false,
+            registroSiif,
+            fechaFinalizacion: fechaRegistro,
+          },
+        };
+
+        const saved = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+        await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: EstadoSolicitud.REVOCADA,
+          usuarioId,
+          comentarios: `Revocatoria formalizada en SIIF Nación por el Ordenador del Gasto (Sin RP). Acto: ${dto.numeroActoRevocatoria.trim()}`.slice(0, 255),
+        });
+
+        // Liberar cupo de tiquetes si aplica
+        if (
+          solicitud.requiereTiquetes &&
+          Number(solicitud.costoEstimadoTiquete || 0) > 0 &&
+          this.ticketsService?.liberarSaldo
+        ) {
+          try {
+            const depId = solicitud.idDependencia ?? solicitud.comisionado?.idDependencia ?? 1;
+            await this.ticketsService.liberarSaldo({
+              dependenciaId: String(depId),
+              solicitudId: solicitud.id,
+              montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete),
+            });
+          } catch (err: any) {
+            this.logger.warn(`No se pudo liberar tiquetes en revocatoria: ${err?.message}`);
+          }
+        }
+
+        return saved;
+      } else {
+        // CASO CON RP: Requiere reducción por el Grupo de Presupuesto
+        solicitud.camposAdicionales = {
+          ...camposAdicionales,
+          procesoRevocatoria: {
+            ...procesoRevocatoria,
+            fase: 'PENDIENTE_REDUCCION_PRESUPUESTO',
+            tieneRp: true,
+            registroSiif,
+          },
+        };
+
+        const saved = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+        await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+          solicitudId: solicitud.id,
+          estadoAnterior,
+          estadoNuevo: EstadoSolicitud.EN_REVOCATORIA,
+          usuarioId,
+          comentarios: `Revocatoria registrada en SIIF Nación por Ordenador (Acto ${dto.numeroActoRevocatoria.trim()}). Solicitud de reducción de RP enviada al Grupo de Presupuesto con reporte PDF adjunto.`
+            .slice(0, 255),
+        });
+
+        return saved;
+      }
+    });
+
+    const campos = (result.camposAdicionales as any) || {};
+    const proc = campos.procesoRevocatoria || {};
+    if (proc.tieneRp) {
+      await this.despacharNotificacionesSolicitudReduccionRp(
+        result,
+        dto.numeroActoRevocatoria,
+        justificacion,
+      );
+    } else {
+      await this.despacharNotificacionesRevocatoriaCompletada(
+        result,
+        `Revocada formalmente en SIIF Nación bajo acto ${dto.numeroActoRevocatoria} (Sin RP)`,
+      );
+    }
+
+    return result;
+  }
+
+  /**
+   * RF-REV-002 — Aplicar Reducción de RP por Revocatoria en SIIF Nación (Grupo de Presupuesto).
+   * Registra el número de operación de reducción en SIIF, fecha, valor reducido y soporte.
+   * Concluye el proceso transicionando la comisión a REVOCADA y liberando los recursos.
+   */
+  async aplicarReduccionRpRevocatoria(
+    solicitudId: string,
+    usuarioId: string,
+    rolesUsuario: string[],
+    dto: AplicarReduccionRpDto,
+  ): Promise<SolicitudComisionEntity> {
+    if (!solicitudId) {
+      throw new BadRequestException('solicitudId es obligatorio.');
+    }
+
+    if (!this.esSuperAdmin(rolesUsuario) && !this.esGrupoPresupuesto(rolesUsuario)) {
+      throw new ForbiddenException(
+        'Solo el personal del Grupo de Presupuesto o Super Administrador puede aplicar la reducción de RP.',
+      );
+    }
+
+    if (!dto.numeroOperacionReduccion || !dto.numeroOperacionReduccion.trim()) {
+      throw new BadRequestException('El número de operación de reducción en SIIF Nación es obligatorio.');
+    }
+
+    if (!dto.fechaReduccion) {
+      throw new BadRequestException('La fecha de la reducción presupuestal es obligatoria.');
+    }
+
+    if (dto.valorReducido == null || Number(dto.valorReducido) <= 0) {
+      throw new BadRequestException('El valor reducido debe ser un monto mayor a cero.');
+    }
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const solicitud = await manager
+        .getRepository(SolicitudComisionEntity)
+        .createQueryBuilder('s')
+        .leftJoinAndSelect('s.comisionado', 'c')
+        .setLock('pessimistic_write', undefined, ['s'])
+        .where('s.id = :id', { id: solicitudId })
+        .getOne();
+
+      if (!solicitud) {
+        throw new NotFoundException('Solicitud no encontrada.');
+      }
+
+      if (solicitud.estadoSolicitud !== EstadoSolicitud.EN_REVOCATORIA) {
+        throw new BadRequestException(
+          `La comisión no está en proceso de revocatoria. Estado actual: ${solicitud.estadoSolicitud}`,
+        );
+      }
+
+      const camposAdicionales = (solicitud.camposAdicionales as Record<string, any>) || {};
+      const procesoRevocatoria = camposAdicionales.procesoRevocatoria || {};
+
+      if (procesoRevocatoria.fase !== 'PENDIENTE_REDUCCION_PRESUPUESTO') {
+        throw new BadRequestException(
+          `La comisión no está pendiente de reducción de RP. Fase actual: ${procesoRevocatoria.fase}`,
+        );
+      }
+
+      let soporteId: string | undefined = undefined;
+      let soporteUrl: string | undefined = undefined;
+      let soporteNombre: string | undefined = undefined;
+
+      if (dto.soporteReduccionPdfBase64) {
+        soporteNombre =
+          dto.nombreArchivoSoporte || `Soporte_Reduccion_RP_${solicitud.consecutivoUnico || solicitud.id}.pdf`;
+        const docRepo = manager.getRepository(DocumentoSoporteEntity);
+        const docSoporte = docRepo.create({
+          solicitudId: solicitud.id,
+          tipoDocumento: 'SOPORTE_REDUCCION_RP',
+          nombreArchivoOriginal: soporteNombre,
+          nombreArchivoSeguro: `reduccion_rp_${solicitud.id}_${Date.now()}.pdf`,
+          urlRepositorio: dto.soporteReduccionPdfBase64,
+          tipoMime: 'application/pdf',
+        });
+        const docGuardado = await docRepo.save(docSoporte);
+        soporteId = docGuardado.id;
+        soporteUrl = docGuardado.urlRepositorio;
+      }
+
+      const fechaAplicacion = new Date().toISOString();
+      const reduccionPresupuesto = {
+        numeroOperacionReduccion: dto.numeroOperacionReduccion.trim(),
+        fechaReduccion: dto.fechaReduccion,
+        valorReducido: Number(dto.valorReducido),
+        observaciones: dto.observaciones?.trim() || null,
+        aplicadoPorId: usuarioId,
+        fechaAplicacion,
+        soportePdfId: soporteId,
+        soportePdfNombre: soporteNombre,
+        soportePdfUrl: soporteUrl,
+      };
+
+      const estadoAnterior = solicitud.estadoSolicitud;
+      solicitud.estadoSolicitud = EstadoSolicitud.REVOCADA;
+      solicitud.pendienteReintegro = false;
+
+      // Descontar o liberar el valor comprometido
+      const valorComprometidoAnterior = Number(solicitud.valorComprometido || 0);
+      const nuevoValorComprometido = Math.max(0, valorComprometidoAnterior - Number(dto.valorReducido));
+      solicitud.valorComprometido = nuevoValorComprometido;
+
+      solicitud.camposAdicionales = {
+        ...camposAdicionales,
+        procesoRevocatoria: {
+          ...procesoRevocatoria,
+          fase: 'REVOCADA',
+          reduccionPresupuesto,
+          fechaFinalizacion: fechaAplicacion,
+        },
+      };
+
+      const saved = await manager.getRepository(SolicitudComisionEntity).save(solicitud);
+
+      await manager.getRepository(SolicitudHistorialEstadoEntity).save({
+        solicitudId: solicitud.id,
+        estadoAnterior,
+        estadoNuevo: EstadoSolicitud.REVOCADA,
+        usuarioId,
+        comentarios: `Reducción presupuestal de RP aplicada en SIIF Nación por Presupuesto (Operación: ${dto.numeroOperacionReduccion.trim()}, Valor Reducido: $${Number(dto.valorReducido).toLocaleString('es-CO')}). Comisión revocada.`
+          .slice(0, 255),
+      });
+
+      // Liberar cupo de tiquetes si aplica
+      if (
+        solicitud.requiereTiquetes &&
+        Number(solicitud.costoEstimadoTiquete || 0) > 0 &&
+        this.ticketsService?.liberarSaldo
+      ) {
+        try {
+          const depId = solicitud.idDependencia ?? solicitud.comisionado?.idDependencia ?? 1;
+          await this.ticketsService.liberarSaldo({
+            dependenciaId: String(depId),
+            solicitudId: solicitud.id,
+            montoEstimadoTiquete: Number(solicitud.costoEstimadoTiquete),
+          });
+        } catch (err: any) {
+          this.logger.warn(`No se pudo liberar tiquetes tras reducción RP: ${err?.message}`);
+        }
+      }
+
+      this.logger.log(
+        `[REVOCATORIA] Solicitud ${solicitud.consecutivoUnico} REVOCADA exitosamente con reducción de RP de $${dto.valorReducido}`,
+      );
+
+      return saved;
+    });
+
+    await this.despacharNotificacionesRevocatoriaCompletada(
+      result,
+      `Reducción de RP aplicada en SIIF Nación (Operación ${dto.numeroOperacionReduccion}) por valor de $${Number(dto.valorReducido).toLocaleString('es-CO')}`,
+    );
+
+    return result;
+  }
+
+  /**
+   * Notificaciones cuando se inicia el proceso de revocatoria para una comisión autorizada.
+   */
+  private async despacharNotificacionesInicioRevocatoria(
+    solicitud: SolicitudComisionEntity,
+    motivo: string,
+    responsable: string,
+    tieneRp: boolean,
+  ): Promise<void> {
+    try {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+
+      const notifOrdenador = {
+        tipo_notificacion: 'VIATICOS_REVOCATORIA_INICIADA',
+        titulo: `Revocatoria en SIIF Nación requerida: ${consecutivo}`,
+        mensaje: `La comisión autorizada ${consecutivo} ha sido cancelada por ${responsable}. Motivo: ${motivo}. Se requiere registro formal de revocatoria en SIIF Nación y carga del reporte en PDF.`,
+        descripcion_corta: `Revocatoria SIIF · ${consecutivo}`,
+        icono: 'RotateCcw',
+        color: '#D97706',
+        prioridad: 'Alta' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Registrar en SIIF Nación',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+          motivo,
+          responsable,
+          tieneRp,
+          fase: 'PENDIENTE_REGISTRO_ORDENADOR',
+        },
+      };
+
+      await this.notificationClient.notifyByPermission(
+        'travel_expenses.general.es_subdireccion_corporativa',
+        notifOrdenador,
+        undefined,
+        'SUBDIRECCION',
+      );
+      await this.notificationClient.notifyByPermission(
+        'travel_expenses.general.es_direccion_nacional',
+        notifOrdenador,
+        undefined,
+        'DIRECCION_NACIONAL',
+      );
+    } catch (err: any) {
+      this.logger.warn(`Error despachando notificaciones de inicio de revocatoria: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Notificaciones cuando el Ordenador del Gasto registra la revocatoria en SIIF Nación y se solicita reducción de RP a Presupuesto.
+   */
+  private async despacharNotificacionesSolicitudReduccionRp(
+    solicitud: SolicitudComisionEntity,
+    numeroActo: string,
+    justificacion: string,
+  ): Promise<void> {
+    try {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+      const notifPresupuesto = {
+        tipo_notificacion: 'VIATICOS_REDUCCION_RP_REVOCATORIA',
+        titulo: `Solicitud de Reducción RP por Revocatoria: ${consecutivo}`,
+        mensaje: `El Ordenador del Gasto registró la revocatoria en SIIF Nación (Acto ${numeroActo}) con reporte PDF adjunto para ${consecutivo}. Proceda con la reducción del RP ${solicitud.codigoRp || solicitud.numeroRp}.`,
+        descripcion_corta: `Reducción RP · ${consecutivo}`,
+        icono: 'DollarSign',
+        color: '#DC2626',
+        prioridad: 'Alta' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Aplicar Reducción de RP',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+          numeroActo,
+          numeroRp: solicitud.numeroRp,
+          codigoRp: solicitud.codigoRp,
+          valorComprometido: solicitud.valorComprometido,
+          fase: 'PENDIENTE_REDUCCION_PRESUPUESTO',
+        },
+      };
+
+      await this.notificationClient.notifyByPermission(
+        'travel_expenses.general.es_presupuesto',
+        notifPresupuesto,
+        undefined,
+        'PRESUPUESTO',
+      );
+    } catch (err: any) {
+      this.logger.warn(`Error despachando notificación de reducción RP: ${err?.message}`);
+    }
+  }
+
+  /**
+   * Notificaciones cuando el proceso de revocatoria finaliza completamente (estado REVOCADA).
+   */
+  private async despacharNotificacionesRevocatoriaCompletada(
+    solicitud: SolicitudComisionEntity,
+    detalle: string,
+  ): Promise<void> {
+    try {
+      const consecutivo = solicitud.consecutivoUnico || solicitud.id;
+
+      const notifCierre = {
+        tipo_notificacion: 'VIATICOS_REVOCATORIA_FINALIZADA',
+        titulo: `Comisión revocada formalmente: ${consecutivo}`,
+        mensaje: `La comisión ${consecutivo} ha finalizado su proceso de revocatoria. ${detalle}.`,
+        descripcion_corta: `Revocada · ${consecutivo}`,
+        icono: 'CheckCircle2',
+        color: '#059669',
+        prioridad: 'Media' as const,
+        categoria: 'VIATICOS',
+        tiene_accion: true,
+        texto_boton_accion: 'Ver expediente',
+        url_accion: '/viaticos',
+        datos_adicionales: {
+          solicitudId: solicitud.id,
+          consecutivoUnico: consecutivo,
+          estado: EstadoSolicitud.REVOCADA,
+        },
+      };
+
+      if (solicitud.comisionadoId) {
+        await this.notificationClient.notifyUser(solicitud.comisionadoId, notifCierre);
+      }
+      if (solicitud.creadoPorUsuarioId && solicitud.creadoPorUsuarioId !== solicitud.comisionadoId) {
+        await this.notificationClient.notifyUser(solicitud.creadoPorUsuarioId, notifCierre);
+      }
+    } catch (err: any) {
+      this.logger.warn(`Error despachando notificaciones de revocatoria completada: ${err?.message}`);
+    }
   }
 
   /**
@@ -12671,6 +13286,7 @@ if (itinerarioGeneral) {
     kpis: {
       pendientesRp: number;
       comprometidas: number;
+      pendientesReduccion: number;
       totalComprometido: number;
     };
   }> {
@@ -12689,6 +13305,8 @@ if (itinerarioGeneral) {
             enPresupuesto: EstadoSolicitud.EN_PRESUPUESTO,
           },
         );
+      } else if (estado === 'REDUCCION_RP' || estado === 'EN_REVOCATORIA' || estado === 'REVOCATORIA') {
+        qb.where('sol.estadoSolicitud = :revocatoria', { revocatoria: EstadoSolicitud.EN_REVOCATORIA });
       } else {
         qb.where('sol.estadoSolicitud = :estado', { estado });
       }
@@ -12696,7 +13314,12 @@ if (itinerarioGeneral) {
       qb.where(
         '(sol.estadoSolicitud IN (:...estados) OR (sol.estadoSolicitud = :autorizada AND sol.enviadoPresupuesto = true))',
         {
-          estados: [EstadoSolicitud.AUTORIZADA, EstadoSolicitud.EN_PRESUPUESTO, EstadoSolicitud.COMPROMETIDA],
+          estados: [
+            EstadoSolicitud.AUTORIZADA,
+            EstadoSolicitud.EN_PRESUPUESTO,
+            EstadoSolicitud.COMPROMETIDA,
+            EstadoSolicitud.EN_REVOCATORIA,
+          ],
           autorizada: EstadoSolicitud.AUTORIZADA,
         },
       );
@@ -12729,6 +13352,10 @@ if (itinerarioGeneral) {
       where: { estadoSolicitud: EstadoSolicitud.COMPROMETIDA },
     });
 
+    const pendientesReduccionCount = await this.solicitudRepo.count({
+      where: { estadoSolicitud: EstadoSolicitud.EN_REVOCATORIA },
+    });
+
     const sumResult = await this.solicitudRepo
       .createQueryBuilder('sol')
       .select('SUM(sol.valorComprometido)', 'total')
@@ -12745,6 +13372,7 @@ if (itinerarioGeneral) {
       kpis: {
         pendientesRp: pendientesRpCount,
         comprometidas: comprometidasCount,
+        pendientesReduccion: pendientesReduccionCount,
         totalComprometido,
       },
     };
