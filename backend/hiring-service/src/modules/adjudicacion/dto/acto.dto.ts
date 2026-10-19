@@ -80,7 +80,7 @@ export class AdjudicarDto {
   @MaxLength(2000)
   justificacion?: string;
 
-  /** Solo si la 7.4 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
+  /** Solo si la 7.3 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })
   @IsOptional()
   @FirmaDelMultipart()

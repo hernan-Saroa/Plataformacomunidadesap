@@ -334,7 +334,11 @@ export class DeclaratoriaDesiertaService extends AdjudicacionBase {
       await em.save(declaratoria);
 
       await this.cerrarProceso(em, proceso, 'EN_CURSO');
+      // Vuelve a BORRADOR solo lo que el proceso adelanta: la 7.1.1 de una
+      // licitación que no es de obra, o lo que la modalidad excluye, sigue en
+      // NO_APLICA en vez de quedar como pendiente para siempre.
       for (const numeral of NUMERALES_ETAPA_7) {
+        if (await this.motivoNoAplica(em, proceso, numeral)) continue;
         await this.marcarActividad(em, procesoId, numeral, false, acceso);
       }
 

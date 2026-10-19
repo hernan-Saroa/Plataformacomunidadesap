@@ -77,25 +77,25 @@ const ESPERADO: [string, any, string, string, unknown, unknown?][] = [
   ['subsanaciones', SubsanacionesController, 'responder', 'editar', '6.5'],
   ['subsanaciones', SubsanacionesController, 'cerrar', 'editar', '6.5'],
 
-  // Etapa 7 · adjudicación. El sobre económico es su propio punto (7.2), y
+  // Etapa 7 · adjudicación. El sobre económico es su propio punto (7.1.1), y
   // adjudicar es del Ordenador; declarar desierto lo proyecta el gestor.
   ['audiencia', AudienciaController, 'estado', 'ver', '7.1'],
   ['audiencia', AudienciaController, 'celebrar', 'editar', '7.1'],
   ['audiencia', AudienciaController, 'cargarPieza', 'editar', '7.1'],
-  ['audiencia', AudienciaController, 'abrirSobre', 'editar', '7.2'],
+  ['audiencia', AudienciaController, 'abrirSobre', 'editar', '7.1.1'],
   ['audiencia', AudienciaController, 'anular', 'editar', '7.1'],
-  ['informe definitivo', InformeDefinitivoController, 'estado', 'ver', '7.3'],
-  ['informe definitivo', InformeDefinitivoController, 'generar', 'editar', '7.3'],
-  ['informe definitivo', InformeDefinitivoController, 'publicar', 'editar', '7.3'],
-  ['informe definitivo', InformeDefinitivoController, 'anular', 'editar', '7.3'],
-  ['acto de adjudicación', ActoAdjudicacionController, 'estado', 'ver', '7.4'],
-  ['acto de adjudicación', ActoAdjudicacionController, 'adjudicar', 'decidir', '7.4'],
-  ['acto de adjudicación', ActoAdjudicacionController, 'publicar', 'decidir', '7.4'],
-  ['acto de adjudicación', ActoAdjudicacionController, 'revocar', 'decidir', '7.4'],
-  ['declaratoria de desierto', DeclaratoriaDesiertaController, 'estado', 'ver', '7.4'],
-  ['declaratoria de desierto', DeclaratoriaDesiertaController, 'declarar', 'editar', '7.4'],
-  ['declaratoria de desierto', DeclaratoriaDesiertaController, 'publicar', 'editar', '7.4'],
-  ['declaratoria de desierto', DeclaratoriaDesiertaController, 'revocar', 'editar', '7.4'],
+  ['informe definitivo', InformeDefinitivoController, 'estado', 'ver', '7.2'],
+  ['informe definitivo', InformeDefinitivoController, 'generar', 'editar', '7.2'],
+  ['informe definitivo', InformeDefinitivoController, 'publicar', 'editar', '7.2'],
+  ['informe definitivo', InformeDefinitivoController, 'anular', 'editar', '7.2'],
+  ['acto de adjudicación', ActoAdjudicacionController, 'estado', 'ver', '7.3'],
+  ['acto de adjudicación', ActoAdjudicacionController, 'adjudicar', 'decidir', '7.3'],
+  ['acto de adjudicación', ActoAdjudicacionController, 'publicar', 'decidir', '7.3'],
+  ['acto de adjudicación', ActoAdjudicacionController, 'revocar', 'decidir', '7.3'],
+  ['declaratoria de desierto', DeclaratoriaDesiertaController, 'estado', 'ver', '7.3'],
+  ['declaratoria de desierto', DeclaratoriaDesiertaController, 'declarar', 'editar', '7.3'],
+  ['declaratoria de desierto', DeclaratoriaDesiertaController, 'publicar', 'editar', '7.3'],
+  ['declaratoria de desierto', DeclaratoriaDesiertaController, 'revocar', 'editar', '7.3'],
 ];
 
 /**

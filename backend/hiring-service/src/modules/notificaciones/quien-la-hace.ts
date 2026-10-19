@@ -50,7 +50,7 @@ const POR_ACTIVIDAD: Record<string, Destino> = {
   '6.6': papel('COMITE_EVALUADOR'),
   '6.7': papel('COMITE_EVALUADOR'),
   '6.8': papel('COMITE_EVALUADOR'),
-  '7.3': papel('COMITE_EVALUADOR'),
+  '7.2': papel('COMITE_EVALUADOR'),
 
   '8.2': papel('DESIGNA_COMITE_Y_SUPERVISOR'),
   '8.3': papel('EQUIPO_FINANCIERO'),

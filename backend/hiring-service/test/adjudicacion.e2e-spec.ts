@@ -31,7 +31,7 @@ import { HiringAccess } from '../src/auth/hiring-access';
  * se quede esperando una audiencia que nunca va a existir es justamente lo que
  * hay que comprobar.
  */
-describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
+describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.3)', () => {
   let app: INestApplication;
   let audiencia: AudienciaService;
   let definitivo: InformeDefinitivoService;
@@ -179,7 +179,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       ordenador,
     );
 
-    // Gana la segunda: así se nota si el definitivo toma otro resultado.
+    // El informe preliminar no nombra ganadora: se decide en la 7.2 (EFDS-1157).
     await evaluacion.registrar(
       proceso.id,
       {
@@ -575,7 +575,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       expect(estado.informe!.cambios.escritosPresentados).toBe(0);
     });
 
-    it('publicar deja la actividad 7.3 cumplida', async () => {
+    it('publicar deja la actividad 7.2 cumplida', async () => {
       const { proceso } = await listoParaAdjudicar('ABREVIADA_MENOR_CUANTIA');
       await generarDefinitivo(proceso.id);
 
@@ -583,7 +583,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
 
       expect(estado.informe!.estado).toBe('PUBLICADO');
       const actividad = await dataSource.query(
-        `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '7.3'`,
+        `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '7.2'`,
         [proceso.id],
       );
       expect(actividad[0].estado).toBe('APROBADO');
@@ -601,7 +601,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       await expect(adjudicar(proceso.id, oferentes[1].id)).rejects.toThrow(/no se ha publicado/i);
     });
 
-    it('adjudica a la ganadora del informe y deja la 7.4 cumplida', async () => {
+    it('adjudica a la ganadora del informe y deja la 7.3 cumplida', async () => {
       const { proceso, oferentes } = await conDefinitivoPublicado('ABREVIADA_MENOR_CUANTIA');
 
       const estado = await adjudicar(proceso.id, oferentes[1].id);
@@ -612,7 +612,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       expect(estado.acto!.emitidoPor).toBe('prueba.ordenador');
 
       const actividad = await dataSource.query(
-        `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '7.4'`,
+        `SELECT estado FROM hiring.proceso_actividades WHERE proceso_id = $1 AND numeral = '7.3'`,
         [proceso.id],
       );
       expect(actividad[0].estado).toBe('APROBADO');
@@ -711,14 +711,13 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
 
       const actividades = await dataSource.query(
         `SELECT numeral, estado FROM hiring.proceso_actividades
-          WHERE proceso_id = $1 AND numeral IN ('7.1','7.2','7.3','7.4') ORDER BY numeral`,
+          WHERE proceso_id = $1 AND numeral IN ('7.1','7.1.1','7.2','7.3') ORDER BY numeral`,
         [proceso.id],
       );
       expect(actividades.map((a: any) => `${a.numeral}:${a.estado}`)).toEqual([
         '7.1:APROBADO',
         '7.2:APROBADO',
         '7.3:APROBADO',
-        '7.4:APROBADO',
       ]);
     });
 
@@ -734,7 +733,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       // Las dos actividades que no aplican no dejan fila cumplida ni bloquean.
       const actividades = await dataSource.query(
         `SELECT numeral, estado FROM hiring.proceso_actividades
-          WHERE proceso_id = $1 AND numeral IN ('7.1','7.2') AND estado = 'APROBADO'`,
+          WHERE proceso_id = $1 AND numeral IN ('7.1','7.1.1') AND estado = 'APROBADO'`,
         [proceso.id],
       );
       expect(actividades).toHaveLength(0);
@@ -760,7 +759,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       const actividades = await cdp.actividadesDelProceso(proceso.id);
       const numerales = actividades.map((a) => a.numeral);
 
-      expect(numerales).toEqual(expect.arrayContaining(['7.1', '7.2', '7.3', '7.4']));
+      expect(numerales).toEqual(expect.arrayContaining(['7.1', '7.1.1', '7.2', '7.3']));
       // Y sin perder las que ya estaban.
       expect(numerales).toContain('6.1');
       expect(numerales).toContain('5.7');
@@ -788,8 +787,8 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.4)', () => {
       // menor cuantía debe recibirlas tachadas —no ocultas— o el riel volvería
       // a exigirlas para dar la etapa por completa.
       expect(enLicitacion.every((a) => a.aplica)).toBe(true);
-      expect(enMenor.filter((a) => !a.aplica).map((a) => a.numeral)).toEqual(['7.1', '7.2']);
-      expect(enMenor.filter((a) => a.aplica).map((a) => a.numeral)).toEqual(['7.3', '7.4']);
+      expect(enMenor.filter((a) => !a.aplica).map((a) => a.numeral)).toEqual(['7.1', '7.1.1']);
+      expect(enMenor.filter((a) => a.aplica).map((a) => a.numeral)).toEqual(['7.2', '7.3']);
     });
   });
 });

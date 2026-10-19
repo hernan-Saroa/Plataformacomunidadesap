@@ -25,6 +25,7 @@ import {
   EvidenciaFirmaOtp,
   InformeDefinitivo,
   TipoPiezaAudiencia,
+  VersionInformeDefinitivo,
 } from '../../types';
 import {
   Aviso,
@@ -47,9 +48,9 @@ interface Props {
 }
 
 const NUMERAL_AUDIENCIA = '7.1';
-const NUMERAL_SOBRE = '7.2';
-const NUMERAL_INFORME_DEFINITIVO = '7.3';
-const NUMERAL_ACTO = '7.4';
+const NUMERAL_SOBRE = '7.1.1';
+const NUMERAL_INFORME_DEFINITIVO = '7.2';
+const NUMERAL_ACTO = '7.3';
 
 const pesos = (valor: number | null) =>
   valor == null
@@ -354,7 +355,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
         />
       )}
 
-      {/* ------------------------------------------ 7.1 y 7.2 · audiencia --- */}
+      {/* ------------------------------------------ 7.1 y 7.1.1 · audiencia --- */}
 
       {audiencia.aplica ? (
         <div className="space-y-2.5">
@@ -500,8 +501,8 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
               )
             ) : (
               <p className="text-[11.5px] text-slate-500 m-0">
-                Esta modalidad no abre sobre económico en audiencia
-                {audiencia.motivoNoAplicaSobre ? `: ${audiencia.motivoNoAplicaSobre}` : '.'}
+                {audiencia.motivoNoAplicaSobre ??
+                  'El sobre económico solo se abre en audiencia en la licitación de obra pública.'}
               </p>
             ))}
         </div>
@@ -511,7 +512,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
         </Aviso>
       )}
 
-      {/* ----------------------------------- 7.3 · informe definitivo ------- */}
+      {/* ----------------------------------- 7.2 · informe definitivo ------- */}
 
       <div className="space-y-2.5">
         <p className="text-[12.5px] font-bold text-slate-800 m-0 pt-1">
@@ -576,7 +577,7 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
             <Boton
               icono={<Megaphone className="w-3.5 h-3.5" />}
               onClick={() => firmaInformeDefinitivo.conFirma(publicarDefinitivo)}
-              disabled={guardando || !evidenciaDefinitivo || medioDefinitivo.trim().length < 10}
+              disabled={guardando || !evidenciaDefinitivo || !esEnlace(enlaceDefinitivo)}
             >
               Publicar informe definitivo
             </Boton>
@@ -584,14 +585,14 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
         )}
       </div>
 
-      {/* -------------------------------------------- 7.4 · el acto --------- */}
+      {/* -------------------------------------------- 7.3 · el acto --------- */}
 
       <div className="space-y-2.5">
         <p className="text-[12.5px] font-bold text-slate-800 m-0 pt-1">Acto de adjudicación</p>
 
         {!acto.informeDefinitivoPublicado && (
           <Pendiente
-            falta="7.3"
+            falta="7.2"
             texto="El informe definitivo no se ha publicado: adjudicar sin él sería firmar sobre una evaluación que todavía se puede mover."
           />
         )}

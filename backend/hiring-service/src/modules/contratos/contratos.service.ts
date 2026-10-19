@@ -102,12 +102,12 @@ export function actividadCumplida(estado: EstadoContrato | null | undefined): bo
 /**
  * Si el proceso está adjudicado, con el motivo cuando no lo está.
  *
- * La adjudicación formal es la etapa 7 (numerales 7.1 a 7.4) y todavía no tiene
+ * La adjudicación formal es la etapa 7 (numerales 7.1 a 7.3, con la 7.1.1) y todavía no tiene
  * módulo. Mientras llega, se toma como adjudicado el proceso cuya recepción de
  * ofertas cerró con al menos un oferente: es el hecho verificable más cercano
  * que el sistema conoce hoy.
  *
- * Cuando exista el acto de adjudicación (7.4), esta función pasa a mirarlo a
+ * Cuando exista el acto de adjudicación (7.3), esta función pasa a mirarlo a
  * él. Está aislada y es pura para que el cambio sea de una función y no de todo
  * el servicio, y para poder probar el criterio 1 sin base de datos.
  */

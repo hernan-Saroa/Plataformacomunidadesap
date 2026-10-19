@@ -98,7 +98,7 @@ export const MODALIDAD_CONTRATACION_DIRECTA = 'CONTRATACION_DIRECTA';
  * prueba de que llega al riel.
  *
  * La declaratoria desierta no suma numeral —la matriz no le da uno—: se trabaja
- * desde el panel de la 7.1 a la 7.4.
+ * desde el panel de la 7.1 a la 7.3.
  *
  * La 9 entra con EFDS-1167 (acta de inicio) y EFDS-1170 (trámite de pagos), y
  * la 10 con EFDS-1171 (informe final). De las dos solo tienen panel las

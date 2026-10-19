@@ -667,7 +667,7 @@ describe('HU EFDS-1171 · informe final de ejecución (10.1)', () => {
       expect(numerales).toContain('10.1');
       expect(numerales).toContain('9.1');
       expect(numerales).toContain('8.1');
-      expect(numerales).toContain('7.4');
+      expect(numerales).toContain('7.3');
       expect(numerales).toContain('3.1');
     });
   });

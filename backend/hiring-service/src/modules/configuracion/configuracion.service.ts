@@ -45,6 +45,7 @@ import {
   reglasAplicables,
 } from './evaluador-reglas';
 import { descripcion, proyectarFormulario } from './evaluador-condiciones';
+import { excluidasPorElProceso } from './aplicabilidad';
 
 /**
  * En qué queda una actividad cuando el proceso cambia de modalidad.
@@ -323,7 +324,10 @@ export class ConfiguracionService {
       order: { etapa: 'ASC', orden: 'ASC' },
     });
     const excluidas = await em.find(ActividadExcluida, { where: { modalidad } });
-    const noAplica = new Set(excluidas.map((e) => e.numeral));
+    const noAplica = new Set([
+      ...excluidas.map((e) => e.numeral),
+      ...(await excluidasPorElProceso(em, procesoId)).keys(),
+    ]);
 
     const existentes = await em.find(ProcesoActividad, { where: { procesoId } });
     const yaCreadas = new Set(existentes.map((a) => a.numeral));
@@ -355,9 +359,12 @@ export class ConfiguracionService {
     const activas = new Set(
       (await em.find(Actividad, { where: { activa: true } })).map((a) => a.numeral),
     );
-    const excluidas = new Set(
-      (await em.find(ActividadExcluida, { where: { modalidad } })).map((e) => e.numeral),
-    );
+    // Lo que excluye la modalidad y lo que excluye el propio proceso (la 7.1.1
+    // fuera de obra pública): las dos cosas cambian desde la 3.1.
+    const excluidas = new Set([
+      ...(await em.find(ActividadExcluida, { where: { modalidad } })).map((e) => e.numeral),
+      ...(await excluidasPorElProceso(em, procesoId)).keys(),
+    ]);
 
     const propias = await em.find(ProcesoActividad, { where: { procesoId } });
     const cambiadas: string[] = [];

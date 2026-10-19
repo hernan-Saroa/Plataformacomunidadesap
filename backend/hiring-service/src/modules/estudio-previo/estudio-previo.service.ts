@@ -882,9 +882,19 @@ export class EstudioPrevioService implements OnModuleInit {
       }
 
       const campos = await this.camposDe(em);
+      const tipologiaAntes = actividad.datos?.tipologia_contractual ?? null;
       actividad.datos = await this.filtrarYValidar(em, dto.datos, campos);
       actividad.version += 1;
       await em.save(ProcesoActividad, actividad);
+
+      // La tipología decide si el proceso abre el sobre económico en audiencia
+      // (7.1.1, solo obra pública): si cambió, el riel se vuelve a decidir.
+      if ((actividad.datos?.tipologia_contractual ?? null) !== tipologiaAntes) {
+        const proceso = await em.getRepository(Proceso).findOne({ where: { id: procesoId } });
+        if (proceso?.modalidad) {
+          await this.configuracionService.reaplicarModalidad(em, procesoId, proceso.modalidad);
+        }
+      }
 
       await this.traza(em, procesoId, 'estudio_previo', actividad.id, 'GUARDAR', acceso, {
         version: actividad.version,

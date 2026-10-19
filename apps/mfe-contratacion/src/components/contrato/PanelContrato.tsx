@@ -300,7 +300,7 @@ export function PanelContrato({ procesoId, onCambio }: Props) {
       {/* Por qué no se puede todavía, en vez de un botón apagado sin explicación. */}
       {!estado.adjudicado && !contrato ? (
         <Pendiente
-          falta="7.4"
+          falta="7.3"
           texto={`El contrato se elabora sobre un proceso ya adjudicado: ${
             estado.motivoNoAdjudicado ?? 'todavía no lo está'
           }.`}

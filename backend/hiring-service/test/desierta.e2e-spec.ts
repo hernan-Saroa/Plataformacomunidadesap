@@ -419,7 +419,7 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
 
       const filas = await dataSource.query(
         `SELECT numeral, estado FROM hiring.proceso_actividades
-          WHERE proceso_id = $1 AND numeral IN ('7.1','7.2','7.3','7.4')`,
+          WHERE proceso_id = $1 AND numeral IN ('7.1','7.1.1','7.2','7.3')`,
         [proceso.id],
       );
 

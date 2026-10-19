@@ -21,7 +21,7 @@ import { AdjudicarDto, PublicarActoDto, RevocarActoDto } from './dto/acto.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 
 /**
- * Acto de adjudicación — actividad 7.4 (EFDS-1159, RF-ADJ-01).
+ * Acto de adjudicación — actividad 7.3 (EFDS-1159, RF-ADJ-01).
  *
  * La resolución del Ordenador del Gasto. Aquí termina el proceso de selección:
  * lo que sigue es contrato.
@@ -33,6 +33,8 @@ import { CierreActividadService } from '../cierre-actividad/cierre-actividad.ser
  */
 @Injectable()
 export class ActoAdjudicacionService extends AdjudicacionBase {
+  private readonly logger = new Logger('ActoAdjudicacion');
+
   constructor(dataSource: DataSource, cierre: CierreActividadService) {
     super(dataSource, cierre);
   }

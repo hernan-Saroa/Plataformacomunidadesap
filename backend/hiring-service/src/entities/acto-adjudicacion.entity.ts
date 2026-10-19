@@ -7,7 +7,7 @@ import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 export type EstadoActo = 'VIGENTE' | 'REVOCADO';
 
 /**
- * Acto de adjudicación — actividad 7.4 (EFDS-1159).
+ * Acto de adjudicación — actividad 7.3 (EFDS-1159).
  *
  * La resolución del Ordenador del Gasto. Aquí termina el proceso de selección:
  * lo que sigue es contrato.

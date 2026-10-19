@@ -653,9 +653,10 @@ export class ComiteContratacionService {
     }
   }
 
-  private async guardarActa(
+  async guardarActa(
     em: EntityManager,
     procesoId: string,
+    numeral: string,
     archivo: ArchivoCargado,
     hash: string,
     acceso: HiringAccess,

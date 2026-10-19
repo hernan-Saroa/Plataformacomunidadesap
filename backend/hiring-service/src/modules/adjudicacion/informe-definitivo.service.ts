@@ -31,7 +31,7 @@ import { AnularDefinitivoDto, PublicarDefinitivoDto } from './dto/informe-defini
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
 
 /**
- * Informe de evaluación definitivo — actividad 7.3 (EFDS-1159).
+ * Informe de evaluación definitivo — actividad 7.2 (EFDS-1159).
  *
  * El que se produce después de la audiencia y sobre el que se adjudica.
  *

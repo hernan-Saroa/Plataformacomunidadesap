@@ -49,7 +49,7 @@ export class DeclaratoriaDesiertaController {
   constructor(private readonly service: DeclaratoriaDesiertaService) {}
 
   @Get()
-  @Puede('ver', '7.4')
+  @Puede('ver', '7.3')
   @ApiOperation({
     summary: 'Estado de la declaratoria desierta',
     description:
@@ -60,7 +60,7 @@ export class DeclaratoriaDesiertaController {
   }
 
   @Post()
-  @Puede('editar', '7.4')
+  @Puede('editar', '7.3')
   @UseInterceptors(
     FileFieldsInterceptor(
       [
@@ -116,7 +116,7 @@ export class DeclaratoriaDesiertaController {
   }
 
   @Post('publicar')
-  @Puede('editar', '7.4')
+  @Puede('editar', '7.3')
   @UseInterceptors(
     FileInterceptor(
       'file',
@@ -161,7 +161,7 @@ export class DeclaratoriaDesiertaController {
   }
 
   @Post('revocar')
-  @Puede('editar', '7.4')
+  @Puede('editar', '7.3')
   @ApiOperation({
     summary: 'Revocar la declaratoria desierta',
     description:

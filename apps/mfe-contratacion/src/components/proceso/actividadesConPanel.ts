@@ -144,7 +144,7 @@ export const NUMERALES_TRASLADO = ['6.4', '6.5', '6.6'];
  * usuario es un solo desenlace —audiencia, sobre económico, informe definitivo
  * y acto— y saber en qué paso va exige verlos juntos.
  */
-export const NUMERALES_ADJUDICACION = ['7.1', '7.2', '7.3', '7.4'];
+export const NUMERALES_ADJUDICACION = ['7.1', '7.1.1', '7.2', '7.3'];
 
 /** Las de la etapa 5 que ya tienen panel; el riel las trata igual. */
 export const NUMERALES_ETAPA_5 = [

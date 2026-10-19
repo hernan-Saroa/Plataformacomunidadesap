@@ -1742,7 +1742,7 @@ export interface RegistrarSubsanacion {
 }
 
 /* ---------------------------------------------------------------------------
- * Adjudicación — etapa 7, actividades 7.1 a 7.4 (EFDS-1159).
+ * Adjudicación — etapa 7, actividades 7.1 a 7.3, con la 7.1.1 (EFDS-1159).
  *
  * Cerrado el traslado, la entidad celebra la audiencia —donde en obra pública
  * se abre el sobre económico—, produce el informe definitivo y adjudica por

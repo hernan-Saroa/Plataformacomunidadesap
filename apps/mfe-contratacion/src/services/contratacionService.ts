@@ -2421,7 +2421,7 @@ export const contratacionService = {
     }),
 
 
-  // ---------------------------------------- adjudicación, etapa 7 (7.1-7.4) ---
+  // ---------------------------------------- adjudicación, etapa 7 (7.1-7.3) ---
 
   /** La audiencia registrada, sus piezas y los sobres abiertos. */
   audienciaAdjudicacion: (procesoId: string) =>

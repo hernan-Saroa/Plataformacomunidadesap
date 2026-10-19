@@ -206,7 +206,7 @@ describe('PanelAdjudicacion · etapa 7', () => {
     expect(boton).toBeDisabled();
   });
 
-  it('sin informe definitivo publicado remite a la 7.3', async () => {
+  it('sin informe definitivo publicado remite a la 7.2', async () => {
     servicio.adjudicacion.mockResolvedValue(
       adjudicacion({ informeDefinitivoPublicado: false, puedeAdjudicar: false, ganadoraPropuesta: null }),
     );
@@ -286,18 +286,19 @@ describe('PanelAdjudicacion · etapa 7', () => {
     expect(screen.getByText(/Aporta certificación/)).toBeInTheDocument();
   });
 
-  it('en una modalidad sin sobre económico lo dice en vez de ofrecerlo', async () => {
+  it('en una licitación que no es de obra lo dice en vez de ofrecerlo', async () => {
     servicio.audienciaAdjudicacion.mockResolvedValue(
       audiencia({
         aplicaSobreEconomico: false,
-        motivoNoAplicaSobre: 'Aplica solo para la licitación de obra pública',
+        motivoNoAplicaSobre:
+          'Este proceso no adelanta la actividad 7.1.1: el sobre económico solo se abre en audiencia en la licitación de obra pública, y la tipología del estudio previo es «Suministro»',
       }),
     );
 
     render(<PanelAdjudicacion procesoId="p-1" />);
 
     await waitFor(() =>
-      expect(screen.getByText(/no abre sobre económico en audiencia/i)).toBeInTheDocument(),
+      expect(screen.getByText(/la tipología del estudio previo es «Suministro»/i)).toBeInTheDocument(),
     );
     expect(screen.queryByRole('button', { name: /Abrir un sobre económico/i })).not.toBeInTheDocument();
   });
