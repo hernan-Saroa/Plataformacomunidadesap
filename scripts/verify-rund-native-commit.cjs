@@ -149,6 +149,8 @@ module.exports=async function verifyNative(pgConfig,runtime,check,{database,row,
       authFixture,database,snapshot,identities,trigger});
     await require('./verify-rund-identity-mail.cjs')(pgConfig,runtime,check,{admin,ds,coord,native,client,row,
       authFixture,database,snapshot,identities,trigger,known});
+    await require('./verify-rund-identity-write-via-auth.cjs')(pgConfig,runtime,check,{admin,ds,coord,native,banco,client,
+      authFixture,database,data,snapshot,identities,trigger});
   }finally{
     for(const[key,value]of Object.entries(saved)){if(value===undefined)delete process.env[key];else process.env[key]=value;}
     if(stub)await new Promise(resolve=>{stub.close(resolve);stub.closeAllConnections();});

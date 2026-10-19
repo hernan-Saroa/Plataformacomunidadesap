@@ -5,6 +5,13 @@ vi.mock('../../utils/connectivity', () => ({ getAppOnlineStatus: vi.fn(() => tru
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
 
 const endpoint = '/rund/api/v1/pta/banco-docentes';
+// jsdom 19 no implementa Blob.text(); FileReader sí existe en ese entorno y en navegadores.
+const readBlob = (blob: Blob) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(String(reader.result));
+  reader.onerror = () => reject(reader.error);
+  reader.readAsText(blob);
+});
 const reply = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status, headers: { 'Content-Type': 'application/json' },
 });
@@ -132,7 +139,7 @@ describe('Transporte independiente RUND', () => {
     vi.stubGlobal('fetch', fetchMock);
     const api = await client();
     const url = endpoint + '/rund-1/documentos/soporte-1/download';
-    expect(await (await api.getBlob(url)).text()).toBe('archivo-original');
+    expect(await readBlob(await api.getBlob(url))).toBe('archivo-original');
     expect(fetchMock.mock.calls[2][0]).toBe('https://esap.example/services' + url);
     expect(fetchMock.mock.calls[2][1].headers['Content-Type']).toBeUndefined();
     expect(fetchMock.mock.calls[2][1].credentials).toBe('include');
@@ -154,7 +161,7 @@ describe('Transporte independiente RUND', () => {
     vi.stubGlobal('fetch', fetchMock);
     const api = await client(mode);
     const stored = '/pta/api/v1/uploads/carpeta-digital/DOCENTE/RUND/original.pdf';
-    expect(await (await api.getBlob(stored)).text()).toBe('original-historico');
+    expect(await readBlob(await api.getBlob(stored))).toBe('original-historico');
     const base = mode === 'direct' ? 'http://localhost:3016' : 'https://esap.example/services/rund/api/v1';
     expect(fetchMock.mock.calls[0][0]).toBe(base + '/uploads/carpeta-digital/DOCENTE/RUND/original.pdf');
     expect(fetchMock.mock.calls[0][1].credentials).toBe('include');

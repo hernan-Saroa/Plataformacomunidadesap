@@ -33,6 +33,7 @@ import { RundIdentityOperationController, RundIdentityOperationService } from '.
 import { RundIdentityApplyController, RundIdentityApplyService } from './rund-identity-apply.controller';
 import { RundIdentityCompensationController, RundIdentityCompensationService } from './rund-identity-compensation.controller';
 import { RundIdentityAbortClient } from './rund-identity-abort.client';
+import { RundIdentityCorrectionController, RundIdentityCorrectionService } from './rund-identity-correction.controller';
 import { RundIdentityMailValidationController, RundIdentityMailValidationService } from './rund-identity-mail-validation.controller';
 
 @NestModule({
@@ -55,7 +56,7 @@ import { RundIdentityMailValidationController, RundIdentityMailValidationService
   ],
   providers: [UsersService, RolesService, ModulesService, EstructuraOrganizacionalService, RolesGuard, BackofficeDashboardService,
     RundIdentityGuard, RundIdentityService, RundCatalogosService, RundBancoService, RundIdentityValidationService, RundIdentityOperationService, RundIdentityApplyService,
-    RundIdentityCompensationService, RundIdentityAbortClient, RundIdentityMailValidationService, RundBulkPreviewService],
+    RundIdentityCompensationService, RundIdentityAbortClient, RundIdentityMailValidationService, RundBulkPreviewService, RundIdentityCorrectionService],
   controllers: [
     RolesController,
     UsersController,
@@ -71,6 +72,7 @@ import { RundIdentityMailValidationController, RundIdentityMailValidationService
     RundIdentityApplyController,
     RundIdentityCompensationController,
     RundIdentityMailValidationController,
+    RundIdentityCorrectionController,
   ],
   exports: [UsersService, RolesService, ModulesService, EstructuraOrganizacionalService],
 })

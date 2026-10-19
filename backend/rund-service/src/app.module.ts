@@ -13,6 +13,7 @@ import { SoportesModule } from './modules/soportes/soportes.module';
 import { TarjetaDigitalModule } from './modules/tarjeta-digital/tarjeta-digital.module';
 import { EstadisticasModule } from './modules/estadisticas/estadisticas.module';
 import { BancoDocentesModule } from './modules/banco-docentes/banco-docentes.module';
+import { RundIdentityWriteModule } from './common/rund-identity-write.module';
 import { MacroDocenteModule } from './modules/macro-docente/macro-docente.module';
 
 import { InternalModule } from './internal/internal.module';
@@ -62,6 +63,7 @@ import { PermissionsGuard } from './auth/permissions.guard';
     TarjetaDigitalModule,
     EstadisticasModule,
     BancoDocentesModule,
+    RundIdentityWriteModule,
     MacroDocenteModule,
     InternalModule,
   ],

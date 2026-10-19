@@ -271,3 +271,13 @@ export async function confirmExtractionSuggestions(db: any, rows: any[], payload
     SET estado = $2, valor_confirmado = $3, revisado_por = $4, motivo = $5, revisado_en = now() WHERE id = $1`,
   [s.id, comparable(s.valor) === comparable(payload[s.campo]) ? 'APROBADA' : 'CORREGIDA', payload[s.campo].trim(), actorId, reason]);
 }
+
+export function ageForDate(value:string) {
+  const birth=new Date(`${value}T00:00:00Z`);const today=new Date();
+  let age=today.getUTCFullYear()-birth.getUTCFullYear();
+  if(today.getUTCMonth()<birth.getUTCMonth()||(today.getUTCMonth()===birth.getUTCMonth()&&today.getUTCDate()<birth.getUTCDate()))age--;
+  return age;
+}
+export function ageRange(age:number) {
+  if(age<=35)return 'Menor de 35 años';if(age<=45)return 'De 36 a 45 años';if(age<=55)return 'De 46 a 55 años';if(age<=65)return 'De 56 a 65 años';return 'Mayor de 65 años';
+}

@@ -23,7 +23,7 @@ const pgBin = process.env.PG_BIN_DIR || 'C:/Program Files/PostgreSQL/15/bin';
 const binary = (name) => path.join(pgBin, name + (process.platform === 'win32' ? '.exe' : ''));
 const migrationNames = ['001_create_rund_schema.sql', '002_seed_rund_auth_module.sql', '003_legacy_rund_tables.sql',
   '004_rund_docente_identificadores_text.sql', '005_rund_tarjeta_numero_secuencia.sql',
-  '006_rund_catalogo_permisos_compatibles.sql', '007_rund_carpeta_auth_proyeccion.sql', '008_rund_identidad_operacion.sql', '009_rund_identidad_contexto_nativo.sql', '010_rund_identidad_ejecucion.sql', '011_rund_identidad_resolucion_auth.sql', '012_rund_identidad_revision.sql', '013_rund_identidad_solicitud.sql', '014_rund_identidad_entrada_manual.sql', '015_rund_identidad_abandono_manual.sql', '016_rund_identidad_correo.sql', '017_rund_identidad_correo_resultado.sql', '018_rund_identidad_correo_revision.sql', '019_rund_identidad_correo_revision_cierre.sql', '020_rund_identidad_correo_omision.sql', '021_rund_identidad_correo_revision_incierto.sql'];
+  '006_rund_catalogo_permisos_compatibles.sql', '007_rund_carpeta_auth_proyeccion.sql', '008_rund_identidad_operacion.sql', '009_rund_identidad_contexto_nativo.sql', '010_rund_identidad_ejecucion.sql', '011_rund_identidad_resolucion_auth.sql', '012_rund_identidad_revision.sql', '013_rund_identidad_solicitud.sql', '014_rund_identidad_entrada_manual.sql', '015_rund_identidad_abandono_manual.sql', '016_rund_identidad_correo.sql', '017_rund_identidad_correo_resultado.sql', '018_rund_identidad_correo_revision.sql', '019_rund_identidad_correo_revision_cierre.sql', '020_rund_identidad_correo_omision.sql', '021_rund_identidad_correo_revision_incierto.sql', '022_rund_identidad_correccion_ocr.sql'];
 const checks = [];
 let runtime;
 let database;
@@ -374,9 +374,9 @@ async function run() {
       assert(references.every((column) => column.data_type === 'text'));
     });
     await verifyExistingDataUpgrade(pgConfig);
-    await check('Esquema nuevo vacío: 39 tablas y 7 categorías, sin copiar docentes', async () => {
+    await check('Esquema nuevo vacío: 40 tablas y 7 categorías, sin copiar docentes', async () => {
       const tables = (await database.query(`SELECT tablename FROM pg_tables WHERE schemaname='rund' ORDER BY tablename`)).rows;
-      assert.equal(tables.length, 39);
+      assert.equal(tables.length, 40);
       assert(tables.some(row=>row.tablename==='identidad_solicitud'));
       assert(tables.some(row=>row.tablename==='identidad_revision'));
       assert(tables.some(row=>row.tablename==='identidad_resolucion_auth'));

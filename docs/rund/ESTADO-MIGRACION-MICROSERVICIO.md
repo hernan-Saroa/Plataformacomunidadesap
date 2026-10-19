@@ -5,7 +5,7 @@
 > qué falta y qué trampas hay. Complementa `PENDIENTES_RUND_PTA.md` (historias de usuario) y
 > los `REQ-RUND-*` de esta carpeta.
 
-> **Último punto técnico terminado: 95**, documentado al final de este archivo.
+> **Último punto técnico terminado: 100**, documentado al final de este archivo.
 > Guardado preparado para push hasta el [corte 95](PUSH-CORTE-95.md).
 > Para retomar después del guardado, leer la sección 95 y el mapa de pendientes.
 
@@ -7465,3 +7465,194 @@ de escritura Auth false por defecto y RUND embebido en PTA conservados.
 
 Avance: **58 cortes técnicos locales desde el merge**, **11 pasos principales locales**,
 paso principal **12 en curso** y **5 frentes abiertos**, según el mapa de pendientes.
+
+## 96. Frente 2: Carpeta Digital deja de leer por SQL el esquema de PTA (2026-10-17)
+
+Carpeta Digital (auth) consultaba directamente `academic_work_plan."RundSoporteCampo"`,
+`"Docente"` y `"RundAccesoDatosLog"`, tablas de PTA. Ahora, con
+`PTA_HISTORICO_API_ENABLED=true`, las pide al propietario por API interna.
+
+**PTA (propietario)**: módulo `integracion-rund/rund-carpeta-historico.module.ts`, mismo
+guard de credencial interna que los catálogos, `Cache-Control: private, no-store`.
+Rutas bajo `/internal/rund/v1/carpeta-historica/`: `POST soportes` (lote de hasta 500
+personas), `GET perfiles/:personaId` (tope 201 para detectar listas incompletas),
+`GET soportes/:id/persona` (404 solo si PTA confirma ausencia), `POST originales/verificar`
+y `POST accesos` (bitácora). Las selecciones SQL son las mismas que auth ejecutaba.
+
+**Auth (consumidor)**: `PtaHistoricoClient` (token interno, sin redirecciones, timeout de
+10 s, valida conteo y forma). Un fallo da 503; nunca se toma como ausencia. Reconectados:
+perfiles, listado de documentos, resolución de `rund:<id>`, conteos agregados, bitácora
+de acceso y la protección estática de originales (PTA primero y RUND después).
+
+**Despliegue**: publicar PTA antes de activar el flag en auth. Con el flag en `false`
+(valor por defecto) se conserva exactamente el SQL de transición; no hay migraciones,
+cambios de compose ni de contratos existentes. El SQL sigue en el código hasta aceptar el
+flag en cada ambiente y solo entonces se puede retirar.
+
+**Validación local**
+
+- auth **25 suites / 416 pruebas** (antes 24 / 396; +20 nuevas) y build; PTA **89 suites / 907 pruebas** y build;
+  rund-service **92 / 1.832**, gateway **6 / 83**, academic-schedule **14 / 112**. Sin regresiones.
+- Verificador nuevo [verify-rund-carpeta-historica.cjs](../../scripts/verify-rund-carpeta-historica.cjs): PostgreSQL real en
+  clúster temporal, datos ficticios, API de PTA y cliente/protección de Auth por HTTP real, **20 comprobaciones**
+  (10 con `docente_id` uuid y 10 con text): token, lotes, orden, tope de 200 perfiles, 404 vs fallo, original por
+  soporte o marca permanente, bitácora inmutable, validación de cuerpo y caída = 503. Comprobado que falla si se
+  revierte la corrección siguiente.
+- **Defecto hallado solo con SQL real**: el `JOIN d.id = s.docente_id` (text = uuid) falla en una base sin la migración
+  336; el SQL de Carpeta Digital que existía ya tenía ese mismo defecto (error capturado como 503). Las consultas de PTA
+  comparan ahora `d.id::text = s.docente_id::text`, válido en ambos estados. El SQL de transición de auth no se tocó.
+- Integración completa `verify-rund-service-integration.cjs` (PG 18, requiere compilar academic-schedule-service):
+  **708 comprobaciones PASS** y falla al final el recorrido jsdom del punto 91 (`1 !== 0`: no logra abrir sesión contra
+  el Auth de prueba). **Falla igual sobre el estado limpio del pull**, sin mis cambios: es previo y queda pendiente
+  de diagnosticar; no lo causa este punto.
+- No se activó la bandera ni se usó una base existente (una consulta de solo lectura confirmó los tipos de columna).
+
+**Pendiente**: aceptar el flag por ambiente y retirar entonces el SQL de transición;
+quedan otras lecturas SQL entre propietarios y los demás frentes del mapa.
+
+## 97. Verificación completa y corrección del arnés con Node 24 (2026-10-18)
+
+Verificación integral posterior al pull (puntos 92–95) y al punto 96, con Node 24.19 y PostgreSQL 18.
+
+**Hallazgo y corrección (solo pruebas; el código productivo no cambia)**
+
+- `verify-rund-service-integration.cjs` llegaba a 708 comprobaciones y fallaba en el recorrido jsdom del punto 91
+  (11 pruebas por modo). **Causa raíz**: `readRundOperator` pasa a `fetch` un `AbortSignal` de jsdom y el fetch
+  nativo de Node 24 (undici) lo rechaza (`Expected signal to be an instance of AbortSignal`); el catch del lector
+  lo convertía en "No fue posible confirmar la sesión". En un navegador real no ocurre. El fallo era idéntico sobre
+  el estado limpio del pull, es decir, previo al punto 96.
+- Corrección en el stub de `fetch` de `RundMailReviewWorkspace.http.integration.tsx`: conserva la semántica de
+  aborto compitiendo la respuesta contra la señal, sin pasar el `AbortSignal` de jsdom al transporte nativo.
+- `apiClient.test.ts` (3 pruebas): jsdom 19 no implementa `Blob.text()`; se lee con `FileReader` (helper `readBlob`).
+- Sin cambios en `readRundOperator`, `apiClient` ni en el shell.
+
+**Resultados**
+
+- Integración completa con PostgreSQL real: **710 comprobaciones, salida 0** (las 22 pruebas HTTP/jsdom, direct y gateway).
+- Verificador del punto 96: **20 comprobaciones** (uuid y text).
+- Jest: PTA **89 / 907**, auth **25 / 416**, rund-service **92 / 1.832**, gateway **6 / 83**, academic-schedule **14 / 112**.
+- mfe-rund: **35 archivos / 542 pruebas**, `tsc` sin errores en los archivos tocados y `vite build` correcto.
+- Shell: 161 de 163 pruebas. Fallan `disciplinary.service.spec.ts` y 2 de `SolicitarCertificadoLaboral.functions.test.tsx`,
+  módulos ajenos al RUND que esta rama no modifica (límite global del shell ya documentado). No se tocaron.
+
+Los verificadores reescriben `docs/rund/validacion-*.json` (marcas de tiempo); esas variaciones se descartaron.
+Sin commit, push, SMTP real ni bases existentes.
+
+## 98. Inventario RUND de SQL cruzado y retiro de código muerto (2026-10-18)
+
+Revisión de qué consumidores del RUND siguen apuntando a PTA y qué SQL entre propietarios queda dentro de rund-service.
+
+**Consumidores (sin cambios necesarios)**: reportes (`MacroDocente`, `PlantaDocente`), Carpeta Digital y el cliente inline ya usan
+`/rund/api/v1/...`; el dashboard del backoffice lee RUND por `estadisticasBackoffice` (API). Queda por compatibilidad la ruta pública
+anterior `/autogestion/docentes` del shell, que carga la copia de `mfe-pta` (invitaciones antiguas); se retira con el RUND embebido (9.3).
+
+**Retirado**: `backend/rund-service/src/auth/pta-permissions.service.ts` y `pta-permissions.constants.ts`. Sin importadores en el
+repositorio; contenían SQL directo a `auth.user/role/permission/personas/sedes` y `academic_work_plan.cetap`. Los permisos reales se
+resuelven por `rund-effective-permissions.ts` vía API Auth. rund-service: build correcto y **92 suites / 1.832 pruebas**.
+
+**SQL entre propietarios que permanece en rund-service (sin cambio en este punto)**:
+
+| Dónde | Qué hace | Propietario |
+|---|---|---|
+| `rund-auth-identity-write.ts` | altas/ediciones de `auth.personas`, `auth."user"`, `auth.role` | Auth (escritor local, ruta activa) |
+| `rund-extraccion.service.ts` (181–222) y `rund-extraccion-fields.ts` (235, 252) | al confirmar sugerencias OCR: `UPDATE auth.personas` (documento, tipo, nombre, género, nacimiento), `SELECT … FOR UPDATE OF p` y lecturas | Auth |
+| entidades `Persona`, `Usuario`, `Programa`, `Facultad`, `PlanTrabajoAcademico`, `ConfiguracionSistema` | lecturas de tablas de PTA (algunas solo las referencian pruebas de guarda) | PTA |
+
+La confirmación OCR escribe en `auth.personas` dentro de la misma transacción que las tablas RUND, con bloqueos de fila y una excepción
+del trigger de Auth (`app.rund_ocr_suggestion_id`). Moverla a una API de Auth no es un cambio mecánico: exige decidir el orden de
+aplicación y la compensación entre servicios (ver pendiente). Los módulos `auth-identity-*` preparados y fuera de AppModule no se tocaron.
+
+## 99. Corrección de identidad por OCR coordinada entre RUND y Auth (2026-10-18)
+
+La confirmación de una sugerencia OCR de identidad (documento, tipo, nombre, género, nacimiento) escribía directamente en
+`auth.personas` desde rund-service, dentro de la misma transacción que las tablas RUND y con bloqueos de fila sobre Auth.
+Este corte la saca de ahí con un diseño pensado para volumen y recuperación (diario durable, ID estable, idempotencia,
+compensación y reconciliador), detrás de la bandera `RUND_OCR_IDENTITY_VIA_AUTH_API` (apagada por defecto).
+
+**Defecto encontrado y corregido (afecta al flujo actual, no solo al nuevo)**
+
+El trigger `trg_auth_personas_rund_document_immutable` (migraciones 426/663) autorizaba el cambio de cédula consultando la
+sugerencia en las tablas de **PTA** (`academic_work_plan`). Tras la separación, las sugerencias viven en el esquema `rund`, así que
+la confirmación OCR del número de documento era **rechazada** por Auth (`REQ-RUND-F001`). Reproducido en un clúster temporal con la
+función real de la 663. El verificador de integración no lo detectaba porque su Auth de prueba no instalaba ese trigger.
+
+**Auth (propietario de `auth.personas`)**
+
+- Migración `db/migrations/672_auth_rund_documento_correccion.sql`: tabla `auth.rund_identidad_correccion` (inmutable salvo
+  APLICADA → COMPENSADA, sin borrados) y función `auth.prevent_rund_document_change()`. Mantiene la regla (solo protege personas con
+  perfil docente, ignora cambios de puntos) y autoriza el cambio de dos formas: (1) un registro propio de Auth de esa misma operación,
+  tanto para aplicar como para restaurar; (2) la ruta heredada por sugerencia, validada en el esquema que la contenga (`rund` o
+  `academic_work_plan`), de modo que el RUND embebido de PTA y la ruta actual de rund-service siguen funcionando. Idempotente.
+- API interna `/internal/rund/v1/personas/correcciones` (guard de credencial interna, `no-store`): `POST` aplicar, `GET :id` consultar,
+  `POST :id/compensar`. Comando validado estrictamente (huella SHA-256 con orden canónico), idempotente por ID+huella y
+  **compare-and-set sobre el valor previo exacto** bajo bloqueo de la persona. Rechazos de negocio con el motivo en el campo `error`
+  (`VALOR_PREVIO_CAMBIO`, `DOCUMENTO_DUPLICADO`, `OPERACION_DISTINTA`, `CAMBIOS_POSTERIORES`); sin migración responde 503.
+  El `UPDATE ... RETURNING` de TypeORM devuelve `[filas, cantidad]`: se relee la fila (defecto hallado por el verificador).
+
+**RUND**
+
+- Migración `backend/rund-service/db/migrations/022_rund_identidad_correccion_ocr.sql`: diario `rund.identidad_correccion_ocr`
+  (una corrección viva por sugerencia; contenido inmutable; estados finales fijos).
+- `AuthIdentityCorrectionClient`: token interno, sin redirecciones, valida cada recibo contra lo pedido. Un 409 con motivo
+  reconocido es un rechazo de negocio tipado; cualquier otra cosa es 503, nunca éxito.
+- `RundOcrIdentityCorrection` (flujo): (1) valida y reserva en el diario en una transacción corta, sin tocar Auth; (2) Auth aplica por
+  API; (3) RUND confirma sugerencia, auditoría, acceso y evidencia en UNA transacción con el diario. Si el paso 3 falla, compensa en
+  Auth. Si el resultado de Auth es desconocido (caída/timeout) deja la reserva y el reintento reanuda la MISMA operación. Un
+  reconciliador (cada 60 s, `FOR UPDATE SKIP LOCKED`, 120 s de inactividad) cierra lo que quedó a medias y nunca toca una corrección
+  CONFIRMADA; si el dato cambió por otra vía pasa a REVISION sin pisarlo. `RundExtraccionService.confirm` delega solo los campos de
+  identidad y solo con la bandera activa; el resto de campos y la ruta con bandera apagada no cambian.
+- La lectura previa usa la ficha de Auth por API; no queda SQL sobre `auth.*` en este camino.
+
+**Verificación**
+
+- `scripts/verify-auth-documento-correccion.cjs`: **14 comprobaciones**, PostgreSQL real; parte del estado anterior (el defecto) y aplica 672.
+- `scripts/verify-rund-ocr-identity-correction.cjs`: **23 comprobaciones** de extremo a extremo con Auth real (controlador, filtro,
+  trigger de cédula) y RUND real por HTTP, conectado con un rol **sin ningún permiso sobre el esquema auth** (prueba que no hay SQL
+  cruzado). Cubre los 5 campos, coincidencia sin escritura, valor cambiado antes y durante, documento duplicado, validaciones del flujo
+  anterior, caída de Auth, respuesta perdida, sugerencia descartada a mitad de camino (compensa incluida la cédula protegida), fallo de
+  la compensación + reconciliador, REVISION, no tocar CONFIRMADA, dos confirmaciones simultáneas y registros inmutables. Se comprobó
+  que falla si se desactiva el compare-and-set.
+- Jest: auth **26 / 456** (+40 del contrato), rund-service **95 / 1.882** (+23 cliente, +22 flujo, +5 delegación), PTA 89 / 907 y gateway 6 / 83
+  sin regresión. Integración principal con PostgreSQL real: **711 comprobaciones, salida 0** (ahora cuenta 40 tablas rund y aplica la 022).
+
+**Despliegue (no se activó nada)**: aplicar 672 en Auth (corrige además el rechazo actual de la cédula por OCR); aplicar 022 en RUND;
+publicar Auth con la API y después RUND; solo entonces `RUND_OCR_IDENTITY_VIA_AUTH_API=true`. Con la bandera apagada no cambia el flujo.
+
+**Pendiente**: el camino de edición manual con sugerencias (`lockExtractionSuggestions` dentro de `upsertDocente`) y el escritor de altas
+siguen usando SQL sobre `auth.*`; el flujo coordinado de este punto es el patrón a reutilizar. Aceptación por instalación.
+
+## 100. Escritura de identidad por API de Auth en todos los flujos de upsert (2026-10-18)
+
+El escritor activo (`upsertRundAuthIdentityWithManager`) hacía `INSERT/UPDATE` sobre `auth.personas`, `auth."user"` y `auth.role` dentro de la
+transacción de RUND. Este corte conecta `upsertDocente` (alta manual, edición, carga masiva definitiva, autogestión y sincronización) con el motor de
+coordinación que ya existía (puntos 62–91: contexto congelado, intención, aplicación en Auth por UUID estable y commit nativo), tras la bandera
+`RUND_IDENTITY_WRITE_VIA_AUTH_API` (apagada por defecto). Con la bandera apagada no cambia nada.
+
+**Qué se agregó**
+
+- `rund-identity-writer.ts`: contrato liviano (token + plan) que usa `BancoDocentesService` sin importar la maquinaria de coordinación (evita un ciclo
+  de importaciones). `identityWritePlan` arma el comando de identidad y valida con las mismas reglas del contexto persistido; normaliza el territorial a
+  texto y descarta las opciones internas del llamador (territoriales, outerManager, previewOnly). Lo que no encaje sigue por el escritor anterior.
+- `common/rund-identity-write.module.ts`: `RundIdentityWriteViaAuth` (preparar → ejecutar con UUID nuevo por solicitud) y `RundIdentityWriteRecovery`.
+  Un **rechazo de negocio** del commit nativo (p. ej. "ya existe", soporte rechazado) conserva la atomicidad anterior: se aborta la intención y Auth
+  restaura la identidad (compensación) o cancela si nunca aplicó. Un **fallo técnico** (caída, timeout) no revierte: deja la intención para el recuperador.
+  El recuperador (60 s; 120 s de inactividad; el más antiguo primero) cancela lo que nunca llegó a Auth, reanuda hacia adelante con el mismo UUID lo que ya
+  involucró a Auth (sin aplicar la identidad por segunda vez) y resuelve los abortos pendientes. El módulo solo expone el escritor, el recuperador y la
+  prueba de aborto que Auth consulta; no monta la entrada manual, el correo ni las revisiones.
+- `BancoDocentesService.upsertDocente`: valores finales calculados una sola vez; la vista previa y las transacciones externas nunca usan la ruta nueva.
+  El correo de bienvenida sigue saliendo después del commit solo cuando Auth creó la cuenta.
+
+**Verificación**
+
+- `scripts/verify-rund-identity-write-via-auth.cjs` (al final de la cadena de commit nativo): RUND en una base **sin esquema auth** y Auth real. **10 comprobaciones**:
+  alta masiva, edición sin duplicar, rechazo de negocio con reversión en Auth, caída de Auth y reanudación de la misma intención, cancelación de una intención
+  nunca publicada, fallo técnico tras aplicar (sin segunda aplicación), dos recuperadores simultáneos, rechazo descubierto al reanudar (compensa), y los casos que
+  conservan el escritor anterior (vista previa, transacción externa, contexto incompatible, bandera apagada, módulo no registrado).
+- Jest rund-service **98 suites / 1.914 pruebas** (+3 suites: plan, servicio/recuperador y reparto en `upsertDocente`). Integración principal con
+  PostgreSQL real: **721 comprobaciones, salida 0**; arranca la aplicación con el módulo nuevo.
+
+**Despliegue (no se activó)**: Auth con migraciones 669–672 y su API de operaciones/compensación; publicar Auth antes que RUND; luego la bandera.
+
+**Límites conocidos**: la edición con sugerencias OCR dentro de una transacción externa y las cargas con vista previa siguen en el escritor anterior; una intención
+abandonada que ya involucró a Auth se completa hacia adelante aunque la solicitud original haya fallado (sin bienvenida por correo en ese caso); una alta de identidad
+nueva que falle por negocio no se puede deshacer automáticamente y pasa a revisión (comportamiento del motor ya existente).

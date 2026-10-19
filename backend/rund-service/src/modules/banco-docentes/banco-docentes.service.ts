@@ -6,7 +6,9 @@ import { CAMPOS_SOPORTE_RUND } from './rund-document-fields';
 import { AuthBancoClient } from '../../common/auth-banco.client';
 import { AuthIdentityClient } from '../../common/auth-identity.client';
 import { RundCatalogosClient } from '../../common/rund-catalogos.client';
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit, Optional, ServiceUnavailableException } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import { RUND_IDENTITY_WRITER, RundIdentityWriter, identityWriteViaAuthEnabled } from './rund-identity-writer';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Like, Repository } from 'typeorm';
 import { upsertRundAuthIdentityWithManager } from './rund-auth-identity-write';
@@ -962,6 +964,7 @@ export class BancoDocentesService implements OnModuleInit {
     private readonly catalogos: RundCatalogosClient,
     private readonly authBanco: AuthBancoClient,
     private readonly identities: AuthIdentityClient,
+    @Optional() private readonly moduleRef?: ModuleRef,
   ) {}
 
   async onModuleInit() {
@@ -1421,7 +1424,10 @@ export class BancoDocentesService implements OnModuleInit {
       }
     }
 
-    const runWithManager = async (manager: any) => {
+    // Valores finales que comparten el escritor anterior y la coordinación con Auth; se calculan una sola vez.
+    let finals: { emailFinal: string; phoneFinal: string | null; finalFullName: string } | undefined;
+    const computeFinals = () => {
+      if (finals) return finals;
       const emailFinal = payload.correoInstitucional!.toLowerCase().trim();
       const phoneFinal = normalizePhoneForAuth(payload.telefono, options.bulkImport === true);
       if (options.bulkImport && normalizeRundPhones(payload.telefono) === null) {
@@ -1434,7 +1440,11 @@ export class BancoDocentesService implements OnModuleInit {
         datoErrado: payload.fullName || '(vacÃ­o)',
         valorEsperado: 'Nombres y apellidos completos'
       });
+      return (finals = { emailFinal, phoneFinal, finalFullName });
+    };
 
+    const runWithManager = async (manager: any) => {
+      const { emailFinal, phoneFinal, finalFullName } = computeFinals();
       if (options.previewOnly) {
         return previewRundBulkRow(manager, {
           payload, rawPayload, options, territorial, emailFinal, phoneFinal, finalFullName,
@@ -1453,11 +1463,24 @@ export class BancoDocentesService implements OnModuleInit {
       });
     };
 
-    const result = options.previewOnly
+    // Identidad por API de Auth (intención durable, sin SQL sobre auth.*). Lo que no encaje en el contexto
+    // persistido sigue por el escritor anterior; la vista previa y las transacciones externas nunca la usan.
+    let coordinated: any;
+    if (!options.previewOnly && !options.outerManager && identityWriteViaAuthEnabled()) {
+      const writer = this.identityWriter();
+      if (writer) {
+        const plan = writer.plan({ payload, rawPayload, options, territorial, ...computeFinals() });
+        if (plan.ok) coordinated = await writer.write(plan);
+        else this.logger.warn(`Escritura de identidad por Auth no aplicable; se usa el escritor anterior: ${(plan as { reason: string }).reason}`);
+      }
+    }
+
+    const result = coordinated
+      ?? (options.previewOnly
       ? await runWithManager(this.dataSource.manager)
       : options.outerManager
       ? await runWithManager(options.outerManager)
-      : await this.dataSource.transaction(runWithManager);
+      : await this.dataSource.transaction(runWithManager));
 
     if (options.previewOnly) return result;
 
@@ -1467,6 +1490,11 @@ export class BancoDocentesService implements OnModuleInit {
     }
 
     return result;
+  }
+
+  /** Escritor de identidad por API, registrado por RundIdentityWriteModule; sin él se conserva el escritor anterior. */
+  private identityWriter(): RundIdentityWriter | undefined {
+    try { return this.moduleRef?.get<RundIdentityWriter>(RUND_IDENTITY_WRITER, { strict: false }); } catch { return undefined; }
   }
 
   /** Entrada servidor para el mismo escritor nativo; no hace HTTP ni commit o correo. */

@@ -60,7 +60,14 @@ export function protectRundFolderDocument(document: any, user: any) {
 export const RUND_ORIGINAL_ENDPOINTS = ['CARPETA_DIGITAL_ORIGINAL_RUND', 'CARPETA_DIGITAL_CARGAR_RUND',
   'CARPETA_DIGITAL_RECLASIFICAR_RUND', 'CARPETA_DIGITAL_VALIDAR_RUND', 'CARPETA_DIGITAL_RETIRAR_RUND'];
 
-export function rundFolderStaticAccess(db: { query: Function }, jwt: JwtService, rund?: RundDocumentAccessApi) {
+/** Propietario histórico (PTA) de soportes y bitácora, consultado por API cuando está habilitado. */
+export interface PtaHistoricoAccessApi {
+  readonly enabled: boolean;
+  esOriginalHistorico(url: string, recursoId: string, endpoints: string[]): Promise<boolean>;
+  registrarAcceso: RundDocumentAccessApi['registrarAcceso'];
+}
+
+export function rundFolderStaticAccess(db: { query: Function }, jwt: JwtService, rund?: RundDocumentAccessApi, pta?: PtaHistoricoAccessApi) {
   return async (req: Request, res: Response, next: NextFunction) => {
     // El portal admite adjuntos generales sin sesión. La identidad opcional solo
     // decide la visibilidad de los soportes RUND incluidos en sus respuestas.
@@ -84,7 +91,11 @@ export function rundFolderStaticAccess(db: { query: Function }, jwt: JwtService,
           AND (rund_soporte_id IS NOT NULL OR LOWER(categoria) = 'rund')
         LIMIT 1`, ['/auth/api/v1' + path]);
       let esRund = rows.length > 0;
-      if (!esRund) {
+      if (!esRund && pta?.enabled) {
+        // PTA es el propietario de los soportes y marcas históricos: se le pregunta por API, sin SQL cruzado.
+        esRund = await pta.esOriginalHistorico('/auth/api/v1' + path, resourceId, RUND_ORIGINAL_ENDPOINTS);
+        if (!esRund && rund) esRund = await rund.esOriginalRund('/auth/api/v1' + path, resourceId, RUND_ORIGINAL_ENDPOINTS);
+      } else if (!esRund) {
         // Los registros y marcas de protección históricos no desaparecen al adoptar la API nueva.
         const [legacy] = await db.query(`SELECT
           to_regclass('academic_work_plan."RundSoporteCampo"') IS NOT NULL AS soportes,
@@ -103,7 +114,7 @@ export function rundFolderStaticAccess(db: { query: Function }, jwt: JwtService,
       try { user = jwt.verify(bearer || cookie || ''); } catch { /* denegado */ }
       const allowed = Boolean(user?.sub && rundDocumentActor(user).fullAccess);
       res.setHeader('Cache-Control', 'private, no-store');
-      await auditRundDocuments(rund || db, user, 'CARPETA_DIGITAL_ORIGINAL_RUND', resourceId, !allowed);
+      await auditRundDocuments(rund || (pta?.enabled ? pta : db), user, 'CARPETA_DIGITAL_ORIGINAL_RUND', resourceId, !allowed);
       if (!allowed) { res.status(user?.sub ? 403 : 401).json({ message: 'El original RUND está restringido para su rol.' }); return; }
       next();
     } catch { res.status(503).json({ message: 'No fue posible verificar el acceso al documento.' }); }

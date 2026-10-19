@@ -12,6 +12,7 @@ import { CarpetaDocumentVersionsService } from './carpeta-document-versions.serv
 import { RundStateSnapshotService } from './rund-state-snapshot.service';
 import { RundStateSnapshotController, RundStateSnapshotGuard } from './rund-state-snapshot.controller';
 import { RundClientModule } from './rund.module';
+import { PtaHistoricoClient } from './pta-historico.client';
 
 @Module({
   imports: [
@@ -24,7 +25,7 @@ import { RundClientModule } from './rund.module';
     RundClientModule,
   ],
   controllers: [CarpetaDigitalController, RundStateSnapshotController],
-  providers: [CarpetaDigitalService, DocumentTypeValidatorService, RundCarpetaClient, CarpetaDocumentVersionsService, RundStateSnapshotService, RundStateSnapshotGuard],
+  providers: [CarpetaDigitalService, DocumentTypeValidatorService, RundCarpetaClient, PtaHistoricoClient, CarpetaDocumentVersionsService, RundStateSnapshotService, RundStateSnapshotGuard],
   exports: [CarpetaDigitalService, DocumentTypeValidatorService],
 })
 export class CarpetaDigitalModule {}

@@ -8,6 +8,7 @@ import { DocumentoCarpetaDigital } from './documento-carpeta-digital.entity';
 import { RundClient } from './rund-client';
 import { auditRundDocuments, protectRundFolderDocument, isRundFolderDocument, rundOriginalResourceId } from './rund-document-access';
 import { RundCarpetaClient } from './rund-carpeta.client';
+import { PtaHistoricoClient } from './pta-historico.client';
 import { CarpetaDocumentVersionsService } from './carpeta-document-versions.service';
 import { assertCarpetaDocumentRevision, carpetaDocumentRevision } from './carpeta-document-revision';
 
@@ -26,7 +27,13 @@ export class CarpetaDigitalService {
     private readonly rundCarpetaClient: RundCarpetaClient,
     @Optional() private readonly documentVersions?: CarpetaDocumentVersionsService,
     @Optional() private readonly rund?: RundClient,
+    @Optional() private readonly ptaHistorico?: PtaHistoricoClient,
   ) {}
+
+  /** Bitácora: RUND si está configurado; si no, el propietario histórico (API de PTA, o SQL de transición). */
+  private get auditTarget(): any {
+    return this.rund || (this.ptaHistorico?.enabled ? this.ptaHistorico : this.dataSource);
+  }
 
   async getAllCarpetas(user?: any, sessionToken?: string) {
     await this.ensureCarpetasForAllPersons();
@@ -88,12 +95,13 @@ export class CarpetaDigitalService {
     const carpeta=await this.ensureCarpetaForPersona(personaId);
     let legacy: any[];
     try {
-      legacy=await this.dataSource.query(`SELECT id,"personaId" AS persona_id,"periodoCarga" AS periodo_carga,estado
+      legacy=this.ptaHistorico?.enabled ? await this.ptaHistorico.perfilesPorPersona(carpeta.personaId)
+        : await this.dataSource.query(`SELECT id,"personaId" AS persona_id,"periodoCarga" AS periodo_carga,estado
         FROM academic_work_plan."Docente" WHERE "personaId"=$1 ORDER BY "periodoCarga" DESC NULLS LAST,id LIMIT 201`,[carpeta.personaId]);
       if(legacy.length>200) throw new Error();
     } catch {throw new ServiceUnavailableException('No fue posible confirmar los perfiles históricos de PTA.');}
     const independent=this.rundCarpetaClient?.enabled ? await this.rundCarpetaClient.profiles(carpeta.personaId,sessionToken) : [];
-    if(legacy.length) await auditRundDocuments(this.rund || this.dataSource,user,'CARPETA_DIGITAL_PERFILES_PTA',carpeta.personaId);
+    if(legacy.length) await auditRundDocuments(this.auditTarget,user,'CARPETA_DIGITAL_PERFILES_PTA',carpeta.personaId);
     const perfil=(p:any,propietario:string)=>({id:String(p.id),persona_id:carpeta.personaId,propietario,
       periodo_carga:p.periodo_carga ?? null,estado:p.estado,clave:`${propietario}:${p.id}`});
     return {persona_id:carpeta.personaId,complete:true,propietario_predeterminado:this.rundCarpetaClient?.enabled?'rund':'pta',
@@ -173,7 +181,7 @@ export class CarpetaDigitalService {
     // 2) Compatibilidad histórica PTA; no consulta las tablas del propietario RUND nuevo.
     let rundSoportes: any[] = [];
     try {
-      rundSoportes = await this.dataSource.query(
+      rundSoportes = this.ptaHistorico?.enabled ? await this.ptaHistorico.soportesPorPersonas([carpeta.personaId]) : await this.dataSource.query(
         `SELECT s.id, s.bloque, s.tipo_soporte, s.documento_carpeta_id, s.nombre_archivo,
                 s.estado, s.fecha_vencimiento, s.observacion, s."createdAt",s.docente_id,d."periodoCarga" AS periodo_carga
            FROM academic_work_plan."RundSoporteCampo" s
@@ -183,7 +191,7 @@ export class CarpetaDigitalService {
         [carpeta.personaId],
       );
     } catch {
-      if (this.rundCarpetaClient?.enabled) throw new ServiceUnavailableException('No fue posible confirmar los documentos históricos de PTA.');
+      if (this.rundCarpetaClient?.enabled || this.ptaHistorico?.enabled) throw new ServiceUnavailableException('No fue posible confirmar los documentos históricos de PTA.');
       /* schema/tabla no disponible — fallback silencioso */
     }
 
@@ -218,7 +226,7 @@ export class CarpetaDigitalService {
     }
 
     if (docsDto.some(isRundFolderDocument)) {
-      await auditRundDocuments(this.rund || this.dataSource, user, 'CARPETA_DIGITAL_LISTADO_RUND', personaId);
+      await auditRundDocuments(this.auditTarget, user, 'CARPETA_DIGITAL_LISTADO_RUND', personaId);
     }
     const independent = this.rundCarpetaClient?.enabled
       ? await this.rundCarpetaClient.listDocumentos(carpeta.personaId, sessionToken) : [];
@@ -262,7 +270,7 @@ export class CarpetaDigitalService {
       fechaSubida: new Date(),
     });
     if (isRundFolderDocument(doc)) {
-      await auditRundDocuments(this.rund || this.dataSource, user, 'CARPETA_DIGITAL_CARGAR_RUND', rundOriginalResourceId(doc.urlArchivo));
+      await auditRundDocuments(this.auditTarget, user, 'CARPETA_DIGITAL_CARGAR_RUND', rundOriginalResourceId(doc.urlArchivo));
     }
     const saved = await this.documentoRepo.save(doc);
     return protectRundFolderDocument(this.toDocumentoDto(saved, carpeta.personaId), user);
@@ -275,7 +283,9 @@ export class CarpetaDigitalService {
     const rawId = id.replace(/^rund:/, '');
     if (!/^[0-9a-f-]{36}$/i.test(rawId)) throw new BadRequestException('Documento no válido.');
     if (id.startsWith('rund:')) {
-      const rows = await this.dataSource.query(`SELECT d."personaId" AS persona_id FROM academic_work_plan."RundSoporteCampo" s
+      const rows = this.ptaHistorico?.enabled
+        ? await this.ptaHistorico.personaDeSoporte(rawId).then(persona_id => persona_id ? [{ persona_id }] : [])
+        : await this.dataSource.query(`SELECT d."personaId" AS persona_id FROM academic_work_plan."RundSoporteCampo" s
         JOIN academic_work_plan."Docente" d ON d.id = s.docente_id WHERE s.id = $1`, [rawId]);
       if (!rows[0]) throw new NotFoundException('Soporte histórico no encontrado.');
       const docs = await this.listDocumentosByPersona(rows[0].persona_id, user, sessionToken);
@@ -285,7 +295,7 @@ export class CarpetaDigitalService {
     }
     const doc = await this.documentoRepo.findOne({ where: { id }, relations: ['carpetaDigital'] });
     if (!doc) throw new NotFoundException('Documento no encontrado.');
-    if (isRundFolderDocument(doc)) await auditRundDocuments(this.rund || this.dataSource, user, 'CARPETA_DIGITAL_CONSULTAR_RUND', rundOriginalResourceId(doc.urlArchivo));
+    if (isRundFolderDocument(doc)) await auditRundDocuments(this.auditTarget, user, 'CARPETA_DIGITAL_CONSULTAR_RUND', rundOriginalResourceId(doc.urlArchivo));
     return protectRundFolderDocument(this.toDocumentoDto(doc, doc.carpetaDigital?.personaId), user);
   }
 
@@ -465,7 +475,7 @@ export class CarpetaDigitalService {
         where: { carpetaDigitalId: In(carpetas.map(c => c.id)) }, select: ['id','carpetaDigitalId','estado','rundSoporteId'] });
       let legacy: any[];
       try {
-        legacy = await manager.query(`SELECT d."personaId" AS persona_id,s.id,s.estado
+        legacy = this.ptaHistorico?.enabled ? await this.ptaHistorico.soportesPorPersonas(personas) : await manager.query(`SELECT d."personaId" AS persona_id,s.id,s.estado
           FROM academic_work_plan."RundSoporteCampo" s JOIN academic_work_plan."Docente" d ON d.id=s.docente_id
           WHERE d."personaId"=ANY($1::uuid[])
             AND (NULLIF(TRIM(s.nombre_archivo),'') IS NOT NULL OR NULLIF(TRIM(s.documento_carpeta_id),'') IS NOT NULL)`, [personas]);
@@ -480,7 +490,7 @@ export class CarpetaDigitalService {
       const owners = { auth: this.documentStats(docs), pta: this.documentStats(legacy.map(s => ({ estado: this.mapRundEstado(s.estado) }))),
         rund: remote.get(carpeta.personaId) };
       if (!owners.rund) throw new ServiceUnavailableException('RUND no confirmó todas las carpetas.');
-      if (legacy.length || links.size) await auditRundDocuments(this.rund || this.dataSource,user,'CARPETA_DIGITAL_CONTEO_RUND',carpeta.personaId);
+      if (legacy.length || links.size) await auditRundDocuments(this.auditTarget,user,'CARPETA_DIGITAL_CONTEO_RUND',carpeta.personaId);
       const total = this.documentStats([]);
       for (const name of Object.keys(total)) total[name] = owners.auth[name]+owners.pta[name]+owners.rund[name];
       const { persona_id: _identity, ...rund } = owners.rund;

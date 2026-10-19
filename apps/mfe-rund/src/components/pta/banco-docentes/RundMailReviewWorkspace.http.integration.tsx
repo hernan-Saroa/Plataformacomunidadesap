@@ -43,7 +43,15 @@ beforeEach(async()=>{
     const headers=new Headers(options.headers);expect(headers.has('authorization')).toBe(false);expect(headers.has('x-internal-service-token')).toBe(false);
     headers.set('cookie','esap_access_token='+cookie); // Incorporación que haría el navegador; solo JWT ficticio en memoria.
     const entry={url,method:options.method||'GET',body:options.body,status:undefined as number|undefined,cache:options.cache!,credentials:options.credentials!};calls.push(entry);
-    const response=await nativeFetch(url,{...options,headers});entry.status=response.status;
+    // El AbortSignal de jsdom no es una instancia válida para el fetch nativo de Node (undici lo rechaza):
+    // se conserva su semántica compitiendo la respuesta contra el aborto, sin pasar la señal al transporte nativo.
+    const {signal,...nativeOptions}=options;
+    const aborted=new Promise<never>((_,reject)=>{
+      const fail=()=>reject(new DOMException('Aborted','AbortError'));
+      if(signal?.aborted)fail();else signal?.addEventListener('abort',fail,{once:true});
+    });
+    aborted.catch(()=>undefined);
+    const response=await Promise.race([nativeFetch(url,{...nativeOptions,headers}),aborted]);entry.status=response.status;
     if(response.ok)expect(response.headers.get('cache-control')).toBe('private, no-store');return response;
   });
 });

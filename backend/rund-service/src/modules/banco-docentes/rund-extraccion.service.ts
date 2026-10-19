@@ -1,12 +1,13 @@
-import { BadRequestException, ConflictException, Injectable, Logger, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional, ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { createHash, randomUUID } from 'crypto';
 import { RundDocumentStorageService } from './rund-document-storage.service';
-import { comparable, confirmExtractionSuggestions, extractionFieldsForDocument, extractionValueValidationError, EXTRACTION_FIELDS, extractionProfile, lockExtractionSuggestions, validateCandidates } from './rund-extraccion-fields';
+import { ageForDate, ageRange, comparable, confirmExtractionSuggestions, extractionFieldsForDocument, extractionValueValidationError, EXTRACTION_FIELDS, extractionProfile, lockExtractionSuggestions, validateCandidates } from './rund-extraccion-fields';
 import { recordRundAccess, RundAccessActor } from './rund-access-audit';
 import { postLocalJson } from './rund-local-http';
 import { invalidateEditedEvidence } from './rund-evidence-workflow';
 import { AuthIdentityClient } from '../../common/auth-identity.client';
+import { RundOcrIdentityCorrection } from './rund-ocr-identity-correction';
 
 const EXTRACTION_BLOCK: Record<string,string> = {
   documentType:'IDENTIDAD',documentNumber:'IDENTIDAD',nombreCompleto:'IDENTIDAD',genero:'IDENTIDAD',sexoBiologico:'IDENTIDAD',fechaNacimiento:'IDENTIDAD',
@@ -20,16 +21,6 @@ const DOCENTE_EXTRACTION_COLUMNS: Record<string,string> = {
   fechaFinVinculacion:'"fechaFinVinculacion"',origenVinculacion:'"origenVinculacion"',situacionAdministrativa:'"situacionAdministrativa"',
   escalafon:'escalafon',nucleoTematico:'"nucleoTematico"',investigacion:'investigacion',ultimaEvaluacion:'"ultimaEvaluacion"',
 };
-
-function ageForDate(value:string) {
-  const birth=new Date(`${value}T00:00:00Z`);const today=new Date();
-  let age=today.getUTCFullYear()-birth.getUTCFullYear();
-  if(today.getUTCMonth()<birth.getUTCMonth()||(today.getUTCMonth()===birth.getUTCMonth()&&today.getUTCDate()<birth.getUTCDate()))age--;
-  return age;
-}
-function ageRange(age:number) {
-  if(age<=35)return 'Menor de 35 años';if(age<=45)return 'De 36 a 45 años';if(age<=55)return 'De 46 a 55 años';if(age<=65)return 'De 56 a 65 años';return 'Mayor de 65 años';
-}
 
 export function localExtractionUrl(value: string): string {
   const url = new URL(value);
@@ -58,7 +49,7 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
   private activeJob?: any;
   get enabled() { return process.env.RUND_OCR_ENABLED === 'true'; }
   constructor(private readonly db: DataSource, private readonly storage: RundDocumentStorageService,
-    private readonly identities: AuthIdentityClient) {}
+    private readonly identities: AuthIdentityClient, @Optional() private readonly identityCorrection?: RundOcrIdentityCorrection) {}
 
   onModuleInit() {
     if (!this.enabled) return;
@@ -141,6 +132,12 @@ export class RundExtraccionService implements OnModuleInit, OnModuleDestroy {
   }
 
   async confirm(docenteId: string, suggestionId: string, actor: RundAccessActor) {
+    // Los datos de identidad pertenecen a Auth: con la API de correcciones activa no se escriben desde aquí.
+    if (this.identityCorrection?.enabled) {
+      const [peek] = await this.db.query(`SELECT s.campo FROM rund."RundExtraccionSugerencia" s JOIN rund."RundExtraccionTrabajo" j ON j.id=s.trabajo_id
+        WHERE s.id::text=$1 AND j.docente_id::text=$2`, [suggestionId, docenteId]);
+      if (peek && this.identityCorrection.handles(peek.campo)) return this.identityCorrection.confirm(docenteId, suggestionId, actor);
+    }
     return this.db.transaction(async manager => {
       const [candidate] = await manager.query(`SELECT s.id,s.campo,s.valor,s.valor_previo,s.trabajo_id,j.documento_id
         FROM rund."RundExtraccionSugerencia" s

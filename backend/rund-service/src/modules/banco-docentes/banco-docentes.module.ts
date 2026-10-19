@@ -29,6 +29,8 @@ import { RundAuthStateSyncWorker } from './rund-auth-state-sync.worker';
 import { AuthIdentityModule } from '../../common/auth-identity.client';
 import { AuthBancoModule } from '../../common/auth-banco.client';
 import { RundCatalogosModule } from '../../common/rund-catalogos.client';
+import { AuthIdentityCorrectionModule } from '../../common/auth-identity-correction.client';
+import { RundOcrIdentityCorrection } from './rund-ocr-identity-correction';
 
 @Module({
   imports: [
@@ -36,6 +38,7 @@ import { RundCatalogosModule } from '../../common/rund-catalogos.client';
     AuthIdentityModule,
     AuthBancoModule,
     RundCatalogosModule,
+    AuthIdentityCorrectionModule,
     TypeOrmModule.forFeature([BancoDocenteEntity, PersonaEntity, UsuarioEntity, PtaConfiguracionEntity, BancoDocenteInvitacionEntity, RundAprobacionLogEntity, RundCampoEstadoEntity, RundSoporteCampoEntity]),
   ],
   controllers: [BancoDocentesController, RundPtaConsultaController, RundExtraccionController, RundValidacionController, RundCarpetaInternalController],
@@ -52,6 +55,7 @@ import { RundCatalogosModule } from '../../common/rund-catalogos.client';
     RundPtaConsultaService,
     RundPtaJwtGuard,
     RundExtraccionService,
+    RundOcrIdentityCorrection,
     RundExtraccionNotificationsService,
     RundValidacionService,
   ],
