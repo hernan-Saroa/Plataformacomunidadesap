@@ -3,7 +3,6 @@ import {
   Building2,
   Layers,
   Wrench,
-  RefreshCw,
   CheckCircle2,
   AlertCircle,
   X,
@@ -18,10 +17,8 @@ import {
   SolicitudMantenimiento,
   EstadisticasInfraestructura,
   CatalogoItem,
-  BloqueEdificio,
   obtenerSesionUMI,
   hasPerm,
-  tecnicoPerteneceASesionUMI,
 } from '../services/infraestructuraService';
 import { MetricasInfraestructura } from './MetricasInfraestructura';
 import { GestionSedes } from './GestionSedes';
@@ -34,7 +31,7 @@ import { AdminParametrosUMI } from './AdminParametrosUMI';
 import { ReportesGestionView } from './ReportesGestionView';
 
 type TabActiva = 'espacios' | 'sedes' | 'mantenimiento' | 'categorias' | 'parametros' | 'reportes';
-type VistaMantenimiento = 'todas' | 'remitidasTI' | 'asignadasMi';
+type VistaMantenimiento = 'todas' | 'remitidasTI' | 'asignadasMi' | 'misSolicitudes';
 
 interface Toast {
   tipo: 'exito' | 'error';
@@ -67,53 +64,65 @@ export const GestionInfraestructuraModule: React.FC = () => {
 
   const sesionUmi = useMemo(() => obtenerSesionUMI(), []);
   const rolesNorm = useMemo(() => new Set((sesionUmi.roles ?? []).map((r: unknown) => String(r ?? '').trim().toUpperCase())), [sesionUmi]);
-  const [catalogoTecnicos, setCatalogoTecnicos] = useState<CatalogoItem[]>([]);
-  const [tieneVinculoTecnico, setTieneVinculoTecnico] = useState<boolean>(false);
-  useEffect(() => {
-    let cancelado = false;
-    const cargar = async () => {
-      try {
-        const tecnicos = await infraestructuraService.getTecnicos(false);
-        if (cancelado) return;
-        const listaSegura = Array.isArray(tecnicos) ? tecnicos : [];
-        setCatalogoTecnicos(listaSegura);
-        const cods = await infraestructuraService.listarCodigosTecnicosDeSesionUMI ? infraestructuraService.listarCodigosTecnicosDeSesionUMI(sesionUmi, listaSegura) : Promise.resolve<string[]>([]);
-        if (cancelado) return;
-        const vinculo = listaSegura.some((t) => tecnicoPerteneceASesionUMI(t, sesionUmi)) || (Array.isArray(cods) && cods.length > 0);
-        if (cancelado) return;
-        setTieneVinculoTecnico(!!vinculo);
-      } catch (err) {
-        console.error('[UMI-ERROR cargar tecnicos GIM]', err);
-        setCatalogoTecnicos([]);
-      }
-    };
-    cargar();
-    return () => { cancelado = true; };
-  }, [sesionUmi]);
-  const esRolTecnico = useMemo(() => {
-    const rolesTec = ['TECNICO_UMI','TECNICO_ELECTRICO_ESPECIALIZADO','TECNICO_UMI_MULTIPROPOSITO'];
-    for (const r of rolesTec) if (rolesNorm.has(r)) return true;
-    return false;
-  }, [rolesNorm]);
-  const esTecnico = tieneVinculoTecnico || esRolTecnico;
-  const esSoloSolicitante = useMemo(() => {
-    if (esTecnico) return false;
-    if (rolesNorm.has('SUPER_ADMIN')) return false;
-    if (!rolesNorm.has('SOLICITANTE_INFRA') && !rolesNorm.has('USER')) return false;
-    const otros = ['ADMIN','GESTOR_MANTENIMIENTO','ADMINISTRADOR_FUNCIONAL','ADMINISTRADOR_FUNCIONAL_INFRA','COORDINADOR_INFRAESTRUCTURA','UMI','INFRAESTRUCTURA','ANALISTA_ASIGNADOR_UMI','CONSULTA_CALIDAD_INFRA','ADMINISTRADOR_MODULO_INFRA'];
-    for (const r of otros) if (rolesNorm.has(r)) return false;
-    return true;
-  }, [rolesNorm, esTecnico]);
-  const puedeVerInventarioGlobal = hasPerm(sesionUmi, ['infraestructura.view_all', 'infraestructura.view_all_ti', 'infraestructura.param.espacios_cru', 'infraestructura.param.sedes_cru', 'infraestructura.param.territorial_crud', 'infraestructura.param.categories_cru', 'infraestructura.param.categories_crud']);
-  // ERS L70 P2 ANALISTA_ASIGNADOR (Encargado UMI): NO gestiona inventario/sedes/espacios (eso P5/P6).
-  // Necesita VIEW sólo para RADICAR correctamente y saber de qué espacio se trata (lectura operativa).
-  // Pero NO ve los tabs de inventario completo, salvo view_all o param.*
-  // P5 ADMINISTRADOR_FUNCIONAL_INFRA con param.approve_config / read_all / reportes_gestion SI ve inventario bypass.
-  const rolesNormP5 = new Set((sesionUmi.roles ?? []).map((r: string) => String(r).toUpperCase().trim()));
-  const bypassRolesInventario = rolesNormP5.has('ADMINISTRADOR_FUNCIONAL_INFRA') || rolesNormP5.has('ADMINISTRADOR_FUNCIONAL') || rolesNormP5.has('COORDINADOR_INFRAESTRUCTURA') || rolesNormP5.has('SUPER_ADMIN');
-  const puedeVerEspacios = bypassRolesInventario || hasPerm(sesionUmi, ['infraestructura.view_all', 'infraestructura.view_all_ti', 'infraestructura.param.espacios_cru', 'infraestructura.param.territorial_crud']);
-  const puedeVerSedes = bypassRolesInventario || hasPerm(sesionUmi, ['infraestructura.view_all', 'infraestructura.view_all_ti', 'infraestructura.param.sedes_cru', 'infraestructura.param.territorial_crud']);
-  const puedeVerMantenimiento = bypassRolesInventario || hasPerm(sesionUmi, [
+  const esSuperAdmin = rolesNorm.has('SUPER_ADMIN');
+  const esAdminFuncionalInfra =
+    rolesNorm.has('ADMINISTRADOR_FUNCIONAL_INFRA') ||
+    rolesNorm.has('ADMINISTRADOR_FUNCIONAL') ||
+    rolesNorm.has('COORDINADOR_INFRAESTRUCTURA');
+  const esAdminModuloInfra = rolesNorm.has('ADMINISTRADOR_MODULO_INFRA');
+  const esConsultaCalidadInfra = rolesNorm.has('CONSULTA_CALIDAD_INFRA');
+  const bloquearInventarioEspacios = !esSuperAdmin && (esAdminFuncionalInfra || esAdminModuloInfra || esConsultaCalidadInfra);
+  const bloquearSedesTerritoriales = !esSuperAdmin && (esAdminFuncionalInfra || esAdminModuloInfra || esConsultaCalidadInfra);
+  const bloquearMantenimiento = !esSuperAdmin && (esAdminFuncionalInfra || esAdminModuloInfra);
+  const bloquearReportes =
+    !esSuperAdmin &&
+    (
+      rolesNorm.has('SOLICITANTE_INFRA') ||
+      rolesNorm.has('USER') ||
+      esAdminModuloInfra
+    );
+  const puedeEditarCategorias = hasPerm(sesionUmi, ['infraestructura.param.categories_cru', 'infraestructura.param.categories_crud']);
+  const puedeEditarParametros = hasPerm(sesionUmi, [
+    'infraestructura.param.sla_cru',
+    'infraestructura.param.sla_times_edit',
+    'infraestructura.param.tecnicos_cru',
+    'infraestructura.param.technicians_crud',
+    'infraestructura.param.reglas_cru',
+    'infraestructura.param.rules_edit',
+  ]);
+  const puedeAprobarConfig = hasPerm(sesionUmi, 'infraestructura.param.approve_config');
+  const categoriasSoloLectura = !esSuperAdmin && puedeAprobarConfig && !puedeEditarCategorias;
+  const parametrosSoloLectura = !esSuperAdmin && puedeAprobarConfig && !puedeEditarParametros;
+  const puedeVerInventarioGlobal =
+    esSuperAdmin ||
+    (!esAdminFuncionalInfra && !esAdminModuloInfra && hasPerm(sesionUmi, [
+      'infraestructura.view_all',
+      'infraestructura.view_all_ti',
+      'infraestructura.param.espacios_cru',
+      'infraestructura.param.sedes_cru',
+      'infraestructura.param.territorial_crud',
+      'infraestructura.param.categories_cru',
+      'infraestructura.param.categories_crud',
+    ]));
+  const puedeVerEspacios =
+    (esSuperAdmin ||
+    (!esAdminFuncionalInfra && !esAdminModuloInfra && hasPerm(sesionUmi, [
+      'infraestructura.view_all',
+      'infraestructura.view_all_ti',
+      'infraestructura.param.espacios_cru',
+      'infraestructura.param.territorial_crud',
+    ]))) && !bloquearInventarioEspacios;
+  const puedeVerSedes =
+    (esSuperAdmin ||
+    (!esAdminFuncionalInfra && !esAdminModuloInfra && hasPerm(sesionUmi, [
+      'infraestructura.view_all',
+      'infraestructura.view_all_ti',
+      'infraestructura.param.sedes_cru',
+      'infraestructura.param.territorial_crud',
+    ]))) && !bloquearSedesTerritoriales;
+  const puedeVerMantenimiento =
+    (esSuperAdmin ||
+    (!esAdminFuncionalInfra && !esAdminModuloInfra && hasPerm(sesionUmi, [
     'infraestructura.view_all',
     'infraestructura.view_all_ti',
     'infraestructura.solicitud.create',
@@ -133,27 +142,14 @@ export const GestionInfraestructuraModule: React.FC = () => {
     'infraestructura.solicitud.execute_assigned',
     'infraestructura.solicitud.conformidad',
     'infraestructura.solicitud.calificacion',
-    'infraestructura.reportes.gestion',
-    'infraestructura.reportes.consolidados',
-  ]);
-  const puedeVerCategorias = bypassRolesInventario || hasPerm(sesionUmi, ['infraestructura.param.categories_cru', 'infraestructura.param.categories_crud', 'infraestructura.view_all', 'infraestructura.view_all_ti']);
-  const puedeVerParametros = bypassRolesInventario || hasPerm(sesionUmi, [
-    'infraestructura.param.sla_cru',
-    'infraestructura.param.sla_times_edit',
-    'infraestructura.param.tecnicos_cru',
-    'infraestructura.param.technicians_crud',
-    'infraestructura.param.reglas_cru',
-    'infraestructura.param.rules_edit',
-    'infraestructura.param.categories_cru',
-    'infraestructura.param.categories_crud',
-    'infraestructura.view_all',
-  ]);
-  const bypassRolesReportes = bypassRolesInventario || rolesNorm.has('CONSULTA_CALIDAD_INFRA') || rolesNorm.has('ADMINISTRADOR_MODULO_INFRA');
-  const puedeVerReportes = bypassRolesReportes || hasPerm(sesionUmi, [
+  ]))) && !bloquearMantenimiento;
+  const puedeVerCategorias = esSuperAdmin || puedeEditarCategorias || puedeAprobarConfig;
+  const puedeVerParametros = esSuperAdmin || puedeEditarParametros || puedeAprobarConfig;
+  const puedeVerReportes = !bloquearReportes && (esSuperAdmin || esAdminFuncionalInfra || esConsultaCalidadInfra || hasPerm(sesionUmi, [
     'infraestructura.reportes.gestion',
     'infraestructura.reportes.consolidados',
     'infraestructura.audit.trazabilidad',
-  ]);
+  ]));
   // Métricas Globales (ERS P2 KPIs operativos).
   // - SA/P5/P6/P7 = Siempre (view_all/reportes/param*)
   // - P2 ANALISTA_ASIGNADOR_UMI = OPERATIVO (asign, reject, redistribute, forward_ti, read_all): se requieren SUS KPIs
@@ -169,8 +165,6 @@ export const GestionInfraestructuraModule: React.FC = () => {
     for (const c of codigos) if (hasPerm(sesionUmi, c)) return true;
     return false;
   }
-  const puedeRadicarSolicitud = !esTecnico && hasPerm(sesionUmi, 'infraestructura.solicitud.create');
-
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -535,8 +529,12 @@ export const GestionInfraestructuraModule: React.FC = () => {
             catalogoCS={catalogoCS}
           />
         )}
-        {activeTab === 'categorias' && puedeVerCategorias && <AdminCategoriasServicioMini />}
-        {activeTab === 'parametros' && puedeVerParametros && <AdminParametrosUMI />}
+        {activeTab === 'categorias' && puedeVerCategorias && (
+          <AdminCategoriasServicioMini readOnly={categoriasSoloLectura} />
+        )}
+        {activeTab === 'parametros' && puedeVerParametros && (
+          <AdminParametrosUMI readOnly={parametrosSoloLectura} />
+        )}
         {activeTab === 'reportes' && puedeVerReportes && <ReportesGestionView />}
       </div>
     </div>

@@ -37,6 +37,7 @@ type FilaInsumoLocal = ValoracionInsumoPayload & {
   _key: string;
   _cantidadStr: string;
   _costoStr: string;
+  _tiempoStr: string;
 };
 
 const FILA_INSUMO_VACIA = (): FilaInsumoLocal => ({
@@ -49,6 +50,7 @@ const FILA_INSUMO_VACIA = (): FilaInsumoLocal => ({
   _costoStr: '0',
   disponibilidad: 'DISPONIBLE_EN_BODEGA',
   tiempoAdquisicionDias: undefined,
+  _tiempoStr: '',
 });
 
 export interface DetalleValoracionFormProps {
@@ -121,6 +123,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                   _costoStr: String(ins.costoUnitarioCop ?? 0),
                   disponibilidad: ins.disponibilidad,
                   tiempoAdquisicionDias: ins.tiempoAdquisicionDias,
+                  _tiempoStr: ins.tiempoAdquisicionDias != null ? String(ins.tiempoAdquisicionDias) : '',
                 })),
               );
             }
@@ -184,6 +187,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
         const ev = await infraestructuraService.uploadEvidencia(files[i], {
           idSolicitud,
           orden: evidencias.length + subidas.length + 1,
+          notas: 'valoracion_campo',
         });
         subidas.push(ev);
       }
@@ -212,7 +216,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
       if (!f.nombre || f.nombre.trim().length < 2) return `Fila ${i + 1}: nombre del material requiere al menos 2 caracteres.`;
       if (!isFinite(Number(f._cantidadStr)) || Number(f._cantidadStr) <= 0) return `Fila ${i + 1}: cantidad debe ser mayor que 0.`;
       if (f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR') {
-        const d = Number(f.tiempoAdquisicionDias);
+        const d = Number(f._tiempoStr);
         if (!isFinite(d) || d <= 0) return `Fila ${i + 1}: si requiere solicitar el material, debe indicar el tiempo de adquisición (días > 0).`;
       }
     }
@@ -258,7 +262,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
           costoUnitarioCop: Number(f._costoStr) || 0,
           disponibilidad: f.disponibilidad,
           tiempoAdquisicionDias: f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR'
-            ? Number(f.tiempoAdquisicionDias)
+            ? Number(f._tiempoStr || 0)
             : undefined,
         })),
       };
@@ -545,8 +549,8 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                       <td className="px-3 py-2">
                         <input
                           type="number"
-                          min="0.01"
-                          step="0.01"
+                          min="1"
+                          step="1"
                           value={f._cantidadStr}
                           onChange={(e) => actualizarFila(f._key, '_cantidadStr', e.target.value)}
                           className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -567,7 +571,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                         <input
                           type="number"
                           min="0"
-                          step="1"
+                          step="1000"
                           value={f._costoStr}
                           onChange={(e) => actualizarFila(f._key, '_costoStr', e.target.value)}
                           className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -600,8 +604,16 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                           min="1"
                           step="1"
                           disabled={f.disponibilidad !== 'NO_DISPONIBLE_A_SOLICITAR'}
-                          value={f.tiempoAdquisicionDias ?? ''}
-                          onChange={(e) => actualizarFila(f._key, 'tiempoAdquisicionDias', Number(e.target.value) as any)}
+                          value={f._tiempoStr}
+                          onChange={(e) => {
+                            const valor = e.target.value;
+                            actualizarFila(f._key, '_tiempoStr', valor);
+                            actualizarFila(
+                              f._key,
+                              'tiempoAdquisicionDias',
+                              valor === '' ? undefined : Number(valor),
+                            );
+                          }}
                           placeholder={f.disponibilidad === 'NO_DISPONIBLE_A_SOLICITAR' ? 'Ej: 5' : '—'}
                           className="w-full rounded border border-slate-200 px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400 disabled:border-slate-100"
                         />
@@ -658,7 +670,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
                 {subiendoEvidencia ? 'Subiendo...' : 'Adjuntar archivos'}
                 <input
                   type="file"
-                  accept="image/*,application/pdf"
+                  accept="image/*,application/pdf,video/mp4,video/webm,video/quicktime,video/x-m4v,video/x-msvideo,video/mpeg"
                   multiple
                   disabled={subiendoEvidencia || evidencias.length >= 5}
                   onChange={handleUploadEvidencia}
@@ -668,7 +680,7 @@ export const DetalleValoracionForm: React.FC<DetalleValoracionFormProps> = ({
             </div>
             {evidencias.length === 0 ? (
               <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center text-xs text-slate-500">
-                No hay evidencias adjuntas. Haga clic en Adjuntar archivos para subir hasta 5 fotos o documentos.
+                No hay evidencias adjuntas. Haga clic en Adjuntar archivos para subir hasta 5 fotos, videos o documentos de hasta 20 MB.
               </div>
             ) : (
               <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">

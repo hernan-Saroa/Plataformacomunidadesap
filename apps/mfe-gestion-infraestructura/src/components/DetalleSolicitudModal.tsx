@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X, FileText, Paperclip, Clock, AlertTriangle, Calendar, User,
   Building2, MapPin, Wrench, Download, Image,
@@ -7,7 +7,7 @@ import {
   Eye, Monitor, GitBranch, Send, AlertCircle, Wand2, Users,
   ChevronDown, Zap, ChevronUp, ThumbsUp, Ban as IconRechazar,
   Repeat as RedistribuirIcon, CheckCircle2, ThumbsDown, RotateCcw,
-  BadgeCheck, Gauge, Wrench as Wrench2, Handshake, Coins, FileBadge,
+  BadgeCheck, Gauge, Wrench as Wrench2, Handshake, Coins, FileBadge, Upload,
   ScrollText, Star
 } from 'lucide-react';
 import {
@@ -64,11 +64,33 @@ const formatearTamano = (bytes: number): string => {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 };
 
+const FECHA_SOLO_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+const parsearFechaVisual = (valor?: string | Date): { fecha: Date; soloFecha: boolean } | null => {
+  if (!valor) return null;
+  if (valor instanceof Date) {
+    return isNaN(valor.getTime()) ? null : { fecha: valor, soloFecha: false };
+  }
+  const txt = String(valor).trim();
+  const soloFecha = FECHA_SOLO_RE.exec(txt);
+  if (soloFecha) {
+    const fecha = new Date(Number(soloFecha[1]), Number(soloFecha[2]) - 1, Number(soloFecha[3]));
+    return isNaN(fecha.getTime()) ? null : { fecha, soloFecha: true };
+  }
+  const fecha = new Date(txt);
+  return isNaN(fecha.getTime()) ? null : { fecha, soloFecha: false };
+};
+
 const formatearFecha = (valor?: string | Date): string => {
   if (!valor) return '—';
-  const d = valor instanceof Date ? valor : new Date(valor);
-  if (isNaN(d.getTime())) return String(valor);
-  return d.toLocaleDateString('es-CO', {
+  const parsed = parsearFechaVisual(valor);
+  if (!parsed) return String(valor);
+  if (parsed.soloFecha) {
+    return parsed.fecha.toLocaleDateString('es-CO', {
+      year: 'numeric', month: 'short', day: 'numeric',
+    });
+  }
+  return parsed.fecha.toLocaleDateString('es-CO', {
     year: 'numeric', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
@@ -79,6 +101,20 @@ const formatearDinero = (valor: number | string | null | undefined): string => {
   const num = Number(valor);
   if (isNaN(num)) return String(valor);
   return `$${num.toLocaleString('es-CO', { maximumFractionDigits: 0 })} COP`;
+};
+
+const normalizarComparacion = (valor?: string | null): string =>
+  String(valor || '').trim().toLowerCase();
+
+const formatearActorEvidencia = (email?: string | null, fallback = 'Actor no identificado'): string => {
+  const limpio = String(email || '').trim().toLowerCase();
+  if (!limpio) return fallback;
+  const local = limpio.split('@')[0] || limpio;
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((parte) => parte.charAt(0).toUpperCase() + parte.slice(1))
+    .join(' ');
 };
 
 const dedupeEvidencias = (listas: SolicitudEvidencia[][]): SolicitudEvidencia[] => {
@@ -216,6 +252,10 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   const [errorRecepcion, setErrorRecepcion] = useState<string>('');
 
   const [descargandoZip, setDescargandoZip] = useState<boolean>(false);
+  const [archivosEvidenciaExtra, setArchivosEvidenciaExtra] = useState<File[]>([]);
+  const [subiendoEvidenciaExtra, setSubiendoEvidenciaExtra] = useState<boolean>(false);
+  const [errorEvidenciaExtra, setErrorEvidenciaExtra] = useState<string>('');
+  const inputEvidenciaExtraRef = useRef<HTMLInputElement | null>(null);
 
   const [valoracionesAbierto, setValoracionesAbierto] = useState<boolean>(true);
 
@@ -384,7 +424,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
   }, [evidenciasEndpoint, detalle]);
 
   type GrupoEvidencias = {
-    key: 'radicacion' | 'valoracion' | 'cierre' | 'otras';
+    key: string;
     label: string;
     icon: React.ComponentType<any>;
     claseBadge: string;
@@ -406,31 +446,74 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     const evRadArr: SolicitudEvidencia[] = [];
     const evValArr: SolicitudEvidencia[] = [];
     const evCieArr: SolicitudEvidencia[] = [];
-    const evOtrArr: SolicitudEvidencia[] = [];
+    const otrosPorActor = new Map<string, { label: string; items: SolicitudEvidencia[] }>();
+    const fechaRadicacionMs = detalle?.fechaRadicacion
+      ? new Date(detalle.fechaRadicacion).getTime()
+      : detalle?.createdAt
+        ? new Date(detalle.createdAt).getTime()
+        : Number.NaN;
+    const margenRadicacionMs = 1000 * 60 * 45;
+    const ordenarPorFecha = (items: SolicitudEvidencia[]) =>
+      items.slice().sort((a, b) => {
+        const fa = new Date(a.fechaSubida || 0).getTime();
+        const fb = new Date(b.fechaSubida || 0).getTime();
+        return (isFinite(fa) ? fa : 0) - (isFinite(fb) ? fb : 0);
+      });
 
     for (const e of evidenciasFinales) {
       const idMatch = e.idEvidencia;
       const ruta = (e.rutaObjeto || '').toLowerCase();
+      const notas = String(e.notas || '').toLowerCase();
+      const uploaderEmail = normalizarComparacion(e.usuarioQueSubioEmail);
+      const uploaderId = normalizarComparacion(e.usuarioQueSubioId);
+      const fechaSubidaMs = e.fechaSubida ? new Date(e.fechaSubida).getTime() : Number.NaN;
+      const esCercanaARadicacion =
+        isFinite(fechaRadicacionMs) &&
+        isFinite(fechaSubidaMs) &&
+        Math.abs(fechaSubidaMs - fechaRadicacionMs) <= margenRadicacionMs;
+      const esEvidenciaAdicional = notas.includes('evidencia_adicional_actor');
+      const esRadicacionInicial =
+        !esEvidenciaAdicional && (
+          esCercanaARadicacion ||
+          notas.includes('radicacion_inicial') ||
+          notas.includes('radicacion inicial') ||
+          notas.includes('inicial')
+        );
       if (idsCierre.has(idMatch) || ruta.includes('/cierre-tecnico') || ruta.includes('cierre_tecnico')) {
         evCieArr.push(e);
       } else if (idsValoracion.has(idMatch) || ruta.includes('/valoracion') || ruta.includes('valoracion_') || (e.notas || '').toLowerCase().includes('valor')) {
         evValArr.push(e);
-      } else if (evRadArr.length === 0 && (
-        (e.orden === 1) ||
-        (detalle?.evidenciaInicialUrl && (e.urlPublica === detalle.evidenciaInicialUrl || e.urlPresigned?.startsWith(detalle.evidenciaInicialUrl.split('?')[0]))) ||
-        ruta.includes('/mantenimiento/2026') || ruta.endsWith(`/${e.nombreAlmacenado}`)
-      )) {
+      } else if (
+        esRadicacionInicial ||
+        (detalle?.evidenciaInicialUrl && (e.urlPublica === detalle.evidenciaInicialUrl || e.urlPresigned?.startsWith(detalle.evidenciaInicialUrl.split('?')[0])))
+      ) {
         evRadArr.push(e);
       } else {
-        evOtrArr.push(e);
+        const actorKey = uploaderEmail || uploaderId || 'sin-actor';
+        const actorLabel = uploaderEmail
+          ? `Otras evidencias · ${formatearActorEvidencia(uploaderEmail)}`
+          : 'Otras evidencias';
+        const grupoActor = otrosPorActor.get(actorKey) || { label: actorLabel, items: [] };
+        grupoActor.items.push(e);
+        otrosPorActor.set(actorKey, grupoActor);
       }
     }
     const grupos: GrupoEvidencias[] = [
-      { key: 'radicacion', label: 'Radicación inicial', icon: FileText,     claseBadge: 'bg-slate-100 text-slate-700 border border-slate-200',           items: evRadArr },
-      { key: 'valoracion', label: 'Valoración en campo', icon: ClipboardList, claseBadge: 'bg-sky-100 text-sky-800 border border-sky-200',              items: evValArr },
-      { key: 'cierre',     label: 'Cierre técnico',       icon: ClipboarCheckIcon, claseBadge: 'bg-emerald-100 text-emerald-800 border border-emerald-200', items: evCieArr },
-      { key: 'otras',      label: 'Otras evidencias',     icon: Paperclip,   claseBadge: 'bg-indigo-100 text-indigo-800 border border-indigo-200',        items: evOtrArr },
+      { key: 'radicacion', label: 'Radicación inicial', icon: FileText, claseBadge: 'bg-slate-100 text-slate-700 border border-slate-200', items: ordenarPorFecha(evRadArr) },
+      { key: 'valoracion', label: 'Valoración en campo', icon: ClipboardList, claseBadge: 'bg-sky-100 text-sky-800 border border-sky-200', items: ordenarPorFecha(evValArr) },
+      { key: 'cierre', label: 'Cierre técnico', icon: ClipboarCheckIcon, claseBadge: 'bg-emerald-100 text-emerald-800 border border-emerald-200', items: ordenarPorFecha(evCieArr) },
     ];
+    Array.from(otrosPorActor.entries())
+      .sort((a, b) => a[1].label.localeCompare(b[1].label, 'es'))
+      .forEach(([actorKey, grupoActor]) => {
+        grupos.push({
+          key: `otras-${actorKey}`,
+          label: grupoActor.label,
+          icon: Paperclip,
+          claseBadge: 'bg-indigo-100 text-indigo-800 border border-indigo-200',
+          items: ordenarPorFecha(grupoActor.items),
+        });
+      });
     return grupos;
   }, [evidenciasFinales, detalle]);
 
@@ -518,6 +601,59 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
       setDetalle(d);
     } catch {
       // ignore; keep stale
+    }
+  };
+
+  const recargarDetalleYEvidencias = async () => {
+    if (!idSolicitud) return;
+    try {
+      const [d, evs] = await Promise.all([
+        infraestructuraService.getMantenimientoById(idSolicitud),
+        infraestructuraService.getEvidenciasBySolicitud(idSolicitud),
+      ]);
+      setDetalle(d);
+      setEvidenciasEndpoint(Array.isArray(evs) ? evs : []);
+    } catch {
+      // ignore; keep stale
+    }
+  };
+
+  const handleSeleccionarEvidenciaExtra = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    setArchivosEvidenciaExtra(files);
+    setErrorEvidenciaExtra('');
+  };
+
+  const handleSubirEvidenciaExtra = async () => {
+    if (!idSolicitud || archivosEvidenciaExtra.length === 0) return;
+    setSubiendoEvidenciaExtra(true);
+    setErrorEvidenciaExtra('');
+    try {
+      for (let i = 0; i < archivosEvidenciaExtra.length; i++) {
+        const archivo = archivosEvidenciaExtra[i];
+        await infraestructuraService.uploadEvidencia(archivo, {
+          idSolicitud,
+          orden: evidenciasFinales.length + i + 1,
+          notas: 'evidencia_adicional_actor',
+        });
+      }
+      setArchivosEvidenciaExtra([]);
+      if (inputEvidenciaExtraRef.current) inputEvidenciaExtraRef.current.value = '';
+      await recargarDetalleYEvidencias();
+      await onCambioExitoso?.();
+      setToastModal({
+        tipo: 'ok',
+        texto:
+          archivosEvidenciaExtra.length === 1
+            ? 'Evidencia adicional cargada correctamente.'
+            : `${archivosEvidenciaExtra.length} evidencias adicionales cargadas correctamente.`,
+      });
+    } catch (err: any) {
+      const msg = err?.message || 'No se pudo cargar la evidencia adicional.';
+      setErrorEvidenciaExtra(msg);
+      setToastModal({ tipo: 'err', texto: msg });
+    } finally {
+      setSubiendoEvidenciaExtra(false);
     }
   };
 
@@ -963,6 +1099,21 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
     rolesNormConformidad.has('ADMINISTRADOR_FUNCIONAL_INFRA')
   ));
   const esUsuarioSolicitanteConforme = !!(detalle && (esSolicitanteOriginalDeEstaSolicitud || esBypassConformidadValido));
+  const puedeAdjuntarEvidenciaAdicional = !!(
+    detalle &&
+    idSolicitud &&
+    (
+      esSolicitanteOriginalDeEstaSolicitud ||
+      tienePerm('infraestructura.solicitud.assign')
+    )
+  );
+  const tieneRemisionesRegistradas = remisiones.length > 0;
+  const tieneValoracionesRegistradas = valoraciones.length > 0;
+  const tieneHistoricoAsignaciones =
+    Array.isArray((detalle as any)?.asignaciones) && (detalle as any).asignaciones.length > 0;
+  const mostrarSeccionRemisiones = tieneRemisionesRegistradas;
+  const mostrarSeccionValoraciones = tieneValoracionesRegistradas;
+  const mostrarSeccionHistorico = tieneHistoricoAsignaciones;
 
   // EFDS-1736 helpers footer
   // Reapertura por rechazo conformidad (EFDS-1737 RF-INF-008 RECHAZADA_Y_REABIERTA):
@@ -1503,7 +1654,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                       <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
                         <div className="flex items-center justify-between gap-3">
                           <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                            Motor de sugerencia
+                            Sugerir técnico para asignación
                           </div>
                           <button
                             type="button"
@@ -1667,9 +1818,68 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                     {evidenciasFinales.length}
                   </span>
                 </div>
+                {puedeAdjuntarEvidenciaAdicional && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div className="space-y-1">
+                        <p className="text-sm font-bold text-slate-800">Cargar evidencia adicional</p>
+                        <p className="text-xs text-slate-600">
+                          Disponible para el solicitante original y el analista asignador. Estos archivos se agrupan en <strong>Otras evidencias</strong>.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-bold cursor-pointer transition-all">
+                          <Paperclip className="w-3.5 h-3.5" />
+                          Seleccionar archivos
+                          <input
+                            ref={inputEvidenciaExtraRef}
+                            type="file"
+                            multiple
+                            accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,image/heic,image/heif,application/pdf,video/mp4,video/webm,video/quicktime,video/x-m4v,video/x-msvideo,video/mpeg"
+                            className="hidden"
+                            onChange={handleSeleccionarEvidenciaExtra}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleSubirEvidenciaExtra}
+                          disabled={subiendoEvidenciaExtra || archivosEvidenciaExtra.length === 0}
+                          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:bg-slate-200 disabled:text-slate-500 disabled:cursor-not-allowed border border-amber-700 text-white text-xs font-bold transition-all"
+                        >
+                          {subiendoEvidenciaExtra ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                          {subiendoEvidenciaExtra ? 'Subiendo...' : 'Cargar a la solicitud'}
+                        </button>
+                      </div>
+                    </div>
+                    {archivosEvidenciaExtra.length > 0 && (
+                      <div className="rounded-xl border border-amber-200 bg-white px-3 py-2">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700 mb-1.5">
+                          {archivosEvidenciaExtra.length} archivo(s) listo(s) para cargar
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {archivosEvidenciaExtra.map((archivo) => (
+                            <span
+                              key={`${archivo.name}-${archivo.size}-${archivo.lastModified}`}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-700"
+                            >
+                              <Paperclip className="w-2.5 h-2.5" />
+                              {archivo.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {errorEvidenciaExtra && (
+                      <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                        {errorEvidenciaExtra}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {renderEvidencias()}
               </div>
 
+              {mostrarSeccionRemisiones && (
               <div className="space-y-4">
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 flex items-center gap-1.5 border-b border-slate-100 pb-2">
                   <GitBranch className="w-3.5 h-3.5" />
@@ -1741,10 +1951,12 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                   </div>
                 )}
               </div>
+              )}
 
               {/* ------------------------------------------------------------------- */}
               {/* EFDS-1735 RF-INF-006: Acordeón Valoraciones e insumos             */}
               {/* ------------------------------------------------------------------- */}
+              {mostrarSeccionValoraciones && (
               <div className="space-y-3">
                 <button
                   type="button"
@@ -1947,7 +2159,9 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                   </div>
                 )}
               </div>
+              )}
 
+              {mostrarSeccionHistorico && (
               <div className="space-y-3">
                 <button
                   type="button"
@@ -2119,6 +2333,7 @@ export const DetalleSolicitudModal: React.FC<DetalleSolicitudModalProps> = ({
                   );
                 })()}
               </div>
+              )}
             </>
           )}
         </div>
