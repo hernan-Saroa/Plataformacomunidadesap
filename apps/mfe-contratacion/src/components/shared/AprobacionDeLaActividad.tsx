@@ -3,7 +3,6 @@ import { ArrowRight, Ban, Check, ClipboardCheck, Undo2 } from 'lucide-react';
 
 import { usarAprobacion } from './usarAprobacion';
 import { useFirma } from './useFirma';
-import { useDialogo } from './useDialogo';
 import { HistorialRevisiones } from './HistorialRevisiones';
 import { ElegirSoportes } from './ElegirSoportes';
 import { EscalonesDeLaRonda } from './EscalonesDeLaRonda';
@@ -107,6 +106,15 @@ export function AprobacionDeLaActividad({
   const a = usarAprobacion(procesoId, numeral, onCambio, recargarToken);
   const [motivo, setMotivo] = useState('');
   const [devolviendo, setDevolviendo] = useState(false);
+  /**
+   * Negando: motivo y soportes, como al devolver. Era un diálogo de una línea,
+   * y la negativa es la decisión que más necesita sus documentos: no hay
+   * vuelta en la que explicarla después.
+   */
+  const [negando, setNegando] = useState(false);
+  /** Aprobando: abre lo que acompaña la aprobación, observaciones y soportes (113). */
+  const [aprobando, setAprobando] = useState(false);
+  const [comentario, setComentario] = useState('');
   /** Las correcciones marcadas que acompañan la devolución (migraciones 091 y 093). */
   const [soportes, setSoportes] = useState<File[]>([]);
 
@@ -115,7 +123,6 @@ export function AprobacionDeLaActividad({
    * propia acción (EFDS-2070). Devolver no la pide, porque no cierra nada.
    */
   const firma = useFirma(numeral, `Aprobar la actividad ${numeral}`);
-  const dialogo = useDialogo();
 
   /*
    * En qué escalón va y cuál sigue (migración 101). La firma solo la pide la
@@ -126,19 +133,6 @@ export function AprobacionDeLaActividad({
   const actual = escalones.find((e) => e.estado === 'PENDIENTE');
   const siguiente = actual ? escalones.find((e) => e.orden > actual.orden) : undefined;
   const puede = (accion: 'APROBAR' | 'DEVOLVER' | 'NEGAR') => a.acciones.includes(accion);
-
-  const negar = async () => {
-    const motivo = await dialogo.pedirMotivo({
-      titulo: `Negar la actividad ${numeral}`,
-      descripcion:
-        'Negar no es devolver: no hay nada que corregir y el proceso termina aquí. Quien la envió no podrá volver a enviarla.',
-      etiqueta: 'Por qué se niega',
-      placeholder: 'El motivo queda en el expediente y le llega a quien la envió',
-      confirmar: 'Negar la actividad',
-      tono: 'peligro',
-    });
-    if (motivo) await a.negar(motivo);
-  };
 
   /**
    * Si hay algo que decidir aquí, hacia quien monta el bloque.

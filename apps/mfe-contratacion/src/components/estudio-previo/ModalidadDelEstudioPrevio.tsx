@@ -51,15 +51,6 @@ export function ModalidadDelEstudioPrevio({ proceso }: Props) {
             estudio previo; si no corresponde, se devuelve diciendo cuál.
           </p>
         </div>
-        {puedeCambiar && !cambiando && (
-          <button
-            type="button"
-            onClick={abrir}
-            className="shrink-0 text-[11.5px] font-bold text-[#003DA5] hover:underline"
-          >
-            Cambiar
-          </button>
-        )}
       </div>
     </section>
   );

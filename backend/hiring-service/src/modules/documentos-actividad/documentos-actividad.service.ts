@@ -674,6 +674,7 @@ export class DocumentosActividadService {
             mimeType: d.archivoMimeType ?? null,
             revisadoPor: r.revisadoPor,
             devueltaAt: r.createdAt.toISOString(),
+            decision: r.decision,
           },
         ];
       }),
@@ -743,9 +744,12 @@ export class DocumentosActividadService {
   }
 
   /**
-   * Adjunta a una devolución el archivo con las correcciones (migración 091).
+   * Adjunta a una devolución el archivo con las correcciones (migración 091),
+   * a una aprobación lo que la sustenta: el concepto, las observaciones de
+   * quien aprueba (113), o a una negativa lo que la funda. Las tres son la
+   * traza de por qué se decidió así.
    *
-   * Solo lo hace quien devolvió, y solo sobre la última decisión: el soporte
+   * Solo lo hace quien decidió, y solo sobre la última decisión: el soporte
    * explica esa vuelta, y dejar que otro lo cambie —o que llegue después de
    * que el área ya corrigió y reenvió— lo desligaría de lo que explicaba.
    *
@@ -780,13 +784,17 @@ export class DocumentosActividadService {
         ((!!ultima.revisadoPorId && ultima.revisadoPorId === acceso.userId) ||
           ultima.revisadoPor?.trim().toLowerCase() === acceso.userName?.trim().toLowerCase());
 
-      if (!ultima || ultima.decision !== 'DEVUELTO' || !esSuya) {
+      const deAprobacion = ultima?.decision === 'APROBADO';
+      const deNegativa = ultima?.decision === 'NEGADO';
+      if (!ultima || !esSuya) {
         throw new ConflictException(
           'El soporte lo adjunta quien decidió la actividad, sobre su última decisión',
         );
       }
       // El estudio previo devuelto vuelve a borrador; lo demás queda DEVUELTO.
-      if (actividad.estado !== 'DEVUELTO' && actividad.estado !== 'BORRADOR') {
+      // Una aprobación o una negativa no tienen esa carrera: mientras sean la
+      // última decisión, nadie ha actuado después sobre lo que se decidió.
+      if (ultima.decision === 'DEVUELTO' && actividad.estado !== 'DEVUELTO' && actividad.estado !== 'BORRADOR') {
         throw new ConflictException(
           'La actividad ya se corrigió y se volvió a enviar: el soporte llegaría tarde',
         );
@@ -800,7 +808,13 @@ export class DocumentosActividadService {
           expedienteId: expediente.id,
           numeral,
           tipo: 'ADJUNTO',
-          nombre: `Soporte de la devolución · ${archivo.originalname}`,
+          nombre: `${
+            deAprobacion
+              ? 'Soporte de la aprobación'
+              : deNegativa
+                ? 'Soporte de la negativa'
+                : 'Soporte de la devolución'
+          } · ${archivo.originalname}`,
           archivoUrl: `hiring/files/${archivo.filename}`,
           archivoNombreOriginal: archivo.originalname,
           archivoMimeType: archivo.mimetype,
@@ -816,7 +830,11 @@ export class DocumentosActividadService {
 
       await this.traza(m, procesoId, documento.id, 'ADJUNTAR', acceso, {
         numeral,
-        soporteDeDevolucion: true,
+        ...(deAprobacion
+          ? { soporteDeAprobacion: true }
+          : deNegativa
+            ? { soporteDeNegativa: true }
+            : { soporteDeDevolucion: true }),
         revision: ultima.id,
         archivo: archivo.originalname,
       });

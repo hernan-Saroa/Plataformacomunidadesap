@@ -49,7 +49,8 @@ interface Props {
  *
  * Devolver admite archivos con las correcciones marcadas (migraciones 091 y
  * 093), como el módulo disciplinario: un párrafo resume mal veinte páginas
- * corregidas a mano.
+ * corregidas a mano. Aprobar y negar también, en cualquier escalón: lo que
+ * se adjunta es la traza de por qué se decidió así (113).
  */
 export function DecisionEstudioPrevio({
   procesoId,
@@ -83,8 +84,11 @@ export function DecisionEstudioPrevio({
     try {
       if (accion === 'aprobar') {
         await contratacionService.aprobar(procesoId, observaciones.trim() || undefined, firma);
+        // Lo que sustenta la aprobación del escalón queda en su decisión (113).
+        await adjuntarSoportes(procesoId, '3.1', soportes, 'Se aprobó');
       } else if (accion === 'negar') {
         await contratacionService.negar(procesoId, observaciones.trim());
+        await adjuntarSoportes(procesoId, '3.1', soportes, 'Se negó');
       } else {
         await contratacionService.devolver(procesoId, observaciones.trim());
         await adjuntarSoportes(procesoId, '3.1', soportes);
@@ -260,6 +264,18 @@ export function DecisionEstudioPrevio({
           className="w-full min-h-[110px] px-3 py-2 text-sm rounded-lg border border-gray-300
             focus:outline-none focus:border-[#003DA5] focus:ring-2 focus:ring-[#003DA5]/20"
         />
+        {accion === 'aprobar' && (
+          <div className="mt-3">
+            <ElegirSoportes
+              archivos={soportes}
+              onCambio={setSoportes}
+              etiqueta="Documentos que sustentan la aprobación (opcional)"
+            />
+            <p className="text-[11px] text-gray-500 mt-1.5 mb-0">
+              Lo que escribas y adjuntes queda en el historial de la revisión, con tu nombre.
+            </p>
+          </div>
+        )}
         {accion === 'devolver' && (
           <>
             <p className="text-[11px] text-gray-500 mt-2 mb-0">
@@ -279,6 +295,15 @@ export function DecisionEstudioPrevio({
             A quien le niegan un proceso hay que decirle por qué: no va a tener ocasión de
             preguntarlo corrigiendo. La 3.1 queda cerrada y el proceso no se reabre.
           </p>
+        )}
+        {accion === 'negar' && (
+          <div className="mt-3">
+            <ElegirSoportes
+              archivos={soportes}
+              onCambio={setSoportes}
+              etiqueta="Documentos que fundan la negativa (opcional)"
+            />
+          </div>
         )}
         {error && (
           <p role="alert" className="text-[11.5px] font-bold text-red-600 m-0 mt-2">

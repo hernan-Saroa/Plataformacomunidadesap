@@ -495,6 +495,29 @@ describe('AprobacionDeLaActividad · cadena de escalones', () => {
     expect(screen.queryByRole('button', { name: /Devolver/ })).toBeNull();
   });
 
+  it('al negar pide el motivo y deja adjuntar varios soportes', async () => {
+    montar(
+      estado({ estado: 'EN_REVISION', puedoAprobar: true, acciones: ['APROBAR', 'NEGAR'], ronda: ronda(['APROBAR', 'NEGAR']) }),
+      'decision',
+    );
+    const negar = vi.spyOn(contratacionService, 'negarActividad').mockResolvedValue({} as never);
+    const subir = vi.spyOn(contratacionService, 'subirSoporteDevolucion').mockResolvedValue({} as never);
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Negar/ }));
+    expect(screen.getByRole('button', { name: 'Negar la actividad' })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText('Motivo de la negativa'), 'No hay apropiación');
+    const concepto = new File(['x'], 'concepto.pdf', { type: 'application/pdf' });
+    const oficio = new File(['y'], 'oficio.pdf', { type: 'application/pdf' });
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, [concepto, oficio]);
+    await userEvent.click(screen.getByRole('button', { name: 'Negar la actividad' }));
+
+    await waitFor(() => expect(negar).toHaveBeenCalledWith(PROCESO, '5.9', 'No hay apropiación'));
+    await waitFor(() => expect(subir).toHaveBeenCalledTimes(2));
+    expect(subir).toHaveBeenNthCalledWith(1, PROCESO, '5.9', concepto);
+    expect(subir).toHaveBeenNthCalledWith(2, PROCESO, '5.9', oficio);
+  });
+
   it('a quien no le toca le muestra los escalones y a quién espera', async () => {
     montar(estado({ estado: 'EN_REVISION', aprobadores: { roles: ['Coordinador'], personas: [] }, acciones: [], ronda: ronda([]) }));
 

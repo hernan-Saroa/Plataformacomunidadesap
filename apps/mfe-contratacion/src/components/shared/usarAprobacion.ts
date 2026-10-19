@@ -244,10 +244,10 @@ export function usarAprobacion(
         await contratacionService.devolverActividad(procesoId, numeral, observaciones);
         await adjuntarSoportes(procesoId, numeral, soportes);
       }, 'Devuelta con tus observaciones'),
-    negar: (observaciones: string) =>
-      accion(
-        () => contratacionService.negarActividad(procesoId, numeral, observaciones),
-        'Actividad negada: el proceso terminó',
-      ),
+    negar: (observaciones: string, soportes: File[] = []) =>
+      accion(async () => {
+        await contratacionService.negarActividad(procesoId, numeral, observaciones);
+        await adjuntarSoportes(procesoId, numeral, soportes, 'Se negó');
+      }, 'Actividad negada: el proceso terminó'),
   };
 }

@@ -101,8 +101,30 @@ describe('soporte de la devolución', () => {
     const { service } = montar({ ultima: { decision: 'APROBADO' } as any });
 
     await expect(
-      service.cargarSoporteDeDevolucion('p-1', '4.1', archivo, 'hash', abogado),
-    ).rejects.toThrow(/quien devolvió/);
+      service.cargarSoporteDeDevolucion('p-1', '5.6.1', archivo, 'hash', otro),
+    ).rejects.toThrow(/quien decidió/);
+  });
+
+  it('quien negó adjunta lo que funda la negativa, aunque el proceso ya terminó', async () => {
+    const { service, revision, guardados } = montar({
+      estado: 'NEGADO',
+      ultima: { decision: 'NEGADO' } as any,
+    });
+
+    const resultado = await service.cargarSoporteDeDevolucion('p-1', '5.6.1', archivo, 'hash', abogado);
+
+    expect(resultado.nombre).toMatch(/^Soporte de la negativa/);
+    expect(revision!.soportesDocumentoIds).toEqual([resultado.id]);
+    const traza = guardados.find((g) => g.fila?.accion === 'ADJUNTAR');
+    expect(traza?.fila.detalle).toMatchObject({ soporteDeNegativa: true });
+  });
+
+  it('nadie adjunta sobre la negativa de otro', async () => {
+    const { service } = montar({ ultima: { decision: 'NEGADO' } as any });
+
+    await expect(
+      service.cargarSoporteDeDevolucion('p-1', '5.6.1', archivo, 'hash', otro),
+    ).rejects.toThrow(/quien decidió/);
   });
 
   it('llega tarde si el área ya reenvió', async () => {
