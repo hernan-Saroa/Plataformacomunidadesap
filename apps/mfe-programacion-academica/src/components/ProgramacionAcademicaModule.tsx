@@ -167,9 +167,23 @@ export function ProgramacionAcademicaModule({
         const def = respuesta.periodos.find((p) => p.esActivo) || respuesta.periodos[0] || respuesta.legado[0];
         return def ? def.idPeriodo : '';
       });
-    }).catch((e) => { if (vigente) setPeriodoError(e?.message || 'No se pudieron consultar los periodos.'); });
+    }).catch((e) => {
+      if (!vigente) return;
+      // 403 = el perfil no programa ningún nivel (p. ej. la jefatura, que solo revisa y aprueba).
+      if (e?.status === 403) { setSoloRevision(true); return; }
+      setPeriodoError(e?.message || 'No se pudieron consultar los periodos.');
+    });
     return () => { vigente = false; };
   }, [revisionPeriodos]);
+
+  // Perfil de REVISIÓN (jefatura): no programa, así que no ve la cabecera de periodo, los indicadores ni las
+  // secciones de programación —todas piden permisos que no tiene y solo mostraban errores—. Ve lo suyo:
+  // la concertación y, si es jefatura territorial, la aprobación. Antes veía «Sin periodos» y «No tiene permisos».
+  const [soloRevision, setSoloRevision] = useState(false);
+  useEffect(() => {
+    if (!soloRevision) return;
+    setSeccion((s) => (s === 'concertacion' || s === 'aprobacion') ? s : (concertacion?.habilitada ? 'concertacion' : 'aprobacion'));
+  }, [soloRevision, concertacion]);
 
   const elegirPeriodo = (id: string) => {
     setPeriodoSel(id);
@@ -250,6 +264,7 @@ export function ProgramacionAcademicaModule({
     {
       title: 'GESTIÓN PRINCIPAL',
       items: [
+        ...(soloRevision ? [] : [
         {
           // EFDS-1368: punto de entrada del flujo — nivel → programa → catálogo.
           id: 'catalogo',
@@ -296,6 +311,7 @@ export function ProgramacionAcademicaModule({
           color: '#D97706',
           badge: totalConflictosHistoricos > 0 ? totalConflictosHistoricos : undefined,
         },
+        ]),
         // EFDS-1939 — solo para jefaturas territoriales.
         ...(esJefatura ? [{
           id: 'aprobacion',
@@ -336,7 +352,8 @@ export function ProgramacionAcademicaModule({
       activeSection={seccion}
       onSectionChange={(s) => setSeccion(s as Seccion)}
     >
-      {/* ── PERIODO ACTIVO (§1.0) — contexto de todo lo de abajo ── */}
+      {/* ── PERIODO ACTIVO (§1.0) — contexto de todo lo de abajo. El perfil de revisión no lo usa. ── */}
+      {!soloRevision && (<>
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs mb-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
         <div className="flex items-center gap-3">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Periodo</span>
@@ -432,6 +449,7 @@ export function ProgramacionAcademicaModule({
           </div>
         </div>
       </div>
+      </>)}
 
       {/* ── PUBLICAR EL PERIODO (§1.2) — desde la vista de programación ── */}
       {seccion === 'horarios' && estadoPub && periodoActual && periodoProgramable && (

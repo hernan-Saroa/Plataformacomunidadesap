@@ -82,7 +82,8 @@ async function peticion<T>(ruta: string, init: RequestInit = {}, permitirResulta
   if (!res.ok || (!permitirResultadoInvalido && cuerpo?.success === false)) {
     const mensaje = cuerpo?.message ?? cuerpo?.error ?? cuerpo?.errores?.join('; ');
     if (Array.isArray(cuerpo?.errors)) throw new ErrorImportacion(String(mensaje || `La solicitud falló (${res.status}).`), cuerpo.errors.map(String));
-    throw new Error(Array.isArray(mensaje) ? mensaje.join('; ') : mensaje || `La solicitud falló (${res.status}).`);
+    // El código HTTP viaja en el error: un 403 aquí distingue «este perfil no programa» (jefatura) de una falla.
+    throw Object.assign(new Error(Array.isArray(mensaje) ? mensaje.join('; ') : mensaje || `La solicitud falló (${res.status}).`), { status: res.status });
   }
   return (cuerpo?.data ?? cuerpo) as T;
 }
