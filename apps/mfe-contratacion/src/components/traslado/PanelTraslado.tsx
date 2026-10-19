@@ -303,7 +303,7 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
       {!traslado.hayResultado && (
         <Pendiente
           falta="6.3"
-          texto="El comité todavía no ha registrado el resultado de la evaluación: no hay informe que trasladar."
+          texto="El comité todavía no ha cargado el informe de evaluación preliminar: no hay informe que trasladar."
         />
       )}
 
@@ -325,50 +325,15 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
 
       {informe && <ResumenInforme informe={informe} />}
 
-      {traslado.puedeGenerar && (
-        <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
-          <p className="text-[12.5px] font-bold text-slate-800 m-0">
-            {informe ? 'Actualizar el informe preliminar' : 'Generar el informe preliminar'}
-          </p>
-          <p className="text-[11.5px] text-slate-500 m-0">
-            Se congela el resultado que el comité registró. Si el comité rectifica antes de
-            trasladar, vuelve a generarlo para tomar la fotografía otra vez.
-          </p>
-
-          <textarea
-            className={`${campo} min-h-[64px]`}
-            placeholder="Observación de la entidad sobre el informe (opcional)"
-            value={observacion}
-            onChange={(e) => setObservacion(e.target.value)}
-          />
-
-          <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
-            <UploadCloud size={15} className="text-slate-400" />
-            <span>{documentoInforme?.name ?? 'Adjuntar el informe preliminar (PDF, Word, Excel)'}</span>
-            <input
-              type="file"
-              className="hidden"
-              onChange={(e) => setDocumentoInforme(e.target.files?.[0] ?? null)}
-            />
-          </label>
-
-          <Boton
-            icono={<FileText className="w-3.5 h-3.5" />}
-            onClick={generar}
-            disabled={guardando || (!informe && !documentoInforme)}
-          >
-            {informe ? 'Actualizar informe' : 'Generar informe'}
-          </Boton>
-        </div>
-      )}
-
       {traslado.puedeTrasladar && (
         <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
-          <p className="text-[12.5px] font-bold text-slate-800 m-0">Publicar y trasladar</p>
+          <p className="text-[12.5px] font-bold text-slate-800 m-0">
+            Publicación y traslado del informe preliminar
+          </p>
           <p className="text-[11.5px] text-slate-500 m-0">
-            No hay integración con SECOP II: la publicación la hace el gestor por allá y aquí se
-            registra con su soporte. Trasladar abre el término y ya no se puede rehacer el informe
-            sin anularlo.
+            El informe que se traslada es el que el comité cargó en la 6.3; aquí se carga la
+            evidencia de su publicación y traslado. No hay integración con SECOP II: la publicación
+            se hace por allá. Trasladar abre el término de subsanaciones y observaciones.
           </p>
 
           <input
@@ -380,7 +345,7 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
 
           <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
             <UploadCloud size={15} className="text-slate-400" />
-            <span>{evidencia?.name ?? 'Adjuntar el soporte de la publicación'}</span>
+            <span>{evidencia?.name ?? 'Adjuntar la evidencia de la publicación y el traslado'}</span>
             <input
               type="file"
               className="hidden"
@@ -572,6 +537,7 @@ export function PanelTraslado({ procesoId, onCambio }: Props) {
                   </span>
                   <input
                     type="file"
+                    multiple
                     className="hidden"
                     aria-label="Archivos del escrito"
                     onChange={(e) => {
@@ -720,19 +686,22 @@ function ResumenInforme({ informe }: { informe: InformeEvaluacion }) {
         )}
       </div>
 
-      <p className="text-[12px] text-slate-600 m-0">
-        Ganadora: <strong>{resultado.ganadora.nombre}</strong>
-        {resultado.puntajeObtenido != null && (
-          <>
-            {' '}
-            · {resultado.puntajeObtenido} de {resultado.puntajeMaximo}
-          </>
-        )}
-        {resultado.valorEvaluado != null && <> · {pesos(resultado.valorEvaluado)}</>}
-      </p>
+      {/* Desde la 120 el preliminar no nombra ganadora; los de antes sí. */}
+      {resultado.ganadora && (
+        <p className="text-[12px] text-slate-600 m-0">
+          Ganadora: <strong>{resultado.ganadora.nombre}</strong>
+          {resultado.puntajeObtenido != null && (
+            <>
+              {' '}
+              · {resultado.puntajeObtenido} de {resultado.puntajeMaximo}
+            </>
+          )}
+          {resultado.valorEvaluado != null && <> · {pesos(resultado.valorEvaluado)}</>}
+        </p>
+      )}
       <p className="text-[11.5px] text-slate-500 m-0">
-        {informe.ofertasRecibidas} ofertas recibidas. Es una copia del resultado que registró el
-        comité; si lo rectifica después, este informe no cambia.
+        {informe.ofertasRecibidas} ofertas recibidas. Es una copia del informe que cargó el comité;
+        si lo vuelve a cargar después, lo trasladado no cambia.
       </p>
 
       {informe.observacionEntidad && (

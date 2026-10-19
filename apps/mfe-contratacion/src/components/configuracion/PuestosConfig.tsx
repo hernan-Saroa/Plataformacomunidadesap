@@ -57,6 +57,7 @@ export function PuestosConfig({ onCambio }: { onCambio?: () => void } = {}) {
       toast.success(editando === 'nuevo' ? `Se creó el puesto ${datos.nombre}` : 'Se guardó el puesto');
       setEditando(null);
       await leer();
+      onCambio?.();
     } catch (e: any) {
       toast.error(e.message ?? 'No se pudo guardar');
     } finally {
@@ -78,6 +79,7 @@ export function PuestosConfig({ onCambio }: { onCambio?: () => void } = {}) {
       await contratacionService.archivarPuesto(p.id);
       toast.success(`Se archivó el puesto ${p.nombre}`);
       await leer();
+      onCambio?.();
     } catch (e: any) {
       toast.error(e.message ?? 'No se pudo archivar');
     } finally {
@@ -138,7 +140,10 @@ export function PuestosConfig({ onCambio }: { onCambio?: () => void } = {}) {
         <ol className="m-0 pl-5 space-y-0.5">
           <li>Aquí creas el puesto.</li>
           <li>En cada actividad eliges si ese puesto la hace o la aprueba.</li>
-          <li>Al recibir un proceso (3.3) se escoge la persona que ocupa el puesto en ese proceso.</li>
+          <li>
+            Al recibir un proceso (3.3) se escoge la persona que ocupa el puesto en ese proceso. Después se puede
+            cambiar desde el equipo del proceso.
+          </li>
         </ol>
         <p className="m-0 text-slate-500">
           Solo se puede escoger a alguien que tenga permiso para hacer lo que hace el puesto.

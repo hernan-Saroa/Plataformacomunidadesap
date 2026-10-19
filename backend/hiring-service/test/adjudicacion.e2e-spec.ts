@@ -169,14 +169,8 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.3)', () => {
     // El informe preliminar no nombra ganadora: se decide en la 7.2 (EFDS-1157).
     await evaluacion.registrar(
       proceso.id,
-      {
-        oferenteId: estado.oferentes[1].id,
-        puntajeObtenido: 92.5,
-        puntajeMaximo: 100,
-        justificacion: JUSTIFICACION,
-      },
-      archivo('informe-comite.pdf'),
-      'i'.repeat(64),
+      { observacion: JUSTIFICACION },
+      [{ archivo: archivo('informe-comite.pdf'), hash: 'i'.repeat(64) }],
       juridica.acceso,
     );
 
@@ -229,8 +223,23 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.3)', () => {
       gestor,
     );
 
-  const generarDefinitivo = (procesoId: string) =>
-    definitivo.generar(procesoId, archivo('definitivo.pdf'), 'd'.repeat(64), gestor);
+  /** Las ofertas del proceso, en el orden en que se recibieron. */
+  const ofertasDe = async (procesoId: string): Promise<{ id: string }[]> =>
+    dataSource.query(
+      `SELECT o.id FROM hiring.oferentes o
+         JOIN hiring.recepciones_ofertas r ON r.id = o.recepcion_id
+        WHERE r.proceso_id = $1 ORDER BY o.numero`,
+      [procesoId],
+    );
+
+  /**
+   * El definitivo nombra la ganadora (EFDS-1157). Gana la segunda oferta, Cara
+   * SAS, salvo que la prueba diga otra.
+   */
+  const generarDefinitivo = async (procesoId: string, ganadoraId?: string) =>
+    definitivo.generar(procesoId, archivo('definitivo.pdf'), 'd'.repeat(64), gestor, undefined, {
+      oferenteId: ganadoraId ?? (await ofertasDe(procesoId))[1].id,
+    });
 
   const publicarDefinitivo = (procesoId: string) =>
     definitivo.publicar(
@@ -470,7 +479,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.3)', () => {
           null,
           gestor,
         ),
-      ).rejects.toThrow(/no adelanta la actividad 7\.2/i);
+      ).rejects.toThrow(/no adelanta la actividad 7\.1\.1/i);
     });
   });
 
@@ -505,13 +514,10 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.3)', () => {
         {
           oferenteId: oferentes[0].id,
           tipo: 'SUBSANACION',
-          presentadoPor: 'Barata SAS',
           fechaPresentacion: hoy(),
           asunto: 'Aporta certificación de experiencia',
-          contenido: 'Se adjunta la certificación que no se cargó con la oferta.',
         },
-        archivo('escrito.pdf'),
-        's'.repeat(64),
+        [{ archivo: archivo('escrito.pdf'), hash: 's'.repeat(64) }],
         gestor,
       );
       await escritos.responder(
@@ -524,34 +530,57 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.3)', () => {
       );
       await vencerYCerrar(proceso.id);
 
-      // El comité rectifica y ahora gana la otra.
-      await evaluacion.rectificar(
+      // El comité vuelve a cargar el informe con lo aportado.
+      await evaluacion.actualizar(
         proceso.id,
         { motivo: 'Se aceptó la certificación aportada en el traslado' },
-        juridica.acceso,
-      );
-      await evaluacion.registrar(
-        proceso.id,
-        { oferenteId: oferentes[0].id, justificacion: JUSTIFICACION },
-        archivo('informe-comite-2.pdf'),
-        'j'.repeat(64),
+        [{ archivo: archivo('informe-comite-2.pdf'), hash: 'j'.repeat(64) }],
         juridica.acceso,
       );
 
-      const estado = await generarDefinitivo(proceso.id);
+      const estado = await generarDefinitivo(proceso.id, oferentes[0].id);
 
-      expect(estado.informe!.resultado.ganadora.nombre).toBe('Barata SAS');
-      // Y deja escrito por qué el desenlace no es el que se notificó.
+      expect(estado.informe!.resultado.ganadora!.nombre).toBe('Barata SAS');
+      // Y deja escrito qué movió el desenlace respecto de lo notificado.
       expect(estado.informe!.cambios.huboRectificacion).toBe(true);
-      expect(estado.informe!.cambios.cambioLaGanadora).toBe(true);
+      // El preliminar no nombró ganadora: no hay una que haya cambiado.
+      expect(estado.informe!.cambios.cambioLaGanadora).toBe(false);
       expect(estado.informe!.cambios.motivoRectificacion).toMatch(/certificación/i);
       expect(estado.informe!.cambios.subsanacionesAceptadas).toHaveLength(1);
       expect(estado.informe!.cambios.subsanacionesAceptadas[0].oferente).toBe('Barata SAS');
       expect(estado.informe!.cambios.escritosPresentados).toBe(1);
 
-      // El informe preliminar sigue diciendo lo que se notificó.
+      // El informe preliminar sigue diciendo lo que se notificó, sin ganadora.
       const preliminar = await traslado.estado(proceso.id, gestor);
-      expect(preliminar.informe!.resultado.ganadora.nombre).toBe('Cara SAS');
+      expect(preliminar.informe!.resultado.ganadora).toBeNull();
+    });
+
+    it('el definitivo es donde se nombra la ganadora (QA, EFDS-1157)', async () => {
+      const { proceso, oferentes } = await listoParaAdjudicar('ABREVIADA_MENOR_CUANTIA');
+
+      await expect(
+        definitivo.generar(proceso.id, archivo('definitivo.pdf'), 'd'.repeat(64), gestor),
+      ).rejects.toThrow(/cuál oferta gana/i);
+
+      const estado = await definitivo.generar(
+        proceso.id,
+        archivo('definitivo.pdf'),
+        'd'.repeat(64),
+        gestor,
+        undefined,
+        { oferenteId: oferentes[0].id, valorEvaluado: 39_500_000 },
+      );
+      expect(estado.informe!.resultado.ganadora!.nombre).toBe('Barata SAS');
+      expect(estado.informe!.resultado.valorEvaluado).toBe(39_500_000);
+      expect(estado.informe!.resultado.ofertas.find((o) => o.ganadora)!.oferenteId).toBe(
+        oferentes[0].id,
+      );
+
+      // Y el acto propone la que el definitivo nombró.
+      await publicarDefinitivo(proceso.id);
+      const elActo = await acto.estado(proceso.id);
+      expect(elActo.ganadoraPropuesta!.oferenteId).toBe(oferentes[0].id);
+      expect(elActo.ganadoraPropuesta!.valorEvaluado).toBe(39_500_000);
     });
 
     it('sin cambios, el definitivo lo dice también', async () => {

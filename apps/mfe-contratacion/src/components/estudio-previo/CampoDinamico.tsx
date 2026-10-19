@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { CampoFormulario } from '../../types';
 import { SelectorPersona } from './SelectorPersona';
 import { SelectorDependencia } from './SelectorDependencia';
-import { SelectorCargo } from './SelectorCargo';
 
 /**
  * Campos que nombran a un funcionario. Va por codigo y no por tipo porque

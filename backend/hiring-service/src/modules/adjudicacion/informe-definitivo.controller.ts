@@ -82,7 +82,14 @@ export class InformeDefinitivoController {
 
     try {
       const hash = await sha256Archivo(ruta);
-      return await this.service.generar(procesoId, file, hash, getHiringAccess(req));
+      return await this.service.generar(
+        procesoId,
+        file,
+        hash,
+        getHiringAccess(req),
+        dto.motivo,
+        dto,
+      );
     } catch (error) {
       await unlink(ruta).catch(() => undefined);
       throw error;

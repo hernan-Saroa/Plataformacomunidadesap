@@ -77,18 +77,6 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
     );
   };
 
-  /** La audiencia de riesgos, que en licitación pública condiciona la apertura. */
-  const celebrarAudiencia = (procesoId: string) =>
-    riesgos.registrar(
-      procesoId,
-      { fechaCelebracion: datos.resolucionFecha },
-      archivo('acta-audiencia.pdf'),
-      '7'.repeat(64),
-      archivo('matriz-riesgos.xlsx'),
-      '8'.repeat(64),
-      gestor,
-    );
-
   const abrir = (procesoId: string) =>
     apertura.registrar(
       procesoId,
@@ -109,7 +97,6 @@ describe('HU EFDS-1152 · apertura del proceso (actividad 5.7)', () => {
 
     apertura = app.get(AperturaService);
     cdp = app.get(CdpService);
-    riesgos = app.get(RiesgosService);
     procesos = app.get(EstudioPrevioService);
     dataSource = app.get(DataSource);
   });

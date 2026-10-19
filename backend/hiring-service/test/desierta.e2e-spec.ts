@@ -182,7 +182,12 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
     );
 
   /** Deja registrado el resultado del comité, para el caso de la contradicción. */
-  const conResultadoDelComite = async (procesoId: string, oferenteId: string) => {
+  /**
+   * El informe preliminar del comité. Con `oferenteId`, uno de antes de la 120,
+   * cuando la evaluación todavía nombraba ganadora: la regla de apartarse de
+   * ella sigue valiendo para esos expedientes.
+   */
+  const conResultadoDelComite = async (procesoId: string, oferenteId?: string) => {
     await comite.designar(
       procesoId,
       {
@@ -200,22 +205,23 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
 
     await evaluacion.registrar(
       procesoId,
-      {
-        oferenteId,
-        puntajeObtenido: 92.5,
-        puntajeMaximo: 100,
-        justificacion: 'Cumplió los requisitos habilitantes y obtuvo el mayor puntaje.',
-      },
-      archivo('informe-comite.pdf'),
-      'i'.repeat(64),
+      {},
+      [{ archivo: archivo('informe-comite.pdf'), hash: 'i'.repeat(64) }],
       juridica.acceso,
     );
+    if (oferenteId) {
+      await dataSource.query(
+        `UPDATE hiring.resultados_evaluacion SET oferente_id = $2
+          WHERE proceso_id = $1 AND estado = 'VIGENTE'`,
+        [procesoId, oferenteId],
+      );
+    }
   };
 
   /** Todo el camino hasta el acto de adjudicación vigente. */
   const hastaAdjudicado = async () => {
     const { proceso, oferentes } = await hastaRecepcionCerrada('ABREVIADA_MENOR_CUANTIA', 2);
-    await conResultadoDelComite(proceso.id, oferentes[1].id);
+    await conResultadoDelComite(proceso.id);
 
     await traslado.generar(
       proceso.id,
@@ -238,7 +244,14 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
     );
     await escritos.cerrar(proceso.id, {}, gestor);
 
-    await definitivo.generar(proceso.id, archivo('definitivo.pdf'), 'd'.repeat(64), gestor);
+    await definitivo.generar(
+      proceso.id,
+      archivo('definitivo.pdf'),
+      'd'.repeat(64),
+      gestor,
+      undefined,
+      { oferenteId: oferentes[1].id },
+    );
     await definitivo.publicar(
       proceso.id,
       { enlace: 'https://community.secop.gov.co/Public/Tendering/OpportunityDetail/Index?noticeUID=CO1.NTC.1' },
@@ -400,6 +413,20 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
       const { proceso } = await hastaRecepcionCerrada('ABREVIADA_MENOR_CUANTIA', 2);
 
       await expect(declarar(proceso.id, {}, false)).rejects.toThrow(/informe del comité/i);
+    });
+
+    it('desde la etapa 6, el informe preliminar ya cargado sirve de informe del comité (QA, EFDS-1157)', async () => {
+      const { proceso } = await hastaRecepcionCerrada('ABREVIADA_MENOR_CUANTIA', 2);
+      await conResultadoDelComite(proceso.id);
+
+      expect((await desierta.estado(proceso.id)).informePreliminarCargado).toBe(true);
+
+      // Sin subir otro informe y sin justificar: el preliminar no nombró ganadora.
+      const estado = await declarar(proceso.id, {}, false);
+
+      expect(estado.declaratoria!.causal).toBe('SIN_OFERTAS_HABILITADAS');
+      expect(estado.declaratoria!.informeComite).not.toBeNull();
+      expect(estado.declaratoria!.seApartaDelResultado).toBe(false);
     });
 
     it('deja las actividades de la etapa 7 en NO_APLICA', async () => {

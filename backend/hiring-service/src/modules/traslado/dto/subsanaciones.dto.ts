@@ -9,7 +9,6 @@ import {
   IsString,
   IsUUID,
   MaxLength,
-  MinLength,
   ValidateNested,
 } from 'class-validator';
 

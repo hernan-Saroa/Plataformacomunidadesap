@@ -136,10 +136,16 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
       // Apartarse de la ganadora es legítimo —el ganador que no firma, por
       // ejemplo— pero no puede pasar sin que quede dicho por qué. El sistema no
       // lo impide: pone la contradicción delante y exige sustentarla.
-      const esLaGanadora = definitivo.resultado.ganadora.oferenteId === adjudicatario.id;
+      const propuesta = definitivo.resultado.ganadora;
+      if (!propuesta) {
+        throw new ConflictException(
+          'El informe definitivo no dice cuál oferta gana: actualízalo con la ganadora antes de adjudicar (7.2)',
+        );
+      }
+      const esLaGanadora = propuesta.oferenteId === adjudicatario.id;
       if (!esLaGanadora && !dto.justificacion?.trim()) {
         throw new BadRequestException(
-          `El informe definitivo propone a ${definitivo.resultado.ganadora.nombre}: si se adjudica a otro, di por qué`,
+          `El informe definitivo propone a ${propuesta.nombre}: si se adjudica a otro, di por qué`,
         );
       }
 

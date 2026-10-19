@@ -54,7 +54,10 @@ export function PanelDesierta({ procesoId, estado, onCambio }: Props) {
   // La causal la fija el expediente, no el usuario: si hubo ofertas es que
   // ninguna quedó habilitada, y si no hubo es que no se presentó nadie.
   const causal: CausalDesierta | null = estado.causalesPosibles[0] ?? null;
-  const exigeInforme = causal === 'SIN_OFERTAS_HABILITADAS';
+  // Con el informe preliminar de la 6.3 cargado, ese es el del comité y no se
+  // pide otra vez (EFDS-1157): se puede adjuntar otro, pero no hace falta.
+  const pideInforme = causal === 'SIN_OFERTAS_HABILITADAS';
+  const exigeInforme = pideInforme && !estado.informePreliminarCargado;
   const exigeJustificacion = !!estado.ganadoraDelComite;
 
   const conGuardado = async (accion: () => Promise<unknown>, exito: string) => {
@@ -82,7 +85,7 @@ export function PanelDesierta({ procesoId, estado, onCambio }: Props) {
           justificacion: justificacion.trim() || undefined,
         },
         actoArchivo as File,
-        exigeInforme ? informeComite : null,
+        pideInforme ? informeComite : null,
       );
       setDeclarando(false);
       setMotivo('');
@@ -215,11 +218,14 @@ export function PanelDesierta({ procesoId, estado, onCambio }: Props) {
               />
             </label>
 
-            {exigeInforme && (
+            {pideInforme && (
               <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
                 <UploadCloud size={15} className="text-slate-400" />
                 <span>
-                  {informeComite?.name ?? 'Adjuntar el informe del comité (ninguna habilitada)'}
+                  {informeComite?.name ??
+                    (exigeInforme
+                      ? 'Adjuntar el informe del comité (ninguna habilitada)'
+                      : 'Se toma el informe preliminar de la 6.3 · adjuntar otro (opcional)')}
                 </span>
                 <input
                   type="file"

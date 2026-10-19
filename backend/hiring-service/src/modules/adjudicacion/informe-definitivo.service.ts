@@ -113,6 +113,8 @@ export class InformeDefinitivoService extends AdjudicacionBase {
     archivo: ArchivoCargado | null,
     hash: string | null,
     acceso: HiringAccess,
+    motivo?: string,
+    decision: { oferenteId?: string; valorEvaluado?: number; justificacion?: string } = {},
   ) {
     await this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
@@ -149,8 +151,24 @@ export class InformeDefinitivoService extends AdjudicacionBase {
         .getRepository(EvidenciaEvaluacion)
         .find({ where: { resultadoId: resultado.id }, order: { createdAt: 'ASC' } });
 
-      const snapshot = congelarResultado(proceso.modalidad, resultado, oferentes, evidencias);
-      const cambios = await this.calcularCambios(em, preliminar, resultado, oferentes);
+      // La ganadora se decide aquí (EFDS-1157). Al actualizar sin nombrarla se
+      // conserva la que ya tenía el informe, con su valor y su justificación.
+      const anterior = previo?.resultado ?? null;
+      const ganadoraId = decision.oferenteId ?? anterior?.ganadora?.oferenteId ?? null;
+      if (!ganadoraId) {
+        throw new BadRequestException(
+          'Di cuál oferta gana: la evaluación preliminar no la nombra, se decide en el informe definitivo',
+        );
+      }
+      const mismaGanadora = ganadoraId === anterior?.ganadora?.oferenteId;
+      const snapshot = congelarResultado(proceso.modalidad, resultado, oferentes, evidencias, {
+        oferenteId: ganadoraId,
+        valorEvaluado:
+          decision.valorEvaluado ?? (mismaGanadora ? anterior?.valorEvaluado : undefined),
+        justificacion:
+          decision.justificacion ?? (mismaGanadora ? anterior?.justificacion : undefined),
+      });
+      const cambios = await this.calcularCambios(em, preliminar, resultado, oferentes, ganadoraId);
 
       const documentoId = archivo
         ? (
@@ -341,6 +359,7 @@ export class InformeDefinitivoService extends AdjudicacionBase {
     preliminar: InformeEvaluacion,
     vigente: ResultadoEvaluacion,
     oferentes: Oferente[],
+    ganadoraId: string,
   ): Promise<CambiosDelDefinitivo> {
     const escritos = await em
       .getRepository(Subsanacion)
@@ -361,7 +380,10 @@ export class InformeDefinitivoService extends AdjudicacionBase {
     return {
       huboRectificacion: preliminar.resultadoId !== vigente.id,
       motivoRectificacion: rectificado?.motivoRectificacion ?? null,
-      cambioLaGanadora: preliminar.resultado?.ganadora?.oferenteId !== vigente.oferenteId,
+      // Desde la 120 el preliminar no nombra ganadora: solo cambia si la nombró.
+      cambioLaGanadora:
+        !!preliminar.resultado?.ganadora &&
+        preliminar.resultado.ganadora.oferenteId !== ganadoraId,
       subsanacionesAceptadas: aceptadas.map((e) => ({
         id: e.id,
         oferente: porOferta.get(e.oferenteId)?.nombre ?? 'Oferta retirada',

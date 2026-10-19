@@ -109,7 +109,7 @@ const escrito = (parcial: Partial<Subsanacion> = {}): Subsanacion => ({
   extemporanea: false,
   asunto: 'Aporta certificación de experiencia',
   contenido: 'Se adjunta la certificación que no se cargó con la oferta.',
-  soporte: { id: 'd-2', nombre: 'certificacion.pdf', archivoUrl: '/documentos/d-2' },
+  soportes: [{ id: 'd-2', nombre: 'certificacion.pdf', archivoUrl: '/documentos/d-2' }],
   respuesta: null,
   respuestaDocumento: null,
   aceptada: null,
@@ -143,11 +143,27 @@ describe('PanelTraslado · actividades 6.4 a 6.6', () => {
     servicio.subsanaciones.mockResolvedValue(subsanaciones());
   });
 
-  it('dice que el resultado trasladado es una copia y no cambia si el comité rectifica', async () => {
+  it('dice que el informe trasladado es una copia y no cambia si el comité lo vuelve a cargar', async () => {
     render(<PanelTraslado procesoId="p-1" />);
 
     await waitFor(() => expect(screen.getByText(/Completa SAS/)).toBeInTheDocument());
-    expect(screen.getByText(/si lo rectifica después, este informe no cambia/i)).toBeInTheDocument();
+    expect(screen.getByText(/si lo vuelve a cargar después, lo trasladado no cambia/i)).toBeInTheDocument();
+  });
+
+  it('la 6.4 pide la evidencia del traslado, no generar el informe (QA, EFDS-1157)', async () => {
+    servicio.traslado.mockResolvedValue(
+      traslado({ informe: null, puedeGenerar: true, puedeTrasladar: true }),
+    );
+    servicio.subsanaciones.mockResolvedValue(
+      subsanaciones({ trasladado: false, venceEl: null, enTermino: false, subsanaciones: [] }),
+    );
+    render(<PanelTraslado procesoId="p-1" />);
+
+    expect(
+      await screen.findByText('Publicación y traslado del informe preliminar'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Generar informe/i })).toBeNull();
+    expect(screen.getByText(/Adjuntar la evidencia de la publicación y el traslado/)).toBeInTheDocument();
   });
 
   it('cuenta las ofertas recibidas, no las habilitadas', async () => {

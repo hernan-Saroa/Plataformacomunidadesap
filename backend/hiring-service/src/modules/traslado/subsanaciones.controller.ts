@@ -69,8 +69,9 @@ export class SubsanacionesController {
   @Post()
   @Puede('editar', '6.5')
   @UseInterceptors(
-    FileInterceptor(
-      'file',
+    FilesInterceptor(
+      'files',
+      MAX_SOPORTES,
       // Con imágenes: parte del soporte son capturas de lo que muestra SECOP,
       // con el mismo criterio de las observaciones al pliego (5.6).
       opcionesDeCarga(
@@ -83,21 +84,21 @@ export class SubsanacionesController {
   @ApiOperation({
     summary: 'Actividad 6.5 · Registrar una subsanación u observación',
     description:
-      'Lo que presentó un oferente durante el traslado, con la fecha en que lo presentó. Lo que llegue después del vencimiento se registra marcado como extemporáneo.',
+      'Lo que presentó un oferente durante el traslado, con la fecha en que lo presentó y el escrito en uno o varios archivos. Lo que llegue después del vencimiento se registra marcado como extemporáneo.',
   })
   async registrar(
     @Param('id', ParseUUIDPipe) procesoId: string,
     @Body() dto: RegistrarSubsanacionDto,
-    @UploadedFile() file: any,
+    @UploadedFiles() files: any[],
     @Req() req: any,
   ) {
-    if (!file) {
+    if (!files?.length) {
       throw new BadRequestException(
         'Adjunta el escrito del oferente: sin soporte no se puede demostrar qué presentó',
       );
     }
 
-    const ruta = join(STORAGE_PATH, file.filename);
+    const rutas = files.map((f) => join(STORAGE_PATH, f.filename));
 
     try {
       const soportes = await Promise.all(

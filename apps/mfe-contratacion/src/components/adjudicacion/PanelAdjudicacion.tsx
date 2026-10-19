@@ -122,7 +122,10 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
 
   // Informe definitivo
   const [documentoDefinitivo, setDocumentoDefinitivo] = useState<File | null>(null);
-  const [medioDefinitivo, setMedioDefinitivo] = useState('');
+  // La ganadora se decide en el definitivo (EFDS-1157).
+  const [ganadoraDefinitivo, setGanadoraDefinitivo] = useState('');
+  const [valorDefinitivo, setValorDefinitivo] = useState('');
+  const [enlaceDefinitivo, setEnlaceDefinitivo] = useState('');
   const [evidenciaDefinitivo, setEvidenciaDefinitivo] = useState<File | null>(null);
 
   // Acto
@@ -232,17 +235,20 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
         valorEvaluado: aNumero(valorDefinitivo),
       });
       setDocumentoDefinitivo(null);
-    }, 'Informe definitivo generado');
+      setGanadoraDefinitivo('');
+      setValorDefinitivo('');
+    }, motivo ? 'Informe definitivo actualizado' : 'Informe definitivo generado');
+  };
 
   const publicarDefinitivo = (firmaOtp?: EvidenciaFirmaOtp) =>
     conGuardado(async () => {
       await contratacionService.publicarInformeDefinitivo(
         procesoId,
-        medioDefinitivo.trim(),
+        enlaceDefinitivo.trim(),
         evidenciaDefinitivo as File,
         firmaOtp,
       );
-      setMedioDefinitivo('');
+      setEnlaceDefinitivo('');
       setEvidenciaDefinitivo(null);
     }, 'Informe definitivo publicado');
 
@@ -561,9 +567,44 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
         {definitivo.puedeGenerar && (
           <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
             <p className="text-[11.5px] text-slate-500 m-0">
-              Congela el resultado vigente del comité —no el que se trasladó— y resuelve qué cambió
-              desde el preliminar.
+              Aquí se define la oferta ganadora: la evaluación preliminar no la nombra. Toma el
+              informe vigente del comité —no el que se trasladó— y resuelve qué cambió desde el
+              preliminar.
+              {elDefinitivo &&
+                ' Se puede actualizar después de la audiencia, también ya publicado, mientras no haya acto de adjudicación: cada versión queda en el historial con su motivo.'}
             </p>
+            <label className="block">
+              <span className="text-[11.5px] text-slate-600">
+                Oferta ganadora{' '}
+                {elDefinitivo?.resultado.ganadora ? (
+                  <>(se conserva {elDefinitivo.resultado.ganadora.nombre} si no eliges otra)</>
+                ) : (
+                  <span className="text-red-600">*</span>
+                )}
+              </span>
+              <select
+                className={campo}
+                aria-label="Oferta ganadora del informe definitivo"
+                value={ganadoraDefinitivo}
+                onChange={(e) => setGanadoraDefinitivo(e.target.value)}
+              >
+                <option value="">
+                  {elDefinitivo?.resultado.ganadora ? 'La misma' : 'Elige la oferta que gana…'}
+                </option>
+                {acto.ofertas.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.numero}. {o.nombre}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <input
+              className={campo}
+              aria-label="Valor evaluado de la ganadora"
+              placeholder="Valor evaluado (en blanco, el valor ofertado)"
+              value={valorDefinitivo}
+              onChange={(e) => setValorDefinitivo(e.target.value)}
+            />
             <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
               <UploadCloud size={15} className="text-slate-400" />
               <span>{documentoDefinitivo?.name ?? 'Adjuntar el informe definitivo'}</span>
@@ -576,7 +617,11 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
             <Boton
               icono={<FileText className="w-3.5 h-3.5" />}
               onClick={generarDefinitivo}
-              disabled={guardando || (!elDefinitivo && !documentoDefinitivo)}
+              disabled={
+                guardando ||
+                (!elDefinitivo && !documentoDefinitivo) ||
+                (!elDefinitivo?.resultado.ganadora && !ganadoraDefinitivo)
+              }
             >
               {elDefinitivo ? 'Actualizar informe definitivo' : 'Generar informe definitivo'}
             </Boton>

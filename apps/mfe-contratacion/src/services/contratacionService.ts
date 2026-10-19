@@ -267,6 +267,16 @@ function consultaEstadisticas(filtros: Partial<FiltrosEstadisticas>): string {
   return consulta ? `?${consulta}` : '';
 }
 
+/** Los archivos del informe preliminar con su dimensión, en el mismo orden (EFDS-1157). */
+function cuerpoDelInforme(datos: RegistrarResultado, informe: File[]) {
+  const cuerpo = new FormData();
+  informe.forEach((archivo) => cuerpo.append('files', archivo));
+  if (datos.dimensiones?.length) cuerpo.append('dimensiones', JSON.stringify(datos.dimensiones));
+  if (datos.observacion?.trim()) cuerpo.append('observacion', datos.observacion.trim());
+  if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
+  return cuerpo;
+}
+
 export const contratacionService = {
   listarProcesos: () => pedir<ProcesoResumen[]>('/procesos'),
 
@@ -2290,19 +2300,21 @@ export const contratacionService = {
    * cuando vienen —`FormData` los convertiría en cadena vacía, y una escala en
    * blanco no es un cero.
    */
-  registrarResultadoEvaluacion: (procesoId: string, datos: RegistrarResultado, informe: File) => {
-    const cuerpo = new FormData();
-    cuerpo.append('file', informe);
-    cuerpo.append('oferenteId', datos.oferenteId);
-    cuerpo.append('justificacion', datos.justificacion);
-    if (datos.puntajeObtenido != null) {
-      cuerpo.append('puntajeObtenido', String(datos.puntajeObtenido));
-    }
-    if (datos.puntajeMaximo != null) cuerpo.append('puntajeMaximo', String(datos.puntajeMaximo));
-    if (datos.valorEvaluado != null) cuerpo.append('valorEvaluado', String(datos.valorEvaluado));
-    if (datos.firma) cuerpo.append('firma', JSON.stringify(datos.firma));
+  registrarResultadoEvaluacion: (procesoId: string, datos: RegistrarResultado, informe: File[]) =>
+    pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/resultado`, {
+      method: 'POST',
+      body: cuerpoDelInforme(datos, informe),
+    }),
 
-    return pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/resultado`, {
+  /** Vuelve a cargar el informe preliminar; el anterior queda con su motivo (EFDS-1157). */
+  actualizarInformeEvaluacion: (
+    procesoId: string,
+    datos: RegistrarResultado & { motivo: string },
+    informe: File[],
+  ) => {
+    const cuerpo = cuerpoDelInforme(datos, informe);
+    cuerpo.append('motivo', datos.motivo);
+    return pedir<EstadoEvaluacion>(`/procesos/${procesoId}/evaluacion/resultado/actualizar`, {
       method: 'POST',
       body: cuerpo,
     });
@@ -2520,9 +2532,20 @@ export const contratacionService = {
     ),
 
   /** Congela el resultado vigente del comité. El archivo es opcional. */
-  generarInformeDefinitivo: (procesoId: string, informe: File | null) => {
+  generarInformeDefinitivo: (
+    procesoId: string,
+    informe: File | null,
+    motivo?: string,
+    /** La ganadora se decide en el definitivo (EFDS-1157). */
+    decision: { oferenteId?: string; valorEvaluado?: number; justificacion?: string } = {},
+  ) => {
     const cuerpo = new FormData();
     if (informe) cuerpo.append('file', informe);
+    // Actualizar un informe que ya existe pide motivo (EFDS-1159).
+    if (motivo?.trim()) cuerpo.append('motivo', motivo.trim());
+    if (decision.oferenteId) cuerpo.append('oferenteId', decision.oferenteId);
+    if (decision.valorEvaluado != null) cuerpo.append('valorEvaluado', String(decision.valorEvaluado));
+    if (decision.justificacion?.trim()) cuerpo.append('justificacion', decision.justificacion.trim());
 
     return pedir<EstadoInformeDefinitivoProceso>(
       `/procesos/${procesoId}/adjudicacion/informe-definitivo`,

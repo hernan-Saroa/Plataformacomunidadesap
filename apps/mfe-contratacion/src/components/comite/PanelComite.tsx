@@ -448,7 +448,7 @@ export function PanelComite({ procesoId, onCambio }: Props) {
   );
 }
 
-/** Adjunto obligatorio, con su nombre cuando ya está elegido. */
+/** Un adjunto, con su nombre cuando ya está elegido. */
 function SelectorArchivo({
   etiqueta,
   archivo,

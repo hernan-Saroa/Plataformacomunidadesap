@@ -270,14 +270,8 @@ describe('HU EFDS-1172 · acta de liquidación del contrato (10.2)', () => {
 
     await evaluacion.registrar(
       proceso.id,
-      {
-        oferenteId: cierre.oferentes[0].id,
-        puntajeObtenido: 95,
-        puntajeMaximo: 100,
-        justificacion: 'Cumplió los requisitos habilitantes y obtuvo el mayor puntaje del comité.',
-      },
-      archivo('informe-comite.pdf'),
-      'i'.repeat(64),
+      {},
+      [{ archivo: archivo('informe-comite.pdf'), hash: 'i'.repeat(64) }],
       juridica.acceso,
     );
 

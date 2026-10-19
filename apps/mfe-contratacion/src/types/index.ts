@@ -1548,19 +1548,25 @@ export interface EvidenciaEvaluacion {
   descripcion: string;
   cargadaPor: string | null;
   cargadaAt: string;
+  /** El nombre del archivo tal como se subió. */
+  nombre?: string | null;
   archivoUrl: string | null;
 }
 
 export interface ResultadoEvaluacion {
   id: string;
   estado: EstadoResultado;
+  /**
+   * Nula desde la 120: la evaluación de la 6.3 es preliminar y no nombra
+   * ganadora; se decide en el informe definitivo (7.2). Los resultados de antes
+   * la conservan, igual que los puntajes.
+   */
   ganadora: OfertaEvaluable | null;
-  /** Nulos donde la modalidad no puntúa; cuando vienen, vienen los dos. */
   puntajeObtenido: number | null;
   puntajeMaximo: number | null;
-  /** Puede no ser el valor ofertado: el comité corrige aritmética. */
   valorEvaluado: number | null;
-  justificacion: string;
+  /** Observación del informe preliminar, opcional. */
+  justificacion: string | null;
   informe: { id: string; nombre: string; archivoUrl: string } | null;
   registradoPor: string | null;
   registradoAt: string;
@@ -1581,19 +1587,25 @@ export interface EstadoEvaluacion {
   misDimensiones: RolEvaluador[];
   esMiembroDelComite: boolean;
   puedeRegistrar: boolean;
+  /** Si se puede volver a cargar el informe vigente (EFDS-1157). */
+  puedeActualizar?: boolean;
   ofertas: OfertaEvaluable[];
   resultado: ResultadoEvaluacion | null;
   /** Los rectificados se muestran: explican que haya dos informes. */
   rectificados: ResultadoEvaluacion[];
 }
 
-/** Lo que el comité reporta. Los puntajes son opcionales y van en pareja. */
+/** De qué es cada archivo del informe preliminar (EFDS-1157). */
+export type DimensionInforme = 'CONSOLIDADO' | 'JURIDICO' | 'TECNICO' | 'FINANCIERO';
+
+/**
+ * El informe de evaluación preliminar que carga el comité (EFDS-1157): uno o
+ * varios archivos, sin puntajes ni ganadora.
+ */
 export interface RegistrarResultado {
-  oferenteId: string;
-  puntajeObtenido?: number;
-  puntajeMaximo?: number;
-  valorEvaluado?: number;
-  justificacion: string;
+  observacion?: string;
+  /** Una por archivo, en el mismo orden. */
+  dimensiones?: DimensionInforme[];
   firma?: EvidenciaFirmaOtp;
 }
 
@@ -1632,11 +1644,12 @@ export interface OfertaEnInforme {
 export interface ResultadoCongelado {
   modalidad: string | null;
   resultadoId: string;
-  ganadora: { oferenteId: string; nombre: string; identificacion: string | null };
+  /** Nula en el preliminar desde la 120; el definitivo siempre la lleva (EFDS-1157). */
+  ganadora: { oferenteId: string; nombre: string; identificacion: string | null } | null;
   puntajeObtenido: number | null;
   puntajeMaximo: number | null;
   valorEvaluado: number | null;
-  justificacion: string;
+  justificacion: string | null;
   informeDocumentoId: string;
   evidencias: { documentoId: string; descripcion: string }[];
   ofertas: OfertaEnInforme[];
@@ -1948,6 +1961,8 @@ export interface EstadoDeclaratoriaDesierta {
   adjudicado: boolean;
   /** Si el comité nombró una ganadora, declarar desierto se aparta de él. */
   ganadoraDelComite: { oferenteId: string; numero: number; nombre: string } | null;
+  /** Con el informe preliminar de la 6.3 cargado, ese es el del comité (EFDS-1157). */
+  informePreliminarCargado?: boolean;
   puedeDeclarar: boolean;
   declaratoria: DeclaratoriaDesierta | null;
   revocadas: DeclaratoriaDesierta[];
