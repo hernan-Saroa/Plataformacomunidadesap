@@ -32,7 +32,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
 }) => {
   const [trabajoRealizado, setTrabajoRealizado] = useState('');
   const [observaciones, setObservaciones] = useState('');
-  const [costoFinalCop, setCostoFinalCop] = useState<number>(0);
+  const [costoFinalCop, setCostoFinalCop] = useState<string>('0');
   const [requiereSeguimiento, setRequiereSeguimiento] = useState(false);
   const [evidencias, setEvidencias] = useState<EvidenciaCierreFoto[]>([]);
   const [subiendoEvidencia, setSubiendoEvidencia] = useState(false);
@@ -59,7 +59,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
     if (!open) return;
     setTrabajoRealizado('');
     setObservaciones('');
-    setCostoFinalCop(0);
+    setCostoFinalCop('0');
     setRequiereSeguimiento(false);
     setEvidencias([]);
     setErrorForm('');
@@ -68,7 +68,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
     if (!forzarModoEdicionReapertura && (solicitud?.trabajoRealizado || solicitud?.fechaCierreTecnico)) {
       setTrabajoRealizado(solicitud.trabajoRealizado || '');
       setObservaciones(solicitud.observacionesCierre || '');
-      setCostoFinalCop(Number(solicitud.costoFinalEfectivoCop || 0));
+      setCostoFinalCop(String(solicitud.costoFinalEfectivoCop ?? 0));
       setRequiereSeguimiento(!!solicitud.requiereSeguimiento);
       setEvidencias(Array.isArray(solicitud.evidenciasCierre) ? (solicitud.evidenciasCierre as EvidenciaCierreFoto[]) : []);
     }
@@ -80,7 +80,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
         if (!forzarModoEdicionReapertura && r?.cerrado) {
           setTrabajoRealizado(r.trabajoRealizado || '');
           setObservaciones(r.observacionesCierre || '');
-          setCostoFinalCop(Number(r.costoFinalEfectivoCop || 0));
+          setCostoFinalCop(String(r.costoFinalEfectivoCop ?? 0));
           setRequiereSeguimiento(!!r.requiereSeguimiento);
           setEvidencias(Array.isArray(r.evidenciasCierre) ? r.evidenciasCierre : []);
         }
@@ -107,11 +107,14 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
     const subidas: EvidenciaCierreFoto[] = [];
     try {
       for (let i = 0; i < arr.length; i++) {
-        const ev = await infraestructuraService.uploadEvidencia(arr[i], { idSolicitud });
+        const ev = await infraestructuraService.uploadEvidencia(arr[i], {
+          idSolicitud,
+          notas: 'cierre_tecnico',
+        });
         subidas.push({
           name: ev.nombreOriginal || `foto-${Date.now()}-${i}.jpg`,
           size: Number(ev.tamanoBytes || 0),
-          type: ev.tipoContenido || 'image/jpeg',
+          type: ev.mimeType || ev.tipoContenido || 'image/jpeg',
           url: (ev.urlPresigned || ev.url || ev.nombreOriginal || '') as string,
           bucket: (ev as any).bucket,
           key: (ev as any).objectKey || (ev as any).key,
@@ -142,7 +145,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
     if (trabajoRealizado.trim().length < MIN_TRABAJO_LEN) {
       return `Trabajo realizado requiere al menos ${MIN_TRABAJO_LEN} caracteres.`;
     }
-    if (!isFinite(Number(costoFinalCop)) || Number(costoFinalCop) < 0) {
+    if (!isFinite(Number(costoFinalCop || 0)) || Number(costoFinalCop || 0) < 0) {
       return 'Costo final efectivo debe ser 0 o positivo.';
     }
     return null;
@@ -163,7 +166,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
         evidencias: evidencias.map((e) => ({ ...e })),
         trabajoRealizado: trabajoRealizado.trim(),
         observaciones: observaciones.trim() || undefined,
-        costoFinalEfectivoCop: Number(costoFinalCop),
+        costoFinalEfectivoCop: Number(costoFinalCop || 0),
         requiereSeguimiento: !!requiereSeguimiento,
       });
       setToast({ tipo: 'ok', texto: 'Cierre técnico registrado correctamente. Solicitud en estado COMPLETADA.' });
@@ -320,9 +323,9 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
                     <input
                       type="number"
                       min={0}
-                      step="100"
+                      step="1000"
                       value={costoFinalCop}
-                      onChange={(e) => !modoLectura && setCostoFinalCop(Number(e.target.value))}
+                      onChange={(e) => !modoLectura && setCostoFinalCop(e.target.value)}
                       disabled={modoLectura}
                       placeholder="0 · Dejar 0 si se usaron materiales de inventario y MO interna"
                       className="w-full pl-6 pr-3 py-2 rounded-lg border border-slate-300 bg-white text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 outline-none disabled:bg-slate-50 disabled:text-slate-600"
@@ -375,7 +378,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*,video/*,application/pdf"
+                    accept="image/*,application/pdf,video/mp4,video/webm,video/quicktime,video/x-m4v,video/x-msvideo,video/mpeg"
                     multiple
                     onChange={(e) => e.target.files && handleFiles(e.target.files)}
                     className="hidden"
@@ -390,7 +393,7 @@ export const DetalleCierreEjecucionForm: React.FC<DetalleCierreEjecucionFormProp
                         : 'Arrastre imágenes/videos aquí o haga clic para seleccionar archivos.'}
                   </p>
                   <p className="text-[10px] text-slate-500 mt-1">
-                    Hasta {MAX_EVIDENCIAS} archivos. PNG/JPG/PDF/MP4. M&iacute;nimo {MIN_EVIDENCIAS} evidencia obligatoria (ERF).
+                    Hasta {MAX_EVIDENCIAS} archivos. PNG/JPG/PDF/MP4/WEBM/MOV, m&aacute;ximo 20 MB por archivo. M&iacute;nimo {MIN_EVIDENCIAS} evidencia obligatoria (ERF).
                   </p>
                 </div>
               ) : (

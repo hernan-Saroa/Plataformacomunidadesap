@@ -65,6 +65,7 @@ const dtoBase = {
   piso: 'Piso 7',
   salon: 'Salon 404',
   tipoMantenimiento: 'CORRECTIVO',
+  idCategoria: 47,
   descripcion: 'Lorem ipsum dolor sit amet consectetur adipiscing elit 1219',
   prioridad: 'ALTA',
   uploadedEvidenciaIds: [] as string[],
@@ -556,6 +557,19 @@ describe('[EFDS-1732] AC-01 Seed 8 categorías oficiales CATEGORIA_SERVICIO idCa
 });
 
 describe('[EFDS-1732] AC-03 create guarda idCategoria + idSubcategoria en solicitud', () => {
+  it('create FISICA sin idCategoria → BadRequest porque la categoría es obligatoria', async () => {
+    const s = servicio({
+      sedeRepo: { findOne: jest.fn().mockResolvedValue(sedeValida) },
+      mantenimientoRepo: {
+        count: jest.fn().mockResolvedValue(3),
+        save: jest.fn(),
+      },
+    });
+    await expect(
+      s.create({ ...dtoBase, tipoAtencion: 'FISICA', idCategoria: undefined } as any, userValido),
+    ).rejects.toThrow('La categoría de servicio es obligatoria para radicar solicitudes de atención física.');
+  });
+
   it('create dto idCategoria=50 (CS_004 Plomería) + idSubcategoria=1001 → save incluye ambos integers', async () => {
     const save = jest.fn().mockImplementation((d) => ({ idSolicitud: 's-1732', evidencias: [], ...d }));
     const s = servicio({
