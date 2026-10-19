@@ -2380,16 +2380,13 @@ export const contratacionService = {
     }),
 
   /** Transcribe lo que presentó un oferente, con su soporte. */
-  registrarSubsanacion: (procesoId: string, datos: RegistrarSubsanacion, soporte: File) => {
+  registrarSubsanacion: (procesoId: string, datos: RegistrarSubsanacion, soportes: File[]) => {
     const cuerpo = new FormData();
-    cuerpo.append('file', soporte);
+    soportes.forEach((archivo) => cuerpo.append('files', archivo));
     cuerpo.append('oferenteId', datos.oferenteId);
     cuerpo.append('tipo', datos.tipo);
-    cuerpo.append('presentadoPor', datos.presentadoPor);
     cuerpo.append('fechaPresentacion', datos.fechaPresentacion);
     cuerpo.append('asunto', datos.asunto);
-    cuerpo.append('contenido', datos.contenido);
-    if (datos.identificacion) cuerpo.append('identificacion', datos.identificacion);
 
     return pedir<EstadoSubsanaciones>(`/procesos/${procesoId}/traslado/subsanaciones`, {
       method: 'POST',

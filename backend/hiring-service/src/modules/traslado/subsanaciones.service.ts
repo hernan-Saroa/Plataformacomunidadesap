@@ -84,7 +84,7 @@ export class SubsanacionesService extends TrasladoService {
     });
 
     const documentos = await this.documentosDe(
-      presentadas.flatMap((s) => [s.soporteDocumentoId, s.respuestaDocumentoId]),
+      presentadas.flatMap((s) => [...(s.soportesDocumentoIds ?? []), s.respuestaDocumentoId]),
     );
     const oferentes = await this.oferentesDe(this.dataSource.manager, procesoId);
 
@@ -138,7 +138,7 @@ export class SubsanacionesService extends TrasladoService {
   // ------------------------------------------------------------- registro --
 
   /**
-   * Registra lo que presentó un oferente, con su soporte.
+   * Registra lo que presentó un oferente, con su soporte en uno o varios archivos.
    *
    * Se admite después del vencimiento a propósito, marcado como extemporáneo.
    * Rechazarlo sería borrar el hecho de que el oferente sí presentó algo, y
@@ -147,8 +147,7 @@ export class SubsanacionesService extends TrasladoService {
   async registrar(
     procesoId: string,
     dto: RegistrarSubsanacionDto,
-    soporte: ArchivoCargado,
-    hash: string,
+    soportes: { archivo: ArchivoCargado; hash: string }[],
     acceso: HiringAccess,
   ) {
     await this.dataSource.transaction(async (em) => {
@@ -172,31 +171,41 @@ export class SubsanacionesService extends TrasladoService {
 
       const oferente = await this.exigirOferente(em, procesoId, dto.oferenteId);
 
-      const doc = await this.guardarDocumento(
-        em,
-        procesoId,
-        `${dto.tipo === 'SUBSANACION' ? 'Subsanación' : 'Observación'} de ${oferente.nombre}`,
-        soporte,
-        hash,
-        acceso,
-        NUMERAL_SUBSANACIONES,
-      );
+      const titulo = `${dto.tipo === 'SUBSANACION' ? 'Subsanación' : 'Observación'} de ${oferente.nombre}`;
+      const docs = [];
+      // Uno tras otro y no en paralelo: comparten la transacción.
+      for (const [i, { archivo, hash }] of soportes.entries()) {
+        docs.push(
+          await this.guardarDocumento(
+            em,
+            procesoId,
+            soportes.length > 1 ? `${titulo} (${i + 1} de ${soportes.length})` : titulo,
+            archivo,
+            hash,
+            acceso,
+            NUMERAL_SUBSANACIONES,
+          ),
+        );
+      }
 
       const registrada = await em.save(
         em.create(Subsanacion, {
           informeId: informe.id,
           oferenteId: oferente.id,
           tipo: dto.tipo,
-          presentadoPor: dto.presentadoPor.trim(),
-          identificacion: dto.identificacion?.trim() || null,
+          // Quien presenta es el proveedor de la oferta: se dejó de pedir aparte
+          // (EFDS-1158), y el nombre se guarda para que la traza no dependa de
+          // que la oferta siga ahí.
+          presentadoPor: oferente.nombre,
+          identificacion: null,
           fechaPresentacion: dto.fechaPresentacion,
           // Se resuelve al registrar y no se recalcula: si mañana se corrige el
           // plazo del informe, lo que ya se calificó de extemporáneo no cambia
           // de estado solo.
           extemporanea: this.fueraDeTermino(informe, dto.fechaPresentacion),
           asunto: dto.asunto.trim(),
-          contenido: dto.contenido.trim(),
-          soporteDocumentoId: doc.id,
+          contenido: null,
+          soportesDocumentoIds: docs.map((d) => d.id),
           registradoPor: acceso.userName,
         }),
       );
@@ -214,6 +223,7 @@ export class SubsanacionesService extends TrasladoService {
           oferta: oferente.numero,
           fechaPresentacion: dto.fechaPresentacion,
           extemporanea: registrada.extemporanea,
+          soportes: docs.length,
         },
         'subsanacion',
       );
@@ -272,6 +282,7 @@ export class SubsanacionesService extends TrasladoService {
         : null;
 
       const yaRespondida = !!subsanacion.respondidaAt;
+      const anterior = { respuesta: subsanacion.respuesta, aceptada: subsanacion.aceptada };
 
       subsanacion.respuesta = dto.respuesta.trim();
       subsanacion.aceptada = dto.aceptada;
@@ -294,6 +305,11 @@ export class SubsanacionesService extends TrasladoService {
           // Que sea una corrección se anota: es lo que explica dos respuestas
           // en la traza sobre el mismo escrito.
           correccion: yaRespondida,
+          // Lo que decía antes de corregirla: sin esto el historial solo diría
+          // que hubo un cambio, no cuál.
+          ...(yaRespondida
+            ? { respuestaAnterior: anterior.respuesta, aceptadaAnterior: anterior.aceptada }
+            : {}),
         },
         'subsanacion',
       );
@@ -424,7 +440,10 @@ export class SubsanacionesService extends TrasladoService {
     documentos: Map<string, Documento>,
   ) {
     const oferente = oferentes.get(subsanacion.oferenteId);
-    const soporte = documentos.get(subsanacion.soporteDocumentoId);
+    const soportes = (subsanacion.soportesDocumentoIds ?? []).flatMap((id) => {
+      const doc = documentos.get(id);
+      return doc ? [{ id: doc.id, nombre: doc.nombre, archivoUrl: doc.archivoUrl }] : [];
+    });
     const respuestaDoc = subsanacion.respuestaDocumentoId
       ? documentos.get(subsanacion.respuestaDocumentoId)
       : undefined;
@@ -441,9 +460,7 @@ export class SubsanacionesService extends TrasladoService {
       extemporanea: subsanacion.extemporanea,
       asunto: subsanacion.asunto,
       contenido: subsanacion.contenido,
-      soporte: soporte
-        ? { id: soporte.id, nombre: soporte.nombre, archivoUrl: soporte.archivoUrl }
-        : null,
+      soportes,
       respuesta: subsanacion.respuesta,
       respuestaDocumento: respuestaDoc
         ? { id: respuestaDoc.id, nombre: respuestaDoc.nombre, archivoUrl: respuestaDoc.archivoUrl }

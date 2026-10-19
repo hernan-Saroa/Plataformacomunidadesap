@@ -1691,8 +1691,10 @@ export interface Subsanacion {
   /** Extemporáneo no es rechazado: quien decide si lo acepta es la entidad. */
   extemporanea: boolean;
   asunto: string;
-  contenido: string;
-  soporte: { id: string; nombre: string; archivoUrl: string } | null;
+  /** Solo en los escritos registrados antes de que se dejara de transcribir (EFDS-1158). */
+  contenido: string | null;
+  /** El escrito del oferente, en el orden en que se adjuntaron sus archivos. */
+  soportes: { id: string; nombre: string; archivoUrl: string }[];
   respuesta: string | null;
   respuestaDocumento: { id: string; nombre: string; archivoUrl: string } | null;
   aceptada: boolean | null;
@@ -1734,11 +1736,8 @@ export interface EstadoSubsanaciones {
 export interface RegistrarSubsanacion {
   oferenteId: string;
   tipo: TipoSubsanacion;
-  presentadoPor: string;
-  identificacion?: string;
   fechaPresentacion: string;
   asunto: string;
-  contenido: string;
 }
 
 /* ---------------------------------------------------------------------------

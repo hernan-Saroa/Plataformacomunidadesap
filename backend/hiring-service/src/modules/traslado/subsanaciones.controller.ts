@@ -8,10 +8,11 @@ import {
   Post,
   Req,
   UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { join } from 'path';
 import { unlink } from 'fs/promises';
@@ -37,6 +38,9 @@ import { PERMISO_PLAZO_TERMINAR } from '../../auth/permisos';
 import { Permisos } from '../../auth/permisos.decorator';
 import { PermisosGuard } from '../../auth/permisos.guard';
 import { Puede } from '../../auth/puede.guard';
+
+/** Archivos por escrito: la carta y lo que aporta, no un expediente entero. */
+const MAX_SOPORTES = 10;
 
 /**
  * Subsanaciones y observaciones al informe — actividad 6.5 (EFDS-1158).
@@ -68,7 +72,7 @@ export class SubsanacionesController {
     FileInterceptor(
       'file',
       // Con imágenes: parte del soporte son capturas de lo que muestra SECOP,
-      // con el mismo criterio de las observaciones al pliego (5.3).
+      // con el mismo criterio de las observaciones al pliego (5.6).
       opcionesDeCarga(
         [...MIME_DOCUMENTOS, ...MIME_IMAGENES],
         'El soporte se carga en PDF, Word, Excel o imagen',
@@ -96,11 +100,13 @@ export class SubsanacionesController {
     const ruta = join(STORAGE_PATH, file.filename);
 
     try {
-      const hash = await sha256Archivo(ruta);
-      return await this.service.registrar(procesoId, dto, file, hash, getHiringAccess(req));
+      const soportes = await Promise.all(
+        files.map(async (archivo, i) => ({ archivo, hash: await sha256Archivo(rutas[i]) })),
+      );
+      return await this.service.registrar(procesoId, dto, soportes, getHiringAccess(req));
     } catch (error) {
-      // El archivo ya está en disco cuando la regla de negocio lo rechaza.
-      await unlink(ruta).catch(() => undefined);
+      // Los archivos ya están en disco cuando la regla de negocio los rechaza.
+      await Promise.all(rutas.map((r) => unlink(r).catch(() => undefined)));
       throw error;
     }
   }

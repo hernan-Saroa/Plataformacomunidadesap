@@ -461,35 +461,7 @@ export function PanelEvaluacion({ procesoId, onCambio }: Props) {
                 className={campo}
               />
             </div>
-          </div>
-          {/* Los dos o ninguno: es la regla del servidor, dicha aquí antes de
-              enviar. Un 85 sin saber sobre cuánto no dice nada. */}
-          <p className="text-[11px] text-gray-500 m-0 leading-relaxed">
-            Déjalos en blanco si la modalidad no puntúa —en mínima cuantía suele bastar con el menor
-            precio que cumple—. Si reportas puntaje, va con la escala que usó el comité.
-          </p>
-
-          <div>
-            <label
-              htmlFor="resultado-valor"
-              className="block text-xs font-bold text-gray-600 mb-1.5"
-            >
-              Valor evaluado
-            </label>
-            <input
-              id="resultado-valor"
-              type="number"
-              min={0}
-              step="0.01"
-              value={valorEvaluado}
-              onChange={(e) => setValorEvaluado(e.target.value)}
-              className={campo}
-            />
-            <p className="text-[11px] text-gray-500 mt-1.5 mb-0 leading-relaxed">
-              Solo si el comité corrigió la cifra que presentó el oferente. En blanco se toma el
-              valor ofertado.
-            </p>
-          </div>
+          )}
 
           <div>
             <label

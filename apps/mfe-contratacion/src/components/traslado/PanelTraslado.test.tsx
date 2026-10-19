@@ -27,6 +27,8 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const servicio = contratacionService as unknown as {
   traslado: ReturnType<typeof vi.fn>;
   subsanaciones: ReturnType<typeof vi.fn>;
+  registrarSubsanacion: ReturnType<typeof vi.fn>;
+  responderSubsanacion: ReturnType<typeof vi.fn>;
   cerrarTraslado: ReturnType<typeof vi.fn>;
 };
 
@@ -241,7 +243,7 @@ describe('PanelTraslado · actividades 6.4 a 6.6', () => {
     render(<PanelTraslado procesoId="p-1" />);
 
     await waitFor(() =>
-      expect(screen.getByText(/todavía no ha registrado el resultado/i)).toBeInTheDocument(),
+      expect(screen.getByText(/todavía no ha cargado el informe de evaluación preliminar/i)).toBeInTheDocument(),
     );
   });
 
@@ -287,5 +289,50 @@ describe('PanelTraslado · actividades 6.4 a 6.6', () => {
     await waitFor(() =>
       expect(screen.getByText(/Se registrará como extemporáneo/i)).toBeInTheDocument(),
     );
+  });
+
+  it('registra con proveedor, tipo, fecha, asunto y varios archivos, sin cédula ni transcripción', async () => {
+    const usuario = userEvent.setup();
+    servicio.registrarSubsanacion.mockResolvedValue(subsanaciones());
+    render(<PanelTraslado procesoId="p-1" />);
+
+    await waitFor(() => expect(screen.getByText(/Subsanaciones y observaciones/)).toBeInTheDocument());
+    await usuario.click(
+      screen.getByRole('button', { name: /Registrar una subsanación u observación/i }),
+    );
+
+    expect(screen.queryByPlaceholderText(/cédula/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/Lo que dice el oferente/i)).not.toBeInTheDocument();
+
+    await usuario.selectOptions(screen.getByDisplayValue('Proveedor'), 'of-1');
+    await usuario.type(screen.getByPlaceholderText('Asunto'), 'Certificado');
+    const carta = new File(['a'], 'carta.pdf', { type: 'application/pdf' });
+    const anexo = new File(['b'], 'anexo.pdf', { type: 'application/pdf' });
+    await usuario.upload(screen.getByLabelText('Archivos del escrito'), [carta, anexo]);
+    await usuario.click(screen.getByRole('button', { name: /^Registrar$/ }));
+
+    await waitFor(() => expect(servicio.registrarSubsanacion).toHaveBeenCalled());
+    const [, datos, archivos] = servicio.registrarSubsanacion.mock.calls[0];
+    expect(datos).toEqual({
+      oferenteId: 'of-1',
+      tipo: 'SUBSANACION',
+      fechaPresentacion: expect.any(String),
+      asunto: 'Certificado',
+    });
+    expect(archivos.map((a: File) => a.name)).toEqual(['carta.pdf', 'anexo.pdf']);
+  });
+
+  it('acepta una respuesta breve', async () => {
+    const usuario = userEvent.setup();
+    servicio.responderSubsanacion.mockResolvedValue(subsanaciones());
+    render(<PanelTraslado procesoId="p-1" />);
+
+    await waitFor(() => expect(screen.getByText('Aporta certificación de experiencia')).toBeInTheDocument());
+    await usuario.click(screen.getByRole('button', { name: /^Responder$/ }));
+    await usuario.type(screen.getByPlaceholderText(/La respuesta que se le notifica/i), 'Se acepta.');
+    await usuario.click(screen.getByRole('button', { name: /Guardar respuesta/i }));
+
+    await waitFor(() => expect(servicio.responderSubsanacion).toHaveBeenCalled());
+    expect(servicio.responderSubsanacion.mock.calls[0][2].respuesta).toBe('Se acepta.');
   });
 });
