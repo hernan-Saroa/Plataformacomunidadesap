@@ -252,7 +252,7 @@ describe('HU EFDS-1160 · declaratoria desierta del proceso', () => {
     await definitivo.generar(proceso.id, archivo('definitivo.pdf'), 'd'.repeat(64), gestor);
     await definitivo.publicar(
       proceso.id,
-      { medioPublicacion: MEDIO },
+      { enlace: 'https://community.secop.gov.co/Public/Tendering/OpportunityDetail/Index?noticeUID=CO1.NTC.1' },
       archivo('evidencia-definitivo.png', 'image/png'),
       'w'.repeat(64),
       gestor,

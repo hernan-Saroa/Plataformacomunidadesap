@@ -304,10 +304,12 @@ describe('HU EFDS-1173 · cierre financiero del contrato (10.3)', () => {
     );
     await escritos.cerrar(proceso.id, {}, gestor);
 
-    await definitivo.generar(proceso.id, archivo('definitivo.pdf'), 'd'.repeat(64), gestor);
+    await definitivo.generar(proceso.id, archivo('definitivo.pdf'), 'd'.repeat(64), gestor, undefined, {
+      oferenteId: cierre.oferentes[0].id,
+    });
     await definitivo.publicar(
       proceso.id,
-      { medioPublicacion: 'Publicado en SECOP II para conocimiento de los oferentes' },
+      { enlace: 'https://community.secop.gov.co/Public/Tendering/OpportunityDetail/Index?noticeUID=CO1.NTC.1' },
       archivo('pub-definitivo.png', 'image/png'),
       'w'.repeat(64),
       gestor,

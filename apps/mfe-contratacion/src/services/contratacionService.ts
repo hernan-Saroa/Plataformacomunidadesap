@@ -2532,13 +2532,13 @@ export const contratacionService = {
 
   publicarInformeDefinitivo: (
     procesoId: string,
-    medioPublicacion: string,
+    enlace: string,
     evidencia: File,
     firma?: EvidenciaFirmaOtp,
   ) => {
     const cuerpo = new FormData();
     cuerpo.append('file', evidencia);
-    cuerpo.append('medioPublicacion', medioPublicacion);
+    cuerpo.append('enlace', enlace);
     if (firma) cuerpo.append('firma', JSON.stringify(firma));
 
     return pedir<EstadoInformeDefinitivoProceso>(

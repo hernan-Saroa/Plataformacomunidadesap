@@ -1830,12 +1830,29 @@ export interface InformeDefinitivo {
   ofertasRecibidas: number;
   informe: { id: string; nombre: string; archivoUrl: string } | null;
   evidencia: { id: string; nombre: string; archivoUrl: string } | null;
+  /** Enlace de la publicación en SECOP (119). */
+  enlacePublicacion?: string | null;
+  /** Cada versión generada, en orden; la última es la vigente (119). */
+  versiones?: VersionInformeDefinitivo[];
   generadoPor: string | null;
   generadoAt: string;
   publicadoPor: string | null;
   publicadoAt: string | null;
   anuladoAt: string | null;
   motivoAnulacion: string | null;
+}
+
+/** Una versión del informe definitivo, con su motivo y su publicación (EFDS-1159). */
+export interface VersionInformeDefinitivo {
+  numero: number;
+  generadoAt: string;
+  generadoPor: string | null;
+  motivo: string | null;
+  informe: { id: string; nombre: string; archivoUrl: string } | null;
+  evidencia: { id: string; nombre: string; archivoUrl: string } | null;
+  enlacePublicacion: string | null;
+  publicadoAt: string | null;
+  publicadoPor: string | null;
 }
 
 export interface EstadoInformeDefinitivoProceso {
@@ -1845,6 +1862,8 @@ export interface EstadoInformeDefinitivoProceso {
   audienciaPendiente: boolean;
   hayResultado: boolean;
   puedeGenerar: boolean;
+  /** Si generar otra vez es actualizar: entonces pide motivo. */
+  actualizarPideMotivo?: boolean;
   puedePublicar: boolean;
   informe: InformeDefinitivo | null;
   anulados: InformeDefinitivo[];

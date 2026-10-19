@@ -246,7 +246,7 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.3)', () => {
   const publicarDefinitivo = (procesoId: string) =>
     definitivo.publicar(
       procesoId,
-      { medioPublicacion: MEDIO },
+      { enlace: 'https://community.secop.gov.co/Public/Tendering/OpportunityDetail/Index?noticeUID=CO1.NTC.1' },
       archivo('evidencia-definitivo.png', 'image/png'),
       'w'.repeat(64),
       gestor,
@@ -587,6 +587,63 @@ describe('HU EFDS-1159 · adjudicación del proceso (7.1 a 7.3)', () => {
         [proceso.id],
       );
       expect(actividad[0].estado).toBe('APROBADO');
+    });
+  });
+
+  // ------------------------------------- versiones del definitivo (QA) --
+
+  describe('El informe definitivo se actualiza con historial (EFDS-1159)', () => {
+    it('guarda el enlace de SECOP y la primera versión sin motivo', async () => {
+      const { proceso } = await listoParaAdjudicar('ABREVIADA_MENOR_CUANTIA');
+      await generarDefinitivo(proceso.id);
+
+      const estado = await publicarDefinitivo(proceso.id);
+
+      expect(estado.informe!.enlacePublicacion).toMatch(/^https:\/\/community\.secop\.gov\.co/);
+      expect(estado.informe!.versiones).toHaveLength(1);
+      expect(estado.informe!.versiones[0].motivo).toBeNull();
+      expect(estado.informe!.versiones[0].enlacePublicacion).toBe(estado.informe!.enlacePublicacion);
+    });
+
+    it('actualizar exige motivo', async () => {
+      const { proceso } = await listoParaAdjudicar('ABREVIADA_MENOR_CUANTIA');
+      await generarDefinitivo(proceso.id);
+
+      await expect(
+        definitivo.generar(proceso.id, archivo('definitivo-2.pdf'), 'e'.repeat(64), gestor),
+      ).rejects.toThrow(/por qué se actualiza/i);
+    });
+
+    it('publicado y sin acto, se actualiza: vuelve a borrador y conserva la versión anterior', async () => {
+      const { proceso } = await conDefinitivoPublicado('ABREVIADA_MENOR_CUANTIA');
+
+      const estado = await definitivo.generar(
+        proceso.id,
+        archivo('definitivo-2.pdf'),
+        'e'.repeat(64),
+        gestor,
+        'Se aplicaron las fórmulas a la oferta económica',
+      );
+
+      expect(estado.informe!.estado).toBe('BORRADOR');
+      expect(estado.informe!.enlacePublicacion).toBeNull();
+      expect(estado.informe!.versiones).toHaveLength(2);
+      expect(estado.informe!.versiones[0].publicadoAt).not.toBeNull();
+      expect(estado.informe!.versiones[1].motivo).toBe(
+        'Se aplicaron las fórmulas a la oferta económica',
+      );
+      expect(estado.informe!.versiones[1].generadoPor).toBe('prueba.gestor');
+    });
+
+    it('con el acto emitido ya no se actualiza', async () => {
+      const { proceso, oferentes } = await conDefinitivoPublicado('ABREVIADA_MENOR_CUANTIA');
+      await adjudicar(proceso.id, oferentes[1].id);
+
+      const estado = await definitivo.estado(proceso.id);
+      expect(estado.puedeGenerar).toBe(false);
+      await expect(
+        definitivo.generar(proceso.id, null, null, gestor, 'Llegó una observación tarde'),
+      ).rejects.toThrow(/ya se adjudicó/i);
     });
   });
 

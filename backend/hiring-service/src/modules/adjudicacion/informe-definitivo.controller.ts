@@ -68,13 +68,14 @@ export class InformeDefinitivoController {
   })
   async generar(
     @Param('id', ParseUUIDPipe) procesoId: string,
+    @Body() dto: GenerarDefinitivoDto,
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
     // Sin archivo es un caso legítimo: regenerar la fotografía porque el comité
     // rectificó, conservando el documento que ya se había adjuntado.
     if (!file) {
-      return this.service.generar(procesoId, null, null, getHiringAccess(req));
+      return this.service.generar(procesoId, null, null, getHiringAccess(req), dto.motivo, dto);
     }
 
     const ruta = join(STORAGE_PATH, file.filename);

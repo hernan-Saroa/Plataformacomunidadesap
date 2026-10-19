@@ -158,10 +158,13 @@ export class AudienciaController {
     @UploadedFile() file: any,
     @Req() req: any,
   ) {
-    // La evidencia es opcional: el acta de la audiencia ya documenta la
-    // apertura, y exigir un soporte por sobre duplicaría el mismo hecho.
+    // La evidencia de la 7.1.1 es la oferta económica de cada proveedor en el
+    // formato diligenciado, más el acta de la audiencia (7.1), que ya se exige
+    // al registrarla. Sin video (EFDS-1159).
     if (!file) {
-      return this.service.abrirSobre(procesoId, dto, null, null, getHiringAccess(req));
+      throw new BadRequestException(
+        'Adjunta la oferta económica del proveedor, en el formato diligenciado',
+      );
     }
 
     const ruta = join(STORAGE_PATH, file.filename);

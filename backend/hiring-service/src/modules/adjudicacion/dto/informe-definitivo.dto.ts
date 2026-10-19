@@ -6,17 +6,32 @@ import { FirmaDelMultipart, FirmaOtpDto } from '../../cierre-actividad/dto/firma
 
 export class PublicarDefinitivoDto {
   /**
-   * Dónde y cómo se publicó.
+   * Por qué se actualiza (EFDS-1159).
    *
-   * No hay integración con SECOP II: lo que prueba la publicación es este texto
-   * más el soporte que se adjunta, igual que en el traslado del preliminar.
+   * La primera versión no lo lleva. Actualizar sí: el informe cambia después
+   * de la audiencia, y el historial tiene que decir qué lo movió.
    */
-  @ApiProperty({ description: 'Dónde se publicó el informe definitivo' })
+  @ApiPropertyOptional({ description: 'Motivo de la actualización del informe' })
+  @IsOptional()
   @IsString()
-  @IsNotEmpty({ message: 'Di dónde se publicó el informe definitivo' })
-  @MinLength(10, { message: 'Describe la publicación: una palabra no la prueba' })
-  @MaxLength(500)
-  medioPublicacion: string;
+  @MaxLength(1000)
+  motivo?: string;
+}
+
+export class PublicarDefinitivoDto {
+  /**
+   * Dónde quedó publicado en SECOP (EFDS-1159).
+   *
+   * No hay integración con SECOP II: lo que prueba la publicación es el enlace
+   * más el soporte que se adjunta.
+   */
+  @ApiProperty({ description: 'Enlace de la publicación en SECOP' })
+  @IsUrl(
+    { require_protocol: true, protocols: ['http', 'https'] },
+    { message: 'El enlace de la publicación tiene que ser una dirección completa, con https://' },
+  )
+  @MaxLength(1000)
+  enlace: string;
 
   /** Solo si la 7.2 quedó configurada con `EXIGE_FIRMA` (EFDS-2070). */
   @ApiPropertyOptional({ description: 'Evidencia de la firma OTP, si la actividad la exige' })

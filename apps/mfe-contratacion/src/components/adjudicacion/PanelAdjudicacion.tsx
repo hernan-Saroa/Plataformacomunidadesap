@@ -209,9 +209,28 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
       setSobreEvidencia(null);
     }, 'Sobre económico abierto');
 
-  const generarDefinitivo = () =>
-    conGuardado(async () => {
-      await contratacionService.generarInformeDefinitivo(procesoId, documentoDefinitivo);
+  const generarDefinitivo = async () => {
+    // Actualizar deja una versión nueva en el historial: tiene que decir por qué.
+    let motivo: string | undefined;
+    if (definitivo?.actualizarPideMotivo) {
+      const pedido = await dialogo.pedirMotivo({
+        titulo: 'Actualizar el informe definitivo',
+        descripcion:
+          definitivo.informe?.estado === 'PUBLICADO'
+            ? 'La versión publicada queda en el historial y la nueva hay que publicarla otra vez en SECOP.'
+            : 'La versión anterior queda en el historial con este motivo.',
+        etiqueta: 'Motivo de la actualización',
+        confirmar: 'Actualizar el informe',
+      });
+      if (!pedido) return;
+      motivo = pedido;
+    }
+
+    await conGuardado(async () => {
+      await contratacionService.generarInformeDefinitivo(procesoId, documentoDefinitivo, motivo, {
+        oferenteId: ganadoraDefinitivo || undefined,
+        valorEvaluado: aNumero(valorDefinitivo),
+      });
       setDocumentoDefinitivo(null);
     }, 'Informe definitivo generado');
 
@@ -467,19 +486,26 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
                   <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
                     <UploadCloud size={15} className="text-slate-400" />
                     <span>
-                      {sobreEvidencia?.name ?? 'Adjuntar evidencia de la apertura (opcional)'}
+                      {sobreEvidencia?.name ??
+                        'Adjuntar la oferta económica del proveedor, en el formato diligenciado'}
                     </span>
                     <input
                       type="file"
+                      aria-label="Oferta económica del proveedor"
                       className="hidden"
                       onChange={(e) => setSobreEvidencia(e.target.files?.[0] ?? null)}
                     />
                   </label>
+                  <p className="text-[11px] text-slate-500 m-0">
+                    El acta de la audiencia es la que se cargó al registrarla (7.1). No se pide video.
+                  </p>
                   <div className="flex gap-2">
                     <Boton
                       icono={<Plus className="w-3.5 h-3.5" />}
                       onClick={() => firmaSobre.conFirma(abrirSobre)}
-                      disabled={guardando || !sobreOferta || aNumero(sobreValor) == null}
+                      disabled={
+                        guardando || !sobreOferta || aNumero(sobreValor) == null || !sobreEvidencia
+                      }
                     >
                       Abrir sobre
                     </Boton>
@@ -560,14 +586,21 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
         {definitivo.puedePublicar && (
           <div className="border border-gray-200 rounded-lg p-3 space-y-2.5">
             <input
+              type="url"
               className={campo}
-              placeholder="Dónde se publicó el informe definitivo"
-              value={medioDefinitivo}
-              onChange={(e) => setMedioDefinitivo(e.target.value)}
+              aria-label="Enlace de la publicación en SECOP"
+              placeholder="Enlace de la publicación en SECOP (https://…)"
+              value={enlaceDefinitivo}
+              onChange={(e) => setEnlaceDefinitivo(e.target.value)}
             />
+            {enlaceDefinitivo.trim() && !esEnlace(enlaceDefinitivo) && (
+              <span className="text-[11px] text-red-600">
+                El enlace tiene que ser una dirección completa, con https://
+              </span>
+            )}
             <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer">
               <UploadCloud size={15} className="text-slate-400" />
-              <span>{evidenciaDefinitivo?.name ?? 'Adjuntar el soporte de la publicación'}</span>
+              <span>{evidenciaDefinitivo?.name ?? 'Adjuntar el archivo de evidencia de la publicación'}</span>
               <input
                 type="file"
                 className="hidden"
@@ -659,6 +692,10 @@ export function PanelAdjudicacion({ procesoId, onCambio }: Props) {
                 {correoContratista.trim() && !correoValido(correoContratista) && (
                   <span className="text-[11px] text-red-600">No parece un correo válido</span>
                 )}
+                <span className="block text-[11px] text-slate-500 mt-1">
+                  Al adjudicar se le envía un correo informativo. No reemplaza la notificación
+                  oficial, que es el acto administrativo.
+                </span>
               </label>
 
               {seApartaDelInforme && (
@@ -851,7 +888,7 @@ function ResumenDefinitivo({ informe }: { informe: InformeDefinitivo }) {
     <div className="border border-gray-200 rounded-lg p-3 space-y-1.5">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <p className="text-[12.5px] font-bold text-slate-800 m-0">
-          Ganadora: {resultado.ganadora.nombre}
+          Ganadora: {resultado.ganadora?.nombre ?? 'sin definir'}
           <span className="ml-2 inline-block px-2 py-0.5 text-[10.5px] font-bold rounded-md border bg-slate-50 text-slate-700 border-slate-200">
             {informe.estado}
           </span>
@@ -898,10 +935,66 @@ function ResumenDefinitivo({ informe }: { informe: InformeDefinitivo }) {
       {informe.publicadoAt && (
         <p className="text-[11.5px] text-slate-500 m-0">
           Publicado el {momentoConHora(informe.publicadoAt)} por {informe.publicadoPor}.
+          {informe.enlacePublicacion && (
+            <>
+              {' '}
+              <a
+                className="text-blue-700"
+                href={informe.enlacePublicacion}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Ver en SECOP
+              </a>
+            </>
+          )}
         </p>
       )}
+
+      {(informe.versiones?.length ?? 0) > 1 && <HistorialDefinitivo versiones={informe.versiones!} />}
     </div>
   );
+}
+
+/** Las versiones del informe definitivo, de la más reciente a la primera (EFDS-1159). */
+function HistorialDefinitivo({ versiones }: { versiones: VersionInformeDefinitivo[] }) {
+  return (
+    <div>
+      <p className="text-[11.5px] font-bold text-slate-600 m-0">Historial de versiones</p>
+      <ul className="list-none p-0 m-0 mt-1 space-y-1">
+        {[...versiones].reverse().map((v) => (
+          <li key={v.numero} className="text-[11.5px] text-slate-600">
+            <span className="font-bold">Versión {v.numero}</span> ·{' '}
+            {momentoConHora(v.generadoAt)}
+            {v.generadoPor ? ` · ${v.generadoPor}` : ''}
+            {v.motivo ? ` · ${v.motivo}` : ' · primera versión'}
+            {v.informe && (
+              <>
+                {' · '}
+                <a
+                  className="text-blue-700"
+                  href={contratacionService.urlDescarga(v.informe.archivoUrl)}
+                >
+                  {v.informe.nombre}
+                </a>
+              </>
+            )}
+            {v.publicadoAt && ` · publicada el ${momentoConHora(v.publicadoAt)}`}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Un enlace completo: es lo que prueba dónde quedó publicado. */
+function esEnlace(texto: string) {
+  try {
+    const url = new URL(texto.trim());
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
 }
 
 /** El acto vigente: a quién, por cuánto y con qué resolución. */

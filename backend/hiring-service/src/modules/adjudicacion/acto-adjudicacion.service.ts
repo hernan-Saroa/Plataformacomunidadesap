@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, EntityManager, Not } from 'typeorm';
@@ -19,6 +20,8 @@ import {
 } from './adjudicacion.base';
 import { AdjudicarDto, PublicarActoDto, RevocarActoDto } from './dto/acto.dto';
 import { CierreActividadService } from '../cierre-actividad/cierre-actividad.service';
+import { Campana } from '../notificaciones/campana';
+import { motorDeAvisosEncendido } from '../notificaciones/notificador.service';
 
 /**
  * Acto de adjudicación — actividad 7.3 (EFDS-1159, RF-ADJ-01).
@@ -68,7 +71,7 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
       informeDefinitivoPublicado: !!definitivo,
       // La ganadora que propone el informe. El acto puede apartarse de ella,
       // pero entonces tiene que decir por qué.
-      ganadoraPropuesta: definitivo
+      ganadoraPropuesta: definitivo?.resultado.ganadora
         ? {
             oferenteId: definitivo.resultado.ganadora.oferenteId,
             nombre: definitivo.resultado.ganadora.nombre,
@@ -102,6 +105,8 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
     hash: string,
     acceso: HiringAccess,
   ) {
+    let aviso: { correo: string; radicado: string | null; objeto: string | null } | null = null;
+
     await this.dataSource.transaction(async (em) => {
       const proceso = await this.exigirProceso(em, procesoId);
       await this.exigirQueNoEsteDesierto(em, procesoId);
@@ -179,9 +184,50 @@ export class ActoAdjudicacionService extends AdjudicacionBase {
         esLaGanadoraDelInforme: esLaGanadora,
         justificacion: esLaGanadora ? null : dto.justificacion?.trim(),
       });
+
+      if (guardado.correoContratista) {
+        aviso = {
+          correo: guardado.correoContratista,
+          radicado: proceso.radicado ?? null,
+          objeto: proceso.objeto ?? null,
+        };
+      }
     });
 
+    // Fuera de la transacción: un correo que no sale no deshace la adjudicación.
+    if (aviso) await this.avisarAlAdjudicatario(aviso);
+
     return this.estado(procesoId);
+  }
+
+  /**
+   * El correo al proveedor adjudicado (EFDS-1159).
+   *
+   * Sale siempre que el acto traiga su correo, sin configurarlo como aviso: la
+   * sesión con Contratación confirmó que adjudicar avisa al ganador. Es solo
+   * informativo, y el texto lo dice: la notificación oficial es el acto
+   * administrativo. La redacción está pendiente de confirmar con Contratación.
+   */
+  private async avisarAlAdjudicatario(aviso: {
+    correo: string;
+    radicado: string | null;
+    objeto: string | null;
+  }) {
+    if (!motorDeAvisosEncendido()) return;
+
+    const proceso = aviso.radicado ? `el proceso ${aviso.radicado}` : 'el proceso de contratación';
+    const objeto = aviso.objeto ? `, cuyo objeto es «${aviso.objeto}»,` : '';
+    try {
+      await new Campana(this.dataSource, this.logger).aCorreosExternos([aviso.correo], {
+        titulo: 'Adjudicación del proceso',
+        mensaje:
+          `La Escuela Superior de Administración Pública le informa que ${proceso}${objeto} ` +
+          'le fue adjudicado. Este correo es solo informativo: no reemplaza la notificación ' +
+          'oficial, que se surte con el acto administrativo de adjudicación.',
+      });
+    } catch (error: any) {
+      this.logger.warn(`No salió el correo al adjudicatario: ${error.message}`);
+    }
   }
 
   /** Registra la notificación y la publicación del acto, con su evidencia. */
