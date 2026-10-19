@@ -137,8 +137,19 @@ export default function ModalFirmasAprobacion({
       }
 
       // Asignar el rol que corresponde al usuario autenticado (priorizando el rol que falte por firmar)
+      const regla = (data as any)?.reglaDesplazamiento || 'REGULAR';
+      const requiereDirNacional =
+        regla === 'SUBDIRECTOR_NACIONAL' ||
+        regla === 'DESPLAZAMIENTO_SUBDIRECTOR_GC' ||
+        regla === 'DIRECTOR_TERRITORIAL' ||
+        regla === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL';
+      const requiereSubdirNacional =
+        regla === 'DIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL';
+
+      const esDirNacUser = Boolean(authService.isDireccionNacional?.());
+      const esSubdirUser = Boolean(authService.isSubdireccionGestionCorporativa?.());
+      const esJefeRegularUser = Boolean(authService.isJefeDependencia?.());
       const esGerenteUser = Boolean(authService.isGerenteProyecto?.());
-      const esJefeUser = Boolean(authService.isJefeDependencia?.());
       const esAnalistaUser = Boolean(authService.isAnalista?.());
       const esAdminUser = Boolean(authService.getCurrentUserSync()?.esAdmin) || Boolean(authService.isSuperAdmin?.());
 
@@ -146,6 +157,17 @@ export default function ModalFirmasAprobacion({
       const fGerente = data.firmantes.find((f: any) => f.tipo === 'GERENTE_PROYECTO');
       const faltaJefe = Boolean(fJefe && !fJefe.firmado);
       const faltaGerente = Boolean(fGerente && !fGerente.firmado);
+
+      // Jerarquía de aprobación: si la comisión requiere Director Nacional o Subdirector Nacional,
+      // el jefe de dependencia regular NO puede asumir la firma 1.
+      const puedeAsumirJefe =
+        esAdminUser ||
+        (requiereDirNacional
+          ? esDirNacUser
+          : requiereSubdirNacional
+          ? esSubdirUser
+          : esJefeRegularUser);
+      const puedeAsumirGerente = esAdminUser || esGerenteUser;
 
       let miRol: TipoFirmaAprobacion = 'JEFE_DEPENDENCIA';
       if (esAdminUser) {
@@ -160,7 +182,7 @@ export default function ModalFirmasAprobacion({
         } else {
           miRol = data.firmantes.find((f: any) => !f.firmado)?.tipo || 'JEFE_DEPENDENCIA';
         }
-      } else if (esGerenteUser && esJefeUser) {
+      } else if (puedeAsumirGerente && puedeAsumirJefe) {
         // Usuario con ambos roles: priorizar el que falte por firmar
         if (faltaGerente && !faltaJefe) {
           miRol = 'GERENTE_PROYECTO';
@@ -171,9 +193,9 @@ export default function ModalFirmasAprobacion({
         } else {
           miRol = 'GERENTE_PROYECTO';
         }
-      } else if (esGerenteUser) {
+      } else if (puedeAsumirGerente) {
         miRol = 'GERENTE_PROYECTO';
-      } else if (esJefeUser) {
+      } else if (puedeAsumirJefe) {
         miRol = 'JEFE_DEPENDENCIA';
       } else if (esAnalistaUser) {
         miRol = 'ANALISTA';
@@ -483,18 +505,42 @@ export default function ModalFirmasAprobacion({
   );
   const esReglaEspecial = estadoFirmas?.reglaDesplazamiento && estadoFirmas.reglaDesplazamiento !== 'REGULAR';
   const todasFirmadas = Boolean(estadoFirmas?.completado);
+  const regla = estadoFirmas?.reglaDesplazamiento || 'REGULAR';
+  const requiereDirNacional =
+    regla === 'SUBDIRECTOR_NACIONAL' ||
+    regla === 'DESPLAZAMIENTO_SUBDIRECTOR_GC' ||
+    regla === 'DIRECTOR_TERRITORIAL' ||
+    regla === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL';
+  const requiereSubdirNacional =
+    regla === 'DIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL';
 
   const currentUser = authService.getCurrentUserSync();
-  const esGerente = Boolean(authService.isGerenteProyecto?.());
+  const esDirNac = Boolean(authService.isDireccionNacional?.());
+  const esSubdir = Boolean(authService.isSubdireccionGestionCorporativa?.());
   const esJefe = Boolean(authService.isJefeDependencia?.());
+  const esGerente = Boolean(authService.isGerenteProyecto?.());
   const esAnalista = Boolean(authService.isAnalista?.());
   const esAdmin = Boolean(currentUser?.esAdmin) || Boolean(authService.isSuperAdmin?.());
   const esEnlace = Boolean(authService.isEnlaceDependencia?.());
 
-  // Permisos efectivos de firma según roles
-  const puedeFirmarComoJefe = Boolean(esAdmin || esJefe) && Boolean(firmante1 && !firmante1.firmado);
+  // Permisos efectivos de firma según roles y reglas de desplazamiento jerárquico:
+  // - Si el comisionado es Subdirector Nacional o Director Territorial: firma Director Nacional (el jefe habitual NO puede firmar)
+  // - Si el comisionado es Director Nacional: firma Subdirector Nacional (el jefe habitual NO puede firmar)
+  // - Si es regular: firma Jefe de Dependencia
+  const puedeFirmarComoJefe =
+    Boolean(
+      esAdmin ||
+        (requiereDirNacional ? esDirNac : requiereSubdirNacional ? esSubdir : esJefe),
+    ) && Boolean(firmante1 && !firmante1.firmado);
   const puedeFirmarComoGerente = Boolean(esAdmin || esGerente) && Boolean(firmante2 && !firmante2.firmado);
   const puedeFirmarComoAnalista = Boolean(esAdmin || esAnalista) && Boolean(firmante3 && !firmante3.firmado);
+
+  const esJefeBloqueadoPorRegla =
+    !esAdmin &&
+    esJefe &&
+    !puedeFirmarComoJefe &&
+    Boolean(firmante1 && !firmante1.firmado) &&
+    (requiereDirNacional || requiereSubdirNacional);
 
   // Rol específico con el que firma el usuario autenticado (respeta selección explícita del usuario)
   let miRolFirmante: TipoFirmaAprobacion = firmanteSeleccionado || 'JEFE_DEPENDENCIA';
@@ -502,11 +548,11 @@ export default function ModalFirmasAprobacion({
     miRolFirmante = 'JEFE_DEPENDENCIA';
   } else if (miRolFirmante === 'JEFE_DEPENDENCIA' && !puedeFirmarComoJefe && puedeFirmarComoGerente) {
     miRolFirmante = 'GERENTE_PROYECTO';
-  } else if (!esAdmin && esGerente && !esJefe && !puedeFirmarComoJefe) {
+  } else if (!esAdmin && puedeFirmarComoGerente && !puedeFirmarComoJefe) {
     miRolFirmante = 'GERENTE_PROYECTO';
-  } else if (!esAdmin && esJefe && !esGerente && !puedeFirmarComoGerente) {
+  } else if (!esAdmin && puedeFirmarComoJefe && !puedeFirmarComoGerente) {
     miRolFirmante = 'JEFE_DEPENDENCIA';
-  } else if (!esAdmin && esAnalista && !esJefe && !esGerente) {
+  } else if (!esAdmin && esAnalista && !puedeFirmarComoJefe && !puedeFirmarComoGerente) {
     miRolFirmante = 'ANALISTA';
   }
 
@@ -516,7 +562,7 @@ export default function ModalFirmasAprobacion({
   const miTituloRol =
     miFirmanteObj?.titulo ||
     (miRolFirmante === 'JEFE_DEPENDENCIA'
-      ? 'Jefe de Dependencia / Supervisor'
+      ? (requiereDirNacional ? 'Director Nacional' : requiereSubdirNacional ? 'Subdirector Nacional' : 'Jefe de Dependencia / Supervisor')
       : miRolFirmante === 'GERENTE_PROYECTO'
       ? 'Gerente de Proyecto'
       : 'Analista de Viáticos');
@@ -529,20 +575,12 @@ export default function ModalFirmasAprobacion({
   const otroFirmanteTitulo =
     otroFirmanteObj?.titulo ||
     (otroFirmanteTipo === 'JEFE_DEPENDENCIA'
-      ? 'Jefe de Dependencia / Supervisor'
+      ? (requiereDirNacional ? 'Director Nacional' : requiereSubdirNacional ? 'Subdirector Nacional' : 'Jefe de Dependencia / Supervisor')
       : 'Gerente de Proyecto');
-
-  const esDirectivo =
-    esAdmin ||
-    esJefe ||
-    esGerente ||
-    Boolean(authService.isSubdireccionGestionCorporativa?.()) ||
-    Boolean(authService.isDireccionNacional?.());
 
   const puedeFirmar =
     !esEnlace &&
-    esDirectivo &&
-    (Boolean(authService.canFirmarAprobacion?.()) || esAdmin || esJefe || esGerente);
+    (puedeFirmarComoJefe || puedeFirmarComoGerente || puedeFirmarComoAnalista);
 
   // Enviar alerta y recordatorio de firma pendiente al otro rol
   const handleEnviarAlerta = async (tipoDestino?: TipoFirmaAprobacion) => {
@@ -1274,6 +1312,35 @@ export default function ModalFirmasAprobacion({
                   {todasFirmadas ? '2 de 2 aprobadas' : firmasRegistradasCount === 1 ? '1 de 2 aprobadas' : '0 de 2 aprobadas'}
                 </span>
               </div>
+
+              {esJefeBloqueadoPorRegla && (
+                <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-3 text-amber-900 text-xs shadow-xs">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-xs uppercase tracking-wide text-amber-900">
+                      Aprobación Reservada por Jerarquía Institucional
+                    </p>
+                    <p className="text-[11px] leading-relaxed">
+                      {requiereDirNacional && (
+                        <>
+                          Dado que el comisionado ejerce como{' '}
+                          <strong className="font-bold">
+                            {regla.includes('TERRITORIAL') ? 'Director Territorial' : 'Subdirector Nacional'}
+                          </strong>
+                          , la aprobación como superior jerárquico corresponde exclusivamente al{' '}
+                          <strong className="font-bold">Director Nacional</strong>. El jefe de dependencia habitual no está habilitado para firmar esta solicitud.
+                        </>
+                      )}
+                      {requiereSubdirNacional && (
+                        <>
+                          Dado que el comisionado es el <strong className="font-bold">Director Nacional</strong>, la aprobación institucional
+                          como superior jerárquico corresponde exclusivamente al <strong className="font-bold">Subdirector Nacional</strong>. El jefe de dependencia habitual no está habilitado para firmar esta solicitud.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Firmante 1: Jefe / Supervisor / Director */}

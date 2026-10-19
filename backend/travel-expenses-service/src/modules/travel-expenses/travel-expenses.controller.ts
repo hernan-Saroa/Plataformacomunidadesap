@@ -700,6 +700,7 @@ export class TravelExpensesController {
       busqueda,
       usuarioId,
       superAdmin,
+      normalizedRoles,
     );
     return {
       success: true,

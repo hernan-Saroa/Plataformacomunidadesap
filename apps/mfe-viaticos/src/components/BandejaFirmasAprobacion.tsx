@@ -114,18 +114,37 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
     const firmas = Array.isArray(s.camposAdicionales?.firmasAprobacion)
       ? s.camposAdicionales.firmasAprobacion
       : [];
+    const tieneJefe = firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO');
+    const tieneGerente = firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO');
+
     if (esSuperAdmin) {
-      const tieneJefe = firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO');
-      const tieneGerente = firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO');
       return !tieneJefe || !tieneGerente;
     }
-    if (esGerente && !esJefe && !esSubdir && !esDirNac) {
-      return !firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO');
+
+    const regla = s.camposAdicionales?.reglaDesplazamiento || 'REGULAR';
+    const requiereDirNacional =
+      regla === 'SUBDIRECTOR_NACIONAL' ||
+      regla === 'DESPLAZAMIENTO_SUBDIRECTOR_GC' ||
+      regla === 'DIRECTOR_TERRITORIAL' ||
+      regla === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL';
+    const requiereSubdirNacional =
+      regla === 'DIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL';
+
+    const faltaGerente = !tieneGerente && esGerente;
+
+    let faltaJefe = false;
+    if (!tieneJefe) {
+      if (requiereDirNacional) {
+        faltaJefe = esDirNac;
+      } else if (requiereSubdirNacional) {
+        faltaJefe = esSubdir;
+      } else {
+        // En flujo regular, solo el jefe de dependencia (el jefe habitual no puede firmar cuando se requiere Director/Subdirector Nacional)
+        faltaJefe = esJefe && !requiereDirNacional && !requiereSubdirNacional;
+      }
     }
-    if (esJefe || esSubdir || esDirNac) {
-      return !firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO');
-    }
-    return false;
+
+    return faltaJefe || faltaGerente;
   };
 
   // Determina si el usuario actual ya registró su firma en la solicitud
@@ -133,12 +152,30 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
     const firmas = Array.isArray(s.camposAdicionales?.firmasAprobacion)
       ? s.camposAdicionales.firmasAprobacion
       : [];
+    const regla = s.camposAdicionales?.reglaDesplazamiento || 'REGULAR';
+    const requiereDirNacional =
+      regla === 'SUBDIRECTOR_NACIONAL' ||
+      regla === 'DESPLAZAMIENTO_SUBDIRECTOR_GC' ||
+      regla === 'DIRECTOR_TERRITORIAL' ||
+      regla === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL';
+    const requiereSubdirNacional =
+      regla === 'DIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL';
+
     if (esGerente && firmas.some((f: any) => f.tipo === 'GERENTE_PROYECTO' && f.estado !== 'RECHAZADO')) {
       return true;
     }
-    if ((esJefe || esSubdir || esDirNac) && firmas.some((f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO')) {
-      return true;
+
+    const firmaJefeRegistrada = firmas.some(
+      (f: any) => f.tipo === 'JEFE_DEPENDENCIA' && f.estado !== 'RECHAZADO',
+    );
+
+    if (firmaJefeRegistrada) {
+      if (requiereDirNacional && esDirNac) return true;
+      if (requiereSubdirNacional && esSubdir) return true;
+      if (!requiereDirNacional && !requiereSubdirNacional && esJefe) return true;
+      if (esSuperAdmin) return true;
     }
+
     return false;
   };
 
@@ -248,7 +285,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
     const regla = sol.camposAdicionales?.reglaDesplazamiento;
     const desc = sol.camposAdicionales?.descripcionReglaDesplazamiento;
 
-    if (regla === 'SUBDIRECTOR_NACIONAL') {
+    if (regla === 'SUBDIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_SUBDIRECTOR_GC') {
       return (
         <span
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
@@ -260,7 +297,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
         </span>
       );
     }
-    if (regla === 'DIRECTOR_NACIONAL') {
+    if (regla === 'DIRECTOR_NACIONAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL') {
       return (
         <span
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
@@ -272,7 +309,7 @@ export const BandejaFirmasAprobacion: React.FC<Props> = ({
         </span>
       );
     }
-    if (regla === 'DIRECTOR_TERRITORIAL') {
+    if (regla === 'DIRECTOR_TERRITORIAL' || regla === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL') {
       return (
         <span
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"

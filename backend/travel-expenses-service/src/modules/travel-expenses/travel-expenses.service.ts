@@ -383,6 +383,82 @@ export class TravelExpensesService implements OnModuleInit {
     });
   }
 
+  private readonly ROLES_DIRECCION_NACIONAL = [
+    'DIRECCION_NACIONAL',
+    'DIRECTOR_NACIONAL',
+    'DELEGADO_DIRECCION_NACIONAL',
+    'DIRECCION_GENERAL',
+    'DIRECTOR_GENERAL',
+  ];
+
+  private readonly ROLES_SUBDIRECCION_NACIONAL = [
+    'SUBDIRECCION_GESTION_CORPORATIVA',
+    'SUBDIRECTOR_GESTION_CORPORATIVA',
+    'SUBDIRECCION_DE_GESTION_CORPORATIVA',
+    'SUBDIRECTOR_NACIONAL',
+    'SUBDIRECTOR',
+    'SUBDIRECCION_NACIONAL',
+    'SUBDIRECTOR_ACADEMICO',
+    'SUBDIRECTOR_PROYECCION',
+    'SUBDIRECTOR_ALTO_GOBIERNO',
+  ];
+
+  esDirectorNacional(rolesUsuario: string[] = [], cargoFirmante?: string): boolean {
+    if (cargoFirmante) {
+      const c = cargoFirmante.toLowerCase();
+      if (
+        (c.includes('director') || c.includes('directora')) &&
+        (c.includes('nacional') || c.includes('general')) &&
+        !c.includes('territorial')
+      ) {
+        return true;
+      }
+    }
+    if (!rolesUsuario || !rolesUsuario.length) return false;
+    return rolesUsuario.some((r) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        this.ROLES_DIRECCION_NACIONAL.includes(normalized) ||
+        normalized.includes('DIRECTOR_NACIONAL') ||
+        normalized.includes('DIRECCION_NACIONAL') ||
+        normalized.includes('DIRECTOR_GENERAL') ||
+        normalized.includes('DIRECCION_GENERAL') ||
+        r === 'travel_expenses.general.es_direccion_nacional' ||
+        r === 'travel_expenses.general.es_director' ||
+        r === 'general.es_director'
+      );
+    });
+  }
+
+  esSubdirectorNacional(rolesUsuario: string[] = [], cargoFirmante?: string): boolean {
+    if (cargoFirmante) {
+      const c = cargoFirmante.toLowerCase();
+      if (
+        (c.includes('subdirector') ||
+          c.includes('subdirectora') ||
+          c.includes('subdireccion') ||
+          c.includes('subdirección')) &&
+        !c.includes('territorial')
+      ) {
+        return true;
+      }
+    }
+    if (!rolesUsuario || !rolesUsuario.length) return false;
+    return rolesUsuario.some((r) => {
+      if (typeof r !== 'string') return false;
+      const normalized = r.toUpperCase().replace(/\s+/g, '_');
+      return (
+        this.ROLES_SUBDIRECCION_NACIONAL.includes(normalized) ||
+        (normalized.includes('SUBDIRECTOR') && !normalized.includes('TERRITORIAL')) ||
+        (normalized.includes('SUBDIRECCION') && !normalized.includes('TERRITORIAL')) ||
+        r === 'travel_expenses.general.es_subdireccion_corporativa' ||
+        r === 'travel_expenses.general.es_subdirector' ||
+        r === 'general.es_subdirector'
+      );
+    });
+  }
+
   private dependenciasMapCache: Map<string, string> = new Map();
   private dependenciasMapExpires = 0;
 
@@ -3944,6 +4020,8 @@ if (dto.costoEstimadoTiquete !== undefined) {
     const cargoComisionado = (
       solicitud.camposAdicionales?.cargo ||
       solicitud.camposAdicionales?.cargoEsap ||
+      solicitud.camposAdicionales?.cargoInstitucional ||
+      solicitud.camposAdicionales?.cargoComisionado ||
       (comisionado as any)?.cargo ||
       ''
     )
@@ -3954,6 +4032,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
       dependenciaNombre ||
       solicitud.camposAdicionales?.dependenciaSolicitante ||
       solicitud.camposAdicionales?.dependencia ||
+      solicitud.camposAdicionales?.nombreDependencia ||
       ''
     )
       .toLowerCase()
@@ -3965,29 +4044,82 @@ if (dto.costoEstimadoTiquete !== undefined) {
       ''
     ).toUpperCase();
 
-    // 1) Si se desplaza el subdirector Nacional de G.C., firma el director nacional.
-    const esSubdirectorGC =
-      cargoComisionado.includes('subdirector') &&
-      (cargoComisionado.includes('g.c') ||
-        cargoComisionado.includes('gc') ||
-        cargoComisionado.includes('corporativa') ||
-        cargoComisionado.includes('conocimiento') ||
-        dep.includes('corporativa') ||
-        dep.includes('conocimiento'));
+    // Recopilar cargos posibles del comisionado (JSONB cargos, campos adicionales, etc.)
+    const todosLosCargos: string[] = [
+      cargoComisionado,
+      ...(Array.isArray((comisionado as any)?.cargos)
+        ? (comisionado as any).cargos.map((c: any) => String(c?.cargo || '').toLowerCase().trim())
+        : []),
+    ];
 
-    // 2) Si se desplaza el director nacional, firma el subdirector Nacional de G.C.
+    // Recopilar roles posibles del comisionado (campos adicionales, usuario, etc.)
+    const rolesComisionadoList: string[] = [
+      ...(Array.isArray(solicitud.camposAdicionales?.roles) ? solicitud.camposAdicionales.roles : []),
+      ...(Array.isArray(solicitud.camposAdicionales?.rolesComisionado) ? solicitud.camposAdicionales.rolesComisionado : []),
+      ...(typeof solicitud.camposAdicionales?.rol === 'string' ? [solicitud.camposAdicionales.rol] : []),
+      ...(typeof solicitud.camposAdicionales?.rolComisionado === 'string' ? [solicitud.camposAdicionales.rolComisionado] : []),
+      ...(Array.isArray((comisionado as any)?.rolesUsuario) ? (comisionado as any).rolesUsuario : []),
+      ...(Array.isArray((comisionado as any)?.roles) ? (comisionado as any).roles : []),
+    ].map((r: any) => String(r || '').toLowerCase().replace(/\s+/g, '_').trim());
+
+    // 1) Si el comisionado es subdirector nacional (rol o cargo), firma el director nacional.
+    const esSubdirectorNacional =
+      todosLosCargos.some(
+        (c) =>
+          (c.includes('subdirector') ||
+            c.includes('subdirectora') ||
+            c.includes('subdireccion') ||
+            c.includes('subdirección')) &&
+          !c.includes('territorial'),
+      ) ||
+      rolesComisionadoList.some(
+        (r) =>
+          (r.includes('subdirector') || r.includes('subdireccion')) &&
+          !r.includes('territorial'),
+      ) ||
+      (dep.includes('subdirecci') &&
+        (cargoComisionado.includes('director') || cargoComisionado.includes('jefe')));
+
+    // 2) Si se desplaza el director nacional (rol o cargo), firma el subdirector nacional.
     const esDirectorNacional =
       !cargoComisionado.includes('territorial') &&
       !dep.includes('territorial') &&
-      (cargoComisionado.includes('director nacional') ||
-        cargoComisionado.includes('director general') ||
-        (cargoComisionado === 'director' && dep.includes('nacional')));
+      !esSubdirectorNacional &&
+      (todosLosCargos.some(
+        (c) =>
+          c.includes('director nacional') ||
+          c.includes('directora nacional') ||
+          c.includes('director general') ||
+          c.includes('directora general') ||
+          (c.includes('director') && (dep.includes('nacional') || dep.includes('general'))),
+      ) ||
+        rolesComisionadoList.some(
+          (r) =>
+            r.includes('director_nacional') ||
+            r.includes('direccion_nacional') ||
+            r.includes('director_general') ||
+            r.includes('direccion_general'),
+        ));
 
-    // 3) Si se desplaza el director territorial, firma el director nacional.
+    // 3) Si el comisionado tiene cargo o rol de dirección territorial, firma el director nacional.
     const esDirectorTerritorial =
-      cargoComisionado.includes('director territorial') ||
-      (cargoComisionado.includes('director') &&
-        (cargoComisionado.includes('territorial') || dep.includes('territorial')));
+      !esSubdirectorNacional &&
+      !esDirectorNacional &&
+      (todosLosCargos.some(
+        (c) =>
+          c.includes('director territorial') ||
+          c.includes('directora territorial') ||
+          c.includes('direccion territorial') ||
+          c.includes('dirección territorial') ||
+          (c.includes('director') && (c.includes('territorial') || dep.includes('territorial'))) ||
+          (c.includes('territorial') && (dep.includes('territorial') || c.includes('director'))),
+      ) ||
+        rolesComisionadoList.some(
+          (r) =>
+            r.includes('director_territorial') ||
+            r.includes('direccion_territorial') ||
+            (r.includes('territorial') && r.includes('director')),
+        ));
 
     let reglaDesplazamiento = 'REGULAR';
     let descripcionRegla =
@@ -3997,10 +4129,10 @@ if (dto.costoEstimadoTiquete !== undefined) {
       solicitud.camposAdicionales?.cargoJefe ||
       (dep ? `Jefe ${dep}` : 'Jefe de Dependencia Solicitante');
 
-    if (esSubdirectorGC) {
+    if (esSubdirectorNacional) {
       reglaDesplazamiento = 'DESPLAZAMIENTO_SUBDIRECTOR_GC';
       descripcionRegla =
-        'Por desplazamiento del Subdirector Nacional de G.C., firma el Director Nacional.';
+        'Por desplazamiento del Subdirector Nacional, firma el Director Nacional.';
       tituloFirmante1 = 'Director Nacional';
       cargoFirmante1 = 'Director Nacional';
     } else if (esDirectorNacional) {
@@ -4012,7 +4144,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
     } else if (esDirectorTerritorial) {
       reglaDesplazamiento = 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL';
       descripcionRegla =
-        'Por desplazamiento del Director Territorial, firma el Director Nacional.';
+        'Por desplazamiento de Dirección Territorial, firma el Director Nacional.';
       tituloFirmante1 = 'Director Nacional';
       cargoFirmante1 = 'Director Nacional';
     } else if (tipoCom === 'CONTRATISTA' || tipoCom === 'DOCENTE') {
@@ -4034,7 +4166,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
         titulo: tituloFirmante1,
         cargo: cargoFirmante1,
         descripcion:
-          esSubdirectorGC || esDirectorNacional || esDirectorTerritorial
+          esSubdirectorNacional || esDirectorNacional || esDirectorTerritorial
             ? descripcionRegla
             : 'Firma de aprobación de la solicitud: Jefe de Dependencia o Supervisor.',
         esRequerido: true,
@@ -4732,7 +4864,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
       );
     }
 
-    // Validación de pertenencia a la misma dependencia para Jefe y Gerente
+    // Validación de autorización jerárquica y pertenencia a la dependencia para Jefe y Gerente
     const tipoFirmaStr = String(dto.tipoFirma || '').toUpperCase();
     const esFirmaJefeOGerente =
       tipoFirmaStr === 'JEFE_DEPENDENCIA' ||
@@ -4740,7 +4872,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     const esSuperAdmin = this.esSuperAdmin(userRoles);
 
-    if (esFirmaJefeOGerente && !esSuperAdmin && usuarioId) {
+    if (esFirmaJefeOGerente && !esSuperAdmin) {
       const depSolicitud =
         solicitud.idDependencia != null
           ? Number(solicitud.idDependencia)
@@ -4748,13 +4880,53 @@ if (dto.costoEstimadoTiquete !== undefined) {
           ? Number(solicitud.comisionado.idDependencia)
           : null;
 
-      if (depSolicitud != null) {
-        const depFirmante = await this.obtenerDependenciaUsuario(usuarioId);
-        const firmantesAprobacion = this.determinarFirmantesAprobacion(solicitud);
-        const esReglaEspecial =
-          firmantesAprobacion.reglaDesplazamiento !== 'REGULAR';
+      const firmantesAprobacion = this.determinarFirmantesAprobacion(solicitud);
+      const esReglaEspecial =
+        firmantesAprobacion.reglaDesplazamiento !== 'REGULAR';
 
-        if (!esReglaEspecial) {
+      if (tipoFirmaStr === 'JEFE_DEPENDENCIA') {
+        const requiereDirectorNacional =
+          firmantesAprobacion.reglaDesplazamiento === 'DESPLAZAMIENTO_SUBDIRECTOR_GC' ||
+          firmantesAprobacion.reglaDesplazamiento === 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL' ||
+          firmantesAprobacion.firmante1.titulo === 'Director Nacional';
+
+        const requiereSubdirectorNacional =
+          firmantesAprobacion.reglaDesplazamiento === 'DESPLAZAMIENTO_DIRECTOR_NACIONAL' ||
+          firmantesAprobacion.firmante1.titulo.includes('Subdirector');
+
+        if (requiereDirectorNacional) {
+          let esDirNacFirmante = this.esDirectorNacional(userRoles, dto.cargoFirmante);
+          if (!esDirNacFirmante && usuarioId) {
+            const datosUsuarioFirmante = await this.resolverDatosUsuario(usuarioId);
+            esDirNacFirmante = this.esDirectorNacional([], datosUsuarioFirmante.cargo);
+          }
+          if (!esDirNacFirmante) {
+            throw new BadRequestException(
+              'No es posible firmar la aprobación: el comisionado es Subdirector Nacional o tiene cargo de Dirección Territorial. Esta aprobación como jefe de dependencia corresponde exclusivamente al Director Nacional.',
+            );
+          }
+        } else if (requiereSubdirectorNacional) {
+          let esSubdirFirmante = this.esSubdirectorNacional(userRoles, dto.cargoFirmante);
+          if (!esSubdirFirmante && usuarioId) {
+            const datosUsuarioFirmante = await this.resolverDatosUsuario(usuarioId);
+            esSubdirFirmante = this.esSubdirectorNacional([], datosUsuarioFirmante.cargo);
+          }
+          if (!esSubdirFirmante) {
+            throw new BadRequestException(
+              'No es posible firmar la aprobación: el comisionado es el Director Nacional. Esta aprobación como jefe de dependencia corresponde exclusivamente al Subdirector Nacional.',
+            );
+          }
+        } else if (usuarioId && depSolicitud != null) {
+          const depFirmante = await this.obtenerDependenciaUsuario(usuarioId);
+          if (depFirmante == null || depFirmante !== depSolicitud) {
+            throw new BadRequestException(
+              `No es posible firmar la aprobación: el usuario firmante pertenece a una dependencia distinta (${depFirmante ?? 'Sin asignar'}) a la de la solicitud (${depSolicitud}). Solo directivos de la misma dependencia pueden firmar la aprobación.`,
+            );
+          }
+        }
+      } else if (tipoFirmaStr === 'GERENTE_PROYECTO') {
+        if (!esReglaEspecial && usuarioId && depSolicitud != null) {
+          const depFirmante = await this.obtenerDependenciaUsuario(usuarioId);
           if (depFirmante == null || depFirmante !== depSolicitud) {
             throw new BadRequestException(
               `No es posible firmar la aprobación: el usuario firmante pertenece a una dependencia distinta (${depFirmante ?? 'Sin asignar'}) a la de la solicitud (${depSolicitud}). Solo directivos de la misma dependencia pueden firmar la aprobación.`,
@@ -5274,6 +5446,7 @@ if (dto.costoEstimadoTiquete !== undefined) {
     busqueda?: string,
     usuarioId?: string,
     isSuperAdmin = false,
+    userRoles: string[] = [],
   ): Promise<{ data: any[]; total: number; page: number; limit: number }> {
     const query = this.solicitudRepo
       .createQueryBuilder('s')
@@ -5284,7 +5457,32 @@ if (dto.costoEstimadoTiquete !== undefined) {
 
     if (!isSuperAdmin && usuarioId) {
       const depUsuario = await this.obtenerDependenciaUsuario(usuarioId);
-      if (depUsuario != null) {
+      const esDirNac = this.esDirectorNacional(userRoles);
+      const esSubdir = this.esSubdirectorNacional(userRoles);
+
+      if (esDirNac) {
+        if (depUsuario != null) {
+          query.andWhere(
+            `(s.id_dependencia = :depUsuario OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :depUsuario) OR s.campos_adicionales->>'reglaDesplazamiento' IN ('DESPLAZAMIENTO_SUBDIRECTOR_GC', 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL'))`,
+            { depUsuario },
+          );
+        } else {
+          query.andWhere(
+            `s.campos_adicionales->>'reglaDesplazamiento' IN ('DESPLAZAMIENTO_SUBDIRECTOR_GC', 'DESPLAZAMIENTO_DIRECTOR_TERRITORIAL')`,
+          );
+        }
+      } else if (esSubdir) {
+        if (depUsuario != null) {
+          query.andWhere(
+            `(s.id_dependencia = :depUsuario OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :depUsuario) OR s.campos_adicionales->>'reglaDesplazamiento' = 'DESPLAZAMIENTO_DIRECTOR_NACIONAL')`,
+            { depUsuario },
+          );
+        } else {
+          query.andWhere(
+            `s.campos_adicionales->>'reglaDesplazamiento' = 'DESPLAZAMIENTO_DIRECTOR_NACIONAL'`,
+          );
+        }
+      } else if (depUsuario != null) {
         query.andWhere(
           '(s.id_dependencia = :depUsuario OR (s.id_dependencia IS NULL AND comisionado.id_dependencia = :depUsuario))',
           { depUsuario },

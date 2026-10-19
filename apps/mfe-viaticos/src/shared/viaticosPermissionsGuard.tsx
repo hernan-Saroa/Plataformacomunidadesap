@@ -85,6 +85,12 @@ export const VIATICOS_ROLE_PERMISSION_MAP: Record<ViaticosRoleKey, RolePermissio
       'SUBDIRECCION_GESTION_CORPORATIVA',
       'SUBDIRECTOR_GESTION_CORPORATIVA',
       'SUBDIRECCION_DE_GESTION_CORPORATIVA',
+      'SUBDIRECTOR_NACIONAL',
+      'SUBDIRECTOR',
+      'SUBDIRECCION_NACIONAL',
+      'SUBDIRECTOR_ACADEMICO',
+      'SUBDIRECTOR_PROYECCION',
+      'SUBDIRECTOR_ALTO_GOBIERNO',
     ],
     fallbackPermissions: [
       'travel_expenses:read_authorizations',
