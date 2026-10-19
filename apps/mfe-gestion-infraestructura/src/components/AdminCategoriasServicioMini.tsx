@@ -53,7 +53,9 @@ const colorCss = (it: CatalogoItem): string => {
   return 'bg-slate-100 text-slate-800 border border-slate-200';
 };
 
-export const AdminCategoriasServicioMini: React.FC = () => {
+export const AdminCategoriasServicioMini: React.FC<{ readOnly?: boolean }> = ({
+  readOnly = false,
+}) => {
   const [items, setItems] = useState<CatalogoItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [toast, setToast] = useState<{ tipo: 'ok' | 'err'; texto: string } | null>(null);
@@ -108,6 +110,7 @@ export const AdminCategoriasServicioMini: React.FC = () => {
   ) : null;
 
   const abrirCrear = () => {
+    if (readOnly) return;
     setModo('crear');
     setIdEditando(null);
     setForm({ ...VALORES_VACIOS, orden: String((items.at(-1)?.orden || 0) + 1) });
@@ -116,6 +119,7 @@ export const AdminCategoriasServicioMini: React.FC = () => {
   };
 
   const abrirEditar = (it: CatalogoItem) => {
+    if (readOnly) return;
     setModo('editar');
     setIdEditando(it.idCatalogo);
     setForm({
@@ -159,6 +163,7 @@ export const AdminCategoriasServicioMini: React.FC = () => {
   });
 
   const guardar = async () => {
+    if (readOnly) return;
     if (!validar()) return;
     setGuardando(true);
     setErrorForm(null);
@@ -182,6 +187,7 @@ export const AdminCategoriasServicioMini: React.FC = () => {
   };
 
   const toggle = async (it: CatalogoItem) => {
+    if (readOnly) return;
     try {
       await infraestructuraService.toggleCategoriaServicio(it.idCatalogo);
       setToast({ tipo: 'ok', texto: it.isActivo ? 'Categoría desactivada.' : 'Categoría activada.' });
@@ -192,6 +198,7 @@ export const AdminCategoriasServicioMini: React.FC = () => {
   };
 
   const pedirConfirmarEliminar = (it: CatalogoItem) => {
+    if (readOnly) return;
     setConfirmEliminar(it);
   };
 
@@ -245,16 +252,27 @@ export const AdminCategoriasServicioMini: React.FC = () => {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Recargar
           </button>
-          <button
-            type="button"
-            onClick={abrirCrear}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-md ring-1 ring-blue-500 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            Nueva categoría
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={abrirCrear}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold shadow-md ring-1 ring-blue-500 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              Nueva categoría
+            </button>
+          )}
         </div>
       </div>
+
+      {readOnly && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-800">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Modo consulta. Este perfil puede revisar categorías para aprobación funcional, pero no editar ni eliminar.
+          </span>
+        </div>
+      )}
 
       {/* Tabla */}
       <div className="overflow-x-auto rounded-xl border border-slate-300">
@@ -304,46 +322,70 @@ export const AdminCategoriasServicioMini: React.FC = () => {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => toggle(it)}
-                      className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-lg transition-colors ${
-                        it.isActivo
-                          ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                          : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                      }`}
-                      aria-label="toggle activo"
-                    >
-                      {it.isActivo ? (
-                        <>
-                          <ToggleRight className="w-4 h-4" /> Si
-                        </>
-                      ) : (
-                        <>
-                          <ToggleLeft className="w-4 h-4" /> No
-                        </>
-                      )}
-                    </button>
+                    {readOnly ? (
+                      <span
+                        className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-lg ${
+                          it.isActivo
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {it.isActivo ? (
+                          <>
+                            <ToggleRight className="w-4 h-4" /> Si
+                          </>
+                        ) : (
+                          <>
+                            <ToggleLeft className="w-4 h-4" /> No
+                          </>
+                        )}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => toggle(it)}
+                        className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-1 rounded-lg transition-colors ${
+                          it.isActivo
+                            ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                        }`}
+                        aria-label="toggle activo"
+                      >
+                        {it.isActivo ? (
+                          <>
+                            <ToggleRight className="w-4 h-4" /> Si
+                          </>
+                        ) : (
+                          <>
+                            <ToggleLeft className="w-4 h-4" /> No
+                          </>
+                        )}
+                      </button>
+                    )}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => abrirEditar(it)}
-                        className="p-2 rounded-lg hover:bg-indigo-50 text-indigo-700 transition-colors"
-                        aria-label="editar"
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => pedirConfirmarEliminar(it)}
-                        className="p-2 rounded-lg hover:bg-red-50 text-red-600 transition-colors"
-                        aria-label="eliminar"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                    {readOnly ? (
+                      <span className="text-xs font-semibold text-slate-400">Solo lectura</span>
+                    ) : (
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => abrirEditar(it)}
+                          className="p-2 rounded-lg hover:bg-indigo-50 text-indigo-700 transition-colors"
+                          aria-label="editar"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => pedirConfirmarEliminar(it)}
+                          className="p-2 rounded-lg hover:bg-red-50 text-red-600 transition-colors"
+                          aria-label="eliminar"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
