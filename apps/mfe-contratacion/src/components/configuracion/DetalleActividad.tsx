@@ -1,25 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Clock, LayoutGrid } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { contratacionService } from '../../services/contratacionService';
 import { CampoConfigurable, CeldaMatriz, FilaMatriz, Modalidad } from '../../types';
 import { ACTIVIDADES_CON_REGISTRO, TIENEN_PANEL } from '../proceso/actividadesConPanel';
 
-import { AprobacionActividad } from './AprobacionActividad';
 import { FirmaActividad } from './FirmaActividad';
-import { LaHaceActividad } from './LaHaceActividad';
-import { PuestosConfig } from './PuestosConfig';
 import { NotificacionesActividad } from './NotificacionesActividad';
 import { DocumentosQuePide } from './DocumentosQuePide';
 import { QueSePide } from './QueSePide';
 import { VistaPrevia } from './VistaPrevia';
 import { Peticion } from './peticiones';
 
-type Pestana = 'puestos' | 'entrega' | 'quien' | 'documentos' | 'aprobacion' | 'firma' | 'avisos' | 'previa';
-
-/** La radicación: donde se ocupan los puestos del proceso, y donde se configuran (109). */
-const NUMERAL_RADICACION = '3.3';
+type Pestana = 'entrega' | 'documentos' | 'firma' | 'avisos' | 'previa';
 
 /** La única actividad cuyo formulario se arma con campos configurables. */
 const NUMERAL_FORMULARIO_CONFIGURABLE = '3.1';
@@ -46,9 +40,11 @@ interface Props {
  * de adentro —lo que se pide, la aprobación— rige para las once modalidades,
  * así que quien creía ajustar una sola las cambiaba todas.
  *
- * Ahora arriba va lo que define la actividad —qué es y en qué modalidades se
- * hace, lo único que cambia entre ellas— y debajo, en pestañas, qué entrega el
- * gestor, sus archivos y quién la aprueba.
+ * Ahora arriba va lo que define la actividad —qué es, su plazo y en qué
+ * modalidades se hace, lo único que cambia entre ellas, plegado en un resumen—
+ * y debajo, en pestañas, qué entrega el
+ * gestor, sus archivos, la firma y los avisos. Quién la hace y quién la
+ * revisa no van aquí: se configuran en la pestaña Flujo (111), por modalidad.
  *
  * Todo se guarda al momento: no hay nada pendiente al cerrar.
  */
@@ -67,52 +63,82 @@ export function DetalleActividad({
   const esFormulario = fila.numeral === NUMERAL_FORMULARIO_CONFIGURABLE;
   const registro = ACTIVIDADES_CON_REGISTRO[fila.numeral];
   const tienePanel = TIENEN_PANEL(fila.numeral);
-  const [pestana, setPestana] = useState<Pestana>(fila.numeral === NUMERAL_RADICACION ? 'puestos' : 'entrega');
+  const [pestana, setPestana] = useState<Pestana>('entrega');
 
   // La vista previa solo donde es cierta: el formulario configurable es el de
   // la 3.1. En las demás el gestor ve su propio panel, y dibujar aquí un
   // formulario genérico mostraría una pantalla que no existe.
-  const esRadicacion = fila.numeral === NUMERAL_RADICACION;
   const pestanas: [Pestana, string][] = [
-    ...(esRadicacion ? ([['puestos', 'Puestos del proceso']] as [Pestana, string][]) : []),
     ['entrega', 'Qué entrega'],
-    ['quien', 'Quién la hace'],
     ['documentos', 'Documentos'],
-    ['aprobacion', 'Aprobación'],
     ['firma', 'Firma'],
     ['avisos', 'Notificaciones'],
     ...(esFormulario ? ([['previa', 'Vista previa']] as [Pestana, string][]) : []),
   ];
 
+  // Las modalidades se pliegan en un resumen: once píldoras ocupaban media
+  // ficha y casi nunca se tocan. Se abren solas si se llegó desde una celda.
+  const [verModalidades, setVerModalidades] = useState(resaltada !== null);
+  const saltan = modalidades.filter(
+    (m) => fila.celdas.find((c) => c.modalidad === m.codigo)?.estado === 'NO_APLICA',
+  );
+
   return (
     <div className="space-y-4">
-      {/* Arriba, siempre a la vista, lo que define la actividad: qué es y en qué
+      {/* Arriba, lo que define la actividad: qué es, su plazo y en qué
           modalidades se hace. El detalle va en pestañas, para no tener que
           recorrer una página larga buscando una sola cosa. */}
-      <Seccion primera titulo="Qué es">
+      <section className="space-y-2">
         <TextoActividad fila={fila} onCambio={onCambioFila} />
-        <PlazoActividad fila={fila} onCambio={onCambioFila} />
-      </Seccion>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-1">
+          <PlazoActividad fila={fila} onCambio={onCambioFila} />
+          <button
+            type="button"
+            onClick={() => setVerModalidades((v) => !v)}
+            aria-expanded={verModalidades}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          >
+            <LayoutGrid className="w-3.5 h-3.5 text-slate-500" aria-hidden />
+            <span>
+              <strong className="font-bold text-slate-800">
+                En {modalidades.length - saltan.length} de {modalidades.length}
+              </strong>{' '}
+              modalidades
+              {saltan.length > 0 && (
+                <span className="text-slate-400">
+                  {' · '}
+                  {saltan.length <= 2 ? `se la salta ${saltan.map((m) => m.nombre).join(' y ')}` : `${saltan.length} se la saltan`}
+                </span>
+              )}
+            </span>
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${verModalidades ? 'rotate-180' : ''}`} aria-hidden />
+          </button>
+        </div>
 
-      <Seccion
-        titulo="En qué modalidades se hace"
-        ayuda={`Pulsa una para quitarla o volver a ponerla. Las tachadas se saltan esta actividad.${
-          resaltada ? ' En ámbar, la columna desde la que abriste la ficha.' : ''
-        }`}
-      >
-        <Modalidades fila={fila} modalidades={modalidades} resaltada={resaltada} onCambio={onCambioFila} />
-      </Seccion>
+        {verModalidades && (
+          <div className="rounded-lg border border-gray-100 bg-slate-50 p-3 space-y-2">
+            <p className="m-0 text-xs text-slate-500">
+              Pulsa una para quitarla o volver a ponerla. Las tachadas se saltan esta actividad.
+              {resaltada ? ' En ámbar, la columna desde la que abriste la ficha.' : ''}
+            </p>
+            <Modalidades fila={fila} modalidades={modalidades} resaltada={resaltada} onCambio={onCambioFila} />
+          </div>
+        )}
+      </section>
 
-      <div className="border-t border-gray-100 pt-4 space-y-3">
-        <div className="flex items-center gap-1 rounded-lg bg-gray-100 p-1">
+      <div className="space-y-3">
+        <div className="flex items-center gap-1 overflow-x-auto border-b border-gray-200" role="tablist" aria-label="Configuración de la actividad">
           {pestanas.map(([id, texto]) => (
             <button
               key={id}
               type="button"
+              role="tab"
               onClick={() => setPestana(id)}
-              aria-pressed={pestana === id}
-              className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-                pestana === id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+              aria-selected={pestana === id}
+              className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-xs font-bold transition-colors ${
+                pestana === id
+                  ? 'border-[#003DA5] text-[#003DA5]'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
               {texto}
@@ -154,29 +180,6 @@ export function DetalleActividad({
   );
 }
 
-/** Un bloque de la ficha, con su rótulo en el estilo de las tablas del módulo. */
-function Seccion({
-  titulo,
-  ayuda,
-  primera,
-  children,
-}: {
-  titulo: string;
-  ayuda?: string;
-  primera?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className={`space-y-2.5 ${primera ? '' : 'border-t border-gray-100 pt-4'}`}>
-      <div>
-        <p className="text-[10px] font-black uppercase tracking-wide text-slate-500 m-0">{titulo}</p>
-        {ayuda && <p className="text-xs text-slate-600 m-0 mt-0.5 leading-relaxed">{ayuda}</p>}
-      </div>
-      {children}
-    </section>
-  );
-}
-
 /** El nombre y la descripción, que se escriben directamente y se guardan al salir. */
 function TextoActividad({ fila, onCambio }: { fila: FilaMatriz; onCambio: (fila: FilaMatriz) => void }) {
   const [nombre, setNombre] = useState(fila.nombre);
@@ -211,11 +214,13 @@ function TextoActividad({ fila, onCambio }: { fila: FilaMatriz; onCambio: (fila:
     }
   };
 
+  // Sin caja hasta que se pasa el mouse: se lee como el encabezado de la
+  // ficha, no como un formulario más.
   const clase =
-    'w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 transition-colors hover:border-gray-300 focus:border-[#003DA5] focus:ring-1 focus:ring-[#003DA5] outline-none';
+    'w-full rounded-lg border border-transparent bg-transparent px-1 py-1 transition-colors hover:border-gray-200 hover:bg-white focus:border-[#003DA5] focus:bg-white focus:ring-1 focus:ring-[#003DA5] outline-none';
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-0.5">
       <input
         value={nombre}
         onChange={(e) => setNombre(e.target.value)}
@@ -229,7 +234,7 @@ function TextoActividad({ fila, onCambio }: { fila: FilaMatriz; onCambio: (fila:
         }}
         maxLength={200}
         aria-label="Nombre de la actividad"
-        className={`${clase} text-sm font-bold text-slate-800`}
+        className={`${clase} text-base font-bold text-slate-900`}
       />
       <textarea
         value={descripcion}
@@ -303,6 +308,7 @@ function PlazoActividad({ fila, onCambio }: { fila: FilaMatriz; onCambio: (fila:
 
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+      <Clock className="w-3.5 h-3.5 text-slate-500" aria-hidden />
       <span className="font-bold text-slate-700">Plazo</span>
       <input
         value={plazo}

@@ -184,20 +184,20 @@ export function FlujoVisual() {
               <>
                 <button
                   type="button"
+                  disabled={ocupado}
+                  onClick={descartar}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Descartar borrador
+                </button>
+                <button
+                  type="button"
                   disabled={ocupado || errores.length > 0}
                   onClick={activar}
                   title={errores.length ? 'Primero corrige lo que falta' : undefined}
                   className="inline-flex items-center gap-1.5 rounded-md bg-[#003DA5] px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-800 disabled:opacity-50"
                 >
                   <Rocket className="w-3.5 h-3.5" /> Activar versión {borrador.numero}
-                </button>
-                <button
-                  type="button"
-                  disabled={ocupado}
-                  onClick={descartar}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Descartar borrador
                 </button>
               </>
             ) : (
@@ -213,36 +213,87 @@ export function FlujoVisual() {
           </div>
         </div>
 
+        {/* Qué versión se ve y si se puede activar. */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          {activa ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 font-bold text-emerald-700">
-              Activa: versión {activa.numero}
+          {borrador ? (
+            <div className="inline-flex rounded-lg bg-slate-100 p-0.5" role="group" aria-label="Qué versión ver">
+              {(['BORRADOR', 'ACTIVA'] as const).map((c) => {
+                const viendo = (c === 'BORRADOR') === viendoBorrador;
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-pressed={viendo}
+                    onClick={() => setCual(c)}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-bold ${
+                      viendo ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${c === 'BORRADOR' ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                      aria-hidden
+                    />
+                    {c === 'BORRADOR' ? `Borrador v${borrador.numero}` : `Activa v${activa?.numero ?? ''}`}
+                    {c === 'ACTIVA' && activa ? (
+                      <span className="font-normal text-slate-400">· {activa.procesosEnCurso} en curso</span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          ) : activa ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 font-bold text-emerald-700">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden />
+              Activa v{activa.numero}
               <span className="font-normal text-emerald-600">· {activa.procesosEnCurso} en curso</span>
             </span>
           ) : null}
-          {borrador ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 font-bold text-amber-700">
-              Borrador: versión {borrador.numero}
+
+          {/* La validación, de las once modalidades: es lo que bloquea activar. */}
+          {errores.length === 0 ? (
+            <span
+              className="inline-flex items-center gap-1 font-bold text-emerald-700"
+              title="Cada actividad tiene quién la haga y quién la revise en todas las modalidades"
+            >
+              <CheckCircle2 className="w-4 h-4" /> {borrador ? 'Todo configurado: se puede activar' : 'Todo configurado'}
             </span>
-          ) : null}
-          {borrador ? (
-            <div className="inline-flex rounded-lg bg-slate-100 p-0.5" role="group" aria-label="Qué versión ver">
-              {(['BORRADOR', 'ACTIVA'] as const).map((c) => (
+          ) : (
+            <button
+              type="button"
+              onClick={() => setVerProblemas((v) => !v)}
+              aria-expanded={verProblemas}
+              className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 font-bold text-red-700 hover:bg-red-100"
+            >
+              <AlertTriangle className="w-3.5 h-3.5" />
+              {errores.length === 1 ? '1 cosa por corregir' : `${errores.length} cosas por corregir`} antes de activar
+              <ChevronRight className={`w-3.5 h-3.5 transition-transform ${verProblemas ? 'rotate-90' : ''}`} />
+            </button>
+          )}
+        </div>
+
+        {errores.length > 0 && verProblemas ? (
+          <ul className="m-0 list-none space-y-1 rounded-lg border border-red-200 bg-red-50 p-2">
+            {errores.map((p, i) => (
+              <li key={i}>
                 <button
-                  key={c}
                   type="button"
-                  aria-pressed={(c === 'BORRADOR') === viendoBorrador}
-                  onClick={() => setCual(c)}
-                  className={`rounded-md px-2.5 py-1 font-bold ${
-                    (c === 'BORRADOR') === viendoBorrador ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'
-                  }`}
+                  onClick={() => irA(p)}
+                  className="w-full rounded-md px-2 py-1 text-left text-xs text-red-900 hover:bg-red-100"
                 >
-                  Ver {c === 'BORRADOR' ? 'borrador' : 'activa'}
+                  <span className="font-bold">
+                    {p.numeral} · {p.nombre}
+                  </span>{' '}
+                  — {p.mensaje}
+                  {p.modalidades?.length ? <span className="text-red-700"> ({p.modalidades.join(', ')})</span> : null}
                 </button>
-              ))}
-            </div>
-          ) : null}
-          <label className="ml-auto inline-flex items-center gap-1.5 text-slate-600">
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        {/* Cómo se mira el diagrama. */}
+        <div className="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 text-xs">
+          <label className="inline-flex items-center gap-1.5 text-slate-600">
             Modalidad
             <select
               value={modalidad}
@@ -262,12 +313,33 @@ export function FlujoVisual() {
           <button
             type="button"
             onClick={() => setMostrarSaltadas((v) => !v)}
+            aria-pressed={mostrarSaltadas}
             className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-slate-600 hover:bg-slate-50"
           >
             {mostrarSaltadas ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
             {mostrarSaltadas ? 'Ocultar' : 'Mostrar'} lo que se salta
           </button>
+          <button
+            type="button"
+            onClick={() => setVerPuestos((v) => !v)}
+            aria-expanded={verPuestos}
+            className="ml-auto inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-slate-600 hover:bg-slate-50"
+          >
+            <Briefcase className="w-3.5 h-3.5" />
+            Puestos del proceso
+            {problemasPuestos > 0 ? (
+              <span
+                className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 font-bold text-amber-800"
+                title="Hay puestos por revisar"
+              >
+                <AlertTriangle className="w-3 h-3" aria-hidden />
+                {problemasPuestos}
+                <span className="sr-only">{problemasPuestos === 1 ? ' puesto por revisar' : ' puestos por revisar'}</span>
+              </span>
+            ) : null}
+          </button>
         </div>
+      </div>
 
       <Leyenda />
 
@@ -284,25 +356,6 @@ export function FlujoVisual() {
             >
               <X className="w-4 h-4" />
             </button>
-            {verProblemas ? (
-              <ul className="m-0 mt-2 list-none space-y-1 p-0">
-                {errores.map((p, i) => (
-                  <li key={i}>
-                    <button
-                      type="button"
-                      onClick={() => irA(p)}
-                      className="w-full rounded-md px-2 py-1 text-left text-xs text-red-900 hover:bg-red-100"
-                    >
-                      <span className="font-bold">
-                        {p.numeral} · {p.nombre}
-                      </span>{' '}
-                      — {p.mensaje}
-                      {p.modalidades?.length ? <span className="text-red-700"> ({p.modalidades.join(', ')})</span> : null}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
           </div>
           <PuestosConfig
             key={cambios}
