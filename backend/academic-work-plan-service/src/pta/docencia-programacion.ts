@@ -147,7 +147,8 @@ const ESTADOS_CERRADOS = new Set([
 ]);
 
 /** Entrada de `datosEstructurados.asignaturas` con la forma que usa el PTA. */
-function entradaPta(a: any, d: any, i: number) {
+/** Una asignatura concertada tal como queda en el PTA. La usan la aplicación y la vista previa al crear. */
+export function entradaPta(a: any, d: any, i: number) {
   return {
     id: Date.now() + i,
     // Donde se dicta (auth.seccionales.id_seccional), resuelto por Programación

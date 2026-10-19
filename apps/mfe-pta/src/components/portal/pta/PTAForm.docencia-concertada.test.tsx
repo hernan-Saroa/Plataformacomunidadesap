@@ -1,12 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PTAForm } from './PTAForm';
-import { getRegimenDocencia } from '../../../services/api/docenciaConcertadaApi';
+import { getDocenciaAprobada, getRegimenDocencia } from '../../../services/api/docenciaConcertadaApi';
 import { getActivePeriodoAcademico, getComponentesAprobacion, getPTAById, savePTA } from '../../../services/api/ptaApi';
 import { docentePtaAlert } from './DocentePtaAlert';
 
 vi.mock('../../../../../shell/src/services/api', () => ({ getBaseURL: () => 'http://localhost' }));
-vi.mock('../../../services/api/docenciaConcertadaApi', () => ({ getRegimenDocencia: vi.fn() }));
+vi.mock('../../../services/api/docenciaConcertadaApi', () => ({ getRegimenDocencia: vi.fn(), getDocenciaAprobada: vi.fn() }));
 vi.mock('../../../services/api/ptaApi', () => {
   const empty = () => Promise.resolve({ success: true, data: [] });
   return {
@@ -41,6 +41,7 @@ const pta = { id: 'pta-1', estado: 'Borrador', periodo: '2050-2', horas_a_progra
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(getRegimenDocencia).mockResolvedValue('programacion');
+  vi.mocked(getDocenciaAprobada).mockResolvedValue({ asignaturas: [], horas: 0, ptaVigente: null });
   vi.mocked(getActivePeriodoAcademico).mockResolvedValue({ codigo: '2050-2' } as any);
   vi.mocked(getPTAById).mockResolvedValue({ success: true, data: pta } as any);
   vi.mocked(getComponentesAprobacion).mockResolvedValue({ success: true, data: [
@@ -127,5 +128,37 @@ describe('Docencia del PTA según el régimen del backend', () => {
     await waitFor(() => expect(getPTAById).toHaveBeenCalledWith('pta-1'));
     expect(await screen.findByText('Aprobada en la concertación')).toBeTruthy();
     expect(screen.getByText('172 h')).toBeTruthy();
+  });
+
+  // Reporte de Tomás: con la concertación ya aprobada, el formulario de un PTA NUEVO decía «la Docencia
+  // llegará cuando se apruebe». La docencia aprobada se aplica al guardar, pero se ve desde el principio.
+  it('PTA nuevo: muestra la docencia ya aprobada antes de guardar, como aprobada', async () => {
+    vi.mocked(getDocenciaAprobada).mockResolvedValue({ asignaturas, horas: 172, ptaVigente: null });
+    render(<PTAForm onBack={() => {}} userPersonId="docente-1" />);
+    expect(await screen.findByText('Historia')).toBeTruthy();
+    expect(screen.getByText('Aprobada en la concertación')).toBeTruthy();
+    expect(screen.getByText(/se incorpora a este PTA al guardarlo/)).toBeTruthy();
+    expect(screen.getByText('172 h')).toBeTruthy();
+    expect(screen.queryByText(/llegará al PTA cuando se apruebe/)).toBeNull();
+    expect(getDocenciaAprobada).toHaveBeenCalledWith('2050-2');
+  });
+
+  it('PTA nuevo: al guardar no reenvía la vista previa (el servidor la aplica al crear)', async () => {
+    vi.mocked(getDocenciaAprobada).mockResolvedValue({ asignaturas, horas: 172, ptaVigente: null });
+    render(<PTAForm onBack={() => {}} userPersonId="docente-1" />);
+    await screen.findByText('Historia');
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar Borrador' }));
+    await waitFor(() => expect(savePTA).toHaveBeenCalled());
+    const enviado: any = vi.mocked(savePTA).mock.calls[0][0];
+    expect(enviado.asignaturas ?? enviado.datosEstructurados?.asignaturas ?? []).toEqual([]);
+  });
+
+  it('PTA nuevo: si ya hay un PTA del periodo, avisa que lo continúe y lleva a «Mis PTAs»', async () => {
+    const volver = vi.fn();
+    vi.mocked(getDocenciaAprobada).mockResolvedValue({ asignaturas, horas: 172, ptaVigente: { id: 'pta-9', estado: 'Borrador' } });
+    render(<PTAForm onBack={volver} userPersonId="docente-1" />);
+    expect(await screen.findByText(/Ya tiene un PTA de este periodo \(Borrador\)/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Ir a mis PTAs' }));
+    expect(volver).toHaveBeenCalled();
   });
 });

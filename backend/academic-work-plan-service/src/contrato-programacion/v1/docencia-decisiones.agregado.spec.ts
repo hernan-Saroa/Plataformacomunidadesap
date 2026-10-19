@@ -111,8 +111,37 @@ describe('EFDS-2315 :: contrato v1 — docencia concertada (agregado real, en tr
       .filter((n) => n !== 'constructor' && Reflect.getMetadata(PATH_METADATA, C.prototype[n]) !== undefined)
       .map((n) => Reflect.getMetadata(METHOD_METADATA, C.prototype[n]));
     expect(metodos(DocentesContratoController).every((m) => m === 0)).toBe(true); // 0 = GET
-    // 1 = POST (la decisión); los GET son de lectura: configuración del interruptor y régimen.
-    expect(metodos(DocenciaDecisionesController).sort()).toEqual([0, 0, 1]);
+    // 1 = POST (la decisión); los GET son de lectura: configuración, régimen y docencia aprobada propia.
+    expect(metodos(DocenciaDecisionesController).sort()).toEqual([0, 0, 0, 1]);
+  });
+
+  // Reporte de Tomás: con la concertación aprobada, el formulario de un PTA NUEVO no mostraba la docencia
+  // (se aplica al guardar). El PTA ahora la expone, de solo lectura y SOLO la del usuario autenticado.
+  caso('docencia aprobada del usuario: la propia, tal como entrará al PTA; nunca la de otro', async () => {
+    const qa = (await client!.query(
+      `SELECT u.id_user::text AS id, p.num_identificacion AS documento
+         FROM auth."user" u JOIN auth.personas p ON p.id_person = u.id_person WHERE u.username = 'qa.docente'`)).rows[0];
+    const otro = (await client!.query(
+      `SELECT u.id_user::text AS id FROM auth."user" u WHERE u.username = 'superadmin@esap.edu.co'`)).rows[0];
+    expect(qa && otro).toBeTruthy();
+    const svc = servicio([], true);
+    await svc.registrar('u2', decision({ documentoDocente: qa.documento, periodo: '2050-1' }));
+
+    const propia = await svc.aprobadaDelUsuario(qa.id, '2050-1');
+    expect(propia.horas).toBe(96);
+    expect(propia.ptaVigente).toBeNull(); // aún no tiene PTA en 2050-1
+    expect(propia.asignaturas).toHaveLength(1);
+    expect(propia.asignaturas[0]).toMatchObject({
+      origen: 'programacion', editable: false, asignatura_codigo: 'ASIG-00001', total_horas: 96,
+      id_concertacion: decision().idConcertacion, nivel_concertacion: 'pregrado',
+    });
+
+    // Otro usuario no ve la docencia de qa.docente; otro periodo tampoco.
+    expect((await svc.aprobadaDelUsuario(otro.id, '2050-1')).asignaturas).toEqual([]);
+    expect((await svc.aprobadaDelUsuario(qa.id, '2050-2')).asignaturas).toEqual([]);
+    // Sin identidad: vacío. Periodo mal formado: 400.
+    expect((await svc.aprobadaDelUsuario(undefined, '2050-1')).asignaturas).toEqual([]);
+    await expect(svc.aprobadaDelUsuario(qa.id, '2050')).rejects.toBeInstanceOf(BadRequestException);
   });
 
   caso('régimen para la pantalla: apagado es el de hoy; pide periodo válido o un PTA que exista', async () => {

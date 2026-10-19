@@ -3,7 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 import { PtaPermissionsService } from '../../pta/auth/pta-permissions.service';
-import { aplicarDecision, habilitadaLocal, regimenDocencia } from '../../pta/docencia-programacion';
+import { aplicarDecision, entradaPta, habilitadaLocal, regimenDocencia } from '../../pta/docencia-programacion';
 
 export interface AsignaturaConcertadaDto {
   idGrupo: string; asignaturaId: string; codigo: string; nombre: string; programaId: string;
@@ -66,6 +66,44 @@ export class DocenciaDecisionesService {
       pta = { periodo, estado: 'BORRADOR', datosEstructurados: null };
     }
     return { regimen: await regimenDocencia(pta) };
+  }
+
+  /**
+   * Docencia YA APROBADA del usuario autenticado para un periodo — para el formulario de un PTA nuevo.
+   *
+   * La decisión aprobada queda «pendiente_sin_pta» hasta que el docente guarda su PTA (ahí se aplica,
+   * `aplicarPendientesAlCrear`). Sin esta consulta, el formulario de un PTA nuevo decía «la Docencia llegará
+   * cuando se apruebe» aunque ya estuviera aprobada. Devuelve las asignaturas tal como entrarán al PTA
+   * (misma conversión) y el PTA vigente del periodo, si ya existe, para no duplicarlo.
+   *
+   * Solo lectura y solo la del propio usuario (identidad del token): nunca la de otro docente.
+   */
+  async aprobadaDelUsuario(idUser: string | undefined, periodo: string | undefined) {
+    const vacio = { asignaturas: [] as any[], horas: 0, ptaVigente: null as null | { id: string; estado: string } };
+    if (!/^\d{4}-[12]$/.test(String(periodo ?? ''))) throw new BadRequestException('periodo debe tener la forma AAAA-S');
+    if (!idUser || !UUID.test(String(idUser))) return vacio;
+    const persona = (await this.dataSource.query(
+      `SELECT p.num_identificacion AS documento
+         FROM auth."user" u JOIN auth.personas p ON p.id_person = u.id_person
+        WHERE u.id_user::text = $1`, [String(idUser)]))[0];
+    if (!persona?.documento) return vacio;
+
+    const decisiones: any[] = await this.dataSource.query(
+      `SELECT * FROM academic_work_plan.docencia_concertada
+        WHERE documento_docente = $1 AND periodo = $2 ORDER BY nivel`, [persona.documento, periodo]);
+    const asignaturas = decisiones.flatMap((d) => (Array.isArray(d.asignaturas) ? d.asignaturas : []).map((a: any, i: number) => entradaPta(a, d, i)));
+    const ptaVigente = (await this.dataSource.query(
+      `SELECT p.id::text AS id, p.estado
+         FROM academic_work_plan."PlanTrabajoAcademico" p
+         JOIN academic_work_plan."Docente" doc ON doc.id::text = p."docenteId"::text
+         JOIN auth.personas per ON per.id_person::text = doc."personaId"::text
+        WHERE per.num_identificacion = $1 AND p.periodo = $2
+        ORDER BY p."updatedAt" DESC LIMIT 1`, [persona.documento, periodo]))[0] ?? null;
+    return {
+      asignaturas,
+      horas: Math.round(asignaturas.reduce((s, a) => s + Number(a.total_horas || 0), 0) * 100) / 100,
+      ptaVigente,
+    };
   }
 
   /** El interruptor de este lado (lo consulta Programación Académica). */

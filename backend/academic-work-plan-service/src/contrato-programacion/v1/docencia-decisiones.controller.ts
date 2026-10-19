@@ -36,6 +36,17 @@ export class DocenciaDecisionesController {
     return { success: true, data: await this.decisiones.regimen(periodo, ptaId) };
   }
 
+  /**
+   * GET /contrato-programacion/v1/docencia/aprobada?periodo=AAAA-S — la docencia YA aprobada del usuario
+   * autenticado en ese periodo, tal como entrará a su PTA, y su PTA vigente (si existe). Para que el
+   * formulario de un PTA nuevo la muestre antes de guardar. Solo la propia: la identidad sale del token.
+   */
+  @Get('aprobada')
+  async aprobada(@Req() req: any, @Query('periodo') periodo?: string) {
+    const idUser = req?.user?.userId || (req?.headers?.['x-user-id'] as string | undefined);
+    return { success: true, data: await this.decisiones.aprobadaDelUsuario(idUser, periodo) };
+  }
+
   /** POST /contrato-programacion/v1/docencia/decisiones — registra una concertación aprobada. */
   @Post('decisiones')
   async registrar(@Req() req: any, @Body() body: DecisionDocenciaDto) {
